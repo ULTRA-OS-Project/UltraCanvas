@@ -73,6 +73,7 @@ namespace UltraCanvas {
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
         void LoadBundledFontsNative() override;
+        bool RegisterFontFileNative(const std::string& fontFilePath) override;
     };
 
 } // namespace UltraCanvas

@@ -1,12 +1,16 @@
 # UltraAI/adapters/_shared/CMakeLists.txt
 # Infrastructure shared by network-using adapters: credential resolution,
-# HTTP error mapping, retry policy, stream-handle base, and the transport
-# seam (ScriptedTransport for tests; UltraNetTransport when UltraNet is in
-# the build). Not an adapter itself — always built with the adapters tree.
+# HTTP error mapping, retry policy, stream-handle base, base64, multipart
+# bodies, the asynchronous-job poll loop, and the transport seam
+# (ScriptedTransport for tests; UltraNetTransport when UltraNet is in the
+# build). Not an adapter itself — always built with the adapters tree.
 
 add_library(UltraAI_AdapterShared STATIC
+    src/Base64.cpp
     src/Credentials.cpp
     src/HttpError.cpp
+    src/JobPoll.cpp
+    src/Multipart.cpp
     src/RetryPolicy.cpp
     src/ScriptedTransport.cpp
 )
@@ -21,6 +25,27 @@ target_include_directories(UltraAI_AdapterShared PUBLIC
 # dependency graph stays acyclic.
 target_link_libraries(UltraAI_AdapterShared PUBLIC UltraAI)
 target_compile_features(UltraAI_AdapterShared PUBLIC cxx_std_20)
+
+# Cassette load/save (recorded transport traffic) needs the vendored
+# nlohmann/json; compiled in only when the monorepo layout provides it.
+set(_ULTRAAI_SHARED_NLOHMANN_DIR "")
+foreach(_candidate
+        "${CMAKE_CURRENT_SOURCE_DIR}/../../../UltraCanvas/third_party")
+    if(EXISTS "${_candidate}/nlohmann/json.hpp")
+        set(_ULTRAAI_SHARED_NLOHMANN_DIR "${_candidate}")
+        break()
+    endif()
+endforeach()
+if(_ULTRAAI_SHARED_NLOHMANN_DIR)
+    target_sources(UltraAI_AdapterShared PRIVATE src/Cassette.cpp)
+    target_include_directories(UltraAI_AdapterShared PRIVATE
+        ${_ULTRAAI_SHARED_NLOHMANN_DIR})
+    target_compile_definitions(UltraAI_AdapterShared PUBLIC
+        ULTRAAI_HAS_CASSETTE=1)
+else()
+    message(STATUS "UltraAI: cassette support skipped — vendored "
+                   "nlohmann/json.hpp not found (monorepo layout required).")
+endif()
 
 if(ULTRAAI_HAS_ULTRANET)
     target_sources(UltraAI_AdapterShared PRIVATE src/UltraNetTransport.cpp)

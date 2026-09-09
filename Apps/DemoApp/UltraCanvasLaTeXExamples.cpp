@@ -16,8 +16,8 @@
 //
 // New examples appear automatically when a .tex file is dropped into the
 // media/LaTex folder.
-// Version: 2.1.0
-// Last Modified: 2026-07-06
+// Version: 2.2.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -186,11 +186,14 @@ namespace {
 
         // ----- Rendered output header -----
         auto renderedLabel = std::make_shared<UltraCanvasLabel>("LaTeXRenderedLabel_" + stem, 0, 0, 0, 20);
-        renderedLabel->SetText(live ? "Rendered output (typeset live by the UltraCanvas LaTeX engine):"
-                                    : "Reference image (this document is beyond the built-in math engine):");
+        renderedLabel->SetText(live    ? "Rendered output (typeset live by the UltraCanvas LaTeX engine):"
+                             : mathDoc ? "Rendered output (LaTeX engine unavailable):"
+                                       : "Reference image (this document is beyond the built-in math engine):");
         renderedLabel->SetFontSize(12);
         renderedLabel->SetFontWeight(FontWeight::Bold);
-        renderedLabel->SetTextColor(live ? Color(40, 110, 40, 255) : Color(150, 90, 40, 255));
+        renderedLabel->SetTextColor(live    ? Color(40, 110, 40, 255)
+                                  : mathDoc ? Color(150, 60, 60, 255)
+                                            : Color(150, 90, 40, 255));
         renderedLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
         page->AddChild(renderedLabel);
 
@@ -208,6 +211,21 @@ namespace {
             liveView->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
                                 .SetAlignSelf(CSSLayout::AlignSelf::Center);
             renderArea->AddChild(liveView);
+        } else if (mathDoc) {
+            // The document is plain math, so the only reason there is no live
+            // view is that the on-demand module could not be loaded. Say so -
+            // a silent blank pane (or a misleading "needs TikZ" note) hides
+            // a deployment problem: the module or its math font not being
+            // found next to the executable.
+            auto failed = std::make_shared<UltraCanvasLabel>("LaTeXModuleError_" + stem, 0, 0, 0, 0);
+            failed->SetText("The LaTeX engine module could not be loaded, so this document "
+                            "cannot be typeset:\n" + GetLaTeXModuleError());
+            failed->SetFontSize(12);
+            failed->SetTextColor(Color(150, 60, 60, 255));
+            failed->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
+            failed->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            renderArea->AddChild(failed);
         } else {
             renderArea->AddChild(CreateReferenceImage(texPath, stem));
         }

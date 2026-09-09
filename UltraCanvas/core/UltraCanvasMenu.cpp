@@ -27,6 +27,7 @@ namespace UltraCanvas {
 
             activeIndex = -1;
             InvalidateLayout();
+            scrollAnim.Cancel();   // a menu opens at the top, at once
             scrollOffsetPixels = 0;
             needsScrollbar = false;
 
@@ -896,6 +897,7 @@ namespace UltraCanvas {
             CloseAllSubmenus();
         }
         InvalidateLayout();
+        scrollAnim.Cancel();
         scrollOffsetPixels = 0;
         needsScrollbar = false;
         if (onMenuClosed) onMenuClosed();
@@ -1113,6 +1115,13 @@ namespace UltraCanvas {
         MenuItemData &item = items[index];
         if (!item.enabled) return;
 
+        // A submenu entry may carry an action of its own (the Filer's
+        // "Open with" opens the default application when clicked). Noted
+        // before the action runs: it may dismiss the menu from inside its
+        // own callback.
+        const bool submenuAction = item.type == MenuItemType::Submenu &&
+                                   static_cast<bool>(item.onClick);
+
         UltraCanvasTooltipManager::HideTooltip();
 
         // Handle different item types
@@ -1187,7 +1196,18 @@ namespace UltraCanvas {
             }
 
             case MenuItemType::Submenu:
-                OpenSubmenu(index);
+                // Activating the parent entry runs its action; hovering has
+                // already opened the child list, so both stay reachable.
+                if (submenuAction) {
+                    item.onClick();
+                    UCEvent ev;
+                    ev.type = UCEventType::MenuClick;
+                    ev.targetElement = this;
+                    ev.userDataPtr = &item;
+                    UltraCanvasApplication::GetInstance()->PushEvent(ev);
+                } else {
+                    OpenSubmenu(index);
+                }
                 break;
 
             default:
@@ -1198,7 +1218,11 @@ namespace UltraCanvas {
             onItemSelected(index);
         }
 
-        if (item.type == MenuItemType::Action && menuType != MenuType::Menubar) {
+        // An activated submenu entry (one with its own action) closes the
+        // menu like a plain action would; one that only opened its child
+        // list leaves the tree standing.
+        if ((item.type == MenuItemType::Action || submenuAction) &&
+            menuType != MenuType::Menubar) {
             CloseMenutree();
         }
     }
@@ -1228,6 +1252,7 @@ namespace UltraCanvas {
 
         menuScrollbar->onScrollChange = [this](int pos) {
             int maxScroll = std::max(0, totalContentHeight - clampedMenuHeight);
+            scrollAnim.Cancel();   // the scrollbar drives the position here
             scrollOffsetPixels = std::clamp(pos, 0, maxScroll);
             RequestRedraw();
         };
@@ -1315,6 +1340,9 @@ namespace UltraCanvas {
                          style.separatorHeight : style.itemHeight;
 
         // Scroll up if item is above visible area
+        // Revealing the focused item has to be true at once (the keyboard is
+        // already on it), so it positions the list directly.
+        scrollAnim.Cancel();
         if (itemY < scrollOffsetPixels) {
             scrollOffsetPixels = itemY;
         }
@@ -1337,14 +1365,23 @@ namespace UltraCanvas {
 
         int delta = event.wheelDelta > 0 ? -style.itemHeight : style.itemHeight;
         int maxScroll = std::max(0, totalContentHeight - clampedMenuHeight);
-        scrollOffsetPixels = std::clamp(scrollOffsetPixels + delta, 0, maxScroll);
-
-        if (menuScrollbar) {
-            menuScrollbar->SetScrollPosition(scrollOffsetPixels);
-        }
-
-        RequestRedraw();
+        if (!scrollAnim.IsBound()) BindScrollAnimator();
+        // Glide to the new position; each eased step repaints and carries the
+        // scrollbar thumb with it (see UltraCanvasSmoothScroll.h).
+        scrollAnim.AnimateBy(delta, 0, maxScroll);
         return true;
+    }
+
+    // Each eased step of a wheel glide is written here, so the list, the
+    // scrollbar thumb and the repaint stay in step exactly as they do when the
+    // offset is set directly.
+    void UltraCanvasMenu::BindScrollAnimator() {
+        scrollAnim.Bind([this] { return static_cast<double>(scrollOffsetPixels); },
+                        [this](double v) {
+                            scrollOffsetPixels = static_cast<int>(std::lround(v));
+                            if (menuScrollbar) menuScrollbar->SetScrollPosition(scrollOffsetPixels);
+                            RequestRedraw();
+                        });
     }
 
     void UltraCanvasMenu::StartAnimation() {

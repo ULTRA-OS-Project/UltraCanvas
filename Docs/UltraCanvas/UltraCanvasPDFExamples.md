@@ -24,17 +24,33 @@ The whole subsystem is gated behind the `ULTRACANVAS_PLUGIN_PDF` build option
 
 - **Page rendering** at any DPI/zoom with antialiasing, drop shadow, and a
   white underlay; rendered pages and thumbnails are cached per DPI.
-- **Thumbnail strip** with click-to-jump and independent scrolling
-  (toggleable). It only appears for documents with more than one page, its
-  width is capped at 1/4 of the view so the page area always stays at least
-  3× the strip, and it auto-scrolls to keep the current page's thumb visible.
+- **Thumbnail strip** (the page inventory) with click-to-jump and independent
+  scrolling (toggleable). It only appears for documents with more than one
+  page and auto-scrolls to keep the current page's thumb visible. Its width
+  follows one of two modes (`SetThumbnailWidthMode`): **relative** — a share of
+  the view's width (a quarter by default, capped by `thumbStripWidth`), so the
+  page area always stays at least 3× the strip; or **absolute** — an exact
+  thumbnail width in pixels, the same strip whatever the view's size, for hosts
+  that want a fixed inventory (the UltraFiler preview asks for 56 px). Either
+  way each thumbnail is the strip width minus `thumbMargin` on both sides, and
+  **as tall as its own page's aspect ratio requires** — so a slot never pads a
+  page with empty space, and pages of differing sizes each get their own
+  height. Page numbers are sized from the thumbnail they belong to, so they
+  shrink with it.
 - **Navigation**: next/prev/first/last/go-to-page, plus PageUp/Down, arrows,
   Home/End.
 - **Zoom modes**: Fit Page, Fit Width, Actual Size (100%), and custom levels;
-  Ctrl+wheel to zoom; fit modes re-resolve on resize.
+  fit modes re-resolve on resize.
+- **Zoom by wheel and keyboard**: the wheel zooms about the pointer — the page
+  point under the cursor stays under it — and `+` / `-` step, `0` fits the
+  page, `1` is 100 % and `W` fits the width. Which of zoom and scroll the plain
+  wheel does is `SetWheelAction`; the other one is always the same wheel with
+  Ctrl held, so both stay reachable either way. The default is
+  `WheelAction::Scroll` (so Ctrl+wheel zooms); `UltraCanvasMediaViewer` sets
+  `Zoom`, matching its image surface, where the plain wheel has always zoomed.
 - **Search**: case/whole-word/page-range options, hit overlays, active-hit
   highlight, next/prev stepping (F3 / Shift+F3).
-- **Interaction**: mouse-wheel scroll, click-drag panning, on-page page badge.
+- **Interaction**: mouse-wheel scroll, click-drag panning.
   Scrolling is hard-limited: it stops once the page edge sits `pageMargin`
   inside the viewport. From that resting point a further wheel step continues
   into the next (or previous) page — on the last (or first) page it simply
@@ -90,7 +106,19 @@ bool LoadFromPath(const std::string& path, const std::string& password = "");
 void SetDocument(std::unique_ptr<IPDFDocument> doc);
 IPDFDocument* GetDocument() const;
 bool HasDocument() const;
+
+void   SetMaxInMemoryBytes(size_t bytes);   // default 256 MiB, 0 = always stream
+size_t GetMaxInMemoryBytes() const;
 ```
+
+`LoadFromPath()` reads a file of at most `GetMaxInMemoryBytes()` **into memory**
+(`IPDFDocument::OpenInMemory`), so the view keeps **no operating system handle**
+on it: the document stays on screen while the file is moved, renamed or deleted
+— on Windows an open handle refuses those outright, so a viewer or preview pane
+that streamed the file would block the very file it is showing. A bigger file is
+streamed instead, because holding hundreds of megabytes of PDF in RAM is the
+worse trade; raise or lower the limit to move that line, or set 0 to always
+stream. `SetDocument()` takes whatever the caller opened, unchanged.
 
 ### Navigation
 
@@ -119,10 +147,23 @@ void     ZoomToFit();              // Fit Page
 void     ZoomToWidth();            // Fit Width
 void     ZoomActualSize();         // 100%
 float    GetZoomPercent() const;   // effective on-screen scale, as a percentage
+
+// Zoom keeping the page point under `local` (element-local pixels) in place —
+// what the wheel does. Outside the page it zooms about the viewport centre.
+void SetZoomAt(float scale, const Point2Di& local);
+void ZoomInAt(const Point2Di& local);    // 1.1x step, the wheel's
+void ZoomOutAt(const Point2Di& local);
+
+// What the plain wheel does over the page; Ctrl+wheel always does the other.
+enum class WheelAction { Scroll, Zoom };
+void        SetWheelAction(WheelAction a);   // default: Scroll
+WheelAction GetWheelAction() const;
 ```
 
 Fit modes recompute their scale from the live viewport every frame, so the page
-keeps fitting when the view is resized.
+keeps fitting when the view is resized. The keyboard zooms too while the view
+has the focus: `+` / `-` step, `0` fits the page, `1` is actual size and `W`
+fits the width (see the interaction table below).
 
 ### Search
 
@@ -216,23 +257,57 @@ enum class ThumbnailNumberStyle { Caption, Overlay };
 void SetThumbnailNumberStyle(ThumbnailNumberStyle s);   // default: Caption
 ThumbnailNumberStyle GetThumbnailNumberStyle() const;
 
+// How wide the thumbnails are: a share of the view's width, or a pixel width.
+enum class ThumbnailWidthMode { Relative, Absolute };
+void SetThumbnailWidthMode(ThumbnailWidthMode m);       // default: Relative
+ThumbnailWidthMode GetThumbnailWidthMode() const;
+void  SetThumbnailWidth(int pixels);        // Absolute mode (and selects it)
+int   GetThumbnailWidth() const;
+void  SetThumbnailWidthFraction(float f);   // Relative mode (and selects it)
+float GetThumbnailWidthFraction() const;
+int   GetEffectiveThumbnailWidth() const;   // what is laid out right now
+
 void SetStyle(const PDFViewStyle& s);
 const PDFViewStyle& GetStyle() const;
 ```
 
 `ThumbnailNumberStyle::Caption` draws a small label beneath each thumbnail (the
 default); `Overlay` draws a large translucent page number centred over the page.
-The overlay's size and colour come from `PDFViewStyle::thumbOverlayNumberHeight`
-(a fraction of the thumbnail height, default `0.30`) and
-`thumbOverlayNumberColor`. The `UltraCanvasMediaViewer` (and with it the
+Both are sized from the thumbnail's own height —
+`PDFViewStyle::thumbOverlayNumberHeight` (default `0.30`) for the overlay and
+`thumbLabelHeight` (default `0.10`, clamped to 8–13 px) for the caption — so a
+narrow strip gets small numbers instead of oversized ones. The overlay's colour
+is `thumbOverlayNumberColor`. The `UltraCanvasMediaViewer` (and with it the
 UltraFiler preview) uses the `Overlay` style.
 
 `PDFViewStyle` exposes colors (background, page, shadow, thumb strip/border,
 search-hit fill, selection fill, thumbnail overlay number, scrollbar) and
-metrics (`thumbStripWidth`, `thumbHeight`, `thumbSpacing`, `pageMargin`,
-`pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`).
-`thumbStripWidth` is a request: the effective strip width is capped at 1/4 of
-the view width so the page area keeps at least a 3:1 ratio over the strip.
+metrics (`thumbStripWidth`, `thumbStripWidthFraction`, `thumbWidth`,
+`thumbMargin`, `thumbMaxHeight`, `thumbSpacing`, `pageMargin`,
+`pageShadowSize`, `scrollbarWidth`, `defaultDpi`, `thumbOverlayNumberHeight`,
+`thumbLabelHeight`).
+
+The inventory is laid out from its width, and the width mode decides where that
+comes from:
+
+| Mode | Strip width | Use it for |
+|---|---|---|
+| `Relative` (default) | `thumbStripWidthFraction` of the view width (0.25), never more than `thumbStripWidth` (160 px) — so the page area keeps at least a 3:1 ratio over the strip | A full viewer window, where the inventory should grow with it |
+| `Absolute` | `thumbWidth` (56 px) plus `thumbMargin` on both sides, whatever the view's size; it only gives way when it would take more than half the view | A preview pane, where the inventory should look the same at every pane size |
+
+Subtracting `thumbMargin` on both sides gives the thumbnail width, and each
+thumbnail's height follows its own page's aspect ratio (`thumbMaxHeight` caps it
+for extreme formats — such a page narrows instead of stretching, keeping its
+proportions). There is no fixed thumbnail height to set. Changing the mode or
+either width re-lays out the strip and re-renders the thumbnails at their new
+size.
+
+```cpp
+// A preview pane: 56 px thumbnails whatever the pane's width.
+view->SetThumbnailWidth(56);
+// Back to growing with the view: a fifth of its width.
+view->SetThumbnailWidthFraction(0.2f);
+```
 
 ### Editing passthroughs
 
@@ -268,10 +343,15 @@ immediately.
 
 ### Built-in interaction
 
+Clicking the view gives it the keyboard focus, so the keys below work in a host
+that focuses something else (a preview pane beside a file list).
+
 | Input | Action |
 |-------|--------|
-| Mouse wheel | Scroll the page (or the thumbnail strip when over it); at the page's bottom/top edge it continues into the next/previous page |
-| Ctrl + wheel | Zoom in / out |
+| Mouse wheel | The configured `WheelAction` over the page — by default scroll it, continuing into the next/previous page at its bottom/top edge. Over the thumbnail strip the wheel always scrolls the strip |
+| Ctrl + wheel | The other action: zoom about the pointer by default, or scroll when `WheelAction::Zoom` is set |
+| + / - (or = / _, and the keypad) | Zoom in / out |
+| 0 / 1 / W | Fit the page / 100 % / fit the width |
 | Click-drag on page | Pan |
 | Click thumbnail | Jump to that page |
 | Drag (in select mode) | Marquee-select text lines |
@@ -378,6 +458,7 @@ auto doc = UltraCanvas::OpenPDF("/path/to/file.pdf");   // nullptr on failure
 
 ```cpp
 bool Open(const std::string& path, const std::string& password = "");
+bool OpenInMemory(const std::string& path, const std::string& password = "");
 bool OpenFromBytes(const std::vector<uint8_t>& data, const std::string& password = "");
 bool Save(const std::string& path, const PDFSaveOptions& opts = {});
 bool SaveIncremental(const std::string& path);
@@ -388,6 +469,15 @@ PDFDocumentInfo GetInfo() const;            // title/author/dates/version/encryp
 int             GetPageCount() const;
 PDFPageInfo     GetPageInfo(int pageNumber) const;   // size in pt, rotation, label
 ```
+
+`Open()` **streams**: the engine reads pages from the file on demand and keeps it
+open for as long as the document lives. `OpenInMemory()` reads the whole file
+first and opens the document from that buffer, so nothing holds the file
+afterwards — it still reports `path` as its source and saves normally, and only
+`SaveIncremental()` is unavailable (appending to a file needs a document backed
+by it, and returns `false` on a memory-opened one). Use `OpenInMemory()` whenever
+the document is merely being displayed and the file must stay movable; use
+`Open()` for a document too big to hold in memory.
 
 `PDFSaveOptions`: `linearize` (web-optimize), `garbageCollect`, `deflateStreams`,
 `cleanContentStreams`.

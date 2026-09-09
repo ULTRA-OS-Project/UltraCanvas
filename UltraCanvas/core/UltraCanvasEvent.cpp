@@ -77,6 +77,11 @@ namespace UltraCanvas {
             result += ",pos=(" + std::to_string(pointer.x) + "," + std::to_string(pointer.y) + ")";
             result += ",btn=" + std::to_string(static_cast<int>(button));
         }
+        if (IsTouchEvent()) {
+            result += ",pos=(" + std::to_string(pointer.x) + "," + std::to_string(pointer.y) + ")";
+            result += ",id=" + std::to_string(pointerId);
+            result += ",fingers=" + std::to_string(touchPointCount);
+        }
         if (IsKeyboardEvent()) {
             result += ",nativeKey=" + std::to_string(nativeKeyCode);
             if (character > 0) {

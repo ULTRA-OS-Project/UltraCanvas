@@ -9,6 +9,7 @@
 #pragma once
 
 #include "UltraCanvasChartElementBase.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasGanttChart.h"   // GanttDate (shared calendar date type)
 #include <functional>
 #include <map>
@@ -545,6 +546,18 @@ namespace UltraCanvas {
         bool editable = false;
 
         float scrollX = 0.0f;
+        // Wheel scrolling glides to its target (see UltraCanvasSmoothScroll.h).
+        // The board scrolls sideways and each column scrolls on its own, but
+        // only one column can be under the wheel at a time, so a single animator
+        // is re-bound to whichever column is being wheeled — re-binding cancels
+        // the previous column's glide, which is exactly what moving on to
+        // another column should do.
+        // Largest horizontal scroll the columns allow, refreshed by the layout
+        // pass so the wheel's glide knows its range.
+        float maxScrollX = 0.0f;
+        UltraCanvasSmoothScroll scrollAnimX;
+        UltraCanvasSmoothScroll columnScrollAnim;
+        int columnScrollAnimKey = 0;   // column id columnScrollAnim is bound to
         std::map<int, float> columnScroll;   // columnId -> scrollY
         int selectedCardId = -1;
         int hoveredCardId = -1;
@@ -574,6 +587,10 @@ namespace UltraCanvas {
         int LaneIdAt(const Point2Di& pos) const;
         void UpdateDropTarget(const Point2Di& pos);
         void ClampScroll();
+    // Glides the vertical scroll of one column (id -1 = the swim-lane board).
+    void AnimateColumnScrollBy(int columnId, float delta);
+        float MaxScrollX() const { return maxScrollX; }
+        float MaxColumnScroll(int columnId) const;
 
         // ----- Color helpers -----
         Color ColumnColor(size_t columnIndex, const KanbanColumn& col) const;

@@ -1551,7 +1551,8 @@ void UltraCanvasKanbanBoardElement::ComputeLayout(IRenderContext* ctx) {
                                                          (n - 1) * style.columnGap) / n));
 
     double contentW = n * colW + (n - 1) * style.columnGap;
-    float maxScrollX = static_cast<float>(std::max(0.0, contentW - columnsWidth));
+    // Kept for the wheel's glide, which needs the range outside the layout pass.
+    maxScrollX = static_cast<float>(std::max(0.0, contentW - columnsWidth));
     scrollX = std::clamp(scrollX, 0.0f, maxScrollX);
 
     double footerH = style.footerHeight;
@@ -1669,6 +1670,18 @@ void UltraCanvasKanbanBoardElement::ComputeLayout(IRenderContext* ctx) {
         float contentH = static_cast<float>(laneTop - bodyTop);
         for (auto& cl : layout.columns) cl.contentHeight = contentH;
     }
+}
+
+float UltraCanvasKanbanBoardElement::MaxColumnScroll(int columnId) const {
+    // Swim lanes scroll every column together, so the first column's content
+    // defines the range for the shared id -1.
+    for (const auto& cl : layout.columns) {
+        if (columnId == -1 || cl.columnId == columnId) {
+            return std::max(0.0f, cl.contentHeight -
+                                  static_cast<float>(cl.bodyRect.height));
+        }
+    }
+    return 0.0f;
 }
 
 void UltraCanvasKanbanBoardElement::ClampScroll() {
@@ -2669,29 +2682,47 @@ bool UltraCanvasKanbanBoardElement::HandleChartMouseMove(const Point2Di& mousePo
 bool UltraCanvasKanbanBoardElement::HandleWheel(const UCEvent& event) {
     if (editor.open) return true;
 
-    float step = 60.0f;
-    if (event.shift) {
-        scrollX += (event.wheelDelta > 0 ? -step : step);
-        RequestRedraw();
+    // Wheel scrolling glides to its target (see UltraCanvasSmoothScroll.h).
+    const float step = 60.0f;
+    const float delta = (event.wheelDelta > 0 ? -step : step);
+    const bool sideways = event.shift ||
+                          (layout.lanes.empty() && ColumnIndexAt(event.pointer) < 0);
+    if (sideways) {
+        if (!scrollAnimX.IsBound()) {
+            scrollAnimX.Bind([this] { return static_cast<double>(scrollX); },
+                             [this](double v) {
+                                 scrollX = static_cast<float>(v);
+                                 ClampScroll();
+                                 RequestRedraw();
+                             });
+        }
+        scrollAnimX.AnimateBy(delta, 0.0, MaxScrollX());
         return true;
     }
-    if (!layout.lanes.empty()) {
-        columnScroll[-1] += (event.wheelDelta > 0 ? -step : step);
-        ClampScroll();
-        RequestRedraw();
-        return true;
+    // Swim lanes scroll the whole board vertically under the id -1; otherwise
+    // the column under the cursor scrolls on its own.
+    int columnId = -1;
+    if (layout.lanes.empty()) {
+        columnId = layout.columns[ColumnIndexAt(event.pointer)].columnId;
     }
-    int columnIndex = ColumnIndexAt(event.pointer);
-    if (columnIndex < 0) {
-        scrollX += (event.wheelDelta > 0 ? -step : step);
-        RequestRedraw();
-        return true;
-    }
-    int columnId = layout.columns[columnIndex].columnId;
-    columnScroll[columnId] += (event.wheelDelta > 0 ? -step : step);
-    ClampScroll();
-    RequestRedraw();
+    AnimateColumnScrollBy(columnId, delta);
     return true;
+}
+
+void UltraCanvasKanbanBoardElement::AnimateColumnScrollBy(int columnId, float delta) {
+    // One animator serves every column: only the one under the cursor can be
+    // wheeled, and re-binding drops the previous column's glide.
+    if (!columnScrollAnim.IsBound() || columnScrollAnimKey != columnId) {
+        columnScrollAnimKey = columnId;
+        columnScrollAnim.Bind(
+                [this, columnId] { return static_cast<double>(columnScroll[columnId]); },
+                [this, columnId](double v) {
+                    columnScroll[columnId] = static_cast<float>(v);
+                    ClampScroll();
+                    RequestRedraw();
+                });
+    }
+    columnScrollAnim.AnimateBy(delta, 0.0, MaxColumnScroll(columnId));
 }
 
 bool UltraCanvasKanbanBoardElement::EditorMouseDown(const UCEvent& event) {

@@ -132,6 +132,12 @@ MenuItemData::Radio(label, group, checked, toggleCallback)
 MenuItemData::Submenu(label, subItems)
 MenuItemData::Submenu(label, iconPath, subItems)
 
+// A submenu whose parent entry is itself clickable: hovering opens the child
+// list as always, activating the entry runs onClick and closes the menu.
+// (The Filer's "Open with" opens the default application this way.)
+MenuItemData openWith = MenuItemData::Submenu("Open with", appItems);
+openWith.onClick = [] { OpenWithDefaultApplication(); };
+
 // Create input field
 MenuItemData::Input(label, placeholder, inputCallback)
 ```
@@ -168,7 +174,7 @@ struct MenuStyle {
     int paddingBottom;       // Bottom padding
     int iconSpacing;         // Space between icon and text
     int shortcutSpacing;     // Space before shortcut text
-    int separatorHeight;     // Height of separator items
+    int separatorHeight;     // Height of a separator row; the 1px line is centred in it
     int borderWidth;         // Border thickness
     int borderRadius;        // Corner radius
     
@@ -199,6 +205,17 @@ MenuStyle::Dark()
 
 // Minimal flat design
 MenuStyle::Flat()
+```
+
+`Dark()` and `Flat()` are `Default()` with colours (and, for `Flat()`, the
+border, corner radius and shadow) replaced — every metric is shared, so a menu
+keeps its shape when it changes theme. Build your own theme the same way:
+
+```cpp
+MenuStyle style = MenuStyle::Default();
+style.backgroundColor = Color(30, 34, 40, 255);
+style.textColor = Colors::White;
+menu->SetStyle(style);
 ```
 
 ## Core Methods

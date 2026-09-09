@@ -7,6 +7,7 @@
 
 #include "UltraCanvasSpreadsheetTypes.h"
 #include "UltraCanvasSpreadsheetCell.h"
+#include "UltraCanvasSpreadsheetMetrics.h"
 #include <string>
 #include <vector>
 #include <map>
@@ -36,6 +37,12 @@ struct CellCoordHash {
 // ============================================================================
 // FIND/REPLACE OPTIONS
 // ============================================================================
+
+// Measures a cell's display text in a given cell font, in grid pixels. The UI
+// layer supplies one backed by the live render context so auto-fit uses real
+// glyph advances; the model falls back to SpreadsheetEstimateTextWidth when no
+// context exists yet (a file loaded before the grid is on a window).
+using CellTextMeasureFn = std::function<int(const std::string& text, const CellFont& font)>;
 
 // Declared at namespace scope (not nested) so it can be used as a default
 // argument with its NSDMIs inside SpreadsheetSheet's still-incomplete class body.
@@ -216,10 +223,22 @@ public:
     // ===== COLUMN OPERATIONS =====
     
     int GetColumnWidth(int col) const;
-    void SetColumnWidth(int col, int width);
-    void SetColumnWidthRange(int startCol, int endCol, int width);
-    void AutoFitColumnWidth(int col);
-    void AutoFitColumnWidthRange(int startCol, int endCol);
+    // `explicitWidth` records that this width was chosen - by the imported
+    // document, by a header drag or by the caller - so the post-import
+    // auto-width pass leaves it alone. Importers that only guess a width
+    // (or restore the default) should pass false.
+    void SetColumnWidth(int col, int width, bool explicitWidth = true);
+    void SetColumnWidthRange(int startCol, int endCol, int width, bool explicitWidth = true);
+    // True when something has sized this column (see ColumnDefinition::explicitWidth).
+    bool HasExplicitColumnWidth(int col) const;
+    // Fit the column to the widest display value it holds. `measure` is used
+    // when supplied; otherwise widths are estimated from the font size.
+    void AutoFitColumnWidth(int col, const CellTextMeasureFn& measure = nullptr);
+    void AutoFitColumnWidthRange(int startCol, int endCol, const CellTextMeasureFn& measure = nullptr);
+    // Auto-fit every used column that no document and no user has sized. This
+    // is what turns a width-less import (CSV, or an ODS/XLSX authored without
+    // column styles) into a readable grid instead of uniform default columns.
+    void AutoFitUnsizedColumns(const CellTextMeasureFn& measure = nullptr);
     
     int GetDefaultColumnWidth() const { return defaultColumnWidth_; }
     void SetDefaultColumnWidth(int width) { defaultColumnWidth_ = width; }
@@ -237,8 +256,9 @@ public:
     // ===== ROW OPERATIONS =====
     
     int GetRowHeight(int row) const;
-    void SetRowHeight(int row, int height);
-    void SetRowHeightRange(int startRow, int endRow, int height);
+    void SetRowHeight(int row, int height, bool explicitHeight = true);
+    void SetRowHeightRange(int startRow, int endRow, int height, bool explicitHeight = true);
+    bool HasExplicitRowHeight(int row) const;
     void AutoFitRowHeight(int row);
     void AutoFitRowHeightRange(int startRow, int endRow);
     
@@ -730,14 +750,23 @@ inline int SpreadsheetSheet::GetColumnWidth(int col) const {
     return (it != columns_.end()) ? it->second.width : defaultColumnWidth_;
 }
 
-inline void SpreadsheetSheet::SetColumnWidth(int col, int width) {
-    GetOrCreateColumnDefinition(col).width = std::max(0, std::min(width, SpreadsheetLimits::MaxColumnWidth * 7));
+inline void SpreadsheetSheet::SetColumnWidth(int col, int width, bool explicitWidth) {
+    ColumnDefinition& def = GetOrCreateColumnDefinition(col);
+    def.width = std::max(0, std::min(width, SpreadsheetLimits::MaxColumnWidth * 7));
+    // A width chosen by a document or a user sticks; an auto-fitted one stays
+    // eligible for the next auto-width pass.
+    def.explicitWidth = explicitWidth;
 }
 
-inline void SpreadsheetSheet::SetColumnWidthRange(int startCol, int endCol, int width) {
+inline void SpreadsheetSheet::SetColumnWidthRange(int startCol, int endCol, int width, bool explicitWidth) {
     for (int col = startCol; col <= endCol; ++col) {
-        SetColumnWidth(col, width);
+        SetColumnWidth(col, width, explicitWidth);
     }
+}
+
+inline bool SpreadsheetSheet::HasExplicitColumnWidth(int col) const {
+    auto it = columns_.find(col);
+    return (it != columns_.end()) ? it->second.explicitWidth : false;
 }
 
 inline bool SpreadsheetSheet::IsColumnHidden(int col) const {
@@ -775,14 +804,21 @@ inline int SpreadsheetSheet::GetRowHeight(int row) const {
     return (it != rows_.end()) ? it->second.height : defaultRowHeight_;
 }
 
-inline void SpreadsheetSheet::SetRowHeight(int row, int height) {
-    GetOrCreateRowDefinition(row).height = std::max(0, std::min(height, SpreadsheetLimits::MaxRowHeight * 4));
+inline void SpreadsheetSheet::SetRowHeight(int row, int height, bool explicitHeight) {
+    RowDefinition& def = GetOrCreateRowDefinition(row);
+    def.height = std::max(0, std::min(height, SpreadsheetLimits::MaxRowHeight * 4));
+    def.explicitHeight = explicitHeight;
 }
 
-inline void SpreadsheetSheet::SetRowHeightRange(int startRow, int endRow, int height) {
+inline void SpreadsheetSheet::SetRowHeightRange(int startRow, int endRow, int height, bool explicitHeight) {
     for (int row = startRow; row <= endRow; ++row) {
-        SetRowHeight(row, height);
+        SetRowHeight(row, height, explicitHeight);
     }
+}
+
+inline bool SpreadsheetSheet::HasExplicitRowHeight(int row) const {
+    auto it = rows_.find(row);
+    return (it != rows_.end()) ? it->second.explicitHeight : false;
 }
 
 inline bool SpreadsheetSheet::IsRowHidden(int row) const {

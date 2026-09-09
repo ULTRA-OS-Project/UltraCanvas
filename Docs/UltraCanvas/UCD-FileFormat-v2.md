@@ -256,7 +256,7 @@ are NUL-padded).
 | Offset | Size | Field | Meaning |
 |---|---|---|---|
 | 0 | 1 | Record version | `1` |
-| 1 | 1 | Hash algorithm | `0` = SHA-256 (default), `1` = BLAKE3-256. (MD5 is deliberately **not** assigned a code point — it is collision-broken and a forged file with a matching MD5 is practical today. SHA-256 fills the same role securely.) |
+| 1 | 1 | Hash algorithm | `0` = SHA-256. This is the only assigned code point; readers reject any other value. A future algorithm would arrive with a record-version bump, not a new code point — the same one-algorithm rule applied to the cipher and KDF. (BLAKE3-256 was once pencilled in as `1` and dropped: it is in neither libsodium nor OpenSSL, is not FIPS-approved, and the creation hash is computed once per file, so its software speed buys nothing over hardware-accelerated SHA-256. MD5 is deliberately **not** assigned a code point — it is collision-broken and a forged file with a matching MD5 is practical today.) |
 | 2 | 2 | Reserved | `0x0000` |
 | 4 | 16 | File UUID | Random, generated once at creation; the primary key under which the SuperVault service stores this file's record. |
 | 20 | 32 | Owner ID | SuperVault account of the creator — the person contacted to confirm each open request. |

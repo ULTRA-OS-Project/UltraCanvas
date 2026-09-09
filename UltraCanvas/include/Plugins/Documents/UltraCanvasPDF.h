@@ -1,8 +1,8 @@
 // include/Plugins/Documents/UltraCanvasPDF.h
 // PDF document interface — read, write, page operations, content editing.
 // Backed by MuPDF when ULTRACANVAS_PLUGIN_PDF is enabled.
-// Version: 1.1.0
-// Last Modified: 2026-06-19
+// Version: 1.2.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_PDF_H
@@ -140,7 +140,19 @@ public:
     virtual ~IPDFDocument() = default;
 
     // ----- I/O -----
+    // Open `path` as a stream. The engine reads pages from the file on demand,
+    // so it keeps an operating system handle on it for as long as the document
+    // lives — which blocks moving, renaming or deleting that file on Windows.
+    // Prefer OpenInMemory() wherever the document is merely being displayed.
     virtual bool Open(const std::string& path, const std::string& password = "") = 0;
+    // Read the whole file into memory first and open the document from that
+    // buffer: no handle on `path` survives the call, so the file can be moved,
+    // renamed or deleted while the document is still shown. The document still
+    // reports `path` as its source and saves normally; only SaveIncremental()
+    // is unavailable, because appending to a file needs a document backed by it.
+    // Costs the file's size in memory — stream a document too big to hold.
+    virtual bool OpenInMemory(const std::string& path,
+                              const std::string& password = "") = 0;
     virtual bool OpenFromBytes(const std::vector<uint8_t>& data,
                                const std::string& password = "") = 0;
     virtual bool Save(const std::string& path, const PDFSaveOptions& opts = {}) = 0;

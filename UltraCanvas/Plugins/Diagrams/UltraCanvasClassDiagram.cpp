@@ -1600,19 +1600,28 @@ bool UltraCanvasClassDiagram::HandleMouseMove(const UCEvent& event) {
     return true;
 }
 
-bool UltraCanvasClassDiagram::HandleMouseWheel(const UCEvent& event) {
-    double factor = (event.wheelDelta > 0) ? 1.1 : 0.9;
-    Point2Di mousePos = event.pointer;
-    Point2Dd worldBefore = ScreenToWorld(mousePos);
-
+// One zoom step about the cursor: the world point under it stays put. A wheel
+// notch is eased in as a run of these (UltraCanvasSmoothZoom), and applying them
+// in a row about the same cursor is exactly applying their product once.
+void UltraCanvasClassDiagram::ApplyZoomFactorAtCursor(double factor,
+                                                      const Point2Di& cursor) {
+    Point2Dd worldBefore = ScreenToWorld(cursor);
     double newZoom = std::clamp(zoomLevel * factor, 0.1, 10.0);
-    if (newZoom == zoomLevel) return true;
+    if (newZoom == zoomLevel) return;
 
     zoomLevel = newZoom;
-    Point2Dd worldAfter = ScreenToWorld(mousePos);
+    Point2Dd worldAfter = ScreenToWorld(cursor);
     panOffset.x += (worldAfter.x - worldBefore.x) * zoomLevel;
     panOffset.y += (worldAfter.y - worldBefore.y) * zoomLevel;
-    RequestRedraw();
+}
+
+bool UltraCanvasClassDiagram::HandleMouseWheel(const UCEvent& event) {
+    if (!zoomAnim.IsBound()) {
+        zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                      [this] { RequestRedraw(); });
+    }
+    zoomCursor = event.pointer;
+    zoomAnim.ZoomBy((event.wheelDelta > 0) ? 1.1 : 0.9, zoomLevel, 0.1, 10.0);
     return true;
 }
 

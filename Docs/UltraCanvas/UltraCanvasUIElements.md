@@ -40,6 +40,11 @@ click-to-position, drag selection, Home/End/arrows, Delete, cut/copy/paste,
 undo/redo, placeholder, max length, validation state, horizontal scrolling and
 multi-byte text. Reproducing even half of that by hand is a week of bugs.
 
+Password fields also get a reveal control: `SetShowPasswordToggle(true)` paints
+an eye button inside the field, and `SetPasswordRevealed()` drives the same state
+from an external "Show password" checkbox. See
+[UltraCanvasTextInputExamples.md](UltraCanvasTextInputExamples.md).
+
 ## Buttons and choices
 
 | You need | Element | Header |
@@ -51,6 +56,7 @@ multi-byte text. Reproducing even half of that by hand is a week of bugs.
 | Pick one of a list | `UltraCanvasDropdown` | `UltraCanvasDropdown.h` |
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
+| A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
 | A score out of N | `UltraCanvasRating` | `UltraCanvasRating.h` |
 | Step through a sequence | `UltraCanvasStepper` | `UltraCanvasStepper.h` |
 
@@ -62,6 +68,7 @@ multi-byte text. Reproducing even half of that by hand is a week of bugs.
 | Count or status pill | `UltraCanvasBadge`, `UltraCanvasChip` | `UltraCanvasBadge.h`, `UltraCanvasChip.h` |
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
+| **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
@@ -101,18 +108,23 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
 | List, tree, table, sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasTableView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
+| System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 
 ## Pickers, dialogs and feedback
 
 | You need | Element | Header |
 |---|---|---|
 | Colour | `UltraCanvasColorPicker` | `UltraCanvasColorPicker.h` |
+| A colour out of a small palette (a strip of swatches, sized to the space it gets) | `UltraCanvasColorSwatchBar` | `UltraCanvasColorSwatchBar.h` |
 | Date, date range, month grid | `UltraCanvasDatePicker`, `UltraCanvasDateRangePicker`, `UltraCanvasCalendarView` | `UltraCanvasDatePicker.h` |
 | Time, clock face | `UltraCanvasTimePicker`, `UltraCanvasTimeClockView` | `UltraCanvasTimePicker.h` |
 | Modal dialog | `UltraCanvasModalDialog` | `UltraCanvasModalDialog.h` |
+| Progress of a long operation (ring + percentage + Cancel) | `UltraCanvasProgressDialog` | `UltraCanvasProgressDialog.h` |
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
+| Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
+| Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
 
 Charts, diagrams and document views live under `UltraCanvas/Plugins/` with their
 own docs — check there before drawing a graph by hand as well.

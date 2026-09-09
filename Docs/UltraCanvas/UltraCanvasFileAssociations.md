@@ -16,12 +16,17 @@ struct. The per-platform backends are internal
 | Platform | Enumeration | Default open | Launch picked app |
 |---|---|---|---|
 | Linux / BSD | ✓ freedesktop (shared-mime-info, mimeapps.list, .desktop, mimeinfo.cache; plain text parsing, no GIO/GTK dependency) | ✓ registered handler, `xdg-open` fallback | ✓ |
-| Windows | pending (P2: `SHAssocEnumHandlers`) | ✓ ShellExecuteEx "open" | ✓ |
-| macOS | pending (P3: NSWorkspace) | ✓ `/usr/bin/open` | ✓ (`open -a` for bundles) |
+| Windows | ✓ shell association APIs (`SHAssocEnumHandlers` + `IAssocHandler`, the list Explorer's own "Open with" shows; default from `AssocQueryString`) | ✓ ShellExecuteEx "open" | ✓ `IAssocHandler::Invoke` on the selection |
+| macOS | ✓ NSWorkspace / Launch Services (`URLsForApplicationsToOpenContentType:`, default from `URLForApplicationToOpenContentType:`; needs macOS 12) | ✓ `/usr/bin/open` | ✓ `openURLs:withApplicationAtURL:` |
 | WASM | — (empty) | — (error) | — (error) |
 
 `Terminal=true` desktop entries are skipped on Linux (Explorer and Finder do
-not offer terminal programs either).
+not offer terminal programs either). Windows and macOS resolve candidates
+per file extension; a file without one (`Makefile`) has no associations
+there, while Linux still types it through its literal-name globs. On macOS
+before 12 the type-by-extension lookup does not exist, so enumeration
+reports nothing and the menu falls back to the manual entries plus the
+"Other application…" picker.
 
 ## API
 
@@ -59,6 +64,20 @@ All launches detach via `LaunchDetachedProcess`
 (`UltraCanvasUtils.h`: POSIX double-fork + `setsid`, Windows
 `CreateProcess` into a detached process group).
 
+On Linux/BSD, `OpenWithApplicationPath` accepts a **`.desktop` file** as well
+as a program: running the file itself would fail (it is text, not a
+program), so the entry is read and the command it names is what runs, with
+its own `Path=` as the working directory. That is what makes the file
+dialog's "Other application…" work when the user picks a launcher out of
+`/usr/share/applications`, and it is how the file display activates a
+desktop entry it lists.
+
+Reading those files — the `[Desktop Entry]` group, its localized `Name=`, and
+the icon-theme lookup behind `Icon=` — is
+[`UltraCanvasDesktopEntry`](UltraCanvasDesktopEntry.md)'s, not this service's:
+the file display draws the very same launchers and must agree with the menu
+about what they are called and what they look like.
+
 ## Prewarm / caching model
 
 Lookups are cached per extension and served under a mutex, so
@@ -68,7 +87,32 @@ first widget calls `PrewarmAsync()`, and every folder scan passes the
 folder's distinct extensions to `PrewarmExtensionsAsync()`. The Linux index
 re-checks its source files' mtimes (`mimeapps.list`, `mimeinfo.cache`,
 `globs2`, the applications directories) and rebuilds — dropping the
-extension cache — when anything changed.
+extension cache — when anything changed. Windows and macOS have no parseable
+database to watch, so their entries expire after a minute instead: the next
+lookup re-reads the registry / Launch Services, which is why a default
+association changed while the application runs shows up in the menu shortly
+after.
+
+Application icons on those two platforms are extracted once and kept as PNG
+files (`%LOCALAPPDATA%\UltraCanvas\openwith-icons`,
+`~/Library/Caches/UltraCanvas/openwith-icons`), keyed by icon source, so the
+extraction survives both the expiry above and a restart. Linux `.desktop`
+icons already resolve to theme files and need no extraction.
+
+Because that cache outlives the process it is also **expired**: an entry is
+keyed by where its icon came from, so an application that is upgraded, moved
+or uninstalled orphans its PNG — nothing will ever ask for that key again.
+Each file carries the day it was last served as its modification time (the
+one timestamp worth trusting; Windows stopped maintaining last-access times
+by default with Vista), rewritten at most once a day so a menu that opens
+repeatedly costs no disk writes. The first lookup in a process sweeps the
+directory and deletes everything not served for **two weeks**, along with any
+`.tmp` left by an interrupted write; nothing else in there is touched. A
+swept icon that turns out to still be wanted is simply extracted again. The
+policy is `kIconCacheMaxAge` / `SweepIconCache` / `StampIconCacheFile` in
+`UltraCanvasFileAssociationsBackend.h`, implemented once in
+`core/UltraCanvasFileAssociations.cpp` so both platforms expire on the same
+rule.
 
 ## Example
 
@@ -98,5 +142,9 @@ code.
 
 ## Version
 
+- 1.1.0 (2026-08-24): P2 + P3 — Windows (`SHAssocEnumHandlers` /
+  `IAssocHandler`, icon extraction to PNG) and macOS (NSWorkspace /
+  Launch Services) enumeration backends. "Open with >" now lists real
+  applications on all three desktop platforms.
 - 1.0.0 (2026-08-16): P1 — service + Linux/BSD backend, prewarm worker,
   Windows/macOS default-open placeholders.

@@ -44,6 +44,8 @@ namespace UltraCanvas {
         UltraCanvasWindowBase* newWindow = newOwner->GetWindow();
         if (!newWindow) return;
 
+        const bool hadOwner = (owner != nullptr);
+
         if (rect.width != rectInWindow.width || rect.height != rectInWindow.height) {
             surfaceDirty = true;
         }
@@ -66,6 +68,8 @@ namespace UltraCanvas {
         // UpdateAndRender() with a full composition already pending — this only
         // matters when a widget repositions the caret outside a render pass.
         RequestComposition(true);
+
+        NotifyTextEditingChanged(hadOwner);
     }
 
     void UltraCanvasCaret::Hide(UltraCanvasUIElement* ownerElement) {
@@ -81,6 +85,8 @@ namespace UltraCanvas {
         }
         owner = nullptr;
         window = nullptr;
+
+        NotifyTextEditingChanged(true);
     }
 
     void UltraCanvasCaret::ResetBlink(UltraCanvasUIElement* ownerElement) {
@@ -154,6 +160,7 @@ namespace UltraCanvas {
 
     void UltraCanvasCaret::OnWindowClosed(UltraCanvasWindowBase* win) {
         if (window != win) return;
+        const bool hadOwner = (owner != nullptr);
         StopBlinkTimer();
         phaseVisible = false;
         owner = nullptr;
@@ -162,6 +169,8 @@ namespace UltraCanvas {
         // surface; drop it so it is lazily rebuilt against the next window.
         caretContext.reset();
         surfaceDirty = true;
+
+        NotifyTextEditingChanged(hadOwner);
     }
 
 } // namespace UltraCanvas

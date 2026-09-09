@@ -20,6 +20,36 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## Hunspell (portable spell checking engine)
+
+- **Used by:** the spell check service
+  (`UltraCanvas/core/SpellCheckBackendHunspell.cpp`) as the portable backend,
+  and the only one on Android and WebAssembly.
+- **Upstream:** https://github.com/hunspell/hunspell
+- **Linked, not vendored:** the system package is used (`libhunspell-dev` /
+  `brew install hunspell` / `vcpkg install hunspell`). No Hunspell source is
+  carried in this repository, and no Hunspell type appears in any UltraCanvas
+  public header - `ISpellCheckBackend` wraps it entirely. Optional: without it
+  the backend compiles to a stub that reports zero dictionaries.
+- **License:** tri-license GPL 2.0 / LGPL 2.1 / MPL 1.1 - Copyright (c)
+  2002-2025 Kevin Hendricks, Laszlo Nemeth and contributors. UltraCanvas links
+  it under the LGPL 2.1 option.
+
+---
+
+## Enchant (Linux spell checking broker)
+
+- **Used by:** the native Linux spell backend
+  (`UltraCanvas/OS/Linux/UltraCanvasSpellCheckSupport.cpp`).
+- **Upstream:** https://github.com/AbiWord/enchant
+- **Linked, not vendored:** the system package is used (`libenchant-2-dev`).
+  Optional: without it `CreateNativeSpellCheckBackend()` returns `nullptr` and
+  the service falls back to Hunspell.
+- **License:** LGPL 2.1 or later, with a linking exception for the bundled
+  provider plugins - Copyright (c) 2003-2024 Dom Lachowicz and contributors.
+
+---
+
 ## MicroTeX (LaTeX math engine)
 
 - **Used by:** the LaTeX math plugin (`ULTRACANVAS_PLUGIN_LATEX`).
@@ -109,3 +139,51 @@ same font and is covered by the same license.
 - **Full text:** `UltraCanvas/third_party/yyjson/LICENSE-yyjson.txt`
 
 The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
+
+---
+
+## AAC decoders (optional, and copyleft — read before enabling)
+
+- **Used by:** `UltraCanvas/libspecific/Audio/AudioCodecsAAC.cpp`, to decode
+  the AAC bitstream inside `.m4a` / `.m4b` files and raw `.aac` streams. The
+  MPEG-4 container itself is parsed in-tree by `Mp4AudioDemux`, so only the
+  bitstream decode comes from outside.
+- **Neither is vendored, and neither is required.** CMake looks for them on
+  the build host and compiles the binding only when one is present:
+  FAAD2 via `find_library(faad)`, fdk-aac via `pkg_check_modules(fdk-aac)`.
+  A build with neither still plays M4A wherever the GStreamer plugins are
+  installed, because the audio decoder falls back to the same media framework
+  the video backend already uses (LGPL 2.1, and already a dependency there).
+- **FAAD2** — https://github.com/knik0/faad2, **GPL-2.0-or-later**. Linking it
+  makes the resulting binary a GPL work: a distributor who enables it must
+  ship under the GPL. That is why it is opt-in-by-presence rather than a
+  declared dependency.
+- **fdk-aac** — https://github.com/mstorsjo/fdk-aac, **Fraunhofer FDK AAC
+  license** — a permissive-style license with its own attribution and patent
+  clauses, and explicitly *not* granting the AAC patent rights themselves.
+  Used only when FAAD2 is absent.
+- **Patents:** AAC's core patents have expired, but a distributor shipping an
+  AAC decoder should still confirm the position for their jurisdiction and
+  product. UltraCanvas ships no AAC codec of its own.
+
+---
+
+## External services UltraAI talks to (no code bundled)
+
+These are separate programs or hosted APIs that UltraAI adapters
+*communicate with over HTTP*. No source, binary or model weight from any of
+them is vendored, fetched, linked or redistributed by this repository, so
+none of them imposes license obligations on UltraCanvas. They are listed
+here so the boundary is on the record.
+
+- **ComfyUI** (`ULTRAAI_ADAPTER_COMFYUI`) — https://github.com/comfyanonymous/ComfyUI,
+  GPL-3.0. A program the user installs and runs; the adapter is an ordinary
+  HTTP/WebSocket client of its API. The adapter's built-in workflow
+  templates deliberately use core nodes only: custom nodes under
+  `custom_nodes/` are GPL-3.0 derivative works and are never shipped here.
+  Model checkpoints carry their own licenses and are likewise never shipped.
+- **MiniMax / Hailuo API** (`ULTRAAI_ADAPTER_MINIMAX`) — https://platform.minimax.io,
+  a hosted service used under the user's own account and terms.
+- **Ollama, vLLM, llama.cpp server, LM Studio** (`ULTRAAI_ADAPTER_QWEN`) —
+  local OpenAI-compatible servers the user installs and runs. The adapter
+  speaks the HTTP API only.

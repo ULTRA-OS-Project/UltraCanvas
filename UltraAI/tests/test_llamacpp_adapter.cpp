@@ -6,8 +6,11 @@
 //
 // Uses plain asserts so the test suite has no third-party dependency.
 
+#include "UltraAILlamaEmbeddings.h"
 #include "UltraAILlamaTextLLM.h"
 #include "UltraAI.h"
+
+#include <cmath>
 
 #include <chrono>
 #include <cstdlib>
@@ -95,6 +98,70 @@ int main() {
 
     // Exact token counting counts the templated prompt.
     EXPECT_TRUE(llm->CountTokens("", req.messages) > 0);
+
+    // Structured output stays valid JSON whether the schema compiles to a
+    // GBNF grammar (llama.cpp common linked) or the universal grammar
+    // applies. A random-weight test model still has to emit parseable JSON.
+    {
+        ChatRequest jsonReq = req;
+        jsonReq.sampling.maxOutputTokens = 48;
+        jsonReq.responseFormat = ResponseFormat::JsonSchema;
+        jsonReq.jsonSchema =
+            R"({"type":"object","properties":{"answer":{"type":"string"}}})";
+        ChatResponse jsonResp = llm->Chat(jsonReq);
+        EXPECT_TRUE(jsonResp.error.IsOk());
+        EXPECT_TRUE(!jsonResp.text.empty());
+        EXPECT_TRUE(jsonResp.text[0] == '{');
+    }
+
+    // Embeddings: registered, pooled, normalized, dimension-truncatable.
+    {
+        bool hasLlamaEmbeds = false;
+        for (const auto& p : ListEmbeddingsProviders()) {
+            if (p == "llama-cpp") hasLlamaEmbeds = true;
+        }
+        EXPECT_TRUE(hasLlamaEmbeds);
+
+        EmbeddingsConfig ecfg;
+        ecfg.providerId   = "llama-cpp";
+        ecfg.defaultModel = modelPath;
+        Error eerr;
+        auto embeds = CreateEmbeddings(ecfg, &eerr);
+        EXPECT_TRUE(embeds != nullptr);
+
+        EmbeddingProviderCapabilities ecaps = embeds->GetCapabilities();
+        EXPECT_TRUE(ecaps.providerId == "llama-cpp");
+        EXPECT_TRUE(!ecaps.models.empty() &&
+                    ecaps.models[0].outputDimensions > 0);
+
+        EmbeddingRequest ereq;
+        ereq.input = {"a cat sat on the mat", "quantum chromodynamics"};
+        EmbeddingResponse eresp = embeds->Embed(ereq);
+        EXPECT_TRUE(eresp.error.IsOk());
+        EXPECT_TRUE(eresp.embeddings.size() == 2);
+        EXPECT_TRUE(static_cast<int32_t>(eresp.embeddings[0].values.size()) ==
+                    ecaps.models[0].outputDimensions);
+        EXPECT_TRUE(eresp.usage.inputTokens > 0);
+        // L2-normalized: self-similarity is 1.
+        double selfSim = IEmbeddings::CosineSimilarity(eresp.embeddings[0],
+                                                       eresp.embeddings[0]);
+        EXPECT_TRUE(std::fabs(selfSim - 1.0) < 1e-4);
+
+        // Truncated dimensions.
+        EmbeddingRequest small;
+        small.input      = {"hello"};
+        small.dimensions = 4;
+        EmbeddingResponse smallResp = embeds->Embed(small);
+        EXPECT_TRUE(smallResp.error.IsOk());
+        EXPECT_TRUE(smallResp.embeddings[0].values.size() == 4);
+
+        // Out-of-range dimensions fail cleanly.
+        EmbeddingRequest tooBig;
+        tooBig.input      = {"hello"};
+        tooBig.dimensions = ecaps.models[0].outputDimensions + 1;
+        EXPECT_TRUE(embeds->Embed(tooBig).error.code ==
+                    ErrorCode::InvalidRequest);
+    }
 
     std::cout << "test_llamacpp_adapter: all checks passed ("
               << resp.usage.outputTokens << " tokens generated)" << std::endl;

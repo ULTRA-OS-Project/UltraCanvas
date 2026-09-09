@@ -1,7 +1,7 @@
 // UltraCanvasTextArea.h
 // Advanced text area component with syntax highlighting and full UTF-8 support
-// Version: 3.7.1
-// Last Modified: 2026-06-22
+// Version: 3.9.0
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -10,6 +10,9 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasSpellChecker.h"
+#include "UltraCanvasSmoothScroll.h"
+#include <algorithm>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -19,6 +22,7 @@
 #include <memory>
 #include <utility>
 #include <chrono>
+#include <atomic>
 #include <cstdint>
 #include <unordered_map>
 
@@ -221,6 +225,9 @@ namespace UltraCanvas {
         Color currentLineHighlightColor;
         Color cursorColor;
 
+        // Placeholder hint shown when the document is empty
+        Color placeholderColor = Color(150, 150, 150, 255);
+
         // Line numbers
         bool showLineNumbers;
         Color lineNumbersColor;
@@ -310,6 +317,42 @@ namespace UltraCanvas {
         int visibleCp = 0;
         int sourceCp  = 0;
     };
+
+    // Visible/layout codepoint → source-line codepoint. Always well-defined; the visible-cp
+    // axis has no stripped regions. See LineLayoutBase::cpMap and the CpRun comment
+    // above for the mapping invariant.
+    inline int VisibleCpToSourceCp(const std::vector<CpRun>& cpMap, int visibleCp) {
+        if (cpMap.empty()) return visibleCp;
+        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), visibleCp,
+            [](int v, const CpRun& r) { return v < r.visibleCp; });
+        if (it == cpMap.begin()) return cpMap.front().sourceCp;
+        --it;
+        return it->sourceCp + (visibleCp - it->visibleCp);
+    }
+
+    // Source-line codepoint → visible/layout codepoint. If `sourceCp` falls strictly inside
+    // a stripped region (between two segments), the result is snapped to the start of the
+    // next visible segment when `snapForward = true` (default), or to the end of the
+    // previous one when `snapForward = false`. Pass `false` for selection-end so a
+    // selection that ends at the trailing marker doesn't grow visually past it.
+    inline int SourceCpToVisibleCp(const std::vector<CpRun>& cpMap, int sourceCp,
+                                   bool snapForward = true) {
+        if (cpMap.empty()) return sourceCp;
+        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), sourceCp,
+            [](int s, const CpRun& r) { return s < r.sourceCp; });
+        if (it == cpMap.begin()) return cpMap.front().visibleCp;
+        auto prev = it - 1;
+        int segVisibleEnd = (it == cpMap.end()) ? prev->visibleCp : it->visibleCp;
+        int segSourceEnd  = prev->sourceCp + (segVisibleEnd - prev->visibleCp);
+        if (sourceCp <= segSourceEnd) {
+            return prev->visibleCp + (sourceCp - prev->sourceCp);
+        }
+        // Strictly inside a stripped region between this segment and the next.
+        if (snapForward) {
+            return (it == cpMap.end()) ? segVisibleEnd : it->visibleCp;
+        }
+        return segVisibleEnd;
+    }
 
     struct LineLayoutBase {
         LineLayoutType layoutType = LineLayoutType::PlainLine;
@@ -490,6 +533,8 @@ namespace UltraCanvas {
         int GetSelectionMinGrapheme() const;
         LineColumnIndex GetSelectionStart() const { return selectionStart; }
         LineColumnIndex GetSelectionEnd() const { return selectionEnd; }
+        // True when the element-local point falls inside the current selection.
+        bool IsPositionInsideSelection(const Point2Di& pos);
 
         // Clipboard operations
         void CopySelection();
@@ -559,6 +604,17 @@ namespace UltraCanvas {
         // Properties
         void SetReadOnly(bool readOnly) { isReadOnly = readOnly; isNeedRecalculateVisibleArea = true; RequestRedraw(); }
         bool IsReadOnly() const { return isReadOnly; }
+
+        // Hides/shows the blinking caret without affecting focus or selection.
+        // Useful for read-only viewers (e.g. a chat transcript) that should still
+        // be clickable and copyable but must not show an editing caret.
+        void SetCaretVisible(bool visible);
+        bool IsCaretVisible() const { return caretVisible; }
+
+        // Grey hint text drawn when the document is empty (like a TextInput
+        // placeholder). Shown whether or not the widget is focused.
+        void SetPlaceholder(const std::string& text) { placeholderText = text; RequestRedraw(); }
+        const std::string& GetPlaceholder() const { return placeholderText; }
 
         // Display-only ("viewer") mode: implies read-only and additionally takes
         // the area out of the keyboard focus chain — no caret, no key handling —
@@ -642,6 +698,9 @@ namespace UltraCanvas {
         LineEndingChangedCallback onLineEndingChanged;
 
         // Scrolling
+        // Largest scroll offset the content allows in each direction.
+        float MaxVerticalScroll();
+        float MaxHorizontalScroll() const;
         void ScrollTo(int line);
         void ScrollUp(int lines = 1);
         void ScrollDown(int lines = 1);
@@ -689,10 +748,74 @@ namespace UltraCanvas {
         void AddWarningMarker(int lineIndex, const std::string& message);
         void ClearMarkers();
 
+        // ===== CHARACTER RANGE GEOMETRY =====
+        // Maps a byte range of the document to the on-screen rectangles covering
+        // it. One rectangle per visual line, because a range can cross a soft
+        // wrap or a shard boundary; ranges scrolled out of view are omitted, so
+        // an empty result is normal rather than an error.
+        //
+        // Not spell-check specific: search-result highlighting, inline diff
+        // marks, comment anchors and collaborative cursors need the same map.
+        std::vector<Rect2Df> GetCharacterRangeBounds(size_t startByte, size_t byteLength);
+
+        // Replaces a byte range of the document. Goes through the selection and
+        // undo machinery, so the edit is undoable and fires onTextChanged like
+        // any other. Returns false on a read-only area or an out-of-range span.
+        bool ReplaceTextRange(size_t startByte, size_t byteLength,
+                              const std::string& replacement);
+
+        // ===== SPELL CHECKING =====
+        // Checking runs on the shared UltraCanvasSpellChecker worker thread; the
+        // element only queues text and drains finished results while rendering.
+        // Requires the service to be initialised and enabled as well.
+        void SetSpellCheckEnabled(bool enabled);
+        bool IsSpellCheckEnabled() const { return spellCheckEnabled; }
+        void SetSpellCheckOptions(const SpellCheckOptions& options);
+        const SpellCheckOptions& GetSpellCheckOptions() const { return spellOptions; }
+
+        // Queues a check of the current text immediately.
+        void RunSpellCheck();
+
+        const std::vector<SpellError>& GetSpellErrors() const { return spellErrors; }
+
+        // Error under a screen point, or nullptr. Used to open the suggestion
+        // menu on right-click.
+        const SpellError* GetSpellErrorAtPosition(int x, int y);
+
+        // Replaces the flagged word with `replacement` and re-queues a check.
+        bool ApplySpellSuggestion(const SpellError& error, const std::string& replacement);
+
+        // Opens the suggestion menu if the event lands on a flagged word.
+        // Returns false when it does not, so the caller can fall through to its
+        // normal handling. Called from HandleMouseDown for right-clicks.
+        bool ShowSpellSuggestionMenu(const UCEvent& event);
+
         // Callbacks
         TextChangedCallback onTextChanged;
         CursorPositionChangedCallback onCursorPositionChanged;
         SelectionChangedCallback onSelectionChanged;
+
+        // Right-click hook for the host application, invoked before the
+        // built-in spell suggestion popup so an application with a context menu
+        // of its own can splice the suggestions into it instead of getting two
+        // competing menus. Return true when the click was handled.
+        //
+        // The caret is moved to the click *after* this returns true (unless the
+        // click landed inside the selection, which is kept), so a menu action
+        // invoked later - Paste above all - acts where the user clicked. It is
+        // deliberately not moved first: that would make this the caret line,
+        // and GetSpellErrorAtPosition would then hit-test against the previous
+        // caret line's layout. The selection, in contrast, is already updated,
+        // so HasSelection() is what the menu's Cut and Copy will see.
+        std::function<bool(const UCEvent&)> onContextMenu;
+
+        // Called just before a check is queued, with the exact text about to be
+        // checked. Lets the host rebuild content-dependent options: in
+        // particular SpellCheckOptions::shouldSkipRange, whose byte ranges have
+        // to be recomputed from the current text or they go stale after the
+        // first edit. The options passed in are a copy of GetSpellCheckOptions()
+        // and are used for this check only. Runs on the UI thread.
+        std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 
     protected:
         // ----- Gutter / decoration extension points -----
@@ -829,6 +952,27 @@ namespace UltraCanvas {
                                              const std::vector<InlineRun>& runs,
                                              std::vector<MarkdownHitRect>& outHitRects);
 
+        // ===== SPELL CHECK INTERNALS =====
+        // Byte offsets here are into textContent, which is the verbatim
+        // concatenation of `lines`. Long logical lines are sharded across
+        // several `lines` entries, so a spell result's own lineIndex (which
+        // counts newlines) cannot be used as an index into `lines` - these
+        // resolve positions from the byte offset instead.
+        bool ByteOffsetToLineColumn(size_t byteOffset, LineColumnIndex& out) const;
+        bool LineColumnToByteOffset(const LineColumnIndex& idx, size_t& out) const;
+        void DrawSpellErrorMarks(IRenderContext* ctx);
+        void QueueSpellCheck();
+        // Drops the errors whose span no longer holds the word they were raised
+        // for, so an edit never leaves a mark on the wrong text.
+        void DropStaleSpellErrors();
+        // Asks the service to request a repaint when a result lands, so a check
+        // finishing after the edit's frame still gets drawn.
+        void RegisterSpellResultNotifier();
+        // Emits one rectangle per visual line covered by [sourceStartCp, sourceEndCp)
+        // within a single line layout, splitting on soft-wrap boundaries.
+        void AppendLineRangeBounds(LineLayoutBase* line, int sourceStartCp, int sourceEndCp,
+                                   std::vector<Rect2Df>& outBounds);
+
         // handle cursor position
         Rect2Di LineColumnToCursorPos(const LineColumnIndex& idx);
         LineColumnIndex PosToLineColumn(const Point2Di& pos);
@@ -862,6 +1006,14 @@ namespace UltraCanvas {
         // Scrolling
         float horizontalScrollOffset;
         float verticalScrollOffset;
+        // Explicit scrolling — the wheel and the ScrollUp/Down/Left/Right API the
+        // page keys go through — glides to its target instead of jumping (see
+        // UltraCanvasSmoothScroll.h). Following the caret does not: keeping the
+        // cursor on screen has to be true the instant the key is handled, so
+        // EnsureCursorVisible() cancels any glide and positions the view
+        // directly, and so does dragging a scrollbar thumb.
+        UltraCanvasSmoothScroll scrollAnimV;
+        UltraCanvasSmoothScroll scrollAnimH;
         // firstVisibleLine / maxVisibleLines removed in Step 8b — pixel-based verticalScrollOffset
         // is now the authoritative scroll state.
         int maxLineWidth;
@@ -873,6 +1025,20 @@ namespace UltraCanvas {
         bool isDraggingVerticalThumb = false;
         bool isCursorMoved = false;
         bool isTextChanged = false;
+
+        // Spell checking. spellContextId identifies this element to the shared
+        // service; it is this pointer's value, which is unique for the lifetime
+        // of the element and released in the destructor via CancelContext.
+        bool spellCheckEnabled = false;
+        std::vector<SpellError> spellErrors;
+        uint64_t spellContextId = 0;
+        SpellCheckOptions spellOptions;
+        // Held so the popup outlives the click that opened it.
+        std::shared_ptr<UltraCanvasMenu> spellSuggestionMenu;
+        // The destructor clears this so a queued repaint that outlives the
+        // element becomes a no-op instead of a dangling call.
+        std::shared_ptr<std::atomic<bool>> spellAlive =
+                std::make_shared<std::atomic<bool>>(true);
 
         // Mouse text selection state
         bool isSelectingText = false;
@@ -890,7 +1056,9 @@ namespace UltraCanvas {
         bool isNeedRecalculateVisibleArea;
         bool isNeedRebuildLineLayouts;
         bool isReadOnly;
+        bool caretVisible = true;   // opt-out: hide the blinking caret while staying focusable/selectable
         bool displayOnly = false;   // pure viewer: read-only + not focusable
+        std::string placeholderText; // grey hint drawn when the document is empty
         bool wordWrap;
         bool highlightCurrentLine;
         // needFirstVisibleLineFixup removed in Step 8b (pixel scroll has no analogous fixup).

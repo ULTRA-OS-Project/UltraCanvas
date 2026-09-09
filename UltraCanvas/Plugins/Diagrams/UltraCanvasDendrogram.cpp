@@ -2223,20 +2223,33 @@ static constexpr float kPi = 3.14159265f;
         return !hoveredNodeId.empty() || !hoveredBranchParentId.empty();
     }
 
+    // One zoom step toward the cursor (element-local space): the point under it
+    // stays fixed. A wheel notch is eased in as a run of these
+    // (UltraCanvasSmoothZoom), and applying them in a row about the same cursor
+    // is exactly applying their product once.
+    void UltraCanvasDendrogram::ApplyZoomFactorAtCursor(double factor,
+                                                        const Point2Df& cursor)
+    {
+        double newZoom = std::clamp(zoom * factor, 0.05, 20.0);
+        if (newZoom == zoom) return;
+
+        float ratio = static_cast<float>(newZoom / zoom);
+        panOffset.x = cursor.x - (cursor.x - panOffset.x) * ratio;
+        panOffset.y = cursor.y - (cursor.y - panOffset.y) * ratio;
+        zoom = newZoom;
+    }
+
     bool UltraCanvasDendrogram::HandleMouseWheel(const UCEvent& event)
     {
-        float delta = event.wheelDelta > 0 ? 1.12f : (1.0f / 1.12f);
-        double newZoom = std::clamp(zoom * delta, 0.05, 20.0);
-
-        // Zoom toward mouse position in element-local space
-        float mx = static_cast<float>(event.pointer.x - GetX());
-        float my = static_cast<float>(event.pointer.y - GetY());
-        float ratio = newZoom / zoom;
-        panOffset.x = mx - (mx - panOffset.x) * ratio;
-        panOffset.y = my - (my - panOffset.y) * ratio;
-        zoom = newZoom;
-
-        RequestRedraw();
+        if (!zoomAnim.IsBound()) {
+            zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                          [this] { RequestRedraw(); });
+        }
+        // Element-local space, the coordinates the pan solve above works in.
+        zoomCursor = Point2Df(static_cast<float>(event.pointer.x - GetX()),
+                              static_cast<float>(event.pointer.y - GetY()));
+        zoomAnim.ZoomBy(event.wheelDelta > 0 ? 1.12 : (1.0 / 1.12),
+                        zoom, 0.05, 20.0);
         return true;
     }
 

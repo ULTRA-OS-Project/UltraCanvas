@@ -467,7 +467,19 @@ void SetOnCursorPositionChanged(CursorPositionChangedCallback callback);
 // Selection change
 using SelectionChangedCallback = std::function<void()>;
 void SetOnSelectionChanged(SelectionChangedCallback callback);
+
+// Right-click, before the built-in spell suggestion popup. Return true when
+// the application opened a menu of its own. See Spell Checking below.
+std::function<bool(const UCEvent&)> onContextMenu;
+
+// Called with the exact text about to be spell checked, so content-dependent
+// options can be rebuilt. See Spell Checking below.
+std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 ```
+
+`IsPositionInsideSelection(const Point2Di&)` answers whether an element-local
+point falls inside the current selection — what a context menu needs to decide
+whether opening it should move the caret.
 
 ## Event Handling
 
@@ -575,6 +587,146 @@ splitView->SetLeftPane(textArea);
 splitView->SetRightPane(previewPanel);
 ```
 
+## Spell Checking
+
+Backed by the shared [UltraCanvasSpellChecker](UltraCanvasSpellChecker.md)
+service. Checking runs on that service's worker thread; the element queues text
+on every edit and drains the finished result while it draws, so typing is never
+blocked by a dictionary lookup.
+
+```cpp
+UltraCanvasSpellChecker::Instance().Initialize();   // once, at startup
+textArea->SetSpellCheckEnabled(true);
+```
+
+That is the whole integration. Misspellings get a red squiggle, and
+right-clicking one opens a menu of suggestions plus **Add to Dictionary** and
+**Ignore**.
+
+### Options
+
+```cpp
+SpellCheckOptions options;
+options.skipUpperCaseWords = false;    // do check "HTTP"
+options.fetchSuggestions   = true;     // pre-fill, instead of on right-click
+textArea->SetSpellCheckOptions(options);
+```
+
+Markdown mode can keep code, links and math out of the check without the spell
+module knowing any markdown. **The hook runs on the worker thread** — capture an
+immutable snapshot rather than reading live element state:
+
+```cpp
+options.shouldSkipRange = [snapshot](size_t startByte, size_t byteLength) {
+    return snapshot->IsInsideCodeOrLinkOrMath(startByte, byteLength);
+};
+```
+
+Those are byte ranges of the text being checked, so they go stale on the first
+edit. `onPrepareSpellCheck` is called with the exact text about to be checked,
+on the UI thread, and hands over a copy of the options used for that one check —
+which is where a content-dependent hook belongs:
+
+```cpp
+textArea->onPrepareSpellCheck = [](SpellCheckOptions& options, const std::string& text) {
+    auto skip = std::make_shared<std::vector<TextByteSpan>>(ScanMarkdownNoSpellRanges(text));
+    options.shouldSkipRange = [skip](size_t startByte, size_t byteLength) {
+        return SpanCoversRange(*skip, startByte, byteLength);
+    };
+};
+```
+
+### Supplying your own context menu
+
+An application with its own editor context menu sets `onContextMenu` and
+splices the suggestions into it, instead of getting two menus. It is called on
+right-click before the built-in popup; return `true` when handled, `false` to
+fall through to it:
+
+```cpp
+textArea->onContextMenu = [this](const UCEvent& event) -> bool {
+    const SpellError* hit = textArea->GetSpellErrorAtPosition(event.pointer.x,
+                                                              event.pointer.y);
+    // ... build one menu: UltraCanvasSpellChecker::BuildSuggestionMenuItems(*hit, ...)
+    //     first when hit is non-null, then Cut / Copy / Paste ...
+    return true;
+};
+```
+
+The caret moves to the click once the hook returns `true` — not before, or
+`GetSpellErrorAtPosition` would hit-test against the previous caret line's
+layout — so **Paste** acts where the user clicked. A click inside the selection
+keeps it, so **Cut** and **Copy** still act on what is highlighted.
+
+### Reading and applying results
+
+```cpp
+for (const SpellError& error : textArea->GetSpellErrors()) {
+    debugOutput << error.word << " at byte " << error.startByte << std::endl;
+}
+
+textArea->RunSpellCheck();                     // queue a check now
+const SpellError* hit = textArea->GetSpellErrorAtPosition(mouseX, mouseY);
+if (hit) textArea->ApplySpellSuggestion(*hit, "correction");
+```
+
+Errors carry offsets into the text as it was when the check ran. After an edit,
+any whose span no longer holds the word it was raised for is dropped
+immediately, so a mark is never painted over the wrong text while the next
+result is on its way.
+
+### API
+
+```cpp
+void SetSpellCheckEnabled(bool enabled);
+bool IsSpellCheckEnabled() const;
+void SetSpellCheckOptions(const SpellCheckOptions& options);
+const SpellCheckOptions& GetSpellCheckOptions() const;
+void RunSpellCheck();
+const std::vector<SpellError>& GetSpellErrors() const;
+const SpellError* GetSpellErrorAtPosition(int x, int y);
+bool ApplySpellSuggestion(const SpellError& error, const std::string& replacement);
+bool ShowSpellSuggestionMenu(const UCEvent& event);
+
+// Hooks for a host application
+std::function<bool(const UCEvent&)> onContextMenu;
+std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
+```
+
+## Character Range Geometry
+
+Maps a byte range of the document to where it actually is on screen, accounting
+for soft wrap, both scroll offsets, the line-number gutter and markdown mode
+(where rendered runs do not correspond one-to-one with source bytes).
+
+```cpp
+std::vector<Rect2Df> GetCharacterRangeBounds(size_t startByte, size_t byteLength);
+```
+
+One rectangle per visual line — a range crossing a soft wrap yields two. A
+range scrolled out of view yields none, which is normal rather than an error.
+
+This is what draws spell marks, but it is not spell-specific: search-result
+highlighting, inline diff marks, comment anchors and collaborative-editing
+cursors all need the same mapping.
+
+```cpp
+// Highlight every match of a search term
+for (size_t offset : matchOffsets) {
+    for (const Rect2Df& box : textArea->GetCharacterRangeBounds(offset, term.size())) {
+        ctx->SetFillPaint(Color(255, 235, 59, 90));
+        ctx->FillRectangle(box);
+    }
+}
+```
+
+Its counterpart replaces a byte range, going through the selection and undo
+machinery so the edit is undoable and raises `onTextChanged` like a typed one:
+
+```cpp
+bool ReplaceTextRange(size_t startByte, size_t byteLength, const std::string& replacement);
+```
+
 ## Notes and Best Practices
 
 1. **Memory Management**: Use smart pointers for component lifecycle management
@@ -596,6 +748,8 @@ splitView->SetRightPane(previewPanel);
 - **macOS**: Cocoa clipboard integration
 
 ## Version History
+- **3.9.0** (2026-08-28): `onContextMenu`, `onPrepareSpellCheck`, `IsPositionInsideSelection()`
+- **3.8.0** (2026-08-24): Spell checking, `GetCharacterRangeBounds()`, `ReplaceTextRange()`
 - **2.0.0** (2024-12-20): Added syntax highlighting and themes
 - **1.5.0**: Added line numbers and word wrap
 - **1.0.0**: Initial implementation with basic editing

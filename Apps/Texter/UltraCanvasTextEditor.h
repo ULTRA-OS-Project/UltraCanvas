@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.h
 // Complete text editor application with multi-file tabs, autosave, and enhanced features
-// Version: 2.1.2
-// Last Modified: 2026-07-29
+// Version: 2.2.0
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -76,6 +76,11 @@ namespace UltraCanvas {
         bool darkTheme = false;
         bool wordWrap = true;
         std::string defaultEncoding = "UTF-8";
+
+        // Spell checking. Off until the user asks for it, so a launch without
+        // it never pays for loading a backend and a dictionary.
+        bool spellCheckEnabled = false;
+        std::string spellCheckLanguage = "";   // empty = detect from the locale
 
         const std::vector<int> fontZoomPercents = {50,65,80,90,100,110,125,150,175,200};
         int fontZoomPercent = 100;
@@ -250,6 +255,11 @@ namespace UltraCanvas {
         // ===== TAB CONTEXT MENU =====
         std::shared_ptr<UltraCanvasMenu> tabContextMenu;
 
+        // ===== EDITOR CONTEXT MENU =====
+        // Right-click inside the text: spell suggestions when the click landed
+        // on a flagged word, then the usual edit commands.
+        std::shared_ptr<UltraCanvasMenu> editorContextMenu;
+
         // ===== RECENT FILES TOOLBAR POPUP =====
         std::shared_ptr<UltraCanvasMenu> recentFilesPopupMenu;
 
@@ -409,6 +419,32 @@ namespace UltraCanvas {
 
         void OnInfoAbout();
         void OnInfoFileStatistics();
+
+        // ===== SPELL CHECKING =====
+        // See UltraCanvasTextEditorSpellCheck.cpp.
+        void SetupSpellChecker();
+        void ShutdownSpellChecker();
+        // Starts the shared service if it is not running yet and selects the
+        // configured (or locale-derived) dictionary. False when the platform
+        // has no backend or no dictionary is installed.
+        bool EnsureSpellServiceReady();
+        bool DocumentWantsSpellCheck(const DocumentTab* doc) const;
+        void ApplySpellCheckToDocument(int docIndex);
+        void ApplySpellCheckToAllDocuments();
+        void RecheckAllDocuments();
+        void OnEditToggleSpellCheck(bool checked);
+        void OnSpellLanguageChanged(const std::string& languageCode);
+        std::vector<MenuItemData> BuildSpellingMenuItems();
+
+        // Every open editor window, so the singleton spell service can reach
+        // all of them rather than only the one that registered last.
+        static std::vector<UltraCanvasTextEditor*>& LiveEditors();
+        static void InstallSpellServiceCallbacks();
+
+        // ===== EDITOR CONTEXT MENU =====
+        bool ShowEditorContextMenu(int docIndex, const UCEvent& event);
+        std::vector<MenuItemData> BuildEditorContextMenuItems(DocumentTab* doc,
+                                                              const UCEvent& event);
 
 
         // ===== UI UPDATES =====

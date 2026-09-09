@@ -2,8 +2,8 @@
 // UltraFiler - file manager application built on the UltraCanvas framework:
 // folder tree (UltraCanvasTreeView) + folder content (UltraCanvasFilerWidget)
 // + media preview (UltraCanvasMediaViewer) in a Windows Explorer style window.
-// Version: 1.0.0
-// Last Modified: 2026-08-01
+// Version: 0.8.0
+// Last Modified: 2026-08-21
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -16,6 +16,7 @@
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasUtils.h"
 #include "UltraFilerWindow.h"
+#include "UltraFilerSettingsDialog.h"
 
 #ifdef _WIN32
 #include <windows.h>
@@ -73,7 +74,7 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            debugOutput << "UltraFiler version 1.0.0" << std::endl;
+            debugOutput << "UltraFiler version " ULTRAFILER_VERSION << std::endl;
             debugOutput << "UltraCanvas Framework" << std::endl;
             return EXIT_SUCCESS;
         } else if (arg[0] != '-') {
@@ -115,6 +116,10 @@ int main(int argc, char* argv[]) {
 
         debugOutput << "=== UltraFiler Ready ===" << std::endl;
         app.Run();
+        // Tear down the retained settings-dialog widget tree while `app` (and
+        // thus the Application singleton) is still alive, instead of at static
+        // destruction after main() returns — see UltraFilerSettingsDialog::Shutdown.
+        UltraFilerSettingsDialog::Shutdown();
     } catch (const std::exception& e) {
         HandleFatalError(std::string("Unhandled exception: ") + e.what());
         return EXIT_FAILURE;

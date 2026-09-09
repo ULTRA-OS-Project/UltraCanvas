@@ -1,7 +1,7 @@
 // Plugins/Documents/UltraCanvasPDFView.cpp
 // UI element rendering a PDF document via the IPDFDocument backend.
-// Version: 1.7.0
-// Last Modified: 2026-08-13
+// Version: 1.9.0
+// Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -15,8 +15,10 @@
 
 #include <algorithm>
 #include <cstring>
+#include <filesystem>
 #include <fstream>
 #include <limits>
+#include <system_error>
 
 namespace UltraCanvas {
 
@@ -30,6 +32,22 @@ namespace {
 // known — page sizes can differ, so the limit is only exact at render time.
 constexpr int kScrollPageTop    = std::numeric_limits<int>::min() / 4;
 constexpr int kScrollPageBottom = std::numeric_limits<int>::max() / 4;
+
+// Thumbnail-strip layout floors. A thumbnail is sized from the strip width and
+// the page's own aspect ratio; these keep a degenerate page (or an extremely
+// narrow strip) from collapsing the slot to nothing.
+constexpr int   kMinThumbWidth     = 24;
+constexpr int   kMinThumbHeight    = 24;
+
+// Zoom limits and steps. The wheel steps finer than the buttons and the
+// keyboard: a wheel notch is a small nudge, a click of "Zoom +" a deliberate one.
+constexpr float kMinZoom      = 0.1f;
+constexpr float kMaxZoom      = 16.0f;
+constexpr float kZoomStep     = 1.25f;
+constexpr float kWheelZoomStep = 1.1f;
+constexpr float kDefaultPageAspect = 1.4142f;   // A4 portrait, when unknown
+constexpr float kMinCaptionFont    = 8.0f;
+constexpr float kMaxCaptionFont    = 13.0f;
 
 struct ImageFormat { const char* ext; const char* desc; };
 ImageFormat FormatForMime(const std::string& mime) {
@@ -60,8 +78,9 @@ UltraCanvasPDFView::~UltraCanvasPDFView() = default;
 void UltraCanvasPDFView::SetDocument(std::unique_ptr<IPDFDocument> doc) {
     doc_ = std::move(doc);
     currentPage_ = 1;
-    scrollX_ = thumbScroll_ = 0;
-    scrollY_ = kScrollPageTop;   // open at the top of the first page
+    SetScrollNow(0, kScrollPageTop);   // a fresh document opens at the top
+    thumbScrollAnim_.Cancel();
+    thumbScroll_ = 0;   // open at the top of the first page
     zoomMode_ = ZoomMode::FitPage;
     userZoom_ = 1.0f;
     effectiveZoom_ = 1.0f;
@@ -87,7 +106,21 @@ bool UltraCanvasPDFView::LoadFromPath(const std::string& path,
         if (onError) onError("No PDF engine available");
         return false;
     }
-    if (!d->Open(path, password)) {
+    // Read the document into memory when it fits: the engine streams pages from
+    // an Open()ed file and keeps it open for as long as the document lives,
+    // which blocks moving, renaming or deleting the very file being viewed
+    // (on Windows outright). A file too big to hold is streamed instead — the
+    // handle is the lesser cost there.
+    std::error_code ec;
+    const auto fileSize = std::filesystem::file_size(path, ec);
+    const bool inMemory = !ec && maxInMemoryBytes_ > 0 &&
+                          static_cast<uintmax_t>(fileSize) <= maxInMemoryBytes_;
+
+    bool opened = inMemory && d->OpenInMemory(path, password);
+    // Streaming is the fallback: the read may have failed on a file the engine
+    // can still open (no memory for the buffer, a racing writer).
+    if (!opened) opened = d->Open(path, password);
+    if (!opened) {
         if (onError) onError("Failed to open PDF: " + path);
         return false;
     }
@@ -108,8 +141,7 @@ void UltraCanvasPDFView::GoToPage(int page) {
     page = std::clamp(page, 1, total);
     if (page == currentPage_) return;
     currentPage_ = page;
-    scrollX_ = 0;
-    scrollY_ = kScrollPageTop;   // a page opens at its top, not centered
+    SetScrollNow(0, kScrollPageTop);   // a page opens at its top, not centered
     // The selection and cached text belong to the previous page.
     selecting_ = false;
     hasSelection_ = false;
@@ -129,7 +161,7 @@ void UltraCanvasPDFView::GoToLastPage() {
 // ===== Zoom =====
 
 void UltraCanvasPDFView::SetZoom(float scale) {
-    scale = std::clamp(scale, 0.1f, 16.0f);
+    scale = std::clamp(scale, kMinZoom, kMaxZoom);
     zoomMode_ = ZoomMode::Custom;
     userZoom_ = scale;
     InvalidateCaches();      // page cache keyed by dpi; zoom changes dpi.
@@ -146,8 +178,64 @@ void UltraCanvasPDFView::SetZoomMode(ZoomMode mode) {
 
 // Zoom in/out around the current effective scale so the step is continuous even
 // when leaving a fit mode.
-void UltraCanvasPDFView::ZoomIn()  { SetZoom(effectiveZoom_ * 1.25f); }
-void UltraCanvasPDFView::ZoomOut() { SetZoom(effectiveZoom_ / 1.25f); }
+void UltraCanvasPDFView::ZoomIn()  { SetZoom(effectiveZoom_ * kZoomStep); }
+void UltraCanvasPDFView::ZoomOut() { SetZoom(effectiveZoom_ / kZoomStep); }
+
+void UltraCanvasPDFView::ZoomInAt(const Point2Di& local) {
+    SetZoomAt(effectiveZoom_ * kWheelZoomStep, local);
+}
+
+void UltraCanvasPDFView::ZoomOutAt(const Point2Di& local) {
+    SetZoomAt(effectiveZoom_ / kWheelZoomStep, local);
+}
+
+// Zoom so the page point under `local` stays under `local`. The page is drawn
+// centred in the content area, shifted by the scroll offset (ComputePageDrawRect),
+// so holding a point still is a matter of solving that placement for the new
+// page size and turning the result back into a scroll offset.
+void UltraCanvasPDFView::SetZoomAt(float scale, const Point2Di& local) {
+    const float oldZoom = effectiveZoom_;
+    const float newZoom = std::clamp(scale, kMinZoom, kMaxZoom);
+    if (std::abs(newZoom - oldZoom) < 0.0001f) return;
+
+    const Rect2Di area = PageContentArea();
+    float oldW = 0.0f, oldH = 0.0f, newW = 0.0f, newH = 0.0f;
+    const bool haveSizes = PageSizeAtZoom(oldZoom, oldW, oldH) &&
+                           PageSizeAtZoom(newZoom, newW, newH);
+
+    // Where the anchor sits on the page, as a fraction of the page rectangle.
+    // A pointer outside the page (the margins around it, or the strip) anchors
+    // the zoom on the page centre instead of dragging the page towards itself.
+    float fx = 0.5f, fy = 0.5f;
+    Point2Df anchor(area.x + area.width * 0.5f, area.y + area.height * 0.5f);
+    if (haveSizes && pageRect_.width > 0.0f && pageRect_.height > 0.0f &&
+        pageRect_.Contains(static_cast<float>(local.x),
+                           static_cast<float>(local.y))) {
+        fx = (local.x - pageRect_.x) / pageRect_.width;
+        fy = (local.y - pageRect_.y) / pageRect_.height;
+        anchor = Point2Df(static_cast<float>(local.x), static_cast<float>(local.y));
+    }
+
+    SetZoom(newZoom);
+    if (!haveSizes) return;
+
+    // ComputePageDrawRect: x = area.x + margin + (innerW - pageW) / 2 - scrollX.
+    // Solve it for the scroll that puts the anchor fraction back under `anchor`.
+    const int innerW = std::max(1, area.width  - 2 * style_.pageMargin);
+    const int innerH = std::max(1, area.height - 2 * style_.pageMargin);
+    const float wantX = anchor.x - fx * newW;
+    const float wantY = anchor.y - fy * newH;
+    int maxX = 0, maxY = 0;
+    ComputeScrollLimitsAt(newZoom, maxX, maxY);
+    // The zoom has repositioned the page under the anchor: land there.
+    SetScrollNow(std::clamp(static_cast<int>(
+            area.x + style_.pageMargin + (innerW - newW) * 0.5f - wantX + 0.5f),
+            -maxX, maxX),
+                 std::clamp(static_cast<int>(
+            area.y + style_.pageMargin + (innerH - newH) * 0.5f - wantY + 0.5f),
+            -maxY, maxY));
+    Repaint();
+}
 
 // ===== Search =====
 
@@ -468,8 +556,42 @@ void UltraCanvasPDFView::SetThumbnailNumberStyle(ThumbnailNumberStyle s) {
     Repaint();   // overlay is drawn on top of cached thumbnails; no cache wipe
 }
 
+void UltraCanvasPDFView::SetThumbnailWidthMode(ThumbnailWidthMode m) {
+    if (m == thumbWidthMode_) return;
+    thumbWidthMode_ = m;
+    // The strip's width changes, and with it the page area: the thumbnails are
+    // re-laid out (and re-rendered at their new size) and the fit zoom of the
+    // page is resolved against the new content area on the next frame.
+    InvalidateThumbLayout();
+    InvalidateCaches();
+    Repaint();
+}
+
+void UltraCanvasPDFView::SetThumbnailWidth(int pixels) {
+    const int w = std::max(kMinThumbWidth, pixels);
+    if (w != style_.thumbWidth) {
+        style_.thumbWidth = w;
+        InvalidateThumbLayout();
+        InvalidateCaches();
+        Repaint();
+    }
+    SetThumbnailWidthMode(ThumbnailWidthMode::Absolute);
+}
+
+void UltraCanvasPDFView::SetThumbnailWidthFraction(float fraction) {
+    const float f = std::clamp(fraction, 0.05f, 0.5f);
+    if (std::abs(f - style_.thumbStripWidthFraction) > 0.0001f) {
+        style_.thumbStripWidthFraction = f;
+        InvalidateThumbLayout();
+        InvalidateCaches();
+        Repaint();
+    }
+    SetThumbnailWidthMode(ThumbnailWidthMode::Relative);
+}
+
 void UltraCanvasPDFView::SetStyle(const PDFViewStyle& s) {
     style_ = s;
+    InvalidateThumbLayout();   // strip metrics are baked into the layout
     backgroundColor = style_.background;
     InvalidateAllCaches();
     Repaint();
@@ -585,18 +707,112 @@ bool UltraCanvasPDFView::ThumbStripVisible() const {
 
 int UltraCanvasPDFView::EffectiveThumbStripWidth() const {
     if (!ThumbStripVisible()) return 0;
-    // Keep the page area at least 3x the strip (strip : page >= 1 : 3), so a
-    // narrow view never ends up mostly inventory.
-    const int cap = static_cast<int>(GetWidth()) / 4;
-    return std::max(0, std::min(style_.thumbStripWidth, cap));
+    const int viewW = static_cast<int>(GetWidth());
+    if (thumbWidthMode_ == ThumbnailWidthMode::Absolute) {
+        // The requested thumbnail width plus the margins around it. The pixel
+        // width is honoured as asked for; only a pane too narrow to leave the
+        // page any room at all pulls it back, and then to half the view — the
+        // alternative is an inventory with no document next to it.
+        const int want = style_.thumbWidth + 2 * style_.thumbMargin;
+        const int cap  = std::max(kMinThumbWidth + 2 * style_.thumbMargin,
+                                  viewW / 2);
+        return std::max(0, std::min(want, cap));
+    }
+    // Relative: a share of the view's width, and never wider than the style's
+    // strip width. The default share is a quarter, which keeps the page area at
+    // least 3x the strip so a narrow view never ends up mostly inventory.
+    const int share = static_cast<int>(viewW * style_.thumbStripWidthFraction);
+    return std::max(0, std::min(style_.thumbStripWidth, share));
 }
 
-int UltraCanvasPDFView::ThumbSlotAdvance() const {
-    // Caption style draws a label row beneath each thumbnail; Overlay draws
-    // the number on the page itself and needs no extra row.
-    const int captionExtra =
-        (thumbNumberStyle_ == ThumbnailNumberStyle::Caption) ? 16 : 0;
-    return style_.thumbHeight + style_.thumbSpacing + captionExtra;
+int UltraCanvasPDFView::ThumbContentWidth() const {
+    const int w = EffectiveThumbStripWidth();
+    if (w <= 0) return 0;
+    return std::max(kMinThumbWidth, w - 2 * style_.thumbMargin);
+}
+
+float UltraCanvasPDFView::ThumbNumberFontSize(int thumbH) const {
+    // Both numbering styles size the number from the thumbnail it belongs to,
+    // so a small page never gets an oversized number.
+    if (thumbNumberStyle_ == ThumbnailNumberStyle::Overlay) {
+        return std::max(8.0f, thumbH * style_.thumbOverlayNumberHeight);
+    }
+    return std::clamp(thumbH * style_.thumbLabelHeight,
+                      kMinCaptionFont, kMaxCaptionFont);
+}
+
+void UltraCanvasPDFView::InvalidateThumbLayout() {
+    thumbLayoutWidth_ = -1;   // forces EnsureThumbLayout() to rebuild
+}
+
+void UltraCanvasPDFView::EnsurePageAspects() const {
+    const int pages = doc_ ? doc_->GetPageCount() : 0;
+    if (pageAspectsPages_ == pages) return;
+    pageAspectsPages_ = pages;
+    pageAspects_.clear();
+    pageAspects_.reserve(static_cast<size_t>(std::max(0, pages)));
+    for (int p = 1; p <= pages; ++p) {
+        const PDFPageInfo pi = doc_->GetPageInfo(p);
+        pageAspects_.push_back((pi.widthPt > 0.0f && pi.heightPt > 0.0f)
+                               ? pi.heightPt / pi.widthPt
+                               : kDefaultPageAspect);
+    }
+}
+
+void UltraCanvasPDFView::EnsureThumbLayout() const {
+    const int width   = ThumbContentWidth();
+    const int pages   = doc_ ? doc_->GetPageCount() : 0;
+    const bool caption = (thumbNumberStyle_ == ThumbnailNumberStyle::Caption);
+    if (thumbLayoutWidth_ == width && thumbLayoutPages_ == pages &&
+        thumbLayoutCaption_ == caption) {
+        return;
+    }
+    thumbLayoutWidth_   = width;
+    thumbLayoutPages_   = pages;
+    thumbLayoutCaption_ = caption;
+    thumbLayout_.clear();
+    thumbContentHeight_ = 0;
+    thumbRenderDim_     = 0;
+    if (width <= 0 || pages <= 0) return;
+
+    EnsurePageAspects();
+    thumbLayout_.reserve(static_cast<size_t>(pages));
+    int y = style_.thumbSpacing;
+    for (int p = 1; p <= pages; ++p) {
+        // Each thumbnail is as tall as its own page needs at the strip's
+        // width, so the inventory never pads a slot with empty space.
+        const float aspect = (p <= static_cast<int>(pageAspects_.size()))
+                             ? pageAspects_[p - 1] : kDefaultPageAspect;
+        ThumbSlot slot;
+        slot.w = width;
+        slot.h = std::max(kMinThumbHeight,
+                          static_cast<int>(width * aspect + 0.5f));
+        if (slot.h > style_.thumbMaxHeight) {
+            // A page too tall for the cap keeps its proportions by narrowing.
+            slot.h = std::max(kMinThumbHeight, style_.thumbMaxHeight);
+            slot.w = std::clamp(static_cast<int>(slot.h / aspect + 0.5f),
+                                kMinThumbWidth, width);
+        }
+        slot.captionH = caption
+            ? static_cast<int>(ThumbNumberFontSize(slot.h) + 0.5f) + 4
+            : 0;
+        slot.y = y;
+        y += slot.h + slot.captionH + style_.thumbSpacing;
+        thumbRenderDim_ = std::max(thumbRenderDim_, std::max(slot.w, slot.h));
+        thumbLayout_.push_back(slot);
+    }
+    thumbContentHeight_ = y;
+}
+
+const std::vector<UltraCanvasPDFView::ThumbSlot>&
+UltraCanvasPDFView::ThumbLayout() const {
+    EnsureThumbLayout();
+    return thumbLayout_;
+}
+
+int UltraCanvasPDFView::ThumbContentHeight() const {
+    EnsureThumbLayout();
+    return thumbContentHeight_;
 }
 
 Rect2Di UltraCanvasPDFView::ThumbStripArea() const {
@@ -652,6 +868,9 @@ void UltraCanvasPDFView::InvalidateAllCaches() {
     // the old state and must go too, or the strip keeps showing it.
     InvalidateCaches();
     thumbCache_.clear();
+    thumbCacheMaxDim_ = 0;
+    pageAspectsPages_ = -1;    // page sizes/order may have changed with it
+    InvalidateThumbLayout();
 }
 
 std::shared_ptr<UCPixmapCairo>
@@ -712,11 +931,16 @@ UltraCanvasPDFView::EnsurePageRendered(int page, float dpi) {
 }
 
 std::shared_ptr<UCPixmapCairo>
-UltraCanvasPDFView::EnsureThumbnail(int page) {
-    if (!doc_) return {};
+UltraCanvasPDFView::EnsureThumbnail(int page, int maxDim) {
+    if (!doc_ || maxDim <= 0) return {};
+    if (thumbCacheMaxDim_ != maxDim) {
+        // The strip was resized: every cached thumbnail is now the wrong size.
+        thumbCache_.clear();
+        thumbCacheMaxDim_ = maxDim;
+    }
     auto it = thumbCache_.find(page);
     if (it != thumbCache_.end()) return it->second;
-    PDFRenderedPage rp = doc_->RenderThumbnail(page, style_.thumbHeight);
+    PDFRenderedPage rp = doc_->RenderThumbnail(page, maxDim);
     auto pm = MakePixmapFromRGBA(rp);
     if (pm) thumbCache_[page] = pm;
     return pm;
@@ -750,21 +974,26 @@ void UltraCanvasPDFView::DrawThumbStrip(IRenderContext* ctx,
     ctx->FillRectangle(strip);
 
     if (!doc_) { ctx->PopState(); return; }
-    const int total = doc_->GetPageCount();
-    const int innerW = strip.width - 16;
-    const int advance = ThumbSlotAdvance();
-    int y = strip.y + style_.thumbSpacing - thumbScroll_;
+    const std::vector<ThumbSlot>& slots = ThumbLayout();
+    const int total = static_cast<int>(slots.size());
+    const int renderDim = thumbRenderDim_;
 
-    ctx->SetFontSize(11.0f);
     for (int p = 1; p <= total; ++p) {
-        Rect2Df slot(strip.x + 8, y, innerW, style_.thumbHeight);
+        const ThumbSlot& ts = slots[p - 1];
+        const int top = strip.y + ts.y - thumbScroll_;
 
         // Skip thumbs that are entirely outside the visible strip.
-        if (slot.y + advance < strip.y ||
-            slot.y > strip.y + strip.height) {
-            y += advance;
+        if (top + ts.h + ts.captionH < strip.y ||
+            top > strip.y + strip.height) {
             continue;
         }
+
+        // The slot matches the page's aspect ratio, so the page fills it: the
+        // only spare room in the strip is the margin around the thumbnail.
+        const Rect2Df slot(strip.x + (strip.width - ts.w) * 0.5f,
+                           static_cast<float>(top),
+                           static_cast<float>(ts.w),
+                           static_cast<float>(ts.h));
 
         // Slot background
         const bool active = (p == currentPage_);
@@ -772,9 +1001,9 @@ void UltraCanvasPDFView::DrawThumbStrip(IRenderContext* ctx,
         ctx->FillRectangle(slot);
 
         // Page thumbnail
-        auto pm = EnsureThumbnail(p);
+        auto pm = EnsureThumbnail(p, renderDim);
         if (pm && pm->IsValid()) {
-            ctx->DrawPixmap(*pm, slot, ImageFitMode::Contain);
+            ctx->DrawPixmap(*pm, slot, ImageFitMode::Fill);
         }
 
         // Border (active or normal)
@@ -784,21 +1013,22 @@ void UltraCanvasPDFView::DrawThumbStrip(IRenderContext* ctx,
         ctx->DrawRectangle(slot);
 
         // Page number — either a small caption beneath, or a large translucent
-        // number overlaid on the page.
+        // number overlaid on the page. Both are sized from this thumbnail's
+        // height, so they shrink with it.
         const std::string num = std::to_string(p);
+        const float fontPx = ThumbNumberFontSize(ts.h);
+        ctx->SetFontSize(fontPx);
         if (thumbNumberStyle_ == ThumbnailNumberStyle::Overlay) {
-            const float fontPx = std::max(
-                8.0f, style_.thumbHeight * style_.thumbOverlayNumberHeight);
-            ctx->SetFontSize(fontPx);
             ctx->SetFillPaint(style_.thumbOverlayNumberColor);
             ctx->DrawText(num, ctx->CalculateCenteredTextPosition(num, slot));
-            ctx->SetFontSize(11.0f);   // restore for the next slot's measuring
         } else {
+            // DrawText positions by the text's top-left, so the label is
+            // centered inside the row reserved for it beneath the thumbnail.
+            const Rect2Df caption(slot.x, slot.y + slot.height,
+                                  slot.width, static_cast<float>(ts.captionH));
             ctx->SetFillPaint(style_.thumbLabelColor);
-            ctx->DrawText(num, Point2Df(slot.x + 4, slot.y + slot.height + 12));
+            ctx->DrawText(num, ctx->CalculateCenteredTextPosition(num, caption));
         }
-
-        y += advance;
     }
     ctx->PopState();
 }
@@ -926,21 +1156,10 @@ void UltraCanvasPDFView::DrawPageWithOverlays(IRenderContext* ctx,
         }
     }
 
-    // Page number indicator, pinned to the top-right of the page content area.
-    // The pill is sized to the label and the text is centered inside it so the
-    // two always stay aligned (DrawText positions text by its top-left).
-    ctx->SetFontSize(12);
-    const std::string pageStr =
-        std::to_string(currentPage_) + " / " + std::to_string(total);
-    const Size2Di textSz = ctx->GetTextLineDimensions(pageStr);
-    const float padX = 12.0f, badgeH = 24.0f, badgeMargin = 12.0f;
-    const float badgeW = std::max(48.0f, textSz.width + 2 * padX);
-    const Rect2Df badge(area.x + area.width - badgeW - badgeMargin,
-                        area.y + badgeMargin, badgeW, badgeH);
-    ctx->SetFillPaint(Color(0, 0, 0, 160));
-    ctx->FillRoundedRectangle(badge, 4.0);
-    ctx->SetFillPaint(Color(255, 255, 255, 255));
-    ctx->DrawText(pageStr, ctx->CalculateCenteredTextPosition(pageStr, badge));
+    // No page-number badge is drawn over the page: the thumbnail strip already
+    // marks the current page, and hosts (the media viewer, UltraFiler) show
+    // "page N / M" in their own status bar, so a floating pill on the page
+    // would only be a non-interactive duplicate.
 
     ctx->PopState();
 }
@@ -951,27 +1170,40 @@ int UltraCanvasPDFView::HitTestThumb(const Point2Di& p) const {
     if (!ThumbStripVisible()) return 0;
     Rect2Di strip = ThumbStripArea();
     if (!strip.Contains(p)) return 0;
-    const int total = doc_->GetPageCount();
-    const int advance = ThumbSlotAdvance();
-    int y = strip.y + style_.thumbSpacing - thumbScroll_;
+    const std::vector<ThumbSlot>& slots = ThumbLayout();
+    const int total = static_cast<int>(slots.size());
     for (int i = 1; i <= total; ++i) {
-        Rect2Di slot(strip.x + 8, y, strip.width - 16, style_.thumbHeight);
+        const ThumbSlot& ts = slots[i - 1];
+        const Rect2Di slot(strip.x + (strip.width - ts.w) / 2,
+                           strip.y + ts.y - thumbScroll_, ts.w, ts.h);
         if (slot.Contains(p)) return i;
-        y += advance;
     }
     return 0;
 }
 
-bool UltraCanvasPDFView::ComputeScrollLimits(int& maxX, int& maxY) const {
-    maxX = maxY = 0;
+bool UltraCanvasPDFView::PageSizeAtZoom(float zoom, float& outW,
+                                       float& outH) const {
+    outW = outH = 0.0f;
     if (!doc_) return false;
-    PDFPageInfo pi = doc_->GetPageInfo(currentPage_);
+    const PDFPageInfo pi = doc_->GetPageInfo(currentPage_);
     if (pi.widthPt <= 0 || pi.heightPt <= 0) return false;
-    // Page size on screen at the current effective zoom. The page is centered,
-    // so the scroll range is symmetric: half the overflow in each direction.
+    outW = pi.widthPt  * style_.defaultDpi / 72.0f * zoom;
+    outH = pi.heightPt * style_.defaultDpi / 72.0f * zoom;
+    return true;
+}
+
+bool UltraCanvasPDFView::ComputeScrollLimits(int& maxX, int& maxY) const {
+    return ComputeScrollLimitsAt(effectiveZoom_, maxX, maxY);
+}
+
+bool UltraCanvasPDFView::ComputeScrollLimitsAt(float zoom, int& maxX,
+                                               int& maxY) const {
+    maxX = maxY = 0;
+    // Page size on screen at `zoom`. The page is centered, so the scroll range
+    // is symmetric: half the overflow in each direction.
+    float pageW = 0.0f, pageH = 0.0f;
+    if (!PageSizeAtZoom(zoom, pageW, pageH)) return false;
     const Rect2Di area = PageContentArea();
-    const float pageW = pi.widthPt  * style_.defaultDpi / 72.0f * effectiveZoom_;
-    const float pageH = pi.heightPt * style_.defaultDpi / 72.0f * effectiveZoom_;
     const int innerW = std::max(1, area.width  - 2 * style_.pageMargin);
     const int innerH = std::max(1, area.height - 2 * style_.pageMargin);
     maxX = std::max(0, static_cast<int>((pageW - innerW) * 0.5f + 0.5f));
@@ -992,36 +1224,67 @@ void UltraCanvasPDFView::ScrollBy(int dx, int dy) {
     }
     if (dy < 0 && scrollY_ <= -maxY && currentPage_ > 1) {
         GoToPage(currentPage_ - 1);
-        scrollY_ = kScrollPageBottom;      // arrive at the previous page's bottom
+        SetScrollNow(scrollX_, kScrollPageBottom);   // at the previous page's bottom
         return;
     }
 
     // Within the page the scroll is hard-limited: it stops once the page edge
     // sits style_.pageMargin inside the viewport — on the last/first page that
     // is the end of the line.
-    scrollX_ = std::clamp(scrollX_ + dx, -maxX, maxX);
-    scrollY_ = std::clamp(scrollY_ + dy, -maxY, maxY);
-    Repaint();
+    // Within the page the scroll glides to its target (see
+    // UltraCanvasSmoothScroll.h); the page-flip cases above have already
+    // returned, so a glide never runs across a page change.
+    if (!scrollAnimX_.IsBound()) {
+        scrollAnimX_.Bind([this] { return static_cast<double>(scrollX_); },
+                          [this](double v) {
+                              scrollX_ = static_cast<int>(std::lround(v));
+                              Repaint();
+                          });
+        scrollAnimY_.Bind([this] { return static_cast<double>(scrollY_); },
+                          [this](double v) {
+                              scrollY_ = static_cast<int>(std::lround(v));
+                              Repaint();
+                          });
+    }
+    if (dx != 0) scrollAnimX_.AnimateBy(dx, -maxX, maxX);
+    if (dy != 0) scrollAnimY_.AnimateBy(dy, -maxY, maxY);
+}
+
+// Page changes, zoom and fit modes reposition the view rather than scroll it,
+// so they land at once and drop whatever glide was running.
+void UltraCanvasPDFView::SetScrollNow(int x, int y) {
+    scrollAnimX_.Cancel();
+    scrollAnimY_.Cancel();
+    scrollX_ = x;
+    scrollY_ = y;
 }
 
 void UltraCanvasPDFView::ScrollThumbsBy(int delta) {
     const Rect2Di strip = ThumbStripArea();
-    const int contentH = style_.thumbSpacing + GetPageCount() * ThumbSlotAdvance();
-    const int maxScroll = std::max(0, contentH - strip.height);
-    thumbScroll_ = std::clamp(thumbScroll_ + delta, 0, maxScroll);
-    Repaint();
+    const int maxScroll = std::max(0, ThumbContentHeight() - strip.height);
+    if (!thumbScrollAnim_.IsBound()) {
+        thumbScrollAnim_.Bind([this] { return static_cast<double>(thumbScroll_); },
+                              [this](double v) {
+                                  thumbScroll_ = static_cast<int>(std::lround(v));
+                                  Repaint();
+                              });
+    }
+    thumbScrollAnim_.AnimateBy(delta, 0, maxScroll);
 }
 
 void UltraCanvasPDFView::EnsureThumbVisible(int page) {
     if (!ThumbStripVisible()) return;
     const Rect2Di strip = ThumbStripArea();
     if (strip.height <= 0) return;
-    const int advance = ThumbSlotAdvance();
-    const int top    = style_.thumbSpacing + (page - 1) * advance - thumbScroll_;
-    const int bottom = top + advance;
+    const std::vector<ThumbSlot>& slots = ThumbLayout();
+    if (page < 1 || page > static_cast<int>(slots.size())) return;
+    const ThumbSlot& ts = slots[page - 1];
+    const int top    = ts.y - thumbScroll_;
+    const int bottom = top + ts.h + ts.captionH + style_.thumbSpacing;
     if (top < 0)                    thumbScroll_ += top;
     else if (bottom > strip.height) thumbScroll_ += bottom - strip.height;
-    if (thumbScroll_ < 0) thumbScroll_ = 0;
+    const int maxScroll = std::max(0, ThumbContentHeight() - strip.height);
+    thumbScroll_ = std::clamp(thumbScroll_, 0, maxScroll);
 }
 
 bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
@@ -1030,12 +1293,16 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
             // event.pointer is already in element-local coordinates.
             const bool inThumbs = ThumbStripVisible() &&
                                   event.pointer.x < EffectiveThumbStripWidth();
-            if (event.ctrl && !inThumbs) {
-                if (event.wheelDelta > 0) ZoomIn(); else ZoomOut();
+            if (inThumbs) {   // the strip scrolls, whatever the wheel does elsewhere
+                ScrollThumbsBy(event.wheelDelta > 0 ? -40 : 40);
                 return true;
             }
-            if (inThumbs) {
-                ScrollThumbsBy(event.wheelDelta > 0 ? -40 : 40);
+            // Over the page: the configured action, with Ctrl selecting the
+            // other one, so zooming and scrolling are both always reachable.
+            const bool zooming = (wheelAction_ == WheelAction::Zoom) != event.ctrl;
+            if (zooming) {
+                if (event.wheelDelta > 0) ZoomInAt(event.pointer);
+                else                      ZoomOutAt(event.pointer);
             } else {
                 ScrollBy(0, event.wheelDelta > 0 ? -40 : 40);
             }
@@ -1043,6 +1310,10 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
         }
 
         case UCEventType::MouseDown: {
+            // Clicking the view is what hands it the keyboard: without this the
+            // page, zoom and selection keys only reach it in a host that focused
+            // it itself.
+            SetFocus(true);
             if (event.button == UCMouseButton::Right) {
                 // Context menu: image extraction (if over an image) + text actions.
                 ShowContextMenu(ImageIndexAt(event.pointer), event.pointerWindow);
@@ -1094,13 +1365,14 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
             }
             if (panning_) {
                 // A pan drag stays within the current page (no page turning);
-                // clamp so the page cannot be dragged out of the viewport.
+                // clamp so the page cannot be dragged out of the viewport. The
+                // page follows the cursor exactly, so a glide is dropped.
                 int maxX = 0, maxY = 0;
                 ComputeScrollLimits(maxX, maxY);
-                scrollX_ = std::clamp(
-                    panScrollX_ - (event.pointer.x - panAnchor_.x), -maxX, maxX);
-                scrollY_ = std::clamp(
-                    panScrollY_ - (event.pointer.y - panAnchor_.y), -maxY, maxY);
+                SetScrollNow(std::clamp(
+                    panScrollX_ - (event.pointer.x - panAnchor_.x), -maxX, maxX),
+                             std::clamp(
+                    panScrollY_ - (event.pointer.y - panAnchor_.y), -maxY, maxY));
                 Repaint();
                 return true;
             }
@@ -1123,6 +1395,34 @@ bool UltraCanvasPDFView::OnEvent(const UCEvent& event) {
         }
 
         case UCEventType::KeyDown: {
+            // Zoom keys first: they are the same on every keyboard row (the
+            // number row, the numeric keypad) and with or without Ctrl, which
+            // is what users try. Both the key code and the character are
+            // checked because platforms differ on which of the two carries a
+            // shifted symbol such as '+'.
+            switch (event.virtualKey) {
+                case UCKeys::Plus: case UCKeys::Equal: case UCKeys::NumPadPlus:
+                    ZoomIn(); return true;
+                case UCKeys::Minus: case UCKeys::Underscore:
+                case UCKeys::NumPadMinus:
+                    ZoomOut(); return true;
+                case UCKeys::Key0: case UCKeys::NumPad0:
+                    ZoomToFit(); return true;         // whole page in view
+                case UCKeys::Key1: case UCKeys::NumPad1:
+                    ZoomActualSize(); return true;    // 100 %
+                case UCKeys::W:
+                    if (!event.ctrl) { ZoomToWidth(); return true; }
+                    break;
+                default: break;
+            }
+            switch (event.character) {
+                case '+': case '=': ZoomIn();        return true;
+                case '-': case '_': ZoomOut();       return true;
+                case '0':           ZoomToFit();     return true;
+                case '1':           ZoomActualSize(); return true;
+                default: break;
+            }
+
             switch (event.virtualKey) {
                 case UCKeys::PageDown: case UCKeys::Down:
                     GoToNextPage(); return true;

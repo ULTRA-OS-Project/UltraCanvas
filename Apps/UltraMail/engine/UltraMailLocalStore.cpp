@@ -4,6 +4,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailLocalStore.h"
 
+#include <ctime>
+
 #include <UltraDatabase/UltraDatabase.h>
 
 #include <algorithm>
@@ -299,22 +301,44 @@ UltraDbResult LocalStore::SetFlags(const std::string& accountId,
 
 // ---- Rollups ---------------------------------------------------------------
 
-UltraDbResult LocalStore::GetAccountStatus(std::vector<AccountStatus>& out) const {
+int64_t LocalStore::StartOfToday() {
+    std::time_t now = std::time(nullptr);
+    std::tm tm{};
+#if defined(_WIN32)
+    localtime_s(&tm, &now);
+#else
+    localtime_r(&now, &tm);
+#endif
+    tm.tm_hour = 0; tm.tm_min = 0; tm.tm_sec = 0;
+    tm.tm_isdst = -1;
+    return static_cast<int64_t>(std::mktime(&tm));
+}
+
+UltraDbResult LocalStore::GetAccountStatus(std::vector<AccountStatus>& out,
+                                           int64_t todayStart) const {
     out.clear();
-    // Flag constants are internal literals (safe to inline into the SQL).
-    const std::string seen = std::to_string(Flag_Seen);
-    const std::string del  = std::to_string(Flag_Deleted);
+    if (todayStart < 0) todayStart = StartOfToday();
+    // Flag constants and the midnight epoch are internal integers (safe to
+    // inline into the SQL).
+    const std::string seen  = std::to_string(Flag_Seen);
+    const std::string del   = std::to_string(Flag_Deleted);
+    const std::string today = std::to_string(todayStart);
+    const std::string unreadInbox =
+        "f.role='inbox' AND (m.flags & " + seen + ")=0 AND (m.flags & " + del + ")=0";
 
     std::string sql =
-        "SELECT a.account_id AS account_id, a.short_name AS short_name, "
-        "COALESCE(SUM(CASE WHEN f.role='inbox' AND (m.flags & " + seen + ")=0 "
-        "  AND (m.flags & " + del + ")=0 THEN 1 ELSE 0 END), 0) AS unread, "
+        "SELECT a.account_id AS account_id, a.short_name AS short_name, a.email AS email, "
+        "COALESCE(SUM(CASE WHEN " + unreadInbox + " THEN 1 ELSE 0 END), 0) AS unread, "
+        "COALESCE(SUM(CASE WHEN " + unreadInbox + " AND m.date >= " + today +
+        "  THEN 1 ELSE 0 END), 0) AS unread_today, "
+        "COALESCE(SUM(CASE WHEN " + unreadInbox + " AND m.date < " + today +
+        "  THEN 1 ELSE 0 END), 0) AS unread_older, "
         "COALESCE(SUM(CASE WHEN m.needs_answer=1 AND (m.flags & " + del + ")=0 "
         "  THEN 1 ELSE 0 END), 0) AS needs "
         "FROM accounts a "
         "LEFT JOIN messages m ON m.account_id = a.account_id "
         "LEFT JOIN folders f ON f.account_id = m.account_id AND f.name = m.folder "
-        "GROUP BY a.account_id, a.short_name "
+        "GROUP BY a.account_id, a.short_name, a.email "
         "ORDER BY a.short_name";
 
     UltraDbResultSet rs;
@@ -324,7 +348,10 @@ UltraDbResult LocalStore::GetAccountStatus(std::vector<AccountStatus>& out) cons
         AccountStatus s;
         s.accountId   = row["account_id"].AsString();
         s.shortName   = row["short_name"].AsString();
+        s.email       = row["email"].AsString();
         s.unread      = row["unread"].AsInt();
+        s.unreadToday = row["unread_today"].AsInt();
+        s.unreadOlder = row["unread_older"].AsInt();
         s.needsAnswer = row["needs"].AsInt();
         out.push_back(std::move(s));
     }

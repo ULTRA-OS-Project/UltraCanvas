@@ -3,8 +3,8 @@
 # (account / folder / message store on UltraDatabase) and, on top of it, the
 # UltraMail GUI executable (Toolbox, account wizard, reading view, composer,
 # contacts) linking the UltraCanvas UI library.
-# Version: 0.2.0
-# Last Modified: 2026-07-08
+# Version: 0.5.0
+# Last Modified: 2026-09-03
 # Author: UltraCanvas Framework / ULTRA OS
 
 # The engine depends only on UltraDatabase, so it builds and tests headlessly.
@@ -39,6 +39,11 @@ target_compile_features(UltraMailEngine PUBLIC cxx_std_20)
 target_include_directories(UltraMailEngine PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/engine)
 target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
+# Mail-account passwords live in UltraVault (Argon2id + XChaCha20-Poly1305 via
+# UltraCrypt), not in a format of UltraMail's own.
+if(TARGET UltraVault)
+    target_link_libraries(UltraMailEngine PUBLIC UltraVault)
+endif()
 # UltraNet provides the MIME/HTTP/Base64 helpers the engine builds on.
 # With a STATIC UltraCanvas we link the UltraNet archive directly. With a SHARED
 # UltraCanvas, UltraNet is absorbed into (and exported by) libultracanvas — link
@@ -82,13 +87,16 @@ endif()
 
 set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailApp.cpp
-    ui/UltraMailToolbox.cpp
-    ui/UltraMailInfoTileBar.cpp
+    ui/UltraMailAlerts.cpp
+    ui/UltraMailStartPage.cpp
+    ui/UltraMailAccountBar.cpp
+    ui/UltraMailMessagePreview.cpp
+    ui/UltraMailMailView.cpp
     ui/UltraMailAccountWizard.cpp
     ui/UltraMailAttachmentStrip.cpp
     ui/UltraMailContactsView.cpp
-    ui/UltraMailReadingView.cpp
     ui/UltraMailComposeWindow.cpp
+    ui/UltraMailPassphraseDialog.cpp
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})
@@ -101,6 +109,13 @@ target_include_directories(UltraMail PRIVATE
 # Engine before the core: the engine (static) pulls UltraNet_* from the shared
 # libultracanvas import lib, and GNU ld resolves left-to-right, so the provider
 # must follow the consumer on the link line.
+# Cloud storage accounts + the shared dialogs behind "Attach cloud link".
+# UltraCloud pulls UltraCanvasJSON out of the core library, so it must come
+# before ${ULTRACANVAS_LIBRARY} on the link line for the same left-to-right
+# reason as the engine.
+if(TARGET UltraCloudUI)
+    target_link_libraries(UltraMail PRIVATE UltraCloudUI)
+endif()
 target_link_libraries(UltraMail PRIVATE UltraMailEngine ${ULTRACANVAS_LIBRARY})
 if(TARGET fmt::fmt)
     target_link_libraries(UltraMail PRIVATE fmt::fmt)

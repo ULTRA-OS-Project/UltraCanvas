@@ -4,6 +4,8 @@ The ULTRA OS cross-posting application: compose once, post to several social
 networks. Full concept and design:
 [`Docs/UltraSocial/Concept.md`](../../Docs/UltraSocial/Concept.md).
 
+This app versions itself: [`Docs/UltraSocial/CHANGELOG.md`](../../Docs/UltraSocial/CHANGELOG.md).
+
 UltraSocial is built on **UltraCanvas** (UI, JSON), **UltraNet** (HTTP,
 OAuth2 — `UltraNet/UltraNetOAuth2.h`) and **UltraDatabase** (local store).
 

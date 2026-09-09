@@ -20,8 +20,6 @@ endif()
 
 # libcdr - CorelDRAW file format parser
 pkg_check_modules(LIBCDR REQUIRED libcdr-0.1)
-pkg_check_modules(LIBVIPS REQUIRED vips vips-cpp)
-pkg_check_modules(GLIB REQUIRED glib-2.0)
 
 if(NOT LIBCDR_FOUND)
     message(FATAL_ERROR "libcdr not found. Install with: sudo apt install libcdr-dev")
@@ -83,8 +81,6 @@ target_include_directories(${PLUGIN_NAME}
         ${LIBCDR_INCLUDE_DIRS}
         ${LIBREVENGE_INCLUDE_DIRS}
         ${LIBREVENGE_STREAM_INCLUDE_DIRS}
-        ${LIBVIPS_INCLUDE_DIRS}
-        ${GLIB_INCLUDE_DIRS}
 )
 
 # Include UltraCanvas core headers (passed from parent)

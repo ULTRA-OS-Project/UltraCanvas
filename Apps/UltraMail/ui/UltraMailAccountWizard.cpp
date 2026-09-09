@@ -1,10 +1,14 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
-// Version: 0.2.0
-// Last Modified: 2026-07-08
+// Version: 0.3.0 - themed: secondary-text intro, styled inputs, Continue as
+//                  the primary button on the right.
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountWizard.h"
 
 #include "UltraCanvasModalDialog.h"
+#include "UltraMailAlerts.h"
+#include "UltraMailTheme.h"
+#include "UltraMailDiscovery.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
@@ -16,12 +20,16 @@ using namespace UltraCanvas;
 
 namespace UltraMail {
 
+namespace {
+constexpr float kLabelWidth = 110.0f;
+} // namespace
+
 void AccountWizard::Show(UltraCanvasWindowBase* parent,
                          std::function<void(const AccountDraft&)> onSubmit) {
     DialogConfig config;
     config.title      = "Add email account";
     config.width      = 460;
-    config.height     = 300;
+    config.height     = 290;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -33,18 +41,20 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     // A Custom dialog builds its own window layout + children (see the framework's
     // Texter dialogs). Vertical stack: content grows, button row sits at the bottom.
     dialog->layout.SetFlexColumn()
-                  .SetFlexGap(12)
+                  .SetFlexGap(Theme::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    dialog->SetPadding(16);
+    dialog->SetPadding(20);
+    dialog->SetBackgroundColor(Theme::kCardBackground);
 
     // ===== CONTENT: intro + labelled input rows =====
     auto content = CreateContainer("wizardForm", 0, 0, 0, 0);
     content->layout.SetFlexColumn()
-                   .SetFlexGap(8)
+                   .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto intro = CreateLabel("wizIntro", 0, 0, 420, 36,
-        "Enter your address and password — UltraMail finds the rest.");
+    auto intro = Theme::MakeLine("wizIntro",
+        "Enter your address and password — UltraMail finds the rest.", 36,
+        Theme::kSizeBody, Theme::kTextSecondary);
     intro->SetWrap(TextWrap::WrapWord);
     content->AddChild(intro);
     intro->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -52,15 +62,17 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     // Build a [label + input] flex row and append it to the content column.
     auto addRow = [&content](const std::string& id, const std::string& labelText,
                              const std::shared_ptr<UltraCanvasTextInput>& input) {
-        auto row = CreateContainer(id + "Row", 0, 0, 0, 30);
+        auto row = CreateContainer(id + "Row", 0, 0, 0, Theme::kControlHeight);
         row->layout.SetFlexRow()
-                   .SetFlexGap(8)
+                   .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-        auto label = CreateLabel(id + "Label", 0, 0, 110, 26, labelText);
+        auto label = Theme::MakeLine(id + "Label", labelText, Theme::kControlHeight,
+                                     Theme::kSizeBody, Theme::kTextSecondary);
+        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
         row->AddChild(label);
-        label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
 
+        Theme::StyleInput(input);
         row->AddChild(input);
         input->layoutItem.SetFlexGrow(1);
 
@@ -68,15 +80,15 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     };
 
-    auto name = CreateTextInput("wizName", 0, 0, 260, 28);
+    auto name = CreateTextInput("wizName", 0, 0, 0, Theme::kControlHeight);
     name->SetPlaceholder("Erika Example");
     addRow("wizName", "Your name", name);
 
-    auto email = CreateEmailInput("wizEmail", 0, 0, 260, 28);
+    auto email = CreateEmailInput("wizEmail", 0, 0, 0, Theme::kControlHeight);
     email->SetPlaceholder("erika@example.com");
     addRow("wizEmail", "Email address", email);
 
-    auto password = CreatePasswordInput("wizPass", 0, 0, 260, 28);
+    auto password = CreatePasswordInput("wizPass", 0, 0, 0, Theme::kControlHeight);
     password->SetPlaceholder("Your password");
     addRow("wizPass", "Password", password);
 
@@ -84,21 +96,21 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     content->layoutItem.SetFlexGrow(1);
 
     // ===== BUTTON ROW: Continue / Cancel =====
-    auto buttonRow = CreateContainer("wizButtons", 0, 0, 0, 36);
+    auto buttonRow = CreateContainer("wizButtons", 0, 0, 0, Theme::kToolbarHeight);
     buttonRow->layout.SetFlexRow()
-                     .SetFlexGap(10)
+                     .SetFlexGap(Theme::kInnerGap)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
 
-    auto continueBtn = std::make_shared<UltraCanvasButton>("wizContinue", 0, 0, 100, 28);
-    continueBtn->SetText("Continue");
-    continueBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
-    buttonRow->AddChild(continueBtn);
-
-    auto cancelBtn = std::make_shared<UltraCanvasButton>("wizCancel", 0, 0, 80, 28);
-    cancelBtn->SetText("Cancel");
+    auto cancelBtn = CreateButton("wizCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
+
+    auto continueBtn = CreateButton("wizContinue", 0, 0, 110, Theme::kControlHeight, "Continue");
+    Theme::StylePrimary(continueBtn);
+    continueBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
+    buttonRow->AddChild(continueBtn);
 
     dialog->AddChild(buttonRow);
 
@@ -110,13 +122,28 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
 
     UltraCanvasDialogManager::ShowDialog(
         dialog,
-        [name, email, password, onSubmit](DialogResult result) {
+        [name, email, password, onSubmit, parent](DialogResult result) {
             if (result != DialogResult::OK) return;
             AccountDraft draft;
             draft.displayName = name->GetText();
             draft.email       = email->GetText();
             draft.password    = password->GetText();
-            if (onSubmit && !draft.email.empty()) onSubmit(draft);
+
+            // Say why nothing happened rather than discarding what was typed.
+            if (draft.email.empty()) {
+                AlertWarning(parent, "No e-mail address was entered, so no "
+                                     "account was added.",
+                             "Enter the address of the mailbox you want to add, "
+                             "for example you@example.com.");
+                return;
+            }
+            if (!LooksLikeEmailAddress(draft.email)) {
+                AlertWarning(parent, "\"" + draft.email + "\" is not a valid "
+                             "e-mail address, so no account was added.",
+                             "An address looks like you@example.com.");
+                return;
+            }
+            if (onSubmit) onSubmit(draft);
         },
         parent);
 }

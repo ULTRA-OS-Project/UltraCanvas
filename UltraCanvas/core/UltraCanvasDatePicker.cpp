@@ -977,12 +977,14 @@ namespace UltraCanvas {
 
     void UltraCanvasCalendarView::SetMonthsPerView(int n) {
         monthsPerView = n < 1 ? 1 : n;
+        scrollAnim.Cancel();
         scrollOffset = 0.0f;
         RequestRedraw();
     }
 
     void UltraCanvasCalendarView::SetNavigationMode(CalendarNavMode m) {
         navMode = m;
+        scrollAnim.Cancel();
         scrollOffset = 0.0f;
         if (m == CalendarNavMode::Scrolling) level = CalendarViewLevel::Days;
         RequestRedraw();
@@ -990,6 +992,7 @@ namespace UltraCanvas {
 
     void UltraCanvasCalendarView::SetOrientation(CalendarOrientation o) {
         orientation = o;
+        scrollAnim.Cancel();
         scrollOffset = 0.0f;
         RequestRedraw();
     }
@@ -997,6 +1000,7 @@ namespace UltraCanvas {
     void UltraCanvasCalendarView::SetScrollMonthRange(const UCDate& from, const UCDate& to) {
         scrollFrom = from;
         scrollTo = to;
+        scrollAnim.Cancel();
         scrollOffset = 0.0f;
         RequestRedraw();
     }
@@ -1071,6 +1075,21 @@ namespace UltraCanvas {
         float maxOff = std::max(0.0f, ContentMain(ml) - ViewportMain(ml));
         if (scrollOffset < 0.0f) scrollOffset = 0.0f;
         if (scrollOffset > maxOff) scrollOffset = maxOff;
+    }
+
+    // Glides the month strip by `delta` pixels. Each eased step is written
+    // straight to scrollOffset and repaints, so a wheel notch or a track page
+    // moves the same way an instant scroll did — just over ~150 ms.
+    void UltraCanvasCalendarView::AnimateScrollBy(float delta, const MultiLayout& ml) {
+        if (!scrollAnim.IsBound()) {
+            scrollAnim.Bind([this] { return static_cast<double>(scrollOffset); },
+                            [this](double v) {
+                                scrollOffset = static_cast<float>(v);
+                                RequestRedraw();
+                            });
+        }
+        float maxOff = std::max(0.0f, ContentMain(ml) - ViewportMain(ml));
+        scrollAnim.AnimateBy(delta, 0.0, maxOff);
     }
 
     std::vector<std::pair<Rect2Df, long>> UltraCanvasCalendarView::VisiblePanels(const MultiLayout& ml) const {
@@ -1210,9 +1229,7 @@ namespace UltraCanvas {
             SetVisibleMonth(visibleYear, visibleMonth + monthDelta);
         } else {
             MultiLayout ml = ComputeMultiLayout();
-            scrollOffset += monthDelta * ml.panelMain;
-            ClampScroll(ml);
-            RequestRedraw();
+            AnimateScrollBy(monthDelta * ml.panelMain, ml);
         }
     }
 
@@ -1229,6 +1246,8 @@ namespace UltraCanvas {
         MultiLayout ml = ComputeMultiLayout();
         float target = (idx - fromIdx) * ml.panelMain;
         float vp = ViewportMain(ml);
+        // A month asked for by name is positioned, not scrolled to.
+        scrollAnim.Cancel();
         if (target < scrollOffset) scrollOffset = target;
         else if (target + ml.panelMain > scrollOffset + vp) scrollOffset = target + ml.panelMain - vp;
         ClampScroll(ml);
@@ -1292,6 +1311,8 @@ namespace UltraCanvas {
                     if (thumb.Contains(p)) {
                         draggingThumb = true;
                         dragStartPos = p;
+                        // The strip follows the grabbed thumb exactly.
+                        scrollAnim.Cancel();
                         dragStartOffset = scrollOffset;
                         return true;
                     }
@@ -1299,9 +1320,7 @@ namespace UltraCanvas {
                         float vp = ViewportMain(ml);
                         bool after = (orientation == CalendarOrientation::Vertical)
                                      ? (p.y > thumb.y + thumb.height) : (p.x > thumb.x + thumb.width);
-                        scrollOffset += after ? vp : -vp;
-                        ClampScroll(ml);
-                        RequestRedraw();
+                        AnimateScrollBy(after ? vp : -vp, ml);
                         return true;
                     }
                 }
@@ -1370,9 +1389,8 @@ namespace UltraCanvas {
 
             case UCEventType::MouseWheel:
                 if (navMode == CalendarNavMode::Scrolling) {
-                    scrollOffset -= (event.wheelDelta > 0 ? 1.0f : -1.0f) * (ml.panelMain * 0.34f);
-                    ClampScroll(ml);
-                    RequestRedraw();
+                    AnimateScrollBy(-(event.wheelDelta > 0 ? 1.0f : -1.0f)
+                                    * (ml.panelMain * 0.34f), ml);
                 } else {
                     NavigateMulti(event.wheelDelta > 0 ? -1 : 1);
                 }

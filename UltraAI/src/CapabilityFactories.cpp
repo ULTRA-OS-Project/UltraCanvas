@@ -16,6 +16,7 @@
 #include "UltraAIVideoGen.h"
 #include "UltraAIMusicGen.h"
 #include "UltraAICodeAssist.h"
+#include "UltraAIRouting.h"
 
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
 #include "UltraAIMockEmbeddings.h"
@@ -27,6 +28,22 @@
 #include "UltraAIMockVideoGen.h"
 #include "UltraAIMockMusicGen.h"
 #include "UltraAIMockCodeAssist.h"
+#endif
+
+#ifdef ULTRAAI_HAS_OPENAI_ADAPTER
+#include "UltraAIOpenAI.h"
+#endif
+#ifdef ULTRAAI_HAS_LLAMACPP_ADAPTER
+#include "UltraAILlamaEmbeddings.h"
+#endif
+#ifdef ULTRAAI_HAS_QWEN_ADAPTER
+#include "UltraAIQwen.h"
+#endif
+#ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
+#include "UltraAIMiniMax.h"
+#endif
+#ifdef ULTRAAI_HAS_COMFYUI_ADAPTER
+#include "UltraAIComfyUI.h"
 #endif
 
 #include <cmath>
@@ -44,6 +61,7 @@ struct Registry {
     std::mutex mu;
     std::map<std::string, FactoryFn> providers;
     std::function<void()> ensureBuiltins;
+    const char* capabilityName = "";
 };
 
 template<typename Interface, typename Config>
@@ -53,27 +71,42 @@ std::unique_ptr<Interface> Create(Registry<Interface, Config>& r,
     std::lock_guard<std::mutex> lock(r.mu);
     if (r.ensureBuiltins) r.ensureBuiltins();
 
-    std::string id = cfg.providerId;
-    if (id.empty()) {
-        if (r.providers.count("mock")) id = "mock";
-        else if (!r.providers.empty()) id = r.providers.begin()->first;
-    }
-    auto it = r.providers.find(id);
-    if (it == r.providers.end()) {
-        if (outError) {
-            outError->code    = ErrorCode::ModelNotFound;
-            outError->message = "No provider registered for id '" + id + "'";
-        }
-        return nullptr;
-    }
     Error tmp;
     Error* err = outError ? outError : &tmp;
-    auto inst = it->second(cfg, err);
-    if (!inst && err->code == ErrorCode::None) {
-        err->code    = ErrorCode::ProviderError;
-        err->message = "Provider '" + id + "' factory returned null";
+
+    if (!cfg.providerId.empty()) {
+        auto it = r.providers.find(cfg.providerId);
+        if (it == r.providers.end()) {
+            err->code    = ErrorCode::ModelNotFound;
+            err->message = "No provider registered for id '" +
+                           cfg.providerId + "'";
+            return nullptr;
+        }
+        auto inst = it->second(cfg, err);
+        if (!inst && err->code == ErrorCode::None) {
+            err->code    = ErrorCode::ProviderError;
+            err->message = "Provider '" + cfg.providerId +
+                           "' factory returned null";
+        }
+        return inst;
     }
-    return inst;
+
+    // Default route (UltraAIRouting.h): walk the preference order, falling
+    // through providers that cannot construct in this build.
+    std::vector<std::string> registered;
+    registered.reserve(r.providers.size());
+    for (const auto& kv : r.providers) registered.push_back(kv.first);
+    for (const std::string& id :
+         ResolveProviderOrder(r.capabilityName, registered)) {
+        *err = {};
+        auto inst = r.providers[id](cfg, err);
+        if (inst) return inst;
+    }
+    if (err->code == ErrorCode::None) {
+        err->code    = ErrorCode::ModelNotFound;
+        err->message = "No provider registered";
+    }
+    return nullptr;
 }
 
 template<typename Interface, typename Config>
@@ -101,11 +134,36 @@ Registry<IEmbeddings, EmbeddingsConfig>& EmbedsReg() {
     static Registry<IEmbeddings, EmbeddingsConfig> r;
     static std::once_flag init;
     std::call_once(init, [&]() {
+        r.capabilityName = "embeddings";
         r.ensureBuiltins = [&]() {
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
             if (!r.providers.count("mock")) {
                 r.providers["mock"] = [](const EmbeddingsConfig&, Error*) {
                     return CreateMockEmbeddings();
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_OPENAI_ADAPTER
+            if (!r.providers.count("openai")) {
+                r.providers["openai"] = [](const EmbeddingsConfig& cfg,
+                                           Error* err) {
+                    return CreateOpenAIEmbeddings(cfg, err);
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_LLAMACPP_ADAPTER
+            if (!r.providers.count("llama-cpp")) {
+                r.providers["llama-cpp"] = [](const EmbeddingsConfig& cfg,
+                                              Error* err) {
+                    return CreateLlamaEmbeddings(cfg, err);
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_QWEN_ADAPTER
+            if (!r.providers.count("qwen")) {
+                r.providers["qwen"] = [](const EmbeddingsConfig& cfg,
+                                         Error* err) {
+                    return CreateQwenEmbeddings(cfg, err);
                 };
             }
 #endif
@@ -118,6 +176,7 @@ Registry<ISpeechToText, SpeechToTextConfig>& SttReg() {
     static Registry<ISpeechToText, SpeechToTextConfig> r;
     static std::once_flag init;
     std::call_once(init, [&]() {
+        r.capabilityName = "speechtotext";
         r.ensureBuiltins = [&]() {
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
             if (!r.providers.count("mock")) {
@@ -135,11 +194,20 @@ Registry<ITextToSpeech, TextToSpeechConfig>& TtsReg() {
     static Registry<ITextToSpeech, TextToSpeechConfig> r;
     static std::once_flag init;
     std::call_once(init, [&]() {
+        r.capabilityName = "texttospeech";
         r.ensureBuiltins = [&]() {
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
             if (!r.providers.count("mock")) {
                 r.providers["mock"] = [](const TextToSpeechConfig&, Error*) {
                     return CreateMockTextToSpeech();
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
+            if (!r.providers.count("minimax")) {
+                r.providers["minimax"] = [](const TextToSpeechConfig& cfg,
+                                            Error* err) {
+                    return CreateMiniMaxTextToSpeech(cfg, err);
                 };
             }
 #endif
@@ -152,11 +220,28 @@ Registry<IImageGen, ImageGenConfig>& ImgReg() {
     static Registry<IImageGen, ImageGenConfig> r;
     static std::once_flag init;
     std::call_once(init, [&]() {
+        r.capabilityName = "imagegen";
         r.ensureBuiltins = [&]() {
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
             if (!r.providers.count("mock")) {
                 r.providers["mock"] = [](const ImageGenConfig&, Error*) {
                     return CreateMockImageGen();
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_COMFYUI_ADAPTER
+            if (!r.providers.count("comfyui")) {
+                r.providers["comfyui"] = [](const ImageGenConfig& cfg,
+                                            Error* err) {
+                    return CreateComfyUIImageGen(cfg, err);
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
+            if (!r.providers.count("minimax")) {
+                r.providers["minimax"] = [](const ImageGenConfig& cfg,
+                                            Error* err) {
+                    return CreateMiniMaxImageGen(cfg, err);
                 };
             }
 #endif
@@ -169,6 +254,7 @@ Registry<IVisionAnalyzer, VisionAnalyzerConfig>& VisReg() {
     static Registry<IVisionAnalyzer, VisionAnalyzerConfig> r;
     static std::once_flag init;
     std::call_once(init, [&]() {
+        r.capabilityName = "visionanalyzer";
         r.ensureBuiltins = [&]() {
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
             if (!r.providers.count("mock")) {
@@ -186,6 +272,7 @@ Registry<ITranslator, TranslatorConfig>& TrReg() {
     static Registry<ITranslator, TranslatorConfig> r;
     static std::once_flag init;
     std::call_once(init, [&]() {
+        r.capabilityName = "translator";
         r.ensureBuiltins = [&]() {
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
             if (!r.providers.count("mock")) {
@@ -203,11 +290,28 @@ Registry<IVideoGen, VideoGenConfig>& VidReg() {
     static Registry<IVideoGen, VideoGenConfig> r;
     static std::once_flag init;
     std::call_once(init, [&]() {
+        r.capabilityName = "videogen";
         r.ensureBuiltins = [&]() {
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
             if (!r.providers.count("mock")) {
                 r.providers["mock"] = [](const VideoGenConfig&, Error*) {
                     return CreateMockVideoGen();
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_COMFYUI_ADAPTER
+            if (!r.providers.count("comfyui")) {
+                r.providers["comfyui"] = [](const VideoGenConfig& cfg,
+                                            Error* err) {
+                    return CreateComfyUIVideoGen(cfg, err);
+                };
+            }
+#endif
+#ifdef ULTRAAI_HAS_MINIMAX_ADAPTER
+            if (!r.providers.count("minimax")) {
+                r.providers["minimax"] = [](const VideoGenConfig& cfg,
+                                            Error* err) {
+                    return CreateMiniMaxVideoGen(cfg, err);
                 };
             }
 #endif
@@ -220,6 +324,7 @@ Registry<IMusicGen, MusicGenConfig>& MusReg() {
     static Registry<IMusicGen, MusicGenConfig> r;
     static std::once_flag init;
     std::call_once(init, [&]() {
+        r.capabilityName = "musicgen";
         r.ensureBuiltins = [&]() {
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
             if (!r.providers.count("mock")) {
@@ -237,6 +342,7 @@ Registry<ICodeAssist, CodeAssistConfig>& CodeReg() {
     static Registry<ICodeAssist, CodeAssistConfig> r;
     static std::once_flag init;
     std::call_once(init, [&]() {
+        r.capabilityName = "codeassist";
         r.ensureBuiltins = [&]() {
 #ifdef ULTRAAI_HAS_MOCK_ADAPTER
             if (!r.providers.count("mock")) {

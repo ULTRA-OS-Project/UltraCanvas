@@ -1,13 +1,14 @@
 // include/UltraCanvasMenu.h
 // Interactive menu component with styling options and submenu support
-// Version: 1.7.0
-// Last Modified: 2026-05-31
+// Version: 1.8.1
+// Last Modified: 2026-08-31
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasEvent.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasScrollbar.h"
 #include <vector>
@@ -82,7 +83,11 @@ namespace UltraCanvas {
         bool checked = false;
         int radioGroup = 0;
 
-        // Callbacks
+        // Callbacks. onClick on a Submenu item makes the parent entry itself
+        // actionable: hovering opens the child list as always, activating the
+        // entry runs the action and closes the menu (the Filer's "Open with"
+        // opens the default application that way). Without it, activating a
+        // submenu entry only opens its list.
         std::function<void()> onClick;
         std::function<void(bool)> onToggle;
 //        std::function<void(const std::string&)> onTextInput;
@@ -226,6 +231,11 @@ namespace UltraCanvas {
         // Scroll support for overflow menus
         std::shared_ptr<UltraCanvasScrollbar> menuScrollbar;
         int scrollOffsetPixels = 0;
+        // Wheel notches glide the item list to their target instead of jumping
+        // (see UltraCanvasSmoothScroll.h). Opening the menu, revealing an item
+        // under the keyboard focus and the scrollbar's own callback all cancel
+        // the glide and position the list directly.
+        UltraCanvasSmoothScroll scrollAnim;
         int totalContentHeight = 0;
         int clampedMenuHeight = 0;
         bool needsScrollbar = false;
@@ -397,6 +407,7 @@ namespace UltraCanvas {
         void ExecuteItem(int index);
 
         // ===== ANIMATION =====
+        void BindScrollAnimator();
         void StartAnimation();
         void UpdateAnimation();
     };
@@ -514,7 +525,10 @@ namespace UltraCanvas {
         style.iconSize = 16;
         style.iconSpacing = 6;
         style.shortcutSpacing = 20;
-        style.separatorHeight = 1;
+        // The separator row holds a 1px line centred in it, so it needs a few
+        // pixels of its own: at separatorHeight = 1 the line sits flush against
+        // the neighbouring items and reads as a hairline rather than a divider.
+        style.separatorHeight = 7;
         style.borderWidth = 1;
         style.borderRadius = 0;
         style.font.fontSize = 11.0f;
@@ -527,23 +541,32 @@ namespace UltraCanvas {
     }
 
     inline MenuStyle MenuStyle::Dark() {
-        MenuStyle style;
-        style.backgroundColor = Color(45, 45, 45);
+        // Built on Default() so the themes differ in colour only: starting from a
+        // bare MenuStyle gave the dark menu its own item height, padding, corner
+        // radius, shadow and separator height, and the same menu changed shape
+        // when it changed theme.
+        MenuStyle style = Default();
+        style.backgroundColor = Color(45, 45, 45, 255);
+        style.borderColor = Color(70, 70, 70, 255);
         style.textColor = Colors::White;
         style.hoverTextColor = Colors::White;
-        style.hoverColor = Color(85, 85, 85);
-        style.headerTextColor = Color(180, 180, 180);
+        style.hoverColor = Color(85, 85, 85, 255);
+        style.pressedColor = Color(110, 110, 110, 255);
+        style.disabledTextColor = Color(120, 120, 120, 255);
+        style.shortcutColor = Color(170, 170, 170, 255);
+        style.separatorColor = Color(90, 90, 90, 255);
+        style.headerTextColor = Color(180, 180, 180, 255);
         return style;
     }
 
     inline MenuStyle MenuStyle::Flat() {
-        MenuStyle style;
+        MenuStyle style = Default();
         style.backgroundColor = Colors::White;
         style.borderWidth = 0;
         style.borderRadius = 0;
         style.showShadow = false;
         style.textColor = Colors::Black;
-        style.hoverColor = Color(240, 240, 240);
+        style.hoverColor = Color(240, 240, 240, 255);
         return style;
     }
 

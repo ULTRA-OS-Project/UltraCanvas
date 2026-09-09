@@ -17,6 +17,7 @@
 #pragma once
 
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "Plugins/Charts/UltraCanvasChartLegend.h"
 #include "Plugins/Charts/UltraCanvasColormap.h"
 #include "Plugins/Charts/UltraCanvasContourGrid.h"
@@ -93,6 +94,10 @@ namespace UltraCanvas {
         double yaw = -0.62;
         double pitch = 0.42;
         double distance = 4.6;       // fits the [-1,1] ground box at the default FOV
+        // The wheel dollies the camera: the distance eases towards its target
+        // instead of stepping, so a spin reads as one continuous move (the dolly
+        // is multiplicative, which is what UltraCanvasSmoothZoom animates).
+        UltraCanvasSmoothZoom dollyAnim;
         double fieldOfView = 0.62;     // radians
         bool enableOrbit = true;
 

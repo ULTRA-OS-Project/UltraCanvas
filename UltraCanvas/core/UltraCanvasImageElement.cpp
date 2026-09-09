@@ -139,6 +139,7 @@ namespace UltraCanvas {
         if (!IsVisible() || finalBounds.width == 0 || finalBounds.height == 0) return;
 
         ctx->PushState();
+        UltraCanvasUIElement::Render(ctx, dirtyRect);
 
         if (loadedImage && loadedImage->IsValid()) {
             DrawLoadedImage(ctx);
@@ -189,13 +190,13 @@ namespace UltraCanvas {
     void UltraCanvasImageElement::DrawLoadedImage(IRenderContext *ctx) {
         // Apply global alpha
         ctx->SetAlpha(opacity);
-
+        auto contentRect = GetLocalContentRect();
         // Apply transformations (ctx is already translated to element origin)
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {
             ctx->PushState();
 
             // Translate to center for rotation (element-local center)
-            Point2Di center = Point2Di(GetWidth() / 2.0f, GetHeight() / 2.0f);
+            Point2Di center = Point2Di(contentRect.width / 2.0f, contentRect.height / 2.0f);
             ctx->Translate(center.x, center.y);
 
             // Apply transformations
@@ -210,15 +211,15 @@ namespace UltraCanvas {
         // Draw the image using unified rendering (element-local bounds)
         if (auto framePm = animator.GetCurrentFramePixmap()) {
             // Animated image: draw the controller's current frame directly.
-            ctx->DrawPixmap(*framePm, GetLocalBounds(), fitMode);
+            ctx->DrawPixmap(*framePm, contentRect, fitMode);
         } else if (loadedImage->IsValid()) {
             // Load from file path
-            ctx->DrawImage(*loadedImage.get(), GetLocalBounds(), fitMode);
+            ctx->DrawImage(*loadedImage.get(), contentRect, fitMode);
         } else {
             // For memory-loaded images, we'd need to save to a temporary file
             // or extend the rendering interface to support raw data
             // For now, draw a placeholder
-            DrawImagePlaceholder(GetLocalBounds(), "IMG");
+            DrawImagePlaceholder(contentRect, "IMG");
         }
 
         if (rotation != 0.0f || scale.x != 1.0f || scale.y != 1.0f || offset.x != 0.0f || offset.y != 0.0f) {

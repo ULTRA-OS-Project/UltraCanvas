@@ -1,7 +1,7 @@
 // UltraAI/adapters/_shared/src/ScriptedTransport.cpp
 // Implementation of TransportResponse::GetHeader and ScriptedTransport.
-// Version: 0.1.0
-// Last Modified: 2026-08-21
+// Version: 0.2.0
+// Last Modified: 2026-08-24
 // Author: UltraAI Module
 
 #include "UltraAITransport.h"
@@ -51,11 +51,20 @@ void ScriptedTransport::ScriptSse(std::vector<TransportSseEvent> events,
     script_.push_back(std::move(ex));
 }
 
+void ScriptedTransport::ScriptWebSocket(
+    std::vector<TransportWsMessage> messages, Error finalError) {
+    Exchange ex;
+    ex.isWs       = true;
+    ex.wsMessages = std::move(messages);
+    ex.error      = std::move(finalError);
+    script_.push_back(std::move(ex));
+}
+
 TransportResponse ScriptedTransport::Request(const TransportRequest& request,
                                              Error* outError) {
     requests_.push_back(request);
 
-    if (script_.empty() || script_.front().isSse) {
+    if (script_.empty() || script_.front().isSse || script_.front().isWs) {
         if (outError) {
             outError->code    = ErrorCode::ProviderError;
             outError->message = "ScriptedTransport: unscripted Request to " +
@@ -95,6 +104,30 @@ CancelFn ScriptedTransport::SseStream(const TransportRequest& request,
         for (const auto& ev : ex.events) onEvent(ev);
     }
     if (onComplete) onComplete(ex.error, ex.sseStatusCode);
+    return [this] { cancelled_ = true; };
+}
+
+CancelFn ScriptedTransport::WebSocketStream(const TransportRequest& request,
+                                            WsMessageCallback onMessage,
+                                            WsCompleteCallback onComplete) {
+    requests_.push_back(request);
+
+    if (script_.empty() || !script_.front().isWs) {
+        Error e;
+        e.code    = ErrorCode::ProviderError;
+        e.message = "ScriptedTransport: unscripted WebSocketStream to " +
+                    request.url;
+        if (onComplete) onComplete(e);
+        return [this] { cancelled_ = true; };
+    }
+
+    Exchange ex = std::move(script_.front());
+    script_.pop_front();
+
+    if (onMessage) {
+        for (const auto& msg : ex.wsMessages) onMessage(msg);
+    }
+    if (onComplete) onComplete(ex.error);
     return [this] { cancelled_ = true; };
 }
 

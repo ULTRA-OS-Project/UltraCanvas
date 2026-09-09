@@ -515,11 +515,14 @@ namespace UltraCanvas {
                 };
             }
 
+            // XAR matrices follow the PostScript order (x' = a x + c y + e);
+            // Matrix3x3::FromValues is row-major, so b and c swap places -
+            // the mirror of ToXARMatrix above.
             inline VectorStorage::Matrix3x3 FromXARMatrix(const XARMatrix& matrix) {
                 return VectorStorage::Matrix3x3::FromValues(
                         FixedToFloat16(matrix.a),
-                        FixedToFloat16(matrix.b),
                         FixedToFloat16(matrix.c),
+                        FixedToFloat16(matrix.b),
                         FixedToFloat16(matrix.d),
                         FixedToFloat16(matrix.e) / XAR_MILLIPOINTS_PER_POINT,
                         FixedToFloat16(matrix.f) / XAR_MILLIPOINTS_PER_POINT

@@ -51,6 +51,9 @@ UltraCanvasMindMap::UltraCanvasMindMap(const std::string& id,
                                        int x, int y, int width, int height)
     : UltraCanvasUIElement(id, x, y, width, height) {
     viewport.SetViewportSize(width, height);
+    // Repaint each eased step of a wheel zoom, so it glides instead of
+    // stepping (see UltraCanvasDiagramViewport::ZoomAtPoint).
+    viewport.SetRepaintCallback([this] { RequestRedraw(); });
     viewport.SetZoomRange(0.15, 4.0);
     ApplyTheme(MindMapTheme::Default);
 }

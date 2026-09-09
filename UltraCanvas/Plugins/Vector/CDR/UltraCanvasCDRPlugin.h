@@ -1,7 +1,7 @@
 // Plugins/Vector/CDR/UltraCanvasCDRPlugin.h
 // CorelDRAW CDR/CMX file format plugin using libcdr and librevenge
-// Version: 1.1.0
-// Last Modified: 2025-12-15
+// Version: 1.2.0
+// Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -222,6 +222,16 @@ namespace UltraCanvas {
         std::function<void()> onLoadComplete;
     };
 
+// ===== CDR EXPORT RESULT =====
+    // Outcome of a "save as" conversion (see UltraCanvasCDRPlugin::ExportToSVG /
+    // ExportToXAR). On success writtenFiles lists every file created; on
+    // failure error says why and writtenFiles is empty.
+    struct CDRExportResult {
+        bool success = false;
+        std::string error;
+        std::vector<std::string> writtenFiles;
+    };
+
 // ===== CDR PLUGIN =====
     class UltraCanvasCDRPlugin : public IGraphicsPlugin {
     public:
@@ -230,7 +240,7 @@ namespace UltraCanvas {
 
         // IGraphicsPlugin interface
         std::string GetPluginName() const override { return "UltraCanvas CDR Plugin"; }
-        std::string GetPluginVersion() const override { return "1.1.0"; }
+        std::string GetPluginVersion() const override { return "1.2.0"; }
         std::vector<std::string> GetSupportedExtensions() const override {
             return {"cdr", "cmx", "ccx", "cdt"};
         }
@@ -251,6 +261,24 @@ namespace UltraCanvas {
         static bool IsFileSupported(const std::string& filePath);
         static std::shared_ptr<CDRDocument> ParseCDRFile(const std::string& filePath);
         static std::shared_ptr<CDRDocument> ParseCDRMemory(const std::vector<uint8_t>& data);
+
+        // ===== EXPORT ("SAVE AS") =====
+        // Convert a CorelDRAW/CMX file to SVG (librevenge's SVG generator, so
+        // everything libcdr parses is preserved). pageIndex is 0-based and
+        // selects one page; pass -1 to export every page — SVG has no
+        // multi-page form, so page N >= 2 goes to "<stem>-p<N>.svg" next to
+        // svgPath. svgPath's directory must exist.
+        static CDRExportResult ExportToSVG(const std::string& cdrPath,
+                                           const std::string& svgPath,
+                                           int pageIndex = -1);
+
+        // Convert a CorelDRAW/CMX file to Xara XAR. Not implemented yet: the
+        // XAR writer (XARConverter, Plugins/Vector) exports only from the
+        // shared VectorStorage document model, and no CDR importer into that
+        // model exists. Always fails with an error saying so — kept so
+        // callers can offer the format and surface the reason.
+        static CDRExportResult ExportToXAR(const std::string& cdrPath,
+                                           const std::string& xarPath);
     };
 
 // ===== CONVENIENCE FUNCTIONS =====

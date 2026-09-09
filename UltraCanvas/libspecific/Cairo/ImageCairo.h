@@ -1,7 +1,7 @@
 // libspecific/Cairo/ImageCairo.h
 // Base interface for cross-platform image handling in UltraCanvas
-// Version: 1.2.0
-// Last Modified: 2026-07-21
+// Version: 1.3.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef IMAGECAIRO_H
@@ -119,6 +119,10 @@ namespace UltraCanvas {
         bool ownData = false;
         std::string fileName;
 
+        // Transparency state, resolved on the first HasTransparency() call and
+        // kept: -1 unknown, 0 opaque, 1 shows what is behind it.
+        int transparency = -1;
+
         // Animation state ("n-pages" / "delay" loader metadata). Multi-page
         // stills (TIFF, PDF) have pages but no delays and stay static.
         int nPages = 1;
@@ -168,6 +172,13 @@ namespace UltraCanvas {
         std::shared_ptr<UCPixmapCairo> CreatePixmap(int width, int height,
                                                     ImageFitMode fitMode = ImageFitMode::Contain,
                                                     float scale = 1.0f);
+        // Decode at native size with the alpha band inverted BEFORE
+        // premultiplication. Some producers (Xara .xar embedded bitmaps)
+        // store transparency, not alpha, in the channel (255 = fully
+        // transparent); a normal decode zeroes the colour of exactly the
+        // pixels such a bitmap means to show. Images without an alpha band
+        // decode normally (opaque). Not cached.
+        std::shared_ptr<UCPixmapCairo> CreatePixmapAlphaInverted();
         std::string MakePixmapCacheKey(int w, int h, ImageFitMode fitMode, float scale);
 
         // Get aspect ratio
@@ -178,6 +189,21 @@ namespace UltraCanvas {
         int GetWidth() const { return width; }
         int GetHeight() const { return height; }
 
+        // ===== TRANSPARENCY =====
+        // True when something behind the image can show through it: the image
+        // carries an alpha channel that is not fully opaque, or it is a vector
+        // document (SVG), which paints over whatever is beneath it. Answers
+        // the question a viewer asks before offering a backdrop colour.
+        //
+        // The answer is worked out once and kept. An alpha channel that turns
+        // out to be fully opaque counts as opaque — the common "PNG with an
+        // unused alpha channel" case — which costs one decode of the alpha
+        // channel, so images past 16 megapixels take the channel's presence at
+        // face value instead. An image with no alpha channel is answered from
+        // its header alone. Without libvips (and for an unreadable file) the
+        // answer is false.
+        bool HasTransparency();
+
         // ===== ANIMATION (GIF / animated WebP) =====
         // True when the loader reported multiple pages WITH per-frame delays.
         bool IsAnimated() const { return nPages > 1 && hasFrameDelays; }
@@ -186,6 +212,21 @@ namespace UltraCanvas {
         // when decoding fails, or when the fully decoded sequence would be
         // unreasonably large — the image then displays as a still (frame 0).
         std::shared_ptr<UCImageAnimation> GetAnimation();
+
+        // ===== EMBEDDED METADATA =====
+        // Reads one metadata field the loader attached to the image, by the
+        // name libvips gives it. EXIF fields are named
+        // "exif-ifd<N>-<TagName>" — the capture time an album or a gallery
+        // sorts by is "exif-ifd2-DateTimeOriginal", and the camera that took
+        // the shot is "exif-ifd0-Make" / "exif-ifd0-Model".
+        //
+        // The raw value carries libvips' trailing " (…, ASCII, N components…)"
+        // annotation; `stripAnnotation` (the default) removes it so the caller
+        // gets just the value. Returns "" when the field is absent, the file
+        // cannot be read, or the build has no libvips — callers must treat an
+        // empty result as "unknown", never as an error.
+        std::string GetMetadataString(const std::string& key,
+                                      bool stripAnnotation = true);
 
 #ifdef HAS_LIBVIPS
         vips::VImage GetVImage();
@@ -201,6 +242,25 @@ namespace UltraCanvas {
         static bool InitializeImageSubsysterm(const char* programName);
         static void ShutdownImageSubsysterm();
     };
+
+    // ===== QOI FILE EXPORT =====
+    // Writes a real .qoi file - the interchange format, unlike
+    // QoiCompressPixmap's in-process blobs (QoiPixmapCodec.h) - through the
+    // bundled QOI encoder (qoi.cpp). Nothing but Cairo is involved, so this
+    // works in builds without libvips and without an ImageMagick QOI write
+    // delegate, which is what `UCImageSaveFormat::QOI` needs. The pixmap's
+    // premultiplied ARGB32 pixels are un-premultiplied to straight RGBA
+    // first, as the format requires. Returns "" on success, else the reason.
+    std::string SavePixmapAsQoiFile(UCPixmapCairo& pixmap, const std::string& filePath);
+
+    // The same, straight from an image file of any format the pipeline loads
+    // (SVG included, rasterized by the vector renderer). `maxEdge` > 0 fits
+    // the image into a maxEdge x maxEdge box keeping its aspect ratio - what
+    // an application storing a picture as an icon wants; 0 keeps the source
+    // resolution. Returns "" on success, else the reason.
+    std::string SaveImageFileAsQoi(const std::string& sourcePath,
+                                   const std::string& destPath,
+                                   int maxEdge = 0);
 
 #ifdef HAS_LIBVIPS
     std::shared_ptr<UCPixmapCairo> CreatePixmapFromVImage(vips::VImage vipsImage);

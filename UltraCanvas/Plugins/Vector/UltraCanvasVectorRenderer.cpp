@@ -262,7 +262,7 @@ namespace UltraCanvas {
         Point2Dd pos = text.Position;
         for (const auto &span: text.Spans) {
             if (span.Position.has_value()) pos = span.Position.value();
-            ctx->DrawText(span.Text, pos.x, pos.y);
+            ctx->DrawText(span.Text, Point2Dd(pos.x, pos.y));
             pos.x += span.Text.length() * span.Style.FontSize * 0.6f;
         }
     }
@@ -344,7 +344,9 @@ namespace UltraCanvas {
             gr.endPoint = g.End;
         }
         gr.stops = g.Stops;
-        ctx->SetFillGradient(gr);
+        auto pattern = ctx->CreateLinearGradientPattern(
+                gr.startPoint.x, gr.startPoint.y, gr.endPoint.x, gr.endPoint.y, gr.stops);
+        if (pattern) ctx->SetFillPaint(pattern);
     }
 
     void VectorRenderer::SetupRadialGradient(const RadialGradientData &g, const Rect2Dd &b) {
@@ -359,7 +361,10 @@ namespace UltraCanvas {
         gr.endPoint = gr.startPoint;
         gr.radius2 = gr.radius1;
         gr.stops = g.Stops;
-        ctx->SetFillGradient(gr);
+        auto pattern = ctx->CreateRadialGradientPattern(
+                gr.startPoint.x, gr.startPoint.y, 0.0,
+                gr.endPoint.x, gr.endPoint.y, gr.radius2, gr.stops);
+        if (pattern) ctx->SetFillPaint(pattern);
     }
 
     void VectorRenderer::BuildPath(const PathData &pathData) {
@@ -474,21 +479,38 @@ namespace UltraCanvas {
 
     void VectorRenderer::ClearCaches() {}
 
+    // `p` is in the coordinate space the element's bounding box is expressed
+    // in: the parent's space (the box already includes the element's own
+    // Transform). An element without bounds never hits.
     bool HitTestElement(const VectorElement &e, const Point2Dd &p) {
         Rect2Dd b = e.GetBoundingBox();
+        if (b.width <= 0 && b.height <= 0 && b.x == 0 && b.y == 0) return false;
         return p.x >= b.x && p.x <= b.x + b.width && p.y >= b.y && p.y <= b.y + b.height;
     }
 
+    // The document point is carried down the tree through the inverse of each
+    // group's Transform, so children of a transformed group (a block insert,
+    // a mirrored entity) are tested in the space their geometry is stored in.
     std::vector<const VectorElement *> HitTestDocument(const VectorDocument &doc, const Point2Dd &pt) {
         std::vector<const VectorElement *> hits;
-        std::function<void(const VectorGroup &)> test = [&](const VectorGroup &g) {
+        std::function<void(const VectorGroup &, const Point2Dd &)> test =
+                [&](const VectorGroup &g, const Point2Dd &local) {
             for (auto it = g.Children.rbegin(); it != g.Children.rend(); ++it) {
                 if (!*it || !(*it)->Style.Visible) continue;
-                if (HitTestElement(**it, pt)) hits.push_back(it->get());
-                if (auto *gg = dynamic_cast<const VectorGroup *>(it->get())) test(*gg);
+                if (HitTestElement(**it, local)) hits.push_back(it->get());
+                if (auto *gg = dynamic_cast<const VectorGroup *>(it->get())) {
+                    Point2Dd inner = gg->Transform.has_value()
+                                     ? gg->Transform->Inverse().Transform(local) : local;
+                    test(*gg, inner);
+                }
             }
         };
-        for (auto it = doc.Layers.rbegin(); it != doc.Layers.rend(); ++it) if ((*it)->Visible) test(**it);
+        for (auto it = doc.Layers.rbegin(); it != doc.Layers.rend(); ++it) {
+            if (!(*it)->Visible) continue;
+            Point2Dd local = (*it)->Transform.has_value()
+                             ? (*it)->Transform->Inverse().Transform(pt) : pt;
+            test(**it, local);
+        }
         return hits;
     }
 

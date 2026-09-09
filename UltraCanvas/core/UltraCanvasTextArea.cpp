@@ -40,6 +40,19 @@ namespace UltraCanvas {
         // Initialize style with defaults
         ApplyDefaultStyle();
 
+        // Explicit scrolling glides; each eased step writes the offset and
+        // repaints (see UltraCanvasSmoothScroll.h).
+        scrollAnimV.Bind([this] { return static_cast<double>(verticalScrollOffset); },
+                         [this](double v) {
+                             verticalScrollOffset = static_cast<float>(v);
+                             RequestRedraw();
+                         });
+        scrollAnimH.Bind([this] { return static_cast<double>(horizontalScrollOffset); },
+                         [this](double v) {
+                             horizontalScrollOffset = static_cast<float>(v);
+                             RequestRedraw();
+                         });
+
         // Initialize syntax highlighter if needed
         if (style.highlightSyntax) {
             syntaxTokenizer = std::make_unique<SyntaxTokenizer>();
@@ -49,6 +62,14 @@ namespace UltraCanvas {
 // Destructor
     UltraCanvasTextArea::~UltraCanvasTextArea() {
         UltraCanvasCaret::GetInstance().Hide(this);
+        // Clear the liveness flag first, so a notifier already running on the
+        // worker thread drops its repaint instead of touching a dying element,
+        // then drop the queued job and any undelivered result: the service keys
+        // those by this pointer's value, which a later element could reuse.
+        spellAlive->store(false);
+        if (spellContextId != 0) {
+            UltraCanvasSpellChecker::Instance().CancelContext(spellContextId);
+        }
     }
 
 // Initialize default style
@@ -228,6 +249,7 @@ namespace UltraCanvas {
         isNeedRebuildLineLayouts = true;
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
+        QueueSpellCheck();
         if (runNotifications && onTextChanged) {
             onTextChanged(textContent);
         }
@@ -921,6 +943,24 @@ namespace UltraCanvas {
                  selectionStart.columnIndex == selectionEnd.columnIndex);
     }
 
+    // Hit test against the current selection, used by the right-click handler to
+    // decide whether opening a context menu should move the caret.
+    bool UltraCanvasTextArea::IsPositionInsideSelection(const Point2Di& pos) {
+        if (!HasSelection()) return false;
+
+        const LineColumnIndex hit = PosToLineColumn(pos);
+        if (!hit.IsValid()) return false;
+
+        LineColumnIndex a = selectionStart, b = selectionEnd;
+        if (a.lineIndex > b.lineIndex ||
+            (a.lineIndex == b.lineIndex && a.columnIndex > b.columnIndex)) std::swap(a, b);
+
+        if (hit.lineIndex < a.lineIndex || hit.lineIndex > b.lineIndex) return false;
+        if (hit.lineIndex == a.lineIndex && hit.columnIndex < a.columnIndex) return false;
+        if (hit.lineIndex == b.lineIndex && hit.columnIndex >= b.columnIndex) return false;
+        return true;
+    }
+
     int UltraCanvasTextArea::GetSelectionMinGrapheme() const {
         if (!HasSelection()) return -1;
         LineColumnIndex a = selectionStart, b = selectionEnd;
@@ -1077,9 +1117,27 @@ namespace UltraCanvas {
 
                 RenderLineLayout(ctx, ll);
             }
+            // Inside the text clip so marks never bleed over the gutter or the
+            // scrollbars, and after the glyphs so they sit on top of them.
+            DrawSpellErrorMarks(ctx);
             ctx->PopState();
 
-            if (IsFocused()) {
+            // Grey hint drawn over the (empty) text area, whether focused or not,
+            // so an empty composer still prompts the user. Mirrors the TextInput
+            // placeholder using the same render-context text API.
+            if (!placeholderText.empty() && GetText().empty()) {
+                ctx->PushState();
+                ctx->ClipRect(visibleTextArea);
+                ctx->SetFontStyle(style.fontStyle);
+                ctx->SetTextPaint(style.placeholderColor);
+                ctx->SetTextVerticalAlignment(VerticalAlignment::Top);
+                ctx->DrawTextInRect(placeholderText,
+                    Rect2Dd(visibleTextArea.x, visibleTextArea.y,
+                            visibleTextArea.width, visibleTextArea.height));
+                ctx->PopState();
+            }
+
+            if (IsFocused() && caretVisible) {
                 UpdateCaret(ctx);
             } else {
                 UltraCanvasCaret::GetInstance().Hide(this);
@@ -1289,6 +1347,15 @@ namespace UltraCanvas {
 
 // ===== EVENT HANDLING =====
 
+    void UltraCanvasTextArea::SetCaretVisible(bool visible) {
+        if (caretVisible == visible) return;
+        caretVisible = visible;
+        // Toggling off should drop the caret right away rather than waiting for
+        // the next focus change; the render path keeps it hidden thereafter.
+        if (!visible) UltraCanvasCaret::GetInstance().Hide(this);
+        RequestRedraw();
+    }
+
     void UltraCanvasTextArea::SetDisplayOnly(bool displayOnlyMode) {
         if (displayOnly == displayOnlyMode) return;
         displayOnly = displayOnlyMode;
@@ -1421,6 +1488,53 @@ namespace UltraCanvas {
         }
 
 
+        // --- Right-click: context menu ---
+        // After the scrollbar and gutter checks: a click on either still
+        // hit-tests to a text position, so testing earlier could open a menu
+        // from the scrollbar. Falls through when neither the host nor the spell
+        // checker wants the click, so ordinary right-click behaviour is
+        // unchanged.
+        if (event.button == UCMouseButton::Right) {
+            // Hex view has its own selection and hit test, so the caret is left
+            // to it; the menu still opens.
+            const bool textMode = (editingMode != TextAreaEditingMode::Hex);
+
+            // Hit test and build the menu before the caret moves. Moving it
+            // makes this the caret line, and until the next render
+            // GetActualLineLayout still hands back the previous caret line's
+            // layout - so a hit test run after the move resolves against the
+            // wrong line and lands at column 0.
+            //
+            // A click inside the selection keeps it, so Cut and Copy still act
+            // on what is highlighted; a click outside drops it, so the menu is
+            // built with the selection state its actions will actually see.
+            LineColumnIndex hit = LineColumnIndex::INVALID;
+            bool keepSelection = true;
+            if (textMode) {
+                hit = PosToLineColumn(event.pointer);
+                keepSelection = IsPositionInsideSelection(event.pointer);
+                if (!keepSelection) {
+                    ClearSelection();
+                }
+            }
+            if (!IsFocused()) {
+                SetFocus(true);
+            }
+
+            const bool handled = (onContextMenu && onContextMenu(event)) ||
+                                 ShowSpellSuggestionMenu(event);
+            if (handled) {
+                // Safe now that the menu is built: an action that works at the
+                // caret - Paste above all - acts where the user clicked.
+                if (textMode && !keepSelection && hit.IsValid()) {
+                    SetCursorPosition(hit);
+                }
+                return true;
+            }
+            // Neither wanted the click: fall through to ordinary handling,
+            // which does its own hit test against an unmoved caret.
+        }
+
         // --- Markdown link/image click: intercept before cursor move ---
         if (editingMode == TextAreaEditingMode::MarkdownHybrid && HandleMarkdownClick(event.pointer.x, event.pointer.y)) {
             return true;
@@ -1525,7 +1639,12 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasTextArea::HandleMouseMove(const UCEvent& event) {
-        // Scrollbar thumb dragging (pixel-based).
+        // Scrollbar thumb dragging (pixel-based). The view follows the grabbed
+        // thumb exactly, so a glide in flight is dropped rather than fought.
+        if (isDraggingVerticalThumb || isDraggingHorizontalThumb) {
+            scrollAnimV.Cancel();
+            scrollAnimH.Cancel();
+        }
         if (isDraggingVerticalThumb) {
             auto bounds = GetLocalBounds();
             float scrollbarHeight = bounds.height - (IsNeedHorizontalScrollbar() ? 15 : 0);
@@ -1854,6 +1973,11 @@ namespace UltraCanvas {
             }
         }
 
+        // Keeping the caret on screen has to hold the instant the keystroke is
+        // handled — every typed character passes here — so this positions the
+        // view directly and drops any glide the wheel or a page key started.
+        scrollAnimV.Cancel();
+        scrollAnimH.Cancel();
         if (cursorContentTop < verticalScrollOffset) {
             verticalScrollOffset = cursorContentTop;
         } else if (cursorContentBottom > verticalScrollOffset + visibleTextArea.height) {
@@ -2128,41 +2252,9 @@ namespace UltraCanvas {
         }
     }
 
-    // Visible/layout codepoint → source-line codepoint. Always well-defined; the visible-cp
-    // axis has no stripped regions. See LineLayoutBase::cpMap and the CpRun comment in
-    // UltraCanvasTextArea.h for the mapping invariant.
-    static int VisibleCpToSourceCp(const std::vector<CpRun>& cpMap, int visibleCp) {
-        if (cpMap.empty()) return visibleCp;
-        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), visibleCp,
-            [](int v, const CpRun& r) { return v < r.visibleCp; });
-        if (it == cpMap.begin()) return cpMap.front().sourceCp;
-        --it;
-        return it->sourceCp + (visibleCp - it->visibleCp);
-    }
-
-    // Source-line codepoint → visible/layout codepoint. If `sourceCp` falls strictly inside
-    // a stripped region (between two segments), the result is snapped to the start of the
-    // next visible segment when `snapForward = true` (default), or to the end of the
-    // previous one when `snapForward = false`. Pass `false` for selection-end so a
-    // selection that ends at the trailing marker doesn't grow visually past it.
-    static int SourceCpToVisibleCp(const std::vector<CpRun>& cpMap, int sourceCp,
-                                   bool snapForward = true) {
-        if (cpMap.empty()) return sourceCp;
-        auto it = std::upper_bound(cpMap.begin(), cpMap.end(), sourceCp,
-            [](int s, const CpRun& r) { return s < r.sourceCp; });
-        if (it == cpMap.begin()) return cpMap.front().visibleCp;
-        auto prev = it - 1;
-        int segVisibleEnd = (it == cpMap.end()) ? prev->visibleCp : it->visibleCp;
-        int segSourceEnd  = prev->sourceCp + (segVisibleEnd - prev->visibleCp);
-        if (sourceCp <= segSourceEnd) {
-            return prev->visibleCp + (sourceCp - prev->sourceCp);
-        }
-        // Strictly inside a stripped region between this segment and the next.
-        if (snapForward) {
-            return (it == cpMap.end()) ? segVisibleEnd : it->visibleCp;
-        }
-        return segVisibleEnd;
-    }
+    // VisibleCpToSourceCp / SourceCpToVisibleCp moved to UltraCanvasTextArea.h so
+    // other translation units of this component (spell check, markdown) can use
+    // the mapping the CpRun documentation already points them at.
 
     // Apply the selection background-color attribute to the portion of this line's layout text
     // that falls inside the current selection. Coordinates:
@@ -2223,6 +2315,7 @@ namespace UltraCanvas {
         isNeedRecalculateVisibleArea = true;
         RequestRedraw();
 
+        QueueSpellCheck();
         if (onTextChanged) {
             onTextChanged(textContent);
         }
@@ -2291,35 +2384,43 @@ namespace UltraCanvas {
         if (lineLayout) {
             targetY = lineLayout->bounds.y;
         }
+        // Programmatic positioning (Go to line, SetFirstVisibleLine) lands at
+        // once: the jump can be thousands of lines and easing it would just be
+        // a blur.
+        scrollAnimV.Cancel();
         verticalScrollOffset = std::max(0.0f, static_cast<float>(targetY));
         RequestRedraw();
     }
 
+    float UltraCanvasTextArea::MaxVerticalScroll() {
+        return std::max(0.0f, GetContentHeight() - visibleTextArea.height);
+    }
+
+    float UltraCanvasTextArea::MaxHorizontalScroll() const {
+        return std::max(0.0f, static_cast<float>(maxLineWidth) - visibleTextArea.width);
+    }
+
+    // The wheel and the page keys come through here, so both glide. Consecutive
+    // steps chain onto the pending target, which is what turns a held-down
+    // PageDown into one continuous move instead of a series of jumps.
     void UltraCanvasTextArea::ScrollUp(int lineCount) {
         float h = style.fontStyle.fontSize * 1.3f;
-        verticalScrollOffset = std::max(0.0f, verticalScrollOffset - lineCount * h);
-        RequestRedraw();
+        scrollAnimV.AnimateBy(-lineCount * h, 0.0, MaxVerticalScroll());
     }
 
     void UltraCanvasTextArea::ScrollDown(int lineCount) {
         float h = style.fontStyle.fontSize * 1.3f;
-        verticalScrollOffset += lineCount * h;
-        float maxOffset = std::max(0.0f, GetContentHeight() - visibleTextArea.height);
-        verticalScrollOffset = std::min(std::max(0.0f, verticalScrollOffset), maxOffset);
-        RequestRedraw();
+        scrollAnimV.AnimateBy(lineCount * h, 0.0, MaxVerticalScroll());
     }
 
     void UltraCanvasTextArea::ScrollLeft(int chars) {
         if (wordWrap) return; // No horizontal scrolling when word wrap is on
-        horizontalScrollOffset = std::max(0.0f, horizontalScrollOffset - chars * 10.0f);
-        RequestRedraw();
+        scrollAnimH.AnimateBy(-chars * 10.0, 0.0, MaxHorizontalScroll());
     }
 
     void UltraCanvasTextArea::ScrollRight(int chars) {
         if (wordWrap) return; // No horizontal scrolling when word wrap is on
-        float maxOffset = std::max(0.0f, static_cast<float>(maxLineWidth) - visibleTextArea.width);
-        horizontalScrollOffset = std::min(maxOffset, horizontalScrollOffset + chars * 10.0f);
-        RequestRedraw();
+        scrollAnimH.AnimateBy(chars * 10.0, 0.0, MaxHorizontalScroll());
     }
 
     void UltraCanvasTextArea::SetFirstVisibleLine(int line) {

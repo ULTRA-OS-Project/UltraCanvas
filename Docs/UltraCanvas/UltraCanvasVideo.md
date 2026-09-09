@@ -103,8 +103,18 @@ Under the hood the engine prefers the backend's dedicated single-frame grab
 (`IVideoBackend::GrabThumbnail` — implemented on Linux/GStreamer as a throwaway
 `uridecodebin` pipeline that prerolls to PAUSED, seeks accurately and pulls the
 preroll sample, never touching audio). Backends that don't implement it fall
-back to a generic decode-session path (open → mute → seek → capture first
-frame), so a thumbnail is produced wherever decoding works.
+back to a generic decode-session path (open with
+`VideoDecodeOptions::disableAudio` → seek → capture first frame), so a
+thumbnail is produced wherever decoding works.
+
+Either way the grab is **silent**: the audio track is left out of the decode
+session entirely rather than muted after the fact, so a folder of clips being
+thumbnailed never leaks a burst of sound. Backends honour `disableAudio` by
+not building the audio branch at all (GStreamer clears `GST_PLAY_FLAG_AUDIO`,
+Media Foundation leaves the audio stream out of the topology); on backends
+where the audio path cannot be dropped it degrades to a hard mute applied
+before playback starts. A mute requested before a renderer exists is replayed
+once it does, so it can never be lost.
 
 `SaveVideoThumbnail` picks its encoder from the output extension — `.qoi`
 writes QOI, anything else writes PNG. Both are always available (PNG via Cairo,
@@ -165,6 +175,32 @@ rec->ShowSaveDialog();   // pick a path, then records to it
 
 `ListCameras()`, `GetDefaultCamera()`, `GetCameraPermission()`,
 `RequestCameraPermission()`, `GetBackendName()`, `IsAvailable()`.
+
+## Adding a container or codec
+
+The platform backend (GStreamer / Media Foundation / AVFoundation) is not the
+only way a video source can be decoded. An application that brings its own
+container registers it with `RegisterVideoCodecPlugin`
+(`libspecific/Video/VideoCodecPlugin.h`), supplying a factory that returns an
+`IVideoDecodeSession`:
+
+```cpp
+MediaCodecRegistration codec;
+codec.extension   = "ivf";
+codec.description = "Indexed Video Format";
+codec.kind        = MediaCodecKind::Video;
+RegisterVideoCodecPlugin(codec, [](const std::string& source,
+                                   const VideoDecodeOptions& opts) {
+    return MyApp::OpenIvf(source, opts);
+});
+```
+
+`UltraCanvasVideoPlayer` then opens it, `CaptureVideoThumbnail` grabs a poster
+frame from the same factory, and the media viewer, the Filer's categories, the
+format inventory and the file dialogs all pick the format up. A registered codec
+takes precedence over the platform backend for the sources it claims — the
+backend never declines one, so a fallback ordering could not reach a plugin. See
+[UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md).
 
 ## Build
 

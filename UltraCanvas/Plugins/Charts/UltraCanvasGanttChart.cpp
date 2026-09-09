@@ -735,6 +735,7 @@ UltraCanvasGanttChartElement::UltraCanvasGanttChartElement(
 void UltraCanvasGanttChartElement::SetGanttDataSource(std::shared_ptr<GanttDataSource> ds) {
     dataSource = ds;
     rowsDirty = true;
+    CancelScrollAnimations();
     scrollX = scrollY = 0;
     selectedTaskId = -1;
     hoveredRowIndex = -1;
@@ -811,6 +812,7 @@ void UltraCanvasGanttChartElement::SetToday(const GanttDate& date, bool showLine
 
 void UltraCanvasGanttChartElement::ScrollToDate(const GanttDate& date) {
     ComputeLayout();
+    CancelScrollAnimations();   // positioning, not a scroll gesture
     scrollX = static_cast<float>((date.serial - layout.viewStart.serial) * style.dayWidth);
     ClampScroll();
     RequestRedraw();
@@ -821,6 +823,7 @@ void UltraCanvasGanttChartElement::ScrollToTask(int taskId) {
     int index = RowIndexOfTask(taskId);
     if (index < 0) return;
     ComputeLayout();
+    CancelScrollAnimations();
     scrollY = index * style.rowHeight - layout.timeBody.height / 2;
     scrollX = static_cast<float>((rows[index].start.serial - layout.viewStart.serial) *
                                  style.dayWidth) - 40.0f;
@@ -849,6 +852,7 @@ void UltraCanvasGanttChartElement::FitToRange() {
                 static_cast<float>(span + pad * 3),
                 0.5f, 200.0f);
     }
+    CancelScrollAnimations();
     scrollX = 0;
     scrollY = 0;
     RequestRedraw();
@@ -1858,13 +1862,41 @@ void UltraCanvasGanttChartElement::RenderTodayLine(IRenderContext* ctx) {
 // ELEMENT: INTERACTION
 // =============================================================================
 
+void UltraCanvasGanttChartElement::ScrollLimits(float& maxX, float& maxY) const {
+    maxX = std::max(0.0f, layout.contentWidth -
+                          static_cast<float>(layout.timeBody.width));
+    maxY = std::max(0.0f, layout.contentHeight -
+                          static_cast<float>(layout.timeBody.height));
+}
+
 void UltraCanvasGanttChartElement::ClampScroll() {
-    float maxX = std::max(0.0f, layout.contentWidth -
-                                static_cast<float>(layout.timeBody.width));
-    float maxY = std::max(0.0f, layout.contentHeight -
-                                static_cast<float>(layout.timeBody.height));
+    float maxX = 0.0f, maxY = 0.0f;
+    ScrollLimits(maxX, maxY);
     scrollX = std::clamp(scrollX, 0.0f, maxX);
     scrollY = std::clamp(scrollY, 0.0f, maxY);
+}
+
+// Each eased step of a wheel glide is written here, through the same clamp and
+// repaint an instant scroll used.
+void UltraCanvasGanttChartElement::BindScrollAnimators() {
+    if (scrollAnimX.IsBound()) return;
+    scrollAnimX.Bind([this] { return static_cast<double>(scrollX); },
+                     [this](double v) {
+                         scrollX = static_cast<float>(v);
+                         ClampScroll();
+                         RequestRedraw();
+                     });
+    scrollAnimY.Bind([this] { return static_cast<double>(scrollY); },
+                     [this](double v) {
+                         scrollY = static_cast<float>(v);
+                         ClampScroll();
+                         RequestRedraw();
+                     });
+}
+
+void UltraCanvasGanttChartElement::CancelScrollAnimations() {
+    scrollAnimX.Cancel();
+    scrollAnimY.Cancel();
 }
 
 std::string UltraCanvasGanttChartElement::BuildTaskTooltip(const GanttRow& row) const {
@@ -1938,6 +1970,7 @@ bool UltraCanvasGanttChartElement::HandleTimelineWheel(const UCEvent& event) {
         float factor = event.wheelDelta > 0 ? 1.15f : (1.0f / 1.15f);
         style.dayWidth = std::clamp(style.dayWidth * factor, 0.5f, 200.0f);
         ComputeLayout();
+        CancelScrollAnimations();   // the zoom repositions the timeline
         scrollX = static_cast<float>(dateAtCursor * style.dayWidth -
                                      (mouseX - layout.timeBody.x));
         ClampScroll();
@@ -2038,6 +2071,7 @@ bool UltraCanvasGanttChartElement::OnEvent(const UCEvent& event) {
                 int dx = event.pointer.x - panAnchor.x;
                 int dy = event.pointer.y - panAnchor.y;
                 if (dx != 0 || dy != 0) {
+                    CancelScrollAnimations();   // a pan follows the cursor exactly
                     scrollX -= dx;
                     scrollY -= dy;
                     panAnchor = event.pointer;

@@ -36,25 +36,50 @@
 // UltraCanvasSplitPane-style splitters between their columns, and names that
 // do not fit their column show the full name in a tooltip. In the tile-shaped
 // views (thumbnail grids, treemap) a name wider than the tile wraps onto
-// further lines (FilerStyle::captionMaxLines, 2 by default); what does not fit
-// even then is dropped from the front of the last line, which opens with "…".
+// further lines (FilerStyle::captionMaxLines, 2 by default), broken between
+// whole words wherever the width allows one — the words of a PascalCase name
+// included ("UltraCanvas" / "Texter.exe"); what does not fit even then is
+// dropped from the front of the last line, which opens with "…".
 // An explicit file list (ShowFileList) is sorted like a folder listing unless
 // SetFileListOrderPreserved() asks for the given order to be kept — for lists
-// whose order is the information, such as a most-recently-used history.
+// whose order is the information, such as a most-recently-used history. A list
+// that is still being produced grows through AppendToFileList(), which stats
+// only the new paths and leaves the scroll position and the selection alone —
+// UltraFiler's sub-folder search shows its matches while the walk runs.
+// A name filter (SetNameFilter) narrows the displayed listing to the entries
+// whose name contains the text, without touching the disk — hosts wire a
+// search field's onTextChanged to it for filter-as-you-type; while the filter
+// hides every entry, a host-provided centered action button
+// (SetFilterEmptyAction, e.g. "Search in sub folders") offers the escalation.
+// A printable key pressed in the widget walks the listing Explorer-style:
+// the first entry whose name starts with that character is selected, and the
+// same key again moves on to the next such entry (wrapping around).
 // Changes the user makes to a folder's content (create / paste / drop /
 // rename / duplicate / delete / compress / extract) are reported through
 // onFolderModified, apart from the rescan notification onFolderRefreshed.
 // Which file kinds show a real content preview instead of their type glyph is
-// selectable per kind (Display > Preview: Bitmaps, Vector graphics, 3D, PDF,
-// Text, Docs, Spreadsheets, Videos — all on by default), so a folder full of
-// expensive files can be browsed with only the cheap previews switched on.
+// selectable per kind (Display > Thumbnails: Bitmaps, Vector graphics, 3D,
+// PDF, Text, Docs, Spreadsheets, Videos, Audio, Fonts — all on by default), so
+// a folder full of expensive files can be browsed with only the cheap previews
+// switched on. Display > Detail view carries the same ten switches for the
+// detail pane a host opens beside the display, and both sets take per-format
+// exceptions, so one format can be excluded while its kind stays on. The ten
+// kinds cover every media category the FileLoader inventory reports, which is
+// what lets GetPreviewableFormats() list every format this build can open.
 // The context menu's "Open with >" lists the applications the OS registers
 // for the selected files (UltraCanvasFileAssociations, prewarmed in the
 // background), the host's own entries, and an "Other application…" picker;
 // the host can extend the context menu's Extras submenu via
+// extrasMenuProvider. A folder can be drawn as an icon of the host's
+// choosing rather than as the built-in folder shape (folderIconProvider).
 // extrasMenuProvider.
-// Version: 1.15.0
-// Last Modified: 2026-08-20
+// The displayed names keep their file extension or drop it, and a thumbnail
+// tile can show the extension as a bar or a small tag over the foot of its
+// icon box (Display > File extensions). Both are display-only: FilerEntry
+// keeps the real name, so renaming, sorting and every file operation are
+// unaffected.
+// Version: 1.24.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -63,8 +88,12 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasMenu.h"
+#include "UltraCanvasFolderWatcher.h"
+#include "UltraCanvasFileLock.h"
 #include "UltraCanvasSplitPane.h"
+#include "UltraCanvasTextWrapping.h"
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasSmoothScroll.h"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -75,6 +104,7 @@
 #include <map>
 #include <memory>
 #include <mutex>
+#include <set>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -83,9 +113,23 @@
 
 namespace UltraCanvas {
 
+    class UltraCanvasProgressDialog;   // compress / extract progress window
+
+
     class UltraCanvasMenu;
     class UltraCanvasButton;
     class UltraCanvasTextInput;
+    struct DialogConfig;
+
+    // ===== PASTE NAME CONFLICTS =====
+    // What to do with a pasted entry whose name already exists in the target
+    // folder. KeepBoth gives the pasted entry the next free "name (2)" style
+    // name — the behavior a paste without conflicts always has.
+    enum class PasteConflictAction {
+        KeepBoth,
+        Replace,
+        Skip
+    };
 
     // ===== HOW THE FOLDER CONTENT IS PRESENTED =====
     enum class FilerViewType {
@@ -157,22 +201,44 @@ namespace UltraCanvas {
         Spreadsheet,
         Archive,
         Executable,
+        Font,          // font definition files (ttf, otf, woff, ...)
         Other
     };
 
     // ===== PREVIEWABLE FILE KINDS =====
-    // Which kinds of file are shown with a real content preview — a thumbnail
-    // rendered from the file itself — instead of the generic type glyph.
-    // Combine as a bitmask; the Display > Preview submenu toggles them and
-    // every kind is enabled by default. Switching one off makes its entries
-    // fall back to the type glyph immediately (and stops the widget from
-    // reading those files at all), which is what makes browsing a folder of
-    // huge photos, videos or PDFs on a slow volume bearable.
+    // Which kinds of file may be shown with a real content preview — a
+    // picture rendered from the file itself — instead of the generic type
+    // glyph. Combine as a bitmask; two independent sets of these switches
+    // exist, and every kind is on in both by default:
+    //
+    //   * THUMBNAILS  (Display > Thumbnails) — the tile the widget draws for
+    //     an entry. Switching a kind off makes its entries fall back to the
+    //     type glyph immediately and stops the widget from reading those
+    //     files at all, which is what makes browsing a folder of huge photos,
+    //     videos or PDFs on a slow volume bearable.
+    //   * DETAIL VIEW (Display > Detail view) — whether the host may open its
+    //     detail pane (UltraFiler's preview pane) for a selected entry. The
+    //     widget does not own that pane; it answers DetailViewEnabledFor() so
+    //     one file manager setting governs both halves of the display.
+    //
+    // Each set additionally carries a per-format list (the "list of files"):
+    // a single extension can be switched off while its kind stays on — see
+    // SetThumbnailFormatEnabled() / SetDetailViewFormatEnabled().
     //
     // The kinds are grouped by what the preview costs to produce, not by
     // FilerFileCategory: PDF is split out of Documents because it renders a
     // page, and CSV / TSV count as Spreadsheets because they preview as a
-    // cell grid (their file category stays Text).
+    // cell grid (their file category stays Text). Together they cover every
+    // MediaFormatCategory the FileLoader inventory reports, so every format
+    // this build can open belongs to exactly one of them — which is what lets
+    // the per-format lists be complete. Audio is the one kind with no
+    // thumbnail producer at all (nothing here reads cover art yet); its
+    // switches govern the detail view, where a host's viewer does play the
+    // file, and its Thumbnails rows report themselves as unsupported. Fonts
+    // is the opposite case, and the one kind that lines up exactly with its
+    // FilerFileCategory: a font file has no viewer yet, but FreeType
+    // rasterizes a line of its own glyphs for the tile without the font
+    // having to be installed (see UltraCanvasFontFile.h).
     enum class FilerPreviewType : uint32_t {
         NonePreview    = 0,
         Bitmaps        = 1u << 0,   // png / jpeg / gif / webp / tiff / ...
@@ -182,10 +248,50 @@ namespace UltraCanvas {
         Text           = 1u << 4,   // txt / log / json / xml / source code / ...
         Docs           = 1u << 5,   // odt / doc / docx / rtf / md / html / tex
         Spreadsheets   = 1u << 6,   // ods / xls / xlsx / csv / tsv
-        Videos         = 1u << 7    // poster frame of the clip
+        Videos         = 1u << 7,   // poster frame of the clip
+        Audio          = 1u << 8,   // mp3 / flac / wav / ... (detail view only)
+        Fonts          = 1u << 9    // ttf / otf / woff / ... — its own glyphs
     };
-    // Every previewable kind — the default of SetPreviewTypes().
-    constexpr uint32_t kFilerAllPreviewTypes = 0xFFu;
+    // Every previewable kind — the default of both switch sets.
+    constexpr uint32_t kFilerAllPreviewTypes = 0x3FFu;
+
+    // ===== ONE FORMAT OF THE "LIST OF FILES" =====
+    // What GetPreviewableFormats() reports: every file format the two switch
+    // sets can address, so a settings page can list them without repeating
+    // the widget's tables. `thumbnailSupported` says whether THIS build can
+    // actually produce a thumbnail for the format (no PostScript loader, no
+    // PDF plugin, no video backend → false): a list can grey those out
+    // instead of offering a switch that changes nothing.
+    struct FilerFormatInfo {
+        std::string      extension;    // lowercase, without the leading dot
+        std::string      label;        // "EPS", "CorelDRAW", "PNG", ...
+        FilerPreviewType kind = FilerPreviewType::NonePreview;
+        bool             thumbnailSupported = false;
+    };
+
+    // Which of the two switch sets an API or a menu hook is about.
+    enum class FilerPreviewTarget {
+        Thumbnails,   // Display > Thumbnails — the tiles of the file display
+        DetailView    // Display > Detail view — the host's preview pane
+    };
+
+    // ===== THE EXTENSION TAG OF A THUMBNAIL TILE =====
+    // What a tile shows about the file type besides its name (Display >
+    // File extensions). Independent of whether the name itself still carries
+    // the extension: a display that hides ".exe" in the name can put it back
+    // as a tag under the icon, which is where the eye looks for the type
+    // anyway — and a display that keeps it in the name can carry the tag too.
+    //   NoneBadge — nothing besides the name (the default).
+    //   Bar       — a strip across the foot of the icon box with the
+    //               extension in a tag at its right end.
+    //   Icon      — the tag alone, in the icon box's bottom-right corner.
+    // Only the tile-shaped views (the four thumbnail grids) draw it; the row
+    // views have a Type column and a whole row width for the name.
+    enum class FilerExtensionBadge {
+        NoneBadge,
+        Bar,
+        Icon
+    };
 
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
     struct FilerEntry {
@@ -200,6 +306,25 @@ namespace UltraCanvas {
         bool isReadOnly  = false;
         bool isSymlink   = false;
         bool isArchive   = false;    // browsable archive (zip / 7z / ...)
+        // A Windows shortcut (.lnk) the widget could read: `linkTarget` is
+        // the file it points at as THIS host opens it, empty when the target
+        // is not on this machine (or is a shell item rather than a file).
+        // The entry's category and icon come from that target, so a shortcut
+        // to a program is drawn with the program's own icon.
+        bool isShortcut  = false;
+        // A directory the platform presents as one object rather than as a
+        // folder: a macOS ".app" and its relatives. It is still a directory
+        // on disk, but it is drawn with the application's icon, named by the
+        // application, and activated by launching it.
+        bool isBundle    = false;
+        std::string linkTarget;
+        // The name a shortcut calls itself, when that is not its file name:
+        // a desktop entry's `Name=` ("Firefox Web Browser" for a file called
+        // org.mozilla.firefox.desktop). The file display draws this instead
+        // of the file name; renaming, sorting and every file operation still
+        // use `name`, which is what is actually on disk. Empty for a
+        // shortcut whose file name is its name, which is every .lnk.
+        std::string linkDisplayName;
 
         uint64_t size = 0;           // bytes (uncompressed)
         uint64_t compressedSize = 0; // bytes inside an archive (0 = not compressed)
@@ -251,8 +376,18 @@ namespace UltraCanvas {
         Color iconMenuGlyphColor   = Color(255, 255, 255, 235);
         Color renameFieldColor     = Color(255, 255, 255, 255);
         Color renameBorderColor    = Color(60, 140, 220, 255);
+        // Text (and caret) of the inline rename editor. A dark gray rather
+        // than the near-black of a displayed name, so an entry being edited
+        // reads as being edited.
+        Color renameTextColor      = Color(60, 60, 66, 255);
         Color infoBarBackground    = Color(245, 245, 247, 255);
         Color infoBarTextColor     = Color(50, 50, 56, 255);
+        // The extension tag drawn on a thumbnail tile (Display >
+        // File extensions): the strip of the Bar variant, and the tag itself,
+        // which both variants share.
+        Color extensionBarBackground  = Color(190, 190, 196, 235);
+        Color extensionTagBackground  = Color(80, 80, 86, 235);
+        Color extensionTagTextColor   = Color(255, 255, 255, 240);
 
         std::string fontFamily;          // empty = system default
         float fontSize        = 12.0f;   // Windows standard UI size (9pt @ 96dpi)
@@ -275,6 +410,24 @@ namespace UltraCanvas {
         int captionMaxLines   = 2;
         int captionLineHeight = 0;       // 0 = derived from smallFontSize
 
+        // Words are kept whole. A name is broken *inside* a word only when it
+        // has to be, and never where that would leave captionBreakTolerance
+        // characters or fewer on either side of the break: cutting "CoderBox"
+        // into "CoderBo" / "x" buys the line a single character. 0 breaks a
+        // word wherever it stops fitting (the behaviour before 0.3.79).
+        // captionOverflowSlack is how far a line may run past the caption
+        // width to keep a word — or a whole last line — in one piece; the
+        // caption is inset from the tile edge, so those pixels are free.
+        // 0 derives it from smallFontSize.
+        int captionBreakTolerance = 3;
+        int captionOverflowSlack  = 0;
+        // A name written in PascalCase / camelCase counts as the words it is
+        // made of: a line may end right before an upper-case letter that
+        // opens a new word, so "UltraCanvasTexter.exe" wraps as "UltraCanvas"
+        // / "Texter.exe" instead of "UltraCanva" / "sTexter.exe". Off, only
+        // the separators (space, -, _, ., …) end a word.
+        bool captionCamelCaseBreaks = true;
+
         // Thumbnail tile edge for the four thumbnail view types.
         int thumbnailSmall     = 72;
         int thumbnailMedium    = 110;
@@ -287,6 +440,10 @@ namespace UltraCanvas {
 
         int iconMenuButtonSize = 20;     // hover icon-menu button edge
         int infoBarHeight      = 26;     // selection info bar under the entries
+        // Height of the extension tag / bar on a thumbnail tile. It is drawn
+        // over the foot of the icon box, so it never changes a tile's height.
+        // 0 = derived from smallFontSize.
+        int extensionBadgeHeight = 0;
 
         // Column splitters of the Details / List / BarSize views. They reuse
         // UltraCanvasSplitPane's divider styling so a resizable Filer column
@@ -334,6 +491,15 @@ namespace UltraCanvas {
         void ShowFileList(const std::vector<std::string>& paths);
         bool IsShowingFileList() const { return fileListMode; }
 
+        // Adds paths to the file list already on display, stat-ing only the
+        // new ones and leaving the scroll position and the selection alone —
+        // for a list that is still being produced (UltraFiler's sub-folder
+        // search shows its matches while the walk continues). Handing the
+        // whole grown list to ShowFileList() instead would re-stat everything
+        // per batch and jump the view back to the top. Called before any
+        // ShowFileList() it behaves like one.
+        void AppendToFileList(const std::vector<std::string>& paths);
+
         // Show a file list exactly in the order the paths were handed over
         // instead of sorting it — for lists whose order is the information
         // (a most-recently-used history, a ranked result list). While this is
@@ -342,6 +508,34 @@ namespace UltraCanvas {
         // always sorted.
         void SetFileListOrderPreserved(bool preserved);
         bool IsFileListOrderPreserved() const { return preserveFileListOrder; }
+
+        // ===== NAME FILTER (filter-as-you-type) =====
+        // Case-insensitive substring filter over the displayed names: while
+        // set, only the matching entries are listed (folder listing and file
+        // list alike). The narrowed listing is re-derived from the already
+        // scanned entries — no disk rescan per keystroke — and "" shows
+        // everything again. SetPath() clears the filter: it belonged to the
+        // listing it was typed against. Hosts wire a search field's
+        // onTextChanged to this for filter-as-you-type.
+        void SetNameFilter(const std::string& filter);
+        const std::string& GetNameFilter() const { return nameFilter; }
+        // Centered action button shown instead of the plain "no matches"
+        // notice while the filter hides every entry — UltraFiler puts
+        // "Search in sub folders" there to escalate the filter into its
+        // recursive search. An empty label (or callback) shows the plain
+        // notice again.
+        void SetFilterEmptyAction(const std::string& label,
+                                  std::function<void()> action);
+
+        // ===== TYPE-AHEAD (single-letter keyboard navigation) =====
+        // Selects the next entry — after the current selection, wrapping
+        // around — whose name starts with `ch` (case-insensitive); when the
+        // current selection does not start with `ch`, the first such entry.
+        // This is what a printable key pressed in the widget does, so
+        // pressing "a" repeatedly walks through every entry starting with
+        // "a"; hosts can also route keys here from a window-level filter.
+        // False when no displayed entry matches.
+        bool SelectNextEntryStartingWith(char ch);
 
         // ===== VIEW =====
         void SetViewType(FilerViewType type);
@@ -355,6 +549,33 @@ namespace UltraCanvas {
 
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
+
+        // "In use" marking: whether the display says that another program is
+        // holding a file - the reason an overwrite, a rename or a delete of it
+        // fails. Each shown file is probed in the background (one open that is
+        // closed again, nothing written) and marked with an attribute letter,
+        // X for a file the system will not let be replaced right now and O for
+        // one merely open elsewhere; the info bar spells it out for a single
+        // selected file, naming the program where the platform can. On by
+        // default, and a no-op where nothing can answer
+        // (UltraCanvasFileLock::FileLockProbeAvailable()).
+        void SetShowLockState(bool show);
+        bool GetShowLockState() const { return showLockState; }
+        // What the last probe found for `path`, without probing: Unknown when
+        // it has not been looked at (or cannot be).
+        FileLockState GetEntryLockState(const std::string& path) const;
+
+        // Curated home-folder display: while set, displaying `homePath` lists
+        // only the given main folders — each by its resolved full path, so a
+        // folder redirected out of the home folder (a Documents moved into
+        // OneDrive) is listed too — plus the folder's regular files; every
+        // other subfolder is left out of the display (it still exists, and
+        // navigating to it by path still works). Show-hidden-files suspends
+        // the curation — that toggle means "show me everything", so it
+        // reveals the untouched physical listing. An empty homePath turns
+        // curation off. Other folders are never affected.
+        void SetCuratedHomeFolder(const std::string& homePath,
+                                  std::vector<std::string> mainFolders);
 
         // Background pre-scan of the shown folder's subfolders (one level), so
         // entering one shows its content from memory instead of waiting for a
@@ -429,18 +650,54 @@ namespace UltraCanvas {
             openPathItemLabel = label;
         }
 
+        // ===== WATCHING THE SHOWN FOLDER =====
+        // Pick up changes made behind the widget's back - another application
+        // saving a file into the shown folder, a download finishing, a script
+        // creating or deleting one - and rescan when they happen. On by
+        // default.
+        //
+        // Where the operating system can report changes itself (inotify on
+        // Linux, ReadDirectoryChangesW on Windows - see
+        // UltraCanvasFolderWatcher) that is used, so a change is seen the
+        // moment it happens and an idle folder costs nothing. Elsewhere the
+        // widget falls back to re-fingerprinting the folder on a background
+        // worker, one directory scan per interval, never on the UI thread.
+        //
+        // Either way the rescan is held back while the user is busy: no
+        // refresh interrupts an open rename editor, a running drag, a marquee
+        // or a file operation waiting on its dialog - it happens as soon as
+        // that ends.
+        void SetFolderWatchEnabled(bool enabled);
+        bool IsFolderWatchEnabled() const { return folderWatchEnabled; }
+        // Polling interval in milliseconds (default 1500; values below 250 are
+        // raised to it). Ignored for detection while a native watcher is
+        // running - there the OS decides when - and it then only bounds how
+        // quickly the UI applies what the watcher reported.
+        void SetFolderWatchIntervalMs(int ms);
+        int  GetFolderWatchIntervalMs() const { return folderWatchIntervalMs; }
+        // True while the shown folder is watched by the operating system
+        // rather than polled.
+        bool IsFolderWatchNative() const { return nativeWatchActive; }
+
         // ===== DRAGGING ENTRIES =====
         // Dragging files out of the view (on by default): a press on an item
         // followed by a few pixels of movement picks up that item — or the
         // whole selection when the pressed item is part of it — as a drag.
         // While the cursor stays inside the widget the drag is drawn in-widget
         // (badge under the cursor, drop folder highlighted) and dropping on a
-        // folder shown in the view moves the files into it (Ctrl = copy); once
-        // the cursor leaves the widget the set is handed to the native OS drag
-        // so other windows and applications can accept it. Turning this off
-        // leaves presses as plain clicks.
+        // folder shown in the view moves the files into it (see
+        // SetDropOnFolderCopies); once the cursor leaves the widget the set is
+        // handed to the native OS drag so other windows and applications can
+        // accept it. Turning this off leaves presses as plain clicks.
         void SetDragEnabled(bool enabled);
         bool IsDragEnabled() const { return dragEnabled; }
+
+        // What dropping the dragged entries onto a folder of this view does
+        // without a modifier: move them (false, the default) or copy them
+        // (true). Either way Ctrl at the drop forces a copy and Shift forces a
+        // move, so the other action is always one modifier away.
+        void SetDropOnFolderCopies(bool copies) { dropOnFolderCopies = copies; }
+        bool GetDropOnFolderCopies() const { return dropOnFolderCopies; }
 
         // The selection info bar shown under the folder display. One line
         // describing the selection: name, type, size, modified date and
@@ -461,17 +718,101 @@ namespace UltraCanvas {
         void SetDatasetFields(uint32_t mask);
         uint32_t GetDatasetFields() const { return datasetFields; }
 
+        // ===== FILE EXTENSIONS =====
+        // Display > File extensions. Two independent switches:
+        //   * the name — whether the displayed name still carries its
+        //     extension ("UltraFiler.exe") or is shown without it
+        //     ("UltraFiler"). On by default. Only what is *drawn* changes:
+        //     renaming, sorting, the type column, the info bar and every file
+        //     operation keep working on the real name, so a hidden extension
+        //     can neither be lost by a rename nor duplicated by one.
+        //   * the tile tag — a bar or a small tag carrying the extension,
+        //     drawn over the foot of a thumbnail tile's icon box, so the type
+        //     stays visible in a display whose names have no extension (see
+        //     FilerExtensionBadge). Off by default.
+        // A name with no plausible extension is never shortened: the tail of
+        // "UCDemo-Windows-0.3.27-x86_64" is a version, not a file type.
+        void SetFileExtensionsInNames(bool on);
+        bool AreFileExtensionsInNames() const { return fileExtensionsInNames; }
+        void SetExtensionBadge(FilerExtensionBadge badge);
+        FilerExtensionBadge GetExtensionBadge() const { return extensionBadge; }
+        // The menu label of a badge mode ("Bar"), shared by the Display
+        // submenu and by an application's settings page.
+        static const char* ExtensionBadgeLabel(FilerExtensionBadge badge);
+        // The three modes in the order the menus and lists show them.
+        static const std::vector<FilerExtensionBadge>& AllExtensionBadges();
+
+        // The name of `e` as this display draws it — the full name, or the
+        // name without its extension while the names carry none. What a host
+        // needs to label an entry the way the display does (a drag badge, a
+        // breadcrumb, its own tile).
+        std::string DisplayNameOf(const FilerEntry& e) const;
+        // The extension a tile tag would show for `e` (lowercase, no dot),
+        // empty for folders and for names whose tail is not a file type.
+        static std::string ExtensionTagOf(const FilerEntry& e);
+
         // ===== SELECTIVE PREVIEWS =====
-        // Which file kinds get a content preview instead of their type glyph
-        // (Display > Preview). All kinds are on by default. Switching a kind
-        // off repaints its entries with the type glyph and stops the widget
-        // from opening those files for a preview at all; switching it back on
-        // re-uses whatever is still cached and decodes the rest in the
-        // background as usual.
-        void SetPreviewType(FilerPreviewType type, bool on);
-        bool IsPreviewTypeEnabled(FilerPreviewType type) const;
-        void SetPreviewTypes(uint32_t mask);
-        uint32_t GetPreviewTypes() const { return previewTypes; }
+        // Which file kinds get a thumbnail rendered from the file instead of
+        // their type glyph (Display > Thumbnails). All kinds are on by
+        // default. Switching a kind off repaints its entries with the type
+        // glyph and stops the widget from opening those files at all;
+        // switching it back on re-uses whatever is still cached and decodes
+        // the rest in the background as usual.
+        void SetThumbnailKind(FilerPreviewType type, bool on);
+        bool IsThumbnailKindEnabled(FilerPreviewType type) const;
+        void SetThumbnailKinds(uint32_t mask);
+        uint32_t GetThumbnailKinds() const { return thumbnailKinds; }
+
+        // Which file kinds the host may open its detail pane for
+        // (Display > Detail view). The widget only keeps the answer — see
+        // DetailViewEnabledFor() — so that the file display and the detail
+        // pane are configured in one place.
+        void SetDetailViewKind(FilerPreviewType type, bool on);
+        bool IsDetailViewKindEnabled(FilerPreviewType type) const;
+        void SetDetailViewKinds(uint32_t mask);
+        uint32_t GetDetailViewKinds() const { return detailViewKinds; }
+
+        // The per-format lists. An extension switched off here is skipped
+        // even while its kind is on, and one switched on again simply drops
+        // out of the exception list — so a format the widget learns about
+        // later (a plugin registering a new vector format, say) is enabled by
+        // default like every other one. Extensions are matched lowercase and
+        // without the leading dot; ".EPS", "EPS" and "eps" are the same.
+        void SetThumbnailFormatEnabled(const std::string& extension, bool on);
+        bool IsThumbnailFormatEnabled(const std::string& extension) const;
+        void SetDetailViewFormatEnabled(const std::string& extension, bool on);
+        bool IsDetailViewFormatEnabled(const std::string& extension) const;
+        // The exceptions themselves, for an application that persists them.
+        // Both lists are sorted, lowercase and dot-less.
+        std::vector<std::string> GetDisabledThumbnailFormats() const;
+        void SetDisabledThumbnailFormats(const std::vector<std::string>& exts);
+        std::vector<std::string> GetDisabledDetailViewFormats() const;
+        void SetDisabledDetailViewFormats(const std::vector<std::string>& exts);
+
+        // The menu label of a preview kind ("Vector graphics"), shared by the
+        // Display submenus and by an application listing the formats.
+        static const char* PreviewTypeLabel(FilerPreviewType type);
+        // The eight kinds in the order the menus and lists show them.
+        static const std::vector<FilerPreviewType>& AllPreviewTypes();
+
+        // Everything the two lists can address: the widget's own format table
+        // plus whatever the FileLoader inventory reports, one entry per
+        // extension, sorted by kind and then by extension.
+        static std::vector<FilerFormatInfo> GetPreviewableFormats();
+
+        // Whether an entry gets a thumbnail / may be shown in the host's
+        // detail pane under the current switches. Both answer true for
+        // entries of no preview kind (folders, audio, archives, programs):
+        // those are governed by the host, not by these lists.
+        bool ThumbnailEnabledFor(const FilerEntry& e) const;
+        bool DetailViewEnabledFor(const FilerEntry& e) const;
+
+        // Fired after any of the four sets above — or either File extensions
+        // switch — changed, whoever changed it (the Display menu included):
+        // the hook an application persists the choice from and mirrors into
+        // its other file displays.
+        std::function<void()> onDisplayFormatsChanged;
+
         // The preview kind an entry belongs to, or NonePreview for entries
         // that never carry a content preview (folders, audio, archives,
         // programs, unknown types).
@@ -567,6 +908,16 @@ namespace UltraCanvas {
         // after a Cut); a clipboard image or text without files is written as
         // a new file ("Pasted image.png" / "Pasted text.txt" style names).
         void Paste();
+        // Paste `paths` into `folder` (copies, or moves when `cut` is set).
+        // A name that already exists in the folder raises the conflict
+        // dialog — Replace / Keep both / Skip, optionally applied to all
+        // remaining conflicts — and the paste continues with the choice.
+        // With `onDone` set the caller owns the post-paste work (refresh,
+        // history) and is told whether anything changed; without it the
+        // widget refreshes itself and reports to onFolderModified.
+        void PasteFilesInto(std::string folder, std::vector<std::string> paths,
+                            bool cut,
+                            std::function<void(bool changed)> onDone = nullptr);
         void DeleteSelection();    // gated by confirmDelete when set
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
@@ -594,9 +945,23 @@ namespace UltraCanvas {
         void OpenExtractDialog();
         static bool ClipboardHasContent();
 
-        // "New >" document kinds (replaces the default seven).
+        // "New >" document kinds (replaces the default seven). The getter
+        // lets a host mirror the submenu elsewhere — UltraFiler's command-bar
+        // "New folder ▾" split button lists exactly these.
         void SetNewDocumentTypes(const std::vector<FilerNewDocumentType>& types);
+        const std::vector<FilerNewDocumentType>& GetNewDocumentTypes() const {
+            return newDocumentTypes;
+        }
+        // Creating an entry (either method below) first returns a file-list
+        // display to the folder and ends an active name filter: the fresh
+        // entry has to be visible and its inline rename editor reachable,
+        // which neither a result display nor a narrowed listing guarantees.
         void CreateNewDocument(const FilerNewDocumentType& type);
+        // Create a subfolder of the shown folder ("New folder", uniquely
+        // numbered when that name is taken) and open the inline rename editor
+        // on it, so it can be named straight away. This is what the context
+        // menu's "New > Folder" and its Ctrl+F shortcut do.
+        void CreateNewFolder();
 
         // "Open with >" applications. The submenu lists the applications the
         // OS has registered for the selected files (via
@@ -615,6 +980,14 @@ namespace UltraCanvas {
         // is installed (a host with its own activation handling, like
         // UltraFiler's preview, decides there instead).
         void SetActivateOpensWithDefaultApp(bool enabled) { activateOpensDefault = enabled; }
+
+        // Explorer-semantics activation of one file entry: an executable
+        // runs — a native binary (or AppImage) directly, a script through
+        // the Run / Open / Cancel dialog — and everything else opens with
+        // the OS default application. Hosts with their own onFileActivated
+        // call this for the "launch it" part of their handling. Entries
+        // inside archives (virtual paths) are ignored.
+        void OpenEntryWithOS(const FilerEntry& e);
 
         // ===== CALLBACKS =====
         std::function<void(const FilerEntry&)> onFileActivated;   // double-click / Enter on a file
@@ -649,6 +1022,16 @@ namespace UltraCanvas {
         // built-in value (compression factor for archive-compressed entries).
         std::function<std::string(const FilerEntry&)> infoProvider;
 
+        // Icon for a folder entry, asked while the entry is drawn. Return the
+        // path of an image (any format the image pipeline loads - SVG, PNG,
+        // QOI, ...) to show it in place of the drawn folder shape, or "" to
+        // keep the shape. It is asked for every folder of every view, so it
+        // must be a lookup, not a disk walk. UltraFiler answers with the icons
+        // of the well-known user folders (Desktop, Documents, Downloads,
+        // Music, Pictures, Videos) and with whatever the user set through
+        // Extras > Set folder icon.
+        std::function<std::string(const FilerEntry&)> folderIconProvider;
+
         // Context-menu hooks. Items without a hook (and no built-in default)
         // are shown disabled.
         std::function<void(const std::vector<FilerEntry>&)> onShare;
@@ -662,6 +1045,14 @@ namespace UltraCanvas {
         // state); non-empty results are appended behind a separator. The
         // UltraFiler adds "Open prompt" and its Pin / Unpin submenus here.
         std::function<std::vector<MenuItemData>()> extrasMenuProvider;
+        // Host-provided tail of the Display > Thumbnails and Display > Detail
+        // view submenus, asked once per submenu every time the menu opens.
+        // The per-format lists ("list of files") live in the application, not
+        // in a menu; this is where it hangs the entry that opens them —
+        // UltraFiler adds "File formats…", which opens the matching settings
+        // page.
+        std::function<std::vector<MenuItemData>(FilerPreviewTarget)>
+                formatListMenuProvider;
 
         // File-list (search result) display: while active, ScanFolder() builds
         // the entries from these explicit paths instead of listing currentPath.
@@ -689,7 +1080,29 @@ namespace UltraCanvas {
         // Leave a file-list display in the order it was given (see
         // SetFileListOrderPreserved).
         bool preserveFileListOrder = false;
+        // ===== NAME FILTER =====
+        // The active filter (compared lowercase), the full listing it was
+        // applied to — kept only while a filter is set, so widening or
+        // dropping the filter never rescans the disk — and the host-provided
+        // centered action button of the "no matches" state (a real
+        // UltraCanvasButton child, drawn by Render like the rename editor).
+        std::string nameFilter;
+        std::vector<FilerEntry> filterAllEntries;
+        std::string filterEmptyLabel;
+        std::function<void()> onFilterEmptyAction;
+        std::shared_ptr<UltraCanvasButton> filterEmptyButton;
         bool showHiddenFiles = false;
+        bool showLockState = true;
+        // Whether the shown entries are files on disk (a real folder, or the
+        // file-list display's found paths) rather than the interior of an
+        // archive, whose "paths" no system call can be asked about. Set by
+        // every scan; read by the lock probe, which has nothing to ask about
+        // a file that only exists inside a .zip.
+        bool listingIsRealDirectory = false;
+        // Curated home display (SetCuratedHomeFolder): the folder whose
+        // listing is curated, and the main folders it shows.
+        std::string curatedHomePath;
+        std::vector<std::string> curatedHomeFolders;
         bool hoverIconMenu = true;
         bool showOpenPathItem = false;
         std::string openPathItemLabel = "Open Path";
@@ -700,8 +1113,20 @@ namespace UltraCanvas {
         bool nameTooltips = true;
         // Bitmask of FilerDatasetField values drawn under thumbnail captions.
         uint32_t datasetFields = 0;
-        // Bitmask of FilerPreviewType values that may show a content preview.
-        uint32_t previewTypes = kFilerAllPreviewTypes;
+        // Display > File extensions: whether a drawn name keeps its extension,
+        // and the tag the thumbnail tiles carry instead of / beside it.
+        bool fileExtensionsInNames = true;
+        FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
+        // Bitmask of FilerPreviewType values that may show a thumbnail, and
+        // the same for the host's detail pane (Display > Thumbnails /
+        // Display > Detail view).
+        uint32_t thumbnailKinds  = kFilerAllPreviewTypes;
+        uint32_t detailViewKinds = kFilerAllPreviewTypes;
+        // The per-format exceptions of each set: the extensions explicitly
+        // switched off. Kept as exceptions rather than as a full allow-list
+        // so a format neither table knows yet is enabled by default.
+        std::set<std::string> disabledThumbnailFormats;
+        std::set<std::string> disabledDetailViewFormats;
         FilerStyle style;
 
         std::vector<size_t> selection;            // indices into `entries`
@@ -713,6 +1138,27 @@ namespace UltraCanvas {
         std::vector<uint8_t> frameSelected;
         int lastClickedIndex = -1;                // anchor for shift-range select
         int hoveredIndex = -1;
+        // Where the pointer was last seen inside the widget, in widget-local
+        // and in window coordinates, and whether it is still in there. The
+        // view can move under a standing cursor — the wheel, the scrollbar,
+        // keyboard navigation revealing an entry, a resize or a rescan
+        // reflowing the layout — and then a different file is under the
+        // pointer without a mouse move ever arriving. The hover highlight,
+        // the hover icon-menu and the tooltip are re-derived from this
+        // position instead of waiting for that move (see RefreshHoverState).
+        Point2Di lastPointerLocal{0, 0};
+        Point2Di lastPointerWindow{0, 0};
+        bool pointerInside = false;
+        // What the hover state above was derived against, so the re-derive is
+        // skipped while neither the scroll position nor the layout moved.
+        int      hoverScrollX = 0;
+        int      hoverScrollY = 0;
+        uint64_t hoverLayoutGeneration = 0;
+        // Set while a gesture that owns the pointer (an item drag, a rubber
+        // band, a splitter or scrollbar drag) suppressed a re-derive, so the
+        // first paint after it ends works the hover out again instead of
+        // waiting for the pointer to move.
+        bool     hoverDirty = false;
         // SetSelectNextAfterDelete: when a delete takes the whole selection
         // away, PerformDeletion parks the neighbour that should inherit it
         // here and the rescan selects that path instead of restoring the
@@ -743,6 +1189,9 @@ namespace UltraCanvas {
         // "Open with > Other application…": file-dialog picker, then launches
         // the selection with the chosen application.
         void OpenSelectionWithChooser();
+        // Clicking "Open with" itself: the selection's OS default
+        // applications, like a double-click in Explorer / Finder.
+        void OpenSelectionWithDefaultApp();
 
         // Computed per-entry geometry (content space, before scroll offset).
         struct ItemLayout {
@@ -756,6 +1205,12 @@ namespace UltraCanvas {
         };
         std::vector<ItemLayout> items;
         bool layoutValid = false;
+        // Bumped by every RecomputeLayout(): `items` are content coordinates,
+        // so a reflow can put a different file under a standing cursor even
+        // when the scroll position did not budge (a view switch, a rescan, a
+        // column resize). RefreshHoverState() watches this to know its hover
+        // is stale.
+        uint64_t layoutGeneration = 0;
         // Tile heights depend on measured text (wrapped names), so a layout
         // built without a render context — before the widget is on a window —
         // falls back to single-line captions. The first Render() then redoes it
@@ -832,6 +1287,13 @@ namespace UltraCanvas {
         // Scrolling (vertical everywhere; horizontal in List mode).
         int scrollOffsetX = 0;
         int scrollOffsetY = 0;
+        // Wheel notches, page steps and keyboard reveals glide to their target
+        // instead of jumping (see UltraCanvasSmoothScroll.h). Everything that
+        // has to land exactly where the user put it — the scrollbar thumb, the
+        // autoscroll of a running drag, a folder change resetting to the top —
+        // calls CancelScrollAnimations() first and writes the offsets directly.
+        UltraCanvasSmoothScroll scrollAnimX;
+        UltraCanvasSmoothScroll scrollAnimY;
         bool draggingScrollbar = false;
         int  scrollbarGrabOffset = 0;
 
@@ -867,7 +1329,9 @@ namespace UltraCanvas {
         // whole selection when the press landed inside it — is picked up:
         //   * inside the widget the drag is drawn here (a badge under the
         //     cursor, the folder below it highlighted) and a drop on a folder
-        //     of the view moves the files into it (Ctrl drops a copy);
+        //     of the view moves the files into it - or copies them, when the
+        //     host chose that default (SetDropOnFolderCopies); Ctrl at the
+        //     drop always copies, Shift always moves;
         //   * crossing the widget's border does NOT end the drag: the badge
         //     keeps following the cursor over the rest of the window (drawn
         //     through the window's drag overlay, since a widget cannot paint
@@ -883,7 +1347,59 @@ namespace UltraCanvas {
         // deferred to the release (see pendingSelectIndex / dragCollapseIndex),
         // so dragging a file does not fire onSelectionChanged and does not
         // re-target an attached preview.
+        // ===== FOLDER WATCH (the shown folder, changed by other programs) =====
+        // The worker re-fingerprints the shown folder every interval and raises
+        // folderWatchDirty when the fingerprint moves; a UI timer turns that
+        // into a Refresh() at a moment that does not interrupt the user. The
+        // path, the fingerprint and the hidden-files flag are the worker's view
+        // of UI state and are only touched under folderWatchMutex.
+        void StartFolderWatchWorkerLocked();
+        void StopFolderWatchWorker();
+        void FolderWatchWorkerMain();
+        void ArmFolderWatchTimer();
+        void StopFolderWatchTimer();
+        // Point the watch at the folder the widget now shows (empty = nothing
+        // to watch: an archive interior, a file list, no folder at all).
+        void WatchFolder(const std::string& path);
+        // A native watch died on its own (its volume was unmounted, its handle
+        // went bad): let it go and poll the same folder instead, so the
+        // display keeps noticing changes - including the volume coming back.
+        // Runs on the UI thread, driven by the flag the watcher's failure
+        // callback sets.
+        void HandleLostNativeWatch();
+        // True while an interaction owns the view and a rescan would disturb
+        // it (an open rename editor, a drag, a file operation and its dialog).
+        bool IsBusyForAutoRefresh() const;
+        // Cheap fingerprint of a directory, used only where no native backend
+        // exists: its own modification time folded
+        // together with every entry's name, size and modification time. Two
+        // scans of an unchanged folder give the same number; anything created,
+        // deleted, renamed, resized or rewritten changes it.
+        static uint64_t FolderSignature(const std::string& path, bool includeHidden);
+
+        bool folderWatchEnabled = true;
+        int  folderWatchIntervalMs = 1500;
+        // The operating system's own change notification (inotify /
+        // ReadDirectoryChangesW). When it takes, the fingerprint worker below
+        // stays idle and the interval above only governs how quickly the UI
+        // picks the flag up; where no backend exists Watch() fails and the
+        // polling path runs exactly as before.
+        UltraCanvasFolderWatcher folderWatcher;
+        bool nativeWatchActive = false;           // UI thread only
+        std::atomic<bool> nativeWatchLost{false}; // watcher thread -> UI timer
+        std::thread             folderWatchWorker;
+        mutable std::mutex      folderWatchMutex;
+        std::condition_variable folderWatchCond;
+        bool                    folderWatchShutdown = false;
+        std::string             folderWatchPath;          // "" = watching nothing
+        bool                    folderWatchIncludeHidden = false;
+        uint64_t                folderWatchSignature = 0;
+        bool                    folderWatchHaveBaseline = false;  // first scan only measures
+        std::atomic<bool>       folderWatchDirty{false};  // worker -> UI timer
+        TimerId                 folderWatchTimer = InvalidTimerId;
+
         bool dragEnabled = true;
+        bool dropOnFolderCopies = false;   // plain drop on a folder: move / copy
         bool dragOutArmed = false;         // press may still become a drag
         Point2Di dragOutPressPoint;
         int  dragPressIndex = -1;          // entry the press landed on
@@ -951,6 +1467,22 @@ namespace UltraCanvas {
             std::shared_ptr<std::vector<uint8_t>> qoi;
             size_t bytes = 0;
             size_t rawBytes = 0;
+            // Last frame that asked for this slot. Overflowing the byte
+            // budget drops the least-recently-drawn slots first, so what is
+            // on screen survives; the budget used to drop every finished
+            // slot at once, which blanked a whole screenful of tiles.
+            uint64_t tick = 0;
+            // Application icons (.exe / .dll / .ico) are held in a budget of
+            // their own: they are cheap, they are the file's identity rather
+            // than a preview of its content, and a folder of photos or
+            // videos must not be able to push them out.
+            bool nativeIcon = false;
+            // Extractions of a native icon already spent on this slot. The
+            // shell can fail on a file it would serve a moment later (a busy
+            // shell, an exhausted handle table), so an icon gets a few tries
+            // before the tile settles on its type glyph — unlike a content
+            // decode, which fails the same way every time.
+            uint8_t attempts = 0;
         };
         struct ThumbRequest {
             std::string path;
@@ -985,7 +1517,9 @@ namespace UltraCanvas {
         std::vector<std::thread> thumbWorkers;
         bool thumbShutdown = false;
         uint64_t thumbGeneration = 0;           // bumped to drop stale results
-        size_t thumbBytes = 0;                  // decoded pixmap bytes held
+        size_t thumbBytes = 0;                  // content-preview bytes held
+        size_t thumbNativeBytes = 0;            // application-icon bytes held
+        uint64_t thumbSlotTick = 0;             // LRU clock for thumbSlots
         std::atomic<bool> thumbRedrawPosted{false};
         // Destructor flips this so a queued PostToUIThread redraw task that
         // outlives the widget becomes a no-op instead of a dangling call.
@@ -999,6 +1533,13 @@ namespace UltraCanvas {
                                                    int w, int h,
                                                    ImageFitMode fit,
                                                    float scale);
+        // Byte accounting for one slot, on its way out of thumbSlots: takes
+        // it off its pool and drops any decompressed copy of it.
+        void ReleaseThumbSlotLocked(const std::string& key, ThumbSlot& slot);
+        // Drop least-recently-drawn finished slots until both pools are back
+        // inside their budgets. `keepKey` (the slot just stored) is never
+        // dropped, so the work that triggered the eviction is not undone.
+        void EvictThumbSlotsLocked(const std::string& keepKey);
         void StartThumbnailWorkersLocked();
         void StopThumbnailWorkers();
         void ThumbnailWorkerMain();
@@ -1019,9 +1560,12 @@ namespace UltraCanvas {
         // Swaps thumbFrameWants into the worker queue and forgets pending
         // slots that fell out of the visible + prefetch bands.
         void CommitThumbnailWants();
-        // True when `e` may show a content preview right now: it belongs to a
-        // preview kind and that kind is enabled in previewTypes.
-        bool PreviewEnabledFor(const FilerEntry& e) const;
+        // Both switch sets share one implementation: `kinds` is the mask and
+        // `disabled` the per-format exception list of the set being asked.
+        static bool PreviewAllowed(const FilerEntry& e, uint32_t kinds,
+                                   const std::set<std::string>& disabled);
+        // Fires onDisplayFormatsChanged (if the host installed one).
+        void NotifyDisplayFormatsChanged();
         // True when a preview of `e` is worth drawing in a box that size. A
         // page-shaped preview (PDF, 3D model, text page) needs a tile; in the
         // icon column of a Details / List row it would be an indistinct
@@ -1111,7 +1655,19 @@ namespace UltraCanvas {
         std::unordered_map<std::string, MediaInfoSlot> mediaInfoCache;
         std::deque<MediaProbeRequest> mediaQueue;
 
-        std::mutex statsMutex;              // guards caches/queues/generation
+        // "Is another program holding this file" per shown file, filled by the
+        // same worker: the probe is one open that is closed again, but it is
+        // an open, and the paint path may not make one. A slot exists from the
+        // moment a file is queued (state Unknown), which is what keeps a file
+        // drawn every frame from being queued every frame. Dropped with the
+        // rest on a rescan, so a refresh - and the folder watch's rescan after
+        // a change - is what makes the marking current.
+        std::unordered_map<std::string, FileLockInfo> lockCache;
+        std::deque<std::string> lockQueue;
+
+        // Mutable so a const getter (GetEntryLockState) can read a cache the
+        // worker writes; the lock is what makes that read safe.
+        mutable std::mutex statsMutex;      // guards caches/queues/generation
         std::condition_variable statsCond;
         std::thread statsWorker;
         bool statsShutdown = false;
@@ -1148,9 +1704,25 @@ namespace UltraCanvas {
         // Fills `e` by stat-ing `path` (name, sizes, times, type info); false
         // when the path no longer exists. Used by the file-list display.
         bool StatEntryForPath(const std::string& path, FilerEntry& e) const;
+        // The per-entry finishing pass every listing gets: weight, attribute
+        // letters, shortcut resolution and the info column (the shortcut's
+        // target, a compression ratio, or whatever infoProvider returns).
+        void DecorateEntry(FilerEntry& e) const;
         void SortEntries();
         void EnsureEffectiveSizes();   // dir weights from the async folder stats
+
         void ApplyEntryTypeInfo(FilerEntry& e) const;
+        // Reads a .lnk and fills the entry from it: what it points at, and
+        // with it the type, the category and the icon the entry is drawn
+        // with. A file that ends in .lnk but is not a shell link is left as
+        // the plain file it is. Answers are cached per file (path, size,
+        // modification time), so a rescan of a folder full of shortcuts
+        // costs no further reads.
+        void ResolveShortcutEntry(FilerEntry& e) const;
+        // The same for a directory that is really an application: a macOS
+        // bundle, whose Info.plist names it, names its executable and names
+        // the icon it is drawn with. Cached like the shortcuts above.
+        void ResolveBundleEntry(FilerEntry& e) const;
 
         // ===== FOLDER LISTING PREFETCH =====
         // After a folder settles, a low-priority worker pre-scans its visible
@@ -1236,6 +1808,10 @@ namespace UltraCanvas {
         int  MaxScrollY() const;
         int  MaxScrollX() const;
         void ClampScroll();
+        // Binds the two scroll animators to the offsets above (once, from the
+        // constructor) and drops an in-flight glide.
+        void BindScrollAnimators();
+        void CancelScrollAnimations();
 
         struct ScrollbarGeom {
             bool active = false;
@@ -1249,8 +1825,31 @@ namespace UltraCanvas {
         void ScrollThumbTo(int thumbLeadPx);
         void EnsureVisible(size_t entryIndex);
         // The scroll correction of EnsureVisible against the current layout
-        // (assumes EnsureLayout already ran).
-        void ScrollEntryIntoView(size_t entryIndex);
+        // (assumes EnsureLayout already ran). It glides by default, so keyboard
+        // navigation scrolls like the wheel does; `animated` is false only where
+        // the offset is re-derived rather than moved (the resize anchor).
+        void ScrollEntryIntoView(size_t entryIndex, bool animated = true);
+
+        // ===== SCROLL ANCHORING (resize / preview pane) =====
+        // Every view reflows when the display area changes width or height —
+        // a thumbnail grid re-wraps into a different number of columns, a
+        // list re-columns, a treemap is rebuilt entirely — so keeping the
+        // pixel scroll offset would land the viewport on completely different
+        // files: dragging the split pane, or opening / closing the preview
+        // pane, made the file the user was looking at jump off screen.
+        // Instead the entry the view is anchored to is remembered before the
+        // relayout and put back at the same place in the viewport afterwards.
+        // The reference is the selected entry while it is on screen (what the
+        // preview pane shows), otherwise the first entry that is visible.
+        struct ScrollAnchor {
+            bool   valid = false;
+            size_t entryIndex = 0;
+            // Distance from the viewport's leading edge to the entry's, in
+            // pixels; negative while the entry starts just above / left of it.
+            int    offset = 0;
+        };
+        ScrollAnchor CaptureScrollAnchor() const;
+        void RestoreScrollAnchor(const ScrollAnchor& anchor);
 
         // ===== DRAWING =====
         // The folder view + chrome (has several early-return branches); the
@@ -1269,9 +1868,29 @@ namespace UltraCanvas {
         // attention icon above the message, vertically centered in the view.
         void DrawEmptyState(IRenderContext* ctx, const Rect2Di& bounds,
                             const std::string& message);
+        // ===== NAME FILTER (helpers) =====
+        bool EntryMatchesNameFilter(const FilerEntry& e) const;
+        // Erase the entries the active filter hides (no-op without one).
+        void ApplyNameFilterToEntries();
+        // Create / show / hide the "no matches" action button to match the
+        // current filter and listing; positioned under the notice each frame
+        // by PositionFilterEmptyButton (called from Render, which measures
+        // the label with the pass's context).
+        void UpdateFilterEmptyButton();
+        void PositionFilterEmptyButton(IRenderContext* ctx);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);
+        // The small arrow badge in the corner of a shortcut's icon - the one
+        // mark that tells a shortcut apart from the file it points at, whose
+        // icon it otherwise wears exactly.
+        void DrawShortcutOverlay(IRenderContext* ctx, const Rect2Di& rect);
+        // The padlock badge in the opposite corner: another program is
+        // holding this file, so replacing, renaming or deleting it fails
+        // until that program lets go. Only for a file the system actually
+        // refuses (FileLockState::Locked) - a file merely open elsewhere
+        // blocks nothing and is left to the attribute letter.
+        void DrawLockOverlay(IRenderContext* ctx, const Rect2Di& rect);
         void DrawSelectionState(IRenderContext* ctx, const ItemLayout& item, bool hovered);
         // True when the entry sits on the clipboard as a pending "cut", so the
         // view can ghost it until the move completes (Explorer-style).
@@ -1300,6 +1919,16 @@ namespace UltraCanvas {
         // Cached per-file extra info: "1920 × 1080 px" for bitmaps,
         // "3:45 · H.264" for audio / video. Empty when nothing was probed.
         std::string EntryExtraInfo(const FilerEntry& e);
+        // Cached "is another program holding this file", queueing the probe
+        // on the first ask. Called from the paint path, so it never probes
+        // itself: a miss returns an empty (Unknown) answer and the finished
+        // probe posts a redraw. Empty as well while the marking is off, or
+        // where the platform cannot answer.
+        FileLockInfo EntryLockInfo(const FilerEntry& e);
+        // The attribute letters of an entry - what DecorateEntry() worked out
+        // from the file itself, plus the lock letter, which is only known once
+        // the background probe has answered.
+        std::string EntryAttributeText(const FilerEntry& e);
         std::string EllipsizeText(IRenderContext* ctx, const std::string& text,
                                   int maxWidth) const;
         // Plain cut to a width, without the "…" — for the cells of a
@@ -1313,16 +1942,21 @@ namespace UltraCanvas {
         std::string EllipsizeEntryName(IRenderContext* ctx, size_t entryIndex,
                                        const std::string& name, int maxWidth);
         // Breaks `text` into at most `maxLines` lines that each fit `maxWidth`,
-        // for the captions of the tile-shaped views. Breaks after a separator
-        // (space, -, _, .) when one sits in the back half of the line, else at
-        // the exact fit — file names are frequently one long "word". When the
-        // text still does not fit, the head of what is left is dropped and the
-        // last line opens with "…", keeping the end of the name (extension)
-        // visible. `outTruncated` reports whether anything was dropped.
-        // A text that fits its lines completely is re-broken at the smallest
-        // line width needing no extra line, so the lines come out near equal
-        // ("CoderBox" / "compiler.png" instead of the greedily filled
-        // "CoderBox compiler" / ".png") without changing the line count.
+        // for the captions of the tile-shaped views (UltraCanvasTextWrapping.h
+        // does the work; these bind it to the context's font and the style).
+        // Breaks land after a separator (space, -, _, .), before the capital
+        // that opens the next word of a PascalCase name (see
+        // captionCamelCaseBreaks) or between whole words; a word is only
+        // broken apart when it has to be — never for
+        // the sake of the last character or three of it, and a line may use
+        // captionOverflowSlack pixels of the caption's inset to keep one
+        // whole. When the text still does not fit, the head of what is left
+        // is dropped and the last line opens with "…", keeping the end of the
+        // name (extension) visible. `outTruncated` reports whether anything
+        // was dropped. A text that fits its lines completely is re-broken at
+        // the smallest line width needing no extra line, so the lines come out
+        // near equal ("CoderBox" / "compiler.png" instead of the greedily
+        // filled "CoderBox compiler" / ".png") without changing the count.
         std::vector<std::string> WrapText(IRenderContext* ctx,
                                           const std::string& text,
                                           int maxWidth, int maxLines,
@@ -1334,6 +1968,10 @@ namespace UltraCanvas {
                                                 const std::string& text,
                                                 int lineWidth, int maxLines,
                                                 bool* outTruncated) const;
+        // Wrapping rules for a caption of `lineWidth`, from the style.
+        TextWrapping::Options CaptionWrapOptions(int lineWidth, int maxLines) const;
+        // FilerStyle::captionOverflowSlack, resolved (0 = from smallFontSize).
+        int  CaptionOverflowSlack() const;
         // WrapText for an entry name; records whether it had to be shortened,
         // so the hover tooltip only pops for names that are really cut off.
         std::vector<std::string> WrapEntryName(IRenderContext* ctx, size_t entryIndex,
@@ -1344,6 +1982,13 @@ namespace UltraCanvas {
                              int maxWidth) const;
         int  NameLineHeight() const;            // one wrapped caption line
         int  CaptionBandHeight(int lines) const;// caption strip for `lines`
+        // FilerStyle::extensionBadgeHeight, resolved (0 = from smallFontSize).
+        int  ExtensionBadgeHeight() const;
+        // The Display > File extensions tag of a thumbnail tile, painted over
+        // the foot of its icon box (`box`) so no tile grows for it. Draws
+        // nothing while the badge is off or the entry carries no extension.
+        void DrawExtensionBadge(IRenderContext* ctx, const FilerEntry& e,
+                                const Rect2Di& box);
         // Per-entry "the drawn name is shortened" flags, refreshed by the draw
         // pass for the items it paints (sized with `entries`).
         std::vector<uint8_t> nameTruncated;
@@ -1384,9 +2029,20 @@ namespace UltraCanvas {
         void EndColumnSplitterDrag();
         void NotifyColumnWidthsChanged();
         // Shows / hides the hover tooltip for the icon-menu button or the
-        // truncated item name under the cursor.
-        void UpdateHoverTooltip(const UCEvent& event, const Point2Di& localPoint);
+        // truncated item name under the cursor. The window point is where the
+        // tooltip pops; it is passed in rather than read from an event so a
+        // scroll can refresh the tooltip with no event to hand.
+        void UpdateHoverTooltip(const Point2Di& localPoint,
+                                const Point2Di& windowPoint);
         void HideHoverTooltip();
+        // Re-derives the hovered item, its icon menu and its tooltip at the
+        // last known pointer position. Runs once per paint and returns
+        // immediately unless the content moved under the cursor since the
+        // hover was last worked out.
+        void RefreshHoverState();
+        // Records where an incoming pointer event puts the cursor, so the
+        // hover can be re-derived later with no event in hand.
+        void RememberPointer(const UCEvent& event);
 
         void HandleItemClick(int index, bool ctrl, bool shift);
         void ActivateEntry(size_t index);          // double-click / Enter
@@ -1485,6 +2141,13 @@ namespace UltraCanvas {
         void FinishMarquee();              // release: keep the result
         void CancelMarquee();              // Escape: restore the old selection
         void FireSelectionChanged();
+        // Drop `paths` out of the selection (firing onSelectionChanged) before
+        // the widget moves them. A host that feeds a preview pane from the
+        // selection - the UltraFiler media preview - still has the file open
+        // through its document engine, and an open handle makes the move fail
+        // on Windows. The notification is synchronous, so the preview is closed
+        // by the time the move runs.
+        void DeselectPathsForModification(const std::vector<std::string>& paths);
         // Reports a user-made change to onFolderModified. An empty argument
         // means the displayed folder (skipped in file-list mode, where the
         // displayed folder is not where the change landed).
@@ -1494,6 +2157,188 @@ namespace UltraCanvas {
         // Same, but in an arbitrary folder (drop target of a drag).
         static std::string UniquePathIn(const std::string& folder,
                                         const std::string& baseName);
+
+        // ===== PASTE CONFLICTS =====
+        // One paste in flight: the sources not yet processed and the choices
+        // the conflict dialog collected so far.
+        struct PendingPaste {
+            std::string folder;
+            std::vector<std::string> sources;
+            size_t next = 0;
+            bool cut = false;
+            PasteConflictAction action = PasteConflictAction::KeepBoth;
+            bool applyToAll = false;   // reuse `action` for later conflicts
+            bool changed = false;
+            // Failure handling: skip every failing entry / grant each one
+            // silent retry, and the per-entry state they consume.
+            bool skipFailedForAll = false;
+            bool retryFailedForAll = false;
+            bool currentRetried = false;
+            PasteConflictAction currentAction = PasteConflictAction::KeepBoth;
+            std::function<void(bool changed)> onDone;
+        };
+        std::unique_ptr<PendingPaste> pendingPaste;
+
+        // Processes sources until a name conflict or a failure needs a
+        // dialog (which resumes it) or the queue is done (FinishPendingPaste).
+        void ContinuePendingPaste();
+        void FinishPendingPaste();
+        // Copy / move one source into the pending paste's folder, honoring
+        // `action` when the name is taken. False = failed, with the reason.
+        bool PasteOneEntry(const std::string& src, PasteConflictAction action,
+                          std::string& whyFailed);
+        // Pastes the entry at `next` (with the failure policy applied) and
+        // advances. False = a problem dialog was opened and resumes the queue.
+        bool PasteCurrentAndAdvance(PasteConflictAction action);
+        // The "already exists" dialog: exclusive Keep both / Replace / Skip
+        // switches, a "do this for all remaining conflicts" switch, and
+        // Continue / Cancel buttons.
+        void ShowPasteConflictDialog(const std::string& src);
+        // The paste failure dialog: Try again / Skip, like a failed delete's.
+        void ShowPasteProblemDialog(const std::string& src,
+                                    const std::string& reason);
+
+        // A two-choice problem dialog in the house style: exclusive switches
+        // for proceed (try again / delete anyway / …) vs. skip, a "do this
+        // for all" scope switch, and Continue / Cancel buttons. False = modal
+        // dialogs are unavailable and the caller must fall back.
+        bool ShowProceedSkipDialog(
+                DialogConfig& cfg,
+                const std::string& proceedLabel, const std::string& skipLabel,
+                const std::string& allLabel, bool proceedDefault,
+                std::function<void(bool proceed, bool all)> onContinue,
+                std::function<void()> onCancel);
+
+        // ===== DELETE PROBLEMS =====
+        // What the delete-problem dialog decides for the entry it is about:
+        // delete it after all (a write-protected entry, or another try after
+        // a failure) or leave it alone.
+        enum class DeleteProblemAction { Delete, Skip };
+
+        // One delete in flight: the real-filesystem victims not yet processed
+        // and the choices the problem dialogs collected so far.
+        struct PendingDelete {
+            std::vector<FilerEntry> victims;
+            size_t next = 0;
+            // "Do this for all" answers, kept per dialog flavor.
+            bool protectedForAll = false;          // write-protected entries…
+            DeleteProblemAction protectedAction = DeleteProblemAction::Skip;
+            bool skipFailedForAll = false;         // skip every failing entry
+            bool retryFailedForAll = false;        // one silent retry each
+            // The entry at `next`: its write-protected question, once
+            // answered, and whether its silent retry has been spent.
+            bool currentDecided = false;
+            DeleteProblemAction currentAction = DeleteProblemAction::Skip;
+            bool currentRetried = false;
+            // Folders that really lost an entry, for onFolderModified.
+            std::vector<std::string> modifiedFolders;
+        };
+        std::unique_ptr<PendingDelete> pendingDelete;
+
+        // Processes victims until a problem needs a dialog (which resumes it)
+        // or the queue is done (FinishPendingDelete).
+        void ContinuePendingDelete();
+        void FinishPendingDelete();
+        void AdvancePendingDelete();   // to the next victim, forgetting the
+                                       // per-entry decisions
+        // The problem dialog, in two flavors: a write-protected (locked)
+        // entry before the attempt ("Delete it anyway" / "Skip"), or a
+        // failed delete ("Try again" / "Skip" with the failure reason).
+        void ShowDeleteProblemDialog(const FilerEntry& entry,
+                                     bool writeProtected,
+                                     const std::string& reason);
+
+        // Executable script activated: Run / Open (view it) / Cancel.
+        void ShowRunOrOpenDialog(const FilerEntry& e);
+
+        // Arms the window's busy pointer around handing a file to another
+        // program. Spawning returns long before that program is on screen and
+        // nothing tells us when it gets there, so this is the one piece of
+        // feedback a double-click leaves behind: after a second the pointer
+        // says the launch is under way, and it gives up on its own.
+        void ShowLaunchPointer();
+
+        // ===== RENAME CONFLICTS =====
+        // The actual rename plus the selection hand-over and refresh.
+        void PerformRename(const std::string& oldPath,
+                           const std::string& targetPath);
+        // Renaming onto an existing name asks: Replace / Cancel.
+        void ShowRenameReplaceDialog(const std::string& oldPath,
+                                     const std::string& targetPath);
+
+        // ===== EXTRACT CONFLICTS =====
+        // One ExtractSelection in flight: the archives not yet extracted and
+        // the choice the conflict dialog collected.
+        struct PendingExtract {
+            std::vector<FilerEntry> archives;
+            size_t next = 0;
+            PasteConflictAction action = PasteConflictAction::KeepBoth;
+            bool applyToAll = false;
+            bool changed = false;
+        };
+        std::unique_ptr<PendingExtract> pendingExtract;
+
+        // ===== ARCHIVE WORKER (compress / extract with a progress window) =====
+        // Packing and unpacking are the widget's only file operations that can
+        // run for minutes, so they run on a worker while a progress window
+        // shows the ring, the percentage and the file being handled. The
+        // worker touches only the atomics and the mutex-guarded name below;
+        // everything else - the refresh, the queue, the error - happens on the
+        // UI thread when the poll timer sees the job finish.
+        struct ArchiveJob {
+            std::thread worker;
+            std::atomic<bool>     finished{false};
+            std::atomic<bool>     succeeded{false};
+            std::atomic<bool>     cancelRequested{false};
+            std::atomic<uint64_t> doneBytes{0};
+            std::atomic<uint64_t> totalBytes{0};
+            std::mutex            fileMutex;
+            std::string           currentFile;      // guarded by fileMutex
+            std::string           destination;      // archive path / target folder
+            bool                  packing = false;  // true = compress
+            TimerId               timer = InvalidTimerId;
+            std::shared_ptr<UltraCanvasProgressDialog> dialog;
+            // Runs on the UI thread when the job ends: `ok` is false for a
+            // failure AND for a cancel (cancelled tells the two apart).
+            std::function<void(bool ok, bool cancelled)> onFinished;
+        };
+        std::unique_ptr<ArchiveJob> archiveJob;
+
+        // Runs `work` on the archive worker behind a progress window titled
+        // `title` with `caption` above the ring. `work` is handed a reporter it
+        // must call as it goes; the reporter returns false once the user
+        // cancels, which the VirtualFS progress callbacks use to stop.
+        using ArchiveProgressReporter =
+                std::function<bool(uint64_t done, uint64_t total,
+                                   const std::string& file)>;
+        void StartArchiveJob(const std::string& title,
+                             const std::string& caption,
+                             const std::string& destination,
+                             bool packing,
+                             std::function<bool(const ArchiveProgressReporter&)> work,
+                             std::function<void(bool ok, bool cancelled)> onFinished);
+        void PollArchiveJob();      // UI timer: ring, detail line, completion
+        void FinishArchiveJob();    // joins the worker and closes the window
+        // Unpacks (archive -> destination folder) pairs one job at a time,
+        // each behind its own progress window, then refreshes and reports
+        // `notifyFolder` as modified. Cancelling one stops the whole run.
+        void ExtractArchivesSequentially(
+                std::vector<std::pair<std::string, std::string>> jobs,
+                size_t index, std::string notifyFolder);
+
+        // Processes archives until a taken destination folder name needs the
+        // dialog (which resumes it) or the queue is done.
+        void ContinuePendingExtract();
+        void FinishPendingExtract();
+        // Starts the extraction of the archive at `next` (KeepBoth renames the
+        // destination, Replace merges into the existing folder, Skip does not
+        // extract). Returns true when it is already done (a skip) and the
+        // caller may go on to the next archive; false when the extraction is
+        // running on the archive worker, which resumes the queue when it ends.
+        bool ExtractCurrentAndAdvance(PasteConflictAction action);
+        // The "folder already exists" dialog: Keep both / Extract into the
+        // existing folder / Skip this archive.
+        void ShowExtractConflictDialog(const FilerEntry& archive);
 
         // Selected entries, or the whole folder when nothing is selected —
         // what Compress / Print / Extras operate on.

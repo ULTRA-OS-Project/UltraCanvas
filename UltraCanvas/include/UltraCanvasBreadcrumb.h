@@ -1,7 +1,7 @@
 // include/UltraCanvasBreadcrumb.h
 // Hierarchical breadcrumb navigation control with overflow handling and per-item dropdowns
-// Version: 1.5.0
-// Last Modified: 2026-08-11
+// Version: 1.6.0
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -250,6 +250,11 @@ namespace UltraCanvas {
         // Per-segment dropdown listing the folders inside that segment, so the
         // path can be extended one level straight from the strip.
         bool subFolderDropdowns = true;
+        // What a click on the "Computer" node itself does. Unset, it
+        // navigates to the drive root of the shown path; a file manager with
+        // a page of its own for the machine (UltraFiler's Computer page)
+        // opens that instead. The node's dropdown lists the drives either way.
+        std::function<void()> onComputerClick;
     };
 
 // Rebuilds `crumb` as the path of `folderPath`: an optional "Computer" node,

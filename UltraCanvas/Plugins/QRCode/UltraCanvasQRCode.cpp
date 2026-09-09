@@ -277,6 +277,99 @@ namespace UltraCanvas {
 #endif
     }
 
+#ifdef ULTRACANVAS_QRCODE_HAS_DECODER
+    namespace {
+
+    // Binarize an 8-bit grayscale buffer in place and hand it to zbar.
+    //
+    // Shared by every scan entry point so the file path and the in-memory path
+    // cannot drift into decoding the same image differently — a camera frame
+    // that scans in one and not the other would be a miserable bug to chase.
+    std::vector<QRScanResult> DecodeGrayscale(std::vector<std::uint8_t>& grayData,
+                                              int width, int height,
+                                              std::string* errorMessage) {
+        using namespace zbar;
+        std::vector<QRScanResult> results;
+        auto setErr = [&](const std::string& s) {
+            if (errorMessage) *errorMessage = s;
+        };
+
+        const size_t dataSize = grayData.size();
+        if (dataSize == 0 || width <= 0 || height <= 0) {
+            setErr("Empty image");
+            return results;
+        }
+
+        // Adaptive threshold: use average of all pixel values. QR codes are
+        // roughly 50/50 black/white so the average should be ~128. We then
+        // binarize so zbar gets clean black/white pixels.
+        {
+            unsigned long long sum = 0;
+            for (size_t i = 0; i < dataSize; ++i) sum += grayData[i];
+            int threshold = static_cast<int>(sum / dataSize);
+            if (threshold < 64)  threshold = 128;
+            if (threshold > 192) threshold = 128;
+            for (size_t i = 0; i < dataSize; ++i)
+                grayData[i] = (grayData[i] < threshold) ? 0 : 255;
+        }
+
+        zbar_image_scanner_t* scanner = zbar_image_scanner_create();
+        if (!scanner) {
+            setErr("Failed to create zbar scanner");
+            return results;
+        }
+        zbar_image_scanner_set_config(scanner, ZBAR_QRCODE, ZBAR_CFG_ENABLE, 1);
+
+        zbar_image_t* zimg = zbar_image_create();
+        if (!zimg) {
+            zbar_image_scanner_destroy(scanner);
+            setErr("Failed to create zbar image");
+            return results;
+        }
+
+        zbar_image_set_format(zimg, zbar_fourcc('Y', '8', '0', '0'));
+        zbar_image_set_size(zimg, static_cast<unsigned>(width),
+                            static_cast<unsigned>(height));
+        zbar_image_set_data(zimg, grayData.data(), grayData.size(), nullptr);
+
+        int nSymbols = zbar_scan_image(scanner, zimg);
+
+        if (nSymbols > 0) {
+            const zbar_symbol_set_t* symset =
+                zbar_image_scanner_get_results(scanner);
+            if (symset) {
+                const zbar_symbol_t* sym = zbar_symbol_set_first_symbol(symset);
+                while (sym) {
+                    QRScanResult r;
+                    r.type = zbar_get_symbol_name(zbar_symbol_get_type(sym));
+                    unsigned len = zbar_symbol_get_data_length(sym);
+                    const char* data = zbar_symbol_get_data(sym);
+                    if (data && len > 0) r.data.assign(data, len);
+                    unsigned nPts = zbar_symbol_get_loc_size(sym);
+                    for (unsigned i = 0; i < nPts; ++i) {
+                        r.polygon.push_back(Point2Df(
+                            static_cast<float>(zbar_symbol_get_loc_x(sym, i)),
+                            static_cast<float>(zbar_symbol_get_loc_y(sym, i))));
+                    }
+                    r.valid = true;
+                    results.push_back(std::move(r));
+                    sym = zbar_symbol_next(sym);
+                }
+            }
+        } else if (nSymbols < 0) {
+            setErr("zbar scan failed");
+        }
+
+        zbar_image_destroy(zimg);
+        zbar_image_scanner_destroy(scanner);
+
+        if (results.empty()) setErr("No QR codes detected");
+        return results;
+    }
+
+    } // namespace
+#endif // ULTRACANVAS_QRCODE_HAS_DECODER
+
     std::vector<QRScanResult> QRCodeUtils::ScanQRCodeFile(const std::string& imagePath,
                                                           std::string* errorMessage) {
         std::vector<QRScanResult> results;
@@ -332,85 +425,89 @@ namespace UltraCanvas {
             return results;
         }
 
-        // Adaptive threshold: use average of all pixel values. QR codes are
-        // roughly 50/50 black/white so the average should be ~128. We then
-        // binarize so zbar gets clean black/white pixels.
-        {
-            unsigned long long sum = 0;
-            for (size_t i = 0; i < dataSize; ++i) sum += grayData[i];
-            int threshold = static_cast<int>(sum / dataSize);
-            if (threshold < 64)  threshold = 128;
-            if (threshold > 192) threshold = 128;
-            for (size_t i = 0; i < dataSize; ++i)
-                grayData[i] = (grayData[i] < threshold) ? 0 : 255;
-        }
-
-        // Create zbar scanner
-        zbar_image_scanner_t* scanner = zbar_image_scanner_create();
-        if (!scanner) {
-            setErr("Failed to create zbar scanner");
-            return results;
-        }
-
-        // Enable QR code symbology explicitly
-        zbar_image_scanner_set_config(scanner, ZBAR_QRCODE, ZBAR_CFG_ENABLE, 1);
-
-        // Create zbar image in Y800 (grayscale) format
-        zbar_image_t* zimg = zbar_image_create();
-        if (!zimg) {
-            zbar_image_scanner_destroy(scanner);
-            setErr("Failed to create zbar image");
-            return results;
-        }
-
-        zbar_image_set_format(zimg, zbar_fourcc('Y', '8', '0', '0'));
-        zbar_image_set_size(zimg, static_cast<unsigned>(width),
-                            static_cast<unsigned>(height));
-        zbar_image_set_data(zimg, grayData.data(), grayData.size(), nullptr);
-
-        // Scan
-        int nSymbols = zbar_scan_image(scanner, zimg);
-
-        // Collect results from the scanner's symbol set
-        if (nSymbols > 0) {
-            const zbar_symbol_set_t* symset =
-                zbar_image_scanner_get_results(scanner);
-            if (symset) {
-                const zbar_symbol_t* sym =
-                    zbar_symbol_set_first_symbol(symset);
-                while (sym) {
-                    QRScanResult r;
-                    r.type = zbar_get_symbol_name(
-                        zbar_symbol_get_type(sym));
-                    unsigned len = zbar_symbol_get_data_length(sym);
-                    const char* data = zbar_symbol_get_data(sym);
-                    if (data && len > 0)
-                        r.data.assign(data, len);
-                    unsigned nPts = zbar_symbol_get_loc_size(sym);
-                    for (unsigned i = 0; i < nPts; ++i) {
-                        r.polygon.push_back(Point2Df(
-                            static_cast<float>(
-                                zbar_symbol_get_loc_x(sym, i)),
-                            static_cast<float>(
-                                zbar_symbol_get_loc_y(sym, i))));
-                    }
-                    r.valid = true;
-                    results.push_back(std::move(r));
-                    sym = zbar_symbol_next(sym);
-                }
-            }
-        } else if (nSymbols < 0) {
-            setErr("zbar scan failed");
-        }
-
-        zbar_image_destroy(zimg);
-        zbar_image_scanner_destroy(scanner);
-
-        if (results.empty()) {
-            setErr("No QR codes detected");
-        }
-        return results;
+        return DecodeGrayscale(grayData, width, height, errorMessage);
 #endif
+    }
+
+    std::vector<QRScanResult> QRCodeUtils::ScanQRCodeImage(const std::uint8_t* pixels,
+                                                           int width, int height,
+                                                           int stride,
+                                                           QRPixelFormat format,
+                                                           std::string* errorMessage) {
+        std::vector<QRScanResult> results;
+        auto setErr = [&](const std::string& s) {
+            if (errorMessage) *errorMessage = s;
+        };
+#ifndef ULTRACANVAS_QRCODE_HAS_DECODER
+        (void)pixels; (void)width; (void)height; (void)stride; (void)format;
+        setErr("QR decoder support not built in (compile with libzbar)");
+        return results;
+#else
+        if (!pixels || width <= 0 || height <= 0) {
+            setErr("Empty image");
+            return results;
+        }
+
+        int bytesPerPixel = 1;
+        switch (format) {
+            case QRPixelFormat::Grayscale8: bytesPerPixel = 1; break;
+            case QRPixelFormat::RGB24:      bytesPerPixel = 3; break;
+            case QRPixelFormat::RGBA32:
+            case QRPixelFormat::BGRA32:     bytesPerPixel = 4; break;
+        }
+
+        // A caller passing 0 means "tightly packed"; anything shorter than one
+        // row would make the reads below run off the end of the buffer.
+        if (stride <= 0) stride = width * bytesPerPixel;
+        if (stride < width * bytesPerPixel) {
+            setErr("Stride is smaller than one row of pixels");
+            return results;
+        }
+
+        const size_t dataSize = static_cast<size_t>(width) *
+                                static_cast<size_t>(height);
+        std::vector<std::uint8_t> grayData(dataSize);
+
+        for (int y = 0; y < height; ++y) {
+            const std::uint8_t* row = pixels + static_cast<size_t>(y) * stride;
+            std::uint8_t* out = grayData.data() + static_cast<size_t>(y) * width;
+            switch (format) {
+                case QRPixelFormat::Grayscale8:
+                    std::memcpy(out, row, static_cast<size_t>(width));
+                    break;
+                case QRPixelFormat::RGB24:
+                case QRPixelFormat::RGBA32:
+                    // Same BT.601 luminance the file path uses, so both scan
+                    // an image identically.
+                    for (int x = 0; x < width; ++x) {
+                        const std::uint8_t* p = row + x * bytesPerPixel;
+                        out[x] = static_cast<std::uint8_t>(
+                            (p[0] * 77 + p[1] * 150 + p[2] * 29) >> 8);
+                    }
+                    break;
+                case QRPixelFormat::BGRA32:
+                    for (int x = 0; x < width; ++x) {
+                        const std::uint8_t* p = row + x * 4;
+                        out[x] = static_cast<std::uint8_t>(
+                            (p[2] * 77 + p[1] * 150 + p[0] * 29) >> 8);
+                    }
+                    break;
+            }
+        }
+
+        return DecodeGrayscale(grayData, width, height, errorMessage);
+#endif
+    }
+
+    std::vector<QRScanResult> QRCodeUtils::ScanQRCodeImage(const UCVideoFrame& frame,
+                                                           std::string* errorMessage) {
+        if (!frame.IsValid()) {
+            if (errorMessage) *errorMessage = "Invalid video frame";
+            return {};
+        }
+        return ScanQRCodeImage(frame.GetData(), frame.GetWidth(),
+                               frame.GetHeight(), frame.GetStride(),
+                               QRPixelFormat::RGBA32, errorMessage);
     }
 
     UltraCanvasQRCode::UltraCanvasQRCode(const std::string& identifier,

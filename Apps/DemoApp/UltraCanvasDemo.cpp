@@ -817,6 +817,8 @@ namespace UltraCanvas {
                                 "Docs/UltraCanvas/UltraCanvasTreeViewExamples.md")
                 .AddVariant("treeview", "File Explorer Style")
                 .AddVariant("treeview", "Multi-Selection Tree")
+                .AddVariant("treeview", "Debugger Variables (columns)")
+                .AddVariant("treeview", "Connecting Lines (none / dotted / solid)")
                 .AddVariant("treeview", "Checkable Nodes");
 
         extendedBuilder.AddItem("spreadsheet", "Spreadsheet engine",
@@ -961,6 +963,20 @@ namespace UltraCanvas {
                               [this]() { return CreateXARVectorExamples(); },
                               "DemoApp/UltraCanvasXARExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasXARExamples.md");
+#endif
+#ifdef ULTRACANVAS_HAS_EPS_PLUGIN
+        vectorBuilder.AddItem("epsimages", "EPS Images", "EPS (Encapsulated PostScript) display via the built-in PostScript interpreter",
+                              ImplementationStatus::PartiallyImplemented,
+                              [this]() { return CreateEPSVectorExamples(); },
+                              "DemoApp/UltraCanvasEPSExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasEPSExamples.md");
+#endif
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+        vectorBuilder.AddItem("dwgdrawings", "DWG / DXF Drawings", "AutoCAD drawings decoded natively (R13 to R2018) through the Vector plugin's converter matrix",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateDWGVectorExamples(); },
+                              "DemoApp/UltraCanvasDWGExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasVectorConverters.md");
 #endif
 
         // ===== CHARTS =====
@@ -1824,6 +1840,21 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraAI"); });
+        modulesBuilder.AddItem("ultracloud", "Ultra Cloud",
+                               "Ultra Cloud Module — cloud accounts, uploads and share links "
+                               "(Nextcloud/ownCloud, WebDAV, Dropbox, OneDrive, Google Drive)",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraCloud"); });
+        modulesBuilder.AddItem("ultracrypt", "Ultra Crypt",
+                               "Ultra Crypt Module — hashing, HMAC, AEAD, key derivation "
+                               "and secure random for every ULTRA OS module",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraCrypt"); });
+        modulesBuilder.AddItem("ultradatabase", "Ultra Database",
+                               "Ultra Database Module — named connections, parameterized "
+                               "queries, transactions and migrations over SQLite (Stage 1)",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraDatabase"); });
         modulesBuilder.AddItem("ultranet", "Ultra Net",
                                "Ultra Net Module — overview, documentation and a live "
                                "remote-resource loader (UltraCanvasFileLoader::LoadFile + "
@@ -1832,6 +1863,16 @@ namespace UltraCanvas {
                                [this]() { return CreateNetworkingExamples(); },
                                "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp",
                                "Docs/Modules/UltraNet/README.md");
+        modulesBuilder.AddItem("ultravault", "Ultra Vault",
+                               "Ultra Vault Module — the system-level home for API keys, "
+                               "tokens and passphrases (memory and encrypted-file backends)",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraVault"); });
+        modulesBuilder.AddItem("ultrawin", "Ultra Win",
+                               "Ultra Win Module — Windows applications on Linux / ULTRA OS "
+                               "as single native windows (Wine tier)",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateModuleDocScreen("Docs/Modules/UltraWin"); });
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
@@ -2006,6 +2047,10 @@ namespace UltraCanvas {
                 TreeNodeData itemData(itemId, demoItem->displayName);
                 if (demoItem->id == "imageperformance") {
                     itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/clock-five.svg"), 16, 16);
+                } else if (demoItem->id == "chartengine") {
+                    // The chart engine page is a configuration console for the
+                    // engine's services rather than a single component demo.
+                    itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/settings.svg"), 16, 16);
                 } else {
                     itemData.leftIcon = TreeNodeIcon(NormalizePath(GetResourcesDir() + "media/icons/document.svg"), 16, 16);
                 }

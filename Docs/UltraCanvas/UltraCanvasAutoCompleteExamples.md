@@ -66,6 +66,9 @@ void ClearItems();
 const std::vector<AutoCompleteItem>& GetAllItems() const;
 ```
 
+`SetItems()` is safe to call while the popup is open: the visible list is re-filtered
+against the current text so what is on screen keeps matching the data behind it.
+
 ### Selected Item
 
 ```cpp
@@ -250,6 +253,13 @@ dynamicAC->onItemSelected = [](int index, const AutoCompleteItem& item) {
 ### Large List with Automatic Scrollbar
 
 When the number of filtered items exceeds `AutoCompleteStyle::maxVisibleItems`, a scrollbar appears automatically.
+
+The popup is also clamped to the window: `maxVisibleItems` is an upper bound, never a
+promise of height. If that many rows would not fit, the popup shrinks to the space
+available (below the field, or above it when there is more room up there) and the
+remaining items are reached by scrolling — rows are never pushed past the window edge,
+where they could be neither seen nor clicked. Setting `maxVisibleItems` to a large
+number is therefore a sound way to say "show as many as fit".
 
 ```cpp
 auto statesAC = CreateAutoComplete("StatesAC", 30, 400, 280);

@@ -219,6 +219,10 @@ std::string FindCellHyperlink(const tinyxml2::XMLElement* elem) {
 // ODS LOADER
 // ============================================================================
 
+// A <table:table-column> repeated more than this many times is stating a
+// sheet-wide default rather than sizing individual columns.
+constexpr int kWideColumnRun = 512;
+
 class ODSLoader {
 private:
     UltraCanvasSpreadsheet* spreadsheet_;
@@ -227,6 +231,21 @@ private:
     // Number/currency/date/percentage formats keyed by their ODF data-style
     // name (e.g. "N110"), referenced from a cell style's style:data-style-name.
     std::map<std::string, NumberFormat> numberFormats_;
+    // Column/row styles keyed by style:name. ODF never puts the size on the
+    // <table:table-column>/<table:table-row> element itself - it lives in a
+    // style:style of family "table-column"/"table-row" that the element points
+    // at through table:style-name - so these have to be resolved to get any
+    // column width out of a real document.
+    struct ODSColumnStyle {
+        int widthPixels = 0;        // 0 = the style carries no width
+        bool useOptimalWidth = false;  // style:use-optimal-column-width="true"
+    };
+    struct ODSRowStyle {
+        int heightPixels = 0;
+        bool useOptimalHeight = false;
+    };
+    std::map<std::string, ODSColumnStyle> columnStyles_;
+    std::map<std::string, ODSRowStyle> rowStyles_;
     std::string error_;
 
 public:
@@ -455,6 +474,38 @@ private:
             std::string styleName = GetAttr(style, "style:name");
             std::string family = GetAttr(style, "style:family");
             
+            if (family == "table-column" && !styleName.empty()) {
+                ODSColumnStyle colStyle;
+                if (auto* props = style->FirstChildElement("style:table-column-properties")) {
+                    // style:column-width is the authored width; fo:min-width is
+                    // the fallback some producers write instead.
+                    std::string width = GetAttr(props, "style:column-width");
+                    if (width.empty()) width = GetAttr(props, "fo:min-width");
+                    if (!width.empty()) {
+                        colStyle.widthPixels = SpreadsheetLengthToPixels(width, 0);
+                    }
+                    colStyle.useOptimalWidth =
+                        (GetAttr(props, "style:use-optimal-column-width") == "true");
+                }
+                columnStyles_[styleName] = colStyle;
+                continue;
+            }
+
+            if (family == "table-row" && !styleName.empty()) {
+                ODSRowStyle rowStyle;
+                if (auto* props = style->FirstChildElement("style:table-row-properties")) {
+                    std::string height = GetAttr(props, "style:row-height");
+                    if (height.empty()) height = GetAttr(props, "fo:min-height");
+                    if (!height.empty()) {
+                        rowStyle.heightPixels = SpreadsheetLengthToPixels(height, 0);
+                    }
+                    rowStyle.useOptimalHeight =
+                        (GetAttr(props, "style:use-optimal-row-height") == "true");
+                }
+                rowStyles_[styleName] = rowStyle;
+                continue;
+            }
+
             if (family == "table-cell" && !styleName.empty()) {
                 CellStyle cellStyle;
                 
@@ -614,31 +665,46 @@ private:
     }
     
     void ParseTable(tinyxml2::XMLElement* tableElem, SpreadsheetSheet* sheet) {
-        // Parse column definitions
+        // Parse column definitions. The width lives in the table-column style
+        // the element references; a handful of producers (and our own older
+        // writer) put style:column-width straight on the element, so accept
+        // that too.
         int colIndex = 0;
         for (auto* colElem = tableElem->FirstChildElement("table:table-column");
              colElem;
              colElem = colElem->NextSiblingElement("table:table-column")) {
             
             int repeat = GetAttrInt(colElem, "table:number-columns-repeated", 1);
-            std::string widthStr = GetAttr(colElem, "style:column-width");
-            
-            int width = SpreadsheetLimits::DefaultColumnWidth;
-            if (!widthStr.empty()) {
-                // Parse width (e.g., "2.5cm", "1in", "72pt")
-                double val = std::stod(widthStr);
-                if (widthStr.find("cm") != std::string::npos) {
-                    width = static_cast<int>(val * 37.8);  // cm to pixels approx
-                } else if (widthStr.find("in") != std::string::npos) {
-                    width = static_cast<int>(val * 96);
-                } else if (widthStr.find("pt") != std::string::npos) {
-                    width = static_cast<int>(val * 1.33);
-                }
+
+            int width = 0;              // 0 = this column carries no authored width
+            bool optimalWidth = false;
+            auto styleIt = columnStyles_.find(GetAttr(colElem, "table:style-name"));
+            if (styleIt != columnStyles_.end()) {
+                width = styleIt->second.widthPixels;
+                optimalWidth = styleIt->second.useOptimalWidth;
             }
-            
+            std::string inlineWidth = GetAttr(colElem, "style:column-width");
+            if (!inlineWidth.empty()) {
+                width = SpreadsheetLengthToPixels(inlineWidth, width);
+            }
+
+            // ODF pads a table out to its full column space with one heavily
+            // repeated element ("number-columns-repeated=16384"). That states a
+            // sheet-wide default, not 16k individually sized columns - storing
+            // it as the default costs one integer instead of megabytes of
+            // column definitions, and leaves those columns free to auto-fit.
+            if (repeat > kWideColumnRun) {
+                if (width > 0 && !optimalWidth) sheet->SetDefaultColumnWidth(width);
+                colIndex += repeat;
+                if (colIndex >= SpreadsheetLimits::MaxColumns) break;
+                continue;
+            }
+
             for (int i = 0; i < repeat && colIndex < SpreadsheetLimits::MaxColumns; ++i) {
-                if (width != SpreadsheetLimits::DefaultColumnWidth) {
-                    sheet->SetColumnWidth(colIndex, width);
+                // "Optimal width" means the author asked for a fitted column, so
+                // leave it unsized and let the auto-width pass do the fitting.
+                if (width > 0 && !optimalWidth) {
+                    sheet->SetColumnWidth(colIndex, width, /*explicitWidth*/ true);
                 }
                 ++colIndex;
             }
@@ -670,19 +736,21 @@ private:
     }
     
     void ParseRow(tinyxml2::XMLElement* rowElem, SpreadsheetSheet* sheet, int rowIndex) {
-        // Parse row height
-        std::string heightStr = GetAttr(rowElem, "style:row-height");
-        if (!heightStr.empty()) {
-            double val = std::stod(heightStr);
-            int height = SpreadsheetLimits::DefaultRowHeight;
-            if (heightStr.find("cm") != std::string::npos) {
-                height = static_cast<int>(val * 37.8);
-            } else if (heightStr.find("pt") != std::string::npos) {
-                height = static_cast<int>(val * 1.33);
-            }
-            if (height != SpreadsheetLimits::DefaultRowHeight) {
-                sheet->SetRowHeight(rowIndex, height);
-            }
+        // Parse row height - like the column width, it lives in the referenced
+        // table-row style, with the inline attribute accepted as a fallback.
+        int height = 0;
+        bool optimalHeight = false;
+        auto rowStyleIt = rowStyles_.find(GetAttr(rowElem, "table:style-name"));
+        if (rowStyleIt != rowStyles_.end()) {
+            height = rowStyleIt->second.heightPixels;
+            optimalHeight = rowStyleIt->second.useOptimalHeight;
+        }
+        std::string inlineHeight = GetAttr(rowElem, "style:row-height");
+        if (!inlineHeight.empty()) {
+            height = SpreadsheetLengthToPixels(inlineHeight, height);
+        }
+        if (height > 0 && !optimalHeight) {
+            sheet->SetRowHeight(rowIndex, height, /*explicitHeight*/ true);
         }
         
         // Parse cells
@@ -831,6 +899,13 @@ private:
     std::map<std::string, std::string> numberStyleMap_;
     std::vector<std::pair<std::string, NumberFormat>> numberStyleDefs_;
     int numberStyleCounter_ = 0;
+    // Column widths and row heights, as ODF wants them: one automatic style per
+    // distinct size, referenced by table:style-name. Writing the size straight
+    // onto <table:table-column> (as this writer used to) is not valid ODF, and
+    // LibreOffice silently ignores it - the saved sheet reopened with every
+    // column back at the default width.
+    std::map<int, std::string> columnWidthStyles_;   // width in px -> style name
+    std::map<int, std::string> rowHeightStyles_;     // height in px -> style name
 
 public:
     ODSSaver(UltraCanvasSpreadsheet* spreadsheet) : spreadsheet_(spreadsheet) {}
@@ -894,6 +969,31 @@ private:
             });
         }
         
+        // Column/row sizing styles, collected before they are referenced below.
+        for (int s = 0; s < spreadsheet_->GetSheetCount(); ++s) {
+            auto* sheet = spreadsheet_->GetSheet(s);
+            if (!sheet) continue;
+            CellRange used = sheet->GetUsedRange();
+            for (int col = 0; col <= used.end.col; ++col) {
+                GetOrCreateColumnStyle(sheet->GetColumnWidth(col));
+            }
+            for (int row = 0; row <= used.end.row; ++row) {
+                GetOrCreateRowStyle(sheet->GetRowHeight(row));
+            }
+        }
+        for (const auto& [width, name] : columnWidthStyles_) {
+            ss << "<style:style style:name=\"" << name << "\" style:family=\"table-column\">"
+               << "<style:table-column-properties style:column-width=\""
+               << SpreadsheetPixelsToCentimetres(width) << "cm\" fo:break-before=\"auto\"/>"
+               << "</style:style>\n";
+        }
+        for (const auto& [height, name] : rowHeightStyles_) {
+            ss << "<style:style style:name=\"" << name << "\" style:family=\"table-row\">"
+               << "<style:table-row-properties style:row-height=\""
+               << SpreadsheetPixelsToCentimetres(height) << "cm\" fo:break-before=\"auto\"/>"
+               << "</style:style>\n";
+        }
+
         // Write the number/data styles first so the cell styles that reference
         // them via style:data-style-name resolve.
         for (const auto& [numName, numFmt] : numberStyleDefs_) {
@@ -932,22 +1032,14 @@ private:
         // Write columns
         CellRange used = sheet->GetUsedRange();
         for (int col = 0; col <= used.end.col; ++col) {
-            int width = sheet->GetColumnWidth(col);
-            ss << "<table:table-column";
-            if (width != SpreadsheetLimits::DefaultColumnWidth) {
-                ss << " style:column-width=\"" << (width / 37.8) << "cm\"";
-            }
-            ss << "/>\n";
+            ss << "<table:table-column table:style-name=\""
+               << GetOrCreateColumnStyle(sheet->GetColumnWidth(col)) << "\"/>\n";
         }
         
         // Write rows
         for (int row = 0; row <= used.end.row; ++row) {
-            ss << "<table:table-row";
-            int height = sheet->GetRowHeight(row);
-            if (height != SpreadsheetLimits::DefaultRowHeight) {
-                ss << " style:row-height=\"" << (height / 37.8) << "cm\"";
-            }
-            ss << ">\n";
+            ss << "<table:table-row table:style-name=\""
+               << GetOrCreateRowStyle(sheet->GetRowHeight(row)) << "\">\n";
             
             // Write cells
             for (int col = 0; col <= used.end.col; ++col) {
@@ -1052,6 +1144,24 @@ private:
         ss << "</table:table-cell>\n";
     }
     
+    // One automatic style per distinct column width / row height, named "co1",
+    // "ro1", ... exactly as LibreOffice writes them.
+    std::string GetOrCreateColumnStyle(int widthPixels) {
+        auto it = columnWidthStyles_.find(widthPixels);
+        if (it != columnWidthStyles_.end()) return it->second;
+        std::string name = "co" + std::to_string(columnWidthStyles_.size() + 1);
+        columnWidthStyles_[widthPixels] = name;
+        return name;
+    }
+
+    std::string GetOrCreateRowStyle(int heightPixels) {
+        auto it = rowHeightStyles_.find(heightPixels);
+        if (it != rowHeightStyles_.end()) return it->second;
+        std::string name = "ro" + std::to_string(rowHeightStyles_.size() + 1);
+        rowHeightStyles_[heightPixels] = name;
+        return name;
+    }
+
     std::string GetOrCreateStyle(const CellStyle& style) {
         std::string key = GenerateStyleKey(style);
         auto it = styleMap_.find(key);
@@ -1690,6 +1800,9 @@ bool UltraCanvasSpreadsheet::LoadODS(const std::string& filePath) {
     bool result = loader.Load(filePath);
     if (result) {
         Recalculate();
+        // Columns the document did not size get fitted to their content on the
+        // next render, once text can be measured with real font metrics.
+        RequestAutoFitForUnsizedColumns();
         Invalidate();
     } else {
         lastError_ = loader.GetError();
@@ -1741,6 +1854,8 @@ bool UltraCanvasSpreadsheet::LoadCSV(const std::string& filePath, int sheetIndex
     if (result) {
         SetActiveSheet(0);
         Recalculate();
+        // A CSV carries no column widths at all, so every column is fitted.
+        RequestAutoFitForUnsizedColumns();
         Invalidate();
     }
     return result;
@@ -1757,6 +1872,8 @@ bool UltraCanvasSpreadsheet::LoadCSVWithOptions(const std::string& filePath,
     if (result) {
         SetActiveSheet(0);
         Recalculate();
+        // A CSV carries no column widths at all, so every column is fitted.
+        RequestAutoFitForUnsizedColumns();
         Invalidate();
     }
     return result;

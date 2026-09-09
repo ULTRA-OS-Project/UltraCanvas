@@ -12,6 +12,14 @@
 
 #include <llama.h>
 
+// Schema→GBNF compilation lives in llama.cpp's `common` library; when the
+// build links it (ULTRAAI_LLAMA_HAS_SCHEMA_GRAMMAR) structured output is
+// constrained to the request's JSON schema instead of just valid JSON.
+#ifdef ULTRAAI_LLAMA_HAS_SCHEMA_GRAMMAR
+#include <json-schema-to-grammar.h>
+#include <nlohmann/json.hpp>
+#endif
+
 #include <atomic>
 #include <cstring>
 #include <future>
@@ -27,7 +35,8 @@ namespace UltraAI {
 namespace {
 
 // Universal JSON grammar (llama.cpp grammars/json.gbnf). Constrains output
-// to syntactically valid JSON; per-schema constraints are a follow-up.
+// to syntactically valid JSON; the fallback when no schema is given or a
+// schema fails to compile to GBNF.
 constexpr const char* kJsonGrammar = R"GBNF(
 root   ::= object
 value  ::= object | array | string | number | ("true" | "false" | "null") ws
@@ -65,6 +74,29 @@ std::string OptionString(const OptionsMap& options, const std::string& key) {
     if (it == options.end()) return {};
     const auto* s = std::get_if<std::string>(&it->second);
     return s ? *s : std::string{};
+}
+
+// Compile a JSON-schema string to a GBNF grammar. Returns empty when the
+// schema is absent/unparsable/unsupported (caller falls back to the
+// universal JSON grammar) or when the build lacks llama.cpp `common`.
+std::string CompileSchemaGrammar(const std::string& schemaJson) {
+#ifdef ULTRAAI_LLAMA_HAS_SCHEMA_GRAMMAR
+    if (!schemaJson.empty()) {
+        nlohmann::ordered_json schema =
+            nlohmann::ordered_json::parse(schemaJson, nullptr,
+                                          /*allow_exceptions=*/false);
+        if (!schema.is_discarded()) {
+            try {
+                return json_schema_to_grammar(schema);
+            } catch (const std::exception&) {
+                // unsupported construct — fall back to plain JSON
+            }
+        }
+    }
+#else
+    (void)schemaJson;
+#endif
+    return {};
 }
 
 const char* RoleName(Role role) {
@@ -349,8 +381,13 @@ private:
         llama_sampler* chain =
             llama_sampler_chain_init(llama_sampler_chain_default_params());
         if (request.responseFormat != ResponseFormat::Text) {
-            llama_sampler* grammar =
-                llama_sampler_init_grammar(vocab_, kJsonGrammar, "root");
+            std::string grammarText;
+            if (request.responseFormat == ResponseFormat::JsonSchema) {
+                grammarText = CompileSchemaGrammar(request.jsonSchema);
+            }
+            if (grammarText.empty()) grammarText = kJsonGrammar;
+            llama_sampler* grammar = llama_sampler_init_grammar(
+                vocab_, grammarText.c_str(), "root");
             if (grammar) llama_sampler_chain_add(chain, grammar);
         }
         const double temperature = request.sampling.temperature.value_or(0.8);

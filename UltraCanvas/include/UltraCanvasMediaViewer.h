@@ -24,7 +24,11 @@
 // the header details; files without a thumbnail get a header summary. The
 // right view is chosen automatically from the file kind; image-only tools
 // (zoom, rotate, adjustments, save) apply to images, and zoom also drives the
-// PDF and e-book views.
+// PDF and e-book views. The displayed page zooms with the mouse wheel and with
+// the keyboard (+ / - to step, 0 to fit, 1 for 100 %) in both the image surface
+// and the PDF view; the PDF page inventory's thumbnails take either an absolute
+// pixel width or a share of the viewer's width (SetPDFThumbnailWidth /
+// SetPDFThumbnailWidthFraction).
 // (ODT is an OpenDocument *text* document, not a spreadsheet, so it is not
 // handled by the spreadsheet engine.)
 //
@@ -50,17 +54,23 @@
 //
 // Transparent images draw over a configurable backdrop: either a preset
 // solid colour (default white) or the checkered pattern familiar from image
-// editors (SetTransparentBackground / SetTransparentColor).
+// editors (SetTransparentBackground / SetTransparentColor). A file that really
+// has transparency — an alpha channel that is used, or a vector document —
+// also gets a palette strip directly under the picture: greys and colours to
+// click, plus the checkered swatch (SetTransparencyPaletteVisible turns it
+// off, onTransparentBackgroundChanged reports what was picked).
 //
-// Version: 1.4.0
-// Last Modified: 2026-08-06
+// Version: 1.8.0
+// Last Modified: 2026-09-03
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageAnimation.h"
+#include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
 #include "UltraCanvasTimer.h"
 #include <string>
 #include <vector>
@@ -84,6 +94,8 @@ class UltraCanvasSpreadsheet;        // ODS / CSV / TSV spreadsheets
 class UltraCanvasSTLElement;         // STL 3D models (OpenGL viewer, 2D fallback)
 class UltraCanvasTextArea;           // text / source / markdown (read-only)
 class UltraCanvasEBookViewer;        // EPUB / FB2 / MOBI e-books (engine registry)
+class UltraCanvasCurvesDialog;       // tone curve editor window (dialogs/)
+class UltraCanvasColorSwatchBar;     // backdrop palette under transparent images
 
 // ===== WHAT KIND OF MEDIA A FILE IS =====
 // Chooses which child element renders it: images go through the image surface,
@@ -91,10 +103,14 @@ class UltraCanvasEBookViewer;        // EPUB / FB2 / MOBI e-books (engine regist
 // spreadsheet element, 3D models (STL) through the OpenGL model viewer, text /
 // source / markdown files through a read-only text area, e-books through the
 // eBook viewer, and audio/video through their player elements. UCDoc marks an
-// UltraCanvas Document container (*.ucd); it is displayed through the image
-// surface (embedded preview thumbnail) or the text area (header summary), so
-// it never becomes the active view kind itself.
-enum class MediaKind { Image, Document, Sheet, Model, Text, Book, UCDoc, Video, Audio };
+// UltraCanvas Document container (*.ucd) and Vector a vector document no
+// renderer here can rasterize (Xara, CorelDRAW, EPS/PostScript); both are
+// displayed through the image surface (the preview bitmap the file carries)
+// or the text area (a summary), so neither becomes the active view kind
+// itself.
+enum class MediaKind {
+    Image, Document, Sheet, Model, Text, Book, UCDoc, Vector, Video, Audio
+};
 
 // ===== TRANSITION STYLES BETWEEN IMAGES =====
 // (Suffixed names avoid clashing with X11 macros such as None.)
@@ -126,11 +142,16 @@ struct MediaAdjustments {
     double blue       = 1.0;
     double sharpen    = 0.0;   // libvips sharpen sigma, 0 = off
     bool   autoOptimize = false; // histogram equalisation
+    // Tone curves (the Curves dialog): master plus per-channel mappings,
+    // applied as a lookup table before the other colour work. This is what
+    // reaches highlights, midtones and shadows separately — the sliders move
+    // the whole tone range at once.
+    ToneCurveSet curves;
 
     bool IsIdentity() const {
         return gamma == 1.0 && brightness == 1.0 &&
                red == 1.0 && green == 1.0 && blue == 1.0 &&
-               sharpen <= 0.0 && !autoOptimize;
+               sharpen <= 0.0 && !autoOptimize && curves.IsIdentity();
     }
 };
 
@@ -207,6 +228,7 @@ private:
     double FitScale(double iw, double ih, int rotQ) const;  // uses current bounds
     void   RebuildProcessed();
     bool   HandleWheelZoom(const UCEvent& event);
+    void   ApplyZoomFactorAtCursor(double factor, const Point2Di& cursor);
 
     // Draw `img` (or its colour-processed `pm`) into local bounds `b` with the
     // given orientation, scale, centre offset and opacity.
@@ -245,6 +267,11 @@ private:
 
     // View geometry for the current image.
     double zoom = 1.0;        // multiple of the fit scale (1.0 == fit)
+    // Wheel zoom eases in instead of stepping: the animator hands out a series
+    // of small factors which ApplyZoomFactorAtCursor() applies with the same
+    // maths a single one used (see UltraCanvasSmoothScroll.h).
+    UltraCanvasSmoothZoom zoomAnim;
+    Point2Di zoomCursor;
     double panX = 0.0, panY = 0.0;
     int    rotationQuarters = 0;
     bool   flipH = false, flipV = false;
@@ -301,6 +328,13 @@ public:
     // single file browses its folder (OpenFile); picking several sets them as
     // the playlist (SetFiles).
     void ShowOpenDialog();
+    // Show nothing and let go of the file that was showing: playback stops and
+    // every display backend releases its document, so the file can be moved,
+    // renamed or deleted right after. Hosts that keep the viewer alive as a
+    // preview pane (the UltraFiler preview) must call this before touching the
+    // previewed file - a document engine that still holds the file open makes
+    // the move fail on Windows, where an open handle blocks the rename.
+    void CloseFile();
 
     size_t GetCount() const { return playlist.size(); }
     size_t GetCurrentIndex() const { return currentIndex; }
@@ -349,6 +383,45 @@ public:
     void SetTransparentColor(const Color& c);
     Color GetTransparentColor() const;
 
+    // ===== BACKDROP PALETTE (UNDER THE PICTURE) =====
+    // A strip of colours (greys first, then colours) shown directly beneath the
+    // image whenever the shown file actually has transparency — a PNG or WebP
+    // with an alpha channel that is used, or a vector document (SVG), which
+    // paints over whatever is behind it. Clicking a colour sets the backdrop to
+    // it; the leading checkered swatch goes back to the transparency pattern.
+    // Files without transparency never show the strip, so it costs no space
+    // where it would mean nothing.
+    void SetTransparencyPaletteVisible(bool visible);
+    bool GetTransparencyPaletteVisible() const { return transparencyPaletteEnabled; }
+    // The strip itself, for hosts that want their own colours or metrics
+    // (SetColors / GetStyle). Null when the viewer has not built it yet.
+    UltraCanvasColorSwatchBar* GetTransparencyPalette() const { return backdropBar.get(); }
+    // Fired whenever the backdrop changes through the strip, so a host can
+    // remember the choice (the UltraFiler saves it to its settings).
+    std::function<void(TransparentImageBackground, const Color&)>
+            onTransparentBackgroundChanged;
+
+    // ===== PDF PAGE INVENTORY (THUMBNAIL STRIP) =====
+    // How wide the thumbnails of the PDF view's page inventory are. Either an
+    // absolute pixel width — the same strip whatever the viewer's size, which
+    // is what the UltraFiler preview asks for (56 px) — or a share of the
+    // viewer's own width, so the inventory grows with the window (the default,
+    // a quarter of the width capped by the PDF view's style).
+    // The setting is remembered by the viewer, so it also applies to documents
+    // opened later.
+    void SetPDFThumbnailWidth(int pixels);          // absolute mode
+    void SetPDFThumbnailWidthFraction(float share); // relative mode
+    bool  IsPDFThumbnailWidthAbsolute() const { return pdfThumbAbsolute; }
+    int   GetPDFThumbnailWidth() const { return pdfThumbWidthPx; }
+    float GetPDFThumbnailWidthFraction() const { return pdfThumbWidthFraction; }
+
+    // ===== DOCUMENT ZOOM =====
+    // Whether the plain mouse wheel zooms the PDF page (the default, matching
+    // the image surface, where the wheel has always zoomed) or scrolls it. The
+    // other action stays on Ctrl+wheel either way.
+    void SetDocumentWheelZoom(bool zoom);
+    bool GetDocumentWheelZoom() const { return documentWheelZoom; }
+
     // ===== TOP BARS (EMBEDDED MODE) =====
     // Show/hide everything above the display surface: the folder breadcrumb,
     // both toolbar rows and the adjustments panel. Hosts that embed the viewer
@@ -376,15 +449,37 @@ public:
 
 private:
     void BuildUI(float w, float h);
+    // Push the PDF-specific display settings (page-inventory thumbnail width,
+    // wheel zoom) onto the PDF view. No-op without the PDF backend.
+    void ApplyPDFViewSettings();
     void LoadCurrent(bool animated);
+    // Drop the document each display backend is holding (PDF engine, e-book
+    // engine, text buffer, the shown bitmap). Playback is stopped separately by
+    // StopPlayback(); the video / audio backends offer no stronger release.
+    void ReleaseViewBackends();
     // Start playback of a freshly loaded (or already shown) video according
     // to videoPreviewMode; no-op when the video backend is unavailable.
     void ApplyVideoPreviewToCurrent();
     void StopVideoClipTimer();
     void UpdateBreadcrumb();          // rebuild the folder path strip from currentFolder
+    // Show the backdrop palette for a transparent image (and hide it for
+    // everything else), and mark the swatch the current backdrop uses.
+    void UpdateTransparencyPalette();
+    // Mark the swatch matching the backdrop the surface is using (none when it
+    // is a colour the palette does not hold).
+    void SyncBackdropSelection();
     void UpdateInfoBar();
     void UpdateDetailedInfo();
     void ApplyAdjustments();          // push `adjustments` to the surface
+    // Put every adjustment control back to its default without firing one
+    // re-render per control (the callbacks are suppressed while they move).
+    void ResetAdjustments();
+    // Open the Curves dialog on the current image: live preview while the
+    // curve is dragged, Cancel restores the curves the viewer had.
+    void ShowCurvesDialog();
+    // Histogram of the shown image for the Curves dialog backdrop, one bin per
+    // 8-bit level per channel. Empty when there is no image (or no libvips).
+    void FillCurveHistograms(UltraCanvasCurvesDialog& dialog) const;
     void ShowSaveDialog();
     void HandleDroppedFiles(const std::vector<std::string>& files);
     // Zoom toolbar actions route to the PDF view or the image surface depending
@@ -399,6 +494,12 @@ private:
     static bool IsModelFile(const std::string& path);       // STL 3D models
     static bool IsEBookFile(const std::string& path);       // EPUB / FB2 / MOBI / AZW
     static bool IsUCDFile(const std::string& path);         // UltraCanvas Document (*.ucd)
+    // Vector documents shown through the preview bitmap they carry inside
+    // themselves (Xara .xar/.web/.wix, CorelDRAW .cdr/.cdt, PostScript
+    // .eps/.epsf/.epsi/.ps/.ai) - the formats with no renderer that works
+    // without a window. SVG is NOT one of these: the image pipeline
+    // rasterizes it, so it is an image file here.
+    static bool IsVectorDocumentFile(const std::string& path);
     // Bitmaps and vector graphics the image pipeline rasterizes (SVG through
     // librsvg). Checked before IsTextFile so markup-based image formats show
     // their picture rather than their source code.
@@ -426,6 +527,9 @@ private:
     // The active view uses the bare arrow keys itself (spreadsheet cells), so
     // browsing needs the Alt modifier while it is showing.
     bool ActiveViewUsesArrowKeys() const { return activeKind == MediaKind::Sheet; }
+    // One labelled slider of the adjustments panel. The label carries the live
+    // value, the slider is continuous over [minV, maxV], and the control
+    // registers itself with `adjustResetters` so Reset puts it back.
     std::shared_ptr<UltraCanvasUIElement> BuildAdjustSlider(
             const std::string& id, const std::string& caption,
             float minV, float maxV, float value, std::function<void(float)> onChange);
@@ -441,6 +545,7 @@ private:
     std::shared_ptr<UltraCanvasToolbar>      toolbar2;  // view / edit row
     std::shared_ptr<UltraCanvasContainer>    adjustPanel;
     std::shared_ptr<UltraCanvasMediaSurface> surface;
+    std::shared_ptr<UltraCanvasColorSwatchBar> backdropBar;   // under the picture
     std::shared_ptr<UltraCanvasContainer>    bottomBar;
     std::shared_ptr<UltraCanvasLabel>        infoLabel;
     std::shared_ptr<UltraCanvasButton>       playButton;
@@ -462,6 +567,15 @@ private:
     std::string ucdDetails;
 
     MediaAdjustments adjustments;
+    // Puts each adjustment control back to the value it was built with.
+    std::vector<std::function<void()>> adjustResetters;
+    // True while ResetAdjustments() moves the controls: their callbacks must
+    // not each trigger a re-render of the image.
+    bool suppressAdjustCallbacks = false;
+    // The open Curves dialog, if any (it deletes itself when closed).
+    std::weak_ptr<UltraCanvasCurvesDialog> curvesDialog;
+    // The curves in force when the Curves dialog opened, restored on Cancel.
+    ToneCurveSet curvesBeforeDialog;
 
     bool   slideshowPlaying = false;
     double slideshowIntervalSec = 5.0;
@@ -470,8 +584,19 @@ private:
     VideoPreviewMode videoPreviewMode = VideoPreviewMode::Autoplay;
     float videoPreviewClipSec = 5.0f;
     TimerId videoClipTimer = 0;        // ends the muted PreviewClip playback
+    // A finished PreviewClip stays muted while it sits paused; the sound comes
+    // back when the user resumes it themselves (the video element's onPlay).
+    bool videoClipUnmutePending = false;
     MediaTransition transition = MediaTransition::CrossFade;
     int transitionDurationMs = 450;
+
+    // PDF page inventory: absolute pixel width or a share of the viewer width
+    // (see SetPDFThumbnailWidth / SetPDFThumbnailWidthFraction).
+    bool  pdfThumbAbsolute     = false;
+    int   pdfThumbWidthPx      = 56;
+    float pdfThumbWidthFraction = 0.25f;
+    bool  documentWheelZoom    = true;   // plain wheel zooms the PDF page
+    bool  transparencyPaletteEnabled = true;  // backdrop strip under the picture
 
     bool grabFocusOnAttach = true;   // claim the keyboard when attached to a window
     bool keyFilterInstalled = false; // window key filter is live

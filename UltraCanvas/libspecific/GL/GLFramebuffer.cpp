@@ -9,6 +9,11 @@
 #elif defined(_WIN32)
 // Windows: opengl32 only exports GL 1.1, so modern entry points come from GLEW.
 #include <GL/glew.h>
+#elif defined(__ANDROID__)
+// Before the desktop-GL fallback (bionic defines __linux__): GLES 3 headers,
+// the FBO entry points used here are core in ES 3.0.
+#include <GLES3/gl3.h>
+#include <GLES2/gl2ext.h>
 #else
 #define GL_GLEXT_PROTOTYPES
 #include <GL/gl.h>

@@ -264,6 +264,7 @@ plumbing:
 | `UltraAIStreamHandleBase.h` | `StreamHandleBase` — the §5 cancellation pattern with an injectable cancel hook |
 | `UltraAITransport.h` | `ITransport` seam + `ScriptedTransport` test double |
 | `UltraAIUltraNetTransport.h` | `UltraNetTransport` — the production `ITransport` (built with `ULTRAAI_USE_ULTRANET=ON`) |
+| `UltraAICassette.h` | On-disk cassette format: `LoadCassette(path, scriptedTransport)` replays a recorded JSON file; `RecordingTransport` wraps any `ITransport` and `Save()`s what flowed through it (responses only — requests, and so credentials, are never written) |
 
 Adapters talk to providers through `ITransport` rather than calling
 UltraNet directly: production wiring injects `UltraNetTransport`
@@ -284,11 +285,14 @@ order (implemented by `ResolveApiKey`):
    `ULTRAAI_USE_ULTRAVAULT=ON`.
 3. Fail with `Error{ ErrorCode::AuthenticationFailed, ... }`.
 
-See [UltraVault.md](UltraVault.md) for the storage architecture. The
-UltraVault module itself is not implemented yet; the cryptographic
-primitives its portable file backend needs (Argon2id, XChaCha20-Poly1305,
-zeroizing buffers) are arriving separately as the **UltraCrypt** module.
-Until UltraVault lands, adapters run on step 1 alone.
+See [UltraVault.md](UltraVault.md) for the storage architecture — the
+UltraVault module is live (memory + encrypted-file backends over
+UltraCrypt) and in-tree builds enable the lookup by default.
+
+One deliberate exception to step 3: the OpenAI adapter allows a missing
+key when `baseUrl` points away from the hosted API, because self-hosted
+OpenAI-compatible servers (Ollama, vLLM, llama.cpp server) run keyless —
+the request then simply carries no `Authorization` header.
 
 ---
 
@@ -318,10 +322,6 @@ A new network-using adapter should:
 
 ## 11. Open items
 
-- Recorded-cassette *file format* for replaying real provider responses
-  offline. `ScriptedTransport` already replays scripted exchanges and SSE
-  event sequences in-process; what's missing is an on-disk format plus a
-  loader so cassettes can be captured once and committed.
 - A loopback integration test for `UltraNetTransport` itself (the probe
   suite covers the UltraNet primitives; the transport conversion layer is
   currently validated by compilation and manual smoke testing).

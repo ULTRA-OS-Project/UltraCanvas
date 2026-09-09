@@ -1,16 +1,15 @@
 // Apps/UltraMail/engine/UltraMailCredentialVault.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.4.0 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailCredentialVault.h"
 
+#include <UltraVault/UltraVault.h>
 #include <UltraNet/UltraNetMime.h>   // UltraNet_Base64Encode / Decode
 
 #include <cstdint>
 #include <filesystem>
 #include <fstream>
 #include <map>
-#include <random>
-#include <sstream>
 #include <string>
 #include <vector>
 
@@ -20,47 +19,26 @@ namespace UltraMail {
 
 namespace {
 
-std::vector<uint8_t> ToBytes(const std::string& s) {
-    return std::vector<uint8_t>(s.begin(), s.end());
-}
+constexpr const char* kVaultFile = "ultramail.vault";
+
+// ---- 0.1-format reader (kept only to migrate away from it) ----------------
+// The old vault XOR-ed each secret against a key stored in the same directory.
+// Nothing here writes that format; it exists to read it once and delete it.
+
+constexpr const char* kLegacyKeyFile   = "vault.key";
+constexpr const char* kLegacyCredsFile = "creds.dat";
+
 std::string FromBytes(const std::vector<uint8_t>& b) {
     return std::string(b.begin(), b.end());
 }
 
-std::string B64(const std::string& s) {
-    return UltraNet_Base64Encode(ToBytes(s), /*wrap76Cols=*/false);
-}
 std::string UnB64(const std::string& s) {
     std::vector<uint8_t> out;
     UltraNet_Base64Decode(s, out);
     return FromBytes(out);
 }
 
-// Load (or create) the per-vault obfuscation key.
-std::vector<uint8_t> LoadOrCreateKey(const std::string& dir) {
-    fs::path keyPath = fs::path(dir) / "vault.key";
-    std::error_code ec;
-    fs::create_directories(dir, ec);
-
-    if (fs::exists(keyPath, ec)) {
-        std::ifstream is(keyPath, std::ios::binary);
-        std::vector<uint8_t> key((std::istreambuf_iterator<char>(is)),
-                                 std::istreambuf_iterator<char>());
-        if (!key.empty()) return key;
-    }
-    // Generate a fresh 32-byte key.
-    std::vector<uint8_t> key(32);
-    std::random_device rd;
-    for (auto& b : key) b = static_cast<uint8_t>(rd() & 0xFF);
-    std::ofstream os(keyPath, std::ios::binary | std::ios::trunc);
-    if (os) os.write(reinterpret_cast<const char*>(key.data()),
-                     static_cast<std::streamsize>(key.size()));
-    fs::permissions(keyPath, fs::perms::owner_read | fs::perms::owner_write,
-                    fs::perm_options::replace, ec);
-    return key;
-}
-
-std::string Xor(const std::string& data, const std::vector<uint8_t>& key) {
+std::string LegacyXor(const std::string& data, const std::vector<uint8_t>& key) {
     std::string out = data;
     if (key.empty()) return out;
     for (std::size_t i = 0; i < out.size(); ++i)
@@ -68,54 +46,124 @@ std::string Xor(const std::string& data, const std::vector<uint8_t>& key) {
     return out;
 }
 
-fs::path CredsPath(const std::string& dir) { return fs::path(dir) / "creds.dat"; }
-
-// Load all account -> plaintext-secret pairs.
-std::map<std::string, std::string> LoadAll(const std::string& dir,
-                                           const std::vector<uint8_t>& key) {
+std::map<std::string, std::string> ReadLegacyVault(const std::string& dir) {
     std::map<std::string, std::string> creds;
-    std::ifstream is(CredsPath(dir));
+    std::error_code ec;
+    const fs::path keyPath   = fs::path(dir) / kLegacyKeyFile;
+    const fs::path credsPath = fs::path(dir) / kLegacyCredsFile;
+    if (!fs::exists(keyPath, ec) || !fs::exists(credsPath, ec)) return creds;
+
+    std::ifstream ks(keyPath, std::ios::binary);
+    std::vector<uint8_t> key((std::istreambuf_iterator<char>(ks)),
+                             std::istreambuf_iterator<char>());
+
+    std::ifstream is(credsPath);
     std::string line;
     while (std::getline(is, line)) {
-        std::size_t tab = line.find('\t');
+        const std::size_t tab = line.find('\t');
         if (tab == std::string::npos) continue;
-        std::string account = UnB64(line.substr(0, tab));
-        std::string secret  = Xor(UnB64(line.substr(tab + 1)), key);
-        creds[account] = secret;
+        creds[UnB64(line.substr(0, tab))] =
+            LegacyXor(UnB64(line.substr(tab + 1)), key);
     }
     return creds;
 }
 
-bool SaveAll(const std::string& dir, const std::vector<uint8_t>& key,
-             const std::map<std::string, std::string>& creds) {
-    std::error_code ec;
-    fs::create_directories(dir, ec);
-    std::ofstream os(CredsPath(dir), std::ios::trunc);
-    if (!os) return false;
-    for (const auto& [account, secret] : creds)
-        os << B64(account) << '\t' << B64(Xor(secret, key)) << '\n';
-    fs::permissions(CredsPath(dir), fs::perms::owner_read | fs::perms::owner_write,
-                    fs::perm_options::replace, ec);
-    return static_cast<bool>(os);
+// Map an UltraVault result to the reason the caller reports.
+VaultStatus StatusFor(const UltraVault::Result& r) {
+    switch (r.code) {
+        case UltraVault::ResultCode::Success:            return VaultStatus::Ok;
+        case UltraVault::ResultCode::AccessDenied:       return VaultStatus::WrongPassphrase;
+        case UltraVault::ResultCode::BackendUnavailable: return VaultStatus::Unavailable;
+        case UltraVault::ResultCode::IoError:            return VaultStatus::IoError;
+        case UltraVault::ResultCode::Locked:             return VaultStatus::Locked;
+        default:                                         return VaultStatus::IoError;
+    }
 }
 
 } // namespace
 
+std::string CredentialVault::KeyFor(const std::string& account) {
+    // UltraVault's namespaced convention: "<vendor>.<app>.<purpose>".
+    return "mail.ultramail." + account;
+}
+
+std::string CredentialVault::VaultPath() const {
+    return (fs::path(dir_) / kVaultFile).string();
+}
+
+bool CredentialVault::Exists() const {
+    std::error_code ec;
+    return fs::exists(fs::path(dir_) / kVaultFile, ec);
+}
+
+VaultStatus CredentialVault::Unlock(const std::string& passphrase) {
+    // An empty passphrase derives a key anyone could reproduce, which would
+    // put us back where the 0.1 vault was. Refuse it outright.
+    if (passphrase.empty()) return VaultStatus::WrongPassphrase;
+
+    std::error_code ec;
+    fs::create_directories(dir_, ec);
+    if (ec) return VaultStatus::IoError;
+
+    // Initialize() is idempotent per process and will not reconfigure an open
+    // vault, so close any previous one before adopting this passphrase.
+    UltraVault::Shutdown();
+
+    UltraVault::Config config;
+    config.backend    = UltraVault::Backend::File;
+    config.filePath   = VaultPath();
+    config.passphrase = passphrase;   // wiped in place by Initialize()
+
+    const UltraVault::Result r = UltraVault::Initialize(config);
+    if (!r.IsOk()) {
+        unlocked_ = false;
+        return StatusFor(r);
+    }
+    unlocked_ = true;
+
+    MigrateLegacy();
+    return VaultStatus::Ok;
+}
+
+void CredentialVault::Lock() {
+    if (!unlocked_) return;
+    UltraVault::Shutdown();   // wipes the decrypted store and derived key
+    unlocked_ = false;
+}
+
+int CredentialVault::MigrateLegacy() {
+    auto legacy = ReadLegacyVault(dir_);
+    if (legacy.empty()) return 0;
+
+    int carried = 0;
+    for (const auto& [account, secret] : legacy) {
+        if (account.empty()) continue;
+        if (UltraVault::Put(KeyFor(account),
+                            UltraVault::SecretValue::FromString(secret)).IsOk())
+            ++carried;
+    }
+    // Only drop the old files once every secret is safely in the new vault;
+    // a partial migration keeps them so nothing is lost.
+    if (carried == static_cast<int>(legacy.size())) {
+        std::error_code ec;
+        fs::remove(fs::path(dir_) / kLegacyCredsFile, ec);
+        fs::remove(fs::path(dir_) / kLegacyKeyFile, ec);
+    }
+    return carried;
+}
+
 bool CredentialVault::Store(const std::string& account, const std::string& secret) {
-    if (account.empty()) return false;
-    auto key = LoadOrCreateKey(dir_);
-    auto creds = LoadAll(dir_, key);
-    creds[account] = secret;
-    return SaveAll(dir_, key, creds);
+    if (account.empty() || !unlocked_) return false;
+    return UltraVault::Put(KeyFor(account),
+                           UltraVault::SecretValue::FromString(secret)).IsOk();
 }
 
 bool CredentialVault::Retrieve(const std::string& account, std::string& out) const {
     out.clear();
-    auto key = LoadOrCreateKey(dir_);
-    auto creds = LoadAll(dir_, key);
-    auto it = creds.find(account);
-    if (it == creds.end()) return false;
-    out = it->second;
+    if (account.empty() || !unlocked_) return false;
+    UltraVault::SecretValue value;
+    if (!UltraVault::Get(KeyFor(account), value).IsOk()) return false;
+    out = value.AsString();
     return true;
 }
 
@@ -125,13 +173,8 @@ bool CredentialVault::Has(const std::string& account) const {
 }
 
 bool CredentialVault::Remove(const std::string& account) {
-    auto key = LoadOrCreateKey(dir_);
-    auto creds = LoadAll(dir_, key);
-    auto it = creds.find(account);
-    if (it == creds.end()) return false;
-    creds.erase(it);
-    SaveAll(dir_, key, creds);
-    return true;
+    if (account.empty() || !unlocked_) return false;
+    return UltraVault::Delete(KeyFor(account)).IsOk();
 }
 
 } // namespace UltraMail

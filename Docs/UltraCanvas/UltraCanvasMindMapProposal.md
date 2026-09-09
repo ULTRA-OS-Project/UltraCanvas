@@ -732,7 +732,7 @@ struct MindMapIcon {
     int width = 16, height = 16;
     Color maskColor = Color(0,0,0,0);  // non-zero => tint via IRenderContext::DrawMask
 };
-mindMap->SetTopicIcon(topicId, MindMapIcon{ "media/icons/light 001.jpg", 20, 20 });
+mindMap->SetTopicIcon(topicId, MindMapIcon{ "media/icons/info.png", 20, 20 });
 ```
 Zero new concepts, consistent with the whole framework, and `DrawMask` already
 exists for tinting a monochrome SVG to the branch hue (image 8's coloured

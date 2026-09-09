@@ -38,6 +38,13 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas: Linux Application created" << std::endl;
     }
 
+    UltraCanvasLinuxApplication::~UltraCanvasLinuxApplication() {
+        // Clear the singleton pointer so GetInstance() returns nullptr once the
+        // app is gone; widget destructors that run later (e.g. at static exit)
+        // then skip CleanupElementReferences instead of locking a dead mutex.
+        if (instance == this) instance = nullptr;
+    }
+
 // ===== INITIALIZATION =====
     bool UltraCanvasLinuxApplication::InitializeNative() {
         if (initialized) {
@@ -1029,6 +1036,24 @@ namespace UltraCanvas {
             FcPatternDestroy(pat);
         }
 #endif
+    }
+
+    bool UltraCanvasLinuxApplication::RegisterFontFileNative(const std::string& fontFilePath) {
+        // An application font: added to this process's FcConfig only, so
+        // nothing is installed for the user or for other applications.
+        FcConfig* cfg = FcConfigGetCurrent();
+        if (!cfg) {
+            debugOutput << "UltraCanvas: RegisterFontFileNative: no current "
+                           "fontconfig config" << std::endl;
+            return false;
+        }
+        if (!FcConfigAppFontAddFile(
+                cfg, reinterpret_cast<const FcChar8*>(fontFilePath.c_str()))) {
+            debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for "
+                        << fontFilePath << std::endl;
+            return false;
+        }
+        return true;
     }
 
 } // namespace UltraCanvas

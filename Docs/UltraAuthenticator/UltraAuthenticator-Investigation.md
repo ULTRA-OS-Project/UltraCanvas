@@ -1,9 +1,14 @@
 # UltraAuthenticator — Feasibility Investigation & Security Analysis
 
-**Status:** Investigation / pre-implementation. No code exists yet.
+**Status:** Partly implemented. UltraCrypt (§2.2a), the encrypted vault
+(§2.2b), the OTP engine (§2.2d), the app shell (§4, build order step 4) and
+account editing — rename, code settings, master-password rotation and gated
+seed reveal (§3.5, §3.5a), in-memory QR decode with the camera scan flow
+(§2.2c) and the encrypted backup file (§3.5) — are built and tested.
+Screen-capture protection (§2.2e) remains impossible on X11.
 **Scope:** A TOTP/HOTP authenticator app for ULTRA OS (in the spirit of
 Google Authenticator / FreeOTP / Aegis), built on UltraCanvas.
-**Date:** 2026-08-10
+**Date:** 2026-08-10 (implementation notes added 2026-08-21)
 
 This document answers two questions:
 
@@ -43,7 +48,7 @@ A minimal authenticator implements:
 | Need | Provided by | Notes |
 |---|---|---|
 | App shell, window, event loop | `UltraCanvasApplication` (`Apps/DemoApp/`, `Apps/Texter/main.cpp` are the canonical bootstraps) | |
-| All UI controls | Element catalogue, `Docs/UltraCanvas/UltraCanvasUIElements.md` — `UltraCanvasTextInput`, `UltraCanvasButton`, `UltraCanvasLabel`, `UltraCanvasBadge`, `UltraCanvasContainer`, `UltraCanvasModalDialog`, `UltraCanvasProgressBar`, … | Per AGENTS.md, the account list / code tiles must be assembled from elements, not painted by hand |
+| All UI controls | Element catalogue, `Docs/UltraCanvas/UltraCanvasUIElements.md` — `UltraCanvasTextInput`, `UltraCanvasButton`, `UltraCanvasLabel`, `UltraCanvasBadge`, `UltraCanvasContainer`, `UltraCanvasModalDialog`, `UltraCanvasDropdown`, `UltraCanvasSeparator`, … | Per AGENTS.md, the account list / code tiles must be assembled from elements, not painted by hand. Note there is **no** progress-bar or gauge element in the catalogue, despite an earlier draft of this table listing one — the code countdown is therefore a styled label, coloured by urgency, not a ring |
 | QR **generation** | `UltraCanvas/include/Plugins/QRCode/UltraCanvasQRCode.h` — `QRCodeUtils::GenerateQRCode`, `UltraCanvasQRCode` element, SVG/PNG export | Needed only for the optional "show this account as QR" transfer feature |
 | QR **decoding** (from image file) | `QRCodeUtils::ScanQRCodeFile(path)` backed by **libzbar** (`UltraCanvas/Plugins/QRCode/UltraCanvasQRCode.cpp`), `IsDecoderAvailable()` reports whether zbar was compiled in | File-path input only — see gap 2.2-c |
 | Camera access + live preview frames | `UltraCanvasVideoRecorder` (`include/UltraCanvasVideoRecorder.h`): `Open()` starts a preview without recording, `GetPreviewFrame()` / `onPreviewFrame` deliver `UCVideoFramePtr`; backends for V4L2/GStreamer, AVFoundation, MediaFoundation; `onPermissionChanged` handles camera permission | Recording to disk is *not* needed — preview-only mode is exactly right for scanning |
@@ -59,10 +64,11 @@ truncation. The house rule — *"never expose a third-party type in a public
 header; never call vendored libraries directly from app code"* (AGENTS.md) —
 combined with the fact that no wrapped crypto surface exists means there is
 currently **no sanctioned way for an app to compute an HMAC**. The symptom
-already exists in the tree: `Apps/AnchorPoint/net/Sha256.h` is a hand-rolled
-SHA-256 whose own header says *"When UltraNet/UltraVault bring a vetted
+already existed in the tree: `Apps/AnchorPoint/net/Sha256.h` was a hand-rolled
+SHA-256 whose own header said *"When UltraNet/UltraVault bring a vetted
 crypto surface, this can be replaced by that."* An authenticator must not
-repeat that pattern with hand-rolled HMAC.
+repeat that pattern with hand-rolled HMAC. (That header has since been
+deleted; AnchorPoint now hashes through `UltraCrypt_HashFile`.)
 
 → **Prerequisite work item: the `UltraCrypt` module** — a sibling of UltraNet
 and UltraDatabase, now specified in
@@ -76,25 +82,98 @@ plus `UltraCrypt_Base32Decode` for seed entry.
 
 This gap is **framework-wide, not specific to this app** — see §2.3.
 
-**(b) No secret storage.** `UltraVault` — the designated credential store for
-ULTRA OS — is an *architecture recommendation only*
-(`UltraAI/Docs/UltraVault.md`: "UltraVault module does not yet exist").
-UltraDatabase has no at-rest encryption (no SQLCipher; encryption is a
-Stage 3 item in its design doc). **There is nowhere in the framework today to
-put a TOTP seed safely.** This is the single biggest blocker; see §3.1 for
-what to do about it.
+**(b) ~~No secret storage.~~ — DONE for this app; still open framework-wide.**
+When this investigation was written `UltraVault` was an *architecture
+recommendation only*. It has since shipped as v0.1
+(`UltraCanvas/include/UltraVault/UltraVault.h`) with Memory and File backends
+resting on the same UltraCrypt primitives used here. It is not yet a drop-in
+for an authenticator: `UltraVault::SecretValue` hands secrets back in a plain
+`std::vector<uint8_t>` rather than a zeroizing buffer, and its lifecycle is
+process-global, so an app cannot lock its own vault independently of another
+module's. UltraDatabase still has no at-rest encryption. So the authenticator
+ships its own vault, behind an interface UltraVault can replace once those two
+points are addressed:
 
-**(c) No in-memory QR decode.** `ScanQRCodeFile` takes a file path. Live
-camera scanning would otherwise mean writing every preview frame to disk —
-which for an authenticator would write *the secret* to disk in image form.
-→ Work item: add `QRCodeUtils::ScanQRCodeImage(const UCImage&)` (or a
-`UCVideoFramePtr` overload) that feeds zbar from memory, and wire it to
-`onPreviewFrame`.
+- `store/ISecretStore.h` — `Put/Get/Delete/List` over `UltraCryptSecureBuffer`,
+  shaped like UltraVault's own surface so the swap is a constructor change.
+- `store/EncryptedFileStore.{h,cpp}` — one file, one XChaCha20-Poly1305 blob,
+  key derived with Argon2id from the master password, cost parameters stored
+  with the file, the header authenticated as associated data, atomic writes,
+  mode 0600.
 
-**(d) No TOTP/HOTP/Base32 code.** RFC 4226/6238 engines, RFC 4648 Base32
-decoding, and an `otpauth://` URI parser must be written (small, but they
-must be test-vector-verified — RFC 4226 App. D and RFC 6238 App. B provide
-official vectors).
+Verified by `Tests/UltraAuthenticatorStoreTests.cpp`: 81 checks including that
+neither the seed, the `otpauth://` URI, nor even the entry *key* appears in the
+file; that a wrong password and a modified file are indistinguishable; that ten
+kinds of tampering — including a downgraded Argon2id cost — are rejected; and
+that every mutation is durable without an explicit save. Clean under ASan and
+UBSan.
+
+**There is deliberately no unprotected mode.** Without a crypto backend, or
+without a password, the vault refuses to open rather than falling back to
+plaintext — the failure this whole line of work started from.
+
+**(c) ~~No in-memory QR decode.~~ — DONE.** `ScanQRCodeFile` takes a file
+path, so camera scanning through it would have meant writing every preview
+frame to disk — which for an authenticator writes *the secret* to disk in
+image form.
+
+`QRCodeUtils::ScanQRCodeImage` now decodes from pixels already in memory,
+taking a buffer plus a pixel format (Grayscale8, RGB24, RGBA32, BGRA32) and a
+stride, with a `UCVideoFrame` overload for the camera path. Both it and the
+file path share one binarize-and-scan helper, so an image cannot decode
+through one and not the other.
+
+The signature deviates from the sketch above. `ScanQRCodeImage(const UCImage&)`
+is not possible: `UCImageRaster` is declared in `libspecific/Cairo/ImageCairo.h`,
+so naming it in a public plugin header would pull a backend type into that
+surface and break the non-Cairo platforms. The primitive therefore takes raw
+pixels and the caller states their layout.
+
+Verified by `Tests/QRCodeScanImageTests.cpp` (26 checks): round trip through
+every pixel layout, padded row strides, refusal of null buffers and of a
+stride shorter than one row, and noise decoding to nothing.
+
+**The camera flow is wired** (`ScanAccountDialog`). It opens the catalogue's
+`UltraCanvasVideoRecorderElement` for preview and never calls `Start()`, so no
+frame reaches a file. Frames are pulled by the dialog's own 5 Hz timer calling
+`GetPreviewFrame()` rather than by hooking `onPreviewFrame`, whose thread is
+undocumented — a decode running on a capture thread would be touching the
+vault from somewhere the rest of the app does not expect. Scanned URIs go
+through the same `AccountStore::AddFromUri` as typed keys, so a hostile QR
+faces the same parser and gets no laxer path into the vault.
+
+Building this surfaced a defect in the recorder element: its record button was
+laid out, drawn and hit-tested unconditionally, so a preview-only consumer
+could not remove it. A scanner that promises nothing is saved must not offer a
+control that starts writing video. `VideoRecorderStyle::showRecordButton` now
+suppresses it in all three places; it defaults to true, so existing consumers
+are unchanged.
+
+Not verified end to end: this build environment has no camera, so the capture
+and poll loop are exercised only by their graceful-degradation path ("No
+camera is available"). The decode itself — the `UCVideoFrame` overload the
+dialog calls — is covered by the unit tests above.
+
+**(d) ~~No TOTP/HOTP/Base32 code.~~ — DONE.** The engine now lives in
+`Apps/UltraAuthenticator/otp/`:
+
+- `UltraOtp.{h,cpp}` — RFC 4226 HOTP and RFC 6238 TOTP over
+  `UltraCrypt_Hmac`, with SHA-1/256/512, 6–8 digits, and the time-step and
+  countdown helpers the UI needs.
+- `OtpAuthUri.{h,cpp}` — strict `otpauth://` parsing and building (§3.3).
+- Base32 came from UltraCrypt (`UltraCrypt_Base32Decode`), so it did not need
+  writing here.
+
+Verified by `Tests/UltraOtpTests.cpp`: 171 checks including every RFC 4226
+App. D and RFC 6238 App. B vector across all three algorithms, clean under
+ASan and UBSan. Both units depend only on UltraCrypt — no UI, no storage — so
+they compile and are tested independently, the same split that made the UCD
+envelope testable.
+
+Deliberately **not** implemented: any verification function. An authenticator
+only displays codes. A verifier needs a look-ahead window, single-use
+enforcement per time step (RFC 6238 §5.2) and a constant-time compare — a
+different security surface that should not be added speculatively.
 
 **(e) No screen-capture / screenshot protection.** UltraCanvas windows have
 no equivalent of Android's `FLAG_SECURE`; on X11 none is even possible
@@ -112,10 +191,10 @@ wrapped-engines rule, or stalled at design stage.
 |---|---|---|
 | **UCD file format v2** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`) | XChaCha20-Poly1305, Argon2id, HKDF, SHA-256 (cipher and KDF fixed to one each by the 2026-08-10 ruling) | **Specified in detail; none of the primitives exist.** §4.3 defines the per-section compress→encrypt pipeline, §4.4 the SuperVault remote-authorization record. The format cannot be implemented as written. |
 | **UltraCanvasDocument** (v1 doc encryption) | AES-256, PBKDF2, password hashing | Implemented by `#include <openssl/aes.h>` **directly inside a plugin** — a house-rule violation — and the implementation is broken (see below) |
-| **AnchorPoint** | SHA-256 file integrity | Hand-rolled `Apps/AnchorPoint/net/Sha256.h`, whose header explicitly says it is a placeholder "when UltraNet/UltraVault bring a vetted crypto surface" |
-| **UltraVault** (design) | KDF + AEAD for its file-backed fallback backend, per-platform keyring glue | Design doc only; module does not exist |
+| **AnchorPoint** | SHA-256 file integrity | ✅ Migrated. The hand-rolled `Apps/AnchorPoint/net/Sha256.h` is deleted; `Protocol.cpp` hashes through `UltraCrypt_HashFile` |
+| **UltraVault** | KDF + AEAD for its file-backed fallback backend, per-platform keyring glue | Was design doc only; v0.1 has since shipped with Memory and File backends built on UltraCrypt. Native keyring backends still planned |
 | **UltraDatabase** | At-rest encryption | Listed as a Stage 3 item, unstarted |
-| **UltraAuthenticator** (this app) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare | Blocked |
+| **UltraAuthenticator** (this app) | HMAC-SHA-1/256/512, CSPRNG, AEAD, KDF, constant-time compare | ✅ Unblocked and built on UltraCrypt: OTP engine, vault, account layer and app shell |
 
 **Correction (2026-08-10):** an earlier revision of this document stated that
 OpenSSL is "already linked on every platform, so the dependency is paid for".
@@ -180,9 +259,10 @@ own history is instructive: its Android database was long stored plaintext
 (readable by root/backup tooling), and its 2023 cloud-sync feature launched
 *without* end-to-end encryption and was widely criticized for it.
 
-Repository reality: UltraVault doesn't exist; UltraDatabase/SQLite is
-plaintext; a naive implementation would end up with Base32 secrets in a
-world-readable SQLite file or JSON config.
+Repository reality at the time of writing: UltraVault didn't exist (v0.1 has
+since landed — see §2.2b); UltraDatabase/SQLite is plaintext; a naive
+implementation would end up with Base32 secrets in a world-readable SQLite
+file or JSON config.
 
 **Required design:**
 
@@ -272,9 +352,72 @@ Scanning is parsing attacker-controlled data through a C library:
   outlive the app in `~/Pictures`, sync folders, thumbnails caches. Either
   don't offer file export of provisioning QRs at all, or watermark the flow
   with explicit warnings and point exports at the encrypted format instead.
-- Encrypted export file: same XChaCha20-Poly1305 + Argon2id envelope as the store, with
-  its own passphrase (not the app master password), so a backup found later
-  doesn't fall to the device password.
+- ~~Encrypted export file~~ — **DONE** (`AccountExport.{h,cpp}`, `BackupDialog`).
+  One file holding every account, sealed with `UCDCrypto::Seal` — the same
+  Argon2id + XChaCha20-Poly1305 envelope used elsewhere, reused rather than
+  reinvented. A 10-byte header (magic, version) is authenticated as associated
+  data; the payload is a count followed by each account's `otpauth://` URI, so
+  a restore goes through `AddFromUri` and meets exactly the parser that guards
+  the live vault. Written atomically at mode 0600.
+
+  Its passphrase must **differ from the master password**, and this is enforced
+  rather than advised: a backup is the file most likely to reach a USB stick or
+  a cloud drive, and one that opened with the device password would make
+  finding it as good as having the machine. Export re-authenticates with the
+  master password first, since it reads every seed in the vault.
+
+  Restoring never overwrites: an account already present is kept and counted as
+  skipped, because a restore that clobbered a re-enrolled seed or a newer HOTP
+  counter would destroy a working second factor. The result is reported per
+  category — "restored 38, kept 2 already present" — since silently dropping
+  two would be indistinguishable from restoring all forty.
+
+  Verified by `Tests/UltraAuthenticatorExportTests.cpp` (56 checks) and by
+  driving the GUI: three accounts exported from one vault and restored into a
+  different vault with a different master password, HOTP counter and
+  non-default parameters intact.
+
+**What shipped (`RevealSecretDialog`, `AccountStore::Reveal`).** On-screen
+reveal only: the setup key and its `otpauth://` URI are shown as selectable
+text. No QR is rendered and nothing is written to disk, which sidesteps the
+`~/Pictures` problem in the first bullet entirely. The gate is
+`AccountStore::Reveal`, which re-derives the vault key from a freshly typed
+master password before returning anything — the vault already being unlocked
+is explicitly *not* sufficient, because unlocking happened at launch and says
+nothing about who is at the keyboard now. The password check runs before the
+entry is looked up, so a wrong password cannot be used to probe whether an
+account exists.
+
+The reasoning for offering it at all, given §3.1 treats seeds as the second
+factor itself: an authenticator that can only ever swallow secrets strands its
+users at device migration, and they respond by keeping the original QR in a
+photo album or an email — strictly worse than this vault. Aegis, andOTP and
+2FAS all reached the same conclusion. Under X11 the §3.6 capture exposure
+applies in full while the dialog is open, which is why it stays on screen only
+until dismissed and warns about photographing it.
+
+The encrypted export *file* in the second bullet is now built; see above.
+
+### 3.5a Editing an enrolled account (medium)
+
+An authenticator that cannot rename an account has a subtler problem than it
+looks. Because the UI never sees a seed (§3.2), "remove and re-add" is not a
+workaround — the user has nothing to re-enter. Before `EditAccountDialog`, a
+label typed wrongly at enrolment, or an ugly auto-label from a scanned QR, was
+permanent short of re-enrolling with the service, which for a second factor
+often means account recovery.
+
+The fix has to be one atomic operation, not a compose-at-the-caller. The label
+lives inside the stored URI *and* determines the vault key, so a rename is a
+re-key plus a value rewrite; done as Put-then-Delete, a crash in between leaves
+the same seed under two keys. Hence `ISecretStore::Replace`, which
+`EncryptedFileStore` satisfies by applying both halves inside a single
+`SaveLocked()`.
+
+Code settings (digits, period, algorithm, counter) are editable in the same
+dialog but presented separately and under a warning. They are not cosmetic:
+nothing here re-negotiates with the service, so a wrong value silently produces
+codes the server rejects.
 
 ### 3.6 Platform exposure the app cannot fix (medium, must be documented)
 
@@ -325,17 +468,24 @@ Scanning is parsing attacker-controlled data through a C library:
 
 ```
 Apps/UltraAuthenticator/
-  main.cpp                     — UltraCanvasApplication bootstrap
-  AccountListView.*            — container of per-account tiles (elements only)
-  AddAccountFlow.*             — camera scan / image file / manual entry + confirm dialog
+  main.cpp                     — bootstrap + master-password unlock gate      [DONE]
+  Theme.h                      — shared colours, type sizes, metrics          [DONE]
+  AuthenticatorWindow.*        — account cards, live codes, 1 Hz countdown    [DONE]
+  AddAccountDialog.*           — manual entry (camera scan still outstanding)  [DONE]
+  EditAccountDialog.*          — rename + code settings (§3.5a)                [DONE]
+  ChangePasswordDialog.*       — master password rotation                     [DONE]
+  AccountExport.*              — encrypted backup file (§3.5)                 [DONE]
+  BackupDialog.*               — back up / restore, own passphrase (§3.5)     [DONE]
+  RevealSecretDialog.*         — gated seed export for device migration (§3.5) [DONE]
+  AccountStore.*               — accounts ↔ vault entries via otpauth:// URIs [DONE]
   otp/
-    Totp.*  Hotp.*             — RFC 6238 / RFC 4226 (uses UltraCrypt HMAC)
-    Base32.*                   — RFC 4648 decode/encode, strict
-    OtpAuthUri.*               — otpauth:// parse + validate (§3.3)
+    UltraOtp.*                 — RFC 6238 / RFC 4226 (uses UltraCrypt HMAC)  [DONE]
+    OtpAuthUri.*               — otpauth:// parse + validate (§3.3)          [DONE]
+    (Base32 is UltraCrypt_Base32Decode — no local copy needed)
   store/
-    ISecretStore.h             — interface (swap point for UltraVault later)
-    EncryptedFileStore.*       — XChaCha20-Poly1305 + Argon2id envelope (§3.1)
-    SecureBuffer.h             — zeroizing secret container (§3.2)
+    ISecretStore.h             — interface (swap point for UltraVault later)  [DONE]
+    EncryptedFileStore.*       — XChaCha20-Poly1305 + Argon2id envelope (§3.1) [DONE]
+    (the zeroizing container is UltraCryptSecureBuffer — no local copy needed)
 
 UltraCanvas/{include,core}/UltraCrypt/UltraCryptCore.h/.cpp   (new module)
   — HMAC-SHA1/256/512, RandomBytes, ConstantTimeEquals, SecureZero,
@@ -354,13 +504,23 @@ Camera scan pipeline: `UltraCanvasVideoRecorder::Open()` (preview only,
 
 1. `UltraCrypt` (unblocks everything; also retires AnchorPoint's
    ad-hoc SHA-256 eventually).
-2. OTP engine + Base32 + URI parser, with RFC test vectors in `Tests/`.
-3. `EncryptedFileStore` + `SecureBuffer`.
-4. App shell: list + manual entry (usable v0 without any camera work).
+2. ✅ **Done** — OTP engine + URI parser, with the RFC vectors in
+   `Tests/UltraOtpTests.cpp`.
+3. ✅ **Done** — `ISecretStore` + `EncryptedFileStore`, tested in
+   `Tests/UltraAuthenticatorStoreTests.cpp`.
+4. ✅ **Done** — app shell: unlock gate, account list with live codes, and
+   manual entry. A usable v0 without any camera work, covered by
+   `Tests/UltraAuthenticatorAccountTests.cpp` and verified end to end against
+   an independent TOTP implementation.
 5. `ScanQRCodeImage` overload + camera scan flow.
 6. Optional: encrypted export/import, app lock, per-account QR display.
-7. Later, when UltraVault ships: `UltraVaultSecretStore` backend; on native
-   ULTRA OS, secure-window hint for the compositor.
+   The account list also needs a scrolling container: the window currently
+   shows the first 8 accounts and says so rather than truncating silently.
+7. UltraVault has since shipped. Moving `ISecretStore` onto it needs two
+   changes there first: a zeroizing value type (`SecretValue` hands secrets
+   back in a plain `std::vector<uint8_t>`) and per-instance vault handles
+   (the lifecycle is process-global). On native ULTRA OS, a secure-window
+   hint for the compositor.
 
 ---
 

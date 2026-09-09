@@ -8,7 +8,11 @@
 // Author: UltraAI Module
 
 #include "UltraAIDashboard.h"
+#include "UltraAIEndpoints.h"
 #include "UltraCanvasApplication.h"
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+#include <UltraVault/UltraVault.h>
+#endif
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasDebug.h"
 
@@ -72,6 +76,18 @@ int main(int argc, char* argv[]) {
         }
 
         UltraCanvasDialogManager::SetUseNativeDialogs(false);
+
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+        // Open the credential vault for the session: the encrypted-file
+        // backend when ULTRAVAULT_FILE / ULTRAVAULT_PASSPHRASE are set,
+        // an in-memory store otherwise. Cloud API keys entered in the
+        // Chat dialog land here, not in widgets.
+        UltraVault::Initialize();
+#endif
+
+        // Load the configured endpoints (endpoints.json). A missing file is
+        // fine — the Settings dialog starts empty and writes it on first save.
+        UltraAIApp::EndpointStore::Instance().Load();
 
         UltraAIDashboard dashboard(app);
         if (!dashboard.Create()) {

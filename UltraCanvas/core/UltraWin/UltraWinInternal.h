@@ -9,6 +9,7 @@
 
 #include "UltraWin/UltraWin.h"
 
+#include <memory>
 #include <mutex>
 #include <unordered_map>
 #include <utility>
@@ -23,9 +24,13 @@ extern std::mutex g_mutex;
 extern bool g_initialized;
 extern UltraWinConfig g_config;
 
+class RdpSession;  // UltraWinRdp.h — VM-tier RemoteApp connection
+
 struct AppInstance {
     UltraWinAppInfo info;   // info.processId is the wine child's pid
     bool reaped = false;    // waitpid() has collected the exit status
+    bool closeRequested = false;          // CloseApp/KillApp was called
+    std::shared_ptr<RdpSession> session;  // set on VM-tier instances only
 };
 
 extern std::unordered_map<UltraWinHandle, AppInstance> g_apps;
@@ -65,11 +70,51 @@ std::string EnvironmentsRoot();               // takes g_mutex
 // Absolute prefix path for a validated environment name.
 std::string PrefixPath(const std::string& name);  // takes g_mutex
 
+// The environment whose prefix contains hostPath — the owner of an
+// installed program's files and shortcuts. "" when the path lies outside
+// the environments root (or names no valid environment).
+std::string EnvironmentForPath(const std::string& hostPath);  // takes g_mutex
+
 // Locate the wine binary per config/PATH. Returns empty string when none.
 std::string FindWineBinary();                 // takes g_mutex (config read)
 
 // Locate the winetricks script per config/PATH. Empty string when none.
 std::string FindWinetricksBinary();           // takes g_mutex (config read)
+
+// First executable called `name` on PATH; empty string when none. (Pure
+// apart from reading $PATH.)
+std::string FindInPath(const std::string& name);
+
+// VM-tier binaries per config/PATH. Empty string when none.
+std::string FindQemuBinary();                 // takes g_mutex (config read)
+std::string FindQemuImgBinary();
+std::string FindVirtiofsdBinary();
+
+// Effective machine home from g_config / process env. Never empty.
+std::string VmDirectory();                    // takes g_mutex
+
+// True when a TCP connect to host:port succeeds within timeoutMs — the
+// host-visible signal that the guest's RDP stack (and so Windows) is up.
+bool ProbeTcpPort(const std::string& host, int port, int timeoutMs);
+
+// Host path -> guest path over the shared-home mapping: an absolute host
+// path under $HOME becomes "<homeDriveLetter>:\rel\ative" (backslashes);
+// anything else yields "" (not reachable in the guest). (Pure given the
+// home/letter arguments.)
+std::string HostToGuestPath(const std::string& hostPath,
+                            const std::string& home, char driveLetter);
+
+// The unattended Windows-setup answer file provisioning writes: injects
+// the virtio storage/net drivers in WinPE (the system disk is virtio —
+// without them setup sees no disk), wipes disk 0, installs Pro, enables
+// RDP + the RemoteApp allow-list, bypasses the TPM/RAM setup checks,
+// creates `userName` with `password` (autologon once), installs the
+// virtio-win guest tools and mounts the ultrawin_home share as
+// `homeDriveLetter`. EXPERIMENTAL until validated against real install
+// media. (Pure.)
+std::string GenerateAutounattendXml(const std::string& userName,
+                                    const std::string& password,
+                                    char homeDriveLetter);
 
 // The wine ELF loader behind a possibly-scripted wine entry point.
 // Distro `wine` commands are often shell wrappers (Ubuntu: /usr/bin/wine ->
@@ -80,6 +125,10 @@ std::string ResolveWineElfBinary(const std::string& winePath);
 
 // Winetricks verb charset: [a-z0-9][a-z0-9._+=-]*, max 64. (Pure.)
 bool IsValidComponentName(const std::string& name);
+
+// Any string into the environment-name charset ([A-Za-z0-9._-], no
+// leading dot, max 64) — may return "" for degenerate input. (Pure.)
+std::string SanitizeEnvironmentName(const std::string& raw);
 
 // Best-effort `wine --version` (cached after first success).
 std::string ProbeWineVersion(const std::string& winePath);

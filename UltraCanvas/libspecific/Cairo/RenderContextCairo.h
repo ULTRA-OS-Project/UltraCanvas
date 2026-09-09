@@ -50,6 +50,7 @@ namespace UltraCanvas {
     private:
         cairo_t *cairo = nullptr;
         cairo_surface_t* surface = nullptr;
+        bool imageSmoothing = true;   // see IRenderContext::SetImageSmoothing
         Size2Di surfaceSize = {0, 0};
 
         PangoContext *pangoContext = nullptr;
@@ -152,6 +153,8 @@ namespace UltraCanvas {
 
         void SetAlpha(double alpha) override;
         double GetAlpha() const override;
+        void SetImageSmoothing(bool smooth) override { imageSmoothing = smooth; }
+        bool GetImageSmoothing() const override { return imageSmoothing; }
         std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(double cx1, double cy1, double r1,
                                                                    double cx2, double cy2, double r2,
                                                                    const std::vector<GradientStop>& stops) override;
@@ -216,6 +219,7 @@ namespace UltraCanvas {
         void Circle(double x, double y, double radius) override;
 
         Rect2Dd GetPathExtents() override;
+        void SetFillRule(FillRule rule) override;
         void StrokePathPreserve() override;
         void FillPathPreserve() override;
         void FillText(const std::string& text, double x, double y) override;

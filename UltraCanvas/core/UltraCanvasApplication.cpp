@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include <algorithm>
+#include <cmath>
 #include <atomic>
 #include <iostream>
 #include <fstream>
@@ -22,6 +23,10 @@
 #if !defined(__APPLE__)
 #include <fontconfig/fontconfig.h>
 #endif
+#if defined(ULTRACANVAS_HAS_PANGOFT2)
+#include <pango/pangofc-fontmap.h>
+#endif
+#include <pango/pangocairo.h>
 
 #if defined(__linux__) || defined(__unix__)
 #include <unistd.h>
@@ -291,7 +296,17 @@ namespace UltraCanvas {
             if (const char* home = std::getenv("HOME")) {
                 if (*home) return std::string(home) + "/.cache/UltraCanvas/fontconfig";
             }
+#if defined(__ANDROID__)
+            // No /tmp in the app sandbox. HOME/TMPDIR are exported by the
+            // android_main glue (files dir / cache dir); if neither is set
+            // there is no writable location to offer.
+            if (const char* tmp = std::getenv("TMPDIR")) {
+                if (*tmp) return std::string(tmp) + "/UltraCanvas-fontconfig";
+            }
+            return {};
+#else
             return "/tmp/UltraCanvas-fontconfig";
+#endif
 #endif
         }
 
@@ -326,6 +341,16 @@ namespace UltraCanvas {
             const char* const kSans[] = { "Ubuntu", "Segoe UI", "Tahoma", "Arial" };
             const char* const kSerif[] = { "Times New Roman", "Georgia" };
             const char* const kMono[] = { "Ubuntu Mono", "Consolas", "Courier New" };
+#elif defined(__ANDROID__)
+            // System fonts live in fixed directories (no /etc/fonts at all,
+            // so this generated config is always the active one on Android).
+            conf << "  <dir>/system/fonts</dir>\n"
+                    "  <dir>/product/fonts</dir>\n"
+                    "  <cachedir prefix=\"xdg\">fontconfig</cachedir>\n"
+                    "  <cachedir>~/.fontconfig</cachedir>\n";
+            const char* const kSans[] = { "Roboto", "Noto Sans", "Droid Sans" };
+            const char* const kSerif[] = { "Noto Serif", "Droid Serif" };
+            const char* const kMono[] = { "Droid Sans Mono", "Roboto Mono", "Cutive Mono" };
 #else
             conf << "  <dir>/usr/share/fonts</dir>\n"
                     "  <dir>/usr/local/share/fonts</dir>\n"
@@ -439,6 +464,87 @@ namespace UltraCanvas {
 #endif
     }
 
+
+    // ===== RUNTIME FONT REGISTRATION =====
+
+    void RefreshFontConfiguration() {
+#if !defined(__APPLE__)
+        // FcConfigAppFontAddFile only records the file; the FontSet FcMatch
+        // (and therefore Pango) searches is materialised by FcConfigBuildFonts.
+        if (FcConfig* cfg = FcConfigGetCurrent()) FcConfigBuildFonts(cfg);
+#endif
+#if defined(ULTRACANVAS_HAS_PANGOFT2)
+        // The font map caches what it has already matched, and every live
+        // PangoContext holds a reference to it - so replacing the default map
+        // would leave existing windows on the old one. config_changed clears
+        // the caches of the map in place instead, which is what makes a
+        // just-registered family resolvable in the very next layout.
+        PangoFontMap* fontMap = pango_cairo_font_map_get_default();
+        if (fontMap && PANGO_IS_FC_FONT_MAP(fontMap)) {
+            pango_fc_font_map_config_changed(PANGO_FC_FONT_MAP(fontMap));
+            return;
+        }
+#endif
+        // No FontConfig-backed map to signal - macOS, where PangoCoreTextFontMap
+        // enumerates the installed families once when it is constructed, and any
+        // build without PangoFT2. The only way to see a newly registered family
+        // is then a new map: dropping the default has the next
+        // pango_cairo_font_map_get_default() build one. Contexts that already
+        // exist keep the map they hold until their surface is recreated.
+        pango_cairo_font_map_set_default(nullptr);
+    }
+
+    bool UltraCanvasApplicationBase::RegisterFontFile(const std::string& fontFilePath) {
+        if (fontFilePath.empty()) return false;
+
+        std::error_code ec;
+        if (!std::filesystem::exists(fontFilePath, ec) || ec) {
+            debugOutput << "UltraCanvas: RegisterFontFile: no such file: "
+                        << fontFilePath << std::endl;
+            return false;
+        }
+
+        // Resolved so that two spellings of one file - a relative path and an
+        // absolute one, a symlink and its target - are recognised as the same
+        // registration rather than handed to the platform twice.
+        std::string key = std::filesystem::weakly_canonical(fontFilePath, ec).string();
+        if (ec || key.empty()) key = fontFilePath;
+
+        {
+            std::lock_guard<std::mutex> lk(registeredFontsMutex_);
+            if (std::find(registeredFontFiles_.begin(), registeredFontFiles_.end(),
+                          key) != registeredFontFiles_.end()) {
+                return true;
+            }
+        }
+
+        if (!RegisterFontFileNative(fontFilePath)) {
+            debugOutput << "UltraCanvas: RegisterFontFile: platform rejected "
+                        << fontFilePath << std::endl;
+            return false;
+        }
+        RefreshFontConfiguration();
+
+        std::lock_guard<std::mutex> lk(registeredFontsMutex_);
+        registeredFontFiles_.push_back(std::move(key));
+        return true;
+    }
+
+    bool UltraCanvasApplicationBase::IsFontFileRegistered(
+            const std::string& fontFilePath) const {
+        if (fontFilePath.empty()) return false;
+        std::error_code ec;
+        std::string key = std::filesystem::weakly_canonical(fontFilePath, ec).string();
+        if (ec || key.empty()) key = fontFilePath;
+        std::lock_guard<std::mutex> lk(registeredFontsMutex_);
+        return std::find(registeredFontFiles_.begin(), registeredFontFiles_.end(),
+                         key) != registeredFontFiles_.end();
+    }
+
+    std::vector<std::string> UltraCanvasApplicationBase::GetRegisteredFontFiles() const {
+        std::lock_guard<std::mutex> lk(registeredFontsMutex_);
+        return registeredFontFiles_;
+    }
 
     FontStyle UltraCanvasApplicationBase::GetSystemFontStyle() {
         if (!cachedSystemFontStyle_.has_value()) {
@@ -1132,7 +1238,10 @@ namespace UltraCanvas {
                     }
                 }
                 // change mouse cursor
-                if (elementUnderPointer) {
+                if (targetWindow->IsBusyPointerVisible()) {
+                    // A launch this window is waiting on owns the pointer:
+                    // element cursors take over again once it comes down.
+                } else if (elementUnderPointer) {
                     if (targetWindow->GetCurrentMouseCursor() != elementUnderPointer->GetMouseCursor()) {
                         targetWindow->SelectMouseCursor(elementUnderPointer->GetMouseCursor());
                     }
@@ -1185,6 +1294,32 @@ namespace UltraCanvas {
                     HandleEventWithBubbling(focused, event);
                     goto finish;
                 }
+            }
+
+            // Touch events go straight to the element under that finger. No
+            // hover, cursor or capture handling: those are pointer concepts a
+            // finger has no equivalent for, and a second finger must not
+            // disturb the state the first one established. Backends that
+            // synthesise mouse events from single-finger touches (Android)
+            // keep every existing widget working through the mouse path.
+            if (event.IsTouchEvent()) {
+                UltraCanvasUIElement* touched =
+                        targetWindow->FindElementAtPoint(event.pointerWindow);
+                if (touched) {
+                    HandleEventWithBubbling(touched, event);
+                } else {
+                    DispatchEventToElement(targetWindow, event);
+                }
+
+                // Widgets see the raw fingers first, then any gesture they
+                // add up to: a handler that tracks touches itself has already
+                // had its say by the time PinchZoom arrives.
+                if (event.type == UCEventType::TouchStart ||
+                    event.type == UCEventType::TouchMove ||
+                    event.type == UCEventType::TouchEnd) {
+                    UpdateTouchGesture(event);
+                }
+                goto finish;
             }
 
             if (event.type == UCEventType::MouseWheel && elementUnderPointer) {
@@ -1315,7 +1450,8 @@ namespace UltraCanvas {
 //        if (event.type != UCEventType::MouseMove) {
 //            debugOutput << "DispatchEventToElement ev=" << event.ToString() << " target elem=" << elem << " target win=" << elem->GetWindow() << " focused=" << focusedWindow << std::endl;
 //        }
-        if (event.IsMouseEvent() || event.IsDragEvent() || event.type == UCEventType::MouseEnter) {
+        if (event.IsMouseEvent() || event.IsDragEvent() || event.IsTouchEvent()
+            || event.type == UCEventType::MouseEnter) {
             event.pointer = elem->MapToLocal(event.pointerWindow, nullptr);
         }
 
@@ -1326,6 +1462,114 @@ namespace UltraCanvas {
         }
 
         return elem->OnEvent(event);
+    }
+
+    // ===== TOUCH GESTURE RECOGNITION =====
+
+    void UltraCanvasApplicationBase::ResetTouchGesture() {
+        activeTouches.clear();
+        gestureActive = false;
+        gestureBaseDistance = 0.0;
+        gestureBaseAngle = 0.0;
+        gestureWindow.reset();
+    }
+
+    void UltraCanvasApplicationBase::UpdateTouchGesture(const UCEvent& touchEvent) {
+        auto window = touchEvent.targetWindow.lock();
+        if (!window) return;
+
+        // Fingers on a different window are a different gesture entirely.
+        if (!gestureWindow.expired() && gestureWindow.lock() != window) {
+            ResetTouchGesture();
+        }
+        gestureWindow = window;
+
+        auto existing = std::find_if(activeTouches.begin(), activeTouches.end(),
+                [&](const TouchPoint& p) { return p.pointerId == touchEvent.pointerId; });
+
+        switch (touchEvent.type) {
+            case UCEventType::TouchStart:
+                if (existing == activeTouches.end()) {
+                    // A pointer id is reused once its finger lifts, so a start
+                    // for an id we already hold means we missed the end.
+                    activeTouches.push_back({touchEvent.pointerId, touchEvent.pointerWindow});
+                } else {
+                    existing->position = touchEvent.pointerWindow;
+                }
+                // A finger landing or leaving changes the geometry the gesture
+                // was measured against; re-baseline rather than report a jump.
+                gestureActive = false;
+                return;
+
+            case UCEventType::TouchEnd:
+                if (existing != activeTouches.end()) activeTouches.erase(existing);
+                gestureActive = false;
+                if (activeTouches.empty()) ResetTouchGesture();
+                return;
+
+            case UCEventType::TouchMove:
+                if (existing == activeTouches.end()) {
+                    activeTouches.push_back({touchEvent.pointerId, touchEvent.pointerWindow});
+                } else {
+                    existing->position = touchEvent.pointerWindow;
+                }
+                break;
+
+            default:
+                return;
+        }
+
+        // Exactly two fingers: more than that is a gesture this does not model
+        // (and reporting a pinch from an arbitrary pair would be worse than
+        // reporting nothing).
+        if (activeTouches.size() != 2) {
+            gestureActive = false;
+            return;
+        }
+
+        const Point2Di& a = activeTouches[0].position;
+        const Point2Di& b = activeTouches[1].position;
+        const double dx = static_cast<double>(b.x) - a.x;
+        const double dy = static_cast<double>(b.y) - a.y;
+        const double distance = std::sqrt(dx * dx + dy * dy);
+        const double angle = std::atan2(dy, dx);
+
+        // Below this the fingers are close enough that the scale ratio becomes
+        // wildly unstable (and at zero it is a division by zero).
+        constexpr double kMinBaseDistance = 20.0;
+
+        if (!gestureActive) {
+            if (distance < kMinBaseDistance) return;
+            gestureBaseDistance = distance;
+            gestureBaseAngle = angle;
+            gestureActive = true;
+            return;   // nothing has changed yet: this frame IS the baseline
+        }
+
+        UCEvent gesture = touchEvent;
+        gesture.type = UCEventType::PinchZoom;
+        gesture.pointerWindow = Point2Di((a.x + b.x) / 2, (a.y + b.y) / 2);
+        gesture.pointer = gesture.pointerWindow;
+        gesture.pointerGlobal = gesture.pointerWindow;
+        gesture.touchPointCount = static_cast<int>(activeTouches.size());
+        gesture.scale = static_cast<float>(distance / gestureBaseDistance);
+
+        // Wrap into (-pi, pi] so a gesture crossing the angle discontinuity
+        // reports a small rotation rather than a full turn. Spelled out
+        // rather than using M_PI, which MSVC only defines with
+        // _USE_MATH_DEFINES set before <cmath>.
+        constexpr double kPi = 3.14159265358979323846;
+        double rotation = angle - gestureBaseAngle;
+        while (rotation > kPi) rotation -= 2.0 * kPi;
+        while (rotation <= -kPi) rotation += 2.0 * kPi;
+        gesture.rotation = static_cast<float>(rotation);
+
+        auto* target = static_cast<UltraCanvasWindow*>(window.get());
+        if (UltraCanvasUIElement* under = target->FindElementAtPoint(gesture.pointerWindow)) {
+            HandleEventWithBubbling(under, gesture);
+        } else {
+            DispatchEventToElement(target, gesture);
+        }
     }
 
     void UltraCanvasApplicationBase::CaptureMouse(UltraCanvasUIElement *element) {

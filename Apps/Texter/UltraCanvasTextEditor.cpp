@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditor.cpp
 // Complete text editor implementation with multi-file tabs and autosave
-// Version: 2.2.2 - Recent files list merged with the shared file on disk
-// Last Modified: 2026-07-29
+// Version: 2.3.0 - Spell checking and an editor context menu
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasContainer.h"
@@ -295,6 +295,7 @@ namespace {
 // ===== DESTRUCTOR =====
     UltraCanvasTextEditor::~UltraCanvasTextEditor() {
         CancelAsyncMatchCount();
+        ShutdownSpellChecker();
     }
 
 // ===== ASYNC MATCH COUNTING =====
@@ -414,6 +415,10 @@ namespace {
         }
 
         configFile.LoadSearchHistory(searchHistory, replaceHistory);
+
+        // Before the first document is created, so CreateNewDocument can turn
+        // checking on for it straight away.
+        SetupSpellChecker();
 
         // Setup UI components in order
         if (config.showMenuBar) {
@@ -670,7 +675,13 @@ namespace {
                         MenuItemData::Separator(),
                         MenuItemData::ActionWithShortcut("Select All", "Ctrl+A", [this]() {
                             OnEditSelectAll();
-                        })
+                        }),
+                        MenuItemData::Separator(),
+                        // Lambda-provided so the enable check mark and the
+                        // active dictionary are live every time it opens.
+                        MenuItemData::Submenu("Spelling",
+                                              NormalizePath(GetResourcesDir() + "media/icons/texter/spellcheck.svg"),
+                                              [this]() { return BuildSpellingMenuItems(); })
                 })
 
                         // ===== VIEW MENU =====
@@ -1588,6 +1599,9 @@ namespace {
         documents.push_back(doc);
         int docIndex = static_cast<int>(documents.size()) - 1;
 
+        // After the push_back: the spell wiring is addressed by document index.
+        ApplySpellCheckToDocument(docIndex);
+
         // Setup callbacks for this document
         SetupDocumentCallbacks(docIndex);
 
@@ -1737,6 +1751,7 @@ namespace {
             CaptureSavedContentBaseline(doc.get());
         }
 
+        ApplySpellCheckToDocument(docIndex);
         UpdateTabTitle(docIndex);
         UpdateLanguageDropdown();
         return docIndex;
@@ -1781,6 +1796,11 @@ namespace {
             CloseDocument(docIndex);
             return -1;
         }
+
+        // Loading settles the document's kind and language (hex for a binary
+        // file, markdown for .md and for word documents), which is what decides
+        // whether it is spell checked and how.
+        ApplySpellCheckToDocument(docIndex);
         return docIndex;
     }
 
@@ -1911,6 +1931,7 @@ namespace {
         doc->textArea->SetFontSize(GetFontSize());
         doc->textArea->SetShowLineNumbers(config.showLineNumbers);
         doc->textArea->SetWordWrap(config.wordWrap);
+        ApplySpellCheckToDocument(docIndex);
 
         // Build the per-tab flex content and add it as the tab's content element.
         BuildDocumentContentBox(doc);
@@ -2862,6 +2883,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // content here — fixes stale "RecoveredN" names on unsaved tabs.
         RefreshAutoDisplayName(docIndex);
 
+        ApplySpellCheckToDocument(docIndex);
         UpdateTabTitle(docIndex);
         UpdateTabBadge(docIndex);
         UpdateEncodingDropdown();
@@ -3923,6 +3945,9 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->SetProgrammingLanguage(lang);
         }
         doc->language = lang;
+        // Hex has no words, and only Markdown gets the markup skip hook, so the
+        // spell wiring has to follow the new language.
+        ApplySpellCheckToDocument(activeDocumentIndex);
         UpdateStatusBar();
         UpdateMarkdownToolbarVisibility();
     }
@@ -4313,6 +4338,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // Selection changed callback
         doc->textArea->onSelectionChanged = [this]() {
             UpdateStatusBar();
+        };
+
+        // Right-click context menu. The text area calls this before its own
+        // spell popup, so the suggestions appear inside this menu rather than
+        // in a competing one.
+        doc->textArea->onContextMenu = [this, docId](const UCEvent& event) -> bool {
+            int currentIndex = FindDocumentIndexById(docId);
+            if (currentIndex < 0) return false;
+            return ShowEditorContextMenu(currentIndex, event);
         };
 
         // Markdown link click — open URL in browser
@@ -5300,6 +5334,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         config.defaultLanguage = configFile.GetString("defaultLanguage", config.defaultLanguage);
         config.showToolbar = configFile.GetBool("showToolbar", config.showToolbar);
         config.showMarkdownToolbar = configFile.GetBool("showMarkdownToolbar", config.showMarkdownToolbar);
+        config.spellCheckEnabled = configFile.GetBool("spellCheck", config.spellCheckEnabled);
+        config.spellCheckLanguage = configFile.GetString("spellCheckLanguage", config.spellCheckLanguage);
     }
 
     void UltraCanvasTextEditor::SaveConfig() {
@@ -5314,6 +5350,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         configFile.SetString("defaultLanguage", config.defaultLanguage);
         configFile.SetBool("showToolbar", config.showToolbar);
         configFile.SetBool("showMarkdownToolbar", config.showMarkdownToolbar);
+        configFile.SetBool("spellCheck", config.spellCheckEnabled);
+        configFile.SetString("spellCheckLanguage", config.spellCheckLanguage);
         configFile.Save();
     }
 

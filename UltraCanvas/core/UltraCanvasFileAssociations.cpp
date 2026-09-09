@@ -16,12 +16,21 @@
 #include "UltraCanvasUtils.h"   // ToLowerCase
 
 #include <algorithm>
+#include <chrono>
 #include <condition_variable>
+#include <cstdio>
 #include <deque>
+#include <filesystem>
 #include <mutex>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
+#include <vector>
+
+#if !defined(_WIN32) && !defined(__EMSCRIPTEN__)
+#include <sys/wait.h>
+#include <unistd.h>
+#endif
 
 namespace UltraCanvas {
 namespace FileAssociations {
@@ -232,6 +241,83 @@ bool OpenWithApplicationPath(const std::string& applicationPath,
                                                    outError);
 }
 
+// ===== DIRECT EXECUTION =====
+// POSIX-only: on Windows ShellExecute's "open" verb already runs
+// executables through OpenWithDefaultApplication, and WebAssembly cannot
+// run anything, so both report NotExecutable and the launcher refuses.
+#if defined(_WIN32) || defined(__EMSCRIPTEN__)
+
+ExecutableKind ClassifyExecutable(const std::string&) {
+    return ExecutableKind::NotExecutable;
+}
+
+bool LaunchExecutable(const std::string& path, std::string& outError) {
+    outError = "Running \"" + path + "\" directly is not supported here.";
+    return false;
+}
+
+#else
+
+ExecutableKind ClassifyExecutable(const std::string& path) {
+    std::error_code ec;
+    if (!std::filesystem::is_regular_file(path, ec) || ec)
+        return ExecutableKind::NotExecutable;
+    if (::access(path.c_str(), X_OK) != 0)
+        return ExecutableKind::NotExecutable;
+    // The execute bit alone is not enough (FAT mounts set it on everything):
+    // the content must actually look runnable.
+    unsigned char head[4] = {};
+    FILE* f = std::fopen(path.c_str(), "rb");
+    if (!f) return ExecutableKind::NotExecutable;
+    const size_t n = std::fread(head, 1, sizeof head, f);
+    std::fclose(f);
+    if (n >= 4 && head[0] == 0x7f && head[1] == 'E' && head[2] == 'L' &&
+        head[3] == 'F')
+        return ExecutableKind::Binary;          // ELF (AppImages included)
+    if (n >= 4 && ((head[0] == 0xfe && head[1] == 0xed && head[2] == 0xfa) ||
+                   (head[1] == 0xfa && head[2] == 0xed && head[3] == 0xfe) ||
+                   (head[0] == 0xca && head[1] == 0xfe && head[2] == 0xba &&
+                    head[3] == 0xbe)))
+        return ExecutableKind::Binary;          // Mach-O / fat binary (macOS)
+    if (n >= 2 && head[0] == '#' && head[1] == '!')
+        return ExecutableKind::Script;
+    return ExecutableKind::NotExecutable;
+}
+
+bool LaunchExecutable(const std::string& path, std::string& outError) {
+    outError.clear();
+    if (ClassifyExecutable(path) == ExecutableKind::NotExecutable) {
+        outError = "\"" + path + "\" is not an executable.";
+        return false;
+    }
+    // Double fork + setsid: the program is re-parented to init and survives
+    // the filer closing, and no zombie is left behind.
+    const pid_t first = ::fork();
+    if (first < 0) {
+        outError = "Could not start \"" + path + "\": fork failed.";
+        return false;
+    }
+    if (first == 0) {
+        ::setsid();
+        const pid_t second = ::fork();
+        if (second != 0) ::_exit(second < 0 ? 127 : 0);
+        const std::string dir =
+                std::filesystem::path(path).parent_path().string();
+        if (!dir.empty() && ::chdir(dir.c_str()) != 0) { /* keep going */ }
+        ::execl(path.c_str(), path.c_str(), static_cast<char*>(nullptr));
+        ::_exit(127);   // exec failed; the launcher cannot see this anymore
+    }
+    int status = 0;
+    ::waitpid(first, &status, 0);
+    if (!WIFEXITED(status) || WEXITSTATUS(status) != 0) {
+        outError = "Could not start \"" + path + "\".";
+        return false;
+    }
+    return true;
+}
+
+#endif // direct execution
+
 ApplicationFilter GetApplicationFilter() {
     return FileAssociationsBackend::GetApplicationFilter();
 }
@@ -249,6 +335,69 @@ void PrewarmExtensionsAsync(const std::vector<std::string>& extensions) {
 }
 
 } // namespace FileAssociations
+
+// ===== ON-DISK ICON CACHE RETENTION =====
+// Shared by every backend that keeps extracted icons as files (Windows and
+// macOS today); see UltraCanvasFileAssociationsBackend.h for why the policy
+// lives here rather than in each of them. Pure std::filesystem, so it is
+// compiled on every platform whether or not that platform's backend uses it.
+namespace FileAssociationsBackend {
+
+    namespace {
+        namespace fs = std::filesystem;
+
+        // A hit re-stamps the file, but only once the stamp has gone this
+        // stale — a two-week window wants day resolution, not a disk write
+        // every time a menu opens.
+        constexpr auto kStampInterval = std::chrono::hours(24);
+
+        // Compared as paths, not strings: fs::path::string_type is wide on
+        // Windows and narrow elsewhere, and path comparison needs no encoding
+        // conversion that could throw on an odd file name.
+        bool IsIconCacheFile(const fs::path& path) {
+            const fs::path ext = path.extension();
+            return ext == ".png" || ext == ".tmp";
+        }
+    } // namespace
+
+    void StampIconCacheFile(const std::string& path) {
+        std::error_code ec;
+        const fs::path file = PathFromUtf8(path);
+        const auto stamp = fs::last_write_time(file, ec);
+        if (ec) return;
+        const auto now = fs::file_time_type::clock::now();
+        if (now - stamp < kStampInterval) return;
+        // A read-only cache directory makes this fail; that is harmless — the
+        // file is simply swept earlier than it would otherwise have been.
+        fs::last_write_time(file, now, ec);
+    }
+
+    void SweepIconCache(const std::string& directory) {
+        std::error_code ec;
+        fs::directory_iterator it(PathFromUtf8(directory), ec);
+        if (ec) return;
+        const auto now = fs::file_time_type::clock::now();
+        // Collected first, deleted after: removing entries from a directory
+        // while walking it is not something the iterator promises to survive.
+        std::vector<fs::path> expired;
+        for (const fs::directory_entry& entry : it) {
+            if (!entry.is_regular_file(ec) || ec) { ec.clear(); continue; }
+            if (!IsIconCacheFile(entry.path())) continue;
+            const auto stamp = entry.last_write_time(ec);
+            // Unreadable stamp: leave the file alone rather than guess at it.
+            if (ec) { ec.clear(); continue; }
+            // A stamp in the future — a clock that was set back — reads as
+            // infinitely fresh. That is the safe way round, so let it be.
+            if (now - stamp <= kIconCacheMaxAge) continue;
+            expired.push_back(entry.path());
+        }
+        for (const fs::path& path : expired) {
+            fs::remove(path, ec);
+            ec.clear();   // in use by another process: it goes next time
+        }
+    }
+
+} // namespace FileAssociationsBackend
 
 // ===== BACKEND FOR PLATFORMS WITHOUT ONE =====
 // WebAssembly has no application registry to enumerate or launch into; give

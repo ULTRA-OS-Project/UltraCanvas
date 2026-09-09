@@ -1,8 +1,8 @@
 // include/UltraCanvasModalDialog.h
 // Cross-platform modal dialog system - Window-based implementation with layout managers
 // Supports switching between native OS dialogs and internal UltraCanvas dialogs
-// Version: 3.4.0
-// Last Modified: 2026-08-03
+// Version: 3.5.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -108,8 +108,7 @@ namespace UltraCanvas {
         Password,
         Number,
         Email,
-        URL,
-        MultilineText  // Changed from Multiline
+        URL
     };
 
 // ===== FILE DIALOG TYPE =====
@@ -207,6 +206,14 @@ namespace UltraCanvas {
 
         // Dialog-specific positioning
         DialogPosition position = DialogPosition::CenterParent;
+
+        // ===== SEVERITY ICON =====
+        // The coloured square with the type letter (i / ! / X / ?) on the left
+        // of the message. Turn it off for a dialog whose content carries its own
+        // graphic — a progress ring, a chart, a preview — so that content is
+        // centred in the full width of the window instead of being pushed to the
+        // right of a badge that adds nothing.
+        bool showIcon = true;
 
         // Dialog behavior
         bool closeOnEscape = true;
@@ -388,6 +395,10 @@ namespace UltraCanvas {
         void SetMessage(const std::string& message);
         void SetDetails(const std::string& details);
         void SetDialogType(DialogType type);
+        // Show or hide the severity icon. Hiding it gives the message column
+        // (and anything AddDialogElement() put in it) the whole content width.
+        void SetIconVisible(bool visible);
+        bool IsIconVisible() const;
         void SetDialogButtons(DialogButtons buttons);
         void SetDefaultButton(DialogButton button);
         void SetStyle(const ModalDialogStyle& dialogStyle);
@@ -446,6 +457,9 @@ namespace UltraCanvas {
         void CreateContentSection();
         void CreateFooterSection();
         void CreateDialogButtons();
+        // Width follows the label (never below style.buttonWidth), so a longer
+        // caption is not ellipsized away.
+        void SizeButtonToLabel(const std::shared_ptr<UltraCanvasButton>& button);
         void WireButtonCallbacks();
 
         // ===== TYPE-SPECIFIC =====

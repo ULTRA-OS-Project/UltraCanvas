@@ -1,14 +1,20 @@
 // Apps/UltraAIApp/UltraAIDialogs.cpp
 // Implementation of the ten per-capability service dialogs. Each one
-// builds its own input form and calls the matching UltraAI mock
-// adapter when the user clicks "Run".
-// Version: 0.1.0
-// Last Modified: 2026-05-08
+// builds its own input form (headed by the shared provider picker) and
+// runs the selected — or default-routed — UltraAI provider on "Run".
+// Version: 0.2.0
+// Last Modified: 2026-08-21
 
 #include "UltraAIDialogs.h"
 
 #include "UltraAI.h"
+#include "UltraCanvasDropdown.h"
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+#include <UltraVault/UltraVault.h>
+#endif
 
+#include <algorithm>
+#include <fstream>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -59,58 +65,67 @@ std::string ErrorLine(const Error& e) {
 } // namespace
 
 // ===================================================================
-// ChatDialog (ITextLLM)
+// Shared credential helpers (used by the cloud-capable dialogs below;
+// the Chat capability now lives in UltraAIChatDialog.cpp).
 // ===================================================================
 
-ChatDialog::ChatDialog()
-    : UltraAIServiceDialog("Chat (LLM)",
-        "Send a prompt to the LLM and receive a single-turn reply. "
-        "Backed by the in-process Mock TextLLM adapter.") {}
-
-long ChatDialog::BuildForm(long y) {
-    AddDialogElement(MakeLabel("sys-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "System prompt (optional)"));
-    y += kLabelHeight + 2;
-    input1_ = MakeInput("chat-sys", kMargin, y, kFormWidth, kRowHeight,
-                        "You are a concise assistant...");
-    AddDialogElement(input1_);
-    y += kRowHeight + kRowGap;
-
-    AddDialogElement(MakeLabel("usr-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "User message"));
-    y += kLabelHeight + 2;
-    input2_ = MakeInput("chat-usr", kMargin, y, kFormWidth, 80,
-                        "Type your prompt...", true);
-    AddDialogElement(input2_);
-    y += 80 + kRowGap;
-    return y;
+namespace {
+// Read a whole text file. Used for the ComfyUI workflow field, which takes
+// a path rather than pasted JSON — an API-format workflow is thousands of
+// characters.
+bool ReadTextFile(const std::string& path, std::string& outText) {
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::ostringstream buffer;
+    buffer << in.rdbuf();
+    outText = buffer.str();
+    return in.good() || in.eof();
 }
 
-void ChatDialog::RunCapability() {
-    SetStatus("Running...");
-    SetResult("");
-
-    auto llm = CreateTextLLM({.providerId = "mock"});
-    if (!llm) { SetStatus("Failed to create mock TextLLM"); return; }
-
-    ChatRequest req;
-    if (input1_ && !input1_->GetText().empty()) {
-        Message sys; sys.role = Role::System; sys.text = input1_->GetText();
-        req.messages.push_back(std::move(sys));
+bool ProviderNeedsApiKey(const std::string& provider) {
+    // Local providers run the model on this machine — llama-cpp in-process,
+    // qwen against Ollama/vLLM, comfyui against a ComfyUI the user started —
+    // and take no credential.
+    static const char* kKeyless[] = {"mock", "llama-cpp", "qwen", "comfyui"};
+    if (provider.empty()) return false;
+    for (const char* keyless : kKeyless) {
+        if (provider == keyless) return false;
     }
-    Message usr; usr.role = Role::User;
-    usr.text = input2_ ? input2_->GetText() : "";
-    req.messages.push_back(std::move(usr));
-
-    auto resp = llm->Chat(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error) << resp.text
-       << "\n\n(model=" << resp.model
-       << "  in=" << resp.usage.inputTokens
-       << "  out=" << resp.usage.outputTokens << ")";
-    SetResult(os.str());
-    SetStatus("Done");
+    return true;
 }
+
+// Route a typed key into UltraVault (or, in a build without it, straight
+// into the config) and point `config` at the stored reference. Shared by
+// every dialog whose providers include cloud services. Returns false with
+// *outStatus set when the key could not be stored.
+bool ApplyCredential(const std::string& provider,
+                     const std::shared_ptr<UltraCanvasTextInput>& keyInput,
+                     ProviderConfig& config, std::string* outStatus) {
+    if (!ProviderNeedsApiKey(provider)) return true;
+
+#ifdef ULTRAAI_HAS_ULTRAVAULT
+    const std::string vaultRef = "ai." + provider + ".api_key";
+    if (keyInput && !keyInput->GetText().empty()) {
+        if (!UltraVault::IsAvailable()) UltraVault::Initialize();
+        std::string typed = keyInput->GetText();
+        auto stored = UltraVault::Put(
+            vaultRef, UltraVault::SecretValue::FromString(typed));
+        keyInput->SetText("");   // the key lives in the vault now
+        if (!stored.IsOk()) {
+            if (outStatus) *outStatus = "Could not store the key: " +
+                                        stored.message;
+            return false;
+        }
+    }
+    config.apiKeyVaultRef = vaultRef;
+#else
+    // No vault in this build: the key stays in the widget for the call.
+    if (keyInput) config.apiKey = keyInput->GetText();
+#endif
+    return true;
+}
+
+} // namespace
 
 // ===================================================================
 // EmbeddingsDialog (IEmbeddings)
@@ -118,31 +133,33 @@ void ChatDialog::RunCapability() {
 
 EmbeddingsDialog::EmbeddingsDialog()
     : UltraAIServiceDialog("Embeddings",
-        "Compute vector embeddings for one or more texts (one per line).") {}
+        "Compute vector embeddings for one or more texts (one per line). "
+        "\"(default route)\" follows the routing policy across the "
+        "registered providers.") {}
 
 long EmbeddingsDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListEmbeddingsProviders());
+
     AddDialogElement(MakeLabel("emb-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Inputs (one per line)"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("emb-in", kMargin, y, kFormWidth, 120,
-                        "apple\nfruit\ncar", true);
+    input1_ = MakeTextArea("emb-in", kMargin, y, kFormWidth, 120,
+                        "apple\nfruit\ncar");
     AddDialogElement(input1_);
     y += 120 + kRowGap;
 
     AddDialogElement(MakeLabel("dim-lbl", kMargin, y, kFormWidth, kLabelHeight,
-                               "Dimensions (optional, default 8)"));
+                               "Dimensions (optional; provider default)"));
     y += kLabelHeight + 2;
-    input2_ = MakeInput("emb-dim", kMargin, y, 120, kRowHeight, "8");
+    input2_ = MakeInput("emb-dim", kMargin, y, 120, kRowHeight, "auto");
     AddDialogElement(input2_);
     y += kRowHeight + kRowGap;
     return y;
 }
 
 void EmbeddingsDialog::RunCapability() {
-    SetStatus("Running...");
-
-    auto emb = CreateEmbeddings({.providerId = "mock"});
-    if (!emb) { SetStatus("Failed to create mock Embeddings"); return; }
+    EmbeddingsConfig cfg;
+    cfg.providerId = SelectedProviderId();
 
     EmbeddingRequest req;
     req.input = SplitLines(input1_ ? input1_->GetText() : "");
@@ -153,9 +170,20 @@ void EmbeddingsDialog::RunCapability() {
         try { req.dimensions = std::stoi(input2_->GetText()); } catch (...) {}
     }
 
+    RunOffThread([cfg, req]() -> RunOutcome {
+    RunOutcome outcome;
+    Error createError;
+    auto emb = CreateEmbeddings(cfg, &createError);
+    if (!emb) {
+        outcome.status = "Failed to create Embeddings";
+        outcome.result = createError.message;
+        return outcome;
+    }
+
     auto resp = emb->Embed(req);
     std::ostringstream os;
-    os << ErrorLine(resp.error);
+    os << ErrorLine(resp.error)
+       << "(provider=" << emb->GetCapabilities().providerId << ")\n";
     for (size_t i = 0; i < resp.embeddings.size(); ++i) {
         const auto& v = resp.embeddings[i].values;
         os << "[" << i << "] dim=" << v.size() << " { ";
@@ -169,8 +197,9 @@ void EmbeddingsDialog::RunCapability() {
                                                  resp.embeddings[1]);
         os << "\ncos(0, 1) = " << s;
     }
-    SetResult(os.str());
-    SetStatus("Done");
+    outcome.result = os.str();
+    return outcome;
+    });
 }
 
 // ===================================================================
@@ -184,6 +213,8 @@ SpeechToTextDialog::SpeechToTextDialog()
         "placeholder transcript.") {}
 
 long SpeechToTextDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListSpeechToTextProviders());
+
     AddDialogElement(MakeLabel("stt-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Mock audio byte length"));
     y += kLabelHeight + 2;
@@ -204,8 +235,13 @@ long SpeechToTextDialog::BuildForm(long y) {
 void SpeechToTextDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto stt = CreateSpeechToText({.providerId = "mock"});
-    if (!stt) { SetStatus("Failed to create mock STT"); return; }
+    Error createError;
+    auto stt = CreateSpeechToText({.providerId = SelectedProviderId()},
+                                  &createError);
+    if (!stt) {
+        SetStatus("Failed to create STT: " + createError.message);
+        return;
+    }
 
     TranscribeRequest req;
     size_t bytes = 4096;
@@ -234,21 +270,29 @@ void SpeechToTextDialog::RunCapability() {
 
 TextToSpeechDialog::TextToSpeechDialog()
     : UltraAIServiceDialog("Text to Speech",
-        "Synthesize speech from text. The mock returns placeholder "
-        "audio bytes (one byte per character).") {}
+        "Synthesize speech from text. Voice ids come from the provider — "
+        "the result lists the ones this provider offers.") {}
 
 long TextToSpeechDialog::BuildForm(long y) {
+    AddProviderAndModelRow(y, "tts", ListTextToSpeechProviders(),
+                           "Model (optional)", "e.g. speech-2.8-turbo",
+                           modelInput_);
+    AddLabelledInput(y, "tts-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
+
     AddDialogElement(MakeLabel("tts-lbl", kMargin, y, kFormWidth, kLabelHeight,
                                "Text to speak"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("tts-text", kMargin, y, kFormWidth, 80,
-                        "Hello world from UltraAI.", true);
+    input1_ = MakeTextArea("tts-text", kMargin, y, kFormWidth, 80,
+                        "Hello world from UltraAI.");
     AddDialogElement(input1_);
     y += 80 + kRowGap;
 
     AddDialogElement(MakeLabel("tts-voice-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
-                               "Voice id (try mock-aria | mock-leo | mock-greta)"));
+                               "Voice id (mock: mock-aria | mock-leo; "
+                               "cloud: see the listing below)"));
     y += kLabelHeight + 2;
     input2_ = MakeInput("tts-voice", kMargin, y, 240, kRowHeight, "mock-aria");
     AddDialogElement(input2_);
@@ -257,31 +301,50 @@ long TextToSpeechDialog::BuildForm(long y) {
 }
 
 void TextToSpeechDialog::RunCapability() {
-    SetStatus("Running...");
+    const std::string provider = SelectedProviderId();
 
-    auto tts = CreateTextToSpeech({.providerId = "mock"});
-    if (!tts) { SetStatus("Failed to create mock TTS"); return; }
+    TextToSpeechConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
+        return;
+    }
 
     SpeakRequest req;
     req.text    = input1_ ? input1_->GetText() : "";
-    req.voiceId = input2_ ? input2_->GetText() : "mock-aria";
+    req.voiceId = input2_ ? input2_->GetText() : "";
     req.format  = TtsAudioFormat::Mp3;
 
-    auto resp = tts->Speak(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error)
-       << "audio bytes : " << FormatBytes(resp.audio.bytes.size()) << "\n"
-       << "mime        : " << resp.audio.mimeType << "\n"
-       << "duration    : " << resp.durationSec << " s";
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto tts = CreateTextToSpeech(cfg, &createError);
+        if (!tts) {
+            outcome.status = "Failed to create TTS";
+            outcome.result = createError.message;
+            return outcome;
+        }
 
-    // Show available voices for the user's reference.
-    os << "\n\nAvailable voices:";
-    for (const auto& v : tts->ListVoices()) {
-        os << "\n  " << v.id << "  (" << v.displayName
-           << ", " << v.language << ")";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
+        auto resp = tts->Speak(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error)
+           << "audio bytes : " << FormatBytes(resp.audio.bytes.size()) << "\n"
+           << "mime        : " << resp.audio.mimeType << "\n"
+           << "duration    : " << resp.durationSec << " s";
+
+        // Show available voices for the user's reference.
+        os << "\n\nAvailable voices:";
+        for (const auto& v : tts->ListVoices()) {
+            os << "\n  " << v.id << "  (" << v.displayName
+               << ", " << v.language << ")";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================
@@ -290,15 +353,26 @@ void TextToSpeechDialog::RunCapability() {
 
 ImageGenDialog::ImageGenDialog()
     : UltraAIServiceDialog("Image Generation",
-        "Generate one or more images from a prompt. The mock returns "
-        "placeholder PNG bytes (header + width/height/index tag).") {}
+        "Model is a cloud model id or a local ComfyUI checkpoint. "
+        "Runs happen off the UI thread, so the window stays usable.") {}
 
 long ImageGenDialog::BuildForm(long y) {
+    AddProviderAndModelRow(y, "ig", ListImageGenProviders(),
+                           "Model / checkpoint (optional)",
+                           "e.g. sd_xl_base_1.0.safetensors", modelInput_);
+    AddLabelledInput(y, "ig-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
+    AddLabelledInput(y, "ig-workflow",
+                     "ComfyUI workflow file (API format; optional)",
+                     "path to a workflow exported with Save (API format)",
+                     workflowInput_);
+
     AddDialogElement(MakeLabel("ig-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("ig-prompt", kMargin, y, kFormWidth, 60,
-                        "a serene mountain lake at sunset", true);
+    input1_ = MakeTextArea("ig-prompt", kMargin, y, kFormWidth, 60,
+                        "a serene mountain lake at sunset");
     AddDialogElement(input1_);
     y += 60 + kRowGap;
 
@@ -315,13 +389,30 @@ long ImageGenDialog::BuildForm(long y) {
 }
 
 void ImageGenDialog::RunCapability() {
-    SetStatus("Running...");
+    const std::string provider = SelectedProviderId();
 
-    auto ig = CreateImageGen({.providerId = "mock"});
-    if (!ig) { SetStatus("Failed to create mock ImageGen"); return; }
+    ImageGenConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
+        return;
+    }
 
     ImageGenRequest req;
     req.prompt = input1_ ? input1_->GetText() : "";
+    if (workflowInput_ && !workflowInput_->GetText().empty()) {
+        std::string workflow;
+        if (!ReadTextFile(workflowInput_->GetText(), workflow)) {
+            SetStatus("Cannot read the workflow file: " +
+                      workflowInput_->GetText());
+            return;
+        }
+        req.options["workflow"] = workflow;
+    }
     if (input2_) {
         const auto s = input2_->GetText();
         auto x = s.find('x');
@@ -336,19 +427,30 @@ void ImageGenDialog::RunCapability() {
         try { req.count = std::stoi(input3_->GetText()); } catch (...) {}
     }
 
-    auto resp = ig->Generate(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error)
-       << "model    : " << resp.model << "\n"
-       << "images   : " << resp.images.size() << "\n";
-    for (size_t i = 0; i < resp.images.size(); ++i) {
-        const auto& g = resp.images[i];
-        os << "  [" << i << "] " << FormatBytes(g.image.bytes.size())
-           << "  mime=" << g.image.mimeType
-           << "  seed=" << g.seed << "\n";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto ig = CreateImageGen(cfg, &createError);
+        if (!ig) {
+            outcome.status = "Failed to create ImageGen";
+            outcome.result = createError.message;
+            return outcome;
+        }
+
+        auto resp = ig->Generate(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error)
+           << "model    : " << resp.model << "\n"
+           << "images   : " << resp.images.size() << "\n";
+        for (size_t i = 0; i < resp.images.size(); ++i) {
+            const auto& g = resp.images[i];
+            os << "  [" << i << "] " << FormatBytes(g.image.bytes.size())
+               << "  mime=" << g.image.mimeType
+               << "  seed=" << g.seed << "\n";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================
@@ -361,6 +463,8 @@ VisionDialog::VisionDialog()
         "image. The mock fills exactly the fields you request.") {}
 
 long VisionDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListVisionAnalyzerProviders());
+
     AddDialogElement(MakeLabel("v-bytes-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
                                "Mock image byte length"));
@@ -383,8 +487,13 @@ long VisionDialog::BuildForm(long y) {
 void VisionDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto v = CreateVisionAnalyzer({.providerId = "mock"});
-    if (!v) { SetStatus("Failed to create mock Vision"); return; }
+    Error createError;
+    auto v = CreateVisionAnalyzer({.providerId = SelectedProviderId()},
+                                  &createError);
+    if (!v) {
+        SetStatus("Failed to create Vision: " + createError.message);
+        return;
+    }
 
     VisionAnalyzeRequest req;
     size_t bytes = 2048;
@@ -424,12 +533,14 @@ TranslatorDialog::TranslatorDialog()
         "is auto-detected when left empty.") {}
 
 long TranslatorDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListTranslatorProviders());
+
     AddDialogElement(MakeLabel("tr-text-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
                                "Texts (one per line)"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("tr-text", kMargin, y, kFormWidth, 80,
-                        "ich bin der schnelle fuchs", true);
+    input1_ = MakeTextArea("tr-text", kMargin, y, kFormWidth, 80,
+                        "ich bin der schnelle fuchs");
     AddDialogElement(input1_);
     y += 80 + kRowGap;
 
@@ -446,8 +557,13 @@ long TranslatorDialog::BuildForm(long y) {
 void TranslatorDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto tr = CreateTranslator({.providerId = "mock"});
-    if (!tr) { SetStatus("Failed to create mock Translator"); return; }
+    Error createError;
+    auto tr = CreateTranslator({.providerId = SelectedProviderId()},
+                               &createError);
+    if (!tr) {
+        SetStatus("Failed to create Translator: " + createError.message);
+        return;
+    }
 
     TranslateRequest req;
     req.texts = SplitLines(input1_ ? input1_->GetText() : "");
@@ -474,15 +590,23 @@ void TranslatorDialog::RunCapability() {
 
 VideoGenDialog::VideoGenDialog()
     : UltraAIServiceDialog("Video Generation",
-        "Generate a short video from a prompt. The mock returns "
-        "placeholder MP4 bytes and a thumbnail PNG.") {}
+        "Model is a cloud model id or a local ComfyUI checkpoint. "
+        "Runs happen off the UI thread, so the window stays usable.") {}
 
 long VideoGenDialog::BuildForm(long y) {
+    AddProviderAndModelRow(y, "vg", ListVideoGenProviders(),
+                           "Model / checkpoint (optional)",
+                           "e.g. MiniMax-Hailuo-02 or svd_xt.safetensors",
+                           modelInput_);
+    AddLabelledInput(y, "vg-key",
+                     "API key — cloud providers only, stored in UltraVault",
+                     "leave empty to use the stored key", keyInput_);
+
     AddDialogElement(MakeLabel("vg-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight, "Prompt"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("vg-prompt", kMargin, y, kFormWidth, 60,
-                        "ocean waves rolling at sunset", true);
+    input1_ = MakeTextArea("vg-prompt", kMargin, y, kFormWidth, 60,
+                        "ocean waves rolling at sunset");
     AddDialogElement(input1_);
     y += 60 + kRowGap;
 
@@ -499,10 +623,18 @@ long VideoGenDialog::BuildForm(long y) {
 }
 
 void VideoGenDialog::RunCapability() {
-    SetStatus("Running...");
+    const std::string provider = SelectedProviderId();
 
-    auto vg = CreateVideoGen({.providerId = "mock"});
-    if (!vg) { SetStatus("Failed to create mock VideoGen"); return; }
+    VideoGenConfig cfg;
+    cfg.providerId = provider;
+    if (modelInput_ && !modelInput_->GetText().empty()) {
+        cfg.defaultModel = modelInput_->GetText();
+    }
+    std::string credentialStatus;
+    if (!ApplyCredential(provider, keyInput_, cfg, &credentialStatus)) {
+        SetStatus(credentialStatus);
+        return;
+    }
 
     VideoGenRequest req;
     req.prompt = input1_ ? input1_->GetText() : "";
@@ -520,18 +652,30 @@ void VideoGenDialog::RunCapability() {
         try { req.durationSec = std::stod(input3_->GetText()); } catch (...) {}
     }
 
-    auto resp = vg->Generate(req);
-    std::ostringstream os;
-    os << ErrorLine(resp.error);
-    for (size_t i = 0; i < resp.videos.size(); ++i) {
-        const auto& v = resp.videos[i];
-        os << "video      : " << v.width << "x" << v.height
-           << " @ " << v.fps << "fps, " << v.durationSec << "s\n"
-           << "video bytes: " << FormatBytes(v.video.bytes.size()) << "\n"
-           << "thumb bytes: " << FormatBytes(v.thumbnail.bytes.size()) << "\n";
-    }
-    SetResult(os.str());
-    SetStatus("Done");
+    RunOffThread([cfg, req]() -> RunOutcome {
+        RunOutcome outcome;
+        Error createError;
+        auto vg = CreateVideoGen(cfg, &createError);
+        if (!vg) {
+            outcome.status = "Failed to create VideoGen";
+            outcome.result = createError.message;
+            return outcome;
+        }
+
+        auto resp = vg->Generate(req);
+        std::ostringstream os;
+        os << ErrorLine(resp.error);
+        for (size_t i = 0; i < resp.videos.size(); ++i) {
+            const auto& v = resp.videos[i];
+            os << "video      : " << v.width << "x" << v.height
+               << " @ " << v.fps << "fps, " << v.durationSec << "s\n"
+               << "video bytes: " << FormatBytes(v.video.bytes.size()) << "\n"
+               << "thumb bytes: " << FormatBytes(v.thumbnail.bytes.size())
+               << "\n";
+        }
+        outcome.result = os.str();
+        return outcome;
+    });
 }
 
 // ===================================================================
@@ -545,12 +689,14 @@ MusicGenDialog::MusicGenDialog()
         "auto-generated) lyrics.") {}
 
 long MusicGenDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListMusicGenProviders());
+
     AddDialogElement(MakeLabel("mg-prompt-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
                                "Prompt (style, mood, instruments)"));
     y += kLabelHeight + 2;
-    input1_ = MakeInput("mg-prompt", kMargin, y, kFormWidth, 60,
-                        "uplifting jazz piano trio", true);
+    input1_ = MakeTextArea("mg-prompt", kMargin, y, kFormWidth, 60,
+                        "uplifting jazz piano trio");
     AddDialogElement(input1_);
     y += 60 + kRowGap;
 
@@ -569,8 +715,13 @@ long MusicGenDialog::BuildForm(long y) {
 void MusicGenDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto mg = CreateMusicGen({.providerId = "mock"});
-    if (!mg) { SetStatus("Failed to create mock MusicGen"); return; }
+    Error createError;
+    auto mg = CreateMusicGen({.providerId = SelectedProviderId()},
+                             &createError);
+    if (!mg) {
+        SetStatus("Failed to create MusicGen: " + createError.message);
+        return;
+    }
 
     MusicGenRequest req;
     req.prompt = input1_ ? input1_->GetText() : "";
@@ -607,6 +758,8 @@ CodeAssistDialog::CodeAssistDialog()
         "shape-correct stubs so you can verify the wiring.") {}
 
 long CodeAssistDialog::BuildForm(long y) {
+    AddProviderPicker(y, ListCodeAssistProviders());
+
     AddDialogElement(MakeLabel("ca-instr-lbl", kMargin, y,
                                kFormWidth, kLabelHeight,
                                "Instruction (used for Generate)"));
@@ -628,8 +781,8 @@ long CodeAssistDialog::BuildForm(long y) {
                                kFormWidth, kLabelHeight,
                                "Code snippet (used by Explain / Refactor / DetectBugs)"));
     y += kLabelHeight + 2;
-    input3_ = MakeInput("ca-code", kMargin, y, kFormWidth, 80,
-                        "if x = 1: pass", true);
+    input3_ = MakeTextArea("ca-code", kMargin, y, kFormWidth, 80,
+                        "if x = 1: pass");
     AddDialogElement(input3_);
     y += 80 + kRowGap;
     return y;
@@ -638,8 +791,13 @@ long CodeAssistDialog::BuildForm(long y) {
 void CodeAssistDialog::RunCapability() {
     SetStatus("Running...");
 
-    auto ca = CreateCodeAssist({.providerId = "mock"});
-    if (!ca) { SetStatus("Failed to create mock CodeAssist"); return; }
+    Error createError;
+    auto ca = CreateCodeAssist({.providerId = SelectedProviderId()},
+                               &createError);
+    if (!ca) {
+        SetStatus("Failed to create CodeAssist: " + createError.message);
+        return;
+    }
 
     const std::string instr  = input1_ ? input1_->GetText() : "";
     const std::string lang   = input2_ ? input2_->GetText() : "python";

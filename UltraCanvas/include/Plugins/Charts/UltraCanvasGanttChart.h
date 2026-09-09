@@ -10,6 +10,7 @@
 #include "UltraCanvasChartElementBase.h"
 #include "UltraCanvasChartDataStructures.h"
 #include "UltraCanvasCalendarDate.h"
+#include "UltraCanvasSmoothScroll.h"
 #include <algorithm>
 #include <functional>
 #include <map>
@@ -554,6 +555,11 @@ namespace UltraCanvas {
 
         Layout layout;
         float scrollX = 0, scrollY = 0;
+        // Wheel scrolling glides to its target (see UltraCanvasSmoothScroll.h);
+        // Ctrl-zoom, a pan drag and ScrollTo* reposition the timeline and land
+        // at once.
+        UltraCanvasSmoothScroll scrollAnimX;
+        UltraCanvasSmoothScroll scrollAnimY;
         int selectedTaskId = -1;
         int hoveredRowIndex = -1;
         bool panningTimeline = false;
@@ -595,7 +601,10 @@ namespace UltraCanvas {
         Rect2Dd BarRectForRow(size_t rowIndex) const;  // Timeline-local coords
 
         // ----- Interaction -----
+        void ScrollLimits(float& maxX, float& maxY) const;
         void ClampScroll();
+        void BindScrollAnimators();
+        void CancelScrollAnimations();
         bool HandleTimelineWheel(const UCEvent& event);
         bool HandleClick(const UCEvent& event, bool doubleClick);
         std::string BuildTaskTooltip(const GanttRow& row) const;

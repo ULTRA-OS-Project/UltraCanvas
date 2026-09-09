@@ -13,6 +13,8 @@
 #include <cairo/cairo.h>
 #include <iostream>
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
@@ -25,6 +27,8 @@ namespace UltraCanvas {
     }
 
     UltraCanvasWindowBase::~UltraCanvasWindowBase() {
+        busyPointerAlive->store(false);
+        CancelBusyPointerTimers();
         UltraCanvasCaret::GetInstance().OnWindowClosed(this);
         CloseAllPopups();
         _state = WindowState::Closed;
@@ -354,6 +358,11 @@ namespace UltraCanvas {
 //    }
 
     void UltraCanvasWindowBase::HandleResizeEvent(int width, int height) {
+        // A resize we did not initiate that changes the size is a user/WM drag;
+        // remember it so continuous fit-to-content stops overriding their choice.
+        if (!_expectProgrammaticResize && (width != config_.width || height != config_.height)) {
+            _userResized = true;
+        }
         config_.width = width;
         config_.height = height;
         _needsResize = true;
@@ -407,6 +416,100 @@ namespace UltraCanvas {
         InvalidateWindowNative();
     }
 
+    bool UltraCanvasWindowBase::MaybeResizeToContent() {
+        if (!config_.autoResizeToContent || !renderContext) return false;
+        // Once the user has dragged the window to a size of their own, stop
+        // fighting them with continuous fit-to-content.
+        if (_userResized) return false;
+        if (IsMaximized() || IsFullscreen()) return false;
+
+        // Cap each axis at (most of) the monitor this window is on. The 0.92
+        // fraction leaves room for the titlebar/borders so the outer window stays
+        // on-screen. GetScreenBounds is used RAW here, in the same units as the
+        // sibling helper UltraCanvasModalDialog::AutoSizeToContent(): logical on
+        // macOS/WASM, physical on X11/Windows. Converting to logical would halve
+        // the cap on Retina, so it is intentionally left as a soft, unconverted cap.
+        int sx = 0, sy = 0, sw = 0, sh = 0;
+        GetScreenBounds(sx, sy, sw, sh);
+        auto screenCap = [](int screenDim, int cfgMax, int cfgMin) -> int {
+            int cap = (screenDim > 0)
+                          ? static_cast<int>(std::floor(screenDim * 0.92f))
+                          : (cfgMax > 0 ? cfgMax : std::numeric_limits<int>::max());
+            if (cfgMax > 0) cap = std::min(cap, cfgMax);
+            return std::max(cap, cfgMin);
+        };
+        const int capW = screenCap(sw, config_.maxWidth,  config_.minWidth);
+        const int capH = screenCap(sh, config_.maxHeight, config_.minHeight);
+
+        int newW = 0, newH = 0;
+        {
+            // Neutralise the window's own explicit size. On every resize
+            // DoResize()->SetElementSize() pins size.width/height to the current
+            // viewport; measuring with that in place just echoes it back and
+            // discovers nothing. With size Auto the root container derives its
+            // size from its children — the natural content size we want. A scope
+            // guard restores it on every exit path.
+            const CSSLayout::Dimension savedW = size.width;
+            const CSSLayout::Dimension savedH = size.height;
+            struct SizeRestore {
+                UltraCanvasWindowBase* w;
+                CSSLayout::Dimension a, b;
+                ~SizeRestore() { w->size.width = a; w->size.height = b; w->InvalidateLayout(); }
+            } restore{this, savedW, savedH};
+
+            size.width  = CSSLayout::Dimension::Auto();
+            size.height = CSSLayout::Dimension::Auto();
+            InvalidateLayout();
+
+            CSSLayout::LayoutContext lctx;
+            lctx.viewportWidth  = GetWidth();
+            lctx.viewportHeight = GetHeight();
+
+            // Stage 1: natural width with unbounded space on both axes. Unbounded
+            // makes the measure viewport-independent, which is what guarantees the
+            // resize loop converges in a single step.
+            Measure(CSSLayout::MeasureConstraints{
+                        { CSSLayout::ConstraintMode::Unbounded, INFINITY },
+                        { CSSLayout::ConstraintMode::Unbounded, INFINITY } }, lctx);
+            const int desiredW = static_cast<int>(std::ceil(measured.measuredWidth));
+            newW = std::clamp(desiredW, config_.minWidth, capW);
+
+            // Stage 2: wrap-correct height at the clamped width. Content that
+            // reflows with width (wrapped text) needs a definite width before its
+            // height is meaningful — mirrors AutoSizeToContent's height pass.
+            Measure(CSSLayout::MeasureConstraints{
+                        { CSSLayout::ConstraintMode::Exact, static_cast<float>(newW) },
+                        { CSSLayout::ConstraintMode::Unbounded, INFINITY } }, lctx);
+            const int desiredH = static_cast<int>(std::ceil(measured.measuredHeight));
+            newH = std::clamp(desiredH, config_.minHeight, capH);
+        }
+
+        if (newW == static_cast<int>(GetWidth()) && newH == static_cast<int>(GetHeight()))
+            return false;
+
+        // Our own resize: flag it so the native resize event it provokes is not
+        // mistaken for a user drag (see HandleResizeEvent).
+        _expectProgrammaticResize = true;
+        SetWindowSize(newW, newH);
+        _expectProgrammaticResize = false;
+        InvalidateLayout();
+
+        // Keep the freshly grown window on its monitor. Positions and native size
+        // are in the same units (physical on X11) as GetScreenBounds, matching the
+        // clamp idiom in CenterOnParent().
+        int px = 0, py = 0, ww = 0, wh = 0;
+        GetWindowPosition(px, py);
+        GetNativeWindowSize(ww, wh);
+        int nsx = 0, nsy = 0, nsw = 0, nsh = 0;
+        GetScreenBounds(nsx, nsy, nsw, nsh);
+        if (nsw > 0 && nsh > 0) {
+            int cx = std::max(nsx, std::min(px, nsx + nsw - ww));
+            int cy = std::max(nsy, std::min(py, nsy + nsh - wh));
+            if (cx != px || cy != py) SetWindowPosition(cx, cy);
+        }
+        return true;
+    }
+
     void UltraCanvasWindowBase::DoResize() {
         _needsResize = false;
         if (GetWidth() == config_.width && GetHeight() == config_.height) {
@@ -437,6 +540,11 @@ namespace UltraCanvas {
 
     void UltraCanvasWindowBase::UpdateAndRender() {
         if (!_created || !_windowVisible) return;
+        // A backend can lose its presentation surface while the window is
+        // still marked visible (Android between APP_CMD_TERM_WINDOW and the
+        // next APP_CMD_INIT_WINDOW). Dirty rects keep accumulating; the
+        // backend requests a full composite when the surface returns.
+        if (!nativeSurface) return;
         auto ctx = GetRenderContext();
         if (IsNeedsResize()) {
             DoResize();
@@ -445,6 +553,15 @@ namespace UltraCanvas {
 
         bool isLayoutValid = IsLayoutValid();
         if (!isLayoutValid) {
+            // Fit-to-content, if enabled, must run BEFORE the authoritative Exact
+            // pass so that pass arranges children into the freshly-sized viewport.
+            // MaybeResizeToContent() is idempotent once fitted, so this does not
+            // thrash across frames.
+            if (config_.autoResizeToContent) {
+                if (MaybeResizeToContent() && IsNeedsResize()) {
+                    DoResize();
+                }
+            }
             CSSLayout::LayoutContext lctx;
             // TODO: thread em/rem/DPI from window. Viewport defaults
             // are acceptable for fixed-px callers; only vw/vh users
@@ -582,6 +699,18 @@ namespace UltraCanvas {
         dirtyRectManager.Add(clipped);
     }
 
+    namespace {
+        // An overlay renderer may antialias a pixel or two past its rect (the
+        // filer drag badge strokes a rounded border on its edge). Invalidating
+        // exactly the rect leaves that fringe behind and it smears into a trail
+        // as the overlay moves - so grow the repainted region a little.
+        constexpr int kDragOverlayInvalidateMargin = 2;
+        inline Rect2Di InflatedOverlayRect(const Rect2Di& r) {
+            const int m = kDragOverlayInvalidateMargin;
+            return Rect2Di(r.x - m, r.y - m, r.width + 2 * m, r.height + 2 * m);
+        }
+    }
+
     void UltraCanvasWindowBase::SetDragOverlay(UltraCanvasUIElement* owner,
                                                const Rect2Di& windowRect,
                                                WindowOverlayRenderer renderer) {
@@ -589,16 +718,16 @@ namespace UltraCanvas {
         // The gesture that claimed the overlay keeps it until it clears it.
         if (dragOverlayOwner && dragOverlayOwner != owner) return;
         // Repaint what the overlay is leaving behind, then what it now covers.
-        if (dragOverlayRenderer) AddDirtyRectangle(dragOverlayRect);
+        if (dragOverlayRenderer) AddDirtyRectangle(InflatedOverlayRect(dragOverlayRect));
         dragOverlayOwner = owner;
         dragOverlayRect = windowRect;
         dragOverlayRenderer = std::move(renderer);
-        AddDirtyRectangle(dragOverlayRect);
+        AddDirtyRectangle(InflatedOverlayRect(dragOverlayRect));
     }
 
     void UltraCanvasWindowBase::ClearDragOverlay(UltraCanvasUIElement* owner) {
         if (!dragOverlayRenderer || dragOverlayOwner != owner) return;
-        AddDirtyRectangle(dragOverlayRect);
+        AddDirtyRectangle(InflatedOverlayRect(dragOverlayRect));
         dragOverlayRenderer = nullptr;
         dragOverlayOwner = nullptr;
         dragOverlayRect = Rect2Di(0, 0, 0, 0);
@@ -851,6 +980,67 @@ namespace UltraCanvas {
         return false;
     }
 
+
+    void UltraCanvasWindowBase::CancelBusyPointerTimers() {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (app) {
+            if (busyPointerDelayTimer != InvalidTimerId) app->StopTimer(busyPointerDelayTimer);
+            if (busyPointerHoldTimer != InvalidTimerId) app->StopTimer(busyPointerHoldTimer);
+        }
+        busyPointerDelayTimer = InvalidTimerId;
+        busyPointerHoldTimer = InvalidTimerId;
+    }
+
+    void UltraCanvasWindowBase::ShowBusyPointer(int delayMs, int holdMs, UCMouseCursor shape) {
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        // A second launch while the first is still counting down restarts the
+        // wait: the newest one decides when the pointer changes and for how
+        // long it stays changed.
+        CancelBusyPointerTimers();
+        busyPointerShape = shape;
+        if (delayMs <= 0) {
+            ShowBusyPointerNow(holdMs);
+            return;
+        }
+        auto alive = busyPointerAlive;
+        busyPointerDelayTimer = app->StartTimer(
+                (unsigned int)delayMs, false, [this, alive, holdMs](TimerId) {
+                    if (!alive->load()) return;
+                    busyPointerDelayTimer = InvalidTimerId;
+                    ShowBusyPointerNow(holdMs);
+                });
+    }
+
+    void UltraCanvasWindowBase::ShowBusyPointerNow(int holdMs) {
+        busyPointerVisible = true;
+        SelectMouseCursor(busyPointerShape);
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app || holdMs <= 0) return;
+        auto alive = busyPointerAlive;
+        busyPointerHoldTimer = app->StartTimer(
+                (unsigned int)holdMs, false, [this, alive](TimerId) {
+                    if (!alive->load()) return;
+                    busyPointerHoldTimer = InvalidTimerId;
+                    HideBusyPointer();
+                });
+    }
+
+    void UltraCanvasWindowBase::HideBusyPointer() {
+        CancelBusyPointerTimers();
+        if (!busyPointerVisible) return;
+        busyPointerVisible = false;
+        // Back to whatever the pointer is over. The hovered element is the
+        // application's, so a pointer that has not moved since the launch gets
+        // its own cursor back without waiting for the next move.
+        UCMouseCursor restored = GetMouseCursor();
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (app) {
+            UltraCanvasUIElement* hovered = app->GetHoveredElement();
+            if (hovered && hovered->GetWindow() == this) restored = hovered->GetMouseCursor();
+        }
+        SelectMouseCursor(restored);
+    }
 
     UltraCanvasWindowBase* UltraCanvasWindowBase::GetParentWindow() {
         if (config_.parentWindow && !UltraCanvasApplication::GetInstance()->IsWindowRegistered(config_.parentWindow)) {

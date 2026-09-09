@@ -4,7 +4,7 @@
 
 The `UltraCanvasXARElement` is a UI element that loads and renders **Xara vector graphics** (`.xar`, `.web`, `.wix`) inside an UltraCanvas window. It is part of the `UltraCanvasXARPlugin`, which parses the binary Xara record stream (per the Xara Format Specification, Appendix A) into an in-memory tree of `XARNode` objects — spreads, layers, groups, paths, regular shapes (rectangles, ellipses, polygons), text stories, bitmaps and effect nodes — and then plays that tree back through the standard `IRenderContext`. Coordinates are stored internally in millipoints (1/72000 inch) and converted to pixels at render time.
 
-XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text strings, bitmaps) is in place, along with flat / gradient / bitmap fills, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. Unlike the sibling CDR element, the XAR element exposes **no multi-page navigation API** (no `GetPageCount` / `SetCurrentPage`) and **no `CDRFitMode`-style fit modes**; viewport handling is done with a single uniform `scale` plus an aspect-ratio flag. The commented-out blocks in the demo source (`SetFitMode`, `SetZoom`, `GetCurrentPage`, `onPageChanged`, …) reference an API that does **not** exist on this element — only the symbols documented below are real.
+XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows both shipped samples from `media/vector/XAR/` with a fullscreen viewer, page navigation and zoom.
 
 **Version:** 1.0.0  
 **Header:** `Plugins/Vector/XAR/UltraCanvasXARPlugin.h`  
@@ -168,8 +168,50 @@ public:
     const std::string& GetProducerVersion() const;
     const std::string& GetProducerBuild() const;
     const std::string& GetFileType() const;
+
+    // Parse diagnostics — filled during LoadFromFile / LoadFromMemory
+    struct XARParseDiagnostics {
+        size_t recordCount;                                 // records dispatched
+        std::unordered_map<uint32_t, size_t> unhandledTags; // tag value -> occurrences
+        std::vector<std::string> warnings;                  // structural problems
+    };
+    const XARParseDiagnostics& GetDiagnostics() const;
 };
 ```
+
+#### Parse Diagnostics & Triage
+
+XAR support is **not feature-complete**: some files display partially or
+incorrectly. `GetDiagnostics()` is how such a file is triaged after a load
+(successful or not):
+
+- `unhandledTags` — record types the parser consumed without acting on. A
+  file that leans on one of these needs the matching record handler
+  implemented; tag values are the Xar Format Specification, Appendix A.
+- `warnings` — structural parse problems (bad signature, truncated record,
+  failed decompression). These are parser defects or corrupt files.
+- `recordCount` — how much of the file was walked before parsing stopped.
+
+`Tests/XARProbeTest` (built with `-DBUILD_TESTS=ON` whenever the XAR plugin
+target exists) runs this triage from the command line: it prints the node
+tree by type, the unhandled tags and the warnings for the repo's `media/vector/XAR/`
+samples or for any `.xar` files passed as arguments — the first thing to run
+on a file that renders wrong.
+
+Known renderer gaps (parse succeeds, display is approximate): fractal /
+noise fills fall back to simplified paints, transparency tiling modes are
+treated as flat, brush strokes render as plain lines, and some text layout remains
+approximate (explicit tab stops and ruler indents are not applied; lines,
+justification — full justification included — kerns, list indents and
+Xara's own per-line baseline steps are). Bitmap and contone-bitmap fills render the embedded bitmap mapped
+onto the fill parallelogram (both decode with the alpha channel inverted,
+the transparency convention xar-embedded PNGs use; contone maps the
+bitmap's luminance between the fill's two colours and keeps that alpha).
+Soft shadows (`TAG_SHADOWCONTROLLER`) render as flat silhouettes of the
+shadowed objects — glows as a symmetric halo, wall/floor shadows offset —
+with the penumbra approximated by widened fainter strokes instead of a true
+blur. Regular shapes render as plain polygons/ellipses — stellation and
+rounded corners are ignored.
 
 ### XARNode
 
@@ -342,6 +384,22 @@ public:
 
 `XARConversionOptions` controls compression, progressive rendering, layer/effect preservation, strict mode, a feather-fallback opacity, and optional warning / progress callbacks. The header also provides `XARCoordUtils` and `XARColourUtils` helpers for millipoint / 16.16-fixed-point / colour conversions.
 
+### Writing XAR files
+
+`Export` / `ExportToString` / `ExportToStream` serialize a `VectorStorage::VectorDocument` into the XAR record grammar (signature, `FILEHEADER`, the `DOCUMENT`→`CHAPTER`→`SPREAD`→`LAYER` tree, per-object attribute children, `ENDOFFILE`). What the writer covers:
+
+- **Shapes.** Rectangles, rounded rectangles, circles and ellipses become native `RECTANGLE_SIMPLE`/`ELLIPSE_SIMPLE` records while the accumulated transform is axis-aligned; under rotation or skew they are baked into path records instead. Lines, polylines and polygons always write as paths.
+- **Paths.** Every `PathCommandType` is normalised to XAR's move/line/bezier verbs — quadratics and smooth variants become cubics, SVG arcs are converted via the standard endpoint-to-centre parameterisation.
+- **Fills & strokes.** Solid colours, linear and radial gradients (first and last stop; XAR's plain gradient records hold two colours), stroke colour/width/caps/joins/mitre limit. Style opacity and fill alpha fold into a `FLATTRANSPARENTFILL` record. Colours and fonts are emitted as definition records referenced by record sequence number.
+- **Text.** Stories with per-line `TEXT_LINE`/`TEXT_STRING` records; per-span typeface, size, bold/italic/underline deltas; left/centre/right justification from `TextAnchor`. Coordinates are converted to millipoints with the Y-axis flip (XAR is Y-up).
+- **Not written yet:** dash patterns, conical/mesh gradients (flat fallback), pattern fills, bitmap objects, story rotation matrices, an embedded preview bitmap, and compressed output (files are written uncompressed, which every XAR reader must accept).
+
+Round-trip coverage lives in `Tests/XARWriterTest.cpp`: it builds a document, exports it, re-reads it through the plugin's `XARDocument`, and checks structure, millipoint placement, colour references and text content. The exported file also renders through `XARProbeTest --render`.
+
+### Filer thumbnails
+
+Xara files embed a preview bitmap (GIF/JPEG/PNG record 61/62/63) in the uncompressed file head. `UltraCanvasFilerWidget` extracts those bytes directly on its thumbnail workers — no XAR renderer involved — and decodes them through the image pipeline, so a folder of `.xar` files thumbnails like a folder of photos. Files without a preview record keep the generic glyph.
+
 ## Examples
 
 All examples below are drawn from or based on `Apps/DemoApp/UltraCanvasXARExamples.cpp`.
@@ -360,7 +418,7 @@ auto xarElement1 = std::make_shared<UltraCanvasXARElement>(
     "XAR1", 10, 10, 280, 220);
 
 // Resolve the demo asset path and load
-std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/xar/demo.xar");
+std::string xarFile1 = NormalizePath(GetResourcesDir() + "media/vector/XAR/demo.xar");
 if (xarElement1->LoadFromFile(xarFile1)) {
     statusLabel->SetText("Loaded: " + xarFile1);
 } else {
@@ -493,7 +551,7 @@ auto xarElement = XARElementBuilder()
     .SetIdentifier("Logo")
     .SetPosition(10, 10)
     .SetSize(280, 220)
-    .SetFilePath(NormalizePath(GetResourcesDir() + "media/xar/logo.xar"))
+    .SetFilePath(NormalizePath(GetResourcesDir() + "media/vector/XAR/logo.xar"))
     .SetPreserveAspectRatio(true)
     .SetScale(1.0f)
     .Build();   // file is loaded inside Build()

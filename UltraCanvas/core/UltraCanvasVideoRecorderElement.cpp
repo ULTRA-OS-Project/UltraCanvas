@@ -274,7 +274,12 @@ void UltraCanvasVideoRecorderElement::Relayout() {
     int cy = controlBarRect.y + barH / 2;
     int btn = style.buttonSize;
 
-    recordButtonRect = Rect2Di(controlBarRect.x + kPadding, cy - btn / 2, btn, btn);
+    if (style.showRecordButton) {
+        recordButtonRect = Rect2Di(controlBarRect.x + kPadding, cy - btn / 2,
+                                   btn, btn);
+    } else {
+        recordButtonRect = Rect2Di();
+    }
 
     int rightX = controlBarRect.x + controlBarRect.width - kPadding;
     if (style.showCameraSelect) {
@@ -284,7 +289,12 @@ void UltraCanvasVideoRecorderElement::Relayout() {
         cameraSelectRect = Rect2Di();
     }
     if (style.showElapsedTime) {
-        timeLabelRect = Rect2Di(recordButtonRect.x + btn + kGap, cy - 8, kTimeWidth, 16);
+        // Sits after the record button, or at the bar's left edge when there
+        // is no button to sit after.
+        const int timeX = style.showRecordButton
+                              ? recordButtonRect.x + btn + kGap
+                              : controlBarRect.x + kPadding;
+        timeLabelRect = Rect2Di(timeX, cy - 8, kTimeWidth, 16);
     } else {
         timeLabelRect = Rect2Di();
     }
@@ -335,16 +345,20 @@ void UltraCanvasVideoRecorderElement::DrawControlBar(IRenderContext* ctx) {
                              style.controlBarColor, 0.0f, Color(0, 0, 0, 0), 0);
 
     bool recording = recorder->GetState() == VideoRecordingState::Recording;
-    int cx = recordButtonRect.x + recordButtonRect.width / 2;
-    int cy = recordButtonRect.y + recordButtonRect.height / 2;
-    int r = recordButtonRect.width / 3;
-    ctx->SetFillPaint(style.recordButtonColor);
-    if (recording) {
-        // Stop square
-        ctx->FillRectangle(Rect2Dd(cx - r, cy - r, r * 2, r * 2));
-    } else {
-        // Record circle
-        ctx->FillCircle(Point2Dd(cx, cy), r);
+    // Preview-only consumers suppress the button; the rest of the bar (elapsed
+    // time, camera picker) is still drawn below.
+    if (style.showRecordButton) {
+        int cx = recordButtonRect.x + recordButtonRect.width / 2;
+        int cy = recordButtonRect.y + recordButtonRect.height / 2;
+        int r = recordButtonRect.width / 3;
+        ctx->SetFillPaint(style.recordButtonColor);
+        if (recording) {
+            // Stop square
+            ctx->FillRectangle(Rect2Dd(cx - r, cy - r, r * 2, r * 2));
+        } else {
+            // Record circle
+            ctx->FillCircle(Point2Dd(cx, cy), r);
+        }
     }
 
     if (timeLabelRect.width > 0) {
@@ -408,7 +422,13 @@ bool UltraCanvasVideoRecorderElement::OnEvent(const UCEvent& event) {
     switch (event.type) {
         case UCEventType::MouseDown: {
             if (event.button != UCMouseButton::Left) return false;
-            if (Hit(recordButtonRect, p)) { ToggleRecording(); return true; }
+            // recordButtonRect is empty when the button is suppressed, but hit
+            // testing it explicitly documents that a preview-only element
+            // cannot be made to start recording by a stray click.
+            if (style.showRecordButton && Hit(recordButtonRect, p)) {
+                ToggleRecording();
+                return true;
+            }
             if (cameraSelectRect.width > 0 && Hit(cameraSelectRect, p)) {
                 OpenCameraPicker(); return true;
             }

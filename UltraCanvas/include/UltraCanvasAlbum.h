@@ -42,6 +42,7 @@
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasTimer.h"
+#include "UltraCanvasSmoothScroll.h"
 #include <atomic>
 #include <condition_variable>
 #include <deque>
@@ -435,6 +436,11 @@ namespace UltraCanvas {
         // container's child-driven scrollbars (the album has no child elements).
         int  scrollOffsetX = 0;
         int  scrollOffsetY = 0;
+        // Wheel notches glide to their target instead of jumping (see
+        // UltraCanvasSmoothScroll.h). Dragging the thumb and switching layout
+        // or album cancel the glide and position the view directly.
+        UltraCanvasSmoothScroll scrollAnimX;
+        UltraCanvasSmoothScroll scrollAnimY;
 
         // Scrollbar drag state: while the thumb is grabbed, `scrollbarGrabOffset`
         // is the distance from the cursor to the thumb's leading edge so the thumb
@@ -575,6 +581,8 @@ namespace UltraCanvas {
         int    MaxScrollY() const;
         int    MaxScrollX() const;
         void   ClampScroll();
+        void   BindScrollAnimators();
+        void   CancelScrollAnimations();
 
         // Scrollbar geometry (vertical for the scrolling layouts, horizontal for
         // the filmstrip), shared by the renderer and the event handler so a click
