@@ -15,6 +15,8 @@
 #include <condition_variable>
 #include <cstdio>
 #include <memory>
+#include <atomic>
+#include <optional>
 
 // Conditional Zigbee stack includes
 #ifdef ULTRACANVAS_WITH_EZSP
@@ -250,13 +252,16 @@ public:
     
     // ===== NETWORK OPERATIONS =====
     
-    bool FormNetwork(uint16_t panId, uint8_t channel, const std::array<uint8_t, 16>& networkKey) {
+    bool FormNetwork(uint16_t panId, uint8_t channel, uint64_t extendedPanId,
+                     const std::array<uint8_t, 16>& networkKey) {
 #ifdef ULTRACANVAS_WITH_EZSP
-        return EZSP_FormNetwork(panId, channel, networkKey);
+        return EZSP_FormNetwork(panId, channel, extendedPanId, networkKey);
 #elif defined(ULTRACANVAS_WITH_ZSTACK)
-        return ZStack_FormNetwork(panId, channel, networkKey);
+        return ZStack_FormNetwork(panId, channel, extendedPanId, networkKey);
 #else
         // Stub mode - simulate network formation
+        (void)extendedPanId;
+        (void)networkKey;
         coordinatorNwk = 0x0000;
         coordinatorIeee = 0x00124B0001234567ULL;  // Simulated IEEE
         return true;
@@ -465,8 +470,8 @@ public:
 
 private:
     void ProcessSerial() {
-        // Read from serial and process frames
-        // Implementation depends on EZSP vs Z-Stack protocol
+        // Nothing to pump: the ASH transport reads the port on a thread of
+        // its own and delivers frames to OnEzspFrameReceived as they arrive.
     }
     
     void CheckTimeouts() {
@@ -521,10 +526,163 @@ private:
     // left here is the EZSP conversation on top of it.
 
     Ash::Transport ashTransport;
-    uint8_t ezspVersion = 0;        // negotiated with the NCP at start-up
-    uint8_t ezspSequence = 0;
+    std::atomic<uint8_t> ezspVersion{0};    // negotiated with the NCP at start-up
+    std::atomic<uint8_t> ezspSequence{0};
 
     uint8_t NextSequence() { return ezspSequence++; }
+
+    // ----- command responses -----
+    //
+    // Every EZSP command is answered by a frame with the same sequence number
+    // and frame id. Configuration and network formation need those answers,
+    // so a caller can register for one and wait; the data path (sendUnicast
+    // and friends) stays fire-and-forget and is judged by what the device
+    // says back, not by the NCP's acceptance of the bytes.
+
+    struct PendingCommand {
+        uint16_t FrameId = 0;
+        std::vector<uint8_t> Response;
+        bool Done = false;
+    };
+    std::map<uint8_t, PendingCommand> pendingCommands;
+    std::mutex commandMutex;
+    std::condition_variable commandCv;
+
+    static constexpr uint32_t kCommandTimeoutMs = 3000;
+    static constexpr uint32_t kNetworkTimeoutMs = 15000;
+
+    // Must not be called from the receive thread: the answer arrives there.
+    std::optional<std::vector<uint8_t>> SendEzspAndWait(uint16_t frameId,
+                                                        const std::vector<uint8_t>& params,
+                                                        uint32_t timeoutMs = kCommandTimeoutMs) {
+        if (ezspVersion == 0) return std::nullopt;
+        const uint8_t seq = NextSequence();
+        {
+            std::lock_guard<std::mutex> lock(commandMutex);
+            PendingCommand pending;
+            pending.FrameId = frameId;
+            pendingCommands[seq] = pending;
+        }
+        if (!ashTransport.Send(Ezsp::EncodeCommand(ezspVersion, seq, frameId, params))) {
+            std::lock_guard<std::mutex> lock(commandMutex);
+            pendingCommands.erase(seq);
+            return std::nullopt;
+        }
+
+        std::unique_lock<std::mutex> lock(commandMutex);
+        commandCv.wait_for(lock, std::chrono::milliseconds(timeoutMs), [&] {
+            auto it = pendingCommands.find(seq);
+            return it == pendingCommands.end() || it->second.Done;
+        });
+        std::optional<std::vector<uint8_t>> result;
+        auto it = pendingCommands.find(seq);
+        if (it != pendingCommands.end()) {
+            if (it->second.Done) result = std::move(it->second.Response);
+            pendingCommands.erase(it);
+        }
+        return result;
+    }
+
+    // For the commands whose whole answer is a status byte. `success` is 0x00
+    // for both EmberStatus and EzspStatus.
+    bool SendEzspExpectingStatus(const char* what, uint16_t frameId,
+                                 const std::vector<uint8_t>& params) {
+        auto rsp = SendEzspAndWait(frameId, params);
+        if (!rsp) {
+            Log(0, std::string(what) + ": no response from the NCP");
+            return false;
+        }
+        if (rsp->empty() || (*rsp)[0] != Ezsp::kEmberSuccess) {
+            Log(0, std::string(what) + ": NCP returned status 0x" +
+                   Hex8(rsp->empty() ? 0xFF : (*rsp)[0]));
+            return false;
+        }
+        return true;
+    }
+
+    static std::string Hex8(uint8_t v) {
+        char buf[4];
+        std::snprintf(buf, sizeof buf, "%02X", v);
+        return buf;
+    }
+
+    // ----- stack status -----
+    //
+    // The NCP reports the network coming up or going down through
+    // stackStatusHandler, asynchronously. Callers that need to know wait on
+    // the state rather than the event, so an answer that arrives before they
+    // start waiting is not missed.
+
+    std::mutex stackStatusMutex;
+    std::condition_variable stackStatusCv;
+    bool networkUp = false;
+    int networkWaiters = 0;
+
+    bool WaitForNetwork(bool up, uint32_t timeoutMs) {
+        std::unique_lock<std::mutex> lock(stackStatusMutex);
+        ++networkWaiters;
+        const bool ok = stackStatusCv.wait_for(lock, std::chrono::milliseconds(timeoutMs),
+                                               [&] { return networkUp == up; });
+        --networkWaiters;
+        return ok;
+    }
+
+    void HandleStackStatus(const std::vector<uint8_t>& params) {
+        if (params.empty()) return;
+        const uint8_t status = params[0];
+        Log(2, "stack status 0x" + Hex8(status));
+
+        bool unattendedUp = false;
+        {
+            std::lock_guard<std::mutex> lock(stackStatusMutex);
+            if (status == Ezsp::kEmberNetworkUp) {
+                networkUp = true;
+                unattendedUp = networkWaiters == 0;
+            } else if (status == Ezsp::kEmberNetworkDown) {
+                networkUp = false;
+            }
+            stackStatusCv.notify_all();
+        }
+
+        if (status == Ezsp::kEmberNetworkDown) {
+            if (protocol) protocol->OnNetworkDown();
+        } else if (status == Ezsp::kEmberNetworkUp && unattendedUp) {
+            // Nobody asked for this (an NCP rejoining on its own, say). The
+            // parameters have to be fetched, and that cannot happen on this
+            // thread because the answer would arrive on it.
+            std::thread([this] { ReportNetworkUp(); }).detach();
+        }
+    }
+
+    // Reads back what the NCP is running and tells the protocol. Called by
+    // whoever waited for NETWORK_UP, never from the receive thread.
+    bool ReportNetworkUp() {
+        auto rsp = SendEzspAndWait(Ezsp::kGetNetworkParams, {});
+        auto np = rsp ? Ezsp::DecodeNetworkParametersResponse(*rsp) : std::nullopt;
+        if (!np || np->Status != Ezsp::kEmberSuccess) {
+            Log(1, "network is up but getNetworkParameters failed");
+            return false;
+        }
+        if (auto eui = SendEzspAndWait(Ezsp::kGetEui64, {}); eui && eui->size() >= 8) {
+            coordinatorIeee = Ezsp::ReadU64(*eui, 0);
+        }
+        if (auto nid = SendEzspAndWait(Ezsp::kGetNodeId, {}); nid && nid->size() >= 2) {
+            coordinatorNwk = Ezsp::ReadU16(*nid, 0);
+        }
+
+        ZigbeeNetworkParams params;
+        params.ExtendedPanId = np->Parameters.ExtendedPanId;
+        params.PanId = np->Parameters.PanId;
+        params.Channel = np->Parameters.RadioChannel;
+        params.ChannelMask = np->Parameters.Channels;
+        params.NetworkUpdateId = np->Parameters.NwkUpdateId;
+        params.TrustCenterAddress = coordinatorNwk;
+        params.SecurityLevel = 5;
+        if (protocol) protocol->OnNetworkUp(params, coordinatorIeee);
+        return true;
+    }
+
+    // ----- start-up -----
 
     bool InitializeEZSP() {
         Ash::TransportConfig config;
@@ -563,6 +721,93 @@ private:
             return false;
         }
         Log(2, "EZSP v" + std::to_string(static_cast<int>(ezspVersion)) + " negotiated");
+
+        if (!ConfigureNcp()) {
+            ashTransport.Close();
+            ezspVersion = 0;
+            return false;
+        }
+
+        // networkInit brings up whatever network the NCP kept in its tokens
+        // from last time. NOT_JOINED is the normal answer on a fresh dongle.
+        auto rsp = SendEzspAndWait(Ezsp::kNetworkInit, Ezsp::EncodeNetworkInitParams(ezspVersion));
+        if (!rsp || rsp->empty()) {
+            Log(0, "networkInit: no response from the NCP");
+            ashTransport.Close();
+            ezspVersion = 0;
+            return false;
+        }
+        const uint8_t status = (*rsp)[0];
+        if (status == Ezsp::kEmberSuccess) {
+            if (WaitForNetwork(true, kNetworkTimeoutMs)) {
+                Log(2, "NCP resumed its saved network");
+                ReportNetworkUp();
+            } else {
+                Log(1, "networkInit succeeded but the network never came up");
+            }
+        } else if (status == Ezsp::kEmberNotJoined) {
+            Log(2, "NCP holds no network; FormNetwork() will create one");
+        } else {
+            Log(1, "networkInit returned status 0x" + Hex8(status));
+        }
+        return true;
+    }
+
+    // Everything that must be in place before networkInit: the stack
+    // configuration, the host endpoint, and the trust-centre policies.
+    bool ConfigureNcp() {
+        struct { uint8_t id; uint16_t value; const char* name; } configs[] = {
+            {Ezsp::kConfigStackProfile, 2, "stack profile"},
+            {Ezsp::kConfigSecurityLevel, 5, "security level"},
+            {Ezsp::kConfigApplicationZdoFlags,
+             Ezsp::kZdoFlagsAppReceivesSupportedRequests | Ezsp::kZdoFlagsAppHandlesUnsupportedRequests,
+             "application ZDO flags"},
+            {Ezsp::kConfigTrustCenterAddressCacheSize, 2, "trust centre address cache size"},
+        };
+        for (const auto& c : configs) {
+            auto rsp = SendEzspAndWait(Ezsp::kSetConfigValue,
+                                       Ezsp::EncodeSetConfigValueParams(c.id, c.value));
+            if (!rsp) {
+                Log(0, std::string("setConfigurationValue(") + c.name + "): no response");
+                return false;
+            }
+            if (rsp->empty() || (*rsp)[0] != 0x00) {
+                // Some values cannot be changed on some firmware; that is a
+                // warning, not a reason to give up on the NCP.
+                Log(1, std::string("NCP refused ") + c.name + " (status 0x" +
+                       Hex8(rsp->empty() ? 0xFF : (*rsp)[0]) + ")");
+            }
+        }
+
+        // The host endpoint. Its clusters are what this coordinator speaks to
+        // devices: it serves Basic and Identify, and is a client of the rest.
+        const std::vector<uint16_t> inputClusters{0x0000, 0x0003};
+        const std::vector<uint16_t> outputClusters{
+            0x0000, 0x0003, 0x0004, 0x0005, 0x0006, 0x0008, 0x0300,
+            0x0400, 0x0402, 0x0405, 0x0406, 0x0500, 0x0702};
+        if (!SendEzspExpectingStatus("addEndpoint", Ezsp::kAddEndpoint,
+                Ezsp::EncodeAddEndpointParams(kHostEndpoint, ZigbeeProfiles::HomeAutomation,
+                                              0x0005 /* configuration tool */, 0,
+                                              inputClusters, outputClusters))) {
+            return false;
+        }
+
+        // Trust-centre policies: joins allowed, devices may ask for the
+        // current link key, application keys are not handed out.
+        const uint8_t joinDecision = ezspVersion >= 8
+            ? static_cast<uint8_t>(Ezsp::kDecisionAllowJoins | Ezsp::kDecisionAllowUnsecuredRejoins)
+            : Ezsp::kDecisionAllowJoinsLegacy;
+        struct { uint8_t policy; uint8_t decision; const char* name; } policies[] = {
+            {Ezsp::kPolicyTrustCenter, joinDecision, "trust centre policy"},
+            {Ezsp::kPolicyTcKeyRequest, Ezsp::kDecisionAllowTcKeyRequestsSendCurrent, "TC key request policy"},
+            {Ezsp::kPolicyAppKeyRequest, Ezsp::kDecisionDenyAppKeyRequests, "app key request policy"},
+        };
+        for (const auto& p : policies) {
+            if (!SendEzspExpectingStatus(p.name, Ezsp::kSetPolicy,
+                                         Ezsp::EncodeSetPolicyParams(p.policy, p.decision))) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -584,16 +829,50 @@ private:
             // letting the node table quietly drift out of date.
             Log(1, "NCP callback overflow — some device reports were lost");
         }
+
+        // A command someone is waiting on? Callbacks carry their own frame
+        // ids, so they cannot be mistaken for one even if the sequence
+        // numbers happen to line up.
+        if (frame->IsResponse) {
+            std::lock_guard<std::mutex> lock(commandMutex);
+            auto it = pendingCommands.find(frame->Sequence);
+            if (it != pendingCommands.end() && it->second.FrameId == frame->Id &&
+                !it->second.Done) {
+                it->second.Response = frame->Parameters;
+                it->second.Done = true;
+                commandCv.notify_all();
+                return;
+            }
+        }
+
         switch (frame->Id) {
             case Ezsp::kIncomingMessage:
                 HandleIncomingMessage(frame->Parameters);
                 break;
             case Ezsp::kStackStatus:
-                Log(2, "stack status changed");
+                HandleStackStatus(frame->Parameters);
                 break;
+            case Ezsp::kTrustCenterJoin:
+                HandleTrustCenterJoin(frame->Parameters);
+                break;
+            case Ezsp::kMessageSent:
+                break;   // delivery reports: the device's answer is what counts
             default:
-                break;   // command responses are consumed by their senders
+                break;   // an unsolicited response nobody waits for any more
         }
+    }
+
+    void HandleTrustCenterJoin(const std::vector<uint8_t>& params) {
+        auto join = Ezsp::DecodeTrustCenterJoin(params);
+        if (!join || !protocol) return;
+        if (join->Status == Ezsp::kDeviceUpdateLeft) {
+            // The device is gone; forget it. No leave request goes back out
+            // — this runs on the receive thread and could not wait for the
+            // answer anyway.
+            protocol->OnDeviceLeft(join->Eui64);
+        }
+        // Joins are learnt from the device's own Device_annce, which carries
+        // the same addresses and arrives on every join and rejoin.
     }
 
     // ----- incoming messages -----
@@ -726,23 +1005,104 @@ private:
     void ShutdownEZSP() {
         ashTransport.Close();
         ezspVersion = 0;
+        // Anyone waiting on an answer gets "none" now rather than at their
+        // timeout.
+        {
+            std::lock_guard<std::mutex> lock(commandMutex);
+            pendingCommands.clear();
+            commandCv.notify_all();
+        }
+        {
+            std::lock_guard<std::mutex> lock(stackStatusMutex);
+            networkUp = false;
+            stackStatusCv.notify_all();
+        }
     }
 
-    bool EZSP_FormNetwork(uint16_t panId, uint8_t channel,
+    // ----- network formation -----
+    //
+    // Security first, then the network parameters, then wait for the stack
+    // to say NETWORK_UP and read back what it is actually running.
+    bool EZSP_FormNetwork(uint16_t panId, uint8_t channel, uint64_t extendedPanId,
                           const std::array<uint8_t, 16>& networkKey) {
-        std::vector<uint8_t> params;
-        Ezsp::AppendU16(params, panId);
-        params.push_back(channel);
-        params.insert(params.end(), networkKey.begin(), networkKey.end());
-        return SendEzsp(Ezsp::kFormNetwork, params);
+        Ezsp::InitialSecurityState security;
+        security.Bitmask = Ezsp::kSecurityHavePreconfiguredKey |
+                           Ezsp::kSecurityHaveNetworkKey |
+                           Ezsp::kSecurityTrustCenterGlobalLinkKey |
+                           Ezsp::kSecurityRequireEncryptedKey;
+        security.PreconfiguredKey = Ezsp::kZigbeeAllianceKey;
+        security.NetworkKey = networkKey;
+        security.NetworkKeySequenceNumber = 0;
+        security.TrustCenterEui64 = 0;
+        if (!SendEzspExpectingStatus("setInitialSecurityState", Ezsp::kSetInitialSecurityState,
+                                     Ezsp::EncodeInitialSecurityStateParams(security))) {
+            return false;
+        }
+
+        Ezsp::NetworkParameters params;
+        params.ExtendedPanId = extendedPanId;
+        params.PanId = panId;
+        params.RadioTxPower = 8;
+        params.RadioChannel = channel;
+        params.JoinMethod = 0;               // MAC association
+        params.NwkManagerId = 0;
+        params.NwkUpdateId = 0;
+        params.Channels = 1u << channel;
+        std::vector<uint8_t> encoded;
+        Ezsp::AppendNetworkParameters(encoded, params);
+        if (!SendEzspExpectingStatus("formNetwork", Ezsp::kFormNetwork, encoded)) {
+            return false;
+        }
+
+        if (!WaitForNetwork(true, kNetworkTimeoutMs)) {
+            Log(0, "formNetwork was accepted but the stack never reported NETWORK_UP");
+            return false;
+        }
+        return ReportNetworkUp();
     }
 
     bool EZSP_PermitJoining(uint8_t duration) {
-        return SendEzsp(Ezsp::kPermitJoining, {duration});
+        if (duration > 0) {
+            // Zigbee 3.0 devices join using the well-known key as a transient
+            // link key. Firmware old enough to lack the command still admits
+            // Home Automation devices through the preconfigured key, so a
+            // refusal here is worth a note, not a failure.
+            if (!SendEzspExpectingStatus("addTransientLinkKey", Ezsp::kAddTransientLinkKey,
+                    Ezsp::EncodeAddTransientLinkKeyParams(0xFFFFFFFFFFFFFFFFULL,
+                                                          Ezsp::kZigbeeAllianceKey))) {
+                Log(1, "transient link key not installed; Zigbee 3.0 devices may not join");
+            }
+        }
+        if (!SendEzspExpectingStatus("permitJoining", Ezsp::kPermitJoining, {duration})) {
+            return false;
+        }
+
+        // Tell the routers too, or only the coordinator's own radio range
+        // would be open. Broadcast, so no answer is expected.
+        Ezsp::ApsFrame aps;
+        aps.ProfileId = Ezsp::Zdo::kProfile;
+        aps.ClusterId = Ezsp::Zdo::kMgmtPermitJoiningReq;
+        aps.SourceEndpoint = Ezsp::Zdo::kEndpoint;
+        aps.DestinationEndpoint = Ezsp::Zdo::kEndpoint;
+        aps.Sequence = apsSequence++;
+        const std::vector<uint8_t> req =
+            Ezsp::Zdo::EncodeMgmtPermitJoiningReq(NextZdoSequence(), duration);
+        if (!SendEzsp(Ezsp::kSendBroadcast,
+                      Ezsp::EncodeSendBroadcastParams(Ezsp::kBroadcastRouters, aps,
+                                                      /*radius*/ 0, aps.Sequence, req))) {
+            Log(1, "Mgmt_Permit_Joining broadcast not sent; only direct joins are open");
+        }
+        return true;
     }
 
     bool EZSP_LeaveNetwork() {
-        return SendEzsp(Ezsp::kLeaveNetwork, {});
+        if (!SendEzspExpectingStatus("leaveNetwork", Ezsp::kLeaveNetwork, {})) {
+            return false;
+        }
+        if (!WaitForNetwork(false, kNetworkTimeoutMs)) {
+            Log(1, "leaveNetwork was accepted but the stack never reported NETWORK_DOWN");
+        }
+        return true;
     }
 
     // The endpoint this host speaks from. Endpoint 1, Home Automation profile,
@@ -987,7 +1347,7 @@ private:
     
     void ShutdownZStack() {}
     
-    bool ZStack_FormNetwork(uint16_t panId, uint8_t channel,
+    bool ZStack_FormNetwork(uint16_t panId, uint8_t channel, uint64_t extendedPanId,
                             const std::array<uint8_t, 16>& networkKey) { return false; }
     bool ZStack_PermitJoining(uint8_t duration) { return false; }
     bool ZStack_LeaveNetwork() { return false; }
@@ -1218,27 +1578,71 @@ bool ZigbeeProtocol::FormNetwork(const std::string& networkName) {
         }
     }
     
-    if (!stack->FormNetwork(networkParams.PanId, networkParams.Channel, 
-                            networkParams.NetworkKey)) {
+    if (!stack->FormNetwork(networkParams.PanId, networkParams.Channel,
+                            networkParams.ExtendedPanId, networkParams.NetworkKey)) {
         ReportError(-200, "Failed to form network");
         return false;
     }
     
-    hasNetwork = true;
+    // A real stack has already reported the network up (with the parameters
+    // it is actually running) through OnNetworkUp; the stub has not.
+    networkName_ = networkName;
+    if (!hasNetwork) {
+        hasNetwork = true;
+        SetNetworkInfo(MakeNetworkInfo());
+    }
     
-    SmartHomeNetworkInfo info;
-    info.Protocol = SmartHomeProtocolType::Zigbee;
-    info.NetworkName = networkName;
-    info.PanId = networkParams.PanId;
-    info.Channel = networkParams.Channel;
-    info.Active = false;
-    SetNetworkInfo(info);
-    
-    Log(2, "Zigbee network formed: PAN 0x" + 
-        std::to_string(networkParams.PanId) + 
+    Log(2, "Zigbee network formed: PAN " + HexString(networkParams.PanId, 4) +
         ", Channel " + std::to_string(networkParams.Channel));
     
     return true;
+}
+
+SmartHomeNetworkInfo ZigbeeProtocol::MakeNetworkInfo() const {
+    SmartHomeNetworkInfo info = GetNetworkInfo();
+    info.Protocol = SmartHomeProtocolType::Zigbee;
+    info.NetworkId = HexString(networkParams.ExtendedPanId, 16);
+    if (!networkName_.empty()) info.NetworkName = networkName_;
+    info.PanId = HexString(networkParams.PanId, 4);
+    info.Channel = std::to_string(networkParams.Channel);
+    info.ExtendedPanId = HexString(networkParams.ExtendedPanId, 16);
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        info.DeviceCount = static_cast<int>(zigbeeNodes.size());
+    }
+    return info;
+}
+
+std::string ZigbeeProtocol::HexString(uint64_t value, int digits) {
+    std::ostringstream out;
+    out << "0x" << std::hex << std::uppercase << std::setfill('0') << std::setw(digits) << value;
+    return out.str();
+}
+
+void ZigbeeProtocol::OnNetworkUp(const ZigbeeNetworkParams& params, uint64_t coordinatorIeee) {
+    // What the NCP is running wins over what was asked for; the network key
+    // is the one thing it does not report, so that stays as set.
+    networkParams.ExtendedPanId = params.ExtendedPanId;
+    networkParams.PanId = params.PanId;
+    networkParams.Channel = params.Channel;
+    networkParams.ChannelMask = params.ChannelMask;
+    networkParams.NetworkUpdateId = params.NetworkUpdateId;
+    networkParams.TrustCenterAddress = params.TrustCenterAddress;
+    networkParams.SecurityLevel = params.SecurityLevel;
+    coordinatorIeee_ = coordinatorIeee;
+    hasNetwork = true;
+    SetNetworkInfo(MakeNetworkInfo());
+    Log(2, "Zigbee network up: PAN " + HexString(params.PanId, 4) +
+        ", channel " + std::to_string(params.Channel) +
+        ", coordinator " + IeeeAddressToString(coordinatorIeee));
+}
+
+void ZigbeeProtocol::OnNetworkDown() {
+    Log(2, "Zigbee network down");
+    hasNetwork = false;
+    permitJoinActive = false;
+    pairing = false;
+    ClearNetwork();
 }
 
 bool ZigbeeProtocol::JoinNetwork(const std::string& networkId) {
@@ -1407,19 +1811,7 @@ bool ZigbeeProtocol::RemoveDevice(const std::string& deviceId) {
         Log(1, "Device " + deviceId + " did not confirm the leave request");
     }
 
-    {
-        std::lock_guard<std::mutex> lock(nodeMutex);
-        auto it = zigbeeNodes.find(deviceId);
-        if (it != zigbeeNodes.end()) {
-            ieeeToDeviceId.erase(it->second.IeeeAddress);
-            nwkToDeviceId.erase(it->second.NwkAddress);
-            zigbeeNodes.erase(it);
-        }
-    }
-
-    RemovePairedDevice(deviceId);
-    
-    Log(2, "Removed Zigbee device: " + deviceId);
+    ForgetDevice(deviceId);
     return true;
 }
 
@@ -1827,17 +2219,7 @@ bool ZigbeeProtocol::AddToGroup(const std::string& deviceId, uint16_t groupId) {
         return false;
     }
     
-    uint16_t nwkAddress;
-    {
-        std::lock_guard<std::mutex> lock(nodeMutex);
-        auto it = zigbeeNodes.find(deviceId);
-        if (it == zigbeeNodes.end()) {
-            return false;
-        }
-        nwkAddress = it->second.NwkAddress;
-    }
-    
-    // Send Add Group command
+    // Send Add Group command (SendZCLCommand checks the device exists)
     std::vector<uint8_t> payload;
     payload.push_back(groupId & 0xFF);
     payload.push_back((groupId >> 8) & 0xFF);
@@ -2432,8 +2814,25 @@ void ZigbeeProtocol::OnDeviceLeft(uint64_t ieeeAddress) {
     }
     
     if (!deviceId.empty()) {
-        RemoveDevice(deviceId);
+        // It has already gone; there is nobody to send a leave request to,
+        // and this may be running on the stack's receive thread, which
+        // could not wait for the answer anyway.
+        ForgetDevice(deviceId);
     }
+}
+
+void ZigbeeProtocol::ForgetDevice(const std::string& deviceId) {
+    {
+        std::lock_guard<std::mutex> lock(nodeMutex);
+        auto it = zigbeeNodes.find(deviceId);
+        if (it != zigbeeNodes.end()) {
+            ieeeToDeviceId.erase(it->second.IeeeAddress);
+            nwkToDeviceId.erase(it->second.NwkAddress);
+            zigbeeNodes.erase(it);
+        }
+    }
+    RemovePairedDevice(deviceId);
+    Log(2, "Removed Zigbee device: " + deviceId);
 }
 
 void ZigbeeProtocol::OnDeviceAnnounce(uint64_t ieeeAddress, uint16_t nwkAddress) {

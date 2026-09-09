@@ -3,6 +3,8 @@
 
 #include "EzspFrame.h"
 
+#include <array>
+
 namespace UltraCanvas {
 namespace SmartHome {
 namespace Ezsp {
@@ -103,6 +105,131 @@ std::optional<Frame> DecodeFrame(uint8_t protocolVersion,
 }  // namespace UltraCanvas
 
 // ============================================================================
+// Network configuration and formation
+// ============================================================================
+
+namespace UltraCanvas {
+namespace SmartHome {
+namespace Ezsp {
+
+const std::array<uint8_t, 16> kZigbeeAllianceKey{
+    'Z', 'i', 'g', 'B', 'e', 'e', 'A', 'l', 'l', 'i', 'a', 'n', 'c', 'e', '0', '9'};
+
+void AppendU64(std::vector<uint8_t>& out, uint64_t v) {
+    for (int shift = 0; shift < 64; shift += 8) out.push_back(static_cast<uint8_t>(v >> shift));
+}
+
+uint64_t ReadU64(const std::vector<uint8_t>& d, size_t o) {
+    if (o + 8 > d.size()) return 0;
+    uint64_t v = 0;
+    for (int i = 7; i >= 0; --i) v = (v << 8) | d[o + static_cast<size_t>(i)];
+    return v;
+}
+
+std::vector<uint8_t> EncodeSetConfigValueParams(uint8_t configId, uint16_t value) {
+    std::vector<uint8_t> p{configId};
+    AppendU16(p, value);
+    return p;
+}
+
+std::vector<uint8_t> EncodeSetPolicyParams(uint8_t policyId, uint8_t decision) {
+    return {policyId, decision};
+}
+
+std::vector<uint8_t> EncodeAddEndpointParams(uint8_t endpoint, uint16_t profileId,
+                                             uint16_t deviceId, uint8_t deviceVersion,
+                                             const std::vector<uint16_t>& inputClusters,
+                                             const std::vector<uint16_t>& outputClusters) {
+    std::vector<uint8_t> p{endpoint};
+    AppendU16(p, profileId);
+    AppendU16(p, deviceId);
+    p.push_back(deviceVersion);
+    p.push_back(static_cast<uint8_t>(inputClusters.size()));
+    p.push_back(static_cast<uint8_t>(outputClusters.size()));
+    for (uint16_t c : inputClusters) AppendU16(p, c);
+    for (uint16_t c : outputClusters) AppendU16(p, c);
+    return p;
+}
+
+std::vector<uint8_t> EncodeNetworkInitParams(uint8_t protocolVersion) {
+    if (protocolVersion < 6) return {};
+    std::vector<uint8_t> p;
+    AppendU16(p, 0x0000);   // EMBER_NETWORK_INIT_NO_OPTIONS
+    return p;
+}
+
+std::vector<uint8_t> EncodeAddTransientLinkKeyParams(uint64_t partner,
+                                                     const std::array<uint8_t, 16>& key) {
+    std::vector<uint8_t> p;
+    AppendU64(p, partner);
+    p.insert(p.end(), key.begin(), key.end());
+    return p;
+}
+
+void AppendNetworkParameters(std::vector<uint8_t>& out, const NetworkParameters& n) {
+    AppendU64(out, n.ExtendedPanId);
+    AppendU16(out, n.PanId);
+    out.push_back(n.RadioTxPower);
+    out.push_back(n.RadioChannel);
+    out.push_back(n.JoinMethod);
+    AppendU16(out, n.NwkManagerId);
+    out.push_back(n.NwkUpdateId);
+    AppendU32(out, n.Channels);
+}
+
+std::optional<NetworkParameters> ReadNetworkParameters(const std::vector<uint8_t>& d, size_t o) {
+    if (o + kNetworkParametersSize > d.size()) return std::nullopt;
+    NetworkParameters n;
+    n.ExtendedPanId = ReadU64(d, o);
+    n.PanId = ReadU16(d, o + 8);
+    n.RadioTxPower = d[o + 10];
+    n.RadioChannel = d[o + 11];
+    n.JoinMethod = d[o + 12];
+    n.NwkManagerId = ReadU16(d, o + 13);
+    n.NwkUpdateId = d[o + 15];
+    n.Channels = ReadU32(d, o + 16);
+    return n;
+}
+
+std::optional<NetworkParametersResponse> DecodeNetworkParametersResponse(const std::vector<uint8_t>& p) {
+    if (p.size() < 2) return std::nullopt;
+    NetworkParametersResponse r;
+    r.Status = p[0];
+    r.NodeType = p[1];
+    if (r.Status != kEmberSuccess) return r;
+    auto n = ReadNetworkParameters(p, 2);
+    if (!n) return std::nullopt;
+    r.Parameters = *n;
+    return r;
+}
+
+std::vector<uint8_t> EncodeInitialSecurityStateParams(const InitialSecurityState& s) {
+    std::vector<uint8_t> p;
+    AppendU16(p, s.Bitmask);
+    p.insert(p.end(), s.PreconfiguredKey.begin(), s.PreconfiguredKey.end());
+    p.insert(p.end(), s.NetworkKey.begin(), s.NetworkKey.end());
+    p.push_back(s.NetworkKeySequenceNumber);
+    AppendU64(p, s.TrustCenterEui64);
+    return p;
+}
+
+std::optional<TrustCenterJoin> DecodeTrustCenterJoin(const std::vector<uint8_t>& p) {
+    // nodeId(2) eui64(8) status(1) decision(1) parent(2)
+    if (p.size() < 14) return std::nullopt;
+    TrustCenterJoin j;
+    j.NodeId = ReadU16(p, 0);
+    j.Eui64 = ReadU64(p, 2);
+    j.Status = p[10];
+    j.Decision = p[11];
+    j.ParentNodeId = ReadU16(p, 12);
+    return j;
+}
+
+}  // namespace Ezsp
+}  // namespace SmartHome
+}  // namespace UltraCanvas
+
+// ============================================================================
 // APS
 // ============================================================================
 
@@ -141,6 +268,20 @@ std::vector<uint8_t> EncodeSendUnicastParams(uint16_t destination, const ApsFram
     p.push_back(kOutgoingDirect);
     AppendU16(p, destination);
     AppendApsFrame(p, aps);
+    p.push_back(messageTag);
+    p.push_back(static_cast<uint8_t>(contents.size()));
+    p.insert(p.end(), contents.begin(), contents.end());
+    return p;
+}
+
+std::vector<uint8_t> EncodeSendBroadcastParams(uint16_t destination, const ApsFrame& aps,
+                                               uint8_t radius, uint8_t messageTag,
+                                               const std::vector<uint8_t>& contents) {
+    std::vector<uint8_t> p;
+    p.reserve(contents.size() + kApsFrameSize + 5);
+    AppendU16(p, destination);
+    AppendApsFrame(p, aps);
+    p.push_back(radius);
     p.push_back(messageTag);
     p.push_back(static_cast<uint8_t>(contents.size()));
     p.insert(p.end(), contents.begin(), contents.end());
@@ -192,18 +333,6 @@ std::optional<IncomingMessage> DecodeIncomingMessage(const std::vector<uint8_t>&
 
 namespace Zdo {
 
-namespace {
-void AppendU64(std::vector<uint8_t>& out, uint64_t v) {
-    for (int shift = 0; shift < 64; shift += 8) out.push_back(static_cast<uint8_t>(v >> shift));
-}
-uint64_t ReadU64(const std::vector<uint8_t>& d, size_t o) {
-    if (o + 8 > d.size()) return 0;
-    uint64_t v = 0;
-    for (int i = 7; i >= 0; --i) v = (v << 8) | d[o + static_cast<size_t>(i)];
-    return v;
-}
-}  // namespace
-
 std::vector<uint8_t> EncodeActiveEpReq(uint8_t tsn, uint16_t nwk) {
     std::vector<uint8_t> f{tsn};
     AppendU16(f, nwk);
@@ -252,6 +381,10 @@ std::vector<uint8_t> EncodeMgmtLeaveReq(uint8_t tsn, uint64_t ieee, bool rejoin,
     AppendU64(f, ieee);
     f.push_back(static_cast<uint8_t>((removeChildren ? 0x40 : 0) | (rejoin ? 0x80 : 0)));
     return f;
+}
+
+std::vector<uint8_t> EncodeMgmtPermitJoiningReq(uint8_t tsn, uint8_t duration) {
+    return {tsn, duration, 0x01};
 }
 
 std::optional<ActiveEpRsp> DecodeActiveEpRsp(const std::vector<uint8_t>& f) {

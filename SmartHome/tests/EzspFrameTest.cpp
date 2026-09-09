@@ -89,6 +89,13 @@ int main() {
         want.insert(want.end(), {0x2A, 0x03, 0x10, 0x01, 0x01});
         CheckBytes(params, want, "sendUnicast parameters: direct, dest, APS, tag, len, bytes");
 
+        // sendBroadcast: destination, APS, radius, tag, length, contents.
+        auto bparams = EncodeSendBroadcastParams(kBroadcastRouters, aps, 0, 0x2C, {0x01});
+        std::vector<uint8_t> bwant{0xFC, 0xFF};
+        bwant.insert(bwant.end(), out.begin(), out.end());
+        bwant.insert(bwant.end(), {0x00, 0x2C, 0x01, 0x01});
+        CheckBytes(bparams, bwant, "sendBroadcast parameters: dest, APS, radius, tag, len, bytes");
+
         // sendMulticast: APS (group inside), hops, radius, tag, length, contents.
         ApsFrame g = aps; g.GroupId = 0x0007;
         auto mparams = EncodeSendMulticastParams(g, 0, 7, 0x2B, {0x01});
@@ -151,6 +158,8 @@ int main() {
         CheckBytes(Zdo::EncodeMgmtLeaveReq(0x16, 0x0011223344556677ULL, false, false),
                    {0x16, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0x00},
                    "Mgmt_Leave_req: tsn, ieee LE, flags clear");
+        CheckBytes(Zdo::EncodeMgmtPermitJoiningReq(0x18, 0xFE), {0x18, 0xFE, 0x01},
+                   "Mgmt_Permit_Joining_req: tsn, duration, TC significance 1");
         CheckBytes(Zdo::EncodeMgmtLeaveReq(0x17, 0x0011223344556677ULL, true, true),
                    {0x17, 0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00, 0xC0},
                    "Mgmt_Leave_req: rejoin is bit 7, remove children bit 6");
@@ -285,6 +294,68 @@ int main() {
         std::vector<uint8_t> arr{0x00, 0x00, 0x48, 0x20, 0x01, 0x00, 0x05, 0x00, 0x20, 0x01};
         Check(Zcl::DecodeAttributes(arr, 0, false).empty(),
               "an array record stops the walk rather than misreading what follows");
+    }
+
+    // ---- network configuration and formation ----
+    {
+        CheckBytes(EncodeSetConfigValueParams(kConfigStackProfile, 2), {0x0C, 0x02, 0x00},
+                   "setConfigurationValue: id, value16");
+        CheckBytes(EncodeSetPolicyParams(kPolicyTcKeyRequest, kDecisionAllowTcKeyRequestsSendCurrent),
+                   {0x05, 0x51}, "setPolicy: policy, decision");
+        CheckBytes(EncodeAddEndpointParams(1, 0x0104, 0x0005, 0, {0x0000}, {0x0006, 0x0008}),
+                   {0x01, 0x04, 0x01, 0x05, 0x00, 0x00, 0x01, 0x02,
+                    0x00, 0x00, 0x06, 0x00, 0x08, 0x00},
+                   "addEndpoint: counts before the two bare cluster lists");
+        Check(EncodeNetworkInitParams(4).empty() &&
+              EncodeNetworkInitParams(8) == std::vector<uint8_t>{0x00, 0x00},
+              "networkInit: no parameters before v6, a 16-bit bitmask after");
+        std::vector<uint8_t> tk = EncodeAddTransientLinkKeyParams(0xFFFFFFFFFFFFFFFFULL,
+                                                                  kZigbeeAllianceKey);
+        Check(tk.size() == 24 && tk[0] == 0xFF && tk[7] == 0xFF &&
+              std::string(tk.begin() + 8, tk.end()) == "ZigBeeAlliance09",
+              "addTransientLinkKey: partner EUI64 then the 16-byte key");
+
+        NetworkParameters n;
+        n.ExtendedPanId = 0x0011223344556677ULL; n.PanId = 0x1A62; n.RadioTxPower = 8;
+        n.RadioChannel = 15; n.JoinMethod = 0; n.NwkManagerId = 0; n.NwkUpdateId = 0;
+        n.Channels = 1u << 15;
+        std::vector<uint8_t> np;
+        AppendNetworkParameters(np, n);
+        CheckBytes(np, {0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00,
+                        0x62, 0x1A, 0x08, 0x0F, 0x00, 0x00, 0x00, 0x00,
+                        0x00, 0x80, 0x00, 0x00},
+                   "EmberNetworkParameters is 20 bytes in UG100 order");
+        auto nb = ReadNetworkParameters(np, 0);
+        Check(nb && nb->ExtendedPanId == n.ExtendedPanId && nb->PanId == 0x1A62 &&
+              nb->RadioChannel == 15 && nb->Channels == (1u << 15),
+              "EmberNetworkParameters round-trips");
+
+        std::vector<uint8_t> gnp{0x00, 0x01};
+        gnp.insert(gnp.end(), np.begin(), np.end());
+        auto r = DecodeNetworkParametersResponse(gnp);
+        Check(r && r->Status == 0 && r->NodeType == 1 && r->Parameters.PanId == 0x1A62,
+              "getNetworkParameters response: status, node type, parameters");
+        auto rf = DecodeNetworkParametersResponse({0x93, 0x00});
+        Check(rf && rf->Status == 0x93, "getNetworkParameters when not joined carries just the status");
+
+        InitialSecurityState st;
+        st.Bitmask = 0x0B04;
+        st.PreconfiguredKey = kZigbeeAllianceKey;
+        st.NetworkKey.fill(0xAB);
+        st.NetworkKeySequenceNumber = 0;
+        st.TrustCenterEui64 = 0;
+        auto sp = EncodeInitialSecurityStateParams(st);
+        Check(sp.size() == 43 && sp[0] == 0x04 && sp[1] == 0x0B && sp[2] == 'Z' && sp[17] == '9' &&
+              sp[18] == 0xAB && sp[33] == 0xAB && sp[34] == 0x00 && sp[42] == 0x00,
+              "EmberInitialSecurityState is 43 bytes: bitmask, two keys, sequence, TC EUI64");
+
+        auto tcj = DecodeTrustCenterJoin({0x34, 0x12,
+                                          0x77, 0x66, 0x55, 0x44, 0x33, 0x22, 0x11, 0x00,
+                                          0x02, 0x03, 0x00, 0x00});
+        Check(tcj && tcj->NodeId == 0x1234 && tcj->Eui64 == 0x0011223344556677ULL &&
+              tcj->Status == kDeviceUpdateLeft && tcj->Decision == 3 && tcj->ParentNodeId == 0,
+              "trustCenterJoinHandler: node id, EUI64, device update, decision, parent");
+        Check(!DecodeTrustCenterJoin({0x34, 0x12, 0x77}), "short trustCenterJoinHandler is rejected");
     }
 
     std::printf("%d failure(s)\n", failures);

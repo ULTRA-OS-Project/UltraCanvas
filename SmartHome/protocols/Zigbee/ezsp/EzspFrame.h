@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <array>
 #include <cstdint>
 #include <optional>
 #include <vector>
@@ -32,11 +33,37 @@ enum FrameId : uint16_t {
     kPermitJoining      = 0x0022,
     kGetNetworkParams   = 0x0028,
     kSendUnicast        = 0x0034,
+    kSendBroadcast      = 0x0036,
     kSendMulticast      = 0x0038,
     kIncomingMessage    = 0x0045,
     kStackStatus        = 0x0019,
     kGetEui64           = 0x0026,
     kGetNodeId          = 0x0027,
+    kAddEndpoint        = 0x0002,
+    kNetworkState       = 0x0018,
+    kTrustCenterJoin    = 0x0024,   // trustCenterJoinHandler
+    kMessageSent        = 0x003F,   // messageSentHandler
+    kSetPolicy          = 0x0055,
+    kSetInitialSecurityState = 0x0068,
+    kAddTransientLinkKey = 0x00AF,
+};
+
+// EmberStatus values this backend acts on.
+enum EmberStatus : uint8_t {
+    kEmberSuccess     = 0x00,
+    kEmberNetworkUp   = 0x90,
+    kEmberNetworkDown = 0x91,
+    kEmberNotJoined   = 0x93,
+    kEmberJoinFailed  = 0x94,
+};
+
+// EmberNetworkStatus, the answer to networkState.
+enum NetworkStatus : uint8_t {
+    kNoNetwork = 0x00,
+    kJoiningNetwork = 0x01,
+    kJoinedNetwork = 0x02,
+    kJoinedNetworkNoParent = 0x03,
+    kLeavingNetwork = 0x04,
 };
 
 struct Frame {
@@ -70,6 +97,112 @@ std::vector<uint8_t> EncodeCommand(uint8_t protocolVersion, uint8_t sequence,
 // Decodes a frame received from the NCP, using the same version rule.
 std::optional<Frame> DecodeFrame(uint8_t protocolVersion,
                                  const std::vector<uint8_t>& raw);
+
+// ===== Network configuration and formation =====
+//
+// The commands a coordinator sends once at start-up and once when forming a
+// network. Layouts per UG100; the enumerations are the subset used here.
+
+// EzspConfigId, for setConfigurationValue.
+enum ConfigId : uint8_t {
+    kConfigStackProfile = 0x0C,
+    kConfigSecurityLevel = 0x0D,
+    kConfigTrustCenterAddressCacheSize = 0x19,
+    kConfigApplicationZdoFlags = 0x2A,
+};
+// EmberZdoConfigurationFlags, the value for kConfigApplicationZdoFlags.
+constexpr uint16_t kZdoFlagsAppReceivesSupportedRequests = 0x01;
+constexpr uint16_t kZdoFlagsAppHandlesUnsupportedRequests = 0x02;
+
+// EzspPolicyId and the decisions used with them (single byte in every EZSP
+// version; for the trust-center policy from v8 the byte is a bitmask).
+enum PolicyId : uint8_t {
+    kPolicyTrustCenter = 0x00,
+    kPolicyTcKeyRequest = 0x05,
+    kPolicyAppKeyRequest = 0x06,
+};
+constexpr uint8_t kDecisionAllowJoins = 0x01;              // bitmask, v8+
+constexpr uint8_t kDecisionAllowUnsecuredRejoins = 0x02;   // bitmask, v8+
+constexpr uint8_t kDecisionAllowJoinsLegacy = 0x00;        // EzspDecisionId, < v8
+constexpr uint8_t kDecisionAllowTcKeyRequestsSendCurrent = 0x51;
+constexpr uint8_t kDecisionDenyAppKeyRequests = 0x60;
+
+// EmberInitialSecurityBitmask.
+constexpr uint16_t kSecurityTrustCenterGlobalLinkKey = 0x0004;
+constexpr uint16_t kSecurityHavePreconfiguredKey = 0x0100;
+constexpr uint16_t kSecurityHaveNetworkKey = 0x0200;
+constexpr uint16_t kSecurityRequireEncryptedKey = 0x0800;
+
+// The well-known Zigbee Alliance link key, "ZigBeeAlliance09", which every
+// Home Automation device is born knowing and Zigbee 3.0 devices accept as
+// the transient key during joining.
+extern const std::array<uint8_t, 16> kZigbeeAllianceKey;
+
+// setConfigurationValue: id, value16.
+std::vector<uint8_t> EncodeSetConfigValueParams(uint8_t configId, uint16_t value);
+// setPolicy: policy, decision.
+std::vector<uint8_t> EncodeSetPolicyParams(uint8_t policyId, uint8_t decision);
+// addEndpoint: endpoint, profile, device id, version, in count, out count,
+// then the two bare cluster lists.
+std::vector<uint8_t> EncodeAddEndpointParams(uint8_t endpoint, uint16_t profileId,
+                                             uint16_t deviceId, uint8_t deviceVersion,
+                                             const std::vector<uint16_t>& inputClusters,
+                                             const std::vector<uint16_t>& outputClusters);
+// networkInit: no parameters before v6, a 16-bit option bitmask from v6 on.
+std::vector<uint8_t> EncodeNetworkInitParams(uint8_t protocolVersion);
+// addTransientLinkKey: partner EUI64 (all 0xFF for any), key.
+std::vector<uint8_t> EncodeAddTransientLinkKeyParams(uint64_t partner,
+                                                     const std::array<uint8_t, 16>& key);
+
+// EmberNetworkParameters, 20 bytes.
+struct NetworkParameters {
+    uint64_t ExtendedPanId = 0;
+    uint16_t PanId = 0;
+    uint8_t RadioTxPower = 0;
+    uint8_t RadioChannel = 0;
+    uint8_t JoinMethod = 0;         // 0: MAC association
+    uint16_t NwkManagerId = 0;
+    uint8_t NwkUpdateId = 0;
+    uint32_t Channels = 0;          // channel mask
+};
+constexpr size_t kNetworkParametersSize = 20;
+void AppendNetworkParameters(std::vector<uint8_t>& out, const NetworkParameters& p);
+std::optional<NetworkParameters> ReadNetworkParameters(const std::vector<uint8_t>& d, size_t offset);
+
+// getNetworkParameters response: status, node type, parameters.
+struct NetworkParametersResponse {
+    uint8_t Status = 0;
+    uint8_t NodeType = 0;           // EmberNodeType: 1 coordinator
+    NetworkParameters Parameters;
+};
+std::optional<NetworkParametersResponse> DecodeNetworkParametersResponse(const std::vector<uint8_t>& p);
+
+// EmberInitialSecurityState, 43 bytes: bitmask, preconfigured key, network
+// key, network key sequence number, trust centre EUI64.
+struct InitialSecurityState {
+    uint16_t Bitmask = 0;
+    std::array<uint8_t, 16> PreconfiguredKey{};
+    std::array<uint8_t, 16> NetworkKey{};
+    uint8_t NetworkKeySequenceNumber = 0;
+    uint64_t TrustCenterEui64 = 0;
+};
+std::vector<uint8_t> EncodeInitialSecurityStateParams(const InitialSecurityState& s);
+
+// trustCenterJoinHandler: node id, EUI64, EmberDeviceUpdate status, join
+// decision, parent node id.
+struct TrustCenterJoin {
+    uint16_t NodeId = 0;
+    uint64_t Eui64 = 0;
+    uint8_t Status = 0;             // EmberDeviceUpdate: 2 = device left
+    uint8_t Decision = 0;
+    uint16_t ParentNodeId = 0;
+};
+constexpr uint8_t kDeviceUpdateLeft = 0x02;
+std::optional<TrustCenterJoin> DecodeTrustCenterJoin(const std::vector<uint8_t>& p);
+
+// Little-endian 64-bit, used for EUI64 and extended PAN ids.
+void AppendU64(std::vector<uint8_t>& out, uint64_t value);
+uint64_t ReadU64(const std::vector<uint8_t>& data, size_t offset);
 
 // ===== APS =====
 //
@@ -111,6 +244,12 @@ std::optional<ApsFrame> ReadApsFrame(const std::vector<uint8_t>& data, size_t of
 std::vector<uint8_t> EncodeSendUnicastParams(uint16_t destination, const ApsFrame& aps,
                                              uint8_t messageTag,
                                              const std::vector<uint8_t>& contents);
+// Parameters for sendBroadcast (0x0036): destination (0xFFFC routers, 0xFFFD
+// awake devices, 0xFFFF all), APS frame, radius, message tag, length, contents.
+std::vector<uint8_t> EncodeSendBroadcastParams(uint16_t destination, const ApsFrame& aps,
+                                               uint8_t radius, uint8_t messageTag,
+                                               const std::vector<uint8_t>& contents);
+constexpr uint16_t kBroadcastRouters = 0xFFFC;
 // Parameters for sendMulticast (0x0038): APS frame (group id inside it), hops,
 // non-member radius, message tag, length, contents.
 std::vector<uint8_t> EncodeSendMulticastParams(const ApsFrame& aps, uint8_t hops,
@@ -150,6 +289,7 @@ enum Cluster : uint16_t {
     kBindReq        = 0x0021, kBindRsp        = 0x8021,
     kUnbindReq      = 0x0022, kUnbindRsp      = 0x8022,
     kMgmtLeaveReq   = 0x0034, kMgmtLeaveRsp   = 0x8034,
+    kMgmtPermitJoiningReq = 0x0036, kMgmtPermitJoiningRsp = 0x8036,
 };
 
 // Requests. Each takes the transaction sequence number first.
@@ -163,6 +303,9 @@ std::vector<uint8_t> EncodeUnbindReq(uint8_t tsn, uint64_t srcIeee, uint8_t srcE
                                      uint16_t cluster, uint64_t dstIeee, uint8_t dstEp);
 std::vector<uint8_t> EncodeMgmtLeaveReq(uint8_t tsn, uint64_t ieee, bool rejoin,
                                         bool removeChildren);
+// Mgmt_Permit_Joining_req, broadcast to routers so devices can join through
+// them and not only through the coordinator. TC_Significance is always 1.
+std::vector<uint8_t> EncodeMgmtPermitJoiningReq(uint8_t tsn, uint8_t duration);
 
 // Responses. The status byte follows the TSN in every one; the decoders return
 // nothing when the frame is too short to hold what its cluster promises.

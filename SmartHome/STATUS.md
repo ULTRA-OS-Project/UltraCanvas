@@ -250,9 +250,8 @@ here, in `protocols/Zigbee/ezsp/`:
   version command, which has to go out in the legacy format because its answer
   is what decides the format of everything after it.
 
-`InitializeEZSP()` now opens the port, resets the NCP, negotiates the protocol
-version and starts the receive pump. Form/permit-join/leave are wired to real
-EZSP commands.
+`InitializeEZSP()` opens the port, resets the NCP, negotiates the protocol
+version, configures the NCP and initialises whatever network it holds.
 
 **APS, ZDO and ZCL are now unpacked (2026-09-09).** `EzspFrame` grew the layers
 above the EZSP header: the 11-byte `EmberApsFrame`, `sendUnicast` /
@@ -261,8 +260,11 @@ ZDO requests the interview and binding need (Active_EP, Simple_Desc,
 Node_Desc, IEEE_addr, Bind, Unbind, Mgmt_Leave) with their responses and
 Device_annce, and the ZCL header plus attribute-record walker (Report
 Attributes / Read Attributes Response, all fixed-width types, both string
-lengths). `tests/EzspFrameTest.cpp` checks 41 byte layouts written from
-UG100, the ZDP tables and ZCL 2.6 — not from the code.
+lengths). `tests/EzspFrameTest.cpp` checks 55 byte layouts written from
+UG100, the ZDP tables and ZCL 2.6 — not from the code — and cross-checked
+against bellows' command tables where UG100 is ambiguous (addEndpoint's bare
+cluster lists, networkInit's bitmask from v6, setPolicy's single-byte
+decision through v8).
 
 On top of that, in `ZigbeeStack`:
 
@@ -287,12 +289,46 @@ On top of that, in `ZigbeeStack`:
   moment a node was erased); each step is keyed by device id and waits for its
   answer before the next.
 
-**What is still not done:** `EZSP_FormNetwork` sends `panId, channel, key`,
-which is not `EmberNetworkParameters` (extendedPanId, panId, txPower, channel,
-joinMethod, nwkManagerId, nwkUpdateId, channels — 20 bytes); the host endpoint
-is never registered with `addEndpoint` and `networkInit` / security setup are
-not sent; `messageSentHandler` and `trustCenterJoinHandler` are ignored. That
-is the network-formation sequence, and it is the next piece of work.
+**Network formation (2026-09-09, second pass).** The start-up and formation
+sequence is now the real one, and commands that need their answer get it:
+
+- `SendEzspAndWait` matches a response by sequence number *and* frame id, so
+  a callback whose sequence happens to coincide cannot be mistaken for it.
+  The data path (`sendUnicast` etc.) stays fire-and-forget; the device's
+  reply is what counts there.
+- Start-up: `setConfigurationValue` (stack profile 2, security level 5,
+  application ZDO flags, TC address cache), `addEndpoint` (host endpoint 1,
+  HA profile, Basic/Identify served, the usual clusters as client),
+  `setPolicy` (joins allowed — bitmask from v8, legacy decision before — TC
+  key requests answered with the current key, app keys denied), then
+  `networkInit`. `NOT_JOINED` is the normal answer on a fresh dongle; success
+  means the NCP resumed its saved network, in which case the parameters it is
+  running are read back with `getNetworkParameters` / `getEui64` /
+  `getNodeId` and reported through `OnNetworkUp`, so the protocol knows it
+  has a network without anyone calling `FormNetwork`.
+- `FormNetwork`: `setInitialSecurityState` (preconfigured ZigBeeAlliance09
+  link key, the generated network key, TC global link key, encrypted-key
+  required), then `formNetwork` with the 20-byte `EmberNetworkParameters`
+  (channel mask set to the one channel), then wait for `NETWORK_UP` and read
+  back.
+- `PermitJoin`: `addTransientLinkKey` with the well-known key (warning only
+  if the firmware lacks it), `permitJoining`, and a `Mgmt_Permit_Joining_req`
+  broadcast to routers so devices can join through them.
+- `stackStatusHandler` maintains network-up state on which waiters block —
+  state, not event, so an answer that arrives before the wait starts is not
+  missed. `NETWORK_DOWN` clears the protocol's network. A `NETWORK_UP` nobody
+  asked for is read back on a thread of its own, because the receive thread
+  cannot wait for its own answers.
+- `trustCenterJoinHandler` with `DEVICE_LEFT` forgets the node (no leave
+  request goes back out — it is gone, and this runs on the receive thread).
+- The bug where `SmartHomeNetworkInfo::PanId`, a string, was assigned a
+  `uint16_t` (compiling as a single character) is fixed; PAN and extended PAN
+  ids are formatted as hex.
+
+**What is still not done:** `messageSentHandler` is ignored, so a unicast
+the NCP could not deliver is only noticed by its ZCL/ZDO timeout (10 s)
+rather than immediately. Source routing, the address table, and channel
+changes (`SetChannel` updates a field and sends nothing) are untouched.
 
 **None of it has met a real NCP.** It is verified by compilation and by the
 framing and layout tests. First contact with hardware should be at 115200 8N1

@@ -332,6 +332,19 @@ private:
     // Network address of a known node, for ZDO requests addressed by IEEE.
     bool NwkForIeee(uint64_t ieeeAddress, uint16_t& nwkAddress) const;
     
+    // Called by the stack when the NCP reports the network up (with the
+    // parameters it is running) or down. On start-up an NCP that still holds
+    // a network from last time reports it up without anyone forming it.
+    void OnNetworkUp(const ZigbeeNetworkParams& params, uint64_t coordinatorIeee);
+    void OnNetworkDown();
+    SmartHomeNetworkInfo MakeNetworkInfo() const;
+    static std::string HexString(uint64_t value, int digits);
+    
+    // Drops a node from the tables and the paired-device list. RemoveDevice
+    // asks the device to leave first; a device that left on its own is just
+    // forgotten.
+    void ForgetDevice(const std::string& deviceId);
+    
     // ZCL command helpers
     bool SendOnOff(const std::string& deviceId, uint8_t endpoint, uint8_t command);
     bool SendLevelControl(const std::string& deviceId, uint8_t endpoint, 
@@ -348,6 +361,8 @@ private:
     // ===== STATE =====
     
     ZigbeeNetworkParams networkParams;
+    std::string networkName_;                       // as given to FormNetwork
+    uint64_t coordinatorIeee_ = 0;                  // reported by the stack
     std::map<std::string, ZigbeeNode> zigbeeNodes;  // deviceId -> node
     std::map<uint64_t, std::string> ieeeToDeviceId; // IEEE address -> deviceId
     std::map<uint16_t, std::string> nwkToDeviceId;  // Network address -> deviceId
