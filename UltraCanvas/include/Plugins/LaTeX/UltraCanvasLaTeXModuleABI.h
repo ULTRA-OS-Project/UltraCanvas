@@ -21,7 +21,7 @@ namespace UltraCanvas {
 class UltraCanvasLaTeXView; // abstract interface, defined in UltraCanvasLaTeXView.h
 }
 
-#define ULTRACANVAS_LATEX_ABI_VERSION 1
+#define ULTRACANVAS_LATEX_ABI_VERSION 2
 
 // Exported entry-point symbol names (resolved via dlsym/GetProcAddress).
 #define ULTRACANVAS_LATEX_SYM_ABI_VERSION   "UltraCanvasLaTeXModule_ABIVersion"

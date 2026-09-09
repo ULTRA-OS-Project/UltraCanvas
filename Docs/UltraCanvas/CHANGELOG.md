@@ -1,3 +1,33 @@
+#### 2026-09-09 *0.3.112*
+- **LaTeX: the native math engine (Phase 1) is the LaTeX view's default
+  typesetter.** `UltraCanvasMathEngine` (`include/Plugins/LaTeX/`,
+  `Plugins/LaTeX/`, documented in `Docs/UltraCanvas/UltraCanvasMathEngine.md`)
+  replaces MicroTeX behind `UltraCanvasLaTeXView`: `UltraCanvasMathParser`
+  turns LaTeX into an atom tree (~180 commands, ~600 symbols, the matrix /
+  align / cases / array environments with full column specs, `\newcommand`,
+  text mode, colours, boxes, `\cancel`, `\sideset`, `\longdiv`, ...),
+  `UltraCanvasMathLayout` sets it by The TeXbook's Appendix G rules with the
+  font's OpenType MATH constants (spacing table, scripts, fractions,
+  radicals, delimiters with variants and assemblies, large operators with
+  limits, accents, arrays with per-cell rules), and `UltraCanvasMathRender`
+  draws the box tree through `IRenderContext` as outline paths. Any OpenType
+  math font works; the `.clm2` is no longer needed by the default engine.
+  Errors no longer blank the formula: the parts that parse are typeset, the
+  offending command is shown in red at its place and `GetLastError()` names
+  it. `\text{}` uses the math font's upright glyphs; characters the font
+  lacks go through the context's text layout.
+- `UltraCanvasLaTeXView` gains `SetDisplayStyle(bool)` / `IsDisplayStyle()`
+  (display, the default, or text style) — module ABI 2. The CMake cache
+  variable `ULTRACANVAS_LATEX_ENGINE` (`native` | `microtex`) sets the build
+  default and the environment variable of the same name overrides it at
+  run time; MicroTeX stays in the module as the test oracle.
+- `Tests/MathEngineTest.cpp` (registered as `MathEngineTest`): parser atom
+  trees, layout metrics against the font's constants, and a MicroTeX oracle
+  run over the demo corpus plus forty formulas (mean deviation 6% width /
+  7% height; every shipped `.tex` typesets without a diagnostic).
+- `Docs/UltraCanvas/UltraCanvasLaTeXView.md` and the engine proposal
+  updated for the two-engine transition.
+
 #### 2026-09-09 *0.3.111*
 - **LaTeX: investigation of a native math engine, and its first piece.**
   `Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md` reports what the

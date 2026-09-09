@@ -1,12 +1,16 @@
 # UltraCanvas LaTeX Engine — Investigation & Proposal
 
-Status: **Investigation complete; Phase 0 (the font layer) implemented** —
-`UltraCanvasMathFont` (`include/Plugins/LaTeX/UltraCanvasMathFont.h`,
-`Plugins/LaTeX/UltraCanvasMathFont.cpp`, documented in
-[`UltraCanvasMathFont.md`](UltraCanvasMathFont.md)) reads the OpenType MATH
-table, metrics and outlines straight from a font file through FreeType;
-`Tests/MathFontTest.cpp` proves it equal to the `.clm2` the vendored engine
-reads, glyph for glyph. Phases 1–4 are not started. This document
+Status: **Investigation complete; Phases 0 and 1 implemented.** Phase 0,
+`UltraCanvasMathFont` ([`UltraCanvasMathFont.md`](UltraCanvasMathFont.md)),
+reads the OpenType MATH table, metrics and outlines straight from a font
+file through FreeType; `Tests/MathFontTest.cpp` proves it equal to the
+`.clm2` the vendored engine reads, glyph for glyph. Phase 1,
+`UltraCanvasMathEngine` ([`UltraCanvasMathEngine.md`](UltraCanvasMathEngine.md)):
+parser, Appendix G layout on the MATH constants, and an `IRenderContext`
+renderer, 5,800 lines, is the LaTeX view's default engine
+(`ULTRACANVAS_LATEX_ENGINE=native`); MicroTeX stays in the module as the
+oracle `Tests/MathEngineTest.cpp` compares it against over the demo corpus.
+Phases 2–4 are not started. This document
 answers two questions put to the framework: can UltraCanvas replace the
 vendored MicroTeX math engine with an implementation of its own, built on the
 framework's vector rendering engine; and how far can such an implementation be
@@ -312,7 +316,7 @@ change nothing.
 | **Font layer** | OpenType MATH via FreeType (**done**: `UltraCanvasMathFont`, 620 lines, covers the table, metrics, outlines and caching); still open: the Unicode-math style mapping (Latin/Greek/digit ranges for bold, italic, script, fraktur, double-struck, sans, mono) and a fallback-font chain | 1,500–2,000 | `unimath/` + `otf/` (5,972 — most of it is the `.clm` reader and the mapping tables) |
 | **Box builder** | Appendix G rules 1–22: inter-atom spacing table, script placement (σ13–σ22), fraction rules (σ8–σ12 and the MATH constants), radical geometry, delimiter sizing and assembly, big operators with limits, accent skew, `\left…\right`, arrays/alignments with cell glue, stretchy arrows and braces | 3,000–4,000 | `box/` + `env/` (2,075) plus the layout parts of `atom/` |
 | **Renderer** | Box tree → `IRenderContext` path commands (immediate) and → `VectorDocument` (retained); baseline, ink and logical extents; error rendering | 500–800 | `render/` + `graphic/` (987) + the 321-line adapter |
-| **Total** | | **~10,000–13,000** | 19,462 |
+| **Total** | | **~10,000–13,000** (actual Phase 1: 5,800 including the font layer) | 19,462 |
 
 The estimate is below MicroTeX because three things it carries are not
 needed: the `.clm` reader and glyph-path storage (the font gives us both),
@@ -495,7 +499,7 @@ way it draws `GetLastError()` today.
 | Phase | Deliverable | Exit criterion |
 |---|---|---|
 | **0 — Font layer** — **done** | `UltraCanvasMathFont` on FreeType (`include/Plugins/LaTeX/UltraCanvasMathFont.h`, built into the LaTeX module); `Tests/MathFontTest.cpp` links `microtex_core` as the oracle and compares the `.otf` against the `.clm2` | Met: all 56 constants, the connector overlap and, over all 4,802 glyphs, every advance/height/depth, 1,002 italics corrections, 2,475 top-accent attachments, 176 variant lists and 114 assemblies are equal; math kerning (absent from every font at hand) is verified on a synthetic table; STIX Math and TeX Gyre Termes Math load and stretch when installed |
-| **1 — Native math engine** | Parser, layout, renderer behind `UltraCanvasLaTeXView`; MicroTeX kept behind `ULTRACANVAS_LATEX_ENGINE=microtex|native` as the oracle | The oracle test suite passes within tolerance on the corpus; the demo page renders every shipped `.tex` with the native engine; `third_party/microtex` and `media/microtex/*.clm2` removed |
+| **1 — Native math engine** — **done** | `UltraCanvasMathParser` (2,000 lines: ~180 commands, ~600 symbols, environments, macros, text mode), `UltraCanvasMathLayout` (1,570 lines: Appendix G on the MATH constants), `UltraCanvasMathRender` (180 lines), the `UltraCanvasMathEngine` facade; `UltraCanvasLaTeXView` uses it by default, MicroTeX stays selectable (`ULTRACANVAS_LATEX_ENGINE`) as the oracle | Met except the removal: every shipped `.tex` renders without a diagnostic; `Tests/MathEngineTest.cpp` compares 63 formulas with MicroTeX at mean 6% width / 7% height deviation, and checks the layout against the font's own constants. Deleting `third_party/microtex` and the `.clm2` is left for when the native engine has been in use for a release (§8 decision 4) |
 | **2 — Inline math** | `UltraCanvasMathEngine` exposed to the text stack; `$…$` in `UltraCanvasTextArea` Markdown, and the `$latex$` runs from the DOCX/ODT importers, laid out as baseline-aligned inline formulas; `$$…$$` as display blocks | A Word document with an OMML equation shows a typeset equation in the document view; the Markdown demo shows inline and display math |
 | **3 — Document subset** | `UltraCanvasLaTeXDocumentReader` producing the rich-text document model; `.tex` in the Filer/MediaViewer opens as a document; demo fallback-image path retired for documents in the subset | The `media/LaTex` set plus a small `article` corpus render; unknown commands produce diagnostics, not blank panes |
 | **4 — TikZ / pgfplots subsets** | `UltraCanvasTikZConverter` → `VectorDocument`; `UltraCanvasPgfPlotsReader` → chart engine element | A curated TikZ corpus (shapes, nodes, arrows, `\foreach`) and a pgfplots line/bar/scatter set render; unsupported libraries are diagnosed |

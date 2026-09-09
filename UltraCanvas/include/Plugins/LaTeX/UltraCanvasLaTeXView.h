@@ -44,6 +44,11 @@ public:
     virtual void SetTextColor(const Color& color) = 0;
     virtual const Color& GetTextColor() const = 0;
     virtual void SetMaxWidth(float pixels) = 0;      // 0 = unlimited / intrinsic
+    // Display style (the default: large operators with limits, full-size
+    // fractions, as inside \[ \]) or text style (as inside $ $, for a formula
+    // that sits in a line of text). Honoured by the native engine.
+    virtual void SetDisplayStyle(bool display) = 0;
+    virtual bool IsDisplayStyle() const = 0;
 
     // ===== STATUS =====
     virtual bool IsValid() const = 0;                // last SetLaTeX produced a render

@@ -1805,3 +1805,38 @@ if(TARGET UltraCanvas AND TARGET microtex_core)
 else()
     message(STATUS "  MathFontTest skipped (UltraCanvas or microtex_core target not present)")
 endif()
+
+# ===== MATH ENGINE TEST =====
+# The native math engine (parser, layout, facade) with the vendored MicroTeX
+# as its oracle - Phase 1 of Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md.
+if(TARGET UltraCanvas AND TARGET microtex_core)
+    message(STATUS "  Building MathEngineTest...")
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(MATHENGINE_FREETYPE QUIET freetype2)
+    endif()
+    add_executable(MathEngineTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MathEngineTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathFont.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathSymbols.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathParser.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathLayout.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathEngine.cpp
+    )
+    target_include_directories(MathEngineTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${MATHENGINE_FREETYPE_INCLUDE_DIRS})
+    target_compile_features(MathEngineTest PRIVATE cxx_std_20)
+    target_compile_definitions(MathEngineTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_directories(MathEngineTest PRIVATE ${MATHENGINE_FREETYPE_LIBRARY_DIRS})
+    target_link_libraries(MathEngineTest PRIVATE UltraCanvas microtex_core ${MATHENGINE_FREETYPE_LIBRARIES})
+    set_target_properties(MathEngineTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MathEngineTest COMMAND MathEngineTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MathEngineTest")
+else()
+    message(STATUS "  MathEngineTest skipped (UltraCanvas or microtex_core target not present)")
+endif()
