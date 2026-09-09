@@ -1,3 +1,33 @@
+#### 2026-09-09 *0.3.110*
+- **A dialog can drop the severity icon, and the extract window's progress ring
+  is centred again.** Every modal dialog put the coloured severity badge (the
+  blue `i`) in its own column left of the message, and the whole content column
+  started to the right of it. That is right for a message, and wrong for a
+  dialog whose content carries its own graphic: UltraFiler's compress / extract
+  window drew its progress ring inside that offset column, so the ring sat
+  visibly right of the window's centre with an empty strip beside it.
+  - `DialogConfig::showIcon` (default `true`) and
+    `UltraCanvasModalDialog::SetIconVisible()` / `IsIconVisible()` turn the
+    badge off. Hidden means `display:none`, not merely invisible — the icon
+    reserves no column and no flex gap, so the message column spans the full
+    content width and an element added with `AddDialogElement()` that centres
+    itself is centred **in the window**. `AutoSizeToContent()` no longer keeps
+    the icon's 48px floor for a dialog that has no icon.
+  - `AlertOptions::showIcon` passes the switch through the alert façade, and
+    `UltraCanvasAlert::Plain(message, title, ...)` is the icon-less one-liner
+    next to `Info()` / `Warning()` / `Error()`. The severity still names the
+    window and picks the accent colour.
+  - `UltraCanvasProgressDialog::Show()` gained a trailing `showIcon` argument
+    that **defaults to false**: the ring is that dialog's graphic, so a badge
+    beside it adds nothing and costs it the centre. `UltraCanvasFilerWidget`'s
+    archive jobs (Compress / Extract, the context-menu entries and the
+    multi-archive extract queue) open the window that way, so the
+    "Unpacking …" popup now shows the ring in the middle of the dialog.
+  - `Tests/DialogIconLayoutTest.cpp` lays the dialog's content row out on the
+    real layout engine and pins both halves: with the icon the ring's centre is
+    30px right of the window's, without it the two coincide at every window
+    width. The DemoApp's Alert page gained an *Alert Without Icon* button.
+
 #### 2026-09-08 *0.3.109*
 - **LaTeX: the on-demand module now finds its math font (and itself) in a
   normal build, and a view that cannot typeset says why.** The demo's
