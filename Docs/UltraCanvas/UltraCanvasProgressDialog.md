@@ -28,7 +28,7 @@ dlg->Close();
 
 | Call | Meaning |
 |---|---|
-| `Show(parent, title, caption, onCancel)` | Opens the window over `parent`. Returns `nullptr` when no dialog could be created (dialogs disabled / headless) — handle that and run without a window. |
+| `Show(parent, title, caption, onCancel, showIcon = false)` | Opens the window over `parent`. Returns `nullptr` when no dialog could be created (dialogs disabled / headless) — handle that and run without a window. `showIcon = true` adds the blue Information badge on the left of the caption; leave it off (the default) to keep the ring centred. |
 | `SetProgress(double fraction)` | `0..1`, clamped. A **negative** value means the total is not known: the ring shows a busy sweep and the centre reads `...` instead of inventing a percentage. |
 | `SetCaption(text)` | The line above the ring. |
 | `SetDetail(text)` | What is being worked on now. Long text is ellipsized from the left, so the window keeps the height it opened with. |
@@ -88,6 +88,21 @@ Two details worth copying:
 - **Own the leftovers.** A cancelled *write* usually has to be undone — the
   Filer deletes the half-written archive — while a cancelled *extraction*
   keeps what it already wrote, because those are real files the user may want.
+
+## No severity badge: the ring is centred
+
+A message dialog puts a coloured severity badge (the blue `i`) in its own column
+on the left, and the whole content column starts to the right of it. In a
+progress window that column holds the ring, so the badge pushes the ring off the
+centre of the window — the ring is this dialog's graphic, and a second one adds
+nothing.
+
+So the window opens with `DialogConfig::showIcon = false` and the ring is
+horizontally centred in the full width of the dialog. Pass `showIcon = true` to
+`Show()` if a caller really wants the classic badge back. The same switch is
+available on any alert or modal dialog — see
+[`UltraCanvasAlert`](UltraCanvasAlert.md) (`AlertOptions::showIcon`,
+`UltraCanvasAlert::Plain`) and `UltraCanvasModalDialog::SetIconVisible()`.
 
 ## Where the ring comes from
 

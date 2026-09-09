@@ -149,6 +149,23 @@ namespace UltraCanvas {
             UltraCanvasAlert::Show(opts);
         };
 
+        // ===== NO ICON: content centred in the full width =====
+        addButton("AlertNoIconBtn", "Alert Without Icon")->onClick = [status, describe, parentWin]() {
+            AlertOptions opts;
+            opts.title = "Extracting";
+            opts.message = "Unpacking \"UCDemo-Windows.zip\"";
+            opts.details = "Without the severity badge the message column spans the "
+                           "whole dialog, so anything centred in it is centred in the "
+                           "window - which is how the progress dialog centres its ring.";
+            // Same as UltraCanvasAlert::Plain(...): no icon column at all.
+            opts.showIcon = false;
+            opts.parent = parentWin();
+            opts.onResult = [status, describe](DialogResult r) {
+                status->SetText("Result: No icon -> " + describe(r));
+            };
+            UltraCanvasAlert::Show(opts);
+        };
+
         // ===== INSTRUCTIONS =====
         auto instructions = CreateLabel("AlertInstructions", 260, 100, 700, 360);
         instructions->SetText(
@@ -158,7 +175,8 @@ namespace UltraCanvas {
                 "  UltraCanvasAlert::Successful(msg);\n"
                 "  UltraCanvasAlert::Warning(msg);\n"
                 "  UltraCanvasAlert::Error(msg);\n"
-                "  UltraCanvasAlert::Confirm(msg, title, [](bool yes){ ... });\n\n"
+                "  UltraCanvasAlert::Confirm(msg, title, [](bool yes){ ... });\n"
+                "  UltraCanvasAlert::Plain(msg, title);   // no severity icon\n\n"
                 "Rich form:\n"
                 "  AlertOptions o; o.severity = AlertSeverity::Warning;\n"
                 "  o.message = ...; o.details = ...; o.buttons = DialogButtons::OKCancel;\n"
@@ -168,7 +186,10 @@ namespace UltraCanvas {
                 "a vertical scrollbar once the content grows past the screen.\n\n"
                 "Every alert is modal and always-on-top; the parent window's input\n"
                 "is blocked until the user answers. Severity picks the icon + colour\n"
-                "(Info/Question blue, Success green, Warning amber, Error red).");
+                "(Info/Question blue, Success green, Warning amber, Error red).\n\n"
+                "showIcon = false (or Plain()) drops the icon column entirely, so\n"
+                "the content spans the full width - use it when the alert body\n"
+                "carries its own graphic that has to sit in the middle.");
         instructions->SetFontSize(11);
         instructions->SetBackgroundColor(Color(255, 255, 240));
         instructions->SetPadding(8);
