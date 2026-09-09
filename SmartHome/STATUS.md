@@ -223,7 +223,7 @@ compile and link while calling nothing at all):
 |---|---|---|---|
 | Z-Wave | 2209 | 162 × `OpenZWave::` | **builds and links**, dynamically |
 | KNX | 1994 | none needed — implements KNXnet/IP itself | **builds and links** |
-| Thread | 1816 | 80 × `ot*` | real, but needs a *built* OpenThread |
+| Thread | 1816 | 80 × `ot*` | **builds and links** against a built OpenThread |
 | Matter | 1324 | 5 × `chip::` | thin wrapper; deferred |
 | Zigbee | 2036 + 550 | ASH/EZSP written in-tree | **builds and links** |
 
@@ -352,13 +352,47 @@ neighbour tables (`Mgmt_Lqi_req` is not sent).
 framing and layout tests. First contact with hardware should be at 115200 8N1
 on the adapter's serial node, watching for RSTACK.
 
-**Thread needs a built OpenThread, not a checkout.** Its headers are fine — one
-rename, `openthread/tasklets.h` became `tasklet.h`, now fixed — but the backend
-calls `otSysInit` / `otSysProcessDrivers` from the POSIX platform layer, and
-OpenThread generates its core config at build time. Against a plain source tree
-113 errors remain, essentially all of them that. Build OpenThread with
-`OT_PLATFORM=posix` first; CMake now looks for `libopenthread-posix` as well as
-the headers, and defines `ULTRACANVAS_WITH_OPENTHREAD`.
+**Thread builds and links against OpenThread (2026-09-09).** OpenThread was
+built here from a checkout at `f34c5e5` with `OT_PLATFORM=posix` (the recipe,
+including the two switches it took to find — `OT_UPTIME=ON` because the posix
+logging config demands it, `OT_RCP=OFF` because the RCP-only library does not
+build under that config — is in `Docs/Dependencies.md`). Against it the
+backend had 32 real errors, all API drift since it was written:
+
+- `otSysInit` takes an `otPlatformConfig` (radio URL, interface name,
+  real-time signal) and *returns* the instance; there is no separate
+  `otInstanceInitSingle` on POSIX. `otSysProcessDrivers` is gone; the host
+  runs the select() mainloop (`otSysMainloopUpdate` / `Poll` / `Process`),
+  which `OpenThreadInstance::Process()` now does one turn of.
+- The POSIX platform leaves `otPlatReset` to the application. It is defined
+  here: it records the request and the process thread restarts the stack.
+- `otCommissionerStart` takes the state and joiner callbacks itself; the
+  `otCommissionerSet*Callback` functions do not exist.
+- `otSecurityPolicy` is bit-fields, not `mFlags`; `otLeaderData` has no
+  `mLeaderRloc` (RLOC16 is the router id shifted); `otNeighborInfo` has no
+  outbound link quality; `otIcmp6SendEchoRequest` takes a message and a
+  message info, not an address.
+- A member named `otInstance` shadowed the C typedef inside the nested
+  class — renamed `openThread`.
+- The class had four unimplemented pure virtuals (`GetDevices`,
+  `GetDevice`, `GetPairedDevices`, `PairDevice`) plus `UnpairDevice`,
+  `GetDeviceState`, `GetHardwareInfo`; and used `NetworkNode` /
+  `SmartHomeNetworkInfo` fields that do not exist, as Zigbee had.
+
+`tests/ThreadLinkTest.cpp` constructs the backend and checks that
+`GetHardwareInfo()` carries `otGetVersionString()`'s answer
+(`OPENTHREAD/<commit>; POSIX; <date>`), which only the real library can
+supply. It does not call `Initialize()`: the POSIX `otSysInit` exits the
+process on a missing radio rather than returning.
+
+OpenThread does not install (`cmake --install` yields one binary), so CMake
+takes `OPENTHREAD_SOURCE_DIR` and `OPENTHREAD_BUILD_DIR` and links the
+seventeen archives in the order OpenThread's own `ot-cli` does. mbedTLS
+comes from inside that build; the system package is not needed for Thread.
+
+**Still not done in Thread:** `RegisterService` (SRP client) returned true
+while doing nothing; it now returns false and says so. `PingDevice` reports
+that the echo request went out, not that a reply came back.
 
 **Watch for the gating macros.** `ULTRACANVAS_WITH_ZWAVE`,
 `ULTRACANVAS_WITH_OPENTHREAD` and `ULTRACANVAS_WITH_EZSP` each gate their

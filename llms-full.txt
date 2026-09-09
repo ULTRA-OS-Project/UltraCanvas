@@ -1802,7 +1802,7 @@ configure time naming what is missing.
 |---|---|---|---|
 | Engine, public API, dashboard widgets | (core only) | (core only) | (core only) |
 | Matter backend (`ULTRACANVAS_SMARTHOME_MATTER`, default OFF) | connectedhomeip (Apache 2) + mbedTLS (Apache 2) | connectedhomeip + mbedTLS | connectedhomeip + mbedTLS |
-| Thread backend (`ULTRACANVAS_SMARTHOME_THREAD`, default OFF) | a **built** OpenThread, `OT_PLATFORM=posix` (BSD 3-Clause) + mbedTLS | same | same |
+| Thread backend (`ULTRACANVAS_SMARTHOME_THREAD`, default OFF) | a **built** OpenThread, `OT_PLATFORM=posix` (BSD 3-Clause; brings its own mbedTLS) — recipe below | same | not tried (OpenThread's POSIX layer) |
 | Zigbee backend (`ULTRACANVAS_SMARTHOME_ZIGBEE`, default OFF) | (core only) — ASH and EZSP implemented in-tree; needs a serial NCP at run time | same | same |
 | Z-Wave backend (`ULTRACANVAS_SMARTHOME_ZWAVE`, default OFF) | OpenZWave 1.6 (**LGPL 2.1**, `libopenzwave1.6-dev`, **linked dynamically**) | OpenZWave 1.6 | OpenZWave 1.6 |
 | KNX backend (`ULTRACANVAS_SMARTHOME_KNX`, default OFF) | (core only) — KNXnet/IP over sockets; **builds today** | (core only) | (core only) |
@@ -1829,6 +1829,44 @@ configure time naming what is missing.
 > ldd  <binary> | grep openzwave           # must list libopenzwave.so
 > nm -C <binary> | grep " T OpenZWave::"   # must be empty
 > ```
+
+> **Building OpenThread for the Thread backend.** OpenThread is not packaged
+> and does not install (`cmake --install` yields one binary and no headers or
+> archives), so a host links against its build tree. This is the build that
+> the backend was verified against (checkout `f34c5e5`, 2026-09):
+>
+> ```
+> git clone https://github.com/openthread/openthread.git
+> cd openthread
+> git submodule update --init third_party/mbedtls/repo     # vendored mbedTLS
+> cmake -S . -B build -G Ninja -DOT_PLATFORM=posix \
+>       -DOT_FTD=ON -DOT_MTD=OFF -DOT_RCP=OFF -DOT_UPTIME=ON \
+>       -DOT_COMMISSIONER=ON -DOT_JOINER=ON -DOT_BORDER_ROUTER=ON \
+>       -DOT_SRP_CLIENT=ON -DOT_DNS_CLIENT=ON -DOT_ECDSA=ON \
+>       -DOT_PING_SENDER=ON -DOT_UDP_FORWARD=ON \
+>       -DOT_DAEMON=OFF -DOT_APP_CLI=OFF -DOT_APP_NCP=OFF -DOT_APP_RCP=OFF \
+>       -DOT_COMPILE_WARNING_AS_ERROR=OFF -DCMAKE_BUILD_TYPE=Release
+> cmake --build build
+> ```
+>
+> Two of those switches are not obvious: `OT_UPTIME=ON`, because the posix
+> core config turns on uptime-prefixed logging and the build stops in
+> `log.cpp` without it; and `OT_RCP=OFF`, because the RCP-only library does
+> not compile under that same config and a host does not need it. The
+> mbedTLS submodule's own `framework` sub-submodule may fail to fetch; it is
+> not needed. Then point UltraCanvas at both trees:
+>
+> ```
+> cmake -DULTRACANVAS_SMARTHOME_THREAD=ON \
+>       -DOPENTHREAD_SOURCE_DIR=/path/to/openthread \
+>       -DOPENTHREAD_BUILD_DIR=/path/to/openthread/build ..
+> ```
+>
+> `SmartHome/tests/ThreadLinkTest.cpp` checks the link is real: the backend's
+> `GetHardwareInfo()` must carry `otGetVersionString()`'s answer. At run time
+> the backend needs a radio co-processor, named by a URL such as
+> `spinel+hdlc+uart:///dev/ttyACM0`; OpenThread's `otSysInit` exits the
+> process if that device is missing.
 
 ### Ultra AI module
 

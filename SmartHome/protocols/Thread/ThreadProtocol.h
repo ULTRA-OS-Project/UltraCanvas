@@ -120,6 +120,8 @@ public:
     // ===== HARDWARE =====
     
     bool IsHardwareAvailable() const override;
+    
+    std::string GetHardwareInfo() const override;
     std::vector<std::string> GetAvailableAdapters() const override;
     bool SelectAdapter(const std::string& adapterId) override;
     
@@ -145,6 +147,14 @@ public:
     
     bool RemoveDevice(const std::string& deviceId) override;
     bool InterviewDevice(const std::string& deviceId) override;
+    std::vector<std::shared_ptr<ISmartHomeDevice>> GetDevices() const override;
+    std::shared_ptr<ISmartHomeDevice> GetDevice(const std::string& deviceId) const override;
+    std::vector<SmartHomeDeviceInfo> GetPairedDevices() override;
+    bool PairDevice(const std::string& deviceId,
+                    const std::map<std::string, std::string>& params) override;
+    bool UnpairDevice(const std::string& deviceId) override;
+    bool GetDeviceState(const std::string& deviceId,
+                        std::map<std::string, std::string>& state) override;
     
     // ===== COMMANDS =====
     
@@ -270,8 +280,10 @@ private:
     void OnJoinerEvent(const std::string& eui64, bool joined);
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
+    // OpenThread callbacks land here. The parameters are untyped because this
+    // header does not include OpenThread's; the definitions cast them back.
     void HandleStateChange(uint32_t flags);
-    void HandleDiscoveryResult(void* result);
+    void HandleDiscoveryResult(const void* scanResult);
     void HandleCommissionerState(int state);
     void HandleJoinerEvent(int event, const void* joinerInfo, const void* joinerId);
 #endif
@@ -288,7 +300,7 @@ private:
     // These would wrap the actual OpenThread API calls
     // Placeholder for openthread integration
     class OpenThreadInstance;
-    std::unique_ptr<OpenThreadInstance> otInstance;
+    std::unique_ptr<OpenThreadInstance> openThread;   // not "otInstance": that name is the C typedef
     
     // ===== STATE =====
     

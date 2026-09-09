@@ -90,21 +90,22 @@ foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
             list(APPEND _sh_missing "mbedTLS")
         endif()
     elseif(_sh_proto STREQUAL "Thread")
-        # Headers alone are not enough: OpenThread generates its core config at
-        # build time and the backend calls otSysInit/otSysProcessDrivers from the
-        # POSIX platform layer, so this needs a built OpenThread with
-        # OT_PLATFORM=posix, not a source checkout.
-        find_path(OPENTHREAD_INCLUDE_DIR openthread/instance.h)
-        find_library(OPENTHREAD_LIBRARY NAMES openthread-posix openthread-ftd)
-        if(NOT OPENTHREAD_INCLUDE_DIR OR NOT OPENTHREAD_LIBRARY)
-            list(APPEND _sh_missing "a built OpenThread (OT_PLATFORM=posix)")
+        # OpenThread does not install: `cmake --install` puts one binary in
+        # bin/ and nothing else. A host links against the build tree, the way
+        # OpenThread's own ot-cli does. So this wants two directories — the
+        # source checkout (public headers, and the POSIX platform header that
+        # lives under src/) and the build made from it with OT_PLATFORM=posix.
+        # The recipe that produced a working build is in Docs/Dependencies.md.
+        set(OPENTHREAD_SOURCE_DIR "" CACHE PATH "OpenThread source checkout")
+        set(OPENTHREAD_BUILD_DIR "" CACHE PATH "OpenThread build tree (OT_PLATFORM=posix)")
+        if(NOT OPENTHREAD_SOURCE_DIR OR NOT EXISTS "${OPENTHREAD_SOURCE_DIR}/include/openthread/instance.h")
+            list(APPEND _sh_missing "OPENTHREAD_SOURCE_DIR (an OpenThread checkout)")
         endif()
-        if(NOT MbedTLS_FOUND)
-            list(APPEND _sh_missing "mbedTLS")
+        if(NOT OPENTHREAD_BUILD_DIR OR NOT EXISTS "${OPENTHREAD_BUILD_DIR}/src/posix/platform/libopenthread-posix.a")
+            list(APPEND _sh_missing "OPENTHREAD_BUILD_DIR (an OpenThread build with OT_PLATFORM=posix)")
         endif()
-        if(NOT MbedTLS_FOUND)
-            list(APPEND _sh_missing "mbedTLS")
-        endif()
+        # mbedTLS comes from inside that build (OpenThread vendors it), so the
+        # system package is not needed here.
     elseif(_sh_proto STREQUAL "Zigbee")
         # EZSP only. The backend also carries TI Z-Stack (ZNP) branches, but
         # every one of them is `return false; // Not implemented`, so offering
@@ -173,9 +174,44 @@ foreach(_sh_proto ${_sh_backends})
     string(TOUPPER ${_sh_proto} _sh_upper)
     target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_${_sh_upper}=1)
     if(_sh_proto STREQUAL "Thread")
+        # Selects the real OpenThread code; without it the backend compiles
+        # into a shell, as with the other two gating macros.
         target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_WITH_OPENTHREAD=1)
-        target_include_directories(SmartHome PRIVATE ${OPENTHREAD_INCLUDE_DIR})
-        target_link_libraries(SmartHome PUBLIC ${OPENTHREAD_LIBRARY})
+        target_include_directories(SmartHome PRIVATE
+            ${OPENTHREAD_SOURCE_DIR}/include                     # public API
+            ${OPENTHREAD_SOURCE_DIR}/src/posix/platform/include  # openthread-system.h
+            ${OPENTHREAD_SOURCE_DIR}/src)                        # lib/spinel/coprocessor_type.h
+        # The archives, in the order OpenThread's own posix host binary links
+        # them. The repeats are deliberate: these are static archives with
+        # mutual references, and a single pass needs the second mention.
+        set(_ot_link_order
+            src/posix/platform/libopenthread-posix.a
+            src/core/libopenthread-ftd.a
+            src/posix/platform/libopenthread-posix.a
+            src/lib/hdlc/libopenthread-hdlc.a
+            src/lib/spinel/libopenthread-radio-spinel.a
+            src/lib/spinel/libopenthread-spinel-rcp.a
+            src/core/libopenthread-ftd.a
+            third_party/tcplp/libtcplp-ftd.a
+            src/core/libopenthread-ftd.a
+            third_party/tcplp/libtcplp-ftd.a
+            third_party/mbedtls/repo/library/libmbedtls.a
+            third_party/mbedtls/repo/library/libmbedx509.a
+            third_party/mbedtls/repo/library/libmbedcrypto.a
+            third_party/mbedtls/repo/3rdparty/everest/libeverest.a
+            third_party/mbedtls/repo/3rdparty/p256-m/libp256m.a
+            src/lib/platform/libopenthread-platform.a
+            src/lib/url/libopenthread-url.a)
+        set(_ot_libs "")
+        foreach(_ot_lib ${_ot_link_order})
+            if(NOT EXISTS "${OPENTHREAD_BUILD_DIR}/${_ot_lib}")
+                message(FATAL_ERROR "OpenThread build is missing ${_ot_lib}; "
+                        "build it with OT_PLATFORM=posix and the options in Docs/Dependencies.md")
+            endif()
+            list(APPEND _ot_libs "${OPENTHREAD_BUILD_DIR}/${_ot_lib}")
+        endforeach()
+        target_link_libraries(SmartHome PUBLIC ${_ot_libs} util rt)
+        message(STATUS "  [✓] Thread backend against OpenThread at ${OPENTHREAD_BUILD_DIR}")
     endif()
     if(_sh_proto STREQUAL "ZWave")
         # Selects the real OpenZWave code. Without it the backend compiles into
@@ -278,6 +314,16 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
         target_include_directories(SmartHomeZWaveLinkTest PRIVATE
                                    ${CMAKE_CURRENT_SOURCE_DIR}/protocols/ZWave)
         add_test(NAME SmartHomeZWaveLink COMMAND SmartHomeZWaveLinkTest)
+    endif()
+
+    # Likewise for Thread: proves the OpenThread link is real (the version
+    # string in GetHardwareInfo can only come from libopenthread-ftd).
+    if("Thread" IN_LIST _sh_backends)
+        add_executable(SmartHomeThreadLinkTest tests/ThreadLinkTest.cpp)
+        target_link_libraries(SmartHomeThreadLinkTest PRIVATE SmartHome)
+        target_include_directories(SmartHomeThreadLinkTest PRIVATE
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Thread)
+        add_test(NAME SmartHomeThreadLink COMMAND SmartHomeThreadLinkTest)
     endif()
 
     add_test(NAME SmartHomeFacade COMMAND SmartHomeFacadeTest)

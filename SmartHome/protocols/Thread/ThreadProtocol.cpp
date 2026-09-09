@@ -11,6 +11,7 @@
 #include <algorithm>
 #include <random>
 #include <cstring>
+#include <atomic>
 
 // OpenThread includes (conditional)
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
@@ -27,8 +28,30 @@
 #include <openthread/icmp6.h>
 #include <openthread/link.h>
 #include <openthread/tasklet.h>
+#include <openthread/thread_ftd.h>
+#include <openthread/message.h>
 #include <openthread/platform/radio.h>
 #include <openthread/platform/misc.h>
+// The POSIX platform layer: otSysInit and the select() mainloop. Not part of
+// the core API headers; it ships with a build made with OT_PLATFORM=posix.
+#include <openthread/openthread-system.h>
+#include <cstring>
+#include <sys/select.h>
+#endif
+
+#ifdef ULTRACANVAS_WITH_OPENTHREAD
+// The POSIX platform library leaves one hook to the application: what to do
+// when the stack asks for a reset (a factory reset, or a fatal condition in
+// the radio co-processor). OpenThread's own CLI longjmps back to main and
+// starts over. Here the request is recorded and the process thread brings
+// the instance down and up again on its next turn.
+namespace {
+std::atomic<bool> gOpenThreadResetRequested{false};
+}
+extern "C" void otPlatReset(otInstance* aInstance) {
+    (void)aInstance;
+    gOpenThreadResetRequested = true;
+}
 #endif
 
 namespace UltraCanvas {
@@ -44,17 +67,27 @@ public:
     // Callback storage
     ThreadProtocol* protocol = nullptr;
     
+    // The platform config points at this; it has to outlive otSysInit.
+    std::string radioUrlStorage;
+    
     bool Initialize(const std::string& radioUrl) {
-        // Initialize platform
-        otSysInit(0, nullptr);
+        // The POSIX platform brings the instance up itself, around the radio
+        // co-processor named by the URL (spinel+hdlc+uart:///dev/ttyACM0 and
+        // the like). otSysInit does not return on a missing radio in every
+        // OpenThread version — it may exit the process — so the caller should
+        // have checked the device node exists.
+        radioUrlStorage = radioUrl;
         
-        // Create instance
-        instance = otInstanceInitSingle();
-        if (!instance) {
-            return false;
-        }
+        otPlatformConfig config;
+        std::memset(&config, 0, sizeof config);
+        config.mCoprocessorUrls.mUrls[0] = radioUrlStorage.c_str();
+        config.mCoprocessorUrls.mNum = 1;
+        config.mInterfaceName = "wpan0";
+        config.mRealTimeSignal = 41;
+        config.mSpeedUpFactor = 1;
         
-        return true;
+        instance = otSysInit(&config);
+        return instance != nullptr;
     }
     
     void Shutdown() {
@@ -65,10 +98,24 @@ public:
         otSysDeinit();
     }
     
+    // One turn of the OpenThread mainloop: run pending tasklets, then wait
+    // (briefly) on the platform's file descriptors and service whichever are
+    // ready. The caller loops on this from its own thread.
     void Process() {
-        if (instance) {
-            otTaskletsProcess(instance);
-            otSysProcessDrivers(instance);
+        if (!instance) return;
+        otTaskletsProcess(instance);
+        
+        otSysMainloopContext mainloop;
+        std::memset(&mainloop, 0, sizeof mainloop);
+        FD_ZERO(&mainloop.mReadFdSet);
+        FD_ZERO(&mainloop.mWriteFdSet);
+        FD_ZERO(&mainloop.mErrorFdSet);
+        mainloop.mMaxFd = -1;
+        mainloop.mTimeout.tv_sec = 0;
+        mainloop.mTimeout.tv_usec = 10000;
+        otSysMainloopUpdate(instance, &mainloop);
+        if (otSysMainloopPoll(&mainloop) >= 0) {
+            otSysMainloopProcess(instance, &mainloop);
         }
     }
     
@@ -93,7 +140,7 @@ public:
 
 ThreadProtocol::ThreadProtocol()
     : SmartHomeProtocolBase(SmartHomeProtocolType::Thread, "Thread")
-    , otInstance(std::make_unique<OpenThreadInstance>()) {
+    , openThread(std::make_unique<OpenThreadInstance>()) {
     
     protocolVersion = "1.3.0";  // Thread 1.3 specification
     
@@ -189,18 +236,18 @@ void ThreadProtocol::Shutdown() {
 }
 
 bool ThreadProtocol::InitializeOpenThread() {
-    otInstance->protocol = this;
+    openThread->protocol = this;
     
     std::string radioUrl = selectedAdapter.empty() ? "spinel+hdlc+uart:///dev/ttyACM0" : selectedAdapter;
     
-    if (!otInstance->Initialize(radioUrl)) {
+    if (!openThread->Initialize(radioUrl)) {
         return false;
     }
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         // Set state change callback
-        otSetStateChangedCallback(otInstance->instance, 
+        otSetStateChangedCallback(openThread->instance, 
             [](otChangedFlags flags, void* context) {
                 auto* self = static_cast<ThreadProtocol*>(context);
                 self->HandleStateChange(flags);
@@ -208,7 +255,7 @@ bool ThreadProtocol::InitializeOpenThread() {
         
         // Set default dataset if not already set
         otOperationalDataset dataset;
-        if (otDatasetGetActive(otInstance->instance, &dataset) != OT_ERROR_NONE) {
+        if (otDatasetGetActive(openThread->instance, &dataset) != OT_ERROR_NONE) {
             // No active dataset, we'll need to form or join a network
             Log(3, "No active dataset found");
         }
@@ -221,18 +268,18 @@ bool ThreadProtocol::InitializeOpenThread() {
 
 void ThreadProtocol::ShutdownOpenThread() {
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         // Disable Thread
-        otThreadSetEnabled(otInstance->instance, false);
+        otThreadSetEnabled(openThread->instance, false);
         
         // Stop commissioner if active
         if (commissionerActive) {
-            otCommissionerStop(otInstance->instance);
+            otCommissionerStop(openThread->instance);
         }
     }
 #endif
     
-    otInstance->Shutdown();
+    openThread->Shutdown();
     Log(3, "OpenThread shutdown");
 }
 
@@ -242,6 +289,84 @@ bool ThreadProtocol::IsHardwareAvailable() const {
     // Check for Thread radio hardware
     auto adapters = GetAvailableAdapters();
     return !adapters.empty();
+}
+
+// ===== DEVICE REGISTRY VIEWS =====
+
+std::vector<SmartHomeDeviceInfo> ThreadProtocol::GetPairedDevices() {
+    std::vector<SmartHomeDeviceInfo> devices;
+    for (const auto& id : GetDeviceIds()) {
+        devices.push_back(GetDeviceInfo(id));
+    }
+    return devices;
+}
+
+bool ThreadProtocol::PairDevice(const std::string& deviceId,
+                                const std::map<std::string, std::string>& params) {
+    // A Thread device joins through the commissioner with its pre-shared
+    // joiner credential. "pskd" is required; "eui64" narrows the joiner to
+    // one device and "timeout" bounds the wait, defaulting to two minutes.
+    auto pskd = params.find("pskd");
+    if (pskd == params.end() || pskd->second.empty()) {
+        ReportError(-410, "PairDevice needs a joiner credential (\"pskd\")");
+        return false;
+    }
+    std::string eui64 = "*";
+    if (auto it = params.find("eui64"); it != params.end() && !it->second.empty()) {
+        eui64 = it->second;
+    } else if (!deviceId.empty()) {
+        eui64 = deviceId;
+    }
+    uint32_t timeout = 120;
+    if (auto it = params.find("timeout"); it != params.end()) {
+        timeout = static_cast<uint32_t>(std::atoi(it->second.c_str()));
+    }
+    return AddJoiner(eui64, pskd->second, timeout);
+}
+
+bool ThreadProtocol::UnpairDevice(const std::string& deviceId) {
+    return RemoveDevice(deviceId);
+}
+
+bool ThreadProtocol::GetDeviceState(const std::string& deviceId,
+                                    std::map<std::string, std::string>& state) {
+    // What the mesh knows about a child: the entries in the child table are
+    // the devices attached to this border router.
+    std::lock_guard<std::mutex> lock(tableMutex);
+    for (const auto& child : childTable) {
+        const std::string id = child.DeviceId.empty() ? Eui64ToString(child.ExtAddress)
+                                                      : child.DeviceId;
+        if (id != deviceId) continue;
+        state["rloc16"] = std::to_string(child.Rloc16);
+        state["eui64"] = Eui64ToString(child.ExtAddress);
+        state["rxOnWhenIdle"] = child.IsRxOnWhenIdle ? "true" : "false";
+        state["fullThreadDevice"] = child.IsFullThreadDevice ? "true" : "false";
+        state["timeout"] = std::to_string(child.Timeout);
+        state["age"] = std::to_string(child.Age);
+        return true;
+    }
+    return false;
+}
+
+std::vector<std::shared_ptr<ISmartHomeDevice>> ThreadProtocol::GetDevices() const {
+    // The object-level view is not built yet; the info-level one above is.
+    return {};
+}
+
+std::shared_ptr<ISmartHomeDevice> ThreadProtocol::GetDevice(const std::string&) const {
+    return nullptr;
+}
+
+std::string ThreadProtocol::GetHardwareInfo() const {
+    std::string info = "Thread radio co-processor at " +
+        (selectedAdapter.empty() ? std::string("spinel+hdlc+uart:///dev/ttyACM0 (default)")
+                                 : selectedAdapter);
+#ifdef ULTRACANVAS_WITH_OPENTHREAD
+    info += ", OpenThread " + std::string(otGetVersionString());
+#else
+    info += ", OpenThread not compiled in";
+#endif
+    return info;
 }
 
 std::vector<std::string> ThreadProtocol::GetAvailableAdapters() const {
@@ -311,7 +436,7 @@ bool ThreadProtocol::FormNetwork(const std::string& networkName) {
     }
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otOperationalDataset dataset;
         memset(&dataset, 0, sizeof(dataset));
         
@@ -352,28 +477,28 @@ bool ThreadProtocol::FormNetwork(const std::string& networkName) {
         
         // Set security policy
         dataset.mSecurityPolicy.mRotationTime = 672;  // hours
-        dataset.mSecurityPolicy.mFlags = OT_SECURITY_POLICY_OBTAIN_NETWORK_KEY |
-                                         OT_SECURITY_POLICY_NATIVE_COMMISSIONING |
-                                         OT_SECURITY_POLICY_ROUTERS |
-                                         OT_SECURITY_POLICY_EXTERNAL_COMMISSIONER;
+        dataset.mSecurityPolicy.mObtainNetworkKeyEnabled = true;
+        dataset.mSecurityPolicy.mNativeCommissioningEnabled = true;
+        dataset.mSecurityPolicy.mRoutersEnabled = true;
+        dataset.mSecurityPolicy.mExternalCommissioningEnabled = true;
         dataset.mComponents.mIsSecurityPolicyPresent = true;
         
         // Apply dataset
-        otError error = otDatasetSetActive(otInstance->instance, &dataset);
+        otError error = otDatasetSetActive(openThread->instance, &dataset);
         if (error != OT_ERROR_NONE) {
             ReportError(-201, "Failed to set active dataset: " + std::to_string(error));
             return false;
         }
         
         // Enable interface
-        error = otIp6SetEnabled(otInstance->instance, true);
+        error = otIp6SetEnabled(openThread->instance, true);
         if (error != OT_ERROR_NONE) {
             ReportError(-202, "Failed to enable IPv6: " + std::to_string(error));
             return false;
         }
         
         // Start Thread
-        error = otThreadSetEnabled(otInstance->instance, true);
+        error = otThreadSetEnabled(openThread->instance, true);
         if (error != OT_ERROR_NONE) {
             ReportError(-203, "Failed to start Thread: " + std::to_string(error));
             return false;
@@ -389,9 +514,14 @@ bool ThreadProtocol::FormNetwork(const std::string& networkName) {
     SmartHomeNetworkInfo info;
     info.Protocol = SmartHomeProtocolType::Thread;
     info.NetworkName = activeDataset.NetworkName;
-    info.PanId = activeDataset.PanId;
-    info.Channel = activeDataset.Channel;
-    info.IsOpen = false;
+    {
+        std::ostringstream pan;
+        pan << "0x" << std::hex << std::uppercase << std::setfill('0')
+            << std::setw(4) << activeDataset.PanId;
+        info.PanId = pan.str();
+    }
+    info.Channel = std::to_string(activeDataset.Channel);
+    info.Active = false;
     SetNetworkInfo(info);
     
     OnRoleChanged(ThreadDeviceRole::Leader);
@@ -408,16 +538,16 @@ bool ThreadProtocol::JoinNetwork(const std::string& networkId) {
     Log(2, "Joining Thread network: " + networkId);
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         // Enable interface first
-        otError error = otIp6SetEnabled(otInstance->instance, true);
+        otError error = otIp6SetEnabled(openThread->instance, true);
         if (error != OT_ERROR_NONE) {
             ReportError(-210, "Failed to enable IPv6");
             return false;
         }
         
         // Start Thread - will attempt to attach to existing network
-        error = otThreadSetEnabled(otInstance->instance, true);
+        error = otThreadSetEnabled(openThread->instance, true);
         if (error != OT_ERROR_NONE) {
             ReportError(-211, "Failed to start Thread");
             return false;
@@ -441,9 +571,9 @@ bool ThreadProtocol::LeaveNetwork() {
     Log(2, "Leaving Thread network");
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
-        otThreadSetEnabled(otInstance->instance, false);
-        otIp6SetEnabled(otInstance->instance, false);
+    if (openThread->instance) {
+        otThreadSetEnabled(openThread->instance, false);
+        otIp6SetEnabled(openThread->instance, false);
     }
 #endif
     
@@ -457,40 +587,44 @@ bool ThreadProtocol::LeaveNetwork() {
 
 NetworkTopology ThreadProtocol::GetTopology() const {
     NetworkTopology topology;
-    topology.Protocol = SmartHomeProtocolType::Thread;
+    topology.NetworkId = activeDataset.NetworkName;
     
     std::lock_guard<std::mutex> lock(tableMutex);
     
-    // Add self as node
+    // This node: the border router, and a router when the mesh made it one.
     NetworkNode selfNode;
     selfNode.NodeId = Eui64ToString(GetSelfExtAddress());
-    selfNode.NodeType = RoleToString(currentRole);
+    selfNode.IsBorderRouter = true;
     selfNode.IsRouter = (currentRole == ThreadDeviceRole::Router || 
                          currentRole == ThreadDeviceRole::Leader);
-    selfNode.IsOnline = IsAttached();
+    selfNode.IsCoordinator = (currentRole == ThreadDeviceRole::Leader);
+    selfNode.Depth = 0;
     topology.Nodes.push_back(selfNode);
     
-    // Add routers
+    // Routers; the leader is the closest thing Thread has to a coordinator.
     for (const auto& router : routerTable) {
         NetworkNode node;
         node.NodeId = Eui64ToString(router.ExtAddress);
-        node.NodeType = router.IsLeader ? "Leader" : "Router";
         node.IsRouter = true;
-        node.IsOnline = router.IsLinkEstablished;
+        node.IsCoordinator = router.IsLeader;
         node.LinkQuality = router.LinkQualityIn;
+        node.Depth = 1;
         topology.Nodes.push_back(node);
+        ++topology.RouterCount;
     }
     
-    // Add children
+    // Children of this node
     for (const auto& child : childTable) {
         NetworkNode node;
         node.NodeId = child.DeviceId.empty() ? Eui64ToString(child.ExtAddress) : child.DeviceId;
-        node.NodeType = child.IsFullThreadDevice ? "REED" : "SED";
+        node.DeviceId = child.DeviceId;
         node.IsRouter = false;
-        node.IsOnline = true;  // Children are tracked when they're alive
         node.ParentId = selfNode.NodeId;
+        node.Depth = 1;
         topology.Nodes.push_back(node);
+        ++topology.EndDeviceCount;
     }
+    topology.MaxDepth = topology.Nodes.size() > 1 ? 1 : 0;
     
     return topology;
 }
@@ -507,9 +641,9 @@ bool ThreadProtocol::StartDiscovery(int timeoutSeconds) {
     ClearDiscoveredDevices();
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         // Perform MLE discovery
-        otError error = otThreadDiscover(otInstance->instance,
+        otError error = otThreadDiscover(openThread->instance,
             0,  // scan all channels
             OT_PANID_BROADCAST,
             false,  // joiner
@@ -617,24 +751,19 @@ bool ThreadProtocol::StartCommissioner() {
     Log(2, "Starting Thread Commissioner...");
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
-        // Set commissioner state callback
-        otCommissionerSetStateCallback(otInstance->instance,
+    if (openThread->instance) {
+        // The callbacks are handed over with the start call.
+        otError error = otCommissionerStart(openThread->instance,
             [](otCommissionerState state, void* context) {
                 auto* self = static_cast<ThreadProtocol*>(context);
-                self->HandleCommissionerState(state);
-            }, this);
-        
-        // Set joiner callback
-        otCommissionerSetJoinerCallback(otInstance->instance,
+                self->HandleCommissionerState(static_cast<int>(state));
+            },
             [](otCommissionerJoinerEvent event, const otJoinerInfo* joinerInfo,
                const otExtAddress* joinerId, void* context) {
                 auto* self = static_cast<ThreadProtocol*>(context);
-                self->HandleJoinerEvent(event, joinerInfo, joinerId);
-            }, this);
-        
-        // Start commissioner
-        otError error = otCommissionerStart(otInstance->instance, nullptr, nullptr, nullptr);
+                self->HandleJoinerEvent(static_cast<int>(event), joinerInfo, joinerId);
+            },
+            this);
         if (error != OT_ERROR_NONE) {
             ReportError(-400, "Failed to start commissioner: " + std::to_string(error));
             return false;
@@ -654,8 +783,8 @@ void ThreadProtocol::StopCommissioner() {
     Log(2, "Stopping Thread Commissioner");
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
-        otCommissionerStop(otInstance->instance);
+    if (openThread->instance) {
+        otCommissionerStop(openThread->instance);
     }
 #endif
     
@@ -676,7 +805,7 @@ bool ThreadProtocol::AddJoiner(const std::string& eui64, const std::string& pskd
     Log(2, "Adding joiner: " + eui64 + " with timeout " + std::to_string(timeout) + "s");
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otExtAddress extAddr;
         
         if (eui64 == "*") {
@@ -688,7 +817,7 @@ bool ThreadProtocol::AddJoiner(const std::string& eui64, const std::string& pskd
             memcpy(extAddr.m8, &addr, 8);
         }
         
-        otError error = otCommissionerAddJoiner(otInstance->instance,
+        otError error = otCommissionerAddJoiner(openThread->instance,
             eui64 == "*" ? nullptr : &extAddr,
             pskd.c_str(),
             timeout);
@@ -717,7 +846,7 @@ bool ThreadProtocol::RemoveJoiner(const std::string& eui64) {
     Log(2, "Removing joiner: " + eui64);
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance && commissionerActive) {
+    if (openThread->instance && commissionerActive) {
         otExtAddress extAddr;
         
         if (eui64 != "*") {
@@ -725,7 +854,7 @@ bool ThreadProtocol::RemoveJoiner(const std::string& eui64) {
             memcpy(extAddr.m8, &addr, 8);
         }
         
-        otError error = otCommissionerRemoveJoiner(otInstance->instance,
+        otError error = otCommissionerRemoveJoiner(openThread->instance,
             eui64 == "*" ? nullptr : &extAddr);
         
         if (error != OT_ERROR_NONE) {
@@ -947,18 +1076,18 @@ bool ThreadProtocol::SetNetworkKey(const std::vector<uint8_t>& key) {
     std::copy(key.begin(), key.end(), activeDataset.NetworkKey.begin());
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance && hasNetwork) {
+    if (openThread->instance && hasNetwork) {
         otNetworkKey networkKey;
         memcpy(networkKey.m8, key.data(), 16);
         
         // This requires a pending dataset for live networks
         otOperationalDataset dataset;
-        otDatasetGetActive(otInstance->instance, &dataset);
+        otDatasetGetActive(openThread->instance, &dataset);
         memcpy(dataset.mNetworkKey.m8, key.data(), 16);
         dataset.mComponents.mIsNetworkKeyPresent = true;
         
         // Schedule update via pending dataset
-        return otDatasetSetPending(otInstance->instance, &dataset) == OT_ERROR_NONE;
+        return otDatasetSetPending(openThread->instance, &dataset) == OT_ERROR_NONE;
     }
 #endif
     
@@ -1001,7 +1130,7 @@ bool ThreadProtocol::EnableBorderRouter(bool enable) {
     Log(2, enable ? "Enabling Border Router" : "Disabling Border Router");
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         if (enable) {
             // Enable Border Router features
             // This requires proper Border Router initialization
@@ -1033,9 +1162,9 @@ std::vector<uint8_t> ThreadProtocol::GetActiveDataset() const {
     std::vector<uint8_t> result;
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otOperationalDatasetTlvs datasetTlvs;
-        if (otDatasetGetActiveTlvs(otInstance->instance, &datasetTlvs) == OT_ERROR_NONE) {
+        if (otDatasetGetActiveTlvs(openThread->instance, &datasetTlvs) == OT_ERROR_NONE) {
             result.assign(datasetTlvs.mTlvs, datasetTlvs.mTlvs + datasetTlvs.mLength);
         }
     }
@@ -1050,12 +1179,12 @@ bool ThreadProtocol::SetActiveDataset(const std::vector<uint8_t>& dataset) {
     }
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otOperationalDatasetTlvs datasetTlvs;
         datasetTlvs.mLength = static_cast<uint8_t>(dataset.size());
         memcpy(datasetTlvs.mTlvs, dataset.data(), dataset.size());
         
-        return otDatasetSetActiveTlvs(otInstance->instance, &datasetTlvs) == OT_ERROR_NONE;
+        return otDatasetSetActiveTlvs(openThread->instance, &datasetTlvs) == OT_ERROR_NONE;
     }
 #endif
     
@@ -1066,9 +1195,9 @@ std::vector<uint8_t> ThreadProtocol::GetPendingDataset() const {
     std::vector<uint8_t> result;
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otOperationalDatasetTlvs datasetTlvs;
-        if (otDatasetGetPendingTlvs(otInstance->instance, &datasetTlvs) == OT_ERROR_NONE) {
+        if (otDatasetGetPendingTlvs(openThread->instance, &datasetTlvs) == OT_ERROR_NONE) {
             result.assign(datasetTlvs.mTlvs, datasetTlvs.mTlvs + datasetTlvs.mLength);
         }
     }
@@ -1083,12 +1212,12 @@ bool ThreadProtocol::SetPendingDataset(const std::vector<uint8_t>& dataset) {
     }
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otOperationalDatasetTlvs datasetTlvs;
         datasetTlvs.mLength = static_cast<uint8_t>(dataset.size());
         memcpy(datasetTlvs.mTlvs, dataset.data(), dataset.size());
         
-        return otDatasetSetPendingTlvs(otInstance->instance, &datasetTlvs) == OT_ERROR_NONE;
+        return otDatasetSetPendingTlvs(openThread->instance, &datasetTlvs) == OT_ERROR_NONE;
     }
 #endif
     
@@ -1097,8 +1226,8 @@ bool ThreadProtocol::SetPendingDataset(const std::vector<uint8_t>& dataset) {
 
 std::string ThreadProtocol::GetMeshLocalAddress() const {
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
-        const otIp6Address* addr = otThreadGetMeshLocalEid(otInstance->instance);
+    if (openThread->instance) {
+        const otIp6Address* addr = otThreadGetMeshLocalEid(openThread->instance);
         if (addr) {
             char addrStr[OT_IP6_ADDRESS_STRING_SIZE];
             otIp6AddressToString(addr, addrStr, sizeof(addrStr));
@@ -1114,8 +1243,8 @@ std::vector<std::string> ThreadProtocol::GetIPv6Addresses() const {
     std::vector<std::string> addresses;
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
-        const otNetifAddress* addr = otIp6GetUnicastAddresses(otInstance->instance);
+    if (openThread->instance) {
+        const otNetifAddress* addr = otIp6GetUnicastAddresses(openThread->instance);
         while (addr) {
             char addrStr[OT_IP6_ADDRESS_STRING_SIZE];
             otIp6AddressToString(&addr->mAddress, addrStr, sizeof(addrStr));
@@ -1198,8 +1327,8 @@ bool ThreadProtocol::GenerateDataset(const std::string& networkName, uint16_t ch
 
 ThreadDeviceRole ThreadProtocol::GetDeviceRole() const {
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
-        otDeviceRole role = otThreadGetDeviceRole(otInstance->instance);
+    if (openThread->instance) {
+        otDeviceRole role = otThreadGetDeviceRole(openThread->instance);
         switch (role) {
             case OT_DEVICE_ROLE_DISABLED: return ThreadDeviceRole::Disabled;
             case OT_DEVICE_ROLE_DETACHED: return ThreadDeviceRole::Detached;
@@ -1234,14 +1363,15 @@ ThreadDiagnostics ThreadProtocol::GetThreadDiagnostics() const {
     ThreadDiagnostics diag;
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
-        diag.PartitionId = otThreadGetPartitionId(otInstance->instance);
+    if (openThread->instance) {
+        diag.PartitionId = otThreadGetPartitionId(openThread->instance);
         
         otLeaderData leaderData;
-        if (otThreadGetLeaderData(otInstance->instance, &leaderData) == OT_ERROR_NONE) {
+        if (otThreadGetLeaderData(openThread->instance, &leaderData) == OT_ERROR_NONE) {
             diag.LeaderWeight = leaderData.mWeighting;
             diag.LeaderRouterId = leaderData.mLeaderRouterId;
-            diag.LeaderRloc16 = leaderData.mLeaderRloc;
+            // A router's RLOC16 is its router id in the top six bits.
+            diag.LeaderRloc16 = static_cast<uint16_t>(leaderData.mLeaderRouterId << 10);
             diag.NetworkDataVersion = leaderData.mDataVersion;
             diag.StableDataVersion = leaderData.mStableDataVersion;
         }
@@ -1269,18 +1399,18 @@ std::vector<ThreadRouter> ThreadProtocol::GetNeighborTable() const {
     std::vector<ThreadRouter> neighbors;
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otNeighborInfoIterator iterator = OT_NEIGHBOR_INFO_ITERATOR_INIT;
         otNeighborInfo info;
         
-        while (otThreadGetNextNeighborInfo(otInstance->instance, &iterator, &info) == OT_ERROR_NONE) {
+        while (otThreadGetNextNeighborInfo(openThread->instance, &iterator, &info) == OT_ERROR_NONE) {
             ThreadRouter router;
             router.Rloc16 = info.mRloc16;
             router.ExtAddress = *reinterpret_cast<const uint64_t*>(info.mExtAddress.m8);
             router.LinkQualityIn = info.mLinkQualityIn;
-            router.LinkQualityOut = info.mLinkQualityOut;
+            router.LinkQualityOut = info.mLinkQualityIn;   // neighbour info carries only the inbound quality
             router.Age = info.mAge;
-            router.IsLinkEstablished = info.mRxOnWhenIdle;  // Approximate
+            router.IsLinkEstablished = true;               // it is in the neighbour table
             neighbors.push_back(router);
         }
     }
@@ -1291,19 +1421,29 @@ std::vector<ThreadRouter> ThreadProtocol::GetNeighborTable() const {
 
 bool ThreadProtocol::PingDevice(const std::string& address, uint32_t timeoutMs) {
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otIp6Address destAddr;
         if (otIp6AddressFromString(address.c_str(), &destAddr) != OT_ERROR_NONE) {
             return false;
         }
         
-        // Send ICMPv6 echo request
-        otError error = otIcmp6SendEchoRequest(otInstance->instance, 
-            nullptr,  // Default message info
-            &destAddr,
-            nullptr, 0);  // No payload
-        
-        return error == OT_ERROR_NONE;
+        // Send an ICMPv6 echo request. The reply, if any, arrives through
+        // the ICMP handler; what is reported here is that the request went
+        // out, which is what the timeout would otherwise be waiting on.
+        (void)timeoutMs;
+        otMessage* message = otIp6NewMessage(openThread->instance, nullptr);
+        if (!message) {
+            return false;
+        }
+        otMessageInfo messageInfo;
+        std::memset(&messageInfo, 0, sizeof messageInfo);
+        messageInfo.mPeerAddr = destAddr;
+        otError error = otIcmp6SendEchoRequest(openThread->instance, message, &messageInfo, 1);
+        if (error != OT_ERROR_NONE) {
+            otMessageFree(message);   // on success the stack owns it
+            return false;
+        }
+        return true;
     }
 #endif
     return false;
@@ -1315,7 +1455,7 @@ bool ThreadProtocol::SendMulticast(const std::string& address, const std::vector
     Log(3, "Sending multicast to " + address);
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otIp6Address destAddr;
         if (otIp6AddressFromString(address.c_str(), &destAddr) != OT_ERROR_NONE) {
             return false;
@@ -1331,13 +1471,13 @@ bool ThreadProtocol::SendMulticast(const std::string& address, const std::vector
 
 bool ThreadProtocol::JoinMulticastGroup(const std::string& address) {
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otIp6Address groupAddr;
         if (otIp6AddressFromString(address.c_str(), &groupAddr) != OT_ERROR_NONE) {
             return false;
         }
         
-        otError error = otIp6SubscribeMulticastAddress(otInstance->instance, &groupAddr);
+        otError error = otIp6SubscribeMulticastAddress(openThread->instance, &groupAddr);
         if (error == OT_ERROR_NONE) {
             multicastGroups.push_back(address);
             return true;
@@ -1353,13 +1493,13 @@ bool ThreadProtocol::JoinMulticastGroup(const std::string& address) {
 
 bool ThreadProtocol::LeaveMulticastGroup(const std::string& address) {
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         otIp6Address groupAddr;
         if (otIp6AddressFromString(address.c_str(), &groupAddr) != OT_ERROR_NONE) {
             return false;
         }
         
-        otError error = otIp6UnsubscribeMulticastAddress(otInstance->instance, &groupAddr);
+        otError error = otIp6UnsubscribeMulticastAddress(openThread->instance, &groupAddr);
         if (error == OT_ERROR_NONE) {
             multicastGroups.erase(
                 std::remove(multicastGroups.begin(), multicastGroups.end(), address),
@@ -1384,11 +1524,15 @@ bool ThreadProtocol::RegisterService(const std::string& serviceName, uint16_t po
     Log(2, "Registering service: " + serviceName + " on port " + std::to_string(port));
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
-        // Use SRP Client to register service
-        otSrpClientService service;
-        // Setup service structure...
-        // otSrpClientAddService(otInstance->instance, &service);
+    if (openThread->instance) {
+        // SRP registration needs a host name set on the client, the server
+        // found (auto-start), and an otSrpClientService whose name strings
+        // stay valid for as long as it is registered. None of that is wired
+        // yet, and recording the service as registered when the mesh has
+        // never heard of it would only mislead whoever looks it up.
+        (void)txtRecords;
+        ReportError(-430, "SRP service registration is not implemented");
+        return false;
     }
 #endif
     
@@ -1422,7 +1566,7 @@ std::vector<std::string> ThreadProtocol::DiscoverServices(const std::string& ser
     Log(2, "Discovering services: " + serviceType);
     
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
+    if (openThread->instance) {
         // Use DNS-SD client to discover services
         // otDnsClientResolveService(...)
     }
@@ -1458,11 +1602,25 @@ void ThreadProtocol::ProcessThread() {
     Log(3, "Process thread started");
     
     while (running) {
-        // Process OpenThread tasklets
-        otInstance->Process();
-        
-        // Small sleep to prevent busy-waiting
-        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#ifdef ULTRACANVAS_WITH_OPENTHREAD
+        if (gOpenThreadResetRequested.exchange(false)) {
+            Log(1, "OpenThread asked for a reset; restarting the stack");
+            openThread->Shutdown();
+            if (!openThread->Initialize(openThread->radioUrlStorage)) {
+                ReportError(-120, "OpenThread did not come back after the reset");
+                running = false;
+                break;
+            }
+            continue;
+        }
+#endif
+        // One turn of the OpenThread mainloop. Process() waits on the
+        // platform's descriptors itself, so no extra sleep is needed when
+        // the stack is up; the sleep only matters for the stub.
+        openThread->Process();
+        if (!openThread->IsInitialized()) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
     }
     
     Log(3, "Process thread stopped");
@@ -1485,9 +1643,14 @@ void ThreadProtocol::NetworkThread() {
             SmartHomeNetworkInfo info;
             info.Protocol = SmartHomeProtocolType::Thread;
             info.NetworkName = activeDataset.NetworkName;
-            info.PanId = activeDataset.PanId;
-            info.Channel = activeDataset.Channel;
-            info.IsOpen = pairing;
+            {
+                std::ostringstream pan;
+                pan << "0x" << std::hex << std::uppercase << std::setfill('0')
+                    << std::setw(4) << activeDataset.PanId;
+                info.PanId = pan.str();
+            }
+            info.Channel = std::to_string(activeDataset.Channel);
+            info.Active = pairing;
             
             if (!hasNetwork) {
                 hasNetwork = true;
@@ -1503,7 +1666,7 @@ void ThreadProtocol::NetworkThread() {
 
 void ThreadProtocol::UpdateTables() {
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (!otInstance->instance) return;
+    if (!openThread->instance) return;
     
     std::lock_guard<std::mutex> lock(tableMutex);
     
@@ -1511,13 +1674,13 @@ void ThreadProtocol::UpdateTables() {
     routerTable.clear();
     otRouterInfo routerInfo;
     for (uint8_t i = 0; i <= OT_NETWORK_MAX_ROUTER_ID; i++) {
-        if (otThreadGetRouterInfo(otInstance->instance, i, &routerInfo) == OT_ERROR_NONE) {
+        if (otThreadGetRouterInfo(openThread->instance, i, &routerInfo) == OT_ERROR_NONE) {
             ThreadRouter router;
             router.Rloc16 = routerInfo.mRloc16;
             router.RouterId = routerInfo.mRouterId;
             router.ExtAddress = *reinterpret_cast<const uint64_t*>(routerInfo.mExtAddress.m8);
             router.IsLeader = (router.RouterId == 
-                otThreadGetLeaderRouterId(otInstance->instance));
+                otThreadGetLeaderRouterId(openThread->instance));
             router.LinkQualityIn = routerInfo.mLinkQualityIn;
             router.LinkQualityOut = routerInfo.mLinkQualityOut;
             router.Age = routerInfo.mAge;
@@ -1531,9 +1694,9 @@ void ThreadProtocol::UpdateTables() {
     childTable.clear();
     
     otChildInfo childInfo;
-    uint16_t maxChildren = otThreadGetMaxAllowedChildren(otInstance->instance);
+    uint16_t maxChildren = otThreadGetMaxAllowedChildren(openThread->instance);
     for (uint16_t i = 0; i < maxChildren; i++) {
-        if (otThreadGetChildInfoByIndex(otInstance->instance, i, &childInfo) == OT_ERROR_NONE) {
+        if (otThreadGetChildInfoByIndex(openThread->instance, i, &childInfo) == OT_ERROR_NONE) {
             ThreadChild child;
             child.Rloc16 = childInfo.mRloc16;
             child.ExtAddress = *reinterpret_cast<const uint64_t*>(childInfo.mExtAddress.m8);
@@ -1681,7 +1844,8 @@ void ThreadProtocol::HandleStateChange(otChangedFlags flags) {
     }
 }
 
-void ThreadProtocol::HandleDiscoveryResult(otActiveScanResult* result) {
+void ThreadProtocol::HandleDiscoveryResult(const void* scanResult) {
+    const auto* result = static_cast<const otActiveScanResult*>(scanResult);
     if (!result) return;
     
     SmartHomeDeviceInfo device;
@@ -1694,8 +1858,8 @@ void ThreadProtocol::HandleDiscoveryResult(otActiveScanResult* result) {
     AddDiscoveredDevice(device);
 }
 
-void ThreadProtocol::HandleCommissionerState(otCommissionerState state) {
-    switch (state) {
+void ThreadProtocol::HandleCommissionerState(int stateValue) {
+    switch (static_cast<otCommissionerState>(stateValue)) {
         case OT_COMMISSIONER_STATE_DISABLED:
             commissionerActive = false;
             Log(2, "Commissioner disabled");
@@ -1710,12 +1874,14 @@ void ThreadProtocol::HandleCommissionerState(otCommissionerState state) {
     }
 }
 
-void ThreadProtocol::HandleJoinerEvent(otCommissionerJoinerEvent event,
-                                        const otJoinerInfo* joinerInfo,
-                                        const otExtAddress* joinerId) {
+void ThreadProtocol::HandleJoinerEvent(int eventValue,
+                                        const void* joinerInfoPtr,
+                                        const void* joinerIdPtr) {
+    (void)joinerInfoPtr;
+    const auto* joinerId = static_cast<const otExtAddress*>(joinerIdPtr);
     std::string eui64 = joinerId ? Eui64ToString(*reinterpret_cast<const uint64_t*>(joinerId->m8)) : "*";
     
-    switch (event) {
+    switch (static_cast<otCommissionerJoinerEvent>(eventValue)) {
         case OT_COMMISSIONER_JOINER_START:
             Log(2, "Joiner started: " + eui64);
             break;
@@ -1775,8 +1941,8 @@ uint64_t ThreadProtocol::StringToEui64(const std::string& str) const {
 
 uint64_t ThreadProtocol::GetSelfExtAddress() const {
 #ifdef ULTRACANVAS_WITH_OPENTHREAD
-    if (otInstance->instance) {
-        const otExtAddress* addr = otLinkGetExtendedAddress(otInstance->instance);
+    if (openThread->instance) {
+        const otExtAddress* addr = otLinkGetExtendedAddress(openThread->instance);
         if (addr) {
             return *reinterpret_cast<const uint64_t*>(addr->m8);
         }
