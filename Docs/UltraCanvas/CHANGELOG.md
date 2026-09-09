@@ -16,6 +16,27 @@
   push and **saying so unprompted** when there is no open pull request: not
   opening one unasked is the rule, leaving the user to discover that nothing
   was published is not.
+#### 2026-09-09 *0.3.111*
+- **A double-click that starts a program now says so: the busy pointer.**
+  Spawning a program takes milliseconds, the program appearing takes seconds,
+  and nothing in between told the user their double-click had arrived — so a
+  heavy application got double-clicked twice. Windows grew
+  `ShowBusyPointer(delayMs, holdMs, shape)` / `HideBusyPointer()`: after a
+  delay (**one second** by default) the pointer changes to the new
+  `UCMouseCursor::AppStarting` — the arrow with a busy sign
+  (`IDC_APPSTARTING` on Windows, the theme's `left_ptr_watch` / `progress`
+  and otherwise the watch on X11, `progress` on WASM, unchanged on macOS
+  where launch feedback is the Dock's), and after a hold (**eight seconds**)
+  it goes back by itself. The delay is what makes it usable: a program that
+  is up before the second has passed never changes the pointer at all. While
+  it is up the busy shape wins over element cursors — the window stays
+  usable — and when it comes down the element under the pointer gets its
+  cursor back without waiting for a mouse move.
+- **UltraCanvasFilerWidget arms it on every launch it makes**: a native
+  binary, a script answered with *Run*, a `.desktop` launcher, an application
+  bundle, a `.webloc` address and anything handed to the OS default
+  application. A launch that fails immediately takes the pointer down again
+  through `onError`.
 
 #### 2026-09-09 *0.3.110*
 - **A dialog can drop the severity icon, and the extract window's progress ring
