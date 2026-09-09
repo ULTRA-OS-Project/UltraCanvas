@@ -138,6 +138,14 @@ namespace UltraCanvas {
                     cursor = [NSCursor arrowCursor];
                     break;
 
+                case UCMouseCursor::AppStarting:
+                    // Launch feedback on macOS belongs to the Dock (the
+                    // bouncing icon) and the system-managed wait cursor;
+                    // AppKit has no arrow-with-busy-sign shape, so the
+                    // pointer stays the arrow here.
+                    cursor = [NSCursor arrowCursor];
+                    break;
+
                 case UCMouseCursor::Cross:
                     cursor = [NSCursor crosshairCursor];
                     break;
