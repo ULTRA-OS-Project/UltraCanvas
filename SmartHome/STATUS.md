@@ -198,11 +198,23 @@ the compiler emit a wall of missing-header errors:
 | Matter | connectedhomeip + mbedTLS | Apache 2 |
 | Thread | OpenThread + mbedTLS | BSD 3-Clause / Apache 2 |
 | Zigbee | Silicon Labs EZSP (libezsp) | vendor |
-| Z-Wave | OpenZWave | **LGPL 2.1** |
+| Z-Wave | OpenZWave 1.6 (`libopenzwave1.6-dev`) | **LGPL 2.1**, dynamic |
 | KNX | nothing — KNXnet/IP over sockets | — |
 
-**KNX builds today.** `-DULTRACANVAS_SMARTHOME_KNX=ON` compiles and links with
-no third party at all. It is the only backend in that state.
+**KNX and Z-Wave build today.** `-DULTRACANVAS_SMARTHOME_KNX=ON` compiles and
+links with no third party at all. `-DULTRACANVAS_SMARTHOME_ZWAVE=ON` compiles
+and links against OpenZWave 1.6 from `libopenzwave1.6-dev`, dynamically:
+`libsmarthome.a` carries 98 undefined `OpenZWave::` symbols, `ldd` on a linked
+binary lists `libopenzwave.so.1.6`, and no `OpenZWave::` symbol is defined in
+the binary itself. `tests/ZWaveLinkTest.cpp` runs under ctest whenever that
+backend is enabled.
+
+Two macros gate the real code inside those backends and are easy to miss:
+`ULTRACANVAS_WITH_ZWAVE` and `ULTRACANVAS_WITH_EZSP`. Selecting a backend's
+source file is not enough — without its macro the file compiles into a shell
+that links successfully and does nothing. CMake defines both now; the symptom
+if it ever stops is a build that succeeds while `nm` shows no undefined
+`OpenZWave::` symbols at all.
 
 **Backend plan (decided 2026-09-09).** KNX first, because it needs nothing.
 Zigbee on **EZSP only** — the backend also carries TI Z-Stack branches, but

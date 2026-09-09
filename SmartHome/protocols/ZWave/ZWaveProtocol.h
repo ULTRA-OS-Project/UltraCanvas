@@ -504,6 +504,29 @@ public:
      * @return Current controller path
      */
     std::string GetControllerPath() const { return controllerPath; }
+
+    // ISmartHomeProtocol methods the backend had no declaration for.
+    std::vector<SmartHomeDeviceCategory> GetSupportedDeviceCategories() const override;
+    bool IsHardwareAvailable() const override;
+    std::string GetHardwareInfo() const override;
+    std::vector<std::string> GetAvailableAdapters() const override;
+    bool SelectAdapter(const std::string& adapterId) override;
+    bool FormNetwork(const std::string& networkName = "") override;
+    bool JoinNetwork(const std::string& networkId) override;
+    bool LeaveNetwork() override;
+    NetworkTopology GetTopology() const override;
+
+    // Pairing on Z-Wave is inclusion, and unpairing is exclusion.
+    bool StartPairing(int timeoutSeconds = 60) override;
+    void StopPairing() override;
+
+    std::vector<std::shared_ptr<ISmartHomeDevice>> GetDevices() const override;
+    std::shared_ptr<ISmartHomeDevice> GetDevice(const std::string& deviceId) const override;
+    bool RemoveDevice(const std::string& deviceId) override;
+    bool InterviewDevice(const std::string& deviceId) override;
+    SmartHomeSecurityLevel GetSecurityLevel() const override;
+    bool LoadConfig(const std::string& path) override;
+    bool SaveConfig(const std::string& path) override;
     
     /**
      * @brief Set OpenZWave configuration path

@@ -269,7 +269,7 @@ configure time naming what is missing.
 | Matter backend (`ULTRACANVAS_SMARTHOME_MATTER`, default OFF) | connectedhomeip (Apache 2) + mbedTLS (Apache 2) | connectedhomeip + mbedTLS | connectedhomeip + mbedTLS |
 | Thread backend (`ULTRACANVAS_SMARTHOME_THREAD`, default OFF) | OpenThread (BSD 3-Clause) + mbedTLS | OpenThread + mbedTLS | OpenThread + mbedTLS |
 | Zigbee backend (`ULTRACANVAS_SMARTHOME_ZIGBEE`, default OFF) | Silicon Labs EZSP (libezsp) | same | same |
-| Z-Wave backend (`ULTRACANVAS_SMARTHOME_ZWAVE`, default OFF) | OpenZWave (**LGPL 2.1**) | OpenZWave | OpenZWave |
+| Z-Wave backend (`ULTRACANVAS_SMARTHOME_ZWAVE`, default OFF) | OpenZWave 1.6 (**LGPL 2.1**, `libopenzwave1.6-dev`, **linked dynamically**) | OpenZWave 1.6 | OpenZWave 1.6 |
 | KNX backend (`ULTRACANVAS_SMARTHOME_KNX`, default OFF) | (core only) — KNXnet/IP over sockets; **builds today** | (core only) | (core only) |
 
 > **mbedTLS, not OpenSSL.** Matter's device attestation and OpenThread's
@@ -282,8 +282,18 @@ configure time naming what is missing.
 > it has no P-256 and no X.509, so UltraCrypt's 2026-08-10 backend ruling is
 > untouched by this.
 
-> **Z-Wave is LGPL.** OpenZWave is LGPL 2.1, unlike everything else in this
-> table. Link it dynamically, or leave that backend off.
+> **Z-Wave is LGPL, and the link is enforced.** OpenZWave is LGPL 2.1, unlike
+> everything else in this table, and its packages ship `libopenzwave.a`
+> *alongside* `libopenzwave.so` — so a plain `-lopenzwave` can quietly pull the
+> archive in and carry the relinking obligation into the binary. CMake asks for
+> the shared object by name and refuses to configure if only the static one is
+> present. `SmartHome/tests/ZWaveLinkTest.cpp` is the runtime half; after any
+> change to how this is linked, check:
+>
+> ```
+> ldd  <binary> | grep openzwave           # must list libopenzwave.so
+> nm -C <binary> | grep " T OpenZWave::"   # must be empty
+> ```
 
 ### Ultra AI module
 

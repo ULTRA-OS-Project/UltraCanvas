@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "ZWaveProtocol.h"
+#include <filesystem>
 #include <iostream>
 #include <sstream>
 #include <algorithm>
@@ -19,7 +20,7 @@
 #include <openzwave/Node.h>
 #include <openzwave/Group.h>
 #include <openzwave/Scene.h>
-#include <openzwave/ValueStore.h>
+#include <openzwave/value_classes/ValueStore.h>
 #include <openzwave/value_classes/Value.h>
 #include <openzwave/value_classes/ValueBool.h>
 #include <openzwave/value_classes/ValueByte.h>
@@ -39,7 +40,8 @@ namespace SmartHome {
 // CONSTRUCTOR / DESTRUCTOR
 // ============================================================================
 
-ZWaveProtocol::ZWaveProtocol() {
+ZWaveProtocol::ZWaveProtocol()
+    : SmartHomeProtocolBase(SmartHomeProtocolType::ZWave, "Z-Wave") {
     // Default paths - can be overridden before Initialize()
 #ifdef __linux__
     controllerPath = "/dev/ttyUSB0";
@@ -717,7 +719,10 @@ bool ZWaveProtocol::RefreshNodeInfo(uint8_t nodeId) {
 bool ZWaveProtocol::RequestAllConfigParams(uint8_t nodeId) {
 #ifdef ULTRACANVAS_WITH_ZWAVE
     if (!initialized || homeId == 0) return false;
-    return OpenZWave::Manager::Get()->RequestAllConfigParams(homeId, nodeId);
+    // Returns void in OpenZWave 1.6: the request is queued, and the answers
+    // arrive later as notifications.
+    OpenZWave::Manager::Get()->RequestAllConfigParams(homeId, nodeId);
+    return true;
 #else
     return true;
 #endif
@@ -1207,14 +1212,20 @@ bool ZWaveProtocol::AddValueToScene(uint8_t sceneId, const ZWaveValue& value) {
     }
     
     switch (value.Type) {
+        // OpenZWave 1.6 overloads AddSceneValue on the value's type; there are
+        // no per-type AddSceneValueBool/Byte/Int/Float entry points.
         case ZWaveValueType::Bool:
-            return OpenZWave::Manager::Get()->AddSceneValueBool(sceneId, valueId, value.BoolValue);
+            return OpenZWave::Manager::Get()->AddSceneValue(
+                sceneId, valueId, static_cast<bool>(value.BoolValue));
         case ZWaveValueType::Byte:
-            return OpenZWave::Manager::Get()->AddSceneValueByte(sceneId, valueId, value.ByteValue);
+            return OpenZWave::Manager::Get()->AddSceneValue(
+                sceneId, valueId, static_cast<uint8>(value.ByteValue));
         case ZWaveValueType::Int:
-            return OpenZWave::Manager::Get()->AddSceneValueInt(sceneId, valueId, value.IntValue);
+            return OpenZWave::Manager::Get()->AddSceneValue(
+                sceneId, valueId, static_cast<int32>(value.IntValue));
         case ZWaveValueType::Decimal:
-            return OpenZWave::Manager::Get()->AddSceneValueFloat(sceneId, valueId, value.DecimalValue);
+            return OpenZWave::Manager::Get()->AddSceneValue(
+                sceneId, valueId, static_cast<float>(value.DecimalValue));
         default:
             return false;
     }
@@ -1946,8 +1957,8 @@ void ZWaveProtocol::NotifyNodeAdded(const ZWaveNode& node) {
     
     // Also notify SmartHome callbacks
     SmartHomeDeviceInfo info = ConvertToDeviceInfo(node);
-    if (deviceDiscoveredCallback) {
-        deviceDiscoveredCallback(info);
+    if (onDeviceDiscover) {
+        onDeviceDiscover(info);
     }
 }
 
@@ -1979,8 +1990,8 @@ void ZWaveProtocol::NotifyValueChanged(const ZWaveValue& value) {
             return;  // Don't notify for unhandled types
     }
     
-    if (deviceStateChangedCallback && !state.empty()) {
-        deviceStateChangedCallback(MakeDeviceId(value.NodeId), state);
+    if (onDeviceUpdate && !state.empty()) {
+        onDeviceUpdate(MakeDeviceId(value.NodeId));
     }
 }
 
@@ -2002,6 +2013,188 @@ void ZWaveProtocol::ProcessNotificationQueue() {
             std::this_thread::sleep_for(std::chrono::milliseconds(10));
         }
     }
+}
+
+// ============================================================================
+// INTERFACE METHODS THE BACKEND HAD NO IMPLEMENTATION FOR
+// ============================================================================
+
+std::shared_ptr<ISmartHomeDevice> ZWaveProtocol::GetDevice(const std::string&) const {
+    return nullptr;
+}
+
+bool ZWaveProtocol::RemoveDevice(const std::string& deviceId) {
+    return UnpairDevice(deviceId);
+}
+
+bool ZWaveProtocol::InterviewDevice(const std::string& deviceId) {
+    // Re-reading a Z-Wave node means asking its command classes again.
+    std::map<std::string, std::string> state;
+    return GetDeviceState(deviceId, state);
+}
+
+SmartHomeSecurityLevel ZWaveProtocol::GetSecurityLevel() const {
+    // Report the weakest link, not the best case: a network is only as secure
+    // as the least protected node on it, and S0 is not S2.
+    bool anyIncluded = false;
+    bool allS2 = true;
+    for (const auto& [id, node] : nodes) {
+        if (node.NodeId == controllerNodeId) continue;
+        anyIncluded = true;
+        if (node.Security != ZWaveSecurityLevel::S2AccessControl &&
+            node.Security != ZWaveSecurityLevel::S2Authenticated &&
+            node.Security != ZWaveSecurityLevel::S2Unauthenticated) {
+            allS2 = false;
+        }
+    }
+    if (!anyIncluded) return SmartHomeSecurityLevel::Basic;
+    return allS2 ? SmartHomeSecurityLevel::Certified
+                 : SmartHomeSecurityLevel::Encrypted;
+}
+
+bool ZWaveProtocol::LoadConfig(const std::string& path) {
+    // OpenZWave keeps its own network cache; this points it at the directory.
+    if (path.empty()) return false;
+    if (IsInitialized()) return false;   // the driver reads it at start-up
+    configPath = path;
+    return true;
+}
+
+bool ZWaveProtocol::SaveConfig(const std::string&) {
+    // OpenZWave writes zwcfg_<homeid>.xml itself on shutdown; there is nothing
+    // for this backend to save on top, and claiming otherwise would suggest a
+    // file appeared where none did.
+    return false;
+}
+
+bool ZWaveProtocol::JoinNetwork(const std::string&) {
+    // A controller cannot join someone else's Z-Wave network from software; it
+    // is included into one by that network's primary controller, physically.
+    return false;
+}
+
+bool ZWaveProtocol::LeaveNetwork() {
+    // Likewise: leaving means being excluded by the primary controller, or a
+    // factory reset of the stick. Neither belongs behind an API call that a
+    // caller might make by accident.
+    return false;
+}
+
+NetworkTopology ZWaveProtocol::GetTopology() const {
+    NetworkTopology topology;
+    char buf[16];
+    std::snprintf(buf, sizeof buf, "%08X", homeId);
+    topology.NetworkId = buf;
+
+    for (const auto& [id, node] : nodes) {
+        NetworkNode entry;
+        entry.NodeId = std::to_string(static_cast<int>(node.NodeId));
+        entry.DeviceId = MakeDeviceId(node.NodeId);
+        // Mains-powered listening nodes route for the battery ones; that is the
+        // distinction that actually shapes a Z-Wave mesh.
+        entry.IsRouter = node.IsRouting && node.IsListening;
+        entry.IsCoordinator = (node.NodeId == controllerNodeId);
+        entry.LinkQuality = 0;
+        entry.Depth = entry.IsCoordinator ? 0 : 1;
+        topology.Nodes.push_back(entry);
+
+        if (entry.IsRouter) ++topology.RouterCount;
+        else                ++topology.EndDeviceCount;
+    }
+    topology.MaxDepth = topology.Nodes.empty() ? 0 : 1;
+    return topology;
+}
+
+bool ZWaveProtocol::StartPairing(int) {
+    // OpenZWave's inclusion runs until it is stopped or the controller times
+    // out on its own, so the timeout argument has nothing to bind to here.
+    return StartInclusion();
+}
+
+void ZWaveProtocol::StopPairing() {
+    StopInclusion();
+}
+
+std::vector<std::shared_ptr<ISmartHomeDevice>> ZWaveProtocol::GetDevices() const {
+    // Z-Wave is addressed by node id and command class rather than by device
+    // object; GetPairedDevices() is the view with real content.
+    return {};
+}
+
+std::vector<SmartHomeDeviceCategory> ZWaveProtocol::GetSupportedDeviceCategories() const {
+    // Z-Wave's strength is battery security hardware, but the command classes
+    // cover the usual house fittings too.
+    return {
+        SmartHomeDeviceCategory::Light,
+        SmartHomeDeviceCategory::Switch,
+        SmartHomeDeviceCategory::Plug,
+        SmartHomeDeviceCategory::Lock,
+        SmartHomeDeviceCategory::Sensor,
+        SmartHomeDeviceCategory::Thermostat,
+        SmartHomeDeviceCategory::Blind,
+        SmartHomeDeviceCategory::Gateway,
+    };
+}
+
+bool ZWaveProtocol::IsHardwareAvailable() const {
+    // Z-Wave needs a physical controller on a serial port. Unlike KNX there is
+    // no networked fallback, so absence of the device node is a real answer
+    // rather than something to discover later.
+    return !controllerPath.empty() && std::filesystem::exists(controllerPath);
+}
+
+std::string ZWaveProtocol::GetHardwareInfo() const {
+    std::string info = "Z-Wave controller " + controllerPath;
+    if (homeId != 0) {
+        char buf[24];
+        std::snprintf(buf, sizeof buf, " (home id 0x%08X)", homeId);
+        info += buf;
+    }
+    return info;
+}
+
+std::vector<std::string> ZWaveProtocol::GetAvailableAdapters() const {
+    // Z-Wave sticks appear as USB CDC or FTDI serial nodes. Listing what is
+    // actually present beats making the caller guess at ttyUSB0.
+    std::vector<std::string> adapters;
+    const char* dirs[] = {"/dev", "/dev/serial/by-id"};
+    for (const char* dir : dirs) {
+        std::error_code ec;
+        if (!std::filesystem::is_directory(dir, ec)) continue;
+        for (const auto& entry : std::filesystem::directory_iterator(dir, ec)) {
+            const std::string name = entry.path().filename().string();
+            const bool looksSerial =
+                name.rfind("ttyUSB", 0) == 0 || name.rfind("ttyACM", 0) == 0 ||
+                name.rfind("cu.usbserial", 0) == 0 || name.rfind("cu.usbmodem", 0) == 0;
+            if (looksSerial || std::string(dir) == "/dev/serial/by-id") {
+                adapters.push_back(entry.path().string());
+            }
+        }
+    }
+    std::sort(adapters.begin(), adapters.end());
+    adapters.erase(std::unique(adapters.begin(), adapters.end()), adapters.end());
+    // Keep the configured path selectable even when nothing was enumerated.
+    if (!controllerPath.empty() &&
+        std::find(adapters.begin(), adapters.end(), controllerPath) == adapters.end()) {
+        adapters.push_back(controllerPath);
+    }
+    return adapters;
+}
+
+bool ZWaveProtocol::SelectAdapter(const std::string& adapterId) {
+    if (adapterId.empty()) return false;
+    // Changing the controller under a running driver would leave the node list
+    // describing a network this stick is not on.
+    if (IsInitialized()) return false;
+    controllerPath = adapterId;
+    return true;
+}
+
+bool ZWaveProtocol::FormNetwork(const std::string&) {
+    // A Z-Wave controller carries its own home id; the network exists as soon as
+    // the stick does, and there is nothing to create. Reporting success once the
+    // driver is up is the truthful reading of "the network is there".
+    return IsInitialized() && homeId != 0;
 }
 
 // ============================================================================

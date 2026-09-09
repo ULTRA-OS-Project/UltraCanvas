@@ -49,9 +49,15 @@ its own license; the full license texts ship alongside the respective files.
 - **Used by:** the Smart Home module's Z-Wave backend
   (`SmartHome/protocols/ZWave/`), which is OFF by default.
 - **Upstream:** https://github.com/OpenZWave/open-zwave
-- **License:** **LGPL 2.1** — the only copyleft component listed here. Link it
-  dynamically, or leave `ULTRACANVAS_SMARTHOME_ZWAVE` off; a static link would
-  carry the LGPL's relinking obligation into the resulting binary.
+- **Linked, not vendored, and dynamically:** the system package is used
+  (`libopenzwave1.6-dev`). It ships `libopenzwave.a` alongside
+  `libopenzwave.so`, so CMake asks for the shared object by name rather than
+  passing `-lopenzwave` and letting the linker choose. Configuration fails if
+  only the static library is found.
+- **License:** **LGPL 2.1** — the only copyleft component listed here. A static
+  link would carry the LGPL's relinking obligation into the resulting binary;
+  `SmartHome/tests/ZWaveLinkTest.cpp` documents the two commands that verify it
+  did not happen.
 
 ---
 

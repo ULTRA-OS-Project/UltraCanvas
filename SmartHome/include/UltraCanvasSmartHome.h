@@ -106,6 +106,12 @@ struct SmartHomeDeviceInfo {
     SmartHomeSecurityLevel Security = SmartHomeSecurityLevel::None;
     bool Reachable = false;
     uint64_t LastSeen = 0;
+    // What the device can actually do, as lower-case tags: "switch", "dimmer",
+    // "colour", "thermostat", "lock", "binarySensor"… A backend fills these from
+    // whatever its protocol advertises (Z-Wave command classes, Zigbee clusters),
+    // so a caller can choose a control from what the device supports rather than
+    // guessing from Category alone.
+    std::vector<std::string> Capabilities;
 };
 
 struct SmartHomeNetworkInfo {

@@ -110,7 +110,24 @@ foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
     elseif(_sh_proto STREQUAL "ZWave")
         find_path(OPENZWAVE_INCLUDE_DIR openzwave/Manager.h)
         if(NOT OPENZWAVE_INCLUDE_DIR)
-            list(APPEND _sh_missing "OpenZWave")
+            list(APPEND _sh_missing "OpenZWave (libopenzwave1.6-dev)")
+        endif()
+        # OpenZWave is LGPL 2.1 and its packages ship BOTH libopenzwave.a and
+        # libopenzwave.so. A plain find_library or -lopenzwave can pick the
+        # archive, which would pull LGPL code into this binary statically and
+        # carry the relinking obligation with it. Ask for the shared object by
+        # name so that cannot happen quietly, and refuse the static one.
+        find_library(OPENZWAVE_SHARED_LIBRARY
+                     NAMES libopenzwave.so libopenzwave.dylib openzwave.dll)
+        if(NOT OPENZWAVE_SHARED_LIBRARY)
+            find_library(OPENZWAVE_ANY_LIBRARY NAMES openzwave)
+            if(OPENZWAVE_ANY_LIBRARY)
+                list(APPEND _sh_missing
+                     "a SHARED OpenZWave (found only ${OPENZWAVE_ANY_LIBRARY}; "
+                     "OpenZWave is LGPL 2.1 and this project links it dynamically)")
+            else()
+                list(APPEND _sh_missing "OpenZWave (libopenzwave1.6-dev)")
+            endif()
         endif()
     endif()
     # KNX speaks KNXnet/IP straight over sockets and needs nothing.
@@ -142,6 +159,18 @@ target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core)
 foreach(_sh_proto ${_sh_backends})
     string(TOUPPER ${_sh_proto} _sh_upper)
     target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_${_sh_upper}=1)
+    if(_sh_proto STREQUAL "ZWave")
+        # Selects the real OpenZWave code. Without it the backend compiles into
+        # a shell: the 162 OpenZWave calls sit behind this macro, the library is
+        # never referenced, and the link succeeds while doing nothing.
+        target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_WITH_ZWAVE=1)
+        target_include_directories(SmartHome PRIVATE ${OPENZWAVE_INCLUDE_DIR}
+                                                     ${OPENZWAVE_INCLUDE_DIR}/openzwave)
+        # The shared object by absolute path: naming the target "openzwave" here
+        # would put -lopenzwave on the link line and let the linker choose the
+        # archive again.
+        target_link_libraries(SmartHome PUBLIC ${OPENZWAVE_SHARED_LIBRARY})
+    endif()
     if(_sh_proto STREQUAL "Zigbee")
         # Selects the EZSP half of the backend's #ifdef pairs.
         target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_WITH_EZSP=1)
@@ -209,6 +238,16 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
 
     add_executable(SmartHomeWidgetTest tests/WidgetTest.cpp)
     target_link_libraries(SmartHomeWidgetTest PRIVATE SmartHomeUI)
+
+    # Only meaningful when the backend is actually in the build; it is also the
+    # runtime half of the LGPL dynamic-link guarantee.
+    if("ZWave" IN_LIST _sh_backends)
+        add_executable(SmartHomeZWaveLinkTest tests/ZWaveLinkTest.cpp)
+        target_link_libraries(SmartHomeZWaveLinkTest PRIVATE SmartHome)
+        target_include_directories(SmartHomeZWaveLinkTest PRIVATE
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/protocols/ZWave)
+        add_test(NAME SmartHomeZWaveLink COMMAND SmartHomeZWaveLinkTest)
+    endif()
 
     add_test(NAME SmartHomeFacade COMMAND SmartHomeFacadeTest)
     add_test(NAME SmartHomeWidgets COMMAND SmartHomeWidgetTest)
