@@ -260,8 +260,15 @@ private:
 
 /**
  * @brief Network node for topology visualization
+ *
+ * Deliberately NOT called NetworkNode: ISmartHomeProtocol.h already declares a
+ * NetworkNode in this same namespace, describing the network rather than the
+ * view of it. Two structs of one name in one namespace is a redefinition error
+ * the moment a translation unit includes both headers — which is exactly what
+ * wiring this widget to a protocol backend does. This one carries view state
+ * (position, selection), so it is the one that got renamed.
  */
-struct NetworkNode {
+struct TopologyViewNode {
     std::string DeviceId;
     std::string Name;
     SmartHomeProtocolType Protocol;
@@ -351,7 +358,7 @@ private:
     Color GetProtocolColor(SmartHomeProtocolType protocol) const;
     Color GetSignalColor(int signal) const;
     
-    std::vector<NetworkNode> nodes;
+    std::vector<TopologyViewNode> nodes;
     std::vector<NetworkLink> links;
     
     SmartHomeProtocolType protocolFilter = SmartHomeProtocolType::Unknown;

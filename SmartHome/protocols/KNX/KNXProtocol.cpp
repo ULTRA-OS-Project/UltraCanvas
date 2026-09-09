@@ -425,7 +425,8 @@ void KNXProtocol::EncodeFloat32(float value, uint8_t* data) {
 // CONSTRUCTOR / DESTRUCTOR
 // ============================================================================
 
-KNXProtocol::KNXProtocol() {
+KNXProtocol::KNXProtocol()
+    : SmartHomeProtocolBase(SmartHomeProtocolType::KNX, "KNX") {
 #ifdef _WIN32
     // Initialize Winsock
     WSADATA wsaData;
@@ -884,7 +885,7 @@ bool KNXProtocol::StartDiscovery(int timeoutSeconds) {
             info.Manufacturer = "KNX";
             info.Model = "KNXnet/IP Gateway";
             info.Protocol = SmartHomeProtocolType::KNX;
-            info.Category = SmartHomeDeviceCategory::Hub;
+            info.Category = SmartHomeDeviceCategory::Gateway;
             info.State = SmartHomeDeviceState::Online;
             
             discoveredDevices.push_back(info);
@@ -1826,12 +1827,159 @@ void KNXProtocol::NotifyGroupValue(const KNXGroupAddress& address, const std::ve
         onGroupValue(address, value);
     }
     
-    // Also notify SmartHome callbacks
-    if (deviceStateChangedCallback) {
-        std::map<std::string, std::string> state;
-        GetDeviceState(MakeDeviceId(address), state);
-        deviceStateChangedCallback(MakeDeviceId(address), state);
+    // And up through the protocol base, which is what the manager listens to.
+    if (onDeviceUpdate) {
+        onDeviceUpdate(MakeDeviceId(address));
     }
+}
+
+// ============================================================================
+// INTERFACE METHODS KNX HAD NO IMPLEMENTATION FOR
+// ============================================================================
+
+std::vector<SmartHomeDeviceCategory> KNXProtocol::GetSupportedDeviceCategories() const {
+    // What KNX installations actually carry: lighting, blinds, heating, the
+    // sensors that drive them, and the gateway itself.
+    return {
+        SmartHomeDeviceCategory::Light,
+        SmartHomeDeviceCategory::Switch,
+        SmartHomeDeviceCategory::Blind,
+        SmartHomeDeviceCategory::Thermostat,
+        SmartHomeDeviceCategory::Sensor,
+        SmartHomeDeviceCategory::Gateway,
+    };
+}
+
+bool KNXProtocol::IsHardwareAvailable() const {
+    // KNXnet/IP needs no local adapter — it speaks to a gateway over the
+    // network — so the transport is always there. Whether a gateway actually
+    // answers is what Initialize() and ConnectTunnel() find out.
+    return true;
+}
+
+std::string KNXProtocol::GetHardwareInfo() const {
+    if (connected) {
+        return "KNXnet/IP gateway " + gatewayIP + ":" + std::to_string(gatewayPort);
+    }
+    return "KNXnet/IP (not connected; gateway " + gatewayIP + ")";
+}
+
+std::vector<std::string> KNXProtocol::GetAvailableAdapters() const {
+    // The "adapters" are gateways. Whatever discovery has already found, plus
+    // the configured one so a hand-set gateway is always selectable.
+    std::vector<std::string> adapters;
+    for (const auto& gw : discoveredGateways) {
+        adapters.push_back(gw.IPAddress + ":" + std::to_string(gw.Port));
+    }
+    const std::string configured = gatewayIP + ":" + std::to_string(gatewayPort);
+    if (std::find(adapters.begin(), adapters.end(), configured) == adapters.end()) {
+        adapters.push_back(configured);
+    }
+    return adapters;
+}
+
+bool KNXProtocol::SelectAdapter(const std::string& adapterId) {
+    // "ip" or "ip:port".
+    const size_t colon = adapterId.rfind(':');
+    if (colon == std::string::npos) {
+        SetGateway(adapterId, 3671);
+        return true;
+    }
+    const std::string host = adapterId.substr(0, colon);
+    const std::string portText = adapterId.substr(colon + 1);
+    if (host.empty() || portText.empty() ||
+        portText.find_first_not_of("0123456789") != std::string::npos) {
+        return false;
+    }
+    const unsigned long port = std::stoul(portText);
+    if (port == 0 || port > 65535) return false;
+    SetGateway(host, static_cast<uint16_t>(port));
+    return true;
+}
+
+bool KNXProtocol::FormNetwork(const std::string&) {
+    // A KNX installation is wired and commissioned with ETS; nothing here can
+    // create one. Saying so is more honest than returning true.
+    return false;
+}
+
+bool KNXProtocol::JoinNetwork(const std::string& networkId) {
+    // Joining means connecting to a gateway, which is what the id names.
+    if (!networkId.empty() && !SelectAdapter(networkId)) return false;
+    return Connect();
+}
+
+bool KNXProtocol::LeaveNetwork() {
+    Disconnect();
+    return true;
+}
+
+NetworkTopology KNXProtocol::GetTopology() const {
+    // A KNX line is a bus, not a mesh: every device hangs off the gateway, and
+    // there are no parent/child links to report.
+    NetworkTopology topology;
+    topology.NetworkId = gatewayIP;
+    for (const auto& [raw, object] : groupObjects) {
+        NetworkNode node;
+        node.NodeId = object.Name.empty() ? std::to_string(raw) : object.Name;
+        node.DeviceId = node.NodeId;
+        node.Depth = 1;              // everything hangs off the gateway
+        node.IsRouter = false;
+        topology.Nodes.push_back(node);
+    }
+    topology.EndDeviceCount = static_cast<int>(topology.Nodes.size());
+    topology.MaxDepth = topology.Nodes.empty() ? 0 : 1;
+    return topology;
+}
+
+bool KNXProtocol::StartPairing(int) {
+    // Nothing to do: a KNX device is commissioned with ETS and is either in the
+    // installation already or not. Reporting success would invite a caller to
+    // wait for a join that can never arrive.
+    return false;
+}
+
+void KNXProtocol::StopPairing() {}
+
+std::vector<std::shared_ptr<ISmartHomeDevice>> KNXProtocol::GetDevices() const {
+    // KNX addresses group addresses, not device objects; GetPairedDevices() is
+    // the view that carries real information here.
+    return {};
+}
+
+std::shared_ptr<ISmartHomeDevice> KNXProtocol::GetDevice(const std::string&) const {
+    return nullptr;
+}
+
+bool KNXProtocol::RemoveDevice(const std::string& deviceId) {
+    return UnpairDevice(deviceId);
+}
+
+bool KNXProtocol::InterviewDevice(const std::string& deviceId) {
+    // Re-reading a device means reading its group objects back off the bus.
+    std::map<std::string, std::string> state;
+    return GetDeviceState(deviceId, state);
+}
+
+SmartHomeSecurityLevel KNXProtocol::GetSecurityLevel() const {
+    // Plain KNXnet/IP is unauthenticated: anything on the network segment can
+    // write a group address. KNX Secure adds AES-128, and this backend does not
+    // implement it, so claiming anything above Basic would be a lie a caller
+    // might act on.
+    return SmartHomeSecurityLevel::Basic;
+}
+
+bool KNXProtocol::LoadConfig(const std::string& path) {
+    // A KNX installation's group addresses come from an ETS export.
+    return ImportGroupAddresses(path);
+}
+
+bool KNXProtocol::SaveConfig(const std::string&) {
+    // Nothing to save. A KNX installation's group addresses are authored in ETS
+    // and imported from its export; this backend holds no state of its own that
+    // a caller could not get back by importing again. Returning true would tell
+    // a caller a file exists when none was written.
+    return false;
 }
 
 // ============================================================================

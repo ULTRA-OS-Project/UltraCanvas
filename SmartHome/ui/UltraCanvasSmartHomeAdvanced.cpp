@@ -96,7 +96,7 @@ void SmartHomeNetworkTopology::LoadNetworkData() {
             device.Protocol != protocolFilter) {
             continue;
         }
-        NetworkNode node;
+        TopologyViewNode node;
         node.DeviceId = device.DeviceId;
         node.Name = device.Name.empty() ? device.DeviceId : device.Name;
         node.Protocol = device.Protocol;
@@ -140,7 +140,7 @@ void SmartHomeNetworkTopology::ApplyRadialLayout() {
 
     // Routers in the middle, everything else on the ring: the shape then says
     // something about the network rather than just spacing the dots out.
-    std::vector<NetworkNode*> hubs, leaves;
+    std::vector<TopologyViewNode*> hubs, leaves;
     for (auto& n : nodes) (n.IsRouter ? hubs : leaves).push_back(&n);
 
     for (size_t i = 0; i < hubs.size(); ++i) {
@@ -158,7 +158,7 @@ void SmartHomeNetworkTopology::ApplyRadialLayout() {
 
 void SmartHomeNetworkTopology::ApplyTreeLayout() {
     const Rect2Df b = GetLocalBounds();
-    std::vector<NetworkNode*> hubs, leaves;
+    std::vector<TopologyViewNode*> hubs, leaves;
     for (auto& n : nodes) (n.IsRouter ? hubs : leaves).push_back(&n);
 
     const double hubY = kPad + 40.0;
@@ -201,7 +201,7 @@ void SmartHomeNetworkTopology::ApplyForceLayout() {
                 if (!isSource && l.TargetId != a.DeviceId) continue;
                 const std::string& otherId = isSource ? l.TargetId : l.SourceId;
                 auto it = std::find_if(nodes.begin(), nodes.end(),
-                                       [&](const NetworkNode& n){ return n.DeviceId == otherId; });
+                                       [&](const TopologyViewNode& n){ return n.DeviceId == otherId; });
                 if (it == nodes.end()) continue;
                 fx += (it->X - a.X) * 0.02;
                 fy += (it->Y - a.Y) * 0.02;
@@ -244,9 +244,9 @@ void SmartHomeNetworkTopology::SetAutoRefresh(bool enable, int intervalMs) {
 void SmartHomeNetworkTopology::RenderLinks(IRenderContext* ctx) {
     for (const auto& link : links) {
         auto s = std::find_if(nodes.begin(), nodes.end(),
-                              [&](const NetworkNode& n){ return n.DeviceId == link.SourceId; });
+                              [&](const TopologyViewNode& n){ return n.DeviceId == link.SourceId; });
         auto t = std::find_if(nodes.begin(), nodes.end(),
-                              [&](const NetworkNode& n){ return n.DeviceId == link.TargetId; });
+                              [&](const TopologyViewNode& n){ return n.DeviceId == link.TargetId; });
         if (s == nodes.end() || t == nodes.end()) continue;
         ctx->SetStrokePaint(link.IsActive ? GetSignalColor(link.LinkQuality) : kTrack);
         ctx->SetStrokeWidth(link.IsActive ? 1.5 : 1.0);
@@ -286,7 +286,7 @@ void SmartHomeNetworkTopology::RenderLegend(IRenderContext* ctx) {
 void SmartHomeNetworkTopology::RenderNodeInfo(IRenderContext* ctx) {
     if (selectedNodeId.empty()) return;
     auto it = std::find_if(nodes.begin(), nodes.end(),
-                           [&](const NetworkNode& n){ return n.DeviceId == selectedNodeId; });
+                           [&](const TopologyViewNode& n){ return n.DeviceId == selectedNodeId; });
     if (it == nodes.end()) return;
 
     ctx->SetFillPaint(kSheet);
@@ -354,7 +354,7 @@ bool SmartHomeNetworkTopology::OnEvent(const UCEvent& event) {
         case UCEventType::TouchMove: {
             if (draggingNodeId.empty()) return false;
             auto it = std::find_if(nodes.begin(), nodes.end(),
-                                   [&](const NetworkNode& n){ return n.DeviceId == draggingNodeId; });
+                                   [&](const TopologyViewNode& n){ return n.DeviceId == draggingNodeId; });
             if (it != nodes.end()) {
                 it->X = static_cast<float>(x);
                 it->Y = static_cast<float>(y);

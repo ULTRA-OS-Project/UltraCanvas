@@ -197,9 +197,21 @@ the compiler emit a wall of missing-header errors:
 |---|---|---|
 | Matter | connectedhomeip + mbedTLS | Apache 2 |
 | Thread | OpenThread + mbedTLS | BSD 3-Clause / Apache 2 |
-| Zigbee | Silicon Labs EZSP **or** TI Z-Stack ZNP | vendor |
+| Zigbee | Silicon Labs EZSP (libezsp) | vendor |
 | Z-Wave | OpenZWave | **LGPL 2.1** |
 | KNX | nothing — KNXnet/IP over sockets | — |
+
+**KNX builds today.** `-DULTRACANVAS_SMARTHOME_KNX=ON` compiles and links with
+no third party at all. It is the only backend in that state.
+
+**Backend plan (decided 2026-09-09).** KNX first, because it needs nothing.
+Zigbee on **EZSP only** — the backend also carries TI Z-Stack branches, but
+every one is `return false; // Not implemented`, so offering the choice would
+only invite someone to pick the half that does nothing; nothing defines
+`ULTRACANVAS_WITH_ZSTACK` and those branches stay inert. **Matter is deferred**:
+its option stays, and turning it on without the SDK is a clean configure error.
+No stub backend was written for it — `EnableProtocol(Matter)` returning false
+is more honest than an object that accepts commands and drops them.
 
 **Crypto backend: mbedTLS** (decided 2026-09-09). Matter's device attestation
 and OpenThread's commissioner both need X.509 and ECDSA on P-256. Neither asks

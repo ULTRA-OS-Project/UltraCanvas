@@ -629,6 +629,45 @@ public:
     
     bool Initialize() override;
     void Shutdown() override;
+
+    // Declared by ISmartHomeProtocol; KNX had no declaration for these three at
+    // all, which left the class abstract and unbuildable.
+    std::vector<SmartHomeDeviceCategory> GetSupportedDeviceCategories() const override;
+    bool IsHardwareAvailable() const override;
+    std::string GetHardwareInfo() const override;
+
+    // Adapter and network selection. KNX has no local radio and no network to
+    // form or join — a gateway is addressed by IP — so these map onto the
+    // gateway rather than being left unimplemented.
+    std::vector<std::string> GetAvailableAdapters() const override;
+    bool SelectAdapter(const std::string& adapterId) override;
+    bool FormNetwork(const std::string& networkName = "") override;
+    bool JoinNetwork(const std::string& networkId) override;
+    bool LeaveNetwork() override;
+    NetworkTopology GetTopology() const override;
+
+    // KNX has no pairing: devices are commissioned into the installation with
+    // ETS, long before this module sees them.
+    bool StartPairing(int timeoutSeconds = 60) override;
+    void StopPairing() override;
+
+    // The object-level device view. KNX is addressed by group address rather
+    // than by device object, so the info-level API above is the real one here.
+    std::vector<std::shared_ptr<ISmartHomeDevice>> GetDevices() const override;
+    std::shared_ptr<ISmartHomeDevice> GetDevice(const std::string& deviceId) const override;
+    bool RemoveDevice(const std::string& deviceId) override;
+    bool InterviewDevice(const std::string& deviceId) override;
+
+    SmartHomeSecurityLevel GetSecurityLevel() const override;
+    bool LoadConfig(const std::string& path) override;
+    bool SaveConfig(const std::string& path) override;
+
+    // KNX datapoint-type conversions. Public because KNXTelegram decodes its own
+    // payload with them; they are pure functions over bytes and hold no state.
+    static float DecodeFloat16(uint8_t high, uint8_t low);
+    static void EncodeFloat16(float value, uint8_t& high, uint8_t& low);
+    static float DecodeFloat32(const uint8_t* data);
+    static void EncodeFloat32(float value, uint8_t* data);
     bool IsInitialized() const override { return initialized; }
     
     SmartHomeProtocolType GetType() const override { return SmartHomeProtocolType::KNX; }
@@ -994,12 +1033,6 @@ private:
     void SendTunnelingAck(uint8_t channelId, uint8_t sequenceCounter);
     void SendConnectionstateRequest();
     
-    // ===== Data Conversion =====
-    
-    static float DecodeFloat16(uint8_t high, uint8_t low);
-    static void EncodeFloat16(float value, uint8_t& high, uint8_t& low);
-    static float DecodeFloat32(const uint8_t* data);
-    static void EncodeFloat32(float value, uint8_t* data);
     
     // ===== Helper Methods =====
     

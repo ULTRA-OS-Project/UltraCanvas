@@ -22,7 +22,8 @@ its own license; the full license texts ship alongside the respective files.
 
 ## mbedTLS (crypto backend for the Smart Home protocol SDKs)
 
-- **Used by:** the Smart Home module's Matter and Thread backends
+- **Used by:** the Smart Home module's Matter and Thread backends (both
+  deferred; see `SmartHome/STATUS.md`)
   (`SmartHome/protocols/`), and by the connectedhomeip and OpenThread SDKs
   themselves, which both default to it. Chosen over OpenSSL so those two SDKs
   share one stack, for its smaller static footprint (~1 MB against ~4-5 MB), and

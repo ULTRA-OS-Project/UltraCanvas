@@ -6,10 +6,12 @@
 #   SmartHome    — the engine and the public facade (no UI dependency)
 #   SmartHomeUI  — the dashboard widgets, needs the UltraCanvas UI library
 #
-# The five protocol backends are each behind their own option and every one is
-# OFF by default, because none of them can build yet: Matter needs the
-# connectedhomeip SDK and Zigbee needs the Silicon Labs EZSP / TI ZNP stacks,
-# and neither is vendored. Their headers compile; their .cpp files do not.
+# The five protocol backends are each behind their own option, all OFF by
+# default. KNX is the one that builds today: it speaks KNXnet/IP straight over
+# sockets and needs no third party at all, so ULTRACANVAS_SMARTHOME_KNX=ON
+# works out of the box. The other four each need a vendor SDK that is not
+# vendored here, and CMake says which one is missing rather than letting the
+# compiler do it.
 # Turning an option on defines ULTRACANVAS_SMARTHOME_<NAME>, which is what
 # core/SmartHomeProtocolRegistry.cpp keys off to register that backend's
 # factory. With all of them off the module still builds and runs — it simply
@@ -31,7 +33,7 @@ option(ULTRACANVAS_SMARTHOME_MATTER "Build the Matter backend (needs the connect
 option(ULTRACANVAS_SMARTHOME_THREAD "Build the Thread backend (needs OpenThread)" OFF)
 option(ULTRACANVAS_SMARTHOME_ZIGBEE "Build the Zigbee backend (needs Silicon Labs EZSP or TI ZNP)" OFF)
 option(ULTRACANVAS_SMARTHOME_ZWAVE  "Build the Z-Wave backend" OFF)
-option(ULTRACANVAS_SMARTHOME_KNX    "Build the KNX backend" OFF)
+option(ULTRACANVAS_SMARTHOME_KNX    "Build the KNX backend (no third party; this one builds today)" OFF)
 
 # ── Crypto backend for the protocol SDKs ─────────────────────────────────────
 #
@@ -96,10 +98,14 @@ foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
             list(APPEND _sh_missing "mbedTLS")
         endif()
     elseif(_sh_proto STREQUAL "Zigbee")
+        # EZSP only. The backend also carries TI Z-Stack (ZNP) branches, but
+        # every one of them is `return false; // Not implemented`, so offering
+        # the choice would only invite someone to pick the half that does
+        # nothing. Those branches stay inert: nothing defines
+        # ULTRACANVAS_WITH_ZSTACK.
         find_path(EZSP_INCLUDE_DIR ezsp/ezsp.h)
-        find_path(ZNP_INCLUDE_DIR znp/znp.h)
-        if(NOT EZSP_INCLUDE_DIR AND NOT ZNP_INCLUDE_DIR)
-            list(APPEND _sh_missing "a Zigbee stack (Silicon Labs EZSP or TI ZNP)")
+        if(NOT EZSP_INCLUDE_DIR)
+            list(APPEND _sh_missing "Silicon Labs EZSP (libezsp)")
         endif()
     elseif(_sh_proto STREQUAL "ZWave")
         find_path(OPENZWAVE_INCLUDE_DIR openzwave/Manager.h)
@@ -136,6 +142,11 @@ target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core)
 foreach(_sh_proto ${_sh_backends})
     string(TOUPPER ${_sh_proto} _sh_upper)
     target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_${_sh_upper}=1)
+    if(_sh_proto STREQUAL "Zigbee")
+        # Selects the EZSP half of the backend's #ifdef pairs.
+        target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_WITH_EZSP=1)
+        target_include_directories(SmartHome PRIVATE ${EZSP_INCLUDE_DIR})
+    endif()
     target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/protocols/${_sh_proto})
 endforeach()
 
