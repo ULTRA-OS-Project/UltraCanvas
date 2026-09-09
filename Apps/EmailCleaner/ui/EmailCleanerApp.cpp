@@ -4,7 +4,10 @@
 #include "EmailCleanerApp.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasModalDialog.h"
 
 #include "UltraMailCredentialVault.h"
 #include "UltraMailDiscovery.h"
@@ -177,6 +180,7 @@ std::shared_ptr<UltraCanvasWindow> EmailCleanerApp::CreateMainWindow() {
     accountBar_.onFilterChanged = [this]() { Refresh(); };
     accountBar_.onScan          = [this]() { ScanMailCache(); };
     accountBar_.onReanalyse     = [this]() { Reanalyse(); };
+    accountBar_.onEditRules     = [this]() { EditRules(); };
     window_->AddChild(bar);
 
     // ---- Views -------------------------------------------------------------
@@ -206,6 +210,8 @@ std::shared_ptr<UltraCanvasWindow> EmailCleanerApp::CreateMainWindow() {
     // The Messages page is the detail view with the actions panel above it:
     // what the selection contains, and what can be done about it, on one page.
     detailView_.SetStore(&store_);
+    detailView_.onOpenAttachments =
+        [this](const AnalyzedMessage& m) { ShowAttachments(m); };
     auto messagesPage = CreateContainer("ecMessagesPage", 0, 0, pageW, pageH);
 
     actionsPanel_.SetStore(&store_);
@@ -215,7 +221,14 @@ std::shared_ptr<UltraCanvasWindow> EmailCleanerApp::CreateMainWindow() {
     actionsPanel_.onApplied = [this](const ActionOutcome& outcome) {
         // Acting changes what the corpus looks like, so every view is stale.
         Refresh();
-        if (!outcome.Describe().empty()) accountBar_.SetStatus(outcome.Describe());
+        // Only a plan that did something has an outcome worth reporting; the
+        // rest raise onStatus with their own sentence, and an empty outcome
+        // must not overwrite it with "Nothing to do."
+        if (outcome.blocked || outcome.unsubscribed || outcome.moved || outcome.failed)
+            accountBar_.SetStatus(outcome.Describe());
+    };
+    actionsPanel_.onStatus = [this](const std::string& text) {
+        accountBar_.SetStatus(text);
     };
     messagesPage->AddChild(actionsPanel_.Build(0, 0, pageW, ActionsPanel::kHeight));
     messagesPage->AddChild(detailView_.Build(0, ActionsPanel::kHeight, pageW,
@@ -294,6 +307,152 @@ void EmailCleanerApp::ScanMailCache() {
                           std::to_string(total.skipped) + " already known, " +
                           std::to_string(total.unwanted) + " unwanted). " +
                           "Load mail again after the next sync.");
+}
+
+void EmailCleanerApp::EditRules() {
+    // The dialog edits the user's file only. The built-ins are the floor it is
+    // layered on and stay out of reach: a rule set the user can break is one
+    // they can also silently disarm.
+    rulesDialog_.SetSuggestedPhrase(TopTermForSelection());
+    rulesDialog_.onSaved = [this]() { Reanalyse(); };
+    rulesDialog_.Show(rulesPath_, RuleSet::BuiltIn().Size());
+}
+
+std::string EmailCleanerApp::TopTermForSelection() const {
+    // The strongest term behind the selected block, so adding a rule from the
+    // map starts from what actually fired rather than an empty box.
+    std::vector<KeywordHit> hits;
+    if (!store_.GetTopKeywords(CurrentFilter(), 1, hits) || hits.empty()) return "";
+    return hits.front().term;
+}
+
+void EmailCleanerApp::ShowAttachments(const AnalyzedMessage& message) {
+    std::vector<AttachmentRecord> attachments;
+    store_.GetAttachments(message.accountId, message.folder, message.uid, attachments);
+
+    DialogConfig config;
+    config.title      = "Attachments";
+    config.width      = 640;
+    config.height     = 400;
+    config.dialogType = DialogType::Custom;
+    config.buttons    = DialogButtons::NoButtons;
+
+    auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    auto* dlg = dialog.get();
+    dialog->layout.SetFlexColumn()
+                  .SetFlexGap(10)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    dialog->SetPadding(14);
+
+    auto heading = CreateLabel("ecAttHeading", 0, 0, 600, 40,
+        message.subject.empty() ? "(no subject)" : message.subject);
+    heading->SetWrap(TextWrap::WrapWord);
+    dialog->AddChild(heading);
+
+    auto list = CreateScrollableContainer("ecAttList", 0, 0, 600, 260);
+    float y = 0.0f;
+    int index = 0;
+    for (const AttachmentRecord& record : attachments) {
+        const std::string id = "ecAtt" + std::to_string(index++);
+        auto row = CreateContainer(id, 0, y, 580, 40);
+
+        row->AddChild(CreateLabel(id + ".name", 0, 0, 460, 19,
+            record.filename.empty() ? "(unnamed)" : record.filename));
+
+        std::string sub = record.mediaType + " · " + FormatBytes(record.sizeBytes);
+        if (record.isInline) sub += " · inline";
+        auto subLabel = CreateLabel(id + ".sub", 0, 19, 460, 18, sub);
+        subLabel->SetTextColor(Color(96, 96, 96, 255));
+        row->AddChild(subLabel);
+
+        // Risky attachments get no button at all. An app whose job is to deal
+        // with unwanted mail must not be the thing that opens the executable
+        // in it — and a disabled button still invites a second try.
+        const bool risky = record.risky ||
+            Classifier::IsRiskyAttachment(record.filename, record.mediaType);
+        if (risky) {
+            auto blocked = CreateLabel(id + ".blocked", 470, 10, 110, 20, "⚠ not opened");
+            blocked->SetTextColor(Color(176, 96, 0, 255));
+            row->AddChild(blocked);
+        } else {
+            auto open = CreateButton(id + ".open", 470, 8, 96, 24, "Open");
+            const AnalyzedMessage owner = message;
+            const AttachmentRecord copy = record;
+            open->onClick = [this, owner, copy]() { OpenAttachment(owner, copy); };
+            row->AddChild(open);
+        }
+
+        list->AddChild(row);
+        y += 44.0f;
+    }
+    if (attachments.empty()) {
+        list->AddChild(CreateLabel("ecAttNone", 0, 0, 560, 20,
+            "The index has no attachments for this message. Re-analyse to refresh it."));
+    }
+    dialog->AddChild(list);
+    list->layoutItem.SetFlexGrow(1);
+
+    auto note = CreateLabel("ecAttNote", 0, 0, 600, 36,
+        "Executable, script and macro-bearing attachments are never opened or "
+        "copied — they stay in the mail cache, untouched.");
+    note->SetWrap(TextWrap::WrapWord);
+    note->SetTextColor(Color(96, 96, 96, 255));
+    dialog->AddChild(note);
+
+    auto buttonRow = CreateContainer("ecAttButtons", 0, 0, 0, 34);
+    buttonRow->layout.SetFlexRow()
+                     .SetFlexGap(10)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    buttonRow->AddStretchSpacer(1);
+    auto closeBtn = std::make_shared<UltraCanvasButton>("ecAttClose", 0, 0, 90, 28);
+    closeBtn->SetText("Close");
+    closeBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
+    buttonRow->AddChild(closeBtn);
+    dialog->AddChild(buttonRow);
+
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, nullptr);
+}
+
+void EmailCleanerApp::OpenAttachment(const AnalyzedMessage& message,
+                                     const AttachmentRecord& record) {
+    // The bytes are not in the analysis database — only their description is.
+    // They come back out of the .eml UltraMail cached, which is also where the
+    // final refusal happens, against the part the message really carries.
+    std::vector<uint8_t> bytes;
+    const AttachmentFetch status = FetchAttachment(mailCacheDir_, message.accountId,
+                                                   message.folder, message.uid,
+                                                   record, bytes);
+    if (status != AttachmentFetch::Ok) {
+        UltraCanvasDialogManager::ShowWarning(
+            DescribeFetch(status, record.filename),
+            status == AttachmentFetch::RefusedRisky ? "Not opened" : "Could not open",
+            nullptr);
+        return;
+    }
+
+    const std::string path = WriteToCache(dataDir_ + "/attachments",
+                                          record.filename, record.mediaType, bytes);
+    if (path.empty()) {
+        UltraCanvasDialogManager::ShowWarning(
+            "Could not write the attachment where the viewer can reach it.",
+            "Could not open", nullptr);
+        return;
+    }
+
+    WindowConfig cfg;
+    cfg.title  = record.filename.empty() ? "Attachment" : record.filename;
+    cfg.width  = 900;
+    cfg.height = 680;
+    auto win = CreateWindow(cfg);
+
+    auto viewer = CreateMediaViewer("ecAttViewer", 0, 0,
+                                    static_cast<float>(cfg.width),
+                                    static_cast<float>(cfg.height));
+    win->AddChild(viewer);
+    viewer->OpenFile(path);
+    win->Show();
+
+    viewerWindows_.push_back(win);   // keep the window alive
 }
 
 void EmailCleanerApp::Reanalyse() {
