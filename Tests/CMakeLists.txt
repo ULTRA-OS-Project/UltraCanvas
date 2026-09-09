@@ -641,6 +641,38 @@ add_test(
 )
 message(STATUS "    Test registered: CSSLayoutAutoExpandTest")
 
+# ===== DIALOG ICON LAYOUT TEST =====
+# The modal dialog's content row with and without the severity icon: hiding it
+# must drop its column and the flex gap after it, so an element centred in the
+# message column (the progress dialog's ring) lands on the window's centre.
+# Pure geometry - the layout engine has no UI-stack dependencies.
+message(STATUS "  Building DialogIconLayoutTest...")
+add_executable(DialogIconLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DialogIconLayoutTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(DialogIconLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(DialogIconLayoutTest PRIVATE cxx_std_20)
+set_target_properties(DialogIconLayoutTest PROPERTIES
+    OUTPUT_NAME "DialogIconLayoutTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME DialogIconLayoutTest
+    COMMAND DialogIconLayoutTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: DialogIconLayoutTest")
+
 # ===== PACKET LAYOUT TEST =====
 # Packet structure model, layout engine (row splitting with continuation
 # edges, proportional clamping, lanes), validators, and the RFC-pinning
