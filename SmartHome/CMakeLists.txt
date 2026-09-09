@@ -82,13 +82,24 @@ foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
 
     set(_sh_missing "")
     if(_sh_proto STREQUAL "Matter")
-        find_path(CHIP_INCLUDE_DIR platform/CHIPDeviceLayer.h)
-        if(NOT CHIP_INCLUDE_DIR)
-            list(APPEND _sh_missing "connectedhomeip (Matter SDK)")
+        # connectedhomeip does not install either. Its GN build is packaged
+        # by scripts/package-chip.sh into one archive plus a link list; the
+        # recipe is in Docs/Dependencies.md. Three directories are needed:
+        # the checkout (headers), its GN output (generated headers), and the
+        # package directory that script wrote.
+        set(CHIP_SOURCE_DIR "" CACHE PATH "connectedhomeip checkout")
+        set(CHIP_BUILD_DIR "" CACHE PATH "connectedhomeip GN output directory (out/host)")
+        set(CHIP_PACKAGE_DIR "" CACHE PATH "directory written by SmartHome/scripts/package-chip.sh")
+        if(NOT CHIP_SOURCE_DIR OR NOT EXISTS "${CHIP_SOURCE_DIR}/src/controller/CHIPDeviceController.h")
+            list(APPEND _sh_missing "CHIP_SOURCE_DIR (a connectedhomeip checkout)")
         endif()
-        if(NOT MbedTLS_FOUND)
-            list(APPEND _sh_missing "mbedTLS")
+        if(NOT CHIP_BUILD_DIR OR NOT EXISTS "${CHIP_BUILD_DIR}/gen/include/matter/tracing/build_config.h")
+            list(APPEND _sh_missing "CHIP_BUILD_DIR (a chip-tool GN build; generated headers)")
         endif()
+        if(NOT CHIP_PACKAGE_DIR OR NOT EXISTS "${CHIP_PACKAGE_DIR}/link.txt")
+            list(APPEND _sh_missing "CHIP_PACKAGE_DIR (run SmartHome/scripts/package-chip.sh)")
+        endif()
+        # mbedTLS comes from inside that build too (chip_crypto="mbedtls").
     elseif(_sh_proto STREQUAL "Thread")
         # OpenThread does not install: `cmake --install` puts one binary in
         # bin/ and nothing else. A host links against the build tree, the way
@@ -173,6 +184,37 @@ target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core)
 foreach(_sh_proto ${_sh_backends})
     string(TOUPPER ${_sh_proto} _sh_upper)
     target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_${_sh_upper}=1)
+    if(_sh_proto STREQUAL "Matter")
+        # Selects the real connectedhomeip code; without it the backend
+        # compiles into a shell, as with the other gating macros.
+        target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_WITH_MATTER=1 CHIP_HAVE_CONFIG_H=1)
+        # The include set and project config are chip-tool's, because the
+        # packaged objects were compiled with them and the config headers
+        # shape the SDK's structures.
+        target_include_directories(SmartHome PRIVATE
+            ${CHIP_SOURCE_DIR}/examples/chip-tool/include
+            ${CHIP_SOURCE_DIR}/config/standalone
+            ${CHIP_SOURCE_DIR}/src
+            ${CHIP_SOURCE_DIR}/src/include
+            ${CHIP_SOURCE_DIR}/zzz_generated/app-common
+            ${CHIP_SOURCE_DIR}/src/tracing/perfetto/include
+            ${CHIP_SOURCE_DIR}/third_party/nlassert/repo/include
+            ${CHIP_SOURCE_DIR}/third_party/nlio/repo/include
+            ${CHIP_SOURCE_DIR}/third_party/nlfaultinjection/include
+            ${CHIP_SOURCE_DIR}/third_party/mbedtls/repo/include
+            ${CHIP_SOURCE_DIR}/third_party/inipp/repo/inipp
+            ${CHIP_SOURCE_DIR}/third_party/perfetto/repo/sdk
+            ${CHIP_BUILD_DIR}/gen/include)
+        # chip-tool's file-backed storage is example code, not library code.
+        target_sources(SmartHome PRIVATE ${CHIP_SOURCE_DIR}/src/controller/ExamplePersistentStorage.cpp)
+        set_source_files_properties(${CHIP_SOURCE_DIR}/src/controller/ExamplePersistentStorage.cpp
+            PROPERTIES COMPILE_OPTIONS "-w")
+        # The packaged link list, as one group: the SDK's archives refer to
+        # one another in both directions and a single pass would not do.
+        file(STRINGS "${CHIP_PACKAGE_DIR}/link.txt" _chip_link)
+        target_link_libraries(SmartHome PUBLIC -Wl,--start-group ${_chip_link} -Wl,--end-group)
+        message(STATUS "  [✓] Matter backend against connectedhomeip at ${CHIP_BUILD_DIR}")
+    endif()
     if(_sh_proto STREQUAL "Thread")
         # Selects the real OpenThread code; without it the backend compiles
         # into a shell, as with the other two gating macros.
@@ -232,19 +274,12 @@ foreach(_sh_proto ${_sh_backends})
     target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/protocols/${_sh_proto})
 endforeach()
 
-# Matter and Thread carry their PKI in their own SDKs; both are built against
-# mbedTLS, so the link line needs it once for whichever of the two is enabled.
-if("Matter" IN_LIST _sh_backends OR "Thread" IN_LIST _sh_backends)
-    if(TARGET MbedTLS::mbedtls)
-        target_link_libraries(SmartHome PUBLIC MbedTLS::mbedtls MbedTLS::mbedx509
-                                               MbedTLS::mbedcrypto)
-    else()
-        target_include_directories(SmartHome PRIVATE ${MBEDTLS_INCLUDE_DIR})
-        target_link_libraries(SmartHome PUBLIC ${MBEDTLS_TLS_LIBRARY}
-                                               ${MBEDTLS_X509_LIBRARY}
-                                               ${MBEDTLS_CRYPTO_LIBRARY})
-    endif()
-endif()
+# Matter and Thread carry their PKI in their own SDKs, and both SDK builds
+# vendor the mbedTLS they were compiled against (OpenThread's third_party,
+# connectedhomeip's chip_crypto="mbedtls"). Those archives are on the link
+# lines above; the system mbedTLS package is deliberately NOT added on top —
+# two copies of one crypto library in a binary is a bug, not a belt and
+# braces. The find_package above stays for the configure summary only.
 
 find_package(Threads REQUIRED)
 target_link_libraries(SmartHome PUBLIC Threads::Threads)
@@ -324,6 +359,15 @@ if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
         target_include_directories(SmartHomeThreadLinkTest PRIVATE
                                    ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Thread)
         add_test(NAME SmartHomeThreadLink COMMAND SmartHomeThreadLinkTest)
+    endif()
+
+    # And Matter: proves the connectedhomeip link is real.
+    if("Matter" IN_LIST _sh_backends)
+        add_executable(SmartHomeMatterLinkTest tests/MatterLinkTest.cpp)
+        target_link_libraries(SmartHomeMatterLinkTest PRIVATE SmartHome)
+        target_include_directories(SmartHomeMatterLinkTest PRIVATE
+                                   ${CMAKE_CURRENT_SOURCE_DIR}/protocols/Matter)
+        add_test(NAME SmartHomeMatterLink COMMAND SmartHomeMatterLinkTest)
     endif()
 
     add_test(NAME SmartHomeFacade COMMAND SmartHomeFacadeTest)

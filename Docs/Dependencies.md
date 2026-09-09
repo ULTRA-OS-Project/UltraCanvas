@@ -266,7 +266,7 @@ configure time naming what is missing.
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
 | Engine, public API, dashboard widgets | (core only) | (core only) | (core only) |
-| Matter backend (`ULTRACANVAS_SMARTHOME_MATTER`, default OFF) | connectedhomeip (Apache 2) + mbedTLS (Apache 2) | connectedhomeip + mbedTLS | connectedhomeip + mbedTLS |
+| Matter backend (`ULTRACANVAS_SMARTHOME_MATTER`, default OFF) | a **built** connectedhomeip (Apache 2; brings its own mbedTLS), packaged by `SmartHome/scripts/package-chip.sh` — recipe below | same | not tried (the SDK's Linux platform layer) |
 | Thread backend (`ULTRACANVAS_SMARTHOME_THREAD`, default OFF) | a **built** OpenThread, `OT_PLATFORM=posix` (BSD 3-Clause; brings its own mbedTLS) — recipe below | same | not tried (OpenThread's POSIX layer) |
 | Zigbee backend (`ULTRACANVAS_SMARTHOME_ZIGBEE`, default OFF) | (core only) — ASH and EZSP implemented in-tree; needs a serial NCP at run time | same | same |
 | Z-Wave backend (`ULTRACANVAS_SMARTHOME_ZWAVE`, default OFF) | OpenZWave 1.6 (**LGPL 2.1**, `libopenzwave1.6-dev`, **linked dynamically**) | OpenZWave 1.6 | OpenZWave 1.6 |
@@ -332,6 +332,58 @@ configure time naming what is missing.
 > the backend needs a radio co-processor, named by a URL such as
 > `spinel+hdlc+uart:///dev/ttyACM0`; OpenThread's `otSysInit` exits the
 > process if that device is missing.
+
+> **Building connectedhomeip for the Matter backend.** The SDK's own
+> `bootstrap.sh` fetches its toolchain from CIPD (chrome-infra-packages),
+> and pigweed from googlesource; neither is reachable from every network,
+> so this is the route that worked without them (checkout of 2026-09-09,
+> Ubuntu 24.04):
+>
+> ```
+> sudo apt install generate-ninja ninja-build              # gn, ninja
+> git clone --depth 1 https://github.com/project-chip/connectedhomeip.git chip
+> cd chip
+> # pigweed lives on googlesource; the GitHub mirror carries the same commits
+> git config submodule.third_party/pigweed/repo.url https://github.com/google/pigweed.git
+> git submodule update --init --depth 1 \
+>     third_party/pigweed/repo third_party/nlassert/repo third_party/nlio/repo \
+>     third_party/mbedtls/repo third_party/jsoncpp/repo third_party/perfetto/repo \
+>     third_party/inipp/repo examples/common/QRCode/repo third_party/uriparser/repo \
+>     third_party/editline/repo third_party/libwebsockets/repo
+> python3 -m venv ../chipvenv && . ../chipvenv/bin/activate
+> pip install -r scripts/setup/requirements.build.txt -c scripts/setup/constraints.txt requests
+> # bootstrap would have written this; for a gcc host build it only has to exist
+> touch build_overrides/pigweed_environment.gni
+> # the ZAP code generator, from its GitHub release (the tag without a suffix)
+> python3 scripts/tools/zap/zap_download.py --zap RELEASE --zap-version v2026.08.24 --extract-root ../zap
+> export ZAP_INSTALL_PATH=../zap/zap-v2026.08.24 PW_ENVSETUP_NO_CIPD=1
+> gn gen --root=examples/chip-tool out/host --args='chip_crypto="mbedtls" is_debug=false chip_build_tests=false'
+> ninja -C out/host chip-tool
+> # collect what chip-tool links into one archive + a link list
+> /path/to/UltraCanvas/SmartHome/scripts/package-chip.sh . out/host ../chip-package
+> ```
+>
+> If `ninja` stops on a missing `third_party/.../repo/...` source, that
+> submodule is one this list does not name for your checkout; add it to the
+> `git submodule update` line. A submodule whose fetch was interrupted can be
+> left half-initialised — `rm -rf .git/modules/<name> third_party/<name>/repo`
+> and fetch it again. Then point UltraCanvas at the three directories:
+>
+> ```
+> cmake -DULTRACANVAS_SMARTHOME_MATTER=ON \
+>       -DCHIP_SOURCE_DIR=/path/to/chip \
+>       -DCHIP_BUILD_DIR=/path/to/chip/out/host \
+>       -DCHIP_PACKAGE_DIR=/path/to/chip-package ..
+> ```
+>
+> The backend is compiled with chip-tool's project configuration
+> (`examples/chip-tool/include/CHIPProjectAppConfig.h`), because the packaged
+> objects were, and that configuration shapes the SDK's structures.
+> `SmartHome/tests/MatterLinkTest.cpp` checks the link is real. At run time
+> the controller needs a writable storage directory (its fabric and
+> credentials persist there), mDNS on the network, and — for Thread devices —
+> a Thread border router on the same LAN; Bluetooth commissioning goes
+> through BlueZ over D-Bus, which is why `gio`/`glib` appear on the link line.
 
 ### Ultra AI module
 

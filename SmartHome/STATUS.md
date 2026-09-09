@@ -224,7 +224,7 @@ compile and link while calling nothing at all):
 | Z-Wave | 2209 | 162 × `OpenZWave::` | **builds and links**, dynamically |
 | KNX | 1994 | none needed — implements KNXnet/IP itself | **builds and links** |
 | Thread | 1816 | 80 × `ot*` | **builds and links** against a built OpenThread |
-| Matter | 1324 | 5 × `chip::` | thin wrapper; deferred |
+| Matter | 1324 | the SDK's controller, IM and platform layers | compiles against a built connectedhomeip; link test pending the SDK build |
 | Zigbee | 2036 + 550 | ASH/EZSP written in-tree | **builds and links** |
 
 **Zigbee: the transport is now written, in-tree.** The backend's `EZSP_*` and
@@ -405,10 +405,62 @@ how the Z-Wave backend first built here — cleanly, with zero undefined
 Zigbee on **EZSP only** — the backend also carries TI Z-Stack branches, but
 every one is `return false; // Not implemented`, so offering the choice would
 only invite someone to pick the half that does nothing; nothing defines
-`ULTRACANVAS_WITH_ZSTACK` and those branches stay inert. **Matter is deferred**:
-its option stays, and turning it on without the SDK is a clean configure error.
-No stub backend was written for it — `EnableProtocol(Matter)` returning false
-is more honest than an object that accepts commands and drops them.
+`ULTRACANVAS_WITH_ZSTACK` and those branches stay inert. Matter was deferred
+that morning and taken up the same evening; see the next section.
+
+**Matter builds against connectedhomeip (2026-09-09, evening).** The SDK was
+built here without its `bootstrap.sh` — CIPD and googlesource are not
+reachable from this network — with `gn` from Ubuntu's `generate-ninja`,
+pigweed from its GitHub mirror, a hand-made empty
+`build_overrides/pigweed_environment.gni`, and the ZAP generator from its
+GitHub release (`v2026.08.24`; the CIPD tag `v2026.08.24.2` has no release
+asset). The whole route is in `Docs/Dependencies.md`. The GN build installs
+nothing and chip-tool links 179 loose objects plus 51 archives from one
+ninja edge, so `scripts/package-chip.sh` reads that edge, drops chip-tool's
+own code, and writes one archive and a link list for CMake.
+
+The backend had never compiled, not even in stub mode: the wrapper was a
+namespace-scope class while the header forward-declared a nested one, seven
+interface methods were unimplemented, and the same nonexistent
+`NetworkNode` / `SmartHomeNetworkInfo` fields appeared as in the others. Its
+SDK wrapper was rewritten rather than patched, because what it called did
+not exist (`ClusterCommand::SendCommand` is chip-tool example code, not SDK
+API), what it configured no longer exists (`SetupParams::storageDelegate`),
+and half of it returned true while doing nothing (`ReadAttribute` answered
+"0"; write, subscribe, bind and OTA were `return true`). `MatterSDKWrapper`
+now follows chip-tool's own controller set-up:
+
+- file-backed storage (`ExamplePersistentStorage`, an ini file under the
+  storage directory) so the fabric survives restarts; persistent operational
+  keystore and certificate store; group data provider with the default IPK
+  installed for the fabric, without which nothing can be commissioned;
+- the controller's own NOC chain minted by `ExampleOperationalCredentialsIssuer`
+  — the **provisioning decision** from the morning's list: this is the
+  issuer chip-tool uses and it is not a production PKI; a real deployment
+  replaces it with an `OperationalCredentialsDelegate` backed by its CA;
+- device attestation against the SDK's test PAAs unless `paaTrustStorePath`
+  names a directory of production PAA certificates (`FileAttestationTrustStore`),
+  logged plainly at start-up;
+- a `DevicePairingDelegate` whose `OnCommissioningComplete` is what reports a
+  node as paired, and a `DeviceDiscoveryDelegate` collecting commissionable
+  nodes from mDNS;
+- every SDK call scheduled onto the SDK's event-loop thread
+  (`PlatformMgr().ScheduleWork`) — its objects may not be touched from any
+  other — with the synchronous facade methods waiting on a condition
+  variable; commands go `GetConnectedDevice` → CASE session →
+  `InvokeCommandRequest`, with the timed-invoke deadline for commands that
+  require it (door locks); reads and subscriptions use a `ReadClient` and
+  render primitive TLV values as text; writes encode text as bool / integer
+  / double / string and let the device's schema check refuse a mismatch;
+  bindings write the source's Binding list (replacing it — the ACL on the
+  target is not written yet); OTA provider returns false and says why.
+
+`tests/MatterLinkTest.cpp` checks that `GetHardwareInfo()` carries text the
+SDK's error formatter produced. It does not call `Initialize()`: that brings
+up the CHIP stack, which wants storage, mDNS and a network. As of this
+commit the backend compiles with 0 errors against the SDK's headers and
+chip-tool's compile flags; the full link through CMake is being verified
+while the SDK build (2106 steps) finishes.
 
 **Crypto backend: mbedTLS** (decided 2026-09-09). Matter's device attestation
 and OpenThread's commissioner both need X.509 and ECDSA on P-256. Neither asks

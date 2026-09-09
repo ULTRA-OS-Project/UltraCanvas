@@ -145,6 +145,15 @@ public:
     
     bool RemoveDevice(const std::string& deviceId) override;
     bool InterviewDevice(const std::string& deviceId) override;
+    std::vector<std::shared_ptr<ISmartHomeDevice>> GetDevices() const override;
+    std::shared_ptr<ISmartHomeDevice> GetDevice(const std::string& deviceId) const override;
+    std::vector<SmartHomeDeviceInfo> GetPairedDevices() override;
+    std::string GetHardwareInfo() const override;
+    bool PairDevice(const std::string& deviceId,
+                    const std::map<std::string, std::string>& params) override;
+    bool UnpairDevice(const std::string& deviceId) override;
+    bool GetDeviceState(const std::string& deviceId,
+                        std::map<std::string, std::string>& state) override;
     
     // ===== COMMANDS =====
     
