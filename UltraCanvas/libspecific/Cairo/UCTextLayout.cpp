@@ -300,6 +300,14 @@ namespace UltraCanvas {
             return std::make_unique<UCTextAttribute>(pango_attr_shape_new(&ink_rect, &logical_rect));
         }
 
+        std::unique_ptr<ITextAttribute> CreateShape(double width, double ascent, double descent) {
+            PangoRectangle logical_rect = {0, static_cast<int>(-ascent * PANGO_SCALE),
+                                           static_cast<int>(width * PANGO_SCALE),
+                                           static_cast<int>((ascent + descent) * PANGO_SCALE)};
+            PangoRectangle ink_rect = logical_rect;
+            return std::make_unique<UCTextAttribute>(pango_attr_shape_new(&ink_rect, &logical_rect));
+        }
+
         std::unique_ptr<ITextAttribute> CreateAbsoluteLineHeight(double lineHeight) {
             return std::make_unique<UCTextAttribute>(pango_attr_line_height_new_absolute(static_cast<int>(lineHeight * PANGO_SCALE)));
         }
@@ -838,6 +846,20 @@ namespace UltraCanvas {
         pango_layout_index_to_pos(layout, byteIndex, &pos);
         return Rect2Di(pos.x / PANGO_SCALE, pos.y / PANGO_SCALE,
                        pos.width / PANGO_SCALE, pos.height / PANGO_SCALE);
+    }
+
+    double UCTextLayout::IndexToBaseline(int byteIndex) const {
+        if (!layout) return 0.0;
+        int line = 0, xPos = 0;
+        pango_layout_index_to_line_x(layout, byteIndex, FALSE, &line, &xPos);
+        PangoLayoutIter* iter = pango_layout_get_iter(layout);
+        double baseline = 0.0;
+        for (int i = 0; ; ++i) {
+            baseline = pango_layout_iter_get_baseline(iter) / static_cast<double>(PANGO_SCALE);
+            if (i >= line || !pango_layout_iter_next_line(iter)) break;
+        }
+        pango_layout_iter_free(iter);
+        return baseline;
     }
 
     UCLayoutLineXPos UCTextLayout::IndexToLineX(int byteIndex, bool trailing) const {

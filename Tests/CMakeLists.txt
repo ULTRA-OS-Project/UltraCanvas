@@ -1840,3 +1840,22 @@ if(TARGET UltraCanvas AND TARGET microtex_core)
 else()
     message(STATUS "  MathEngineTest skipped (UltraCanvas or microtex_core target not present)")
 endif()
+
+# ===== INLINE MATH TEST =====
+# The core's handle on the LaTeX module for formulas inside text (Phase 2 of
+# Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md): the module is loaded
+# with dlopen from <build>/lib, so the module target must be built first.
+if(TARGET UltraCanvas AND TARGET UltraCanvasLaTeX)
+    message(STATUS "  Building InlineMathTest...")
+    add_executable(InlineMathTest ${CMAKE_CURRENT_SOURCE_DIR}/InlineMathTest.cpp)
+    target_include_directories(InlineMathTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(InlineMathTest PRIVATE cxx_std_20)
+    target_compile_definitions(InlineMathTest PRIVATE UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(InlineMathTest PRIVATE UltraCanvas)
+    add_dependencies(InlineMathTest UltraCanvasLaTeX)
+    set_target_properties(InlineMathTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME InlineMathTest COMMAND InlineMathTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: InlineMathTest")
+else()
+    message(STATUS "  InlineMathTest skipped (UltraCanvas or UltraCanvasLaTeX target not present)")
+endif()

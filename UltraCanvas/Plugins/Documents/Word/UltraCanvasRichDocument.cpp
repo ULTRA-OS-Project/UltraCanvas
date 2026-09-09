@@ -78,7 +78,18 @@ std::string EscapeHtml(const std::string& text) {
 std::string EscapeMarkdownText(const std::string& text, bool inTableCell) {
     std::string out;
     out.reserve(text.size());
-    for (char c : text) {
+    for (size_t i = 0; i < text.size(); ++i) {
+        const char c = text[i];
+        // An embedded equation (OMML / MathML import) is LaTeX between $...$;
+        // it is copied verbatim so the Markdown pipeline can typeset it.
+        if (c == '$') {
+            const size_t close = text.find('$', i + 1);
+            if (close != std::string::npos && close > i + 1) {
+                out.append(text, i, close - i + 1);
+                i = close;
+                continue;
+            }
+        }
         if (c == '\\' || c == '*' || c == '`' || c == '[') {
             out.push_back('\\');
         } else if (inTableCell && c == '|') {

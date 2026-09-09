@@ -144,7 +144,8 @@ formula->SetLaTeX("\\text{if } x \\geq 0 \\text{ then } \\sqrt{x}\\in\\mathbb{R}
   (Cyrillic, CJK, ...) go through the framework's Pango text layout; MicroTeX
   sends every `\text{...}` run to Pango.
 - The C ABI between core and module is in `UltraCanvasLaTeXModuleABI.h`
-  (versioned via `ULTRACANVAS_LATEX_ABI_VERSION`).
+  (versioned via `ULTRACANVAS_LATEX_ABI_VERSION`, currently 3: the view
+  factory plus the inline-math entry points `UltraCanvasInlineMath` uses).
 - See `THIRD_PARTY_LICENSES.md` for MicroTeX (MIT) and Latin Modern Math
   (GUST/OFL) licensing.
 - The plan to replace the vendored engine with a native one is

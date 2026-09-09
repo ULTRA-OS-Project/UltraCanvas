@@ -82,6 +82,29 @@ walks `MathBox` itself — every box has `width`/`height`/`depth`, children at
 `(dx, dy)` relative to the parent's origin (left end of the baseline, y
 down), and the source span it came from.
 
+## Inline math for the text stack
+
+The engine reports a baseline, which is what lets a formula sit in a line
+of text. From the core, `UltraCanvasInlineMath` (`include/UltraCanvasInlineMath.h`)
+reaches the module through its ABI without linking it:
+
+```cpp
+#include "UltraCanvasInlineMath.h"
+
+if (UltraCanvasInlineMath::IsAvailable()) {                // loads the module on first call
+    auto f = UltraCanvasInlineMath::Typeset("\\frac{a}{b}", 16.f, Colors::Black, /*display*/ false, ctx);
+    // reserve f->GetWidth() x (f->GetAscent() + f->GetDescent()) in your layout ...
+    f->Draw(ctx, x, baselineY);                             // ... then draw it on the baseline
+}
+```
+
+`UltraCanvasTextArea`'s Markdown mode does exactly this for `$...$`, `$$...$$`
+and `$$` blocks (see [`UltraCanvasTextAreaExamples.md`](UltraCanvasTextAreaExamples.md),
+"Math in Markdown mode"), so Word and ODT documents with equations render
+them typeset. The module ABI entry points behind it are
+`UltraCanvasLaTeXModule_TypesetInline`, `_InlineMetrics`, `_DrawInline` and
+`_ReleaseInline` (ABI 3).
+
 ## What is supported
 
 The parser understands the LaTeX math subset users actually type — the

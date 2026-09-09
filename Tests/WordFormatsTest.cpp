@@ -324,6 +324,10 @@ int main(int argc, char** argv) {
         CHECK_MSG(UCWordDocumentIO::Load(TmpPath("math.docx"), mathDoc, err), err);
         std::string plain = mathDoc.ToPlainText();
         CHECK_MSG(plain.find("$\\frac{b}{2a}$") != std::string::npos, plain);
+        // The Markdown serializer keeps the equation verbatim (no backslash
+        // escaping inside $...$) so the Markdown pipeline can typeset it.
+        std::string mathMd = mathDoc.ToMarkdown();
+        CHECK_MSG(mathMd.find("$\\frac{b}{2a}$") != std::string::npos, mathMd);
 
         // Minimal ODT with an embedded MathML formula object (x^2).
         std::string contentXml =

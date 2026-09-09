@@ -1,3 +1,32 @@
+#### 2026-09-09 *0.3.113*
+- **Inline math in the text stack (LaTeX engine Phase 2).** Formulas now
+  render typeset inside text: `UltraCanvasTextArea`'s Markdown mode sets
+  `$...$` (text style), `$$...$$` (display style, inline) and `$$` fenced
+  blocks (centred) through the LaTeX module's native engine, baseline-aligned
+  with the surrounding words - in paragraphs, headings, list items,
+  blockquotes and table cells. Word and ODT documents therefore show their
+  equations typeset (the OMML / MathML importers already produced `$latex$`
+  runs; the Markdown serializer now keeps them unescaped instead of
+  doubling their backslashes). Without the LaTeX module the previous
+  Unicode substitution remains. A `$` pair counts as math only without a
+  space after the opener / before the closer and no digit after the closer.
+- New core API `UltraCanvasInlineMath` (`include/UltraCanvasInlineMath.h`):
+  `Typeset(latex, px, colour, display, ctx)` returns width, ascent, descent
+  and `Draw(ctx, x, baseline)`, reaching the module through four new ABI
+  entry points (`UltraCanvasLaTeXModule_TypesetInline` / `_InlineMetrics` /
+  `_DrawInline` / `_ReleaseInline`, ABI 3) so any element that lays out text
+  can place a formula. Text layouts gained
+  `TextAttributeFactory::CreateShape(width, ascent, descent)` (a Pango
+  shape attribute with a height) and `ITextLayout::IndexToBaseline()`.
+- Markdown table cells keep backslashes other than `\|` for the inline
+  parser (they were stripped, which broke escapes and LaTeX in cells).
+- `Tests/InlineMathTest.cpp` (registered as `InlineMathTest`): the handle
+  through a real `dlopen` of the module, the parser's placeholder and
+  cursor map, and an offscreen TextArea render whose ink proves the inline
+  rule and the centred block. `Tests/WordFormatsTest.cpp` checks the
+  Markdown output of an OMML fraction. The element catalogue lists the
+  LaTeX view and the inline-math handle.
+
 #### 2026-09-09 *0.3.112*
 - **LaTeX: the native math engine (Phase 1) is the LaTeX view's default
   typesetter.** `UltraCanvasMathEngine` (`include/Plugins/LaTeX/`,

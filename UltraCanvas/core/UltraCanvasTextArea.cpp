@@ -3484,12 +3484,23 @@ namespace UltraCanvas {
         Point2Di layoutOrigin{posOrigin.x + line->layoutShift.x,
                               posOrigin.y + line->layoutShift.y};
 
+        // Formulas placed in a layout ($...$) are drawn after its text at their
+        // placeholder's position, on the line's baseline.
+        auto drawInlineMath = [&](const LineLayoutBase* l, double ox, double oy) {
+            if (!l || !l->layout) return;
+            for (const auto& m : l->inlineMath) {
+                if (!m.math) continue;
+                const Rect2Di pos = l->layout->IndexToPos(m.byteIndex);
+                m.math->Draw(ctx, ox + pos.x, oy + l->layout->IndexToBaseline(m.byteIndex));
+            }
+        };
         auto drawLayout = [&]() {
             if (line->layout) {
                 ctx->SetCurrentPaint(style.fontColor);
                 ctx->DrawTextLayout(*line->layout,
                     Point2Dd(layoutOrigin.x,
                              layoutOrigin.y));
+                drawInlineMath(line, layoutOrigin.x, layoutOrigin.y);
             }
         };
 
@@ -3627,6 +3638,7 @@ namespace UltraCanvas {
                         ctx->DrawTextLayout(*cell->layout,
                             Point2Dd(static_cast<float>(posOrigin.x + cell->bounds.x),
                                      static_cast<float>(posOrigin.y + cell->bounds.y)));
+                        drawInlineMath(cell.get(), posOrigin.x + cell->bounds.x, posOrigin.y + cell->bounds.y);
                     }
                 }
 
@@ -3656,6 +3668,18 @@ namespace UltraCanvas {
                                 tableBorderColor);
                     }
                 }
+                return;
+            }
+            case LineLayoutType::MathBlockCollapsed:
+                return;   // zero height; the closing fence draws the block
+            case LineLayoutType::MathBlock: {
+                auto* ml = dynamic_cast<MathBlockLayout*>(line);
+                if (!ml || !ml->math) return;
+                // Centre in the text area as it is now (the block was built before the
+                // visible area was known when the document was first laid out).
+                const float avail = std::max(0.f, visibleTextArea.width - 2 * line->layoutShift.x);
+                const double x = layoutOrigin.x + std::max(0.f, (avail - ml->mathWidth) / 2.f);
+                ml->math->Draw(ctx, x, layoutOrigin.y + ml->math->GetAscent());
                 return;
             }
             case LineLayoutType::MarkdownImage: {

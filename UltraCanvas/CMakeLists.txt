@@ -379,6 +379,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasInlineMath.cpp
         # Spell checking. The per-platform backend that defines
         # CreateNativeSpellCheckBackend() is picked up by the
         # ${ULTRACANVAS_PLATFORM_DIR}/*.cpp glob below - do not list it here or
