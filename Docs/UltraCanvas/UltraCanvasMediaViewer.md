@@ -5,7 +5,7 @@ A comprehensive, self-contained media viewer widget
 One widget displays every media kind the framework knows, chooses the right
 display view automatically from the file kind, and brings its own chrome: a
 folder breadcrumb, two toolbar rows (open / navigation / slideshow /
-transitions, zoom / rotate / mirror / adjust / save / info), an image
+transitions, zoom / rotate / mirror / adjust / curves / save / info), an image
 adjustments panel and a bottom info bar with a details popup.
 
 Used full-window by the **UltraViewer** app (`Apps/UltraViewer`) and as the
@@ -23,17 +23,88 @@ embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 | `Text` | txt, md, json, xml, source code, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
-| `Video` | MP4, MKV, WebM, MOV, AVI, … | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
-| `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A, … | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
+| `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
+| `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
+
+Those two rows are not a list in this file: `IsAudioFile` and `IsVideoFile` ask
+the codec registry
+([UltraCanvasMediaCodecRegistry.md](UltraCanvasMediaCodecRegistry.md)) what this
+build was compiled with, so a format an application registers is classified too,
+and a format the build cannot decode still gets a player-shaped error naming
+what is missing rather than a broken image. `UltraCanvasSupportedFormats` — also
+built from the registry — is the authoritative answer to what actually decodes.
+`.ts` is the one extension settled by content instead of by name: it is
+TypeScript far more often than an MPEG transport stream, so its registration
+carries a probe for the 188-byte packet sync bytes.
 
 The audio / video player elements carry their own transport controls —
 play / pause, a scrubbing seek bar, the time readout and a volume slider —
 so the viewer gets full player control for free.
 
-Image-only tools (rotate, mirror, tone/colour adjustments, save-as) apply to
+Image-only tools (rotate, mirror, tone/colour adjustments, curves, save-as) apply to
 images; the zoom toolbar also drives the PDF view and, for e-books, the
 reading text scale (books reflow, so zoom is a text scale and "Fit" means a
 comfortable line measure across the pane).
+
+## Zooming the shown page
+
+Images and PDF pages zoom the same way: the **mouse wheel** zooms about the
+pointer — what is under the cursor stays under it — and the keyboard steps with
+`+` / `-`, fits with `0` and shows actual size with `1` (the PDF view adds `W`
+for fit-width). The info bar reports the resulting zoom for both. The other
+wheel action stays on Ctrl+wheel: Ctrl+wheel scrolls the PDF page and turns
+pages at its edges.
+
+```cpp
+viewer->SetDocumentWheelZoom(false);   // plain wheel scrolls the PDF instead
+```
+
+## Backdrop under transparent images
+
+A file that really has transparency — an alpha channel that is used, or a
+vector document (SVG), which paints over whatever is behind it — gets a strip of
+colours directly under the picture: an
+[`UltraCanvasColorSwatchBar`](UltraCanvasColorSwatchBar.md) with the checkered
+swatch first, then greys, then colours. Clicking a colour makes it the backdrop;
+clicking the checkerboard goes back to the transparency pattern. Files without
+transparency never show the strip, so it costs no space where it would mean
+nothing — that check is `UCImage::HasTransparency()`, which ignores the fully
+opaque alpha channel a PNG export routinely carries.
+
+```cpp
+viewer->SetTransparencyPaletteVisible(false);   // host provides its own chooser
+// Remember what the user picked:
+viewer->onTransparentBackgroundChanged =
+        [&](TransparentImageBackground mode, const Color& color) {
+    settings.checkered = (mode == TransparentImageBackground::Checkered);
+    settings.color = color;
+};
+// Different colours, or different metrics:
+viewer->GetTransparencyPalette()->SetColors({ Colors::White, Colors::Black });
+```
+
+The strip stays in step with `SetTransparentBackground()` / `SetTransparentColor()`
+however they are called: the matching swatch is marked, and a colour the palette
+does not hold (one picked in a settings dialog) simply marks none of them.
+
+## PDF page inventory
+
+The thumbnail strip beside a PDF page takes its width one of two ways: an
+absolute pixel width — the same strip whatever the viewer's size, which is what
+a preview pane wants — or a share of the viewer's own width, so the inventory
+grows with the window (the default, a quarter of the width capped by the PDF
+view's style).
+
+```cpp
+viewer->SetPDFThumbnailWidth(56);           // absolute: 56 px thumbnails
+viewer->SetPDFThumbnailWidthFraction(0.2f); // relative: a fifth of the width
+viewer->IsPDFThumbnailWidthAbsolute();      // which mode is in force
+```
+
+The viewer remembers the choice, so it also applies to documents opened later.
+The strip only appears for documents with more than one page. UltraFiler
+exposes this as *Settings > Display > PDF Inventory* (a slider from 32 to
+120 px, 56 px by default) and applies it to its preview pane.
 
 ### e-books (`MediaKind::Book`)
 
@@ -119,7 +190,31 @@ auto preview = CreateMediaViewer("Preview", 0, 0, 0, 0);
 preview->SetTopBarsVisible(false);      // host provides the navigation
 preview->SetGrabFocusOnAttach(false);   // don't steal the host's keyboard
 preview->SetTransparentBackground(TransparentImageBackground::Checkered);
+preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
 ```
+
+### Letting go of the previewed file
+
+Most kinds are read into memory and hold no handle on the file: images are
+rasterized into a pixmap, text, spreadsheets, 3D models and e-books are parsed
+from a buffer, and PDFs up to
+[`SetMaxInMemoryBytes()`](UltraCanvasPDFExamples.md#document) (256 MiB by
+default) are loaded whole. Those files stay movable, renamable and deletable
+while they are shown.
+
+Two cases genuinely keep the file open: **video and audio**, which the playback
+backends stream, and a **PDF past the memory limit**, which the engine streams
+page by page. `StopPlayback()` stops the sound but does not release anything.
+
+```cpp
+preview->CloseFile();   // show nothing, and release the file
+```
+
+`CloseFile()` stops playback, releases every backend's document and clears the
+playlist, so the file is free the moment the call returns. A host that lets the
+user act on the previewed file should call it first — the UltraFiler does that
+when its preview pane folds away, which is why its folder display drops a file
+out of the selection before moving it.
 
 ## Image adjustments and saving
 
@@ -127,3 +222,30 @@ The adjustments panel (toolbar toggle *Adjust*) drives `MediaAdjustments`
 (gamma, brightness, per-channel multipliers, sharpen, auto-optimise) through
 PixelFX/libvips; *Save as* bakes the current adjustments + geometry
 (rotation, mirror) into a new file in any save-capable format.
+
+Each slider is **continuous over its whole range** and carries its live value in
+its caption (`Gamma  1.37`), so an edit can be read off and repeated. *Reset*
+puts the controls and the values back in one pass — curves included.
+
+### Curves (highlights, midtones, shadows)
+
+The sliders move the whole tone range at once. To reach one part of it — lift
+the shadows without blowing the highlights, drop a colour cast out of the
+whites — the *Curves* toolbar button opens
+[`UltraCanvasCurvesDialog`](UltraCanvasCurveEditor.md): a master (RGB) curve
+plus one per colour channel, over the histogram of the shown image.
+
+```cpp
+viewer->GetSurface()->GetAdjustments().curves;   // the ToneCurveSet in force
+```
+
+The curves live in `MediaAdjustments::curves` (a `ToneCurveSet`) and are applied
+**first** in the colour pipeline, as a per-channel lookup table
+(`PixelFX::Colour::MapLut`); the sliders then act on the curve's result, the way
+an image editor stacks a Curves layer under its brightness controls. They are
+part of the adjustment like everything else, so *Save as* bakes them in too.
+
+Dragging a point previews on the image itself at full size (untick *Preview* to
+compare against the original); *Cancel*, or closing the window, restores the
+curves the viewer had. The button applies to images — for any other kind of file
+the info bar says so and nothing opens.

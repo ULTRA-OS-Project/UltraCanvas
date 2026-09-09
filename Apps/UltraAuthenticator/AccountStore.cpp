@@ -4,6 +4,7 @@
 
 #include "AccountStore.h"
 
+#include "AccountExport.h"
 #include "otp/OtpAuthUri.h"
 
 #include <algorithm>
@@ -206,6 +207,99 @@ StoreResult AccountStore::Reveal(const std::string& key,
     }
 
     return vault_.Get(key, outUri);
+}
+
+StoreResult AccountStore::ExportAll(
+    const UltraCryptSecureBuffer& masterPassword,
+    const UltraCryptSecureBuffer& exportPassphrase,
+    const std::string& path, size_t& outCount) const {
+    outCount = 0;
+    if (!vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+    if (exportPassphrase.GetSize() == 0) {
+        return StoreResult::Error(StoreResultCode::InvalidArgument,
+                                  "the export passphrase is empty");
+    }
+
+    // Refuse to reuse the master password. Advising against it would not be
+    // enough: the whole point of a separate passphrase is that a backup found
+    // on a USB stick must not open with the password that unlocks the machine.
+    if (UltraCrypt_ConstantTimeEquals(exportPassphrase.Data(),
+                                      exportPassphrase.GetSize(),
+                                      masterPassword.Data(),
+                                      masterPassword.GetSize())) {
+        return StoreResult::Error(
+            StoreResultCode::InvalidArgument,
+            "the backup passphrase must be different from your master "
+            "password");
+    }
+
+    // Re-authenticate before reading every seed in the vault.
+    {
+        EncryptedFileStore probe;
+        StoreResult opened = probe.Open(path_, masterPassword);
+        if (!opened) {
+            return StoreResult::Error(StoreResultCode::AuthenticationFailed,
+                                      "That password is not correct.");
+        }
+        probe.Close();
+    }
+
+    std::vector<std::string> keys;
+    StoreResult listed = vault_.List(keys);
+    if (!listed) return listed;
+
+    // The URIs are gathered, sealed and destroyed inside this call; nothing
+    // here hands the caller a seed.
+    std::vector<UltraCryptSecureBuffer> uris;
+    uris.reserve(keys.size());
+    for (const std::string& key : keys) {
+        UltraCryptSecureBuffer value;
+        StoreResult got = vault_.Get(key, value);
+        if (!got) return got;
+        uris.push_back(std::move(value));
+    }
+
+    StoreResult sealed = SealAccountExport(uris, exportPassphrase, path);
+    for (UltraCryptSecureBuffer& uri : uris) uri.Clear();
+    if (!sealed) return sealed;
+
+    outCount = keys.size();
+    return StoreResult::Ok();
+}
+
+StoreResult AccountStore::ImportAll(
+    const UltraCryptSecureBuffer& exportPassphrase, const std::string& path,
+    ImportSummary& outSummary) {
+    outSummary = ImportSummary{};
+    if (!vault_.IsOpen()) {
+        return StoreResult::Error(StoreResultCode::NotOpen, "no vault is open");
+    }
+
+    std::vector<UltraCryptSecureBuffer> uris;
+    StoreResult opened = OpenAccountExport(path, exportPassphrase, uris);
+    if (!opened) return opened;
+
+    for (UltraCryptSecureBuffer& uri : uris) {
+        std::string text(reinterpret_cast<const char*>(uri.Data()),
+                         uri.GetSize());
+        std::string key;
+        // AddFromUri is the single gate: a backup gets no more trust than a
+        // scanned QR code, and it validates and re-canonicalises each entry.
+        StoreResult added = AddFromUri(text, key);
+        WipeString(text);
+        uri.Clear();
+
+        if (added) {
+            ++outSummary.added;
+        } else if (added.code == StoreResultCode::AlreadyExists) {
+            ++outSummary.skippedExisting;
+        } else {
+            ++outSummary.rejected;
+        }
+    }
+    return StoreResult::Ok();
 }
 
 StoreResult AccountStore::LoadEntry(const std::string& key,

@@ -211,7 +211,7 @@ Registers as an `IGraphicsPlugin` so the framework's graphics plugin registry ca
 class UltraCanvasCDRPlugin : public IGraphicsPlugin {
 public:
     std::string GetPluginName() const override;       // "UltraCanvas CDR Plugin"
-    std::string GetPluginVersion() const override;    // "1.1.0"
+    std::string GetPluginVersion() const override;    // "1.2.0"
     std::vector<std::string> GetSupportedExtensions() const override;
         // returns {"cdr", "cmx", "ccx", "cdt"}
 
@@ -230,8 +230,52 @@ public:
     static bool IsFileSupported(const std::string& filePath);
     static std::shared_ptr<CDRDocument> ParseCDRFile(const std::string& filePath);
     static std::shared_ptr<CDRDocument> ParseCDRMemory(const std::vector<uint8_t>& data);
+
+    // Export ("save as") — see below
+    static CDRExportResult ExportToSVG(const std::string& cdrPath,
+                                       const std::string& svgPath,
+                                       int pageIndex = -1);
+    static CDRExportResult ExportToXAR(const std::string& cdrPath,
+                                       const std::string& xarPath);
 };
 ```
+
+### Export ("Save As")
+
+`ExportToSVG` converts a CDR/CMX file to SVG by re-parsing the source through
+librevenge's `RVNGSVGDrawingGenerator` — the generator receives the same
+drawing callbacks as the on-screen painter, so everything libcdr understands
+(paths, shapes, gradients, text, embedded bitmaps) is preserved. No extra
+dependency: the generator ships in core librevenge.
+
+```cpp
+struct CDRExportResult {
+    bool success;                          // false => see error
+    std::string error;
+    std::vector<std::string> writtenFiles; // every file created
+};
+
+// pageIndex is 0-based and selects one page; pass -1 to export every page.
+// SVG has no multi-page form, so with -1 page N >= 2 goes to "<stem>-p<N>.svg".
+auto r = UltraCanvasCDRPlugin::ExportToSVG("brochure.cdr", "out/brochure.svg", -1);
+if (r.success)
+    for (const auto& f : r.writtenFiles) std::cout << "wrote " << f << "\n";
+else
+    std::cerr << r.error << "\n";
+```
+
+Notes:
+
+- The output directory must exist; the exporter does not create it.
+- A page that embeds a very large bitmap produces a large base64 `xlink:href`
+  attribute. The file is valid SVG (browsers open it), but renderers built on
+  libxml2's default limits (e.g. librsvg) refuse attributes over 10 MB.
+
+`ExportToXAR` is **not implemented yet**: the XAR writer (`XARConverter`,
+`Plugins/Vector`) exports only from the shared `VectorStorage` document model,
+and no CDR importer into that model exists. It always fails with an error
+saying so — offer the format in UI, surface the message, and route users to
+SVG meanwhile.
 
 ### Plugin Registration
 
@@ -276,7 +320,7 @@ auto cdrElement1 = std::make_shared<UltraCanvasCDRElement>(
 cdrElement1->SetFitMode(CDRFitMode::FitPage);
 
 // Resolve the demo asset path and load
-std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/cdr/demo.cdr");
+std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/vector/CDR/demo.cdr");
 if (cdrElement1->LoadFromFile(cdrFile1)) {
     statusLabel->SetText("Loaded: " + cdrFile1 + " (" +
                          std::to_string(cdrElement1->GetPageCount()) + " pages)");
@@ -450,7 +494,7 @@ Inline (non-fullscreen) prev / next buttons driving the `SetCurrentPage()` API a
 ```cpp
 auto cdrElement4 = std::make_shared<UltraCanvasCDRElement>("CDR4", 10, 10, 280, 220);
 cdrElement4->SetFitMode(CDRFitMode::FitPage);
-std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/cdr/logo.cdr");
+std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/vector/CDR/logo.cdr");
 cdrElement4->LoadFromFile(cdrFile4);
 
 auto prevBtn4 = std::make_shared<UltraCanvasButton>("Prev4", 10, 240, 60, 25);
@@ -495,6 +539,7 @@ The info panel in the demo lists the headline capabilities exposed by the CDR pl
 - Stroke and fill styles (incl. linear / radial / conical gradients)
 - Zoom and pan controls
 - Fit modes (FitPage, FitWidth, FitHeight, FitNone)
+- Save as SVG via `ExportToSVG` (XAR export planned; see Export section)
 
 Parsing is implemented on top of **libcdr** via `librevenge::RVNGDrawingInterface` (see `UltraCanvasCDRPainterImpl` in `UltraCanvasCDRPluginImpl.h`).
 
@@ -510,6 +555,23 @@ Parsing is implemented on top of **libcdr** via `librevenge::RVNGDrawingInterfac
    ```
 4. **Load files** either through the plugin (extension-based dispatch) or directly via `UltraCanvasCDRElement::LoadFromFile()` / `LoadCDRFromFile()`.
 5. **Pick a fit mode** — `CDRFitMode::FitPage` is the right default for thumbnails; switch to `CDRFitMode::FitNone` before applying user zoom/offset.
+
+## Writing CDR files (`UltraCanvasCDRConverter.h`)
+
+The Vector plugin's `UltraCanvas::VectorConverter::CDRConverter` writes a `VectorStorage::VectorDocument` as a version-7 RIFF CDR file (`Export` / `ExportToString` / `ExportToStream`). It is export-only — `CanImport()` is false; reading stays with this plugin.
+
+CorelDRAW's format has no public specification, so the writer targets the record layouts consumed by libcdr — the reference open-source reader and the engine underneath this plugin — and the round-trip through that parser is the correctness contract (`Tests/CDRWriterTest.cpp`). What the writer emits:
+
+- The RIFF structure `RIFF…CDR7` / `vrsn` / `LIST doc` / `mcfg` (page size) / `fild`+`outl` style definitions / `LIST page` of `LIST obj` objects — written topmost-first, because CDR draws objects in reverse file order.
+- All geometry as line-and-curve `loda` chunks (point list + per-point type bytes) with 32-bit coordinates in 1/254000 inch, page-centred with Y up; every `PathCommandType` is normalised through the shared `PathOps` helpers, and transforms are baked into the points (each object carries an identity `trfd`).
+- Solid fills (RGB colour model) and outline styles: width, caps, joins, and dash patterns (stored in line-width multiples, so dash lengths round to those units); fill opacity from style opacity and fill alpha.
+- Flattened with a warning: gradients (blend of the end stops), pattern fills. Skipped with a warning: text and bitmap objects.
+
+```cpp
+using namespace UltraCanvas::VectorConverter;
+CDRConverter cdr;
+cdr.Export(*document, "drawing.cdr");          // document is a VectorStorage::VectorDocument
+```
 
 ## See Also
 

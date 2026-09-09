@@ -6,11 +6,12 @@
 // prewarms its lookups on a lazily started background thread so building an
 // "Open with" menu is a cache read instead of an association-database parse.
 // Backends: Linux/BSD (freedesktop shared-mime-info + mimeapps.list +
-// .desktop entries); Windows and macOS currently launch with the default
-// application only and report no enumerable candidates (their full backends
-// are later phases — see UltraCanvasFileAssociationsProposal.md).
-// Version: 1.0.0
-// Last Modified: 2026-08-16
+// .desktop entries), Windows (SHAssocEnumHandlers / IAssocHandler — the
+// handlers Explorer's own "Open with" lists) and macOS (NSWorkspace /
+// Launch Services, macOS 12+). WebAssembly has no application registry and
+// reports no candidates.
+// Version: 1.1.0
+// Last Modified: 2026-08-24
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -34,8 +35,10 @@ namespace UltraCanvas {
         // file; that file's default application comes first and carries
         // isDefault. Served from the prewarm cache when warm (no I/O); a cold
         // call resolves synchronously, bounded by the distinct file types in
-        // `paths`. Returns empty for an empty selection or on the platforms
-        // without an enumeration backend.
+        // `paths`. Returns empty for an empty selection, for a file whose
+        // type the platform cannot determine (Windows and macOS associate by
+        // extension, so an extension-less name has no candidates there), and
+        // on the platforms without an enumeration backend.
         std::vector<FileAssociationApp> GetApplicationsForFiles(
                 const std::vector<std::string>& paths);
 

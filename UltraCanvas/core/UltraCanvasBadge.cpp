@@ -1,11 +1,12 @@
 // core/UltraCanvasBadge.cpp
 // Platform-independent badge (count / status / overlay) implementation.
-// Version: 1.0.0
-// Last Modified: 2026-07-07
+// Version: 1.1.0 - honour BadgeStyle::cornerRadius (pill when negative).
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBadge.h"
 #include "UltraCanvasApplication.h"
+#include <algorithm>
 #include <string>
 
 namespace UltraCanvas {
@@ -167,9 +168,15 @@ namespace UltraCanvas {
             return;
         }
 
-        // Pill: inset by the ring so the border stays inside our bounds.
+        // Body: inset by the ring so the border stays inside our bounds.
+        // style.cornerRadius < 0 means "pill" (radius = half the height);
+        // a value >= 0 draws a rounded box with that radius, clamped so it can
+        // never exceed half the shorter side.
         Rect2Df rect(rw / 2.0f, rw / 2.0f, w - rw, h - rw);
-        float radius = rect.height / 2.0f;
+        float radius = style.cornerRadius < 0.0f
+                       ? rect.height / 2.0f
+                       : std::min(style.cornerRadius,
+                                  std::min(rect.width, rect.height) / 2.0f);
         Color border = ring ? style.overlayRingColor : style.borderColor;
         ctx->DrawFilledRectangle(rect, fill, ring ? rw : style.borderWidth, border, radius);
 

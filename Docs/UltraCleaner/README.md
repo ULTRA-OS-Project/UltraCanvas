@@ -153,6 +153,19 @@ the same trash support and the same simulate-by-default posture.
 
 Three tabs: **Overview**, **System junk** and **Photo albums**.
 
+Everything inside a tab is *laid out*, not positioned: pages are flex columns
+whose children carry no absolute coordinates. An absolute offset inside a tab
+page silently assumes a tab strip of a particular height, and a font metric
+away from that assumption the toolbar is clipped — which is exactly what
+happened on Windows. For the same reason, a wrapping label must never be
+given a fixed height: the panel that lists the categories is a *block*
+container, because only the block layout path measures a wrapped label
+against a definite width and gives it the height its text really needs. Under
+flex it reports a single line, and the next row is drawn over the overflow.
+
+`LayoutForSize()` re-lays the tab container from `onWindowResize`, so the app
+follows the window instead of staying at its opening size.
+
 Overview is what the app opens on. It draws one
 `UltraCanvasCircularProgressChart` per mounted volume — green below 75%
 used, amber to 90%, red above — with the drive's name, how full it is, what
@@ -295,6 +308,15 @@ locations the rule table resolved; that case is covered by
 | `Simulate` | Nothing is touched. Reports what would go and how much it would free. The default everywhere — the GUI's dropdown and the CLI's `--clean` both start here. |
 | `MoveToTrash` | XDG trash on Linux (`files/` plus a `.trashinfo` record, so the desktop's "Restore" works), `~/.Trash` on macOS, `SHFileOperationW` with `FOF_ALLOWUNDO` on Windows. Falls back to copy-then-remove when the trash is on another filesystem. |
 | `DeletePermanently` | `std::filesystem::remove_all`. |
+
+**`MoveToTrash` never empties the trash.** An item that already lives in the
+trash is left alone and counted in `RemovalReport::skippedAlreadyInTrash`,
+and the same holds for the Windows recycle bin. Moving the trash into the
+trash frees nothing — the file is renamed beside itself and gains a second
+`.trashinfo` — so the only honest options were to skip it or to escalate to a
+permanent delete the user did not ask for. Emptying the trash is what
+`DeletePermanently` is for, and the GUI and CLI both say so when the count is
+non-zero.
 
 Failures are collected rather than thrown: a report names each path that
 would not go and why, capped by `RemovalOptions::failureLimit` so a wall of

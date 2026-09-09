@@ -20,7 +20,7 @@ Matrix3x3::Matrix3x3() {
     // Initialize as identity matrix
     for (int i = 0; i < 3; i++) {
         for (int j = 0; j < 3; j++) {
-            m[i][j] = (i == j) ? 1.0f : 0.0f;
+            m[i][j] = (i == j) ? 1.0 : 0.0;
         }
     }
 }
@@ -29,24 +29,24 @@ Matrix3x3 Matrix3x3::Identity() {
     return Matrix3x3();
 }
 
-Matrix3x3 Matrix3x3::Translate(float tx, float ty) {
+Matrix3x3 Matrix3x3::Translate(double tx, double ty) {
     Matrix3x3 result;
     result.m[0][2] = tx;
     result.m[1][2] = ty;
     return result;
 }
 
-Matrix3x3 Matrix3x3::Scale(float sx, float sy) {
+Matrix3x3 Matrix3x3::Scale(double sx, double sy) {
     Matrix3x3 result;
     result.m[0][0] = sx;
     result.m[1][1] = sy;
     return result;
 }
 
-Matrix3x3 Matrix3x3::Rotate(float angle) {
+Matrix3x3 Matrix3x3::Rotate(double angle) {
     Matrix3x3 result;
-    float c = std::cos(angle);
-    float s = std::sin(angle);
+    double c = std::cos(angle);
+    double s = std::sin(angle);
     result.m[0][0] = c;
     result.m[0][1] = -s;
     result.m[1][0] = s;
@@ -54,23 +54,23 @@ Matrix3x3 Matrix3x3::Rotate(float angle) {
     return result;
 }
 
-Matrix3x3 Matrix3x3::RotateDegrees(float degrees) {
-    return Rotate(degrees * M_PI / 180.0f);
+Matrix3x3 Matrix3x3::RotateDegrees(double degrees) {
+    return Rotate(degrees * M_PI / 180.0);
 }
 
-Matrix3x3 Matrix3x3::SkewX(float angle) {
+Matrix3x3 Matrix3x3::SkewX(double angle) {
     Matrix3x3 result;
     result.m[0][1] = std::tan(angle);
     return result;
 }
 
-Matrix3x3 Matrix3x3::SkewY(float angle) {
+Matrix3x3 Matrix3x3::SkewY(double angle) {
     Matrix3x3 result;
     result.m[1][0] = std::tan(angle);
     return result;
 }
 
-Matrix3x3 Matrix3x3::FromValues(float a, float b, float c, float d, float e, float f) {
+Matrix3x3 Matrix3x3::FromValues(double a, double b, double c, double d, double e, double f) {
     Matrix3x3 result;
     result.m[0][0] = a;
     result.m[0][1] = b;
@@ -116,8 +116,8 @@ Rect2Dd Matrix3x3::Transform(const Rect2Dd& rect) const {
         corners[i] = Transform(corners[i]);
     }
     
-    float minX = corners[0].x, maxX = corners[0].x;
-    float minY = corners[0].y, maxY = corners[0].y;
+    double minX = corners[0].x, maxX = corners[0].x;
+    double minY = corners[0].y, maxY = corners[0].y;
     
     for (int i = 1; i < 4; i++) {
         minX = std::min(minX, corners[i].x);
@@ -129,20 +129,29 @@ Rect2Dd Matrix3x3::Transform(const Rect2Dd& rect) const {
     return Rect2Dd{minX, minY, maxX - minX, maxY - minY};
 }
 
-float Matrix3x3::Determinant() const {
+double Matrix3x3::Determinant() const {
     return m[0][0] * (m[1][1] * m[2][2] - m[1][2] * m[2][1]) -
            m[0][1] * (m[1][0] * m[2][2] - m[1][2] * m[2][0]) +
            m[0][2] * (m[1][0] * m[2][1] - m[1][1] * m[2][0]);
 }
 
+bool Matrix3x3::IsIdentity(double epsilon) const {
+    for (int i = 0; i < 3; i++) {
+        for (int j = 0; j < 3; j++) {
+            if (std::abs(m[i][j] - (i == j ? 1.0 : 0.0)) > epsilon) return false;
+        }
+    }
+    return true;
+}
+
 Matrix3x3 Matrix3x3::Inverse() const {
-    float det = Determinant();
-    if (std::abs(det) < 1e-10f) {
+    double det = Determinant();
+    if (std::abs(det) < 1e-300) {
         return Identity(); // Return identity if not invertible
     }
     
     Matrix3x3 result;
-    float invDet = 1.0f / det;
+    double invDet = 1.0 / det;
     
     result.m[0][0] = (m[1][1] * m[2][2] - m[1][2] * m[2][1]) * invDet;
     result.m[0][1] = (m[0][2] * m[2][1] - m[0][1] * m[2][2]) * invDet;
@@ -291,8 +300,8 @@ Rect2Dd VectorPolyline::GetBoundingBox() const {
         return Rect2Dd{0, 0, 0, 0};
     }
     
-    float minX = Points[0].x, maxX = Points[0].x;
-    float minY = Points[0].y, maxY = Points[0].y;
+    double minX = Points[0].x, maxX = Points[0].x;
+    double minY = Points[0].y, maxY = Points[0].y;
     
     for (const auto& point : Points) {
         minX = std::min(minX, point.x);
@@ -320,8 +329,8 @@ Rect2Dd VectorPolygon::GetBoundingBox() const {
         return Rect2Dd{0, 0, 0, 0};
     }
     
-    float minX = Points[0].x, maxX = Points[0].x;
-    float minY = Points[0].y, maxY = Points[0].y;
+    double minX = Points[0].x, maxX = Points[0].x;
+    double minY = Points[0].y, maxY = Points[0].y;
     
     for (const auto& point : Points) {
         minX = std::min(minX, point.x);
@@ -375,8 +384,9 @@ Rect2Dd VectorPath::GetBoundingBox() const {
         Path.cachedBounds = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
     }
 
+    Rect2Dd bbox = *Path.cachedBounds;
     if (Transform.has_value()) {
-        bbox = Transform->Transform(Path.cachedBounds);
+        bbox = Transform->Transform(bbox);
     }
     return bbox;
 }
@@ -458,7 +468,7 @@ float VectorPath::GetLength() const {
 }
 
 Point2Dd VectorPath::GetPointAtLength(float length) const {
-    auto points = Flatten();
+    auto points = Flatten(0.25f);
     if (points.empty()) return Point2Dd{0, 0};
     
     float currentLength = 0;
@@ -469,10 +479,8 @@ Point2Dd VectorPath::GetPointAtLength(float length) const {
         
         if (currentLength + segmentLength >= length) {
             float t = (length - currentLength) / segmentLength;
-            return Point2Dd{
-                points[i-1].x + t * dx,
-                points[i-1].y + t * dy
-            };
+            return Point2Dd(points[i-1].x + t * dx,
+                            points[i-1].y + t * dy);
         }
         currentLength += segmentLength;
     }
@@ -481,7 +489,7 @@ Point2Dd VectorPath::GetPointAtLength(float length) const {
 }
 
 float VectorPath::GetAngleAtLength(float length) const {
-    auto points = Flatten();
+    auto points = Flatten(0.25f);
     if (points.size() < 2) return 0;
     
     float currentLength = 0;
@@ -718,26 +726,30 @@ std::shared_ptr<VectorElement> VectorTextPath::Clone() const {
 
 // ===== CONTAINER ELEMENTS IMPLEMENTATION =====
 
+// An element that has nothing to measure (an empty group, a clip path,
+// a mask, an unresolved use) reports the all-zero rectangle; a union must
+// skip it, or every such element drags the bounds to the origin.
+static bool IsEmptyBounds(const Rect2Dd& r) {
+    return r.width <= 0 && r.height <= 0 && r.x == 0 && r.y == 0;
+}
+
+static Rect2Dd UnionBounds(const Rect2Dd& a, const Rect2Dd& b) {
+    if (IsEmptyBounds(a)) return b;
+    if (IsEmptyBounds(b)) return a;
+    double minX = std::min(a.x, b.x);
+    double minY = std::min(a.y, b.y);
+    double maxX = std::max(a.x + a.width, b.x + b.width);
+    double maxY = std::max(a.y + a.height, b.y + b.height);
+    return Rect2Dd{minX, minY, maxX - minX, maxY - minY};
+}
+
 // VectorGroup
 Rect2Dd VectorGroup::GetBoundingBox() const {
-    if (Children.empty()) {
-        return Rect2Dd{0, 0, 0, 0};
+    Rect2Dd bbox{0, 0, 0, 0};
+    for (const auto& child : Children) {
+        if (child) bbox = UnionBounds(bbox, child->GetBoundingBox());
     }
-    
-    Rect2Dd bbox = Children[0]->GetBoundingBox();
-    
-    for (size_t i = 1; i < Children.size(); i++) {
-        Rect2Dd childBox = Children[i]->GetBoundingBox();
-        
-        float minX = std::min(bbox.x, childBox.x);
-        float minY = std::min(bbox.y, childBox.y);
-        float maxX = std::max(bbox.x + bbox.width, childBox.x + childBox.width);
-        float maxY = std::max(bbox.y + bbox.height, childBox.y + childBox.height);
-        
-        bbox = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
-    }
-    
-    if (Transform.has_value()) {
+    if (Transform.has_value() && !IsEmptyBounds(bbox)) {
         bbox = Transform->Transform(bbox);
     }
     return bbox;
@@ -860,8 +872,8 @@ std::shared_ptr<VectorElement> VectorPattern::Clone() const {
     clone->Parent.reset();
     
     // Deep clone pattern content
-    if (Data.Content) {
-        Data.Content = std::dynamic_pointer_cast<VectorGroup>(Data.Content->Clone());
+    if (clone->Data.Content) {
+        clone->Data.Content = std::dynamic_pointer_cast<VectorGroup>(Data.Content->Clone());
     }
     
     return clone;
@@ -933,8 +945,8 @@ std::shared_ptr<VectorElement> VectorMarker::Clone() const {
     clone->Parent.reset();
     
     // Deep clone marker content
-    if (Data.Content) {
-        Data.Content = std::dynamic_pointer_cast<VectorGroup>(Data.Content->Clone());
+    if (clone->Data.Content) {
+        clone->Data.Content = std::dynamic_pointer_cast<VectorGroup>(Data.Content->Clone());
     }
     
     return clone;
@@ -956,6 +968,50 @@ std::shared_ptr<VectorElement> VectorLayer::Clone() const {
     return clone;
 }
 
+
+// ===== UNITS =====
+
+double PointsPerUnit(LengthUnit unit) {
+    switch (unit) {
+        case LengthUnit::Unspecified: return 0.0;
+        case LengthUnit::Point:       return 1.0;
+        case LengthUnit::Pixel:       return 72.0 / 96.0;
+        case LengthUnit::Inch:        return 72.0;
+        case LengthUnit::Foot:        return 72.0 * 12.0;
+        case LengthUnit::Yard:        return 72.0 * 36.0;
+        case LengthUnit::Mile:        return 72.0 * 63360.0;
+        case LengthUnit::Mil:         return 72.0 / 1000.0;
+        case LengthUnit::Millimeter:  return 72.0 / 25.4;
+        case LengthUnit::Centimeter:  return 72.0 / 2.54;
+        case LengthUnit::Decimeter:   return 72.0 / 0.254;
+        case LengthUnit::Meter:       return 72.0 / 0.0254;
+        case LengthUnit::Kilometer:   return 72.0 / 0.0000254;
+        case LengthUnit::Micrometer:  return 72.0 / 25400.0;
+        case LengthUnit::Nanometer:   return 72.0 / 25400000.0;
+    }
+    return 0.0;
+}
+
+const char* LengthUnitSymbol(LengthUnit unit) {
+    switch (unit) {
+        case LengthUnit::Unspecified: return "";
+        case LengthUnit::Point:       return "pt";
+        case LengthUnit::Pixel:       return "px";
+        case LengthUnit::Inch:        return "in";
+        case LengthUnit::Foot:        return "ft";
+        case LengthUnit::Yard:        return "yd";
+        case LengthUnit::Mile:        return "mi";
+        case LengthUnit::Mil:         return "mil";
+        case LengthUnit::Millimeter:  return "mm";
+        case LengthUnit::Centimeter:  return "cm";
+        case LengthUnit::Decimeter:   return "dm";
+        case LengthUnit::Meter:       return "m";
+        case LengthUnit::Kilometer:   return "km";
+        case LengthUnit::Micrometer:  return "um";
+        case LengthUnit::Nanometer:   return "nm";
+    }
+    return "";
+}
 
 // ===== VECTOR DOCUMENT IMPLEMENTATION =====
 
@@ -1024,8 +1080,7 @@ std::vector<std::shared_ptr<VectorElement>> VectorDocument::FindElementsByClass(
     // Lambda for recursive search
     std::function<void(const std::shared_ptr<VectorElement>&)> searchElement = 
         [&](const std::shared_ptr<VectorElement>& elem) {
-            if (elem->Class == className ||
-                std::find(elem->ClassList.begin(), elem->ClassList.end(), className) != elem->ClassList.end()) {
+            if (elem->HasClass(className)) {
                 result.push_back(elem);
             }
             
@@ -1044,23 +1099,13 @@ std::vector<std::shared_ptr<VectorElement>> VectorDocument::FindElementsByClass(
 }
 
 Rect2Dd VectorDocument::GetBoundingBox() const {
-    if (Layers.empty()) {
+    Rect2Dd bbox{0, 0, 0, 0};
+    for (const auto& layer : Layers) {
+        if (layer) bbox = UnionBounds(bbox, layer->GetBoundingBox());
+    }
+    if (IsEmptyBounds(bbox)) {
         return Rect2Dd{0, 0, Size.width, Size.height};
     }
-    
-    Rect2Dd bbox = Layers[0]->GetBoundingBox();
-    
-    for (size_t i = 1; i < Layers.size(); i++) {
-        Rect2Dd layerBox = Layers[i]->GetBoundingBox();
-        
-        float minX = std::min(bbox.x, layerBox.x);
-        float minY = std::min(bbox.y, layerBox.y);
-        float maxX = std::max(bbox.x + bbox.width, layerBox.x + layerBox.width);
-        float maxY = std::max(bbox.y + bbox.height, layerBox.y + layerBox.height);
-        
-        bbox = Rect2Dd{minX, minY, maxX - minX, maxY - minY};
-    }
-    
     return bbox;
 }
 
@@ -1081,7 +1126,6 @@ void VectorDocument::Clear() {
     Layers.clear();
     Definitions.clear();
     NamedStyles.clear();
-    StyleSheet.clear();
 }
 
 std::shared_ptr<VectorDocument> VectorDocument::Clone() const {
@@ -1190,7 +1234,7 @@ PathData ParsePathString(const std::string& pathStr) {
                 break;
         }
         
-        result.Commands.push_back(pathCmd);
+        result.commands.push_back(pathCmd);
     }
     
     return result;
@@ -1199,7 +1243,7 @@ PathData ParsePathString(const std::string& pathStr) {
 std::string SerializePathData(const PathData& path) {
     std::ostringstream oss;
     
-    for (const auto& cmd : path.Commands) {
+    for (const auto& cmd : path.commands) {
         char cmdChar = 0;
         
         switch (cmd.Type) {
@@ -1352,8 +1396,11 @@ Matrix3x3 ParseTransformString(const std::string& transformStr) {
         } else if (func == "skewY" && values.size() >= 1) {
             result = result * Matrix3x3::SkewY(values[0] * M_PI / 180.0f);
         } else if (func == "matrix" && values.size() >= 6) {
+            // SVG matrix(a,b,c,d,e,f) is column-major: x' = a*x + c*y + e.
+            // FromValues(A,B,...) is row-major (x' = A*x + B*y + e), so b and
+            // c swap places.  SerializeTransform writes the mirror image.
             result = result * Matrix3x3::FromValues(
-                values[0], values[1], values[2], 
+                values[0], values[2], values[1],
                 values[3], values[4], values[5]
             );
         }
@@ -1391,7 +1438,7 @@ std::string SerializeTransform(const Matrix3x3& transform) {
            std::to_string(transform.m[1][2]) + ")";
 }
 
-Rect2Dd CalculateTextBounds(const std::vector<TextSpanData>& spans, const TextStyle& style) {
+Rect2Dd CalculateTextBounds(const std::vector<TextSpanData>& spans, const VectorTextStyle& style) {
     // Simplified implementation
     // In real implementation, this would use proper font metrics
     
@@ -1429,7 +1476,7 @@ PathData PolygonToPath(const std::vector<Point2Dd>& points, bool closed) {
     moveCmd.Type = PathCommandType::MoveTo;
     moveCmd.Parameters = {points[0].x, points[0].y};
     moveCmd.Relative = false;
-    result.Commands.push_back(moveCmd);
+    result.commands.push_back(moveCmd);
     
     // LineTo remaining points
     for (size_t i = 1; i < points.size(); i++) {
@@ -1437,14 +1484,14 @@ PathData PolygonToPath(const std::vector<Point2Dd>& points, bool closed) {
         lineCmd.Type = PathCommandType::LineTo;
         lineCmd.Parameters = {points[i].x, points[i].y};
         lineCmd.Relative = false;
-        result.Commands.push_back(lineCmd);
+        result.commands.push_back(lineCmd);
     }
     
     // Close path if requested
     if (closed) {
         PathCommand closeCmd;
         closeCmd.Type = PathCommandType::ClosePath;
-        result.Commands.push_back(closeCmd);
+        result.commands.push_back(closeCmd);
         result.Closed = true;
     }
     
@@ -1615,8 +1662,8 @@ PathData CombinePaths(const PathData& path1, const PathData& path2, bool union_o
     PathData result = path1;
     
     // For now, just append path2 commands
-    for (const auto& cmd : path2.Commands) {
-        result.Commands.push_back(cmd);
+    for (const auto& cmd : path2.commands) {
+        result.commands.push_back(cmd);
     }
     
     return result;

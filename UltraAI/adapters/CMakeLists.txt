@@ -21,6 +21,18 @@ if(ULTRAAI_ADAPTER_LLAMACPP)
     add_subdirectory(llamacpp)
 endif()
 
+if(ULTRAAI_ADAPTER_MINIMAX)
+    add_subdirectory(minimax)
+endif()
+
+if(ULTRAAI_ADAPTER_QWEN)
+    add_subdirectory(qwen)
+endif()
+
+if(ULTRAAI_ADAPTER_COMFYUI)
+    add_subdirectory(comfyui)
+endif()
+
 # Real adapters are added here as they land:
 # if(ULTRAAI_ADAPTER_WHISPER)   add_subdirectory(whisper)   endif()
 # if(ULTRAAI_ADAPTER_PIPER)     add_subdirectory(piper)     endif()

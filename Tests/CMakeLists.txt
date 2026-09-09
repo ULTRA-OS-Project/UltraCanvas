@@ -125,6 +125,228 @@ add_test(NAME RecentFilesTest COMMAND RecentFilesTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: RecentFilesTest")
 
+# ===== TEXT WRAP TEST =====
+# UltraCanvasTextWrapping.h is header-only and measures text through a callable
+# instead of a render context, so the caption wrapper behind the Filer's tile
+# names is tested against a synthetic font: no display, no framework link.
+message(STATUS "  Building TextWrapTest...")
+
+add_executable(TextWrapTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TextWrapTest.cpp
+)
+target_include_directories(TextWrapTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(TextWrapTest PRIVATE cxx_std_20)
+set_target_properties(TextWrapTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TextWrapTest COMMAND TextWrapTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TextWrapTest")
+
+# ===== FOLDER WATCHER TEST =====
+# UltraCanvasFolderWatcher is built from its own sources - the core file plus
+# this platform's backend - so the test needs no display and does not link
+# UltraCanvas. Platforms without a backend still build and run it: there every
+# Watch() fails by design and the test checks exactly that.
+message(STATUS "  Building FolderWatcherTest...")
+
+set(FOLDER_WATCHER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/FolderWatcherTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasFolderWatcher.cpp
+)
+# The backend source and the define must be chosen together - the core file
+# emits its fallback only when the define is absent - so both follow the single
+# ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH decision made in the top-level CMakeLists.
+if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+    if(WIN32)
+        list(APPEND FOLDER_WATCHER_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsFolderWatcher.cpp)
+    else()
+        list(APPEND FOLDER_WATCHER_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxFolderWatcher.cpp)
+    endif()
+endif()
+
+add_executable(FolderWatcherTest ${FOLDER_WATCHER_SOURCES})
+target_include_directories(FolderWatcherTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FolderWatcherTest PRIVATE cxx_std_20)
+if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+    target_compile_definitions(FolderWatcherTest PRIVATE ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+endif()
+find_package(Threads REQUIRED)
+target_link_libraries(FolderWatcherTest PRIVATE Threads::Threads)
+set_target_properties(FolderWatcherTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FolderWatcherTest COMMAND FolderWatcherTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FolderWatcherTest")
+
+# ===== FILE LOCK TEST =====
+# Same arrangement as the folder watcher above: UltraCanvasFileLock is built
+# from its own sources (core plus this platform's backend), needs no display
+# and does not link UltraCanvas. Platforms without a backend still build and
+# run it: there every probe answers Unknown by design and the test checks that.
+message(STATUS "  Building FileLockTest...")
+
+set(FILE_LOCK_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/FileLockTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasFileLock.cpp
+)
+# Backend source and define chosen together, from the single
+# ULTRACANVAS_HAS_NATIVE_FILE_LOCK decision in the top-level CMakeLists - the
+# core file emits its fallback only when the define is absent.
+if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+    if(WIN32)
+        list(APPEND FILE_LOCK_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsFileLock.cpp)
+    else()
+        list(APPEND FILE_LOCK_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxFileLock.cpp)
+    endif()
+endif()
+
+add_executable(FileLockTest ${FILE_LOCK_SOURCES})
+target_include_directories(FileLockTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(FileLockTest PRIVATE cxx_std_20)
+if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+    target_compile_definitions(FileLockTest PRIVATE ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+endif()
+set_target_properties(FileLockTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FileLockTest COMMAND FileLockTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FileLockTest")
+
+# ===== VOLUME MONITOR TEST =====
+# Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
+# built from its own sources, needs no display and does not link UltraCanvas.
+# Mounting a filesystem needs privileges a test does not have, so the test
+# checks the volume list and the monitor's lifetime rather than a real
+# insertion - on the polling path as well as the native one.
+message(STATUS "  Building VolumeMonitorTest...")
+
+set(VOLUME_MONITOR_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/VolumeMonitorTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasVolumeMonitor.cpp
+)
+# macOS is deliberately left on the polling path HERE only: its backend is
+# Objective-C++ and linking AppKit into a standalone test buys nothing the
+# library build does not already cover. Everywhere else the backend source and
+# the define are chosen together, because the core file emits its fallback
+# definitions only when the define is absent.
+set(VOLUME_MONITOR_NATIVE OFF)
+if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR AND NOT APPLE)
+    set(VOLUME_MONITOR_NATIVE ON)
+    if(WIN32)
+        list(APPEND VOLUME_MONITOR_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsVolumeMonitor.cpp)
+    else()
+        list(APPEND VOLUME_MONITOR_SOURCES
+            ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxVolumeMonitor.cpp)
+    endif()
+endif()
+
+add_executable(VolumeMonitorTest ${VOLUME_MONITOR_SOURCES})
+target_include_directories(VolumeMonitorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(VolumeMonitorTest PRIVATE cxx_std_20)
+if(VOLUME_MONITOR_NATIVE)
+    target_compile_definitions(VolumeMonitorTest PRIVATE ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
+endif()
+target_link_libraries(VolumeMonitorTest PRIVATE Threads::Threads)
+set_target_properties(VolumeMonitorTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VolumeMonitorTest COMMAND VolumeMonitorTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VolumeMonitorTest")
+
+# ===== SPELL CHECKER TEST =====
+# The spell service, tokenizer and Hunspell backend are framework-independent,
+# so the test builds straight from the sources. The WASM backend stub supplies
+# CreateNativeSpellCheckBackend(), which keeps the portable Hunspell path under
+# test on every platform rather than whatever the host OS happens to provide.
+message(STATUS "  Building SpellCheckerTest...")
+
+add_executable(SpellCheckerTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpellCheckerTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasSpellChecker.cpp
+    ${ULTRACANVAS_CORE_DIR}/SpellCheckLanguageNames.cpp
+    ${ULTRACANVAS_CORE_DIR}/SpellCheckBackendHunspell.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/WASM/UltraCanvasSpellCheckSupport.cpp
+)
+target_include_directories(SpellCheckerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(SpellCheckerTest PRIVATE cxx_std_20)
+
+find_package(Threads REQUIRED)
+target_link_libraries(SpellCheckerTest PRIVATE Threads::Threads)
+
+# HUNSPELL_FOUND is set in the UltraCanvas subdirectory scope, so it is not
+# visible here - probe again rather than silently building the stub.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(HUNSPELL QUIET hunspell)
+endif()
+
+# Optional, exactly as in the framework build: without it the backend compiles
+# to a stub, reports zero dictionaries, and the test skips those checks.
+if(HUNSPELL_FOUND)
+    target_compile_definitions(SpellCheckerTest PRIVATE ULTRACANVAS_HAS_HUNSPELL)
+    target_include_directories(SpellCheckerTest PRIVATE ${HUNSPELL_INCLUDE_DIRS})
+    target_link_directories(SpellCheckerTest PRIVATE ${HUNSPELL_LIBRARY_DIRS})
+    target_link_libraries(SpellCheckerTest PRIVATE ${HUNSPELL_LIBRARIES})
+endif()
+
+set_target_properties(SpellCheckerTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME SpellCheckerTest COMMAND SpellCheckerTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: SpellCheckerTest")
+
+# ===== TEXTAREA SPELL CHECK RUNTIME TEST =====
+# Needs the real framework: the byte-offset to screen-rectangle mapping runs
+# through live line layouts, scroll offsets and the gutter. Skips itself when
+# no DISPLAY or no dictionary is present.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextAreaSpellCheckTest...")
+    add_executable(TextAreaSpellCheckTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextAreaSpellCheckTest.cpp
+    )
+    target_include_directories(TextAreaSpellCheckTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextAreaSpellCheckTest PRIVATE cxx_std_20)
+    target_link_libraries(TextAreaSpellCheckTest PRIVATE UltraCanvas)
+    set_target_properties(TextAreaSpellCheckTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextAreaSpellCheckTest COMMAND TextAreaSpellCheckTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextAreaSpellCheckTest")
+else()
+    message(STATUS "  TextAreaSpellCheckTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== ULTRATEXTER MARKDOWN SPELL RANGE TEST =====
+# The scanner that keeps fenced code, link targets and math out of UltraTexter's
+# spell check has no framework or editor dependency, so the test builds from
+# that one source file.
+message(STATUS "  Building TexterMarkdownSpellRangesTest...")
+
+add_executable(TexterMarkdownSpellRangesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/TexterMarkdownSpellRangesTest.cpp
+    ${ULTRACANVAS_ROOT}/Apps/Texter/UltraCanvasMarkdownSpellRanges.cpp
+)
+target_include_directories(TexterMarkdownSpellRangesTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/Texter)
+target_compile_features(TexterMarkdownSpellRangesTest PRIVATE cxx_std_20)
+set_target_properties(TexterMarkdownSpellRangesTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME TexterMarkdownSpellRangesTest COMMAND TexterMarkdownSpellRangesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: TexterMarkdownSpellRangesTest")
+
 # ===== HTMLREADER TEST =====
 # The HTMLReader parse/CSS/resolve layer is framework-independent, so the
 # test builds straight from the sources without linking UltraCanvas.
@@ -136,6 +358,9 @@ add_executable(HTMLReaderTest
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLStyleResolver.cpp
+    # Trim() lives in UltraCanvasTextUtils.cpp (platform-free); without it
+    # this target fails to link.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(HTMLReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 target_compile_features(HTMLReaderTest PRIVATE cxx_std_20)
@@ -184,6 +409,8 @@ add_executable(EBookEngineTest
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/HTMLParser.cpp
     ${ULTRACANVAS_CORE_DIR}/HTMLReader/CSSStyleSheet.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+    # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(EBookEngineTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -220,6 +447,8 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
         ${ULTRACANVAS_SRC_DIR}/third_party/miniz/miniz.c
+        # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasTextUtils.cpp
     )
     target_include_directories(WordFormatsTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
@@ -330,6 +559,30 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetNumberFormatTest")
 
+# ===== SPREADSHEET COLUMN SIZING TEST =====
+# Regression test for column widths taken from an imported document (ODF/OOXML
+# length conversion) and for the auto-width pass that fits the columns a file
+# did not size. Exercises the real SpreadsheetSheet with no UI stack.
+message(STATUS "  Building SpreadsheetColumnSizingTest...")
+add_executable(SpreadsheetColumnSizingTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/SpreadsheetColumnSizingTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasSpreadsheetSheet.cpp
+)
+target_include_directories(SpreadsheetColumnSizingTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(SpreadsheetColumnSizingTest PRIVATE cxx_std_20)
+set_target_properties(SpreadsheetColumnSizingTest PROPERTIES
+    OUTPUT_NAME "SpreadsheetColumnSizingTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME SpreadsheetColumnSizingTest
+    COMMAND SpreadsheetColumnSizingTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: SpreadsheetColumnSizingTest")
+
 # ===== CONTOUR GEOMETRY TEST =====
 # Marching-squares isolines (including saddle disambiguation), isoband cell
 # clipping, level generation, NaN holes, point gridding and polyline
@@ -355,6 +608,70 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ContourGeometryTest")
+
+# ===== CSS LAYOUT AUTO-EXPAND TEST =====
+# The auto-expanding, centred card pattern (UltraMail's account tile) on the
+# real CSSLayout engine: an auto-width flex column grows with an inner row of
+# auto-sized counters, keeps every row centred, and honours its minimum width.
+# Pure geometry - the layout engine has no UI-stack dependencies.
+message(STATUS "  Building CSSLayoutAutoExpandTest...")
+add_executable(CSSLayoutAutoExpandTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutAutoExpandTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutAutoExpandTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutAutoExpandTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutAutoExpandTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutAutoExpandTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutAutoExpandTest
+    COMMAND CSSLayoutAutoExpandTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutAutoExpandTest")
+
+# ===== DIALOG ICON LAYOUT TEST =====
+# The modal dialog's content row with and without the severity icon: hiding it
+# must drop its column and the flex gap after it, so an element centred in the
+# message column (the progress dialog's ring) lands on the window's centre.
+# Pure geometry - the layout engine has no UI-stack dependencies.
+message(STATUS "  Building DialogIconLayoutTest...")
+add_executable(DialogIconLayoutTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DialogIconLayoutTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(DialogIconLayoutTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(DialogIconLayoutTest PRIVATE cxx_std_20)
+set_target_properties(DialogIconLayoutTest PROPERTIES
+    OUTPUT_NAME "DialogIconLayoutTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME DialogIconLayoutTest
+    COMMAND DialogIconLayoutTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: DialogIconLayoutTest")
 
 # ===== PACKET LAYOUT TEST =====
 # Packet structure model, layout engine (row splitting with continuation
@@ -701,6 +1018,87 @@ else()
     message(STATUS "  libarchive not found - VirtualFSDeleteTest disabled")
 endif()
 
+# ===== VIRTUALFS NESTED MEMORY TEST =====
+# Regression test for memory-backed nested archive traversal: an archive
+# inside an archive must be opened straight from its bytes, leaving nothing
+# in the temp directory. Reuses the libarchive probe from the delete test.
+if(LIBARCHIVE_TEST_FOUND)
+    message(STATUS "  Building VirtualFSNestedMemoryTest...")
+
+    add_executable(VirtualFSNestedMemoryTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSNestedMemoryTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers/VirtualFSLibArchiveProvider.cpp
+    )
+    target_include_directories(VirtualFSNestedMemoryTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+        ${ULTRACANVAS_ROOT}/VirtualFS/providers
+        ${LIBARCHIVE_TEST_INCLUDE_DIRS}
+    )
+    target_compile_definitions(VirtualFSNestedMemoryTest PRIVATE
+        VIRTUALFS_HAS_LIBARCHIVE
+    )
+    target_link_libraries(VirtualFSNestedMemoryTest PRIVATE
+        ${LIBARCHIVE_TEST_LIBRARIES}
+        pthread
+    )
+    target_compile_features(VirtualFSNestedMemoryTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSNestedMemoryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSNestedMemoryTest
+        COMMAND VirtualFSNestedMemoryTest ${CMAKE_BINARY_DIR}/vfsnested-test-out
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSNestedMemoryTest")
+else()
+    message(STATUS "  libarchive not found - VirtualFSNestedMemoryTest disabled")
+endif()
+
+# ===== VIRTUALFS RAM DISC TEST =====
+# OS-visible RAM disc provisioning. Needs no libarchive - the disc is a
+# platform mount, not an archive - but does need the platform back end, so
+# the source is picked the same way VirtualFS/CMakeLists.txt picks it.
+if(WIN32)
+    set(VIRTUALFS_RAMDISK_BACKEND ${ULTRACANVAS_ROOT}/VirtualFS/OS/MSWindows/VirtualFSRamDiskPlatform.cpp)
+elseif(APPLE)
+    set(VIRTUALFS_RAMDISK_BACKEND ${ULTRACANVAS_ROOT}/VirtualFS/OS/MacOS/VirtualFSRamDiskPlatform.cpp)
+elseif(UNIX)
+    set(VIRTUALFS_RAMDISK_BACKEND ${ULTRACANVAS_ROOT}/VirtualFS/OS/Linux/VirtualFSRamDiskPlatform.cpp)
+endif()
+
+if(VIRTUALFS_RAMDISK_BACKEND)
+    message(STATUS "  Building VirtualFSRamDiskTest...")
+
+    add_executable(VirtualFSRamDiskTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VirtualFSRamDiskTest.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSRamDisk.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSManager.cpp
+        ${ULTRACANVAS_ROOT}/VirtualFS/core/VirtualFSCompression.cpp
+        ${VIRTUALFS_RAMDISK_BACKEND}
+    )
+    target_include_directories(VirtualFSRamDiskTest PRIVATE
+        ${ULTRACANVAS_ROOT}/VirtualFS/include
+        ${ULTRACANVAS_ROOT}/VirtualFS/include/VirtualFS
+    )
+    target_link_libraries(VirtualFSRamDiskTest PRIVATE pthread)
+    target_compile_features(VirtualFSRamDiskTest PRIVATE cxx_std_17)
+    set_target_properties(VirtualFSRamDiskTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME VirtualFSRamDiskTest
+        COMMAND VirtualFSRamDiskTest
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: VirtualFSRamDiskTest")
+else()
+    message(STATUS "  No RAM disc back end for this platform - VirtualFSRamDiskTest disabled")
+endif()
+
 # ===== LABEL PLACEMENT TEST =====
 # Session reuse across passes, the spatial index, rotated labels, polyline
 # obstacles, priority, suppression, minimum separation, leader lines, point
@@ -725,6 +1123,30 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: LabelPlacementTest")
+
+# ===== TONE CURVE TEST =====
+# The tone curve model behind the Curves dialog: point management, monotone
+# interpolation, lookup tables and the four-curve set. Pure model code - no UI
+# stack, no image library.
+message(STATUS "  Building ToneCurveTest...")
+add_executable(ToneCurveTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ToneCurveTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasToneCurve.cpp
+)
+target_include_directories(ToneCurveTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ToneCurveTest PRIVATE cxx_std_20)
+set_target_properties(ToneCurveTest PROPERTIES
+    OUTPUT_NAME "ToneCurveTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ToneCurveTest
+    COMMAND ToneCurveTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ToneCurveTest")
 
 # ===== CHART ENGINE TEST =====
 # The engine's model layer: axis ranges and scales, tick generation and
@@ -807,9 +1229,327 @@ add_test(
 )
 message(STATUS "    Test registered: ElementPluginTest")
 
+# ===== EPS PROBE TEST =====
+# Parses the shipped media/vector/EPS samples through the EPS plugin and reports
+# the interpreter's diagnostics; with cairo it also rasterizes to PNG for
+# comparison against a ghostscript rendering of the same file.
+if(TARGET UltraCanvasEPSPlugin)
+    message(STATUS "  Building EPSProbeTest...")
+    add_executable(EPSProbeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EPSProbeTest.cpp
+    )
+    target_include_directories(EPSProbeTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+    )
+    target_compile_features(EPSProbeTest PRIVATE cxx_std_20)
+    target_compile_definitions(EPSProbeTest PRIVATE
+        EPS_SAMPLES_DIR="${CMAKE_SOURCE_DIR}/media/vector/EPS"
+    )
+    target_link_libraries(EPSProbeTest PRIVATE UltraCanvasEPSPlugin UltraCanvas)
+    if(NOT WIN32)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(EPSPROBE_CAIRO cairo)
+            if(EPSPROBE_CAIRO_FOUND)
+                target_compile_definitions(EPSProbeTest PRIVATE EPSPROBE_HAVE_CAIRO=1)
+                target_include_directories(EPSProbeTest PRIVATE ${EPSPROBE_CAIRO_INCLUDE_DIRS})
+                target_link_libraries(EPSProbeTest PRIVATE ${EPSPROBE_CAIRO_LIBRARIES})
+            endif()
+        endif()
+    endif()
+    set_target_properties(EPSProbeTest PROPERTIES
+        OUTPUT_NAME "EPSProbeTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EPSProbeTest COMMAND EPSProbeTest)
+    message(STATUS "    Test registered: EPSProbeTest")
+endif()
+
+# Round-trips a VectorDocument through the Vector plugin's EPS writer and the
+# EPS plugin's PostScript interpreter: DSC header, every operator understood,
+# no interpreter warnings, and (with cairo) pixel placement. Needs both
+# plugins.
+if(TARGET UltraCanvasEPSPlugin AND TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building EPSWriterTest...")
+    add_executable(EPSWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EPSWriterTest.cpp
+    )
+    target_include_directories(EPSWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(EPSWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(EPSWriterTest PRIVATE
+        UltraCanvasVectorPlugin UltraCanvasEPSPlugin UltraCanvas)
+    if(NOT WIN32)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(EPSWRITER_CAIRO cairo)
+            if(EPSWRITER_CAIRO_FOUND)
+                target_compile_definitions(EPSWriterTest PRIVATE EPSWRITER_HAVE_CAIRO=1)
+                target_include_directories(EPSWriterTest PRIVATE ${EPSWRITER_CAIRO_INCLUDE_DIRS})
+                target_link_libraries(EPSWriterTest PRIVATE ${EPSWRITER_CAIRO_LIBRARIES})
+            endif()
+        endif()
+    endif()
+    set_target_properties(EPSWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EPSWriterTest COMMAND EPSWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: EPSWriterTest")
+else()
+    message(STATUS "  EPSWriterTest skipped (needs UltraCanvasEPSPlugin and UltraCanvasVectorPlugin)")
+endif()
+
+# Round-trips a VectorDocument through the Vector plugin's CDR writer and the
+# CDR plugin (libcdr): the file must parse, carry the right page, and render
+# the objects at their places. Needs both plugins.
+if(TARGET UltraCanvasCDRPlugin AND TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building CDRWriterTest...")
+    add_executable(CDRWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CDRWriterTest.cpp
+    )
+    target_include_directories(CDRWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CDRWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(CDRWriterTest PRIVATE
+        UltraCanvasVectorPlugin UltraCanvasCDRPlugin UltraCanvas)
+    if(NOT WIN32)
+        find_package(PkgConfig QUIET)
+        if(PkgConfig_FOUND)
+            pkg_check_modules(CDRWRITER_CAIRO cairo)
+            if(CDRWRITER_CAIRO_FOUND)
+                target_compile_definitions(CDRWriterTest PRIVATE CDRWRITER_HAVE_CAIRO=1)
+                target_include_directories(CDRWriterTest PRIVATE ${CDRWRITER_CAIRO_INCLUDE_DIRS})
+                target_link_libraries(CDRWriterTest PRIVATE ${CDRWRITER_CAIRO_LIBRARIES})
+            endif()
+        endif()
+    endif()
+    set_target_properties(CDRWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CDRWriterTest COMMAND CDRWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CDRWriterTest")
+else()
+    message(STATUS "  CDRWriterTest skipped (needs UltraCanvasCDRPlugin and UltraCanvasVectorPlugin)")
+endif()
+
+# Round-trips a VectorDocument through the Vector plugin's SVG converter in
+# both directions (export -> import, structural comparison), rasterizes the
+# export through the framework's real SVG pipeline, and parses a hand-written
+# snippet for importer robustness.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building SVGConverterTest...")
+    add_executable(SVGConverterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SVGConverterTest.cpp
+    )
+    target_include_directories(SVGConverterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SVGConverterTest PRIVATE cxx_std_20)
+    target_link_libraries(SVGConverterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(SVGConverterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SVGConverterTest COMMAND SVGConverterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SVGConverterTest")
+else()
+    message(STATUS "  SVGConverterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# Validates the Vector plugin's PDF writer: structural checks (an xref table
+# whose offsets really point at their objects, resources, operators) plus a
+# ghostscript rasterization with pixel checks when gs is installed.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building PDFVectorWriterTest...")
+    add_executable(PDFVectorWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/PDFVectorWriterTest.cpp
+    )
+    target_include_directories(PDFVectorWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(PDFVectorWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(PDFVectorWriterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(PDFVectorWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME PDFVectorWriterTest COMMAND PDFVectorWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: PDFVectorWriterTest")
+else()
+    message(STATUS "  PDFVectorWriterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# Validates the Vector plugin's EMF, WMF and AI writers: structural record
+# walks, plus rasterization through LibreOffice (EMF/WMF) and ghostscript
+# (AI) with pixel checks when those tools are installed.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building MetafileWriterTest...")
+    add_executable(MetafileWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MetafileWriterTest.cpp
+    )
+    target_include_directories(MetafileWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MetafileWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(MetafileWriterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(MetafileWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MetafileWriterTest COMMAND MetafileWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MetafileWriterTest")
+else()
+    message(STATUS "  MetafileWriterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# Validates the Vector plugin's DXF and DWG writers: structural checks, then
+# ezdxf (strict read + audit + structure), LibreOffice rasterization, and -
+# when LibreDWG's dxf2dwg is available - the real DWG conversion round-trip.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building CADWriterTest...")
+    add_executable(CADWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CADWriterTest.cpp
+    )
+    target_include_directories(CADWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CADWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(CADWriterTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(CADWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CADWriterTest COMMAND CADWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CADWriterTest")
+else()
+    message(STATUS "  CADWriterTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# ===== VECTOR MODEL TEST =====
+# The shared vector document model: Matrix3x3 at double precision, group
+# and document bounds through nested transforms, and hit-testing that
+# carries the point through ancestor transforms.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorModelTest...")
+    add_executable(VectorModelTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorModelTest.cpp
+    )
+    target_include_directories(VectorModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorModelTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorModelTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorModelTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorModelTest COMMAND VectorModelTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorModelTest")
+else()
+    message(STATUS "  VectorModelTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# ===== VECTOR FORMATS PLUGIN TEST =====
+# The whole converter matrix through the graphics plugin registry: saving
+# all ten formats via SaveGraphicsFile, loading the formats with readers
+# via LoadGraphicsFile, round-trip structure checks, and the supported-
+# format inventory's per-extension load/save capabilities.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building VectorFormatsPluginTest...")
+    add_executable(VectorFormatsPluginTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorFormatsPluginTest.cpp
+    )
+    target_include_directories(VectorFormatsPluginTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorFormatsPluginTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorFormatsPluginTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(VectorFormatsPluginTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorFormatsPluginTest COMMAND VectorFormatsPluginTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorFormatsPluginTest")
+else()
+    message(STATUS "  VectorFormatsPluginTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
+# ===== DWG READER TEST =====
+# The CAD import path: the DXF reader's block machinery (BLOCKS, nested/
+# arrayed/mirrored INSERTs, DIMENSION blocks, visibility, geometry-derived
+# extents) on a synthetic drawing, and the native DWG decoder on the R2000
+# fixture in DataFormats. Extra DWG files on the command line are decoded
+# and reported (DWG_TEST_SVG_DIR exports them as SVG).
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building DWGReaderTest...")
+    add_executable(DWGReaderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DWGReaderTest.cpp
+    )
+    target_include_directories(DWGReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DWGReaderTest PRIVATE cxx_std_20)
+    target_compile_definitions(DWGReaderTest PRIVATE
+        DWG_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/DataFormats"
+    )
+    target_link_libraries(DWGReaderTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(DWGReaderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DWGReaderTest COMMAND DWGReaderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DWGReaderTest")
+else()
+    message(STATUS "  DWGReaderTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
+# ===== XAR PROBE TEST =====
+# Parses the repo's XAR samples through the XAR plugin's XARDocument and
+# reports node-tree statistics, unhandled record tags and parse warnings —
+# the triage tool for XAR files that display wrong. Needs the plugin (and
+# through it the framework), so it only builds when the plugin does.
+if(TARGET UltraCanvasXARPlugin)
+    message(STATUS "  Building XARProbeTest...")
+    add_executable(XARProbeTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/XARProbeTest.cpp
+    )
+    target_include_directories(XARProbeTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(XARProbeTest PRIVATE cxx_std_20)
+    target_link_libraries(XARProbeTest PRIVATE UltraCanvasXARPlugin UltraCanvas)
+    target_compile_definitions(XARProbeTest PRIVATE
+        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/XAR"
+    )
+    # --render mode writes PNGs through cairo; probing works without it.
+    find_package(PkgConfig QUIET)
+    if(PkgConfig_FOUND)
+        pkg_check_modules(XARPROBE_CAIRO QUIET cairo)
+    endif()
+    if(XARPROBE_CAIRO_FOUND)
+        target_compile_definitions(XARProbeTest PRIVATE XARPROBE_HAVE_CAIRO)
+        target_include_directories(XARProbeTest PRIVATE ${XARPROBE_CAIRO_INCLUDE_DIRS})
+        target_link_libraries(XARProbeTest PRIVATE ${XARPROBE_CAIRO_LIBRARIES})
+    endif()
+    set_target_properties(XARProbeTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME XARProbeTest COMMAND XARProbeTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: XARProbeTest")
+else()
+    message(STATUS "  XARProbeTest skipped (UltraCanvasXARPlugin target not present)")
+endif()
+
+# Round-trips a VectorDocument through the Vector plugin's XAR writer and the
+# XAR plugin's spec-verified reader: page size, node counts, millipoint
+# placement (Y flip), colour references, text spans. Needs both plugins.
+if(TARGET UltraCanvasXARPlugin AND TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building XARWriterTest...")
+    add_executable(XARWriterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/XARWriterTest.cpp
+    )
+    target_include_directories(XARWriterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(XARWriterTest PRIVATE cxx_std_20)
+    target_link_libraries(XARWriterTest PRIVATE
+        UltraCanvasVectorPlugin UltraCanvasXARPlugin UltraCanvas)
+    set_target_properties(XARWriterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME XARWriterTest COMMAND XARWriterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: XARWriterTest")
+else()
+    message(STATUS "  XARWriterTest skipped (needs UltraCanvasXARPlugin and UltraCanvasVectorPlugin)")
+endif()
+
 # Example:
 # add_executable(AnotherTest
 #     ${CMAKE_CURRENT_SOURCE_DIR}/AnotherTest.cpp
@@ -820,3 +1560,247 @@ message(STATUS "    Test registered: ElementPluginTest")
 # add_test(NAME AnotherTest COMMAND AnotherTest)
 
 message(STATUS "")
+
+# ===== EMBEDDED PREVIEW TEST =====
+# The preview bitmap Xara and ZIP-based CorelDRAW documents carry inside
+# themselves - what the filer thumbnails them from - plus the image
+# pipeline's own "can this extension load" answer, whose collapse to "no"
+# is what silently strips every thumbnail in a folder.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building EmbeddedPreviewTest...")
+    add_executable(EmbeddedPreviewTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/EmbeddedPreviewTest.cpp
+    )
+    target_include_directories(EmbeddedPreviewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(EmbeddedPreviewTest PRIVATE cxx_std_20)
+    target_compile_definitions(EmbeddedPreviewTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(EmbeddedPreviewTest PRIVATE UltraCanvas)
+    set_target_properties(EmbeddedPreviewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME EmbeddedPreviewTest COMMAND EmbeddedPreviewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: EmbeddedPreviewTest")
+else()
+    message(STATUS "  EmbeddedPreviewTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER VOLUME SPACE TEST =====
+# The Computer page's drive cards: the used share the pie chart is cut by
+# and the "free of" line under it (Apps/UltraFiler/UltraFilerVolumeSpace.h).
+# Header-only, so the test needs no library - it runs on any build.
+message(STATUS "  Building FilerVolumeSpaceTest...")
+add_executable(FilerVolumeSpaceTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerVolumeSpaceTest.cpp
+)
+target_include_directories(FilerVolumeSpaceTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerVolumeSpaceTest PRIVATE cxx_std_20)
+set_target_properties(FilerVolumeSpaceTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerVolumeSpaceTest COMMAND FilerVolumeSpaceTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerVolumeSpaceTest")
+
+message(STATUS "")
+
+# ===== FILER FORMAT LIST TEST =====
+# The list of files behind Display > Thumbnails and Display > Detail view has
+# to hold every format the FileLoader inventory reports for this build, filed
+# under the preview kind of its media category - a format the file manager can
+# open but cannot list is one whose thumbnail nobody can switch on.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerFormatListTest...")
+    add_executable(FilerFormatListTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerFormatListTest.cpp
+    )
+    target_include_directories(FilerFormatListTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerFormatListTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerFormatListTest PRIVATE UltraCanvas)
+    set_target_properties(FilerFormatListTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerFormatListTest COMMAND FilerFormatListTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerFormatListTest")
+else()
+    message(STATUS "  FilerFormatListTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER FILE-EXTENSION DISPLAY TEST =====
+# Display > File extensions: the name the file display draws for an entry and
+# the type tag its thumbnail tiles carry. Hiding an extension must never
+# invent a file type out of a version number or an architecture tag.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerExtensionDisplayTest...")
+    add_executable(FilerExtensionDisplayTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerExtensionDisplayTest.cpp
+    )
+    target_include_directories(FilerExtensionDisplayTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerExtensionDisplayTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerExtensionDisplayTest PRIVATE UltraCanvas)
+    set_target_properties(FilerExtensionDisplayTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerExtensionDisplayTest COMMAND FilerExtensionDisplayTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerExtensionDisplayTest")
+else()
+    message(STATUS "  FilerExtensionDisplayTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== SHELL LINK TEST =====
+# Reading a Windows shortcut (.lnk) on any platform: what it points at, the
+# icon it names, and how its Windows path maps onto the host filesystem. The
+# links are built byte by byte inside the test, so it needs no fixtures.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ShellLinkTest...")
+    add_executable(ShellLinkTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ShellLinkTest.cpp
+    )
+    target_include_directories(ShellLinkTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(ShellLinkTest PRIVATE cxx_std_20)
+    target_link_libraries(ShellLinkTest PRIVATE UltraCanvas)
+    set_target_properties(ShellLinkTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ShellLinkTest COMMAND ShellLinkTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ShellLinkTest")
+else()
+    message(STATUS "  ShellLinkTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== DESKTOP ENTRY TEST =====
+# The freedesktop desktop-entry reader: what a .desktop says, the icon its
+# Icon= name resolves to in the installed themes, and the argument vector its
+# Exec= expands into. Builds a throwaway icon theme and points XDG_DATA_HOME
+# at it, so it never depends on what the machine has installed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DesktopEntryTest...")
+    add_executable(DesktopEntryTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DesktopEntryTest.cpp
+    )
+    target_include_directories(DesktopEntryTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(DesktopEntryTest PRIVATE cxx_std_20)
+    target_link_libraries(DesktopEntryTest PRIVATE UltraCanvas)
+    set_target_properties(DesktopEntryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DesktopEntryTest COMMAND DesktopEntryTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DesktopEntryTest")
+else()
+    message(STATUS "  DesktopEntryTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== MAC BUNDLE TEST =====
+# The property-list reader (both encodings) and the macOS application bundles
+# and web locations built on it. Builds a bundle directory in a temp folder,
+# so it runs — and has to pass — on every platform, not only on macOS.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building MacBundleTest...")
+    add_executable(MacBundleTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MacBundleTest.cpp
+    )
+    target_include_directories(MacBundleTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(MacBundleTest PRIVATE cxx_std_20)
+    target_link_libraries(MacBundleTest PRIVATE UltraCanvas)
+    set_target_properties(MacBundleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MacBundleTest COMMAND MacBundleTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MacBundleTest")
+else()
+    message(STATUS "  MacBundleTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER SHORTCUT ENTRY TEST =====
+# What the file display makes of a .lnk it lists: type, category, info column
+# and the resolved target on the entry. Builds its own shortcuts (and its own
+# Wine-prefix-shaped tree) inside the test.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerShortcutEntryTest...")
+    add_executable(FilerShortcutEntryTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerShortcutEntryTest.cpp
+    )
+    target_include_directories(FilerShortcutEntryTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR} ${CMAKE_CURRENT_SOURCE_DIR})
+    target_compile_features(FilerShortcutEntryTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerShortcutEntryTest PRIVATE UltraCanvas)
+    set_target_properties(FilerShortcutEntryTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerShortcutEntryTest COMMAND FilerShortcutEntryTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerShortcutEntryTest")
+else()
+    message(STATUS "  FilerShortcutEntryTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== ICON RESOURCE TEST =====
+# The portable icon reader: an .ico file and the RT_GROUP_ICON / RT_ICON
+# resources of a PE binary, both assembled inside the test rather than
+# checked in as binaries.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building IconResourceTest...")
+    add_executable(IconResourceTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/IconResourceTest.cpp
+    )
+    target_include_directories(IconResourceTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(IconResourceTest PRIVATE cxx_std_20)
+    target_link_libraries(IconResourceTest PRIVATE UltraCanvas)
+    set_target_properties(IconResourceTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME IconResourceTest COMMAND IconResourceTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: IconResourceTest")
+else()
+    message(STATUS "  IconResourceTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FONT FILE TEST =====
+# Reading a font definition file as a document: its name records, and the
+# line of its own glyphs the filer thumbnails it with. Runs against the
+# framework's own bundled Ubuntu faces, so it needs no installed font.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FontFileTest...")
+    add_executable(FontFileTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FontFileTest.cpp
+    )
+    target_include_directories(FontFileTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FontFileTest PRIVATE cxx_std_20)
+    target_compile_definitions(FontFileTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(FontFileTest PRIVATE UltraCanvas)
+    set_target_properties(FontFileTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FontFileTest COMMAND FontFileTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FontFileTest")
+else()
+    message(STATUS "  FontFileTest skipped (UltraCanvas target not present)")
+endif()

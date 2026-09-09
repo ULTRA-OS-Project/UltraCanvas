@@ -1,12 +1,13 @@
 // core/UltraCanvasAudioPlayer.cpp
 // Skeleton implementation. Backend wiring (output stream + fill callback) is a
 // TODO; this file holds the public-API contract and state machine.
-// Version: 0.1.1
-// Last Modified: 2026-08-20
+// Version: 0.1.2
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasAudioPlayer.h"
 #include "UltraCanvasFileError.h"
+#include "UltraCanvasMediaCodecRegistry.h"
 #include "../libspecific/Audio/IAudioBackend.h"
 #include <algorithm>
 #include <atomic>
@@ -162,8 +163,22 @@ bool UltraCanvasAudioPlayer::LoadFromFile(const std::string& filePath) {
     auto a = UCAudio::LoadFromFile(filePath);
     if (!a || !a->IsValid()) {
         // Prefer a clear file-access reason (missing / locked / no permission);
-        // otherwise the file opened but the audio format is unsupported/damaged.
+        // failing that, let the backend name the codec it found and the library
+        // that would decode it; only then fall back to the generic wording.
         std::string reason = DescribeFileReadError(filePath);
+        if (reason.empty()) {
+            if (auto* backend = GetAudioBackend()) reason = backend->DescribeDecodeFailure(filePath);
+        }
+        if (reason.empty()) {
+            // The registry recognises plenty of formats this build cannot
+            // decode — that is what lets the player appear at all — so it can
+            // name the format and what is missing.
+            if (auto codec = FindMediaCodecForFile(MediaCodecKind::Audio, filePath);
+                codec && !codec->canDecode) {
+                reason = codec->description + " is not supported by this build";
+                reason += codec->notes.empty() ? "." : (": " + codec->notes + ".");
+            }
+        }
         if (reason.empty())
             reason = "The audio format is not supported or the file is damaged: " + filePath;
         impl->EmitError(reason);

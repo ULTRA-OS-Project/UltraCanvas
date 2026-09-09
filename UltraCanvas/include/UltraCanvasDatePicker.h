@@ -24,6 +24,7 @@
 #pragma once
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
@@ -354,6 +355,7 @@ namespace UltraCanvas {
         std::vector<std::pair<Rect2Df, long>> VisiblePanels(const MultiLayout& ml) const;
         Rect2Df ThumbRect(const MultiLayout& ml) const;
         void ClampScroll(const MultiLayout& ml);
+        void AnimateScrollBy(float delta, const MultiLayout& ml);
         UCDate FirstCellFor(int year, int month) const;
         void DrawMonthPanel(IRenderContext* ctx, const Rect2Df& panel, int year, int month,
                             bool firstChevron, bool lastChevron);
@@ -410,6 +412,10 @@ namespace UltraCanvas {
         CalendarNavMode navMode = CalendarNavMode::Paged;
         CalendarOrientation orientation = CalendarOrientation::Vertical;
         float scrollOffset = 0.0f;           // pixels along the scroll axis
+        // The wheel and the track's page steps glide the month strip to their
+        // target (see UltraCanvasSmoothScroll.h); dragging the thumb, revealing
+        // a month and switching navigation mode position it directly.
+        UltraCanvasSmoothScroll scrollAnim;
         UCDate scrollFrom, scrollTo;         // explicit scroll range (empty = derive)
         bool draggingThumb = false;
         float dragStartOffset = 0.0f;

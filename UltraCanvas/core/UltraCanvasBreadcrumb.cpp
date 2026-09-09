@@ -1,11 +1,12 @@
 // core/UltraCanvasBreadcrumb.cpp
 // Hierarchical breadcrumb navigation control implementation
-// Version: 1.5.0
-// Last Modified: 2026-08-11
+// Version: 1.6.0
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasVolumeMonitor.h"
 #include "UltraCanvasTooltipManager.h"
 #include "CSSLayout/LayoutUtils.h"
 #include <algorithm>
@@ -13,17 +14,6 @@
 #include <optional>
 #include <sstream>
 #include <cmath>
-
-#ifdef _WIN32
-// GetLogicalDrives() for ListDriveRoots().
-#ifndef WIN32_LEAN_AND_MEAN
-#define WIN32_LEAN_AND_MEAN
-#endif
-#ifndef NOMINMAX
-#define NOMINMAX
-#endif
-#include <windows.h>
-#endif
 
 namespace UltraCanvas {
 
@@ -1671,31 +1661,15 @@ namespace UltraCanvas {
 // Media Viewer), so a path strip behaves identically wherever it appears.
 
     std::vector<std::string> ListDriveRoots() {
-        std::vector<std::string> roots;
-#ifdef _WIN32
-        // GetLogicalDrives() answers from the mount table alone: one call, no
-        // per-letter media or network access. Probing "A:\" ... "Z:\" with
-        // exists() instead spins up empty optical / card readers and waits out
-        // the SMB timeout of every disconnected mapped drive — seconds of
-        // stall, and this list is rebuilt on every navigation.
-        const DWORD mask = ::GetLogicalDrives();
-        for (int i = 0; i < 26; ++i) {
-            if (mask & (DWORD(1) << i))
-                roots.push_back(std::string(1, char('A' + i)) + ":\\");
-        }
-#else
-        roots.push_back("/");
-        for (const char* base : {"/media", "/mnt", "/Volumes"}) {
-            std::error_code e2;
-            if (!std::filesystem::is_directory(base, e2)) continue;
-            for (std::filesystem::directory_iterator it(base, e2), end;
-                 it != end && !e2; it.increment(e2)) {
-                std::error_code e3;
-                if (it->is_directory(e3)) roots.push_back(it->path().string());
-            }
-        }
-#endif
-        return roots;
+        // One enumeration for the whole framework (UltraCanvasVolumeMonitor):
+        // this dropdown and a file manager's drive rows must not disagree
+        // about what is mounted, and they did - this list looked at /media,
+        // /mnt and /Volumes while the Filer's tree looked at /media and /mnt,
+        // and neither looked at /run/media, where udisks2 mounts on Fedora,
+        // RHEL, Arch and openSUSE. It also offered any directory it found as
+        // a drive, including the empty mount-point folder an unmount leaves
+        // behind, which then led nowhere.
+        return ListVolumeRoots();
     }
 
     namespace {
@@ -1775,7 +1749,11 @@ namespace UltraCanvas {
             BreadcrumbItem computer("__computer__", options.computerLabel);
             computer.tooltip = options.computerLabel + " — show all drives";
             std::string rootTarget = base.string();
-            computer.onClick = [onNavigate, rootTarget]() {
+            std::function<void()> onComputerClick = options.onComputerClick;
+            computer.onClick = [onNavigate, rootTarget, onComputerClick]() {
+                // A host with a page for the machine itself gets the click;
+                // everyone else lands on the drive root.
+                if (onComputerClick) { onComputerClick(); return; }
                 if (onNavigate) onNavigate(rootTarget);
             };
             // Filled when the dropdown opens, like the sub-folder menus below:

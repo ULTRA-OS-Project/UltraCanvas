@@ -165,6 +165,16 @@ namespace UltraCanvas {
                 newCursor = XCreateFontCursor(display, XC_watch);
                 break;
 
+            case UCMouseCursor::AppStarting:
+                // "Working in the background": the arrow keeps pointing while a
+                // busy sign says a launch is under way. Cursor themes name it
+                // left_ptr_watch (or progress); the X core cursor font has no
+                // such shape, so a theme-less display falls back to the watch.
+                newCursor = XcursorLibraryLoadCursor(display, "left_ptr_watch");
+                if (!newCursor) newCursor = XcursorLibraryLoadCursor(display, "progress");
+                if (!newCursor) newCursor = XCreateFontCursor(display, XC_watch);
+                break;
+
             case UCMouseCursor::Cross:
                 newCursor = XCreateFontCursor(display, XC_crosshair);
                 break;

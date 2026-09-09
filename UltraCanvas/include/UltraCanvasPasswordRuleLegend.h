@@ -1,7 +1,10 @@
 // include/UltraCanvasPasswordRuleLegend.h
 // Interactive password requirements checklist component
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.2.0
+// Last Modified: 2026-08-31
+// V1.2.0: GetContentHeight() reports the height the rule list actually paints, so
+//   callers can size the element instead of guessing (a too-short box used to let
+//   the last rules spill over whatever was placed underneath).
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -125,6 +128,11 @@ namespace UltraCanvas {
         int GetTotalRulesCount() const;
 
         std::vector<std::string> GetUnmetRules() const;
+
+        // ===== SIZING =====
+        // Height needed to paint every rule in the current style (the element does
+        // not clip, so a smaller height overflows onto the neighbouring widgets).
+        float GetContentHeight() const;
 
         // ===== CALLBACKS =====
         std::function<void(bool)> onAllRulesMet;                    // Called when all rules met/unmet

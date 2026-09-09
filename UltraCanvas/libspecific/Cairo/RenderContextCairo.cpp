@@ -1677,7 +1677,7 @@ namespace UltraCanvas {
         cairo_stroke(cairo);
     }
 
-    void DrawPixmapOrMask(cairo_t* cairo, UCPixmap &pixmap, double x, double y, double w, double h, ImageFitMode fitMode, double alpha, bool drawMasked, const Color& c) {
+    void DrawPixmapOrMask(cairo_t* cairo, UCPixmap &pixmap, double x, double y, double w, double h, ImageFitMode fitMode, double alpha, bool drawMasked, const Color& c, bool smooth = true) {
         double pixWidth = static_cast<double>(pixmap.GetWidth());
         double pixHeight = static_cast<double>(pixmap.GetHeight());
         if (!w) {
@@ -1771,6 +1771,7 @@ namespace UltraCanvas {
             cairo_mask_surface(cairo, pixmap.GetSurface(), 0, 0);
         } else {
             cairo_set_source_surface(cairo, pixmap.GetSurface(), 0, 0);
+            if (!smooth) cairo_pattern_set_filter(cairo_get_source(cairo), CAIRO_FILTER_NEAREST);
             if (alpha < 1.0f) {
                 cairo_paint_with_alpha(cairo, alpha);
             } else {
@@ -1784,7 +1785,7 @@ namespace UltraCanvas {
 
     void RenderContextCairo::DrawPixmap(UCPixmap& pixmap, const Rect2Dd& rect, ImageFitMode fitMode) {
         DrawPixmapOrMask(cairo, pixmap, rect.x, rect.y, rect.width, rect.height, fitMode,
-                         currentState.globalAlpha, false, Colors::Transparent);
+                         currentState.globalAlpha, false, Colors::Transparent, imageSmoothing);
     }
 
     void RenderContextCairo::DrawMask(const Color& c, UCPixmap& mask, const Rect2Dd& rect, ImageFitMode fitMode) {
@@ -1816,6 +1817,7 @@ namespace UltraCanvas {
 
             // Set the image as source
             cairo_set_source_surface(cairo, pixmap.GetSurface(), 0, 0);
+            if (!imageSmoothing) cairo_pattern_set_filter(cairo_get_source(cairo), CAIRO_FILTER_NEAREST);
 
             // Create clipping rectangle for the destination area
             cairo_rectangle(cairo,
@@ -1902,6 +1904,11 @@ namespace UltraCanvas {
     void RenderContextCairo::FillPathPreserve() {
         ApplySource(currentState.fillSourceColor, currentState.fillSourcePattern);
         cairo_fill_preserve(cairo);
+    }
+
+    void RenderContextCairo::SetFillRule(FillRule rule) {
+        cairo_set_fill_rule(cairo, rule == FillRule::EvenOdd
+                ? CAIRO_FILL_RULE_EVEN_ODD : CAIRO_FILL_RULE_WINDING);
     }
 
     void RenderContextCairo::StrokePathPreserve() {

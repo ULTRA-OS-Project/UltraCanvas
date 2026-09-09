@@ -8,7 +8,8 @@
 //   2. ULTRAAI_DEFAULT_<CAPABILITY> env var    — deployment configuration
 //      (e.g. ULTRAAI_DEFAULT_TEXTLLM=anthropic)
 //   3. a known local provider for the capability (local-first:
-//      "llama-cpp" for textllm, "whisper-cpp" for speechtotext, ...)
+//      "llama-cpp" then "qwen" for textllm, "comfyui" for imagegen,
+//      "whisper-cpp" for speechtotext, ...)
 //   4. the first registered non-mock provider (sorted by id)
 //   5. "mock" — the test double is the route of last resort
 //

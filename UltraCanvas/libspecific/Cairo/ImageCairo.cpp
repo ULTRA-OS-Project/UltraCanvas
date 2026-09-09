@@ -1,13 +1,16 @@
 // libspecific/Cairo/ImageCairo.cpp
 // Cross-platform image loader implementation using PIMPL idiom
-// Version: 2.2.0
-// Last Modified: 2026-07-21
+// Version: 2.3.0
+// Last Modified: 2026-09-04
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasImage.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasFileError.h"
 #include "ImageCairo.h"
+// The bundled QOI file-format codec (always compiled) - see
+// SavePixmapAsQoiFile at the bottom of this file.
+#include "qoi.h"
 #ifdef HAS_LIBVIPS
 #include "VipsQoiLoader.h"
 #include "UltraCanvasGifEncoder.h"
@@ -19,6 +22,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <fstream>
 #include <sstream>
@@ -298,6 +302,45 @@ namespace UltraCanvas {
         return result;
     }
 
+    bool UCImageRaster::HasTransparency() {
+        if (transparency >= 0) return transparency == 1;
+        transparency = 0;
+#ifdef HAS_LIBRSVG
+        // A vector document has no background of its own: whatever the page
+        // does not paint shows what is behind it.
+        if (UCSvgDocument::IsSvgPath(fileName)) {
+            transparency = 1;
+            return true;
+        }
+#endif
+        try {
+            vips::VImage image = GetVImage();
+            if (!image.has_alpha()) return false;
+            // An alpha channel is not transparency: exported PNGs routinely
+            // carry a fully opaque one. The channel's minimum settles it - but
+            // that decodes the whole image, so the scan is budgeted: up to
+            // 16 megapixels (a 4K frame is 8) is worth one decode on the way
+            // to the screen, and anything bigger is taken at its word. Images
+            // with no alpha channel never get here, so photographs (JPEG,
+            // HEIC) cost nothing either way.
+            constexpr double kMaxScanPixels = 16.0 * 1024.0 * 1024.0;
+            const double pixels = static_cast<double>(image.width()) * image.height();
+            const VipsBandFormat format = static_cast<VipsBandFormat>(image.format());
+            double opaque = 0.0;
+            if (format == VIPS_FORMAT_UCHAR)       opaque = 255.0;
+            else if (format == VIPS_FORMAT_USHORT) opaque = 65535.0;
+            if (opaque <= 0.0 || pixels > kMaxScanPixels) {
+                transparency = 1;    // alpha present, not worth (or able) to scan
+                return true;
+            }
+            vips::VImage alpha = image.extract_band(image.bands() - 1);
+            transparency = (alpha.min() < opaque) ? 1 : 0;
+            return transparency == 1;
+        } catch (vips::VError&) {
+            return false;            // unreadable - "no", never an error
+        }
+    }
+
     std::string UCImageRaster::GetMetadataString(const std::string& key,
                                                  bool stripAnnotation) {
         try {
@@ -376,6 +419,13 @@ namespace UltraCanvas {
         result->LoadFileToMemory(imagePath);
         result->errorMessage = "Image loading not yet implemented (no libvips)";
         return result;
+    }
+
+    // No loader, so nothing can be said about the pixels: "opaque" is the
+    // answer that leaves a backdrop chooser out of the way.
+    bool UCImageRaster::HasTransparency() {
+        transparency = 0;
+        return false;
     }
 
     // No loader, so no metadata: "" means "unknown" to every caller.
@@ -653,8 +703,33 @@ namespace UltraCanvas {
 
         return std::make_shared<UCPixmapCairo>(surface);
     }
+
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
+        if (!imgDataPtr && !LoadFileToMemory(fileName)) return nullptr;
+        try {
+            vips::VImage vimg = vips::VImage::new_from_buffer(imgDataPtr, imgDataSize, "");
+            const int nb = vimg.bands();
+            if (nb == 2 || nb >= 4) {
+                // Invert the alpha band BEFORE premultiplication — a normal
+                // decode zeroes the colour of fully transparent pixels, which
+                // destroys exactly the pixels an inverted-alpha producer
+                // (Xara .xar embedded bitmaps: 255 = fully transparent)
+                // means to show.
+                vips::VImage rgb = vimg.extract_band(0, vips::VImage::option()->set("n", nb - 1));
+                vips::VImage alpha = vimg.extract_band(nb - 1);
+                vimg = rgb.bandjoin(alpha.invert());
+            }
+            return CreatePixmapFromVImage(vimg);
+        } catch (vips::VError& err) {
+            errorMessage = std::string("Failed to decode alpha-inverted: ") + err.what();
+        }
+        return nullptr;
+    }
 #else
     std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmap(int, int, ImageFitMode, float) {
+        return nullptr;
+    }
+    std::shared_ptr<UCPixmapCairo> UCImageRaster::CreatePixmapAlphaInverted() {
         return nullptr;
     }
 #endif
@@ -1056,20 +1131,22 @@ namespace UltraCanvas {
             return nullptr;   // keep iterating over all subclasses
         }
 
-        const std::vector<std::string>& LoaderSuffixes() {
-            // Collected once, but only after vips has been initialized —
-            // before that the base type does not exist yet and the (empty)
-            // result must not be cached.
+        std::mutex g_loaderSuffixMutex;
+
+        // Collected once, but only after vips has registered its loader
+        // classes. An empty result is never cached: before vips_init the base
+        // type does not exist at all, and a build whose loaders arrive as
+        // modules can have the type without any subclass yet - latching that
+        // would answer "no format loads" for the rest of the process, which
+        // silently costs every caller its image previews.
+        bool LoaderSuffixMatches(const std::string& wanted) {
             static std::vector<std::string> suffixes;
-            static bool collected = false;
-            if (!collected) {
+            std::lock_guard<std::mutex> lk(g_loaderSuffixMutex);
+            if (suffixes.empty()) {
                 GType base = g_type_from_name("VipsForeignLoad");
-                if (base) {
-                    vips_type_map_all(base, CollectLoaderSuffixes, &suffixes);
-                    collected = true;
-                }
+                if (base) vips_type_map_all(base, CollectLoaderSuffixes, &suffixes);
             }
-            return suffixes;
+            return std::find(suffixes.begin(), suffixes.end(), wanted) != suffixes.end();
         }
     }
 
@@ -1078,8 +1155,7 @@ namespace UltraCanvas {
         std::string wanted = extensionWithDot;
         std::transform(wanted.begin(), wanted.end(), wanted.begin(),
                        [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-        const auto& suffixes = LoaderSuffixes();
-        return std::find(suffixes.begin(), suffixes.end(), wanted) != suffixes.end();
+        return LoaderSuffixMatches(wanted);
     }
 
     bool VipsHasMagickLoadFallback() {
@@ -1094,4 +1170,122 @@ namespace UltraCanvas {
         return "Image export not yet implemented (no libvips)";
     }
 #endif
+    // ===== QOI FILE EXPORT =====
+    // Declared in ImageCairo.h. Deliberately outside the libvips section: the
+    // encoder is the bundled qoi.cpp, so writing a .qoi file asks nothing of
+    // the installed image libraries.
+
+    std::string SavePixmapAsQoiFile(UCPixmapCairo& pixmap, const std::string& filePath) {
+        cairo_surface_t* surf = pixmap.GetSurface();
+        const int w = pixmap.GetRawWidth();
+        const int h = pixmap.GetRawHeight();
+        if (!surf || w <= 0 || h <= 0) return "QOI export: nothing to write";
+        cairo_surface_flush(surf);
+        const uint8_t* pixels = cairo_image_surface_get_data(surf);
+        if (!pixels) return "QOI export: the image has no pixel buffer";
+        const int stride = cairo_image_surface_get_stride(surf);
+        // The two 32-bit-per-pixel formats are what pixmaps of this framework
+        // carry; a palette or alpha-only surface has no colour to write.
+        const cairo_format_t format = cairo_image_surface_get_format(surf);
+        if (format != CAIRO_FORMAT_ARGB32 && format != CAIRO_FORMAT_RGB24)
+            return "QOI export: unsupported pixel format";
+        const bool opaqueFormat = (format == CAIRO_FORMAT_RGB24);
+
+        // Cairo ARGB32 holds one native-endian uint32 per pixel with the
+        // colour channels premultiplied by alpha; QOI stores straight RGBA
+        // bytes, so every partly transparent pixel is divided back out.
+        // Rows are addressed through the surface stride, which is padded to
+        // Cairo's alignment and is not width * 4 for every width.
+        std::vector<uint8_t> rgba(static_cast<size_t>(w) * h * 4);
+        size_t o = 0;
+        for (int y = 0; y < h; ++y) {
+            const uint32_t* row = reinterpret_cast<const uint32_t*>(
+                    pixels + static_cast<size_t>(y) * stride);
+            for (int x = 0; x < w; ++x) {
+                const uint32_t p = row[x];
+                // RGB24 keeps its top byte unused rather than as alpha.
+                const uint8_t a = opaqueFormat
+                        ? 255 : static_cast<uint8_t>((p >> 24) & 0xff);
+                uint8_t r = static_cast<uint8_t>((p >> 16) & 0xff);
+                uint8_t g = static_cast<uint8_t>((p >> 8) & 0xff);
+                uint8_t b = static_cast<uint8_t>(p & 0xff);
+                if (a == 0) {
+                    r = g = b = 0;
+                } else if (a != 255) {
+                    r = static_cast<uint8_t>(std::min(255, (r * 255 + a / 2) / a));
+                    g = static_cast<uint8_t>(std::min(255, (g * 255 + a / 2) / a));
+                    b = static_cast<uint8_t>(std::min(255, (b * 255 + a / 2) / a));
+                }
+                rgba[o++] = r;
+                rgba[o++] = g;
+                rgba[o++] = b;
+                rgba[o++] = a;
+            }
+        }
+
+        qoi_desc desc;
+        desc.width = static_cast<unsigned int>(w);
+        desc.height = static_cast<unsigned int>(h);
+        desc.channels = 4;
+        desc.colorspace = QOI_SRGB;
+        int encodedSize = 0;
+        void* encoded = qoi_encode(rgba.data(), &desc, &encodedSize);
+        if (!encoded || encodedSize <= 0) {
+            if (encoded) std::free(encoded);   // qoi_encode allocates with malloc
+            return "QOI export: encoding failed";
+        }
+        // Written through std::ofstream rather than qoi_write(): the encoder's
+        // fopen() takes a narrow path, which mangles non-ASCII names on
+        // Windows, while PathFromUtf8 goes through UTF-16 there.
+        std::ofstream out(PathFromUtf8(filePath), std::ios::binary);
+        bool ok = out.is_open();
+        if (ok) {
+            out.write(static_cast<const char*>(encoded), encodedSize);
+            out.close();
+            ok = out.good();
+        }
+        std::free(encoded);
+        if (!ok) return "QOI export: cannot write " + filePath;
+        return {};
+    }
+
+    std::string SaveImageFileAsQoi(const std::string& sourcePath,
+                                   const std::string& destPath,
+                                   int maxEdge) {
+        if (sourcePath.empty() || destPath.empty())
+            return "QOI export: no file given";
+        std::shared_ptr<UCImageRaster> img = UCImageRaster::Get(sourcePath);
+        if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) {
+            std::string why = img ? img->errorMessage : std::string();
+            return why.empty() ? ("Cannot read image: " + sourcePath)
+                               : ("Cannot read image: " + sourcePath + " (" + why + ")");
+        }
+
+        int w = img->GetWidth();
+        int h = img->GetHeight();
+        ImageFitMode fit = ImageFitMode::NoScale;
+        if (maxEdge > 0) {
+            // A vector document has no resolution of its own, so it is
+            // rasterized at the full box however small its intrinsic size
+            // says it is; a raster is only ever scaled down - blowing one up
+            // would store the same detail in more pixels.
+            const std::string ext = GetFileExtension(sourcePath);   // already lowercase
+            const bool vector = (ext == "svg" || ext == "svgz");
+            if (vector) {
+                w = h = maxEdge;
+                fit = ImageFitMode::Contain;
+            } else if (w > maxEdge || h > maxEdge) {
+                w = h = maxEdge;
+                fit = ImageFitMode::ScaleDown;
+            }
+        }
+
+        std::shared_ptr<UCPixmapCairo> pm = img->GetPixmap(w, h, fit, 1.0f);
+        if (!pm || !pm->IsValid()) {
+            std::string why = img->errorMessage;
+            return why.empty() ? ("Cannot decode image: " + sourcePath)
+                               : ("Cannot decode image: " + sourcePath + " (" + why + ")");
+        }
+        return SavePixmapAsQoiFile(*pm, destPath);
+    }
 }

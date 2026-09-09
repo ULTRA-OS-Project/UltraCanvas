@@ -11,6 +11,8 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDirtyRectManager.h"
+#include "UltraCanvasTimer.h"
+#include <atomic>
 #include <string>
 #include <functional>
 #include <memory>
@@ -103,6 +105,20 @@ namespace UltraCanvas {
         // without re-rendering any widget (see UpdateAndRender).
         bool _needsCaretComposition = false;
 
+        // ===== AUTO-RESIZE-TO-CONTENT (config_.autoResizeToContent) =====
+        // Set once the user/WM has dragged this window to a size of their own,
+        // so continuous fit-to-content stops fighting the manual size.
+        bool _userResized = false;
+        // Set around our own SetWindowSize() call so the native resize event it
+        // provokes is not mistaken for a user drag (see HandleResizeEvent).
+        bool _expectProgrammaticResize = false;
+
+        // Measure the window's content with unbounded space and, when
+        // config_.autoResizeToContent is set, resize the window to fit it,
+        // clamped to [min,max] and the current monitor. Returns true when it
+        // changed the window size. See UltraCanvasWindow.cpp.
+        bool MaybeResizeToContent();
+
         UltraCanvasDirtyRectManager dirtyRectManager;
 
         std::unordered_map<UCEventType, std::vector<FilterFunction>> eventFilters = {};
@@ -144,6 +160,19 @@ namespace UltraCanvas {
         void HandleWindowHidden();
 
         UCMouseCursor currentMouseCursor = UCMouseCursor::Default;
+
+        // ===== BUSY POINTER STATE =====
+        UCMouseCursor busyPointerShape = UCMouseCursor::AppStarting;
+        TimerId busyPointerDelayTimer = InvalidTimerId;
+        TimerId busyPointerHoldTimer = InvalidTimerId;
+        bool busyPointerVisible = false;
+        // Timers outlive the window they were armed from when it closes while
+        // a launch is still pending: the callbacks check this flag before they
+        // touch the window, exactly as the filer's background probes do.
+        std::shared_ptr<std::atomic<bool>> busyPointerAlive =
+                std::make_shared<std::atomic<bool>>(true);
+        void CancelBusyPointerTimers();
+        void ShowBusyPointerNow(int holdMs);
 
         NativeSurfacePtr nativeSurface = nullptr;
 
@@ -226,6 +255,29 @@ namespace UltraCanvas {
         UCMouseCursor GetCurrentMouseCursor() { return currentMouseCursor; };
         bool SelectMouseCursor(UCMouseCursor ptr);
         bool SelectMouseCursor(UCMouseCursor ptr, const char* filename, int hotspotX, int hotspotY);
+
+        // ===== BUSY POINTER =====
+        // Pointer feedback for work that was started here but finishes
+        // elsewhere - launching a program, handing a document to another
+        // application. The shape only changes once `delayMs` has passed, so a
+        // launch that is over in a blink never flickers the pointer, and it
+        // goes back to normal after `holdMs` at the latest. A caller that does
+        // learn when its work finished calls HideBusyPointer() instead of
+        // waiting for the hold to run out. While it is up the busy shape wins
+        // over the cursor of whatever element the pointer is over; the window
+        // stays usable throughout.
+        void ShowBusyPointer(int delayMs = kBusyPointerDelayMs,
+                             int holdMs = kBusyPointerHoldMs,
+                             UCMouseCursor shape = UCMouseCursor::AppStarting);
+        void HideBusyPointer();
+        bool IsBusyPointerVisible() const { return busyPointerVisible; }
+
+        // Long enough that a program which opens at once is never announced,
+        // short enough to answer "did my double-click arrive?".
+        static constexpr int kBusyPointerDelayMs = 1000;
+        // Nothing tells us when a program another process starts is on screen,
+        // so the busy pointer gives up by itself.
+        static constexpr int kBusyPointerHoldMs = 8000;
 
         // Sample the colour of the window pixel at (x, y) in LOGICAL window
         // coordinates from the window's rendered surface (the last presented

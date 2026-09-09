@@ -12,6 +12,7 @@
 #define ULTRACANVAS_STL_ELEMENT_H
 
 #include "UltraCanvas3DTypes.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasSTLLoader.h"
 #include <string>
 #include <memory>
@@ -70,6 +71,10 @@ namespace UltraCanvas {
         float yaw_ = 0.6f;
         float pitch_ = 0.4f;
         float distance_ = 3.0f;
+        // The wheel dollies the camera: the distance eases towards its target
+        // instead of stepping, so a spin reads as one continuous move (the dolly
+        // is multiplicative, which is what UltraCanvasSmoothZoom animates).
+        UltraCanvasSmoothZoom dollyAnim_;
         Vec3 target_{0.0f, 0.0f, 0.0f};
         bool autoRotate_ = false;
 

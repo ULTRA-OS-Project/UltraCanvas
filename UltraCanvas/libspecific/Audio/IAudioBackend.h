@@ -81,6 +81,13 @@ public:
     virtual std::shared_ptr<UCAudio> DecodeMemory(const uint8_t* data, size_t size) = 0;
     virtual bool EncodeFile(const std::string& path, const UCAudio& audio,
                             AudioFormat format) = 0;
+
+    // A one-sentence, user-facing explanation of why DecodeFile could not read
+    // `path` - which codec the container turned out to hold, and what would
+    // unlock it. Empty means "nothing specific to say", so callers keep their
+    // own generic wording. Opt-in: the default satisfies backends that have no
+    // container knowledge.
+    virtual std::string DescribeDecodeFailure(const std::string& /*path*/) { return {}; }
 };
 
 // ===== ACCESSOR =====

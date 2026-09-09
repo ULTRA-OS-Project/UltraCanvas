@@ -26,13 +26,17 @@ bool Contains(const std::vector<std::string>& registered,
                registered.end();
 }
 
-// Known in-process/local providers per capability, in preference order.
+// Known local providers per capability, in preference order. "Local" means
+// the model runs on this machine: in-process (llama-cpp) or behind a server
+// the user runs (qwen against Ollama/vLLM, comfyui). In-process adapters
+// rank first — they need nothing started beforehand.
 std::vector<std::string> KnownLocalProviders(const std::string& capability) {
-    if (capability == "textllm")      return {"llama-cpp"};
-    if (capability == "embeddings")   return {"llama-cpp"};
+    if (capability == "textllm")      return {"llama-cpp", "qwen"};
+    if (capability == "embeddings")   return {"llama-cpp", "qwen"};
     if (capability == "speechtotext") return {"whisper-cpp"};
     if (capability == "texttospeech") return {"piper"};
-    if (capability == "imagegen")     return {"stable-diffusion-cpp"};
+    if (capability == "imagegen")     return {"comfyui", "stable-diffusion-cpp"};
+    if (capability == "videogen")     return {"comfyui"};
     return {};
 }
 

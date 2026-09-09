@@ -3,9 +3,9 @@
 **Status:** Partly implemented. UltraCrypt (§2.2a), the encrypted vault
 (§2.2b), the OTP engine (§2.2d), the app shell (§4, build order step 4) and
 account editing — rename, code settings, master-password rotation and gated
-seed reveal (§3.5, §3.5a) — are built and tested. In-memory QR decode (§2.2c)
-— and so the camera scan flow — is the remaining functional gap; screen-capture
-protection (§2.2e) remains impossible on X11.
+seed reveal (§3.5, §3.5a), in-memory QR decode with the camera scan flow
+(§2.2c) and the encrypted backup file (§3.5) — are built and tested.
+Screen-capture protection (§2.2e) remains impossible on X11.
 **Scope:** A TOTP/HOTP authenticator app for ULTRA OS (in the spirit of
 Google Authenticator / FreeOTP / Aegis), built on UltraCanvas.
 **Date:** 2026-08-10 (implementation notes added 2026-08-21)
@@ -112,12 +112,47 @@ UBSan.
 without a password, the vault refuses to open rather than falling back to
 plaintext — the failure this whole line of work started from.
 
-**(c) No in-memory QR decode.** `ScanQRCodeFile` takes a file path. Live
-camera scanning would otherwise mean writing every preview frame to disk —
-which for an authenticator would write *the secret* to disk in image form.
-→ Work item: add `QRCodeUtils::ScanQRCodeImage(const UCImage&)` (or a
-`UCVideoFramePtr` overload) that feeds zbar from memory, and wire it to
-`onPreviewFrame`.
+**(c) ~~No in-memory QR decode.~~ — DONE.** `ScanQRCodeFile` takes a file
+path, so camera scanning through it would have meant writing every preview
+frame to disk — which for an authenticator writes *the secret* to disk in
+image form.
+
+`QRCodeUtils::ScanQRCodeImage` now decodes from pixels already in memory,
+taking a buffer plus a pixel format (Grayscale8, RGB24, RGBA32, BGRA32) and a
+stride, with a `UCVideoFrame` overload for the camera path. Both it and the
+file path share one binarize-and-scan helper, so an image cannot decode
+through one and not the other.
+
+The signature deviates from the sketch above. `ScanQRCodeImage(const UCImage&)`
+is not possible: `UCImageRaster` is declared in `libspecific/Cairo/ImageCairo.h`,
+so naming it in a public plugin header would pull a backend type into that
+surface and break the non-Cairo platforms. The primitive therefore takes raw
+pixels and the caller states their layout.
+
+Verified by `Tests/QRCodeScanImageTests.cpp` (26 checks): round trip through
+every pixel layout, padded row strides, refusal of null buffers and of a
+stride shorter than one row, and noise decoding to nothing.
+
+**The camera flow is wired** (`ScanAccountDialog`). It opens the catalogue's
+`UltraCanvasVideoRecorderElement` for preview and never calls `Start()`, so no
+frame reaches a file. Frames are pulled by the dialog's own 5 Hz timer calling
+`GetPreviewFrame()` rather than by hooking `onPreviewFrame`, whose thread is
+undocumented — a decode running on a capture thread would be touching the
+vault from somewhere the rest of the app does not expect. Scanned URIs go
+through the same `AccountStore::AddFromUri` as typed keys, so a hostile QR
+faces the same parser and gets no laxer path into the vault.
+
+Building this surfaced a defect in the recorder element: its record button was
+laid out, drawn and hit-tested unconditionally, so a preview-only consumer
+could not remove it. A scanner that promises nothing is saved must not offer a
+control that starts writing video. `VideoRecorderStyle::showRecordButton` now
+suppresses it in all three places; it defaults to true, so existing consumers
+are unchanged.
+
+Not verified end to end: this build environment has no camera, so the capture
+and poll loop are exercised only by their graceful-degradation path ("No
+camera is available"). The decode itself — the `UCVideoFrame` overload the
+dialog calls — is covered by the unit tests above.
 
 **(d) ~~No TOTP/HOTP/Base32 code.~~ — DONE.** The engine now lives in
 `Apps/UltraAuthenticator/otp/`:
@@ -317,9 +352,30 @@ Scanning is parsing attacker-controlled data through a C library:
   outlive the app in `~/Pictures`, sync folders, thumbnails caches. Either
   don't offer file export of provisioning QRs at all, or watermark the flow
   with explicit warnings and point exports at the encrypted format instead.
-- Encrypted export file: same XChaCha20-Poly1305 + Argon2id envelope as the store, with
-  its own passphrase (not the app master password), so a backup found later
-  doesn't fall to the device password.
+- ~~Encrypted export file~~ — **DONE** (`AccountExport.{h,cpp}`, `BackupDialog`).
+  One file holding every account, sealed with `UCDCrypto::Seal` — the same
+  Argon2id + XChaCha20-Poly1305 envelope used elsewhere, reused rather than
+  reinvented. A 10-byte header (magic, version) is authenticated as associated
+  data; the payload is a count followed by each account's `otpauth://` URI, so
+  a restore goes through `AddFromUri` and meets exactly the parser that guards
+  the live vault. Written atomically at mode 0600.
+
+  Its passphrase must **differ from the master password**, and this is enforced
+  rather than advised: a backup is the file most likely to reach a USB stick or
+  a cloud drive, and one that opened with the device password would make
+  finding it as good as having the machine. Export re-authenticates with the
+  master password first, since it reads every seed in the vault.
+
+  Restoring never overwrites: an account already present is kept and counted as
+  skipped, because a restore that clobbered a re-enrolled seed or a newer HOTP
+  counter would destroy a working second factor. The result is reported per
+  category — "restored 38, kept 2 already present" — since silently dropping
+  two would be indistinguishable from restoring all forty.
+
+  Verified by `Tests/UltraAuthenticatorExportTests.cpp` (56 checks) and by
+  driving the GUI: three accounts exported from one vault and restored into a
+  different vault with a different master password, HOTP counter and
+  non-default parameters intact.
 
 **What shipped (`RevealSecretDialog`, `AccountStore::Reveal`).** On-screen
 reveal only: the setup key and its `otpauth://` URI are shown as selectable
@@ -340,7 +396,7 @@ photo album or an email — strictly worse than this vault. Aegis, andOTP and
 applies in full while the dialog is open, which is why it stays on screen only
 until dismissed and warns about photographing it.
 
-The encrypted export *file* in the second bullet is still not built.
+The encrypted export *file* in the second bullet is now built; see above.
 
 ### 3.5a Editing an enrolled account (medium)
 
@@ -418,6 +474,8 @@ Apps/UltraAuthenticator/
   AddAccountDialog.*           — manual entry (camera scan still outstanding)  [DONE]
   EditAccountDialog.*          — rename + code settings (§3.5a)                [DONE]
   ChangePasswordDialog.*       — master password rotation                     [DONE]
+  AccountExport.*              — encrypted backup file (§3.5)                 [DONE]
+  BackupDialog.*               — back up / restore, own passphrase (§3.5)     [DONE]
   RevealSecretDialog.*         — gated seed export for device migration (§3.5) [DONE]
   AccountStore.*               — accounts ↔ vault entries via otpauth:// URIs [DONE]
   otp/

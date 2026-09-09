@@ -1500,8 +1500,20 @@ namespace UltraCanvas {
                         area.Contains(static_cast<float>(event.pointer.x),
                                       static_cast<float>(event.pointer.y))) {
                         Point2Dd g = ScreenToGrid(event.pointer.x, event.pointer.y);
-                        double factor = (event.wheelDelta > 0) ? (1.0 / 1.25) : 1.25;
-                        ApplyZoom(factor, field.XAt(g.x), field.YAt(g.y));
+                        if (!zoomAnim.IsBound()) {
+                            // ApplyZoom repaints itself, so the animator needs
+                            // no separate repaint.
+                            zoomAnim.Bind([this](double f) {
+                                              ApplyZoom(f, zoomFocusX, zoomFocusY);
+                                          },
+                                          [] {});
+                        }
+                        zoomFocusX = field.XAt(g.x);
+                        zoomFocusY = field.YAt(g.y);
+                        // The view range clamps itself, so the animator is given
+                        // a wide range and only paces the factor.
+                        zoomAnim.ZoomBy((event.wheelDelta > 0) ? (1.0 / 1.25) : 1.25,
+                                        1.0, 1.0 / 1e6, 1e6);
                         return true;
                     }
                 }

@@ -42,6 +42,7 @@ endif ()
 option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
 option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
+option(ULTRACANVAS_PLUGIN_EPS "Build EPS (PostScript) plugin" ON)
 option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
@@ -135,6 +136,7 @@ else()
     message(FATAL_ERROR "Unsupported platform")
 endif()
 
+
 # WebAssembly builds run inside the browser sandbox: no OpenGL context
 # managers, no native audio/video frameworks, no sockets for UltraNet, and no
 # runtime-loaded plug-in modules. The remaining REQUIRED pkg-config
@@ -148,6 +150,7 @@ if(ULTRACANVAS_PLATFORM STREQUAL "WASM")
     set(ULTRACANVAS_ENABLE_NET OFF CACHE BOOL "Build the UltraNet networking library" FORCE)
     set(ULTRACANVAS_PLUGIN_CDR OFF CACHE BOOL "Build CorelDRAW CDR plugin" FORCE)
     set(ULTRACANVAS_PLUGIN_XAR OFF CACHE BOOL "Build XARA plugin" FORCE)
+    set(ULTRACANVAS_PLUGIN_EPS OFF CACHE BOOL "Build EPS (PostScript) plugin" FORCE)
     set(ULTRACANVAS_PLUGIN_PDF OFF CACHE BOOL "Build PDF plugin" FORCE)
     set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)" FORCE)
     set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" FORCE)
@@ -193,6 +196,14 @@ pkg_check_modules(PANGO REQUIRED pango pangocairo)
 # FontConfig - bundled-font registration (Linux always; Windows when Pango is built with the FontConfig backend)
 if(NOT APPLE)
     pkg_check_modules(FONTCONFIG REQUIRED fontconfig)
+    # PangoFT2 - part of Pango itself, present wherever Pango is built against
+    # FontConfig (which is every platform that reaches this branch). It is
+    # linked for exactly one call: pango_fc_font_map_config_changed(), which
+    # is what makes a font registered after start-up visible to the Pango
+    # contexts that already exist. Not REQUIRED, because a build without it
+    # still works - RefreshFontConfiguration() then drops the default font
+    # map instead, and the new font is picked up by surfaces created after.
+    pkg_check_modules(PANGOFT2 pangoft2)
 endif()
 
 pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)
@@ -297,8 +308,18 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
 elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     find_library(COCOA_FRAMEWORK Cocoa REQUIRED)
     find_library(QUARTZ_FRAMEWORK QuartzCore REQUIRED)
+    # UniformTypeIdentifiers (macOS 11+) backs the "Open with" enumeration in
+    # OS/MacOS/UltraCanvasMacOSFileAssociations.mm. Not REQUIRED: an older SDK
+    # has neither the framework nor its header, and the backend compiles the
+    # enumeration out (__has_include) and reports no candidates there.
+    find_library(UNIFORMTYPEIDENTIFIERS_FRAMEWORK UniformTypeIdentifiers)
     find_library(OPENGL_FRAMEWORK OpenGL REQUIRED)
     find_library(CORETEXT_FRAMEWORK CoreText REQUIRED)
+    # IOKit + CoreFoundation back the hardware probe
+    # (OS/MacOS/UltraCanvasMacOSHardwareInfo.cpp): the registry walk for GPUs,
+    # storage, USB and Bluetooth, and the CF property readers around it.
+    find_library(IOKIT_FRAMEWORK IOKit REQUIRED)
+    find_library(COREFOUNDATION_FRAMEWORK CoreFoundation REQUIRED)
     if(ULTRACANVAS_ENABLE_GL)
         set(ULTRACANVAS_HAS_CGL TRUE)
     endif()
@@ -326,6 +347,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEvent.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasConfig.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
+        # Kept out of UltraCanvasUtils.cpp so that file stays linkable on
+        # its own; this one needs UltraCanvasJSON for the Dropbox
+        # configuration. (The plain text helpers live in the
+        # UltraCanvasTextUtils library, linked below.)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCloudStorage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGitRepository.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtilsUtf8.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasApplication.cpp
@@ -347,6 +373,14 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
+        # Spell checking. The per-platform backend that defines
+        # CreateNativeSpellCheckBackend() is picked up by the
+        # ${ULTRACANVAS_PLATFORM_DIR}/*.cpp glob below - do not list it here or
+        # it lands in the build twice.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_SpellCheck.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpellChecker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckLanguageNames.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/SpellCheckBackendHunspell.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Hex.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDropdown.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDatePicker.cpp
@@ -355,6 +389,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageViewer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewer.cpp
+        # Raster editing: layer / selection / document model, brush engine and
+        # the editable paint surface (UltraPaint)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterLayer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterSelection.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterDocument.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBrushEngine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPaintSurface.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColumnsTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListModel.cpp
@@ -376,7 +417,12 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPasswordRuleLegend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToolbar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasScrollbar.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSmoothScroll.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlider.cpp
+        # Tone curve model + interactive curve editor (Curves dialog, image tools)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToneCurve.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCurveEditor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCurvesDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpinner.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimePicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPagination.cpp
@@ -385,15 +431,49 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasChip.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBadge.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorPicker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColorSwatchBar.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSplashScreen.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSlideshow.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
+        # Windows shell links (.lnk) and the icon resources they point at,
+        # both parsed from the files themselves so a Windows disk shows its
+        # shortcuts and programs with their own icons on every platform.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasShellLink.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasIconResource.cpp
+        # Freedesktop desktop entries (.desktop): the Linux/BSD shortcut, and
+        # the icon-theme lookup its Icon= names need. Shared by the file
+        # display and the "Open with" service, which used to parse the format
+        # privately.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDesktopEntry.cpp
+        # Apple property lists (Info.plist, .webloc) in both encodings, and
+        # the macOS application bundles and shortcut files built on them.
+        # Read without an Apple API, so a Mac disk mounted anywhere shows its
+        # applications with their real names and icons.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPropertyList.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMacBundle.cpp
+        # Preview bitmaps vector documents (Xara, ZIP-based CorelDRAW)
+        # carry inside themselves - what the filer thumbnails them from.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEmbeddedPreview.cpp
+        # Font definition files (ttf/otf/woff/...) read as documents: name
+        # records for the metadata, a line of their own glyphs for the
+        # thumbnail. Pure FreeType, so it needs no installed font.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontFile.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileAssociations.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
+        # "Is this file in use by another program" - the question behind
+        # every failed overwrite. Platform backend under OS/<Platform>/.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
+        # Mounted volumes + notification when that set changes. The platform
+        # backend lives in OS/<Platform>/UltraCanvas*VolumeMonitor.* and is
+        # picked up by the platform glob.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVolumeMonitor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSupportedFormats.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaCodecRegistry.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNewDocumentDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Dimension.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/CSSLayout/Layout.cpp
@@ -428,6 +508,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/MOBIEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/eBook/TXTEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasEBookViewer.cpp
+
+        # Hardware inventory and sensors (CPU/GPU/NPU/memory/storage/network/
+        # USB/Bluetooth) plus the ready-made system-information panel. The probe
+        # itself lives in OS/<Platform>/UltraCanvas*HardwareInfo.cpp and is
+        # picked up by the platform glob below.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfoPanel.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
@@ -587,6 +674,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormula.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetXlsxIO.cpp
+        # Cell-formatting menu (alignment, number formats, colours, sizing)
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFormatMenu.cpp
         # CSV/TSV "Text Import" options dialog (depends on the spreadsheet element)
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCSVImportDialog.cpp
         # CSV/TSV "Text Export" options dialog (depends on the spreadsheet element)
@@ -595,9 +684,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/third_party/miniz/miniz.c
 
         # DataFormats section: general-purpose JSON API (UltraCanvasJSON) backed
-        # by the vendored yyjson engine
+        # by the vendored yyjson engine (built once as the uc-yyjson archive
+        # below, shared with UltraWin's QMP client)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson/yyjson.c
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
@@ -722,6 +811,59 @@ if(ULTRACANVAS_HAS_VIPS)
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
     )
+endif()
+
+# ===== SPELL CHECKING (all dependencies optional) =====
+# With none of these present the module still compiles and simply reports zero
+# dictionaries, so a missing optional dependency never breaks the build.
+pkg_check_modules(HUNSPELL QUIET hunspell)
+if(HUNSPELL_FOUND)
+    message(STATUS "  Hunspell: ${HUNSPELL_VERSION} (portable spell backend)")
+else()
+    message(STATUS "  Hunspell: NOT FOUND (portable spell backend reports no dictionaries)")
+endif()
+
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    # enchant-2 is the broker GTK, LibreOffice and Firefox use, so it sees the
+    # dictionaries the user already has installed.
+    pkg_check_modules(ENCHANT QUIET enchant-2)
+    if(ENCHANT_FOUND)
+        message(STATUS "  enchant-2: ${ENCHANT_VERSION} (native Linux spell backend)")
+    else()
+        message(STATUS "  enchant-2: NOT FOUND (falling back to the Hunspell backend)")
+    endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
+    # spellcheck.h is Windows 8+. Its mere presence proves nothing: the header
+    # ships on older toolchains too but gates every interface behind
+    # NTDDI_VERSION >= NTDDI_WIN8, leaving forward declarations that fail to
+    # compile on first use. So probe by compiling the constructs the backend
+    # actually needs - a header-existence check let exactly that reach CI.
+    include(CheckCXXSourceCompiles)
+    set(CMAKE_REQUIRED_DEFINITIONS -D_WIN32_WINNT=0x0602 -DNTDDI_VERSION=0x06020000)
+    check_cxx_source_compiles("
+        #include <windows.h>
+        #include <spellcheck.h>
+        int main() {
+            ISpellCheckerFactory* factory = nullptr;
+            if (FAILED(CoCreateInstance(__uuidof(SpellCheckerFactory), nullptr,
+                                        CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&factory)))) return 1;
+            ISpellChecker* checker = nullptr;
+            factory->CreateSpellChecker(L\"en-US\", &checker);
+            if (checker) checker->Release();
+            factory->Release();
+            return 0;
+        }
+    " ULTRACANVAS_HAVE_SPELLCHECK_API)
+    unset(CMAKE_REQUIRED_DEFINITIONS)
+
+    if(ULTRACANVAS_HAVE_SPELLCHECK_API)
+        message(STATUS "  ISpellChecker: available (native Windows spell backend)")
+    else()
+        message(STATUS "  ISpellChecker: NOT USABLE (falling back to the Hunspell backend)")
+    endif()
+elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    # NSSpellChecker ships with every macOS and needs no feature flag.
+    message(STATUS "  NSSpellChecker: available (native macOS spell backend)")
 endif()
 
 # Include headers (for IDE support)
@@ -849,6 +991,8 @@ if(ULTRACANVAS_ENABLE_AUDIO)
     list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioBackendMiniaudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioCodecsExtra.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/AudioCodecsAAC.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Audio/Mp4AudioDemux.cpp
     )
     message(STATUS "Audio backend: miniaudio (${miniaudio_SOURCE_DIR})")
 
@@ -859,17 +1003,31 @@ if(ULTRACANVAS_ENABLE_AUDIO)
     #   libvorbis(enc/file)  -> Ogg Vorbis encode + decode
     #   libopusenc / opusfile-> Opus encode + decode
     #   LAME (mp3lame)       -> MP3 encode   (decode already via miniaudio/dr_mp3)
+    #   FAAD2 / fdk-aac      -> AAC decode   (M4A and raw .aac; the MP4 sample
+    #                           table is read by the in-tree Mp4AudioDemux, so
+    #                           only the raw AAC decoder comes from outside)
     # All are optional: missing ones simply leave their formats save- (or
     # load-) disabled, exactly as reported by UltraCanvasSupportedFormats.
+    #
+    # NOTE on AAC licensing: FAAD2 is GPL-2.0 and fdk-aac ships under the
+    # Fraunhofer FDK AAC license - neither is bundled here, and neither is
+    # required. Linking one in imposes that library's terms on the resulting
+    # binary, which is why this is opt-out-by-default: the libraries are used
+    # only when the build host already has them. A build with neither still
+    # plays M4A wherever the GStreamer plugins below are installed.
     find_package(PkgConfig)
     if(PkgConfig_FOUND)
         pkg_check_modules(UC_FLAC flac)
         pkg_check_modules(UC_VORBIS vorbisenc vorbisfile vorbis ogg)
         pkg_check_modules(UC_OPUSENC libopusenc)
         pkg_check_modules(UC_OPUSFILE opusfile)
+        pkg_check_modules(UC_FDKAAC fdk-aac)
     endif()
     find_library(UC_MP3LAME_LIBRARY mp3lame)
     find_path(UC_MP3LAME_INCLUDE_DIR lame/lame.h)
+    # FAAD2 ships no pkg-config file on most distributions.
+    find_library(UC_FAAD_LIBRARY faad)
+    find_path(UC_FAAD_INCLUDE_DIR neaacdec.h)
 endif()
 
 # Video sources (always-compiled API surface; backend is a stub unless
@@ -880,6 +1038,9 @@ endif()
 #   Windows: Media Foundation (TODO)
 list(APPEND ULTRACANVAS_LIBSPECIFIC_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoBackendNull.cpp
+    # Always compiled: an application may register a video codec of its own on
+    # a build that has no platform backend at all.
+    ${CMAKE_CURRENT_SOURCE_DIR}/libspecific/Video/VideoCodecPlugin.cpp
 )
 set(ULTRACANVAS_VIDEO_BACKEND_FOUND OFF)
 if(ULTRACANVAS_ENABLE_VIDEO)
@@ -978,11 +1139,58 @@ set(ULTRACANVAS_ALL_SOURCES
         include/UltraCanvasNativeHandle.h
 )
 
+# Vendored yyjson as its own small archive so the core library
+# (UltraCanvasJSON) and UltraWin (QMP client) share ONE compiled copy —
+# compiling yyjson.c into both would turn the whole-archive UltraWin link
+# into duplicate-definition errors in shared builds.
+add_library(uc-yyjson STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson/yyjson.c)
+set_target_properties(uc-yyjson PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(uc-yyjson PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/third_party/yyjson>)
+
 # ===== BUILD CORE LIBRARY =====
 if(ULTRACANVAS_BUILD_SHARED)
     add_library(${ULTRACANVAS_LIB_NAME} SHARED ${ULTRACANVAS_ALL_SOURCES})
 else()
     add_library(${ULTRACANVAS_LIB_NAME} STATIC ${ULTRACANVAS_ALL_SOURCES})
+endif()
+# Shared build: the engine's objects are pulled into the DSO (PRIVATE);
+# static build: consumers must link the archive themselves (PUBLIC), after
+# both libultracanvas and UltraWin on the line so single-pass linkers
+# resolve their yyjson references forward.
+if(ULTRACANVAS_BUILD_SHARED)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE uc-yyjson)
+else()
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC uc-yyjson)
+endif()
+
+# ===== SPELL CHECK BACKENDS =====
+# Every branch is optional; the service falls back to the next backend at
+# runtime and finally to a no-op that reports zero dictionaries.
+find_package(Threads REQUIRED)
+target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Threads::Threads)
+
+if(HUNSPELL_FOUND)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_HUNSPELL)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_LIBRARIES})
+endif()
+
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux" AND ENCHANT_FOUND)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_ENCHANT)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ENCHANT_LIBRARIES})
+elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows" AND ULTRACANVAS_HAVE_SPELLCHECK_API)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_WINSPELLCHECK)
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Ole32)
+elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE
+        "-framework AppKit"
+        "-framework Foundation"
+    )
 endif()
 
 # ===== CHART RUNTIME MODULES =====
@@ -1071,6 +1279,13 @@ if(NOT APPLE AND FONTCONFIG_FOUND)
         target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
     endforeach()
 endif()
+if(NOT APPLE AND PANGOFT2_FOUND)
+    foreach(_inc_dir ${PANGOFT2_INCLUDE_DIRS})
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${_inc_dir})
+    endforeach()
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${PANGOFT2_LIBRARIES})
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_PANGOFT2=1)
+endif()
 if(ULTRACANVAS_HAS_VIPS)
     foreach(_inc_dir ${LIBVIPS_INCLUDE_DIRS})
         target_include_directories(${ULTRACANVAS_LIB_NAME} PUBLIC $<BUILD_INTERFACE:${_inc_dir}>)
@@ -1128,6 +1343,22 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${TINYXML2_LIBRARIES}
 )
 
+# Native folder watching: the define tells the core watcher that this platform
+# ships a backend under OS/<Platform>/, so it must not compile its own
+# null-returning fallback. PUBLIC so an app can ask whether watching is native.
+if(ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FOLDER_WATCH)
+endif()
+# File-lock probing: the same arrangement for UltraCanvasFileLock. PUBLIC so an
+# app can leave the "in use" display out entirely where nothing can answer.
+if(ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_FILE_LOCK)
+endif()
+# Native volume monitoring: the same arrangement for UltraCanvasVolumeMonitor.
+# PUBLIC so an app can tell a device notification from the polling fallback.
+if(ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR)
+endif()
 # VirtualFS module (brings VIRTUALFS_HAS_* defines and headers for the bridge;
 # ULTRACANVAS_HAS_VIRTUALFS gates FileLoader's transparent decompression)
 if(TARGET VirtualFS)
@@ -1185,6 +1416,13 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "WASM")
             -sALLOW_MEMORY_GROWTH=1
             -sSTACK_SIZE=5MB
             -sNO_EXIT_RUNTIME=1
+            # The backend's EM_ASM bridges (clipboard, dialogs, downloads,
+            # UltraCanvasWASMSupport) call these from JavaScript. Emscripten
+            # only emits runtime helpers something references, and EM_ASM
+            # bodies are not scanned for references, so name them explicitly.
+            # EXPORTED_FUNCTIONS replaces the default list, hence _main.
+            -sEXPORTED_FUNCTIONS=_main,_malloc,_free
+            -sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,stringToNewUTF8,lengthBytesUTF8,HEAPU8,FS
     )
 elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
@@ -1194,10 +1432,21 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             oleaut32
             uuid
             shell32
+            shlwapi        # AssocQueryStringW (OS/MSWindows file associations)
+            advapi32       # RegGetValueW (GetCloudStorageFolders: Google Drive mount)
             comdlg32
             comctl32
             imm32
             dwmapi
+            ws2_32  # Winsock select() for host fd-watches (e.g. Ladybird IPC sockets)
+            # Hardware probe (OS/MSWindows/UltraCanvasWindowsHardwareInfo.cpp):
+            # network adapters, Wi-Fi association, USB enumeration and the
+            # Bluetooth radios. powrprof is loaded at run time instead, so the
+            # processor-clock query costs no link dependency.
+            iphlpapi
+            wlanapi
+            setupapi
+            bthprops
             ${FONTCONFIG_LIBRARIES}
     )
     if(ULTRACANVAS_ENABLE_GL)
@@ -1224,8 +1473,14 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
             ${COCOA_FRAMEWORK}
             ${QUARTZ_FRAMEWORK}
             ${CORETEXT_FRAMEWORK}
+            ${IOKIT_FRAMEWORK}
+            ${COREFOUNDATION_FRAMEWORK}
             #        ${OPENGL_FRAMEWORK}
     )
+    if(UNIFORMTYPEIDENTIFIERS_FRAMEWORK)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
+                ${UNIFORMTYPEIDENTIFIERS_FRAMEWORK})
+    endif()
     if(ULTRACANVAS_ENABLE_GL)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC
             ${OPENGL_FRAMEWORK}
@@ -1258,6 +1513,25 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
     )
 endif()
 
+# Same problem on Windows: vcpkg installs its import libraries under
+# vcpkg_installed/<triplet>/lib, which is not a default linker search directory. The pkg-config
+# dependencies (cairo/pango/glib/fontconfig/harfbuzz/freetype/tinyxml2/vips) are re-exported as
+# bare -l<name> usage requirements, so the -L dirs must propagate (PUBLIC) to every consumer (the
+# final .exe) exactly like on macOS above — otherwise lld-link reports "could not open 'cairo.lib'".
+if(WIN32)
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC
+            ${CAIRO_LIBRARY_DIRS}
+            ${PANGO_LIBRARY_DIRS}
+            ${FONTCONFIG_LIBRARY_DIRS}
+            ${PANGOFT2_LIBRARY_DIRS}
+            ${FREETYPE_LIBRARY_DIRS}
+            ${HARFBUZZ_LIBRARY_DIRS}
+            ${GLIB_LIBRARY_DIRS}
+            ${TINYXML2_LIBRARY_DIRS}
+            ${LIBVIPS_LIBRARY_DIRS}
+    )
+endif()
+
 # ===== LINK LIBRARIES =====
 target_link_libraries(${ULTRACANVAS_LIB_NAME}
     PUBLIC
@@ -1270,6 +1544,7 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${TINYXML2_LIBRARIES}
         ${ZBAR_LIBRARIES}
         fmt::fmt
+        UltraCanvasTextUtils
     # PRIVATE
     #     grapheme
 )
@@ -1373,6 +1648,35 @@ if(ULTRACANVAS_ENABLE_AUDIO)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_MP3LAME_LIBRARY})
         message(STATUS "Audio codec: MP3 encode (LAME ${UC_MP3LAME_LIBRARY})")
     endif()
+
+    # AAC decode. FAAD2 first (packaged nearly everywhere on Linux); fdk-aac is
+    # the alternative. Only one is compiled in - AudioCodecsAAC.cpp tries them
+    # in that order, so linking both would just be dead weight.
+    if(UC_FAAD_LIBRARY AND UC_FAAD_INCLUDE_DIR)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_FAAD=1)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_FAAD_INCLUDE_DIR})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_FAAD_LIBRARY})
+        message(STATUS "Audio codec: AAC/M4A decode (FAAD2 ${UC_FAAD_LIBRARY})")
+    elseif(UC_FDKAAC_FOUND)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_FDKAAC=1)
+        target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${UC_FDKAAC_INCLUDE_DIRS})
+        target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_FDKAAC_LIBRARY_DIRS})
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${UC_FDKAAC_LIBRARIES})
+        message(STATUS "Audio codec: AAC/M4A decode (fdk-aac ${UC_FDKAAC_VERSION})")
+    endif()
+
+    # Catch-all decode through the media framework already linked for video.
+    # This is what makes M4A (AAC *and* ALAC), WMA and AIFF play on a desktop
+    # that has the GStreamer plugins but no AAC development library, so it is
+    # wired up whether or not one of the two above was found.
+    if(GSTREAMER_FOUND AND ULTRACANVAS_ENABLE_VIDEO AND ULTRACANVAS_VIDEO_BACKEND_FOUND)
+        target_compile_definitions(${ULTRACANVAS_LIB_NAME}
+                                   PRIVATE ULTRACANVAS_HAS_GST_AUDIO_DECODE=1)
+        message(STATUS "Audio codec: platform decode fallback (GStreamer ${GSTREAMER_VERSION})")
+    elseif(NOT (UC_FAAD_LIBRARY AND UC_FAAD_INCLUDE_DIR) AND NOT UC_FDKAAC_FOUND)
+        message(STATUS "Audio codec: AAC/M4A decode unavailable (install libfaad-dev, "
+                       "fdk-aac, or the GStreamer plugins)")
+    endif()
 endif()
 
 # Video compile definitions + include path + libs. The API surface always
@@ -1411,6 +1715,39 @@ endif()
 
 # ===== BUILD ULTRANET LIBRARY (Stage 1: HTTP/HTTPS + URL on libcurl) =====
 # ===== ULTRACRYPT =====
+# Standalone text utilities (Trim/Split/ToLowerCase..., RFC 4648
+# Base32/Base64), split out of UltraCanvasUtils so that headless consumers —
+# UltraCrypt above all, and the Tests targets — can link one definition of each
+# helper without the platform glue in UltraCanvasUtils.cpp.
+#
+# This library and UltraCanvasBase32 are split by LINK-TIME HOME, not by kind.
+# Everything here — the string helpers and Base64 — is linked into the
+# UltraCanvas library, so a SHARED core exports it; UltraNet calls Base64 and is
+# absorbed into that core, so Base64 has to stay on this side. Base32's only
+# consumer is UltraCrypt, which is deliberately UI-free, so it lives apart.
+# While Base32 shared an object with these symbols, linking UltraCrypt dragged
+# the whole object onto the line and its copies collided with the shared core's
+# exports — which PE/COFF rejects ("multiple definition of UltraCanvas::Trim").
+# Both halves are declared by the same header, so callers see no difference.
+add_library(UltraCanvasTextUtils STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextUtils.cpp)
+target_include_directories(UltraCanvasTextUtils PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas>)
+target_compile_features(UltraCanvasTextUtils PUBLIC cxx_std_20)
+set_target_properties(UltraCanvasTextUtils PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+# Base32: linked by UltraCrypt (and so by UltraVault and the authenticator),
+# never by the UltraCanvas library. Keeping it out of the shared core's exports
+# is exactly what makes the split work — see UltraCanvasBase32.cpp.
+add_library(UltraCanvasBase32 STATIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBase32.cpp)
+target_include_directories(UltraCanvasBase32 PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas>)
+target_compile_features(UltraCanvasBase32 PUBLIC cxx_std_20)
+set_target_properties(UltraCanvasBase32 PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 # Cryptographic services (Masterfile_modules.md §8). Deliberately free of any
 # UI dependency so headless consumers — UltraVault, UltraDatabase, tools — can
 # link it without pulling in the widget layer.
@@ -1421,6 +1758,8 @@ target_include_directories(UltraCrypt PUBLIC
     $<INSTALL_INTERFACE:include/ultracanvas>)
 target_compile_features(UltraCrypt PUBLIC cxx_std_20)
 set_target_properties(UltraCrypt PROPERTIES POSITION_INDEPENDENT_CODE ON)
+# The secure Base32 decoder delegates to the shared codec in UltraCanvasBase32.
+target_link_libraries(UltraCrypt PUBLIC UltraCanvasBase32)
 if(SODIUM_FOUND)
     target_compile_definitions(UltraCrypt PUBLIC ULTRACRYPT_HAVE_SODIUM=1)
     target_include_directories(UltraCrypt PRIVATE ${SODIUM_INCLUDE_DIRS})
@@ -1834,11 +2173,33 @@ endif()
 # Docs/Modules/UltraWin/README.md.
 if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
     find_package(Threads REQUIRED)
+    # FreeRDP: the VM tier's RemoteApp client — the one UltraWin engine that
+    # IS linked (Apache-2.0). Optional: without it the module builds with
+    # the VM tier's RunApp routing reporting NotSupported
+    # (UltraWinCapabilities::remoteAppSupported = false). FreeRDP 3 is
+    # preferred (Ubuntu 24.04+ ships its channels built in); FreeRDP 2 is
+    # the fallback for hosts where 3 is not packaged (Ubuntu 22.04).
+    pkg_check_modules(ULTRAWIN_FREERDP freerdp3 winpr3 freerdp-client3)
+    if(ULTRAWIN_FREERDP_FOUND)
+        set(ULTRAWIN_FREERDP_MAJOR 3)
+        set(ULTRAWIN_FREERDP_VERSION ${ULTRAWIN_FREERDP_freerdp3_VERSION})
+    else()
+        pkg_check_modules(ULTRAWIN_FREERDP freerdp2 winpr2 freerdp-client2)
+        if(ULTRAWIN_FREERDP_FOUND)
+            set(ULTRAWIN_FREERDP_MAJOR 2)
+            set(ULTRAWIN_FREERDP_VERSION ${ULTRAWIN_FREERDP_freerdp2_VERSION})
+        endif()
+    endif()
+
     set(ULTRAWIN_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinCore.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinEnvironment.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinComponents.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinAssociations.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinApp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinQmp.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinVm.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraWin/UltraWinRdp.cpp
     )
     add_library(UltraWin STATIC ${ULTRAWIN_SOURCES})
     set_target_properties(UltraWin PROPERTIES
@@ -1849,7 +2210,24 @@ if(ULTRACANVAS_ENABLE_ULTRAWIN AND ULTRACANVAS_PLATFORM STREQUAL "Linux")
         PUBLIC
             $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
             $<INSTALL_INTERFACE:include/ultracanvas>)
-    target_link_libraries(UltraWin PUBLIC Threads::Threads)
+    # uc-yyjson: the vendored JSON engine behind the QMP client (shared with
+    # UltraCanvasJSON — one compiled copy, see the uc-yyjson definition).
+    target_link_libraries(UltraWin PUBLIC Threads::Threads uc-yyjson)
+    if(ULTRAWIN_FREERDP_FOUND)
+        target_compile_definitions(UltraWin PRIVATE
+            ULTRAWIN_HAS_FREERDP=${ULTRAWIN_FREERDP_MAJOR})
+        target_include_directories(UltraWin PRIVATE
+            ${ULTRAWIN_FREERDP_INCLUDE_DIRS})
+        target_link_directories(UltraWin PUBLIC
+            ${ULTRAWIN_FREERDP_LIBRARY_DIRS})
+        # freerdp-clientN carries freerdp_client_load_addins (the channel
+        # loader the RemoteApp session uses); freerdpN/winprN the core.
+        target_link_libraries(UltraWin PUBLIC
+            ${ULTRAWIN_FREERDP_LIBRARIES})
+        message(STATUS "  [✓] UltraWin RemoteApp client - ENABLED (FreeRDP ${ULTRAWIN_FREERDP_VERSION})")
+    else()
+        message(STATUS "  [−] UltraWin RemoteApp client - DISABLED (freerdp3-dev/freerdp2-dev not found; VM-tier launches report NotSupported)")
+    endif()
 
     # Same single-host export strategy as UltraNet: a shared libultracanvas
     # re-exports the whole UltraWin API so apps import one copy of the module
@@ -1962,6 +2340,17 @@ else()
     message(STATUS "  [−] XAR Plugin - SKIPPED (disabled by option)")
 endif()
 
+if(ULTRACANVAS_PLUGIN_EPS)
+    add_subdirectory(Plugins/Vector/EPS)
+    if(ULTRACANVAS_EPS_PLUGIN_FOUND)
+        list(APPEND ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_EPS_PLUGIN_TARGET})
+        list(APPEND ULTRACANVAS_PLUGIN_INCLUDE_DIRS ${ULTRACANVAS_EPS_PLUGIN_INCLUDE_DIR})
+        message(STATUS "  [✓] EPS Plugin - ENABLED")
+    endif()
+else()
+    message(STATUS "  [−] EPS Plugin - SKIPPED (disabled by option)")
+endif()
+
 if(ULTRACANVAS_PLUGIN_VECTOR)
     add_subdirectory(Plugins/Vector)
     if(ULTRACANVAS_VECTOR_PLUGIN_FOUND)
@@ -2031,6 +2420,16 @@ if(ULTRACANVAS_PLUGIN_PDF)
     # there — link it only when present.
     if(MUPDF_THIRD_LIBRARY)
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${MUPDF_THIRD_LIBRARY})
+        # IMPORTANT: MuPDF must be built with USE_SYSTEM_LIBJPEG=yes (see the from-source build in
+        # .github/workflows/build.yml and Docs/Dependencies.md). MuPDF otherwise vendors its OWN
+        # libjpeg 9 (JPEG_LIB_VERSION=90) into libmupdf-third.a and globally defines jpeg_CreateDecompress;
+        # with -Wl,--export-dynamic (via GTK) that v90 symbol leaks into the process and INTERPOSES
+        # libvips's system libjpeg (v80), so every JPEG/AVIF thumbnail fails with "Wrong JPEG library
+        # version: library is 90, caller expects 80". Using the system libjpeg (as MuPDF already does for
+        # freetype/harfbuzz, which are shared with cairo/pango) leaves a single libjpeg in the process and
+        # removes the conflict at the source. A linker version-script to localize only jpeg_* was tried but
+        # is unusable here: MuPDF compiles its bundled third-party objects with hidden ELF visibility, so
+        # any --version-script trips ld's "hidden symbol referenced by DSO" check on libvips's openjpeg.
     endif()
     foreach(_extra_lib
             MUJS_LIBRARY GUMBO_LIBRARY JBIG2DEC_LIBRARY OPENJP2_LIBRARY

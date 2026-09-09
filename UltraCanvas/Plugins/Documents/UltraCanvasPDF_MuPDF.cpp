@@ -1,8 +1,8 @@
 // Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
 // MuPDF-backed implementation of IPDFDocument.
 // Built when ULTRACANVAS_PLUGIN_PDF and ULTRACANVAS_PDF_MUPDF are both enabled.
-// Version: 1.3.0
-// Last Modified: 2026-07-15
+// Version: 1.4.0
+// Last Modified: 2026-08-23
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/UltraCanvasPDF.h"
@@ -97,6 +97,7 @@ public:
 
     // I/O
     bool Open(const std::string& path, const std::string& password) override;
+    bool OpenInMemory(const std::string& path, const std::string& password) override;
     bool OpenFromBytes(const std::vector<uint8_t>& data,
                        const std::string& password) override;
     bool Save(const std::string& path, const PDFSaveOptions& opts) override;
@@ -150,6 +151,12 @@ public:
 private:
     // ----- helpers -----
     bool LoadDocumentInternal(fz_stream* stream, const std::string& password);
+    // Open the document from `data`, which becomes memoryBuffer_ (MuPDF reads
+    // from it for the document's whole life, so it must not be copied twice
+    // nor freed). `sourcePath` is what GetSourcePath() reports; empty means
+    // the bytes have no file behind them.
+    bool OpenOwnedBytes(std::vector<uint8_t>&& data, const std::string& password,
+                        const std::string& sourcePath);
     PDFRenderedPage RenderInternal(int pageNumber, const PDFRenderSettings& settings);
     // Cache of decoded stext pages — accessed via GetPageText/ExtractTextRuns/etc.
     // Returns a *new* fz_stext_page that the caller must drop, or nullptr.
@@ -161,6 +168,7 @@ private:
     pdf_document*           pdoc_ = nullptr;   // non-null if doc_ is a PDF
     std::string             path_;
     std::vector<uint8_t>    memoryBuffer_;     // kept alive for OpenFromBytes
+    bool                    memoryBacked_ = false;   // no handle on path_
     bool                    dirty_ = false;
 };
 
@@ -239,15 +247,16 @@ bool MuPDFDocument::Open(const std::string& path, const std::string& password) {
     return ok;
 }
 
-bool MuPDFDocument::OpenFromBytes(const std::vector<uint8_t>& data,
-                                  const std::string& password) {
+bool MuPDFDocument::OpenOwnedBytes(std::vector<uint8_t>&& data,
+                                   const std::string& password,
+                                   const std::string& sourcePath) {
     if (!ctx_ || data.empty()) return false;
     std::lock_guard<std::mutex> lock(mu_);
     Close();
 
     // MuPDF requires the buffer to stay alive for the document's lifetime
-    // when using fz_open_memory.
-    memoryBuffer_ = data;
+    // when using fz_open_memory, so it is moved in rather than copied.
+    memoryBuffer_ = std::move(data);
 
     fz_stream* stream = nullptr;
     fz_var(stream);
@@ -263,9 +272,37 @@ bool MuPDFDocument::OpenFromBytes(const std::vector<uint8_t>& data,
 
     bool ok = LoadDocumentInternal(stream, password);
     fz_drop_stream(ctx_, stream);
-    if (ok) path_ = "<memory>";
-    else    memoryBuffer_.clear();
+    if (ok) {
+        path_ = sourcePath.empty() ? std::string("<memory>") : sourcePath;
+        memoryBacked_ = true;
+    } else {
+        memoryBuffer_.clear();
+    }
     return ok;
+}
+
+bool MuPDFDocument::OpenFromBytes(const std::vector<uint8_t>& data,
+                                  const std::string& password) {
+    return OpenOwnedBytes(std::vector<uint8_t>(data), password, "");
+}
+
+bool MuPDFDocument::OpenInMemory(const std::string& path,
+                                 const std::string& password) {
+    if (!ctx_) return false;
+
+    // Read first, in its own scope: the file handle is gone again before the
+    // document exists, which is the whole point of this entry point.
+    std::vector<uint8_t> bytes;
+    {
+        std::ifstream f(path, std::ios::binary | std::ios::ate);
+        if (!f.is_open()) return false;
+        const std::streamsize size = f.tellg();
+        if (size <= 0) return false;
+        bytes.resize(static_cast<size_t>(size));
+        f.seekg(0);
+        if (!f.read(reinterpret_cast<char*>(bytes.data()), size)) return false;
+    }
+    return OpenOwnedBytes(std::move(bytes), password, path);
 }
 
 bool MuPDFDocument::Save(const std::string& path, const PDFSaveOptions& opts) {
@@ -294,6 +331,10 @@ bool MuPDFDocument::Save(const std::string& path, const PDFSaveOptions& opts) {
 
 bool MuPDFDocument::SaveIncremental(const std::string& path) {
     if (!ctx_ || !pdoc_) return false;
+    // An incremental save appends the changes to the file the document reads
+    // from. A document opened into memory is not backed by that file any more,
+    // so there is nothing to append to — the caller must Save() a full copy.
+    if (memoryBacked_) return false;
     std::lock_guard<std::mutex> lock(mu_);
 
     pdf_write_options wopts = pdf_default_write_options;
@@ -323,6 +364,7 @@ void MuPDFDocument::Close() {
     pdoc_  = nullptr;
     path_.clear();
     memoryBuffer_.clear();
+    memoryBacked_ = false;
     dirty_ = false;
 }
 
@@ -376,11 +418,11 @@ PDFDocumentInfo MuPDFDocument::GetInfo() const {
         // leave defaults
     }
 
-    if (!path_.empty() && path_ != "<memory>") {
+    if (!memoryBuffer_.empty()) {
+        info.fileSize = static_cast<long>(memoryBuffer_.size());
+    } else if (!path_.empty() && path_ != "<memory>") {
         std::ifstream f(path_, std::ios::binary | std::ios::ate);
         if (f.is_open()) info.fileSize = static_cast<long>(f.tellg());
-    } else if (!memoryBuffer_.empty()) {
-        info.fileSize = static_cast<long>(memoryBuffer_.size());
     }
     return info;
 }

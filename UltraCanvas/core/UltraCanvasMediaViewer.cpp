@@ -1,8 +1,16 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.4.1
-// Last Modified: 2026-08-22
+// Version: 1.6.0
+// Last Modified: 2026-09-03
+// V1.6.0: Vector documents no renderer here can rasterize (Xara, CorelDRAW,
+//   EPS/PostScript) are shown from the preview bitmap they carry inside
+//   themselves, the way a *.ucd container is - so a file manager's detail pane
+//   shows the drawing instead of folding away.
+// V1.5.0: CloseFile() shows nothing and lets go of the file - playback stops and
+//   every display backend releases its document, so a host preview pane can move,
+//   rename or delete the file it was just showing. StopPlayback() alone never
+//   released it, which made a move of the previewed file fail on Windows.
 // V1.4.1: The PreviewClip ("5 s clip") video preview is silent for real. The
 //   mute is applied before the source is opened (so the engine builds a muted
 //   session instead of muting one that may already be wired for sound), and the
@@ -17,6 +25,8 @@
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasSlider.h"
+#include "../dialogs/UltraCanvasCurvesDialog.h"  // Curves (tone curve) editing window
+#include "UltraCanvasColorSwatchBar.h"  // backdrop palette under transparent images
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
@@ -24,6 +34,8 @@
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
+#include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
+#include "UltraCanvasSupportedFormats.h" // what the image pipeline can rasterize
 #include "Documents/eBook/TXTEngine.h" // RegisterBuiltinEBookEngines (idempotent)
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -34,6 +46,9 @@
 #ifdef ULTRACANVAS_ENABLE_AUDIO
 #include "UltraCanvasAudioPlayerElement.h"
 #endif
+// Always: file classification asks the codec registry what this build can
+// play, and with neither backend compiled in it correctly answers "nothing".
+#include "UltraCanvasMediaCodecRegistry.h"
 
 #include <algorithm>
 #include <cmath>
@@ -223,6 +238,18 @@ static std::string BuildUCDDetailsText(const std::string& path,
 // operation (e.g. sharpen on an exotic format) doesn't abort the whole chain.
 static PixelFX::PFXImage ApplyColourAdjustments(PixelFX::PFXImage p,
                                                 const MediaAdjustments& a) {
+    // Tone curves run first: they are a per-channel remap of the original
+    // tones, so the sliders below act on the curve's result, exactly as an
+    // image editor stacks a Curves layer under its brightness controls.
+    if (!a.curves.IsIdentity()) {
+        try {
+            std::array<std::array<uint8_t, 256>, 3> luts = a.curves.BuildChannelLuts();
+            std::vector<std::vector<uint8_t>> tables;
+            tables.reserve(3);
+            for (const auto& lut : luts) tables.emplace_back(lut.begin(), lut.end());
+            p = PixelFX::Colour::MapLut(p, tables);
+        } catch (...) {}
+    }
     if (a.autoOptimize) {
         try { p = PixelFX::Colour::HistEqual(p); } catch (...) {}
     }
@@ -618,15 +645,32 @@ void UltraCanvasMediaSurface::Render(IRenderContext* ctx, const Rect2Df& /*dirty
 
 bool UltraCanvasMediaSurface::HandleWheelZoom(const UCEvent& event) {
     if (!image || !image->IsValid()) return false;
+    if (!zoomAnim.IsBound()) {
+        zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                      [this] {
+                          RequestRedraw();
+                          if (onViewChanged) onViewChanged();
+                      });
+    }
+    zoomCursor = Point2Di(event.pointer.x, event.pointer.y);
+    zoomAnim.ZoomBy((event.wheelDelta > 0) ? 1.15 : (1.0 / 1.15), zoom, 0.05, 64.0);
+    return true;
+}
+
+// One zoom step about the cursor. A wheel notch is eased in as a run of these
+// (UltraCanvasSmoothZoom), and applying them in a row about the same cursor is
+// exactly applying their product once.
+void UltraCanvasMediaSurface::ApplyZoomFactorAtCursor(double factor,
+                                                      const Point2Di& cursor) {
+    if (!image || !image->IsValid()) return;
     Rect2Df b = GetLocalBounds();
     double iw = std::max(1, image->GetWidth());
     double ih = std::max(1, image->GetHeight());
     double fit = FitScale(iw, ih, rotationQuarters);
-    if (fit <= 0.0) return false;
+    if (fit <= 0.0) return;
 
-    double step = (event.wheelDelta > 0) ? 1.15 : (1.0 / 1.15);
-    double newZoom = std::max(0.05, std::min(zoom * step, 64.0));
-    if (newZoom == zoom) return true;
+    double newZoom = std::max(0.05, std::min(zoom * factor, 64.0));
+    if (newZoom == zoom) return;
 
     // Anchor the zoom under the cursor only when the image is un-rotated /
     // un-mirrored (the simple screen<->image mapping holds). Otherwise zoom
@@ -635,20 +679,17 @@ bool UltraCanvasMediaSurface::HandleWheelZoom(const UCEvent& event) {
         double sOld = fit * zoom;
         double leftOld = b.width * 0.5 + panX - iw * sOld * 0.5;
         double topOld  = b.height * 0.5 + panY - ih * sOld * 0.5;
-        double imgX = (event.pointer.x - leftOld) / sOld;
-        double imgY = (event.pointer.y - topOld)  / sOld;
+        double imgX = (cursor.x - leftOld) / sOld;
+        double imgY = (cursor.y - topOld)  / sOld;
         zoom = newZoom;
         double sNew = fit * zoom;
-        double cxNew = event.pointer.x - imgX * sNew + iw * sNew * 0.5;
-        double cyNew = event.pointer.y - imgY * sNew + ih * sNew * 0.5;
+        double cxNew = cursor.x - imgX * sNew + iw * sNew * 0.5;
+        double cyNew = cursor.y - imgY * sNew + ih * sNew * 0.5;
         panX = cxNew - b.width * 0.5;
         panY = cyNew - b.height * 0.5;
     } else {
         zoom = newZoom;
     }
-    RequestRedraw();
-    if (onViewChanged) onViewChanged();
-    return true;
 }
 
 bool UltraCanvasMediaSurface::OnEvent(const UCEvent& event) {
@@ -777,6 +818,14 @@ UltraCanvasMediaViewer::UltraCanvasMediaViewer(const std::string& identifier,
 UltraCanvasMediaViewer::~UltraCanvasMediaViewer() {
     // The key filter captures `this`; it must not outlive the widget.
     RemoveKeyFilter();
+    // Same for the Curves dialog: it lives in the application's window list and
+    // would call back into a destroyed viewer.
+    if (auto dlg = curvesDialog.lock()) {
+        dlg->onCurvesChanged = nullptr;
+        dlg->onAccept = nullptr;
+        dlg->onCancel = nullptr;
+        dlg->Close();
+    }
     if (slideshowTimer) {
         if (auto* app = UltraCanvasApplication::GetInstance()) app->StopTimer(slideshowTimer);
         slideshowTimer = 0;
@@ -798,12 +847,31 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasMediaViewer::BuildAdjustSlider(
     lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     box->AddChild(lbl);
 
+    // "Gamma  1.00" — the caption carries the live value, so a photo edit can
+    // be repeated instead of being dialled in by eye.
+    auto caption_text = [caption](float v) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%s  %.2f", caption.c_str(), v);
+        return std::string(buf);
+    };
+    lbl->SetText(caption_text(value));
+
     auto sld = std::make_shared<UltraCanvasSlider>(id, 0, 0, 124, 22);
     sld->SetRange(minV, maxV);
+    // Continuous: these are fractional ranges (gamma 0.2..3.0, a channel gain
+    // 0..2), where any snapping increment would cost most of the scale.
+    sld->SetStep(0.0f);
     sld->SetValue(value);
-    sld->onValueChanged = [onChange](float v) { if (onChange) onChange(v); };
+    sld->onValueChanged = [this, onChange, lbl, caption_text](float v) {
+        lbl->SetText(caption_text(v));
+        if (suppressAdjustCallbacks) return;
+        if (onChange) onChange(v);
+    };
     sld->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     box->AddChild(sld);
+
+    // Reset puts the control back where it was built.
+    adjustResetters.push_back([sld, value]() { sld->SetValue(value); });
 
     return box;
 }
@@ -895,6 +963,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     toolbar2->AddSeparator("mv_sep4");
     toolbar2->AddToggleButton("mv_adjust", "Adjust", "",
             [this](bool on) { if (adjustPanel) adjustPanel->SetVisible(on); });
+    toolbar2->AddButton("mv_curves", "Curves", "", [this] { ShowCurvesDialog(); });
     toolbar2->AddButton("mv_save", "Save as", "", [this] { ShowSaveDialog(); });
     toolbar2->AddButton("mv_info", "Info", "", [this] { if (surface) surface->ToggleInfoPopup(); });
     AddChild(toolbar2);
@@ -931,10 +1000,7 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     adjustPanel->AddChild(autoBtn);
 
     auto resetBtn = std::make_shared<UltraCanvasButton>("adj_reset", 0, 0, 96, 28, "Reset");
-    resetBtn->onClick = [this] {
-        adjustments = MediaAdjustments();
-        ApplyAdjustments();
-    };
+    resetBtn->onClick = [this] { ResetAdjustments(); };
     resetBtn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     adjustPanel->AddChild(resetBtn);
     AddChild(adjustPanel);
@@ -959,12 +1025,17 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         pv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
         pv->onPageChanged = [this](int, int) { UpdateInfoBar(); };
+        // The page zooms with the wheel and the keyboard, so the info bar
+        // reports the zoom the way it does for images.
+        pv->onZoomChanged = [this](float) { UpdateInfoBar(); };
         // Page numbers drawn over the thumbnail pages (not captions beneath).
         pv->SetThumbnailNumberStyle(
             UltraCanvasPDFView::ThumbnailNumberStyle::Overlay);
         pv->SetVisible(false);
         pdfView = pv;
         AddChild(pdfView);
+        // Page-inventory width and wheel zoom as configured on the viewer.
+        ApplyPDFViewSettings();
     }
 #endif
 
@@ -1056,6 +1127,39 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
     }
 #endif
 
+    // ----- BACKDROP PALETTE (directly under the picture) -----
+    // Only up for a file that really has transparency (see
+    // UpdateTransparencyPalette): the checkered swatch first, then greys and
+    // colours. The strip sizes its own swatches to the width it gets, so it
+    // fits a narrow preview pane as well as a full window.
+    backdropBar = CreateBackdropSwatchBar("MV_Backdrop", 0, 0, 0, 28);
+    {
+        ColorSwatchBarStyle bs = backdropBar->GetStyle();
+        bs.background     = Color(30, 30, 36, 255);
+        bs.border         = Color(70, 70, 78, 255);
+        bs.hoverBorder    = Color(210, 210, 218, 255);
+        bs.selectedBorder = Color(90, 160, 240, 255);
+        backdropBar->SetStyle(bs);
+    }
+    backdropBar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    backdropBar->SetVisible(false);
+    backdropBar->onColorSelected = [this](const Color& c) {
+        SetTransparentBackground(TransparentImageBackground::SolidColor);
+        SetTransparentColor(c);
+        if (onTransparentBackgroundChanged) {
+            onTransparentBackgroundChanged(TransparentImageBackground::SolidColor, c);
+        }
+    };
+    backdropBar->onCheckeredSelected = [this]() {
+        SetTransparentBackground(TransparentImageBackground::Checkered);
+        if (onTransparentBackgroundChanged) {
+            onTransparentBackgroundChanged(TransparentImageBackground::Checkered,
+                                           GetTransparentColor());
+        }
+    };
+    AddChild(backdropBar);
+
     // ----- BOTTOM INFO BAR -----
     bottomBar = std::make_shared<UltraCanvasContainer>("MV_Bottom", 0, 0, 0, 26);
     bottomBar->SetBackgroundColor(Color(18, 18, 22, 255));
@@ -1125,6 +1229,16 @@ bool UltraCanvasMediaViewer::IsUCDFile(const std::string& path) {
     return LowerExt(path) == "ucd";
 }
 
+bool UltraCanvasMediaViewer::IsVectorDocumentFile(const std::string& path) {
+    // The vector formats that carry a preview bitmap of the drawing inside
+    // themselves. Nothing here rasterizes the drawing - that needs a renderer
+    // with a window - so the preview IS the display, exactly as for a *.ucd
+    // container. A format the image pipeline can rasterize (SVG, and EPS on a
+    // libvips build with a PostScript loader) is still shown from the file
+    // itself; the embedded preview is the fallback (see LoadCurrent).
+    return FormatCarriesEmbeddedPreview(path);
+}
+
 // Image / vector formats the image pipeline can rasterize. Kept in one place
 // because both ClassifyFile() and IsSupportedMedia() need the same list.
 static const std::vector<std::string>& ImageExtensions() {
@@ -1164,39 +1278,26 @@ bool UltraCanvasMediaViewer::IsTextFile(const std::string& path) {
 }
 
 bool UltraCanvasMediaViewer::IsVideoFile(const std::string& path) {
-    // Video plays through UltraCanvasVideoPlayerElement; only advertised when a
-    // real video backend is compiled in.
-#ifdef ULTRACANVAS_ENABLE_VIDEO
-    static const std::vector<std::string> v = {
-        "mp4", "m4v", "mkv", "webm", "mov", "avi", "wmv",
-        "flv", "mpg", "mpeg", "ogv", "3gp", "ts"
-    };
-    std::string e = LowerExt(path);
-    return !e.empty() && std::find(v.begin(), v.end(), e) != v.end();
-#else
-    (void)path;
-    return false;
-#endif
+    // The codec registry is the single source of truth: it knows which
+    // containers the platform video backend was built with, honours the
+    // content probe for an extension shared with another kind of file (".ts"
+    // is TypeScript far more often than a transport stream), and returns true
+    // for a format that is recognised but has no decoder — so the viewer can
+    // show a player and the reason it is empty rather than mistaking the file
+    // for a picture. With no video backend compiled in nothing is registered,
+    // and this is false for everything.
+    return IsMediaFileOfKind(MediaCodecKind::Video, path);
 }
 
 bool UltraCanvasMediaViewer::IsAudioFile(const std::string& path) {
-    // Audio plays through UltraCanvasAudioPlayerElement; only advertised when a
-    // real audio backend is compiled in.
-#ifdef ULTRACANVAS_ENABLE_AUDIO
-    static const std::vector<std::string> a = {
-        "mp3", "wav", "flac", "ogg", "oga", "m4a",
-        "aac", "opus", "wma", "aif", "aiff"
-    };
-    std::string e = LowerExt(path);
-    return !e.empty() && std::find(a.begin(), a.end(), e) != a.end();
-#else
-    (void)path;
-    return false;
-#endif
+    return IsMediaFileOfKind(MediaCodecKind::Audio, path);
 }
 
 MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     if (IsUCDFile(path))         return MediaKind::UCDoc;
+    // Before the text check: an EPS is PostScript source, and its own drawing
+    // is the more useful answer to "what is in this file".
+    if (IsVectorDocumentFile(path)) return MediaKind::Vector;
     if (IsDocumentFile(path))    return MediaKind::Document;
     if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
     if (IsModelFile(path))       return MediaKind::Model;
@@ -1218,7 +1319,7 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     // Documents / spreadsheets / 3D models / e-books / UCD containers / text /
     // video / audio (video & audio gated by their backend being present).
     return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
-           IsEBookFile(path) || IsUCDFile(path) ||
+           IsEBookFile(path) || IsUCDFile(path) || IsVectorDocumentFile(path) ||
            IsVideoFile(path) || IsAudioFile(path) || IsTextFile(path);
 }
 
@@ -1291,6 +1392,43 @@ void UltraCanvasMediaViewer::OpenFile(const std::string& filePath) {
     std::string folder = p.parent_path().string();
     if (folder.empty()) folder = ".";
     OpenFolder(folder, filePath);
+}
+
+// Show nothing and let go of the file. Every backend that can keep an operating
+// system handle on the shown file is released here: on Windows a document engine
+// that still has the file open makes a move / rename of it fail, which is exactly
+// what a preview pane hosting this viewer runs into.
+void UltraCanvasMediaViewer::CloseFile() {
+    StopPlayback();
+    ReleaseViewBackends();
+    playlist.clear();
+    currentIndex = 0;
+    currentFolder.clear();
+    UpdateBreadcrumb();
+    LoadCurrent(false);   // empty playlist: clears the surface and the info bar
+}
+
+void UltraCanvasMediaViewer::ReleaseViewBackends() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    // MuPDF keeps the PDF open for as long as the document object lives.
+    if (pdfView) static_cast<UltraCanvasPDFView*>(pdfView.get())->SetDocument(nullptr);
+#endif
+    if (bookView) static_cast<UltraCanvasEBookViewer*>(bookView.get())->CloseDocument();
+    if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
+    if (surface) surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+    ucdDetails.clear();
+    // A stopped clip is still an OPEN clip: the decoder keeps the file until
+    // it is unloaded, and on Windows that handle is what makes the file
+    // impossible to rename, replace or delete - the very operations a file
+    // manager offers next to the preview it just closed.
+#ifdef ULTRACANVAS_ENABLE_VIDEO
+    if (videoPlayer) static_cast<UltraCanvasVideoPlayerElement*>(videoPlayer.get())->Unload();
+#endif
+#ifdef ULTRACANVAS_ENABLE_AUDIO
+    if (audioPlayer) static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get())->Unload();
+#endif
+    // Spreadsheets and 3D models are parsed into memory by their loaders, so
+    // they hold nothing open once loaded.
 }
 
 void UltraCanvasMediaViewer::ShowOpenDialog() {
@@ -1382,6 +1520,7 @@ void UltraCanvasMediaViewer::SetTopBarsVisible(bool visible) {
 
 void UltraCanvasMediaViewer::SetTransparentBackground(TransparentImageBackground mode) {
     if (surface) surface->SetTransparentBackground(mode);
+    SyncBackdropSelection();
 }
 
 TransparentImageBackground UltraCanvasMediaViewer::GetTransparentBackground() const {
@@ -1391,6 +1530,44 @@ TransparentImageBackground UltraCanvasMediaViewer::GetTransparentBackground() co
 
 void UltraCanvasMediaViewer::SetTransparentColor(const Color& c) {
     if (surface) surface->SetTransparentColor(c);
+    SyncBackdropSelection();
+}
+
+void UltraCanvasMediaViewer::SetTransparencyPaletteVisible(bool visible) {
+    transparencyPaletteEnabled = visible;
+    UpdateTransparencyPalette();
+}
+
+// ===== BACKDROP PALETTE =====
+// The strip is only up while it means something: the shown file is an image
+// (the PDF, sheet, text, … views paint their own background) and that image
+// really has transparency — an alpha channel that is used, or a vector
+// document. Everything else would be a row of colours changing nothing.
+
+void UltraCanvasMediaViewer::SyncBackdropSelection() {
+    if (!backdropBar || !surface) return;
+    if (surface->GetTransparentBackground() == TransparentImageBackground::Checkered) {
+        backdropBar->SelectCheckered();
+    } else {
+        // A colour the palette does not hold (one picked in a settings dialog)
+        // simply leaves no swatch marked.
+        backdropBar->SelectColor(surface->GetTransparentColor());
+    }
+}
+
+void UltraCanvasMediaViewer::UpdateTransparencyPalette() {
+    if (!backdropBar) return;
+    bool show = transparencyPaletteEnabled && activeKind == MediaKind::Image &&
+                surface != nullptr;
+    if (show) {
+        auto img = surface->GetImage();
+        show = img && img->IsValid() && img->HasTransparency();
+    }
+    if (show != backdropBar->IsVisible()) {
+        backdropBar->SetVisible(show);
+        RequestRedraw();
+    }
+    if (show) SyncBackdropSelection();
 }
 
 Color UltraCanvasMediaViewer::GetTransparentColor() const {
@@ -1429,6 +1606,7 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
     if (playlist.empty()) {
         ShowView(MediaKind::Image);
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        UpdateTransparencyPalette();   // nothing shown - the strip goes away
         UpdateInfoBar();
         return;
     }
@@ -1538,6 +1716,35 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         }
         handled = true;
     }
+    if (!handled && kind == MediaKind::Vector) {
+        // A vector document nothing here can rasterize (Xara, CorelDRAW, EPS
+        // and the rest of PostScript). Shown the way a *.ucd container is:
+        // the preview bitmap the file carries inside itself - the only
+        // picture of the drawing obtainable without a renderer that needs a
+        // window. Where the image pipeline DOES rasterize the format (a
+        // libvips build with a PostScript loader), that is the better picture
+        // and is tried first.
+        ShowView(MediaKind::Image);
+        std::shared_ptr<UCImage> img;
+        const std::string ext = LowerExt(path);
+        if (UltraCanvasSupportedFormats::CanImagePipelineLoad(ext))
+            img = UCImage::Get(path);
+        if (!img || !img->IsValid()) {
+            std::vector<uint8_t> bytes = ExtractEmbeddedPreviewBytes(path);
+            if (!bytes.empty()) img = UCImage::LoadFromMemory(bytes);
+        }
+        if (img && img->IsValid()) {
+            surface->ShowImage(img, transition, transitionDurationMs, animated);
+        } else {
+            // No preview stored, and no renderer for the drawing: say so
+            // rather than leaving an empty pane the user has to interpret.
+            surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+            if (infoLabel)
+                infoLabel->SetText(BaseName(path) +
+                        " - no preview stored in this vector document");
+        }
+        handled = true;
+    }
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     if (!handled && kind == MediaKind::Video && videoPlayer) {
         ShowView(MediaKind::Video);
@@ -1564,7 +1771,15 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* ap = static_cast<UltraCanvasAudioPlayerElement*>(audioPlayer.get());
         if (!ap->LoadFromFile(path)) {
-            if (infoLabel) infoLabel->SetText("Failed to open audio: " + BaseName(path));
+            // The player's reason names the codec and what would decode it,
+            // which is the difference between a silent dead transport and an
+            // answer the user can act on.
+            const std::string& why = ap->GetLastError();
+            if (infoLabel) {
+                infoLabel->SetText(why.empty()
+                                       ? "Failed to open audio: " + BaseName(path)
+                                       : BaseName(path) + " - " + why);
+            }
         } else {
             ap->Play();
         }
@@ -1577,13 +1792,152 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         ShowView(MediaKind::Image);
         auto img = UCImage::Get(path);
         surface->ShowImage(img, transition, transitionDurationMs, animated);
+        // The adjustments (curves included) carry over to the new picture, so
+        // an open Curves dialog must show the new picture's histogram.
+        if (auto dlg = curvesDialog.lock()) FillCurveHistograms(*dlg);
     }
+    // The strip of backdrop colours belongs to the file just loaded: up for a
+    // transparent image, gone for everything else.
+    UpdateTransparencyPalette();
     UpdateInfoBar();
     UpdateDetailedInfo();
 }
 
 void UltraCanvasMediaViewer::ApplyAdjustments() {
     if (surface) surface->SetAdjustments(adjustments);
+}
+
+void UltraCanvasMediaViewer::ResetAdjustments() {
+    // Move the controls first (silently — one re-render, not one per slider),
+    // then drop the values themselves, curves included.
+    suppressAdjustCallbacks = true;
+    for (auto& reset : adjustResetters) reset();
+    suppressAdjustCallbacks = false;
+
+    adjustments = MediaAdjustments();
+    if (auto dlg = curvesDialog.lock()) dlg->SetCurves(adjustments.curves);
+    ApplyAdjustments();
+}
+
+// ===== CURVES DIALOG =====
+
+void UltraCanvasMediaViewer::FillCurveHistograms(UltraCanvasCurvesDialog& dialog) const {
+#ifdef HAS_LIBVIPS
+    if (!surface) return;
+    auto img = surface->GetImage();
+    if (!img || !img->IsValid()) return;
+    try {
+        vips::VImage v = img->GetVImage();
+        PixelFX::PFXImage p(v);
+        // Histograms describe the tones the curve maps, so they are taken in
+        // sRGB — the space the lookup tables are applied in.
+        p = PixelFX::Colour::ToSrgb(p);
+        PixelFX::PFXImage hist = PixelFX::Colour::HistFind(p);
+        if (hist.bands() <= 0) return;
+
+        std::vector<uint32_t> master(256, 0), red(256, 0), green(256, 0), blue(256, 0);
+        for (int level = 0; level < 256; ++level) {
+            std::vector<double> counts = PixelFX::Arithmetic::GetPoint(hist, level, 0);
+            if (counts.empty()) continue;
+            double r = counts[0];
+            double g = counts.size() > 1 ? counts[1] : counts[0];
+            double b = counts.size() > 2 ? counts[2] : counts[0];
+            red[level]    = static_cast<uint32_t>(std::max(0.0, r));
+            green[level]  = static_cast<uint32_t>(std::max(0.0, g));
+            blue[level]   = static_cast<uint32_t>(std::max(0.0, b));
+            master[level] = red[level] + green[level] + blue[level];
+        }
+        dialog.SetHistogram(ToneCurveChannel::RGB,   master);
+        dialog.SetHistogram(ToneCurveChannel::Red,   red);
+        dialog.SetHistogram(ToneCurveChannel::Green, green);
+        dialog.SetHistogram(ToneCurveChannel::Blue,  blue);
+    } catch (...) {
+        // A colourspace the histogram pass cannot handle simply leaves the
+        // curve grid without its backdrop.
+    }
+#else
+    (void)dialog;
+#endif
+}
+
+void UltraCanvasMediaViewer::ShowCurvesDialog() {
+    // Curves work on the bitmap pipeline; other views have no pixels to map.
+    if (activeKind != MediaKind::Image || !surface ||
+        !surface->GetImage() || !surface->GetImage()->IsValid()) {
+        if (infoLabel) infoLabel->SetText("Curves apply to images only");
+        return;
+    }
+
+    // A dialog that is still open comes back to the front with the current
+    // curves; one that was closed a moment ago (it is dropped from the
+    // application's window list on the next loop pass) is replaced.
+    if (auto existing = curvesDialog.lock()) {
+        if (existing->GetState() != WindowState::Closed &&
+            existing->GetState() != WindowState::Closing) {
+            existing->SetCurves(adjustments.curves);
+            existing->Show();
+            return;
+        }
+        curvesDialog.reset();
+    }
+
+    curvesBeforeDialog = adjustments.curves;
+    auto dlg = std::make_shared<UltraCanvasCurvesDialog>(adjustments.curves);
+    FillCurveHistograms(*dlg);
+
+    // Live preview on the image itself — the surface is already showing it at
+    // full size, so the dialog needs no thumbnail of its own.
+    dlg->onCurvesChanged = [this](const ToneCurveSet& set) {
+        adjustments.curves = set;
+        ApplyAdjustments();
+    };
+    dlg->onAccept = [this](const ToneCurveSet& set) {
+        adjustments.curves = set;
+        ApplyAdjustments();
+        UpdateInfoBar();
+    };
+    dlg->onCancel = [this]() {
+        adjustments.curves = curvesBeforeDialog;
+        ApplyAdjustments();
+    };
+
+    curvesDialog = dlg;
+    dlg->Create();      // hands ownership to the application window list
+    dlg->Show();
+}
+
+// ===== PDF DISPLAY SETTINGS =====
+// The viewer, not the PDF view, is the host's point of contact: it remembers
+// the choice and re-applies it, so a host can set it once and every document
+// opened later follows.
+
+void UltraCanvasMediaViewer::ApplyPDFViewSettings() {
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    if (!pdfView) return;
+    auto* pv = static_cast<UltraCanvasPDFView*>(pdfView.get());
+    if (pdfThumbAbsolute) pv->SetThumbnailWidth(pdfThumbWidthPx);
+    else                  pv->SetThumbnailWidthFraction(pdfThumbWidthFraction);
+    pv->SetWheelAction(documentWheelZoom
+            ? UltraCanvasPDFView::WheelAction::Zoom
+            : UltraCanvasPDFView::WheelAction::Scroll);
+#endif
+}
+
+void UltraCanvasMediaViewer::SetPDFThumbnailWidth(int pixels) {
+    pdfThumbAbsolute = true;
+    pdfThumbWidthPx  = std::max(16, pixels);
+    ApplyPDFViewSettings();
+}
+
+void UltraCanvasMediaViewer::SetPDFThumbnailWidthFraction(float share) {
+    pdfThumbAbsolute      = false;
+    pdfThumbWidthFraction = std::clamp(share, 0.05f, 0.5f);
+    ApplyPDFViewSettings();
+}
+
+void UltraCanvasMediaViewer::SetDocumentWheelZoom(bool zoom) {
+    documentWheelZoom = zoom;
+    ApplyPDFViewSettings();
 }
 
 // ===== ZOOM ACTIONS (routed to whichever view is live) =====
@@ -1680,6 +2034,11 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
         auto sz = fs::file_size(path, ec);
         if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
         os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        if (pv->HasDocument()) {
+            char zbuf[32];
+            snprintf(zbuf, sizeof(zbuf), "%.0f%%", pv->GetZoomPercent());
+            os << "   \xC2\xB7   " << zbuf;
+        }
         infoLabel->SetText(os.str());
         return;
     }

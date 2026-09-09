@@ -1,14 +1,18 @@
 // include/Plugins/Documents/UltraCanvasPDFView.h
 // UI element that displays a PDF document with a thumbnail strip,
-// scrollable page render, and search-hit overlay.
-// Version: 1.7.0
-// Last Modified: 2026-08-13
+// scrollable page render, and search-hit overlay. The page zooms with the
+// wheel (about the pointer) and with the keyboard (+ / - / 0 / 1 / W), and the
+// thumbnail strip sizes its pages either relative to the view's width or at a
+// fixed pixel width (SetThumbnailWidthMode).
+// Version: 1.9.0
+// Last Modified: 2026-08-25
 // Author: UltraCanvas Framework
 #pragma once
 #ifndef ULTRACANVAS_PDF_VIEW_H
 #define ULTRACANVAS_PDF_VIEW_H
 
 #include "UltraCanvasUIElement.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasImage.h"
 #include "Plugins/Documents/UltraCanvasPDF.h"
@@ -45,12 +49,17 @@ struct PDFViewStyle {
     Color scrollbarThumb   = Color(140, 140, 140, 255);
     Color toolbarText      = Color(220, 220, 220, 255);
 
-    // The page inventory is laid out from its width: the requested strip width
-    // (capped at 1/4 of the view width so the page area always stays at least
-    // 3x the strip) minus thumbMargin on both sides gives the thumbnail width,
-    // and each thumbnail's height follows its own page's aspect ratio. A page
-    // taller than thumbMaxHeight keeps its aspect ratio by shrinking in width.
-    int   thumbStripWidth   = 160;
+    // The page inventory is laid out from its width, which follows the view's
+    // thumbnail width mode (see UltraCanvasPDFView::ThumbnailWidthMode):
+    //   Relative - thumbStripWidthFraction of the view width, never wider than
+    //              thumbStripWidth (the shipped behaviour: a quarter, max 160);
+    //   Absolute - thumbWidth pixels of page plus thumbMargin on both sides.
+    // Subtracting thumbMargin on both sides gives the thumbnail width, and each
+    // thumbnail's height follows its own page's aspect ratio. A page taller
+    // than thumbMaxHeight keeps its aspect ratio by shrinking in width.
+    int   thumbStripWidth   = 160;   // Relative mode: the strip's upper bound
+    float thumbStripWidthFraction = 0.25f;  // Relative mode: share of the view
+    int   thumbWidth        = 56;    // Absolute mode: the thumbnail's own width
     int   thumbMargin       = 10;
     int   thumbMaxHeight    = 260;
     int   thumbSpacing      = 8;
@@ -69,8 +78,18 @@ public:
     // ----- Document -----
     void SetDocument(std::unique_ptr<IPDFDocument> doc);
     IPDFDocument* GetDocument() const { return doc_.get(); }
+    // Opens `path`. A file of at most GetMaxInMemoryBytes() is read into memory
+    // (IPDFDocument::OpenInMemory), so the view holds NO operating system handle
+    // on it and the file stays movable, renamable and deletable while it is
+    // shown — what a viewer or a preview pane needs. A bigger file is streamed
+    // instead of being held in RAM, and does keep a handle.
     bool LoadFromPath(const std::string& path, const std::string& password = "");
     bool HasDocument() const { return doc_ && doc_->IsOpen(); }
+
+    // The size limit above which LoadFromPath() streams instead of reading the
+    // document into memory (default 256 MiB). Set 0 to always stream.
+    void   SetMaxInMemoryBytes(size_t bytes) { maxInMemoryBytes_ = bytes; }
+    size_t GetMaxInMemoryBytes() const { return maxInMemoryBytes_; }
 
     // ----- Navigation -----
     void GoToPage(int page);     // 1-based
@@ -96,6 +115,23 @@ public:
     void     ZoomToFit()      { SetZoomMode(ZoomMode::FitPage); }   // fit whole page
     void     ZoomToWidth()    { SetZoomMode(ZoomMode::FitWidth); }  // fit page width
     void     ZoomActualSize() { SetZoom(1.0f); }                    // 100%
+    // Zoom keeping the page point under `local` (element-local pixels) where it
+    // is, the way a wheel zoom over a document is expected to behave. Outside
+    // the page area it falls back to zooming about the viewport centre.
+    void     SetZoomAt(float scale, const Point2Di& local);
+    void     ZoomInAt(const Point2Di& local);
+    void     ZoomOutAt(const Point2Di& local);
+
+    // What the plain (unmodified) mouse wheel does over the page area. The
+    // other action is always on the same wheel with Ctrl held, so both stay
+    // reachable either way:
+    //   Scroll - scroll the page, continuing into the next/previous page at
+    //            its edges (the default); Ctrl+wheel zooms.
+    //   Zoom   - zoom about the pointer; Ctrl+wheel scrolls.
+    // Over the thumbnail strip the wheel always scrolls the strip.
+    enum class WheelAction { Scroll, Zoom };
+    void        SetWheelAction(WheelAction a) { wheelAction_ = a; }
+    WheelAction GetWheelAction() const { return wheelAction_; }
     // Effective on-screen scale as a percentage of actual size (valid after the
     // first render; fit modes resolve their scale during rendering).
     float    GetZoomPercent() const { return effectiveZoom_ * 100.0f; }
@@ -151,6 +187,31 @@ public:
     void SetThumbnailNumberStyle(ThumbnailNumberStyle s);
     ThumbnailNumberStyle GetThumbnailNumberStyle() const { return thumbNumberStyle_; }
 
+    // How wide the page inventory's thumbnails are:
+    //   Relative - a share of the view's own width (PDFViewStyle::
+    //              thumbStripWidthFraction, capped at thumbStripWidth), so the
+    //              inventory grows and shrinks with the viewer. The default.
+    //   Absolute - exactly GetThumbnailWidth() pixels, whatever the view's
+    //              size, for hosts that want one fixed inventory width (the
+    //              UltraFiler preview asks for 56 px). The strip adds
+    //              thumbMargin on both sides; it still gives way when it would
+    //              take more than half the view, so a very narrow pane keeps a
+    //              page to look at.
+    enum class ThumbnailWidthMode { Relative, Absolute };
+    void SetThumbnailWidthMode(ThumbnailWidthMode m);
+    ThumbnailWidthMode GetThumbnailWidthMode() const { return thumbWidthMode_; }
+    // The Absolute-mode thumbnail width in pixels (the page image, without the
+    // strip's margins). Also selects Absolute mode.
+    void SetThumbnailWidth(int pixels);
+    int  GetThumbnailWidth() const { return style_.thumbWidth; }
+    // The Relative-mode share of the view width (0.05 .. 0.5). Also selects
+    // Relative mode.
+    void  SetThumbnailWidthFraction(float fraction);
+    float GetThumbnailWidthFraction() const { return style_.thumbStripWidthFraction; }
+    // The width the thumbnails are actually laid out at right now, in either
+    // mode (0 while the strip is hidden).
+    int  GetEffectiveThumbnailWidth() const { return ThumbContentWidth(); }
+
     // ----- Style -----
     void SetStyle(const PDFViewStyle& s);
     const PDFViewStyle& GetStyle() const { return style_; }
@@ -202,6 +263,10 @@ public:
     void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
     bool OnEvent(const UCEvent& event) override;
     void SetBounds(const Rect2Df& b) override;
+    // The view takes the keyboard when it is clicked, so its page, zoom and
+    // selection keys work in a host that places the focus elsewhere (a preview
+    // pane beside a file list).
+    bool AcceptsFocus() const override { return true; }
 
 private:
     // ----- internal -----
@@ -266,15 +331,27 @@ private:
     // Max scroll offsets (page overflow past the viewport, symmetric around
     // the centered position). False without a document/page info.
     bool   ComputeScrollLimits(int& maxX, int& maxY) const;
+    // The same for a zoom that has not been rendered yet (a wheel zoom needs
+    // the limits of the scale it is moving to, not of the one on screen).
+    bool   ComputeScrollLimitsAt(float zoom, int& maxX, int& maxY) const;
+    // The current page's on-screen size in pixels at `zoom` (1.0 == actual
+    // size). False without a document/page info.
+    bool   PageSizeAtZoom(float zoom, float& outW, float& outH) const;
     // Wheel scrolling: clamps to the page, and continues into the next /
     // previous page when already at the bottom / top edge.
     void   ScrollBy(int deltaX, int deltaY);
     void   ScrollThumbsBy(int delta);
+    // Positions the scroll offsets directly, dropping any glide in flight — for
+    // page changes, zoom and other repositioning that is not a scroll gesture.
+    void   SetScrollNow(int x, int y);
     void   EnsureThumbVisible(int page);   // scroll strip so `page` is on-screen
     void   Repaint();
 
 private:
     std::unique_ptr<IPDFDocument> doc_;
+    // Documents up to this size are read into memory by LoadFromPath() so that
+    // nothing holds the file open while it is displayed; bigger ones stream.
+    size_t maxInMemoryBytes_ = 256u * 1024u * 1024u;
     PDFViewStyle style_;
 
     int      currentPage_ = 1;
@@ -283,10 +360,20 @@ private:
     float    effectiveZoom_ = 1.0f;     // last applied scale (renderDpi / defaultDpi)
     int     scrollX_     = 0;
     int     scrollY_     = 0;
+    // Wheel scrolling of the page and of the thumbnail strip glides to its
+    // target (see UltraCanvasSmoothScroll.h). Wheel *zoom* deliberately does
+    // not: every intermediate scale would invalidate the rasterised page cache
+    // (SetZoom -> InvalidateCaches) and re-render the page, so easing it would
+    // cost ~9 full page rasterisations per notch.
+    UltraCanvasSmoothScroll scrollAnimX_;
+    UltraCanvasSmoothScroll scrollAnimY_;
+    UltraCanvasSmoothScroll thumbScrollAnim_;
     int     thumbScroll_ = 0;
 
     bool    showThumbs_  = true;
     ThumbnailNumberStyle thumbNumberStyle_ = ThumbnailNumberStyle::Caption;
+    ThumbnailWidthMode   thumbWidthMode_   = ThumbnailWidthMode::Relative;
+    WheelAction          wheelAction_      = WheelAction::Scroll;
 
     std::string                                            query_;
     std::vector<PDFTextRun>                                hits_;

@@ -1,6 +1,6 @@
 # UltraCanvasFileAssociations — "Open with" Cross-OS Proposal
 
-Status: **P1 is implemented** — see
+Status: **P1, P2 and P3 are implemented** — see
 [`UltraCanvasFileAssociations.md`](UltraCanvasFileAssociations.md) for the
 API documentation. Delivered: the service (`UltraCanvasFileAssociations.h`,
 core worker/cache) with the full Linux/BSD freedesktop backend, the
@@ -9,16 +9,25 @@ construction parses the database, folder scans pre-resolve extensions), the
 widget's "Open with >" OS section + "Other application…" picker +
 `SetSystemOpenWithEnabled` opt-out + `SetActivateOpensWithDefaultApp`
 fallback, UltraFiler's default-open on double-click, and the shared
-`LaunchDetachedProcess` helper (UltraFilerPrompt now uses it too). Windows
-and macOS currently ship default-open + picker placeholders; their
-enumeration backends are P2/P3 below. One deviation from §3: the chooser is
+`LaunchDetachedProcess` helper (UltraFilerPrompt now uses it too). P2 added
+the Windows backend (§4.2: `SHAssocEnumHandlers` + `IAssocHandler`,
+`AssocQueryString` for the default flag, icon extraction into a PNG cache,
+`IAssocHandler::Invoke` on an `IDataObject` built from the selection) and P3
+the macOS one (§4.3: `URLsForApplicationsToOpenContentType:` /
+`URLForApplicationToOpenContentType:`, bundle names and icons,
+`openURLs:withApplicationAtURL:`). Two deviations from §4.2/§4.3: the
+native `SHOpenWithDialog` is not used — "Other application…" is the same
+file-dialog picker on every platform, for the same reason as the §3
+deviation below — and enumeration is keyed on the file extension rather than a live file,
+so the background prewarm can resolve a folder's types before anything is
+selected. One deviation from §3: the chooser is
 not a service entry point — file dialogs need a parent window, so the widget
 owns the picker UI and the service exposes `OpenWithApplicationPath` +
 `GetApplicationFilter`/`GetApplicationsDirectory` instead. This document is
 kept as the research write-up and the roadmap for the remaining phases.
 
 Author: UltraCanvas Framework
-Last Modified: 2026-08-16
+Last Modified: 2026-08-24
 
 ---
 
@@ -218,6 +227,9 @@ Open with >   Writer            ← default app, listed first
   appear below the OS apps, so existing embedders (DemoApp, Texter) are
   unaffected.
 - **Chooser:** "Other application…" → `OpenWithChooser(selection)`.
+- **Position (as shipped):** the submenu is the *first* entry of the context
+  menu, and the entry itself is an action — clicking "Open with" opens the
+  selection with the default application, hovering opens the list.
 - **Opt-out:** `SetSystemOpenWithEnabled(bool)` (default **on**) for
   embedders that want the old manual-only behaviour.
 - **Activation fallback:** new optional behaviour
@@ -316,9 +328,9 @@ its one extension while the warmer continues in the background.
 
 | Phase | Deliverable |
 |---|---|
-| **P1** | Service API + **Linux** backend; background prewarm worker (§7) with widget-driven `PrewarmAsync` / per-folder `PrewarmExtensionsAsync`; shared detached-launch helper unified with UltraFilerPrompt; widget menu integration (OS section + chooser + opt-out); UltraFiler double-click default-open. |
-| **P2** | **Windows** backend (SHAssocEnumHandlers + SHOpenWithDialog + icon extraction). |
-| **P3** | **macOS** backend (NSWorkspace + `.app` picker fallback). |
+| **P1** | ✅ Service API + **Linux** backend; background prewarm worker (§7) with widget-driven `PrewarmAsync` / per-folder `PrewarmExtensionsAsync`; shared detached-launch helper unified with UltraFilerPrompt; widget menu integration (OS section + chooser + opt-out); UltraFiler double-click default-open. |
+| **P2** | ✅ **Windows** backend (SHAssocEnumHandlers + icon extraction; the picker stayed the shared file dialog rather than SHOpenWithDialog, which needs a parent window the service does not own). |
+| **P3** | ✅ **macOS** backend (NSWorkspace + `.app` picker fallback). |
 | **P4** | Extras: remember chooser picks per extension, History Apps recording from launches, "Set as default" (xdg-mime / `OAIF_REGISTER_EXT` / `LSSetDefaultRoleHandlerForContentType`). |
 | **P5** | ULTRA OS backend once its application registry lands. |
 

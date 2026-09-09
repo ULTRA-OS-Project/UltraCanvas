@@ -11,17 +11,23 @@
 //                  the Markdown/HTML text path, plus every extension the
 //                  eBook engine registry reports at runtime.
 //   Spreadsheet  — the built-in ODS/XLSX/CSV engines (always compiled in).
-//   Audio        — the miniaudio backend (WAV/MP3/FLAC decode, WAV encode)
-//                  plus the optional system codec libraries: libFLAC (FLAC
-//                  encode), libvorbis (OGG encode+decode), libopusenc/opusfile
-//                  (Opus encode/decode), LAME (MP3 encode). AAC stays absent.
-//   Video        — the platform backend's demuxer/muxer matrix (GStreamer /
-//                  Media Foundation / AVFoundation).
-// Version: 1.0.0
-// Last Modified: 2026-07-12
+//   Audio, Video — UltraCanvasMediaCodecRegistry, which holds the built-in
+//                  codec matrix (miniaudio, the optional system codec
+//                  libraries, FAAD2/fdk-aac, the platform media plugins, and
+//                  the video backend's demuxer/muxer table) plus anything an
+//                  application registered. Entries that are only *recognised*
+//                  — no decoder, no encoder — are omitted here on purpose;
+//                  they exist so a viewer can classify a file it cannot play.
+//   Font         — FreeType, a hard dependency, so the list is fixed. "Load"
+//                  means UltraCanvasFontFile can read the name records and
+//                  rasterize a specimen, not that the image pipeline decodes
+//                  it (CanImagePipelineLoad stays false for every font).
+// Version: 1.1.0
+// Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasMediaCodecRegistry.h"
 #include "UltraCanvasGraphicsPluginSystem.h"
 #include "UltraCanvasImage.h"                 // VipsCanLoad / VipsCanSave
 #include "Documents/eBook/IEBookEngine.h"     // GetRegisteredEBookExtensions
@@ -29,6 +35,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <mutex>
+#include <set>
 
 namespace UltraCanvas {
 
@@ -90,6 +98,17 @@ namespace {
             { "fits", {},                 "Flexible Image Transport System" },
         };
         return candidates;
+    }
+
+    // True for an extension (or alias) of the table above - "the UCImage load
+    // path implements this format", independently of any runtime probe.
+    bool IsKnownRasterCandidate(const std::string& ext) {
+        for (const BitmapCandidate& c : BitmapCandidates()) {
+            if (ext == c.ext) return true;
+            for (const std::string& alias : c.aliases)
+                if (ext == alias) return true;
+        }
+        return false;
     }
 
     // ---- Bitmap: probe the candidate formats against the installed libvips ----
@@ -249,113 +268,73 @@ namespace {
                         "built-in CSV engine", "" });
     }
 
-    // ---- Audio: miniaudio's decode/encode matrix plus the optional system
-    // codec libraries wired through AudioCodecsExtra (compile-gated on the
-    // ULTRACANVAS_HAS_* defines their CMake detection sets) ----
-    void AddAudioFormats(std::vector<MediaFormatInfo>& out) {
-#ifdef ULTRACANVAS_ENABLE_AUDIO
-        out.push_back({ "wav", {}, "Waveform audio",
-                        MediaFormatCategory::Audio, true, true,
-                        "miniaudio (dr_wav)", "" });
-#ifdef ULTRACANVAS_HAS_LAME
-        out.push_back({ "mp3", {}, "MPEG layer III audio",
-                        MediaFormatCategory::Audio, true, true,
-                        "miniaudio (dr_mp3) + LAME", "" });
-#else
-        out.push_back({ "mp3", {}, "MPEG layer III audio",
-                        MediaFormatCategory::Audio, true, false,
-                        "miniaudio (dr_mp3)",
-                        "saving requires LAME (libmp3lame)" });
-#endif
-#ifdef ULTRACANVAS_HAS_LIBFLAC
-        out.push_back({ "flac", {}, "Free Lossless Audio Codec",
-                        MediaFormatCategory::Audio, true, true,
-                        "miniaudio (dr_flac) + libFLAC", "" });
-#else
-        out.push_back({ "flac", {}, "Free Lossless Audio Codec",
-                        MediaFormatCategory::Audio, true, false,
-                        "miniaudio (dr_flac)",
-                        "saving requires libFLAC" });
-#endif
-#ifdef ULTRACANVAS_HAS_VORBIS
-        out.push_back({ "ogg", { "oga" }, "Ogg Vorbis audio",
-                        MediaFormatCategory::Audio, true, true,
-                        "libvorbis (vorbisfile + vorbisenc)", "" });
-#endif
-#if defined(ULTRACANVAS_HAS_OPUSFILE) || defined(ULTRACANVAS_HAS_OPUSENC)
-        {
-            bool opusLoad = false, opusSave = false;
-#ifdef ULTRACANVAS_HAS_OPUSFILE
-            opusLoad = true;
-#endif
-#ifdef ULTRACANVAS_HAS_OPUSENC
-            opusSave = true;
-#endif
-            out.push_back({ "opus", {}, "Opus audio",
-                            MediaFormatCategory::Audio, opusLoad, opusSave,
-                            "opusfile + libopusenc", "" });
-        }
-#endif
-        // NOTE deliberately absent: aac/m4a (no codec is wired). Add an entry
-        // here only after a codec actually lands in libspecific/Audio.
-#else
-        (void)out;
-#endif
-    }
-
-    // ---- Video: per-platform backend demuxer/muxer matrix ----
-    void AddVideoFormats(std::vector<MediaFormatInfo>& out) {
-#ifdef ULTRACANVAS_ENABLE_VIDEO
-        struct Candidate {
-            const char* ext;
-            std::vector<std::string> aliases;
-            const char* description;
-            bool load;
-            bool save;
-        };
-#if defined(__linux__)
-        const char* provider = "GStreamer";
-        const char* notes = "codec availability depends on installed GStreamer plugins";
-        static const std::vector<Candidate> candidates = {
-            { "mp4",  { "m4v" }, "MPEG-4 container", true, true  },
-            { "mov",  {},        "QuickTime movie",  true, true  },
-            { "mkv",  {},        "Matroska video",   true, true  },
-            { "webm", {},        "WebM video",       true, true  },
-            { "avi",  {},        "AVI video",        true, true  },
-        };
-#elif defined(_WIN32)
-        const char* provider = "Media Foundation";
-        const char* notes = "codec availability depends on installed Media Foundation codecs";
-        static const std::vector<Candidate> candidates = {
-            { "mp4",  { "m4v" }, "MPEG-4 container", true, true  },
-            { "mov",  {},        "QuickTime movie",  true, false },
-            { "mkv",  {},        "Matroska video",   true, false },
-            { "webm", {},        "WebM video",       true, false },
-            { "avi",  {},        "AVI video",        true, false },
-        };
-#else   // macOS / AVFoundation
-        const char* provider = "AVFoundation";
-        const char* notes = "";
-        static const std::vector<Candidate> candidates = {
-            { "mp4",  { "m4v" }, "MPEG-4 container", true, true  },
-            { "mov",  {},        "QuickTime movie",  true, true  },
-        };
-#endif
-        for (const auto& c : candidates) {
+    // ---- Audio & video: the codec registry ----
+    // Both matrices live in UltraCanvasMediaCodecRegistry now, where the media
+    // viewer's "is this an audio file" also reads them, so the two can no
+    // longer disagree — which is exactly how .m4a came to be classified as
+    // audio by a build that had no AAC decoder in it.
+    //
+    // Two registrations are deliberately not advertised here:
+    //   * a recognised format with neither a decoder nor an encoder. The
+    //     registry keeps it so a viewer can classify the file and say why it
+    //     cannot play it; the inventory is the answer to "what can this build
+    //     do", so it must stay silent about it.
+    //   * a format whose extension is shared with another kind of file and is
+    //     settled by content (".ts"). This inventory is keyed on extensions
+    //     alone, so a name-only lookup could not honour the probe — those
+    //     formats are reached through the registry, and their unambiguous
+    //     siblings (m2ts / mts) carry the entry here.
+    void AddCodecFormats(std::vector<MediaFormatInfo>& out,
+                         MediaCodecKind kind, MediaFormatCategory category) {
+        for (const MediaCodecRegistration& c : GetRegisteredMediaCodecs(kind)) {
+            if (!c.canDecode && !c.canEncode) continue;
+            if (c.probeFile) continue;
             MediaFormatInfo f;
-            f.extension   = c.ext;
+            f.extension   = c.extension;
             f.aliases     = c.aliases;
             f.description = c.description;
-            f.category    = MediaFormatCategory::Video;
-            f.canLoad     = c.load;
-            f.canSave     = c.save;
-            f.provider    = provider;
-            f.notes       = notes;
+            f.category    = category;
+            f.canLoad     = c.canDecode;
+            f.canSave     = c.canEncode;
+            f.provider    = c.provider;
+            f.notes       = c.notes;
             out.push_back(std::move(f));
         }
-#else
-        (void)out;
-#endif
+    }
+
+    void AddAudioFormats(std::vector<MediaFormatInfo>& out) {
+        AddCodecFormats(out, MediaCodecKind::Audio, MediaFormatCategory::Audio);
+    }
+
+    // ---- Fonts: FreeType is a hard dependency of the framework, so every
+    // build reads these. "Load" here means what UltraCanvasFontFile does -
+    // read the name records and rasterize a specimen - not that the format
+    // goes through the image pipeline; CanImagePipelineLoad still says no
+    // for all of them. WOFF and WOFF2 depend on the zlib/Brotli support the
+    // installed FreeType was built with, which is why they carry a note. ----
+    void AddFontFormats(std::vector<MediaFormatInfo>& out) {
+        out.push_back({ "ttf", { "ttc" }, "TrueType font",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "" });
+        out.push_back({ "otf", { "otc" }, "OpenType font",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "" });
+        out.push_back({ "pfb", { "pfa" }, "PostScript Type 1 font",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "" });
+        out.push_back({ "woff", {}, "Web Open Font Format",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "needs a FreeType built with zlib" });
+        out.push_back({ "woff2", {}, "Web Open Font Format 2",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "needs a FreeType built with Brotli" });
+        out.push_back({ "bdf", { "pcf", "fnt", "fon" }, "Bitmap font",
+                        MediaFormatCategory::Font, true, false,
+                        "FreeType", "fixed strikes only - no outlines" });
+    }
+
+    void AddVideoFormats(std::vector<MediaFormatInfo>& out) {
+        AddCodecFormats(out, MediaCodecKind::Video, MediaFormatCategory::Video);
     }
 
     MediaFormatCategory CategoryFromGraphicsType(GraphicsFormatType type) {
@@ -374,14 +353,29 @@ namespace {
     // ---- Runtime-registered graphics plugins (CDR, XAR, STL, ...) ----
     // Whatever the host application registered with
     // UltraCanvasGraphicsPluginRegistry is reported with the plugin's own
-    // name as the provider. The IGraphicsPlugin interface is load-only; the
-    // STL plugin is the one plugin known to also implement saving (via its
-    // SaveModel API outside the interface).
+    // name as the provider. Loading comes from GetSupportedExtensions,
+    // saving from GetSaveExtensions — the two lists are independent, so a
+    // save-only extension (the vector formats plugin writes EPS/CDR/PDF/...
+    // it cannot read) appears with canLoad=false, and a plugin that saves a
+    // format an earlier provider already listed upgrades that entry's
+    // canSave instead of duplicating it.
     void AddRegisteredGraphicsPlugins(std::vector<MediaFormatInfo>& out) {
+        auto findEntry = [&out](const std::string& ext) -> MediaFormatInfo* {
+            for (auto& f : out) {
+                if (f.MatchesExtension(ext)) return &f;
+            }
+            return nullptr;
+        };
+
         for (const auto& plugin : UltraCanvasGraphicsPluginRegistry::GetAllPlugins()) {
             if (!plugin) continue;
             const std::string name = plugin->GetPluginName();
-            const bool pluginSaves = (name.find("STL") != std::string::npos);
+
+            std::set<std::string> saveExts;
+            for (const std::string& rawExt : plugin->GetSaveExtensions()) {
+                const std::string ext = ToLowerNoDot(rawExt);
+                if (!ext.empty()) saveExts.insert(ext);
+            }
 
             // A plugin's extensions are one format family (e.g. XAR's
             // xar/web/wix), so classify the whole plugin by its first
@@ -393,17 +387,30 @@ namespace {
                 if (type != GraphicsFormatType::Unknown) break;
             }
 
-            for (const std::string& rawExt : plugin->GetSupportedExtensions()) {
-                const std::string ext = ToLowerNoDot(rawExt);
-                if (ext.empty() || ListContains(out, ext)) continue;
+            auto addOrUpgrade = [&](const std::string& ext, bool canLoad) {
+                if (MediaFormatInfo* existing = findEntry(ext)) {
+                    if (canLoad) existing->canLoad = true;
+                    if (saveExts.count(ext)) existing->canSave = true;
+                    return;
+                }
                 MediaFormatInfo f;
                 f.extension   = ext;
                 f.description = ext + " (" + name + ")";
-                f.category    = CategoryFromGraphicsType(type);
-                f.canLoad     = true;
-                f.canSave     = pluginSaves;
+                f.category    = CategoryFromGraphicsType(
+                        canLoad ? type
+                                : GraphicsFormatDetector::DetectFromExtension(ext));
+                f.canLoad     = canLoad;
+                f.canSave     = saveExts.count(ext) > 0;
                 f.provider    = name;
                 out.push_back(std::move(f));
+            };
+
+            for (const std::string& rawExt : plugin->GetSupportedExtensions()) {
+                const std::string ext = ToLowerNoDot(rawExt);
+                if (!ext.empty()) addOrUpgrade(ext, true);
+            }
+            for (const std::string& ext : saveExts) {
+                addOrUpgrade(ext, false);
             }
         }
     }
@@ -418,6 +425,14 @@ namespace {
     }
 
     std::vector<MediaFormatInfo> UltraCanvasSupportedFormats::GetAll() {
+        // Assembling the inventory probes libvips, the media backends and the
+        // engine registries. Callers are no longer all on the UI thread - the
+        // filer classifies the entries of a folder it scans in the background
+        // from here - so the assembly is serialized: everything it reads is
+        // populated at start-up, but two threads walking those registries at
+        // once is not something they are built for.
+        static std::mutex inventoryMutex;
+        std::lock_guard<std::mutex> lk(inventoryMutex);
         std::vector<MediaFormatInfo> out;
         AddBitmapFormats(out);
         AddVectorFormats(out);
@@ -425,6 +440,7 @@ namespace {
         AddSpreadsheetFormats(out);
         AddAudioFormats(out);
         AddVideoFormats(out);
+        AddFontFormats(out);
         AddRegisteredGraphicsPlugins(out);
         return out;
     }
@@ -470,20 +486,24 @@ namespace {
         // SVG bypasses libvips: UCImage routes it to the built-in SVG renderer.
         if (ext == "svg" || ext == "svgz") return true;
 #ifdef HAS_LIBVIPS
+        // The candidate table is what the UCImage load path implements, and it
+        // is the answer whenever the libvips probes cannot contribute one.
+        // This must never collapse to "nothing loads": callers use it to decide
+        // whether to attempt a decode at all, so a probe that comes back empty
+        // would silently strip every image preview in the application while
+        // UCImage::Get goes on decoding the very same files. Two ways that
+        // happened: VIPS_INIT reports non-zero on an ABI mismatch between the
+        // headers and the installed libvips even though the library works, and
+        // the loader suffix list reads empty when the loader classes are not
+        // registered yet. Attempting a decode that then fails costs one read;
+        // not attempting it loses the picture with nothing to show why.
+        if (IsKnownRasterCandidate(ext)) return true;
         if (!EnsureImageSubsystem()) return false;
-        if (VipsCanLoad("." + ext)) return true;
-        // magickload advertises no suffixes (it content-sniffs), so it only
-        // counts for extensions known to be raster formats — never for
-        // arbitrary files (that is exactly the mis-dispatch this API guards
-        // against).
-        if (VipsHasMagickLoadFallback()) {
-            for (const BitmapCandidate& c : BitmapCandidates()) {
-                if (ext == c.ext) return true;
-                for (const std::string& alias : c.aliases)
-                    if (ext == alias) return true;
-            }
-        }
-        return false;
+        // Past the table, only a loader vips actually advertises counts:
+        // handing it an arbitrary extension is exactly the mis-dispatch this
+        // API guards against. (magickload advertises no suffixes at all - it
+        // content-sniffs - so it could only ever confirm the table above.)
+        return VipsCanLoad("." + ext);
 #else
         return ext == "png";   // cairo's native PNG reader
 #endif
@@ -498,6 +518,7 @@ namespace {
             case MediaFormatCategory::Spreadsheet: return "Spreadsheets";
             case MediaFormatCategory::Audio:       return "Audio";
             case MediaFormatCategory::Video:       return "Video";
+            case MediaFormatCategory::Font:        return "Fonts";
         }
         return "Unknown";
     }

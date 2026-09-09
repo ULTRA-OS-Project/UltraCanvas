@@ -8,6 +8,7 @@
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasSmoothScroll.h"
 #include <array>
 #include <string>
 #include <vector>
@@ -245,6 +246,10 @@ namespace UltraCanvas {
         // Layout and rendering
         int contentHeight = 0;
         int verticalScrollOffset = 0;
+        // ScrollBy() — the wheel's path — glides to its target; ScrollTo()
+        // positions the page directly, so a programmatic jump to an anchor
+        // still lands at once (see UltraCanvasSmoothScroll.h).
+        UltraCanvasSmoothScroll scrollAnim;
         bool needsReparse = true;
         bool needsRelayout = true;
 
@@ -293,6 +298,8 @@ namespace UltraCanvas {
 
         // ===== SCROLLING =====
         void ScrollTo(int offset);
+        int  MaxScrollOffset() const;
+        void ApplyScrollOffset(int offset);
 
         void ScrollBy(int delta);
 

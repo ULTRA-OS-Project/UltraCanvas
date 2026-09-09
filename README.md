@@ -70,7 +70,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 
 ```
 UltraCanvas/
-├── Apps/                 # Demo applications and examples
+├── Apps/                 # Applications (DemoApp, Texter, UltraFiler, UltraViewer, UltraPaint, UltraMail, …)
 ├── Docs/                 # Component documentation
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
@@ -95,6 +95,7 @@ UltraCanvas/
 -   **Text Rendering:** FreeType, Pango, HarfBuzz
 -   **Image Processing:** libvips
 -   **Utilities:** glib-2.0, tinyxml2, fmt (JSON support is built in via the vendored yyjson engine behind UltraCanvasJSON)
+-   **Vector Formats:** converters for SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI, DXF and DWG are implemented in-tree — DWG reading is a native decoder for R13 through R2018 (no external program); DWG *writing* uses GNU LibreDWG's `dxf2dwg` command-line tool (optional, external process — found on PATH or named by `ULTRACANVAS_DXF2DWG`)
 
 ----------
 

@@ -8,16 +8,17 @@
 //     extern "C" int ultracanvas_app_main(int argc, char** argv);
 //
 // (a thin #ifdef __ANDROID__ shim around the existing main body). By the time
-// it runs, the activity surface exists and HOME/TMPDIR/XDG_CACHE_HOME point
-// into the app sandbox, so path-based resource/config/font code works
-// unchanged. App assets must be extracted to $HOME/share/ on first launch
-// (see SetResourcesDir's Android arm); the packaging layer owns that step.
-// Version: 1.0.0
-// Last Modified: 2026-08-10
+// it runs, the activity surface exists, HOME/TMPDIR/XDG_CACHE_HOME point into
+// the app sandbox, and the APK's assets have been unpacked to $HOME/share
+// (where SetResourcesDir's Android arm looks), so path-based
+// resource/config/font code works unchanged.
+// Version: 1.1.0
+// Last Modified: 2026-09-01
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasAndroidApplication.h"
+#include "UltraCanvasAndroidAssets.h"
 
 #include <android/looper.h>
 #include <android/native_activity.h>
@@ -68,6 +69,11 @@ namespace {
 void android_main(android_app* app) {
     UltraCanvas::UltraCanvasAndroidApplication::SetAndroidApp(app);
     ExportSandboxEnvironment(app);
+
+    // Before anything can load a font, icon or media file by path: inside an
+    // APK those are not on the filesystem. Only the first launch after an
+    // install or update pays for this.
+    UltraCanvas::ExtractBundledAssets(app);
 
     if (!WaitForNativeWindow(app)) {
         return;   // activity destroyed before a surface ever appeared

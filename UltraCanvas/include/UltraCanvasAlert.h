@@ -42,6 +42,12 @@ namespace UltraCanvas {
         std::string title;        // empty => derived from the severity
         std::string details;      // optional secondary line
         AlertSeverity severity = AlertSeverity::Info;
+        // The coloured severity badge on the left of the message. Set to false
+        // for an alert whose body carries its own graphic (a progress ring, a
+        // chart, a preview): without the badge the message column spans the
+        // whole window, so that graphic is horizontally centred in the dialog
+        // instead of being pushed to the right of the icon.
+        bool showIcon = true;
         DialogButtons buttons = DialogButtons::OK;
         DialogButton  defaultButton = DialogButton::OK;
         UltraCanvasWindowBase* parent = nullptr;
@@ -60,6 +66,7 @@ namespace UltraCanvas {
             config.message     = opts.message;
             config.details     = opts.details;
             config.dialogType  = ToDialogType(opts.severity);
+            config.showIcon    = opts.showIcon;
             config.buttons     = opts.buttons;
             config.defaultButton = opts.defaultButton;
             // Leave the config title at its default ("Dialog") when none is given
@@ -95,6 +102,18 @@ namespace UltraCanvas {
             ShowSimple(AlertSeverity::Error, message, title, onResult, parent);
         }
 
+        // ----- icon-less message (OK button) -----
+        // Same as Info()/Warning()/... but without the severity badge, so the
+        // message column — and anything the caller adds to it — is centred in
+        // the full width of the dialog.
+        static void Plain(const std::string& message, const std::string& title = "",
+                          std::function<void(DialogResult)> onResult = nullptr,
+                          UltraCanvasWindowBase* parent = nullptr,
+                          AlertSeverity severity = AlertSeverity::Info) {
+            ShowSimple(severity, message, title, onResult, parent,
+                       /*showIcon=*/false);
+        }
+
         // ----- yes/no confirmation -> bool -----
         static void Confirm(const std::string& message, const std::string& title,
                             std::function<void(bool confirmed)> onConfirmed,
@@ -128,9 +147,11 @@ namespace UltraCanvas {
         static void ShowSimple(AlertSeverity severity, const std::string& message,
                                const std::string& title,
                                std::function<void(DialogResult)> onResult,
-                               UltraCanvasWindowBase* parent) {
+                               UltraCanvasWindowBase* parent,
+                               bool showIcon = true) {
             AlertOptions opts;
             opts.severity = severity;
+            opts.showIcon = showIcon;
             opts.message = message;
             opts.title = title;
             opts.buttons = DialogButtons::OK;

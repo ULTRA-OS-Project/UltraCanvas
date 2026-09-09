@@ -32,6 +32,12 @@ namespace UltraCanvas {
         if (min <= max) {
             minValue = min;
             maxValue = max;
+            // A caller that never stated a step gets one that suits the range:
+            // whole units where they make a usable slider, continuous below
+            // that. Without this a fractional range (gamma 0.2..3.0, a 0..1
+            // ratio) would keep the whole-unit default and snap to a handful of
+            // positions.
+            if (!stepExplicit) step = DefaultStepForRange(minValue, maxValue);
             SetValue(currentValue); // Clamp current value to new range
 
             // Also clamp range values if in range mode

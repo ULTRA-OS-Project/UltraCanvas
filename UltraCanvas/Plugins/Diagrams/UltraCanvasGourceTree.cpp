@@ -1627,31 +1627,31 @@ bool UltraCanvasGourceTree::HandleMouseUp(const UCEvent& event) {
     return false;
 }
 
+// One zoom step about the cursor: the world point under it stays put. A wheel
+// notch is eased in as a run of these (UltraCanvasSmoothZoom), and applying them
+// in a row about the same cursor is exactly applying their product once.
+void UltraCanvasGourceTree::ApplyZoomFactorAtCursor(double factor,
+                                                    const Point2Di& cursor) {
+    Point2Dd worldBefore = ScreenToWorld(cursor);
+    float newZoom = std::clamp(static_cast<float>(zoomLevel * factor),
+                               minZoom, maxZoom);
+    if (newZoom == zoomLevel) return;
+
+    zoomLevel = newZoom;
+    // Adjust pan to keep the cursor position fixed
+    Point2Dd worldAfter = ScreenToWorld(cursor);
+    panX += (worldAfter.x - worldBefore.x) * zoomLevel;
+    panY += (worldAfter.y - worldBefore.y) * zoomLevel;
+}
+
 bool UltraCanvasGourceTree::HandleMouseWheel(const UCEvent& event) {
-    float zoomFactor = (event.wheelDelta > 0) ? 1.15f : 0.87f;
-    
-    // Get mouse position for zoom center
-    Point2Di mousePos(event.pointer.x, event.pointer.y);
-    Rect2Di bounds = GetBounds();
-    
-    // Calculate world position under mouse before zoom
-    Point2Dd worldBefore = ScreenToWorld(mousePos);
-    
-    // Apply zoom
-    float newZoom = zoomLevel * zoomFactor;
-    newZoom = std::clamp(newZoom, minZoom, maxZoom);
-    
-    if (newZoom != zoomLevel) {
-        zoomLevel = newZoom;
-        
-        // Adjust pan to keep mouse position fixed
-        Point2Dd worldAfter = ScreenToWorld(mousePos);
-        panX += (worldAfter.x - worldBefore.x) * zoomLevel;
-        panY += (worldAfter.y - worldBefore.y) * zoomLevel;
-        
-        RequestRedraw();
+    if (!zoomAnim.IsBound()) {
+        zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                      [this] { RequestRedraw(); });
     }
-    
+    zoomCursor = Point2Di(event.pointer.x, event.pointer.y);
+    zoomAnim.ZoomBy((event.wheelDelta > 0) ? 1.15 : 0.87,
+                    zoomLevel, minZoom, maxZoom);
     return true;
 }
 

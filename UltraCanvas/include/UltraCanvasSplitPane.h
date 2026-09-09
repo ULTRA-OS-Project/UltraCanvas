@@ -1,7 +1,7 @@
 // include/UltraCanvasSplitPane.h
 // Split pane container that divides content into N draggable panes along one axis
-// Version: 1.2.0
-// Last Modified: 2026-08-01
+// Version: 1.3.0
+// Last Modified: 2026-08-28
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -204,6 +204,16 @@ namespace UltraCanvas {
         void   SetPaneMinSize(size_t index, int px);
         void   SetPaneMaxSize(size_t index, int px);
         void   SetPaneSizes(const std::vector<int>& pixelSizes);
+        // A pane with a fixed axis size keeps exactly that many pixels
+        // through container resizes (maximizing the window included) — only
+        // the weighted panes share what a resize changed. Dragging an
+        // adjacent splitter still resizes the pane, and the dragged size
+        // becomes its new fixed size, so the width the user chose is what
+        // survives the next resize. Min/max still clamp it; a SetPaneSizes
+        // covering the pane updates the fixed size instead of its weight.
+        // 0 returns the pane to weight-based sizing.
+        void   SetPaneFixedSize(size_t index, int px);
+        int    GetPaneFixedSize(size_t index) const;
 
         // ===== STYLE / ORIENTATION =====
         SplitOrientation GetOrientation() const { return orientation; }
@@ -274,7 +284,8 @@ namespace UltraCanvas {
             std::shared_ptr<UltraCanvasContainer> pane;
             double weight  = 1.0;
             int    minSize = 0;
-            int    maxSize = 0; // 0 = unlimited
+            int    maxSize = 0;   // 0 = unlimited
+            int    fixedSize = 0; // 0 = weight-based (see SetPaneFixedSize)
         };
 
         SplitOrientation orientation;

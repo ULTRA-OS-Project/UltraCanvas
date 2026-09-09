@@ -15,6 +15,7 @@
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasRenderContext.h"
 #include "Plugins/Charts/UltraCanvasChartElementBase.h"
@@ -308,6 +309,11 @@ namespace UltraCanvas {
         TimeAxis axis;
         bool viewInitialized = false;
         bool panning = false;
+        // Wheel zoom eases in instead of stepping: the animator hands out a
+        // series of small factors, each applied with the axis' own ZoomAbout()
+        // (see UltraCanvasSmoothScroll.h).
+        UltraCanvasSmoothZoom zoomAnim;
+        double zoomAnchorX = 0.0;
         Point2Di panAnchor;
 
         // ===== INTERACTION STATE =====

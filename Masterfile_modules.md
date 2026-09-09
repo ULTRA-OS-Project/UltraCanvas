@@ -40,18 +40,327 @@ the backing implementation can be replaced without affecting callers.
   for a file, and detached launching. Core worker/cache in
   `core/UltraCanvasFileAssociations.cpp`; per-platform backends behind the
   internal `UltraCanvasFileAssociationsBackend.h` under `OS/<Platform>/`
-  (Linux/BSD: freedesktop, full; Windows/macOS: default-open placeholders).
+  (Linux/BSD: freedesktop, reading its `.desktop` entries and their icon
+  names through `UltraCanvasDesktopEntry`; Windows: SHAssocEnumHandlers /
+  IAssocHandler; macOS: NSWorkspace / Launch Services — all three enumerate,
+  launch and extract application icons).
   Public surface (`namespace FileAssociations` + `FileAssociationApp`):
   - `GetApplicationsForFiles` — candidates for a selection (intersection),
     default application first, cache-served once prewarmed.
   - `OpenWithDefaultApplication` / `OpenWithApplication` /
     `OpenWithApplicationPath` — detached launches (default handler /
-    enumerated app / user-picked executable).
+    enumerated app / user-picked executable; on Linux/BSD that path may also
+    be a `.desktop` file, whose own command is what then runs).
   - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
     for an "Other application…" picker (the picker UI lives with the caller).
   - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
+
+- **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
+  shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
+  points at, the icon it is drawn with, and the command line it starts. Byte
+  parsing plus `std::filesystem` in `core/UltraCanvasShellLink.cpp` — no
+  Windows API, no state between calls, safe on background threads. Public
+  surface:
+  - `IsShellLinkPath` — recognition by extension, before a file is opened.
+  - `ReadShellLink` — `UCShellLink` (target, arguments, working directory,
+    comment, relative path, icon location + index, target attributes, size
+    and time). False for a file that is missing, truncated or not a link, so
+    a file that merely ends in `.lnk` is never mistaken for one.
+  - `ResolveWindowsPathOnHost` — maps `C:\…` onto this host by walking up
+    from a context path for a Wine prefix (`drive_c` / `dosdevices`), the
+    root of a mounted Windows disk, then `$WINEPREFIX` / `~/.wine`. Case
+    -insensitive per component, canonical result, empty when the file is not
+    here.
+  - `ExpandWindowsEnvironmentPath` — `%ProgramFiles%` and the rest of the
+    well-known set; an unknown variable is left visible rather than dropped.
+  See `Docs/UltraCanvas/UltraCanvasShellLink.md`.
+
+- **UltraCanvasDesktopEntry** (`UltraCanvasDesktopEntry.h`) — freedesktop
+  desktop entries (`.desktop`), the Linux/BSD counterpart of a Windows
+  shortcut, and the icon themes their `Icon=` names point into. **The
+  framework's single reader for the format**: the "Open with" service builds
+  its Linux application index with it and the filer widget draws and launches
+  the entries a folder holds, so the two cannot disagree about what a
+  launcher is called or what it looks like. Plain text plus
+  `std::filesystem` in `core/UltraCanvasDesktopEntry.cpp` — no GIO, no GTK,
+  safe on background threads. Public surface:
+  - `IsDesktopEntryPath` — recognition by extension, before a file is opened.
+  - `ReadDesktopEntry` — `UCDesktopEntry` (Type, localized Name / GenericName
+    / Comment, Exec / TryExec / Path, Icon, URL, MimeType, Terminal /
+    NoDisplay / Hidden) plus `program`, the executable it resolves to on this
+    machine. False for a file with no `[Desktop Entry]` group, so a file that
+    merely ends in `.desktop` is never mistaken for one.
+  - `FindDesktopIconFile` — an icon *name* resolved to an image file through
+    the configured theme, what it inherits, hicolor and the pixmap
+    directories, at the nearest installed size (exact, else scalable, else
+    nearest larger). Cached per theme and per lookup.
+  - `SetDesktopIconTheme` / `GetDesktopIconTheme` /
+    `RefreshDesktopIconThemes` — the theme in use (detected from the GTK and
+    KDE settings files) and the way to drop everything cached after it
+    changes.
+  - `DesktopEntryCommand` — `Exec=` expanded into an argv (field codes
+    `%f/%F/%u/%U` filled, `%i/%c/%k` dropped, `%%` literal).
+  See `Docs/UltraCanvas/UltraCanvasDesktopEntry.md`.
+
+- **UltraCanvasPropertyList** (`UltraCanvasPropertyList.h`) — Apple property
+  lists in both encodings (XML through tinyxml2, binary `bplist00` parsed in
+  `core/UltraCanvasPropertyList.cpp`). Deliberately not a general plist
+  library: it serves the **top-level dictionary, flattened to text**, which
+  is what a bundle or a web location is asked for; nested containers are
+  skipped rather than half-modelled. Every offset in a binary plist is
+  bounds-checked. `UCPropertyList::Read` / `ReadBytes`, then `Has`,
+  `GetString`, `GetBool`, `GetInteger`, `Values`.
+  See `Docs/UltraCanvas/UltraCanvasPropertyList.md`.
+
+- **UltraCanvasMacBundle** (`UltraCanvasMacBundle.h`) — macOS application
+  bundles and the shortcut files a Mac desktop uses, the third desktop's
+  answer beside `UltraCanvasShellLink` and `UltraCanvasDesktopEntry`. Read
+  from the files themselves (`core/UltraCanvasMacBundle.cpp`), so a Mac disk
+  mounted anywhere shows its applications with their real names and icons.
+  Public surface:
+  - `IsBundlePath` / `IsApplicationBundlePath` — the packages the Finder
+    presents as one object, and the narrower "is it an application".
+  - `ReadApplicationBundle` — `UCAppBundle` (display name, identifier,
+    version, the executable inside it, the `.icns` it is drawn with, whether
+    it is an application). False for a directory with no readable
+    Info.plist. The icon search covers the usual omissions: the named file,
+    the name plus `.icns`, `CFBundleIconName`, then the `.icns` in Resources.
+  - `IsWebLocationPath` / `ReadWebLocation` — the address in a `.webloc`.
+  - `IsFinderAliasFile` / `ResolveFinderAlias` — an alias is recognised by
+    its bookmark-data magic anywhere, but only macOS can follow one
+    (`OS/MacOS/UltraCanvasMacOSAlias.mm`); elsewhere the resolver reports
+    false rather than guessing.
+  See `Docs/UltraCanvas/UltraCanvasMacBundle.md`.
+
+- **UltraCanvasIconResource** (`UltraCanvasIconResource.h`) — the icons the
+  other two desktops keep their applications' faces in, read without either
+  of them: the frames of an `.ico`, the `RT_GROUP_ICON` / `RT_ICON` resources
+  of a PE binary, and the renditions of an Apple `.icns`. In
+  `core/UltraCanvasIconResource.cpp`; reads only the header range and the
+  resource section of a program rather than the whole file, and treats every
+  offset in the format as untrusted. Public surface:
+  - `HasIconResourceExtension` — `.ico`, `.icns`, `.exe`, `.dll`, `.icl`,
+    `.cpl`, `.ocx`, `.scr`, `.mun`, by extension alone.
+  - `LoadIconResource(path, index, desiredSize)` — the frame nearest the
+    wanted size as a `UCPixmap`. Windows' index convention: negative names a
+    resource id, non-negative counts icons in resource order.
+  - `DecodeIconFileBytes` — the same for bytes already in hand.
+  Used by `LoadNativeFileIconPixmap` (`UltraCanvasNativeFileIcons.h`) off
+  Windows, and as the fallback for a file the shell declines on it.
+  See `Docs/UltraCanvas/UltraCanvasIconResource.md`.
+
+- **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
+  file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
+  document rather than as something to render text with: its name records are
+  metadata, and a line of its own glyphs is a thumbnail. Implemented in
+  `core/UltraCanvasFontFile.cpp` on FreeType alone — no fontconfig, no Pango,
+  no render context and no installed font, with one `FT_Library` per call so
+  the whole surface is safe on background threads (which is what lets the
+  filer thumbnail a folder of fonts). Public surface:
+  - `IsFontFileExtension` / `FontFormatForExtension` / `FontFormatName` —
+    recognition by extension, before a file is opened.
+  - `ReadFontFileInfo` — `FontFileInfo` (container format, file size, face
+    count) with one `FontFaceInfo` per face: the decoded name records
+    (family, subfamily, full/PostScript name, version, copyright, trademark,
+    manufacturer, designer, license, license URL, sample text) plus glyph
+    count, units per em, scalable / fixed-width / kerning / bold / italic and
+    the strike sizes of a bitmap face. Never throws on a malformed file.
+  - `RenderFontSpecimenPixmap` (+ `FontSpecimenOptions`) — a ready-to-draw
+    `UCPixmap` card carrying a line of the font's own glyphs, fitted to the
+    box; a symbol face with no Latin glyphs falls back to its own first
+    glyphs. No shaping: glyph lookup plus kerning, which is what is possible
+    without a registered font and a Pango context.
+
+  Registration for actual text rendering is the application's, not this
+  module's: `UltraCanvasApplicationBase::RegisterFontFile` /
+  `IsFontFileRegistered` / `GetRegisteredFontFiles` add a file's faces to the
+  process by name (FontConfig on Linux/Android/WASM, GDI `FR_PRIVATE` +
+  FontConfig on Windows, CoreText process scope on macOS), followed by
+  `RefreshFontConfiguration()` so the new family resolves in the next layout.
+  Process-private and permanent: there is no unregister.
+  See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
+
+- **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
+  volumes of the machine, and a notification when that set changes: a USB
+  stick, card, optical disc, network share or disk image connected or removed.
+  Core enumeration + polling fallback in `core/UltraCanvasVolumeMonitor.cpp`;
+  per-platform backends under `OS/<Platform>/` (Linux/BSD: `poll()` on
+  `/proc/self/mountinfo`; Windows: `WM_DEVICECHANGE` on a hidden top-level
+  window; macOS: `NSWorkspace` mount notifications). Public surface:
+  - `ListMountedVolumes` — every mounted volume as `MountedVolume`
+    (`path`, `label`, `isSystemRoot`), system root first. **The framework's
+    single volume enumeration**: a drive list anywhere else — a folder tree,
+    a path strip's *Computer* dropdown, a places list — calls this rather than
+    scanning directories of its own, so two lists cannot disagree about what
+    is mounted. Never reads a volume label off the medium (that stalls on an
+    empty optical drive and on every disconnected network mapping).
+  - `ListVolumeRoots` — the same list, mount points only.
+  - `ListPlatformMountPoints` — the platform's own mount table, used by the
+    enumeration to decide whether a directory is really a mount point; empty
+    where no such table is readable.
+  - `UltraCanvasVolumeMonitor` — `Start(onChanged)` / `Stop()` (joins, so no
+    callback survives it), `IsRunning`, `IsNative`, `SetPollIntervalMs` /
+    `GetPollIntervalMs`, static `NativeBackendAvailable`. The callback runs on
+    the monitor's thread and must only hand the news over; one insertion
+    produces several callbacks, so the receiver coalesces.
+  Wired up per platform by the `ULTRACANVAS_HAS_NATIVE_VOLUME_MONITOR`
+  condition in the **top-level** `CMakeLists.txt`; without it the core file
+  compiles null-returning fallbacks and the monitor polls.
+  See `Docs/UltraCanvas/UltraCanvasVolumeMonitor.md`.
+
+- **UltraCanvasSmoothScroll** (`UltraCanvasSmoothScroll.h`) — framework-wide
+  smooth scrolling and wheel zoom. Scrolling glides to its target instead of
+  jumping, in every UltraCanvas application, with no opt-in: a wheel notch, a
+  page step, a keyboard reveal or a zoom step is eased over ~150 ms with an
+  ease-out cubic. Public surface:
+  - Application-wide defaults, read at the moment a scroll starts:
+    `SetSmoothScrollingEnabled` / `IsSmoothScrollingEnabled`,
+    `SetSmoothScrollDuration` / `GetSmoothScrollDuration`. `ScrollbarStyle`
+    initialises from these, so one switch governs the scrollbar-backed elements
+    and the self-rendered views alike.
+  - `UltraCanvasSmoothScroll` — one animator per scalar (a scroll offset, a zoom
+    level). `Bind(read, write)`, `AnimateBy` / `AnimateTo` (chaining, so a fast
+    wheel spin is one glide), `PendingValue`, `Jump`, `Cancel`, `SetDuration`.
+    Holds a ~60 Hz timer only while a glide runs.
+  - `UltraCanvasSmoothZoom` — eases a multiplicative zoom in log space and hands
+    the element a run of small incremental factors, which it applies with its own
+    zoom-about-cursor code; no transform maths is duplicated. `Bind(apply,
+    repaint)`, `ZoomBy(factor, currentZoom, minZoom, maxZoom)`, `Cancel`.
+  Anything that positions the view rather than scrolls it — a thumb drag, a pan,
+  keeping the text caret on screen, opening a folder, fitting a diagram — cancels
+  the glide and lands at once. Row-indexed views (spreadsheet, hex dump, the two
+  dialog file lists) are not converted: their scroll position is a row index, so
+  they need a pixel offset in the paint path first.
+  See `Docs/UltraCanvas/UltraCanvasSmoothScroll.md`.
+
+- **UltraCanvasHardwareInfo** (`UltraCanvasHardwareInfo.h`) — read-only
+  inventory and sensors for the machine the application runs on: CPU (cache
+  sizes, hybrid core tiers, instruction sets, temperature, load), GPU, NPU,
+  memory down to the individual module, storage (bus, connector, on-drive
+  cache, temperature, volumes), network interfaces including Wi-Fi
+  association, USB controllers and attached devices, and Bluetooth adapters
+  with their connections. Distinct from **IODeviceManager**, which *operates*
+  peripherals (scanners, cameras, printers: handles, protocols, a device
+  lifecycle) — this module only *describes* the host and holds nothing. Shared
+  logic in `core/UltraCanvasHardwareInfo.cpp`; per-platform probes behind the
+  internal `UltraCanvasHardwareInfoBackend.h` under `OS/<Platform>/` (Linux:
+  procfs/sysfs; Windows: registry, SMBIOS, storage IOCTLs, IP Helper, WLAN,
+  SetupAPI and the Bluetooth API — no COM or WMI; macOS: sysctl and the IOKit
+  C API), with a fallback for platforms that have none. No new third-party
+  dependency on any platform. Public surface:
+  - `Capture(HardwareQuery, forceRefresh)` — one consistent snapshot;
+    `HardwareQuery` is a bit set (`System`/`CPU`/`GPU`/`NPU`/`Memory`/
+    `Storage`/`Network`/`USB`/`Bluetooth`/`Sensors`/`All`) because probing
+    costs differ by orders of magnitude, and `HardwareSnapshot::Has` reports
+    which categories were actually filled.
+  - `RefreshSensors(snapshot)` — re-reads temperatures, clocks, utilisation,
+    free memory and link state in place, never adding or removing a device, so
+    a monitor loop keeps its indices.
+  - Single-category helpers `GetCPU` / `GetMemory` / `GetSystem` / `ListGPUs` /
+    `ListNPUs` / `ListStorageDevices` / `ListNetworkInterfaces` /
+    `ListUSBDevices` / `ListUSBControllers` / `ListBluetoothAdapters`.
+  - `SetOptions` / `GetOptions` (`HardwareInfoOptions`): identifier masking
+    (on by default — serial numbers, MACs and BSSIDs keep only their tail),
+    sensor inclusion, USB hubs, snapshot cache lifetime; `MaskIdentifier`
+    applies the same rule to a caller's own string.
+  - `BuildReport` → `HardwarePropertyGroup` tree, and the `ToText` / `ToJSON`
+    renderings built on it; `FormatBytes` / `FormatFrequencyMHz` /
+    `FormatTemperature` / `FormatBitrateMbps` / `FormatDuration`.
+  - `GetBackendName` (`"sysfs"` / `"win32"` / `"iokit"` / `"null"`),
+    `IsAvailable`. A value that cannot be read never becomes a zero: the
+    reason goes into `HardwareSnapshot::warnings` in words a user can act on.
+  - **UltraCanvasHardwareInfoPanel** (`UltraCanvasHardwareInfoPanel.h`) — the
+    ready-made system-information view, an `UltraCanvasColumnsTreeView` that
+    fills itself from a snapshot: `Refresh`, `RefreshSensors` (updates values
+    in place, so expansion, selection and scroll position survive),
+    `SetQuery`, `SetSnapshot`, `SetSectionsExpanded`, `ToText` / `ToJSON`,
+    `onSnapshotChanged`, and the `CreateHardwareInfoPanel` factory.
+  See `Docs/UltraCanvas/UltraCanvasHardwareInfo.md`.
+
+- **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
+  spell checking. A singleton service owning one backend, the user dictionary,
+  a session ignore list and a worker thread, so checking never runs on the
+  render thread. Backends are wrapped behind the UltraCanvas-owned
+  `ISpellCheckBackend` (`ISpellCheckBackend.h`), never exposed: enchant-2 on
+  Linux, ISpellChecker on Windows 8+, NSSpellChecker on macOS, each in
+  `OS/<Platform>/UltraCanvasSpellCheckSupport.*`, with Hunspell
+  (`core/SpellCheckBackendHunspell.cpp`) as the portable fallback and the only
+  backend on Android and WASM. Every dependency is optional — the service falls
+  back native → Hunspell → a no-op reporting zero dictionaries, so a missing
+  one never fails a build. Public surface:
+  - Lifecycle and backend: `Initialize` / `Shutdown` / `IsInitialized`,
+    `SetBackend`, `GetBackendName`.
+  - Language: `GetAvailableLanguages` / `SetLanguage` / `GetLanguage` /
+    `GetLanguageInfo` / `DetectPreferredLanguage` (from `LC_ALL` / `LANG`).
+  - Checking: `IsCorrect`, `GetSuggestions`, `CheckText` (synchronous), and the
+    asynchronous `QueueCheckText` / `TryTakeResult` / `CancelContext` /
+    `SetContextNotifier` pair-with-drain used by text elements.
+  - Dictionary: `AddToUserDictionary` / `RemoveFromUserDictionary` /
+    `IgnoreWord` / `ClearIgnoredWords` / `RequestRecheck`, with
+    `SetUserDictionaryPath` / `Load` / `Save`.
+  - Menus: `BuildSpellCheckMenu` (a lambda-provided submenu that shows live
+    state), `BuildSpellCheckMenuItems`, `BuildLanguageMenuItems` (radio group),
+    `BuildSuggestionMenuItems` (right-click list).
+  - `namespace SpellCheckText` — UTF-8 tokenizer and byte/codepoint mapping;
+    `namespace SpellCheckRendering` — squiggle drawing over `IRenderContext`,
+    usable by any component that can produce a word rectangle.
+  Wired into `UltraCanvasTextArea` via `SetSpellCheckEnabled`; the byte-range →
+  screen-rectangle mapping it needs is the element's own
+  `GetCharacterRangeBounds`, which is equally usable for search highlighting,
+  diff marks and comment anchors. Two element hooks exist for host
+  applications: `onContextMenu` takes the right-click before the built-in
+  suggestion popup, so an application with its own editor menu splices the
+  suggestions into it; `onPrepareSpellCheck` hands over the exact text about to
+  be checked plus a per-check copy of the options, which is what
+  `SpellCheckOptions::shouldSkipRange` needs — its ranges are byte offsets and
+  go stale on the first edit otherwise.
+  UltraTexter is the reference consumer: **Edit → Spelling**, an editor context
+  menu carrying the suggestions, and a markdown skip scanner
+  (`Apps/Texter/UltraCanvasMarkdownSpellRanges.h` — a dependency-free byte
+  scanner covering fenced and indented code, inline code spans, link and image
+  targets, autolinks, inline HTML, math and YAML front matter, with the
+  application half in `Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp`).
+  See `Docs/UltraCanvas/UltraCanvasSpellChecker.md`.
+
+**Raster editing section** — the editable-bitmap layer under UltraPaint
+(`UltraCanvas/{include,core}/UltraCanvasRaster*.{h,cpp}`,
+`UltraCanvasBrushEngine.{h,cpp}`, `UltraCanvasPaintSurface.{h,cpp}`; doc:
+`Docs/UltraCanvas/UltraCanvasPaintSurface.md`). PixelFX stays the whole-image
+engine; these classes hold the pixels being edited and hand them to it.
+
+- **UCRasterLayer** — straight-RGBA 8-bit layer with name / visible / locked /
+  opacity / `RasterBlendMode`; `GetPixel/SetPixel/Fill/FillRect/CopyFrom/
+  BlendFrom/CropCopy/Clone/ResizeCanvas/Flip*/Rotate*/ResampleBilinear`,
+  `CompositeOnto` (premultiplied ARGB32), `ToPixelFX/FromPixelFX`
+  (HAS_LIBVIPS). `RasterBlendChannel/RasterBlendPixel` expose the blend maths.
+- **UCRasterSelection** — coverage mask: `SelectAll/SelectNone/Invert/
+  SetRectangle/SetEllipse/SetPolygon/SetMask` with `RasterSelectionMode`
+  (Replace/Add/Subtract/Intersect), `Feather/Grow/Shrink/Translate`,
+  `Coverage/GetBounds/GetOutline`.
+- **UCRasterDocument** — layer stack + selection + history: `AddLayer/
+  DuplicateLayer/RemoveLayer/MoveLayer/MergeLayerDown/FlattenImage`, layer
+  attribute setters, `ScaleImage/ResizeCanvas/CropTo/Flip*/Rotate*`,
+  `BeginEdit/EndEdit/RecordEdit/NotifyChanged`, `ApplyFilter/
+  ApplyFilterToLayer/PreviewFilter` (selection-aware PixelFX ops),
+  `CopySelection/CopySelectionMerged/DeleteSelection/FillSelection`,
+  `Undo/Redo/SetUndoMemoryLimit`, `GetCompositePixmap/Flatten`,
+  `LoadFromFile/SaveToFile/SaveProject/LoadProject` (`.ucraster`), and the
+  `onPixelsChanged/onStructureChanged/onSelectionChanged/onStateChanged`
+  notifications.
+- **UCBrushStroke / RasterPaint** (`UltraCanvasBrushEngine.h`) — dab-based
+  strokes (`UCBrushSettings`: size, hardness, opacity, flow, spacing, shape,
+  pressure; `BrushMode`: Paint/Erase/Clone/Smudge/Dodge/Burn) and one-shot
+  ops `DrawLine/DrawRectangle/DrawEllipse/DrawPolygon/FillCoverage/StampMask/
+  FloodFill/MagicWandMask/FillGradient/SampleColour`. No libvips needed.
+- **UltraCanvasPaintSurface** — the editing element: zoom ladder / pan /
+  fit, checkerboard, pixel grid, marching ants, brush cursor,
+  `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
+  `onViewChanged`, `onFilesDropped`; `PaintPointerEvent` carries image
+  coordinates.
+- **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
+  drawing for zoomed pixel display (Cairo backend implemented).
 
 ### **2. UltraAI**
 
@@ -227,16 +536,36 @@ encapsulates them so backings can be swapped — see
 - `UltraWin_CreateEnvironment`, `UltraWin_DeleteEnvironment`,
   `UltraWin_ListEnvironments`, `UltraWin_EnvironmentExists`
 - `UltraWin_MapFolder`, `UltraWin_UnmapFolder`, `UltraWin_ListMappings`
+- `UltraWin_EnvironmentForPath`, `UltraWin_GetAssociation`,
+  `UltraWin_SetAssociation`, `UltraWin_RemoveAssociation`,
+  `UltraWin_SuggestEnvironment` (program→environment linkage: owning
+  prefix, remembered picker choices, and picker defaults)
 - `UltraWin_InstallComponent`, `UltraWin_ListComponents` (winetricks-verb
   components: VC++ runtimes, fonts, .NET, DXVK, … — spawned winetricks)
-- `UltraWin_RunApp`, `UltraWin_CloseApp`, `UltraWin_KillApp`,
+- `UltraWin_RunApp` (extension-routed: `.exe` direct, `.msi` via msiexec,
+  `.lnk` via `start /wait`), `UltraWin_CloseApp`, `UltraWin_KillApp`,
   `UltraWin_GetAppInfo`, `UltraWin_GetAppState`, `UltraWin_ListApps`,
   `UltraWin_WaitApp`, `UltraWin_ReleaseApp`
+- `UltraWin_ListPrograms` (Start-Menu shortcuts an installer created — what
+  an ULTRA OS launcher shows; entries are launchable via `UltraWin_RunApp`)
 
-**Planned (Stage 2/3):** `UltraWin_VmProvision`, `UltraWin_VmStart`,
-`UltraWin_VmSuspend`, `UltraWin_VmStop`,
-`UltraWin_QueryCompatibility`, and the `UltraCanvasRemoteAppView` element
-for FreeRDP RemoteApp windows.
+- `UltraWin_VmProvision`, `UltraWin_VmStart`, `UltraWin_VmStop`,
+  `UltraWin_VmKill`, `UltraWin_VmSuspend`, `UltraWin_VmResume`,
+  `UltraWin_VmGetState`, `UltraWin_VmGetInfo` (Stage 2a machine backbone:
+  the single shared headless QEMU/KVM guest — spawned, never linked —
+  controlled over QMP; RDP port forwarded for the RemoteApp integration)
+
+- `UltraWin_RunApp(forceTier = Vm)` — RemoteApp (RAIL) launches into the
+  running guest over FreeRDP (the one linked engine, Apache 2, optional;
+  guest paths, `||aliases`, and host paths under the shared home)
+- virtiofs home share: `UltraWin_VmStart` exports `$HOME` into the guest
+  (spawned virtiofsd + vhost-user-fs, tag `ultrawin_home`) so both tiers
+  present the user's files under the same unified drive letter
+
+**Planned (Stage 2b-ii/2c, 3):** the `UltraCanvasRemoteAppView` element
+rendering RAIL window surfaces, guest provisioning validated against real
+install media (incl. the guest-side virtiofs mount service), and
+`UltraWin_QueryCompatibility` tier routing.
 
 UltraWin is the recommended way for UltraFiler and any UltraCanvas-based
 application to launch Windows executables. Linux / ULTRA OS only.
@@ -291,9 +620,12 @@ backing library is never visible in a public header.
 - `UltraCrypt_RandomBytes`, `UltraCrypt_RandomSecureBuffer`,
   `UltraCrypt_RandomUInt32`, `UltraCrypt_GenerateUuidV4`
 - `UltraCrypt_SecureZero`, `UltraCrypt_ConstantTimeEquals`
-- `UltraCrypt_ToHex`, `UltraCrypt_FromHex`, `UltraCrypt_Base64Encode`,
-  `UltraCrypt_Base64Decode`, `UltraCrypt_Base32Encode`,
-  `UltraCrypt_Base32Decode`
+- `UltraCrypt_ToHex`, `UltraCrypt_FromHex`, `UltraCrypt_Base32Decode` (into a
+  secure buffer). The general RFC 4648 codecs — `Base32Encode`, `Base32Decode`,
+  `Base64Encode`, `Base64Decode` — live in UltraCanvasUtils
+  (`UltraCanvasTextUtils.h`, the platform-free text helpers compiled into the
+  `UltraCanvasTextUtils` library that both the framework and UltraCrypt link);
+  UltraCrypt's former copies were removed.
 
 Streaming classes: `UltraCryptHasher`, `UltraCryptHmacHasher`.
 
@@ -346,3 +678,197 @@ persisted drive mappings), application launch/supervision, and the
 component installer (winetricks wrapper) are implemented; the VM tier and
 compatibility routing are planned for Stages 2-3. See
 `Docs/Modules/UltraWin/README.md`.
+
+---
+
+### **10. VirtualFS**
+
+Virtual file system — the single place where archive traversal, format
+detection, decompression, entry caching, password handling and RAM disc
+provisioning are implemented, so no application, plugin or sibling module
+opens a ZIP by hand. Files inside an archive are reached as if they were
+regular folders, including archives nested inside archives. Sources under
+`VirtualFS/{include,core,providers,OS/<Platform>}`, target `VirtualFS`,
+header `<VirtualFS/VirtualFS.h>`, `namespace VirtualFS`; see
+`Docs/Modules/VirtualFS/README.md` and the full function list in
+`VirtualFS/VirtualFS_Master_Registry_V1.md`.
+
+Scope is **archives and scratch storage**. Loading and converting a file
+once it has been reached stays in FileLoader; the UltraCanvas-facing
+compression shims live in `UltraCanvasVirtualFSBridge`.
+
+VirtualFS elements must comply with the same rules as UltraNet, UltraCrypt
+and UltraDatabase:
+- Clear structure; call names understandable by their names
+- New formats arrive as an `IVirtualFSProvider`, never as a special case
+  inside the manager
+- Every call returns `VirtualFSResult` (`operator bool` for quick checks,
+  `VirtualFSResultToString()` for messages)
+- Paths use forward slashes and are normalized automatically; archive
+  boundaries are detected by extension against 40+ known formats
+- **Never** write `ZipFile`, `TarArchive` or `Uncompress()` at module level
+  — go through `VirtualFS_*` or `UCVFSBridge::*`
+- A RAM disc always reports its backing; the Windows disk fallback is never
+  presented as memory (see `VirtualFSRamDisk::IsTrueRam()`)
+
+Like UltraNet and UltraCrypt, it encapsulates an open-source library
+(libarchive) so the backing implementation can be replaced without
+affecting callers; the backing library is never visible in a public header.
+
+**Available Functions (Core, Tier 1):**
+- Lifecycle: `VirtualFS_Initialize`, `VirtualFS_Shutdown`,
+  `VirtualFS_IsInitialized`, `VirtualFS_GetVersion`
+- Reading: `VirtualFS_ReadFile`, `VirtualFS_ReadFileString`,
+  `VirtualFS_ReadFilePartial`, `VirtualFS_OpenStream`,
+  `VirtualFS_ExtractToMemory`
+- Listing: `VirtualFS_ListDirectory`, `VirtualFS_ListDirectoryFiltered`,
+  `VirtualFS_ListDirectoryRecursive`, `VirtualFS_EnumerateDirectory`
+- Queries: `VirtualFS_Exists`, `VirtualFS_IsFile`, `VirtualFS_IsDirectory`,
+  `VirtualFS_IsArchive`, `VirtualFS_IsInsideArchive`, `VirtualFS_GetInfo`,
+  `VirtualFS_GetSize`, `VirtualFS_GetType`, `VirtualFS_GetMimeType`,
+  `VirtualFS_DetectFormat`, `VirtualFS_GetArchiveInfo`
+- Extraction: `VirtualFS_ExtractFile`, `VirtualFS_ExtractAll`,
+  `VirtualFS_ExtractFiltered`
+- Writing: `VirtualFS_CreateArchive`, `VirtualFS_AddToArchive`,
+  `VirtualFS_DeleteFromArchive`
+- Validation: `VirtualFS_ValidateArchive`, `VirtualFS_TestArchive`
+- Paths: `VirtualFS_NormalizePath`, `VirtualFS_ResolvePath`,
+  `VirtualFS_JoinPath`, `VirtualFS_GetParentPath`,
+  `VirtualFS_GetFileName`, `VirtualFS_GetExtension`
+- Providers: `VirtualFS_RegisterProvider`, `VirtualFS_UnregisterProvider`,
+  `VirtualFS_GetProviderForPath`, `VirtualFS_GetRegisteredProviders`,
+  `VirtualFS_GetSupportedExtensions`
+- Configuration: `VirtualFS_SetPasswordCallback`,
+  `VirtualFS_SetErrorCallback`, `VirtualFS_GetErrorMessage`,
+  `VirtualFS_SetTempDirectory`, `VirtualFS_GetTempDirectory`,
+  `VirtualFS_SetDefaultEncoding`
+- Cache: `VirtualFS_SetCacheEnabled`, `VirtualFS_SetMaxCacheSize`,
+  `VirtualFS_GetCacheSize`, `VirtualFS_ClearCache`,
+  `VirtualFS_ClearCacheForPath`
+
+**Raw buffer compression** (`VirtualFSCompression.h`) — the compression
+codecs without an archive container, for callers such as the UltraWeb
+bundler and FileLoader: `VirtualFS_CompressBuffer`,
+`VirtualFS_DecompressBuffer`, `VirtualFS_DetectCompressionMethod`,
+`VirtualFS_IsCompressionMethodAvailable`. Methods: `Store`, `Deflate`,
+`Zstd`, `LZ4` (frame format), `Brotli`, each subject to its
+`VIRTUALFS_USE_*` build option.
+
+**RAM discs** (`VirtualFSRamDisk.h`) — OS-visible scratch volumes, backed by
+each platform's own facility (`/dev/shm` tmpfs on Linux, `hdiutil
+attach ram://` on macOS, the ImDisk driver on Windows when installed, an
+overwritten `%TEMP%` directory otherwise): `VirtualFS_CreateRamDisk`,
+`VirtualFS_DestroyRamDisk`, `VirtualFS_ListRamDisks`,
+`VirtualFS_UseRamDiskForTemp`, `VirtualFS_IsTrueRamDiskAvailable`,
+`VirtualFS_GetPreferredRamDiskBacking`. Discs are private to the calling
+user and do not survive a reboot.
+
+**Provider interface** (`IVirtualFSProvider`) — one implementation per
+format family. `LibArchive` covers 40+ formats (ZIP, 7z, TAR family, RAR
+read-only, ISO/UDF, CAB, CPIO, DEB, RPM, and the ZIP-derived app bundles);
+CHM (libmspack) and WIM (wimlib) providers are planned. Optional
+`OpenFromMemory()` lets a provider open an archive from a buffer, which is
+how nested archives are traversed without writing a temp file; providers
+that implement it advertise `VirtualFSCapability::MemoryOpen`.
+
+**Implementation status (this branch):** VirtualFSManager, VirtualFSPath,
+the LibArchive provider and the UltraCanvas bridge are complete;
+memory-backed nested archives and the Linux and macOS RAM disc back ends
+are complete. On Windows a true RAM disc requires an ImDisk installation —
+the driver is detected, never bundled — and without it the disc degrades to
+storage-backed and reports itself as such. Regression tests:
+`Tests/VirtualFSPathTest.cpp`, `Tests/VirtualFSDeleteTest.cpp`,
+`Tests/VirtualFSNestedMemoryTest.cpp`, `Tests/VirtualFSRamDiskTest.cpp`.
+
+---
+
+### **11. UltraCloud**
+
+Cloud storage — the single home for cloud accounts, the default account, and
+"upload this and give me a share link", so no application talks to a cloud
+provider on its own. Providers are stateless plug-ins behind `ICloudProvider`
+(Verify / List / MakeDirectory / Upload / Download / CreateShareLink /
+SignIn / RefreshCredentials / AccountInfo); v0.2 ships Nextcloud / ownCloud
+(WebDAV + OCS share API, password and expiry on links), generic WebDAV (links
+through a public web-folder URL), Dropbox, OneDrive and Google Drive (OAuth2 +
+PKCE through the system browser via UltraNet, tokens refreshed automatically;
+the OAuth client id is configuration, `SetOAuthApp` or
+`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), and an in-memory demo provider. Providers
+can also ship as plug-in libraries (`UltraCloud_PluginInit`,
+`LoadProviderPlugins`).
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
+(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
+HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+`UltraCloudUI` holds the shared add-account and link-picker dialogs.
+Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
+and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;
+see `Docs/Modules/UltraCloud/README.md`.
+
+---
+
+### **12. UltraAndroid**
+
+The UltraAndroid module runs Android applications on Linux / ULTRA OS as
+single native windows — never an Android home screen — with the user's own
+folders visible to the applications at one fixed mount point.
+
+**Not to be confused with `UltraCanvas/OS/Android/`**, which is the opposite
+direction: that backend runs *our* apps *on* Android. UltraAndroid runs *other
+people's* Android apps *on Linux*. No shared code; they meet only in that the
+runtimes UltraAndroid provisions are also the test beds that backend needs.
+
+UltraAndroid elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- Blocking operations return `UltraAndroidResult`; runtime, application and
+  share instances are opaque `UltraAndroidHandle`s
+- No Android home screen, launcher or notification shade is ever displayed;
+  every Android app window is a native ULTRA OS window
+- Engines are never linked: the container manager, LXC, `adb` and QEMU run as
+  spawned child processes, keeping GPL licensing outside the framework
+  binaries
+- Google Play / GMS is never bundled, and ARM translation layers
+  (libndk/libhoudini) are never redistributed — both are detected and
+  reported, never shipped
+- The user's folders are shared, not copied, and appear at the same guest
+  path in both tiers
+
+UltraAndroid uses open-source runtimes (a Waydroid-class LXC container on the
+host kernel for the default tier; Cuttlefish or the AOSP emulator under KVM
+for the fallback tier) and encapsulates them so backings can be swapped — see
+`Docs/Research/UltraAndroidDesignProposal.md`, and
+`Docs/UltraCanvas/AndroidOnLinuxInvestigation.md` for the survey that selected
+them.
+
+**Proposed Functions (Stage 1 — host-side, no runtime required):**
+- `UltraAndroid_Initialize`, `UltraAndroid_Shutdown`,
+  `UltraAndroid_IsInitialized`, `UltraAndroid_GetConfig`,
+  `UltraAndroid_SetConfig`, `UltraAndroid_GetCapabilities`,
+  `UltraAndroid_GetVersion`
+- `UltraAndroid_InspectApk` (package, label, icon, minSdk/targetSdk and native
+  ABIs, read straight out of the APK — zip via VirtualFS plus an AXML
+  decoder), `UltraAndroid_QueryCompatibility` (runs natively / needs
+  translation / needs the other tier / cannot run)
+
+**Proposed Functions (Stage 2 — container tier):**
+- `UltraAndroid_ListImages`, `UltraAndroid_InstallImage`,
+  `UltraAndroid_RemoveImage`, `UltraAndroid_GetImageInfo`
+- `UltraAndroid_StartRuntime`, `UltraAndroid_StopRuntime`,
+  `UltraAndroid_GetRuntimeState`, `UltraAndroid_GetRuntimeInfo`
+- `UltraAndroid_ShareFolder`, `UltraAndroid_UnshareFolder`,
+  `UltraAndroid_ListShares`
+- `UltraAndroid_InstallApk`, `UltraAndroid_UninstallApp`,
+  `UltraAndroid_ListApps`, `UltraAndroid_GetAppInfo`, `UltraAndroid_RunApp`,
+  `UltraAndroid_CloseApp`, `UltraAndroid_KillApp`, `UltraAndroid_GetAppState`,
+  `UltraAndroid_WaitApp`, `UltraAndroid_ReleaseApp`
+
+**Planned (Stage 3):** the VM tier behind the same API for hosts whose kernel
+has no binder, ULTRA OS launcher entries, audio routing per app window, and
+host↔guest clipboard.
+
+UltraAndroid is intended to be the recommended way for UltraFiler and any
+UltraCanvas-based application to describe and launch `.apk` files.
+Linux / ULTRA OS only.
+
+**Implementation status:** none — named and specified only. The design
+proposal is written; no code, no `Docs/Modules/UltraAndroid/README.md` and no
+demo entry exist yet, and those land with Stage 1 rather than before it.

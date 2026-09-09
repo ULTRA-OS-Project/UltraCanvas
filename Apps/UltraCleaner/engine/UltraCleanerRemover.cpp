@@ -255,6 +255,13 @@ RemovalReport Remover::Remove(const ScanReport& report,
                 result.freedBytes += item->sizeBytes;
                 continue;
             }
+            // Emptying the recycle bin is permanent, and there is no gentler
+            // way to do it — so "move to trash" must not reach it, exactly as
+            // it does not empty the trash on Linux or macOS.
+            if (options.mode == RemovalMode::MoveToTrash) {
+                ++result.skippedAlreadyInTrash;
+                continue;
+            }
             std::string error;
             if (EmptyPlatformRecycleBin(error)) {
                 ++result.removedItems;
@@ -291,6 +298,17 @@ RemovalReport Remover::Remove(const ScanReport& report,
         std::string error;
         bool removed = false;
         if (options.mode == RemovalMode::MoveToTrash) {
+            // Moving the trash into the trash empties nothing: the file is
+            // renamed beside itself and gains a second .trashinfo, so the
+            // trash grows while the report claims the space back. Leave it
+            // alone and say so — emptying the trash is what
+            // RemovalMode::DeletePermanently is for, and that choice is the
+            // user's to make deliberately.
+            const std::string trash = TrashDir();
+            if (!trash.empty() && IsPathInside(item->path, trash)) {
+                ++result.skippedAlreadyInTrash;
+                continue;
+            }
             removed = MoveToPlatformTrash(item->path, error);
         } else {
             std::error_code removeEc;

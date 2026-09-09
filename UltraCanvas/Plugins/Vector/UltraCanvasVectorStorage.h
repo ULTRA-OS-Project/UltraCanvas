@@ -122,25 +122,64 @@ namespace UltraCanvas {
 
 // ===== MATRIX 3x3 =====
 
+        // Row-major affine matrix: x' = m[0][0] x + m[0][1] y + m[0][2],
+        // y' = m[1][0] x + m[1][1] y + m[1][2]. Double precision, so the
+        // coordinates of CAD drawings (hundreds of thousands of units) keep
+        // their sub-unit accuracy through nested block transforms.
         class Matrix3x3 {
         public:
-            float m[3][3];
+            double m[3][3];
 
             Matrix3x3();
             static Matrix3x3 Identity();
-            static Matrix3x3 Translate(float tx, float ty);
-            static Matrix3x3 Scale(float sx, float sy);
-            static Matrix3x3 Rotate(float a);
-            Matrix3x3 RotateDegrees(float degrees);
-            Matrix3x3 SkewX(float angle);
-            Matrix3x3 SkewY(float angle);
-            static Matrix3x3 FromValues(float a, float b, float c, float d, float e, float f);
+            static Matrix3x3 Translate(double tx, double ty);
+            static Matrix3x3 Scale(double sx, double sy);
+            static Matrix3x3 Rotate(double a);
+            static Matrix3x3 RotateDegrees(double degrees);
+            static Matrix3x3 SkewX(double angle);
+            static Matrix3x3 SkewY(double angle);
+            // Row-major: x' = a x + b y + e, y' = c x + d y + f. Note this is
+            // NOT the SVG/PostScript matrix(a, b, c, d, e, f) order, where
+            // b and c are swapped - callers converting from those formats
+            // pass FromValues(a, c, b, d, e, f).
+            static Matrix3x3 FromValues(double a, double b, double c, double d, double e, double f);
             Matrix3x3 operator*(const Matrix3x3 &o) const;
             Point2Dd Transform(const Point2Dd &p) const;
             Rect2Dd Transform(const Rect2Dd& rect) const;
-            float Determinant() const;
+            double Determinant() const;
             Matrix3x3 Inverse() const;
+            bool IsIdentity(double epsilon = 1e-9) const;
         };
+
+// ===== UNITS =====
+
+        // Physical length units a source file can measure in. The model
+        // itself is always in points (1/72 in); readers record which unit
+        // the file used and how many points they made of one unit, so a
+        // consumer can recover the source measurements and a writer with a
+        // unit field (DXF $INSUNITS) can round-trip them.
+        enum class LengthUnit {
+            Unspecified,   // unitless drawing units, or unknown
+            Point,
+            Pixel,         // CSS pixel, 96 per inch
+            Inch,
+            Foot,
+            Yard,
+            Mile,
+            Mil,           // 1/1000 in
+            Millimeter,
+            Centimeter,
+            Decimeter,
+            Meter,
+            Kilometer,
+            Micrometer,
+            Nanometer
+        };
+
+        // Points per one unit; 0 for Unspecified.
+        double PointsPerUnit(LengthUnit unit);
+        // Short symbol ("mm", "in", "pt", ...); "" for Unspecified.
+        const char* LengthUnitSymbol(LengthUnit unit);
 
 // ===== PATH DATA =====
 
@@ -155,7 +194,7 @@ namespace UltraCanvas {
             bool Closed = false;
             mutable std::optional<Rect2Dd> cachedBounds;
             mutable std::optional<float> length;
-            mutable std::optional<Point2Dd> flattenedPoints;
+            mutable std::optional<std::vector<Point2Dd>> flattenedPoints;
 
             Rect2Dd GetBounds() const {
                 if (cachedBounds) return *cachedBounds;
@@ -615,6 +654,18 @@ namespace UltraCanvas {
             float Opacity = 1.0f;
             BlendMode LayerBlendMode = BlendMode::Normal;
 
+            // CAD layer-table properties (DXF/DWG LAYER records). Readers
+            // resolve every entity's ByLayer colour, lineweight and linetype
+            // into the element's own Style, so these describe the layer's
+            // defaults for writers that keep a layer table; they do not
+            // affect rendering.
+            bool Frozen = false;                    // hidden and not regenerated
+            bool Plottable = true;                  // printed when the drawing is plotted
+            std::optional<Color> DefaultColor;      // ByLayer colour
+            float DefaultStrokeWidth = 0.0f;        // ByLayer lineweight in points (0 = default)
+            std::string LineTypeName;               // ByLayer linetype ("Continuous", "DASHED", ...)
+            std::vector<double> DefaultDashArray;   // that linetype's dashes in points, empty = solid
+
             VectorLayer() { Type = VectorElementType::Layer; }
 
             std::shared_ptr<VectorElement> Clone() const;
@@ -634,7 +685,16 @@ namespace UltraCanvas {
             std::map<std::string, std::string> Metadata;
             std::map<std::string, VectorStyle> NamedStyles;
 
+            // Coordinates and Size are always points. Readers of formats
+            // whose files carry a unit set the unit and the scale they
+            // applied (source value = point value / PointsPerSourceUnit);
+            // Unspecified with 1.0 means the source was already in points
+            // or carried no unit.
+            LengthUnit SourceUnit = LengthUnit::Unspecified;
+            double PointsPerSourceUnit = 1.0;
+
             std::shared_ptr<VectorLayer> AddLayer(const std::string &n);
+            void FitToContent(float padding);
             void RemoveLayer(const std::string &n);
             std::shared_ptr<VectorLayer> GetLayer(const std::string &n) const;
             void AddDefinition(const std::string &id, std::shared_ptr<VectorElement> e);
@@ -651,5 +711,6 @@ namespace UltraCanvas {
         std::string SerializePathData(const PathData &path);
         Color ParseColorString(const std::string &colorStr);
         Matrix3x3 ParseTransformString(const std::string &transformStr);
+        std::string SerializeTransform(const Matrix3x3 &transform);
     } // namespace VectorStorage
 } // namespace UltraCanvas

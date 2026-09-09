@@ -292,11 +292,16 @@ bool UltraCanvasSTLElement::OnEvent(const UCEvent& event) {
             }
             break;
         case UCEventType::MouseWheel: {
-            // Wheel zoom: positive delta zooms in.
-            distance_ *= (event.wheelDelta > 0) ? 0.9f : 1.1f;
-            if (distance_ < 0.2f) distance_ = 0.2f;
-            if (distance_ > 50.0f) distance_ = 50.0f;
-            RequestRender();
+            // Wheel zoom: positive delta zooms in. The dolly eases in rather
+            // than stepping (see UltraCanvasSmoothScroll.h).
+            if (!dollyAnim_.IsBound()) {
+                dollyAnim_.Bind([this](double f) {
+                                    distance_ = std::clamp(
+                                            static_cast<float>(distance_ * f), 0.2f, 50.0f);
+                                },
+                                [this] { RequestRender(); });
+            }
+            dollyAnim_.ZoomBy((event.wheelDelta > 0) ? 0.9 : 1.1, distance_, 0.2, 50.0);
             return true;
         }
         default:

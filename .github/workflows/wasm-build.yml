@@ -1,0 +1,84 @@
+name: WebAssembly build
+
+# Builds the WebAssembly backend's demo app with Emscripten, so OS/WASM/ and
+# the core's __EMSCRIPTEN__ branches get compiled somewhere other than one
+# developer's machine.
+#
+# Manual dispatch only, on purpose: the wasm sysroot (glib, cairo, pango,
+# fontconfig, harfbuzz, libvips and their dependencies) takes the better part
+# of an hour to cross-compile and needs Ubuntu source packages, so it does not
+# belong in the per-PR matrix. The sysroot is cached on the hash of the
+# script and its patches; a warm run only builds the framework and the demo.
+# Run it from the Actions tab against a branch whenever a change touches
+# UltraCanvas/OS/WASM/ or the EMSCRIPTEN branches of the CMake files.
+
+on:
+  workflow_dispatch:
+    inputs:
+      emsdk_version:
+        description: 'Emscripten SDK version (see OS/WASM/README.md for the validated one)'
+        required: false
+        default: 'latest'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: true
+
+jobs:
+  wasm:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      SYSROOT: ${{ github.workspace }}/wasm-sysroot
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Install host tools
+        run: |
+          # deb-src entries for the fontconfig / pixman / cairo / pango
+          # source packages the sysroot script fetches with apt-get source.
+          sudo sed -i 's/^Types: deb$/Types: deb deb-src/' /etc/apt/sources.list.d/ubuntu.sources
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake meson ninja-build gperf pkg-config \
+            python3 curl git dpkg-dev
+
+      - name: Set up Emscripten
+        uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: ${{ inputs.emsdk_version }}
+          actions-cache-folder: emsdk-cache
+
+      - name: Restore wasm sysroot
+        id: sysroot-cache
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.SYSROOT }}
+          key: wasm-sysroot-${{ runner.os }}-${{ inputs.emsdk_version }}-${{ hashFiles('UltraCanvas/OS/WASM/build-wasm-sysroot.sh', 'UltraCanvas/OS/WASM/patches/**') }}
+
+      - name: Build wasm sysroot
+        if: steps.sysroot-cache.outputs.cache-hit != 'true'
+        working-directory: UltraCanvas/OS/WASM
+        run: ./build-wasm-sysroot.sh "$SYSROOT" "${{ runner.temp }}/wasm-sysroot-build"
+
+      - name: Configure demo
+        working-directory: UltraCanvas/OS/WASM/demo
+        env:
+          EM_PKG_CONFIG_PATH: ${{ env.SYSROOT }}/lib/pkgconfig:${{ env.SYSROOT }}/share/pkgconfig
+        run: emcmake cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build demo
+        working-directory: UltraCanvas/OS/WASM/demo
+        run: cmake --build build --parallel
+
+      - name: Upload demo
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-demo
+          path: |
+            UltraCanvas/OS/WASM/demo/build/wasm-demo.html
+            UltraCanvas/OS/WASM/demo/build/wasm-demo.js
+            UltraCanvas/OS/WASM/demo/build/wasm-demo.wasm
+            UltraCanvas/OS/WASM/demo/build/wasm-demo.data
+            UltraCanvas/OS/WASM/demo/build/wasm-demo.ww.js
+          if-no-files-found: error

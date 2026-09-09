@@ -4,11 +4,18 @@
 // Last Modified: 2026-07-20
 // Author: UltraCanvas Framework
 
+// winsock2.h must precede windows.h (pulled in by the headers below) so the legacy winsock.h v1
+// is not included instead. Needed for select()/fd_set used to service host fd-watches.
+#include <winsock2.h>
+
 #include "../../include/UltraCanvasApplication.h"
 #include "../../include/UltraCanvasWindow.h"
 #include "UltraCanvasWindowsApplication.h"
+#include "UltraCanvasWindowsDiagnostics.h"
 #include <iostream>
 #include <algorithm>
+#include <cstdio>
+#include <exception>
 #include <filesystem>
 #include <sstream>
 #include <pango/pangocairo.h>
@@ -31,6 +38,13 @@ namespace UltraCanvas {
         debugOutput << "UltraCanvas: Windows Application created" << std::endl;
     }
 
+    UltraCanvasWindowsApplication::~UltraCanvasWindowsApplication() {
+        // Clear the singleton pointer so GetInstance() returns nullptr once the
+        // app is gone; widget destructors that run later (e.g. at static exit)
+        // then skip CleanupElementReferences instead of locking a dead mutex.
+        if (instance == this) instance = nullptr;
+    }
+
 // ===== INITIALIZATION =====
     bool UltraCanvasWindowsApplication::InitializeNative() {
         if (initialized) {
@@ -38,20 +52,32 @@ namespace UltraCanvas {
             return true;
         }
 
+        // STEP 0: Make this process able to explain itself. The Windows targets
+        // link as GUI-subsystem executables, so without these three calls a
+        // failure to start produces no window, no console output and no log --
+        // the failure mode that makes "it doesn't start on that machine"
+        // unfixable. None of them affects a successful start.
+        AttachParentConsole();
+        InstallWindowsCrashReporter(appName);
+        LogWindowsStartupBanner(appName);
+
         debugOutput << "UltraCanvas: Initializing Windows Application..." << std::endl;
 
         try {
             // STEP 1: Get module handle
             hInstance = GetModuleHandle(nullptr);
             if (!hInstance) {
-                debugOutput << "UltraCanvas: GetModuleHandle failed" << std::endl;
+                ReportWindowsStartupFailure("GetModuleHandle failed",
+                                            DescribeWin32Error(GetLastError()));
                 return false;
             }
 
             // STEP 2: Initialize COM/OLE for drag-drop and file dialogs
             HRESULT hr = OleInitialize(nullptr);
             if (FAILED(hr)) {
-                debugOutput << "UltraCanvas: OleInitialize failed: 0x" << std::hex << hr << std::endl;
+                std::ostringstream detail;
+                detail << "OleInitialize returned 0x" << std::hex << hr;
+                ReportWindowsStartupFailure("COM/OLE initialisation failed", detail.str());
                 return false;
             }
 
@@ -75,7 +101,8 @@ namespace UltraCanvas {
 
             // STEP 5: Register main window class
             if (!RegisterWindowClass()) {
-                debugOutput << "UltraCanvas: Failed to register window class" << std::endl;
+                // RegisterWindowClass() has already reported the reason, while
+                // GetLastError() still held it.
                 OleUninitialize();
                 return false;
             }
@@ -96,7 +123,7 @@ namespace UltraCanvas {
             return true;
 
         } catch (const std::exception& e) {
-            debugOutput << "UltraCanvas: Exception during initialization: " << e.what() << std::endl;
+            ReportWindowsStartupFailure("Exception during initialisation", e.what());
             ShutdownNative();
             return false;
         }
@@ -148,7 +175,10 @@ namespace UltraCanvas {
 
         windowClassAtom = RegisterClassExW(&wc);
         if (!windowClassAtom) {
-            debugOutput << "UltraCanvas: RegisterClassExW failed: " << GetLastError() << std::endl;
+            ReportWindowsStartupFailure(
+                "Could not register the window class \"" +
+                    Utf16ToUtf8(mainWindowClassName) + "\"",
+                DescribeWin32Error(GetLastError()));
             return false;
         }
 
@@ -222,6 +252,49 @@ namespace UltraCanvas {
 
 // ===== MAIN LOOP =====
 
+    // Poll interval (ms) used to bound the message wait while host fd-watches are registered, so
+    // level-triggered socket readiness is picked up promptly without a busy-spin. Winsock select()
+    // is edge-agnostic here: we re-poll each iteration rather than relying on WSAEventSelect's
+    // edge semantics, which do not match Ladybird's level-triggered Core::Notifier expectations.
+    static constexpr DWORD kFdWatchPollMs = 10;
+
+    bool UltraCanvasWindowsApplication::PollAndServiceFdWatches() {
+        auto fdWatchKeys = SnapshotFdWatchKeys();
+        if (fdWatchKeys.empty())
+            return false;
+
+        fd_set readfds;
+        fd_set writefds;
+        FD_ZERO(&readfds);
+        FD_ZERO(&writefds);
+        int count = 0;
+        for (const auto& key : fdWatchKeys) {
+            if (key.fd < 0)
+                continue;
+            // Ladybird's Windows IPC fds are raw Winsock SOCKETs (see SocketpairWindows.cpp).
+            auto sock = static_cast<SOCKET>(static_cast<uintptr_t>(key.fd));
+            FD_SET(sock, key.type == FdWatchType::Write ? &writefds : &readfds);
+            ++count;
+        }
+        if (count == 0)
+            return true;
+
+        timeval tv { 0, 0 }; // non-blocking poll; the message wait provides the actual blocking.
+        int result = select(0, &readfds, &writefds, nullptr, &tv); // nfds is ignored by Winsock.
+        if (result <= 0)
+            return true;
+
+        for (const auto& key : fdWatchKeys) {
+            if (key.fd < 0)
+                continue;
+            auto sock = static_cast<SOCKET>(static_cast<uintptr_t>(key.fd));
+            fd_set* set = key.type == FdWatchType::Write ? &writefds : &readfds;
+            if (FD_ISSET(sock, set))
+                FireFdWatch(key.id); // invoked unlocked, may re-enter Add/RemoveFdWatch
+        }
+        return true;
+    }
+
     void UltraCanvasWindowsApplication::CollectAndProcessNativeEvents() {
         MSG msg;
         // 1. Drain all pending messages (non-blocking)
@@ -234,13 +307,21 @@ namespace UltraCanvas {
             DispatchMessageW(&msg);
         }
 
-        // 2. Compute wait timeout from timer system
+        // 2. Service host fd-watches that are already readable/writable (e.g. Ladybird IPC).
+        bool const have_fd_watches = PollAndServiceFdWatches();
+
+        // 3. Compute wait timeout from timer system
         auto timeout = GetTimeUntilNextTimer();
         DWORD waitMs = (timeout == std::chrono::milliseconds::max())
                        ? INFINITE
                        : static_cast<DWORD>(timeout.count());
 
-        // 3. Wait for messages, wakeup event, or timer expiry
+        // Bound the wait while watching fds so newly-ready sockets are serviced within the poll
+        // interval (Winsock offers no way to fold arbitrary fds into MsgWaitForMultipleObjectsEx).
+        if (have_fd_watches && (waitMs == INFINITE || waitMs > kFdWatchPollMs))
+            waitMs = kFdWatchPollMs;
+
+        // 4. Wait for messages, wakeup event, or timer expiry
         if (wakeupEvent) {
             MsgWaitForMultipleObjectsEx(1, &wakeupEvent, waitMs, QS_ALLINPUT, MWMO_INPUTAVAILABLE);
         } else {
@@ -249,7 +330,10 @@ namespace UltraCanvas {
         // WAIT_OBJECT_0     = wakeupEvent signaled (auto-reset clears it)
         // WAIT_OBJECT_0 + 1 = Win32 message available
         // WAIT_TIMEOUT      = timer expired
-        // All cases: return to main loop which calls ProcessTimers + ProcessEvents
+
+        // 5. Service fd-watches again post-wait so IPC replies are handled this same iteration.
+        if (have_fd_watches)
+            PollAndServiceFdWatches();
     }
 
     // ===== WAKEUP MECHANISM =====
@@ -275,6 +359,46 @@ namespace UltraCanvas {
 
 // ===== WNDPROC =====
 
+    namespace {
+        // The event a window message stands for, for the log line and the
+        // dialog of ReportWindowsEventException: "mouse move" tells the reader
+        // more than "message 0x0200".
+        std::string DescribeWindowMessage(UINT msg) {
+            switch (msg) {
+                case WM_PAINT:         return "paint";
+                case WM_SIZE:          return "resize";
+                case WM_MOUSEMOVE:     return "mouse move";
+                case WM_LBUTTONDOWN:   return "left button press";
+                case WM_LBUTTONUP:     return "left button release";
+                case WM_LBUTTONDBLCLK: return "left double-click";
+                case WM_RBUTTONDOWN:   return "right button press";
+                case WM_RBUTTONUP:     return "right button release";
+                case WM_MBUTTONDOWN:   return "middle button press";
+                case WM_MBUTTONUP:     return "middle button release";
+                case WM_MOUSEWHEEL:    return "mouse wheel";
+                case WM_MOUSEHWHEEL:   return "horizontal mouse wheel";
+                case WM_MOUSELEAVE:    return "mouse leave";
+                case WM_KEYDOWN:       return "key press";
+                case WM_KEYUP:         return "key release";
+                case WM_SYSKEYDOWN:    return "system key press";
+                case WM_SYSKEYUP:      return "system key release";
+                case WM_CHAR:          return "character input";
+                case WM_SETFOCUS:      return "focus gained";
+                case WM_KILLFOCUS:     return "focus lost";
+                case WM_TIMER:         return "timer";
+                case WM_CLOSE:         return "window close";
+                case WM_DPICHANGED:    return "DPI change";
+                case WM_SETCURSOR:     return "cursor selection";
+                default: {
+                    char buffer[40];
+                    std::snprintf(buffer, sizeof(buffer), "window message 0x%04X",
+                                  static_cast<unsigned>(msg));
+                    return buffer;
+                }
+            }
+        }
+    } // namespace
+
     LRESULT CALLBACK UltraCanvasWindowsApplication::StaticWndProc(
             HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
 
@@ -290,14 +414,36 @@ namespace UltraCanvas {
                 GetWindowLongPtrW(hwnd, GWLP_USERDATA));
         }
 
-        // Let the application convert messages to UCEvents
-        if (instance) {
-            instance->ProcessWindowMessage(hwnd, msg, wParam, lParam);
-        }
+        // No C++ exception may leave this function. user32 calls it from a
+        // callback the kernel dispatched (KiUserCallbackDispatcher), and on
+        // x64 the unwinder cannot walk back across that boundary: an
+        // exception thrown by any event handler below -- a click on a folder,
+        // a hover, a key -- never reaches the application's try/catch around
+        // Run(). Instead the process dies, reported by the crash filter as
+        // STATUS_BAD_FUNCTION_TABLE (0xC00000FF) in ntdll or as the bare GCC
+        // throw code (0x20474343) in KERNELBASE, with the error text lost.
+        // Caught here it becomes a logged, reported error and an abandoned
+        // event, which is what the same exception is on the other platforms.
+        try {
+            // Let the application convert messages to UCEvents
+            if (instance) {
+                instance->ProcessWindowMessage(hwnd, msg, wParam, lParam);
+            }
 
-        // Let the window handle its own messages
-        if (window) {
-            return window->HandleMessage(hwnd, msg, wParam, lParam);
+            // Let the window handle its own messages
+            if (window) {
+                return window->HandleMessage(hwnd, msg, wParam, lParam);
+            }
+        } catch (const std::exception& e) {
+            ReportWindowsEventException(DescribeWindowMessage(msg), e.what());
+            // Handled as far as Windows is concerned: DefWindowProc would act
+            // on the message itself (WM_CLOSE destroys the window), which
+            // the abandoned handler did not decide.
+            if (window) return 0;
+        } catch (...) {
+            ReportWindowsEventException(DescribeWindowMessage(msg),
+                                        "exception of a non-std::exception type");
+            if (window) return 0;
         }
 
         return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -936,4 +1082,32 @@ namespace UltraCanvas {
 #endif
         }
     }
+    bool UltraCanvasWindowsApplication::RegisterFontFileNative(const std::string& fontFilePath) {
+        // Two registrations, because two consumers look in different places:
+        // GDI (FR_PRIVATE - this process only) for anything that goes through
+        // the Win32 text stack, and fontconfig for Pango, which the framework
+        // pins to its FontConfig backend on Windows. Pango is the one that
+        // matters for UltraCanvas text, so a GDI refusal is logged and
+        // tolerated while a fontconfig refusal fails the call.
+        const std::wstring wpath = Utf8ToUtf16(fontFilePath);
+        if (AddFontResourceExW(wpath.c_str(), FR_PRIVATE, 0) == 0) {
+            debugOutput << "UltraCanvas: AddFontResourceExW failed for "
+                        << fontFilePath << std::endl;
+        }
+
+        FcConfig* cfg = FcConfigGetCurrent();
+        if (!cfg) {
+            debugOutput << "UltraCanvas: RegisterFontFileNative: no current "
+                           "fontconfig config" << std::endl;
+            return false;
+        }
+        if (!FcConfigAppFontAddFile(
+                cfg, reinterpret_cast<const FcChar8*>(fontFilePath.c_str()))) {
+            debugOutput << "UltraCanvas: FcConfigAppFontAddFile failed for "
+                        << fontFilePath << std::endl;
+            return false;
+        }
+        return true;
+    }
+
 } // namespace UltraCanvas

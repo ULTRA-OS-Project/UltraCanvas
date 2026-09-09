@@ -72,9 +72,11 @@ icon (a vector-drawn warning triangle, so no icon assets are required) with the
 message below it, vertically centered in the folder display. A folder without
 content shows **"Folder is empty!"**; an empty [file list](#file-list-search-results)
 — the UltraFiler's History and Favorites tabs before anything was recorded or
-pinned, a search without matches — shows **"No entries"**. A widget that never
-had a folder set keeps the plain "(no folder)" text. Icon and text use
-`FilerStyle::secondaryTextColor`.
+pinned, a search without matches — shows **"No entries"**. A listing emptied by
+the [name filter](#name-filter-filter-as-you-type) shows **"No matches for
+"…""** — with the host's escalation button centered under it when one is set
+via `SetFilterEmptyAction()`. A widget that never had a folder set keeps the
+plain "(no folder)" text. Icon and text use `FilerStyle::secondaryTextColor`.
 
 ## Sorting
 
@@ -140,9 +142,35 @@ a name gets is only as wide as the tile, which is far less than most file names
 need. A name that does not fit therefore **wraps onto the next line** instead of
 being cut off after one:
 
-- Lines break after a separator (space, `-`, `_`, `.`) when one sits in the back
-  half of the line, otherwise at the exact character that still fits — file names
-  are frequently one long "word".
+- Lines break after a separator (space, `-`, `_`, `.`) or between whole words.
+  A name is only broken **inside** a word when it has to be — file names are
+  frequently one long "word" — and never where that leaves a stub of
+  `FilerStyle::captionBreakTolerance` characters or fewer on either side of the
+  break: cutting `CoderBox` into `CoderBo` / `x` gains the line one character
+  and costs a readable name.
+- A name written in **PascalCase / camelCase** counts as the words it is made
+  of: an upper-case letter that opens a new word — one following a lower-case
+  letter or a digit, or the last capital of an acronym before a lower-case
+  letter (`PDF` / `Viewer`) — is a break opportunity like a space, so the line
+  ends *before* it rather than one letter later
+  (`FilerStyle::captionCamelCaseBreaks`, on by default; ASCII letters):
+
+  ```
+  UltraCanvas           UltraCanva
+  Texter.exe       not  sTexter.exe
+  ```
+- A line may run `FilerStyle::captionOverflowSlack` pixels past the caption
+  width to keep a word (or a whole last line) in one piece. The caption is
+  inset from the tile edge, so those pixels are free:
+
+  ```
+  Logo CoderBox         Logo CoderBo
+  with text.png    not  x with text.png
+  ```
+
+- Characters beat typography: when keeping the words whole would push part of
+  the name off the caption, the name is re-broken with mid-word breaks allowed
+  (and the case rule off) and the version showing more of it wins.
 - At most `FilerStyle::captionMaxLines` lines are used (**2** by default; `1`
   restores the old single-line caption).
 - A name that fits its lines completely is broken **balanced**, not greedily:
@@ -172,6 +200,55 @@ The row-based views (`Details`, `List`, `BarSize`) keep their single-line,
 ellipsized names — their rows are fixed height and the name has a whole column
 width available.
 
+## File extensions
+
+Whether a drawn name still ends in its extension, and what a thumbnail tile
+shows about the file type instead, are two independent switches
+(`Display > File extensions`):
+
+```cpp
+filer->SetFileExtensionsInNames(false);                    // "UltraFiler", not "UltraFiler.exe"
+filer->SetExtensionBadge(FilerExtensionBadge::Bar);        // "exe" on a strip under the icon
+```
+
+| Call | Default | Effect |
+|---|---|---|
+| `SetFileExtensionsInNames(bool)` | `true` | The names drawn in **every** view — Details, List, the thumbnail grids, BarSize, treemap cells and the name tooltips — keep their extension, or are drawn without it. |
+| `SetExtensionBadge(FilerExtensionBadge)` | `NoneBadge` | `Bar` draws a strip across the foot of a thumbnail tile's icon box with the extension in a tag at its right end; `Icon` draws that tag alone in the box's bottom-right corner; `NoneBadge` draws neither. |
+
+Both are **display-only**. `FilerEntry::name` always holds the real name, so
+sorting, the Type column, the selection info bar, the inline rename editor and
+every file operation keep working on it: a hidden extension cannot be lost by a
+rename, and renaming never has to re-append one. The rename editor therefore
+shows the full name (with the base name preselected, as always), which is also
+what stops a user from typing a second extension onto a name that already has
+one.
+
+A name is only shortened where its tail really is a file type. The tag rule and
+the name rule are the same one — `ExtensionTagOf()` answers it — so a name that
+keeps its tail also gets no tile tag:
+
+| Name | Drawn without extensions | Tile tag |
+|---|---|---|
+| `UltraFiler.exe` | `UltraFiler` | `exe` |
+| `sources.tar.gz` | `sources.tar` | `gz` |
+| `.bashrc` | `.bashrc` | — |
+| `README` | `README` | — |
+| `UCDemo-Windows-0.3.27-x86_64` | unchanged | — (a version, not a type) |
+| `Backup.old` (a **folder**) | unchanged | — (folders have no extension) |
+
+The tag is painted **over** the foot of the icon box, not under it, so
+switching it on never changes a tile's height and never relays out the grid.
+Only the four thumbnail views draw it — the row views have a Type column and a
+whole row width for the name. `DisplayNameOf(entry)` returns the name as the
+display draws it, for a host that labels the same entry elsewhere (a drag
+badge, a breadcrumb, a tile of its own).
+
+Changing either switch — from the menu or through the setters — fires
+`onDisplayFormatsChanged`, the same hook the Thumbnails / Detail view switches
+use, so an application persists both from one place (UltraFiler:
+`Settings > Display > File extensions`).
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -187,29 +264,27 @@ The hover icon-menu buttons keep their own action tooltips and win wherever the
 two overlap, so in the Details view the name column describes the file while the
 icon strip — which sits over the columns to its right — describes its buttons.
 
+Like the icon strip, the tooltip describes the file under the cursor even when
+it was the view that moved: scrolling with the wheel, the scrollbar or the
+keyboard re-points it at whatever name is under the pointer afterwards (see
+[The hover follows the cursor, not the content](#the-hover-follows-the-cursor-not-the-content)).
+
 ## Context menu
 
 A right-click opens the file menu:
 
 ```
+Open with      >  clicking the entry opens the selection with the OS default
+                  application; the submenu lists the applications the OS
+                  registers for the selected files (default app first), then
+                  entries added via AddOpenWithApp(), then "Other
+                  application…" (file dialog)
+──────────
 Open Path         (only when SetOpenPathMenuItemVisible(true) — search-result
 ──────────         displays; the label is configurable)
 Copy / Cut / Paste / Delete / Duplicate / Rename
 ──────────
 New            >  Text, Doc, Spreadsheet, Bitmap, Vector, Audio, Video
-──────────
-Display        >  Sort    >  Name / Size / Type / Modified / Created + Ascending / Descending
-                  Type    >  all view types
-                  Preview >  Bitmaps / Vector graphics / 3D / PDF / Text /
-                             Docs / Spreadsheets / Videos  (checkboxes, all on)
-                  Dataset >  Size / Edit date / Creation date / Attributes /
-                             Length (audio/video) / Dimensions (bitmaps)
-                  Icon-Menu (checkbox: the small hover icon menu)
-                  Info-Bar (checkbox: the selection info bar)
-──────────
-Open with      >  the applications the OS registers for the selected files
-                  (default app first), then entries added via
-                  AddOpenWithApp(), then "Other application…" (file dialog)
 ──────────
 Compress / Extract
 ──────────
@@ -218,6 +293,21 @@ Print
 Extras         >  Share / Attributes / Copy path / Access
                   (plus the host's items via extrasMenuProvider — in the
                   UltraFiler: Open prompt and the Pin / Unpin submenus)
+Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascending / Descending
+                  Type        >  all view types
+                  File extensions > "Show in names" (checkbox) + None / Bar /
+                                 Icon (the thumbnail tile tag)
+                  Thumbnails  >  Bitmaps / Vector graphics / 3D / PDF / Text /
+                                 Docs / Spreadsheets / Videos / Audio / Fonts
+                                 (checkboxes, all on; the host may append its
+                                 own entry via formatListMenuProvider)
+                  Detail view >  the same ten kinds (checkboxes, all on)
+                  Dataset     >  Size / Edit date / Creation date / Attributes /
+                                 Length (audio/video) / Dimensions (bitmaps)
+                  Icon-Menu (checkbox: the small hover icon menu)
+                  Info-Bar (checkbox: the selection info bar)
+                  Hidden files (checkbox: hidden entries, and the full listing
+                             of a curated home folder — see below)
 Settings
 ```
 
@@ -229,7 +319,15 @@ Notes:
 - Items whose hook callback is not set (Print, Share, Attributes, Access,
   Settings, empty Open with) are shown disabled. "Copy path" has a built-in
   default (system clipboard via `SetClipboardText`).
-- **Open with** lists the OS-registered applications through
+- **Open with** is the first entry — opening a file is what the menu is
+  opened for most often — and the entry itself is clickable: it opens the
+  whole selection with the OS default application, the same thing a
+  double-click does (a single file that is a program is run, a script asks
+  first). Hovering opens the submenu as usual, so the application list stays
+  one move away. The click is offered whenever the selection is real files on
+  disk, `SetSystemOpenWithEnabled(false)` included — that flag only removes
+  the OS-registered section of the submenu.
+- The **Open with** submenu lists the OS-registered applications through
   [`UltraCanvasFileAssociations`](UltraCanvasFileAssociations.md) — name,
   icon, the default application first. The lookups are prewarmed on that
   service's background worker (the first widget triggers the
@@ -242,9 +340,12 @@ Notes:
   `SetSystemOpenWithEnabled(false)` restores the manual-only behaviour.
   "Other application…" opens a file dialog (via `UltraCanvasFileLoader`)
   preset to the platform's application filter and directory; the pick is
-  launched detached with the selected files. On platforms whose enumeration
-  backend is still pending (Windows, macOS — proposal phases P2/P3) the OS
-  section is empty but default-open and the picker already work.
+  launched detached with the selected files. Every desktop platform
+  enumerates: freedesktop `.desktop` entries on Linux/BSD, the handlers
+  Explorer lists on Windows, Launch Services on macOS 12+. Where a platform
+  cannot type a file (Windows and macOS associate by extension, so a name
+  without one has no candidates) the OS section stays empty and default-open
+  plus the picker still work.
 - `SetActivateOpensWithDefaultApp(true)` makes double-click / Enter launch a
   file with the OS default application **when no `onFileActivated` callback
   is installed** — activation semantics for simple embedders; hosts with
@@ -280,8 +381,12 @@ Notes:
   Extract into the existing folder / Skip) when the destination folder name
   is already taken; `OpenExtractDialog()` opens the extract dialog the menu
   uses.
-- **Display > Preview** switches content previews on and off per file kind —
-  see [Selective previews](#selective-previews).
+- **Display > Thumbnails** switches thumbnails on and off per file kind, and
+  **Display > Detail view** does the same for the detail pane a host opens
+  beside the display — see [Selective previews](#selective-previews). Both
+  submenus end with the host's own entry into the per-format lists when it
+  installed a `formatListMenuProvider` (UltraFiler: "File formats…", which
+  opens the matching settings page).
 - **Display > Dataset** toggles extra per-file facts drawn under the name in the
   thumbnail views: Size, Edit date, Creation date, Attributes, Length
   (audio/video duration) and Dimensions (bitmap pixel size). Each enabled field
@@ -293,30 +398,41 @@ Notes:
 ## Selective previews
 
 A **content preview** is a tile rendered from the file itself instead of the
-generic category glyph. Which kinds of file get one is selectable, and every
-kind is enabled by default:
+generic category glyph. Two independent sets of switches decide what a file
+may show, and every kind is enabled in both by default:
+
+- **Thumbnails** (`Display > Thumbnails`) — the tile the widget draws.
+- **Detail view** (`Display > Detail view`) — whether the host may open its
+  detail pane for the entry. The widget does not own that pane; it keeps the
+  answer so that one setting governs both halves of a file manager's display.
 
 ```cpp
-filer->SetPreviewType(FilerPreviewType::Videos, false);   // no poster frames
-filer->IsPreviewTypeEnabled(FilerPreviewType::PDF);       // true
+filer->SetThumbnailKind(FilerPreviewType::Videos, false);   // no poster frames
+filer->IsThumbnailKindEnabled(FilerPreviewType::PDF);       // true
 
 // Only the cheap ones (a slow network share, say):
-filer->SetPreviewTypes(static_cast<uint32_t>(FilerPreviewType::Bitmaps) |
-                       static_cast<uint32_t>(FilerPreviewType::Text));
+filer->SetThumbnailKinds(static_cast<uint32_t>(FilerPreviewType::Bitmaps) |
+                         static_cast<uint32_t>(FilerPreviewType::Text));
 
-filer->SetPreviewTypes(kFilerAllPreviewTypes);            // back to the default
+filer->SetThumbnailKinds(kFilerAllPreviewTypes);            // back to the default
+
+// The same nine switches for the host's detail pane:
+filer->SetDetailViewKind(FilerPreviewType::Videos, false);
+if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 ```
 
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, eps, cdr, xar | the rendered drawing (formats the image pipeline can rasterize) |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (emf, wmf, dxf, dwg, older RIFF cdr, an EPS written without a preview) has no renderer that works without a window and keeps its glyph |
 | `Models3D` | 3D | stl (plus obj, ply, 3ds, 3mf, gltf, glb, dae, fbx as a file category) | a shaded three-quarter view of the mesh, rasterized in software; only STL is rendered so far, the other formats keep their glyph |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, epub | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
-| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph) |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
+| `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
+| `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
+| `Fonts` | Fonts | ttf, ttc, otf, otc, woff, woff2, pfa, pfb, bdf, pcf, fon, fnt | a card with a line of the font's own glyphs, rasterized by FreeType — see [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md). The font does not have to be installed, so a folder of downloaded fonts previews like a folder of photos; a symbol or icon face shows its own first glyphs instead. The mirror image of Audio: there is no font viewer yet, so the Detail view switches are the ones with nothing behind them, and woff / woff2 report as unsupported unless the installed FreeType was built with zlib / Brotli |
 
 Notes:
 
@@ -329,32 +445,273 @@ Notes:
   thumbnails, in the same viewport-driven order (visible tiles first, then one
   screen of prefetch), so no preview ever blocks a frame. Image work has
   priority over reading text.
-- Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D) are only drawn where
-  a page is legible — from roughly a 40 px box up. The small icon column of the
-  Details and List rows keeps the type glyph, so a folder listing does not read
-  every document in it.
-- `FilerPreviewType` values are a bitmask; `GetPreviewTypes()` returns the
-  current set and `kFilerAllPreviewTypes` is the default. The preview kinds do
-  not map one to one onto `FilerFileCategory`: PDF is split out of the Document
-  category because it renders a page, and CSV / TSV count as spreadsheets
-  because they preview as a grid (their file category stays `Text`).
+- A preview that comes back empty marks the file as failed (it is not retried)
+  and the tile keeps its glyph — indistinguishable, on screen, from a kind that
+  is simply switched off. The worker therefore logs
+  `no thumbnail produced for "<path>"` for each such file, which is what names
+  the cause when a whole folder loses its previews.
+- Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D, Fonts) are only drawn
+  where a page is legible — from roughly a 40 px box up. The small icon column of
+  the Details and List rows keeps the type glyph, so a folder listing does not
+  read every document in it, and a font specimen squeezed into an icon slot is
+  not shown as a smear of ink.
+- `FilerPreviewType` values are a bitmask; `GetThumbnailKinds()` /
+  `GetDetailViewKinds()` return the current sets and `kFilerAllPreviewTypes` is
+  the default of both. The preview kinds do not map one to one onto
+  `FilerFileCategory`: PDF is split out of the Document category because it
+  renders a page, and CSV / TSV count as spreadsheets because they preview as a
+  grid (their file category stays `Text`). Fonts are the one kind that does line
+  up exactly with its category (`FilerFileCategory::Font`).
   `UltraCanvasFilerWidget::PreviewTypeOf(entry)` reports the kind of an entry
   (`NonePreview` for folders, audio, archives and programs, which never carry a
   content preview).
 
-### Native application icons (Windows)
+### Per-format switches (the list of files)
 
-On Windows, `.exe`, `.dll` and `.ico` files show the **icon embedded in the
-file** — what Explorer shows — instead of the generic EXE/DLL glyph, in every
-view from the Details icon column up to the largest thumbnail tiles. The icon
-is extracted by the shell (`SHDefExtractIconW`, at the nearest embedded size
-up to 256 px) on the same background workers as the image thumbnails, so a
-folder of executables scrolls as smoothly as one of photos; a file without an
-icon resource keeps its glyph. This is an icon, not a content preview, so the
-Display > Preview switches do not affect it. The extractor lives behind
-`UltraCanvasNativeFileIcons.h` (`NativeFileIconAvailable` /
-`LoadNativeFileIconPixmap`); on other platforms it reports no icon and
-nothing changes.
+A kind is coarse: switching *Vector graphics* off to be rid of one expensive
+format costs the thumbnails of all seventeen. Each set therefore takes
+per-format exceptions — a single extension switched off while its kind stays
+on:
+
+```cpp
+filer->SetThumbnailFormatEnabled("eps", false);      // no EPS thumbnails
+filer->IsThumbnailFormatEnabled("eps");              // false
+filer->SetDetailViewFormatEnabled(".PSD", false);    // dot and case are ignored
+
+// What an application persists (both sorted, lowercase, dot-less):
+std::vector<std::string> off = filer->GetDisabledThumbnailFormats();
+filer->SetDisabledThumbnailFormats(off);
+```
+
+The lists hold the **exceptions**, not an allow-list, so a format the widget
+learns about later — a plugin registering a new vector format — is enabled by
+default like every other one.
+
+`GetPreviewableFormats()` is what such a list of files is built from: every
+format the switches can address, in menu order (by kind, then by extension),
+each with the readable label and whether **this build** can produce a thumbnail
+for it at all.
+
+The list is complete with respect to the FileLoader: every format
+`UltraCanvasFileLoader::GetSupportedFormats()` reports for this build — its
+canonical extension and every alias — appears in it, filed under the preview
+kind of its media category. That is what the nine kinds are for: they cover
+all seven `MediaFormatCategory` values (Documents split three ways), so a
+format the application can open always has a switch. `FilerFormatListTest`
+holds the widget to it.
+
+```cpp
+for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats()) {
+    // f.extension "eps", f.label "EPS", f.kind VectorGraphics,
+    // f.thumbnailSupported — false without a PostScript loader AND without an
+    // embedded preview, so a settings page can grey the entry out instead of
+    // offering a switch that changes nothing.
+}
+```
+
+`thumbnailSupported` answers for the format in **this** build, and it answers
+honestly: false for audio (nothing reads cover art), for the vector formats
+with no renderer and no embedded preview (emf, wmf, dxf, dwg), for PDF without
+the plugin, for video without a backend, and for the container formats no
+reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
+ones are refused by the text-preview extractor too, so the tile keeps its type
+glyph instead of drawing a "page" holding the file's ZIP magic.
+
+`onDisplayFormatsChanged` fires after any of the four sets changes, whoever
+changed it (the Display menu included) — that is where an application saves
+the choice and mirrors it into its other file displays.
+
+### Embedded preview bitmaps
+
+Most vector formats have no renderer that works without a window, so a
+background worker cannot rasterize them. Three families do not need one: Xara
+documents (`.xar`, `.web`, `.wix`) store a GIF/JPEG/PNG preview among the first
+records of the file head, the ZIP-based CorelDRAW documents (`.cdr`, `.cdt`,
+X4 and newer) keep one as `previews/thumbnail.png`, and PostScript documents
+(`.eps`, `.epsf`, `.epsi`, `.ps` and the pre-CS2 `.ai` files, which are EPS)
+carry one either as the TIFF section of a DOS EPS binary header or as the
+hex-encoded EPSI preview in their comment block. The first two are ordinary
+images once lifted out; the EPSI preview is converted to a greyscale PGM. All
+of them decode on the thumbnail workers like any bitmap.
+
+The extraction is plain file parsing — no graphics plugin, no render context —
+and lives in `UltraCanvasEmbeddedPreview.h`, so anything else that wants the
+same picture can use it:
+
+```cpp
+if (FormatCarriesEmbeddedPreview(path)) {               // asks about the format
+    std::vector<uint8_t> bytes = ExtractEmbeddedPreviewBytes(path);
+    if (!bytes.empty()) auto img = UCImage::LoadFromMemory(bytes);
+}
+```
+
+`ExtractEmbeddedPreviewBytes` returns an empty vector for a file that carries
+no preview (a plain ASCII EPS, for one — rendering that needs a PostScript
+interpreter), an older RIFF-based `.cdr`, or a document too damaged to parse —
+it never throws, so a worker can hand it any file the user points at.
+
+`UltraCanvasMediaViewer` shows the same picture: a vector document it cannot
+rasterize is displayed from its embedded preview, which is what gives these
+formats a detail pane as well as a tile.
+
+### File types the FileLoader knows
+
+The widget's own extension table names the well-known formats. An extension it
+does not list is looked up in the runtime format inventory
+(`UltraCanvasSupportedFormats`, the same inventory the FileLoader's dialogs are
+built from) before the entry is written off as "some file", so a format that
+arrives with a graphics, document or media plugin the application registered
+lands in its real `FilerFileCategory` — and with it gets the right colour, the
+right grouping, and the Display > Thumbnails / Detail view switches that
+govern it. The inventory
+is consulted once and cached, so it costs nothing per directory entry.
+
+### Native application icons
+
+`.exe`, `.dll` and `.ico` files show the **icon inside the file** — what
+Explorer shows — instead of the generic EXE/DLL glyph, in every view from the
+Details icon column up to the largest thumbnail tiles. A file without an icon
+resource keeps its glyph. This is an icon, not a content preview, so the
+Display > Thumbnails switches do not affect it.
+
+The extraction lives behind `UltraCanvasNativeFileIcons.h`
+(`NativeFileIconAvailable` / `LoadNativeFileIconPixmap`) and runs on the same
+background workers as the image thumbnails, so a folder of programs scrolls
+as smoothly as one of photos. Two implementations answer it:
+
+- **On Windows** through the shell (`SHDefExtractIconW` at the nearest
+  embedded size, up to 256 px), which also covers what only a registry
+  association knows — the icon of a document or a folder a shortcut points at.
+- **Everywhere else** by reading the files
+  (`UltraCanvasIconResource.h`): the PE resource directory of an `.exe` /
+  `.dll`, the frames of an `.ico`, and the renditions of an `.icns`, decoded
+  without a platform API and without a new dependency. This is what makes a
+  Windows disk mounted on ULTRA OS, Linux or macOS — or the `drive_c` of a
+  Wine prefix — show its programs with their own icons, and a Mac disk read
+  anywhere show its applications with theirs.
+
+### Thumbnail memory
+
+Finished pictures are retained so scrolling back is instant, inside two byte
+budgets that bound what a huge folder at a large tile size can hold:
+
+| Pool | Budget | Holds |
+|---|---|---|
+| Content previews | 96 MB | bitmaps, vectors, poster frames, PDF pages, model renders, font specimens |
+| Application icons | 16 MB | the native `.exe` / `.dll` / `.ico` / `.lnk` icons above |
+
+Overflowing a budget drops that pool's **least recently drawn** entries, and
+only as many as it takes to get back under — never the entry that just
+finished, and never entries of the other pool. The two properties matter
+together: a single video poster frame used to be able to empty the whole
+cache, which blanked every tile on screen at once, and one shared budget let a
+folder of photos push out the executables' icons even though those cost a
+rounding error of the memory. Anything dropped that is still on screen is
+re-queued by the next frame and usually comes straight back from the shared
+`UCImage` cache.
+
+`GetThumbnailCacheStats()` reports what is held (entries, stored bytes, and
+the uncompressed size those bytes stand for — they differ under
+`SetCompressedThumbnails(true)`, which additionally keeps a 32 MB hot cache of
+the decompressed tiles being drawn). Rescanning the folder or changing the
+view drops everything.
+
+## Shortcuts
+
+A shortcut is drawn with **the icon of what it points at**, and reads as the
+thing it stands for rather than as a file called "LNK" or as a text file with
+a reverse-DNS name. Every format the three desktops use is read, on every
+platform: the Windows `.lnk`, the freedesktop `.desktop`, the macOS `.webloc`
+and — on macOS, the only system that can follow one — a Finder alias.
+
+- Its **type** is `Shortcut`, and its **category** — the colour, the grouping,
+  the preview switch that governs it — comes from its target, so a shortcut to
+  a folder groups with folders and one to a program with programs.
+- The **info column and the info bar show the target** as the link stores it
+  (`C:\Program Files\…`), which is the string the shortcut's own properties
+  show on Windows, and which stays informative for a link whose target is not
+  on this machine.
+- A small **arrow badge** in the bottom-left corner of the icon marks it as a
+  shortcut — the only thing that tells it apart from the file it points at,
+  whose icon it otherwise wears exactly. Below 24 px the badge is left off
+  rather than smudged over the icon it annotates.
+- **Double-clicking** it opens what it points at: a shortcut to a folder
+  navigates into that folder, and one to a file opens the file. On Windows the
+  shell resolves the link itself, which keeps the arguments and working
+  directory it carries.
+
+### Windows shortcuts (.lnk)
+
+The reading is [`UltraCanvasShellLink.h`](UltraCanvasShellLink.md)
+(`ReadShellLink`), and it works on every platform — the shortcut's Windows
+path is mapped onto the host by looking for the drive it names (a Wine
+prefix, or the root of a mounted Windows disk).
+
+### Desktop entries (.desktop)
+
+A freedesktop launcher gets the same treatment, read with
+[`UltraCanvasDesktopEntry.h`](UltraCanvasDesktopEntry.md), plus the one thing
+a `.lnk` never needs:
+
+- **It is drawn by the name it calls itself.** The file name of a desktop
+  entry is an id — `org.mozilla.firefox.desktop` — while its `Name=` is what
+  every menu on the machine calls it. That name is what the display draws
+  (`FilerEntry::linkDisplayName`), and what the filter-as-you-type box matches
+  in addition to the file name. Only the drawn name changes: renaming, sorting
+  and every file operation still use the real file name, so nothing on disk is
+  ever addressed by a display string.
+- **Its icon is looked up in the icon themes**, not read out of the file:
+  `Icon=` is a name, resolved through the configured theme, what that theme
+  inherits, hicolor, then the pixmap directories, at the size the tile needs.
+- A `Type=Application` entry's **category is Program** and its target is the
+  executable it starts, resolved on this machine (`/usr/bin/firefox`); a
+  `Type=Link` entry shows its **address** in the info column, and a
+  `Type=Directory` groups with folders.
+- **Activating one runs what it says**: the `Exec=` line, expanded and
+  launched detached through the platform's launcher, with the entry's own
+  `Path=` as the working directory — a `Type=Link` opens its address instead.
+  Opening the file itself (what happened before) handed a text file to a text
+  editor.
+
+### macOS shortcuts and application bundles
+
+A `.webloc` shows its address in the info column and opens it when activated,
+like a `Type=Link` desktop entry. A **Finder alias** carries no extension to
+recognise it by, so the file itself is asked (its first bytes are bookmark
+data) — and only on macOS, which is the only system that can resolve one;
+elsewhere an alias stays the plain file nothing can follow.
+
+An **application bundle** (`.app`) is the odd one: not a shortcut but a
+*directory the platform presents as one object*. It is drawn with the icon
+inside it and by the application's own name (`Example Editor`, not
+`Example Editor.app`), typed `Application`, categorised as a program rather
+than a folder, and `FilerEntry::isBundle` marks it. It carries no shortcut
+badge — it is not a reference to something else, it *is* the application.
+
+**Activating one depends on where you are.** On macOS it launches, which is
+the Finder's rule; everywhere else it opens as the folder it is, because
+navigating in is the only thing that machine can do with a Mac application.
+The reading — Info.plist, the executable, the `.icns` — is
+[`UltraCanvasMacBundle`](UltraCanvasMacBundle.md) and works on every platform,
+so a Mac disk mounted on Linux still shows its applications properly.
+
+### What the host sees
+
+`FilerEntry::isShortcut`, `FilerEntry::isBundle`, `FilerEntry::linkTarget`
+and `FilerEntry::linkDisplayName` carry the result to the application.
+`linkTarget` is the target **as this machine opens it** — empty when the
+target is not here, or is not a file at all (a shell item, a web address) — so
+an application that can run Windows programs itself (`onFileActivated`) uses
+it to launch the real target.
+
+Because an icon is the file's identity rather than a courtesy preview, it is
+held apart from the content thumbnails: the two have **separate memory
+budgets**, so a folder of photos or videos filling the thumbnail budget can
+never evict the application icons on screen (see
+[Thumbnail memory](#thumbnail-memory)). Where extraction goes through the OS
+shell it can fail on a file it would serve a moment later, so an icon is
+retried a few times before the tile settles on its glyph — and the worker
+threads join a COM apartment, which the shell expects of its caller.
 
 ## Selection info bar
 
@@ -387,6 +744,43 @@ background worker, ahead of the folder walks: selecting a file — or first
 painting its tile when the Length / Dimensions dataset fields are enabled —
 never opens the file on the UI thread; the detail appears with the next
 posted repaint, typically within a frame or two.
+
+## Files in use
+
+`SetShowLockState(bool)` (default **on**) marks files another program is
+holding — the reason an overwrite, a rename or a delete of one fails with
+*"the file is open in another program"*. It is a no-op where the platform
+cannot answer (`FileLockProbeAvailable()`, see
+[UltraCanvasFileLock](UltraCanvasFileLock.md)).
+
+A held file is marked three ways, so the state is visible in every view:
+
+- a **padlock badge** in the bottom-right corner of its icon (mirroring the
+  shortcut arrow on the left), for a file the system actually refuses —
+  drawn only where the icon is at least 24 px, like the shortcut badge;
+- an **attribute letter** among `D` / `L` / `R` / `H` / `A`: `X` for a file
+  that cannot be replaced right now, `O` for one merely open elsewhere (which
+  on Unix blocks nothing). It shows in the Details view's `Attr` column, in
+  the thumbnail dataset line and in the info bar's `[...]` group;
+- the **info bar**, which spells it out for a single selected file:
+  *"In use by another program (cannot be replaced)"*.
+
+The probe is one open per file — closed again, nothing written — and runs on
+the **same background worker** as the folder statistics, ahead of every other
+job on it, in one batch per pass. Only files the view actually draws are ever
+asked about, and each is asked once per listing: the answers are dropped and
+re-taken on a rescan, which is what a refresh (F5) and the folder watch's
+reaction to a change both trigger. Nothing is probed on the UI thread, so a
+folder on a slow volume opens at the same speed either way.
+
+`GetEntryLockState(path)` reads back what the last probe found, without
+probing. Holders are deliberately **not** collected for a listing — naming the
+program costs a Restart Manager session per file on Windows; a host that wants
+the name asks `ProbeFileLock(path, true)` for the one file it is showing, the
+way UltraFiler's Attributes dialog does.
+
+Directories are never probed: what holds a folder open is usually a program's
+*working directory*, which no probe here can see.
 
 ## Folder listing prefetch
 
@@ -445,6 +839,83 @@ OneDrive), the fixed home subfolders on macOS, `xdg-user-dirs` on Linux
 (localized names; entries pointing at `$HOME` are disabled per the spec) — for
 building an Explorer/Finder-style curated "Home" section.
 
+## Curated home folder
+
+`SetCuratedHomeFolder(homePath, mainFolders)` curates one folder's display —
+the user's home. While set, displaying `homePath` lists only the given main
+folders plus the folder's regular files; every other subfolder is left out.
+Each main folder is named by its resolved full path, so one redirected out of
+the home folder (a Documents moved into OneDrive) is listed too, by its real
+location. Every other folder is displayed untouched, and the curated folders
+themselves behave like any other entry — navigation, context menu, drag & drop.
+
+Display > Hidden files suspends the curation: that toggle means "show me
+everything", so it reveals the untouched physical listing (hidden entries
+included). An empty `homePath` turns curation off.
+
+The UltraFiler sets this on its tab filers and its folder-preview pane, with
+the same main-folder set its folder tree shows for Home
+(`GetWellKnownUserFolders()` filtered to Desktop / Documents / Downloads /
+Music / Pictures / Videos), so the tree and the display agree on what Home
+contains. Note the caveat that follows from the design: a non-main folder
+created or pasted into the home folder exists but is not displayed until
+Hidden files is switched on — curation is a view over the folder, not a
+constraint on it.
+
+`UltraCanvas::GetCloudStorageFolders()` (`UltraCanvasCloudStorage.h`) is its
+counterpart for a
+"Cloud Storage" section: the sync folders the machine actually has, as
+`CloudStorageInfo { CloudStorageKind kind; std::string path, label; }` in the
+canonical OneDrive, Google Drive, Dropbox, iCloud Drive order. Each provider is
+asked where it put its folder rather than guessed at:
+
+| Platform | Where each provider is found |
+|---|---|
+| Windows | the `OneDrive` / `OneDriveConsumer` / `OneDriveCommercial` environment variables; the Google Drive mount recorded under `HKCU\Software\Google\DriveFS` plus the fixed drives whose volume label reads *Google Drive* (a default install mounts a virtual drive, not a folder); the Dropbox `info.json` under `LOCALAPPDATA`/`APPDATA`, which is where a relocated or a second, business folder is recorded; `%USERPROFILE%\iCloudDrive`; and the profile defaults for each |
+| macOS | the per-provider folders macOS 12+ keeps under `~/Library/CloudStorage` (`OneDrive-Contoso`, `GoogleDrive-me@gmail.com`, `Dropbox`) — what Finder's sidebar lists — plus `~/Library/Mobile Documents/com~apple~CloudDocs` and the pre-CloudStorage locations |
+| Linux | the GVFS mount table (`$XDG_RUNTIME_DIR/gvfs`, GNOME Online Accounts) and the defaults of the native sync clients |
+
+Only folders that exist right now are returned, each once: a client that is
+installed but signed out has no folder and is not listed. Nothing is mounted,
+signed in to or contacted — but the lookup does read a registry key, a config
+file and the mount table, so call it off the UI thread (the UltraFiler does).
+
+It gets a header of its own rather than joining `GetWellKnownUserFolders()` in
+`UltraCanvasUtils.h` because reading the Dropbox configuration needs
+`UltraCanvasJSON`: `UltraCanvasUtils.cpp` sits at the bottom of the stack and is
+compiled **standalone**, without the framework library, by several test targets
+that only want `Trim()` — a JSON dependency inside it leaves every one of them
+with undefined references at link time.
+
+## Folder icons
+
+Folders are drawn as a colored folder shape. `folderIconProvider(entry)` lets
+the host replace that shape per folder: return the path of an image — any
+format the image pipeline loads, so SVG, PNG, QOI and the rest — and the entry
+is drawn from it in every view, from the 16 px icon column of the Details rows
+to a maximized thumbnail tile (`FilerStyle::folderIconScale` still applies).
+Return `""` and the built-in shape is drawn as before.
+
+```cpp
+filer->folderIconProvider = [](const FilerEntry& e) -> std::string {
+    if (e.name == "Music") return "media/icons/folder-music.svg";
+    return {};                    // everything else keeps the folder shape
+};
+```
+
+It is asked while the folder is painted, so it must be a lookup, not a disk
+walk or a platform query — cache whatever answering it costs. The images
+themselves are not a concern: they go through the shared image cache, keyed by
+path and size, so one icon on a hundred folders is rasterized once per size.
+
+The UltraFiler answers it with the icons of the well-known user folders
+(Desktop, Documents, Downloads, Music, Pictures, Videos — `media/icons/`), and
+before those with whatever the user set through the context menu's *Extras >
+Set folder icon*: that entry converts any picture to a QOI file in the
+application's config directory (`SaveImageFileAsQoi`, `ImageCairo.h`) and shows
+that copy, so the icon survives the original being moved or deleted. *Extras >
+Remove folder icon* takes it away again.
+
 ## Selection access
 
 `GetSelectedEntries()` returns the selected entries, `ClearSelection()` /
@@ -477,6 +948,22 @@ pressing Delete on a file is "delete that file", not "show me that file", so it
 does not fire `onSelectionChanged` and cannot re-target (or pop open) a preview
 pane fed by it. The selection only moves when the icon menu deletes it, and then
 only as described under [Selection after a delete](#selection-after-a-delete).
+
+### The hover follows the cursor, not the content
+
+The hovered item is whatever sits under the pointer *now*, and the pointer is
+not the only thing that moves it: the wheel, dragging the scrollbar, keyboard
+navigation revealing an entry, a resize and a rescan all slide the files past a
+cursor that never moved. The widget therefore re-derives the hover at the start
+of every paint whose scroll offset or layout changed, so the icon strip (and the
+hover highlight, and the name tooltip) jumps to the file that is under the
+cursor after the scroll instead of riding away with the one it started on.
+
+While a gesture owns the pointer the hover stays off: an item drag and a rubber
+band drop it for their duration, a splitter drag keeps the pointer on the
+splitter, and pressing the scrollbar drops it too — the pointer is parked on the
+bar for the whole drag, not on a file. The first paint after such a gesture ends
+works the hover out again, without waiting for the pointer to move.
 
 ## File operations
 
@@ -524,8 +1011,50 @@ part:
   execute bit is set but whose content is neither (everything on a FAT
   mount, say) simply opens with its default application.
 
+A **shortcut** is activated as the thing it points at: one to a folder
+navigates into that folder, and one to a file opens the file. A Windows
+`.lnk` is resolved first off Windows, since nothing there knows what one is,
+and on Windows goes through the shell, which does it better (it keeps the
+arguments and working directory the link carries); a `.desktop` launcher runs
+its own `Exec=` line. See [Shortcuts](#shortcuts).
+
 Entries inside archives are virtual paths nothing external can read, so
 activation never tries to run or open them.
+
+### Launch feedback — the busy pointer
+
+Spawning is over in milliseconds; the program the double-click started is not.
+It appears when it appears, and nothing tells the file manager when that is —
+so a heavy application looks for a few seconds exactly like a double-click
+that never arrived, and gets double-clicked again.
+
+Every launch path therefore arms the window's **busy pointer**
+(`UltraCanvasWindowBase::ShowBusyPointer`, `UltraCanvasWindow.h`): after
+**one second** the pointer changes to `UCMouseCursor::AppStarting` — the arrow with a busy
+sign, so the window stays as usable as it was — and it goes back on its own
+after **eight seconds**. The delay is the point: a program that is on screen
+before the second is up never changes the pointer at all, so the feedback only
+appears where it is telling the user something.
+
+```cpp
+// What the window offers; the filer arms it for you on every launch.
+win->ShowBusyPointer();                 // 1 s delay, 8 s hold, AppStarting
+win->ShowBusyPointer(1500, 120000);     // slower to appear, long-running work
+win->HideBusyPointer();                 // work finished (or failed) early
+```
+
+Nothing in a plain spawn can end it early, so the hold does. A caller that
+*does* learn when its work finished calls `HideBusyPointer()` instead —
+UltraFiler does exactly that around the UltraWin launch path, whose first run
+prepares a Windows environment and is given a two-minute hold. A launch that
+fails immediately takes the pointer down through `onError`.
+
+While it is up the busy shape wins over the cursor of whatever element the
+pointer is over; when it comes down, the element under the pointer gets its
+own cursor back without waiting for the next mouse move.
+
+On macOS the pointer does not change: AppKit has no arrow-with-busy-sign
+shape, and launch feedback there belongs to the Dock's bouncing icon.
 
 ### Delete problems (locked / failing entries)
 
@@ -573,10 +1102,91 @@ snapping the folder display back to full width. The new selection is installed
 **before** `onFolderRefreshed` fires, so the host sees a single selection change
 and never an empty one in between.
 
-`SetNewDocumentTypes()` replaces the default New > entries; each entry may name a
+`SetNewDocumentTypes()` replaces the default New > entries (Text `txt`, Doc
+`odt`, Spreadsheet `ods`, Bitmap `png`, Vector `svg`, Audio `wav`, Video
+`mp4`); `GetNewDocumentTypes()` reads the current set back, so a host can
+mirror the submenu elsewhere — the UltraFiler's command-bar "New folder ▾"
+split button lists exactly these. Each entry may name a
 `templatePath` that is copied instead of creating an empty file, and
 `onNewDocument` lets the application take over creation entirely (return `true`
 when handled). A freshly created document goes straight into rename mode.
+
+The **New >** submenu opens with **Folder** — above the document kinds and set
+apart from them by a separator — bound to **Ctrl+F**. `CreateNewFolder()` is the
+same action programmatically: it creates `New folder` (numbered `New folder (2)`
+and so on when the name is taken) in the shown folder, reports the change to
+`onFolderModified` and opens the inline rename editor on it.
+
+```cpp
+filer->CreateNewFolder();   // what New > Folder and Ctrl+F do
+```
+
+Creating anything — `CreateNewFolder()` or `CreateNewDocument()` — first
+returns a [file-list display](#file-list-search-results) to the folder and
+ends an active [name filter](#name-filter-filter-as-you-type): the fresh
+entry lands in the shown folder and has to be visible there, with its inline
+rename editor reachable, which neither a result display nor a narrowed
+listing can guarantee.
+
+## Watching the shown folder
+
+The folder can change without the widget doing anything: another application
+saves a file into it, a download finishes, a script deletes one. The widget
+notices and rescans.
+
+```cpp
+filer->SetFolderWatchEnabled(false);      // on by default
+filer->IsFolderWatchNative();             // OS notifications, or polling?
+filer->SetFolderWatchIntervalMs(3000);    // default 1500, minimum 250
+```
+
+Where the operating system can report changes itself the widget uses that —
+inotify on Linux, `ReadDirectoryChangesW` on Windows, through
+[`UltraCanvasFolderWatcher`](UltraCanvasFolderWatcher.md). A change is then seen
+the moment it happens, and an idle folder costs nothing at all.
+
+Where no backend exists (macOS, Android, WebAssembly) it falls back to polling:
+a background worker re-fingerprints the folder every interval — its own
+modification time folded together with each entry's name, size and modification
+time — and raises a flag when the number moves. The scan never runs on the UI
+thread. `IsFolderWatchNative()` reports which of the two is in force.
+
+Either way only a real directory is watched: an archive interior or a file list
+has no folder whose changes would mean anything. The interval governs detection
+only while polling; with a native watcher it bounds just how quickly the UI
+applies what the watcher already reported.
+
+A native watch can also die after it started — the volume the folder is on is
+unmounted, the share drops, the handle goes bad. The widget is told (the
+watcher's failure callback) and moves that folder to polling, so it keeps
+noticing changes instead of quietly freezing on a listing that no longer
+exists; `IsFolderWatchNative()` then reports `false`. It keeps polling the
+folder even while it is gone, which is what makes the same stick plugged back
+in re-list itself rather than needing a manual refresh.
+
+The rescan itself is held back while the user is busy: no auto-refresh
+interrupts an open rename editor, a running drag or marquee, a context menu, a
+compress dialog, or a file operation waiting on its own dialog. The flag stays
+set, so the refresh lands the moment the interaction ends. `onFolderRefreshed`
+fires as it would for any other rescan, so a host's status bar and preview
+follow along.
+
+## Compressing and extracting
+
+`CompressSelection()`, `ExtractSelection()` and the context menu's Compress /
+Extract dialogs all run the work on a background worker behind an
+[`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md): a ring with the
+percentage, the file being handled, and Cancel. The UI stays live throughout —
+packing a few hundred megabytes no longer freezes the window.
+
+The progress window is opened **without the severity badge**
+(`showIcon = false`), so the ring is horizontally centred in the dialog instead
+of being pushed to the right of a blue `i` that says nothing the ring does not.
+
+Cancel stops the backend at its next progress callback. A cancelled **pack**
+deletes the half-written archive (nobody wants that in the listing); a cancelled
+**unpack** keeps what it already wrote, because those are real files, and stops
+the remaining archives of a multi-archive run.
 
 ## Clipboard interop with other programs
 
@@ -612,12 +1222,29 @@ chosen action; **Cancel** keeps what was already pasted and drops the rest.
 Copy-pasting a file alongside its original never asks — the copy simply takes
 the next free name, exactly like Duplicate.
 
-An entry that **fails** to paste (locked, in use, permissions) asks too —
-**Try again** / **Skip this file**, with a "Do this for all remaining items"
-scope switch; a stored try-again-for-all grants each later failing entry one
-silent retry before asking again. Drag & drop, inside the widget and from
-other applications, runs through the same machinery, so drops get the same
-dialogs.
+An entry that **fails** to move or copy (locked, in use, permissions) asks too.
+The dialog is titled "Cannot Move" / "Cannot Copy" and spells the failure out in
+full: the operating system's own reason, the source path, the destination folder
+and what usually causes it. The choice is **Try again** / **Skip this file**,
+with a "Do this for all remaining items" scope switch; a stored
+try-again-for-all grants each later failing entry one silent retry before asking
+again. Drag & drop, inside the widget and from other applications, runs through
+the same machinery, so drops get the same dialogs.
+
+A **move, a rename and a delete** all need the file to themselves: a rename is
+refused while another program still has it open — on Windows outright — and a
+delete is too. The widget therefore drops the entries out of the selection
+before each of those, firing `onSelectionChanged` so a host that feeds a preview
+pane from the selection closes the file first. A rename puts the selection back
+on the new name afterwards, and a delete hands it to the neighbour when
+`SetSelectNextAfterDelete` is on, so neither leaves the user with nothing
+selected.
+The UltraFiler pairs this with `UltraCanvasMediaViewer::CloseFile()`, which makes
+its preview release the document instead of merely stopping playback. Most
+previews hold nothing open in the first place — images, text, spreadsheets,
+models, e-books and PDFs up to the PDF view's memory limit are read whole — so
+this only has work to do for a playing video or audio file and for a PDF too big
+to hold in memory.
 
 The same machinery is available programmatically for any target folder:
 
@@ -652,8 +1279,15 @@ presses as plain clicks.
 **Inside the widget** the drag is drawn by the widget itself: a badge with the
 entry's icon and its name (or "N items") follows the cursor, and the folder
 under the cursor is highlighted as the drop target. Dropping on it **moves**
-the files into that folder — hold **Ctrl** to drop a **copy** instead. Drops
-run through the same machinery as Paste, so a name that already exists there
+the files into that folder by default; `SetDropOnFolderCopies(true)` makes a
+plain drop **copy** them instead. Either way **Ctrl** at the drop always copies
+and **Shift** always moves, so the other action is one modifier away:
+
+```cpp
+filer->SetDropOnFolderCopies(true);   // plain drop on a folder copies
+```
+
+Drops run through the same machinery as Paste, so a name that already exists there
 raises the [conflict dialog](#name-conflicts) and a failing entry the retry
 dialog; a folder cannot be dropped into itself, and a drop anywhere but on a
 folder simply ends the drag. Escape abandons the drag without moving anything.
@@ -709,11 +1343,20 @@ skipped.
 
 ## Keyboard
 
-Enter activates (folders / archives are entered, files fire `onFileActivated`),
+Enter activates (folders / archives are entered, files fire `onFileActivated`;
+the numeric keypad's Enter counts as Enter everywhere the widget reads it),
 Delete deletes, F2 renames, Ctrl+A / Ctrl+C / Ctrl+X / Ctrl+V select all / copy /
 cut / paste, Ctrl+D duplicates, Ctrl+P prints (when `onPrint` is set), and the
 arrow keys move the selection (grid-aware in the thumbnail and list views). The
 same shortcuts are shown next to their commands in the right-click context menu.
+
+A plain **printable character** is Explorer-style type-ahead: it selects the
+first entry whose name starts with that character (case-insensitive), and the
+same key again walks on to the next such entry, wrapping around at the end.
+The step is also callable — `SelectNextEntryStartingWith(ch)` returns whether
+a displayed entry matched — so a host can route characters typed elsewhere in
+its window into the visible filer (the UltraFiler does this with a window
+event filter that stands back while a text input holds the focus).
 Click, Ctrl+click and Shift+click select single items, toggle, and ranges.
 Dragging from **empty space** draws a **rubber band**: every entry the
 rectangle touches becomes the selection, live while the band is dragged
@@ -733,9 +1376,12 @@ name, so editing behaves like any text field: the caret moves with the
 arrow keys / Home / End, a click puts it at that position, Shift extends a
 selection, and Ctrl+C/X/V/Z work. It opens with the base name selected (the
 extension stays, Explorer-style; folders select the whole name) in the same
-font size as the displayed name, commits on Enter, cancels on Esc — and a
-click anywhere outside the field commits too, because the field losing the
-keyboard focus ends the edit.
+font size as the displayed name, commits on Enter — the numeric keypad's Enter
+included — cancels on Esc, and a click anywhere outside the field commits too,
+because the field losing the keyboard focus ends the edit. The name is written
+in `FilerStyle::renameTextColor` (a dark gray, a step lighter than the
+near-black of a displayed name) so an entry being edited reads as being
+edited; the caret uses the same color.
 
 A committed rename **keeps the entry selected** under its new name and scrolls
 it back into view (the new name usually sorts somewhere else). The rescan that
@@ -842,6 +1488,65 @@ filer->onOpenPath = [this](const FilerEntry& e) {
 filer->ShowFileList(matches);   // shown in the current view mode
 ```
 
+### Growing a file list while it is produced
+
+`AppendToFileList(paths)` adds to the list already on display. Only the new
+paths are stat-ed, and the scroll position and the selection stay where they
+are — so a search that is still walking the disk can show what it has found
+so far and keep adding to it:
+
+```cpp
+filer->ShowFileList({});                 // empty result display, at once
+// ... on the UI thread, per batch the worker delivers:
+filer->AppendToFileList(batch);          // grows the list, view stays put
+```
+
+Handing the whole grown list to `ShowFileList()` per batch would instead
+re-stat every path already listed (O(n²) over the search) and jump the view
+back to the top each time. Called before any `ShowFileList()`,
+`AppendToFileList()` behaves like one. The list is sorted like a folder
+listing after every batch unless `SetFileListOrderPreserved(true)` keeps the
+given order.
+
+## Name filter (filter-as-you-type)
+
+`SetNameFilter(text)` narrows the displayed listing to the entries whose name
+contains `text` (case-insensitive); `""` shows everything again and
+`GetNameFilter()` reads the filter back. The narrowed listing is re-derived
+from the already scanned entries — no disk rescan per keystroke — which is
+what makes wiring a search field's `onTextChanged` straight to it cheap:
+
+```cpp
+searchField->onTextChanged = [filer](const std::string& text) {
+    filer->SetNameFilter(text);   // filter-as-you-type
+};
+```
+
+The filter applies to whatever is displayed — the folder listing or a
+[file list](#file-list-search-results) — and stays applied through rescans
+(file operations, the folder watch), so entries created or dropped in while a
+filter is active only show when they match. Selection is kept on the entries
+that stay visible, each change resets the scroll to the top, and
+`onFolderRefreshed` fires so the host can refresh its counts. `SetPath()`
+**clears the filter**: it belonged to the listing it was typed against, so
+entering another folder starts unfiltered.
+
+When the filter hides every entry the widget shows "No matches for "…"", and
+a host can center an escalation button under that notice:
+
+```cpp
+filer->SetFilterEmptyAction("Scan sub folder", [this]() {
+    StartSubfolderScan(filer->GetNameFilter());   // e.g. AppendToFileList(batch)
+});
+```
+
+The button (a real `UltraCanvasButton` child) appears only while a filter is
+active, matches nothing, and both a label and a callback are set; an empty
+label removes it. The UltraFiler uses exactly this pair: typing in its search
+field filters the shown folder, and the button — like Enter in the field, and
+like the button inside the field — escalates to the background sub-folder
+scan, which feeds its matches in through `AppendToFileList()` while it runs.
+
 ## Callbacks
 
 | Callback | Fired |
@@ -856,6 +1561,7 @@ filer->ShowFileList(matches);   // shown in the current view mode
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
+| `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |
@@ -868,15 +1574,24 @@ filer->ShowFileList(matches);   // shown in the current view mode
 `SetStyle(FilerStyle)` controls colors (background, selection, hover, bars,
 grid lines, icon-menu), fonts, row heights, thumbnail tile sizes and paddings —
 see the `FilerStyle` struct in `UltraCanvasFilerWidget.h`. `captionHeight`,
-`captionMaxLines` and `captionLineHeight` size the tile caption and its name
-wrapping (see [Long names](#long-names)):
+`captionMaxLines`, `captionLineHeight`, `captionBreakTolerance`,
+`captionOverflowSlack` and `captionCamelCaseBreaks` size the tile caption and
+its name wrapping (see [Long names](#long-names)):
 
 ```cpp
 FilerStyle s = filer->GetStyle();
-s.captionMaxLines = 3;     // let tile names run over up to three lines
-s.captionLineHeight = 16;  // 0 = derived from smallFontSize
+s.captionMaxLines = 3;        // let tile names run over up to three lines
+s.captionLineHeight = 16;     // 0 = derived from smallFontSize
+s.captionBreakTolerance = 3;  // never split a word for 3 characters or fewer
+s.captionOverflowSlack = 0;   // 0 = derived from smallFontSize
+s.captionCamelCaseBreaks = true; // "UltraCanvas" / "Texter.exe", not "UltraCanva" / "sTexter.exe"
 filer->SetStyle(s);
 ```
+
+`FilerStyle::extensionBarBackground`, `extensionTagBackground`,
+`extensionTagTextColor` and `extensionBadgeHeight` (0 = derived from
+`smallFontSize`) style the tile's extension tag — see
+[File extensions](#file-extensions).
 
 `FilerStyle::folderIconScale` (default 1.0) shrinks the folder glyph inside a
 thumbnail tile's image box, centered — e.g. 0.7 draws folders at 70% so they

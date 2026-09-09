@@ -3057,29 +3057,51 @@ bool UltraCanvasGitGraph::HandleMouseWheel(const UCEvent& event) {
         if (mousePos.x <= listWidth) {
             const double limit = std::max(0.0, diffFiles.size() * (style.diffFontSize + 4.0)
                                                - style.diffPaneHeight * 0.6);
-            diffFileScroll = std::clamp(diffFileScroll + delta, 0.0, limit);
+            if (!diffFileScrollAnim.IsBound()) {
+                diffFileScrollAnim.Bind([this] { return diffFileScroll; },
+                                        [this](double v) {
+                                            diffFileScroll = v;
+                                            RequestRedraw();
+                                        });
+            }
+            diffFileScrollAnim.AnimateBy(delta, 0.0, limit);
         } else {
-            diffTextScroll = std::max(0.0, diffTextScroll + delta);
+            if (!diffTextScrollAnim.IsBound()) {
+                diffTextScrollAnim.Bind([this] { return diffTextScroll; },
+                                        [this](double v) {
+                                            diffTextScroll = v;
+                                            RequestRedraw();
+                                        });
+            }
+            // The diff text has no measured end, so it only stops at the top.
+            diffTextScrollAnim.AnimateBy(delta, 0.0, diffTextScroll + std::abs(delta) * 4.0);
         }
-        RequestRedraw();
         return true;
     }
 
-    const Point2Dd worldBefore = ScreenToWorld(mousePos);
+    if (!zoomAnim.IsBound()) {
+        zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                      [this] { RequestRedraw(); });
+    }
+    zoomCursor = mousePos;
+    zoomAnim.ZoomBy((event.wheelDelta > 0) ? 1.12 : 0.89, zoomLevel, minZoom, maxZoom);
+    return true;
+}
 
-    const float factor = (event.wheelDelta > 0) ? 1.12f : 0.89f;
-    const float newZoom = std::clamp(zoomLevel * factor, minZoom, maxZoom);
-    if (newZoom == zoomLevel) return true;
+// One zoom step about the cursor: the point under it stays fixed. A wheel notch
+// is eased in as a run of these (UltraCanvasSmoothZoom), and applying them in a
+// row about the same cursor is exactly applying their product once.
+void UltraCanvasGitGraph::ApplyZoomFactorAtCursor(double factor,
+                                                  const Point2Di& cursor) {
+    const Point2Dd worldBefore = ScreenToWorld(cursor);
+    const float newZoom = std::clamp(static_cast<float>(zoomLevel * factor),
+                                     minZoom, maxZoom);
+    if (newZoom == zoomLevel) return;
 
     zoomLevel = newZoom;
-
-    // Keep the point under the cursor fixed.
-    const Point2Dd worldAfter = ScreenToWorld(mousePos);
+    const Point2Dd worldAfter = ScreenToWorld(cursor);
     panX += (worldAfter.x - worldBefore.x) * zoomLevel;
     panY += (worldAfter.y - worldBefore.y) * zoomLevel;
-
-    RequestRedraw();
-    return true;
 }
 
 bool UltraCanvasGitGraph::HandleDoubleClick(const UCEvent& event) {

@@ -1,3 +1,79 @@
+#### 2026-09-03 *0.53*
+- **System junk tab: the two panels are laid out again, and a wider window is
+  a wider table.** Both group boxes were built with a construction origin —
+  `CreateGroupBox("ucCategoryBox", 12, 48, …)` — and UltraCanvasUIElement
+  reads a non-zero (x, y) as "place this absolutely". That took them straight
+  out of the flex row that was meant to size them, with two visible results.
+  They kept their construction offset, so the pair sat 48 pixels low and their
+  bottoms reached down over the summary and status lines beneath them. And
+  they kept their construction width, so "Exactly what would go" stayed 590
+  pixels wide on a maximized window while the space it should have filled sat
+  empty beside it. Neither box carries an origin or a literal size now.
+  - **A split pane, not a flex row.** The divider between "What to clean" and
+    "Exactly what would go" is a real one the user can drag, and the detail
+    side takes every pixel a resize adds. The category column is a fixed-size
+    pane rather than a weighted one, so it keeps its reading width instead of
+    growing a share it cannot use; on a window too narrow to seat both it
+    gives ground down to 260 pixels. Dragging the divider pins it, and the
+    window stops setting its place from then on.
+  - **The table's columns share the width.** Location — the one cell whose
+    text has no length limit — is flexible and takes the slack, so a wider
+    window shows more of each path rather than more empty column. The other
+    four take the width their known shape needs. Every boundary was already
+    draggable; the header band is now light enough to see the grips on, and
+    rules are drawn between the columns.
+  - **The sections are separated rather than crowded.** Each box wears a
+    captioned header strip over a bordered body, the toolbar's "what the run
+    does" and "what the run covers" halves are parted by a rule, and the
+    summary and status lines sit in their own band under one — measured
+    before the boxes above them are grown, so nothing can reach over them
+    again.
+#### 2026-08-25 *0.52*
+- **Layout fixes, all three reported from a Windows build.**
+  - **Category rows were drawn over their own descriptions.** Each
+    description was created with a hard-coded 46-pixel box — "two wrapped
+    lines at this width", true only at the width and font it was written
+    against. Windows' wider metrics push the same text to three or four
+    lines, which spill out of the box while the flex column still advances by
+    46, so the next category's checkbox and size badge land on top of the
+    previous description. The panel is now a block container: only the block
+    path measures a wrapping label against a definite width, so the
+    descriptions get the height they actually occupy. Reproduced on Linux by
+    narrowing the panel, and fixed there too.
+  - **The toolbar was clipped along its top edge.** Scan / Stop / the mode
+    dropdown / Clean… sat at an absolute offset inside the tab page, which
+    assumes a tab strip of a particular height. The page is a flex column
+    now, so the toolbar is laid out into whatever content area the tab
+    provides instead of being positioned into it.
+  - **The window ignored being resized.** Every size came from two constants
+    and nothing listened for a resize, so enlarging the window left the app
+    at its opening size with grey space around it. The window now re-lays its
+    tab container on `onWindowResize`, and the panels take the height that
+    comes free.
+- The size badge no longer gives way before the category title when a row is
+  tight: the number is what the row exists to show.
+- Known limitation: the panels still do not widen when the window does.
+  `UltraCanvasTabbedContainer` updates its content area's height on resize
+  but not its width, so the page cannot be told it has more room. That is a
+  framework fix, not an application one.
+
+#### 2026-08-24 *0.51*
+- **"Move to trash" emptied nothing when what was selected was the trash.**
+  The Trash category has been in the cleaning tab since the first release,
+  but ticking it with the removal mode set to *Move to trash* moved the trash
+  into itself: each file was renamed beside itself, a second `.trashinfo` was
+  written for it (down to `olddoc.txt.trashinfo.trashinfo`), the trash ended
+  up **larger** than before, and the report claimed the space had been freed
+  — on a real run here, "3 items, 50 KB freed" against a trash that grew from
+  72 KB to 84 KB. Items already inside the trash are now left alone and
+  counted separately, and both the window and the `--clean` output name the
+  reason: emptying the trash is what *Delete permanently* is for. The Windows
+  recycle bin follows the same rule, where that mode used to reach
+  `SHEmptyRecycleBinW` and empty it for good — a permanent delete from the
+  gentlest of the three modes.
+- The Overview's "Clean system junk" card now mentions the trash, which the
+  tab behind it has always covered.
+
 #### 2026-08-23 *0.50*
 - **UltraCleaner opens on a picture of your drives.** The app used to open
   on a list of cleanup rules, which asks the user to decide what to clean

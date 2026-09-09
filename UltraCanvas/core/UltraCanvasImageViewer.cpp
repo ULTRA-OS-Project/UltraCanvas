@@ -118,34 +118,47 @@ namespace UltraCanvas {
 
     bool UltraCanvasZoomPanImage::HandleZoom(const UCEvent& event) {
         if (!image || !image->IsValid()) return false;
+        if (!zoomAnim.IsBound()) {
+            zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                          [this] { RequestRedraw(); });
+        }
+        zoomCursor = Point2Di(event.pointer.x, event.pointer.y);
+        zoomAnim.ZoomBy((event.wheelDelta > 0) ? 1.15 : (1.0 / 1.15), zoom, 1.0, 40.0);
+        return true;
+    }
+
+    // One zoom step about the cursor: the image point under it stays fixed. A
+    // wheel notch is eased in as a run of these (UltraCanvasSmoothZoom), and
+    // applying them in a row about the same cursor is exactly applying their
+    // product once.
+    void UltraCanvasZoomPanImage::ApplyZoomFactorAtCursor(double factor,
+                                                          const Point2Di& cursor) {
+        if (!image || !image->IsValid()) return;
         const Rect2Df b = GetLocalBounds();
         const double iw = std::max(1, image->GetWidth());
         const double ih = std::max(1, image->GetHeight());
         const double fit = std::min(b.width / iw, b.height / ih);
-        if (fit <= 0.0) return false;
+        if (fit <= 0.0) return;
 
         const double sOld    = fit * zoom;
         const double leftOld = b.width  * 0.5 + panX - iw * sOld * 0.5;
         const double topOld  = b.height * 0.5 + panY - ih * sOld * 0.5;
         // Image-space point under the cursor — kept fixed across the zoom.
-        const double imgX = (event.pointer.x - leftOld) / sOld;
-        const double imgY = (event.pointer.y - topOld)  / sOld;
+        const double imgX = (cursor.x - leftOld) / sOld;
+        const double imgY = (cursor.y - topOld)  / sOld;
 
-        const double step = (event.wheelDelta > 0) ? 1.15 : (1.0 / 1.15);
-        double newZoom = std::max(1.0, std::min(zoom * step, 40.0));
+        double newZoom = std::max(1.0, std::min(zoom * factor, 40.0));
         // Cap the rasterized size so very large SVG zooms stay responsive.
         const double maxDim = 8000.0;
         if (iw * fit * newZoom > maxDim || ih * fit * newZoom > maxDim) {
             newZoom = std::max(1.0, std::min(maxDim / (iw * fit), maxDim / (ih * fit)));
         }
-        if (newZoom == zoom) return true;
+        if (newZoom == zoom) return;
         zoom = newZoom;
 
         const double sNew = fit * zoom;
-        panX = (event.pointer.x - b.width  * 0.5) - (imgX * sNew - iw * sNew * 0.5);
-        panY = (event.pointer.y - b.height * 0.5) - (imgY * sNew - ih * sNew * 0.5);
-        RequestRedraw();
-        return true;
+        panX = (cursor.x - b.width  * 0.5) - (imgX * sNew - iw * sNew * 0.5);
+        panY = (cursor.y - b.height * 0.5) - (imgY * sNew - ih * sNew * 0.5);
     }
 
 // ===== LIGHTBOX VIEWER WINDOW =====

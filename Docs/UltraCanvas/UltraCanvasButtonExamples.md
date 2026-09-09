@@ -1,7 +1,7 @@
 # UltraCanvasButton Documentation
 
-**Version:** 1.0.0  
-**Last Modified:** 2025-01-08  
+**Version:** 1.0.1  
+**Last Modified:** 2026-08-31  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -136,11 +136,26 @@ void SetOnClick(std::function<void()> _onClick);
 The button supports the following callback events:
 
 ```cpp
-std::function<void()> onClick;       // Fired when button is clicked
-std::function<void()> onPress;       // Fired when button is pressed down
-std::function<void()> onRelease;     // Fired when button is released
-std::function<void()> onHoverEnter;  // Fired when mouse enters button
-std::function<void()> onHoverLeave;  // Fired when mouse leaves button
+std::function<void()> onClick;           // Fired when the button is clicked (left button only)
+std::function<void()> onPress;           // Fired when button is pressed down
+std::function<void()> onRelease;         // Fired when button is released
+std::function<void(bool isPressed)> onToggle;  // Fired on a toggle button's state change
+std::function<void()> onSecondaryClick;  // Fired when a split button's secondary section is clicked
+std::function<void(int windowX, int windowY)> onContextMenu;  // Right mouse button, window coordinates
+std::function<void()> onHoverEnter;      // Fired when mouse enters button
+std::function<void()> onHoverLeave;      // Fired when mouse leaves button
+```
+
+**A right-click never reaches `onClick`.** The button activates on the left
+button only; the right button goes to `onContextMenu` with the click position in
+window coordinates, and is ignored when no `onContextMenu` is set. Inspecting
+`GetCurrentEvent().button` inside `onClick` therefore never yields
+`UCMouseButton::Right` — wire the context menu to `onContextMenu` instead:
+
+```cpp
+button->onContextMenu = [menu, container](int windowX, int windowY) {
+    menu->OpenMenu(Point2Di(windowX, windowY), *container->GetWindow(), PopupElementSettings());
+};
 ```
 
 ### Event Usage Example
@@ -306,4 +321,5 @@ The button automatically handles:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.1 | 2026-08-31 | Document `onToggle`, `onSecondaryClick` and `onContextMenu`, and that `onClick` is left-button only |
 | 1.0.0 | 2025-01-08 | Initial documentation based on actual implementation |

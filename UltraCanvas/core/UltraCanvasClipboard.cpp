@@ -15,6 +15,10 @@
 #if defined(__ANDROID__)
 // Before __linux__ (bionic defines both).
 #include "../OS/Android/UltraCanvasAndroidClipboard.h"
+#elif defined(__EMSCRIPTEN__)
+// Browser: the async Clipboard API behind a text cache (fed by the paste
+// event bridge in UltraCanvasWASMApplication).
+#include "../OS/WASM/UltraCanvasWASMClipboard.h"
 #elif defined(__linux__)
 #include "../OS/Linux/UltraCanvasLinuxClipboard.h"
 #elif _WIN32
@@ -92,6 +96,8 @@ bool UltraCanvasClipboard::Initialize() {
     // Create platform-specific backend
 #if defined(__ANDROID__)
     backend = std::make_unique<UltraCanvasAndroidClipboard>();
+#elif defined(__EMSCRIPTEN__)
+    backend = std::make_unique<UltraCanvasWASMClipboard>();
 #elif defined(__linux__)
     backend = std::make_unique<UltraCanvasLinuxClipboard>();
 #elif _WIN32

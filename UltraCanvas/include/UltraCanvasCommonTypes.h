@@ -463,6 +463,7 @@ enum class UCMouseCursor {
     SizeNWSE = 12,     // Northwest-Southeast resize
     SizeNESW = 13,     // Northeast-Southwest resize
     ContextMenu = 14,
+    AppStarting = 15,  // Arrow + busy sign: a launch is under way, the UI stays usable
     Custom1 = 101,        // Custom cursor
     Custom2 = 102,        // Custom cursor
     Custom3 = 103        // Custom cursor

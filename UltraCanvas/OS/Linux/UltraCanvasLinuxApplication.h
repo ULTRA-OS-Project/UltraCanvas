@@ -103,6 +103,7 @@ namespace UltraCanvas {
     public:
         // ===== CONSTRUCTOR & DESTRUCTOR =====
         UltraCanvasLinuxApplication();
+        ~UltraCanvasLinuxApplication() override;
 
         static UltraCanvasLinuxApplication* GetInstance() {
             return UltraCanvasLinuxApplication::instance;
@@ -182,6 +183,7 @@ namespace UltraCanvas {
         FontStyle DetectSystemFontStyleNative() override;
         FontStyle DetectMonospacedFontStyleNative() override;
         void LoadBundledFontsNative() override;
+        bool RegisterFontFileNative(const std::string& fontFilePath) override;
 
         // scale: HiDPI factor; the cursor image and hotspot are scaled by it so
         // custom cursors stay the right physical size on HiDPI displays.

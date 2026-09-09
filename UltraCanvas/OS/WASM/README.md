@@ -17,13 +17,26 @@ caret and HiDPI behaviour pixel-identical to the desktop builds.
 
 ```
 OS/WASM/
-├── UltraCanvasWASMApplication.h/cpp   # Event loop bridge, keyboard, cursors, fonts
+├── UltraCanvasWASMApplication.h/cpp   # Event loop bridge, keyboard, paste bridge, cursors, fonts
 ├── UltraCanvasWASMWindow.h/cpp        # <canvas>-backed window, input, presentation
-├── UltraCanvasWASMSupport.h/cpp       # Optional browser utilities (IDBFS, fetch, ...)
+├── UltraCanvasWASMClipboard.h/cpp     # Text clipboard over the async Clipboard API
+├── UltraCanvasWASMNativeDialogs.cpp   # alert/confirm/prompt, downloads, print
+├── UltraCanvasWASMFileLoader.cpp      # NotifyRecentFile (no-op)
+├── UltraCanvasSpellCheckSupport.cpp   # No system speller: Hunspell backend
+├── UltraCanvasWASMSupport.h/cpp       # Optional browser utilities (IDBFS, fetch, file
+│                                      # import/export, image/font loading, URL, ...)
 ├── build-wasm-sysroot.sh              # Cross-compiles the dependency stack
 ├── patches/                           # wasm fixes applied to the deps by the script
 └── demo/                              # Minimal browser validation app
 ```
+
+Every `OS/<Platform>/` directory must define the per-platform symbols the core
+references unconditionally - the `UltraCanvasNativeDialogs` statics,
+`UltraCanvasFileLoader::NotifyRecentFile`, `CreateNativeSpellCheckBackend()`;
+the three files above supply them here, so applications that use dialogs or
+the file loader link. What each one does in the browser, and the
+application-facing view of the platform, is in
+[`Docs/UltraCanvas/UltraCanvasWebAssembly.md`](../../../Docs/UltraCanvas/UltraCanvasWebAssembly.md).
 
 | Concern | How it works |
 |---|---|
@@ -33,6 +46,8 @@ OS/WASM/
 | Input | Per-canvas Emscripten HTML5 callbacks convert DOM events to `UCEvent`s and `PushEvent()` them (mouse, wheel with notch normalisation, touch with synthesized left-button mouse events, focus). Keyboard is registered once on the browser window and routed to the focused window by `DispatchEvent()`. |
 | HiDPI | `deviceScale = devicePixelRatio`; DOM coordinates are CSS px = logical units, so events need no physical→logical conversion. |
 | Fonts | Pango + Fontconfig against the bundled Ubuntu/Ubuntu Mono TTFs, preloaded into the virtual FS at `/share/media/fonts` (see below). |
+| Clipboard | Text only. `SetClipboardText()` caches the text and calls `navigator.clipboard.writeText()`. Reading is asynchronous in the browser, so the application lets the Ctrl/Cmd+V keydown through to the browser, which answers with a `paste` event; the DOM listener hands the pasted text to the clipboard backend and *then* queues the Ctrl+V key event, so the text field's paste handler finds it in place. `GetClipboardText()` also starts a `readText()` refresh for menu-driven pastes. |
+| Dialogs | `alert()` / `confirm()` / `prompt()` for messages and text input; `SaveContent()` triggers a download; the synchronous file pickers report Cancel (imports go through `WASMBrowser::PickFilesAsync()`). |
 | Screen | The browser viewport (`window.innerWidth/Height`) in CSS px. `Maximize()` fills it; `SetFullscreen(true)` uses the Fullscreen API. |
 
 ## Building
@@ -82,7 +97,15 @@ FS at `/share/media/fonts`:
 
 The core library propagates `-pthread -fwasm-exceptions
 -sPTHREAD_POOL_SIZE=8 -sALLOW_MEMORY_GROWTH=1 -sSTACK_SIZE=5MB
--sNO_EXIT_RUNTIME=1` to executables.
+-sNO_EXIT_RUNTIME=1` to executables, plus the exports the backend's
+JavaScript bridges call (`-sEXPORTED_FUNCTIONS=_main,_malloc,_free` and
+`-sEXPORTED_RUNTIME_METHODS=UTF8ToString,stringToUTF8,stringToNewUTF8,lengthBytesUTF8,HEAPU8,FS`).
+An application that sets `EXPORTED_FUNCTIONS` itself must keep these.
+
+The JavaScript inside `EM_ASM` blocks is collected by the C preprocessor, so
+a **comma at the top level of the block** (outside any parentheses or
+brackets, e.g. `var a = 1, b = 2;`) splits the macro arguments and breaks
+the build. Use one declaration per statement.
 
 ### 3. Serving
 
@@ -124,13 +147,22 @@ should show pango-rendered text and a clickable button.
 
 ## Known limitations
 
-- **Clipboard**: no backend (`InitializeClipboard()` reports failure and the
-  framework continues); the browser clipboard needs an async JS bridge.
+- **Clipboard**: text only, and paste depends on the browser firing a
+  `paste` event for Ctrl/Cmd+V. Shift+Insert and menu-driven Paste use the
+  last text `navigator.clipboard.readText()` returned, which Chromium allows
+  after a permission prompt and Firefox/Safari mostly refuse. No images or
+  file lists.
+- **File dialogs**: `OpenFile` / `OpenMultipleFiles` / `SaveFile` /
+  `SelectFolder` return Cancel - a browser picker cannot answer
+  synchronously. `SaveContent()` downloads; `WASMBrowser::PickFilesAsync()`
+  imports.
+- **Message dialogs** map onto `confirm()`'s two buttons; Yes/No/Cancel and
+  Abort/Retry/Ignore lose their third choice. Password prompts return Cancel.
 - **Mouse capture**: drags that leave the canvas stop receiving moves until
   the pointer re-enters (needs the Pointer Events capture API).
 - **Custom cursor images** fall back to the standard cursor (CSS cannot
   reference files inside the Emscripten virtual FS).
-- **Native dialogs, drag & drop between windows, window icons**: not
+- **IME composition, drag & drop between windows, window icons**: not
   implemented.
 - Presentation converts and uploads the full surface on every composition;
   damage-rect-limited `putImageData` is an easy future optimisation.
@@ -150,3 +182,10 @@ compile against the current interfaces. It was replaced wholesale in 2026-08;
 only the browser utility classes in `UltraCanvasWASMSupport.*` were kept.
 The first full Emscripten link and in-browser validation followed in the
 same cycle, together with `build-wasm-sysroot.sh` and the `demo/` app.
+2026-09 added the per-platform symbols real applications link against
+(native dialogs, file loader), the clipboard bridge, and rewrote the browser
+utilities, whose kept 2025 code had returned JavaScript promises through
+`EM_ASM_INT` and downloaded empty blobs. These additions were written against
+the Emscripten API and syntax-checked with stub headers on a desktop
+compiler; they have not yet been exercised in a browser - the manually
+dispatched `wasm-build.yml` workflow is the place to do that.

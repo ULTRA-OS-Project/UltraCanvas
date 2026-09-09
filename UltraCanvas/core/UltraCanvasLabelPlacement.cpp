@@ -384,7 +384,7 @@ Rect2Dd InsideAnchorRect(const LabelShape& s, const Size2Dd& text,
                                    : s.center.y - text.height * 0.5;
         return Rect2Dd(x, y, text.width, text.height);
     }
-    const double f = (col != 0 && row != 0) ? 0.5 * M_SQRT1_2 : 0.5;
+    const double f = (col != 0 && row != 0) ? 0.5 * 0.70710678118654752440 : 0.5;
     return Rect2Dd(s.center.x + col * f * s.radius - text.width * 0.5,
                    s.center.y + row * f * s.radius - text.height * 0.5,
                    text.width, text.height);

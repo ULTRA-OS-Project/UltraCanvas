@@ -101,6 +101,8 @@ namespace UltraCanvas {
                     {"ger", GraphicsFormatType::Vector}, {"ai", GraphicsFormatType::Vector},
                     {"eps", GraphicsFormatType::Vector}, {"ps", GraphicsFormatType::Vector},
                     {"cdr", GraphicsFormatType::Vector}, {"cmx", GraphicsFormatType::Vector},
+                    {"emf", GraphicsFormatType::Vector}, {"wmf", GraphicsFormatType::Vector},
+                    {"dxf", GraphicsFormatType::Vector}, {"dwg", GraphicsFormatType::Vector},
 
                     // 3D model formats
                     {"3dm", GraphicsFormatType::ThreeD}, {"3ds", GraphicsFormatType::ThreeD},
@@ -267,6 +269,19 @@ namespace UltraCanvas {
         virtual GraphicsManipulation GetSupportedManipulations() const = 0;
         virtual GraphicsFileInfo GetFileInfo(const std::string& filePath) = 0;
         virtual bool ValidateFile(const std::string& filePath) = 0;
+
+        // Saving. GetSaveExtensions lists the extensions (lowercase, no dot)
+        // this plugin can write; the default — empty — marks a load-only
+        // plugin, so existing plugins keep working unchanged. SaveGraphics
+        // writes the element's content to filePath in the format the file
+        // extension names; a plugin returns false for elements it does not
+        // understand or extensions it did not list.
+        virtual std::vector<std::string> GetSaveExtensions() const { return {}; }
+        virtual bool SaveGraphics(const std::shared_ptr<UltraCanvasUIElement>& element,
+                                  const std::string& filePath) {
+            (void)element; (void)filePath;
+            return false;
+        }
     };
 
 // ===== GRAPHICS PLUGIN REGISTRY =====
@@ -276,16 +291,36 @@ namespace UltraCanvas {
         static std::map<std::string, std::shared_ptr<IGraphicsPlugin>> extensionMap;
         static bool initialized;
 
-        // Helper method - now properly declared
-        static std::shared_ptr<IGraphicsPlugin> FindPluginForFile(const std::string& filePath) {
+        static std::string ExtensionOf(const std::string& filePath) {
             size_t dotPos = filePath.find_last_of('.');
-            if (dotPos == std::string::npos) return nullptr;
-
+            if (dotPos == std::string::npos) return {};
             std::string ext = filePath.substr(dotPos + 1);
             std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+            return ext;
+        }
 
+        // Helper method - now properly declared
+        static std::shared_ptr<IGraphicsPlugin> FindPluginForFile(const std::string& filePath) {
+            std::string ext = ExtensionOf(filePath);
+            if (ext.empty()) return nullptr;
             auto it = extensionMap.find(ext);
             return (it != extensionMap.end()) ? it->second : nullptr;
+        }
+
+        // Save dispatch matches against GetSaveExtensions, which is
+        // independent of the load extension map: a plugin may save formats
+        // it cannot load and vice versa.
+        static std::shared_ptr<IGraphicsPlugin> FindPluginForSave(const std::string& filePath) {
+            std::string ext = ExtensionOf(filePath);
+            if (ext.empty()) return nullptr;
+            for (const auto& plugin : plugins) {
+                for (const auto& rawExt : plugin->GetSaveExtensions()) {
+                    std::string saveExt = rawExt;
+                    std::transform(saveExt.begin(), saveExt.end(), saveExt.begin(), ::tolower);
+                    if (saveExt == ext) return plugin;
+                }
+            }
+            return nullptr;
         }
 
     public:
@@ -403,6 +438,32 @@ namespace UltraCanvas {
             return plugin->LoadGraphics(filePath);
         }
 
+        // ===== SAVING =====
+        static bool CanSave(const std::string& filePath) {
+            return FindPluginForSave(filePath) != nullptr;
+        }
+
+        static bool SaveGraphics(const std::shared_ptr<UltraCanvasUIElement>& element,
+                                 const std::string& filePath) {
+            auto plugin = FindPluginForSave(filePath);
+            return plugin && plugin->SaveGraphics(element, filePath);
+        }
+
+        // Every extension some registered plugin can write (lowercase, no
+        // dot, deduplicated) — ready for save-dialog filters.
+        static std::vector<std::string> GetSupportedSaveExtensions() {
+            std::set<std::string> seen;
+            std::vector<std::string> extensions;
+            for (const auto& plugin : plugins) {
+                for (const auto& rawExt : plugin->GetSaveExtensions()) {
+                    std::string ext = rawExt;
+                    std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
+                    if (!ext.empty() && seen.insert(ext).second) extensions.push_back(ext);
+                }
+            }
+            return extensions;
+        }
+
         static std::shared_ptr<UltraCanvasUIElement> CreateGraphics(int width, int height, GraphicsFormatType type) {
             for (const auto& plugin : plugins) {
                 auto element = plugin->CreateGraphics(width, height, type);
@@ -465,6 +526,15 @@ namespace UltraCanvas {
 
     inline bool CanHandleGraphicsFile(const std::string& filePath) {
         return UltraCanvasGraphicsPluginRegistry::CanHandle(filePath);
+    }
+
+    inline bool SaveGraphicsFile(const std::shared_ptr<UltraCanvasUIElement>& element,
+                                 const std::string& filePath) {
+        return UltraCanvasGraphicsPluginRegistry::SaveGraphics(element, filePath);
+    }
+
+    inline bool CanSaveGraphicsFile(const std::string& filePath) {
+        return UltraCanvasGraphicsPluginRegistry::CanSave(filePath);
     }
 
 } // namespace UltraCanvas

@@ -1581,17 +1581,27 @@ bool UltraCanvasRequirementDiagram::HandleMouseWheel(const UCEvent& event) {
     if (!Contains(mousePos) || !zoomOnScroll) return false;
     if (PointInMinimap(mousePos) || FindControlButtonAt(mousePos) >= 0) return true;
 
-    const double oldZoom = zoomLevel;
-    zoomLevel *= (event.wheelDelta > 0) ? 1.1 : (1.0 / 1.1);
-    ClampZoom();
-
-    // Keep the world point under the cursor fixed.
-    panOffset.x = mousePos.x - (mousePos.x - panOffset.x) * (zoomLevel / oldZoom);
-    panOffset.y = mousePos.y - (mousePos.y - panOffset.y) * (zoomLevel / oldZoom);
-
-    NotifyViewportChange();
-    RequestRedraw();
+    if (!zoomAnim.IsBound()) {
+        zoomAnim.Bind([this](double f) { ApplyZoomFactorAtCursor(f, zoomCursor); },
+                      [this] { NotifyViewportChange(); RequestRedraw(); });
+    }
+    zoomCursor = mousePos;
+    zoomAnim.ZoomBy((event.wheelDelta > 0) ? 1.1 : (1.0 / 1.1),
+                    zoomLevel, minZoom, maxZoom);
     return true;
+}
+
+// One zoom step about the cursor: the point under it stays fixed. A wheel notch
+// is eased in as a run of these (UltraCanvasSmoothZoom), and applying them in a
+// row about the same cursor is exactly applying their product once.
+void UltraCanvasRequirementDiagram::ApplyZoomFactorAtCursor(double factor,
+                                                            const Point2Di& cursor) {
+    const double oldZoom = zoomLevel;
+    zoomLevel *= factor;
+    ClampZoom();
+    if (oldZoom == zoomLevel) return;
+    panOffset.x = cursor.x - (cursor.x - panOffset.x) * (zoomLevel / oldZoom);
+    panOffset.y = cursor.y - (cursor.y - panOffset.y) * (zoomLevel / oldZoom);
 }
 
 bool UltraCanvasRequirementDiagram::HandleTextInput(const UCEvent& event) {
