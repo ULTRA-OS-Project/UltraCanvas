@@ -1,4 +1,38 @@
 #### 2026-09-09 *0.3.111*
+- **A font file opens full size in a window of its own.**
+  `UltraCanvasMediaViewerWindow` is a new component: an
+  `UltraCanvasMediaViewer` filling a top-level window, opened over the window
+  the user is looking at. It is the companion to a preview pane — a pane
+  answers "is this the file I meant", a window answers "let me look at it",
+  which for a font is the difference between a two-letter specimen and every
+  glyph in the file. Because it hosts the media viewer it has no per-format
+  case of its own: images, video, audio, documents, spreadsheets, e-books, 3D
+  models and fonts all open the same way, and Prev / Next walk the rest of the
+  folder. One instance owns at most one window, so double-clicking through a
+  folder gets one window that keeps up rather than a window per file; Escape
+  closes it, and closing releases the file so a later rename is not blocked by
+  a document engine still holding it open.
+- **UltraFiler: double-clicking a font opens it, rather than nudging the
+  preview pane.** A font is the one previewable kind whose whole point is the
+  part a pane cannot hold, so it now opens in a viewer window — unless this
+  system has an application registered for it, which wins the way it does in
+  Explorer. Single-click still previews in the pane. Every other kind is
+  unchanged.
+- **The font viewer's control bar came back stacked when it was embedded.**
+  The same failure the previous entry fixed, through the other door: the
+  re-flow ran from `SetBounds()`, and a viewer inside a flex parent — the
+  media viewer's column, which is how the file manager gets one — is sized by
+  the layout engine through `Arrange()` and never through `SetBounds()`. Built
+  at no size and given one later, it kept the placement it had at zero, which
+  is none, so the layout engine stacked the pickers in a column over the
+  glyphs. `Arrange()` now re-flows too, and skips the work when the size has
+  not changed. The test arranges a viewer built at 0 x 0 and checks the bar;
+  it fails nine ways without the fix.
+- **The media viewer's information bar said "No media" over a font.**
+  `MediaKind::Font` was missing from the bar's kind list, so a font fell
+  through to the image branch and reported nothing. It now names the file, its
+  family and its glyph count — the number you compare two font downloads by,
+  the way a PDF's page count is — plus the face for a collection.
 - **Legacy bitmap fonts previewed as `!"#$%` instead of letters.** A folder of
   `C:\Windows\Fonts` showed every `.fon` file as a run of punctuation or DOS
   box-drawing symbols while the TrueType files beside them correctly showed

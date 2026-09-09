@@ -2080,6 +2080,30 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     }
 #endif
 
+    if (activeKind == MediaKind::Font && fontView) {
+        // A font says what it is and how much of it there is - the glyph count
+        // is the number you compare two downloads by, the way a PDF's page
+        // count is.
+        auto* fv = static_cast<UltraCanvasFontViewer*>(fontView.get());
+        const UltraCanvasFontFace& face = fv->GetFace();
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   FONT";
+        if (face.IsOpen()) {
+            const FontFaceInfo& info = face.Info();
+            if (!info.family.empty()) os << "   \xC2\xB7   " << info.family;
+            os << "   \xC2\xB7   " << face.Glyphs().size() << " glyphs";
+            if (fv->GetFaceCount() > 1)
+                os << "   \xC2\xB7   face " << (fv->GetFaceIndex() + 1)
+                   << " / " << fv->GetFaceCount();
+        }
+        std::error_code ec;
+        auto sz = fs::file_size(path, ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
+
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
         activeKind == MediaKind::Text || activeKind == MediaKind::Book ||
         activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {

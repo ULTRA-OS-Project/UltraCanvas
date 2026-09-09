@@ -273,6 +273,51 @@ void TestControlPlacement() {
     Check(narrowInfo.y > 400 - 30, "and lifts the information line");
 }
 
+// A viewer inside another container - the media viewer's flex column, say -
+// is built at no size and sized by the layout engine, which calls Arrange()
+// and never SetBounds(). Without a re-flow there the control bar keeps the
+// placement it was given at a size of zero, which is none, and the layout
+// engine stacks it in a column over the grid.
+void TestArrangedByALayoutPass() {
+    std::cout << "\nSized by a layout pass\n";
+    auto viewer = CreateFontViewer("flexchild", 0, 0, 0, 0);
+
+    std::map<std::string, std::shared_ptr<UltraCanvasUIElement>> byId;
+    for (const auto& child : viewer->GetChildren()) {
+        if (child) byId[child->GetIdentifier()] = child;
+    }
+    auto boundsOf = [&](const std::string& id) {
+        return byId.count(id) ? byId[id]->GetBounds() : Rect2Df(0, 0, 0, 0);
+    };
+
+    Check(viewer->GetColumnCount() >= 1, "starts with no usable size");
+
+    const float w = 820, h = 600;
+    viewer->Arrange(Rect2Df(0, 0, w, h), CSSLayout::LayoutContext{});
+
+    Check(viewer->GetWidth() == w, "takes the size the layout pass gives it");
+    const Rect2Df range = boundsOf("flexchild-range");
+    const Rect2Df slider = boundsOf("flexchild-size");
+    const Rect2Df info = boundsOf("flexchild-info");
+    Check(range.x > 0 && range.y < 30,
+          "the range picker is in the control bar afterwards");
+    Check(slider.x > range.x + range.width,
+          "the slider is beside it rather than under it");
+    Check(info.y > h - 30, "the information line is along the bottom");
+    for (const auto& [id, el] : byId) {
+        Check(el->layoutItem.positionType != CSSLayout::PositionType::Static,
+              id + " is out of flow");
+    }
+
+    // A second pass at the same size must not have to do it again, and a pass
+    // at a new size must.
+    viewer->Arrange(Rect2Df(0, 0, w, h), CSSLayout::LayoutContext{});
+    Check(boundsOf("flexchild-size").x == slider.x, "an identical pass changes nothing");
+    viewer->Arrange(Rect2Df(0, 0, 520, h), CSSLayout::LayoutContext{});
+    const Rect2Df narrowed = boundsOf("flexchild-size");
+    Check(narrowed.x + narrowed.width <= 520, "a narrower pass pulls the slider in");
+}
+
 void TestMediaViewerIntegration() {
     std::cout << "\nDetail-pane classification\n";
     Check(UltraCanvasMediaViewer::IsSupportedMedia("Ubuntu-R.ttf"),
@@ -301,6 +346,7 @@ int main() {
     TestScrolling();
     TestCellSize();
     TestControlPlacement();
+    TestArrangedByALayoutPass();
     TestMediaViewerIntegration();
     std::cout << "\n" << (g_failures ? "FAILED" : "PASSED") << " ("
               << g_failures << " failure" << (g_failures == 1 ? "" : "s") << ")\n";

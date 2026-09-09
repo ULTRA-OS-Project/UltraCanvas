@@ -205,6 +205,25 @@ the backing implementation can be replaced without affecting callers.
   `UltraCanvasSmoothScroll`.
   See `Docs/UltraCanvas/UltraCanvasFontViewer.md`.
 
+- **UltraCanvasMediaViewerWindow** (`UltraCanvasMediaViewerWindow.h`) — one
+  file, full size, in its own window: an `UltraCanvasMediaViewer` filling a
+  top-level window, opened over the window the user is looking at. The
+  companion to a preview pane — a pane answers "is this the file I meant", this
+  answers "let me look at it", which for a font is the difference between a
+  two-letter specimen and every glyph in the file. Shows whatever the media
+  viewer shows, so it has no per-format case of its own, and the arrow keys
+  walk the rest of the folder. Public surface:
+  - `Show(path, host, MediaViewerWindowOptions)` — opens over `host` at its
+    size and position when given one; `Close()`, `IsOpen()`, `GetViewer()`.
+  - `MediaViewerWindowOptions`: `title` (empty = the file's name),
+    `browseFolder`, `width` / `height`, `background`.
+
+  One instance owns at most one window: showing another file reuses it, so
+  repeated double-clicks do not litter the desktop. Closes on Escape.
+  `UltraCanvasImageViewer` remains the right choice for a picture that wants
+  zoom and pan over a dark lightbox; this is the general one.
+  See `Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.

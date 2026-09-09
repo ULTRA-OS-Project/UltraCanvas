@@ -389,6 +389,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageViewer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewerWindow.cpp
         # Raster editing: layer / selection / document model, brush engine and
         # the editable paint surface (UltraPaint)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterLayer.cpp

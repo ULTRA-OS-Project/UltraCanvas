@@ -119,8 +119,13 @@ namespace UltraCanvas {
         bool OnEvent(const UCEvent& event) override;
         bool AcceptsFocus() const override { return true; }
         // Resizing re-flows the grid: the column count comes from the width,
-        // so the scroll range and every cell position move with it.
+        // so the scroll range and every cell position move with it. Both
+        // entries matter - a viewer positioned by hand arrives through
+        // SetBounds, one inside a flex or grid parent through Arrange, and the
+        // layout engine never calls the former.
         void SetBounds(const Rect2Df& b) override;
+        void Arrange(const Rect2Df& finalRect,
+                     const CSSLayout::LayoutContext& ctx) override;
 
         // ===== LAYOUT, EXPOSED FOR TESTS =====
         // The grid geometry is the part worth pinning down: a wrong column
@@ -147,6 +152,10 @@ namespace UltraCanvas {
         void UpdateInfoText();
         void SyncScrollbar();
         void ClampScroll();
+        // The tail both SetBounds and Arrange run: place the chrome, keep the
+        // scroll in range, repaint. A no-op when the size has not changed,
+        // since a layout pass can arrive without one.
+        void ReflowForSize();
         // Cell edge in device pixels for the current scale, and the stride
         // from one cell to the next including the gap.
         int CellStride() const;
@@ -158,6 +167,11 @@ namespace UltraCanvas {
         UltraCanvasFontFace face;
         int faceCount = 0;
         FontViewerStyle style;
+
+        // The size the chrome was last placed for, so a layout pass that does
+        // not resize us does not re-place it.
+        float reflowedWidth = -1.0f;
+        float reflowedHeight = -1.0f;
 
         int cellSize = 56;
         int scrollOffsetY = 0;

@@ -94,6 +94,13 @@ child is re-stacked at the top-left however it was placed, which puts the whole
 control bar in one column on top of the grid. Any container that positions its
 own chrome has the same obligation.
 
+The placement is re-run from **both** `SetBounds()` and `Arrange()`. A viewer
+positioned by hand is sized through the first; one inside a flex or grid
+parent — the media viewer's column, say — only ever through the second, and it
+is built at no size and given one later. Re-flowing from `SetBounds()` alone
+leaves such a viewer with the chrome placement it had at a size of zero, which
+is none at all.
+
 ## Performance
 
 Glyphs are rasterized one cell at a time and cached by (entry, device-pixel

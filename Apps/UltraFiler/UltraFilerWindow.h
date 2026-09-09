@@ -68,6 +68,7 @@
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasFilerWidget.h"
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasMediaViewerWindow.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasBreadcrumb.h"
@@ -527,6 +528,14 @@ private:
     // Whether the detail pane can show this entry: the Display > Detail view
     // switches allow it AND the media viewer has a view for the file.
     bool CanShowInDetailView(const FilerEntry& entry) const;
+    // Whether this system has an application registered for the file. Used to
+    // decide who opens a font on double-click: an installed font viewer wins,
+    // Explorer-style, and only a file nothing claims falls to our own window.
+    static bool HasRegisteredApplication(const std::string& path);
+    // Opens a file full size in its own window (UltraCanvasMediaViewerWindow),
+    // over this one. The window is reused, so a second double-click replaces
+    // what is in it rather than opening another.
+    void OpenInMediaWindow(const std::string& path);
     // The tail the file display hangs under Display > Thumbnails and
     // Display > Detail view: "File formats...", which opens the matching
     // settings page.
@@ -557,6 +566,9 @@ private:
     std::shared_ptr<UltraCanvasContainer>       tabContentHost;  // shows the active tab's page
     std::shared_ptr<UltraCanvasFilerWidget>     filer;   // active tab's filer
     std::shared_ptr<UltraCanvasMediaViewer>     preview;
+    // The full-size viewer window a double-click opens (see OpenInMediaWindow).
+    // Held so it can be reused and closed with the window.
+    UltraCanvasMediaViewerWindow                mediaWindow;
     // Folder preview: shows the content of a selected folder in the detail
     // pane, the way `preview` shows a selected file. The two share the pane;
     // UpdatePreviewPane swaps whichever the selection calls for into it.

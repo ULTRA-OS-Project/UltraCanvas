@@ -188,14 +188,32 @@ namespace UltraCanvas {
         SyncScrollbar();
     }
 
-    void UltraCanvasFontViewer::SetBounds(const Rect2Df& b) {
-        UltraCanvasContainer::SetBounds(b);
+    void UltraCanvasFontViewer::ReflowForSize() {
+        const float w = GetWidth(), h = GetHeight();
+        if (w == reflowedWidth && h == reflowedHeight) return;
+        reflowedWidth = w;
+        reflowedHeight = h;
         // The column count is a function of the width, so everything derived
         // from it - the row count, the scroll range, where each cell sits -
         // changes with a resize. Re-flow before anything reads them.
         LayoutControls();
         ClampScroll();
         RequestRedraw();
+    }
+
+    void UltraCanvasFontViewer::SetBounds(const Rect2Df& b) {
+        UltraCanvasContainer::SetBounds(b);
+        ReflowForSize();
+    }
+
+    void UltraCanvasFontViewer::Arrange(const Rect2Df& finalRect,
+                                        const CSSLayout::LayoutContext& ctx) {
+        UltraCanvasContainer::Arrange(finalRect, ctx);
+        // A viewer inside a flex or grid parent is sized here and never
+        // through SetBounds, so without this the control bar keeps whatever
+        // placement it was given at construction - which, at a size of zero,
+        // is none at all, and the layout engine stacks it in a column.
+        ReflowForSize();
     }
 
     // ===== THE FILE =====
