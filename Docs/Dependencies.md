@@ -267,8 +267,8 @@ configure time naming what is missing.
 |---|---|---|---|
 | Engine, public API, dashboard widgets | (core only) | (core only) | (core only) |
 | Matter backend (`ULTRACANVAS_SMARTHOME_MATTER`, default OFF) | connectedhomeip (Apache 2) + mbedTLS (Apache 2) | connectedhomeip + mbedTLS | connectedhomeip + mbedTLS |
-| Thread backend (`ULTRACANVAS_SMARTHOME_THREAD`, default OFF) | OpenThread (BSD 3-Clause) + mbedTLS | OpenThread + mbedTLS | OpenThread + mbedTLS |
-| Zigbee backend (`ULTRACANVAS_SMARTHOME_ZIGBEE`, default OFF) | Silicon Labs EZSP (libezsp) | same | same |
+| Thread backend (`ULTRACANVAS_SMARTHOME_THREAD`, default OFF) | a **built** OpenThread, `OT_PLATFORM=posix` (BSD 3-Clause) + mbedTLS | same | same |
+| Zigbee backend (`ULTRACANVAS_SMARTHOME_ZIGBEE`, default OFF) | **no transport implemented** — the option refuses to configure | same | same |
 | Z-Wave backend (`ULTRACANVAS_SMARTHOME_ZWAVE`, default OFF) | OpenZWave 1.6 (**LGPL 2.1**, `libopenzwave1.6-dev`, **linked dynamically**) | OpenZWave 1.6 | OpenZWave 1.6 |
 | KNX backend (`ULTRACANVAS_SMARTHOME_KNX`, default OFF) | (core only) — KNXnet/IP over sockets; **builds today** | (core only) | (core only) |
 

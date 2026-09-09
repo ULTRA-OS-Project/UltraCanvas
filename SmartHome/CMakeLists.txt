@@ -30,8 +30,8 @@ set(SMARTHOME_SOURCES
 # ── Protocol backends: all OFF, none of them can build yet ───────────────────
 
 option(ULTRACANVAS_SMARTHOME_MATTER "Build the Matter backend (needs the connectedhomeip SDK)" OFF)
-option(ULTRACANVAS_SMARTHOME_THREAD "Build the Thread backend (needs OpenThread)" OFF)
-option(ULTRACANVAS_SMARTHOME_ZIGBEE "Build the Zigbee backend (needs Silicon Labs EZSP or TI ZNP)" OFF)
+option(ULTRACANVAS_SMARTHOME_THREAD "Build the Thread backend (needs a BUILT OpenThread, not just headers)" OFF)
+option(ULTRACANVAS_SMARTHOME_ZIGBEE "Build the Zigbee backend (NO transport implemented — see SmartHome/STATUS.md)" OFF)
 option(ULTRACANVAS_SMARTHOME_ZWAVE  "Build the Z-Wave backend" OFF)
 option(ULTRACANVAS_SMARTHOME_KNX    "Build the KNX backend (no third party; this one builds today)" OFF)
 
@@ -90,9 +90,17 @@ foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
             list(APPEND _sh_missing "mbedTLS")
         endif()
     elseif(_sh_proto STREQUAL "Thread")
+        # Headers alone are not enough: OpenThread generates its core config at
+        # build time and the backend calls otSysInit/otSysProcessDrivers from the
+        # POSIX platform layer, so this needs a built OpenThread with
+        # OT_PLATFORM=posix, not a source checkout.
         find_path(OPENTHREAD_INCLUDE_DIR openthread/instance.h)
-        if(NOT OPENTHREAD_INCLUDE_DIR)
-            list(APPEND _sh_missing "OpenThread")
+        find_library(OPENTHREAD_LIBRARY NAMES openthread-posix openthread-ftd)
+        if(NOT OPENTHREAD_INCLUDE_DIR OR NOT OPENTHREAD_LIBRARY)
+            list(APPEND _sh_missing "a built OpenThread (OT_PLATFORM=posix)")
+        endif()
+        if(NOT MbedTLS_FOUND)
+            list(APPEND _sh_missing "mbedTLS")
         endif()
         if(NOT MbedTLS_FOUND)
             list(APPEND _sh_missing "mbedTLS")
@@ -103,10 +111,18 @@ foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
         # the choice would only invite someone to pick the half that does
         # nothing. Those branches stay inert: nothing defines
         # ULTRACANVAS_WITH_ZSTACK.
-        find_path(EZSP_INCLUDE_DIR ezsp/ezsp.h)
-        if(NOT EZSP_INCLUDE_DIR)
-            list(APPEND _sh_missing "Silicon Labs EZSP (libezsp)")
-        endif()
+        # The backend has no transport at all: every EZSP_* and ZStack_* function
+        # is "return false; // Not implemented", so installing a stack would not
+        # make it work. Refuse the option outright rather than producing
+        # something that links, runs, and silently talks to nothing.
+        message(FATAL_ERROR
+            "ULTRACANVAS_SMARTHOME_ZIGBEE=ON, but the Zigbee backend has no "
+            "transport: every EZSP_* and ZStack_* function in "
+            "protocols/Zigbee/ZigbeeProtocol.cpp returns false and is marked "
+            "\"Not implemented\". Installing a Zigbee stack will not change "
+            "that. The 2000 lines there model ZCL clusters and endpoints; what "
+            "is missing is the serial/ASH transport underneath. Leave this "
+            "option OFF until that exists — see SmartHome/STATUS.md.")
     elseif(_sh_proto STREQUAL "ZWave")
         find_path(OPENZWAVE_INCLUDE_DIR openzwave/Manager.h)
         if(NOT OPENZWAVE_INCLUDE_DIR)
@@ -159,6 +175,11 @@ target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core)
 foreach(_sh_proto ${_sh_backends})
     string(TOUPPER ${_sh_proto} _sh_upper)
     target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_${_sh_upper}=1)
+    if(_sh_proto STREQUAL "Thread")
+        target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_WITH_OPENTHREAD=1)
+        target_include_directories(SmartHome PRIVATE ${OPENTHREAD_INCLUDE_DIR})
+        target_link_libraries(SmartHome PUBLIC ${OPENTHREAD_LIBRARY})
+    endif()
     if(_sh_proto STREQUAL "ZWave")
         # Selects the real OpenZWave code. Without it the backend compiles into
         # a shell: the 162 OpenZWave calls sit behind this macro, the library is

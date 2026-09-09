@@ -26,7 +26,7 @@
 #include <openthread/ip6.h>
 #include <openthread/icmp6.h>
 #include <openthread/link.h>
-#include <openthread/tasklets.h>
+#include <openthread/tasklet.h>
 #include <openthread/platform/radio.h>
 #include <openthread/platform/misc.h>
 #endif

@@ -216,6 +216,49 @@ that links successfully and does nothing. CMake defines both now; the symptom
 if it ever stops is a build that succeeds while `nm` shows no undefined
 `OpenZWave::` symbols at all.
 
+**What each backend actually contains** (counted, not assumed — a backend can
+compile and link while calling nothing at all):
+
+| Backend | Lines | Real SDK calls | State |
+|---|---|---|---|
+| Z-Wave | 2209 | 162 × `OpenZWave::` | **builds and links**, dynamically |
+| KNX | 1994 | none needed — implements KNXnet/IP itself | **builds and links** |
+| Thread | 1816 | 80 × `ot*` | real, but needs a *built* OpenThread |
+| Matter | 1324 | 5 × `chip::` | thin wrapper; deferred |
+| Zigbee | 2036 | **0** | **no transport at all** |
+
+**Correction: Zigbee is not close, and EZSP-versus-ZNP was a false choice.**
+An earlier note here said the Z-Stack path was all `return false` while EZSP was
+the one to use. Both are. Every `EZSP_*` and `ZStack_*` function in
+`protocols/Zigbee/ZigbeeProtocol.cpp` is `return false; // Not implemented`,
+including `InitializeEZSP()`. The 2000 lines model ZCL clusters, endpoints and
+attributes competently; what is missing is the serial/ASH transport underneath,
+and no library install supplies that. `ULTRACANVAS_SMARTHOME_ZIGBEE=ON` now
+fails at configure time saying so, rather than building something that links,
+runs and silently talks to nothing.
+
+Two further facts about Zigbee, if it is picked up later. The include
+`ezsp/ash-host.h` is **not** Legrand's libezsp — that library (BSD 3-Clause,
+`github.com/Legrandgroup/libezsp`) has no such header; `ash-host.h` belongs to
+Silicon Labs' own EmberZNet host code. So the file was written against Silicon
+Labs' host library, and adopting libezsp would mean rewriting the includes and
+the twenty `EZSP_*` functions against a different API.
+
+**Thread needs a built OpenThread, not a checkout.** Its headers are fine — one
+rename, `openthread/tasklets.h` became `tasklet.h`, now fixed — but the backend
+calls `otSysInit` / `otSysProcessDrivers` from the POSIX platform layer, and
+OpenThread generates its core config at build time. Against a plain source tree
+113 errors remain, essentially all of them that. Build OpenThread with
+`OT_PLATFORM=posix` first; CMake now looks for `libopenthread-posix` as well as
+the headers, and defines `ULTRACANVAS_WITH_OPENTHREAD`.
+
+**Watch for the gating macros.** `ULTRACANVAS_WITH_ZWAVE`,
+`ULTRACANVAS_WITH_OPENTHREAD` and `ULTRACANVAS_WITH_EZSP` each gate their
+backend's real code. Selecting the source file is not enough: without the macro
+the file compiles into a shell that links successfully and does nothing. That is
+how the Z-Wave backend first built here — cleanly, with zero undefined
+`OpenZWave::` symbols, which is what gave it away.
+
 **Backend plan (decided 2026-09-09).** KNX first, because it needs nothing.
 Zigbee on **EZSP only** — the backend also carries TI Z-Stack branches, but
 every one is `return false; // Not implemented`, so offering the choice would
