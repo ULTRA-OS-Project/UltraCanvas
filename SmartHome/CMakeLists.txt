@@ -33,13 +33,92 @@ option(ULTRACANVAS_SMARTHOME_ZIGBEE "Build the Zigbee backend (needs Silicon Lab
 option(ULTRACANVAS_SMARTHOME_ZWAVE  "Build the Z-Wave backend" OFF)
 option(ULTRACANVAS_SMARTHOME_KNX    "Build the KNX backend" OFF)
 
+# ── Crypto backend for the protocol SDKs ─────────────────────────────────────
+#
+# Matter and Thread both need public-key crypto: X.509 and ECDSA on P-256 for
+# Matter's device attestation, and the same primitives inside OpenThread's
+# commissioner. Neither asks UltraCrypt for it — connectedhomeip carries its own
+# DeviceAttestationCredsProvider — so the choice here is which backend those
+# SDKs are built against.
+#
+# mbedTLS, for three reasons:
+#   * It is what connectedhomeip and OpenThread default to, so both SDKs share
+#     one stack instead of each bringing its own.
+#   * ~1 MB static against OpenSSL's ~4-5 MB, which matters on the ARM and
+#     RISC-V boards ULTRA OS targets.
+#   * OpenSSL is only linked on Linux and Android today (Windows uses Schannel,
+#     macOS SecureTransport), so it would be a new dependency on two of the
+#     three desktop platforms. Docs/Modules/UltraCrypt/README.md §3 makes the
+#     same point: "there is no free ride".
+#
+# This does NOT touch UltraCrypt. libsodium remains the framework's crypto
+# backend for symmetric work; it has no P-256 and no X.509, so it was never a
+# candidate for this job and the 2026-08-10 ruling is unaffected.
+find_package(MbedTLS QUIET)
+if(NOT MbedTLS_FOUND)
+    find_path(MBEDTLS_INCLUDE_DIR mbedtls/version.h)
+    find_library(MBEDTLS_CRYPTO_LIBRARY NAMES mbedcrypto)
+    find_library(MBEDTLS_X509_LIBRARY NAMES mbedx509)
+    find_library(MBEDTLS_TLS_LIBRARY NAMES mbedtls)
+    if(MBEDTLS_INCLUDE_DIR AND MBEDTLS_CRYPTO_LIBRARY AND MBEDTLS_X509_LIBRARY)
+        set(MbedTLS_FOUND TRUE)
+    endif()
+endif()
+
+# ── Which backends can actually be built ─────────────────────────────────────
+#
+# Each backend needs its vendor SDK present. None is vendored here, so an
+# option turned on without its SDK is a configure-time error naming what is
+# missing, rather than a wall of missing-header output from the compiler.
+
 set(_sh_backends "")
 foreach(_sh_proto Matter Thread Zigbee ZWave KNX)
     string(TOUPPER ${_sh_proto} _sh_upper)
-    if(ULTRACANVAS_SMARTHOME_${_sh_upper})
-        list(APPEND SMARTHOME_SOURCES protocols/${_sh_proto}/${_sh_proto}Protocol.cpp)
-        list(APPEND _sh_backends ${_sh_proto})
+    if(NOT ULTRACANVAS_SMARTHOME_${_sh_upper})
+        continue()
     endif()
+
+    set(_sh_missing "")
+    if(_sh_proto STREQUAL "Matter")
+        find_path(CHIP_INCLUDE_DIR platform/CHIPDeviceLayer.h)
+        if(NOT CHIP_INCLUDE_DIR)
+            list(APPEND _sh_missing "connectedhomeip (Matter SDK)")
+        endif()
+        if(NOT MbedTLS_FOUND)
+            list(APPEND _sh_missing "mbedTLS")
+        endif()
+    elseif(_sh_proto STREQUAL "Thread")
+        find_path(OPENTHREAD_INCLUDE_DIR openthread/instance.h)
+        if(NOT OPENTHREAD_INCLUDE_DIR)
+            list(APPEND _sh_missing "OpenThread")
+        endif()
+        if(NOT MbedTLS_FOUND)
+            list(APPEND _sh_missing "mbedTLS")
+        endif()
+    elseif(_sh_proto STREQUAL "Zigbee")
+        find_path(EZSP_INCLUDE_DIR ezsp/ezsp.h)
+        find_path(ZNP_INCLUDE_DIR znp/znp.h)
+        if(NOT EZSP_INCLUDE_DIR AND NOT ZNP_INCLUDE_DIR)
+            list(APPEND _sh_missing "a Zigbee stack (Silicon Labs EZSP or TI ZNP)")
+        endif()
+    elseif(_sh_proto STREQUAL "ZWave")
+        find_path(OPENZWAVE_INCLUDE_DIR openzwave/Manager.h)
+        if(NOT OPENZWAVE_INCLUDE_DIR)
+            list(APPEND _sh_missing "OpenZWave")
+        endif()
+    endif()
+    # KNX speaks KNXnet/IP straight over sockets and needs nothing.
+
+    if(_sh_missing)
+        string(REPLACE ";" ", " _sh_missing_text "${_sh_missing}")
+        message(FATAL_ERROR
+            "ULTRACANVAS_SMARTHOME_${_sh_upper}=ON but ${_sh_missing_text} "
+            "not found. Install it, or leave the option OFF. "
+            "See SmartHome/STATUS.md.")
+    endif()
+
+    list(APPEND SMARTHOME_SOURCES protocols/${_sh_proto}/${_sh_proto}Protocol.cpp)
+    list(APPEND _sh_backends ${_sh_proto})
 endforeach()
 
 add_library(SmartHome STATIC ${SMARTHOME_SOURCES})
@@ -59,6 +138,20 @@ foreach(_sh_proto ${_sh_backends})
     target_compile_definitions(SmartHome PRIVATE ULTRACANVAS_SMARTHOME_${_sh_upper}=1)
     target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/protocols/${_sh_proto})
 endforeach()
+
+# Matter and Thread carry their PKI in their own SDKs; both are built against
+# mbedTLS, so the link line needs it once for whichever of the two is enabled.
+if("Matter" IN_LIST _sh_backends OR "Thread" IN_LIST _sh_backends)
+    if(TARGET MbedTLS::mbedtls)
+        target_link_libraries(SmartHome PUBLIC MbedTLS::mbedtls MbedTLS::mbedx509
+                                               MbedTLS::mbedcrypto)
+    else()
+        target_include_directories(SmartHome PRIVATE ${MBEDTLS_INCLUDE_DIR})
+        target_link_libraries(SmartHome PUBLIC ${MBEDTLS_TLS_LIBRARY}
+                                               ${MBEDTLS_X509_LIBRARY}
+                                               ${MBEDTLS_CRYPTO_LIBRARY})
+    endif()
+endif()
 
 find_package(Threads REQUIRED)
 target_link_libraries(SmartHome PUBLIC Threads::Threads)

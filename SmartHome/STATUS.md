@@ -187,18 +187,38 @@ saving again and comparing the two configs.
 `tests/WidgetTest.cpp` builds them all against `libUltraCanvas` and drives them
 with synthetic `UCEvent`s — 36 assertions.
 
-### 2. Third-party dependencies — not yet resolved
+### 2. Third-party dependencies — decided, not yet installed
 
-- **Matter** includes the connectedhomeip SDK (`chip::`), which is not
-  vendored and not fetched by CMake. It also uses
-  `chip::TestPersistentStorageDelegate` — a test class — for real storage.
-- **Zigbee** includes `ezsp/ezsp.h`, `ezsp/ash-host.h` (Silicon Labs EZSP)
-  and `znp/znp.h` (TI Z-Stack); none are present.
-- Both `Docs/Dependencies.md` and the demo's dependency table still record
-  the module as "No additional third party — (core only)", which stops being
-  true the moment any backend is switched on. Update both together, and add
-  the licence rows (connectedhomeip Apache 2.0, OpenThread BSD, OpenZWave
-  LGPL) to `THIRD_PARTY_LICENSES.md`.
+Every backend is OFF by default and each needs its vendor SDK. CMake now checks
+for them and fails at configure time naming what is missing, rather than letting
+the compiler emit a wall of missing-header errors:
+
+| Backend | Needs | Licence |
+|---|---|---|
+| Matter | connectedhomeip + mbedTLS | Apache 2 |
+| Thread | OpenThread + mbedTLS | BSD 3-Clause / Apache 2 |
+| Zigbee | Silicon Labs EZSP **or** TI Z-Stack ZNP | vendor |
+| Z-Wave | OpenZWave | **LGPL 2.1** |
+| KNX | nothing — KNXnet/IP over sockets | — |
+
+**Crypto backend: mbedTLS** (decided 2026-09-09). Matter's device attestation
+and OpenThread's commissioner both need X.509 and ECDSA on P-256. Neither asks
+UltraCrypt for it, so the only question was which backend those SDKs are built
+against. mbedTLS is what both default to, so they share one stack; it is ~1 MB
+static against OpenSSL's ~4–5 MB, which matters on the ARM and RISC-V boards
+ULTRA OS targets; and OpenSSL is linked only on Linux and Android today
+(Windows uses Schannel, macOS SecureTransport), so it would be new on two of the
+three desktop platforms — the point
+`Docs/Modules/UltraCrypt/README.md` §3 makes as *"there is no free ride"*.
+
+**UltraCrypt is unaffected.** libsodium remains the framework's crypto backend.
+It has no P-256 and no X.509, so it was never a candidate for this job, and the
+2026-08-10 ruling did not cover PKI. Nothing about that ruling changes.
+
+`Docs/Dependencies.md`, the demo's dependency table and
+`THIRD_PARTY_LICENSES.md` all record this now. **OpenZWave is LGPL 2.1**, the
+only copyleft component in the tree — link it dynamically or leave that backend
+off.
 
 ### 3. Two framework gaps the design assumes
 

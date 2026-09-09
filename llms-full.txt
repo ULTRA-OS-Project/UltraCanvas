@@ -1792,9 +1792,33 @@ for the full search order.
 
 ### Smart Home module
 
+The engine, the public API and the dashboard widgets need nothing beyond the
+core. Each protocol backend is a separate CMake option and **every one is OFF
+by default**, so a default build of this module still pulls in no third party.
+Turning one on requires its vendor SDK to be installed; CMake fails at
+configure time naming what is missing.
+
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| No additional third party | (core only) | (core only) | (core only) |
+| Engine, public API, dashboard widgets | (core only) | (core only) | (core only) |
+| Matter backend (`ULTRACANVAS_SMARTHOME_MATTER`, default OFF) | connectedhomeip (Apache 2) + mbedTLS (Apache 2) | connectedhomeip + mbedTLS | connectedhomeip + mbedTLS |
+| Thread backend (`ULTRACANVAS_SMARTHOME_THREAD`, default OFF) | OpenThread (BSD 3-Clause) + mbedTLS | OpenThread + mbedTLS | OpenThread + mbedTLS |
+| Zigbee backend (`ULTRACANVAS_SMARTHOME_ZIGBEE`, default OFF) | Silicon Labs EZSP **or** TI Z-Stack ZNP | same | same |
+| Z-Wave backend (`ULTRACANVAS_SMARTHOME_ZWAVE`, default OFF) | OpenZWave (**LGPL 2.1**) | OpenZWave | OpenZWave |
+| KNX backend (`ULTRACANVAS_SMARTHOME_KNX`, default OFF) | (core only) — KNXnet/IP over sockets | (core only) | (core only) |
+
+> **mbedTLS, not OpenSSL.** Matter's device attestation and OpenThread's
+> commissioner both need X.509 and ECDSA on P-256. Neither asks UltraCrypt for
+> it — connectedhomeip carries its own attestation credentials provider — so the
+> question is only which backend those SDKs are built against. mbedTLS is what
+> both default to, so they share one stack; it is ~1 MB static against OpenSSL's
+> ~4–5 MB; and OpenSSL is linked only on Linux and Android today, so it would be
+> a *new* dependency on Windows and macOS. libsodium was never a candidate here:
+> it has no P-256 and no X.509, so UltraCrypt's 2026-08-10 backend ruling is
+> untouched by this.
+
+> **Z-Wave is LGPL.** OpenZWave is LGPL 2.1, unlike everything else in this
+> table. Link it dynamically, or leave that backend off.
 
 ### Ultra AI module
 
