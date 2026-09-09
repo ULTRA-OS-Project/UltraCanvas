@@ -204,9 +204,22 @@ with synthetic `UCEvent`s — 36 assertions.
 
 - **No BLE transport.** Matter commissioning needs Bluetooth LE; the only
   Bluetooth here is adapter *detection* in `UltraCanvasHardwareInfo`.
-- **No public-key crypto.** Matter device attestation needs X.509, which
-  `Docs/Modules/UltraCrypt/README.md` §2 puts explicitly out of scope
-  ("No consumer"). That ruling now has a consumer and needs revisiting.
+- **Public-key crypto — probably NOT UltraCrypt's problem.** Matter device
+  attestation needs X.509 and ECDSA on P-256, which
+  `Docs/Modules/UltraCrypt/README.md` §2 puts out of scope. But
+  `protocols/Matter/MatterProtocol.cpp` does not ask UltraCrypt for any of it:
+  it includes connectedhomeip's own
+  `credentials/DeviceAttestationCredsProvider.h`, so the PKI lives inside the
+  SDK and comes with whichever crypto backend that SDK is built against
+  (mbedTLS by default; OpenSSL and PSA are the alternatives). Reopening the
+  UltraCrypt ruling is therefore a choice, not a prerequisite — an earlier
+  version of this file called it a prerequisite, which overstated it.
+
+  What *is* a real problem in that file: it uses
+  `credentials/examples/DeviceAttestationCredsExample.h`, the SDK's **test**
+  credentials, alongside `chip::TestPersistentStorageDelegate`. Both must be
+  replaced with real device credentials and real storage before anything
+  ships. That is credential provisioning, not a missing crypto library.
 
 mDNS/DNS-SD, by contrast, already exists
 (`UltraCanvas/Plugins/UltraNet/mdns/MdnsPlugin.cpp`, Avahi / Bonjour / Win32),
