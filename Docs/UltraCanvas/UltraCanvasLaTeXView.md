@@ -126,3 +126,8 @@ formula->SetLaTeX("\\text{if } x \\geq 0 \\text{ then } \\sqrt{x}\\in\\mathbb{R}
   (versioned via `ULTRACANVAS_LATEX_ABI_VERSION`).
 - See `THIRD_PARTY_LICENSES.md` for MicroTeX (MIT) and Latin Modern Math
   (GUST/OFL) licensing.
+- The plan to replace the vendored engine with a native one is
+  [`UltraCanvasLaTeXEngineProposal.md`](UltraCanvasLaTeXEngineProposal.md);
+  its first piece, the OpenType math font reader that makes any MATH-table
+  font usable without a `.clm2`, is
+  [`UltraCanvasMathFont`](UltraCanvasMathFont.md) and ships inside this module.

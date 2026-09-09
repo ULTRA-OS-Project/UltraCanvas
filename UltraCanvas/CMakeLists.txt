@@ -2535,6 +2535,10 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXBackend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXViewImpl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXModule.cpp
+        # The native engine's font layer (OpenType MATH via FreeType) - Phase 0
+        # of Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md. Independent of
+        # MicroTeX; Tests/MathFontTest.cpp compares it against the .clm2.
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasMathFont.cpp
     )
     set_target_properties(UltraCanvasLaTeX PROPERTIES
         CXX_VISIBILITY_PRESET hidden
@@ -2561,7 +2565,10 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         target_include_directories(UltraCanvasLaTeX PRIVATE ${_uc_brew_prefix}/include)
     endif()
     target_compile_definitions(UltraCanvasLaTeX PRIVATE ULTRACANVAS_PLUGIN_LATEX=1)
-    target_link_libraries(UltraCanvasLaTeX PRIVATE microtex_core)
+    # FreeType is linked explicitly: UltraCanvasMathFont.cpp calls it directly,
+    # and with a static core the module cannot rely on the host exporting it.
+    target_link_directories(UltraCanvasLaTeX PRIVATE ${FREETYPE_LIBRARY_DIRS})
+    target_link_libraries(UltraCanvasLaTeX PRIVATE microtex_core ${FREETYPE_LIBRARIES})
     # The module resolves UltraCanvas core symbols (IRenderContext, UIElement,
     # GetExecutableDir, ...) at load time. When the core is a shared library we
     # record a link dependency on it; for a static core the host executable must

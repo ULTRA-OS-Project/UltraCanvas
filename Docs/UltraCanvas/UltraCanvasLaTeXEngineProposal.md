@@ -1,6 +1,12 @@
 # UltraCanvas LaTeX Engine — Investigation & Proposal
 
-Status: **Investigation complete; nothing implemented yet.** This document
+Status: **Investigation complete; Phase 0 (the font layer) implemented** —
+`UltraCanvasMathFont` (`include/Plugins/LaTeX/UltraCanvasMathFont.h`,
+`Plugins/LaTeX/UltraCanvasMathFont.cpp`, documented in
+[`UltraCanvasMathFont.md`](UltraCanvasMathFont.md)) reads the OpenType MATH
+table, metrics and outlines straight from a font file through FreeType;
+`Tests/MathFontTest.cpp` proves it equal to the `.clm2` the vendored engine
+reads, glyph for glyph. Phases 1–4 are not started. This document
 answers two questions put to the framework: can UltraCanvas replace the
 vendored MicroTeX math engine with an implementation of its own, built on the
 framework's vector rendering engine; and how far can such an implementation be
@@ -44,13 +50,20 @@ Everything below comes from reading the current tree, not from assumption:
   element, `UltraCanvasFontFile` (the FreeType precedent), and the CMake
   dependency set
 
-The phrase "UC graph engine element" in the request is read here as the
-framework's **vector graphics engine**: the `IRenderContext` path API that
-every element draws through, plus the `VectorStorage` document model and
-`VectorRenderer` that the Vector plugin uses to hold and draw path scenes. The
-chart engine (`UltraCanvasChartEngineElement`) is a different layer — axes,
-legends, label placement — and is the wrong foundation for typesetting; it
-comes back into the picture only for `pgfplots`-style plots in §6.
+The "graph engine element" named in the request is the **chart engine**
+(`UltraCanvasChartEngineElement`, `Plugins/Charts/Engine/`), whose adoption is
+still partial: most of the ~40 legacy charts keep their own axis, background
+and legend code, and only the parallel coordinate chart is native to the new
+engine (see the status block of the chart engine proposal). That does not
+touch this work. A typesetter needs paths, glyph outlines and font metrics,
+not axes and legends, so the engine described here stands on the layer
+*underneath* the charts — the `IRenderContext` path API every element draws
+through, the `VectorStorage` document model and `VectorRenderer` of the
+Vector plugin, FreeType — and has no dependency on either the chart engine or
+the legacy charts. The chart engine appears exactly once, as the target of
+the `pgfplots` reader in Tier 3 / Phase 4, which is the last phase and should
+be scheduled after the chart migration has gone far enough that new charts
+are written against `UltraCanvasChartEngineElement` only.
 
 ---
 
@@ -255,17 +268,16 @@ thread.
   replaces the outline copy inside `.clm2`.
 * **Math metrics:** the OpenType `MATH` table (constants, italics correction,
   top-accent attachment, extended-shape flags, math kerning, size variants,
-  glyph assemblies for stretchy delimiters) is exposed by HarfBuzz's
-  `hb_ot_math_*` API (`hb_ot_math_has_data`, `hb_ot_math_get_constant`,
-  `hb_ot_math_get_glyph_italics_correction`,
-  `hb_ot_math_get_glyph_top_accent_attachment`,
-  `hb_ot_math_get_glyph_kerning`, `hb_ot_math_get_glyph_variants`,
-  `hb_ot_math_get_glyph_assembly`, `hb_ot_math_get_min_connector_overlap`),
-  available since HarfBuzz 1.3.3 on every platform the framework builds for.
-  A `hb_font_t` is created from the FreeType face with `hb_ft_font_create`.
-  Should a platform ship a HarfBuzz without the MATH API, a private reader of
-  the table via `FT_Load_Sfnt_Table(face, 'MATH', …)` is about 600 lines — it
-  is a simple binary format — and can be kept as the fallback.
+  glyph assemblies for stretchy delimiters). **Implemented** in
+  `UltraCanvasMathFont`: the table is loaded with `FT_Load_Sfnt_Table` and
+  parsed by the framework itself — it is a small, flat binary format, and a
+  private reader (about 250 lines of the 620-line source) keeps the module
+  independent of the HarfBuzz version a platform ships and of HarfBuzz link
+  order in a static core. HarfBuzz's `hb_ot_math_*` API served as the second
+  oracle: on Latin Modern Math, STIX Math and the five TeX Gyre math fonts
+  (about 30,000 glyphs) every constant, italics correction, top-accent
+  attachment, extended-shape flag, variant list, assembly and kern lookup the
+  two readers return is identical.
 * **Text runs:** `\text{…}` keeps using `CreateTextLayout` (Pango), which
   brings shaping, fallback fonts and bidi that no math engine should
   reimplement.
@@ -297,7 +309,7 @@ change nothing.
 |---|---|---|---|
 | **Lexer + macro expander** | TeX tokenisation (catcodes for the math subset), `\newcommand` with optional args, environments, comments, `\def`-lite; a fixed table of built-in commands rather than an interpreter | 1,500–2,000 | `core/parser`, `macro/` (4,535) |
 | **Math parser → atom list** | Builds the TeX Appendix G structure: Ord/Op/Bin/Rel/Open/Close/Punct/Inner atoms with nucleus/sub/sup, fractions, radicals, accents, fences, arrays, style changes, colour, boxes | 3,000–4,000 | `atom/` (4,737) |
-| **Font layer** | OpenType MATH via HarfBuzz/FreeType; Unicode-math style mapping (Latin/Greek/digit ranges for bold, italic, script, fraktur, double-struck, sans, mono); glyph variants and assemblies; outline extraction and caching | 1,500–2,000 | `unimath/` + `otf/` (5,972 — most of it is the `.clm` reader and the mapping tables) |
+| **Font layer** | OpenType MATH via FreeType (**done**: `UltraCanvasMathFont`, 620 lines, covers the table, metrics, outlines and caching); still open: the Unicode-math style mapping (Latin/Greek/digit ranges for bold, italic, script, fraktur, double-struck, sans, mono) and a fallback-font chain | 1,500–2,000 | `unimath/` + `otf/` (5,972 — most of it is the `.clm` reader and the mapping tables) |
 | **Box builder** | Appendix G rules 1–22: inter-atom spacing table, script placement (σ13–σ22), fraction rules (σ8–σ12 and the MATH constants), radical geometry, delimiter sizing and assembly, big operators with limits, accent skew, `\left…\right`, arrays/alignments with cell glue, stretchy arrows and braces | 3,000–4,000 | `box/` + `env/` (2,075) plus the layout parts of `atom/` |
 | **Renderer** | Box tree → `IRenderContext` path commands (immediate) and → `VectorDocument` (retained); baseline, ink and logical extents; error rendering | 500–800 | `render/` + `graphic/` (987) + the 321-line adapter |
 | **Total** | | **~10,000–13,000** | 19,462 |
@@ -365,7 +377,7 @@ removed only when the tests say so.
 
 | Option | Verdict | Why |
 |---|---|---|
-| **Keep MicroTeX, replace only its font layer** with a HarfBuzz/FreeType `Otf` implementation | Viable stop-gap | Removes `.clm2`/FontForge (limitation 1) and allows any math font; `otf/` is 1.9k lines behind one `Otf` class. Leaves limitations 3–7 in place. Worth doing as **Phase 0** only if the native engine is not started within the year, because the same font layer is reused by the native engine anyway. |
+| **Keep MicroTeX, replace only its font layer** with `UltraCanvasMathFont` behind MicroTeX's `Otf` class | Viable stop-gap | Removes `.clm2`/FontForge (limitation 1) and allows any math font; `otf/` is 1.9k lines behind one `Otf` class, and the font layer now exists. Leaves limitations 3–7 in place. Worth doing only if Phase 1 is not started within the year; the adapter would be thrown away with MicroTeX. |
 | **Keep MicroTeX and add features upstream-style** | Not recommended | Every feature in §6 that is not math is outside its design; the API cannot give the text stack a baseline without forking the engine. |
 | **Embed a real TeX** (TeX-in-C, tectonic, or LuaTeX as a library) | Rejected | This is the >1 GB path: the engine needs a format file plus the LaTeX kernel, `amsmath`, fonts and every package the input names. Output is DVI/PDF pages, not element geometry; no inline use, no editing; multi-second start-up; licences and build complexity (Rust toolchain for tectonic). |
 | **MathML as the internal model** (LaTeX → MathML → layout) | Partially adopted | The Word importers already come from MathML/OMML. A native engine should keep an atom tree that can be *serialised* to MathML for interchange (ODT export, accessibility), but MathML is a poor layout input: it has no inter-atom spacing rules of its own and browsers embed a TeX-like layouter anyway. |
@@ -482,7 +494,7 @@ way it draws `GetLastError()` today.
 
 | Phase | Deliverable | Exit criterion |
 |---|---|---|
-| **0 — Font layer** | `UltraCanvasMathFont` on FreeType/HarfBuzz; a `FontFileTest`-style unit test reading Latin Modern Math and one other OpenType math font; optionally plugged into MicroTeX's `Otf` so `.clm2` can be dropped early | Both fonts load; MATH constants, an italics correction, a variant list and a brace assembly match the values `otf2clm` wrote into the `.clm2` |
+| **0 — Font layer** — **done** | `UltraCanvasMathFont` on FreeType (`include/Plugins/LaTeX/UltraCanvasMathFont.h`, built into the LaTeX module); `Tests/MathFontTest.cpp` links `microtex_core` as the oracle and compares the `.otf` against the `.clm2` | Met: all 56 constants, the connector overlap and, over all 4,802 glyphs, every advance/height/depth, 1,002 italics corrections, 2,475 top-accent attachments, 176 variant lists and 114 assemblies are equal; math kerning (absent from every font at hand) is verified on a synthetic table; STIX Math and TeX Gyre Termes Math load and stretch when installed |
 | **1 — Native math engine** | Parser, layout, renderer behind `UltraCanvasLaTeXView`; MicroTeX kept behind `ULTRACANVAS_LATEX_ENGINE=microtex|native` as the oracle | The oracle test suite passes within tolerance on the corpus; the demo page renders every shipped `.tex` with the native engine; `third_party/microtex` and `media/microtex/*.clm2` removed |
 | **2 — Inline math** | `UltraCanvasMathEngine` exposed to the text stack; `$…$` in `UltraCanvasTextArea` Markdown, and the `$latex$` runs from the DOCX/ODT importers, laid out as baseline-aligned inline formulas; `$$…$$` as display blocks | A Word document with an OMML equation shows a typeset equation in the document view; the Markdown demo shows inline and display math |
 | **3 — Document subset** | `UltraCanvasLaTeXDocumentReader` producing the rich-text document model; `.tex` in the Filer/MediaViewer opens as a document; demo fallback-image path retired for documents in the subset | The `media/LaTex` set plus a small `article` corpus render; unknown commands produce diagnostics, not blank panes |
@@ -552,7 +564,7 @@ above:
 | Path fill/stroke, transforms, clipping | `IRenderContext` | `include/UltraCanvasRenderContext.h` |
 | Retained vector scene, export | `VectorStorage`, `VectorRenderer`, vector converters | `Plugins/Vector/` |
 | Glyph outlines, cmap, kerning | FreeType (required dependency; precedent in `UltraCanvasFontFile.cpp`) | `core/UltraCanvasFontFile.cpp` |
-| OpenType MATH table | HarfBuzz `hb_ot_math_*` (required dependency) | `UltraCanvas/CMakeLists.txt` (`pkg_check_modules(HARFBUZZ REQUIRED harfbuzz)`) |
+| OpenType MATH table | `UltraCanvasMathFont` (own reader on `FT_Load_Sfnt_Table`; HarfBuzz `hb_ot_math_*` used only as a test oracle) | `Plugins/LaTeX/UltraCanvasMathFont.cpp` |
 | Shaped text for `\text{…}` | `ITextLayout` via Pango | `CreateTextLayout` |
 | Element hosting, intrinsic sizing | `UltraCanvasUIElement` + CSS layout | `UltraCanvasLaTeXViewImpl.cpp` |
 | On-demand loading, C ABI | Existing module loader | `core/UltraCanvasLaTeXModuleLoader.cpp` |

@@ -1772,3 +1772,36 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  FontFileTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== MATH FONT TEST =====
+# The OpenType math font reader behind the native LaTeX engine (Phase 0 of
+# Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md), checked against the
+# .clm2 the vendored MicroTeX engine reads for the same font - so the test
+# links microtex_core as its oracle and needs the LaTeX plugin enabled.
+if(TARGET UltraCanvas AND TARGET microtex_core)
+    message(STATUS "  Building MathFontTest...")
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(MATHFONT_FREETYPE QUIET freetype2)
+    endif()
+    add_executable(MathFontTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MathFontTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathFont.cpp
+    )
+    target_include_directories(MathFontTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${MATHFONT_FREETYPE_INCLUDE_DIRS})
+    target_compile_features(MathFontTest PRIVATE cxx_std_20)
+    target_compile_definitions(MathFontTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_directories(MathFontTest PRIVATE ${MATHFONT_FREETYPE_LIBRARY_DIRS})
+    target_link_libraries(MathFontTest PRIVATE UltraCanvas microtex_core ${MATHFONT_FREETYPE_LIBRARIES})
+    set_target_properties(MathFontTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MathFontTest COMMAND MathFontTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MathFontTest")
+else()
+    message(STATUS "  MathFontTest skipped (UltraCanvas or microtex_core target not present)")
+endif()

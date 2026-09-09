@@ -1,3 +1,36 @@
+#### 2026-09-09 *0.3.111*
+- **LaTeX: investigation of a native math engine, and its first piece.**
+  `Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md` reports what the
+  vendored MicroTeX plugin contains (19,462 compiled engine lines behind a
+  321-line adapter, a FontForge-generated `.clm2` font, one font, no
+  baseline for inline use), where the "1 GB LaTeX" concern really comes from
+  (TeX distributions ship packages and fonts; engines are small), and sizes a
+  native math typesetter on the framework's own vector layer
+  (`IRenderContext` paths, `VectorStorage`, FreeType) at 10-13k lines. It
+  proposes a phase plan - font layer, native engine behind the existing
+  module ABI with MicroTeX as the test oracle, inline math for the text stack
+  (imported Word/ODT equations are currently shown as flat text), a LaTeX
+  document-subset importer, TikZ and pgfplots subsets - and argues against a
+  real TeX. The chart engine is untouched by this work; it appears only as
+  the target of the last-phase pgfplots reader.
+- **Phase 0 shipped: `UltraCanvasMathFont`**
+  (`include/Plugins/LaTeX/UltraCanvasMathFont.h`,
+  `Plugins/LaTeX/UltraCanvasMathFont.cpp`, built into `libUltraCanvasLaTeX`,
+  documented in `Docs/UltraCanvas/UltraCanvasMathFont.md`) reads an OpenType
+  math font directly through FreeType: all 56 MATH constants, italics
+  correction, top-accent attachment, extended shapes, math kerning, size
+  variants, glyph assemblies, exact glyph metrics and cached outlines. Any
+  font with a MATH table works at runtime without a `.clm2`; a font without
+  one still loads for metrics and outlines; a malformed table is refused
+  cleanly.
+- `Tests/MathFontTest.cpp` (registered as `MathFontTest`) links the vendored
+  engine as an oracle and compares the `.otf` reader with the `.clm2` over
+  all 4,802 glyphs of Latin Modern Math - constants, advances, heights,
+  depths, 1,002 italics corrections, 2,475 top-accent attachments, 176
+  variant lists and 114 assemblies equal - checks math kerning on a
+  synthetic MATH table loaded from memory, and loads STIX / TeX Gyre math
+  fonts when installed.
+
 #### 2026-09-08 *0.3.109*
 - **LaTeX: the on-demand module now finds its math font (and itself) in a
   normal build, and a view that cannot typeset says why.** The demo's
