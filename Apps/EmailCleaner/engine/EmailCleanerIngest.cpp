@@ -189,14 +189,22 @@ AnalyzedMessage Ingestor::Analyze(const std::string& rawMessage,
     input.addressedToOwner = AddressedTo(parsed.to, parsed.cc, ownerAddress);
 
     const Classification verdict = classifier_.Classify(input);
-    message.category = verdict.category;
-    message.score    = verdict.score;
-    message.hits     = verdict.hits;
+    message.SetClassifierVerdict(verdict.category, verdict.score);
+    message.hits = verdict.hits;
 
     // A blocked sender stays classified as whatever it is — blocking is the
     // user's decision about a sender, not a re-reading of the content — but
     // the stamp travels with the row so the map and the filters can use it.
     message.blocked = store_.IsBlocked(message.senderAddr, message.senderDomain);
+
+    // A verdict override is the opposite: the user telling us the classifier
+    // read this sender wrong, so it *does* replace the verdict. The store keeps
+    // the classifier's own answer alongside, which is what lets the correction
+    // be taken back later. Applied here so a freshly ingested message is right
+    // immediately, rather than only after the next ApplyOverridesToMessages().
+    VerdictOverride override;
+    if (store_.FindOverride(message.senderAddr, message.senderDomain, override))
+        message.ApplyOverride(override.category);
     return message;
 }
 

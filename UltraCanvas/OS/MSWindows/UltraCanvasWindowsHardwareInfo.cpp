@@ -469,42 +469,73 @@ void ReadTopologyAndCaches(CPUInfo& out) {
     }
 }
 
+// Older MinGW-w64 winnt.h predates these; the values are fixed by the ABI, so
+// define the missing ones rather than compiling the feature out - an #ifdef that
+// drops the entry silently under-reports the CPU instead of failing the build.
+// Same fix, same values as OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp.
+#ifndef PF_ARM_NEON_INSTRUCTIONS_AVAILABLE
+#define PF_ARM_NEON_INSTRUCTIONS_AVAILABLE 19
+#endif
+#ifndef PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE
+#define PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE 30
+#endif
+
+// x86 features come from CPUID through the shared detector, not from
+// IsProcessorFeaturePresent: Win32 has PF_* constants for only a handful of
+// extensions and none for GFNI, VAES or VPCLMULQDQ - the VEX-encoded ones a
+// -march=native build picks up without needing AVX-512, and the ones that
+// therefore fault first on an older machine. Under emulation CPUID is answered
+// by the emulator, so it still describes what this process may execute.
+//
+// ARM64 has no CPUID; there the Win32 query is the only source, so the PF_*
+// table stays for it.
 void ReadInstructionSets(CPUInfo& out) {
-    struct Feature { DWORD id; const char* name; };
-    static const Feature kFeatures[] = {
-#ifdef PF_XMMI64_INSTRUCTIONS_AVAILABLE
-        { PF_XMMI64_INSTRUCTIONS_AVAILABLE, "SSE2" },
-#endif
-#ifdef PF_SSE3_INSTRUCTIONS_AVAILABLE
-        { PF_SSE3_INSTRUCTIONS_AVAILABLE, "SSE3" },
-#endif
-#ifdef PF_SSE4_1_INSTRUCTIONS_AVAILABLE
-        { PF_SSE4_1_INSTRUCTIONS_AVAILABLE, "SSE4.1" },
-#endif
-#ifdef PF_SSE4_2_INSTRUCTIONS_AVAILABLE
-        { PF_SSE4_2_INSTRUCTIONS_AVAILABLE, "SSE4.2" },
-#endif
-#ifdef PF_AVX_INSTRUCTIONS_AVAILABLE
-        { PF_AVX_INSTRUCTIONS_AVAILABLE, "AVX" },
-#endif
-#ifdef PF_AVX2_INSTRUCTIONS_AVAILABLE
-        { PF_AVX2_INSTRUCTIONS_AVAILABLE, "AVX2" },
-#endif
-#ifdef PF_AVX512F_INSTRUCTIONS_AVAILABLE
-        { PF_AVX512F_INSTRUCTIONS_AVAILABLE, "AVX-512" },
-#endif
-#ifdef PF_ARM_NEON_INSTRUCTIONS_AVAILABLE
-        { PF_ARM_NEON_INSTRUCTIONS_AVAILABLE, "NEON" },
-#endif
-#ifdef PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE
-        { PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE, "ARMv8 Crypto" },
-#endif
-        { 0, nullptr }
-    };
-    for (const auto& feature : kFeatures) {
-        if (!feature.name) continue;
-        if (::IsProcessorFeaturePresent(feature.id)) out.instructionSets.push_back(feature.name);
+    X86CpuFeatures x86Features;
+    if (ReadX86CpuFeatures(x86Features)) {
+        AppendX86FeatureNames(x86Features, out.instructionSets);
+        out.x86MicroarchitectureLevel = X86MicroarchitectureLevel(x86Features);
+        return;
     }
+    struct Feature { DWORD id; const char* name; };
+    static const Feature kArmFeatures[] = {
+        { PF_ARM_NEON_INSTRUCTIONS_AVAILABLE,        "NEON" },
+        { PF_ARM_V8_CRYPTO_INSTRUCTIONS_AVAILABLE,   "ARMv8 Crypto" }
+    };
+    for (const auto& feature : kArmFeatures)
+        if (::IsProcessorFeaturePresent(feature.id)) out.instructionSets.push_back(feature.name);
+}
+
+// "x64 image on an ARM64 machine" and friends, or empty when the process runs
+// natively. Resolved at run time: IsWow64Process2 arrived in Windows 10 1511,
+// and importing it statically would keep the library off anything older.
+std::string EmulationDescription() {
+    using IsWow64Process2Func = BOOL(WINAPI*)(HANDLE, USHORT*, USHORT*);
+    HMODULE kernel32 = ::GetModuleHandleW(L"kernel32.dll");
+    if (!kernel32) return std::string();
+    auto isWow64Process2 = reinterpret_cast<IsWow64Process2Func>(
+        reinterpret_cast<void*>(::GetProcAddress(kernel32, "IsWow64Process2")));
+    if (!isWow64Process2) return std::string();
+
+    USHORT processMachine = 0, nativeMachine = 0;
+    if (!isWow64Process2(::GetCurrentProcess(), &processMachine, &nativeMachine))
+        return std::string();
+    // IMAGE_FILE_MACHINE_UNKNOWN for the process means "not under WOW64": the
+    // image matches the machine, and there is nothing to report.
+    if (processMachine == IMAGE_FILE_MACHINE_UNKNOWN) return std::string();
+
+    auto MachineName = [](USHORT machine) -> const char* {
+        switch (machine) {
+            case IMAGE_FILE_MACHINE_ARM64: return "ARM64";
+            case IMAGE_FILE_MACHINE_AMD64: return "x64";
+            case IMAGE_FILE_MACHINE_I386:  return "x86";
+            case IMAGE_FILE_MACHINE_ARMNT: return "ARM32";
+            default: return nullptr;
+        }
+    };
+    const char* native = MachineName(nativeMachine);
+    const char* image = MachineName(processMachine);
+    if (!native) return std::string();
+    return std::string(image ? image : "unknown") + " image on a " + native + " machine";
 }
 
 } // namespace
@@ -540,6 +571,13 @@ void QueryCPU(CPUInfo& out, bool includeSensors, std::vector<std::string>& warni
             if (group.maxClockMHz <= 0.0) group.maxClockMHz = maxMHz;
     }
     ReadInstructionSets(out);
+
+    out.emulation = EmulationDescription();
+    if (!out.emulation.empty())
+        warnings.push_back("This process is not running natively (" + out.emulation + "): the model "
+                           "and core counts describe the machine, but the instruction sets are the "
+                           "ones the emulator permits, which are a subset (Windows on ARM offers no "
+                           "AVX-512 at all).");
 
     if (includeSensors)
         warnings.push_back("CPU temperature is unavailable on Windows through this backend: the "

@@ -1,3 +1,31 @@
+#### 2026-09-09 *1.24.0*
+- **The search field kept its button and lost its text when the window got
+  narrow.** Reducing the window width squeezed the search field away entirely
+  and left a clipped sliver of the blue "Scan sub folder" button where the
+  whole search control used to be — nothing to type in, and a button too
+  narrow to read. A flex row shrinks its shrinkable child first, so the text
+  input gave up all its width while the fixed-width button kept its 118 px.
+  The button is the one of the two that can be done without: Enter runs the
+  same scan, and the file display still offers it in the middle of an empty
+  result. So the search box now reports when it no longer has room for the
+  button *and* a readable field, and the button goes instead of the field.
+  Widening the window brings it straight back. The answer is only known once
+  the layout engine has sized the box, but acting on it *inside* that pass
+  leaves the text input zero-wide for good — a trap now written down in
+  `Docs/CSSLayout.md` — so the box reports and the window applies it on the
+  next turn of the event loop.
+#### 2026-09-09 *1.23.0*
+- **Double-clicking a program or a document now shows that it is starting.**
+  The launch itself is instant, the application appearing is not, and until
+  it did the window looked exactly as it does when a double-click was missed.
+  A second after the double-click the pointer changes to the arrow-with-busy-
+  sign shape, and it returns to normal by itself — so a program that opens
+  at once never changes the pointer, and a slow one no longer invites a
+  second double-click. Windows programs launched through UltraWin use it too,
+  with the long wait a first launch needs while its Windows environment is
+  prepared, and put the pointer back the moment the run actually starts.
+  (Framework side: `Docs/UltraCanvas/CHANGELOG.md` 0.3.111.)
+
 #### 2026-09-08 *1.22.0*
 - **The settings window reads the same on every page.** The pages had grown
   one at a time and it showed: a title smaller than the choices under it,

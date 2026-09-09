@@ -2251,6 +2251,13 @@ namespace UltraCanvas {
         // Executable script activated: Run / Open (view it) / Cancel.
         void ShowRunOrOpenDialog(const FilerEntry& e);
 
+        // Arms the window's busy pointer around handing a file to another
+        // program. Spawning returns long before that program is on screen and
+        // nothing tells us when it gets there, so this is the one piece of
+        // feedback a double-click leaves behind: after a second the pointer
+        // says the launch is under way, and it gives up on its own.
+        void ShowLaunchPointer();
+
         // ===== RENAME CONFLICTS =====
         // The actual rename plus the selection hand-over and refresh.
         void PerformRename(const std::string& oldPath,

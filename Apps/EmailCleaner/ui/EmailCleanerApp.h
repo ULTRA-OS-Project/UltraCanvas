@@ -22,9 +22,11 @@
 #include "EmailCleanerTimetableView.h"
 #include "EmailCleanerDetailView.h"
 #include "EmailCleanerActionsPanel.h"
+#include "EmailCleanerRulesDialog.h"
 
 #include "EmailCleanerAnalytics.h"
 #include "EmailCleanerIngest.h"
+#include "EmailCleanerAttachments.h"
 #include "EmailCleanerMailBackend.h"
 #include "EmailCleanerStore.h"
 
@@ -52,6 +54,13 @@ private:
     // the plug-in or the credentials are missing the panel says so and the
     // local half (blocking) still works.
     void WireMailBackend();
+    // Open the keyword rule editor, and re-analyse once it has written.
+    void EditRules();
+    // Show one message's attachments, and open one in UltraCanvasMediaViewer.
+    void ShowAttachments(const AnalyzedMessage& message);
+    // The strongest keyword behind the current selection, to seed a new rule.
+    std::string TopTermForSelection() const;
+    void OpenAttachment(const AnalyzedMessage& message, const AttachmentRecord& record);
     // Analyse the mail UltraMail has cached for the selected account (or every
     // account when none is selected).
     void ScanMailCache();
@@ -94,6 +103,10 @@ private:
     TimetableView timetableView_;
     DetailView    detailView_;
     ActionsPanel  actionsPanel_;
+    RulesDialog   rulesDialog_;
+
+    // Attachment viewers, kept alive for as long as they are on screen.
+    std::vector<std::shared_ptr<UltraCanvas::UltraCanvasWindow>> viewerWindows_;
 };
 
 } // namespace EmailCleaner

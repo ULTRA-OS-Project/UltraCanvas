@@ -348,18 +348,17 @@ void QueryCPU(CPUInfo& out, bool includeSensors, std::vector<std::string>& warni
         if (group.physicalCores > 0) out.coreGroups.push_back(std::move(group));
     }
 
-    // Intel lists its features in one string; Apple Silicon answers a boolean
-    // sysctl per architectural feature.
-    const std::string features = SysctlString("machdep.cpu.features") + " " +
-                                 SysctlString("machdep.cpu.leaf7_features");
-    static const std::pair<const char*, const char*> kIntelFeatures[] = {
-        { "SSE4.2", "SSE4.2" }, { "AVX1.0", "AVX" }, { "AVX2", "AVX2" },
-        { "AVX512F", "AVX-512" }, { "AES", "AES-NI" }, { "SHA", "SHA-NI" }, { "FMA", "FMA3" }
-    };
-    for (const auto& feature : kIntelFeatures)
-        if (features.find(feature.first) != std::string::npos)
-            out.instructionSets.push_back(feature.second);
+    // Intel Macs go through the shared CPUID detector rather than the
+    // machdep.cpu.features string: the string omits the VEX-encoded extensions
+    // (GFNI, VAES, VPCLMULQDQ) that a -march=native build faults on, and CPUID
+    // yields the psABI level with them.
+    X86CpuFeatures x86Features;
+    if (ReadX86CpuFeatures(x86Features)) {
+        AppendX86FeatureNames(x86Features, out.instructionSets);
+        out.x86MicroarchitectureLevel = X86MicroarchitectureLevel(x86Features);
+    }
 
+    // Apple Silicon answers a boolean sysctl per architectural feature.
     static const std::pair<const char*, const char*> kArmFeatures[] = {
         { "hw.optional.AdvSIMD", "NEON" },
         { "hw.optional.arm.FEAT_AES", "AES" },
@@ -373,6 +372,17 @@ void QueryCPU(CPUInfo& out, bool includeSensors, std::vector<std::string>& warni
     };
     for (const auto& feature : kArmFeatures)
         if (SysctlUnsigned(feature.first, 0) != 0) out.instructionSets.push_back(feature.second);
+
+    // Rosetta 2's own flag. Same class of answer as IsWow64Process2 on Windows:
+    // the model and core counts below describe the silicon, while the feature
+    // list is what the translator permits (no AVX at all under Rosetta).
+    if (SysctlUnsigned("sysctl.proc_translated", 0) != 0) {
+        out.emulation = "x86_64 image translated by Rosetta on Apple Silicon";
+        warnings.push_back("This process is not running natively (" + out.emulation + "): the model "
+                           "and core counts describe the machine, but the instruction sets are the "
+                           "ones the translator permits, which are a subset (Rosetta implements no "
+                           "AVX).");
+    }
 
     if (includeSensors)
         warnings.push_back("CPU temperature is unavailable on macOS: Apple exposes it only through "

@@ -34,11 +34,26 @@ std::string LikePattern(const std::string& needle) {
     return "%" + Lower(escaped) + "%";
 }
 
+// The unwanted categories as a SQL IN list, built from the taxonomy rather
+// than written out — a new unwanted category then cannot silently miss one of
+// the queries that counts them.
+std::string UnwantedCategorySqlList() {
+    std::string out = "(";
+    bool first = true;
+    for (MessageCategory c : AllCategories()) {
+        if (!IsUnwanted(c)) continue;
+        if (!first) out += ",";
+        out += "'" + ToString(c) + "'";
+        first = false;
+    }
+    return out + ")";
+}
+
 const char* kMessageColumns =
     "account_id, folder, uid, message_id, sender_name, sender_addr, sender_domain, "
     "subject, date, size_bytes, flags, automated, attachment_count, "
     "attachment_bytes, category, score, unsub_mailto, unsub_mailto_subject, "
-    "unsub_url, unsub_one_click, blocked";
+    "unsub_url, unsub_one_click, blocked, overridden, base_category, base_score";
 
 AnalyzedMessage RowToMessage(const UltraDbRow& row) {
     AnalyzedMessage m;
@@ -63,6 +78,9 @@ AnalyzedMessage RowToMessage(const UltraDbRow& row) {
     m.unsubUrl           = row["unsub_url"].AsString();
     m.unsubOneClick      = row["unsub_one_click"].AsInt64() != 0;
     m.blocked            = row["blocked"].AsInt64() != 0;
+    m.overridden         = row["overridden"].AsInt64() != 0;
+    m.baseCategory       = CategoryFromString(row["base_category"].AsString());
+    m.baseScore          = row["base_score"].AsDouble();
     return m;
 }
 
@@ -184,7 +202,46 @@ UltraDbResult AnalysisStore::Open(const std::string& connectionName,
           "  is_domain INTEGER DEFAULT 0,"
           "  reason TEXT,"
           "  added INTEGER DEFAULT 0);" },
+
+        { 3, "verdict overrides",
+          // Phase 3. What the user said about a sender, which beats whatever
+          // the classifier decides for their mail from now on. Kept separate
+          // from the blocklist because the two answer different questions:
+          // the blocklist is "I do not want to hear from them", an override is
+          // "your verdict about them is wrong". A sender can be neither, one,
+          // or both.
+          //
+          // `category` is the stored MessageCategory name; an override to a
+          // wanted category (Personal, Newsletter, Notification) is the "this
+          // is fine" direction, one to an unwanted category the "this is spam"
+          // direction.
+          //
+          // base_category / base_score keep the classifier's own verdict, so
+          // category / score can carry the effective one and *removing* an
+          // override genuinely undoes it rather than leaving the corrected
+          // value behind with nothing to restore from. Backfilled from the
+          // existing columns, which up to now were the classifier's verdict.
+          // `overridden` is a cached stamp so the map can show what changed
+          // without joining per redraw.
+          "ALTER TABLE messages ADD COLUMN overridden INTEGER DEFAULT 0;"
+          "ALTER TABLE messages ADD COLUMN base_category TEXT DEFAULT '';"
+          "ALTER TABLE messages ADD COLUMN base_score REAL DEFAULT 0;"
+          "UPDATE messages SET base_category = category, base_score = score;"
+
+          "CREATE TABLE verdict_overrides("
+          "  pattern TEXT PRIMARY KEY,"
+          "  is_domain INTEGER DEFAULT 0,"
+          "  category TEXT NOT NULL,"
+          "  reason TEXT,"
+          "  added INTEGER DEFAULT 0);" },
     };
+    // The list above must end at the version the header advertises.
+    if (!steps.empty() && steps.back().version != kSchemaVersion) {
+        return UltraDbResult::Error(
+            UltraDbResultCode::InvalidArgument,
+            "AnalysisStore::kSchemaVersion is " + std::to_string(kSchemaVersion) +
+            " but the last migration is " + std::to_string(steps.back().version));
+    }
     return UltraDb_Migrate(connection_, steps);
 }
 
@@ -239,7 +296,7 @@ namespace {
 UltraDbResult WriteMessage(UltraDbHandle tx, const AnalyzedMessage& m) {
     UltraDbResult r = UltraDb_ExecInTx(tx,
         "INSERT INTO messages(" + std::string(kMessageColumns) + ") "
-        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        "VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id, folder, uid) DO UPDATE SET "
         "  message_id = excluded.message_id,"
         "  sender_name = excluded.sender_name,"
@@ -258,12 +315,23 @@ UltraDbResult WriteMessage(UltraDbHandle tx, const AnalyzedMessage& m) {
         "  unsub_mailto_subject = excluded.unsub_mailto_subject,"
         "  unsub_url = excluded.unsub_url,"
         "  unsub_one_click = excluded.unsub_one_click,"
-        "  blocked = excluded.blocked",
+        "  blocked = excluded.blocked,"
+        // A fresh classifier verdict resets the effective one; any override is
+        // re-stamped afterwards by ApplyOverridesToMessages(), the same way
+        // the blocklist stamp is.
+        "  overridden = excluded.overridden,"
+        "  base_category = excluded.base_category,"
+        "  base_score = excluded.base_score",
         { m.accountId, m.folder, m.uid, m.messageId, m.senderName, m.senderAddr,
           m.senderDomain, m.subject, m.date, m.sizeBytes, m.flags,
           m.automated ? 1 : 0, m.attachmentCount, m.attachmentBytes,
           ToString(m.category), m.score, m.unsubMailto, m.unsubMailtoSubject,
-          m.unsubUrl, m.unsubOneClick ? 1 : 0, m.blocked ? 1 : 0 });
+          m.unsubUrl, m.unsubOneClick ? 1 : 0, m.blocked ? 1 : 0,
+          // Not overridden means the effective verdict is the classifier's, so
+          // it is also the base; overridden means the caller kept the base.
+          m.overridden ? 1 : 0,
+          ToString(m.overridden ? m.baseCategory : m.category),
+          m.overridden ? m.baseScore : m.score });
     if (!r) return r;
 
     // Attachments and hits are derived data: replace them wholesale so a
@@ -502,8 +570,8 @@ UltraDbResult RollupBlocks(const std::string& connection,
         "  MIN(date) AS first_seen,"
         "  MAX(date) AS last_seen,"
         "  AVG(score) AS avg_score,"
-        "  SUM(CASE WHEN category IN ('product-spam','adult','dating-scam',"
-        "      'phishing','financial-scam','malware-risk') THEN 1 ELSE 0 END) AS unwanted_count "
+        "  SUM(CASE WHEN category IN " + UnwantedCategorySqlList() +
+        "      THEN 1 ELSE 0 END) AS unwanted_count "
         "FROM messages m" + where +
         " GROUP BY " + keyColumn +
         " ORDER BY " + MetricOrder(metric);
@@ -764,8 +832,8 @@ UltraDbResult AnalysisStore::GetOverview(const MessageFilter& filter,
         "       SUM(attachment_bytes) AS attachment_bytes,"
         "       MIN(CASE WHEN date > 0 THEN date END) AS first_date,"
         "       MAX(date) AS last_date,"
-        "       SUM(CASE WHEN category IN ('product-spam','adult','dating-scam',"
-        "           'phishing','financial-scam','malware-risk') THEN 1 ELSE 0 END) AS unwanted "
+        "       SUM(CASE WHEN category IN " + UnwantedCategorySqlList() +
+        "       THEN 1 ELSE 0 END) AS unwanted "
         "FROM messages m" + where, params, rs);
     if (!r) return r;
     if (rs.Empty()) return r;
@@ -878,6 +946,115 @@ UltraDbResult AnalysisStore::ApplyBlocklistToMessages() {
         "UPDATE messages SET blocked = 1 WHERE "
         "  sender_addr IN (SELECT pattern FROM blocklist WHERE is_domain = 0) "
         "  OR sender_domain IN (SELECT pattern FROM blocklist WHERE is_domain <> 0)");
+}
+
+// ---- Verdict overrides -----------------------------------------------------
+
+UltraDbResult AnalysisStore::SetOverride(const VerdictOverride& entry) {
+    if (!entry.Valid())
+        return UltraDbResult::Error(UltraDbResultCode::InvalidArgument,
+                                    "an override needs a pattern");
+    return UltraDb_Exec(connection_,
+        "INSERT INTO verdict_overrides(pattern, is_domain, category, reason, added) "
+        "VALUES(?, ?, ?, ?, ?) "
+        "ON CONFLICT(pattern) DO UPDATE SET "
+        "  is_domain = excluded.is_domain,"
+        "  category = excluded.category,"
+        "  reason = excluded.reason,"
+        "  added = excluded.added",
+        { Lower(entry.pattern), entry.isDomain ? 1 : 0, ToString(entry.category),
+          entry.reason, entry.added });
+}
+
+UltraDbResult AnalysisStore::RemoveOverride(const std::string& pattern) {
+    return UltraDb_Exec(connection_, "DELETE FROM verdict_overrides WHERE pattern = ?",
+                        { Lower(pattern) });
+}
+
+UltraDbResult AnalysisStore::ListOverrides(std::vector<VerdictOverride>& out) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult r = UltraDb_Query(connection_,
+        "SELECT pattern, is_domain, category, reason, added FROM verdict_overrides "
+        "ORDER BY added DESC, pattern", rs);
+    if (!r) return r;
+    for (const UltraDbRow& row : rs) {
+        VerdictOverride e;
+        e.pattern  = row["pattern"].AsString();
+        e.isDomain = row["is_domain"].AsInt64() != 0;
+        e.category = CategoryFromString(row["category"].AsString());
+        e.reason   = row["reason"].AsString();
+        e.added    = row["added"].AsInt64();
+        out.push_back(std::move(e));
+    }
+    return r;
+}
+
+bool AnalysisStore::FindOverride(const std::string& senderAddr,
+                                 const std::string& domain,
+                                 VerdictOverride& out) const {
+    const std::string addr = Lower(senderAddr);
+    const std::string dom  = domain.empty() ? DomainOf(addr) : Lower(domain);
+
+    // is_domain ASC puts the address row first, so the more specific statement
+    // wins without a second query.
+    UltraDbResultSet rs;
+    UltraDbResult r = UltraDb_Query(connection_,
+        "SELECT pattern, is_domain, category, reason, added FROM verdict_overrides "
+        "WHERE (is_domain = 0 AND pattern = ?) OR (is_domain <> 0 AND pattern = ?) "
+        "ORDER BY is_domain ASC LIMIT 1", { addr, dom }, rs);
+    if (!r || rs.Empty()) return false;
+
+    const UltraDbRow& row = rs.Row(0);
+    out.pattern  = row["pattern"].AsString();
+    out.isDomain = row["is_domain"].AsInt64() != 0;
+    out.category = CategoryFromString(row["category"].AsString());
+    out.reason   = row["reason"].AsString();
+    out.added    = row["added"].AsInt64();
+    return true;
+}
+
+UltraDbResult AnalysisStore::ApplyOverridesToMessages() {
+    // Two statements, in one transaction so the corpus is never half-stamped.
+    //
+    // First put every message back to what the classifier said. That is what
+    // makes removing an override undo it: nothing has to remember which rows a
+    // deleted override used to touch.
+    UltraDbResult error;
+    UltraDbHandle tx = UltraDb_Begin(connection_, &error);
+    if (tx == UltraDbInvalidHandle) return error;
+
+    UltraDbResult r = UltraDb_ExecInTx(tx,
+        "UPDATE messages SET category = base_category, score = base_score, overridden = 0 "
+        "WHERE overridden <> 0 AND base_category <> ''");
+    if (!r) { UltraDb_Rollback(tx); return r; }
+
+    // Then apply what the table says now. An address override beats a domain
+    // one, so the domain pass runs first and the address pass overwrites it.
+    //
+    // Score follows the direction of the correction rather than being invented:
+    // "this is fine" means nothing unwanted about it, so 0; "this is spam" is
+    // the user asserting it outright, which is a full 100.
+    const std::string unwanted = UnwantedCategorySqlList();
+    auto applyPass = [&](const char* isDomain, const char* column) {
+        const std::string match = std::string("o.is_domain ") + isDomain +
+                                  " AND o.pattern = messages." + column;
+        return std::string(
+            "UPDATE messages SET "
+            "  category = (SELECT o.category FROM verdict_overrides o WHERE ") + match + "),"
+            "  score = (SELECT CASE WHEN o.category IN " + unwanted +
+            "           THEN 100.0 ELSE 0.0 END FROM verdict_overrides o WHERE " + match + "),"
+            "  overridden = 1 "
+            "WHERE EXISTS (SELECT 1 FROM verdict_overrides o WHERE " + match + ")";
+    };
+
+    r = UltraDb_ExecInTx(tx, applyPass("<> 0", "sender_domain"));
+    if (!r) { UltraDb_Rollback(tx); return r; }
+
+    r = UltraDb_ExecInTx(tx, applyPass("= 0", "sender_addr"));
+    if (!r) { UltraDb_Rollback(tx); return r; }
+
+    return UltraDb_Commit(tx);
 }
 
 // ---- Unsubscribe -----------------------------------------------------------
