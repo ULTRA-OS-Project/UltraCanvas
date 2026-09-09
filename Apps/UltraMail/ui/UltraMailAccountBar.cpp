@@ -1,13 +1,14 @@
 // Apps/UltraMail/ui/UltraMailAccountBar.cpp
-// Version: 0.3.0 - account tiles auto-expand with their counters; counters are
-//                  rounded boxes rather than pills.
-// Last Modified: 2026-09-04
+// Version: 0.4.0 - the summary strip and the tiles are white cards on the
+//                  page: initial in a tinted avatar square, local part as the
+//                  name, and the three counters as tinted count · caption
+//                  pills instead of saturated badges.
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountBar.h"
 
-#include "UltraCanvasBadge.h"
-#include "UltraCanvasEvent.h"
 #include "UltraCanvasLabel.h"
+#include "UltraMailTheme.h"
 
 #include "UltraMailDiscovery.h"   // EmailLocalPart / EmailDomain
 
@@ -20,88 +21,41 @@ namespace UltraMail {
 
 namespace {
 
-// Counter colours, as in the design: blue = new today, lime = unread before,
-// orange = waiting for a reply.
-const Color kNewTodayColor(0, 160, 255, 255);
-const Color kUnreadColor(170, 255, 0, 255);
-const Color kWaitingColor(255, 120, 0, 255);
-const Color kFrameColor(20, 20, 20, 255);
+constexpr float kTileMinWidth = 168.0f;
+constexpr float kTileAvatar   = 36.0f;
+constexpr float kPillHeight   = 28.0f;
+constexpr float kTilePill     = 24.0f;
+constexpr float kCountSize    = 15.0f;
 
-constexpr float kLetterSize    = 44.0f;   // provider initial font size
-constexpr float kTileLetter    = 40.0f;
-constexpr float kNameSize      = 15.0f;
-constexpr float kBadgeHeight   = 34.0f;
-constexpr float kBadgeFont     = 15.0f;
-constexpr float kFrameWidth    = 2.0f;
-constexpr float kSummaryRadius = 18.0f;
-constexpr float kTileSide      = 176.0f;   // the tile's square baseline (minimum)
-constexpr float kTileRadius    = 28.0f;
-constexpr float kTileGap       = 20.0f;
-constexpr float kBadgeRadius   = 8.0f;     // rounded box, not a pill
-
-std::shared_ptr<UltraCanvasBadge> MakeCounter(const std::string& id, int count,
-                                              const Color& color, bool darkText) {
-    auto badge = CreateCountBadge(id, 0, 0, count);
-    badge->SetColor(color);
-    badge->SetMaxCount(9999);
-    badge->SetShowZero(true);
-    BadgeStyle style;
-    style.height    = kBadgeHeight;
-    style.minWidth  = kBadgeHeight;
-    style.paddingH  = 10.0f;
-    style.cornerRadius = kBadgeRadius;
-    style.fontSize  = kBadgeFont;
-    style.textColor = darkText ? Color(20, 20, 20, 255) : Colors::White;
-    badge->SetStyle(style);
-    return badge;
+// A tinted "count · caption" pill. With an empty caption it is a compact
+// count-only pill (the tiles), with the caption in the tooltip.
+std::shared_ptr<UltraCanvasContainer> MakePill(const std::string& id, int count,
+                                               const std::string& caption,
+                                               const Color& tint, const Color& text,
+                                               float height) {
+    auto pill = CreateContainer(id, 0, 0, 0, height);
+    pill->SetBackgroundColor(tint);
+    pill->SetBorders(0.0f, Colors::Transparent, height * 0.5f);
+    pill->SetPadding(0, 12);
+    pill->layout.SetFlexRow()
+                .SetFlexGap(6)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto number = Theme::MakeText(id + ".n", std::to_string(count), kCountSize, text,
+                                  FontWeight::Bold);
+    pill->AddChild(number);
+    if (!caption.empty())
+        pill->AddChild(Theme::MakeText(id + ".c", caption, Theme::kSizeSecondary, text));
+    return pill;
 }
 
-std::shared_ptr<UltraCanvasLabel> MakeLetter(const std::string& id, const std::string& email,
-                                             float fontSize) {
-    auto letter = CreateLabel(id, ProviderLetter(email));
-    letter->SetFontSize(fontSize);
-    letter->SetFontWeight(FontWeight::Bold);
-    letter->SetAlignment(TextAlignment::Center);
-    letter->SetTooltip(email);
-    return letter;
-}
-
-std::shared_ptr<UltraCanvasLabel> MakeName(const std::string& id, const std::string& email) {
+std::shared_ptr<UltraCanvasLabel> MakeName(const std::string& id, const std::string& email,
+                                           float size) {
     // The local part only; the full address is one hover away.
-    auto name = CreateLabel(id, EmailLocalPart(email) + "@");
-    name->SetFontSize(kNameSize);
-    name->SetAlignment(TextAlignment::Center);
+    auto name = Theme::MakeText(id, EmailLocalPart(email), size, Theme::kTextPrimary,
+                                FontWeight::Bold);
     name->SetTooltip(email);
     return name;
 }
-
-// A square account tile; a click anywhere on it selects the account.
-class AccountTile : public UltraCanvasContainer {
-public:
-    AccountTile(const std::string& id, std::function<void()> onSelect)
-        : UltraCanvasContainer(id, 0, 0, 0, 0), onSelect_(std::move(onSelect)) {
-        // Width is left AUTO so the tile grows with its counters as the numbers
-        // get longer (the counter badges auto-size to their text). A fixed width
-        // would clip them: containers clip children to their content area.
-        // The square baseline is kept as a *minimum* width plus a fixed height —
-        // a flex container honours an item's boxConstraints on the main axis
-        // only, so the height must be an explicit size rather than a min.
-        size.height = CSSLayout::Dimension::Px(kTileSide);
-        CSSLayout::BoxConstraints limits;
-        limits.minWidth = CSSLayout::Dimension::Px(kTileSide);
-        boxConstraints = limits;
-    }
-    bool OnEvent(const UCEvent& event) override {
-        if (!IsVisible() || IsDisabled()) return false;
-        if (event.type == UCEventType::MouseDown && event.button == UCMouseButton::Left) {
-            if (onSelect_) onSelect_();
-            return true;
-        }
-        return UltraCanvasContainer::OnEvent(event);
-    }
-private:
-    std::function<void()> onSelect_;
-};
 
 } // namespace
 
@@ -115,7 +69,7 @@ std::string ProviderLetter(const std::string& email) {
 std::shared_ptr<UltraCanvasContainer> AccountBar::Build() {
     root_ = CreateContainer("accountBar", 0, 0, 0, 0);
     root_->layout.SetFlexRow()
-                 .SetFlexGap(kTileGap)
+                 .SetFlexGap(Theme::kGap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     return root_;
 }
@@ -143,34 +97,40 @@ void AccountBar::Rebuild(const std::vector<Account>& accounts,
 void AccountBar::BuildSummary(const Account& account, const AccountStatus& status) {
     const std::string& acc = account.accountId;
 
-    auto strip = CreateContainer("acctSummary_" + acc, 0, 0, 0, 0);
-    strip->SetBorders(kFrameWidth, kFrameColor, kSummaryRadius);
-    strip->SetPadding(8, 24);
-    strip->layout.SetFlexRow()
-                 .SetFlexGap(28)
-                 .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    // [avatar] name / address ............ [n New today] [n Unread] [n Waiting]
+    auto card = CreateContainer("acctSummary_" + acc, 0, 0, 0, 0);
+    Theme::ApplyCard(card);
+    card->SetPadding(10, 16);
+    card->layout.SetFlexRow()
+                .SetFlexGap(14)
+                .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-    strip->AddChild(MakeLetter("acctLetter_" + acc, account.email, kLetterSize));
-    strip->AddChild(MakeName("acctName_" + acc, account.email));
+    auto avatar = Theme::MakeAvatar("acctAvatar_" + acc, ProviderLetter(account.email));
+    avatar->SetTooltip(account.email);
+    card->AddChild(avatar);
 
-    auto addStat = [&](const std::string& key, int count, const Color& color,
-                       bool darkText, const std::string& caption) {
-        auto stat = CreateContainer("acctStat_" + key + "_" + acc, 0, 0, 0, 0);
-        stat->layout.SetFlexRow()
-                    .SetFlexGap(14)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        stat->AddChild(MakeCounter("acctBadge_" + key + "_" + acc, count, color, darkText));
-        auto label = CreateLabel("acctCaption_" + key + "_" + acc, caption);
-        label->SetFontSize(kNameSize);
-        stat->AddChild(label);
-        strip->AddChild(stat);
-    };
-    addStat("today",   status.unreadToday, kNewTodayColor, false, "New today");
-    addStat("older",   status.unreadOlder, kUnreadColor,   true,  "Unread");
-    addStat("waiting", status.needsAnswer, kWaitingColor,  false, "Waiting for reply");
+    auto who = CreateContainer("acctWho_" + acc, 0, 0, 0, 0);
+    who->layout.SetFlexColumn()
+               .SetFlexGap(2)
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+    who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeHeading));
+    auto domain = Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
+                                  Theme::kSizeSecondary, Theme::kTextSecondary);
+    domain->SetTooltip(account.email);
+    who->AddChild(domain);
+    card->AddChild(who);
 
-    root_->AddChild(strip);
-    strip->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    card->AddStretchSpacer(1);
+
+    card->AddChild(MakePill("acctPill_today_" + acc, status.unreadToday, "New today",
+                            Theme::kNewTodayTint, Theme::kNewTodayText, kPillHeight));
+    card->AddChild(MakePill("acctPill_older_" + acc, status.unreadOlder, "Unread",
+                            Theme::kUnreadTint, Theme::kUnreadText, kPillHeight));
+    card->AddChild(MakePill("acctPill_waiting_" + acc, status.needsAnswer, "Waiting for reply",
+                            Theme::kWaitingTint, Theme::kWaitingText, kPillHeight));
+
+    root_->AddChild(card);
+    card->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 }
 
 void AccountBar::BuildTiles(const std::vector<Account>& accounts,
@@ -181,31 +141,52 @@ void AccountBar::BuildTiles(const std::vector<Account>& accounts,
         const AccountStatus& st = StatusFor(status, acc);
         const bool selected = (acc == selectedAccountId);
 
-        auto tile = std::make_shared<AccountTile>("acctTile_" + acc, [this, acc]() {
+        // Width is left AUTO so a tile grows with its counters; the card
+        // baseline is a minimum width (a flex row honours boxConstraints on
+        // its main axis).
+        auto tile = std::make_shared<Theme::ClickSurface>("acctTile_" + acc, [this, acc]() {
             if (onSelectAccount) onSelectAccount(acc);
         });
-        tile->SetBorders(selected ? kFrameWidth + 1 : kFrameWidth,
-                         selected ? Colors::Selection : kFrameColor, kTileRadius);
-        tile->SetPadding(10);
+        CSSLayout::BoxConstraints limits;
+        limits.minWidth = CSSLayout::Dimension::Px(kTileMinWidth);
+        tile->boxConstraints = limits;
+        tile->SetBackgroundColor(selected ? Theme::kAccentSoft : Theme::kCardBackground);
+        tile->SetBorders(selected ? 2.0f : 1.0f,
+                         selected ? Theme::kAccent : Theme::kCardBorder, Theme::kCardRadius);
+        tile->SetPadding(12, 14);
         tile->layout.SetFlexColumn()
                     .SetFlexGap(10)
-                    .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
-                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
         tile->SetTooltip(account.email);
 
-        tile->AddChild(MakeLetter("acctLetter_" + acc, account.email, kTileLetter));
-        tile->AddChild(MakeName("acctName_" + acc, account.email));
+        // Head: avatar beside the name and domain.
+        auto head = CreateContainer("acctHead_" + acc, 0, 0, 0, 0);
+        head->layout.SetFlexRow()
+                    .SetFlexGap(10)
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        head->AddChild(Theme::MakeAvatar("acctAvatar_" + acc, ProviderLetter(account.email),
+                                         kTileAvatar));
+        auto who = CreateContainer("acctWho_" + acc, 0, 0, 0, 0);
+        who->layout.SetFlexColumn().SetFlexGap(1);
+        who->AddChild(MakeName("acctName_" + acc, account.email, Theme::kSizeBody));
+        who->AddChild(Theme::MakeText("acctDomain_" + acc, "@" + EmailDomain(account.email),
+                                      Theme::kSizeSmall, Theme::kTextSecondary));
+        head->AddChild(who);
+        tile->AddChild(head);
 
+        // Counters: compact pills, captions in their tooltips.
         auto counters = CreateContainer("acctCounters_" + acc, 0, 0, 0, 0);
         counters->layout.SetFlexRow()
                         .SetFlexGap(6)
-                        .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto today = MakeCounter("acctBadge_today_" + acc, st.unreadToday, kNewTodayColor, false);
+        auto today = MakePill("acctPill_today_" + acc, st.unreadToday, "",
+                              Theme::kNewTodayTint, Theme::kNewTodayText, kTilePill);
         today->SetTooltip("New today");
-        auto older = MakeCounter("acctBadge_older_" + acc, st.unreadOlder, kUnreadColor, true);
+        auto older = MakePill("acctPill_older_" + acc, st.unreadOlder, "",
+                              Theme::kUnreadTint, Theme::kUnreadText, kTilePill);
         older->SetTooltip("Unread (before today)");
-        auto waiting = MakeCounter("acctBadge_waiting_" + acc, st.needsAnswer, kWaitingColor, false);
+        auto waiting = MakePill("acctPill_waiting_" + acc, st.needsAnswer, "",
+                                Theme::kWaitingTint, Theme::kWaitingText, kTilePill);
         waiting->SetTooltip("Waiting for reply");
         counters->AddChild(today);
         counters->AddChild(older);

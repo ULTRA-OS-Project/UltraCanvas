@@ -1,9 +1,11 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0 - compact themed header: sender avatar, from / to on two
+//                  lines, date and Reply on the right, a rule above the body.
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasFileLoader.h"
 
 #include "UltraCanvasButton.h"
@@ -11,7 +13,9 @@
 #include "HTMLReader/HTMLElementBuilder.h"
 
 #include "UltraMailMimeCodec.h"
+#include "UltraMailTheme.h"
 
+#include <cctype>
 #include <ctime>
 #include <filesystem>
 #include <fstream>
@@ -24,10 +28,11 @@ namespace UltraMail {
 
 namespace {
 
-constexpr float kSubjectFont = 17.0f;
-constexpr float kHeaderFont  = 13.0f;
-constexpr float kLineHeight  = 20.0f;
-const Color kMutedText(90, 90, 90, 255);
+constexpr float kSubjectFont  = 19.0f;
+constexpr float kSubjectLine  = 30.0f;
+constexpr float kHeaderLine   = 18.0f;
+constexpr float kAvatarSide   = 36.0f;
+constexpr float kDateWidth    = 144.0f;
 
 // Very small HTML-to-text reduction (for the quoted reply body): drop tags and
 // decode a few entities.
@@ -62,11 +67,12 @@ std::string JoinAddresses(const std::vector<std::string>& v) {
     return s;
 }
 
-std::shared_ptr<UltraCanvasLabel> HeaderLine(const std::string& id) {
-    auto label = CreateLabel(id, 0, 0, 0, kLineHeight, "");
-    label->SetFontSize(kHeaderFont);
-    label->SetTextColor(kMutedText);
-    return label;
+// The sender's initial for the avatar square ("?" for an empty address).
+std::string SenderInitial(const std::string& name, const std::string& addr) {
+    for (char c : name.empty() ? addr : name)
+        if (std::isalnum(static_cast<unsigned char>(c)))
+            return std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    return "?";
 }
 
 } // namespace
@@ -88,27 +94,51 @@ std::string FormatShortDate(int64_t epoch) {
 std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     root_ = CreateContainer("messagePreview", 0, 0, 0, 0);
     root_->layout.SetFlexColumn()
-                 .SetFlexGap(4)
+                 .SetFlexGap(Theme::kInnerGap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    subject_ = CreateLabel("prevSubject", 0, 0, 0, 26, "Select a message");
-    subject_->SetFontSize(kSubjectFont);
-    subject_->SetFontWeight(FontWeight::Bold);
+    subject_ = Theme::MakeLine("prevSubject", "Select a message", kSubjectLine, kSubjectFont,
+                               Theme::kTextPrimary, FontWeight::Bold);
     root_->AddChild(subject_);
 
-    from_ = HeaderLine("prevFrom");
-    to_   = HeaderLine("prevTo");
-    date_ = HeaderLine("prevDate");
-    root_->AddChild(from_);
-    root_->AddChild(to_);
-    root_->AddChild(date_);
+    // Header row: [avatar] from / to ........ date  [Reply]
+    header_ = CreateContainer("prevHeader", 0, 0, 0, kAvatarSide + 4);
+    auto& header = header_;
+    header->layout.SetFlexRow()
+                  .SetFlexGap(10)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Center);
 
-    // Action row.
-    auto actions = CreateContainer("prevActions", 0, 0, 0, 34);
-    actions->layout.SetFlexRow()
-                   .SetFlexGap(8)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    auto replyBtn = CreateButton("prevReply", 0, 0, 100, 28, "↩ Reply");
+    avatarHost_ = CreateContainer("prevAvatarHost", 0, 0, kAvatarSide, kAvatarSide);
+    avatarHost_->layout.SetFlexRow();
+    header->AddChild(avatarHost_);
+
+    auto who = CreateContainer("prevWho", 0, 0, 0, 0);
+    who->layout.SetFlexColumn()
+               .SetFlexGap(1)
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
+    from_ = Theme::MakeLine("prevFrom", "", kHeaderLine, Theme::kSizeBody,
+                            Theme::kTextPrimary, FontWeight::Bold);
+    to_   = Theme::MakeLine("prevTo", "", kHeaderLine, Theme::kSizeSecondary,
+                            Theme::kTextSecondary);
+    who->AddChild(from_);
+    who->AddChild(to_);
+    header->AddChild(who);
+    who->layoutItem.SetFlexGrow(1);
+
+    date_ = Theme::MakeLine("prevDate", "", kHeaderLine, Theme::kSizeSecondary,
+                            Theme::kTextSecondary);
+    date_->SetElementSize(Size2Df(kDateWidth, kHeaderLine));
+    date_->SetAlignment(TextAlignment::Right);
+    header->AddChild(date_);
+    date_->layoutItem.SetFlexShrink(0);
+
+    auto replyBtn = CreateButton("prevReply", 0, 0, 84, 30, "Reply");
+    Theme::StyleSecondary(replyBtn);
+    replyBtn->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/undo.svg"));
+    replyBtn->SetIconPosition(ButtonIconPosition::Left);
+    replyBtn->SetIconSize(14, 14);
+    replyBtn->SetIconSpacing(6);
+    replyBtn->SetUseIconAsMask(true);
     replyBtn->onClick = [this]() {
         if (!onReply || !hasMessage_) return;
         std::string selfName, selfAddr;
@@ -116,8 +146,13 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
             if (a.accountId == curAccount_) { selfName = a.displayName; selfAddr = a.email; }
         onReply(current_, selfName, selfAddr);
     };
-    actions->AddChild(replyBtn);
-    root_->AddChild(actions);
+    header->AddChild(replyBtn);
+    replyBtn->layoutItem.SetFlexShrink(0);
+    root_->AddChild(header);
+    header->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    rule_ = Theme::MakeDivider("prevRule");
+    root_->AddChild(rule_);
 
     // Body host: takes the remaining height; RenderBody() fills it with either
     // a read-only text area (plain text) or the HTMLReader-built element tree.
@@ -172,6 +207,8 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     auto text = std::make_shared<UltraCanvasTextArea>("prevBodyText", 0, 0, 0, 0);
     text->SetReadOnly(true);
     text->SetEditingMode(TextAreaEditingMode::PlainText);
+    text->SetWordWrap(true);
+    Theme::StyleTextArea(text, /*bordered=*/false);
     text->SetText(isHtml ? HtmlToText(body) : body);
     bodyHost_->AddChild(text);
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -180,10 +217,19 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
 void MessagePreview::Clear() {
     hasMessage_ = false;
     current_ = SourceMessage{};
-    if (subject_) subject_->SetText("Select a message");
+    // Empty state: a quiet hint, no header chrome.
+    if (subject_) {
+        subject_->SetText("Select a message to read it here");
+        subject_->SetFontSize(Theme::kSizeHeading);
+        subject_->SetFontWeight(FontWeight::Normal);
+        subject_->SetTextColor(Theme::kTextMuted);
+    }
+    if (header_) header_->SetVisible(false);
+    if (rule_)   rule_->SetVisible(false);
     if (from_)    from_->SetText("");
     if (to_)      to_->SetText("");
     if (date_)    date_->SetText("");
+    if (avatarHost_) avatarHost_->ClearChildren();
     if (bodyHost_) bodyHost_->ClearChildren();
     attachmentStrip_.SetAttachments({});
 }
@@ -192,12 +238,36 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     hasMessage_ = true;
     curAccount_ = env.accountId;
 
-    std::string sender = env.fromName.empty()
+    // Name on the first line; address and recipients on the second, with the
+    // full sender in the tooltip.
+    const std::string sender = env.fromName.empty()
         ? env.fromAddr : (env.fromName + " <" + env.fromAddr + ">");
-    if (subject_) subject_->SetText(env.subject.empty() ? "(no subject)" : env.subject);
-    if (from_)    from_->SetText("From: " + sender);
-    if (to_)      to_->SetText("To: " + JoinAddresses(env.to));
-    if (date_)    date_->SetText("Date: " + FormatShortDate(env.date));
+    std::string meta = env.fromName.empty() ? "" : env.fromAddr;
+    if (!env.to.empty()) meta += (meta.empty() ? "to " : "  ·  to ") + JoinAddresses(env.to);
+    if (subject_) {
+        subject_->SetText(env.subject.empty() ? "(no subject)" : env.subject);
+        subject_->SetFontSize(kSubjectFont);
+        subject_->SetFontWeight(FontWeight::Bold);
+        subject_->SetTextColor(Theme::kTextPrimary);
+        subject_->SetTooltip(env.subject);
+    }
+    if (header_) header_->SetVisible(true);
+    if (rule_)   rule_->SetVisible(true);
+    if (from_) {
+        from_->SetText(env.fromName.empty() ? env.fromAddr : env.fromName);
+        from_->SetTooltip(sender);
+    }
+    if (to_) {
+        to_->SetText(meta);
+        to_->SetTooltip(meta);
+    }
+    if (date_)    date_->SetText(FormatShortDate(env.date));
+    if (avatarHost_) {
+        avatarHost_->ClearChildren();
+        avatarHost_->AddChild(Theme::MakeAvatar("prevAvatar",
+                                                SenderInitial(env.fromName, env.fromAddr),
+                                                kAvatarSide));
+    }
 
     // Load the cached body (.eml) and decode it.
     fs::path path = fs::path(mailDir_) / env.accountId / SanitizeFolder(env.folder)

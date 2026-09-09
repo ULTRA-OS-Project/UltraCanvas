@@ -3,7 +3,8 @@
 // Services, with per-section counts) beside the contact list for the selected
 // section. Add via a button, edit by double-clicking a row, delete from a
 // row's right-click menu. Backed by the engine ContactStore.
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -42,6 +43,9 @@ public:
 
     // Build the whole panel; add the result to a window.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
+
+    // Size the view to the window's client area (call on window resize).
+    void Resize(float width, float height);
 
     // Reload section counts and the current section's contacts.
     void Refresh();

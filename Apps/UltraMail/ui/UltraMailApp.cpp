@@ -1,10 +1,11 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.5.0
-// Last Modified: 2026-09-03
+// Version: 0.6.0 - themed toolbar row, account bar and child windows sized to their client area
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 
 #include "UltraMailAlerts.h"
+#include "UltraMailTheme.h"
 
 #include "UltraMailAttachmentCache.h"
 #include "UltraMailDiscovery.h"
@@ -41,10 +42,6 @@ namespace UltraMail {
 namespace {
 constexpr int   kWindowWidth   = 1180;
 constexpr int   kWindowHeight  = 760;
-constexpr float kViewPadding   = 12.0f;
-constexpr float kActionsWidth  = 150.0f;
-constexpr float kActionHeight  = 28.0f;
-constexpr float kActionGap     = 6.0f;
 constexpr int   kActionIcon    = 16;
 
 std::string IconPath(const std::string& name) {
@@ -123,6 +120,7 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     config.title  = "UltraMail";
     config.width  = kWindowWidth;
     config.height = kWindowHeight;
+    config.backgroundColor = Theme::kPageBackground;
     window_ = CreateWindow(config);
 
     const float w = static_cast<float>(config.width);
@@ -204,38 +202,33 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
 
 std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width, float height) {
     accountView_ = CreateContainer("accountView", 0, 0, width, height);
-    accountView_->SetPadding(kViewPadding);
+    accountView_->SetPadding(Theme::kPagePadding);
     accountView_->layout.SetFlexColumn()
-                        .SetFlexGap(kViewPadding)
+                        .SetFlexGap(Theme::kGap)
                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    // ----- Top row: actions column on the left, account bar on the right -----
-    // Auto height: as tall as the actions column or the account bar's content
-    // (the summary strip stretches to the column; tiles set their own height).
-    auto top = CreateContainer("umTopRow", 0, 0, 0, 0);
-    top->layout.SetFlexRow()
-               .SetFlexGap(16)
-               .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-
-    auto actions = CreateContainer("umActions", 0, 0, kActionsWidth, 0);
-    actions->layout.SetFlexColumn()
-                   .SetFlexGap(kActionGap)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    auto makeAction = [&](const std::string& id, const std::string& text,
-                          const std::string& icon, std::function<void()> onClick) {
-        auto button = CreateButton(id, 0, 0, kActionsWidth, kActionHeight, text);
+    // ----- Toolbar: one compact row of actions, the primary one first -----
+    auto toolbar = CreateContainer("umToolbar", 0, 0, 0, Theme::kToolbarHeight);
+    toolbar->layout.SetFlexRow()
+                   .SetFlexGap(Theme::kInnerGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    auto makeAction = [&](const std::string& id, const std::string& text, float width,
+                          const std::string& icon, bool primary,
+                          std::function<void()> onClick) {
+        auto button = CreateButton(id, 0, 0, width, Theme::kControlHeight, text);
+        if (primary) Theme::StylePrimary(button); else Theme::StyleSecondary(button);
         if (!icon.empty()) {
             button->SetIcon(IconPath(icon));
             button->SetIconPosition(ButtonIconPosition::Left);
             button->SetIconSize(kActionIcon, kActionIcon);
+            button->SetIconSpacing(8);
             button->SetUseIconAsMask(true);
         }
-        button->SetTextAlign(TextAlignment::Left);
         button->onClick = std::move(onClick);
-        actions->AddChild(button);
+        toolbar->AddChild(button);
         return button;
     };
-    makeAction("umNewEmail", "New email", "envelope.svg", [this]() {
+    makeAction("umNewEmail", "New email", 124, "envelope.svg", true, [this]() {
         std::string name, addr;
         for (const auto& a : accounts_)
             if (a.accountId == selectedAccount_) { name = a.displayName; addr = a.email; }
@@ -244,22 +237,23 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         }
         OpenComposer(Composer::NewMessage(name, addr));
     });
-    reloadButton_ = makeAction("umReload", "Reload email", "reload.svg",
+    reloadButton_ = makeAction("umReload", "Reload", 100, "reload.svg", false,
                                [this]() { HandleReload(); });
-    makeAction("umContacts", "Contacts", "", [this]() { OpenContacts(); });
-    makeAction("umAddAccount", "Add account", "", [this]() { HandleAddAccount(); });
-    top->AddChild(actions);
+    makeAction("umContacts", "Contacts", 100, "", false, [this]() { OpenContacts(); });
+    toolbar->AddStretchSpacer(1);
+    makeAction("umAddAccount", "Add account", 120, "", false,
+               [this]() { HandleAddAccount(); });
+    accountView_->AddChild(toolbar);
+    toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
+    // ----- Account bar: one summary card, or a tile per account -----
     auto bar = accountBar_.Build();
     accountBar_.onSelectAccount = [this](const std::string& accountId) {
         selectedAccount_ = accountId;
         Refresh();
     };
-    top->AddChild(bar);
-    bar->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
-    accountView_->AddChild(top);
-    top->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    accountView_->AddChild(bar);
+    bar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // ----- Mail area: inbox table | message details -----
     mailView_.SetStore(&store_);
@@ -290,16 +284,23 @@ void UltraMailApp::HandleReload() {
 void UltraMailApp::OpenComposer(const Draft& draft) {
     WindowConfig cfg;
     cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
-    cfg.width  = 680;
-    cfg.height = 580;
+    cfg.width  = 760;
+    cfg.height = 620;
+    cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
 
     composeView_.SetDraft(draft);
     composeView_.SetParentWindow(win.get());
     composeView_.SetCloud(cloud_.get());
     composeView_.onSend   = [this](const Draft& d) { HandleSendDraft(d); };
-    composeView_.onCancel = []() { /* window stays; close via title bar */ };
-    win->AddChild(composeView_.Build());
+    UltraCanvasWindow* raw = win.get();
+    composeView_.onCancel = [raw]() { raw->Close(); };
+    auto view = composeView_.Build();
+    win->AddChild(view);
+    composeView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
+    win->onWindowResize = [this](int cw, int ch) {
+        composeView_.Resize(static_cast<float>(cw), static_cast<float>(ch));
+    };
     win->Show();
     viewerWindows_.push_back(win);
 }
@@ -616,7 +617,7 @@ void UltraMailApp::RunSyncs(bool force) {
             app->PostToUIThread([this, aid, email, outcome]() {
                 if (--syncsInFlight_ <= 0) {
                     syncsInFlight_ = 0;
-                    if (reloadButton_) reloadButton_->SetText("Reload email");
+                    if (reloadButton_) reloadButton_->SetText("Reload");
                 }
                 if (!outcome) {
                     if (!syncErrorReported_) {
@@ -648,12 +649,17 @@ void UltraMailApp::OpenContacts() {
     }
     WindowConfig cfg;
     cfg.title  = "Contacts";
-    cfg.width  = 640;
-    cfg.height = 520;
+    cfg.width  = 720;
+    cfg.height = 540;
+    cfg.backgroundColor = Theme::kPageBackground;
     auto win = CreateWindow(cfg);
 
     contactsView_.SetStore(&contacts_);
     win->AddChild(contactsView_.Build());
+    contactsView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
+    win->onWindowResize = [this](int cw, int ch) {
+        contactsView_.Resize(static_cast<float>(cw), static_cast<float>(ch));
+    };
     win->Show();
     viewerWindows_.push_back(win);
 }

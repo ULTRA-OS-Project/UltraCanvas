@@ -1,8 +1,9 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.3.0 - shared UiStyle: themed captions, inputs and buttons
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
+#include "UltraCloudUiStyle.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasButton.h"
@@ -27,7 +28,7 @@ namespace UltraCloud {
 namespace {
 
 constexpr float kLabelWidth = 130.0f;
-constexpr float kRowHeight  = 30.0f;
+constexpr float kRowHeight  = UiStyle::kControlHeight;
 
 // Providers in the order the dialog offers them: real ones first, the
 // in-process demo last.
@@ -63,9 +64,10 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
     std::weak_ptr<UltraCanvasModalDialog> weak = dialog;
 
     dialog->layout.SetFlexColumn()
-                  .SetFlexGap(10)
+                  .SetFlexGap(UiStyle::kGap)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    dialog->SetPadding(16);
+    dialog->SetPadding(UiStyle::kPadding);
+    dialog->SetBackgroundColor(UiStyle::kSurface);
 
     auto form = CreateContainer("cloudAccForm", 0, 0, 0, 0);
     form->layout.SetFlexColumn()
@@ -79,8 +81,10 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         row->layout.SetFlexRow()
                    .SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto label = CreateLabel(id + "Label", 0, 0, kLabelWidth, 26, caption);
+        auto label = UiStyle::MakeCaption(id + "Label", caption, kLabelWidth);
         row->AddChild(label);
+        if (auto input = std::dynamic_pointer_cast<UltraCanvasTextInput>(control))
+            UiStyle::StyleInput(input);
         row->AddChild(control);
         control->layoutItem.SetFlexGrow(1);
         form->AddChild(row);
@@ -89,32 +93,32 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
     };
 
     const auto providers = OrderedProviders();
-    auto provider = CreateDropdown("cloudAccProvider", 0, 0, 300, 28);
+    auto provider = CreateDropdown("cloudAccProvider", 0, 0, 300, UiStyle::kControlHeight);
     for (const auto& p : providers) provider->AddItem(p->DisplayName(), p->Id());
     if (!providers.empty()) provider->SetSelectedIndex(0, /*runNotifications=*/false);
     addRow("cloudAccProvider", "Provider", provider);
 
-    auto name = CreateTextInput("cloudAccName", 0, 0, 300, 28);
+    auto name = CreateTextInput("cloudAccName", 0, 0, 300, UiStyle::kControlHeight);
     name->SetPlaceholder("My cloud (optional)");
     addRow("cloudAccName", "Name", name);
 
-    auto server = CreateTextInput("cloudAccServer", 0, 0, 300, 28);
+    auto server = CreateTextInput("cloudAccServer", 0, 0, 300, UiStyle::kControlHeight);
     server->SetPlaceholder("https://cloud.example.com");
     auto serverRow = addRow("cloudAccServer", "Server URL", server);
 
-    auto user = CreateTextInput("cloudAccUser", 0, 0, 300, 28);
+    auto user = CreateTextInput("cloudAccUser", 0, 0, 300, UiStyle::kControlHeight);
     user->SetPlaceholder("user name");
     auto userRow = addRow("cloudAccUser", "User", user);
 
-    auto password = CreatePasswordInput("cloudAccPass", 0, 0, 300, 28);
+    auto password = CreatePasswordInput("cloudAccPass", 0, 0, 300, UiStyle::kControlHeight);
     password->SetPlaceholder("password or app password");
     auto passwordRow = addRow("cloudAccPass", "Password", password);
 
-    auto publicUrl = CreateTextInput("cloudAccPublic", 0, 0, 300, 28);
+    auto publicUrl = CreateTextInput("cloudAccPublic", 0, 0, 300, UiStyle::kControlHeight);
     publicUrl->SetPlaceholder("https://files.example.org/pub (links = this URL + path)");
     auto publicRow = addRow("cloudAccPublic", "Public URL", publicUrl);
 
-    auto folder = CreateTextInput("cloudAccFolder", 0, 0, 300, 28);
+    auto folder = CreateTextInput("cloudAccFolder", 0, 0, 300, UiStyle::kControlHeight);
     folder->SetText("/Shared from ULTRA OS");
     addRow("cloudAccFolder", "Upload folder", folder);
 
@@ -125,17 +129,21 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
     auto hint = CreateLabel("cloudAccHint", 0, 0, 0, 36,
         "Nextcloud: create an app password under Settings → Security and use it here.");
     hint->SetWrap(TextWrap::WrapWord);
+    hint->SetFontSize(UiStyle::kFontSize - 1.0f);
+    hint->SetTextColor(UiStyle::kTextSecondary);
     form->AddChild(hint);
 
     auto status = CreateLabel("cloudAccStatus", 0, 0, 0, 22, "");
-    status->SetTextColor(Color(180, 40, 40, 255));
+    status->SetFontSize(UiStyle::kFontSize);
+    status->SetTextColor(UiStyle::kDanger);
     form->AddChild(status);
 
     dialog->AddChild(form);
     form->layoutItem.SetFlexGrow(1);
 
     // Buttons (created here so applyProvider can relabel the Add button).
-    auto addBtn = CreateButton("cloudAccAdd", 0, 0, 150, 28, "Add account");
+    auto addBtn = CreateButton("cloudAccAdd", 0, 0, 160, UiStyle::kControlHeight, "Add account");
+    UiStyle::StylePrimary(addBtn);
 
     // Show only the rows the chosen provider needs. OAuth providers sign in
     // through the browser: no user / password rows, and the button says so.
@@ -170,12 +178,13 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
     // Button row.
     auto buttons = CreateContainer("cloudAccButtons", 0, 0, 0, 36);
     buttons->layout.SetFlexRow()
-                   .SetFlexGap(10)
+                   .SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttons->AddStretchSpacer(1);
-    auto cancelBtn = CreateButton("cloudAccCancel", 0, 0, 80, 28, "Cancel");
-    buttons->AddChild(addBtn);
+    auto cancelBtn = CreateButton("cloudAccCancel", 0, 0, 90, UiStyle::kControlHeight, "Cancel");
+    UiStyle::StyleSecondary(cancelBtn);
     buttons->AddChild(cancelBtn);
+    buttons->AddChild(addBtn);
     dialog->AddChild(buttons);
 
     // The result travels from the worker to the close callback through here.

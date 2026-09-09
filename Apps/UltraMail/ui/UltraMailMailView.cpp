@@ -1,11 +1,15 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0 - both panes are themed cards; the list has taller rows,
+//                  a quiet header and soft hover / selection colours.
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMailView.h"
 
+#include "UltraMailTheme.h"
+
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <set>
 #include <string>
 
@@ -22,16 +26,18 @@ const char* kColDate    = "date";
 const char* kRootId     = "inboxRoot";
 const char* kRowPrefix  = "msg_";
 
-constexpr int kFromWidth    = 200;
+constexpr int kFromWidth    = 190;
 constexpr int kSubjectMin   = 160;
-constexpr int kDateWidth    = 150;
-constexpr int kRowHeight    = 26;
+constexpr int kDateWidth    = 104;
+constexpr int kRowHeight    = 30;
+constexpr int kHeaderHeight = 28;
+constexpr int kSplitterGap  = 12;   // the page shows through between the cards
 
 constexpr int kListMinWidth    = 380;
 constexpr int kPreviewMinWidth = 400;
 
-const Color kUnreadText(0, 0, 0, 255);
-const Color kReadText(110, 110, 110, 255);
+const Color& kUnreadText = Theme::kTextPrimary;
+const Color& kReadText   = Theme::kTextSecondary;
 
 // Fill a container (group box or split pane) with one child that takes the
 // whole content area.
@@ -41,6 +47,30 @@ void FillWith(const std::shared_ptr<UltraCanvasContainer>& host,
                 .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     host->AddChild(child);
     child->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+}
+
+// The list's date column, the way mail clients shorten it: the time for
+// today, "Sep 09" for this year, "Jan 14, 2025" for anything older.
+std::string FormatListDate(int64_t epoch) {
+    if (epoch <= 0) return "";
+    std::time_t t = static_cast<std::time_t>(epoch);
+    std::time_t now = std::time(nullptr);
+    std::tm tm{}, tmNow{};
+#if defined(_WIN32)
+    gmtime_s(&tm, &t);
+    gmtime_s(&tmNow, &now);
+#else
+    gmtime_r(&t, &tm);
+    gmtime_r(&now, &tmNow);
+#endif
+    char buf[32];
+    if (tm.tm_year == tmNow.tm_year && tm.tm_yday == tmNow.tm_yday)
+        std::strftime(buf, sizeof buf, "%H:%M", &tm);
+    else if (tm.tm_year == tmNow.tm_year)
+        std::strftime(buf, sizeof buf, "%b %d", &tm);
+    else
+        std::strftime(buf, sizeof buf, "%b %d, %Y", &tm);
+    return buf;
 }
 
 int RowIndexOf(const TreeNode* node) {
@@ -63,18 +93,34 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
     auto previewPane = split_->AddPane(1.0);
     split_->SetPaneMinSize(0, kListMinWidth);
     split_->SetPaneMinSize(1, kPreviewMinWidth);
-    listPane->SetPadding(0, 6, 0, 0);
-    previewPane->SetPadding(0, 0, 0, 6);
+    // The splitter is an invisible gap: the two cards read as separate
+    // surfaces on the page rather than as halves of one box.
+    SplitPaneStyle splitStyle;
+    splitStyle.splitterThickness     = kSplitterGap;
+    splitStyle.showSplitterBackground = false;
+    splitStyle.splitterColor         = Theme::kPageBackground;
+    splitStyle.splitterHoverColor    = Theme::kCardBorder;
+    splitStyle.splitterActiveColor   = Theme::kAccent;
+    split_->SetSplitPaneStyle(splitStyle);
 
     // Left: the inbox list (state · from · subject · date).
     inboxBox_ = CreateGroupBox("inboxBox", 0, 0, 0, 0, "Inbox");
     inboxBox_->SetFrameStyle(GroupBoxFrameStyle::Header);
+    inboxBox_->SetVisualStyle(Theme::CardGroupBox(6.0f));
     list_ = std::make_shared<UltraCanvasColumnsTreeView>("inboxList", 0, 0, 0, 0);
     list_->SetDisplayMode(TreeDisplayMode::Columns);
     list_->SetSelectionMode(TreeSelectionMode::Single);
     list_->SetShowColumnHeader(true);
     list_->SetRowHeight(kRowHeight);
     list_->SetRootVisible(false);
+    list_->SetShowExpandButtons(false);
+    list_->SetIndentSize(6);
+    list_->SetFontSize(Theme::kSizeBody);
+    list_->SetTextColor(Theme::kTextPrimary);
+    list_->SetSelectionColor(Theme::kRowSelected);
+    list_->SetHoverColor(Theme::kRowHover);
+    list_->SetLineColor(Colors::Transparent);
+    list_->SetBorders(1.0f, Theme::kDivider, Theme::kControlRadius);
     list_->SetColumns({
         { "from",      "From",    kFromWidth,  0, 1.0f, TextAlignment::Left,
           kUnreadText, Colors::Transparent, 0, /*isTreeColumn=*/true },
@@ -84,10 +130,11 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
           kUnreadText, Colors::Transparent, 0, false },
     });
     TreeColumnStyle columnStyle;
-    columnStyle.headerHeight      = 26;
-    columnStyle.headerBackground  = Color(240, 240, 240, 255);
-    columnStyle.headerTextColor   = Color(40, 40, 40, 255);
-    columnStyle.headerBorderColor = Color(205, 205, 205, 255);
+    columnStyle.headerHeight      = kHeaderHeight;
+    columnStyle.headerBackground  = Theme::kSidebar;
+    columnStyle.headerTextColor   = Theme::kTextSecondary;
+    columnStyle.headerBorderColor = Theme::kDivider;
+    columnStyle.columnGap         = 10;
     list_->SetColumnStyle(columnStyle);
     list_->onNodeSelected = [this](TreeNode* node) { SelectRow(RowIndexOf(node)); };
     FillWith(inboxBox_, list_);
@@ -96,6 +143,7 @@ std::shared_ptr<UltraCanvasContainer> MailView::Build() {
     // Right: the message details.
     messageBox_ = CreateGroupBox("messageBox", 0, 0, 0, 0, "Message");
     messageBox_->SetFrameStyle(GroupBoxFrameStyle::Header);
+    messageBox_->SetVisualStyle(Theme::CardGroupBox(Theme::kPagePadding));
     preview_.onSaveAttachment = [this](const Attachment& a) {
         if (onSaveAttachment) onSaveAttachment(a);
     };
@@ -162,7 +210,8 @@ void MailView::RebuildList() {
         node.tooltip   = sender + " <" + m.fromAddr + ">"
                        + (isUnread ? " — unread" : "") + (isWaiting ? " — waiting for reply" : "");
         node.SetCell(kColSubject, subject, text);
-        node.SetCell(kColDate, FormatShortDate(m.date), text);
+        node.SetCell(kColDate, FormatListDate(m.date), text);
+        node.tooltip += "\n" + FormatShortDate(m.date);
         list_->AddNode(kRootId, node);
     }
     list_->ExpandAll();

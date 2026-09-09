@@ -1,6 +1,6 @@
 // Apps/UltraMail/ui/UltraMailStartPage.cpp
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0 - themed title colour and primary button
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailStartPage.h"
 
@@ -8,6 +8,7 @@
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasImageElement.h"
 #include "UltraCanvasLabel.h"
+#include "UltraMailTheme.h"
 
 using namespace UltraCanvas;
 
@@ -43,13 +44,14 @@ std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
     auto title = CreateLabel("startTitle", "UltraMail");
     title->SetFontSize(kTitleSize);
     title->SetFontWeight(FontWeight::Bold);
+    title->SetTextColor(Theme::kTextPrimary);
     title->SetAlignment(TextAlignment::Center);
     page_->AddChild(title);
 
     // The single call to action: a primary button with an envelope icon.
     auto add = CreateButton("startAddAccount", 0, 0, kButtonWidth, kButtonHeight,
                             "Add email account");
-    add->SetStyle(ButtonStyles::PrimaryStyle());
+    Theme::StylePrimary(add);
     add->SetFontSize(kButtonFont);
     add->SetCornerRadius(kButtonRadius);
     add->SetIcon(NormalizePath(GetResourcesDir() + "media/icons/envelope.svg"));
