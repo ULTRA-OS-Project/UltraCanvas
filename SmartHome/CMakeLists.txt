@@ -178,6 +178,15 @@ target_include_directories(SmartHome PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${CMAKE_CURRENT_SOURCE_DIR}/../UltraCanvas/include)
 target_include_directories(SmartHome PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/core)
+# The public headers reach UltraCanvasUIElement.h, whose render context
+# includes cairo. Those include paths (Homebrew's on macOS, vcpkg's on
+# Windows) are the UltraCanvas target's public interface, so the engine has
+# to link it, not just name its header directory — otherwise the build works
+# wherever cairo happens to be on the default include path and fails
+# everywhere else, which is how the macOS arm64 CI job found this.
+if(ULTRACANVAS_LIBRARY)
+    target_link_libraries(SmartHome PUBLIC ${ULTRACANVAS_LIBRARY})
+endif()
 
 # One definition per enabled backend, and its headers on the private include
 # path. SmartHomeProtocolRegistry.cpp reads these to decide what to register.
@@ -205,6 +214,13 @@ foreach(_sh_proto ${_sh_backends})
             ${CHIP_SOURCE_DIR}/third_party/inipp/repo/inipp
             ${CHIP_SOURCE_DIR}/third_party/perfetto/repo/sdk
             ${CHIP_BUILD_DIR}/gen/include)
+        # The SDK's Linux platform layer speaks D-Bus (BlueZ for Bluetooth
+        # commissioning, wpa_supplicant) through GLib, and its headers pull
+        # gio in; the same libraries end chip-tool's own link line.
+        find_package(PkgConfig REQUIRED)
+        pkg_check_modules(CHIP_GLIB REQUIRED gio-2.0 gobject-2.0 glib-2.0)
+        target_include_directories(SmartHome PRIVATE ${CHIP_GLIB_INCLUDE_DIRS})
+        target_link_libraries(SmartHome PUBLIC ${CHIP_GLIB_LIBRARIES})
         # chip-tool's file-backed storage is example code, not library code.
         target_sources(SmartHome PRIVATE ${CHIP_SOURCE_DIR}/src/controller/ExamplePersistentStorage.cpp)
         set_source_files_properties(${CHIP_SOURCE_DIR}/src/controller/ExamplePersistentStorage.cpp
