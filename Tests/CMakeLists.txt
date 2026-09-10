@@ -653,6 +653,34 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== MODEL STORAGE TEST =====
+# ModelStorage::ModelDocument, the universal 3D scene structure every 3D file
+# format reads into and writes out of. Pure geometry and data - no UI stack and
+# no GL - so it runs anywhere. Pass an .stl path as argv[1] to also exercise the
+# Mesh3D bridge against a real file.
+message(STATUS "  Building ModelStorageTest...")
+add_executable(ModelStorageTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelStorageTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelMesh3D.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
+)
+target_include_directories(ModelStorageTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelStorageTest PRIVATE cxx_std_20)
+set_target_properties(ModelStorageTest PROPERTIES
+    OUTPUT_NAME "ModelStorageTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelStorageTest
+    COMMAND ModelStorageTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelStorageTest")
+
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the
 # real CSSLayout engine: an auto-width flex column grows with an inner row of

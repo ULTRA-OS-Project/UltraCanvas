@@ -207,6 +207,42 @@ the backing implementation can be replaced without affecting callers.
   - `JSON::EscapeString` and framework-type helpers
     `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
 
+- **UltraCanvasModelStorage** (`DataFormats/UltraCanvasModelStorage.h`) — the
+  framework's universal 3D scene structure, `ModelStorage::ModelDocument`: the
+  in-memory model every 3D file format reads into and writes out of, as
+  `VectorStorage::VectorDocument` is for 2D. Core implementation in
+  `core/DataFormats/UltraCanvasModelStorage.cpp`. Content is addressed by
+  index (glTF-style flat arrays), because 3D formats are natively
+  reference-based and one mesh drawn by many nodes is the normal case.
+  Public surface:
+  - `ModelDocument` — asset metadata; `SourceUnit` / `UnitScaleToMeters` /
+    `Up` / `Chirality` (what the file declared; readers never rescale
+    geometry); `Scenes`, `Nodes`, `Meshes`, `Materials`, `Images`,
+    `Samplers`, `Skins`, `Animations`, `Cameras`, `Lights`.
+  - `ModelMesh` / `MeshPrimitive` — `Positions` (double, for CAD-scale
+    coordinates), `Normals`, `Tangents`, open-ended named `Attributes`
+    (texture coordinate and colour sets, skin joints/weights, and arbitrary
+    per-vertex properties such as PLY's or LiDAR intensity), `Indices` and
+    `FaceStarts` (n-gons survive), `Material`, morph `Targets`.
+  - `ModelMaterial` — PBR metallic-roughness plus an optional fixed-function
+    `PhongParams`, whichever the source stated; `DeriveMissingModel()` fills
+    the other. `TextureRef`, `ModelImage`, `ModelSampler`.
+  - `ModelNode` / `ModelScene` / `ModelSkin` / `ModelAnimation` — scene graph
+    with TRS or matrix transforms, instancing, skinning and keyframe
+    animation.
+  - Operations: `Triangulate` / `TriangulateAll`, `RecomputeNormals`,
+    `WeldVertices` (attribute-aware), `FlattenTransforms`, `ConvertUpAxis`,
+    `GlobalTransform`, `ComputeBounds`, `Matrix4x4::DecomposeTRS`.
+  - `ModelConverter::IModelFormatConverter`
+    (`DataFormats/UltraCanvasModelConverter.h`) — the read/write interface
+    every 3D format implements, mirroring `IVectorFormatConverter`:
+    file/memory/stream import and export, signature validation,
+    `FormatCapabilities`, and a `WarningCallback` a lossy conversion must
+    use. Converters themselves live in `Plugins/Models/<FORMAT>/`.
+  See `Docs/Research/UltraCanvas3DModelProposal.md` for the format survey the
+  structure is derived from, and what is deliberately out of scope (B-rep
+  solids: STEP, IGES, ACIS, DWG `3DSOLID`).
+
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers
   for a file, and detached launching. Core worker/cache in

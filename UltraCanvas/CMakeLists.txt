@@ -667,6 +667,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # STL 3D model loader/saver (self-contained, no external deps).
         # The GL-backed viewer in UltraCanvasSTLElement.cpp compiles to a 2D
         # fallback automatically when ULTRACANVAS_ENABLE_GL is off.
+        # Bridge between ModelDocument and the flat Mesh3D the GL viewer and
+        # the Filer thumbnails take.
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/UltraCanvasModelMesh3D.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLPlugin.cpp
@@ -697,6 +700,11 @@ set(ULTRACANVAS_CORE_SOURCES
         # by the vendored yyjson engine (built once as the uc-yyjson archive
         # below, shared with UltraWin's QMP client)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp
+
+        # DataFormats section: the universal 3D scene structure
+        # (ModelStorage::ModelDocument) every 3D file format reads into and
+        # writes out of - the 3D counterpart of VectorStorage::VectorDocument.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasModelStorage.cpp
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp

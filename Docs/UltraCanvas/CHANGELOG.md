@@ -1,3 +1,32 @@
+#### 2026-09-10 *0.8.2*
+- **One 3D structure for every 3D format.** `ModelStorage::ModelDocument`
+  (`DataFormats/UltraCanvasModelStorage.h`) is to 3D what
+  `VectorStorage::VectorDocument` is to 2D: the in-memory model each 3D file
+  format reads into and writes out of. It is a core service, which the flat
+  `Mesh3D` inside the STL plugin could never be - scenes, nodes with TRS or
+  matrix transforms and instancing, meshes of primitives with double-precision
+  positions and open-ended named vertex attributes (n-gons survive; point
+  clouds are just `Points` mode), PBR *and* fixed-function Phong materials with
+  a derivation between them, textures, skins, morph targets, keyframe
+  animation, cameras, lights, and the declared unit, up axis and handedness
+  that decide whether an import arrives the right size and the right way up.
+  Operations every converter would otherwise rewrite come with it:
+  triangulation, area-weighted normals, attribute-aware welding, transform
+  flattening, up-axis conversion and TRS decomposition.
+  `ModelConverter::IModelFormatConverter`
+  (`DataFormats/UltraCanvasModelConverter.h`) is the matching read/write
+  interface, shaped like `IVectorFormatConverter` down to the warning callback
+  a lossy conversion must use.
+  `Plugins/Models/UltraCanvasModelMesh3D.{h,cpp}` bridges to the existing
+  `Mesh3D`, so the STL viewer and the Filer thumbnails keep working while
+  formats migrate one at a time. `Tests/ModelStorageTest.cpp` covers it, and
+  runs against a real 510 671-triangle STL when given one.
+  The survey behind every field - what STL, OBJ/MTL, PLY, OFF, glTF/GLB,
+  COLLADA, FBX, 3DS, X3D, USD, 3MF, AMF and the point-cloud formats each
+  contain, and why B-rep (STEP, IGES, ACIS, DWG `3DSOLID`) is deliberately not
+  in scope - is
+  [UltraCanvas3DModelProposal](../Research/UltraCanvas3DModelProposal.md).
+
 #### 2026-09-10 *0.8.1*
 - **STL models have a demo page.** *3D Graphics → STL 3D Models*
   (`Apps/DemoApp/UltraCanvasSTLExamples.cpp`) reads every `.stl` file in
