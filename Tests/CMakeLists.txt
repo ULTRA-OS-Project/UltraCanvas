@@ -1929,9 +1929,63 @@ if(TARGET UltraCanvas AND TARGET UltraCanvasLaTeX)
     target_compile_definitions(InlineMathTest PRIVATE UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
     target_link_libraries(InlineMathTest PRIVATE UltraCanvas)
     add_dependencies(InlineMathTest UltraCanvasLaTeX)
-    set_target_properties(InlineMathTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    # The module resolves the core's symbols against the executable that
+    # dlopens it, so the executable has to export them - the same
+    # ENABLE_EXPORTS every other module host sets (DemoApp, EmailCleaner,
+    # UltraCleaner, UltraMail, UltraNetTests). Without it the module loads with
+    # "undefined symbol: typeinfo for UltraCanvas::UltraCanvasUIElement" and
+    # the test reports the module as unavailable.
+    set_target_properties(InlineMathTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+        ENABLE_EXPORTS ON)
     add_test(NAME InlineMathTest COMMAND InlineMathTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
     message(STATUS "    Test registered: InlineMathTest")
 else()
     message(STATUS "  InlineMathTest skipped (UltraCanvas or UltraCanvasLaTeX target not present)")
+endif()
+
+# ===== FONT VIEWER TEST =====
+# The glyph browser's geometry - columns, rows, scroll range, hit testing.
+# The painting needs a window; the layout does not, and it is where the bugs
+# that hide part of a font live.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FontViewerTest...")
+    add_executable(FontViewerTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FontViewerTest.cpp
+    )
+    target_include_directories(FontViewerTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FontViewerTest PRIVATE cxx_std_20)
+    target_compile_definitions(FontViewerTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(FontViewerTest PRIVATE UltraCanvas)
+    set_target_properties(FontViewerTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FontViewerTest COMMAND FontViewerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FontViewerTest")
+else()
+    message(STATUS "  FontViewerTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== OFFSCREEN RENDER TEST =====
+# Widgets drawn into a surface with no window behind it. Everything a widget
+# needs at paint time has to come from the context it was handed, and a widget
+# that cannot get it must draw less rather than crash.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building OffscreenRenderTest...")
+    add_executable(OffscreenRenderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/OffscreenRenderTest.cpp
+    )
+    target_include_directories(OffscreenRenderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(OffscreenRenderTest PRIVATE cxx_std_20)
+    target_link_libraries(OffscreenRenderTest PRIVATE UltraCanvas)
+    set_target_properties(OffscreenRenderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME OffscreenRenderTest COMMAND OffscreenRenderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: OffscreenRenderTest")
+else()
+    message(STATUS "  OffscreenRenderTest skipped (UltraCanvas target not present)")
 endif()
