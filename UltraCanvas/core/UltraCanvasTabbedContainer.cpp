@@ -1886,57 +1886,77 @@ namespace UltraCanvas {
                     // Browser-style rounded tabs with custom path
                     ctx->ClearPath();
 
-                    double x = static_cast<double>(tabBounds.x);
-                    double y = static_cast<double>(tabBounds.y);
+                    // Align the outline to the pixel grid. A 1px stroke centred on an
+                    // integer coordinate straddles two pixel rows, so the straight
+                    // edges come out as a pale two-pixel smear while the corner arcs -
+                    // which are not axis aligned - land as a crisp single-pixel line.
+                    // Snapping to pixel centres gives the corners and the straight
+                    // edges the same weight.
+                    const double strokeWidth = 1.0;
+                    const double align = (tabBorderColor.a > 0) ? strokeWidth * 0.5 : 0.0;
+
+                    double x = static_cast<double>(tabBounds.x) + align;
+                    double y = static_cast<double>(tabBounds.y) + align;
                     double w = static_cast<double>(tabBounds.width);
                     double h = static_cast<double>(tabBounds.height);
-                    double radius = tabCornerRadius;
+                    // Keep the corners circular: a radius larger than half the tab
+                    // would make the two arcs of an edge overlap and invert the outline.
+                    double radius = std::min(static_cast<double>(tabCornerRadius),
+                                             std::min(w, h) * 0.5);
+
+                    // Every arc below is traversed with an increasing angle, because
+                    // IRenderContext::Arc() maps onto cairo_arc(), which always sweeps
+                    // from startAngle upwards - passing endAngle < startAngle silently
+                    // draws the 270 degree arc the long way round instead of the corner.
 
                     // Adjust based on tab position
                     switch (tabPosition) {
                         case TabPosition::Top:
                             // Rounded top corners, square bottom corners
-                            // Start at bottom-left
+                            // Start at bottom-left, up the left edge
                             ctx->MoveTo(x, y + h);
-                            // Line to top-left, then arc for top-left corner
                             ctx->LineTo(x, y + radius);
+                            // Top-left corner, across the top, top-right corner
                             ctx->Arc(x + radius, y + radius, radius, M_PI, 3 * M_PI / 2);
-                            // Line across top to top-right arc
                             ctx->Arc(x + w - radius, y + radius, radius, 3 * M_PI / 2, 2 * M_PI);
-                            // Line down to bottom-right
+                            // Down the right edge; ClosePath draws the bottom edge
                             ctx->LineTo(x + w, y + h);
-                            // Close path back to start
-                            ctx->LineTo(x, y + h);
                             break;
 
                         case TabPosition::Bottom:
                             // Square top corners, rounded bottom corners
+                            // Across the top, down the right edge
                             ctx->MoveTo(x, y);
-                            ctx->LineTo(x, y + h - radius);
-                            ctx->Arc(x + radius, y + h - radius, radius, M_PI, M_PI / 2);
-                            ctx->Arc(x + w - radius, y + h - radius, radius, M_PI / 2, 0);
                             ctx->LineTo(x + w, y);
-                            ctx->LineTo(x, y);
+                            ctx->LineTo(x + w, y + h - radius);
+                            // Bottom-right corner, across the bottom, bottom-left corner
+                            ctx->Arc(x + w - radius, y + h - radius, radius, 0, M_PI / 2);
+                            ctx->Arc(x + radius, y + h - radius, radius, M_PI / 2, M_PI);
+                            // ClosePath draws the left edge
                             break;
 
                         case TabPosition::Left:
                             // Rounded left corners, square right corners
-                            ctx->MoveTo(x + w, y);
-                            ctx->LineTo(x + radius, y);
-                            ctx->Arc(x + radius, y + radius, radius, 3 * M_PI / 2, M_PI);
-                            ctx->Arc(x + radius, y + h - radius, radius, M_PI, M_PI / 2);
-                            ctx->LineTo(x + w, y + h);
+                            // Along the bottom, right to left
+                            ctx->MoveTo(x + w, y + h);
+                            ctx->LineTo(x + radius, y + h);
+                            // Bottom-left corner, up the left edge, top-left corner
+                            ctx->Arc(x + radius, y + h - radius, radius, M_PI / 2, M_PI);
+                            ctx->Arc(x + radius, y + radius, radius, M_PI, 3 * M_PI / 2);
+                            // Across the top; ClosePath draws the right edge
                             ctx->LineTo(x + w, y);
                             break;
 
                         case TabPosition::Right:
                             // Square left corners, rounded right corners
+                            // Across the top, left to right
                             ctx->MoveTo(x, y);
                             ctx->LineTo(x + w - radius, y);
-                            ctx->Arc(x + w - radius, y + radius, radius, 3 * M_PI / 2, 0);
+                            // Top-right corner, down the right edge, bottom-right corner
+                            ctx->Arc(x + w - radius, y + radius, radius, 3 * M_PI / 2, 2 * M_PI);
                             ctx->Arc(x + w - radius, y + h - radius, radius, 0, M_PI / 2);
+                            // Along the bottom; ClosePath draws the left edge
                             ctx->LineTo(x, y + h);
-                            ctx->LineTo(x, y);
                             break;
                     }
 
@@ -1947,7 +1967,7 @@ namespace UltraCanvas {
                     ctx->FillPathPreserve();
                     if (tabBorderColor.a > 0) {
                         ctx->SetStrokePaint(tabBorderColor);
-                        ctx->SetStrokeWidth(1.0f);
+                        ctx->SetStrokeWidth(strokeWidth);
                         ctx->StrokePathPreserve();
                     }
                     ctx->ClearPath();
@@ -2225,8 +2245,10 @@ namespace UltraCanvas {
         Color ghostBg = activeTabColor;
         ghostBg.a = 160;
 
+        // Third argument is the border width, not the radius - pass the corner
+        // radius in the slot that actually rounds the rectangle.
         ctx->DrawFilledRectangle(Rect2Di(ghostX, ghostY, tabBounds.width, tabBounds.height),
-                    ghostBg, tabCornerRadius);
+                    ghostBg, 0.0f, Colors::Transparent, tabCornerRadius);
 
         // Ghost border
         ctx->SetStrokePaint(dragGhostBorderColor);
