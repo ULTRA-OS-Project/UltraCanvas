@@ -19710,6 +19710,27 @@ folder simply ends the drag. Escape abandons the drag without moving anything.
 Files dropped **into** the view from other widgets or applications are copied
 the same way, conflict dialog included.
 
+A drag is the one file operation that can be started by accident — a press that
+wandered a few pixels — and it is carried out before it is noticed, so the drop
+can be made to ask first with `SetDropConfirmation(FilerDropConfirmation)`:
+
+| Mode | The drop asks |
+|---|---|
+| `NeverConfirm` | never — the drop is carried out straight away (the default, and what earlier releases did) |
+| `MoveOnly` | only when the drop **moves** the files; a copy is carried out |
+| `AlwaysConfirm` | for every drop, copies and files dragged in from other programs included |
+
+```cpp
+filer->SetDropConfirmation(FilerDropConfirmation::MoveOnly);
+```
+
+The question names what is about to happen — how many entries, moved or copied,
+into which folder, with the folder's full path as the detail line — and nothing
+is touched until it is answered; the other answer abandons the drop. Files
+arriving from another program (or another pane of the same window) are copies,
+so only `AlwaysConfirm` asks about those. With dialogs disabled the drop is
+carried out rather than lost.
+
 **Leaving the widget does not end the drag.** The badge keeps following the
 cursor over the rest of the window — it is handed to the window's
 [drag overlay](#drag-overlay) for that, because an element cannot paint outside

@@ -1,3 +1,42 @@
+#### 2026-09-10 *1.28.0*
+- **A dragged-and-dropped move asks first.** Dropping files onto a folder of
+  the file display carried the move out the moment the button came up, and a
+  drag is the one file operation that starts by accident - a press that
+  wandered a few pixels on the way somewhere else - so the first sign of it was
+  a folder that had quietly emptied itself into a neighbour. *Settings >
+  Handling > Drag & Drop* now carries **Confirmation**: **Always**, **Only when
+  files are moved** (the new default) or **None**, the silent drop earlier
+  releases had. The question names how many entries are about to be moved or
+  copied and into which folder, with that folder's full path underneath -
+  a drop lands on whatever was under the cursor - and nothing is touched until
+  it is answered. Files dragged in from another program are copies, so only
+  *Always* asks about those. (Framework side:
+  `Docs/UltraCanvas/CHANGELOG.md` 0.8.1.)
+- **The settings window opens on its sections instead of inside one.** The tree
+  led with a *Settings* row that held everything and stood for nothing, below
+  it every section and every page was already open, and the window opened on
+  *Display > Treeview* - one page of eleven, picked because it happened to be
+  first. Now the three sections - **Display**, **Handling**, **Extras** - are
+  the top level of the list, all three closed, and the page beside them says
+  what each one holds. Opening a section still moves straight on to its first
+  page, and a page opened from elsewhere in the application (the file display's
+  *File formats...* entries) opens its section on the way.
+- **History & Favorites moved into Extras.** It was a section of its own, one
+  row deep, sitting beside the three that group everything else; it is now the
+  second page of *Extras*, next to *Open prompt*. What it does is unchanged.
+
+#### 2026-09-10 *1.27.0*
+- **The "+" of the tab strip can open the Home folder instead of the folder
+  in front of you.** Opening a tab has always meant "the same folder once
+  more", which is what a second view of the folder being worked in wants, and
+  exactly wrong when the new tab is meant to start somewhere else entirely -
+  every one of those began with a walk back up out of the folder the tab
+  inherited. *Settings > Handling > Tabs* now chooses between the two: **New
+  view of the current folder** (the default, unchanged behaviour) or **Open
+  the Home folder**. Only the "+" follows the setting - a tab opened on a
+  folder that was named, such as the containing folder of a search result or
+  an entry of the History or Favorites view, still opens on that folder - and
+  the choice is saved as `handling.tabs.new.tab` in the config file.
 #### 2026-09-10 *1.26.0*
 - **The Home tab is called Home.** A folder tab is named after the folder it
   shows, and the home folder is named after the account that owns it - so the
