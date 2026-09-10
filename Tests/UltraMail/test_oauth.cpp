@@ -53,6 +53,18 @@ TEST(oauth_provider_is_google_for_gmail_and_microsoft_for_outlook) {
     REQUIRE_EQ(OAuthProviderDisplayName("microsoft"), std::string("Microsoft"));
 }
 
+TEST(app_password_needed_at_yahoo_icloud_and_oauth_providers) {
+    REQUIRE(ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@yahoo.de")));
+    REQUIRE(ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@icloud.com")));
+    REQUIRE(ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@me.com")));
+    REQUIRE(ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@gmail.com")));
+    REQUIRE(ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@outlook.com")));
+    // Ordinary providers take the account password.
+    REQUIRE(!ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@gmx.de")));
+    REQUIRE(!ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@example.com")));
+    REQUIRE(!ProviderNeedsAppPassword(DiscoveryResult{}));
+}
+
 TEST(oauth_microsoft_config_requests_imap_smtp_and_offline_access) {
     OAuthApp app; app.clientId = "00000000-1111-2222-3333-444444444444";   // public client
     UltraNetOAuth2Config cfg = OAuthConfigFor("microsoft", app, "erika@outlook.com");

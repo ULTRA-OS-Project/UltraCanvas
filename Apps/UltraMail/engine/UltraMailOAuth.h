@@ -75,6 +75,12 @@ std::string OAuthProviderFor(const DiscoveryResult& discovery);
 // "Google" / "Microsoft"; the id itself when unknown.
 std::string OAuthProviderDisplayName(const std::string& providerId);
 
+// True when the provider rejects the normal account password over IMAP/SMTP
+// and a password sign-in needs an *app password* generated in the account's
+// security settings: Yahoo and iCloud (which offer no OAuth2 to mail apps),
+// and the OAuth2 providers when a password is typed instead of signing in.
+bool ProviderNeedsAppPassword(const DiscoveryResult& discovery);
+
 // Endpoints, scopes and consent parameters for a provider + app registration.
 // `loginHint` (the account's address) preselects the account on the consent
 // page; empty = none.

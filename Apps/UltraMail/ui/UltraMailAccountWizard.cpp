@@ -1,6 +1,7 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
-// Version: 0.4.0 - a live hint for Gmail addresses: leave the password empty to
-//                  sign in with Google in the browser
+// Version: 0.4.1 - live hint per address: browser sign-in for Gmail / Outlook,
+//                  an app password for Yahoo / iCloud (or a typed password
+//                  at an OAuth2 provider)
 // Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountWizard.h"
@@ -94,8 +95,8 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     addRow("wizPass", "Password", password);
 
     // Provider-specific advice that follows the address as it is typed: Gmail
-    // signs in through the browser (OAuth2) when the password is left empty,
-    // and needs an app password otherwise.
+    // and Outlook sign in through the browser (OAuth2) when the password is
+    // left empty; they, Yahoo and iCloud need an app password otherwise.
     auto hint = Theme::MakeLine("wizHint", "", 40, Theme::kSizeBody, Theme::kTextSecondary);
     hint->SetWrap(TextWrap::WrapWord);
     content->AddChild(hint);
@@ -103,20 +104,19 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     email->onTextChanged = [hint, password](const std::string& text) {
         const DiscoveryResult d = AutoDiscovery::FromPresets(text);
         const std::string provider = OAuthProviderFor(d);
-        if (provider.empty()) {
-            hint->SetText("");
-            password->SetPlaceholder("Your password");
-            return;
-        }
-        const std::string name = OAuthProviderDisplayName(provider);
-        if (OAuthApps::Has(provider)) {
+        if (!provider.empty() && OAuthApps::Has(provider)) {
+            const std::string name = OAuthProviderDisplayName(provider);
             hint->SetText(d.displayName + ": leave the password empty to sign in with "
                           + name + " in your browser, or enter an app password.");
             password->SetPlaceholder("Leave empty to sign in with " + name);
-        } else {
-            hint->SetText(d.displayName + " rejects the normal password over IMAP: "
-                          "enter an app password from your account's security settings.");
+        } else if (ProviderNeedsAppPassword(d)) {
+            hint->SetText(d.displayName + " rejects the normal password in mail programs: "
+                          "enter an app password generated in your account's security "
+                          "settings.");
             password->SetPlaceholder("App password");
+        } else {
+            hint->SetText("");
+            password->SetPlaceholder("Your password");
         }
     };
 

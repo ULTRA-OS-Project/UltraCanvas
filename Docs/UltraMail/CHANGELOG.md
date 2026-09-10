@@ -1,3 +1,12 @@
+#### 2026-09-10 *0.8.2*
+- **App-password hint for Yahoo and iCloud.** The wizard's live hint under
+  the password field now also covers providers that offer no OAuth2 to mail
+  apps but reject the normal account password: Yahoo and iCloud get "enter an
+  app password generated in your account's security settings" as the address
+  is typed (placeholder "App password"), the same advice the account-ready
+  dialog gives. The rule is `ProviderNeedsAppPassword` in `UltraMailOAuth`,
+  shared by the wizard and the dialog.
+
 #### 2026-09-10 *0.8.1*
 - **Outlook / Microsoft 365 sign in with Microsoft.** The second entry in the
   OAuth2 provider table: `microsoft` — the Microsoft identity platform's

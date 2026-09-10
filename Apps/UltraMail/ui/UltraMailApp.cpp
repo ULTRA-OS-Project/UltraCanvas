@@ -1063,14 +1063,15 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
     if (disc.found) {
         std::string detail = "Incoming (IMAP): " + AutoDiscovery::ImapServerUrl(disc.imap)
                            + "\nOutgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
-        // Providers that expect OAuth2 (Gmail, Outlook) — and Yahoo — reject
-        // the normal account password over IMAP. Gmail signs in with Google
-        // in the browser; the others need an app password from the provider's
-        // security settings; say so here, where the user can still act on it.
+        // Providers that expect OAuth2 (Gmail, Outlook), Yahoo and iCloud
+        // reject the normal account password over IMAP. Gmail and Outlook sign
+        // in through the browser; a typed password there, and Yahoo / iCloud
+        // always, need an app password from the provider's security settings;
+        // say so here, where the user can still act on it.
         if (useOAuth)
             detail += "\nSign-in: " + OAuthProviderDisplayName(provider)
                     + " account, in your browser (next step).";
-        else if (disc.imap.oauth || disc.displayName == "Yahoo")
+        else if (ProviderNeedsAppPassword(disc))
             detail += "\nSign-in: password. " + disc.displayName
                     + " needs an app password for mail programs (generated in "
                       "your account's security settings); the normal sign-in "
