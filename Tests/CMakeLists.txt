@@ -709,6 +709,36 @@ add_test(
 )
 message(STATUS "    Test registered: Model3DSTest")
 
+# ===== OBJ MODEL READER/WRITER TEST =====
+# OBJ is the first format on ModelDocument with both a reader and a writer, so
+# this is where the round trip lives - and where the same aircraft, exported
+# once as OBJ (Y-up, quads) and once as 3DS (Z-up, triangles), is checked to
+# land on the same geometry through two independent readers.
+message(STATUS "  Building ModelOBJTest...")
+add_executable(ModelOBJTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelOBJTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelOBJTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelOBJTest PRIVATE cxx_std_20)
+set_target_properties(ModelOBJTest PROPERTIES
+    OUTPUT_NAME "ModelOBJTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelOBJTest
+    COMMAND ModelOBJTest
+            "${ULTRACANVAS_ROOT}/media/models/OBJ/E-45-Aircraft.obj"
+            "${ULTRACANVAS_ROOT}/media/models/3DS/E-45-Aircraft.3ds"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelOBJTest")
+
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the
 # real CSSLayout engine: an auto-width flex column grows with an inner row of

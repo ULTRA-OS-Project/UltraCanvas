@@ -70,6 +70,10 @@ the backing implementation can be replaced without affecting callers.
     `ThreeDSConverter` (`Plugins/Models/3DS/UltraCanvas3DSConverter.h`) reads
     Autodesk 3DS - meshes, object matrices, Phong materials with texture maps,
     per-face material groups, cameras and lights - and is read-only.
+    `OBJConverter` (`Plugins/Models/OBJ/UltraCanvasOBJConverter.h`) reads and
+    writes Wavefront OBJ with its MTL library: n-gon faces kept as n-gons,
+    the position/texcoord/normal index streams resolved into unique corners,
+    objects, groups and `usemtl`, vertex colours, and the MTL PBR extension.
   See `Docs/Research/UltraCanvas3DModelProposal.md` for the format survey the
   structure is derived from, and what is deliberately out of scope (B-rep
   solids: STEP, IGES, ACIS, DWG `3DSOLID`).

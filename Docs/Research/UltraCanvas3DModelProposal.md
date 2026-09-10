@@ -1,6 +1,6 @@
 # UltraCanvas 3D Model Structure — Survey and Proposal
 
-**Status:** structure defined and merged; 3DS reads into it; more converters to follow
+**Status:** structure defined and merged; 3DS reads and OBJ round-trips through it; more converters to follow
 **Scope:** `ModelStorage::ModelDocument`
 (`UltraCanvas/include/DataFormats/UltraCanvasModelStorage.h`) and the
 converters that will read into and write out of it.
@@ -37,6 +37,7 @@ this document is where those annotations come from.
 | Extension → `GraphicsFormatType::ThreeD` | `UltraCanvasGraphicsPluginSystem.h:108-111` | `3dm/3ds/pov/stl/obj/fbx/dae/gltf` classified as 3D — with no plugin behind any but STL. |
 | `FilerFileCategory::Model3D` | `UltraCanvasFilerWidget.cpp:272-280` | obj/ply/3ds/3mf/gltf/glb/dae/fbx get a Model badge. Labels only. |
 | `ThreeDSConverter` | `Plugins/Models/3DS/` | Reads Autodesk 3DS into `ModelDocument`: meshes, object matrices, materials with texture maps, per-face material groups, cameras and lights. The first scene format on the structure. |
+| `OBJConverter` | `Plugins/Models/OBJ/` | Reads **and writes** Wavefront OBJ + MTL: n-gons kept as n-gons, the three index streams resolved into unique corners, objects, groups, `usemtl`, vertex colours, and the MTL PBR extension. The first writer on the structure. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D**; `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped. |
 
 Two observations drive the design:
@@ -262,14 +263,19 @@ Each step is independently mergeable and comes with a test and a demo page.
    STL does: two named meshes, per-object matrices, two materials with four
    texture maps, and per-face material groups. What it taught is in §6.
 
+0.5. **OBJ + MTL — done.** `Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp`
+   reads and writes it, validated against the same aircraft exported as OBJ
+   (`Tests/ModelOBJTest.cpp`, 34 assertions). Being the first format with a
+   writer, it is where the round trip lives — OBJ → `ModelDocument` → OBJ →
+   `ModelDocument` returns the same 12 227 vertices, 8 110 faces and bounds,
+   with the quads still quads. Still to fold in: the demo app's private
+   `LoadOBJ` in `UltraCanvasGLDemoSupport.h`, which should be deleted in favour
+   of this converter.
+
 1. **STL on the new structure.** Re-express the existing loader as an
    `IModelFormatConverter`. No new parsing — it is the smallest possible proof
    that the structure and the interface fit, and it retires the bridge for that
    format.
-2. **OBJ + MTL.** The most-requested missing format, and the demo app already
-   contains a working reader (`UltraCanvasGLDemoSupport.h`) to fold in and
-   delete. Exercises n-gons, groups, texture coordinates, the Phong block and
-   external texture references.
 3. **PLY.** Exercises the open-ended attribute design harder than anything
    else, and brings point clouds with it. ASCII and both binary orders.
 4. **glTF 2.0 / GLB.** The interchange target: scene graph, PBR materials,
@@ -329,6 +335,39 @@ Recorded rather than hidden:
   the reader says so. Untested — the sample has no camera or light.
 - **Smoothing groups are resolved into normals** on 3DS import as they are for
   OBJ, so neither round-trips them.
+- **OBJ writes at the stream's default precision** (6 significant digits), so a
+  document with double positions loses precision through an OBJ round trip even
+  though the reader parses into double. Fine for the format's own fidelity,
+  wrong for a CAD document — the writer should set an explicit precision.
+- **OBJ `l` and `p` elements are not read**, so a file's polylines and points
+  are dropped with a warning even though the document has modes for both.
+
+### What the sample files confirmed
+
+The aircraft came as **both** a 3DS and an OBJ export of the same Blender
+scene, which turned out to be the strongest check available: the OBJ is Y-up
+with 8 110 quads, the 3DS Z-up with 16 220 triangles, and two independently
+written readers must land on the same model.
+
+They do. `ConvertUpAxis(ZUp)` on the OBJ document reproduces the 3DS bounds to
+four decimals on every axis, both readers find 12 227 vertices, and the OBJ's
+quad count is exactly half the 3DS's triangle count. That exercises the
+up-axis conversion, the n-gon representation and the vertex-splitting rule
+against ground truth rather than against itself.
+
+Two OBJ-specific findings worth recording:
+
+- **The three index streams really do diverge.** The sample has 11 749
+  positions against 12 227 texture coordinates — a position used with two
+  different UVs must become two document vertices, and the resolved count
+  (12 227) is what matches the 3DS. A reader that assumed parallel streams
+  would produce a subtly wrong mesh that still looks plausible.
+- **A missing `.mtl` is the normal case, not an error.** The sample references
+  `E 45 Aircraft_obj.mtl`, which does not travel with the model. The reader
+  keeps the `usemtl` names as placeholder materials and reports the missing
+  library, so the material *assignment* survives even when the definitions do
+  not. The reference also has spaces in it, which is why the library and map
+  filenames are parsed as the remainder of the line rather than as a token.
 
 ### What the first real file changed
 

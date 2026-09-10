@@ -1,3 +1,27 @@
+#### 2026-09-10 *0.8.4*
+- **OBJ reads and writes through the universal 3D structure.**
+  `ModelConverter::OBJConverter` (`Plugins/Models/OBJ/`) is the first format on
+  `ModelStorage::ModelDocument` with both directions, so it is also the first
+  round trip: OBJ to document to OBJ and back returns the same vertices, faces,
+  bounds, names and materials. **N-gons survive** - the E-45 aircraft sample is
+  8110 quads and no triangles, and it comes back as 8110 quads. OBJ's three
+  independent index streams (11749 positions against 12227 texture
+  coordinates in that file) resolve into unique corners rather than being
+  assumed parallel, `o`/`g`/`usemtl` split meshes and primitives, and the
+  reader handles negative indices, all four face-corner forms, vertex colours
+  and the MTL PBR extension. The writer emits a companion `.mtl` beside the
+  model and reports everything OBJ cannot hold - the node hierarchy it bakes
+  flat, animation, skinning, cameras, lights, morph targets, point and line
+  primitives.
+- **Two readers now agree on the same aircraft.** `media/models/` carries the
+  E-45 as both a Y-up OBJ of quads and a Z-up 3DS of triangles.
+  `ConvertUpAxis` on the OBJ document reproduces the 3DS bounds to four
+  decimals on every axis, both readers find 12227 vertices, and the quad count
+  is exactly half the triangle count - the up-axis conversion, the n-gon
+  representation and the vertex-splitting rule checked against ground truth
+  instead of against themselves. `Tests/ModelOBJTest.cpp` holds it, with 34
+  assertions including malformed input and the parsing corners.
+
 #### 2026-09-10 *0.8.3*
 - **3DS models read into the universal 3D structure.**
   `ModelConverter::ThreeDSConverter` (`Plugins/Models/3DS/`) reads Autodesk

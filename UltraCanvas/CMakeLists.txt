@@ -676,6 +676,7 @@ set(ULTRACANVAS_CORE_SOURCES
 
         # 3D format converters against ModelStorage::ModelDocument.
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
