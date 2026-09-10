@@ -1,3 +1,26 @@
+#### 2026-09-10 *1.25.0*
+- **The Home tab is called Home.** A folder tab is named after the folder it
+  shows, and the home folder is named after the account that owns it - so the
+  tab the file manager opens on carried a login name and said nothing about
+  what was in it. It now reads **Home**, with the home icon beside it: the
+  same mark the folder tree's Home row and the Computer page's Home tile
+  carry, so the three places that lead to that folder finally look alike.
+  Every other tab is unchanged - it keeps the folder's own name and no icon.
+  The name follows the tab: navigating into the home folder renames the tab
+  and puts the icon on, leaving it takes both away again.
+- **A home icon with the user in it.** The plain black house has been replaced
+  by `home-user.svg` - a house with its occupant, in the flat two-tone shape
+  of the folder icons - in the tree, on the Computer page's Home tile and on
+  the new Home tab alike. (Framework side: `Docs/UltraCanvas/CHANGELOG.md`
+  0.8.0.)
+- **The New folder arrow is worth aiming at.** The split button's menu section
+  was marked with a "▾" character, which the text renderer drew a few
+  pixels across inside a section nearly thirty wide: it read as a speck rather
+  than as the "there is more here" arrow it is. It now carries the framework's
+  `dropdown.svg` at 14 px, in the button's own text color, centered in its
+  section. Nothing about what the button does has changed - the primary
+  section still creates a folder, the arrow still lists the other kinds.
+
 #### 2026-09-09 *1.24.0*
 - **The search field kept its button and lost its text when the window got
   narrow.** Reducing the window width squeezed the search field away entirely

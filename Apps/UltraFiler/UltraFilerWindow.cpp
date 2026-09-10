@@ -497,9 +497,21 @@ namespace {
         return data;
     }
 
+    // What the tab bar calls a folder. The home folder is "Home", not the
+    // account name the folder happens to be named after: a tab says which
+    // folder it holds, and "Home" is what the tree row, the Computer page's
+    // tile and every command that leads there already call it.
     std::string TabTitleForPath(const std::string& path) {
+        if (IsUserHomeDir(path)) return "Home";
         const std::string name = fs::path(path).filename().string();
         return name.empty() ? (path.empty() ? "New tab" : path) : name;
+    }
+
+    // The icon of that tab, "" for a tab that carries none. The home folder is
+    // the one tab whose title is not the folder's own name, so it is the one
+    // that needs the mark the tree and the Computer page put on it.
+    std::string TabIconForPath(const std::string& path) {
+        return IsUserHomeDir(path) ? IconPath("home-user.svg") : std::string();
     }
 
     // ===== HISTORY =====
@@ -1181,7 +1193,7 @@ std::string UltraFilerWindow::DefaultTreeIconFile(const TreeNode* node) const {
     if (std::find(treeDriveNodeIds.begin(), treeDriveNodeIds.end(),
                   node->data.nodeId) != treeDriveNodeIds.end())
         return "drive.png";
-    if (IsUserHomeDir(path)) return "home-icon.png";
+    if (IsUserHomeDir(path)) return "home-user.svg";
     return "folder-brown.svg";
 }
 
@@ -1793,7 +1805,18 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
                 138, [this]() { CreateNewFolderCommand(); });
         newButton->SetSplitEnabled(true);
         newButton->SetSplitRatio(0.8f);
-        newButton->SetSplitSecondaryText("▾");
+        // The arrow is the dropdown icon, not a "▾" glyph: a text renderer
+        // draws that at a fraction of the button around it, small enough that
+        // the section did not read as "this opens a menu" at all. The icon is
+        // drawn as a mask (MakeToolButton's flag covers both sections), so the
+        // secondary icon colors are what it is painted in.
+        newButton->SetSplitSecondaryText("");
+        newButton->SetSplitSecondaryIcon(IconPath("dropdown.svg"));
+        newButton->SetSplitSecondaryIconSize(14, 14);
+        newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),
+                                               Color(55, 55, 60, 255),
+                                               Color(55, 55, 60, 255),
+                                               Color(55, 55, 60, 128));
         // The same quiet flat look as the primary section.
         newButton->SetSplitColors(Color(255, 255, 255, 255),
                                   Color(55, 55, 60, 255),
@@ -2077,7 +2100,7 @@ void UltraFilerWindow::BuildFolderTree() {
 
     const std::string home = UserHomeDir();
     if (!home.empty()) {
-        AddTreeFolderNode(kComputerNodeId, home, "Home", "home-icon.png");
+        AddTreeFolderNode(kComputerNodeId, home, "Home", "home-user.svg");
     }
 
     // "Cloud Storage" sits between Home and the drives: OneDrive, Google Drive,
@@ -2885,6 +2908,7 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     WireFilerCallbacks(raw);
 
     const int index = tabbedContainer->AddTab(TabTitleForPath(path), raw->page);
+    tabbedContainer->SetTabIcon(index, TabIconForPath(path));
     if (activate) {
         // Fires onTabChange, which points `filer` at the new tab.
         tabbedContainer->SetActiveTab(index);
@@ -3598,7 +3622,7 @@ void UltraFilerWindow::BuildComputerPage() {
     // has of its own (a user-set icon, a well-known folder's).
     computerFolders->folderIconProvider = [this](const FilerEntry& entry) -> std::string {
         if (!entry.isDirectory) return {};
-        if (IsUserHomeDir(entry.path)) return IconPath("home-icon.png");
+        if (IsUserHomeDir(entry.path)) return IconPath("home-user.svg");
         const std::string key = FolderIdentityKey(entry.path);
         if (TreeNode* cloud = folderTree ? folderTree->FindNode(kCloudNodeId) : nullptr) {
             for (const auto& child : cloud->children)
@@ -3928,7 +3952,10 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
         }
     }
     const int index = TabIndexOf(tab);
-    if (index >= 0) tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
+    if (index >= 0) {
+        tabbedContainer->SetTabTitle(index, TabTitleForPath(path));
+        tabbedContainer->SetTabIcon(index, TabIconForPath(path));
+    }
 
     // Entering a folder ends a search-result display (SetPath leaves it) and
     // the scan that was filling it.

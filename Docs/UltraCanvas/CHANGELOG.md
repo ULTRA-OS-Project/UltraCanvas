@@ -1,3 +1,23 @@
+#### 2026-09-10 *0.8.0*
+- **A home icon that shows whose home it is.** `media/icons/home-user.svg`
+  joins the shared icon set: a house with the user in it, drawn in the flat
+  two-tone shape of the folder icon family so it reads at 16 px tree-row size
+  as well as on a thumbnail tile. It replaces the monochrome `home-icon.png`
+  glyph everywhere the icon set is used - the breadcrumb and toolbar examples
+  in `Docs/UltraCanvas/` and in DemoApp, and UltraFiler's tree row, Computer
+  tile and tab.
+- **A dropdown arrow a control can actually wear.** `media/icons/dropdown.svg`
+  is the arrow that says "this opens a menu". Until now the split buttons
+  spelled it with a "▾" character, which a text renderer draws at a
+  fraction of the button around it - a mark a few pixels across in a section
+  nearly thirty wide. The icon's view box is cropped to the chevron, so it
+  fills whatever size it is given. On a split button:
+  `SetSplitSecondaryText("")` and `SetSplitSecondaryIcon(path)`, sized with
+  `SetSplitSecondaryIconSize()`. One catch worth knowing: `SetUseIconAsMask()`
+  is a button-wide flag, so a masked button paints the secondary icon in the
+  color from `SetSplitSecondaryIconColors()` - white by default, which is
+  invisible on a light button. Set it to the button's text color.
+
 #### 2026-09-09 *0.3.113*
 - **Android: framework diagnostics reach logcat.** `debugOutput` and the
   process's stdio went nowhere on Android, where there is no terminal to

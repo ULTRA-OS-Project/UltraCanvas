@@ -464,7 +464,7 @@ bcDropdown->onItemDropdown = [](int idx, const BreadcrumbItem& item) {
 const std::string iconsRoot = "media/icons/";
 
 auto bcIcons = CreateBreadcrumb("bc_icons", 380, 820, 580, 30);
-bcIcons->AddItem(BreadcrumbItem::IconOnly(iconsRoot + "home-icon.png", "Home"));
+bcIcons->AddItem(BreadcrumbItem::IconOnly(iconsRoot + "home-user.svg", "Home"));
 bcIcons->AddItem(BreadcrumbItem::WithIcon("Documents", iconsRoot + "folder.png"));
 bcIcons->AddItem(BreadcrumbItem::WithIcon("Projects",  iconsRoot + "folder.png"));
 bcIcons->AddItem(BreadcrumbItem::WithIcon("Report.txt", iconsRoot + "document.png"));

@@ -21,6 +21,9 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 
 - **Tabs:** the tab strip is the topmost bar of the window — above the
   toolbars, browser style — and its tabs name the folder each one shows. The
+  home folder is the exception: its tab reads **Home**, under the home icon,
+  rather than the account name the folder is named after — the same name and
+  mark the folder tree's Home row and the Computer page's Home tile carry. The
   **"+" at the end of the tab list** opens an additional tab on the current
   folder. Every tab has its own folder view, Back / Forward history, sort and
   view settings; tabs can be reordered by dragging and closed (the last one

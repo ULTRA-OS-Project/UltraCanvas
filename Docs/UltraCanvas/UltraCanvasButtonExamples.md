@@ -1,7 +1,7 @@
 # UltraCanvasButton Documentation
 
-**Version:** 1.0.1  
-**Last Modified:** 2026-08-31  
+**Version:** 1.0.2  
+**Last Modified:** 2026-09-10  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -292,6 +292,40 @@ autoBtn->SetAutoresize(true);
 autoBtn->SetText("This is a longer text that will auto-resize");
 ```
 
+### Split Button (a primary action plus a menu)
+
+A split button is one button with two sections: the primary one runs the
+action, the secondary one — the arrow — opens a menu through
+`onSecondaryClick`. Mark the arrow with `media/icons/dropdown.svg` rather than
+a `▾` character: a text renderer draws that glyph at a fraction of the
+section around it, while the icon fills the size it is given.
+
+```cpp
+auto newButton = CreateButton("New", 1, 10, 10, 138, 28, "New folder");
+newButton->SetSplitEnabled(true);
+newButton->SetSplitRatio(0.8f);              // 80 % action, 20 % arrow
+newButton->SetSplitSecondaryText("");        // the icon is the whole content
+newButton->SetSplitSecondaryIcon("media/icons/dropdown.svg");
+newButton->SetSplitSecondaryIconSize(14, 14);
+newButton->SetSplitSeparator(true, Color(0, 0, 0, 60), 1.0f);
+newButton->onClick = [](){ CreateFolder(); };
+newButton->onSecondaryClick = [](){ ShowNewEntryMenu(); };
+```
+
+**A masked button masks both icons.** `SetUseIconAsMask(true)` is button-wide:
+with it set, the secondary icon is painted in the color from
+`SetSplitSecondaryIconColors()`, which defaults to white — invisible on a light
+button. Give it the button's text color when the primary icon is masked:
+
+```cpp
+newButton->SetUseIconAsMask(true);
+newButton->SetIconMaskColor(Color(55, 55, 60, 255));
+newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
+                                       Color(55, 55, 60, 255),   // hovered
+                                       Color(55, 55, 60, 255),   // pressed
+                                       Color(55, 55, 60, 128));  // disabled
+```
+
 ### Disabled Button
 
 ```cpp
@@ -321,5 +355,6 @@ The button automatically handles:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.2 | 2026-09-10 | Document the split button: the `dropdown.svg` arrow, and that `SetUseIconAsMask()` colors the secondary icon through `SetSplitSecondaryIconColors()` |
 | 1.0.1 | 2026-08-31 | Document `onToggle`, `onSecondaryClick` and `onContextMenu`, and that `onClick` is left-button only |
 | 1.0.0 | 2025-01-08 | Initial documentation based on actual implementation |

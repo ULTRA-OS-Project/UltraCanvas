@@ -394,7 +394,7 @@ private:
     // makes the file display draw its own folder shape.
     std::string FolderIconPath(const std::string& folderPath) const;
     // The icon file a tree row shows when its folder has no icon of its own -
-    // "drive.png" for a drive entry, "home-icon.png" for Home, "cloud.svg"
+    // "drive.png" for a drive entry, "home-user.svg" for Home, "cloud.svg"
     // under Cloud Storage, else the plain folder.
     std::string DefaultTreeIconFile(const TreeNode* node) const;
     // Installs FolderIconPath as a freshly created file display's
