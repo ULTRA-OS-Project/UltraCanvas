@@ -1,3 +1,20 @@
+#### 2026-09-10 *0.8.2*
+- **The ULTRA OS module list says what each module actually is.** Every second
+  entry under *ULTRA OS modules* in DemoApp's tree carried the same yellow
+  "Partially Implemented" mark, whatever the state of the module behind it, so
+  the one signal that list exists to give was the one thing it did not give.
+  The mark now follows the code. **UltraAI**, **UltraCloud**, **UltraCrypt**,
+  **UltraDatabase**, **UltraNet**, **UltraVault**, **UltraWin** and
+  **VirtualFS** are green: each is a built library that an application ships
+  against - UltraAIApp on UltraAI, UltraMail on UltraCloud, UltraAuthenticator
+  and AnchorPoint on UltraCrypt, UltraMail, EmailCleaner and UltraSocial on
+  UltraDatabase and UltraNet, UltraAIApp and UltraMail on UltraVault,
+  UltraWinManager, ultrawin-setup and UltraFiler on UltraWin, and UltraFiler
+  again on VirtualFS through `UltraCanvasFilerWidget`'s archive browsing.
+  **IODeviceManager** and **VideoFX** turn blue: both are specifications with
+  no sources, no build target and no caller, which is "Planned" rather than
+  partial - the reading Smart Home already had. Pixel FX keeps its yellow mark
+  in a build without libvips, where the module really is half there.
 #### 2026-09-10 *0.8.1*
 - **A drop can ask before it is carried out.** Dragging files onto a folder of
   `UltraCanvasFilerWidget` moved them the moment the button came up, and a drag

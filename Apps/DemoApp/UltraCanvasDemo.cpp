@@ -1820,8 +1820,12 @@ namespace UltraCanvas {
                                [this]() { return CreateFileLoaderExamples(); },
                                "Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp",
                                "Docs/Modules/FileLoader/README.md");
+        // Specification only — no IODeviceManager sources, no build target, and no
+        // application consumes the scanner / camera / printer API described in
+        // Docs/Modules/IODeviceManager/README.md. "Planned", like Smart Home below:
+        // there is nothing partial to show.
         modulesBuilder.AddItem("iodevicemanager", "IODeviceManager support", "IODeviceManager support",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::Planned,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/IODeviceManager"); });
 #ifdef HAS_LIBVIPS
         modulesBuilder.AddItem("pixelfx", "Pixel FX", "Pixel FX",
@@ -1840,47 +1844,72 @@ namespace UltraCanvas {
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
                                ImplementationStatus::Planned,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/Smarthome"); });
+        // Built module (UltraAI/, targets UltraAI + UltraAI_Core) shipped in an
+        // application: Apps/UltraAIApp is written entirely against <UltraAI.h>.
         modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraAI"); });
+        // Built module (UltraCloud/, targets UltraCloud + UltraCloudUI) used by
+        // UltraMail: account setup and cloud-link attachments go through
+        // <UltraCloud/UltraCloudService.h> and UltraCloudPickerDialog.
         modulesBuilder.AddItem("ultracloud", "Ultra Cloud",
                                "Ultra Cloud Module — cloud accounts, uploads and share links "
                                "(Nextcloud/ownCloud, WebDAV, Dropbox, OneDrive, Google Drive)",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraCloud"); });
+        // Built module (UltraCanvas/{include,core}/UltraCrypt, target UltraCrypt)
+        // used by UltraAuthenticator (secret store, OTP) and AnchorPoint
+        // (transfer protocol), and underneath UltraVault.
         modulesBuilder.AddItem("ultracrypt", "Ultra Crypt",
                                "Ultra Crypt Module — hashing, HMAC, AEAD, key derivation "
                                "and secure random for every ULTRA OS module",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraCrypt"); });
+        // Built module (target UltraDatabase) backing three applications:
+        // UltraMail, EmailCleaner and UltraSocial all persist through
+        // <UltraDatabase/UltraDatabase.h>.
         modulesBuilder.AddItem("ultradatabase", "Ultra Database",
                                "Ultra Database Module — named connections, parameterized "
                                "queries, transactions and migrations over SQLite (Stage 1)",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraDatabase"); });
+        // Built module (target UltraNet) used by UltraSocial (HTTP, OAuth2,
+        // sockets), UltraMail, AnchorPoint and this demo's own live loader.
         modulesBuilder.AddItem("ultranet", "Ultra Net",
                                "Ultra Net Module — overview, documentation and a live "
                                "remote-resource loader (UltraCanvasFileLoader::LoadFile + "
                                "UltraNet_HttpGet + UCImageRaster::LoadFromMemory)",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateNetworkingExamples(); },
                                "Apps/DemoApp/UltraCanvasNetworkingExamples.cpp",
                                "Docs/Modules/UltraNet/README.md");
+        // Built module (target UltraVault) used by UltraAIApp for provider API
+        // keys and by UltraMail for account credentials.
         modulesBuilder.AddItem("ultravault", "Ultra Vault",
                                "Ultra Vault Module — the system-level home for API keys, "
                                "tokens and passphrases (memory and encrypted-file backends)",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraVault"); });
+        // Built module (target UltraWin) with three consumers: the
+        // UltraWinManager application, the ultrawin-setup tool and
+        // UltraFiler's "Run with Windows" action.
         modulesBuilder.AddItem("ultrawin", "Ultra Win",
                                "Ultra Win Module — Windows applications on Linux / ULTRA OS "
                                "as single native windows (Wine tier)",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/UltraWin"); });
+        // Specification only — no VideoFX sources, no build target and no consumer;
+        // the timeline / effects / export engine in Docs/Modules/VideoFX/README.md
+        // is a design document. "Planned", not "PartiallyImplemented".
         modulesBuilder.AddItem("videofx", "VideoFX", "VideoFX Module",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::Planned,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VideoFX"); });
+        // Built module (VirtualFS/, target VirtualFS) reaching applications through
+        // the core: UltraCanvasFilerWidget browses archive interiors via
+        // UltraCanvasVirtualFSBridge (UltraFiler), and UltraCanvasFileLoader
+        // decompresses through VirtualFS_DecompressBuffer.
         modulesBuilder.AddItem("virtualfs", "VirtualFS", "VirtualFS Module",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/VirtualFS"); });
 //        modulesBuilder.AddItem("gpio", "GPIO support", "GPIO support",
 //                             ImplementationStatus::PartiallyImplemented,
