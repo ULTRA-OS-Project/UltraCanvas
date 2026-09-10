@@ -27,9 +27,13 @@
 #endif
 #ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
 #include "UltraCanvasVectorFormatsPlugin.h"
+#endif
+// Its own guard, not nested inside the Vector plugin's: the two are
+// independent options, and ULTRACANVAS_PLUGIN_VECTOR defaults OFF while the
+// Models plugin defaults ON. Nested, the header went missing from exactly the
+// default build, and RegisterModelFormatsPlugin() below stopped resolving.
 #ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
 #include "Models/UltraCanvasModelFormatsPlugin.h"
-#endif
 #endif
 
 // OS-specific initialization if needed
