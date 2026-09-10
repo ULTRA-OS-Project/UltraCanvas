@@ -1,3 +1,20 @@
+#### 2026-09-10 *0.8.1*
+- **Outlook / Microsoft 365 sign in with Microsoft.** The second entry in the
+  OAuth2 provider table: `microsoft` — the Microsoft identity platform's
+  `common` tenant endpoints, the `IMAP.AccessAsUser.All` + `SMTP.Send` +
+  `offline_access` scopes, `prompt=select_account`, a public client (no
+  secret). Outlook, Hotmail, Live and Microsoft 365 addresses get the same
+  browser sign-in, wait dialog, vault token set and XOAUTH2 sessions as Gmail.
+  Registration: `[microsoft]` in `oauth.ini` or `ULTRAMAIL_MICROSOFT_CLIENT_ID`
+  (README, "OAuth2 sign-in").
+- **Per-provider redirect default.** Microsoft matches loopback redirects on
+  host and path with the port ignored, so its default is
+  `http://127.0.0.1:0/` (register `http://127.0.0.1`); Google keeps
+  `/callback`. `OAuthApps::Get` fills an empty `redirectUri` with
+  `DefaultRedirectUri(provider)`.
+- **Login hint.** The typed address goes to the consent page as `login_hint`
+  for both providers, so the user is not asked to pick the account again.
+
 #### 2026-09-10 *0.8.0*
 - **Gmail signs in with Google.** Leave the password empty in the account
   wizard for a Gmail / Googlemail address and UltraMail opens Google's consent

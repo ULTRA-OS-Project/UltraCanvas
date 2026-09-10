@@ -426,8 +426,8 @@ established implementation approach. Additional gaps to close:
   browser-based token flow is UltraNet's OAuth2 client (`UltraNetOAuth2.h`:
   PKCE, loopback redirect listener, code exchange, refresh); UltraMail's
   `UltraMailOAuth` adds the provider table, the app registration and the
-  token set in the vault. *Shipped for Gmail (0.8.0); Microsoft is a
-  provider-table entry away.*
+  token set in the vault. *Shipped for Gmail (0.8.0) and Outlook /
+  Microsoft 365 (0.8.1).*
 - **Cancellation/progress** for long fetches — reuse the existing
   `UltraNet_CancelRequest`/transfer-callback pattern.
 

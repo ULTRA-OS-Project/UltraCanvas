@@ -143,39 +143,57 @@ in the `CredentialVault`, never in the config. Try it: run with
 `ULTRAMAIL_DEMO_ADD=you@gmail.com` to exercise discovery + vault + the result
 dialog.
 
-**Google sign-in (Gmail):** Google rejects the account password over IMAP and
-SMTP, so a Gmail / Googlemail account signs in with Google instead: leave the
-password empty in the wizard and UltraMail opens Google's consent page in your
-browser (OAuth2 authorization code + PKCE through UltraNet's OAuth2 client, the
-redirect caught on an ephemeral loopback port). The tokens land in the vault;
+**OAuth2 sign-in (Gmail, Outlook / Microsoft 365):** Google and Microsoft
+reject the account password over IMAP and SMTP, so those accounts sign in
+through the browser instead: leave the password empty in the wizard and
+UltraMail opens the provider's consent page (OAuth2 authorization code + PKCE
+through UltraNet's OAuth2 client, the redirect caught on an ephemeral loopback
+port, the typed address passed as `login_hint`). The tokens land in the vault;
 every IMAP/SMTP session then uses XOAUTH2 with a fresh bearer token, refreshed
-through Google when the previous one expired. A typed password still works the
-classic way (Google's *app passwords*).
+through the provider when the previous one expired. A typed password still
+works the classic way (an *app password*).
 
-The sign-in runs as an OAuth *client* that Google must know. Register one once
-and give it to UltraMail:
+The sign-in runs as an OAuth *client* that the provider must know. Register one
+per provider once and give it to UltraMail through `oauth.ini` in the data
+folder (`~/.local/share/UltraMail/` on Linux, `%APPDATA%\UltraMail\` on
+Windows):
 
-1. In the [Google Cloud console](https://console.cloud.google.com/) create a
-   project, open *APIs & Services → OAuth consent screen* and configure it
-   (External; add your own address under *Test users* while the app is in
-   testing mode — the `https://mail.google.com/` scope is restricted, so an
-   unverified app only serves its test users).
-2. *APIs & Services → Credentials → Create credentials → OAuth client ID*,
-   application type **Desktop app**. Note the client id and client secret.
-3. Put them into `oauth.ini` in UltraMail's data folder
-   (`~/.local/share/UltraMail/` on Linux, `%APPDATA%\UltraMail\` on Windows):
+```ini
+[google]
+client_id     = 1234567890-abc.apps.googleusercontent.com
+client_secret = GOCSPX-…
 
-   ```ini
-   [google]
-   client_id     = 1234567890-abc.apps.googleusercontent.com
-   client_secret = GOCSPX-…
-   ```
+[microsoft]
+client_id     = 00000000-1111-2222-3333-444444444444
+```
 
-   or set `ULTRAMAIL_GOOGLE_CLIENT_ID` / `ULTRAMAIL_GOOGLE_CLIENT_SECRET` in
-   the environment (an optional `ULTRAMAIL_GOOGLE_REDIRECT_URI` overrides the
-   default `http://127.0.0.1:0/callback`). In code: `OAuthApps::Set("google",
-   app)`. Until a client is configured the wizard says so and asks for an app
-   password instead.
+or through the environment: `ULTRAMAIL_GOOGLE_CLIENT_ID` /
+`ULTRAMAIL_GOOGLE_CLIENT_SECRET`, `ULTRAMAIL_MICROSOFT_CLIENT_ID` (an optional
+`…_REDIRECT_URI` overrides the provider's default). In code:
+`OAuthApps::Set("google", app)`. Until a client is configured the wizard says
+so and asks for an app password instead.
+
+*Google:* in the [Google Cloud console](https://console.cloud.google.com/)
+create a project, open *APIs & Services → OAuth consent screen* and configure
+it (External; add your own address under *Test users* while the app is in
+testing mode — the `https://mail.google.com/` scope is restricted, so an
+unverified app only serves its test users). Then *Credentials → Create
+credentials → OAuth client ID*, application type **Desktop app**; note the
+client id and secret. The redirect is `http://127.0.0.1:<port>/callback`
+(desktop clients accept any loopback port).
+
+*Microsoft:* in the [Microsoft Entra admin
+center](https://entra.microsoft.com/) open *App registrations → New
+registration*; supported account types **Accounts in any organizational
+directory and personal Microsoft accounts** (for outlook.com / hotmail.com as
+well as Microsoft 365). Under *Authentication* add the platform **Mobile and
+desktop applications** with the redirect URI `http://127.0.0.1` and enable
+**Allow public client flows**; no secret is needed. Under *API permissions*
+add the delegated *Office 365 Exchange Online* permissions
+`IMAP.AccessAsUser.All` and `SMTP.Send` (plus `offline_access`). Note the
+*Application (client) ID*. The redirect is `http://127.0.0.1:<port>/` —
+Microsoft ignores the port of a loopback URI. For a Microsoft 365 tenant the
+admin must leave IMAP and *Authenticated SMTP* enabled for the mailbox.
 
 ## What the engine provides now
 

@@ -37,16 +37,42 @@ void SetEnv(const char* name, const char* value) {
 
 // ---- provider table --------------------------------------------------------
 
-TEST(oauth_provider_is_google_for_gmail_only) {
+TEST(oauth_provider_is_google_for_gmail_and_microsoft_for_outlook) {
     REQUIRE_EQ(OAuthProviderFor(AutoDiscovery::FromPresets("erika@gmail.com")),
                std::string("google"));
     REQUIRE_EQ(OAuthProviderFor(AutoDiscovery::FromPresets("erika@googlemail.com")),
                std::string("google"));
-    // Yahoo uses app passwords; Outlook's consent flow is not wired up yet.
+    REQUIRE_EQ(OAuthProviderFor(AutoDiscovery::FromPresets("erika@outlook.com")),
+               std::string("microsoft"));
+    REQUIRE_EQ(OAuthProviderFor(AutoDiscovery::FromPresets("erika@hotmail.com")),
+               std::string("microsoft"));
+    // Yahoo uses app passwords.
     REQUIRE(OAuthProviderFor(AutoDiscovery::FromPresets("erika@yahoo.de")).empty());
-    REQUIRE(OAuthProviderFor(AutoDiscovery::FromPresets("erika@outlook.com")).empty());
     REQUIRE(OAuthProviderFor(DiscoveryResult{}).empty());
     REQUIRE_EQ(OAuthProviderDisplayName("google"), std::string("Google"));
+    REQUIRE_EQ(OAuthProviderDisplayName("microsoft"), std::string("Microsoft"));
+}
+
+TEST(oauth_microsoft_config_requests_imap_smtp_and_offline_access) {
+    OAuthApp app; app.clientId = "00000000-1111-2222-3333-444444444444";   // public client
+    UltraNetOAuth2Config cfg = OAuthConfigFor("microsoft", app, "erika@outlook.com");
+    REQUIRE_EQ(cfg.authorizationEndpoint,
+               std::string("https://login.microsoftonline.com/common/oauth2/v2.0/authorize"));
+    REQUIRE_EQ(cfg.tokenEndpoint,
+               std::string("https://login.microsoftonline.com/common/oauth2/v2.0/token"));
+    REQUIRE(cfg.clientSecret.empty());
+    REQUIRE(cfg.usePkce);
+    REQUIRE_EQ(cfg.scopes.size(), std::size_t(3));
+    REQUIRE_EQ(cfg.scopes[0], std::string("https://outlook.office.com/IMAP.AccessAsUser.All"));
+    REQUIRE_EQ(cfg.scopes[1], std::string("https://outlook.office.com/SMTP.Send"));
+    REQUIRE_EQ(cfg.scopes[2], std::string("offline_access"));
+    REQUIRE_EQ(cfg.extraAuthParams.at("prompt"), std::string("select_account"));
+    REQUIRE_EQ(cfg.extraAuthParams.at("login_hint"), std::string("erika@outlook.com"));
+    // Microsoft matches loopback URIs on host + path: root path, ephemeral port.
+    REQUIRE_EQ(cfg.redirectUri, std::string("http://127.0.0.1:0/"));
+    REQUIRE_EQ(OAuthApps::DefaultRedirectUri("microsoft"), std::string("http://127.0.0.1:0/"));
+    // No hint → no login_hint parameter.
+    REQUIRE(OAuthConfigFor("microsoft", app).extraAuthParams.count("login_hint") == 0);
 }
 
 TEST(oauth_google_config_requests_offline_mail_scope) {
@@ -63,6 +89,9 @@ TEST(oauth_google_config_requests_offline_mail_scope) {
     REQUIRE_EQ(cfg.extraAuthParams.at("prompt"), std::string("consent"));
     // Ephemeral loopback port: a cancelled attempt never blocks the next one.
     REQUIRE_EQ(cfg.redirectUri, std::string("http://127.0.0.1:0/callback"));
+    REQUIRE(cfg.extraAuthParams.count("login_hint") == 0);
+    REQUIRE_EQ(OAuthConfigFor("google", TestApp(), "erika@gmail.com").extraAuthParams.at("login_hint"),
+               std::string("erika@gmail.com"));
 }
 
 // ---- app registration sources ---------------------------------------------
@@ -158,6 +187,7 @@ TEST(oauth_sign_in_needs_an_app_and_hands_the_consent_url_to_the_browser) {
                           const std::function<void(const std::string&)>& openUrl,
                           UltraNetOAuth2Token& out) {
         ++authorizeCalls;
+        REQUIRE_EQ(cfg.extraAuthParams.at("login_hint"), std::string("erika@gmail.com"));
         openUrl(cfg.authorizationEndpoint + "?client_id=" + cfg.clientId);
         out.accessToken = "access"; out.refreshToken = "refresh"; out.expiresInSeconds = 3599;
         return UltraNetResult::Ok();
@@ -167,13 +197,15 @@ TEST(oauth_sign_in_needs_an_app_and_hands_the_consent_url_to_the_browser) {
     // Without a registered app nothing is opened and the reason says so.
     OAuthTokens tokens;
     std::string opened;
-    UltraNetResult r = oauth.SignIn("google", [&](const std::string& u) { opened = u; }, tokens, 100);
+    UltraNetResult r = oauth.SignIn("google", "erika@gmail.com",
+                                    [&](const std::string& u) { opened = u; }, tokens, 100);
     REQUIRE(!r);
     REQUIRE_EQ(authorizeCalls, 0);
     REQUIRE(r.message.find("client id") != std::string::npos);
 
     OAuthApps::Set("google", TestApp());
-    r = oauth.SignIn("google", [&](const std::string& u) { opened = u; }, tokens, 100);
+    r = oauth.SignIn("google", "erika@gmail.com",
+                     [&](const std::string& u) { opened = u; }, tokens, 100);
     REQUIRE(r);
     REQUIRE_EQ(authorizeCalls, 1);
     REQUIRE(opened.find("accounts.google.com") != std::string::npos);

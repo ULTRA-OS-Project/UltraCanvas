@@ -1,6 +1,6 @@
 // Apps/UltraMail/engine/UltraMailOAuth.h
 // OAuth2 sign-in for mail providers that reject the account password over
-// IMAP/SMTP (Gmail). Built on UltraNet's OAuth2 client (authorization code +
+// IMAP/SMTP (Gmail, Outlook / Microsoft 365). Built on UltraNet's OAuth2 client (authorization code +
 // PKCE, loopback redirect): the browser shows the provider's consent page,
 // the tokens land in the credential vault, and every IMAP/SMTP session signs
 // in with a fresh bearer token (XOAUTH2) — refreshed through the provider
@@ -8,13 +8,13 @@
 //
 // Two pieces of configuration:
 //   * the provider table (endpoints + scopes) — built in, keyed by a short
-//     provider id ("google");
+//     provider id ("google", "microsoft");
 //   * the OAuth *app* UltraMail signs in as (client id, optional secret,
 //     loopback redirect URI). That registration belongs to whoever ships the
 //     app, so it is configuration, never a literal here: SetOAuthApp(), or
 //     ULTRAMAIL_<PROVIDER>_CLIENT_ID / _CLIENT_SECRET / _REDIRECT_URI in the
 //     environment, or an INI file in the data folder (OAuthApps::LoadFile).
-// Version: 0.1.0
+// Version: 0.2.0 - Microsoft (Outlook / Microsoft 365) beside Google; login hint
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -34,21 +34,28 @@ namespace UltraMail {
 struct OAuthApp {
     std::string clientId;
     std::string clientSecret;    // empty = public client (PKCE only)
-    // Loopback redirect. Google's "desktop app" clients accept any loopback
-    // port, so port 0 lets UltraNet bind an ephemeral one per attempt — a
-    // cancelled sign-in whose listener is still waiting never blocks a retry.
-    std::string redirectUri = "http://127.0.0.1:0/callback";
+    // Loopback redirect. Both providers ignore the port of a loopback URI, so
+    // port 0 lets UltraNet bind an ephemeral one per attempt — a cancelled
+    // sign-in whose listener is still waiting never blocks a retry. Empty =
+    // the provider's default (DefaultRedirectUri).
+    std::string redirectUri;
 
     bool IsConfigured() const { return !clientId.empty(); }
 };
 
 // Registry of app registrations. Lookup order: Set() > environment
-// (ULTRAMAIL_GOOGLE_CLIENT_ID, ...) > entries loaded from the INI file.
+// (ULTRAMAIL_GOOGLE_CLIENT_ID, ULTRAMAIL_MICROSOFT_CLIENT_ID, ...) > entries
+// loaded from the INI file. Get() fills an empty redirectUri with the
+// provider's default.
 class OAuthApps {
 public:
     static void     Set(const std::string& providerId, const OAuthApp& app);
     static OAuthApp Get(const std::string& providerId);
     static bool     Has(const std::string& providerId);
+    // The loopback redirect to register with the provider, port 0:
+    // "http://127.0.0.1:0/callback" (Google), "http://127.0.0.1:0/" (Microsoft,
+    // which matches loopback URIs on host + path with the port ignored).
+    static std::string DefaultRedirectUri(const std::string& providerId);
 
     // Load "[google]\nclient_id = ...\nclient_secret = ...\nredirect_uri = ..."
     // from `path`. A missing file is not an error (returns 0). Returns the
@@ -62,13 +69,17 @@ public:
 };
 
 // The provider id UltraMail can sign in to with OAuth2 for a discovered
-// account ("google" for Gmail), or "" when the account uses a password.
+// account ("google" for Gmail, "microsoft" for Outlook / Microsoft 365), or ""
+// when the account uses a password.
 std::string OAuthProviderFor(const DiscoveryResult& discovery);
-// "Google" for "google"; the id itself when unknown.
+// "Google" / "Microsoft"; the id itself when unknown.
 std::string OAuthProviderDisplayName(const std::string& providerId);
 
 // Endpoints, scopes and consent parameters for a provider + app registration.
-UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthApp& app);
+// `loginHint` (the account's address) preselects the account on the consent
+// page; empty = none.
+UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthApp& app,
+                                    const std::string& loginHint = std::string());
 
 // Test seams: the interactive authorization and the refresh.
 struct OAuthHooks {
@@ -87,7 +98,8 @@ public:
     // loopback redirect and exchanges the code. Blocking for as long as the
     // user takes (up to the UltraNet timeout) — run on a worker thread.
     // Fails with PluginNotFound-style Unsupported when no app is configured.
-    UltraNetResult SignIn(const std::string& providerId,
+    // `email` preselects the account on the consent page.
+    UltraNetResult SignIn(const std::string& providerId, const std::string& email,
                           const std::function<void(const std::string& url)>& openUrl,
                           OAuthTokens& out, int64_t now = 0);
 

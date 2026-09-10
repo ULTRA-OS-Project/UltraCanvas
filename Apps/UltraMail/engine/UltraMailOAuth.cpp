@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailOAuth.cpp
-// Version: 0.1.0
+// Version: 0.2.0 - Microsoft (Outlook / Microsoft 365) beside Google; login hint
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuth.h"
 
@@ -54,21 +54,30 @@ void OAuthApps::Set(const std::string& providerId, const OAuthApp& app) {
     SetApps()[providerId] = app;
 }
 
+std::string OAuthApps::DefaultRedirectUri(const std::string& providerId) {
+    if (providerId == "microsoft") return "http://127.0.0.1:0/";
+    return "http://127.0.0.1:0/callback";
+}
+
 OAuthApp OAuthApps::Get(const std::string& providerId) {
+    auto withDefault = [&providerId](OAuthApp app) {
+        if (app.redirectUri.empty()) app.redirectUri = DefaultRedirectUri(providerId);
+        return app;
+    };
     {
         std::lock_guard<std::mutex> lock(AppsMutex());
         auto it = SetApps().find(providerId);
-        if (it != SetApps().end() && it->second.IsConfigured()) return it->second;
+        if (it != SetApps().end() && it->second.IsConfigured()) return withDefault(it->second);
     }
     OAuthApp app;
     app.clientId     = Env(EnvName(providerId, "_CLIENT_ID"));
     app.clientSecret = Env(EnvName(providerId, "_CLIENT_SECRET"));
-    if (std::string r = Env(EnvName(providerId, "_REDIRECT_URI")); !r.empty()) app.redirectUri = r;
-    if (app.IsConfigured()) return app;
+    app.redirectUri  = Env(EnvName(providerId, "_REDIRECT_URI"));
+    if (app.IsConfigured()) return withDefault(app);
 
     std::lock_guard<std::mutex> lock(AppsMutex());
     auto it = FileApps().find(providerId);
-    if (it != FileApps().end() && it->second.IsConfigured()) return it->second;
+    if (it != FileApps().end() && it->second.IsConfigured()) return withDefault(it->second);
     return OAuthApp{};
 }
 
@@ -125,22 +134,44 @@ std::string OAuthProviderFor(const DiscoveryResult& discovery) {
     if (!discovery.found || !discovery.imap.oauth) return "";
     if (discovery.imap.host == "imap.gmail.com" || discovery.displayName == "Gmail")
         return "google";
-    // Outlook / Microsoft 365 also expect OAuth2, but its consent flow is not
-    // wired up yet; those accounts keep using an app password.
+    if (discovery.imap.host == "outlook.office365.com" || discovery.displayName == "Outlook")
+        return "microsoft";
     return "";
 }
 
 std::string OAuthProviderDisplayName(const std::string& providerId) {
-    if (providerId == "google") return "Google";
+    if (providerId == "google")    return "Google";
+    if (providerId == "microsoft") return "Microsoft";
     return providerId;
 }
 
-UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthApp& app) {
+UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthApp& app,
+                                    const std::string& loginHint) {
     UltraNetOAuth2Config cfg;
     cfg.clientId     = app.clientId;
     cfg.clientSecret = app.clientSecret;
-    cfg.redirectUri  = app.redirectUri;
+    cfg.redirectUri  = app.redirectUri.empty() ? OAuthApps::DefaultRedirectUri(providerId)
+                                               : app.redirectUri;
     cfg.usePkce      = true;
+    // Both providers preselect the account named in login_hint, so the user
+    // is not asked to pick one they already typed.
+    if (!loginHint.empty()) cfg.extraAuthParams["login_hint"] = loginHint;
+    if (providerId == "microsoft") {
+        // Microsoft identity platform, "common" tenant: personal Microsoft
+        // accounts (outlook.com, hotmail.com, ...) and every Microsoft 365
+        // organisation. Registered as a public client ("Mobile and desktop
+        // applications", "Allow public client flows"), so no secret.
+        cfg.authorizationEndpoint = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize";
+        cfg.tokenEndpoint         = "https://login.microsoftonline.com/common/oauth2/v2.0/token";
+        // The Outlook resource scopes IMAP and SMTP XOAUTH2 accept;
+        // offline_access is what yields a refresh token.
+        cfg.scopes = {"https://outlook.office.com/IMAP.AccessAsUser.All",
+                      "https://outlook.office.com/SMTP.Send",
+                      "offline_access"};
+        cfg.extraAuthParams["prompt"] = "select_account";
+        // A secret, when one was registered anyway, goes in the form body.
+        cfg.secretInBody = true;
+    }
     if (providerId == "google") {
         cfg.authorizationEndpoint = "https://accounts.google.com/o/oauth2/v2/auth";
         cfg.tokenEndpoint         = "https://oauth2.googleapis.com/token";
@@ -184,7 +215,7 @@ OAuthTokens MailOAuth::FromToken(const UltraNetOAuth2Token& token, int64_t now,
     return t;
 }
 
-UltraNetResult MailOAuth::SignIn(const std::string& providerId,
+UltraNetResult MailOAuth::SignIn(const std::string& providerId, const std::string& email,
                                  const std::function<void(const std::string& url)>& openUrl,
                                  OAuthTokens& out, int64_t now) {
     if (now <= 0) now = static_cast<int64_t>(std::time(nullptr));
@@ -193,7 +224,7 @@ UltraNetResult MailOAuth::SignIn(const std::string& providerId,
         return UltraNetResult::Error(UltraNetResultCode::InvalidState,
             "no OAuth client id is configured for " + OAuthProviderDisplayName(providerId));
     UltraNetOAuth2Token token;
-    UltraNetResult r = hooks_.authorize(OAuthConfigFor(providerId, app), openUrl, token);
+    UltraNetResult r = hooks_.authorize(OAuthConfigFor(providerId, app, email), openUrl, token);
     if (!r) return r;
     if (!token.IsValid())
         return UltraNetResult::Error(UltraNetResultCode::AuthenticationFailed,

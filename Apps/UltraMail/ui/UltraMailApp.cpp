@@ -1,7 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.8.0 - Gmail signs in with Google (OAuth2) through the browser;
-//                  syncs and sends use the stored password or a fresh bearer
-//                  token
+// Version: 0.8.1 - Gmail and Outlook / Microsoft 365 sign in with OAuth2
+//                  through the browser; syncs and sends use the stored
+//                  password or a fresh bearer token
 // Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
@@ -1003,15 +1003,18 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
     auto storePassword = [this, accountId, email, password, provider, useOAuth, parent]() {
         if (useOAuth) {
             if (!OAuthApps::Has(provider)) {
+                std::string upper = provider;
+                for (char& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
                 AlertWarning(parent, "The account was added, but UltraMail cannot "
                                      "sign in to " + OAuthProviderDisplayName(provider)
                                      + " yet.",
                              "No OAuth client is configured for it. Put the client "
-                             "id and secret of a Google Cloud \"Desktop app\" OAuth "
-                             "client into " + dataDir_ + "/oauth.ini under [google] "
-                             "(client_id = …, client_secret = …), or set "
-                             "ULTRAMAIL_GOOGLE_CLIENT_ID — see Apps/UltraMail/README.md. "
-                             "Alternatively add the account again with an app password.");
+                             "id of an OAuth client registered with "
+                             + OAuthProviderDisplayName(provider) + " into " + dataDir_
+                             + "/oauth.ini under [" + provider + "] (client_id = …), or "
+                             "set ULTRAMAIL_" + upper + "_CLIENT_ID — see "
+                             "Apps/UltraMail/README.md, \"OAuth2 sign-in\". Alternatively "
+                             "add the account again with an app password.");
                 return;
             }
             // The tokens go into the vault, so open it before the browser
@@ -1111,7 +1114,7 @@ void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::str
 
     std::thread([this, accountId, email, providerId, providerName, parent, cancelled, waiting]() {
         OAuthTokens tokens;
-        UltraNetResult r = oauth_.SignIn(providerId,
+        UltraNetResult r = oauth_.SignIn(providerId, email,
             [](const std::string& url) { UltraCanvas::OpenURL(url); }, tokens);
 
         auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
