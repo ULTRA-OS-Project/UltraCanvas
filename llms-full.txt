@@ -1974,9 +1974,10 @@ questions that come after it:
   real `ClipboardManager`, real activity lifecycle — so every Android-specific
   path this backend added (§4) is exercisable without a phone. The parts an
   emulator does *not* prove are GPU-driver behaviour and real touch hardware.
-- **One concrete gap to close before the first run:** the backend logs through
-  `std::cerr`/`std::cout`, and on Android those go nowhere. Fix that before
-  spending a day guessing why a black screen is black (§5.3).
+- **The first run is now debuggable** — it was not when this was written. On
+  Android stdout and stderr are `/dev/null`, so every framework diagnostic and
+  every cairo/Pango/fontconfig warning was being discarded; both now reach
+  logcat (§5.3).
 - **Neither this container nor the repository's CI can run any of it today.**
   No `/dev/kvm`, no `vmx`/`svm`, and `CONFIG_ANDROID_BINDER_IPC` is unset (§8).
   The first run happens on a workstation or on a GitHub-hosted `ubuntu-latest`
@@ -2161,31 +2162,31 @@ For a native crash, `adb bugreport` or `adb pull /data/tombstones/` and then:
 adb logcat | $ANDROID_NDK_HOME/ndk-stack -sym path/to/obj/local/x86_64
 ```
 
-### 5.3 Make the first run debuggable — do this *before* the first run
+### 5.3 Making the first run debuggable — done
 
-The backend currently emits diagnostics through `std::cerr`/`std::cout` (the
-only such calls under `OS/Android/` are the nine in
-`GLContextManagerEGL_Android.cpp`, and the framework's shared logging uses the
-same streams). **On Android, a native app's stdout and stderr go to
-`/dev/null`.** A first run therefore produces a black screen and no
-explanation.
+**On Android a native app's stdout and stderr go to `/dev/null`**, so before
+this was fixed a first run would have produced a black screen and no
+explanation. Both halves of the framework's output are now routed to logcat:
 
-Two ways out, in order of preference:
+| Source | Where it goes | Tag |
+|---|---|---|
+| `debugOutput` — the framework's diagnostic stream, incl. the backend's 20 call sites | logcat directly, via a `streambuf` sink in `UltraCanvasDebug.h` | `UltraCanvas` |
+| Everything else — cairo/Pango/fontconfig warnings, the EGL manager, the ~50 legacy `std::cout`/`std::cerr` sites in core | a stdio pump installed by `android_main` (`OS/Android/UltraCanvasAndroidLog.{h,cpp}`) | `UltraCanvas-stdio` |
 
-1. **Add a logcat sink** — route the framework's logging through
-   `__android_log_print` under `#ifdef __ANDROID__` (tag e.g. `UltraCanvas`,
-   which then makes `adb logcat -s UltraCanvas:V` the one command a newcomer
-   needs). This is a small, self-contained change and the right permanent
-   answer. It is *not* made in this document because nothing here can compile
-   it — the environment has no NDK, and the repository's rule is that Android
-   code lands compiled ([port investigation §6, lesson 3](AndroidPortInvestigation.md)).
-2. **Redirect stdio at runtime**, as a stopgap on an emulator only:
-   `adb root && adb shell setprop log.redirect-stdio true`, then restart the
-   app. Requires a non-Play (`default`/`aosp`) image and only affects processes
-   started afterwards.
+```sh
+adb logcat -s UltraCanvas:V UltraCanvas-stdio:V
+adb shell setprop debug.ultracanvas.log 1     # an APK has no environment to set
+```
 
-This is the highest-value follow-up in this document: it costs an hour and it
-determines whether the first device run takes a day or a week.
+The sink went into `UltraCanvasDebug.h` rather than into the backend because
+that header already solves this exact problem for Windows GUI-subsystem
+builds, which have no console either — same mechanism, different sink. The
+system property is the Android arm of `ULTRACANVAS_DEBUG_LOG`, which an APK
+cannot be given.
+
+The stopgap this replaces, still worth knowing for a build that predates it:
+`adb root && adb shell setprop log.redirect-stdio true`, then restart the app
+(non-Play image only, and only affects processes started afterwards).
 
 ---
 
@@ -2233,8 +2234,9 @@ Notes that decide whether this is useful or noise:
 
 - **The assertion must be real.** "The activity started" is nearly worthless —
   a crashed native library still leaves an activity. Assert on a line the app
-  logs after its first successful composite (which needs §5.3 done first), and
-  keep the screenshot as an artifact for the human.
+  logs after its first successful composite — `adb logcat -s UltraCanvas:V`
+  now carries those (§5.3) — and keep the screenshot as an artifact for the
+  human.
 - **Two ABIs, one job.** Once `arm64-v8a` and `x86_64` both build, CI runs the
   x86_64 one; arm64 is covered by the compile gate plus a manual device run.
 - **The sysroot must be cached**, not rebuilt: a from-scratch vcpkg build of
@@ -2302,9 +2304,9 @@ compile gate rather than a test.
 
 ## 9. Recommended order of work
 
-1. **Add the logcat sink** (§5.3). One hour, and every step after it is
-   cheaper. Land it compiled, through the existing `android-syntax-check.sh`
-   gate.
+1. ~~**Add the logcat sink** (§5.3)~~ — **done.** Both the `debugOutput` sink
+   and the stdio pump are in, type-checked by the existing
+   `android-syntax-check.sh` gate.
 2. **Build the `x64-android` sysroot first**:
    `scripts/android-bootstrap-sysroot.sh x86_64` (then `--with-net`). Expect
    the iteration the script's header predicts — pango, cairo, glib.
@@ -2499,7 +2501,7 @@ exists. Required files and their contracts:
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` stub |
 | `GLContextManagerEGL_Android.cpp` | Near-copy of `GLContextManagerEGL_Linux.cpp` (201 lines, zero X11 references) with `eglBindAPI(EGL_OPENGL_ES_API)`, `EGL_OPENGL_ES3_BIT`, and the desktop core/compat profile attribs removed |
 | `UltraNetSupport.cpp` | Copy of the Linux one (pure `getenv`, fully bionic-compatible); optionally improved later via JNI `ConnectivityManager` proxy query |
-| `UltraNetTlsImpl.cpp` | Copy of the Linux OpenSSL implementation; must ship a CA bundle (`SSL_CTX_set_default_verify_paths` finds nothing in the app sandbox) or bridge to Android's trust store via JNI |
+| `UltraNetTlsImpl.cpp` | Copy of the Linux OpenSSL implementation; must ship a CA bundle (`SSL_CTX_set_default_verify_paths` finds nothing in the app sandbox) or bridge to Android's trust store via JNI. **Status: done, and neither of those two ways.** The Linux file is reused as-is with an `__ANDROID__` arm that reads the platform's own roots straight off disk (`/apex/com.android.conscrypt/cacerts`, else `/system/etc/security/cacerts`) — no JNI, and no bundled roots to go stale. They must be enumerated rather than used as a hash directory: Android names them with the pre-1.0 subject hash, so a modern `X509_LOOKUP_hash_dir` finds nothing and says nothing |
 | `UltraNetDnsImpl.cpp` | Do **not** port the Linux one — it uses `res_ninit`/`res_nquery`/`ns_parserr`, which bionic does not export, and links `-lresolv`, which doesn't exist on Android. Use the existing **c-ares** path instead: when `ULTRANET_HAS_CARES` is set, `core/UltraNet/UltraNetDnsCares.cpp` supplies the resolver and the per-platform DNS file is excluded entirely. Make c-ares mandatory for the Android target |
 
 ### 3.3 Event loop and lifecycle
@@ -2640,7 +2642,7 @@ device".**
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
 | librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
 | GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android |
-| miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free |
+| miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free. **Status: on.** It was the one entry in the Android CMake block whose dependency is vendored rather than pending in the sysroot, so it needed no link changes at all (AAudio and OpenSL ES are both reached through `dlopen`). The CI syntax check compiles the backend TU — and with it the whole `MINIAUDIO_IMPLEMENTATION` — for aarch64 |
 | Optional audio codecs (FLAC/vorbis/opus/LAME) | All plain C with known NDK builds; each just unlocks a format |
 | MuPDF (PDF plugin) | Official Android build exists; defer to a later phase |
 | tesseract/leptonica (OCR), zbar, CDR (libcdr/ICU), Vectorizer (Rust) | Defer / off by default for Android |
@@ -2784,8 +2786,9 @@ Process lessons for the Android effort:
   committed-text path.
 - Native dialogs via SAF/AlertDialog with the async bridge + `content://`
   URI adapter.
-- UltraNet fully on: vendored curl + OpenSSL + c-ares, CA bundle from the
-  system trust store via JNI.
+- UltraNet fully on: vendored curl + OpenSSL + c-ares. ~~CA bundle from the
+  system trust store via JNI~~ — done, and without JNI: the roots are read
+  from the platform's cacerts directory directly (§3.2).
 - EGL/GLES context manager; re-enable GL surfaces.
 
 **Phase 3 — parity extras**
@@ -2793,7 +2796,9 @@ Process lessons for the Android effort:
   touch path), and pinch/rotate recognition on top of it~~ — done. Recognition
   lives in the core (`UpdateTouchGesture`) rather than the Android backend,
   since the touch stream and the geometry are both platform-neutral.
-- Audio (miniaudio AAudio — near-free), then video via MediaCodec backend.
+- ~~Audio (miniaudio AAudio — near-free)~~ — done, and it was indeed free:
+  enabling the existing option, no new dependency, no new link line. Video via
+  a MediaCodec backend is still open.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.
 - Plugin packaging as `jniLibs`, Play-store packaging polish.
@@ -52577,7 +52582,7 @@ and reports the true code.
 |---|---|
 | *unset* | Debug builds log to stderr; Release builds log nothing. |
 | `0`, `off`, `no`, `none`, `false` | Off, in every build configuration. |
-| `1`, `on`, `yes`, `true`, `stderr`, `-` | On, to stderr. |
+| `1`, `on`, `yes`, `true`, `stderr`, `logcat`, `-` | On, to stderr. (`logcat` is a keyword on every platform so it is never mistaken for a filename; it only means anything on Android.) |
 | *any other value* | On, appending to that file. |
 
 This works in **Release** builds. It used to not: `debugOutput` compiled to a

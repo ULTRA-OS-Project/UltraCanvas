@@ -7,6 +7,8 @@
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasAndroidJni.h"
+
+#include <vector>
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasDebug.h"
 
@@ -74,6 +76,21 @@ namespace AndroidJni {
         std::string result(utf);
         env->ReleaseStringUTFChars(str, utf);
         return result;
+    }
+
+    std::vector<std::string> SplitLines(const std::string& text) {
+        std::vector<std::string> lines;
+        std::string::size_type start = 0;
+        while (start <= text.size()) {
+            const std::string::size_type end = text.find('\n', start);
+            if (end == std::string::npos) {
+                if (start < text.size()) lines.push_back(text.substr(start));
+                break;
+            }
+            if (end > start) lines.push_back(text.substr(start, end - start));
+            start = end + 1;
+        }
+        return lines;
     }
 
 } // namespace AndroidJni

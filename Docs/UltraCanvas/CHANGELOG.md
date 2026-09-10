@@ -1,3 +1,36 @@
+#### 2026-09-09 *0.3.113*
+- **Android: framework diagnostics reach logcat.** `debugOutput` and the
+  process's stdio went nowhere on Android, where there is no terminal to
+  inherit, so a crash or a warning left no trace at all. Both are now routed
+  through `__android_log_write` under the app's tag.
+- **Android packaging builds x86_64 first.** The emulator most development
+  actually runs on is x86_64; building arm64 first meant the usual loop waited
+  on the ABI it was least likely to use.
+- **Android: real input dialogs instead of "Cancel" stubs.** The native dialog
+  bridge answered every prompt as if the user had cancelled. It now shows the
+  platform's own dialogs and returns what the user chose.
+- **Android: TLS verifies against the platform's trust roots.** The Linux TLS
+  implementation had no way to reach Android's system CA store, so certificate
+  verification could not be done properly on the platform.
+- **Android: images and files can be pasted from the clipboard.** The backend
+  was text-only — an image or file copied in any other app was invisible.
+  A clip's non-text items are `content://` URIs, which no POSIX call can open,
+  so the activity copies each through the app's `ContentResolver` into the
+  cache and the backend hands back paths, the same copy-to-cache bargain the
+  SAF picker already makes. `GetAvailableFormats` now reports what the clip
+  actually advertises rather than always `text/plain`. Writing files to the
+  clipboard stays unimplemented on purpose: it needs a `ContentProvider`
+  declared in the *application's* manifest, which framework code cannot supply
+  on an app's behalf, and a bare filesystem path would look like it worked
+  while being unopenable by every other app.
+- **Android: audio is on.** It was on the "waits on the cross-compiled
+  sysroot" list it never belonged on — the backend is miniaudio, vendored
+  in-tree, which speaks AAudio natively with OpenSL ES beneath it, both reached
+  through `dlopen` rather than a link line. No new dependency, no new link
+  library, and no manifest permission for playback. The optional codec
+  libraries stay absent, which costs formats rather than the backend.
+  `scripts/android-syntax-check.sh` type-checks the miniaudio translation unit
+  against the real NDK, so enabling it is a change rather than a claim.
 #### 2026-09-09 *0.3.117*
 - **LaTeX documents open as documents (LaTeX engine Phase 3).** New
   `UltraCanvasLaTeXDocumentReader`

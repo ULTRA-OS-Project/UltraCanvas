@@ -25,6 +25,7 @@ package org.ultraos.ultracanvas;
 import android.app.AlertDialog;
 import android.app.NativeActivity;
 import android.content.ClipData;
+import android.content.ClipboardManager;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.database.Cursor;
@@ -40,6 +41,9 @@ import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputConnection;
 import android.view.inputmethod.InputMethodManager;
+import android.view.WindowManager;
+import android.widget.EditText;
+import android.widget.FrameLayout;
 
 import java.io.File;
 import java.io.FileOutputStream;
@@ -129,6 +133,105 @@ public class UltraCanvasActivity extends NativeActivity {
                 } catch (Throwable t) {
                     // Activity finishing / bad window token: never leave the
                     // native thread pumping for a result that cannot arrive.
+                    if (!delivered[0]) {
+                        delivered[0] = true;
+                        nativeOnDialogResult(requestId, RESULT_CANCEL, null);
+                    }
+                }
+            }
+        });
+    }
+
+    /**
+     * Show a modal text-input AlertDialog and deliver what the user typed.
+     * Called from the native (glue) thread, which blocks until exactly one
+     * result arrives - so, exactly as in showMessageDialog, every way out of
+     * this dialog has to deliver one.
+     *
+     * Only RESULT_POSITIVE carries a value; every other outcome delivers null,
+     * so a cancelled dialog can never be mistaken for a deliberately empty
+     * string. Buttons use the platform's own OK/Cancel strings, which are
+     * localised for the user's device.
+     */
+    public void showInputDialog(final int requestId, final String title,
+                                final String prompt, final String defaultValue,
+                                final boolean password) {
+        runOnUiThread(new Runnable() {
+            @Override
+            public void run() {
+                final boolean[] delivered = { false };
+
+                final EditText input = new EditText(UltraCanvasActivity.this);
+                input.setSingleLine(true);
+                input.setInputType(password
+                        ? (InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD)
+                        : InputType.TYPE_CLASS_TEXT);
+                if (defaultValue != null) {
+                    input.setText(defaultValue);
+                    // Caret after the text, not before it: the common case is
+                    // editing a suggested name, not replacing it.
+                    input.setSelection(input.getText().length());
+                }
+
+                // An EditText handed straight to setView sits flush against the
+                // dialog's edges; the platform insets its own.
+                final int inset =
+                        (int) (getResources().getDisplayMetrics().density * 20);
+                FrameLayout container = new FrameLayout(UltraCanvasActivity.this);
+                FrameLayout.LayoutParams lp = new FrameLayout.LayoutParams(
+                        FrameLayout.LayoutParams.MATCH_PARENT,
+                        FrameLayout.LayoutParams.WRAP_CONTENT);
+                lp.leftMargin = inset;
+                lp.rightMargin = inset;
+                container.addView(input, lp);
+
+                DialogInterface.OnClickListener onClick =
+                        new DialogInterface.OnClickListener() {
+                            @Override
+                            public void onClick(DialogInterface dialog, int which) {
+                                if (delivered[0]) return;
+                                delivered[0] = true;
+                                if (which == DialogInterface.BUTTON_POSITIVE) {
+                                    nativeOnDialogResult(requestId, RESULT_POSITIVE,
+                                                         input.getText().toString());
+                                } else {
+                                    nativeOnDialogResult(requestId, RESULT_CANCEL, null);
+                                }
+                            }
+                        };
+
+                AlertDialog.Builder builder =
+                        new AlertDialog.Builder(UltraCanvasActivity.this);
+                builder.setTitle(title);
+                if (prompt != null && prompt.length() > 0) {
+                    builder.setMessage(prompt);
+                }
+                builder.setView(container);
+                builder.setPositiveButton(getString(android.R.string.ok), onClick);
+                builder.setNegativeButton(getString(android.R.string.cancel), onClick);
+
+                builder.setOnDismissListener(new DialogInterface.OnDismissListener() {
+                    @Override
+                    public void onDismiss(DialogInterface dialog) {
+                        if (!delivered[0]) {
+                            delivered[0] = true;
+                            nativeOnDialogResult(requestId, RESULT_CANCEL, null);
+                        }
+                    }
+                });
+
+                try {
+                    AlertDialog dialog = builder.create();
+                    // Raise the soft keyboard with the dialog. Without this the
+                    // user has to tap the field before they can type, which on a
+                    // phone reads as a broken dialog rather than a choice.
+                    if (dialog.getWindow() != null) {
+                        dialog.getWindow().setSoftInputMode(
+                                WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE);
+                    }
+                    input.requestFocus();
+                    dialog.show();
+                } catch (Throwable t) {
                     if (!delivered[0]) {
                         delivered[0] = true;
                         nativeOnDialogResult(requestId, RESULT_CANCEL, null);
@@ -303,6 +406,67 @@ public class UltraCanvasActivity extends NativeActivity {
      * The cost is a copy, and edits land in the cache copy rather than the
      * original document - which is why only *opening* goes through here.
      */
+    // ===== CLIPBOARD (content:// items) =====
+    //
+    // The C++ backend talks to ClipboardManager over JNI directly for text.
+    // URI items cannot be handled that way: reading one means going through
+    // this app's ContentResolver, and the framework's API is path-based. So
+    // the same copy-to-cache treatment the document picker uses applies here,
+    // and for the same reason - a content:// URI is not openable by any POSIX
+    // call, and some providers stream from the network with no file behind
+    // them at all.
+    //
+    // Consequence, identical to the picker's: the caller reads a snapshot.
+    // Writing to the returned path does not reach the original document.
+
+    /**
+     * Copy every content:// item on the clipboard into the app cache and
+     * return their paths, newline-separated. Returns null when the clipboard
+     * holds no URI items, or cannot be read at all - which on Android 10+
+     * includes every read taken while this app does not have input focus.
+     */
+    public String getClipboardUriPaths() {
+        try {
+            ClipboardManager manager =
+                    (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (manager == null || !manager.hasPrimaryClip()) return null;
+            ClipData clip = manager.getPrimaryClip();
+            if (clip == null) return null;
+
+            StringBuilder paths = new StringBuilder();
+            for (int i = 0; i < clip.getItemCount(); i++) {
+                Uri uri = clip.getItemAt(i).getUri();
+                if (uri == null) continue;          // a text item among URIs
+                String path = copyToCache(uri);
+                if (path == null) continue;         // unreadable provider
+                if (paths.length() > 0) paths.append('\n');
+                paths.append(path);
+            }
+            return paths.length() > 0 ? paths.toString() : null;
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
+    /**
+     * MIME type the clipboard advertises for its first item, or null. Used to
+     * tell "an image was copied" from "a file was copied" before paying for
+     * the copy in getClipboardUriPaths.
+     */
+    public String getClipboardMimeType() {
+        try {
+            ClipboardManager manager =
+                    (ClipboardManager) getSystemService(Context.CLIPBOARD_SERVICE);
+            if (manager == null || !manager.hasPrimaryClip()) return null;
+            ClipData clip = manager.getPrimaryClip();
+            if (clip == null || clip.getDescription() == null) return null;
+            if (clip.getDescription().getMimeTypeCount() < 1) return null;
+            return clip.getDescription().getMimeType(0);
+        } catch (Throwable t) {
+            return null;
+        }
+    }
+
     private String copyToCache(Uri uri) {
         InputStream in = null;
         OutputStream out = null;

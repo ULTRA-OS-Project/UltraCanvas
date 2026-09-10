@@ -159,7 +159,7 @@ exists. Required files and their contracts:
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` stub |
 | `GLContextManagerEGL_Android.cpp` | Near-copy of `GLContextManagerEGL_Linux.cpp` (201 lines, zero X11 references) with `eglBindAPI(EGL_OPENGL_ES_API)`, `EGL_OPENGL_ES3_BIT`, and the desktop core/compat profile attribs removed |
 | `UltraNetSupport.cpp` | Copy of the Linux one (pure `getenv`, fully bionic-compatible); optionally improved later via JNI `ConnectivityManager` proxy query |
-| `UltraNetTlsImpl.cpp` | Copy of the Linux OpenSSL implementation; must ship a CA bundle (`SSL_CTX_set_default_verify_paths` finds nothing in the app sandbox) or bridge to Android's trust store via JNI |
+| `UltraNetTlsImpl.cpp` | Copy of the Linux OpenSSL implementation; must ship a CA bundle (`SSL_CTX_set_default_verify_paths` finds nothing in the app sandbox) or bridge to Android's trust store via JNI. **Status: done, and neither of those two ways.** The Linux file is reused as-is with an `__ANDROID__` arm that reads the platform's own roots straight off disk (`/apex/com.android.conscrypt/cacerts`, else `/system/etc/security/cacerts`) — no JNI, and no bundled roots to go stale. They must be enumerated rather than used as a hash directory: Android names them with the pre-1.0 subject hash, so a modern `X509_LOOKUP_hash_dir` finds nothing and says nothing |
 | `UltraNetDnsImpl.cpp` | Do **not** port the Linux one — it uses `res_ninit`/`res_nquery`/`ns_parserr`, which bionic does not export, and links `-lresolv`, which doesn't exist on Android. Use the existing **c-ares** path instead: when `ULTRANET_HAS_CARES` is set, `core/UltraNet/UltraNetDnsCares.cpp` supplies the resolver and the per-platform DNS file is excluded entirely. Make c-ares mandatory for the Android target |
 
 ### 3.3 Event loop and lifecycle
@@ -300,7 +300,7 @@ device".**
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
 | librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
 | GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android |
-| miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free |
+| miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free. **Status: on.** It was the one entry in the Android CMake block whose dependency is vendored rather than pending in the sysroot, so it needed no link changes at all (AAudio and OpenSL ES are both reached through `dlopen`). The CI syntax check compiles the backend TU — and with it the whole `MINIAUDIO_IMPLEMENTATION` — for aarch64 |
 | Optional audio codecs (FLAC/vorbis/opus/LAME) | All plain C with known NDK builds; each just unlocks a format |
 | MuPDF (PDF plugin) | Official Android build exists; defer to a later phase |
 | tesseract/leptonica (OCR), zbar, CDR (libcdr/ICU), Vectorizer (Rust) | Defer / off by default for Android |
@@ -444,8 +444,9 @@ Process lessons for the Android effort:
   committed-text path.
 - Native dialogs via SAF/AlertDialog with the async bridge + `content://`
   URI adapter.
-- UltraNet fully on: vendored curl + OpenSSL + c-ares, CA bundle from the
-  system trust store via JNI.
+- UltraNet fully on: vendored curl + OpenSSL + c-ares. ~~CA bundle from the
+  system trust store via JNI~~ — done, and without JNI: the roots are read
+  from the platform's cacerts directory directly (§3.2).
 - EGL/GLES context manager; re-enable GL surfaces.
 
 **Phase 3 — parity extras**
@@ -453,7 +454,9 @@ Process lessons for the Android effort:
   touch path), and pinch/rotate recognition on top of it~~ — done. Recognition
   lives in the core (`UpdateTouchGesture`) rather than the Android backend,
   since the touch stream and the geometry are both platform-neutral.
-- Audio (miniaudio AAudio — near-free), then video via MediaCodec backend.
+- ~~Audio (miniaudio AAudio — near-free)~~ — done, and it was indeed free:
+  enabling the existing option, no new dependency, no new link line. Video via
+  a MediaCodec backend is still open.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.
 - Plugin packaging as `jniLibs`, Play-store packaging polish.

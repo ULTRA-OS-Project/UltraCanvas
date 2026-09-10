@@ -84,7 +84,12 @@ if(ANDROID)
     set(ULTRACANVAS_PLUGIN_PDF OFF CACHE BOOL "Build PDF plugin (requires MuPDF / libmupdf-dev)")
     set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)")
     set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)")
-    set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Build audio backend")
+    # ULTRACANVAS_ENABLE_AUDIO is deliberately NOT in this list, and stays at
+    # its ON default: its backend is miniaudio, vendored in-tree rather than
+    # waiting on the sysroot, and it speaks AAudio natively with OpenSL ES
+    # beneath it - both reached through dlopen, so there is nothing extra to
+    # link and no NDK-side dependency. Only its optional codec libraries are
+    # missing from a minimal sysroot, which costs formats, not the backend.
     set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)")
     set(ULTRACANVAS_ENABLE_DATABASE OFF CACHE BOOL "Build the UltraDatabase data-access library")
     set(ULTRACANVAS_USE_VIRTUALFS OFF CACHE BOOL "Build the VirtualFS module and the UltraCanvas bridge to it")
