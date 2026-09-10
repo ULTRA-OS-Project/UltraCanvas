@@ -15,14 +15,14 @@ using namespace UltraCanvas;
 namespace UltraMail {
 
 namespace {
-constexpr float kLogoSize     = 128.0f;
-constexpr float kTitleSize    = 32.0f;   // font size of the app title
-constexpr float kGap          = 24.0f;   // vertical gap between logo, title, button
-constexpr float kButtonWidth  = 260.0f;
-constexpr float kButtonHeight = 48.0f;
-constexpr float kButtonFont   = 16.0f;
-constexpr int   kButtonIcon   = 22;
-constexpr float kButtonRadius = 8.0f;
+constexpr float kLogoSize     = 96.0f;
+constexpr float kTitleSize    = 22.0f;   // font size of the app title
+constexpr float kGap          = 16.0f;   // vertical gap between logo, title, button
+constexpr float kButtonWidth  = 200.0f;
+constexpr float kButtonHeight = 34.0f;
+constexpr float kButtonFont   = 11.0f;
+constexpr int   kButtonIcon   = 16;
+constexpr float kButtonRadius = 6.0f;
 } // namespace
 
 std::shared_ptr<UltraCanvasContainer> StartPage::Build() {

@@ -23,15 +23,15 @@ using namespace UltraCanvas;
 namespace UltraMail {
 
 namespace {
-constexpr float kLabelWidth = 110.0f;
+constexpr float kLabelWidth = 90.0f;
 } // namespace
 
 void AccountWizard::Show(UltraCanvasWindowBase* parent,
                          std::function<void(const AccountDraft&)> onSubmit) {
     DialogConfig config;
     config.title      = "Add email account";
-    config.width      = 460;
-    config.height     = 330;
+    config.width      = 420;
+    config.height     = 270;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -55,7 +55,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     auto intro = Theme::MakeLine("wizIntro",
-        "Enter your address and password — UltraMail finds the rest.", 36,
+        "Enter your address and password — UltraMail finds the rest.", 28,
         Theme::kSizeBody, Theme::kTextSecondary);
     intro->SetWrap(TextWrap::WrapWord);
     content->AddChild(intro);
@@ -97,7 +97,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     // Provider-specific advice that follows the address as it is typed: Gmail
     // and Outlook sign in through the browser (OAuth2) when the password is
     // left empty; they, Yahoo and iCloud need an app password otherwise.
-    auto hint = Theme::MakeLine("wizHint", "", 40, Theme::kSizeBody, Theme::kTextSecondary);
+    auto hint = Theme::MakeLine("wizHint", "", 30, Theme::kSizeBody, Theme::kTextSecondary);
     hint->SetWrap(TextWrap::WrapWord);
     content->AddChild(hint);
     hint->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);

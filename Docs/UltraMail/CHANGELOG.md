@@ -1,3 +1,17 @@
+#### 2026-09-11 *0.9.2*
+- **Type scale matched to UltraFiler.** UltraMail's text was far larger than
+  the rest of the desktop (13pt body, 15pt headings, 18pt titles next to
+  UltraFiler's 9pt UI font). `UltraMailTheme.h` now uses 9pt body text,
+  8.5pt secondary, 8pt small, 11pt headings and 13pt titles; controls are
+  24px high in a 28px toolbar, the avatar square 28px, and the paddings,
+  gaps and radii shrank with them. Every view followed: the inbox list
+  (22px rows and header, narrower From / Date columns), the message header
+  (13pt subject, 26px avatar, HTML bodies at 12px), the account cards and
+  their counters, the contact rows, the composer, the attachment chips, the
+  start page, and every dialog (wizard, master password, wait, server
+  settings, contact) with its fixed heights. Dropdowns get the body size
+  through the new `Theme::StyleDropdown`.
+
 #### 2026-09-10 *0.9.1*
 - **The settings page checks the sign-in before it saves.** Save opens one
   IMAP session to the incoming server with the entered host, port and

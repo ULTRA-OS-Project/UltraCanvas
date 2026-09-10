@@ -18,9 +18,9 @@ namespace UltraMail {
 
 namespace {
 
-constexpr float kChipW = 190.0f;
-constexpr float kChipH = 44.0f;
-constexpr float kGap   = 8.0f;
+constexpr float kChipW = 160.0f;
+constexpr float kChipH = 34.0f;
+constexpr float kGap   = 6.0f;
 
 // A glyph hinting at the attachment kind.
 std::string GlyphFor(const std::string& mediaType) {
@@ -54,16 +54,16 @@ AttachmentChip::AttachmentChip(const std::string& id, float x, float y, float w,
     SetBackgroundColor(Theme::kCardBackground);
     SetBorders(1.0f, Theme::kCardBorder, 8.0f);
     auto glyph = CreateLabel(id + ".glyph", 8, 6, 26, 32, GlyphFor(att.mediaType));
-    glyph->SetFontSize(16.0f);
+    glyph->SetFontSize(12.0f);
     AddChild(glyph);
 
     std::string name = att.filename.empty() ? "attachment" : att.filename;
-    auto nameLabel = CreateLabel(id + ".name", 40, 5, w - 48, 18, name);
+    auto nameLabel = CreateLabel(id + ".name", 32, 3, w - 38, 14, name);
     nameLabel->SetFontSize(Theme::kSizeBody);
     nameLabel->SetTextColor(Theme::kTextPrimary);
     nameLabel->SetTooltip(name);
     AddChild(nameLabel);
-    auto sizeLabel = CreateLabel(id + ".size", 40, 23, w - 48, 16, HumanSize(att.Size()));
+    auto sizeLabel = CreateLabel(id + ".size", 32, 17, w - 38, 13, HumanSize(att.Size()));
     sizeLabel->SetFontSize(Theme::kSizeSmall);
     sizeLabel->SetTextColor(Theme::kTextMuted);
     AddChild(sizeLabel);

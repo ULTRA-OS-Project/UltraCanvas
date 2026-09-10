@@ -49,7 +49,7 @@ namespace UltraMail {
 namespace {
 constexpr int   kWindowWidth   = 1180;
 constexpr int   kWindowHeight  = 760;
-constexpr int   kActionIcon    = 16;
+constexpr int   kActionIcon    = 12;
 
 std::string IconPath(const std::string& name) {
     return UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/icons/" + name);
@@ -233,14 +233,14 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
             button->SetIcon(IconPath(icon));
             button->SetIconPosition(ButtonIconPosition::Left);
             button->SetIconSize(kActionIcon, kActionIcon);
-            button->SetIconSpacing(8);
+            button->SetIconSpacing(6);
             button->SetUseIconAsMask(true);
         }
         button->onClick = std::move(onClick);
         toolbar->AddChild(button);
         return button;
     };
-    makeAction("umNewEmail", "New email", 124, "envelope.svg", true, [this]() {
+    makeAction("umNewEmail", "New email", 96, "envelope.svg", true, [this]() {
         std::string name, addr;
         for (const auto& a : accounts_)
             if (a.accountId == selectedAccount_) { name = a.displayName; addr = a.email; }
@@ -249,11 +249,11 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         }
         OpenComposer(Composer::NewMessage(name, addr));
     });
-    reloadButton_ = makeAction("umReload", "Reload", 100, "reload.svg", false,
+    reloadButton_ = makeAction("umReload", "Reload", 80, "reload.svg", false,
                                [this]() { HandleReload(); });
-    makeAction("umContacts", "Contacts", 100, "", false, [this]() { OpenContacts(); });
+    makeAction("umContacts", "Contacts", 76, "", false, [this]() { OpenContacts(); });
     toolbar->AddStretchSpacer(1);
-    makeAction("umAddAccount", "Add account", 120, "", false,
+    makeAction("umAddAccount", "Add account", 92, "", false,
                [this]() { HandleAddAccount(); });
     accountView_->AddChild(toolbar);
     toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -359,8 +359,8 @@ void UltraMailApp::ReportMissingImapPlugin() {
 void UltraMailApp::OpenComposer(const Draft& draft) {
     WindowConfig cfg;
     cfg.title  = draft.subject.empty() ? "New message" : draft.subject;
-    cfg.width  = 760;
-    cfg.height = 620;
+    cfg.width  = 640;
+    cfg.height = 520;
     cfg.backgroundColor = Theme::kCardBackground;
     auto win = CreateWindow(cfg);
 
@@ -778,8 +778,8 @@ void UltraMailApp::OpenContacts() {
     }
     WindowConfig cfg;
     cfg.title  = "Contacts";
-    cfg.width  = 720;
-    cfg.height = 540;
+    cfg.width  = 620;
+    cfg.height = 460;
     cfg.backgroundColor = Theme::kPageBackground;
     auto win = CreateWindow(cfg);
 

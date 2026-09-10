@@ -18,8 +18,8 @@ std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
         const std::string& text, std::function<void()> onCancel) {
     DialogConfig config;
     config.title      = title;
-    config.width      = 460;
-    config.height     = 250;
+    config.width      = 420;
+    config.height     = 200;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -34,7 +34,7 @@ std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
     dialog->SetPadding(20);
     dialog->SetBackgroundColor(Theme::kCardBackground);
 
-    auto label = CreateLabel("waitText", 0, 0, 420, 110, text);
+    auto label = CreateLabel("waitText", 0, 0, 380, 80, text);
     label->SetWrap(TextWrap::WrapWord);
     label->SetFontSize(Theme::kSizeBody);
     label->SetTextColor(Theme::kTextSecondary);

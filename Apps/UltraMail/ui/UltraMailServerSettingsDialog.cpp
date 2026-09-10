@@ -22,9 +22,9 @@ using namespace UltraCanvas;
 namespace UltraMail {
 
 namespace {
-constexpr float kLabelWidth  = 120.0f;
-constexpr float kPortWidth   = 70.0f;
-constexpr float kSecWidth    = 130.0f;
+constexpr float kLabelWidth  = 100.0f;
+constexpr float kPortWidth   = 54.0f;
+constexpr float kSecWidth    = 104.0f;
 
 int SecurityIndex(MailSecurity s) {
     switch (s) {
@@ -64,8 +64,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                                 Verifier verify) {
     DialogConfig config;
     config.title      = "Server settings for " + email;
-    config.width      = 560;
-    config.height     = 420;
+    config.width      = 520;
+    config.height     = 330;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -83,7 +83,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
                    .SetFlexGap(Theme::kInnerGap)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto introLine = Theme::MakeLine("srvIntro", intro, 40, Theme::kSizeBody, Theme::kTextSecondary);
+    auto introLine = Theme::MakeLine("srvIntro", intro, 30, Theme::kSizeBody, Theme::kTextSecondary);
     introLine->SetWrap(TextWrap::WrapWord);
     content->AddChild(introLine);
     introLine->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -122,6 +122,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         r.security->AddItem("SSL/TLS", "ssl");
         r.security->AddItem("STARTTLS", "starttls");
         r.security->AddItem("None", "none");
+        Theme::StyleDropdown(r.security);
         r.security->SetSelectedIndex(SecurityIndex(s.security), /*runNotifications=*/false);
         row->AddChild(r.security);
 
@@ -154,14 +155,14 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     auto note = Theme::MakeLine("srvNote",
         "Ports are usually 993 (IMAP, SSL/TLS) or 143 (STARTTLS), and 465 (SMTP, "
         "SSL/TLS) or 587 (STARTTLS). Most providers list them under \"mail program "
-        "settings\" or \"IMAP/SMTP\" in their help.", 40, Theme::kSizeBody,
+        "settings\" or \"IMAP/SMTP\" in their help.", 30, Theme::kSizeBody,
         Theme::kTextSecondary);
     note->SetWrap(TextWrap::WrapWord);
     content->AddChild(note);
     note->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // Validation feedback, in place.
-    auto status = Theme::MakeLine("srvStatus", "", 20, Theme::kSizeBody, Theme::kWaitingText);
+    auto status = Theme::MakeLine("srvStatus", "", 16, Theme::kSizeBody, Theme::kWaitingText);
     status->SetWrap(TextWrap::WrapWord);
     content->AddChild(status);
     status->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
