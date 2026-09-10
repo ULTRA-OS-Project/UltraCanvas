@@ -6,6 +6,15 @@
   glyph everywhere the icon set is used - the breadcrumb and toolbar examples
   in `Docs/UltraCanvas/` and in DemoApp, and UltraFiler's tree row, Computer
   tile and tab.
+- **A filer entry can be drawn under a name of the host's choosing.**
+  `UltraCanvasFilerWidget::displayNameProvider(entry)` answers with the name to
+  draw in place of the file name, `""` to keep it - the counterpart of
+  `folderIconProvider`, asked ahead of every built-in rule including a desktop
+  launcher's own `Name=`. Only the drawn name changes: sorting, renaming, the
+  clipboard and every file operation still use the real one. It exists for
+  entries that mean something other than a file of that name - UltraFiler's
+  Computer page shows the home folder as *Home* rather than under the account
+  it is named after.
 - **A dropdown arrow a control can actually wear.** `media/icons/dropdown.svg`
   is the arrow that says "this opens a menu". Until now the split buttons
   spelled it with a "▾" character, which a text renderer draws at a

@@ -3620,6 +3620,11 @@ void UltraFilerWindow::BuildComputerPage() {
     // The tiles carry the tree's icons for these folders - the house for
     // Home, the cloud for a cloud folder - and otherwise whatever the folder
     // has of its own (a user-set icon, a well-known folder's).
+    // ... and the home folder is labelled the way the tree row and the folder
+    // tab label it, instead of by the account the folder is named after.
+    computerFolders->displayNameProvider = [](const FilerEntry& entry) -> std::string {
+        return IsUserHomeDir(entry.path) ? std::string("Home") : std::string();
+    };
     computerFolders->folderIconProvider = [this](const FilerEntry& entry) -> std::string {
         if (!entry.isDirectory) return {};
         if (IsUserHomeDir(entry.path)) return IconPath("home-user.svg");

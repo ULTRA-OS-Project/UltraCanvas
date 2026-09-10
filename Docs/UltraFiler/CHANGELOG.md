@@ -7,7 +7,11 @@
   carry, so the three places that lead to that folder finally look alike.
   Every other tab is unchanged - it keeps the folder's own name and no icon.
   The name follows the tab: navigating into the home folder renames the tab
-  and puts the icon on, leaving it takes both away again.
+  and puts the icon on, leaving it takes both away again. The Computer page's
+  Home tile, which carried the account name under the same icon, now reads
+  *Home* as well (framework side: `displayNameProvider`,
+  `Docs/UltraCanvas/CHANGELOG.md` 0.8.0) - the folder it opens, its name and
+  what can be done with it are unchanged, only what the tile is labelled.
 - **A home icon with the user in it.** The plain black house has been replaced
   by `home-user.svg` - a house with its occupant, in the flat two-tone shape
   of the folder icons - in the tree, on the Computer page's Home tile and on

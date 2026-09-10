@@ -1032,6 +1032,16 @@ namespace UltraCanvas {
         // Extras > Set folder icon.
         std::function<std::string(const FilerEntry&)> folderIconProvider;
 
+        // The name an entry is drawn under, asked while the entry is drawn.
+        // Return the name to show in place of the file name, or "" to keep it.
+        // Like a launcher's own name (FilerEntry::linkDisplayName), it changes
+        // only what is drawn - sorting, renaming and every file operation still
+        // use the real name - and it is asked for every entry of every view, so
+        // it must be a lookup rather than a disk walk. UltraFiler answers with
+        // "Home" for the user's home folder on its Computer page, which is what
+        // the folder tree's row and the folder tab call it too.
+        std::function<std::string(const FilerEntry&)> displayNameProvider;
+
         // Context-menu hooks. Items without a hook (and no built-in default)
         // are shown disabled.
         std::function<void(const std::vector<FilerEntry>&)> onShare;
