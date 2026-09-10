@@ -21,10 +21,15 @@ and **UltraDatabase** (local store) modules.
 > details** split), the setup wizard (with discovery), the attachment strip →
 > MediaViewer, the contact manager, and the **composer** (New email / Reply,
 > Send through a **persistent outbox**). On startup the app
-> brings up the UltraNet plug-in registry (SMTP/IMAP DSOs load if on the path;
-> `ULTRAMAIL_PLUGIN_DIR` overrides). A **background-sync scheduler** (per-account
-> intervals) drives the SyncService on a UI timer once the IMAP plug-in is
-> present, and the address book **auto-collects** the people you correspond with.
+> brings up the UltraNet plug-in registry: the SMTP/IMAP DSOs are looked for in
+> `Plugins/UltraNet` next to the executable (or up to two levels above it, then
+> the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides. A new account fetches
+> its inbox as soon as its password is in the vault; a **background-sync
+> scheduler** (per-account intervals) then drives the SyncService on a UI timer
+> once the IMAP plug-in is present, and the address book **auto-collects** the
+> people you correspond with. When mail cannot be fetched — no IMAP plug-in, no
+> known server for the address, no stored password, a rejected login — Reload
+> and the first sync say so instead of doing nothing.
 > HTML message bodies are **rendered natively** in the preview through the
 > HTMLReader element builder over the UltraCanvas **CSSLayout** engine (block +
 > inline layout, headings, lists, links, colors — no web view); plain-text

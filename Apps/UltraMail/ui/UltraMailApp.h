@@ -3,8 +3,10 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
-// Version: 0.5.0
-// Last Modified: 2026-09-03
+// Version: 0.6.0 - first sync right after an account is added; the IMAP
+//                  plug-in is found next to the executable and its absence is
+//                  reported instead of silently skipping every sync.
+// Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -108,12 +110,30 @@ private:
 
     // Auto-collect senders of a folder's messages into the address book.
     void CollectContacts(const std::string& accountId, const std::string& folder);
-    // Register accounts with the scheduler and start a periodic background sync
-    // (only when the IMAP plug-in is available).
+    // Register every account with the scheduler and start the periodic
+    // background sync timer (only when the IMAP plug-in is available). Safe to
+    // call again after an account was added: accounts already registered keep
+    // their last-sync time and the timer is started once.
     void StartBackgroundSync();
     // Sync the accounts the scheduler reports as due (called from the timer),
     // or every account when `force` is set (the Reload button).
     void RunSyncs(bool force);
+    // Sync one account now — the first sync right after it was added.
+    void SyncAccount(const std::string& accountId);
+    // Run the given accounts through the SyncService on worker threads and
+    // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
+    // account) always say why nothing was fetched; timer syncs say so once.
+    void SyncAccounts(const std::vector<ScheduledAccount>& targets, bool userInitiated);
+    // The IMAP plug-in as the mailbox interface, or null when it is not loaded.
+    IMailboxProtocolPlugin* ImapPlugin() const;
+    // Explain that no mail can be fetched because the IMAP plug-in was not
+    // found, naming the directory that was searched.
+    void ReportMissingImapPlugin();
+    // Where the UltraNet plug-in DSOs are: ULTRAMAIL_PLUGIN_DIR, else the first
+    // Plugins/UltraNet directory next to (or up to two levels above) the
+    // executable, else the working directory's — so the app finds its plug-ins
+    // wherever it is started from, not only from the build directory.
+    static std::string ResolvePluginDirectory();
 
     // Session-lifetime: the master password is entered once, and the derived
     // key lives only while the app runs.
@@ -140,6 +160,11 @@ private:
     std::string dataDir_;
     std::string cacheDir_;
     std::string mailDir_;
+    // The plug-in directory the registry was pointed at (for diagnostics).
+    std::string pluginDir_;
+    // True once the periodic sync timer runs, so StartBackgroundSync() can be
+    // called again (after an account is added) without starting a second one.
+    bool        syncTimerStarted_ = false;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     // The account view root; hidden while the start page is up (no account

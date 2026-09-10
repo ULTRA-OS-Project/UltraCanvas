@@ -1,6 +1,8 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.6.0 - themed toolbar row, account bar and child windows sized to their client area
-// Last Modified: 2026-09-09
+// Version: 0.7.0 - a new account syncs right away; the IMAP plug-in is looked
+//                  up next to the executable and a missing one is reported
+//                  instead of silently skipping every sync
+// Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 
@@ -23,6 +25,7 @@
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasUtils.h"
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
@@ -103,11 +106,13 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     cloudSecrets_ = std::make_unique<UltraCloud::FileSecretStore>(dataDir + "/cloud-vault");
     cloud_ = std::make_unique<UltraCloud::CloudService>(cloudAccounts_, *cloudSecrets_);
 
-    // Bring up the UltraNet plug-in registry so the SMTP / IMAP DSOs load if
-    // they are on the plug-in path (ULTRAMAIL_PLUGIN_DIR overrides the default).
+    // Bring up the UltraNet plug-in registry so the SMTP / IMAP DSOs load. The
+    // registry's default directory is relative to the working directory, which
+    // only matches the build tree when the app is started from there; resolve
+    // it against the executable instead (ULTRAMAIL_PLUGIN_DIR overrides).
     if (!UltraNet_IsInitialized()) UltraNet_Initialize();
-    if (const char* pd = std::getenv("ULTRAMAIL_PLUGIN_DIR"); pd && *pd)
-        UltraNet_SetPluginDirectory(pd);
+    pluginDir_ = ResolvePluginDirectory();
+    UltraNet_SetPluginDirectory(pluginDir_);
     UltraNet_RefreshPlugins();
 
     store_.ListAccounts(accounts_);
@@ -277,8 +282,71 @@ void UltraMailApp::ResizeViews(float width, float height) {
 }
 
 void UltraMailApp::HandleReload() {
-    RunSyncs(/*force=*/true);
-    Refresh();
+    if (accounts_.empty()) return;
+    // Say what is missing before asking for a master password that would
+    // then unlock nothing useful.
+    if (!ImapPlugin()) { ReportMissingImapPlugin(); return; }
+    // Reload is a foreground action, so unlike the timer it may ask for the
+    // master password; the sync runs once the vault is open (not on Cancel).
+    EnsureVaultUnlocked([this]() {
+        RunSyncs(/*force=*/true);
+        Refresh();
+    });
+}
+
+std::string UltraMailApp::ResolvePluginDirectory() {
+    namespace fs = std::filesystem;
+    if (const char* pd = std::getenv("ULTRAMAIL_PLUGIN_DIR"); pd && *pd) return pd;
+
+    // A directory counts when it holds at least one plug-in DSO, so an empty
+    // Plugins/UltraNet next to the executable does not shadow the real one.
+    auto holdsPlugin = [](const fs::path& dir) {
+        std::error_code ec;
+        if (!fs::is_directory(dir, ec) || ec) return false;
+        for (const auto& entry : fs::directory_iterator(dir, ec)) {
+            if (ec) return false;
+            const std::string ext = entry.path().extension().string();
+            if (ext == ".so" || ext == ".dll" || ext == ".dylib") return true;
+        }
+        return false;
+    };
+
+    const fs::path relative = fs::path("Plugins") / "UltraNet";
+    std::vector<fs::path> candidates;
+    const std::string exeDir = UltraCanvas::GetExecutableDir();
+    if (!exeDir.empty()) {
+        // The build tree puts the executable at <build>/ and the DSOs at
+        // <build>/Plugins/UltraNet; an installed or copied app may sit one
+        // or two levels deeper (bin/, Apps/UltraMail/).
+        fs::path base = exeDir;
+        for (int up = 0; up < 3; ++up) {
+            candidates.push_back(base / relative);
+            base = base.parent_path();
+        }
+    }
+    candidates.push_back(relative);   // the registry's own default (cwd)
+
+    for (const auto& c : candidates)
+        if (holdsPlugin(c)) return c.lexically_normal().string();
+    // Nothing found: keep the first executable-relative path so the diagnostic
+    // names a concrete place to put the DSOs.
+    return candidates.front().lexically_normal().string();
+}
+
+IMailboxProtocolPlugin* UltraMailApp::ImapPlugin() const {
+    auto plugin = UltraNet_GetPlugin("imaps");
+    // The registry keeps the plug-in alive; the raw interface pointer stays
+    // valid until UltraNet shuts down.
+    return plugin ? dynamic_cast<IMailboxProtocolPlugin*>(plugin.get()) : nullptr;
+}
+
+void UltraMailApp::ReportMissingImapPlugin() {
+    AlertError(window_ ? window_.get() : nullptr,
+               "Mail cannot be fetched: the IMAP plug-in was not found.",
+               "UltraMail looked for ultranet_imap in " + pluginDir_
+               + ". Build the UltraNet IMAP plug-in (ULTRACANVAS_PLUGIN_IMAP) "
+                 "and keep it there, or point ULTRAMAIL_PLUGIN_DIR at the folder "
+                 "that holds it, then restart UltraMail.");
 }
 
 void UltraMailApp::OpenComposer(const Draft& draft) {
@@ -539,42 +607,25 @@ void UltraMailApp::CollectContacts(const std::string& accountId, const std::stri
 }
 
 void UltraMailApp::StartBackgroundSync() {
-    // Register every account's sync cadence with the scheduler.
+    // Register every account's sync cadence with the scheduler. SetAccount
+    // keeps the last-sync time of an account that is already registered, so
+    // this is safe to repeat after an account was added.
     for (const auto& a : accounts_) {
         DiscoveryResult d = AutoDiscovery::FromPresets(a.email);
         std::string url = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
         scheduler_.SetAccount(a.accountId, url, /*intervalSec=*/300);
     }
     // Only run the live loop when the IMAP plug-in is present (otherwise a timer
-    // would just fire against nothing).
-    auto imap = UltraNet_GetPlugin("imaps");
-    if (!imap) return;
-    if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent())
+    // would just fire against nothing), and only one of it.
+    if (syncTimerStarted_ || !ImapPlugin()) return;
+    if (auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent()) {
         app->StartTimer(300000, /*periodic=*/true,
                         [this](UltraCanvas::TimerId) { RunSyncs(/*force=*/false); });
+        syncTimerStarted_ = true;
+    }
 }
 
 void UltraMailApp::RunSyncs(bool force) {
-    auto imapPlugin = UltraNet_GetPlugin("imaps");
-    auto* imap = imapPlugin ? dynamic_cast<IMailboxProtocolPlugin*>(imapPlugin.get()) : nullptr;
-    if (!imap) return;
-
-    // A background timer must never raise a modal password prompt over whatever
-    // the user is doing. If the vault is still locked, skip this round and say
-    // so once — the next send or account change prompts in the foreground.
-    if (!vault_.IsUnlocked()) {
-        if (!syncErrorReported_) {
-            syncErrorReported_ = true;
-            AlertWarning(window_ ? window_.get() : nullptr,
-                         "New mail is not being fetched yet.",
-                         "Your mail account passwords are locked. Enter your "
-                         "master password — sending a message or adding an "
-                         "account will ask for it — and syncing resumes.");
-        }
-        return;
-    }
-
-    const int64_t now = static_cast<int64_t>(std::time(nullptr));
     // Which accounts: the due ones, or all of them for a forced reload.
     std::vector<ScheduledAccount> targets;
     if (force) {
@@ -586,17 +637,82 @@ void UltraMailApp::RunSyncs(bool force) {
             targets.push_back(sa);
         }
     } else {
-        targets = scheduler_.DueAccounts(now);
+        targets = scheduler_.DueAccounts(static_cast<int64_t>(std::time(nullptr)));
+    }
+    SyncAccounts(targets, /*userInitiated=*/force);
+}
+
+void UltraMailApp::SyncAccount(const std::string& accountId) {
+    for (const auto& a : accounts_) {
+        if (a.accountId != accountId) continue;
+        DiscoveryResult d = AutoDiscovery::FromPresets(a.email);
+        ScheduledAccount sa;
+        sa.accountId = a.accountId;
+        sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
+        SyncAccounts({sa}, /*userInitiated=*/true);
+        return;
+    }
+}
+
+void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
+                                bool userInitiated) {
+    if (targets.empty()) return;
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+
+    // Without the plug-in nothing can be fetched. The user asked (Reload, a
+    // new account), so say so every time; the timer never runs without it.
+    IMailboxProtocolPlugin* imap = ImapPlugin();
+    if (!imap) {
+        if (userInitiated) ReportMissingImapPlugin();
+        return;
     }
 
+    // A background timer must never raise a modal password prompt over whatever
+    // the user is doing. If the vault is still locked, skip this round and say
+    // so once — the next send or account change prompts in the foreground.
+    if (!vault_.IsUnlocked()) {
+        if (userInitiated || !syncErrorReported_) {
+            syncErrorReported_ = true;
+            AlertWarning(parent, "New mail is not being fetched yet.",
+                         "Your mail account passwords are locked. Enter your "
+                         "master password — sending a message or adding an "
+                         "account will ask for it — and syncing resumes.");
+        }
+        return;
+    }
+
+    const int64_t now = static_cast<int64_t>(std::time(nullptr));
     for (const auto& acc : targets) {
-        if (acc.serverUrl.empty()) continue;
         std::string email;
         for (const auto& a : accounts_) if (a.accountId == acc.accountId) email = a.email;
+        const std::string who = email.empty() ? acc.accountId : email;
+
+        // No preset matched the address and there is no manual setup yet, so
+        // there is no server to talk to. Say so on a user action instead of
+        // skipping the account without a word.
+        if (acc.serverUrl.empty()) {
+            if (userInitiated)
+                AlertWarning(parent, "New mail cannot be fetched for " + who + ".",
+                             "The incoming (IMAP) server for this address is not "
+                             "known. Manual server settings are not available yet.");
+            continue;
+        }
+
+        // The password lives in the vault. Without it the login would be
+        // rejected anyway, so report the real reason instead of a bad-password
+        // error from the server.
+        std::string pw;
+        if (!vault_.Retrieve(acc.accountId, pw) || pw.empty()) {
+            if (userInitiated)
+                AlertWarning(parent, "New mail cannot be fetched for " + who + ".",
+                             "No password is stored for this account in the "
+                             "credential vault. Add the account again with its "
+                             "password; the existing entry is updated.");
+            continue;
+        }
 
         UltraNetMailOptions opts;
         opts.credentials.username = email;
-        std::string pw; vault_.Retrieve(acc.accountId, pw);
         opts.credentials.password = pw;
         opts.useTls = true; opts.implicitTls = true;
 
@@ -608,23 +724,23 @@ void UltraMailApp::RunSyncs(bool force) {
         // The outcome carries the reason a sync failed (bad password, untrusted
         // certificate, unreachable host). Marshal it to the UI thread and say
         // so — once per run of failures, so a broken server does not raise an
-        // alert on every timer tick. The in-flight count unwinds either way, so
-        // the Reload button is restored even when the sync failed.
+        // alert on every timer tick; always when the user asked for the sync.
+        // The in-flight count unwinds either way, so the Reload button is
+        // restored even when the sync failed.
         svc->SyncInBackground(aid, acc.serverUrl, opts,
-                              [this, svc, aid, email](SyncOutcome outcome) {
+                              [this, svc, aid, who, userInitiated](SyncOutcome outcome) {
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) return;
-            app->PostToUIThread([this, aid, email, outcome]() {
+            app->PostToUIThread([this, aid, who, userInitiated, outcome]() {
                 if (--syncsInFlight_ <= 0) {
                     syncsInFlight_ = 0;
                     if (reloadButton_) reloadButton_->SetText("Reload");
                 }
                 if (!outcome) {
-                    if (!syncErrorReported_) {
+                    if (userInitiated || !syncErrorReported_) {
                         syncErrorReported_ = true;
                         AlertError(window_ ? window_.get() : nullptr,
-                                   "New mail could not be fetched for "
-                                   + (email.empty() ? aid : email) + ".",
+                                   "New mail could not be fetched for " + who + ".",
                                    outcome.message);
                     }
                     return;
@@ -865,15 +981,29 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
     const std::string password  = draft.password;
     // Runs after the discovery alert is dismissed, so the master-password
     // prompt is not stacked underneath it.
+    // Once the password is in the vault the account is complete: put it on
+    // the background schedule and fetch its inbox right away, so the new tile
+    // fills instead of waiting for the next timer tick or a manual Reload.
     auto storePassword = [this, accountId, password, parent]() {
-        if (password.empty()) return;
+        if (password.empty()) {
+            AlertWarning(parent, "The account was added without a password, so "
+                                 "its mail cannot be fetched.",
+                         "Add it again (Add account) with its password; the "
+                         "existing entry is updated.");
+            return;
+        }
         EnsureVaultUnlocked([this, accountId, password, parent]() {
             if (!vault_.Store(accountId, password)) {
                 AlertWarning(parent, "The account was added, but its password "
                                      "could not be saved to the credential vault.",
-                             "UltraMail will ask for it again. Check that "
-                             + vault_.VaultPath() + " is writable.");
+                             "Mail for it cannot be fetched until the password is "
+                             "stored. Check that " + vault_.VaultPath()
+                             + " is writable, then add the account again with "
+                               "its password; the existing entry is updated.");
+                return;
             }
+            StartBackgroundSync();
+            SyncAccount(accountId);
         });
     };
 
@@ -893,7 +1023,15 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
     if (disc.found) {
         std::string detail = "Incoming (IMAP): " + AutoDiscovery::ImapServerUrl(disc.imap)
                            + "\nOutgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
-        if (disc.imap.oauth) detail += "\nSign-in: OAuth2 (browser)";
+        // Providers that expect OAuth2 (Gmail, Outlook) — and Yahoo — reject
+        // the normal account password over IMAP. UltraMail signs in with a
+        // password, so the account needs an app password from the provider's
+        // security settings; say so here, where the user can still act on it.
+        if (disc.imap.oauth || disc.displayName == "Yahoo")
+            detail += "\nSign-in: password. " + disc.displayName
+                    + " needs an app password for mail programs (generated in "
+                      "your account's security settings); the normal sign-in "
+                      "password is rejected.";
         AlertSuccess(parent, "Account ready — settings detected ("
                              + disc.displayName + ").", detail, storePassword);
     } else {

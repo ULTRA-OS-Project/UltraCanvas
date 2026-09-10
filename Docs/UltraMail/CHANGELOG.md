@@ -1,3 +1,35 @@
+#### 2026-09-10 *0.7.1*
+- **A new account fetches its inbox right away.** Adding an account only
+  wrote it to the store; the first sync waited for the five-minute timer —
+  which had been started before the account existed, so it never covered it —
+  or for a manual Reload. Once the password is in the vault the account is
+  put on the schedule and synced at once, and the timer starts if it was not
+  running yet (the plug-in used to be checked only at start-up).
+- **The IMAP plug-in is found wherever the app is started from.** The UltraNet
+  registry looks for plug-ins in `Plugins/UltraNet` relative to the *working
+  directory*, which matches the build tree only when UltraMail is run from
+  there. The app now resolves the directory against the executable (up to two
+  levels above it, then the working directory), `ULTRAMAIL_PLUGIN_DIR` still
+  overriding.
+- **Nothing fails silently any more when mail cannot be fetched.** Reload and
+  the first sync of a new account used to return without a word when the IMAP
+  plug-in was not loaded, when no server was known for the address, or when no
+  password was stored. Each case now says what is missing and where (the
+  plug-in message names the directory that was searched). Errors from a sync
+  the user asked for are always shown; timer syncs still report once.
+- **Passwords of the second and later accounts are saved on Windows.**
+  UltraVault replaced the vault file with C's `rename()`, which on Windows
+  refuses to overwrite an existing file — so the first account's password was
+  stored and every later one failed with "could not be saved to the credential
+  vault". It uses `std::filesystem::rename` now.
+- **The data folder is `%APPDATA%\UltraMail` on Windows.** `HOME` is normally
+  unset there, so the mailbox database and the vault were created in whatever
+  folder the app was started from.
+- **App-password hint.** The account-ready dialog tells Gmail, Outlook and
+  Yahoo users that the normal sign-in password is rejected over IMAP and an app
+  password from the provider's security settings is needed; the earlier
+  "Sign-in: OAuth2 (browser)" line described a flow the app does not have.
+
 #### 2026-09-09 *0.7.0*
 - **Every window restyled on one theme.** `Apps/UltraMail/ui/UltraMailTheme.h`
   now holds the app's colours (near-white page, white cards with hairline
