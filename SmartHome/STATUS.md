@@ -1,0 +1,527 @@
+# Smart Home module — integration status
+
+Source dropped in 2025-12-08, written against the design in
+*Smart Home Protocol Research / Ultra OS Integration Guide* (same date).
+This file records what compiles today and what is still to do. It is a
+working document: delete it once the module builds.
+
+**The module is in the build.** `BUILD_SMARTHOME` is ON by default and builds
+two targets: `SmartHome` (engine and facade) and `SmartHomeUI` (the widgets
+that have implementations). Every protocol backend is behind its own option and
+all of them are OFF, because none can compile until its vendor SDK is vendored.
+`ULTRACANVAS_BUILD_SMARTHOME_TESTS=ON` adds the two test executables to ctest.
+
+## Layout
+
+Follows §4.1 of the research document, with the directory renamed from
+`UltraCanvasSmartHome/` to `SmartHome/` to match the sibling modules
+(`UltraAI/`, `UltraCloud/`, `UltraNet/`, `VirtualFS/`), none of which carry
+the `UltraCanvas` prefix.
+
+| Path | Contents |
+|---|---|
+| `include/` | Public API, the two core interfaces, protocol base class |
+| `core/` | `SmartHomeManager` singleton (registry, command queue, threads) |
+| `protocols/<Name>/` | Matter, Thread, Zigbee, ZWave, KNX backends |
+| `ui/` | Panel, per-device controls, advanced widgets |
+
+`devices/` from §4.1 is not present; device abstractions currently live in
+`include/ISmartHomeDevice.h`.
+
+## Compile status
+
+Header syntax checked with the repository's own include paths, `-std=gnu++20`.
+The `core/` sources and the facade test are fully compiled, linked and run.
+The protocol backends remain a header-only check: their `.cpp` files include
+vendor SDKs that are absent (see §2).
+
+| Component | Errors | State |
+|---|---|---|
+| `include/UltraCanvasSmartHome.h` | 0 | clean |
+| `include/ISmartHomeDevice.h` | 0 | clean |
+| `include/ISmartHomeProtocol.h` | 0 | clean |
+| `include/SmartHomeProtocolBase.h` | 0 | clean (was 6) |
+| `core/UltraCanvasSmartHomeManager.h` | 0 | clean |
+| `protocols/Matter` | 0 | clean (was 32) |
+| `protocols/Thread` | 0 | clean (was 30) |
+| `protocols/Zigbee` | 0 | clean (was 23) |
+| `protocols/ZWave` | 0 | clean (was 5) |
+| `protocols/KNX` | 0 | clean (was 6) |
+| `core/*.cpp` | 0 | **compiles and links** |
+| `tests/FacadeTest.cpp` | 0 | **compiles, links and passes** |
+| `ui/*.h` | 0 | clean (was 116) — ported |
+| `ui/UltraCanvasSmartHomeDeviceCard.cpp` | 0 | **builds and passes** |
+| `ui/UltraCanvasSmartHomePanel.cpp` | 0 | **builds and passes** |
+| `ui/UltraCanvasSmartHomeDeviceControl.cpp` | 0 | **builds and passes** |
+| `ui/UltraCanvasSmartHomeDialogs.cpp` | 0 | **builds and passes** |
+| `ui/UltraCanvasSmartHomeEditors.cpp` | 0 | **builds and passes** |
+| `ui/UltraCanvasSmartHomeAdvanced.cpp` | 0 | **builds and passes** |
+
+### How the backends were fixed
+
+One pattern accounted for nearly all 96 backend errors: **the interfaces in
+`ISmartHomeProtocol.h` were an early sketch, and the backends had moved on.**
+Where all five backends agreed with each other — and with the two programs in
+`examples/` — the interface was treated as the stale side and brought up to
+the code that actually works.
+
+- `FormNetwork()` took no arguments; every backend and both examples pass a
+  network name. Now `FormNetwork(const std::string& = "")`.
+- The info-level device API (`GetPairedDevices`, `PairDevice`, `UnpairDevice`,
+  `GetDeviceState`) existed in all five backends and in no interface.
+- Groups, binding and OTA had capability queries (`SupportsGroups()` and
+  friends) but no methods behind them. Added with default implementations, so
+  Z-Wave and KNX — which do not implement them — stay concrete.
+- `IZigbeeProtocol` and `IThreadProtocol` were stringly typed
+  (`std::string GetPanId()`); the backends and the examples use the protocols'
+  real widths (`uint16_t` PAN ID, `uint64_t` extended PAN ID), Thread datasets
+  as TLV byte vectors, and a commissioner/joiner API the sketch lacked.
+- `GetSecurityLevel()` returned a bare `int` — `return 5`, against a four-value
+  `SmartHomeSecurityLevel` enum. Now returns the enum: `Encrypted` for
+  Zigbee and Thread, `Certified` for Matter, which has attestation.
+- Protocol-internal types stay out of the core header: the ZCL calls
+  (`ReadAttribute` with `ZigbeeAttributeValue`) and Matter's fabric objects are
+  backend-only and no longer claim to override anything.
+- Matter used `OnAttributeChange` as a callback type that was never defined,
+  and declared `OnCommissioningComplete` twice. `KNXProtocol.h` used
+  `std::condition_variable` without including `<condition_variable>`.
+
+### The two-layer split, settled
+
+`SmartHomeAPI` (public, `include/`) and `SmartHomeManager` (engine, `core/`)
+are two layers, not duplicates, and both stay:
+
+| | `SmartHomeAPI` | `SmartHomeManager` |
+|---|---|---|
+| Audience | application developer, and the widgets | protocol-backend author |
+| Vocabulary | `SmartHomeDeviceInfo`, `SmartHomeLightState` — values | `shared_ptr<ISmartHomeProtocol>` — live objects |
+| Owns | nothing; it delegates | registries, command queue, three worker threads |
+
+Neither is touched by the end user, who sees only the widgets.
+
+The facade used to be incomplete: it had no way to register a protocol backend,
+so an application could `EnableProtocol(Zigbee)` but never supply a Zigbee
+backend — `examples/DevicePairing.cpp` had the call commented out with the note
+"In real code, this would be done through SmartHomeManager". It is complete now:
+
+- `SmartHomeAPI::RegisterProtocol` / `UnregisterProtocol` / `HasProtocolBackend`,
+  taking the backend as a `shared_ptr` to a forward-declared type, so
+  applications that only drive devices never see `ISmartHomeProtocol`.
+- `RegisterProtocolFactory` / `UnregisterProtocolFactory` /
+  `CreateSmartHomeProtocol` — declared in the original source but **never
+  defined**, so any caller would have failed to link. Defined in
+  `core/SmartHomeProtocolRegistry.cpp`.
+- `RegisterBuiltinProtocols()` registers whichever backends CMake compiled in
+  (`ULTRACANVAS_SMARTHOME_<NAME>`); `SmartHomeAPI::Initialize()` calls it, and
+  `EnableProtocol()` builds a backend on demand from its factory.
+
+**The rule worth keeping: if application code has to include `core/`, the
+facade has a hole.**
+
+`tests/FacadeTest.cpp` holds this line. It compiles and passes today.
+
+### Bugs this uncovered
+
+Two were found by actually building and running the module for the first time:
+
+- `SmartHomeProtocolBase`'s destructor called `Shutdown()`, which is pure
+  virtual on the interface — undefined behaviour during destruction, and an
+  undefined reference at link time. Every backend already shuts itself down in
+  its own destructor, so the base call was redundant as well as wrong. Removed.
+- `SmartHomeManager::commandMutex` was the only one of five mutexes not
+  declared `mutable`, while `GetPendingCommandCount() const` locks it. Would
+  not compile. Fixed.
+- `SmartHomeDeviceDialog` declared its own `IsVisible()` over a `bool visible`
+  member. `UltraCanvasUIElement::IsVisible()` is **not** virtual, so that only
+  hid it: the dialog would report itself closed while the framework's dispatch
+  and focus handling, which call the base, carried on as though it were open.
+  The member is gone; `Show()` and `Hide()` drive `SetVisible()`, so there is
+  one answer. `tests/WidgetTest.cpp` asserts the two agree.
+
+### Known latent bug
+
+`MatterProtocol::SubscribeAttribute` stores its callback in
+`attributeSubscriptions` but nothing ever invokes it — the map is only written
+and cleared. Attribute subscriptions will never fire until
+`OnAttributeChanged` dispatches to it. Left as-is: fixing it is behaviour, not
+integration.
+
+## What is left
+
+### 1. UI layer — done
+
+The three widget headers were written against a different element API. That
+port is finished, and **all sixteen widgets now have implementations**:
+
+| Written against | This framework |
+|---|---|
+| `class UIElement` | `UltraCanvasUIElement` — no `UIElement` type exists |
+| `Render(IRenderContext*)` | `Render(IRenderContext*, const Rect2Df&)` |
+| `OnMouseDown/Up/Move/Wheel/KeyDown/TouchStart/Move/End` | one `OnEvent(const UCEvent&)` |
+| raw `uint32_t` colours | `Color` (the literals were RGBA, so `Color::FromRGBA` takes them as they stand) |
+
+Mouse and touch share a path, because `UCEvent` carries both in the same
+`pointer` / `pointerId` fields.
+
+| File | Widgets |
+|---|---|
+| `ui/UltraCanvasSmartHomeDeviceCard.cpp` | device card, scene card |
+| `ui/UltraCanvasSmartHomePanel.cpp` | the dashboard |
+| `ui/UltraCanvasSmartHomeDeviceControl.cpp` | light, thermostat, lock, blind, sensor display |
+| `ui/UltraCanvasSmartHomeDialogs.cpp` | device dialog, pairing wizard |
+| `ui/UltraCanvasSmartHomeEditors.cpp` | scene editor, automation editor |
+| `ui/UltraCanvasSmartHomeAdvanced.cpp` | topology, energy monitor, scheduler, group control |
+
+Every widget drives its device through `SmartHomeAPI` and also reports through
+its own callback, so a host can let the widget talk to the module or intercept
+the change. Layout is computed from each element's local bounds rather than
+fixed pixel positions.
+
+`SmartHomeAutomation` stores its trigger as a type string plus a
+`TriggerConfig` the public header documents as JSON, while the editor works in
+the structured `AutomationTrigger`. The two are bridged with UltraCanvasJSON
+rather than by pasting strings together, so a config holding a quote or a
+backslash survives the round trip; the test asserts it by saving, reopening,
+saving again and comparing the two configs.
+
+`tests/WidgetTest.cpp` builds them all against `libUltraCanvas` and drives them
+with synthetic `UCEvent`s — 36 assertions.
+
+### 2. Third-party dependencies — decided, not yet installed
+
+Every backend is OFF by default and each needs its vendor SDK. CMake now checks
+for them and fails at configure time naming what is missing, rather than letting
+the compiler emit a wall of missing-header errors:
+
+| Backend | Needs | Licence |
+|---|---|---|
+| Matter | connectedhomeip + mbedTLS | Apache 2 |
+| Thread | OpenThread + mbedTLS | BSD 3-Clause / Apache 2 |
+| Zigbee | Silicon Labs EZSP (libezsp) | vendor |
+| Z-Wave | OpenZWave 1.6 (`libopenzwave1.6-dev`) | **LGPL 2.1**, dynamic |
+| KNX | nothing — KNXnet/IP over sockets | — |
+
+**KNX and Z-Wave build today.** `-DULTRACANVAS_SMARTHOME_KNX=ON` compiles and
+links with no third party at all. `-DULTRACANVAS_SMARTHOME_ZWAVE=ON` compiles
+and links against OpenZWave 1.6 from `libopenzwave1.6-dev`, dynamically:
+`libsmarthome.a` carries 98 undefined `OpenZWave::` symbols, `ldd` on a linked
+binary lists `libopenzwave.so.1.6`, and no `OpenZWave::` symbol is defined in
+the binary itself. `tests/ZWaveLinkTest.cpp` runs under ctest whenever that
+backend is enabled.
+
+Two macros gate the real code inside those backends and are easy to miss:
+`ULTRACANVAS_WITH_ZWAVE` and `ULTRACANVAS_WITH_EZSP`. Selecting a backend's
+source file is not enough — without its macro the file compiles into a shell
+that links successfully and does nothing. CMake defines both now; the symptom
+if it ever stops is a build that succeeds while `nm` shows no undefined
+`OpenZWave::` symbols at all.
+
+**What each backend actually contains** (counted, not assumed — a backend can
+compile and link while calling nothing at all):
+
+| Backend | Lines | Real SDK calls | State |
+|---|---|---|---|
+| Z-Wave | 2209 | 162 × `OpenZWave::` | **builds and links**, dynamically |
+| KNX | 1994 | none needed — implements KNXnet/IP itself | **builds and links** |
+| Thread | 1816 | 80 × `ot*` | **builds and links** against a built OpenThread |
+| Matter | 1324 | the SDK's controller, IM and platform layers | **builds and links** against a built connectedhomeip |
+| Zigbee | 2036 + 550 | ASH/EZSP written in-tree | **builds and links** |
+
+**Zigbee: the transport is now written, in-tree.** The backend's `EZSP_*` and
+`ZStack_*` functions were all `return false; // Not implemented`, including
+`InitializeEZSP()`, and the includes named Silicon Labs' own host headers
+(`ezsp/ash-host.h`) which this project does not ship — Legrand's libezsp has no
+such header, so no library install would have satisfied them either.
+
+Rather than adopt a vendor library, the two layers underneath are implemented
+here, in `protocols/Zigbee/ezsp/`:
+
+- `AshCodec` — ASH framing per UG101: byte stuffing, CRC-16/CCITT, data
+  randomisation, the frame types, and a stream reader that reassembles frames
+  split across serial reads. Every rule is a function from bytes to bytes,
+  which is the point: `tests/AshCodecTest.cpp` exercises all of it with no
+  radio attached, and checks the CRC against the published CRC-16/CCITT-FALSE
+  value for "123456789" (0x29B1) rather than against itself, so a wrong
+  polynomial or seed cannot pass by agreeing with its own mistake.
+- `AshTransport` — the part that genuinely needs a port and a clock: termios
+  setup, the RST/RSTACK handshake, sequence numbers, acknowledgement,
+  retransmission on NAK or timeout.
+- `EzspFrame` — EZSP frame encode/decode for both header formats, and the
+  version command, which has to go out in the legacy format because its answer
+  is what decides the format of everything after it.
+
+`InitializeEZSP()` opens the port, resets the NCP, negotiates the protocol
+version, configures the NCP and initialises whatever network it holds.
+
+**APS, ZDO and ZCL are now unpacked (2026-09-09).** `EzspFrame` grew the layers
+above the EZSP header: the 11-byte `EmberApsFrame`, `sendUnicast` /
+`sendMulticast` parameter blocks, `incomingMessageHandler` decoding, the seven
+ZDO requests the interview and binding need (Active_EP, Simple_Desc,
+Node_Desc, IEEE_addr, Bind, Unbind, Mgmt_Leave) with their responses and
+Device_annce, and the ZCL header plus attribute-record walker (Report
+Attributes / Read Attributes Response, all fixed-width types, both string
+lengths). `tests/EzspFrameTest.cpp` checks 59 byte layouts written from
+UG100, the ZDP tables and ZCL 2.6 — not from the code — and cross-checked
+against bellows' command tables where UG100 is ambiguous (addEndpoint's bare
+cluster lists, networkInit's bitmask from v6, setPolicy's single-byte
+decision through v8).
+
+On top of that, in `ZigbeeStack`:
+
+- Unicasts and groupcasts carry a real APS frame (HA profile, host endpoint
+  1, retry + route discovery for unicasts). The previous `EZSP_SendUnicast`
+  sent `nwk, ep, cluster, len, data` with no APS frame at all — the NCP would
+  have rejected every frame.
+- ZDO requests register under their transaction sequence number in a map of
+  their own (the ZCL map is keyed by ZCL TSN; the two spaces would collide),
+  and `incomingMessageHandler` routes profile-0 responses back by that number.
+  Bind, unbind and leave block until the device's status response, so `true`
+  means the device confirmed, not that bytes left the port.
+- ZCL: a reply with our TSN completes the pending request (this is how the
+  synchronous `ReadAttribute` gets its answer); Report Attributes and
+  unsolicited Read responses become `OnAttributeReport` calls per attribute;
+  everything else goes to `OnZCLResponse`. Every message updates the sender's
+  LQI/RSSI/last-seen.
+- `Device_annce` from an unknown IEEE is treated as a join and starts the
+  interview; from a known one it refreshes the network address.
+- The interview no longer holds references into the node table across
+  asynchronous callbacks (the previous `[this, &node]` captures dangled the
+  moment a node was erased); each step is keyed by device id and waits for its
+  answer before the next.
+
+**Network formation (2026-09-09, second pass).** The start-up and formation
+sequence is now the real one, and commands that need their answer get it:
+
+- `SendEzspAndWait` matches a response by sequence number *and* frame id, so
+  a callback whose sequence happens to coincide cannot be mistaken for it.
+  The data path (`sendUnicast` etc.) stays fire-and-forget; the device's
+  reply is what counts there.
+- Start-up: `setConfigurationValue` (stack profile 2, security level 5,
+  application ZDO flags, TC address cache), `addEndpoint` (host endpoint 1,
+  HA profile, Basic/Identify served, the usual clusters as client),
+  `setPolicy` (joins allowed — bitmask from v8, legacy decision before — TC
+  key requests answered with the current key, app keys denied), then
+  `networkInit`. `NOT_JOINED` is the normal answer on a fresh dongle; success
+  means the NCP resumed its saved network, in which case the parameters it is
+  running are read back with `getNetworkParameters` / `getEui64` /
+  `getNodeId` and reported through `OnNetworkUp`, so the protocol knows it
+  has a network without anyone calling `FormNetwork`.
+- `FormNetwork`: `setInitialSecurityState` (preconfigured ZigBeeAlliance09
+  link key, the generated network key, TC global link key, encrypted-key
+  required), then `formNetwork` with the 20-byte `EmberNetworkParameters`
+  (channel mask set to the one channel), then wait for `NETWORK_UP` and read
+  back.
+- `PermitJoin`: `addTransientLinkKey` with the well-known key (warning only
+  if the firmware lacks it), `permitJoining`, and a `Mgmt_Permit_Joining_req`
+  broadcast to routers so devices can join through them.
+- `stackStatusHandler` maintains network-up state on which waiters block —
+  state, not event, so an answer that arrives before the wait starts is not
+  missed. `NETWORK_DOWN` clears the protocol's network. A `NETWORK_UP` nobody
+  asked for is read back on a thread of its own, because the receive thread
+  cannot wait for its own answers.
+- `trustCenterJoinHandler` with `DEVICE_LEFT` forgets the node (no leave
+  request goes back out — it is gone, and this runs on the receive thread).
+- The bug where `SmartHomeNetworkInfo::PanId`, a string, was assigned a
+  `uint16_t` (compiling as a single character) is fixed; PAN and extended PAN
+  ids are formatted as hex.
+
+**Third pass (2026-09-09):** the last Zigbee TODOs.
+
+- `messageSentHandler` is decoded. With the message-contents-in-callback
+  policy set at start-up, a failed unicast's report carries the frame, so
+  the ZCL or ZDO request waiting on its answer is failed at once instead of
+  at its 10 s timeout. Broadcasts and multicasts have nothing waiting.
+- `ChangeChannel` is the network-manager procedure: `Mgmt_NWK_Update_req`
+  (channel-change form, new network update id) broadcast to every awake
+  device; the NCP moves itself on hearing it, and if it has not within five
+  seconds `setRadioChannel` moves it by hand. `SetChannel` on the facade
+  reaches this.
+- `UpdateNetworkKey` is the two-step rotation: `broadcastNextNetworkKey`
+  now, `broadcastNetworkKeySwitch` sixty seconds later on a thread
+  `Shutdown()` joins; the key on record changes when the switch succeeds.
+
+**What is still not done:** source routing and the address table (fine for
+a home-sized network; the stack routes on its own), OTA image serving
+(`StartOTAUpdate` returns false, as it always did), and Green Power —
+`EnableGreenPowerProxy(true)` and `AddGreenPowerDevice` used to return
+true while only setting a flag and storing a key; they now return false and
+say why. `GetTopology` still reports only what the interview found, not the
+neighbour tables (`Mgmt_Lqi_req` is not sent).
+
+**None of it has met a real NCP.** It is verified by compilation and by the
+framing and layout tests. First contact with hardware should be at 115200 8N1
+on the adapter's serial node, watching for RSTACK.
+
+**Thread builds and links against OpenThread (2026-09-09).** OpenThread was
+built here from a checkout at `f34c5e5` with `OT_PLATFORM=posix` (the recipe,
+including the two switches it took to find — `OT_UPTIME=ON` because the posix
+logging config demands it, `OT_RCP=OFF` because the RCP-only library does not
+build under that config — is in `Docs/Dependencies.md`). Against it the
+backend had 32 real errors, all API drift since it was written:
+
+- `otSysInit` takes an `otPlatformConfig` (radio URL, interface name,
+  real-time signal) and *returns* the instance; there is no separate
+  `otInstanceInitSingle` on POSIX. `otSysProcessDrivers` is gone; the host
+  runs the select() mainloop (`otSysMainloopUpdate` / `Poll` / `Process`),
+  which `OpenThreadInstance::Process()` now does one turn of.
+- The POSIX platform leaves `otPlatReset` to the application. It is defined
+  here: it records the request and the process thread restarts the stack.
+- `otCommissionerStart` takes the state and joiner callbacks itself; the
+  `otCommissionerSet*Callback` functions do not exist.
+- `otSecurityPolicy` is bit-fields, not `mFlags`; `otLeaderData` has no
+  `mLeaderRloc` (RLOC16 is the router id shifted); `otNeighborInfo` has no
+  outbound link quality; `otIcmp6SendEchoRequest` takes a message and a
+  message info, not an address.
+- A member named `otInstance` shadowed the C typedef inside the nested
+  class — renamed `openThread`.
+- The class had four unimplemented pure virtuals (`GetDevices`,
+  `GetDevice`, `GetPairedDevices`, `PairDevice`) plus `UnpairDevice`,
+  `GetDeviceState`, `GetHardwareInfo`; and used `NetworkNode` /
+  `SmartHomeNetworkInfo` fields that do not exist, as Zigbee had.
+
+`tests/ThreadLinkTest.cpp` constructs the backend and checks that
+`GetHardwareInfo()` carries `otGetVersionString()`'s answer
+(`OPENTHREAD/<commit>; POSIX; <date>`), which only the real library can
+supply. It does not call `Initialize()`: the POSIX `otSysInit` exits the
+process on a missing radio rather than returning.
+
+OpenThread does not install (`cmake --install` yields one binary), so CMake
+takes `OPENTHREAD_SOURCE_DIR` and `OPENTHREAD_BUILD_DIR` and links the
+seventeen archives in the order OpenThread's own `ot-cli` does. mbedTLS
+comes from inside that build; the system package is not needed for Thread.
+
+**Still not done in Thread:** `RegisterService` (SRP client) returned true
+while doing nothing; it now returns false and says so. `PingDevice` reports
+that the echo request went out, not that a reply came back.
+
+**Watch for the gating macros.** `ULTRACANVAS_WITH_ZWAVE`,
+`ULTRACANVAS_WITH_OPENTHREAD` and `ULTRACANVAS_WITH_EZSP` each gate their
+backend's real code. Selecting the source file is not enough: without the macro
+the file compiles into a shell that links successfully and does nothing. That is
+how the Z-Wave backend first built here — cleanly, with zero undefined
+`OpenZWave::` symbols, which is what gave it away.
+
+**Backend plan (decided 2026-09-09).** KNX first, because it needs nothing.
+Zigbee on **EZSP only** — the backend also carries TI Z-Stack branches, but
+every one is `return false; // Not implemented`, so offering the choice would
+only invite someone to pick the half that does nothing; nothing defines
+`ULTRACANVAS_WITH_ZSTACK` and those branches stay inert. Matter was deferred
+that morning and taken up the same evening; see the next section.
+
+**Matter builds against connectedhomeip (2026-09-09, evening).** The SDK was
+built here without its `bootstrap.sh` — CIPD and googlesource are not
+reachable from this network — with `gn` from Ubuntu's `generate-ninja`,
+pigweed from its GitHub mirror, a hand-made empty
+`build_overrides/pigweed_environment.gni`, and the ZAP generator from its
+GitHub release (`v2026.08.24`; the CIPD tag `v2026.08.24.2` has no release
+asset). The whole route is in `Docs/Dependencies.md`. The GN build installs
+nothing and chip-tool links 179 loose objects plus 51 archives from one
+ninja edge, so `scripts/package-chip.sh` reads that edge, drops chip-tool's
+own code, and writes one archive and a link list for CMake.
+
+The backend had never compiled, not even in stub mode: the wrapper was a
+namespace-scope class while the header forward-declared a nested one, seven
+interface methods were unimplemented, and the same nonexistent
+`NetworkNode` / `SmartHomeNetworkInfo` fields appeared as in the others. Its
+SDK wrapper was rewritten rather than patched, because what it called did
+not exist (`ClusterCommand::SendCommand` is chip-tool example code, not SDK
+API), what it configured no longer exists (`SetupParams::storageDelegate`),
+and half of it returned true while doing nothing (`ReadAttribute` answered
+"0"; write, subscribe, bind and OTA were `return true`). `MatterSDKWrapper`
+now follows chip-tool's own controller set-up:
+
+- file-backed storage (`ExamplePersistentStorage`, an ini file under the
+  storage directory) so the fabric survives restarts; persistent operational
+  keystore and certificate store; group data provider with the default IPK
+  installed for the fabric, without which nothing can be commissioned;
+- the controller's own NOC chain minted by `ExampleOperationalCredentialsIssuer`
+  — the **provisioning decision** from the morning's list: this is the
+  issuer chip-tool uses and it is not a production PKI; a real deployment
+  replaces it with an `OperationalCredentialsDelegate` backed by its CA;
+- device attestation against the SDK's test PAAs unless `paaTrustStorePath`
+  names a directory of production PAA certificates (`FileAttestationTrustStore`),
+  logged plainly at start-up;
+- a `DevicePairingDelegate` whose `OnCommissioningComplete` is what reports a
+  node as paired, and a `DeviceDiscoveryDelegate` collecting commissionable
+  nodes from mDNS;
+- every SDK call scheduled onto the SDK's event-loop thread
+  (`PlatformMgr().ScheduleWork`) — its objects may not be touched from any
+  other — with the synchronous facade methods waiting on a condition
+  variable; commands go `GetConnectedDevice` → CASE session →
+  `InvokeCommandRequest`, with the timed-invoke deadline for commands that
+  require it (door locks); reads and subscriptions use a `ReadClient` and
+  render primitive TLV values as text; writes encode text as bool / integer
+  / double / string and let the device's schema check refuse a mismatch;
+  bindings write the source's Binding list (replacing it — the ACL on the
+  target is not written yet); OTA provider returns false and says why.
+
+`tests/MatterLinkTest.cpp` checks that `GetHardwareInfo()` carries text the
+SDK's error formatter produced. It does not call `Initialize()`: that brings
+up the CHIP stack, which wants storage, mDNS and a network. Verified: the
+CMake build with `ULTRACANVAS_SMARTHOME_MATTER=ON` compiles the backend with
+0 errors, links it (the test binary defines 5583 `chip::` functions, 221 of
+them in `chip::Controller`), and the test passes — its description reads
+"connectedhomeip linked (Success)", which is `chip::ErrorStr(CHIP_NO_ERROR)`
+answering from inside the library.
+
+**None of it has met a Matter device.** Commissioning, commands, reads and
+subscriptions are written against the SDK's API as chip-tool uses it, and
+compile; whether the first `PairDevice` with a real setup code succeeds is
+the next thing to find out, on a machine with mDNS and a device in pairing
+mode.
+
+**Crypto backend: mbedTLS** (decided 2026-09-09). Matter's device attestation
+and OpenThread's commissioner both need X.509 and ECDSA on P-256. Neither asks
+UltraCrypt for it, so the only question was which backend those SDKs are built
+against. mbedTLS is what both default to, so they share one stack; it is ~1 MB
+static against OpenSSL's ~4–5 MB, which matters on the ARM and RISC-V boards
+ULTRA OS targets; and OpenSSL is linked only on Linux and Android today
+(Windows uses Schannel, macOS SecureTransport), so it would be new on two of the
+three desktop platforms — the point
+`Docs/Modules/UltraCrypt/README.md` §3 makes as *"there is no free ride"*.
+
+**UltraCrypt is unaffected.** libsodium remains the framework's crypto backend.
+It has no P-256 and no X.509, so it was never a candidate for this job, and the
+2026-08-10 ruling did not cover PKI. Nothing about that ruling changes.
+
+`Docs/Dependencies.md`, the demo's dependency table and
+`THIRD_PARTY_LICENSES.md` all record this now. **OpenZWave is LGPL 2.1**, the
+only copyleft component in the tree — link it dynamically or leave that backend
+off.
+
+### 3. Two framework gaps the design assumes
+
+- **No BLE transport.** Matter commissioning needs Bluetooth LE; the only
+  Bluetooth here is adapter *detection* in `UltraCanvasHardwareInfo`.
+- **Public-key crypto — probably NOT UltraCrypt's problem.** Matter device
+  attestation needs X.509 and ECDSA on P-256, which
+  `Docs/Modules/UltraCrypt/README.md` §2 puts out of scope. But
+  `protocols/Matter/MatterProtocol.cpp` does not ask UltraCrypt for any of it:
+  it includes connectedhomeip's own
+  `credentials/DeviceAttestationCredsProvider.h`, so the PKI lives inside the
+  SDK and comes with whichever crypto backend that SDK is built against
+  (mbedTLS by default; OpenSSL and PSA are the alternatives). Reopening the
+  UltraCrypt ruling is therefore a choice, not a prerequisite — an earlier
+  version of this file called it a prerequisite, which overstated it.
+
+  What *is* a real problem in that file: it uses
+  `credentials/examples/DeviceAttestationCredsExample.h`, the SDK's **test**
+  credentials, alongside `chip::TestPersistentStorageDelegate`. Both must be
+  replaced with real device credentials and real storage before anything
+  ships. That is credential provisioning, not a missing crypto library.
+
+mDNS/DNS-SD, by contrast, already exists
+(`UltraCanvas/Plugins/UltraNet/mdns/MdnsPlugin.cpp`, Avahi / Bonjour / Win32),
+but resolves IPv4 only — Matter and Thread need AAAA.
+
+### 4. Examples
+
+`examples/DevicePairing.cpp` (Thread) and `examples/ZigbeePairing.cpp` are
+interactive command-line drivers. They were decisive in resolving the
+interface-versus-backend disagreements above: where the sketch and the backend
+differed, these showed which side real calling code uses. Two fixes were needed
+in them: `DevicePairing.cpp` used `std::istringstream` without including
+`<sstream>`, and its call to `GetDiagnostics()` became `GetThreadDiagnostics()`
+after that method was renamed to stop it hiding the interface's virtual.
+
+Neither is wired into CMake yet; they need the backends to link first.

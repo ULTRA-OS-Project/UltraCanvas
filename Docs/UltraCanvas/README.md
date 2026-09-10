@@ -162,7 +162,8 @@ The following features are planned for future releases:
 -   **UltraOS support** - Native support for UltraOS platform
 -   **Vulkan backend** - Additional GPU rendering backend
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
--   **SmartHome drivers** - Device drivers for Matter, Thread, and Zigbee protocols
+-   **SmartHome drivers** - Device drivers for the protocols the module specifies:
+    Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
 -   **Wayland support** - Native Wayland windowing on Linux
 
 ----------

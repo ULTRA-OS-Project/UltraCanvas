@@ -210,6 +210,20 @@ if(BUILD_ULTRACLOUD AND TARGET UltraDatabase)
     add_subdirectory(UltraCloud)
 endif()
 
+# ===== SMART HOME =====
+# Devices, rooms, scenes and automations for the connected home. The engine and
+# the public facade always build; the dashboard widgets follow the UltraCanvas
+# UI library. Every protocol backend is off by default and stays that way until
+# its vendor SDK is vendored — see SmartHome/STATUS.md.
+option(BUILD_SMARTHOME "Build the Smart Home module" ON)
+option(ULTRACANVAS_BUILD_SMARTHOME_TESTS "Build the Smart Home test suite" OFF)
+if(BUILD_SMARTHOME)
+    if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
+        enable_testing()   # must be the top-level call, as for every other suite
+    endif()
+    add_subdirectory(SmartHome)
+endif()
+
 # ===== ULTRAMAIL =====
 # The mail application. Phase 1 builds the headless engine (LocalStore on
 # UltraDatabase); UI targets are added in later phases. Enabled by default
