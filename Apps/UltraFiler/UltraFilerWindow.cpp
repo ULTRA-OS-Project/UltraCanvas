@@ -507,11 +507,29 @@ namespace {
         return name.empty() ? (path.empty() ? "New tab" : path) : name;
     }
 
-    // The icon of that tab, "" for a tab that carries none. The home folder is
-    // the one tab whose title is not the folder's own name, so it is the one
-    // that needs the mark the tree and the Computer page put on it.
+    // The icon of that tab, "" for a tab that carries none. The home folder
+    // has its own - it is also the one tab whose title is not the folder's own
+    // name, so it needs the mark the tree and the Computer page put on it.
+    //
+    // The well-known user folders lend theirs to everything *inside* them as
+    // well: a tab deep in Downloads still says which of the user's places it
+    // is in, which is the whole use of a mark on a tab. The nearest one wins,
+    // so a Pictures folder kept inside Documents shows the pictures icon. They
+    // are the icons the folder tree and the file display already draw for
+    // those folders (UserFolderIconFile), so the tab agrees with both.
+    //
+    // The home folder does not lend its icon downwards - everything the user
+    // has is under it, and an icon every tab carries marks nothing.
     std::string TabIconForPath(const std::string& path) {
-        return IsUserHomeDir(path) ? IconPath("home-user.svg") : std::string();
+        if (IsUserHomeDir(path)) return IconPath("home-user.svg");
+        for (fs::path folder = fs::path(path).lexically_normal(); !folder.empty(); ) {
+            const std::string icon = WellKnownFolderIconFile(folder.string());
+            if (!icon.empty()) return IconPath(icon);
+            const fs::path parent = folder.parent_path();
+            if (parent == folder) break;   // the root is its own parent
+            folder = parent;
+        }
+        return {};
     }
 
     // ===== HISTORY =====

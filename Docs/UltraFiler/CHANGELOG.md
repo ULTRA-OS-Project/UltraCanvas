@@ -12,6 +12,17 @@
   *Home* as well (framework side: `displayNameProvider`,
   `Docs/UltraCanvas/CHANGELOG.md` 0.8.0) - the folder it opens, its name and
   what can be done with it are unchanged, only what the tile is labelled.
+- **A tab says which of the user's places it is in.** The main user folders -
+  Desktop, Documents, Downloads, Music, Pictures and Videos - now put their
+  icon on the tab, the same icons the folder tree and the file display already
+  draw for them: the monitor for Desktop, the download arrow, the picture, the
+  notes, the play mark, the document. A tab keeps the icon *inside* the folder
+  too, so one three folders deep in Downloads still shows the download mark -
+  which is the whole use of a mark on a tab, and what the folder name alone
+  ("2024") does not tell. The nearest folder wins, so a Pictures folder kept
+  inside Documents shows the picture icon rather than the document one, and
+  the home folder is deliberately not inherited downwards: everything the user
+  has is under it, and an icon on every tab marks nothing.
 - **A home icon with the user in it.** The plain black house has been replaced
   by `home-user.svg` - a house with its occupant, in the flat two-tone shape
   of the folder icons - in the tree, on the Computer page's Home tile and on
