@@ -1,3 +1,13 @@
+#### 2026-09-10 *0.3.119*
+- **Radio group: a programmatic selection now shows.**
+  `UltraCanvasRadioGroup::SelectButton()` unchecked the group's other buttons
+  but never checked the one being selected. That is invisible on the click
+  path, where `AddRadioButton` routes the button's own `onChecked` into it and
+  the button has already checked itself, but a `SelectButton()` call from code
+  left the group with no dot at all. It now checks the target as well,
+  assigning `selectedButton` first so the re-entrant call arriving through
+  `onChecked` finds a consistent group and the selection callback still fires
+  exactly once, and returns early when the button is already the selection.
 #### 2026-09-09 *0.3.118*
 - **A font file opens full size in a window of its own.**
   `UltraCanvasMediaViewerWindow` is a new component: an
