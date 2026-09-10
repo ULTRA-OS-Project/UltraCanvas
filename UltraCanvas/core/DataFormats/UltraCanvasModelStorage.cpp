@@ -130,6 +130,31 @@ bool Matrix4x4::InverseTransposeUpper3x3(double out[9]) const {
     return true;
 }
 
+bool Matrix4x4::InverseAffine(Matrix4x4& out) const {
+    double it[9];
+    // InverseTransposeUpper3x3 returns the cofactor matrix over the
+    // determinant, which is the transpose of the inverse; transposing it back
+    // gives the inverse of the upper 3x3.
+    if (!InverseTransposeUpper3x3(it)) { out = Matrix4x4::Identity(); return false; }
+
+    const double inv3[9] = {it[0], it[3], it[6],
+                            it[1], it[4], it[7],
+                            it[2], it[5], it[8]};   // row-major inverse of the 3x3
+
+    out = Matrix4x4::Identity();
+    // Column-major store: out.m[col * 4 + row] = inv3[row][col].
+    for (int row = 0; row < 3; ++row)
+        for (int col = 0; col < 3; ++col)
+            out.m[col * 4 + row] = inv3[row * 3 + col];
+
+    // The translation of the inverse is -inv3 * t.
+    const double tx = m[12], ty = m[13], tz = m[14];
+    out.m[12] = -(inv3[0] * tx + inv3[1] * ty + inv3[2] * tz);
+    out.m[13] = -(inv3[3] * tx + inv3[4] * ty + inv3[5] * tz);
+    out.m[14] = -(inv3[6] * tx + inv3[7] * ty + inv3[8] * tz);
+    return true;
+}
+
 bool Matrix4x4::IsIdentity(double epsilon) const {
     static const Matrix4x4 kIdentity;
     for (int i = 0; i < 16; ++i)
@@ -434,13 +459,29 @@ size_t ModelMesh::TotalFaceCount() const {
 
 void ModelMaterial::DeriveMissingModel() {
     if (Phong.has_value()) {
-        // Phong -> PBR. Base colour is the diffuse albedo; a specular colour
-        // bright enough to read as metal maps to metallic, and Blinn-Phong
+        // Phong -> PBR. Base colour is the diffuse albedo, and Blinn-Phong
         // shininess maps to roughness by the usual sqrt(2 / (Ns + 2)).
+        //
+        // Metalness has no Phong equivalent, and guessing it from the specular
+        // colour alone is wrong: a white specular means "shiny", not "metal",
+        // and it is the single most common value in MTL, 3DS and COLLADA files
+        // — the E-45 aircraft sample sets it on painted fuselage panels. What
+        // actually distinguishes a metal is that it has no diffuse albedo:
+        // its reflectance IS its base colour. So metal requires a dark diffuse
+        // AND a bright specular, and everything else stays dielectric, which
+        // is both the safer default and the right answer far more often.
         const PhongParams& p = *Phong;
         BaseColorFactor = Vec4f(p.Diffuse.x, p.Diffuse.y, p.Diffuse.z, BaseColorFactor.w);
-        const float specLuma = 0.2126f * p.Specular.x + 0.7152f * p.Specular.y + 0.0722f * p.Specular.z;
-        MetallicFactor = specLuma > 0.9f ? 1.0f : 0.0f;
+        auto luma = [](const Vec3f& c) {
+            return 0.2126f * c.x + 0.7152f * c.y + 0.0722f * c.z;
+        };
+        const float diffuseLuma = luma(p.Diffuse);
+        const float specularLuma = luma(p.Specular);
+        MetallicFactor = (diffuseLuma < 0.1f && specularLuma > 0.5f) ? 1.0f : 0.0f;
+        // A metal's base colour is its specular reflectance, not its (black)
+        // diffuse.
+        if (MetallicFactor > 0.0f)
+            BaseColorFactor = Vec4f(p.Specular.x, p.Specular.y, p.Specular.z, BaseColorFactor.w);
         const float ns = p.Shininess > 0.0f ? p.Shininess : 1.0f;
         RoughnessFactor = std::min(1.0f, std::sqrt(2.0f / (ns + 2.0f)));
         if (!BaseColorTexture.IsSet() && p.DiffuseTexture.IsSet())

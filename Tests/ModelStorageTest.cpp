@@ -146,6 +146,28 @@ static void TestMaterials() {
           "an OBJ/MTL Phong material derives a plausible PBR base colour");
     Check(mtl.RoughnessFactor > 0.1f && mtl.RoughnessFactor < 0.3f, "shininess 60 maps to a mid-low roughness");
 
+    // Regression: a white specular means "shiny", not "metal", and it is the
+    // most common value in MTL/3DS/COLLADA files. Deriving metalness from the
+    // specular alone made every painted surface in the E-45 3DS sample import
+    // as raw metal.
+    ModelMaterial painted;
+    PhongParams shiny;
+    shiny.Diffuse = Vec3f(0.8f, 0.8f, 0.8f);
+    shiny.Specular = Vec3f(1.0f, 1.0f, 1.0f);
+    painted.Phong = shiny;
+    painted.DeriveMissingModel();
+    Check(painted.MetallicFactor == 0.0f, "a bright diffuse with a white specular is not metal");
+
+    ModelMaterial chrome;
+    PhongParams metal;
+    metal.Diffuse = Vec3f(0.02f, 0.02f, 0.02f);
+    metal.Specular = Vec3f(0.95f, 0.93f, 0.88f);
+    chrome.Phong = metal;
+    chrome.DeriveMissingModel();
+    Check(chrome.MetallicFactor == 1.0f, "a dark diffuse with a bright specular is metal");
+    Check(Near(chrome.BaseColorFactor.x, 0.95f, 1e-6),
+          "a metal takes its base colour from the specular, not the black diffuse");
+
     ModelMaterial pbr;
     pbr.BaseColorFactor = Vec4f(0.9f, 0.9f, 0.9f, 1.0f);
     pbr.MetallicFactor = 1.0f;

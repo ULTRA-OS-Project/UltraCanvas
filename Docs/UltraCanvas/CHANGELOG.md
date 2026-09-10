@@ -1,3 +1,30 @@
+#### 2026-09-10 *0.8.3*
+- **3DS models read into the universal 3D structure.**
+  `ModelConverter::ThreeDSConverter` (`Plugins/Models/3DS/`) reads Autodesk
+  3D Studio files into `ModelStorage::ModelDocument` - the first scene format
+  on the new structure, and the one that proves it holds a scene: named meshes,
+  per-object matrices, materials with diffuse/specular/bump maps, per-face
+  material groups split into one primitive each, cameras and lights. 3DS stores
+  vertices in world space beside each object's own matrix, so the reader puts
+  the matrix on the node and the inverse into the vertices - the object frame
+  survives as real structure and composes back to exactly the coordinates the
+  file held. Every read is bounds-checked against its enclosing chunk, so a
+  truncated or hostile file yields a warning rather than an overrun, and what
+  the format loses is reported: 12-character truncated texture names, several
+  images stacked in one map slot, a KFDATA hierarchy this reader does not yet
+  read. `media/models/3DS/E-45-Aircraft.3ds` is the sample;
+  `Tests/Model3DSTest.cpp` covers it with 25 assertions including the
+  malformed-input cases.
+- **A white specular is no longer read as metal.**
+  `ModelMaterial::DeriveMissingModel` derived metalness from the Phong specular
+  alone, so every painted surface with a white highlight - the commonest
+  material in MTL, 3DS and COLLADA files - became raw metal, which renders
+  black without an environment. Metal now also requires a dark diffuse, since
+  having no diffuse albedo is what physically distinguishes one, and takes its
+  base colour from the specular. `Matrix4x4::InverseAffine` joins the structure
+  for readers of formats that store world-space vertices beside an object
+  matrix.
+
 #### 2026-09-10 *0.8.2*
 - **One 3D structure for every 3D format.** `ModelStorage::ModelDocument`
   (`DataFormats/UltraCanvasModelStorage.h`) is to 3D what

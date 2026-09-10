@@ -1,6 +1,6 @@
 # UltraCanvas 3D Model Structure — Survey and Proposal
 
-**Status:** structure defined and merged; converters to follow
+**Status:** structure defined and merged; 3DS reads into it; more converters to follow
 **Scope:** `ModelStorage::ModelDocument`
 (`UltraCanvas/include/DataFormats/UltraCanvasModelStorage.h`) and the
 converters that will read into and write out of it.
@@ -36,6 +36,7 @@ this document is where those annotations come from.
 | `Mesh`, `LoadOBJ` | `Apps/DemoApp/UltraCanvasGLDemoSupport.h` | A second, private mesh type and OBJ reader for the GL showcase. Not registered anywhere. |
 | Extension → `GraphicsFormatType::ThreeD` | `UltraCanvasGraphicsPluginSystem.h:108-111` | `3dm/3ds/pov/stl/obj/fbx/dae/gltf` classified as 3D — with no plugin behind any but STL. |
 | `FilerFileCategory::Model3D` | `UltraCanvasFilerWidget.cpp:272-280` | obj/ply/3ds/3mf/gltf/glb/dae/fbx get a Model badge. Labels only. |
+| `ThreeDSConverter` | `Plugins/Models/3DS/` | Reads Autodesk 3DS into `ModelDocument`: meshes, object matrices, materials with texture maps, per-face material groups, cameras and lights. The first scene format on the structure. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D**; `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped. |
 
 Two observations drive the design:
@@ -253,6 +254,14 @@ one. 30 assertions, all passing.
 
 Each step is independently mergeable and comes with a test and a demo page.
 
+0. **3DS — done.** `Plugins/Models/3DS/UltraCanvas3DSConverter.cpp` reads the
+   chunked binary format into `ModelDocument`, validated against the E-45
+   aircraft sample in `media/models/3DS`
+   (`Tests/Model3DSTest.cpp`, 25 assertions). It landed first because it was
+   the sample to hand and because it exercises far more of the structure than
+   STL does: two named meshes, per-object matrices, two materials with four
+   texture maps, and per-face material groups. What it taught is in §6.
+
 1. **STL on the new structure.** Re-express the existing loader as an
    `IModelFormatConverter`. No new parsing — it is the smallest possible proof
    that the structure and the interface fit, and it retires the bridge for that
@@ -310,6 +319,35 @@ Recorded rather than hidden:
 - **Welding is a hash-grid merge**, so two vertices within tolerance but
   straddling a lattice boundary do not merge. Exact enough for de-duplicating
   soup, not a substitute for a proper spatial merge.
+- **3DS KFDATA is not read.** The keyframer section carries the node
+  hierarchy, pivots and position/rotation/scale tracks. The reader warns when
+  it is present, so a scene with a hierarchy is known to arrive as a flat list
+  of siblings rather than silently mis-assembled. The sample has none.
+- **3DS cameras have a position but no orientation.** The format states a
+  look-at target and a bank angle; `ModelNode` orients by transform, and the
+  conversion is not done yet, so target and bank are kept as node metadata and
+  the reader says so. Untested — the sample has no camera or light.
+- **Smoothing groups are resolved into normals** on 3DS import as they are for
+  OBJ, so neither round-trips them.
+
+### What the first real file changed
+
+Two things the E-45 sample corrected, both worth recording because the next
+converter would have hit them too:
+
+- **Phong specular does not imply metal.** `DeriveMissingModel` originally read
+  a bright specular as metallic, so every painted panel on the aircraft — white
+  specular, bright diffuse, the most common material in MTL, 3DS and COLLADA
+  files — imported as raw metal, which renders black without an environment.
+  Metal is now required to have a *dark diffuse* as well, since what physically
+  distinguishes a metal is having no diffuse albedo; and a metal takes its base
+  colour from the specular rather than the black diffuse. Pinned by
+  `Tests/ModelStorageTest.cpp`.
+- **`Matrix4x4::InverseAffine`** had to be added. 3DS stores vertices already
+  in world space beside the object's own matrix; putting the matrix on the node
+  and the inverse-transformed vertices in the mesh is what keeps the object
+  frame as real structure and composes back to exactly the file's world
+  coordinates (asserted against the raw `POINT_ARRAY` extents).
 
 ## 7. Non-goals
 

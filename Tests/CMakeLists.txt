@@ -676,10 +676,38 @@ set_target_properties(ModelStorageTest PROPERTIES
 )
 add_test(
     NAME ModelStorageTest
-    COMMAND ModelStorageTest
+    COMMAND ModelStorageTest "${ULTRACANVAS_ROOT}/media/vector/STL/Toy airplane model for children B0011994 3d model file for 3d printer.stl"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelStorageTest")
+
+# ===== 3DS MODEL READER TEST =====
+# The 3DS chunk reader against the real E-45 aircraft in media/models/3DS -
+# the first scene format read into ModelDocument, so also the first end-to-end
+# check that the structure holds meshes, object matrices, materials and texture
+# maps together. Malformed-input cases run with or without the sample.
+message(STATUS "  Building Model3DSTest...")
+add_executable(Model3DSTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/Model3DSTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelMesh3D.cpp
+)
+target_include_directories(Model3DSTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(Model3DSTest PRIVATE cxx_std_20)
+set_target_properties(Model3DSTest PROPERTIES
+    OUTPUT_NAME "Model3DSTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME Model3DSTest
+    COMMAND Model3DSTest ${ULTRACANVAS_ROOT}/media/models/3DS/E-45-Aircraft.3ds
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: Model3DSTest")
 
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the

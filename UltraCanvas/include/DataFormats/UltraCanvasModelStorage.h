@@ -121,6 +121,11 @@ namespace ModelStorage {
         // Normals transform by the inverse transpose; returns false and leaves
         // the result identity when the matrix is not invertible.
         bool InverseTransposeUpper3x3(double out[9]) const;
+        // Inverse of an affine transform (last row 0,0,0,1). Returns false and
+        // leaves `out` identity when the upper 3x3 is singular. Readers of
+        // formats that store world-space vertices beside an object matrix
+        // (3DS) need it to recover object-local coordinates.
+        bool InverseAffine(Matrix4x4& out) const;
         bool IsIdentity(double epsilon = 1e-12) const;
         // Decompose into TRS. Returns false when the matrix carries shear or a
         // mirror that TRS cannot express — the caller should keep the matrix.
