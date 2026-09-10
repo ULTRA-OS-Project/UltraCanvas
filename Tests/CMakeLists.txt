@@ -739,6 +739,38 @@ add_test(
 )
 message(STATUS "    Test registered: ModelOBJTest")
 
+# ===== DXF 3D MODEL READER TEST =====
+# DXF read as geometry rather than as a drawing: the 3D entities the Vector
+# plugin's DXF reader has to flatten. Checks both kinds of DXF - the exported
+# model in media/models/DXF, and a drawing from media/vector/DXF that must be
+# refused with an explanation instead of returned empty.
+message(STATUS "  Building ModelDXFTest...")
+add_executable(ModelDXFTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelDXFTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
+)
+target_include_directories(ModelDXFTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelDXFTest PRIVATE cxx_std_20)
+set_target_properties(ModelDXFTest PROPERTIES
+    OUTPUT_NAME "ModelDXFTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelDXFTest
+    COMMAND ModelDXFTest
+            "${ULTRACANVAS_ROOT}/media/models/DXF/E-45-Aircraft.dxf"
+            "${ULTRACANVAS_ROOT}/media/models/3DS/E-45-Aircraft.3ds"
+            "${ULTRACANVAS_ROOT}/media/vector/DXF/women-body.dxf"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelDXFTest")
+
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the
 # real CSSLayout engine: an auto-width flex column grows with an inner row of

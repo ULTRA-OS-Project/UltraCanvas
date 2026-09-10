@@ -1,3 +1,31 @@
+#### 2026-09-10 *0.8.6*
+- **DXF read as geometry, not as a drawing.**
+  `ModelConverter::DXFModelConverter` (`Plugins/Models/DXF/`) reads the 3D
+  entity set into `ModelStorage::ModelDocument`: `3DFACE` (a 4th corner
+  repeating the 3rd is a triangle, not a degenerate quad), polyface meshes,
+  polygon meshes, 3D polylines, lines and points - one mesh per layer, the
+  layer's ACI colour as its material, `$INSUNITS` as the document's unit, Z-up.
+  This is the geometry the Vector plugin's DXF reader has to discard, because
+  `VectorDocument` is 2D and has nowhere to put a Z. The two are complements:
+  a floor plan is a drawing, an exported model is geometry, and a file that is
+  only a drawing is now refused with a warning naming the other reader rather
+  than returned as an empty document.
+- **The ACI palette moved to core.** `DataFormats/UltraCanvasCADPalette.h`
+  holds `AciPaletteColor` - the exact classic colours 1-9, the 250-255 grey
+  ramp and the 24-hue construction for 10-249 - because the 2D vector
+  converters and the 3D model converters both resolve ACI and neither plugin
+  owns it. `VectorConverter::AciPaletteColor` stays as a forwarder, so the
+  vector converters read unchanged.
+- **Three formats of one aircraft now agree.** `media/models/` carries the E-45
+  as 3DS, OBJ and DXF exports of the same scene. The DXF and 3DS land on
+  identical bounds with no conversion, the OBJ lands on them after
+  `ConvertUpAxis`, the DXF and OBJ each hold 8110 quads, and triangulating
+  either gives the 3DS's 16220 triangles exactly. `Tests/ModelDXFTest.cpp`
+  adds 41 assertions, among them a synthetic polyface mesh that caught a real
+  bug: a polyface *position* vertex carries flags 192 (128 | 64) and a face
+  record carries 128 alone, so testing bit 128 by itself matched both and no
+  polyface mesh would have loaded its positions at all.
+
 #### 2026-09-10 *0.8.5*
 - **Text formats choose their write precision.**
   `ModelConverter::ConversionOptions::Precision` selects between

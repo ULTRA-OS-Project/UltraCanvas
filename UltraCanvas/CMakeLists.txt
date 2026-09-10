@@ -677,6 +677,7 @@ set(ULTRACANVAS_CORE_SOURCES
         # 3D format converters against ModelStorage::ModelDocument.
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp
@@ -709,6 +710,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # (ModelStorage::ModelDocument) every 3D file format reads into and
         # writes out of - the 3D counterpart of VectorStorage::VectorDocument.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasModelStorage.cpp
+
+        # DataFormats section: the AutoCAD Color Index palette, shared by the
+        # 2D vector converters and the 3D model converters.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasCADPalette.cpp
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp

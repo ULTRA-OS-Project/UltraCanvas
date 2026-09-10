@@ -53,6 +53,11 @@ enum class ModelFormat {
     ThreeMF,    // 3D Manufacturing Format (.3mf)
     AMF,        // Additive Manufacturing Format
 
+    // CAD, read for the mesh entities it carries — not for its B-rep solids,
+    // which are out of scope for this document (see the 3D model proposal).
+    DXF,        // AutoCAD Drawing Exchange Format
+    DWG,        // AutoCAD Drawing
+
     // Point clouds
     PCD,        // Point Cloud Library
     LAS,        // ASPRS LiDAR

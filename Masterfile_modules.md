@@ -75,6 +75,17 @@ the backing implementation can be replaced without affecting callers.
     writes Wavefront OBJ with its MTL library: n-gon faces kept as n-gons,
     the position/texcoord/normal index streams resolved into unique corners,
     objects, groups and `usemtl`, vertex colours, and the MTL PBR extension.
+    `DXFModelConverter` (`Plugins/Models/DXF/UltraCanvasDXFModelConverter.h`)
+    reads DXF's 3D entity set - `3DFACE`, polyface and polygon meshes, 3D
+    polylines, lines and points - one mesh per layer with the layer's ACI
+    colour, complementing the Vector plugin's DXF reader rather than replacing
+    it (a drawing belongs in `VectorDocument`, a model here).
+
+- **UltraCanvasCADPalette** (`DataFormats/UltraCanvasCADPalette.h`) - the
+  AutoCAD Color Index palette, `AciPaletteColor(aci)`: exact classic colours
+  1-9, the 250-255 grey ramp, and the standard 24-hue construction for 10-249.
+  Core rather than plugin-owned because both the 2D vector converters and the
+  3D model converters resolve ACI.
   See `Docs/Research/UltraCanvas3DModelProposal.md` for the format survey the
   structure is derived from, and what is deliberately out of scope (B-rep
   solids: STEP, IGES, ACIS, DWG `3DSOLID`).

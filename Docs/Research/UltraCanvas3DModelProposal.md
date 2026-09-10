@@ -1,6 +1,6 @@
 # UltraCanvas 3D Model Structure — Survey and Proposal
 
-**Status:** structure defined and merged; 3DS reads and OBJ round-trips through it; more converters to follow
+**Status:** structure defined and merged; 3DS, OBJ and DXF read into it, OBJ writes from it; more converters to follow
 **Scope:** `ModelStorage::ModelDocument`
 (`UltraCanvas/include/DataFormats/UltraCanvasModelStorage.h`) and the
 converters that will read into and write out of it.
@@ -38,7 +38,8 @@ this document is where those annotations come from.
 | `FilerFileCategory::Model3D` | `UltraCanvasFilerWidget.cpp:272-280` | obj/ply/3ds/3mf/gltf/glb/dae/fbx get a Model badge. Labels only. |
 | `ThreeDSConverter` | `Plugins/Models/3DS/` | Reads Autodesk 3DS into `ModelDocument`: meshes, object matrices, materials with texture maps, per-face material groups, cameras and lights. The first scene format on the structure. |
 | `OBJConverter` | `Plugins/Models/OBJ/` | Reads **and writes** Wavefront OBJ + MTL: n-gons kept as n-gons, the three index streams resolved into unique corners, objects, groups, `usemtl`, vertex colours, and the MTL PBR extension. The first writer on the structure. |
-| 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D**; `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped. |
+| `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
+| 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
 Two observations drive the design:
 
@@ -282,11 +283,18 @@ Each step is independently mergeable and comes with a test and a demo page.
    skins, animation, morph targets. Once this reads and writes, UltraCanvas can
    exchange with the rest of the industry. JSON is already available through
    `UltraCanvasJSON`.
-5. **DXF/DWG 3D entities into `ModelDocument`.** The highest value per line of
-   new code in the list: `UltraCanvasDXFReader` already parses `3DFACE`,
-   polyface and polygon meshes and currently flattens them to 2D. Give the
-   reader a 3D output path and the framework gains CAD model import from
-   readers it already owns.
+5. **DXF 3D entities — done.**
+   `Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp` reads `3DFACE`,
+   polyface meshes, polygon meshes, 3D polylines, lines and points into
+   `ModelDocument`, one mesh per layer, validated against the aircraft's DXF
+   export (`Tests/ModelDXFTest.cpp`, 41 assertions). It is a separate reader
+   rather than a second output path threaded through the Vector plugin's
+   `UltraCanvasDXFReader`: that one is a large 2D machine built around
+   `VectorDocument`, and the two formats-of-DXF — drawing and model — want
+   genuinely different readers. **Still to do:** DWG, whose native decoder
+   already produces DXF text (`DWGConverter::DecodeToDxf`), so pointing that
+   text at this reader is nearly free; and unifying the two DXF tag scanners,
+   which are now duplicated.
 6. **3MF.** The manufacturing pair for STL, and the reason `UnitScaleToMeters`
    and components/instancing exist. ZIP is available (`UltraCanvasZipPackage`).
 7. **OFF, then AMF** — small, and they close out the mesh-format set.
@@ -349,8 +357,29 @@ Recorded rather than hidden:
   same choice.
 - **OBJ `l` and `p` elements are not read**, so a file's polylines and points
   are dropped with a warning even though the document has modes for both.
+- **`WeldVertices` after normal generation barely merges anything**, because
+  the generated normals differ per corner in an unindexed soup and welding is
+  attribute-aware. Measured on the aircraft DXF: 1 104 of 32 440 vertices. The
+  real fix is crease-angle normal generation — weld positions first, then split
+  normals only across edges sharper than a threshold — which would give both
+  correct faceting and real de-duplication. Until then the reader keeps the
+  faithful order (normals from the file's own faces, then weld) and welding is
+  weak for STL, DXF and any other unindexed source.
+- **DXF `BLOCKS`/`INSERT` are not expanded**, so 3D geometry placed through a
+  block is missing. The reader warns when it finds 3D entities in `BLOCKS`.
+- **Two DXF tag scanners now exist** — this one and the Vector plugin's. They
+  should share one.
 
 ### What the sample files confirmed
+
+The aircraft eventually arrived in three formats — 3DS, OBJ and DXF — of the
+same Blender scene, which is as close to a controlled experiment as file-format
+work gets. All three now agree: the DXF and 3DS land on identical bounds
+without any conversion (both Z-up), the OBJ lands on them after
+`ConvertUpAxis`, the DXF and OBJ both hold 8 110 quads, and triangulating
+either gives the 3DS's 16 220 triangles exactly.
+
+
 
 The aircraft came as **both** a 3DS and an OBJ export of the same Blender
 scene, which turned out to be the strongest check available: the OBJ is Y-up
