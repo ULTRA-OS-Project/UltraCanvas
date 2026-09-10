@@ -98,6 +98,27 @@ target_include_directories(${PLUGIN_NAME}
         ${CMAKE_CURRENT_SOURCE_DIR}/../../include
 )
 
+# The core library, for its include paths rather than its symbols - the same
+# edge every other plugin declares.
+#
+# UltraCanvasModelFormatsPlugin.h reaches UltraCanvasImage.h, which includes
+# <cairo/cairo.h>, and the path to Cairo is carried on the core target as a
+# PUBLIC include directory. Without this edge the plugin compiles anywhere
+# Cairo happens to sit on the compiler's default search path (/usr/include on
+# Linux) and fails everywhere it does not - which is exactly what macOS did,
+# where Homebrew puts it under /opt/homebrew/include.
+#
+# Guarded because this directory also configures standalone, for building and
+# testing the converters without the rest of the framework; there the core
+# target does not exist and the headers that need Cairo are not reached.
+if(TARGET UltraCanvas)
+    target_link_libraries(${PLUGIN_NAME} PRIVATE UltraCanvas)
+endif()
+
+if(DEFINED ULTRACANVAS_INCLUDE_DIR)
+    target_include_directories(${PLUGIN_NAME} PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+endif()
+
 if(MODELS_COLLADA_ENABLED)
     target_include_directories(${PLUGIN_NAME} PRIVATE ${MODELS_TINYXML2_INCLUDE_DIRS})
     target_link_directories(${PLUGIN_NAME} PRIVATE ${MODELS_TINYXML2_LIBRARY_DIRS})

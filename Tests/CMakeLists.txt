@@ -960,15 +960,22 @@ endif()
 # ===== MODEL FORMATS DISPATCH TEST =====
 # The seam that makes the converters a plugin matrix rather than five classes:
 # extension dispatch, the claimed-extension lists, and loading every sample
-# through one call. Links the dispatch TU only - no UI stack - which is why
-# UltraCanvasModelFormatsDispatch.cpp is separate from the IGraphicsPlugin
-# facade.
+# through one call. It compiles the dispatch TU rather than the IGraphicsPlugin
+# facade, which is why it needs no UI *symbols* - but the facade's header still
+# reaches UltraCanvasImage.h and so needs the core's include paths, Cairo's
+# among them. The link edge below is how this repository carries those; without
+# it the target builds only where Cairo happens to sit on the compiler's
+# default search path, which is Linux and not macOS.
 set(MODEL_DISPATCH_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelFormatsPluginTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelFormatsDispatch.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
@@ -978,6 +985,9 @@ set(MODEL_DISPATCH_SOURCES
 set(MODEL_DISPATCH_DEFINES "")
 set(MODEL_DISPATCH_INCLUDES "")
 set(MODEL_DISPATCH_LIBS "")
+if(TARGET UltraCanvas)
+    list(APPEND MODEL_DISPATCH_LIBS UltraCanvas)
+endif()
 
 find_package(PkgConfig QUIET)
 if(PkgConfig_FOUND)
