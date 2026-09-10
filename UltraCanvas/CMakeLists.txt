@@ -48,7 +48,7 @@ option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_PLUGIN_LATEX "Build LaTeX math plugin (embedded MicroTeX)" ON)
-option(ULTRACANVAS_PLUGIN_MODELS "Build 3D model formats plugin (3DS, OBJ, DXF 3D, COLLADA, .blend)" ON)
+option(ULTRACANVAS_PLUGIN_MODELS "Build 3D model formats plugin (3DS, OBJ, DXF 3D, STEP, Alembic, COLLADA, .blend)" ON)
 # Which typesetter the LaTeX view uses by default: "native" (the framework's
 # own UltraCanvasMathEngine on OpenType MATH fonts) or "microtex" (the vendored
 # engine, kept as the oracle for the native one). The environment variable

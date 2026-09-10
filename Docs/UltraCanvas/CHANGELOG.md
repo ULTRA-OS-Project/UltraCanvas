@@ -1,4 +1,4 @@
-#### 2026-09-10 *0.8.12*
+#### 2026-09-10 *0.8.14*
 - **Alembic (.abc) reads.** `Plugins/Models/Alembic/` is split the same way the
   STEP reader is: `UltraCanvasOgawaFile.h` is the Ogawa container and Alembic's
   object/property model with no idea what a mesh is, and
@@ -35,7 +35,7 @@
   more strictly than reading it, and a document that needs to leave the
   framework has OBJ, STEP and the rest.
 
-#### 2026-09-10 *0.8.11*
+#### 2026-09-10 *0.8.13*
 - **STEP reads and writes: the first B-rep converter.** `Plugins/Models/STEP/`
   fills `ModelDocument::Brep` from ISO 10303-21 files - AP203, AP214 and AP242 -
   and writes them back out. Nothing is tessellated on the way in unless the
@@ -95,7 +95,7 @@
   and writing, so `LoadGraphicsFile` and `SaveGraphicsFile` reach them; STEP has
   no external dependency, so it is always built.
 
-#### 2026-09-10 *0.8.10*
+#### 2026-09-10 *0.8.12*
 - **The 3D structure holds B-rep exactly, instead of tessellating it away.**
   `ModelDocument::Brep` is a `BrepData`
   (`DataFormats/UltraCanvasBrepStorage.h`): trimmed surfaces - plane, cylinder,
@@ -161,7 +161,7 @@
   otherwise, same namespace) so the B-rep header can use them without a
   circular include - a `ModelDocument` owns its `BrepData`.
 
-#### 2026-09-10 *0.8.9*
+#### 2026-09-10 *0.8.11*
 - **The 3D formats are a plugin now, not five classes in the core library.**
   `Plugins/Models/CMakeLists.txt` builds `UltraCanvasModelsPlugin` as its own
   static library with `ULTRACANVAS_HAS_MODELS_PLUGIN=1`, listed in
@@ -195,7 +195,7 @@
   four geometry samples load - then a 3DS converts to OBJ and back - without
   the caller naming a format.
 
-#### 2026-09-10 *0.8.8*
+#### 2026-09-10 *0.8.10*
 - **Blender `.blend` files are recognised and explained, never imported.**
   `ModelConverter::BlendConverter` and `ReadBlendFileInfo`
   (`Plugins/Models/Blend/`) read a `.blend`'s header, block index and embedded
@@ -217,7 +217,7 @@
   24 assertions, and `FormatCapabilities` is all-false because a capability
   report says what a converter does, not what its format could hold.
 
-#### 2026-09-10 *0.8.7*
+#### 2026-09-10 *0.8.9*
 - **COLLADA reads into the universal 3D structure.**
   `ModelConverter::ColladaConverter` (`Plugins/Models/COLLADA/`) reads COLLADA
   1.4/1.5 into `ModelStorage::ModelDocument`, and it is the format that finally
@@ -243,7 +243,7 @@
   differences on purpose, so a later change cannot quietly "fix" the reader
   into matching the other exports.
 
-#### 2026-09-10 *0.8.6*
+#### 2026-09-10 *0.8.8*
 - **DXF read as geometry, not as a drawing.**
   `ModelConverter::DXFModelConverter` (`Plugins/Models/DXF/`) reads the 3D
   entity set into `ModelStorage::ModelDocument`: `3DFACE` (a 4th corner
@@ -271,7 +271,7 @@
   record carries 128 alone, so testing bit 128 by itself matched both and no
   polyface mesh would have loaded its positions at all.
 
-#### 2026-09-10 *0.8.5*
+#### 2026-09-10 *0.8.7*
 - **Text formats choose their write precision.**
   `ModelConverter::ConversionOptions::Precision` selects between
   `NumericPrecision::Compact` - the C++ stream default of 6 significant digits,
@@ -288,7 +288,7 @@
   `ConversionOptions` because every text format the matrix gains - PLY ASCII,
   glTF's JSON, COLLADA, X3D - faces the same choice.
 
-#### 2026-09-10 *0.8.4*
+#### 2026-09-10 *0.8.6*
 - **OBJ reads and writes through the universal 3D structure.**
   `ModelConverter::OBJConverter` (`Plugins/Models/OBJ/`) is the first format on
   `ModelStorage::ModelDocument` with both directions, so it is also the first
@@ -312,7 +312,7 @@
   instead of against themselves. `Tests/ModelOBJTest.cpp` holds it, with 34
   assertions including malformed input and the parsing corners.
 
-#### 2026-09-10 *0.8.3*
+#### 2026-09-10 *0.8.5*
 - **3DS models read into the universal 3D structure.**
   `ModelConverter::ThreeDSConverter` (`Plugins/Models/3DS/`) reads Autodesk
   3D Studio files into `ModelStorage::ModelDocument` - the first scene format
@@ -339,7 +339,7 @@
   for readers of formats that store world-space vertices beside an object
   matrix.
 
-#### 2026-09-10 *0.8.2*
+#### 2026-09-10 *0.8.4*
 - **One 3D structure for every 3D format.** `ModelStorage::ModelDocument`
   (`DataFormats/UltraCanvasModelStorage.h`) is to 3D what
   `VectorStorage::VectorDocument` is to 2D: the in-memory model each 3D file
@@ -368,7 +368,7 @@
   in scope - is
   [UltraCanvas3DModelProposal](../Research/UltraCanvas3DModelProposal.md).
 
-#### 2026-09-10 *0.8.1*
+#### 2026-09-10 *0.8.3*
 - **STL models have a demo page.** *3D Graphics → STL 3D Models*
   (`Apps/DemoApp/UltraCanvasSTLExamples.cpp`) reads every `.stl` file in
   `media/vector/STL` through `UltraCanvasSTLLoader` and shows it in an
