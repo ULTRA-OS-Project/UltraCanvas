@@ -1,12 +1,13 @@
 // Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
 // Format detection and load/save dispatch for word-processing documents.
-// The per-format readers/writers live in UltraCanvasOdtFormat.cpp and
-// UltraCanvasDocxFormat.cpp.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// The per-format readers/writers live in UltraCanvasOdtFormat.cpp,
+// UltraCanvasDocxFormat.cpp and Plugins/Documents/LaTeX/.
+// Version: 1.1.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
 #include "UltraCanvasWordFormatInternal.h"
 #include "UltraCanvasZipPackage.h"
 
@@ -22,6 +23,7 @@ WordDocumentFormat WordDocumentFormatFromExtension(const std::string& extension)
     if (ext == "odt") return WordDocumentFormat::Odt;
     if (ext == "docx") return WordDocumentFormat::Docx;
     if (ext == "doc") return WordDocumentFormat::LegacyDoc;
+    if (ext == "tex" || ext == "latex" || ext == "ltx") return WordDocumentFormat::LaTeX;
     return WordDocumentFormat::Unknown;
 }
 
@@ -67,6 +69,25 @@ WordDocumentFormat DetectWordDocumentFormat(const std::string& filePath) {
         return WordDocumentFormat::Unknown;
     }
 
+    // LaTeX is plain text: a \documentclass / \begin{document} head, or the
+    // .tex extension on a text file that starts with a command.
+    {
+        file.clear();
+        file.seekg(0);
+        std::string head(4096, '\0');
+        file.read(head.data(), static_cast<std::streamsize>(head.size()));
+        head.resize(static_cast<size_t>(std::max<std::streamsize>(0, file.gcount())));
+        if (UltraCanvasLaTeXDocumentReader::LooksLikeLaTeXDocument(head)) {
+            return WordDocumentFormat::LaTeX;
+        }
+        if (WordDocumentFormatFromExtension(std::filesystem::path(filePath).extension().string())
+                == WordDocumentFormat::LaTeX
+            && head.find('\\') != std::string::npos
+            && head.find('\0') == std::string::npos) {
+            return WordDocumentFormat::LaTeX;
+        }
+    }
+
     return WordDocumentFormat::Unknown;
 }
 
@@ -90,11 +111,18 @@ bool UCWordDocumentIO::Load(const std::string& filePath, UCRichDocument& outDocu
                        "and save it as .docx or .odt.";
             return false;
         }
+        case WordDocumentFormat::LaTeX:
+            return LoadLaTeX(filePath, outDocument, outError);
         default:
             outError = "The file is not a recognized word-processing document "
-                       "(.odt or .docx): " + filePath;
+                       "(.odt, .docx or .tex): " + filePath;
             return false;
     }
+}
+
+bool UCWordDocumentIO::LoadLaTeX(const std::string& filePath, UCRichDocument& outDocument,
+                                 std::string& outError) {
+    return UltraCanvasLaTeXDocumentReader::Load(filePath, outDocument, outError);
 }
 
 bool UCWordDocumentIO::Save(const std::string& filePath, const UCRichDocument& document,
@@ -109,6 +137,10 @@ bool UCWordDocumentIO::Save(const std::string& filePath, const UCRichDocument& d
         case WordDocumentFormat::LegacyDoc:
             outError = "Saving to the legacy .doc format is not supported. "
                        "Save as .docx instead.";
+            return false;
+        case WordDocumentFormat::LaTeX:
+            outError = "Saving as LaTeX (.tex) is not supported. "
+                       "Save as .docx, .odt or .md instead.";
             return false;
         default:
             outError = "Unsupported document extension for saving: " + filePath;

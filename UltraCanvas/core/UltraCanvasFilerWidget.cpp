@@ -1184,7 +1184,8 @@ namespace UltraCanvas {
         }
 
         // Word-processing formats go through the shared rich-document reader,
-        // so ODT, DOCX and legacy DOC all preview from the same block model.
+        // so ODT, DOCX, legacy DOC and LaTeX all preview from the same block
+        // model (a .tex shows its title and sections, not its markup).
         void RichDocumentToPreviewLines(const std::string& path,
                                         std::vector<std::string>& lines) {
             UCRichDocument doc;
@@ -1243,7 +1244,7 @@ namespace UltraCanvas {
                 }
                 return true;
             }
-            if (ext == "odt" || ext == "docx" || ext == "doc") {
+            if (ext == "odt" || ext == "docx" || ext == "doc" || ext == "tex") {
                 RichDocumentToPreviewLines(path, lines);
                 return true;
             }

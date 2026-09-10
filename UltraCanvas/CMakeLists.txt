@@ -48,6 +48,12 @@ option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_PLUGIN_LATEX "Build LaTeX math plugin (embedded MicroTeX)" ON)
+# Which typesetter the LaTeX view uses by default: "native" (the framework's
+# own UltraCanvasMathEngine on OpenType MATH fonts) or "microtex" (the vendored
+# engine, kept as the oracle for the native one). The environment variable
+# ULTRACANVAS_LATEX_ENGINE overrides the choice at run time.
+set(ULTRACANVAS_LATEX_ENGINE "native" CACHE STRING "Default LaTeX typesetter: native or microtex")
+set_property(CACHE ULTRACANVAS_LATEX_ENGINE PROPERTY STRINGS native microtex)
 option(ULTRACANVAS_ENABLE_AUDIO "Enable audio playback & recording (requires backend lib)" ON)
 # libvips is ON by default (desktop builds keep the hard requirement), but can
 # be opted out for platforms where its dependency graph is impractical
@@ -373,6 +379,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDirtyRectManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTextArea_Markdown.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasInlineMath.cpp
         # Spell checking. The per-platform backend that defines
         # CreateNativeSpellCheckBackend() is picked up by the
         # ${ULTRACANVAS_PLATFORM_DIR}/*.cpp glob below - do not list it here or
@@ -698,6 +705,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpreadsheetFileIO.cpp
         # Add Windows/Mac sources as needed
@@ -2540,6 +2548,16 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXBackend.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXViewImpl.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasLaTeXModule.cpp
+        # The native engine's font layer (OpenType MATH via FreeType) - Phase 0
+        # of Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md. Independent of
+        # MicroTeX; Tests/MathFontTest.cpp compares it against the .clm2.
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasMathFont.cpp
+        # Phase 1: the native typesetter (parser, layout, renderer, facade).
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasMathSymbols.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasMathParser.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasMathLayout.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasMathEngine.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/LaTeX/UltraCanvasMathRender.cpp
     )
     set_target_properties(UltraCanvasLaTeX PROPERTIES
         CXX_VISIBILITY_PRESET hidden
@@ -2566,7 +2584,15 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         target_include_directories(UltraCanvasLaTeX PRIVATE ${_uc_brew_prefix}/include)
     endif()
     target_compile_definitions(UltraCanvasLaTeX PRIVATE ULTRACANVAS_PLUGIN_LATEX=1)
-    target_link_libraries(UltraCanvasLaTeX PRIVATE microtex_core)
+    if(ULTRACANVAS_LATEX_ENGINE STREQUAL "microtex")
+        target_compile_definitions(UltraCanvasLaTeX PRIVATE ULTRACANVAS_LATEX_DEFAULT_ENGINE_NATIVE=0)
+    else()
+        target_compile_definitions(UltraCanvasLaTeX PRIVATE ULTRACANVAS_LATEX_DEFAULT_ENGINE_NATIVE=1)
+    endif()
+    # FreeType is linked explicitly: UltraCanvasMathFont.cpp calls it directly,
+    # and with a static core the module cannot rely on the host exporting it.
+    target_link_directories(UltraCanvasLaTeX PRIVATE ${FREETYPE_LIBRARY_DIRS})
+    target_link_libraries(UltraCanvasLaTeX PRIVATE microtex_core ${FREETYPE_LIBRARIES})
     # The module resolves UltraCanvas core symbols (IRenderContext, UIElement,
     # GetExecutableDir, ...) at load time. When the core is a shared library we
     # record a link dependency on it; for a static core the host executable must

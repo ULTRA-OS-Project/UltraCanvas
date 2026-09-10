@@ -12,6 +12,8 @@
 #include "UltraCanvasConfig.h"  // GetResourcesDir
 #include "UltraCanvasUtils.h"   // GetExecutableDir, NormalizePath
 
+#include "Plugins/LaTeX/UltraCanvasMathEngine.h"
+
 #include "microtex.h"
 #include "unimath/font_src.h"
 
@@ -287,6 +289,44 @@ unsigned GetLaTeXEngineFontDirGeneration() { return g_fontDirGeneration; }
 void SetLaTeXActiveContext(IRenderContext* ctx) {
     auto* factory = static_cast<PlatformFactory_ultracanvas*>(PlatformFactory::get());
     if (factory) factory->setContext(ctx);
+}
+
+std::vector<std::string> GetLaTeXEngineFontSearchDirs() { return FontSearchDirs(); }
+
+bool UseNativeLaTeXEngine() {
+    static const bool native = [] {
+        if (const char* env = std::getenv("ULTRACANVAS_LATEX_ENGINE"); env && *env) {
+            const std::string v = env;
+            if (v == "native" || v == "1" || v == "on") return true;
+            if (v == "microtex" || v == "0" || v == "off") return false;
+        }
+#if defined(ULTRACANVAS_LATEX_DEFAULT_ENGINE_NATIVE) && ULTRACANVAS_LATEX_DEFAULT_ENGINE_NATIVE
+        return true;
+#else
+        return false;
+#endif
+    }();
+    return native;
+}
+
+namespace {
+std::string g_nativeError;
+unsigned g_nativeTriedGeneration = ~0u;
+}
+
+const std::string& GetNativeLaTeXEngineError() { return g_nativeError; }
+
+bool EnsureNativeLaTeXEngineInitialized() {
+    UltraCanvasMathEngine& engine = GetSharedMathEngine();
+    if (engine.IsReady()) return true;
+    if (g_nativeTriedGeneration == g_fontDirGeneration) return false;   // already failed at this search path
+    g_nativeTriedGeneration = g_fontDirGeneration;
+    if (engine.LoadFontFrom(FontSearchDirs(), {"latinmodern-math.otf"})) {
+        g_nativeError.clear();
+        return true;
+    }
+    g_nativeError = "math font latinmodern-math.otf not found (" + engine.GetLastError() + ")";
+    return false;
 }
 
 bool EnsureLaTeXEngineInitialized() {

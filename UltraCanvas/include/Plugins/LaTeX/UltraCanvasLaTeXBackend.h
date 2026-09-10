@@ -160,6 +160,24 @@ void SetLaTeXEngineFontDir(const std::string& dir);
 // failed at and retries only once it has moved on.
 unsigned GetLaTeXEngineFontDirGeneration();
 
+// The directories probed for the bundled math font, in priority order (the
+// same list for the MicroTeX .clm2 and the native engine's .otf).
+std::vector<std::string> GetLaTeXEngineFontSearchDirs();
+
+// ===== Engine selection =====
+// The module carries two typesetters during the transition: the vendored
+// MicroTeX and the framework's own UltraCanvasMathEngine. The build option
+// ULTRACANVAS_LATEX_ENGINE picks the default; the environment variable
+// ULTRACANVAS_LATEX_ENGINE ("native" or "microtex") overrides it at run time
+// so the two can be compared on the same machine.
+bool UseNativeLaTeXEngine();
+
+// Loads the native engine's math font from the search directories on first
+// use; returns false (with the reason in GetNativeLaTeXEngineError()) when
+// no OpenType math font was found. Retried after SetLaTeXEngineFontDir().
+bool EnsureNativeLaTeXEngineInitialized();
+const std::string& GetNativeLaTeXEngineError();
+
 } // namespace UltraCanvas
 
 #endif // ULTRACANVAS_PLUGIN_LATEX

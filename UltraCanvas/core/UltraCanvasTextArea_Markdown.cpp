@@ -728,22 +728,42 @@ namespace UltraCanvas {
                     continue;
                 }
             }
-            // Inline math: $...$ — LaTeX commands inside are substituted via
-            // SubstituteGreekLetters. Block math `$$...$$` is skipped (the opener check
-            // refuses a `$$` pair) so a future block pass can claim it.
-            if (c == '$' && !(i + 1 < n && rawLine[i + 1] == '$')) {
-                int close = i + 1;
-                while (close < n && rawLine[close] != '$') close++;
-                if (close < n && close > i + 1 &&
-                    !(close + 1 < n && rawLine[close + 1] == '$')) {
-                    std::string body = SubstituteGreekLetters(
-                            rawLine.substr(i + 1, close - (i + 1)));
+            // Inline math: $...$ and $$...$$ (display style). With the LaTeX module the
+            // formula becomes one U+FFFC placeholder whose run carries the source in `url`
+            // ("display" in `alt` for $$); the layout builder reserves its box and draws it.
+            // Without the module the commands are substituted with Unicode as before.
+            if (c == '$') {
+                const bool dbl = i + 1 < n && rawLine[i + 1] == '$';
+                const int open = dbl ? i + 2 : i + 1;
+                int close = open;
+                bool found = false;
+                if (dbl) {
+                    while (close + 1 < n && !(rawLine[close] == '$' && rawLine[close + 1] == '$')) close++;
+                    found = close + 1 < n;
+                } else {
+                    while (close < n && rawLine[close] != '$') close++;
+                    found = close < n && !(close + 1 < n && rawLine[close + 1] == '$');
+                }
+                // A pair of dollar signs is math only when it looks like one: no
+                // space right after the opener or before the closer, and no digit
+                // after the closer ("costs $5 and $10" stays text).
+                if (found && close > open &&
+                    !std::isspace(static_cast<unsigned char>(rawLine[open])) &&
+                    !std::isspace(static_cast<unsigned char>(rawLine[close - 1])) &&
+                    !(close + (dbl ? 2 : 1) < n && std::isdigit(static_cast<unsigned char>(rawLine[close + (dbl ? 2 : 1)])))) {
+                    const std::string source = rawLine.substr(open, close - open);
                     int s = (int)visibleText.size();
-                    i += 1;        // skip opening $
+                    i = open;
                     noteVisStart();
-                    visibleText.append(body);
-                    runs.push_back({s, (int)visibleText.size(), InlineRun::Math, {}, {}});
-                    i = close + 1;
+                    if (UltraCanvasInlineMath::IsAvailable()) {
+                        visibleText.append(kInlineMathPlaceholder);
+                        runs.push_back({s, (int)visibleText.size(), InlineRun::Math, source,
+                                        dbl ? std::string("display") : std::string()});
+                    } else {
+                        visibleText.append(SubstituteGreekLetters(source));
+                        runs.push_back({s, (int)visibleText.size(), InlineRun::Math, {}, {}});
+                    }
+                    i = close + (dbl ? 2 : 1);
                     continue;
                 }
             }
@@ -879,11 +899,19 @@ namespace UltraCanvas {
     // Apply inline-run attributes (bold/italic/code/strike/link/image/footnote) + a scan for
     // known abbreviations to `layout`. Byte offsets in `runs` must refer to `visibleText`.
     // Hit rects are appended to `outHitRects` in layout-local coords.
+    // The text pipeline's font sizes are points (Pango, 96 dpi); the math
+    // engine takes pixels per em.
+    float UltraCanvasTextArea::MathPixelSize() const {
+        return static_cast<float>(style.fontStyle.fontSize) * (96.0f / 72.0f);
+    }
+
     void UltraCanvasTextArea::ApplyInlineRunsAndAbbreviations(
             ITextLayout* layout,
             const std::string& visibleText,
             const std::vector<InlineRun>& runs,
-            std::vector<MarkdownHitRect>& outHitRects)
+            std::vector<MarkdownHitRect>& outHitRects,
+            std::vector<MarkdownInlineMath>* outInlineMath,
+            IRenderContext* ctx)
     {
         if (!layout) return;
 
@@ -945,6 +973,21 @@ namespace UltraCanvas {
                     break;
                 }
                 case InlineRun::Math: {
+                    if (!run.url.empty()) {
+                        // Placeholder mode: typeset through the LaTeX module, reserve the
+                        // formula's box in the layout, remember it for the draw pass.
+                        auto math = UltraCanvasInlineMath::Typeset(
+                                run.url, MathPixelSize(),
+                                markdownStyle.mathTextColor, run.alt == "display", ctx);
+                        if (math) {
+                            auto shape = TextAttributeFactory::CreateShape(
+                                    math->GetWidth(), math->GetAscent(), math->GetDescent());
+                            shape->SetRange(run.startByte, run.endByte);
+                            layout->InsertAttribute(std::move(shape));
+                            if (outInlineMath) outInlineMath->push_back({run.startByte, math->GetAscent(), math});
+                            break;
+                        }
+                    }
                     auto italic = TextAttributeFactory::CreateFontStyle(FontSlant::Italic);
                     italic->SetRange(run.startByte, run.endByte);
                     layout->InsertAttribute(std::move(italic));
@@ -1180,6 +1223,7 @@ namespace UltraCanvas {
         // coordinates.
         auto buildInlineStyledLayout = [&](const std::string& payload, int shiftX,
                                            std::vector<MarkdownHitRect>& outHitRects,
+                                           std::vector<MarkdownInlineMath>* outMath,
                                            std::string* outVisibleText = nullptr,
                                            std::vector<CpRun>* outCpMap = nullptr,
                                            int sourceCpOffset = 0)
@@ -1193,7 +1237,7 @@ namespace UltraCanvas {
             }
             auto layout = ctx->CreateTextLayout(visibleText, false);
             configureLayout(layout.get(), shiftX);
-            ApplyInlineRunsAndAbbreviations(layout.get(), visibleText, runs, outHitRects);
+            ApplyInlineRunsAndAbbreviations(layout.get(), visibleText, runs, outHitRects, outMath, ctx);
             if (outVisibleText) *outVisibleText = std::move(visibleText);
             return layout;
         };
@@ -1276,6 +1320,60 @@ namespace UltraCanvas {
 
             return il;
         };
+
+        // ----- display-math blocks: `$$` alone on a line opens one, the next closes it -----
+        {
+            LineLayoutBase* prevL = (lineIndex > 0 && (lineIndex - 1) < (int)lineLayouts.size())
+                                    ? lineLayouts[lineIndex - 1].get() : nullptr;
+            auto* prevMath = dynamic_cast<MathBlockLayout*>(prevL);
+            const bool prevOpen = prevMath && prevMath->layoutType == LineLayoutType::MathBlockCollapsed;
+            const bool isMathFence = trimmed == "$$";
+            // Not inside an open ``` fence: there a `$$` line is code.
+            auto* prevCodeL = dynamic_cast<CodeLayout*>(prevL);
+            const bool inCode = prevCodeL && !prevCodeL->isIndentedCode &&
+                                (prevCodeL->layoutType == LineLayoutType::CodeblockStart ||
+                                 prevCodeL->layoutType == LineLayoutType::CodeblockContent);
+            if (!inCode && (prevOpen || (isMathFence && UltraCanvasInlineMath::IsAvailable()))) {
+                auto ml = std::make_unique<MathBlockLayout>();
+                ml->layout = nullptr;
+                ml->cpMap = {{0, 0}, {0, utf8_length(rawLine)}};
+                if (prevOpen && isMathFence) {
+                    // The closing fence renders the block: gather the source lines above it.
+                    std::string source;
+                    for (int k = lineIndex - 1; k >= 0; --k) {
+                        auto* m = dynamic_cast<MathBlockLayout*>(lineLayouts[k].get());
+                        if (!m || m->layoutType != LineLayoutType::MathBlockCollapsed) break;
+                        source = m->source + "\n" + source;
+                    }
+                    ml->layoutType = LineLayoutType::MathBlock;
+                    ml->math = UltraCanvasInlineMath::Typeset(source, MathPixelSize(),
+                                                              markdownStyle.mathTextColor, true, ctx);
+                    const float pad = static_cast<float>(style.textPadding);
+                    const float gap = 6.0f;
+                    const float h = ml->math ? ml->math->GetHeight()
+                                             : static_cast<float>(computedLineHeight > 0 ? computedLineHeight : style.fontStyle.fontSize * 1.3f);
+                    ml->mathWidth = ml->math ? ml->math->GetWidth() : 0.f;
+                    ml->layoutShift = {pad, gap};
+                    ml->bounds.width = std::max(1.0f, visibleTextArea.width);
+                    ml->bounds.height = h + 2 * gap;
+                } else {
+                    // The opening fence and the source lines collapse; the closing fence
+                    // downstream is rebuilt so an edited source line reaches it.
+                    ml->layoutType = LineLayoutType::MathBlockCollapsed;
+                    ml->source = (isMathFence && !prevOpen) ? std::string() : rawLine;
+                    ml->bounds.width = 0;
+                    ml->bounds.height = 0;
+                    for (int k = lineIndex + 1; k < (int)lineLayouts.size(); ++k) {
+                        auto* m = dynamic_cast<MathBlockLayout*>(lineLayouts[k].get());
+                        if (!m) break;
+                        const bool closing = m->layoutType == LineLayoutType::MathBlock;
+                        lineLayouts[k].reset();
+                        if (closing) break;
+                    }
+                }
+                return ml;
+            }
+        }
 
         // State from previous layout: open fenced code block?
         LineLayoutBase* prevLayout = (lineIndex > 0 && (lineIndex - 1) < (int)lineLayouts.size())
@@ -1435,7 +1533,7 @@ namespace UltraCanvas {
                 auto ll = std::make_unique<LineLayoutBase>();
                 ll->layoutType = LineLayoutType::MarkDownLine;
                 std::string visibleText;
-                ll->layout = buildInlineStyledLayout(payload, 0, ll->hitRects, &visibleText,
+                ll->layout = buildInlineStyledLayout(payload, 0, ll->hitRects, &ll->inlineMath, &visibleText,
                                                      &ll->cpMap, startCp);
 
                 // Heading font-size + weight apply to the entire visible text (pre-↩ suffix).
@@ -1500,7 +1598,7 @@ namespace UltraCanvas {
                 bq->quoteLevel = depth;
                 bq->layoutShift.x = (depth - 1) * quoteNestingStep + quoteIndent;
                 if (auto imgLine = tryBuildImageLine(payload, (int)bq->layoutShift.x)) return imgLine;
-                bq->layout = buildInlineStyledLayout(payload, bq->layoutShift.x, bq->hitRects,
+                bq->layout = buildInlineStyledLayout(payload, bq->layoutShift.x, bq->hitRects, &bq->inlineMath,
                                                      nullptr, &bq->cpMap, startCp);
                 bq->bounds.width  = bq->layoutShift.x + bq->layout->GetLayoutWidth();
                 bq->bounds.height = bq->layout->GetLayoutHeight();
@@ -1543,7 +1641,11 @@ namespace UltraCanvas {
                         size_t i = 0;
                         if (!line.empty() && line[0] == '|') i = 1;
                         for (; i < line.size(); i++) {
+                            // Only `\|` is consumed here (it must not split the cell); every
+                            // other backslash stays for the inline parser, which owns the
+                            // escapes and the LaTeX inside $...$.
                             if (line[i] == '\\' && i + 1 < line.size()) {
+                                if (line[i + 1] != '|') cur.push_back(line[i]);
                                 cur.push_back(line[i + 1]);
                                 i++;
                                 continue;
@@ -1603,7 +1705,7 @@ namespace UltraCanvas {
                             cell->layout = ctx->CreateTextLayout("", false);
                             cell->layout->SetFontStyle(style.fontStyle);
                         } else {
-                            cell->layout = buildInlineStyledLayout(cells[ci], 0, cell->hitRects);
+                            cell->layout = buildInlineStyledLayout(cells[ci], 0, cell->hitRects, &cell->inlineMath);
                         }
                         tl->cellsLayouts.push_back(std::move(cell));
                     }
@@ -1657,7 +1759,7 @@ namespace UltraCanvas {
                 ol->layoutShift.x = std::max(depth * listIndent,
                                              (depth - 1) * listIndent + markerWidth + markerGap);
                 if (auto imgLine = tryBuildImageLine(payload, (int)ol->layoutShift.x)) return imgLine;
-                ol->layout = buildInlineStyledLayout(payload, ol->layoutShift.x, ol->hitRects,
+                ol->layout = buildInlineStyledLayout(payload, ol->layoutShift.x, ol->hitRects, &ol->inlineMath,
                                                      nullptr, &ol->cpMap, startCp);
                 ol->bounds.width  = ol->layoutShift.x + ol->layout->GetLayoutWidth();
                 ol->bounds.height = ol->layout->GetLayoutHeight();
@@ -1684,7 +1786,7 @@ namespace UltraCanvas {
                 ul->listDepth = depth;
                 ul->layoutShift.x = depth * listIndent;
                 if (auto imgLine = tryBuildImageLine(payload, (int)ul->layoutShift.x)) return imgLine;
-                ul->layout = buildInlineStyledLayout(payload, ul->layoutShift.x, ul->hitRects,
+                ul->layout = buildInlineStyledLayout(payload, ul->layoutShift.x, ul->hitRects, &ul->inlineMath,
                                                      nullptr, &ul->cpMap, startCp);
                 ul->bounds.width  = ul->layoutShift.x + ul->layout->GetLayoutWidth();
                 ul->bounds.height = ul->layout->GetLayoutHeight();
@@ -1709,7 +1811,7 @@ namespace UltraCanvas {
                 auto dl = std::make_unique<LineLayoutBase>();
                 dl->layoutType = LineLayoutType::DefinitionContinuation;
                 dl->layoutShift.x = defIndent;
-                dl->layout = buildInlineStyledLayout(payload, dl->layoutShift.x, dl->hitRects,
+                dl->layout = buildInlineStyledLayout(payload, dl->layoutShift.x, dl->hitRects, &dl->inlineMath,
                                                      nullptr, &dl->cpMap, startCp);
                 dl->bounds.width  = dl->layoutShift.x + dl->layout->GetLayoutWidth();
                 dl->bounds.height = dl->layout->GetLayoutHeight();
@@ -1783,7 +1885,7 @@ namespace UltraCanvas {
                     auto dt = std::make_unique<LineLayoutBase>();
                     dt->layoutType = LineLayoutType::DefinitionTerm;
                     std::string visibleText;
-                    dt->layout = buildInlineStyledLayout(rawLine, 0, dt->hitRects, &visibleText,
+                    dt->layout = buildInlineStyledLayout(rawLine, 0, dt->hitRects, &dt->inlineMath, &visibleText,
                                                          &dt->cpMap, 0);
                     int endByte = (int)visibleText.size();
                     auto w = TextAttributeFactory::CreateFontWeight(FontWeight::Bold);
@@ -1805,7 +1907,7 @@ namespace UltraCanvas {
             // Fallback: plain paragraph (includes tables and anything else not matched above).
             auto ll = std::make_unique<LineLayoutBase>();
             ll->layoutType = LineLayoutType::MarkDownLine;
-            ll->layout = buildInlineStyledLayout(rawLine, 0, ll->hitRects,
+            ll->layout = buildInlineStyledLayout(rawLine, 0, ll->hitRects, &ll->inlineMath,
                                                  nullptr, &ll->cpMap, 0);
             ll->bounds.width = ll->layout->GetLayoutWidth();
             ll->bounds.height = ll->layout->GetLayoutHeight();
