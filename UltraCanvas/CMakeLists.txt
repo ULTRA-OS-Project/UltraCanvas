@@ -1404,6 +1404,21 @@ if(TARGET VirtualFS)
     endif()
 endif()
 
+# Blender .blend inspection: reads the header, block index and SDNA to report
+# what a .blend contains and why its geometry is not imported. Needs zlib,
+# because Blender writes compressed save files by default.
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    target_sources(${ULTRACANVAS_LIB_NAME} PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/Blend/UltraCanvasBlendFile.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/Blend/UltraCanvasBlendConverter.cpp)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ZLIB_INCLUDE_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ZLIB_LIBRARIES})
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_BLEND_INSPECTOR)
+else()
+    message(STATUS "  zlib not found - .blend inspection is not built")
+endif()
+
 # Platform-specific libraries
 if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
     target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC

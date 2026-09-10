@@ -258,6 +258,11 @@ the backing implementation can be replaced without affecting callers.
     `profile_COMMON` materials with transparency and textures, vertex colours,
     and matrix or TRS animation channels (matrix keyframes are decomposed into
     translation, rotation and scale). XML through tinyxml2.
+    `BlendConverter` (`Plugins/Models/Blend/UltraCanvasBlendConverter.h`) and
+    `ReadBlendFileInfo` (`UltraCanvasBlendFile.h`) recognise a Blender
+    `.blend` and report its version, datablock names, modifier types and
+    stored vertex count, but never import geometry: a `.blend` holds the
+    unevaluated scene, so the visible model is not in the file. Needs zlib.
 
 - **UltraCanvasCADPalette** (`DataFormats/UltraCanvasCADPalette.h`) - the
   AutoCAD Color Index palette, `AciPaletteColor(aci)`: exact classic colours

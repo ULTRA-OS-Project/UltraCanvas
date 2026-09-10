@@ -807,6 +807,39 @@ else()
     message(STATUS "  Skipping ModelColladaTest (tinyxml2 not found)")
 endif()
 
+# ===== BLENDER FILE INSPECTOR TEST =====
+# The .blend inspector and the converter that deliberately declines to import
+# geometry. Needs zlib to inflate a compressed save file.
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    message(STATUS "  Building ModelBlendTest...")
+    add_executable(ModelBlendTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ModelBlendTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendFile.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendConverter.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    )
+    target_include_directories(ModelBlendTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    target_link_libraries(ModelBlendTest PRIVATE ${ZLIB_LIBRARIES})
+    target_compile_features(ModelBlendTest PRIVATE cxx_std_20)
+    set_target_properties(ModelBlendTest PROPERTIES
+        OUTPUT_NAME "ModelBlendTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME ModelBlendTest
+        COMMAND ModelBlendTest "${ULTRACANVAS_ROOT}/media/models/Blend/E-45-Aircraft.blend"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: ModelBlendTest")
+else()
+    message(STATUS "  Skipping ModelBlendTest (zlib not found)")
+endif()
+
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the
 # real CSSLayout engine: an auto-width flex column grows with an inner row of

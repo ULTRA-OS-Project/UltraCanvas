@@ -63,6 +63,11 @@ enum class ModelFormat {
     LAS,        // ASPRS LiDAR
     XYZ,        // plain ASCII points
 
+    // Application-native. Not exchange formats: their geometry is only what
+    // the application's own evaluation produces, so a reader recognises them
+    // and points at an export rather than importing a partial model.
+    Blend,      // Blender
+
     // Internal
     UltraCanvas // native serialisation of ModelDocument
 };

@@ -1,3 +1,25 @@
+#### 2026-09-10 *0.8.8*
+- **Blender `.blend` files are recognised and explained, never imported.**
+  `ModelConverter::BlendConverter` and `ReadBlendFileInfo`
+  (`Plugins/Models/Blend/`) read a `.blend`'s header, block index and embedded
+  SDNA - the three parts stable across many Blender releases - and report what
+  the file holds: version, pointer size, compression, the names of its objects,
+  meshes and materials, the modifier types present, and how many vertices are
+  actually stored. Then the converter declines, naming the modifiers and
+  pointing at the export that would work.
+  The refusal is the feature. A `.blend` stores the *unevaluated* scene, so the
+  model an artist sees is not in the file: the E-45 sample holds **1147
+  vertices** behind Mirror, Subsurf and EdgeSplit modifiers, while the same
+  model exported to OBJ with those applied is **11749**. A geometry reader
+  would deliver a tenth of the aircraft, and half of it in X since the mirror
+  is one of the unapplied modifiers - which is also why the `.dae` export holds
+  exactly those same 1147 positions. Silent failure tells a user nothing; a
+  partial import tells them something false.
+  gzip save files are inflated; zstd (Blender 3.0's default) is reported by
+  name rather than failing obscurely. `Tests/ModelBlendTest.cpp` covers it with
+  24 assertions, and `FormatCapabilities` is all-false because a capability
+  report says what a converter does, not what its format could hold.
+
 #### 2026-09-10 *0.8.7*
 - **COLLADA reads into the universal 3D structure.**
   `ModelConverter::ColladaConverter` (`Plugins/Models/COLLADA/`) reads COLLADA

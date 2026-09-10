@@ -39,6 +39,7 @@ this document is where those annotations come from.
 | `ThreeDSConverter` | `Plugins/Models/3DS/` | Reads Autodesk 3DS into `ModelDocument`: meshes, object matrices, materials with texture maps, per-face material groups, cameras and lights. The first scene format on the structure. |
 | `OBJConverter` | `Plugins/Models/OBJ/` | Reads **and writes** Wavefront OBJ + MTL: n-gons kept as n-gons, the three index streams resolved into unique corners, objects, groups, `usemtl`, vertex colours, and the MTL PBR extension. The first writer on the structure. |
 | `ColladaConverter` | `Plugins/Models/COLLADA/` | Reads COLLADA 1.4/1.5: `<unit>`, `<up_axis>`, the node hierarchy with ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`, `profile_COMMON` materials with transparency and textures, vertex colours, and matrix or TRS animation channels. The first format that states everything the structure holds. |
+| `BlendConverter` | `Plugins/Models/Blend/` | Recognises a Blender `.blend`, reports what it contains — version, objects, meshes, materials, modifiers, stored vertex count — and **declines to import geometry**, with the reason. See §2.6. |
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
@@ -110,6 +111,37 @@ tessellates to triangles on import (which is what every viewer does anyway) and
 records the loss through the warning callback. If UltraCanvas later needs
 parametric solids, they get their own `BrepStorage` document alongside this
 one, exactly as 2D vector and 3D mesh are separate documents today.
+
+### 2.6 Application-native files — the second deliberate exclusion
+
+**`.blend`** (and by the same argument `.max`, `.ma`/`.mb`, `.c4d`) is not an
+interchange format. It is a dump of the application's in-memory structures,
+and the model an artist sees is not in it: the file stores the *unevaluated*
+scene, with modifiers, generators and procedural nodes still to run. Producing
+the visible geometry means reimplementing the application's evaluation, which
+is the application.
+
+The E-45 sample settles it with numbers rather than principle. Its `.blend`
+stores **1 147 vertices** behind Mirror, Subsurf and EdgeSplit modifiers. The
+same model exported to OBJ, with those modifiers applied, is **11 749**. A
+reader of the stored mesh would deliver a tenth of the aircraft — and half of
+it in X, since the mirror is one of the unapplied modifiers. The `.dae` export
+in §2.2 shows the same thing from the other side: it was exported without
+applying the mirror, and holds exactly the 1 147 positions the `.blend` does.
+
+`.blend` is also self-describing through an embedded SDNA block, which makes
+the *file* readable even though the *model* is not. So the decision is:
+
+**Recognise and describe, never import.** `BlendConverter` reads the header,
+the block index and the SDNA — the three parts that have been stable across
+many Blender releases — and reports version, pointer size, compression,
+datablock names, modifier types and the stored vertex count. Then it declines,
+with a sentence naming the modifiers and pointing at the export that would
+work. Its `FormatCapabilities` are all false, because a capability report says
+what a converter does, not what its format could hold.
+
+That is more useful than either alternative: a silent failure tells the user
+nothing, and a geometry reader tells them something false.
 
 ## 3. What the structure must therefore carry
 
@@ -467,6 +499,10 @@ converter would have hit them too:
 
 ## 7. Non-goals
 
+- **Application-native scene files** — `.blend`, `.max`, `.ma`/`.mb`, `.c4d`.
+  See §2.6: the geometry an artist sees is produced by the application's
+  evaluation and is not in the file. `.blend` is recognised and described so a
+  user gets an answer instead of a failure, but never imported as geometry.
 - **B-rep and parametric solids** — STEP, IGES, ACIS, Parasolid, OpenNURBS and
   the DWG `3DSOLID` family. See §2.5: they need their own structure, and a
   mesh document that pretended to hold them would lie about what it round-trips.
