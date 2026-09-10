@@ -1,4 +1,4 @@
-#### 2026-09-10 *1.25.0*
+#### 2026-09-10 *1.26.0*
 - **The Home tab is called Home.** A folder tab is named after the folder it
   shows, and the home folder is named after the account that owns it - so the
   tab the file manager opens on carried a login name and said nothing about
@@ -36,6 +36,18 @@
   section. Nothing about what the button does has changed - the primary
   section still creates a folder, the arrow still lists the other kinds.
 
+#### 2026-09-09 *1.25.0*
+- **Double-clicking a font opens it, full size, in its own window.** A font was
+  the one previewable kind whose whole point is the part the preview pane
+  cannot hold: the pane shows a two-letter specimen, and what you
+  double-clicked for is every glyph in the file. It now opens in a viewer
+  window (`UltraCanvasMediaViewerWindow`) over the file manager, with the
+  range picker, the size control and the arrow keys walking the rest of the
+  folder — unless this system has an application registered for the file, in
+  which case that opens it, the way Explorer would. Single-click still shows
+  the font in the preview pane, and every other kind of file behaves exactly
+  as before. The window is reused, so double-clicking through a folder of
+  fonts leaves one window open rather than one per font; Escape closes it.
 #### 2026-09-09 *1.24.0*
 - **The search field kept its button and lost its text when the window got
   narrow.** Reducing the window width squeezed the search field away entirely

@@ -396,6 +396,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasImageViewer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewer.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasMediaViewerWindow.cpp
         # Raster editing: layer / selection / document model, brush engine and
         # the editable paint surface (UltraPaint)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterLayer.cpp
@@ -467,6 +468,8 @@ set(ULTRACANVAS_CORE_SOURCES
         # records for the metadata, a line of their own glyphs for the
         # thumbnail. Pure FreeType, so it needs no installed font.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontFile.cpp
+        # ... and the glyph browser built on it: the detail view for a font.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontViewer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileAssociations.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp

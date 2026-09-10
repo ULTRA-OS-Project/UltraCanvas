@@ -69,7 +69,7 @@ from an external "Show password" checkbox. See
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
-| Any media file — image, video, audio, PDF, text, spreadsheet, eBook | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
+| Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
 | Audio waveform, input level | `UltraCanvasWaveformElement`, `UltraCanvasLevelMeter` | `UltraCanvasWaveformElement.h`, `UltraCanvasAudioRecorderElement.h` |
@@ -78,6 +78,7 @@ from an external "Show password" checkbox. See
 | A LaTeX formula (equation, matrix, ...) as an element | `UltraCanvasLaTeXView` via `CreateLaTeXView()` | `Plugins/LaTeX/UltraCanvasLaTeXView.h` |
 | A LaTeX document (`article`: sections, lists, tables, figures, formulas) as a rich document | `UltraCanvasLaTeXDocumentReader` → `UCRichDocument` → `ToMarkdown()` into a `UltraCanvasTextArea` in Markdown mode; `UCWordDocumentIO::Load` and `UltraCanvasFileLoader::LoadTextDocument` dispatch to it for `.tex` | `Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h` |
 | A formula inside a line of text you lay out yourself | `UltraCanvasInlineMath` (typeset, measure, draw at a baseline); `UltraCanvasTextArea`'s Markdown mode already does this for `$...$` | `UltraCanvasInlineMath.h` |
+| Every glyph in a font file, scrolling, without installing it | `UltraCanvasFontViewer` | `UltraCanvasFontViewer.h` |
 | Raw OpenGL | `UltraCanvasGLSurface` | `UltraCanvasGLSurface.h` |
 
 `UltraCanvasImageElement` is the answer to "I just need to draw a picture" — it

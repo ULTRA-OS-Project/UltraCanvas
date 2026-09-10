@@ -26,6 +26,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstddef>
 #include <filesystem>
 #include <map>
@@ -252,6 +253,34 @@ namespace UltraCanvas {
         }
 
         // ===== GLYPH RUNS =====
+        // ===== CHARMAP SELECTION =====
+        // FreeType picks a default charmap when a face is opened, but it
+        // refuses to pick one whose encoding is FT_ENCODING_NONE - and that
+        // is exactly what the legacy bitmap formats usually expose (Windows
+        // FNT/FON, PCF, BDF). Those faces come back with face->charmap null,
+        // FT_Get_Char_Index then answers 0 for every character, and a font
+        // that plainly has an 'A' looks to the specimen like a symbol font
+        // with no Latin coverage at all. Selecting one explicitly is what
+        // keeps a folder of .fon files showing letters rather than whatever
+        // happens to sit at glyph index 1.
+        //
+        // Only ever called when FreeType selected nothing: a face that DID
+        // get a charmap keeps it. A symbol font whose only charmap is
+        // MS Symbol is a real symbol font, and its ASCII lookups are supposed
+        // to fail so the first-glyphs fallback takes over.
+        void EnsureCharmapSelected(FT_Face face) {
+            if (!face || face->charmap) return;
+            if (FT_Select_Charmap(face, FT_ENCODING_UNICODE) == 0) return;
+            if (FT_Select_Charmap(face, FT_ENCODING_APPLE_ROMAN) == 0) return;
+            // Whatever the face does have. FT_ENCODING_NONE means "the codes
+            // are the font's own", which for these formats is the platform
+            // codepage - close enough to ASCII in its lower half that the
+            // Latin sample text resolves.
+            for (FT_Int i = 0; i < face->num_charmaps; ++i) {
+                if (FT_Set_Charmap(face, face->charmaps[i]) == 0) return;
+            }
+        }
+
         // The specimen is a bare sequence of glyph indices: no shaping, no
         // bidi, no fallback face. That is enough for the Latin sample text a
         // specimen uses, and it is the only thing that can work here at all -
@@ -579,6 +608,7 @@ namespace UltraCanvas {
             return nullptr;
         }
         if (face.handle->num_glyphs <= 0) return nullptr;
+        EnsureCharmapSelected(face.handle);
 
         const int padding = std::max(0, static_cast<int>(std::lround(
                 options.padding * deviceScale)));
@@ -607,9 +637,17 @@ namespace UltraCanvas {
                 : availableWidth >= availableHeight * 2.0 ? std::string("AaBbCc")
                                                           : std::string("Ag");
         std::vector<FT_UInt> glyphs = GlyphsForText(face.handle, text);
-        if (glyphs.size() < 2) {
-            // Fewer than two of the sample characters exist in this font:
-            // a symbol or icon face. Show what it does have instead.
+        if (glyphs.empty()) {
+            // Not one of the sample characters exists in this font: a symbol
+            // or icon face. Show what it does have instead.
+            //
+            // Only when NOTHING resolved. An earlier "fewer than two" rule
+            // read a font that carries some of the sample as a symbol font,
+            // and worse, it silently ignored a caller who asked for a
+            // one-character specimen - options.text = "A" drew the font's
+            // first glyphs instead of its A. Drawing the part of the sample a
+            // font does have is both more truthful and what the caller asked
+            // for; a face with no Latin at all still gets its own glyphs.
             std::vector<FT_UInt> fallback = FirstGlyphsOf(face.handle, 6);
             if (!fallback.empty()) glyphs = std::move(fallback);
         }
@@ -643,6 +681,453 @@ namespace UltraCanvas {
         DrawRun(face.handle, glyphs, pixels, pw, ph, originX, baselineY,
                 options.textColor);
 
+        pm->MarkDirty();
+        return pm;
+    }
+
+    // ===== UNICODE BLOCKS =====
+    // Only for naming the runs a range picker lists. Deliberately not the
+    // complete block list: a font browser wants the blocks people recognise,
+    // and anything outside them is labelled by its codepoints instead, which
+    // is more useful than a name nobody knows.
+    namespace {
+        struct UnicodeBlock { uint32_t first, last; const char* name; };
+
+        const UnicodeBlock* BlockTable(size_t& count) {
+            static const UnicodeBlock kBlocks[] = {
+                { 0x0000, 0x007F, "Basic Latin" },
+                { 0x0080, 0x00FF, "Latin-1 Supplement" },
+                { 0x0100, 0x017F, "Latin Extended-A" },
+                { 0x0180, 0x024F, "Latin Extended-B" },
+                { 0x0250, 0x02AF, "IPA Extensions" },
+                { 0x02B0, 0x02FF, "Spacing Modifiers" },
+                { 0x0300, 0x036F, "Combining Diacritics" },
+                { 0x0370, 0x03FF, "Greek and Coptic" },
+                { 0x0400, 0x04FF, "Cyrillic" },
+                { 0x0500, 0x052F, "Cyrillic Supplement" },
+                { 0x0530, 0x058F, "Armenian" },
+                { 0x0590, 0x05FF, "Hebrew" },
+                { 0x0600, 0x06FF, "Arabic" },
+                { 0x0700, 0x074F, "Syriac" },
+                { 0x0780, 0x07BF, "Thaana" },
+                { 0x0900, 0x097F, "Devanagari" },
+                { 0x0980, 0x09FF, "Bengali" },
+                { 0x0A00, 0x0A7F, "Gurmukhi" },
+                { 0x0A80, 0x0AFF, "Gujarati" },
+                { 0x0B00, 0x0B7F, "Oriya" },
+                { 0x0B80, 0x0BFF, "Tamil" },
+                { 0x0C00, 0x0C7F, "Telugu" },
+                { 0x0C80, 0x0CFF, "Kannada" },
+                { 0x0D00, 0x0D7F, "Malayalam" },
+                { 0x0D80, 0x0DFF, "Sinhala" },
+                { 0x0E00, 0x0E7F, "Thai" },
+                { 0x0E80, 0x0EFF, "Lao" },
+                { 0x0F00, 0x0FFF, "Tibetan" },
+                { 0x1000, 0x109F, "Myanmar" },
+                { 0x10A0, 0x10FF, "Georgian" },
+                { 0x1100, 0x11FF, "Hangul Jamo" },
+                { 0x1200, 0x137F, "Ethiopic" },
+                { 0x13A0, 0x13FF, "Cherokee" },
+                { 0x1400, 0x167F, "Canadian Aboriginal" },
+                { 0x1680, 0x169F, "Ogham" },
+                { 0x16A0, 0x16FF, "Runic" },
+                { 0x1780, 0x17FF, "Khmer" },
+                { 0x1800, 0x18AF, "Mongolian" },
+                { 0x1E00, 0x1EFF, "Latin Extended Additional" },
+                { 0x1F00, 0x1FFF, "Greek Extended" },
+                { 0x2000, 0x206F, "General Punctuation" },
+                { 0x2070, 0x209F, "Super- and Subscripts" },
+                { 0x20A0, 0x20CF, "Currency Symbols" },
+                { 0x2100, 0x214F, "Letterlike Symbols" },
+                { 0x2150, 0x218F, "Number Forms" },
+                { 0x2190, 0x21FF, "Arrows" },
+                { 0x2200, 0x22FF, "Mathematical Operators" },
+                { 0x2300, 0x23FF, "Miscellaneous Technical" },
+                { 0x2400, 0x243F, "Control Pictures" },
+                { 0x2460, 0x24FF, "Enclosed Alphanumerics" },
+                { 0x2500, 0x257F, "Box Drawing" },
+                { 0x2580, 0x259F, "Block Elements" },
+                { 0x25A0, 0x25FF, "Geometric Shapes" },
+                { 0x2600, 0x26FF, "Miscellaneous Symbols" },
+                { 0x2700, 0x27BF, "Dingbats" },
+                { 0x2E80, 0x2EFF, "CJK Radicals" },
+                { 0x3000, 0x303F, "CJK Symbols and Punctuation" },
+                { 0x3040, 0x309F, "Hiragana" },
+                { 0x30A0, 0x30FF, "Katakana" },
+                { 0x3100, 0x312F, "Bopomofo" },
+                { 0x3130, 0x318F, "Hangul Compatibility Jamo" },
+                { 0x4E00, 0x9FFF, "CJK Unified Ideographs" },
+                { 0xA000, 0xA48F, "Yi Syllables" },
+                { 0xAC00, 0xD7AF, "Hangul Syllables" },
+                { 0xE000, 0xF8FF, "Private Use Area" },
+                { 0xF900, 0xFAFF, "CJK Compatibility Ideographs" },
+                { 0xFB00, 0xFB4F, "Alphabetic Presentation Forms" },
+                { 0xFB50, 0xFDFF, "Arabic Presentation Forms-A" },
+                { 0xFE20, 0xFE2F, "Combining Half Marks" },
+                { 0xFE70, 0xFEFF, "Arabic Presentation Forms-B" },
+                { 0xFF00, 0xFFEF, "Halfwidth and Fullwidth Forms" },
+                { 0x1D400, 0x1D7FF, "Mathematical Alphanumerics" },
+                { 0x1F300, 0x1F5FF, "Miscellaneous Symbols and Pictographs" },
+                { 0x1F600, 0x1F64F, "Emoticons" },
+                { 0x1F680, 0x1F6FF, "Transport and Map Symbols" },
+            };
+            count = sizeof(kBlocks) / sizeof(kBlocks[0]);
+            return kBlocks;
+        }
+
+        std::string HexCodepoint(uint32_t cp) {
+            char buf[16];
+            std::snprintf(buf, sizeof(buf), "U+%04X", cp);
+            return buf;
+        }
+
+        // The block a codepoint falls in, or an empty string outside the table.
+        std::string BlockNameOf(uint32_t cp) {
+            size_t n = 0;
+            const UnicodeBlock* blocks = BlockTable(n);
+            for (size_t i = 0; i < n; ++i) {
+                if (cp >= blocks[i].first && cp <= blocks[i].last)
+                    return blocks[i].name;
+            }
+            return {};
+        }
+    } // namespace
+
+    // ===== A FONT FILE HELD OPEN =====
+
+    struct UltraCanvasFontFace::Impl {
+        FT_Library library = nullptr;
+        FT_Face face = nullptr;
+        std::string path;
+        int faceIndex = 0;
+        FontFaceInfo info;
+        std::vector<FontGlyphEntry> glyphs;
+        std::vector<FontCoverageRange> ranges;
+        bool byCodepoint = false;
+        // The size the face is currently set to, so a grid of same-sized cells
+        // does not re-set it per glyph.
+        int currentPpem = 0;
+        int currentStrike = -1;
+
+        ~Impl() { Release(); }
+
+        void Release() {
+            if (face) { FT_Done_Face(face); face = nullptr; }
+            if (library) { FT_Done_FreeType(library); library = nullptr; }
+            glyphs.clear();
+            ranges.clear();
+            info = FontFaceInfo{};
+            path.clear();
+            faceIndex = 0;
+            byCodepoint = false;
+            currentPpem = 0;
+            currentStrike = -1;
+        }
+
+        // Walk the charmap for (codepoint, glyph) pairs; fall back to plain
+        // glyph indices for a face with no usable charmap - a symbol font, or
+        // one of the legacy bitmap formats whose charmap could not be used.
+        void EnumerateCoverage() {
+            glyphs.clear();
+            byCodepoint = false;
+            if (!face) return;
+
+            if (face->charmap) {
+                FT_UInt gi = 0;
+                FT_ULong cp = FT_Get_First_Char(face, &gi);
+                while (gi != 0) {
+                    FontGlyphEntry entry;
+                    entry.glyphIndex = static_cast<uint32_t>(gi);
+                    entry.codepoint = static_cast<uint32_t>(cp);
+                    glyphs.push_back(entry);
+                    cp = FT_Get_Next_Char(face, cp, &gi);
+                }
+                byCodepoint = !glyphs.empty();
+            }
+            if (glyphs.empty()) {
+                for (FT_Long gi = 0; gi < face->num_glyphs; ++gi) {
+                    FontGlyphEntry entry;
+                    entry.glyphIndex = static_cast<uint32_t>(gi);
+                    glyphs.push_back(entry);
+                }
+            }
+        }
+
+        // Cut the coverage into runs of consecutive codepoints and name each
+        // after the block it starts in. A font that carries three quarters of
+        // Cyrillic gets one "Cyrillic" entry rather than the whole block.
+        void BuildRanges() {
+            ranges.clear();
+            if (glyphs.empty()) return;
+
+            if (!byCodepoint) {
+                // No characters to group by: offer even slices of the glyph
+                // order, which is the only structure such a face has.
+                constexpr size_t kSlice = 256;
+                for (size_t start = 0; start < glyphs.size(); start += kSlice) {
+                    const size_t count = std::min(kSlice, glyphs.size() - start);
+                    FontCoverageRange r;
+                    r.first = glyphs[start].glyphIndex;
+                    r.last = glyphs[start + count - 1].glyphIndex;
+                    r.firstEntry = start;
+                    r.count = count;
+                    r.name = "Glyphs " + std::to_string(r.first) + "-" +
+                             std::to_string(r.last);
+                    ranges.push_back(std::move(r));
+                }
+                return;
+            }
+
+            size_t runStart = 0;
+            std::string runBlock = BlockNameOf(glyphs[0].codepoint);
+            for (size_t i = 1; i <= glyphs.size(); ++i) {
+                const bool end = (i == glyphs.size());
+                // A run breaks on a gap in the codepoints or at a block edge,
+                // so "Cyrillic" never swallows the Greek before it.
+                const bool gap = !end &&
+                        glyphs[i].codepoint != glyphs[i - 1].codepoint + 1;
+                const std::string block =
+                        end ? std::string{} : BlockNameOf(glyphs[i].codepoint);
+                if (!end && !gap && block == runBlock) continue;
+
+                FontCoverageRange r;
+                r.firstEntry = runStart;
+                r.count = i - runStart;
+                r.first = glyphs[runStart].codepoint;
+                r.last = glyphs[i - 1].codepoint;
+                r.name = runBlock.empty()
+                                 ? HexCodepoint(r.first) + "-" + HexCodepoint(r.last)
+                                 : runBlock;
+                ranges.push_back(std::move(r));
+                runStart = i;
+                runBlock = block;
+            }
+
+            // Runs of one block that were split only by gaps read as three
+            // "Cyrillic" entries in a picker; fold those back together.
+            std::vector<FontCoverageRange> merged;
+            for (FontCoverageRange& r : ranges) {
+                if (!merged.empty() && merged.back().name == r.name &&
+                    merged.back().firstEntry + merged.back().count == r.firstEntry) {
+                    merged.back().count += r.count;
+                    merged.back().last = r.last;
+                    continue;
+                }
+                merged.push_back(std::move(r));
+            }
+            ranges.swap(merged);
+        }
+
+        // Set the face to a pixel size once per cell size rather than per
+        // glyph. Returns the ppem in use, or 0 when the size cannot be set.
+        int UseSize(int ppem) {
+            if (!face) return 0;
+            if (FT_IS_SCALABLE(face)) {
+                if (currentPpem == ppem) return ppem;
+                if (FT_Set_Pixel_Sizes(face, 0, static_cast<FT_UInt>(ppem)) != 0)
+                    return 0;
+                currentPpem = ppem;
+                return ppem;
+            }
+            if (face->num_fixed_sizes <= 0) return 0;
+            int best = 0, bestHeight = -1;
+            for (FT_Int i = 0; i < face->num_fixed_sizes; ++i) {
+                const int h = face->available_sizes[i].height;
+                if (h <= ppem && h > bestHeight) { bestHeight = h; best = i; }
+            }
+            if (bestHeight < 0) {
+                for (FT_Int i = 1; i < face->num_fixed_sizes; ++i)
+                    if (face->available_sizes[i].height <
+                        face->available_sizes[best].height) best = i;
+            }
+            if (currentStrike != best) {
+                if (FT_Select_Size(face, best) != 0) return 0;
+                currentStrike = best;
+                currentPpem = 0;
+            }
+            return face->available_sizes[best].height;
+        }
+    };
+
+    UltraCanvasFontFace::UltraCanvasFontFace()
+        : impl(std::make_unique<Impl>()) {}
+    UltraCanvasFontFace::~UltraCanvasFontFace() = default;
+    UltraCanvasFontFace::UltraCanvasFontFace(UltraCanvasFontFace&&) noexcept = default;
+    UltraCanvasFontFace& UltraCanvasFontFace::operator=(
+            UltraCanvasFontFace&&) noexcept = default;
+
+    bool UltraCanvasFontFace::Open(const std::string& filePath, int faceIndex) {
+        Close();
+        if (filePath.empty()) return false;
+        if (FT_Init_FreeType(&impl->library) != 0) {
+            impl->library = nullptr;
+            return false;
+        }
+        if (FT_New_Face(impl->library, filePath.c_str(),
+                        std::max(0, faceIndex), &impl->face) != 0) {
+            impl->face = nullptr;
+            impl->Release();
+            return false;
+        }
+        if (impl->face->num_glyphs <= 0) {
+            impl->Release();
+            return false;
+        }
+        // The same selection the specimen needs, and for the same reason: a
+        // legacy bitmap face arrives with no charmap and would otherwise
+        // enumerate no characters at all.
+        EnsureCharmapSelected(impl->face);
+        impl->path = filePath;
+        impl->faceIndex = std::max(0, faceIndex);
+        ReadFaceInfo(impl->face, impl->info);
+        impl->EnumerateCoverage();
+        impl->BuildRanges();
+        return true;
+    }
+
+    void UltraCanvasFontFace::Close() { impl->Release(); }
+    bool UltraCanvasFontFace::IsOpen() const { return impl->face != nullptr; }
+    const std::string& UltraCanvasFontFace::Path() const { return impl->path; }
+    int UltraCanvasFontFace::FaceIndex() const { return impl->faceIndex; }
+    const FontFaceInfo& UltraCanvasFontFace::Info() const { return impl->info; }
+    const std::vector<FontGlyphEntry>& UltraCanvasFontFace::Glyphs() const {
+        return impl->glyphs;
+    }
+    bool UltraCanvasFontFace::GlyphsAreByCodepoint() const {
+        return impl->byCodepoint;
+    }
+    const std::vector<FontCoverageRange>& UltraCanvasFontFace::Ranges() const {
+        return impl->ranges;
+    }
+
+    std::string UltraCanvasFontFace::GlyphName(size_t entry) const {
+        if (!impl->face || entry >= impl->glyphs.size()) return {};
+        if (!FT_HAS_GLYPH_NAMES(impl->face)) return {};
+        char buf[128] = {0};
+        if (FT_Get_Glyph_Name(impl->face,
+                              static_cast<FT_UInt>(impl->glyphs[entry].glyphIndex),
+                              buf, sizeof(buf)) != 0) {
+            return {};
+        }
+        return Flatten(buf);
+    }
+
+    size_t UltraCanvasFontFace::FindCodepoint(uint32_t codepoint) const {
+        if (!impl->byCodepoint) return impl->glyphs.size();
+        // Enumerated in codepoint order, so a binary search answers it.
+        const auto it = std::lower_bound(
+                impl->glyphs.begin(), impl->glyphs.end(), codepoint,
+                [](const FontGlyphEntry& e, uint32_t cp) { return e.codepoint < cp; });
+        if (it == impl->glyphs.end() || it->codepoint != codepoint)
+            return impl->glyphs.size();
+        return static_cast<size_t>(it - impl->glyphs.begin());
+    }
+
+    std::shared_ptr<UCPixmap> UltraCanvasFontFace::RenderGlyph(
+            size_t entry, int width, int height, float scale,
+            const FontGlyphOptions& options) {
+        if (!impl->face || entry >= impl->glyphs.size()) return nullptr;
+        if (width <= 0 || height <= 0) return nullptr;
+
+        const float deviceScale = std::max(1.0f, scale);
+        const int pw = std::clamp(static_cast<int>(std::lround(width * deviceScale)),
+                                  4, kMaxSpecimenEdge);
+        const int ph = std::clamp(static_cast<int>(std::lround(height * deviceScale)),
+                                  4, kMaxSpecimenEdge);
+        const int padding = std::max(0, static_cast<int>(std::lround(
+                options.padding * deviceScale)));
+        const double availableWidth = std::max(1.0, static_cast<double>(pw - 2 * padding));
+        const double availableHeight = std::max(1.0, static_cast<double>(ph - 2 * padding));
+
+        FT_Face face = impl->face;
+        const FT_UInt glyphIndex = static_cast<FT_UInt>(impl->glyphs[entry].glyphIndex);
+
+        // ===== SIZE AND BASELINE =====
+        // A grid is only readable when every cell shares them. Scaling the
+        // face's own bounding box into the cell does that: no glyph in the
+        // face can overflow, and the baseline lands in the same place in
+        // every cell, so the row reads as text rather than as a set of
+        // unrelated pictures. fitInkToCell trades that away for one glyph
+        // shown as large as possible, which is what a detail pane wants.
+        int ppem = 0;
+        double baselineY = 0.0;
+        if (FT_IS_SCALABLE(face) && !options.fitInkToCell) {
+            const double upem = face->units_per_EM > 0 ? face->units_per_EM : 1000.0;
+            const double spanUnits = static_cast<double>(face->bbox.yMax - face->bbox.yMin);
+            if (spanUnits <= 0.0) return nullptr;
+            // The em box scaled so the face's full vertical extent fits.
+            double px = availableHeight * upem / spanUnits;
+            ppem = std::clamp(static_cast<int>(std::floor(px)),
+                              kMinSpecimenPpem, kMaxSpecimenPpem);
+            if (impl->UseSize(ppem) == 0) return nullptr;
+            const double unitToPx = static_cast<double>(ppem) / upem;
+            baselineY = padding + face->bbox.yMax * unitToPx;
+        } else {
+            ppem = impl->UseSize(std::clamp(static_cast<int>(availableHeight),
+                                            kMinSpecimenPpem, kMaxSpecimenPpem));
+            if (ppem == 0) return nullptr;
+            baselineY = padding + face->size->metrics.ascender / 64.0;
+        }
+
+        if (FT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT) != 0) return nullptr;
+        FT_GlyphSlot slot = face->glyph;
+
+        // fitInkToCell re-solves the size from this glyph's own ink.
+        if (options.fitInkToCell && FT_IS_SCALABLE(face)) {
+            const double inkW = slot->metrics.width / 64.0;
+            const double inkH = slot->metrics.height / 64.0;
+            if (inkW > 0.0 && inkH > 0.0) {
+                const double factor = std::min(availableWidth / inkW,
+                                               availableHeight / inkH);
+                const int fitted = std::clamp(
+                        static_cast<int>(std::floor(ppem * factor)),
+                        kMinSpecimenPpem, kMaxSpecimenPpem);
+                if (fitted != ppem && impl->UseSize(fitted) != 0) {
+                    ppem = fitted;
+                    if (FT_Load_Glyph(face, glyphIndex, FT_LOAD_DEFAULT) != 0)
+                        return nullptr;
+                    slot = face->glyph;
+                }
+                baselineY = padding + (availableHeight -
+                                       slot->metrics.height / 64.0) * 0.5 +
+                            slot->metrics.horiBearingY / 64.0;
+            }
+        }
+
+        auto pm = std::make_shared<UCPixmap>();
+        if (!pm->Init(pw, ph)) return nullptr;
+        uint32_t* pixels = pm->GetPixelData();
+        if (!pixels) return nullptr;
+        std::fill(pixels, pixels + static_cast<size_t>(pw) * ph,
+                  PremultiplyColor(options.backgroundColor));
+
+        if (slot->format != FT_GLYPH_FORMAT_BITMAP &&
+            FT_Render_Glyph(slot, FT_RENDER_MODE_NORMAL) != 0) {
+            // A glyph that will not rasterize is still a cell, not a failure.
+            pm->MarkDirty();
+            return pm;
+        }
+
+        const FT_Bitmap& bmp = slot->bitmap;
+        if (bmp.buffer && bmp.width > 0 && bmp.rows > 0) {
+            // Centred on its ink, not on its advance: a narrow glyph centred
+            // by advance sits visibly off-centre in a square cell.
+            const int left = static_cast<int>(std::lround(
+                    padding + (availableWidth - static_cast<double>(bmp.width)) * 0.5));
+            const int top = static_cast<int>(std::lround(baselineY)) - slot->bitmap_top;
+            for (unsigned gy = 0; gy < bmp.rows; ++gy) {
+                const int py = top + static_cast<int>(gy);
+                if (py < 0 || py >= ph) continue;
+                uint32_t* dstRow = pixels + static_cast<size_t>(py) * pw;
+                for (unsigned gx = 0; gx < bmp.width; ++gx) {
+                    const int px = left + static_cast<int>(gx);
+                    if (px < 0 || px >= pw) continue;
+                    BlendPixel(dstRow[px], options.textColor,
+                               GlyphCoverage(bmp, static_cast<int>(gx),
+                                             static_cast<int>(gy)));
+                }
+            }
+        }
         pm->MarkDirty();
         return pm;
     }

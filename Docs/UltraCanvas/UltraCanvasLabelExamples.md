@@ -447,6 +447,22 @@ The label's rendering process follows these steps:
 6. **Text Rendering**: Draws the main text content
 7. **Focus Indicator**: Draws focus rectangle if label has focus
 
+### Where the text layout comes from
+
+The label caches an `ITextLayout` and builds it from a render context. At paint
+time that is **the context passed to `Render()`**, and only failing that the one
+reachable through the element's window. The distinction matters for a label
+that is drawn without a window behind it — into an offscreen surface from
+`CreateRenderContext(size, nullptr)`, the way the QR code plugin exports a PNG —
+where there is no window to ask and the caller's context is the only one there
+is.
+
+Sizing happens earlier, outside any paint: `ComputeIntrinsicSizes()` has no
+context to be handed and falls back to the window's, so a label measured before
+it is attached simply reports zero and is measured again once it can be. A
+label whose layout could not be built draws its background, border and focus
+ring and skips its words; it does not fail the paint.
+
 ## Performance Considerations
 
 - **Layout Caching**: Layout is only recalculated when text or style changes

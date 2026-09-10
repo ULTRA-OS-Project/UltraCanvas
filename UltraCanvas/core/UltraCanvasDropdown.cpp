@@ -241,15 +241,24 @@ namespace UltraCanvas {
             if (selectedIndex != index) {
                 selectedIndex = index;
 
-                if (index >= 0) {
-                    if (runNotifications && onSelectionChanged) {
+                if (index >= 0 && runNotifications) {
+                    if (onSelectionChanged) {
                         onSelectionChanged(index, items[index]);
                     }
+                    // The posted event is a notification too, so it belongs
+                    // inside the flag: every caller that passes false does so
+                    // to move the control without anything reacting - "don't
+                    // fire SetInputDevice yet" - and was getting a
+                    // DropdownSelect anyway. Guarded on the application as
+                    // well, the way the rest of the core reaches the
+                    // singleton, so building a dropdown before (or without)
+                    // an application is not a crash.
                     UCEvent ev;
                     ev.type = UCEventType::DropdownSelect;
                     ev.targetElement = this;
                     ev.userDataInt = index;
-                    UltraCanvasApplication::GetInstance()->PushEvent(ev);
+                    if (auto* app = UltraCanvasApplication::GetInstance())
+                        app->PushEvent(ev);
                 }
             }
         }

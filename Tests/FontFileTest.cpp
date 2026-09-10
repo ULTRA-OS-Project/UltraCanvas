@@ -52,6 +52,43 @@ double InkFraction(const std::shared_ptr<UCPixmap>& pm) {
     return static_cast<double>(inked) / (static_cast<double>(w) * h);
 }
 
+// True when two specimens are pixel-identical. The sharp end of the fallback
+// tests below: whenever the sample text fails to resolve, every request falls
+// back to the same six first glyphs, so two *different* requests come out
+// byte-for-byte equal. Resolving them properly makes them differ.
+bool SamePixels(const std::shared_ptr<UCPixmap>& a,
+                const std::shared_ptr<UCPixmap>& b) {
+    if (!a || !b) return false;
+    if (a->GetRawWidth() != b->GetRawWidth() ||
+        a->GetRawHeight() != b->GetRawHeight()) return false;
+    const uint32_t* pa = a->GetPixelData();
+    const uint32_t* pb = b->GetPixelData();
+    if (!pa || !pb) return false;
+    const long n = static_cast<long>(a->GetRawWidth()) * a->GetRawHeight();
+    return std::equal(pa, pa + n, pb);
+}
+
+// Topmost and bottommost inked row of a cell, or false when it has no ink.
+// Two glyphs rendered at one cell size must share a baseline, and that is
+// only checkable through where their ink lands.
+bool InkRows(const std::shared_ptr<UCPixmap>& pm, int& top, int& bottom) {
+    if (!pm) return false;
+    const uint32_t* px = pm->GetPixelData();
+    if (!px) return false;
+    const int w = pm->GetRawWidth(), h = pm->GetRawHeight();
+    top = -1; bottom = -1;
+    for (int y = 0; y < h; ++y) {
+        for (int x = 0; x < w; ++x) {
+            if ((px[y * w + x] & 0x00FFFFFFu) != 0x00FFFFFFu) {
+                if (top < 0) top = y;
+                bottom = y;
+                break;
+            }
+        }
+    }
+    return top >= 0;
+}
+
 void TestExtensionGate() {
     std::cout << "\nExtension recognition\n";
     Check(IsFontFileExtension("Ubuntu-R.ttf"), "ttf by file name");
@@ -234,6 +271,232 @@ void TestSpecimen() {
           "a negative height renders nothing");
 }
 
+// ===== CHARACTER LOOKUP AND THE SYMBOL FALLBACK =====
+// The specimen resolves its sample text through the face's charmap and only
+// falls back to drawing the font's own first glyphs when NOTHING resolves.
+// Two ways that used to go wrong, both visible as a folder of .fon files
+// showing `!"#$%` where letters belong:
+//   * FreeType selects no charmap at all for a face whose only charmap has
+//     encoding FT_ENCODING_NONE - the legacy bitmap formats (Windows FNT/FON,
+//     PCF, BDF with a non-Unicode registry). Every lookup then answered 0.
+//   * The fallback triggered on "fewer than two" resolved glyphs, so a
+//     caller asking for a one-character specimen never got it.
+void TestCharacterLookup() {
+    std::cout << "\nCharacter lookup\n";
+    const fs::path regular = BundledFont("Ubuntu-R.ttf");
+    if (!fs::exists(regular)) {
+        std::cout << "  [SKIP] " << regular.string() << " not present\n";
+        return;
+    }
+    const std::string path = regular.string();
+
+    // Two different one-character samples must render differently. Comparing
+    // ink volume would not settle it - the fallback run can happen to ink a
+    // similar amount - but two distinct letters cannot produce the identical
+    // image unless neither was looked up at all.
+    FontSpecimenOptions a;  a.text = "A";
+    FontSpecimenOptions w;  w.text = "W";
+    auto letterA = RenderFontSpecimenPixmap(path, 160, 80, 1.0f, a);
+    auto letterW = RenderFontSpecimenPixmap(path, 160, 80, 1.0f, w);
+    Check(letterA && letterW, "one-character specimens render");
+    Check(letterA && InkFraction(letterA) > 0.0, "a one-character specimen has ink");
+    Check(!SamePixels(letterA, letterW),
+          "a one-character sample is honoured, not replaced by the fallback");
+
+    // And a longer sample still differs from a short one.
+    FontSpecimenOptions six;  six.text = "AaBbCc";
+    auto sixGlyphs = RenderFontSpecimenPixmap(path, 160, 80, 1.0f, six);
+    Check(!SamePixels(letterA, sixGlyphs), "sample length changes the specimen");
+
+    // A face with no Latin coverage at all must still produce a specimen -
+    // that is what the fallback is for.
+    FontFileInfo info;
+    if (ReadFontFileInfo(path, info) && !info.faces.empty()) {
+        Check(info.faces[0].hasUnicodeCharmap,
+              "the bundled face reports a Unicode charmap");
+    }
+}
+
+// The charmap-selection fix itself needs a face whose only charmap carries
+// FT_ENCODING_NONE, and only the binary bitmap formats produce one - a BDF
+// written here would come back as ADOBE_STANDARD, which FreeType selects by
+// itself. So this probes the system's X11 bitmap fonts and skips when the
+// machine has none; the hermetic half of the behaviour is covered above.
+void TestLegacyBitmapCharmap() {
+    std::cout << "\nLegacy bitmap fonts (system-dependent)\n";
+    static const char* kDirs[] = {
+        "/usr/share/fonts/X11/misc", "/usr/share/fonts/X11/cyrillic",
+        "/usr/share/fonts/X11/100dpi", "/usr/share/fonts/X11/75dpi",
+        "/usr/share/fonts/misc", "/usr/share/fonts/pcf",
+    };
+    fs::path sample;
+    std::error_code ec;
+    for (const char* dir : kDirs) {
+        if (!fs::is_directory(dir, ec)) continue;
+        for (const auto& entry : fs::directory_iterator(dir, ec)) {
+            const std::string name = entry.path().filename().string();
+            // FreeType opens gzip-compressed PCF directly where it was built
+            // with zlib, which is the normal packaging on these systems.
+            if (name.size() > 4 && name.find(".pcf") != std::string::npos) {
+                sample = entry.path();
+                break;
+            }
+        }
+        if (!sample.empty()) break;
+    }
+    if (sample.empty()) {
+        std::cout << "  [SKIP] no X11 bitmap font on this machine\n";
+        return;
+    }
+
+    FontFileInfo info;
+    if (!ReadFontFileInfo(sample.string(), info)) {
+        std::cout << "  [SKIP] " << sample.filename().string()
+                  << " is not readable by this FreeType\n";
+        return;
+    }
+    std::cout << "    using " << sample.filename().string() << " ("
+              << (info.faces.empty() ? 0 : info.faces[0].glyphCount)
+              << " glyphs, unicode charmap: "
+              << (!info.faces.empty() && info.faces[0].hasUnicodeCharmap ? "yes" : "no")
+              << ")\n";
+
+    // Same discriminator as above. Before a charmap was selected explicitly,
+    // every lookup in such a face answered 0, both of these fell back to the
+    // identical six first glyphs, and the ink matched exactly.
+    FontSpecimenOptions a;  a.text = "A";
+    FontSpecimenOptions w;  w.text = "W";
+    auto letterA = RenderFontSpecimenPixmap(sample.string(), 160, 80, 1.0f, a);
+    auto letterW = RenderFontSpecimenPixmap(sample.string(), 160, 80, 1.0f, w);
+    Check(letterA && letterW, "specimens render from a bitmap font");
+    Check(!SamePixels(letterA, letterW),
+          "its Latin characters resolve through the selected charmap");
+}
+
+// ===== A FONT FILE HELD OPEN =====
+// UltraCanvasFontFace is the session type a browser needs: open once,
+// enumerate the coverage once, then rasterize individual glyphs from a face
+// that is already open. The one-shot functions above stay as they are.
+void TestFontFace() {
+    std::cout << "\nHeld-open face\n";
+    const fs::path regular = BundledFont("Ubuntu-R.ttf");
+    if (!fs::exists(regular)) {
+        std::cout << "  [SKIP] " << regular.string() << " not present\n";
+        return;
+    }
+
+    UltraCanvasFontFace face;
+    Check(!face.IsOpen(), "a fresh face is closed");
+    Check(face.Glyphs().empty(), "a closed face enumerates nothing");
+    Check(face.RenderGlyph(0, 32, 32, 1.0f) == nullptr,
+          "a closed face rasterizes nothing");
+    Check(!face.Open("/no/such/font.ttf"), "a missing file fails to open");
+
+    Check(face.Open(regular.string()), "Ubuntu-R.ttf opens");
+    Check(face.IsOpen(), "and reports open");
+    Check(face.Info().family == "Ubuntu", "the face record is filled in");
+    Check(face.Path() == regular.string(), "it remembers its path");
+    Check(!face.Glyphs().empty(), "coverage was enumerated");
+    Check(face.GlyphsAreByCodepoint(), "a Unicode face enumerates by codepoint");
+    std::cout << "    " << face.Glyphs().size() << " glyphs in "
+              << face.Ranges().size() << " ranges, first '"
+              << (face.Ranges().empty() ? "" : face.Ranges().front().name) << "'\n";
+
+    // The ranges are a partition of the coverage: every glyph in exactly one,
+    // in order, with nothing dropped. A picker built on them would otherwise
+    // silently hide part of the font.
+    Check(!face.Ranges().empty(), "the coverage was cut into ranges");
+    size_t walked = 0;
+    bool contiguous = true;
+    for (const FontCoverageRange& r : face.Ranges()) {
+        if (r.firstEntry != walked || r.count == 0) contiguous = false;
+        walked += r.count;
+    }
+    Check(contiguous, "ranges are contiguous and non-empty");
+    Check(walked == face.Glyphs().size(), "ranges cover every glyph exactly once");
+    Check(face.Ranges().front().name == "Basic Latin",
+          "the first range is named after its Unicode block");
+
+    // Reaching a character, and what the font calls it.
+    const size_t entryA = face.FindCodepoint('A');
+    Check(entryA < face.Glyphs().size(), "'A' is found by codepoint");
+    Check(entryA < face.Glyphs().size() && face.Glyphs()[entryA].codepoint == 'A',
+          "the entry really is 'A'");
+    Check(face.GlyphName(entryA) == "A", "the font's own glyph name is read");
+    Check(face.FindCodepoint(0x10FFFD) == face.Glyphs().size(),
+          "a codepoint the font lacks is reported as not covered");
+    Check(face.GlyphName(face.Glyphs().size() + 5).empty(),
+          "an out-of-range entry has no name");
+
+    // Rasterizing into a cell.
+    auto cellA = face.RenderGlyph(entryA, 48, 48, 1.0f);
+    Check(cellA != nullptr, "a glyph rasterizes into a cell");
+    Check(cellA && cellA->GetRawWidth() == 48 && cellA->GetRawHeight() == 48,
+          "the cell is the requested size");
+    Check(cellA && InkFraction(cellA) > 0.0, "the cell has ink");
+    auto hidpi = face.RenderGlyph(entryA, 48, 48, 2.0f);
+    Check(hidpi && hidpi->GetRawWidth() == 96, "scale 2 renders device pixels");
+    Check(face.RenderGlyph(face.Glyphs().size(), 48, 48, 1.0f) == nullptr,
+          "an out-of-range entry rasterizes nothing");
+
+    // The property that makes a grid readable: every cell shares a baseline,
+    // so an 'A' sits above it and a 'g' hangs below it. Per-glyph ink fitting
+    // would put both flush against the cell edges and lose the distinction.
+    const size_t entryG = face.FindCodepoint('g');
+    if (entryA < face.Glyphs().size() && entryG < face.Glyphs().size()) {
+        auto gA = face.RenderGlyph(entryA, 64, 64, 1.0f);
+        auto gG = face.RenderGlyph(entryG, 64, 64, 1.0f);
+        int aTop = 0, aBottom = 0, gTop = 0, gBottom = 0;
+        const bool inkedA = InkRows(gA, aTop, aBottom);
+        const bool inkedG = InkRows(gG, gTop, gBottom);
+        Check(inkedA && inkedG, "both cells have ink");
+        if (inkedA && inkedG) {
+            std::cout << "    'A' rows " << aTop << ".." << aBottom
+                      << ", 'g' rows " << gTop << ".." << gBottom << "\n";
+            Check(aTop < gTop, "the capital reaches higher than the lowercase");
+            Check(gBottom > aBottom, "the descender hangs below the baseline");
+        }
+
+        // fitInkToCell is the other mode: one glyph as large as the cell
+        // allows, which a detail pane wants and a grid does not.
+        FontGlyphOptions fitted;
+        fitted.fitInkToCell = true;
+        auto big = face.RenderGlyph(entryA, 64, 64, 1.0f, fitted);
+        Check(big && InkFraction(big) > InkFraction(gA),
+              "fitInkToCell fills more of the cell than grid sizing does");
+    }
+
+    // Moving a face keeps it usable and leaves the source closed.
+    UltraCanvasFontFace moved = std::move(face);
+    Check(moved.IsOpen() && !moved.Glyphs().empty(), "a moved face still works");
+
+    moved.Close();
+    Check(!moved.IsOpen() && moved.Glyphs().empty(), "closing releases it");
+}
+
+// A face with no Latin coverage still enumerates, and one with no glyph names
+// still answers. Both are system fonts, so both skip where absent.
+void TestFontFaceSymbolFont() {
+    std::cout << "\nHeld-open face: symbol and bitmap fonts\n";
+    const fs::path dingbats = "/usr/share/fonts/X11/Type1/D050000L.pfb";
+    if (!fs::exists(dingbats)) {
+        std::cout << "  [SKIP] no dingbat font on this machine\n";
+        return;
+    }
+    UltraCanvasFontFace face;
+    if (!face.Open(dingbats.string())) {
+        std::cout << "  [SKIP] " << dingbats.filename().string()
+                  << " is not readable by this FreeType\n";
+        return;
+    }
+    Check(!face.Glyphs().empty(), "a symbol font enumerates its glyphs");
+    Check(face.FindCodepoint('A') == face.Glyphs().size(),
+          "and reports no coverage for 'A'");
+    Check(!face.Ranges().empty(), "its coverage is still cut into ranges");
+    auto cell = face.RenderGlyph(face.Glyphs().size() / 2, 48, 48, 1.0f);
+    Check(cell != nullptr, "one of its glyphs rasterizes");
+}
+
 void TestClassification() {
     std::cout << "\nClassification\n";
     auto ttf = UltraCanvasSupportedFormats::FindByExtension("ttf");
@@ -307,6 +570,10 @@ int main() {
     TestMetadata();
     TestBadInput();
     TestSpecimen();
+    TestCharacterLookup();
+    TestLegacyBitmapCharmap();
+    TestFontFace();
+    TestFontFaceSymbolFont();
     TestClassification();
     std::cout << "\n" << (g_failures ? "FAILED" : "PASSED") << " ("
               << g_failures << " failure" << (g_failures == 1 ? "" : "s") << ")\n";
