@@ -23,6 +23,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailSyncEngine.cpp
     engine/UltraMailDiscovery.cpp
     engine/UltraMailCredentialVault.cpp
+    engine/UltraMailOAuth.cpp
     engine/UltraMailComposer.cpp
     engine/UltraMailSender.cpp
     engine/UltraMailOutbox.cpp
@@ -97,6 +98,7 @@ set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailContactsView.cpp
     ui/UltraMailComposeWindow.cpp
     ui/UltraMailPassphraseDialog.cpp
+    ui/UltraMailOAuthWaitDialog.cpp
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})

@@ -14,13 +14,30 @@
 //
 // Vaults written by that 0.1 format are migrated on the first successful
 // unlock (see MigrateLegacy) and the old files are removed.
-// Version: 0.4.0 (Phase 2)
+// Version: 0.5.0 - OAuth2 token sets (access + refresh + expiry) beside passwords
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include <cstdint>
 #include <string>
 
 namespace UltraMail {
+
+// The tokens of an account that signed in with OAuth2 (see UltraMailOAuth.h).
+struct OAuthTokens {
+    std::string accessToken;
+    std::string refreshToken;
+    int64_t     expiresAt = 0;   // epoch seconds the access token dies at; 0 = unknown
+
+    bool Empty() const { return accessToken.empty() && refreshToken.empty(); }
+    // True when a session must not start on the current access token.
+    bool NeedsRefresh(int64_t now) const {
+        return accessToken.empty() || (expiresAt > 0 && expiresAt <= now);
+    }
+};
+
+// How an account signs in, decided by what the vault holds for it.
+enum class SignInMethod { None, Password, OAuth2 };
 
 // Why an unlock attempt failed, so the UI can tell "wrong password" (ask
 // again) from "this build cannot open a vault at all" (say so and stop).
@@ -66,6 +83,17 @@ public:
 
     // Remove the secret for an account. True if it existed and was removed.
     bool Remove(const std::string& account);
+
+    // OAuth2 token set of an account, kept as three entries beside the
+    // password slot. Storing tokens drops a stored password and vice versa,
+    // so an account has exactly one way of signing in.
+    bool StoreOAuthTokens(const std::string& account, const OAuthTokens& tokens);
+    bool RetrieveOAuthTokens(const std::string& account, OAuthTokens& out) const;
+    bool HasOAuthTokens(const std::string& account) const;
+    bool RemoveOAuthTokens(const std::string& account);
+
+    // OAuth2 when a token set is stored, Password when a password is, else None.
+    SignInMethod MethodFor(const std::string& account) const;
 
     // The UltraVault key for an account, using the module's namespaced
     // "<vendor>.<app>.<purpose>" convention (UltraAI/Docs/UltraVault.md §4).

@@ -59,8 +59,11 @@ Apps/UltraMail/
                                   .eml body cache, two-sided flag changes
     UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
                                   Mozilla-autoconfig XML (over UltraNet HTTP)
-    UltraMailCredentialVault.{h,cpp} per-account secrets out of the config
-                                  (obfuscated file backend; OS-keychain-ready)
+    UltraMailCredentialVault.{h,cpp} per-account secrets out of the config:
+                                  a password or an OAuth2 token set, in UltraVault
+    UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail): provider table, app
+                                  registration (env / oauth.ini), sign-in +
+                                  token refresh, credentials for IMAP/SMTP
     UltraMailComposer.{h,cpp}     Draft model + Reply/Forward/New builders
                                   (Re:/Fwd:, quoting, threading headers)
     UltraMailSender.{h,cpp}       send a Draft via the SMTP plug-in
@@ -95,6 +98,8 @@ Apps/UltraMail/
     UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body, attachment
                                   strip, Send / Attach file / Attach cloud link
                                   (UltraCloud picker → share link into the body)
+    UltraMailOAuthWaitDialog.{h,cpp} "Sign in with Google": what to do in the
+                                  browser, Cancel; closes when the redirect lands
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```
@@ -133,10 +138,44 @@ current folder, and the share link lands in the body. Run with
 `AutoDiscovery` resolves the incoming (IMAP) and outgoing (SMTP) servers from
 the address — instant offline provider presets (Gmail, Outlook, Yahoo, iCloud,
 GMX, web.de, mailbox.org, Posteo, …), falling back to a Mozilla-autoconfig /
-ISPDB lookup over UltraNet HTTP. The password (or OAuth token) is stored in the
-`CredentialVault`, never in the config. Try it: run with
+ISPDB lookup over UltraNet HTTP. The password (or OAuth token set) is stored
+in the `CredentialVault`, never in the config. Try it: run with
 `ULTRAMAIL_DEMO_ADD=you@gmail.com` to exercise discovery + vault + the result
 dialog.
+
+**Google sign-in (Gmail):** Google rejects the account password over IMAP and
+SMTP, so a Gmail / Googlemail account signs in with Google instead: leave the
+password empty in the wizard and UltraMail opens Google's consent page in your
+browser (OAuth2 authorization code + PKCE through UltraNet's OAuth2 client, the
+redirect caught on an ephemeral loopback port). The tokens land in the vault;
+every IMAP/SMTP session then uses XOAUTH2 with a fresh bearer token, refreshed
+through Google when the previous one expired. A typed password still works the
+classic way (Google's *app passwords*).
+
+The sign-in runs as an OAuth *client* that Google must know. Register one once
+and give it to UltraMail:
+
+1. In the [Google Cloud console](https://console.cloud.google.com/) create a
+   project, open *APIs & Services → OAuth consent screen* and configure it
+   (External; add your own address under *Test users* while the app is in
+   testing mode — the `https://mail.google.com/` scope is restricted, so an
+   unverified app only serves its test users).
+2. *APIs & Services → Credentials → Create credentials → OAuth client ID*,
+   application type **Desktop app**. Note the client id and client secret.
+3. Put them into `oauth.ini` in UltraMail's data folder
+   (`~/.local/share/UltraMail/` on Linux, `%APPDATA%\UltraMail\` on Windows):
+
+   ```ini
+   [google]
+   client_id     = 1234567890-abc.apps.googleusercontent.com
+   client_secret = GOCSPX-…
+   ```
+
+   or set `ULTRAMAIL_GOOGLE_CLIENT_ID` / `ULTRAMAIL_GOOGLE_CLIENT_SECRET` in
+   the environment (an optional `ULTRAMAIL_GOOGLE_REDIRECT_URI` overrides the
+   default `http://127.0.0.1:0/callback`). In code: `OAuthApps::Set("google",
+   app)`. Until a client is configured the wizard says so and asks for an app
+   password instead.
 
 ## What the engine provides now
 

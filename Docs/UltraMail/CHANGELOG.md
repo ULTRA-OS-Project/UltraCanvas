@@ -1,3 +1,30 @@
+#### 2026-09-10 *0.8.0*
+- **Gmail signs in with Google.** Leave the password empty in the account
+  wizard for a Gmail / Googlemail address and UltraMail opens Google's consent
+  page in the browser (OAuth2 authorization code + PKCE over UltraNet's OAuth2
+  client, redirect caught on an ephemeral loopback port). A "Sign in with
+  Google" dialog waits — with Cancel — until the redirect arrives, the tokens
+  go into the credential vault, and the inbox is fetched right away. Every
+  IMAP and SMTP session of such an account then authenticates with XOAUTH2
+  and a fresh bearer token: an expired one is refreshed through Google on the
+  worker thread before the fetch, and stored again. A typed password still
+  works the classic way (an app password).
+- **Engine: `UltraMailOAuth.{h,cpp}`** — the provider table (`google`:
+  endpoints, the `https://mail.google.com/` scope, `access_type=offline`,
+  `prompt=consent`), the app registration (`OAuthApps`: `Set()`, the
+  environment `ULTRAMAIL_GOOGLE_CLIENT_ID` / `_CLIENT_SECRET` /
+  `_REDIRECT_URI`, or `oauth.ini` in the data folder), and `MailOAuth`
+  (`SignIn`, `EnsureFresh`, `CredentialsFor`) with test seams for the
+  interactive authorization and the refresh. `CredentialVault` stores an
+  OAuth2 token set (access + refresh + expiry) beside the password slot — an
+  account has exactly one sign-in method (`MethodFor`). `Outbox::Flush` takes
+  a credentials resolver; `SyncService::SyncInBackground` takes a prepare step
+  that runs on the worker. The SMTP plug-in now honours XOAUTH2 bearer
+  credentials like the IMAP plug-in already did.
+- **Wizard hint.** As the address is typed, the wizard says whether to leave
+  the password empty for the browser sign-in, or — when no Google OAuth client
+  is configured — to use an app password.
+
 #### 2026-09-10 *0.7.1*
 - **A new account fetches its inbox right away.** Adding an account only
   wrote it to the store; the first sync waited for the five-minute timer —

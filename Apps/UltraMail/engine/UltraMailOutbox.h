@@ -3,7 +3,7 @@
 // (surviving restarts); Flush attempts to send each pending item via the SMTP
 // plug-in, removing successes and recording failures for retry. Keeps sending
 // off the compose path so Send never blocks and survives being offline.
-// Version: 0.2.0 (Phase 2)
+// Version: 0.3.0 - Flush with resolved credentials (password or OAuth2 token)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -69,9 +69,15 @@ public:
     };
 
     // Attempt to send every pending item through `smtp`. `credentialFor` maps an
-    // account id to its password / token (resolved from the credential vault).
+    // account id to its password (resolved from the credential vault).
     FlushStats Flush(IMailProtocolPlugin& smtp,
                      const std::function<std::string(const std::string&)>& credentialFor);
+    // Same, with the full credentials (password or OAuth2 bearer token) resolved
+    // per account. A failed resolution counts as a failed send of that item and
+    // is recorded on it, so the reason reaches the user.
+    using CredentialsResolver =
+        std::function<UltraNetResult(const std::string& accountId, UltraNetCredentials& out)>;
+    FlushStats Flush(IMailProtocolPlugin& smtp, const CredentialsResolver& credentialsFor);
 
 private:
     OutboxStore& store_;

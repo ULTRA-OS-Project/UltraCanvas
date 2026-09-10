@@ -1,7 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.7.0 - a new account syncs right away; the IMAP plug-in is looked
-//                  up next to the executable and a missing one is reported
-//                  instead of silently skipping every sync
+// Version: 0.8.0 - Gmail signs in with Google (OAuth2) through the browser;
+//                  syncs and sends use the stored password or a fresh bearer
+//                  token
 // Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
@@ -16,6 +16,8 @@
 #include "UltraMailSender.h"
 #include "UltraMailContactCollector.h"
 #include "UltraMailSyncService.h"
+#include "UltraMailOAuth.h"
+#include "UltraMailOAuthWaitDialog.h"
 
 #include <UltraCloud/UltraCloudMemory.h>
 
@@ -35,8 +37,10 @@
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
+#include <atomic>
 #include <fstream>
 #include <string>
+#include <thread>
 
 using namespace UltraCanvas;
 
@@ -90,6 +94,9 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // The credential vault stays locked until the user supplies the master
     // password; nothing reads or writes a secret before then.
     vault_ = CredentialVault(dataDir + "/vault");
+    // The OAuth client UltraMail signs in to Google with (see README, "Google
+    // sign-in"): ULTRAMAIL_GOOGLE_CLIENT_ID in the environment, else oauth.ini.
+    OAuthApps::LoadFile(dataDir + "/oauth.ini");
 
     // The address book + outbox are global (account-independent) stores. A
     // failure here is not fatal — the rest of the client still works — but it
@@ -449,8 +456,8 @@ void UltraMailApp::FlushAndReport(const Draft& draft,
         return;
     }
     Outbox ob(outbox_);
-    auto stats = ob.Flush(*smtp, [this](const std::string& acc) {
-        std::string p; vault_.Retrieve(acc, p); return p;
+    auto stats = ob.Flush(*smtp, [this](const std::string& acc, UltraNetCredentials& out) {
+        return ResolveCredentials(acc, EmailForAccount(acc), out);
     });
     if (stats.sent > 0) {
         AlertSuccess(parent, "Message sent to " + recipients + ".");
@@ -489,8 +496,8 @@ void UltraMailApp::RetryOutbox(const std::string& fromAddr) {
     }
 
     Outbox ob(outbox_);
-    auto stats = ob.Flush(*smtp, [this](const std::string& acc) {
-        std::string p; vault_.Retrieve(acc, p); return p;
+    auto stats = ob.Flush(*smtp, [this](const std::string& acc, UltraNetCredentials& out) {
+        return ResolveCredentials(acc, EmailForAccount(acc), out);
     });
     if (stats.failed == 0) {
         AlertSuccess(parent, "The outbox was sent (" + std::to_string(stats.sent)
@@ -698,22 +705,20 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             continue;
         }
 
-        // The password lives in the vault. Without it the login would be
-        // rejected anyway, so report the real reason instead of a bad-password
-        // error from the server.
-        std::string pw;
-        if (!vault_.Retrieve(acc.accountId, pw) || pw.empty()) {
+        // The password — or the Google sign-in — lives in the vault. Without
+        // either the login would be rejected anyway, so report the real reason
+        // instead of a bad-password error from the server.
+        if (vault_.MethodFor(acc.accountId) == SignInMethod::None) {
             if (userInitiated)
                 AlertWarning(parent, "New mail cannot be fetched for " + who + ".",
-                             "No password is stored for this account in the "
-                             "credential vault. Add the account again with its "
-                             "password; the existing entry is updated.");
+                             "No password or sign-in is stored for this account "
+                             "in the credential vault. Add the account again; "
+                             "the existing entry is updated.");
             continue;
         }
 
         UltraNetMailOptions opts;
         opts.credentials.username = email;
-        opts.credentials.password = pw;
         opts.useTls = true; opts.implicitTls = true;
 
         auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
@@ -727,7 +732,12 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // alert on every timer tick; always when the user asked for the sync.
         // The in-flight count unwinds either way, so the Reload button is
         // restored even when the sync failed.
+        // The credentials are resolved on the worker: an expired OAuth2 token
+        // is refreshed through the provider first, which must not block the UI.
         svc->SyncInBackground(aid, acc.serverUrl, opts,
+                              [this, aid, email](UltraNetMailOptions& o) {
+                                  return ResolveCredentials(aid, email, o.credentials);
+                              },
                               [this, svc, aid, who, userInitiated](SyncOutcome outcome) {
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) return;
@@ -978,13 +988,40 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
     // works, but every later sync would be rejected for no visible reason, so
     // warn now while the user can act on it.
     const std::string accountId = a.accountId;
+    const std::string email     = draft.email;
     const std::string password  = draft.password;
+    // Gmail signs in with Google through the browser when no password was
+    // typed (an app password typed here still works the classic way).
+    const std::string provider  = OAuthProviderFor(disc);
+    const bool useOAuth = !provider.empty() && password.empty();
     // Runs after the discovery alert is dismissed, so the master-password
     // prompt is not stacked underneath it.
-    // Once the password is in the vault the account is complete: put it on
-    // the background schedule and fetch its inbox right away, so the new tile
-    // fills instead of waiting for the next timer tick or a manual Reload.
-    auto storePassword = [this, accountId, password, parent]() {
+    // Once the password (or the sign-in) is in the vault the account is
+    // complete: put it on the background schedule and fetch its inbox right
+    // away, so the new tile fills instead of waiting for the next timer tick
+    // or a manual Reload.
+    auto storePassword = [this, accountId, email, password, provider, useOAuth, parent]() {
+        if (useOAuth) {
+            if (!OAuthApps::Has(provider)) {
+                AlertWarning(parent, "The account was added, but UltraMail cannot "
+                                     "sign in to " + OAuthProviderDisplayName(provider)
+                                     + " yet.",
+                             "No OAuth client is configured for it. Put the client "
+                             "id and secret of a Google Cloud \"Desktop app\" OAuth "
+                             "client into " + dataDir_ + "/oauth.ini under [google] "
+                             "(client_id = …, client_secret = …), or set "
+                             "ULTRAMAIL_GOOGLE_CLIENT_ID — see Apps/UltraMail/README.md. "
+                             "Alternatively add the account again with an app password.");
+                return;
+            }
+            // The tokens go into the vault, so open it before the browser
+            // round-trip rather than after — a cancelled unlock then costs
+            // nothing.
+            EnsureVaultUnlocked([this, accountId, email, provider]() {
+                StartOAuthSignIn(accountId, email, provider);
+            });
+            return;
+        }
         if (password.empty()) {
             AlertWarning(parent, "The account was added without a password, so "
                                  "its mail cannot be fetched.",
@@ -1024,10 +1061,13 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
         std::string detail = "Incoming (IMAP): " + AutoDiscovery::ImapServerUrl(disc.imap)
                            + "\nOutgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
         // Providers that expect OAuth2 (Gmail, Outlook) — and Yahoo — reject
-        // the normal account password over IMAP. UltraMail signs in with a
-        // password, so the account needs an app password from the provider's
+        // the normal account password over IMAP. Gmail signs in with Google
+        // in the browser; the others need an app password from the provider's
         // security settings; say so here, where the user can still act on it.
-        if (disc.imap.oauth || disc.displayName == "Yahoo")
+        if (useOAuth)
+            detail += "\nSign-in: " + OAuthProviderDisplayName(provider)
+                    + " account, in your browser (next step).";
+        else if (disc.imap.oauth || disc.displayName == "Yahoo")
             detail += "\nSign-in: password. " + disc.displayName
                     + " needs an app password for mail programs (generated in "
                       "your account's security settings); the normal sign-in "
@@ -1042,6 +1082,61 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
             + " until the incoming and outgoing servers are set up.",
             storePassword);
     }
+}
+
+std::string UltraMailApp::EmailForAccount(const std::string& accountId) const {
+    for (const auto& a : accounts_) if (a.accountId == accountId) return a.email;
+    return "";
+}
+
+UltraNetResult UltraMailApp::ResolveCredentials(const std::string& accountId,
+                                                const std::string& email,
+                                                UltraNetCredentials& out) {
+    const DiscoveryResult disc = AutoDiscovery::FromPresets(email);
+    return oauth_.CredentialsFor(vault_, accountId, email, OAuthProviderFor(disc), out);
+}
+
+void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::string& email,
+                                    const std::string& providerId) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    const std::string providerName = OAuthProviderDisplayName(providerId);
+
+    // The wait dialog's Cancel only detaches the flow: UltraNet keeps listening
+    // for the redirect until its timeout, and whatever arrives then is dropped.
+    // (The listener sits on an ephemeral port, so a retry is never blocked.)
+    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    std::weak_ptr<UltraCanvasModalDialog> waiting =
+        OAuthWaitDialog::Show(parent, providerName, email,
+                              [cancelled]() { cancelled->store(true); });
+
+    std::thread([this, accountId, email, providerId, providerName, parent, cancelled, waiting]() {
+        OAuthTokens tokens;
+        UltraNetResult r = oauth_.SignIn(providerId,
+            [](const std::string& url) { UltraCanvas::OpenURL(url); }, tokens);
+
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, accountId, email, providerName, parent, cancelled,
+                             waiting, r, tokens]() {
+            if (cancelled->load()) return;
+            OAuthWaitDialog::Close(waiting);
+            if (!r) {
+                AlertError(parent, "Signing in to " + providerName + " for " + email
+                                   + " did not succeed, so its mail cannot be fetched.",
+                           FriendlyMessage(r) + " Add the account again to retry.");
+                return;
+            }
+            if (!vault_.StoreOAuthTokens(accountId, tokens)) {
+                AlertWarning(parent, "Signed in to " + providerName + ", but the sign-in "
+                                     "could not be saved to the credential vault.",
+                             "Check that " + vault_.VaultPath() + " is writable, then "
+                             "add the account again.");
+                return;
+            }
+            StartBackgroundSync();
+            SyncAccount(accountId);
+        });
+    }).detach();
 }
 
 } // namespace UltraMail

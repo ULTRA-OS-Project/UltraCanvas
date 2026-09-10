@@ -3,9 +3,9 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
-// Version: 0.6.0 - first sync right after an account is added; the IMAP
-//                  plug-in is found next to the executable and its absence is
-//                  reported instead of silently skipping every sync.
+// Version: 0.7.0 - Gmail signs in with Google (OAuth2) through the browser;
+//                  IMAP/SMTP sessions use the stored password or a fresh
+//                  bearer token.
 // Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -24,6 +24,7 @@
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailCredentialVault.h"
+#include "UltraMailOAuth.h"
 
 #include <UltraCloud/UltraCloud.h>
 
@@ -65,6 +66,21 @@ private:
 
     void HandleAddAccount();
     void HandleWizardSubmit(const AccountDraft& draft);
+    // Browser sign-in for an OAuth2 provider ("google"): opens the consent page,
+    // waits (with a cancellable dialog) for the redirect on a worker thread,
+    // stores the tokens in the vault — which must be open — and runs the first
+    // sync. Failures are reported with the provider's reason.
+    void StartOAuthSignIn(const std::string& accountId, const std::string& email,
+                          const std::string& providerId);
+    // The address of an account, or "" when unknown.
+    std::string EmailForAccount(const std::string& accountId) const;
+    // Resolve the IMAP/SMTP credentials of an account from the vault: its
+    // password, or a fresh OAuth2 bearer token (refreshing through the provider
+    // when expired — one HTTPS request, so call it off the UI thread where the
+    // caller can). The vault must be open. Takes the address rather than
+    // looking it up so a worker thread never reads the UI-owned account list.
+    UltraNetResult ResolveCredentials(const std::string& accountId, const std::string& email,
+                                      UltraNetCredentials& out);
     // "Reload email": sync every account now (when the IMAP plug-in is present)
     // and re-read the store.
     void HandleReload();
@@ -138,6 +154,8 @@ private:
     // Session-lifetime: the master password is entered once, and the derived
     // key lives only while the app runs.
     CredentialVault vault_{""};
+    // OAuth2 sign-in + token refresh for providers that need it (Gmail).
+    MailOAuth       oauth_;
 
     LocalStore store_;
     ContactStore contacts_;

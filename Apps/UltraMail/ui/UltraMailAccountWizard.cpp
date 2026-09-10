@@ -1,7 +1,7 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
-// Version: 0.3.0 - themed: secondary-text intro, styled inputs, Continue as
-//                  the primary button on the right.
-// Last Modified: 2026-09-09
+// Version: 0.4.0 - a live hint for Gmail addresses: leave the password empty to
+//                  sign in with Google in the browser
+// Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountWizard.h"
 
@@ -9,6 +9,7 @@
 #include "UltraMailAlerts.h"
 #include "UltraMailTheme.h"
 #include "UltraMailDiscovery.h"
+#include "UltraMailOAuth.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
@@ -29,7 +30,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     DialogConfig config;
     config.title      = "Add email account";
     config.width      = 460;
-    config.height     = 290;
+    config.height     = 330;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -91,6 +92,33 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     auto password = CreatePasswordInput("wizPass", 0, 0, 0, Theme::kControlHeight);
     password->SetPlaceholder("Your password");
     addRow("wizPass", "Password", password);
+
+    // Provider-specific advice that follows the address as it is typed: Gmail
+    // signs in through the browser (OAuth2) when the password is left empty,
+    // and needs an app password otherwise.
+    auto hint = Theme::MakeLine("wizHint", "", 40, Theme::kSizeBody, Theme::kTextSecondary);
+    hint->SetWrap(TextWrap::WrapWord);
+    content->AddChild(hint);
+    hint->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    email->onTextChanged = [hint, password](const std::string& text) {
+        const DiscoveryResult d = AutoDiscovery::FromPresets(text);
+        const std::string provider = OAuthProviderFor(d);
+        if (provider.empty()) {
+            hint->SetText("");
+            password->SetPlaceholder("Your password");
+            return;
+        }
+        const std::string name = OAuthProviderDisplayName(provider);
+        if (OAuthApps::Has(provider)) {
+            hint->SetText(d.displayName + ": leave the password empty to sign in with "
+                          + name + " in your browser, or enter an app password.");
+            password->SetPlaceholder("Leave empty to sign in with " + name);
+        } else {
+            hint->SetText(d.displayName + " rejects the normal password over IMAP: "
+                          "enter an app password from your account's security settings.");
+            password->SetPlaceholder("App password");
+        }
+    };
 
     dialog->AddChild(content);
     content->layoutItem.SetFlexGrow(1);

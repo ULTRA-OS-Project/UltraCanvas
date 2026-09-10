@@ -421,10 +421,13 @@ established implementation approach. Additional gaps to close:
   attachments) lives in UltraMail's `MimeCodec` so the plugins stay
   thin transport.
 - **OAuth2 / XOAUTH2** — required for Gmail and Microsoft accounts.
-  `UltraNetCredentials` gains a bearer-token field (libcurl supports
-  `CURLOPT_XOAUTH2_BEARER`); the browser-based token flow is
-  implemented in UltraMail using `UltraNet_Http*` plus a localhost
-  redirect listener on `UltraNet_TcpListen`.
+  `UltraNetCredentials` carries a bearer-token field (libcurl supports
+  `CURLOPT_XOAUTH2_BEARER`, honoured by the IMAP and SMTP plug-ins). The
+  browser-based token flow is UltraNet's OAuth2 client (`UltraNetOAuth2.h`:
+  PKCE, loopback redirect listener, code exchange, refresh); UltraMail's
+  `UltraMailOAuth` adds the provider table, the app registration and the
+  token set in the vault. *Shipped for Gmail (0.8.0); Microsoft is a
+  provider-table entry away.*
 - **Cancellation/progress** for long fetches — reuse the existing
   `UltraNet_CancelRequest`/transfer-callback pattern.
 
