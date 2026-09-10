@@ -4,8 +4,8 @@
 // Markdown/HTML/plain-text serializers consume it, so no format is ever
 // coupled directly to a UI element. See Docs/UltraCanvas/ODT-DOCX-Support-Proposal.md.
 // The model is deliberately UI-free: only std types, no framework headers.
-// Version: 1.0.0
-// Last Modified: 2026-07-03
+// Version: 1.1.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -33,6 +33,7 @@ struct RichTextRun {
     bool code = false;              // monospace/inline-code intent
     bool subscript = false;
     bool superscript = false;
+    bool math = false;              // text is LaTeX math source, typeset inline ($...$)
     std::string linkTarget;         // non-empty => hyperlink around this run
     std::string fontFamily;         // empty = inherit
     float fontSizePt = 0.0f;        // 0 = inherit
@@ -43,7 +44,7 @@ struct RichTextRun {
         return bold == other.bold && italic == other.italic && underline == other.underline
             && strikethrough == other.strikethrough && code == other.code
             && subscript == other.subscript && superscript == other.superscript
-            && linkTarget == other.linkTarget && fontFamily == other.fontFamily
+            && math == other.math && linkTarget == other.linkTarget && fontFamily == other.fontFamily
             && fontSizePt == other.fontSizePt && color == other.color;
     }
 };
@@ -65,7 +66,8 @@ enum class RichBlockType {
     Table,
     Image,          // standalone image paragraph; mediaIndex into media
     HorizontalRule,
-    PageBreak
+    PageBreak,
+    MathBlock       // display formula; runs hold the LaTeX source lines (lineBreakBefore)
 };
 
 struct RichTableCell {

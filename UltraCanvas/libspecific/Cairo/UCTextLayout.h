@@ -187,6 +187,7 @@ namespace UltraCanvas {
         // ===== HIT TESTING & POSITION =====
         UCLayoutHitResult XYToIndex(int pixelX, int pixelY) const override;
         Rect2Di IndexToPos(int byteIndex) const override;
+        double IndexToBaseline(int byteIndex) const override;
         UCLayoutLineXPos IndexToLineX(int byteIndex, bool trailing) const override;
         UCCursorPos GetCursorPos(int byteIndex) const override;
         UCCursorMoveResult MoveCursorVisually(bool strongCursor, int oldIndex,

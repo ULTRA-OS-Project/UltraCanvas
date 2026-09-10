@@ -19,6 +19,7 @@
 namespace UltraCanvas {
 
 using WordFormatInternal::EscapeXml;
+using WordFormatInternal::MathBlockAsParagraph;
 using WordFormatInternal::ToLower;
 
 namespace {
@@ -747,6 +748,12 @@ private:
                     break;
                 case RichBlockType::PageBreak:
                     body << "<w:p><w:r><w:br w:type=\"page\"/></w:r></w:p>\n";
+                    break;
+                case RichBlockType::MathBlock:
+                    // No OMML writer: the formula source travels as a centred
+                    // "$$...$$" paragraph, which the Markdown pipeline typesets
+                    // again after a re-import.
+                    WriteParagraph(body, MathBlockAsParagraph(block));
                     break;
                 default:
                     WriteParagraph(body, block);

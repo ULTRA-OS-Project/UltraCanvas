@@ -331,9 +331,10 @@ namespace UltraCanvas {
         if (effective.filters.empty()) {
             effective
                 .AddFilter("Documents",
-                           std::vector<std::string>{"odt", "docx", "doc", "md", "markdown", "txt"})
+                           std::vector<std::string>{"odt", "docx", "doc", "tex", "md", "markdown", "txt"})
                 .AddFilter("OpenDocument Text (*.odt)", "odt")
                 .AddFilter("Word Document (*.docx)", "docx")
+                .AddFilter("LaTeX Document (*.tex)", "tex")
                 .AddFilter("Markdown (*.md)", std::vector<std::string>{"md", "markdown"})
                 .AddFilter("Plain Text (*.txt)", "txt")
                 .AddFilter("All files (*.*)", "*");

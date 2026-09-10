@@ -727,6 +727,44 @@ machinery so the edit is undoable and raises `onTextChanged` like a typed one:
 bool ReplaceTextRange(size_t startByte, size_t byteLength, const std::string& replacement);
 ```
 
+## Math in Markdown mode
+
+In `MarkdownHybrid` editing mode a formula between dollar signs is typeset
+by the framework's LaTeX engine and set into the line like a word:
+
+```markdown
+Einstein wrote $E = mc^2$; the roots are $x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$.
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
+```
+
+- `$...$` is text-style math (fractions and operators sized for a line of
+  text); `$$...$$` on one line is display-style math inline.
+- `$$` alone on a line opens a display block; the next `$$` line closes it.
+  The block is rendered centred at the closing fence, and the source lines
+  between show only while the caret is on them.
+- A pair of dollar signs counts as math only when it looks like one: no space
+  right after the opener or before the closer, and no digit after the closer,
+  so `costs $5 and $10` stays text.
+- Formulas take the Markdown style's `mathTextColor` and the area's font size
+  (in points; the engine works in pixels at 96 dpi). They work inside table
+  cells, list items, headings and blockquotes.
+- The rendering is baseline-aligned: the engine reports the formula's width,
+  ascent and descent, the text layout reserves that box with a shape
+  attribute on a U+FFFC placeholder (`TextAttributeFactory::CreateShape`),
+  and the formula is drawn after the text at `IndexToPos()` /
+  `IndexToBaseline()` of the placeholder. `UltraCanvasInlineMath.h` is the
+  handle any other text-laying element can use the same way.
+- Without the LaTeX module (not built, or its math font missing) the old
+  behaviour remains: the commands are substituted with Unicode
+  (`\alpha` becomes α) and the run is shown in italics.
+
+Word and ODT documents keep their equations this way: the importers turn
+OMML / MathML into `$latex$` runs, the Markdown serializer leaves them
+unescaped, and the document view typesets them.
+
 ## Notes and Best Practices
 
 1. **Memory Management**: Use smart pointers for component lifecycle management
