@@ -354,6 +354,48 @@ the backing implementation can be replaced without affecting callers.
   Process-private and permanent: there is no unregister.
   See `Docs/UltraCanvas/UltraCanvasFontFile.md`.
 
+- **UltraCanvasFontViewer** (`UltraCanvasFontViewer.h`) — the glyph browser: a
+  scrolling grid of a font file's own glyphs, a picker for the ranges it
+  covers, a size control and an information line. Built on
+  `UltraCanvasFontFace`, so the font need not be installed. Embedded by
+  `UltraCanvasMediaViewer` as the display for `MediaKind::Font` (which is what
+  gives a file manager's detail pane something to show for a font), and usable
+  standalone by a font manager or a coverage-aware font picker. Public surface:
+  - `LoadFont` / `CloseFont` / `IsFontLoaded` / `GetFontPath` / `GetFace`, and
+    `GetFaceCount` / `GetFaceIndex` / `SetFaceIndex` for a `.ttc` collection.
+  - `SetCellSize`, `ShowRange`, `ScrollToCodepoint`, `ScrollToEntry`,
+    `SetSelectedEntry` / `GetSelectedEntry`, `onGlyphSelected` /
+    `onGlyphActivated`.
+  - `SetControlsVisible` / `SetStyle` (`FontViewerStyle`) for a host with its
+    own chrome.
+  - Geometry, public because it is what silently breaks: `GetColumnCount`,
+    `GetRowCount`, `GetMaxScroll`, `GetScrollOffset`, `EntryAtPoint`,
+    `GetCellRect`.
+
+  A self-rendered view of its *content* only: every control is a real element
+  (Dropdown, Slider, Label, Scrollbar) and scrolling eases through
+  `UltraCanvasSmoothScroll`.
+  See `Docs/UltraCanvas/UltraCanvasFontViewer.md`.
+
+- **UltraCanvasMediaViewerWindow** (`UltraCanvasMediaViewerWindow.h`) — one
+  file, full size, in its own window: an `UltraCanvasMediaViewer` filling a
+  top-level window, opened over the window the user is looking at. The
+  companion to a preview pane — a pane answers "is this the file I meant", this
+  answers "let me look at it", which for a font is the difference between a
+  two-letter specimen and every glyph in the file. Shows whatever the media
+  viewer shows, so it has no per-format case of its own, and the arrow keys
+  walk the rest of the folder. Public surface:
+  - `Show(path, host, MediaViewerWindowOptions)` — opens over `host` at its
+    size and position when given one; `Close()`, `IsOpen()`, `GetViewer()`.
+  - `MediaViewerWindowOptions`: `title` (empty = the file's name),
+    `browseFolder`, `width` / `height`, `background`.
+
+  One instance owns at most one window: showing another file reuses it, so
+  repeated double-clicks do not litter the desktop. Closes on Escape.
+  `UltraCanvasImageViewer` remains the right choice for a picture that wants
+  zoom and pan over a dark lightbox; this is the general one.
+  See `Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md`.
+
 - **UltraCanvasVolumeMonitor** (`UltraCanvasVolumeMonitor.h`) — the mounted
   volumes of the machine, and a notification when that set changes: a USB
   stick, card, optical disc, network share or disk image connected or removed.
@@ -18749,7 +18791,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
-| `Fonts` | Fonts | ttf, ttc, otf, otc, woff, woff2, pfa, pfb, bdf, pcf, fon, fnt | a card with a line of the font's own glyphs, rasterized by FreeType — see [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md). The font does not have to be installed, so a folder of downloaded fonts previews like a folder of photos; a symbol or icon face shows its own first glyphs instead. The mirror image of Audio: there is no font viewer yet, so the Detail view switches are the ones with nothing behind them, and woff / woff2 report as unsupported unless the installed FreeType was built with zlib / Brotli |
+| `Fonts` | Fonts | ttf, ttc, otf, otc, woff, woff2, pfa, pfb, bdf, pcf, fon, fnt | a card with a line of the font's own glyphs, rasterized by FreeType — see [`UltraCanvasFontFile.md`](UltraCanvasFontFile.md). The font does not have to be installed, so a folder of downloaded fonts previews like a folder of photos; a symbol or icon face shows its own first glyphs instead. Its Detail view opens the glyph browser ([`UltraCanvasFontViewer`](UltraCanvasFontViewer.md)) — every glyph in the file, scrolling, with a picker for the ranges it covers. woff / woff2 report as unsupported for thumbnails unless the installed FreeType was built with zlib / Brotli |
 
 Notes:
 
@@ -21314,10 +21356,96 @@ Two limits are worth knowing:
   enough for the Latin specimen text and is the only thing possible here —
   shaping through Pango would need the font registered and a context, which
   is exactly what this module exists to avoid. Pass ASCII-ish specimen text.
-- **Symbol and icon fonts** have no glyph for the sample characters at all.
+- **Symbol and icon fonts** have no glyph for *any* of the sample characters.
   Rather than produce an empty card, the specimen then falls back to drawing
   the face's own first few glyphs, so a Font Awesome or a dingbat file
-  previews as its own icons.
+  previews as its own icons. Only when nothing at all resolves: a font that
+  covers part of the sample draws the part it covers, so `options.text = "A"`
+  really does draw that font's A.
+
+### The charmap the lookup goes through
+
+Characters are resolved with `FT_Get_Char_Index` against the face's *selected*
+charmap, and FreeType will not select one whose encoding is
+`FT_ENCODING_NONE` — which is what the legacy bitmap formats normally expose
+(Windows FNT/FON, PCF, and BDF with a non-Unicode registry). Such a face
+arrives with no charmap selected at all, every lookup answers 0, and a font
+that plainly has an `A` looks exactly like a symbol font.
+
+So when FreeType selected nothing, one is chosen explicitly: Unicode first,
+then Apple Roman, then whatever the face does carry. `FT_ENCODING_NONE` means
+"the codes are the font's own", which for these formats is the platform
+codepage — close enough to ASCII in its lower half that a Latin sample
+resolves. A face that *did* get a charmap keeps it, so a genuine symbol font
+whose only charmap is MS Symbol still fails its ASCII lookups and still falls
+back, which is what it should do.
+
+This is why a folder of `C:\Windows\Fonts` shows letters rather than a wall
+of `!"#$%`: those `.fon` files were being read as symbol fonts.
+
+## Browsing every glyph: a face held open
+
+`ReadFontFileInfo()` and `RenderFontSpecimenPixmap()` each open the file, work,
+and close it again. That is what makes them safe on several threads at once,
+and it is right for one thumbnail. It is wrong for a browser: a grid of
+hundreds of cells, re-rasterized on every scroll and every size change, cannot
+re-open the file per glyph.
+
+`UltraCanvasFontFace` is the session type for that — open once, enumerate the
+coverage once, then rasterize from the face that is already open.
+
+```cpp
+UltraCanvas::UltraCanvasFontFace face;
+if (face.Open(path)) {
+    for (const auto& range : face.Ranges())
+        std::cout << range.name << "  " << range.count << " glyphs\n";
+
+    const size_t entry = face.FindCodepoint(U'A');
+    if (entry < face.Glyphs().size()) {
+        auto cell = face.RenderGlyph(entry, 48, 48, deviceScale);
+        std::cout << "glyph name: " << face.GlyphName(entry) << "\n";
+    }
+}
+```
+
+One instance is **single-threaded** — it owns a live `FT_Face`, which is not
+re-entrant. Give each thread its own. It is move-only and closes itself.
+
+### Coverage
+
+`Glyphs()` is every glyph the face offers, as `FontGlyphEntry{glyphIndex,
+codepoint}`. Where the face has a usable charmap the list is in **codepoint
+order** and `GlyphsAreByCodepoint()` is true; where it has none the list is in
+**glyph-index order** with `codepoint == 0`, and a browser should label cells
+by index rather than by character. `FindCodepoint()` binary-searches the
+codepoint-ordered case so a browser can jump to a character.
+
+`GlyphName()` is queried on demand rather than stored: a CJK face has tens of
+thousands of glyphs and a browser only ever labels the few under the pointer.
+It is empty for formats that carry no glyph names (PCF, most bitmap fonts).
+
+`Ranges()` cuts the coverage into runs of consecutive codepoints and names each
+after the Unicode block it starts in — so a font carrying three quarters of
+Cyrillic gets one `Cyrillic` entry rather than the whole block whether it has
+it or not. The ranges are a **partition**: contiguous, non-empty, and together
+exactly the coverage. Runs the block table does not name are labelled by their
+codepoints (`U+2FF0-U+2FFB`), and an index-ordered face gets even slices
+(`Glyphs 256-511`) since that is the only structure it has.
+
+### Cell rendering
+
+`RenderGlyph()` draws one glyph into a cell of `width × height` logical pixels,
+with `scale` as the device scale exactly as elsewhere. By default it scales
+**the face's own bounding box** into the cell, not the individual glyph:
+
+- no glyph in the face can overflow its cell, and
+- every cell shares a baseline, so a row reads as text rather than as a set of
+  unrelated pictures — an `A` sits above the baseline and a `g` hangs below it.
+
+`FontGlyphOptions::fitInkToCell` trades that away for one glyph drawn as large
+as the cell allows, which is what a detail pane wants and a grid does not. A
+glyph that rasterizes to nothing — a space — comes back as an empty cell rather
+than null, because a blank is a real answer.
 
 ## Recognition
 
@@ -21440,6 +21568,133 @@ gate, the name records of the framework's own bundled Ubuntu faces, the
 specimen rasterizer across sizes and scales, graceful refusal of a PNG and of
 a truncated font, and the filer/inventory classification. It needs no
 installed font.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFontViewer.md
+==============================================================================
+
+# UltraCanvasFontViewer
+
+Browse every glyph in a font file: a scrolling grid of the font's own glyphs,
+a picker for the ranges it covers, and a size control.
+
+Header: `include/UltraCanvasFontViewer.h`. Implementation:
+`core/UltraCanvasFontViewer.cpp`. Built on
+[`UltraCanvasFontFace`](UltraCanvasFontFile.md), so **the font does not have to
+be installed** — a folder of candidates can be browsed before any of them is
+registered.
+
+## What it is for
+
+The thumbnail in [`UltraCanvasFontFile`](UltraCanvasFontFile.md) answers *what
+does this font look like*. This answers *what is actually in it* — which
+characters a font covers is the question you have when choosing between two
+downloads, and a single line of sample text cannot answer it.
+
+`UltraCanvasMediaViewer` embeds it as the display for `MediaKind::Font`, which
+is what puts a font in a file manager's detail pane. It is equally usable on
+its own: a font manager, or a font picker that wants to show coverage rather
+than just a family name.
+
+## Using it
+
+```cpp
+auto viewer = UltraCanvas::CreateFontViewer("fonts", 0, 0, 640, 480);
+container->AddChild(viewer);
+
+if (viewer->LoadFont("/home/me/Downloads/Inter.ttf")) {
+    viewer->SetCellSize(64);
+    viewer->ScrollToCodepoint(U'A');
+}
+
+viewer->onGlyphSelected = [viewer](size_t entry) {
+    if (entry == UltraCanvas::UltraCanvasFontViewer::NoEntry) return;
+    const auto& g = viewer->GetFace().Glyphs()[entry];
+    std::cout << "U+" << std::hex << g.codepoint
+              << "  " << viewer->GetFace().GlyphName(entry) << "\n";
+};
+```
+
+| | |
+|---|---|
+| `LoadFont(path, faceIndex = 0)` | Opens one face and shows its coverage. False when the file cannot be read; the previous font is closed either way. |
+| `CloseFont()` / `IsFontLoaded()` / `GetFontPath()` | |
+| `GetFace()` | The open `UltraCanvasFontFace` — its metadata, coverage and ranges, without re-reading the file. |
+| `GetFaceCount()` / `GetFaceIndex()` / `SetFaceIndex()` | The faces of a collection (`.ttc`). The face picker appears only when there is more than one. |
+| `SetCellSize()` / `GetCellSize()` | Cell edge in logical pixels, clamped to a legible range. |
+| `ShowRange(i)` / `ScrollToCodepoint(cp)` / `ScrollToEntry(e)` | Jump. All no-ops for something the font does not have. |
+| `GetSelectedEntry()` / `SetSelectedEntry()` | Selecting scrolls the glyph into view. |
+| `onGlyphSelected` / `onGlyphActivated` | Selection, and double-click — a host's cue to insert or copy the character. |
+| `SetControlsVisible()` | Drop the control bar and information line for a host with its own chrome. |
+| `SetStyle()` / `GetStyle()` | `FontViewerStyle`: colours, cell spacing, caption height, padding. |
+
+## What it shows
+
+The grid draws one cell per glyph, each with the glyph and its codepoint
+underneath (`U+0041`), or its glyph index for a face with no usable character
+map — the information line says which. Hovering describes the glyph under the
+pointer; selecting keeps it described.
+
+Cells share a size and a baseline, because `UltraCanvasFontFace::RenderGlyph()`
+scales the *face's bounding box* into the cell rather than the individual
+glyph. That is what makes a row read as text rather than as unrelated
+pictures: an `A` sits above the baseline and a `g` hangs below it.
+
+The **range picker** lists the runs of coverage the font actually has, named
+after their Unicode blocks. That is what makes a 20 000-glyph CJK font
+navigable — scrolling to Hiragana is one choice rather than a long drag. It
+also follows the grid: a wheel out of Basic Latin and into Latin Extended-A
+moves it, so it always names what you are looking at rather than the last
+thing that was picked.
+
+The scrollbar appears only when there is something to scroll. A font that fits
+in the view, and the empty state before a font is loaded, show none.
+
+## Controls are real elements
+
+The grid is a **self-rendered view** in the sense the house rules allow: the
+cells are *content*, painted the way the filer paints its tiles and the album
+its thumbnails. Everything that takes input is a real element — the range and
+face pickers are `UltraCanvasDropdown`, the size control an
+`UltraCanvasSlider`, the information line an `UltraCanvasLabel`, and the bar on
+the right an `UltraCanvasScrollbar`. Scrolling eases through
+`UltraCanvasSmoothScroll`, the same animator the filer and album use, so a
+wheel notch feels identical everywhere.
+
+Because they are real elements they go through the layout engine, and the
+viewer places them **out of flow** — `SetElementSize()` plus
+`SetElementAbsolutePosition()`, not `SetBounds()` alone. `SetBounds()` writes
+`finalBounds`, which the parent's next `Arrange()` pass overwrites: an in-flow
+child is re-stacked at the top-left however it was placed, which puts the whole
+control bar in one column on top of the grid. Any container that positions its
+own chrome has the same obligation.
+
+The placement is re-run from **both** `SetBounds()` and `Arrange()`. A viewer
+positioned by hand is sized through the first; one inside a flex or grid
+parent — the media viewer's column, say — only ever through the second, and it
+is built at no size and given one later. Re-flowing from `SetBounds()` alone
+leaves such a viewer with the chrome placement it had at a size of zero, which
+is none at all.
+
+## Performance
+
+Glyphs are rasterized one cell at a time and cached by (entry, device-pixel
+cell edge). Only the rows on screen are ever drawn, so a face with tens of
+thousands of glyphs costs a screenful — a hundred or so — not the font. Changing
+the size drops the cache rather than showing stale sizes, and the cache is
+bounded: when it fills it is dropped whole, because tracking which cells
+scrolled away costs more than re-rasterizing a screenful.
+
+Keyboard: arrows move the selection by one cell, Page Up / Page Down by a
+screen, Home / End to the ends of the font.
+
+## Geometry, and why it is public
+
+`GetColumnCount()`, `GetRowCount()`, `GetMaxScroll()`, `GetScrollOffset()`,
+`EntryAtPoint()` and `GetCellRect()` are part of the API. A host anchoring a
+popup over a glyph needs `GetCellRect()`; the rest exist because a wrong column
+count or a scroll range that stops short of the last row hides part of a font
+with nothing on screen to say so, and `Tests/FontViewerTest.cpp` pins them.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFunnelChart.md
@@ -27290,6 +27545,22 @@ The label's rendering process follows these steps:
 6. **Text Rendering**: Draws the main text content
 7. **Focus Indicator**: Draws focus rectangle if label has focus
 
+### Where the text layout comes from
+
+The label caches an `ITextLayout` and builds it from a render context. At paint
+time that is **the context passed to `Render()`**, and only failing that the one
+reachable through the element's window. The distinction matters for a label
+that is drawn without a window behind it — into an offscreen surface from
+`CreateRenderContext(size, nullptr)`, the way the QR code plugin exports a PNG —
+where there is no window to ask and the caller's context is the only one there
+is.
+
+Sizing happens earlier, outside any paint: `ComputeIntrinsicSizes()` has no
+context to be handed and falls back to the window's, so a label measured before
+it is attached simply reports zero and is measured again once it can be. A
+label whose layout could not be built draws its background, border and focus
+ring and skips its words; it does not fail the paint.
+
 ## Performance Considerations
 
 - **Layout Caching**: Layout is only recalculated when text or style changes
@@ -30012,7 +30283,10 @@ adjustments panel and a bottom info bar with a details popup.
 
 Used full-window by the **UltraViewer** app (`Apps/UltraViewer`) and as the
 embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
-`SetTopBarsVisible(false)`).
+`SetTopBarsVisible(false)`). To open one file full size in a window of its own —
+what a double-click asks for when a pane is too small for the file — see
+[UltraCanvasMediaViewerWindow](UltraCanvasMediaViewerWindow.md), which wraps a
+viewer in a top-level window.
 
 ## Media kinds and display views
 
@@ -30024,6 +30298,7 @@ embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 | `Model` | STL | `UltraCanvasSTLElement` (OpenGL viewer, 2D fallback) |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
+| `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
@@ -30116,6 +30391,18 @@ eBook engine registry; the viewer registers the built-ins
 Keyboard: Left / Right keep browsing the folder playlist; PageUp / PageDown
 switch chapters (Home / End jump to the first / last chapter) because those
 keys are forwarded to the active display view.
+
+### Fonts (`MediaKind::Font`)
+
+Font files open in an embedded [`UltraCanvasFontViewer`](UltraCanvasFontViewer.md)
+— every glyph in the file, scrolling, with a picker for the ranges it covers.
+Nothing is installed or registered to show one: the grid rasterizes straight
+from the file, so a folder of downloaded candidates browses exactly like a
+folder of installed ones. The info bar labels the file `FONT` and names its
+family and glyph count, which is the number you compare two downloads by.
+
+Classification happens **before** the text check, because a Type 1 `.pfa` is
+ASCII that the syntax tokenizer would otherwise recognise and open as source.
 
 ### UltraCanvas Documents (`MediaKind::UCDoc`)
 
@@ -30251,6 +30538,105 @@ Dragging a point previews on the image itself at full size (untick *Preview* to
 compare against the original); *Cancel*, or closing the window, restores the
 curves the viewer had. The button applies to images — for any other kind of file
 the info bar says so and nothing opens.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMediaViewerWindow.md
+==============================================================================
+
+# UltraCanvasMediaViewerWindow
+
+One file, full size, in its own window.
+
+```cpp
+#include "UltraCanvasMediaViewerWindow.h"
+
+UltraCanvasMediaViewerWindow viewerWindow;   // a member, not a local
+viewerWindow.Show("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                  hostWindow.get());
+```
+
+## What it is for
+
+The companion to a preview pane. A pane sized to the side of a file manager
+answers *is this the file I meant*; a window answers *let me actually look at
+it*. For a font that is the whole difference — the pane shows a two-letter
+specimen, and what you double-clicked for is every glyph the file contains. For
+a spreadsheet or a document it is the difference between a thumbnail and the
+thing itself.
+
+It hosts an `UltraCanvasMediaViewer`, so it needs no per-format case of its own:
+images, video, audio, documents, spreadsheets, e-books, 3D models and fonts all
+open the same way, and Prev / Next walk the rest of the folder.
+
+`UltraCanvasImageViewer` is still the right choice for a picture that wants zoom
+and pan over a dark lightbox. This is the general one.
+
+## Using it
+
+Hold the object, not a local — it owns the window, and a viewer window that goes
+out of scope closes immediately.
+
+```cpp
+class MyWindow {
+    ...
+    UltraCanvasMediaViewerWindow mediaWindow;
+};
+
+void MyWindow::OnFileActivated(const std::string& path) {
+    MediaViewerWindowOptions options;
+    options.title = std::filesystem::path(path).filename().string();
+    mediaWindow.Show(path, window.get(), options);
+}
+```
+
+| Call | What it does |
+| --- | --- |
+| `Show(path, host, options)` | Opens `path`. Returns false only when the window could not be created. |
+| `Close()` | Closes the window and releases the file. |
+| `IsOpen()` | Whether a window is up. |
+| `GetViewer()` | The `UltraCanvasMediaViewer` inside, or null. |
+
+`MediaViewerWindowOptions`:
+
+| Field | Default | Meaning |
+| --- | --- | --- |
+| `title` | empty | Window title; empty means the file's own name. |
+| `browseFolder` | `true` | Open the rest of the folder as a playlist, so the next file is one key away. `false` shows the one file alone. |
+| `width` / `height` | 1040 × 720 | Size used when there is no `host`. |
+| `background` | dark | The window's background. |
+
+**The host window matters.** Given one, the viewer opens *over* it — same
+position, same size, owned by it — so it appears where the user is looking
+rather than at the screen origin. Without one it is centred at the default size.
+
+**One window per instance.** `Show()` on an instance that already has a window
+replaces what is in it. That is deliberate: a user double-clicking through a
+folder gets one window that keeps up, not a window per file. An application that
+wants several open at once holds several instances.
+
+**Escape closes it**, as it does in every other viewer window in the framework.
+
+## A file the viewer cannot show
+
+`Show()` opens the window anyway and lets the viewer say so inside it, because
+a double-click that appears to do nothing is worse than a window saying the
+format is not supported. A caller that would rather decide first asks
+`UltraCanvasMediaViewer::IsSupportedMedia(path)` and does something else with
+the ones that come back false.
+
+## Closing the file
+
+`Close()` calls `CloseFile()` on the viewer before dropping the window, so no
+document engine is left holding the file — on Windows an open handle blocks a
+rename, which is exactly the trap a file manager falls into. A host that shows
+the same file in a preview pane should close *that* before opening the window,
+for the same reason.
+
+## See also
+
+- [UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) — the viewer inside it
+- [UltraCanvasImageViewer](UltraCanvasImageViewer.md) — the zoom/pan lightbox
+- [UltraCanvasFontViewer](UltraCanvasFontViewer.md) — what a font opens as
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMekkoChart.md
@@ -50589,7 +50975,7 @@ from an external "Show password" checkbox. See
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
-| Any media file — image, video, audio, PDF, text, spreadsheet, eBook | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
+| Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
 | Audio waveform, input level | `UltraCanvasWaveformElement`, `UltraCanvasLevelMeter` | `UltraCanvasWaveformElement.h`, `UltraCanvasAudioRecorderElement.h` |
@@ -50598,6 +50984,7 @@ from an external "Show password" checkbox. See
 | A LaTeX formula (equation, matrix, ...) as an element | `UltraCanvasLaTeXView` via `CreateLaTeXView()` | `Plugins/LaTeX/UltraCanvasLaTeXView.h` |
 | A LaTeX document (`article`: sections, lists, tables, figures, formulas) as a rich document | `UltraCanvasLaTeXDocumentReader` → `UCRichDocument` → `ToMarkdown()` into a `UltraCanvasTextArea` in Markdown mode; `UCWordDocumentIO::Load` and `UltraCanvasFileLoader::LoadTextDocument` dispatch to it for `.tex` | `Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h` |
 | A formula inside a line of text you lay out yourself | `UltraCanvasInlineMath` (typeset, measure, draw at a baseline); `UltraCanvasTextArea`'s Markdown mode already does this for `$...$` | `UltraCanvasInlineMath.h` |
+| Every glyph in a font file, scrolling, without installing it | `UltraCanvasFontViewer` | `UltraCanvasFontViewer.h` |
 | Raw OpenGL | `UltraCanvasGLSurface` | `UltraCanvasGLSurface.h` |
 
 `UltraCanvasImageElement` is the answer to "I just need to draw a picture" — it
