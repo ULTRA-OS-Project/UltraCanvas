@@ -1,9 +1,10 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
-// Version: 0.1.0
+// Version: 0.2.0 - login check before saving
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailServerSettingsDialog.h"
 
 #include "UltraMailTheme.h"
+#include "UltraMailAlerts.h"
 
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasContainer.h"
@@ -59,11 +60,12 @@ int ParsePort(const std::string& text) {
 
 void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string& email,
                                 const std::string& intro, const DiscoveryResult& prefill,
-                                std::function<void(const DiscoveryResult&)> onSave) {
+                                std::function<void(const DiscoveryResult&)> onSave,
+                                Verifier verify) {
     DialogConfig config;
     config.title      = "Server settings for " + email;
     config.width      = 560;
-    config.height     = 400;
+    config.height     = 420;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -181,10 +183,10 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // The validated result, filled by Save and handed out when the dialog
     // closes with OK.
     auto result = std::make_shared<DiscoveryResult>();
-    auto saveBtn = CreateButton("srvSave", 0, 0, 110, Theme::kControlHeight, "Save");
-    Theme::StylePrimary(saveBtn);
-    saveBtn->onClick = [dlg, imap, smtp, user, status, result, email]() {
-        DiscoveryResult r;
+    // Read + validate the fields; false (with the reason in `status`) when
+    // something is missing.
+    auto collect = [imap, smtp, user, status, email](DiscoveryResult& r) {
+        r = DiscoveryResult{};
         r.imap.host = Trim(imap.host->GetText());
         r.imap.port = ParsePort(imap.port->GetText());
         r.imap.security = SecurityAt(imap.security->GetSelectedIndex());
@@ -195,14 +197,68 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         r.imap.username = username.empty() ? email : username;
         r.smtp.username = r.imap.username;
 
-        if (r.imap.host.empty())      { status->SetText("Enter the incoming (IMAP) server."); return; }
-        if (r.imap.port == 0)         { status->SetText("The incoming port must be a number from 1 to 65535."); return; }
-        if (r.smtp.host.empty())      { status->SetText("Enter the outgoing (SMTP) server."); return; }
-        if (r.smtp.port == 0)         { status->SetText("The outgoing port must be a number from 1 to 65535."); return; }
+        if (r.imap.host.empty())      { status->SetText("Enter the incoming (IMAP) server."); return false; }
+        if (r.imap.port == 0)         { status->SetText("The incoming port must be a number from 1 to 65535."); return false; }
+        if (r.smtp.host.empty())      { status->SetText("Enter the outgoing (SMTP) server."); return false; }
+        if (r.smtp.port == 0)         { status->SetText("The outgoing port must be a number from 1 to 65535."); return false; }
         r.found  = true;
         r.source = "manual";
+        return true;
+    };
+
+    // "Save anyway" appears after a failed check, for a server that is down
+    // right now or a check that could not run (no plug-in).
+    auto anywayBtn = CreateButton("srvSaveAnyway", 0, 0, 130, Theme::kControlHeight, "Save anyway");
+    Theme::StyleSecondary(anywayBtn);
+    anywayBtn->SetVisible(false);
+    anywayBtn->onClick = [dlg, collect, result]() {
+        DiscoveryResult r;
+        if (!collect(r)) return;
         *result = r;
         dlg->CloseDialog(DialogResult::OK);
+    };
+    buttonRow->AddChild(anywayBtn);
+
+    auto saveBtn = CreateButton("srvSave", 0, 0, 110, Theme::kControlHeight, "Save");
+    Theme::StylePrimary(saveBtn);
+    // The check's answer may arrive after the page was cancelled: hold the
+    // dialog weakly and drop the answer when it is gone.
+    std::weak_ptr<UltraCanvasModalDialog> weak = dialog;
+    // Raw pointers to the buttons: the dialog owns them (a shared_ptr in the
+    // button's own callback would be a cycle), and every use below is guarded
+    // by the dialog still being alive.
+    UltraCanvasButton* save   = saveBtn.get();
+    UltraCanvasButton* anyway = anywayBtn.get();
+    saveBtn->onClick = [weak, collect, result, verify, status, save, anyway]() {
+        DiscoveryResult r;
+        if (!collect(r)) return;
+        auto dlg = weak.lock();
+        if (!dlg) return;
+        if (!verify) {
+            *result = r;
+            dlg->CloseDialog(DialogResult::OK);
+            return;
+        }
+        status->SetTextColor(Theme::kTextSecondary);
+        status->SetText("Checking the sign-in at " + r.imap.host + "…");
+        save->SetDisabled(true);
+        anyway->SetVisible(false);
+        verify(r, [weak, result, r, status, save, anyway](UltraNetResult outcome) {
+            auto dlg = weak.lock();
+            if (!dlg) return;   // cancelled meanwhile
+            if (outcome) {
+                *result = r;
+                dlg->CloseDialog(DialogResult::OK);
+                return;
+            }
+            save->SetDisabled(false);
+            status->SetTextColor(Theme::kWaitingText);
+            const std::string detail = DetailLine(outcome);
+            status->SetText("The sign-in at " + r.imap.host + " did not succeed: "
+                            + FriendlyMessage(outcome)
+                            + (detail.empty() ? "" : " (" + detail + ")"));
+            anyway->SetVisible(true);
+        });
     };
     buttonRow->AddChild(saveBtn);
     dialog->AddChild(buttonRow);

@@ -24,6 +24,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailDiscovery.cpp
     engine/UltraMailCredentialVault.cpp
     engine/UltraMailOAuth.cpp
+    engine/UltraMailLoginCheck.cpp
     engine/UltraMailComposer.cpp
     engine/UltraMailSender.cpp
     engine/UltraMailOutbox.cpp

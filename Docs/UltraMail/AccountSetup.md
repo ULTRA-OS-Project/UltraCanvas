@@ -270,9 +270,18 @@ behind a wait dialog and takes a few seconds at most.
 (SSL/TLS, STARTTLS, None) — and the *Username*, prefilled with
 `imap.<domain>` 993 SSL/TLS, `smtp.<domain>` 587 STARTTLS and the full
 address. Correct them from your provider's "mail program settings" or
-"IMAP/SMTP" help page and **Save**; the account is added with those
-servers, the password goes into the vault, and the first sync starts. The
-page validates in place (a host must be given, ports are 1–65535).
+"IMAP/SMTP" help page and **Save**. Save first **checks the sign-in**: UltraMail opens
+one IMAP session to the incoming server with the entered servers and the
+password (or the stored sign-in of an existing account), which proves the
+host, the port, the security mode and the credentials in one go. While it
+runs the page says "Checking the sign-in at …"; on success the page closes,
+the account is added with those servers, the password goes into the vault,
+and the first sync starts. A failed check shows the reason in place (wrong
+password, host not found, connection refused, certificate problem) and
+offers **Save anyway** for a server that is down right now. The outgoing
+(SMTP) server is not checked — the plug-in has no sign-in-only operation —
+so a wrong SMTP entry shows up on the first send. The page also validates
+in place (a host must be given, ports are 1–65535).
 
 The settings are **stored on the account**, so later syncs and sends never
 look them up again. The page also opens by itself when Reload finds an
@@ -294,6 +303,7 @@ Gmail and Outlook.
 | *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Reload | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
+| *The sign-in at … did not succeed* on the settings page | The host, port, security or password is wrong, or the server is unreachable. Correct the page and Save again; *Save anyway* keeps the entry for a server that is only down right now. |
 | *New mail could not be fetched … host not found / connection refused* | A server name or port on the settings page is wrong. Add the account again with the same address and correct the page. |
 | *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days). Add the account again to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |

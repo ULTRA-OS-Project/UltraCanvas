@@ -1,3 +1,17 @@
+#### 2026-09-10 *0.9.1*
+- **The settings page checks the sign-in before it saves.** Save opens one
+  IMAP session to the incoming server with the entered host, port and
+  security and the account's credentials — the typed password in the
+  wizard, or the stored password / OAuth2 token of an existing account
+  (resolved on the worker like a sync) — and only closes on success. A
+  failed check shows the reason in place and offers **Save anyway**, for a
+  server that is down right now or when the IMAP plug-in is not loaded. The
+  engine side is `LoginCheck::Imap` / `OptionsFor` in
+  `UltraMailLoginCheck.{h,cpp}` (tested with a recording mailbox); the page
+  takes a `Verifier` and runs it off the UI thread via
+  `UltraMailApp::LoginVerifier`. SMTP has no sign-in-only operation in the
+  plug-in interface, so the outgoing server is not checked.
+
 #### 2026-09-10 *0.9.0*
 - **Any provider: autoconfig lookup and a manual settings page.** An address
   outside the provider table no longer ends as an account that cannot fetch.

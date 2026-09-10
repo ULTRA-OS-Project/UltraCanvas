@@ -3,8 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
-// Version: 0.8.0 - server settings per account: provider table, autoconfig
-//                  lookup, or the manual settings page; stored on the account.
+// Version: 0.9.0 - server settings per account (provider table, autoconfig
+//                  lookup, manual page with a login check); stored on the account.
 // Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -16,6 +16,7 @@
 #include "UltraMailContactsView.h"
 #include "UltraMailComposeWindow.h"
 #include "UltraMailPassphraseDialog.h"
+#include "UltraMailServerSettingsDialog.h"
 
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
@@ -75,8 +76,15 @@ private:
     // and store the password / run the browser sign-in.
     void CompleteAccountSetup(const AccountDraft& draft, const DiscoveryResult& settings);
     // The manual settings page for an existing account whose servers are not
-    // known (or to correct them); saves, then syncs the account.
+    // known (or to correct them); checks the sign-in with the account's stored
+    // credentials, saves, then syncs the account.
     void EditServerSettings(const std::string& accountId);
+    // The settings page's login check: resolves the credentials through
+    // `credentials` (on the worker) and lists the incoming server once with
+    // the IMAP plug-in; the outcome is delivered on the UI thread. A missing
+    // plug-in is a failed check (the page then offers "Save anyway").
+    ServerSettingsDialog::Verifier LoginVerifier(
+        std::function<UltraNetResult(const std::string& username, UltraNetCredentials&)> credentials);
     // The servers an account uses: stored on the account, else the provider
     // table (AutoDiscovery::ForAccount).
     static DiscoveryResult SettingsFor(const Account& account);
