@@ -979,6 +979,12 @@ namespace UltraCanvas {
                               "Docs/UltraCanvas/UltraCanvasVectorConverters.md");
 #endif
 
+        vectorBuilder.AddItem("stlmodels", "STL 3D Models", "Stereolithography meshes (ASCII and binary) read by the self-contained STL loader and shaded in an orbiting 3D view",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateSTLModelExamples(); },
+                              "DemoApp/UltraCanvasSTLExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasSTLElement.md");
+
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
 

@@ -1,3 +1,21 @@
+#### 2026-09-10 *0.8.1*
+- **STL models have a demo page.** *Vector Graphics → STL 3D Models*
+  (`Apps/DemoApp/UltraCanvasSTLExamples.cpp`) reads every `.stl` file in
+  `media/vector/STL` through `UltraCanvasSTLLoader` and shows it in an
+  `UltraCanvasSTLElement` - shaded and orbitable on GL builds, a mesh summary
+  without GL. The page reports what the parser found (triangles, vertices,
+  extent, centre, ASCII vs binary, parse time), cycles the model material,
+  toggles auto-rotation and opens the model fullscreen; samples are parsed on
+  first view and cached, and the directory is scanned at page build, so a new
+  sample file needs no code change. The element is now in the UI element
+  catalogue and documented in
+  [UltraCanvasSTLElement](UltraCanvasSTLElement.md).
+- **The CAD page shows its DXF samples.** *Vector Graphics → DWG / DXF
+  Drawings* claimed both formats but only displayed the three `.dwg` samples.
+  It now carries the `media/vector/DXF` drawings as well - five tiles in two
+  rows, each captioned with its format - so the DXF reader that a `.dwg` file
+  reaches only after decoding is demonstrated on its own input too.
+
 #### 2026-09-10 *0.8.0*
 - **A home icon that shows whose home it is.** `media/icons/home-user.svg`
   joins the shared icon set: a house with the user in it, drawn in the flat

@@ -404,6 +404,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
+            Apps/DemoApp/UltraCanvasSTLExamples.cpp
     )
 
     # These files depend on libvips
