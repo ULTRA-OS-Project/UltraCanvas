@@ -81,6 +81,11 @@ std::string OAuthProviderDisplayName(const std::string& providerId);
 // and the OAuth2 providers when a password is typed instead of signing in.
 bool ProviderNeedsAppPassword(const DiscoveryResult& discovery);
 
+// False when the provider takes no password of any kind over IMAP/SMTP any
+// more and only the browser sign-in works: Microsoft (Outlook.com and
+// Microsoft 365 retired basic authentication). True for everyone else.
+bool ProviderAcceptsPassword(const DiscoveryResult& discovery);
+
 // Endpoints, scopes and consent parameters for a provider + app registration.
 // `loginHint` (the account's address) preselects the account on the consent
 // page; empty = none.

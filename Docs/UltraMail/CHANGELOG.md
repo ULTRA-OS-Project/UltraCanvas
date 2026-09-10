@@ -1,3 +1,17 @@
+#### 2026-09-10 *0.8.3*
+- **Account setup guide.** `Docs/UltraMail/AccountSetup.md`: how to sign in
+  to each provider in the table (Gmail, Outlook / Microsoft 365, Yahoo,
+  iCloud, GMX, WEB.DE, mailbox.org, Posteo) — servers, the sign-in each one
+  expects, where its app password is generated, the OAuth client registration
+  for the browser sign-in, what lives on the machine, and what the error
+  messages mean.
+- **Outlook is browser sign-in only.** Microsoft retired password
+  ("basic") authentication for IMAP/SMTP on Outlook.com and in Microsoft 365,
+  app passwords included. The wizard hint no longer offers an app password
+  for Outlook addresses, and the account-ready dialog says a typed password
+  will be refused. `ProviderAcceptsPassword` in `UltraMailOAuth` carries the
+  rule.
+
 #### 2026-09-10 *0.8.2*
 - **App-password hint for Yahoo and iCloud.** The wizard's live hint under
   the password field now also covers providers that offer no OAuth2 to mail

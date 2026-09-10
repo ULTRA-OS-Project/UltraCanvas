@@ -1071,6 +1071,11 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
         if (useOAuth)
             detail += "\nSign-in: " + OAuthProviderDisplayName(provider)
                     + " account, in your browser (next step).";
+        else if (!provider.empty() && !ProviderAcceptsPassword(disc))
+            detail += "\nSign-in: password — but " + disc.displayName + " no longer "
+                      "accepts passwords in mail programs. Add the account again "
+                      "with the password empty to sign in with "
+                    + OAuthProviderDisplayName(provider) + " in your browser.";
         else if (ProviderNeedsAppPassword(disc))
             detail += "\nSign-in: password. " + disc.displayName
                     + " needs an app password for mail programs (generated in "

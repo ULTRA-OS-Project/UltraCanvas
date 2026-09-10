@@ -104,7 +104,16 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     email->onTextChanged = [hint, password](const std::string& text) {
         const DiscoveryResult d = AutoDiscovery::FromPresets(text);
         const std::string provider = OAuthProviderFor(d);
-        if (!provider.empty() && OAuthApps::Has(provider)) {
+        if (!provider.empty() && !ProviderAcceptsPassword(d)) {
+            // Microsoft: the browser sign-in is the only way in.
+            const std::string name = OAuthProviderDisplayName(provider);
+            hint->SetText(OAuthApps::Has(provider)
+                ? d.displayName + ": leave the password empty to sign in with " + name
+                  + " in your browser. Passwords are no longer accepted."
+                : d.displayName + " only accepts the " + name + " browser sign-in, which "
+                  "needs an OAuth client configured (Docs/UltraMail/AccountSetup.md).");
+            password->SetPlaceholder("Leave empty to sign in with " + name);
+        } else if (!provider.empty() && OAuthApps::Has(provider)) {
             const std::string name = OAuthProviderDisplayName(provider);
             hint->SetText(d.displayName + ": leave the password empty to sign in with "
                           + name + " in your browser, or enter an app password.");

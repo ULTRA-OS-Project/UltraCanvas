@@ -63,6 +63,13 @@ TEST(app_password_needed_at_yahoo_icloud_and_oauth_providers) {
     REQUIRE(!ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@gmx.de")));
     REQUIRE(!ProviderNeedsAppPassword(AutoDiscovery::FromPresets("erika@example.com")));
     REQUIRE(!ProviderNeedsAppPassword(DiscoveryResult{}));
+
+    // Microsoft retired basic authentication: no password of any kind.
+    REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@outlook.com")));
+    REQUIRE(!ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@hotmail.com")));
+    REQUIRE(ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@gmail.com")));
+    REQUIRE(ProviderAcceptsPassword(AutoDiscovery::FromPresets("erika@yahoo.com")));
+    REQUIRE(ProviderAcceptsPassword(DiscoveryResult{}));
 }
 
 TEST(oauth_microsoft_config_requests_imap_smtp_and_offline_access) {

@@ -1,7 +1,9 @@
 # UltraMail
 
 The ULTRA OS mail application. Full concept and design:
-[`Docs/UltraMail/Concept.md`](../../Docs/UltraMail/Concept.md).
+[`Docs/UltraMail/Concept.md`](../../Docs/UltraMail/Concept.md). How to sign
+in to each email provider (passwords, app passwords, the browser sign-in and
+its OAuth client setup): [`Docs/UltraMail/AccountSetup.md`](../../Docs/UltraMail/AccountSetup.md).
 
 This app versions itself: [`Docs/UltraMail/CHANGELOG.md`](../../Docs/UltraMail/CHANGELOG.md).
 

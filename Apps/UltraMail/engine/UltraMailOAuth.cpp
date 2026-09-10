@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailOAuth.cpp
-// Version: 0.2.1 - ProviderNeedsAppPassword (Yahoo, iCloud, and typed passwords at OAuth2 providers)
+// Version: 0.2.2 - ProviderNeedsAppPassword / ProviderAcceptsPassword (Microsoft: OAuth2 only)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuth.h"
 
@@ -149,6 +149,10 @@ bool ProviderNeedsAppPassword(const DiscoveryResult& discovery) {
     if (!discovery.found) return false;
     if (discovery.imap.oauth) return true;   // Gmail, Outlook: a typed password must be an app password
     return discovery.displayName == "Yahoo" || discovery.displayName == "iCloud";
+}
+
+bool ProviderAcceptsPassword(const DiscoveryResult& discovery) {
+    return OAuthProviderFor(discovery) != "microsoft";
 }
 
 UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthApp& app,
