@@ -109,7 +109,7 @@ class UltraCanvasColorSwatchBar;     // backdrop palette under transparent image
 // or the text area (a summary), so neither becomes the active view kind
 // itself.
 enum class MediaKind {
-    Image, Document, Sheet, Model, Text, Book, UCDoc, Vector, Video, Audio
+    Image, Document, Sheet, Model, Text, Book, UCDoc, Vector, Video, Audio, Font
 };
 
 // ===== TRANSITION STYLES BETWEEN IMAGES =====
@@ -493,6 +493,9 @@ private:
     static bool IsSpreadsheetFile(const std::string& path); // ODS / CSV / TSV
     static bool IsModelFile(const std::string& path);       // STL 3D models
     static bool IsEBookFile(const std::string& path);       // EPUB / FB2 / MOBI / AZW
+    // ttf / otf / ttc / woff / Type 1 / bitmap fonts. Shown as a browsable
+    // grid of the font's own glyphs; the file need not be installed.
+    static bool IsFontFile(const std::string& path);
     static bool IsUCDFile(const std::string& path);         // UltraCanvas Document (*.ucd)
     // Vector documents shown through the preview bitmap they carry inside
     // themselves (Xara .xar/.web/.wix, CorelDRAW .cdr/.cdt, PostScript
@@ -558,6 +561,7 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    modelView;     // UltraCanvasSTLElement (3D)
     std::shared_ptr<UltraCanvasUIElement>    textView;      // UltraCanvasTextArea (read-only)
     std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
+    std::shared_ptr<UltraCanvasUIElement>    fontView;      // UltraCanvasFontViewer
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
     MediaKind activeKind = MediaKind::Image;

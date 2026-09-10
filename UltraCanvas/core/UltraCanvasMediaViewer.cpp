@@ -1,8 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.6.0
-// Last Modified: 2026-09-03
+// Version: 1.7.0
+// Last Modified: 2026-09-09
 // V1.6.0: Vector documents no renderer here can rasterize (Xara, CorelDRAW,
 //   EPS/PostScript) are shown from the preview bitmap they carry inside
 //   themselves, the way a *.ucd container is - so a file manager's detail pane
@@ -19,6 +19,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasFontViewer.h"
 #include "UltraCanvasToolbar.h"
 #include "UltraCanvasBreadcrumb.h"
 #include "UltraCanvasButton.h"
@@ -32,6 +33,7 @@
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
 #include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
@@ -51,6 +53,7 @@
 #include "UltraCanvasMediaCodecRegistry.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1090,6 +1093,19 @@ void UltraCanvasMediaViewer::BuildUI(float w, float h) {
         AddChild(bookView);
     }
 
+    // ----- FONT BROWSER (shown for font files) -----
+    // Every glyph in the file, in a scrolling grid, with a picker for the
+    // ranges it covers. Rasterized straight from the file, so a font that is
+    // not installed previews exactly like one that is.
+    {
+        auto fv = std::make_shared<UltraCanvasFontViewer>("MV_Font", 0.f, 0.f, 0.f, 0.f);
+        fv->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        fv->SetVisible(false);
+        fontView = fv;
+        AddChild(fontView);
+    }
+
 #ifdef ULTRACANVAS_ENABLE_VIDEO
     // ----- VIDEO PLAYER (shown for video files) -----
     {
@@ -1211,6 +1227,12 @@ bool UltraCanvasMediaViewer::IsModelFile(const std::string& path) {
     return LowerExt(path) == "stl";
 }
 
+bool UltraCanvasMediaViewer::IsFontFile(const std::string& path) {
+    // The same gate the filer's thumbnails use, so a file that previews as a
+    // font in the display also opens as one in the detail pane.
+    return IsFontFileExtension(path);
+}
+
 bool UltraCanvasMediaViewer::IsEBookFile(const std::string& path) {
     // e-books open in UltraCanvasEBookViewer through the engine registry
     // (EPUB / FB2 / MOBI and Kindle variants). Plain text stays in the text
@@ -1302,6 +1324,9 @@ MediaKind UltraCanvasMediaViewer::ClassifyFile(const std::string& path) {
     if (IsSpreadsheetFile(path)) return MediaKind::Sheet;
     if (IsModelFile(path))       return MediaKind::Model;
     if (IsEBookFile(path))       return MediaKind::Book;
+    // Before the text check: a Type 1 .pfa is ASCII the tokenizer would take
+    // for source code, and its glyphs are the more useful answer.
+    if (IsFontFile(path))        return MediaKind::Font;
     if (IsVideoFile(path))       return MediaKind::Video;
     if (IsAudioFile(path))       return MediaKind::Audio;
     // Images before text: SVG (and XPM / XBM) are markup the syntax tokenizer
@@ -1320,6 +1345,7 @@ bool UltraCanvasMediaViewer::IsSupportedMedia(const std::string& path) {
     // video / audio (video & audio gated by their backend being present).
     return IsDocumentFile(path) || IsSpreadsheetFile(path) || IsModelFile(path) ||
            IsEBookFile(path) || IsUCDFile(path) || IsVectorDocumentFile(path) ||
+           IsFontFile(path) ||
            IsVideoFile(path) || IsAudioFile(path) || IsTextFile(path);
 }
 
@@ -1414,6 +1440,7 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     if (pdfView) static_cast<UltraCanvasPDFView*>(pdfView.get())->SetDocument(nullptr);
 #endif
     if (bookView) static_cast<UltraCanvasEBookViewer*>(bookView.get())->CloseDocument();
+    if (fontView) static_cast<UltraCanvasFontViewer*>(fontView.get())->CloseFont();
     if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
     if (surface) surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
     ucdDetails.clear();
@@ -1502,6 +1529,7 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (modelView)   modelView->SetVisible(kind == MediaKind::Model);
     if (textView)    textView->SetVisible(kind == MediaKind::Text);
     if (bookView)    bookView->SetVisible(kind == MediaKind::Book);
+    if (fontView)    fontView->SetVisible(kind == MediaKind::Font);
     if (videoPlayer) videoPlayer->SetVisible(kind == MediaKind::Video);
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
 }
@@ -1655,11 +1683,31 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
         std::string content;
-        if (!ReadTextFile(path, content)) {
+        std::string ext = LowerExt(path);
+        bool importedDocument = false;
+        if (ext == "tex" || ext == "latex" || ext == "ltx") {
+            // A LaTeX file is shown as the document it describes: the reader
+            // maps the article subset onto the rich-document model, which the
+            // Markdown mode renders with its formulas typeset. When the file
+            // is not a document (a bare formula fragment, an unreadable file)
+            // the source is shown instead.
+            UCRichDocument document;
+            std::string error;
+            if (UCWordDocumentIO::LoadLaTeX(path, document, error)) {
+                RichDocumentMarkdownOptions options;
+                if (!document.media.empty()) {
+                    options.imageDirectory = (std::filesystem::temp_directory_path()
+                        / ("UltraCanvas-media-" + std::to_string(
+                               std::chrono::steady_clock::now().time_since_epoch().count()))).string();
+                }
+                content = document.ToMarkdown(options);
+                importedDocument = true;
+            }
+        }
+        if (!importedDocument && !ReadTextFile(path, content)) {
             if (infoLabel) infoLabel->SetText("Failed to open text file: " + BaseName(path));
         } else {
-            std::string ext = LowerExt(path);
-            if (ext == "md" || ext == "markdown") {
+            if (ext == "md" || ext == "markdown" || importedDocument) {
                 ta->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
                 ta->SetHighlightSyntax(false);
             } else {
@@ -1685,6 +1733,16 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         if (!bv->LoadDocument(path) && infoLabel)
             infoLabel->SetText("Failed to open e-book: " + BaseName(path) +
                                " (" + bv->GetLastError() + ")");
+        handled = true;
+    }
+    if (!handled && kind == MediaKind::Font && fontView) {
+        // Font files open in the glyph browser. Nothing is installed or
+        // registered to show one - the grid rasterizes from the file itself.
+        ShowView(MediaKind::Font);
+        surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+        auto* fv = static_cast<UltraCanvasFontViewer*>(fontView.get());
+        if (!fv->LoadFont(path) && infoLabel)
+            infoLabel->SetText("Failed to open font: " + BaseName(path));
         handled = true;
     }
     if (!handled && kind == MediaKind::UCDoc) {
@@ -2044,6 +2102,30 @@ void UltraCanvasMediaViewer::UpdateInfoBar() {
     }
 #endif
 
+    if (activeKind == MediaKind::Font && fontView) {
+        // A font says what it is and how much of it there is - the glyph count
+        // is the number you compare two downloads by, the way a PDF's page
+        // count is.
+        auto* fv = static_cast<UltraCanvasFontViewer*>(fontView.get());
+        const UltraCanvasFontFace& face = fv->GetFace();
+        std::ostringstream os;
+        os << BaseName(path) << "   \xC2\xB7   FONT";
+        if (face.IsOpen()) {
+            const FontFaceInfo& info = face.Info();
+            if (!info.family.empty()) os << "   \xC2\xB7   " << info.family;
+            os << "   \xC2\xB7   " << face.Glyphs().size() << " glyphs";
+            if (fv->GetFaceCount() > 1)
+                os << "   \xC2\xB7   face " << (fv->GetFaceIndex() + 1)
+                   << " / " << fv->GetFaceCount();
+        }
+        std::error_code ec;
+        auto sz = fs::file_size(path, ec);
+        if (!ec) os << "   \xC2\xB7   " << HumanSize(sz);
+        os << "   \xC2\xB7   " << (currentIndex + 1) << " / " << playlist.size();
+        infoLabel->SetText(os.str());
+        return;
+    }
+
     if (activeKind == MediaKind::Sheet || activeKind == MediaKind::Model ||
         activeKind == MediaKind::Text || activeKind == MediaKind::Book ||
         activeKind == MediaKind::Video || activeKind == MediaKind::Audio) {
@@ -2392,6 +2474,7 @@ UltraCanvasUIElement* UltraCanvasMediaViewer::ActiveViewElement() const {
         case MediaKind::Model:    return modelView.get();
         case MediaKind::Text:     return textView.get();
         case MediaKind::Book:     return bookView.get();
+        case MediaKind::Font:     return fontView.get();
         case MediaKind::Video:    return videoPlayer.get();
         case MediaKind::Audio:    return audioPlayer.get();
         case MediaKind::Image:

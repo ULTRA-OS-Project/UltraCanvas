@@ -14,6 +14,13 @@
          one. Harmless to keep if the app does no networking. -->
     <uses-permission android:name="android.permission.INTERNET"/>
 
+    <!-- Audio PLAYBACK needs no permission. Recording does: uncomment this if
+         the app captures audio (UltraCanvas's audio backend is miniaudio over
+         AAudio, which fails to open an input stream without it). Left
+         commented because an app that only plays sound should not ask the
+         user for microphone access. -->
+    <!-- <uses-permission android:name="android.permission.RECORD_AUDIO"/> -->
+
     <!-- The backend renders with Cairo into an ANativeWindow buffer and only
          uses GLES for UltraCanvasGLSurface elements, so GLES 3 is preferred
          but not required. Every minSdk-26 device ships ES 3.x anyway. -->

@@ -84,9 +84,11 @@ if ! echo '#include <jni.h>' | "$cxx" "${flags[@]}" -x c++ - 2>/dev/null; then
 fi
 
 status=0
+# check <file> [extra compiler flags...]
 check() {
-    printf '  %-58s ' "${1#"$repo"/}"
-    if out="$("$cxx" "${flags[@]}" "$1" 2>&1)"; then
+    local file="$1"; shift
+    printf '  %-58s ' "${file#"$repo"/}"
+    if out="$("$cxx" "${flags[@]}" "$@" "$file" 2>&1)"; then
         echo "OK"
     else
         echo "FAIL"
@@ -106,6 +108,13 @@ check "$repo/UltraCanvas/libspecific/GL/GLContextManager.cpp"
 check "$repo/UltraCanvas/libspecific/GL/GLFramebuffer.cpp"
 check "$repo/UltraCanvas/libspecific/GL/ICompositeStrategy.cpp"
 check "$repo/UltraCanvas/core/UltraCanvasGLSurface.cpp"
+
+# The audio backend is ON for Android (miniaudio is vendored, so it does not
+# wait on the sysroot, and it reaches AAudio/OpenSL ES natively), which makes
+# this TU part of an Android build - and checking it compiles the whole
+# MINIAUDIO_IMPLEMENTATION for aarch64, the only thing that exercises
+# miniaudio's own Android paths.
+check "$repo/UltraCanvas/libspecific/Audio/AudioBackendMiniaudio.cpp" -DULTRACANVAS_ENABLE_AUDIO=1
 
 # The Android UltraNet build reuses these Linux sources verbatim (their
 # #ifdef __linux__ guards are satisfied by bionic) - keep them compiling

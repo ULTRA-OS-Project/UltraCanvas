@@ -1,7 +1,7 @@
 // OS/Android/UltraCanvasAndroidClipboard.cpp
 // Android clipboard backend: android.content.ClipboardManager over JNI.
-// Version: 1.0.0
-// Last Modified: 2026-08-16
+// Version: 1.1.0
+// Last Modified: 2026-09-08
 // Author: UltraCanvas Framework
 
 // The public headers first: they define the base classes and then pull in the
@@ -12,7 +12,58 @@
 #include "UltraCanvasAndroidJni.h"
 #include "UltraCanvasDebug.h"
 
+#include <algorithm>
+#include <cstdio>
+
 namespace UltraCanvas {
+
+    namespace {
+
+        // Call a no-argument String method on UltraCanvasActivity. Returns
+        // false when the method is not there at all - i.e. the app runs a
+        // plain NativeActivity - which is not an error, just a fallback.
+        bool CallActivityStringMethod(const char* name, std::string& out) {
+            JNIEnv* env = AndroidJni::GetEnv();
+            jobject activity = AndroidJni::GetActivity();
+            if (!env || !activity) return false;
+
+            jclass activityClass = env->GetObjectClass(activity);
+            jmethodID mid = env->GetMethodID(activityClass, name,
+                                             "()Ljava/lang/String;");
+            env->DeleteLocalRef(activityClass);
+            if (env->ExceptionCheck()) {
+                env->ExceptionClear();   // NoSuchMethodError: expected
+                return false;
+            }
+
+            auto result = static_cast<jstring>(env->CallObjectMethod(activity, mid));
+            if (AndroidJni::ClearException(env, name)) {
+                // The glue thread stays attached for the process's life, so
+                // its local refs are never popped by a returning frame: drop
+                // this one explicitly rather than leak it once per poll.
+                if (result) env->DeleteLocalRef(result);
+                return false;
+            }
+            if (!result) return false;   // Java returned null: nothing to read
+
+            out = AndroidJni::ToStdString(env, result);
+            env->DeleteLocalRef(result);
+            return !out.empty();
+        }
+
+        bool ReadWholeFile(const std::string& path, std::vector<uint8_t>& out) {
+            FILE* file = std::fopen(path.c_str(), "rb");
+            if (!file) return false;
+            uint8_t buffer[64 * 1024];
+            std::size_t read;
+            while ((read = std::fread(buffer, 1, sizeof buffer, file)) > 0) {
+                out.insert(out.end(), buffer, buffer + read);
+            }
+            std::fclose(file);
+            return !out.empty();
+        }
+
+    } // namespace
 
     UltraCanvasAndroidClipboard::~UltraCanvasAndroidClipboard() {
         Shutdown();
@@ -169,23 +220,69 @@ namespace UltraCanvas {
         lastSeenTimestamp = QueryClipTimestamp();
     }
 
+    bool UltraCanvasAndroidClipboard::GetClipboardFiles(
+            std::vector<std::string>& filePaths) {
+        // Every content:// item on the clip, copied into the app cache by the
+        // Java side because no POSIX call can open a content:// URI and this
+        // API hands back paths. Callers therefore read a snapshot - the same
+        // bargain the SAF file picker makes.
+        std::string joined;
+        if (!CallActivityStringMethod("getClipboardUriPaths", joined)) return false;
+
+        filePaths = AndroidJni::SplitLines(joined);
+        return !filePaths.empty();
+    }
+
+    bool UltraCanvasAndroidClipboard::GetClipboardImage(
+            std::vector<uint8_t>& imageData, std::string& format) {
+        // Ask what the clip claims to be before paying to copy it: an image
+        // and an arbitrary file arrive through the same URI machinery, and
+        // only the MIME type separates them.
+        std::string mime;
+        if (!CallActivityStringMethod("getClipboardMimeType", mime)) return false;
+        if (mime.rfind("image/", 0) != 0) return false;
+
+        std::vector<std::string> paths;
+        if (!GetClipboardFiles(paths)) return false;
+
+        if (!ReadWholeFile(paths.front(), imageData)) {
+            debugOutput << "UltraCanvas Android clipboard: image URI copied to '"
+                        << paths.front() << "' but could not be read" << std::endl;
+            return false;
+        }
+        // "image/png" -> "png". A wildcard ("image/*", which some sources
+        // advertise) names no decoder, so hand back nothing rather than "*"
+        // and let the caller sniff the bytes it now has.
+        format = mime.substr(6);
+        if (format == "*") format.clear();
+        return true;
+    }
+
     std::vector<std::string> UltraCanvasAndroidClipboard::GetAvailableFormats() {
         std::vector<std::string> formats;
         JNIEnv* env = AndroidJni::GetEnv();
         if (!env || !clipboardManager) return formats;
-        if (env->CallBooleanMethod(clipboardManager, midHasPrimaryClip)) {
-            formats.push_back("text/plain");
+
+        const bool has = env->CallBooleanMethod(clipboardManager, midHasPrimaryClip);
+        if (AndroidJni::ClearException(env, "hasPrimaryClip") || !has) return formats;
+
+        // What the clip actually advertises, in the same MIME spelling the
+        // Linux backend reports its TARGETS atoms in. ClipboardManager alone
+        // cannot say - that needs the ClipDescription, hence the activity -
+        // and answering "text/plain" for a copied image would make
+        // IsFormatAvailable lie about an image the caller could in fact read.
+        std::string mime;
+        if (CallActivityStringMethod("getClipboardMimeType", mime)) {
+            formats.push_back(mime);
+        } else {
+            formats.push_back("text/plain");   // plain NativeActivity: text is all this backend does
         }
-        AndroidJni::ClearException(env, "hasPrimaryClip");
         return formats;
     }
 
     bool UltraCanvasAndroidClipboard::IsFormatAvailable(const std::string& format) {
-        if (format != "text/plain") return false;
-        JNIEnv* env = AndroidJni::GetEnv();
-        if (!env || !clipboardManager) return false;
-        const bool has = env->CallBooleanMethod(clipboardManager, midHasPrimaryClip);
-        return !AndroidJni::ClearException(env, "hasPrimaryClip") && has;
+        const std::vector<std::string> formats = GetAvailableFormats();
+        return std::find(formats.begin(), formats.end(), format) != formats.end();
     }
 
 } // namespace UltraCanvas

@@ -137,6 +137,48 @@ namespace AndroidDialogs {
         return WaitForResult(app);
     }
 
+    JavaDialogOutcome ShowInputText(const std::string& title,
+                                    const std::string& prompt,
+                                    const std::string& defaultValue,
+                                    bool password) {
+        JavaDialogOutcome outcome;
+
+        auto* app = UltraCanvasAndroidApplication::GetInstance();
+        JNIEnv* env = AndroidJni::GetEnv();
+        jobject activity = AndroidJni::GetActivity();
+        if (!app || !env || !activity) return outcome;
+
+        jclass activityClass = env->GetObjectClass(activity);
+        jmethodID midShow = env->GetMethodID(activityClass, "showInputDialog",
+                "(ILjava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V");
+        env->DeleteLocalRef(activityClass);
+        if (env->ExceptionCheck()) {
+            env->ExceptionClear();   // plain NativeActivity: caller falls back
+            return outcome;
+        }
+
+        const int requestId = BeginRequest();
+
+        jstring jTitle = env->NewStringUTF(title.c_str());
+        jstring jPrompt = env->NewStringUTF(prompt.c_str());
+        jstring jDefault = env->NewStringUTF(defaultValue.c_str());
+
+        env->CallVoidMethod(activity, midShow, static_cast<jint>(requestId),
+                            jTitle, jPrompt, jDefault,
+                            static_cast<jboolean>(password));
+
+        env->DeleteLocalRef(jTitle);
+        env->DeleteLocalRef(jPrompt);
+        env->DeleteLocalRef(jDefault);
+
+        if (AndroidJni::ClearException(env, "showInputDialog")) {
+            g_pending.resolved.store(true, std::memory_order_release);
+            return outcome;
+        }
+
+        return WaitForResult(app);
+    }
+
     JavaDialogOutcome ShowOpenDocument(const std::string& mimeTypesCsv,
                                        bool allowMultiple) {
         JavaDialogOutcome outcome;

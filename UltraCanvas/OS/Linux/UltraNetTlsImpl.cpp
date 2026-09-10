@@ -1,7 +1,12 @@
 // OS/Linux/UltraNetTlsImpl.cpp
 // OpenSSL-backed TLS wrap for the UltraNet_Tls* surface on Linux.
 // Implements ultranet_tls_platform:: declared in core/UltraNet/UltraNetTlsImpl.h.
-// Version: 0.3.1 (Stage 3 hardening)
+//
+// Also serves Android: bionic satisfies `#ifdef __linux__`, so the Android
+// UltraNet build reuses this file rather than a copy that would drift. The one
+// place the two genuinely differ is where the trust roots come from - see
+// LoadPlatformTrustRoots below.
+// Version: 0.3.2 (Android platform trust roots)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "../../core/UltraNet/UltraNetTlsImpl.h"
@@ -21,6 +26,10 @@
 #include <mutex>
 #include <string>
 #include <vector>
+
+#if defined(__ANDROID__)
+#include <dirent.h>
+#endif
 
 namespace ultranet_tls_platform {
 namespace {
@@ -58,6 +67,88 @@ void AddPemBundleFromMemory(SSL_CTX* ctx, const std::string& pem) {
         X509_free(x);
     }
     BIO_free(bio);
+}
+
+#if defined(__ANDROID__)
+
+// Android has no /etc/ssl. OpenSSL's compiled-in default verify paths point at
+// whatever prefix the cross-build was configured with, and nothing is mounted
+// there inside an app sandbox - so SSL_CTX_set_default_verify_paths() leaves
+// the store empty and every peer verification fails with "unable to get local
+// issuer certificate", on every host, with no hint as to why. The platform's
+// roots are individual PEM files in one of these directories instead.
+const char* const kAndroidCaDirs[] = {
+    "/apex/com.android.conscrypt/cacerts",   // Android 14+: the updatable store
+    "/system/etc/security/cacerts",          // the classic location
+};
+
+// Why the files are enumerated rather than handed to OpenSSL as a hash
+// directory: Android names them with the PRE-1.0 subject hash
+// (`openssl x509 -subject_hash_old`), while a modern X509_LOOKUP_hash_dir
+// computes the current one. The lookup would find nothing and report no error
+// - the store would simply stay empty, which is the failure mode this whole
+// function exists to avoid.
+//
+// Parsed once and kept for the life of the process: Wrap() builds an SSL_CTX
+// per connection, and re-reading ~150 files each time would be absurd.
+// X509_STORE_add_cert takes its own reference, so these stay owned here.
+const std::vector<X509*>& AndroidSystemRoots() {
+    static const std::vector<X509*>* roots = []() {
+        auto* out = new std::vector<X509*>();
+        for (const char* dir : kAndroidCaDirs) {
+            DIR* handle = opendir(dir);
+            if (!handle) continue;
+            while (dirent* entry = readdir(handle)) {
+                if (entry->d_name[0] == '.') continue;
+                const std::string path = std::string(dir) + "/" + entry->d_name;
+                FILE* file = std::fopen(path.c_str(), "rb");
+                if (!file) continue;
+                // Each file holds one certificate followed by a human-readable
+                // dump; the loop also copes with a file holding several.
+                while (X509* x = PEM_read_X509(file, nullptr, nullptr, nullptr)) {
+                    out->push_back(x);
+                }
+                std::fclose(file);
+                // The read that ended the loop queued a "no start line" error.
+                // Leaving it there would surface later as a bogus cause for an
+                // unrelated failure.
+                ERR_clear_error();
+            }
+            closedir(handle);
+            if (!out->empty()) break;   // first directory with roots wins
+        }
+        return out;
+    }();
+    return *roots;
+}
+
+#endif // __ANDROID__
+
+// Populate `ctx` with the operating system's trust roots.
+//
+// Returns false only when the store is provably empty afterwards - nothing at
+// all to verify a peer against. Only Android can answer that; elsewhere
+// OpenSSL's default paths are taken on trust, as they always were.
+bool LoadPlatformTrustRoots(SSL_CTX* ctx) {
+#if defined(__ANDROID__)
+    // Still called first, so SSL_CERT_FILE / SSL_CERT_DIR keep working for a
+    // test harness or a wrapper that sets them; the app sandbox itself has
+    // nothing for it to find.
+    SSL_CTX_set_default_verify_paths(ctx);
+    ERR_clear_error();
+
+    X509_STORE* store = SSL_CTX_get_cert_store(ctx);
+    for (X509* x : AndroidSystemRoots()) X509_STORE_add_cert(store, x);
+
+    // Ask the store rather than counting what this function added: roots may
+    // equally have arrived through SSL_CERT_FILE/SSL_CERT_DIR above, and it is
+    // an empty store - not an empty system directory - that actually breaks
+    // verification.
+    return sk_X509_OBJECT_num(X509_STORE_get0_objects(store)) > 0;
+#else
+    SSL_CTX_set_default_verify_paths(ctx);
+    return true;
+#endif
 }
 
 std::string OneLine(X509_NAME* n) {
@@ -144,8 +235,17 @@ UltraNetResult Wrap(std::intptr_t fd,
     }
     if (!caBundle.empty()) {
         SSL_CTX_load_verify_locations(sctx, caBundle.c_str(), nullptr);
-    } else {
-        SSL_CTX_set_default_verify_paths(sctx);
+    } else if (!LoadPlatformTrustRoots(sctx) && extraPem.empty()
+               && opt.verifyPeer) {
+        // Nothing to verify against, and the caller asked for verification.
+        // Say so here rather than letting every handshake fail later with
+        // "unable to get local issuer certificate", which names the symptom
+        // and not the cause. Never silently downgraded to no verification.
+        SSL_CTX_free(sctx);
+        return UltraNetResult::Error(
+                UltraNetResultCode::TlsCertificateInvalid,
+                "no platform CA roots found - set UltraNetTlsOptions::caBundlePath "
+                "or add roots with UltraNet_TlsAddTrustedCert");
     }
     if (!extraPem.empty()) AddPemBundleFromMemory(sctx, extraPem);
 

@@ -403,7 +403,6 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateScannerSupportExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateIODeviceManagerExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateLayoutExamples();
-        std::shared_ptr<UltraCanvasUIElement> CreateSmartHomeExamples();
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateCDRVectorExamples();
 #endif

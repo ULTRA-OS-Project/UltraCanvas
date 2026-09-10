@@ -56,6 +56,7 @@
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"      // the image dialog of Extras > Set folder icon
+#include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasSupportedFormats.h"  // its image formats
 #include "UltraCanvasUtils.h"
@@ -905,6 +906,28 @@ bool UltraFilerWindow::CanShowInDetailView(const FilerEntry& entry) const {
     // they all carry the same switches - so the active tab's is used, and a
     // window without one falls back to "the viewer decides".
     return !filer || filer->DetailViewEnabledFor(entry);
+}
+
+bool UltraFilerWindow::HasRegisteredApplication(const std::string& path) {
+    if (path.empty()) return false;
+    // Served from the prewarm cache the folder scan queued, so this is a cache
+    // read on the UI thread rather than an association-database parse. A
+    // platform with no enumeration backend reports none, which is the right
+    // answer here: nothing else will open the file, so we do.
+    return !FileAssociations::GetApplicationsForFiles({path}).empty();
+}
+
+void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
+    if (path.empty()) return;
+    // The pane and the window would otherwise both hold the file open, which
+    // on Windows is what makes a later rename fail.
+    if (preview) preview->CloseFile();
+    MediaViewerWindowOptions options;
+    options.title = fs::path(path).filename().string();
+    if (!mediaWindow.Show(path, window.get(), options)) {
+        UltraCanvasAlert::Error("Could not open a window for " + options.title,
+                                "View", nullptr, window.get());
+    }
 }
 
 std::vector<MenuItemData> UltraFilerWindow::BuildFormatListMenuItems(
@@ -1887,7 +1910,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     searchInput = CreateTextInput("ufl-search", 0, 0, 200, 24);
     searchInput->SetFontSize(kUiFontSize);
-    searchInput->SetPlaceholder("Search");
+    searchInput->SetPlaceholder("Filter / Search");
     {
         // Borderless inside the box - the box draws the frame.
         TextInputStyle st = searchInput->GetStyle();
@@ -2965,6 +2988,19 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
             // dialog) and everything else with the OS default application;
             // archive entries (virtual paths) are ignored there.
             if (tab->filer) tab->filer->OpenEntryWithOS(entry);
+            return;
+        }
+        // A font is the one previewable kind whose whole point is the part a
+        // pane cannot hold: the preview shows a two-letter specimen, and what
+        // you double-clicked for is every glyph in the file. So it opens full
+        // size in its own window - unless this system has a font viewer
+        // registered, which wins the way it does in Explorer.
+        if (IsFontFileExtension(entry.path) && !entry.path.empty()) {
+            if (HasRegisteredApplication(entry.path)) {
+                if (tab->filer) tab->filer->OpenEntryWithOS(entry);
+            } else {
+                OpenInMediaWindow(entry.path);
+            }
             return;
         }
         // Double-click / Enter opens the file in the preview, un-hiding it

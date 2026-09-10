@@ -10,7 +10,10 @@ adjustments panel and a bottom info bar with a details popup.
 
 Used full-window by the **UltraViewer** app (`Apps/UltraViewer`) and as the
 embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
-`SetTopBarsVisible(false)`).
+`SetTopBarsVisible(false)`). To open one file full size in a window of its own —
+what a double-click asks for when a pane is too small for the file — see
+[UltraCanvasMediaViewerWindow](UltraCanvasMediaViewerWindow.md), which wraps a
+viewer in a top-level window.
 
 ## Media kinds and display views
 
@@ -20,8 +23,9 @@ embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
 | `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL | `UltraCanvasSTLElement` (OpenGL viewer, 2D fallback) |
-| `Text` | txt, md, json, xml, source code, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown) |
+| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
+| `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
 | `Audio` | MP3, WAV, FLAC, OGG, Opus, M4A/M4B, AAC, WMA, AIFF | `UltraCanvasAudioPlayerElement` (`ULTRACANVAS_ENABLE_AUDIO`) |
@@ -114,6 +118,18 @@ eBook engine registry; the viewer registers the built-ins
 Keyboard: Left / Right keep browsing the folder playlist; PageUp / PageDown
 switch chapters (Home / End jump to the first / last chapter) because those
 keys are forwarded to the active display view.
+
+### Fonts (`MediaKind::Font`)
+
+Font files open in an embedded [`UltraCanvasFontViewer`](UltraCanvasFontViewer.md)
+— every glyph in the file, scrolling, with a picker for the ranges it covers.
+Nothing is installed or registered to show one: the grid rasterizes straight
+from the file, so a folder of downloaded candidates browses exactly like a
+folder of installed ones. The info bar labels the file `FONT` and names its
+family and glyph count, which is the number you compare two downloads by.
+
+Classification happens **before** the text check, because a Type 1 `.pfa` is
+ASCII that the syntax tokenizer would otherwise recognise and open as source.
 
 ### UltraCanvas Documents (`MediaKind::UCDoc`)
 

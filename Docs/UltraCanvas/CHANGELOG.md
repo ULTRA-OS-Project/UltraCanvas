@@ -11,8 +11,328 @@
   folder, with the folder's full path underneath, and nothing is touched until
   it is answered; with dialogs disabled the drop is carried out rather than
   lost. (`Docs/UltraCanvas/UltraCanvasFilerWidget.md` > Drag & drop.)
+#### 2026-09-10 *0.3.119*
+- **Radio group: a programmatic selection now shows.**
+  `UltraCanvasRadioGroup::SelectButton()` unchecked the group's other buttons
+  but never checked the one being selected. That is invisible on the click
+  path, where `AddRadioButton` routes the button's own `onChecked` into it and
+  the button has already checked itself, but a `SelectButton()` call from code
+  left the group with no dot at all. It now checks the target as well,
+  assigning `selectedButton` first so the re-entrant call arriving through
+  `onChecked` finds a consistent group and the selection callback still fires
+  exactly once, and returns early when the button is already the selection.
+#### 2026-09-09 *0.3.118*
+- **A font file opens full size in a window of its own.**
+  `UltraCanvasMediaViewerWindow` is a new component: an
+  `UltraCanvasMediaViewer` filling a top-level window, opened over the window
+  the user is looking at. It is the companion to a preview pane — a pane
+  answers "is this the file I meant", a window answers "let me look at it",
+  which for a font is the difference between a two-letter specimen and every
+  glyph in the file. Because it hosts the media viewer it has no per-format
+  case of its own: images, video, audio, documents, spreadsheets, e-books, 3D
+  models and fonts all open the same way, and Prev / Next walk the rest of the
+  folder. One instance owns at most one window, so double-clicking through a
+  folder gets one window that keeps up rather than a window per file; Escape
+  closes it, and closing releases the file so a later rename is not blocked by
+  a document engine still holding it open.
+- **UltraFiler: double-clicking a font opens it, rather than nudging the
+  preview pane.** A font is the one previewable kind whose whole point is the
+  part a pane cannot hold, so it now opens in a viewer window — unless this
+  system has an application registered for it, which wins the way it does in
+  Explorer. Single-click still previews in the pane. Every other kind is
+  unchanged.
+- **The font viewer's control bar came back stacked when it was embedded.**
+  The same failure the previous entry fixed, through the other door: the
+  re-flow ran from `SetBounds()`, and a viewer inside a flex parent — the
+  media viewer's column, which is how the file manager gets one — is sized by
+  the layout engine through `Arrange()` and never through `SetBounds()`. Built
+  at no size and given one later, it kept the placement it had at zero, which
+  is none, so the layout engine stacked the pickers in a column over the
+  glyphs. `Arrange()` now re-flows too, and skips the work when the size has
+  not changed. The test arranges a viewer built at 0 x 0 and checks the bar;
+  it fails nine ways without the fix.
+- **The media viewer's information bar said "No media" over a font.**
+  `MediaKind::Font` was missing from the bar's kind list, so a font fell
+  through to the image branch and reported nothing. It now names the file, its
+  family and its glyph count — the number you compare two font downloads by,
+  the way a PDF's page count is — plus the face for a collection.
+- **Legacy bitmap fonts previewed as `!"#$%` instead of letters.** A folder of
+  `C:\Windows\Fonts` showed every `.fon` file as a run of punctuation or DOS
+  box-drawing symbols while the TrueType files beside them correctly showed
+  their own `Ag`. The cause was one missing step: characters are resolved with
+  `FT_Get_Char_Index` against the face's *selected* charmap, and FreeType
+  refuses to select one whose encoding is `FT_ENCODING_NONE` — which is
+  precisely what the legacy bitmap formats expose (Windows FNT/FON, PCF, BDF
+  with a non-Unicode registry). Those faces arrived with `face->charmap` null,
+  every lookup answered 0, and the specimen concluded the font had no Latin
+  coverage and fell back to drawing its first glyphs by index — which in those
+  fonts are `!"#$%` (space is skipped as blank) or `☺☻♥♦♣` on the OEM
+  codepages. `UltraCanvasFontFile` now selects a charmap itself when FreeType
+  selected none — Unicode, then Apple Roman, then whatever the face carries —
+  so those fonts show their letters, and the Hebrew and Arabic codepage faces
+  show their own scripts. A face that did get a charmap keeps it, so a real
+  symbol font whose only charmap is MS Symbol still falls back as it should.
+- **A one-character specimen was silently replaced.** The same fallback fired
+  whenever *fewer than two* sample characters resolved, so a caller passing
+  `FontSpecimenOptions::text = "A"` got the font's first six glyphs rather
+  than its A — the option documented as taking any string quietly ignored the
+  shortest ones. It now falls back only when nothing resolves at all; a font
+  covering part of the sample draws the part it covers.
+- **A font file can be held open and browsed glyph by glyph.**
+  `UltraCanvasFontFace` opens one face, enumerates its coverage once and then
+  rasterizes individual glyphs from the face that is already open — the
+  session type a glyph browser needs, where the existing one-shot calls
+  re-open the file every time (which is what makes *them* safe on the
+  thumbnail workers, and useless for a grid). `Glyphs()` lists every glyph in
+  codepoint order where the face has a usable charmap and in glyph-index order
+  where it has none; `Ranges()` cuts that into runs and names each after its
+  Unicode block, as a partition, so a range picker cannot silently hide part
+  of a font; `FindCodepoint()` jumps to a character and `GlyphName()` reads the
+  font's own name for a glyph on demand — a CJK face has tens of thousands and
+  a browser labels only the few under the pointer. `RenderGlyph()` scales the
+  face's *bounding box* into the cell rather than the individual glyph, so no
+  glyph can overflow and every cell shares a baseline: an `A` sits above it and
+  a `g` hangs below it, which is what makes a grid read as text instead of as
+  unrelated pictures. `FontGlyphOptions::fitInkToCell` opts into the other
+  behaviour for a detail pane. Move-only, self-closing, and single-threaded:
+  it owns a live `FT_Face`, which is not re-entrant.
+- **A font file now has a detail view: every glyph in it, scrolling.**
+  `UltraCanvasFontViewer` is a new element - a grid of the font's own glyphs
+  with a picker for the ranges it covers, a size control and an information
+  line naming the glyph under the pointer. `UltraCanvasMediaViewer` shows it
+  for the new `MediaKind::Font`, which is what finally puts something behind
+  the Display > Detail view > Fonts switch: that switch existed but could
+  never fire, because `UltraFilerWindow::CanShowInDetailView()` asks
+  `IsSupportedMedia()` first and a font never got past it. Nothing is
+  installed or registered to show one - the grid rasterizes straight from the
+  file, so a folder of downloaded candidates browses exactly like a folder of
+  installed ones. The range picker is what makes a 20 000-glyph CJK font
+  navigable: scrolling to Hiragana is one choice rather than a long drag.
+  Only the rows on screen are rasterized, and cells are cached by (entry,
+  device-pixel edge), so the cost is a screenful rather than the font. The
+  grid is a self-rendered view in the sense the house rules allow - the cells
+  are content, painted as the filer paints its tiles - while every control is
+  a real element: `UltraCanvasDropdown` for the pickers, `UltraCanvasSlider`
+  for the size, `UltraCanvasLabel` for the information line,
+  `UltraCanvasScrollbar` for the bar, and `UltraCanvasSmoothScroll` for the
+  easing, so a wheel notch feels the same as it does in the filer.
+- **A label rendered without a window crashed instead of drawing.**
+  `UltraCanvasLabel::Render()` segfaulted whenever the label was drawn into an
+  offscreen context — one from `CreateRenderContext(size, nullptr)`, the kind
+  the QR code plugin uses to export a PNG — because it built its cached
+  `ITextLayout` from the context reachable through the element's *window*,
+  which an unattached label does not have, and then dereferenced the null it
+  got back. `UpdateInternalLayout()` had been handed the right context all
+  along and ignored it. The layout is now built from the context the label is
+  about to draw into, falling back to the window's; the two are the same object
+  for a label in a window, so nothing changes there. A layout that still cannot
+  be built now costs the label its words rather than the process — the check
+  `IRenderContext::DrawText()` makes a few lines away. The offscreen path turns
+  out to lay out text perfectly well: with the context threaded through, a
+  label drawn into an image surface draws its text. Covered by a new
+  `OffscreenRenderTest`, which segfaults without the fix.
+- **The font viewer's control bar landed in one column on top of the grid.**
+  Putting the viewer in a window for the first time showed the range picker,
+  the size slider and the information line stacked at the top-left over the
+  first row of glyphs, and no scrollbar at the right edge at all. The bar's
+  arithmetic was right; the placement was not applied. `SetBounds()` writes
+  `finalBounds` only, and the parent's next `Arrange()` pass overwrites it —
+  an in-flow child is re-stacked wherever the layout engine wants it, which
+  for these was a column at the origin. The viewer now places every control
+  out of flow (`SetElementSize()` + `SetElementAbsolutePosition()`), the way
+  the filer places its rename editor and the toolbar builder its toolbar. Three
+  smaller things the same first look found: the range picker did not follow the
+  grid, so it went on claiming "Basic Latin" while the view was in Latin
+  Extended-B; the empty state's "No font loaded" was drawn in the element's own
+  rectangle and so sat behind the control bar rather than in the middle of the
+  grid; and the scrollbar drew a full-height thumb down the edge when there was
+  nothing to scroll.
+- **`UltraCanvasDropdown::SetSelectedIndex(index, false)` notified anyway.**
+  The flag suppressed the `onSelectionChanged` callback but the method still
+  posted a `DropdownSelect` event, which is a notification by any measure -
+  and every caller passing `false` does so precisely to move the control
+  without anything reacting ("don't fire SetInputDevice yet"). The event is
+  now inside the flag, and the application singleton it is posted through is
+  null-checked the way the rest of the core reaches it, so constructing a
+  dropdown before (or without) an application is no longer a crash. Surfaced
+  by the font viewer's tests, which build one headlessly.
+- `Tests/FontFileTest.cpp` pins both. The discriminator is pixel identity
+  rather than ink volume: when a sample fails to resolve, *every* request
+  falls back to the same six glyphs, so two different single characters come
+  out byte-for-byte equal — an ink-volume comparison passes by luck, and did.
+  The charmap half needs a face whose only charmap is `FT_ENCODING_NONE`,
+  which only the binary bitmap formats produce (a BDF written by the test
+  comes back as `ADOBE_STANDARD`, which FreeType selects by itself), so it
+  probes the system's X11 bitmap fonts and skips where a machine has none.
+#### 2026-09-09 *0.3.113*
+- **Android: framework diagnostics reach logcat.** `debugOutput` and the
+  process's stdio went nowhere on Android, where there is no terminal to
+  inherit, so a crash or a warning left no trace at all. Both are now routed
+  through `__android_log_write` under the app's tag.
+- **Android packaging builds x86_64 first.** The emulator most development
+  actually runs on is x86_64; building arm64 first meant the usual loop waited
+  on the ABI it was least likely to use.
+- **Android: real input dialogs instead of "Cancel" stubs.** The native dialog
+  bridge answered every prompt as if the user had cancelled. It now shows the
+  platform's own dialogs and returns what the user chose.
+- **Android: TLS verifies against the platform's trust roots.** The Linux TLS
+  implementation had no way to reach Android's system CA store, so certificate
+  verification could not be done properly on the platform.
+- **Android: images and files can be pasted from the clipboard.** The backend
+  was text-only — an image or file copied in any other app was invisible.
+  A clip's non-text items are `content://` URIs, which no POSIX call can open,
+  so the activity copies each through the app's `ContentResolver` into the
+  cache and the backend hands back paths, the same copy-to-cache bargain the
+  SAF picker already makes. `GetAvailableFormats` now reports what the clip
+  actually advertises rather than always `text/plain`. Writing files to the
+  clipboard stays unimplemented on purpose: it needs a `ContentProvider`
+  declared in the *application's* manifest, which framework code cannot supply
+  on an app's behalf, and a bare filesystem path would look like it worked
+  while being unopenable by every other app.
+- **Android: audio is on.** It was on the "waits on the cross-compiled
+  sysroot" list it never belonged on — the backend is miniaudio, vendored
+  in-tree, which speaks AAudio natively with OpenSL ES beneath it, both reached
+  through `dlopen` rather than a link line. No new dependency, no new link
+  library, and no manifest permission for playback. The optional codec
+  libraries stay absent, which costs formats rather than the backend.
+  `scripts/android-syntax-check.sh` type-checks the miniaudio translation unit
+  against the real NDK, so enabling it is a change rather than a claim.
+#### 2026-09-09 *0.3.117*
+- **LaTeX documents open as documents (LaTeX engine Phase 3).** New
+  `UltraCanvasLaTeXDocumentReader`
+  (`include/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h`, core
+  library) imports the `article` document subset of a `.tex` file into
+  `UCRichDocument`, the model the ODT/DOCX readers fill: `\maketitle`,
+  sectioning with article numbering, paragraphs and line breaks, text
+  formatting and colours, `itemize` / `enumerate` / `description`, quotes,
+  alignment environments, `tabular` with `\multicolumn` / `\multirow`,
+  floats with numbered captions, `\includegraphics` (embedded as media,
+  sized from `width=` / `height=` / `scale=`), verbatim and listings,
+  footnotes, `\label` / `\ref` / `\eqref`, `\cite` with `thebibliography`,
+  `\newtheorem` environments, `\newcommand` / `\def` / `\newenvironment`
+  expansion, `\input` / `\include`, accents and text symbols. Formulas are
+  kept as LaTeX source (the definitions they use prepended) and typeset by
+  the math engine wherever the document is shown. Unknown commands and
+  environments, missing images, undefined labels and TikZ pictures are
+  reported as line-numbered diagnostics while the rest of the document
+  still imports. It is an importer, not a TeX interpreter: no page layout,
+  no arbitrary packages, no writer.
+- `UCRichDocument` gained `RichTextRun::math` (inline formula source) and
+  `RichBlockType::MathBlock` (display formula). `ToMarkdown` writes them as
+  `$...$` and `$$` fences, emits `^x^` / `~x~` for single-word super- and
+  subscripts, and pads spanning table cells so the Markdown grid stays
+  aligned; `FromMarkdown` reads `$$` fences back; `ToHTML` and the ODT/DOCX
+  writers degrade a math block to a centred `$$...$$` paragraph.
+- `WordDocumentFormat::LaTeX`: `DetectWordDocumentFormat` recognises a
+  LaTeX head (`\documentclass`, `\begin{document}`, a sectioning command;
+  comments skipped) or a `.tex` / `.latex` / `.ltx` text file, and
+  `UCWordDocumentIO::Load` / `LoadLaTeX` dispatch to the reader, so
+  `UltraCanvasFileLoader::LoadTextDocument` (and its dialog filter), the
+  Filer's preview page and the Media Viewer open `.tex` as the rendered
+  document. `UltraCanvasSupportedFormats` lists `tex`. Texter keeps editing
+  `.tex` as source.
+- Demo "LaTeX Documents": a formula-only file still goes to the LaTeX view;
+  an article-style file renders through the reader in a Markdown TextArea
+  with its diagnostics in the header; only TikZ / pgfplots documents fall
+  back to a reference image. New sample `media/LaTex/article-quadratic-note.tex`.
+- `Tests/LaTeXDocumentTest.cpp` (registered as `LaTeXDocumentTest`): the
+  vocabulary above, macros, diagnostics with line numbers, Markdown and ODT
+  round trips of the math model parts, format detection, and the shipped
+  `media/LaTex` corpus (every file imports without a diagnostic). Docs:
+  `UltraCanvasLaTeXDocumentReader.md`; the proposal, the ODT/DOCX
+  proposal, the Media Viewer, Filer and element catalogue pages updated.
 
 #### 2026-09-09 *0.3.116*
+- **Inline math in the text stack (LaTeX engine Phase 2).** Formulas now
+  render typeset inside text: `UltraCanvasTextArea`'s Markdown mode sets
+  `$...$` (text style), `$$...$$` (display style, inline) and `$$` fenced
+  blocks (centred) through the LaTeX module's native engine, baseline-aligned
+  with the surrounding words - in paragraphs, headings, list items,
+  blockquotes and table cells. Word and ODT documents therefore show their
+  equations typeset (the OMML / MathML importers already produced `$latex$`
+  runs; the Markdown serializer now keeps them unescaped instead of
+  doubling their backslashes). Without the LaTeX module the previous
+  Unicode substitution remains. A `$` pair counts as math only without a
+  space after the opener / before the closer and no digit after the closer.
+- New core API `UltraCanvasInlineMath` (`include/UltraCanvasInlineMath.h`):
+  `Typeset(latex, px, colour, display, ctx)` returns width, ascent, descent
+  and `Draw(ctx, x, baseline)`, reaching the module through four new ABI
+  entry points (`UltraCanvasLaTeXModule_TypesetInline` / `_InlineMetrics` /
+  `_DrawInline` / `_ReleaseInline`, ABI 3) so any element that lays out text
+  can place a formula. Text layouts gained
+  `TextAttributeFactory::CreateShape(width, ascent, descent)` (a Pango
+  shape attribute with a height) and `ITextLayout::IndexToBaseline()`.
+- Markdown table cells keep backslashes other than `\|` for the inline
+  parser (they were stripped, which broke escapes and LaTeX in cells).
+- `Tests/InlineMathTest.cpp` (registered as `InlineMathTest`): the handle
+  through a real `dlopen` of the module, the parser's placeholder and
+  cursor map, and an offscreen TextArea render whose ink proves the inline
+  rule and the centred block. `Tests/WordFormatsTest.cpp` checks the
+  Markdown output of an OMML fraction. The element catalogue lists the
+  LaTeX view and the inline-math handle.
+
+#### 2026-09-09 *0.3.115*
+- **LaTeX: the native math engine (Phase 1) is the LaTeX view's default
+  typesetter.** `UltraCanvasMathEngine` (`include/Plugins/LaTeX/`,
+  `Plugins/LaTeX/`, documented in `Docs/UltraCanvas/UltraCanvasMathEngine.md`)
+  replaces MicroTeX behind `UltraCanvasLaTeXView`: `UltraCanvasMathParser`
+  turns LaTeX into an atom tree (~180 commands, ~600 symbols, the matrix /
+  align / cases / array environments with full column specs, `\newcommand`,
+  text mode, colours, boxes, `\cancel`, `\sideset`, `\longdiv`, ...),
+  `UltraCanvasMathLayout` sets it by The TeXbook's Appendix G rules with the
+  font's OpenType MATH constants (spacing table, scripts, fractions,
+  radicals, delimiters with variants and assemblies, large operators with
+  limits, accents, arrays with per-cell rules), and `UltraCanvasMathRender`
+  draws the box tree through `IRenderContext` as outline paths. Any OpenType
+  math font works; the `.clm2` is no longer needed by the default engine.
+  Errors no longer blank the formula: the parts that parse are typeset, the
+  offending command is shown in red at its place and `GetLastError()` names
+  it. `\text{}` uses the math font's upright glyphs; characters the font
+  lacks go through the context's text layout.
+- `UltraCanvasLaTeXView` gains `SetDisplayStyle(bool)` / `IsDisplayStyle()`
+  (display, the default, or text style) — module ABI 2. The CMake cache
+  variable `ULTRACANVAS_LATEX_ENGINE` (`native` | `microtex`) sets the build
+  default and the environment variable of the same name overrides it at
+  run time; MicroTeX stays in the module as the test oracle.
+- `Tests/MathEngineTest.cpp` (registered as `MathEngineTest`): parser atom
+  trees, layout metrics against the font's constants, and a MicroTeX oracle
+  run over the demo corpus plus forty formulas (mean deviation 6% width /
+  7% height; every shipped `.tex` typesets without a diagnostic).
+- `Docs/UltraCanvas/UltraCanvasLaTeXView.md` and the engine proposal
+  updated for the two-engine transition.
+
+#### 2026-09-09 *0.3.114*
+- **LaTeX: investigation of a native math engine, and its first piece.**
+  `Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md` reports what the
+  vendored MicroTeX plugin contains (19,462 compiled engine lines behind a
+  321-line adapter, a FontForge-generated `.clm2` font, one font, no
+  baseline for inline use), where the "1 GB LaTeX" concern really comes from
+  (TeX distributions ship packages and fonts; engines are small), and sizes a
+  native math typesetter on the framework's own vector layer
+  (`IRenderContext` paths, `VectorStorage`, FreeType) at 10-13k lines. It
+  proposes a phase plan - font layer, native engine behind the existing
+  module ABI with MicroTeX as the test oracle, inline math for the text stack
+  (imported Word/ODT equations are currently shown as flat text), a LaTeX
+  document-subset importer, TikZ and pgfplots subsets - and argues against a
+  real TeX. The chart engine is untouched by this work; it appears only as
+  the target of the last-phase pgfplots reader.
+- **Phase 0 shipped: `UltraCanvasMathFont`**
+  (`include/Plugins/LaTeX/UltraCanvasMathFont.h`,
+  `Plugins/LaTeX/UltraCanvasMathFont.cpp`, built into `libUltraCanvasLaTeX`,
+  documented in `Docs/UltraCanvas/UltraCanvasMathFont.md`) reads an OpenType
+  math font directly through FreeType: all 56 MATH constants, italics
+  correction, top-accent attachment, extended shapes, math kerning, size
+  variants, glyph assemblies, exact glyph metrics and cached outlines. Any
+  font with a MATH table works at runtime without a `.clm2`; a font without
+  one still loads for metrics and outlines; a malformed table is refused
+  cleanly.
+- `Tests/MathFontTest.cpp` (registered as `MathFontTest`) links the vendored
+  engine as an oracle and compares the `.otf` reader with the `.clm2` over
+  all 4,802 glyphs of Latin Modern Math - constants, advances, heights,
+  depths, 1,002 italics corrections, 2,475 top-accent attachments, 176
+  variant lists and 114 assemblies equal - checks math kerning on a
+  synthetic MATH table loaded from memory, and loads STIX / TeX Gyre math
+  fonts when installed.
 - **Cross-checked against the Ladybird port's processor-detection findings**
   (`OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp`), which changed three things
   here. **x86 instruction sets are read from CPUID** — leaf 1, leaf 7 subleaf 0,

@@ -20,6 +20,47 @@ its own license; the full license texts ship alongside the respective files.
 
 ---
 
+## mbedTLS (crypto backend for the Smart Home protocol SDKs)
+
+- **Used by:** the Smart Home module's Matter and Thread backends (both
+  deferred; see `SmartHome/STATUS.md`)
+  (`SmartHome/protocols/`), and by the connectedhomeip and OpenThread SDKs
+  themselves, which both default to it. Chosen over OpenSSL so those two SDKs
+  share one stack, for its smaller static footprint (~1 MB against ~4-5 MB), and
+  because OpenSSL is linked only on Linux and Android today — Windows uses
+  Schannel and macOS SecureTransport — so it would be a new dependency on two of
+  the three desktop platforms.
+- **Not UltraCrypt's backend:** framework cryptography remains libsodium. mbedTLS
+  is here only for the X.509 and P-256 that Matter's device attestation and
+  OpenThread's commissioner require, which libsodium cannot provide at all.
+- **Upstream:** https://github.com/Mbed-TLS/mbedtls
+- **Linked, not vendored:** the system package is used
+  (`libmbedtls-dev` / `brew install mbedtls` / `mingw-w64-x86_64-mbedtls`). No
+  mbedTLS source is carried in this repository, and no mbedTLS type appears in
+  any UltraCanvas public header.
+- **Only when enabled:** both backends are OFF by default, so a default build
+  links no mbedTLS.
+- **License:** Apache License 2.0.
+
+---
+
+## OpenZWave (Z-Wave protocol stack)
+
+- **Used by:** the Smart Home module's Z-Wave backend
+  (`SmartHome/protocols/ZWave/`), which is OFF by default.
+- **Upstream:** https://github.com/OpenZWave/open-zwave
+- **Linked, not vendored, and dynamically:** the system package is used
+  (`libopenzwave1.6-dev`). It ships `libopenzwave.a` alongside
+  `libopenzwave.so`, so CMake asks for the shared object by name rather than
+  passing `-lopenzwave` and letting the linker choose. Configuration fails if
+  only the static library is found.
+- **License:** **LGPL 2.1** — the only copyleft component listed here. A static
+  link would carry the LGPL's relinking obligation into the resulting binary;
+  `SmartHome/tests/ZWaveLinkTest.cpp` documents the two commands that verify it
+  did not happen.
+
+---
+
 ## Hunspell (portable spell checking engine)
 
 - **Used by:** the spell check service

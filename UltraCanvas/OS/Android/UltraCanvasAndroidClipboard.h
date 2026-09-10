@@ -31,10 +31,19 @@ namespace UltraCanvas {
         bool GetClipboardText(std::string& text) override;
         bool SetClipboardText(const std::string& text) override;
 
-        // Non-text formats: unsupported on this backend (see header comment).
-        bool GetClipboardImage(std::vector<uint8_t>&, std::string&) override { return false; }
+        // Reading non-text formats needs this app's ContentResolver, so it goes
+        // through UltraCanvasActivity (see the .cpp). Without that activity
+        // these report "nothing there", exactly as the dialogs fall back.
+        bool GetClipboardImage(std::vector<uint8_t>& imageData, std::string& format) override;
+        bool GetClipboardFiles(std::vector<std::string>& filePaths) override;
+
+        // Writing them is a different problem and stays unimplemented: handing
+        // another app a file means publishing a content:// URI it may read,
+        // which requires a ContentProvider declared in the *application's*
+        // manifest - framework code cannot supply one on the app's behalf.
+        // Reporting false is honest; a plain path put on the clipboard would
+        // be unreadable to every other app and look like data loss.
         bool SetClipboardImage(const std::vector<uint8_t>&, const std::string&) override { return false; }
-        bool GetClipboardFiles(std::vector<std::string>&) override { return false; }
         bool SetClipboardFiles(const std::vector<std::string>&) override { return false; }
 
         bool HasClipboardChanged() override;

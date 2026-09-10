@@ -54,6 +54,18 @@ namespace AndroidDialogs {
                                   const char* negativeLabel,
                                   const char* neutralLabel);
 
+    // Show a modal single-line text-input AlertDialog and block until the user
+    // answers. `password` masks the field. Buttons are the platform's own
+    // localised OK/Cancel.
+    //
+    // `value` is meaningful only when the result is Positive: cancelling
+    // delivers no string at all, so an empty value the user typed on purpose
+    // stays distinguishable from a dialog they dismissed.
+    JavaDialogOutcome ShowInputText(const std::string& title,
+                                    const std::string& prompt,
+                                    const std::string& defaultValue,
+                                    bool password);
+
     // Launch the system document picker (SAF) and block until the user picks
     // or cancels. `mimeTypesCsv` narrows the picker ("image/png,image/jpeg");
     // empty offers everything.

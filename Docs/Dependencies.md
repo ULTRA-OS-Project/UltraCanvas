@@ -257,9 +257,133 @@ for the full search order.
 
 ### Smart Home module
 
+The engine, the public API and the dashboard widgets need nothing beyond the
+core. Each protocol backend is a separate CMake option and **every one is OFF
+by default**, so a default build of this module still pulls in no third party.
+Turning one on requires its vendor SDK to be installed; CMake fails at
+configure time naming what is missing.
+
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| No additional third party | (core only) | (core only) | (core only) |
+| Engine, public API, dashboard widgets | (core only) | (core only) | (core only) |
+| Matter backend (`ULTRACANVAS_SMARTHOME_MATTER`, default OFF) | a **built** connectedhomeip (Apache 2; brings its own mbedTLS), packaged by `SmartHome/scripts/package-chip.sh` — recipe below | same | not tried (the SDK's Linux platform layer) |
+| Thread backend (`ULTRACANVAS_SMARTHOME_THREAD`, default OFF) | a **built** OpenThread, `OT_PLATFORM=posix` (BSD 3-Clause; brings its own mbedTLS) — recipe below | same | not tried (OpenThread's POSIX layer) |
+| Zigbee backend (`ULTRACANVAS_SMARTHOME_ZIGBEE`, default OFF) | (core only) — ASH and EZSP implemented in-tree; needs a serial NCP at run time | same | same |
+| Z-Wave backend (`ULTRACANVAS_SMARTHOME_ZWAVE`, default OFF) | OpenZWave 1.6 (**LGPL 2.1**, `libopenzwave1.6-dev`, **linked dynamically**) | OpenZWave 1.6 | OpenZWave 1.6 |
+| KNX backend (`ULTRACANVAS_SMARTHOME_KNX`, default OFF) | (core only) — KNXnet/IP over sockets; **builds today** | (core only) | (core only) |
+
+> **mbedTLS, not OpenSSL.** Matter's device attestation and OpenThread's
+> commissioner both need X.509 and ECDSA on P-256. Neither asks UltraCrypt for
+> it — connectedhomeip carries its own attestation credentials provider — so the
+> question is only which backend those SDKs are built against. mbedTLS is what
+> both default to, so they share one stack; it is ~1 MB static against OpenSSL's
+> ~4–5 MB; and OpenSSL is linked only on Linux and Android today, so it would be
+> a *new* dependency on Windows and macOS. libsodium was never a candidate here:
+> it has no P-256 and no X.509, so UltraCrypt's 2026-08-10 backend ruling is
+> untouched by this.
+
+> **Z-Wave is LGPL, and the link is enforced.** OpenZWave is LGPL 2.1, unlike
+> everything else in this table, and its packages ship `libopenzwave.a`
+> *alongside* `libopenzwave.so` — so a plain `-lopenzwave` can quietly pull the
+> archive in and carry the relinking obligation into the binary. CMake asks for
+> the shared object by name and refuses to configure if only the static one is
+> present. `SmartHome/tests/ZWaveLinkTest.cpp` is the runtime half; after any
+> change to how this is linked, check:
+>
+> ```
+> ldd  <binary> | grep openzwave           # must list libopenzwave.so
+> nm -C <binary> | grep " T OpenZWave::"   # must be empty
+> ```
+
+> **Building OpenThread for the Thread backend.** OpenThread is not packaged
+> and does not install (`cmake --install` yields one binary and no headers or
+> archives), so a host links against its build tree. This is the build that
+> the backend was verified against (checkout `f34c5e5`, 2026-09):
+>
+> ```
+> git clone https://github.com/openthread/openthread.git
+> cd openthread
+> git submodule update --init third_party/mbedtls/repo     # vendored mbedTLS
+> cmake -S . -B build -G Ninja -DOT_PLATFORM=posix \
+>       -DOT_FTD=ON -DOT_MTD=OFF -DOT_RCP=OFF -DOT_UPTIME=ON \
+>       -DOT_COMMISSIONER=ON -DOT_JOINER=ON -DOT_BORDER_ROUTER=ON \
+>       -DOT_SRP_CLIENT=ON -DOT_DNS_CLIENT=ON -DOT_ECDSA=ON \
+>       -DOT_PING_SENDER=ON -DOT_UDP_FORWARD=ON \
+>       -DOT_DAEMON=OFF -DOT_APP_CLI=OFF -DOT_APP_NCP=OFF -DOT_APP_RCP=OFF \
+>       -DOT_COMPILE_WARNING_AS_ERROR=OFF -DCMAKE_BUILD_TYPE=Release
+> cmake --build build
+> ```
+>
+> Two of those switches are not obvious: `OT_UPTIME=ON`, because the posix
+> core config turns on uptime-prefixed logging and the build stops in
+> `log.cpp` without it; and `OT_RCP=OFF`, because the RCP-only library does
+> not compile under that same config and a host does not need it. The
+> mbedTLS submodule's own `framework` sub-submodule may fail to fetch; it is
+> not needed. Then point UltraCanvas at both trees:
+>
+> ```
+> cmake -DULTRACANVAS_SMARTHOME_THREAD=ON \
+>       -DOPENTHREAD_SOURCE_DIR=/path/to/openthread \
+>       -DOPENTHREAD_BUILD_DIR=/path/to/openthread/build ..
+> ```
+>
+> `SmartHome/tests/ThreadLinkTest.cpp` checks the link is real: the backend's
+> `GetHardwareInfo()` must carry `otGetVersionString()`'s answer. At run time
+> the backend needs a radio co-processor, named by a URL such as
+> `spinel+hdlc+uart:///dev/ttyACM0`; OpenThread's `otSysInit` exits the
+> process if that device is missing.
+
+> **Building connectedhomeip for the Matter backend.** The SDK's own
+> `bootstrap.sh` fetches its toolchain from CIPD (chrome-infra-packages),
+> and pigweed from googlesource; neither is reachable from every network,
+> so this is the route that worked without them (checkout of 2026-09-09,
+> Ubuntu 24.04):
+>
+> ```
+> sudo apt install generate-ninja ninja-build              # gn, ninja
+> git clone --depth 1 https://github.com/project-chip/connectedhomeip.git chip
+> cd chip
+> # pigweed lives on googlesource; the GitHub mirror carries the same commits
+> git config submodule.third_party/pigweed/repo.url https://github.com/google/pigweed.git
+> git submodule update --init --depth 1 \
+>     third_party/pigweed/repo third_party/nlassert/repo third_party/nlio/repo \
+>     third_party/mbedtls/repo third_party/jsoncpp/repo third_party/perfetto/repo \
+>     third_party/inipp/repo examples/common/QRCode/repo third_party/uriparser/repo \
+>     third_party/editline/repo third_party/libwebsockets/repo
+> python3 -m venv ../chipvenv && . ../chipvenv/bin/activate
+> pip install -r scripts/setup/requirements.build.txt -c scripts/setup/constraints.txt requests
+> # bootstrap would have written this; for a gcc host build it only has to exist
+> touch build_overrides/pigweed_environment.gni
+> # the ZAP code generator, from its GitHub release (the tag without a suffix)
+> python3 scripts/tools/zap/zap_download.py --zap RELEASE --zap-version v2026.08.24 --extract-root ../zap
+> export ZAP_INSTALL_PATH=../zap/zap-v2026.08.24 PW_ENVSETUP_NO_CIPD=1
+> gn gen --root=examples/chip-tool out/host --args='chip_crypto="mbedtls" is_debug=false chip_build_tests=false'
+> ninja -C out/host chip-tool
+> # collect what chip-tool links into one archive + a link list
+> /path/to/UltraCanvas/SmartHome/scripts/package-chip.sh . out/host ../chip-package
+> ```
+>
+> If `ninja` stops on a missing `third_party/.../repo/...` source, that
+> submodule is one this list does not name for your checkout; add it to the
+> `git submodule update` line. A submodule whose fetch was interrupted can be
+> left half-initialised — `rm -rf .git/modules/<name> third_party/<name>/repo`
+> and fetch it again. Then point UltraCanvas at the three directories:
+>
+> ```
+> cmake -DULTRACANVAS_SMARTHOME_MATTER=ON \
+>       -DCHIP_SOURCE_DIR=/path/to/chip \
+>       -DCHIP_BUILD_DIR=/path/to/chip/out/host \
+>       -DCHIP_PACKAGE_DIR=/path/to/chip-package ..
+> ```
+>
+> The backend is compiled with chip-tool's project configuration
+> (`examples/chip-tool/include/CHIPProjectAppConfig.h`), because the packaged
+> objects were, and that configuration shapes the SDK's structures.
+> `SmartHome/tests/MatterLinkTest.cpp` checks the link is real. At run time
+> the controller needs a writable storage directory (its fabric and
+> credentials persist there), mDNS on the network, and — for Thread devices —
+> a Thread border router on the same LAN; Bluetooth commissioning goes
+> through BlueZ over D-Bus, which is why `gio`/`glib` appear on the link line.
 
 ### Ultra AI module
 

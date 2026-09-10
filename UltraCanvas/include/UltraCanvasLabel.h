@@ -176,7 +176,13 @@ namespace UltraCanvas {
         // (MeasureOwnContent / ComputeIntrinsicSizes) own that.
         // Returns true if the layout is now valid, false if no render context
         // is available (in which case callers should bail gracefully).
-        bool EnsureTextLayout();
+        //
+        // `ctx` is the context the caller is about to draw into, and is used
+        // in preference to the one reachable through the element's window.
+        // They are the same object for a label in a window; they differ for a
+        // label rendered into an offscreen surface, where the element has no
+        // window to ask and only the caller knows the context.
+        bool EnsureTextLayout(IRenderContext* ctx = nullptr);
     };
 
 
