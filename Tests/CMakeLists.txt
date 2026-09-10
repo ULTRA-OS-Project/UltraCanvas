@@ -840,6 +840,68 @@ else()
     message(STATUS "  Skipping ModelBlendTest (zlib not found)")
 endif()
 
+# ===== MODEL FORMATS DISPATCH TEST =====
+# The seam that makes the converters a plugin matrix rather than five classes:
+# extension dispatch, the claimed-extension lists, and loading every sample
+# through one call. Links the dispatch TU only - no UI stack - which is why
+# UltraCanvasModelFormatsDispatch.cpp is separate from the IGraphicsPlugin
+# facade.
+set(MODEL_DISPATCH_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelFormatsPluginTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelFormatsDispatch.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
+)
+set(MODEL_DISPATCH_DEFINES "")
+set(MODEL_DISPATCH_INCLUDES "")
+set(MODEL_DISPATCH_LIBS "")
+
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(DISPATCH_TINYXML2 QUIET tinyxml2)
+endif()
+if(DISPATCH_TINYXML2_FOUND)
+    list(APPEND MODEL_DISPATCH_SOURCES
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp)
+    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_COLLADA_CONVERTER=1)
+    list(APPEND MODEL_DISPATCH_INCLUDES ${DISPATCH_TINYXML2_INCLUDE_DIRS})
+    list(APPEND MODEL_DISPATCH_LIBS ${DISPATCH_TINYXML2_LIBRARIES})
+endif()
+
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    list(APPEND MODEL_DISPATCH_SOURCES
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendFile.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendConverter.cpp)
+    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_BLEND_CONVERTER=1)
+    list(APPEND MODEL_DISPATCH_INCLUDES ${ZLIB_INCLUDE_DIRS})
+    list(APPEND MODEL_DISPATCH_LIBS ${ZLIB_LIBRARIES})
+endif()
+
+message(STATUS "  Building ModelFormatsPluginTest...")
+add_executable(ModelFormatsPluginTest ${MODEL_DISPATCH_SOURCES})
+target_include_directories(ModelFormatsPluginTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+    ${MODEL_DISPATCH_INCLUDES}
+)
+target_compile_definitions(ModelFormatsPluginTest PRIVATE ${MODEL_DISPATCH_DEFINES})
+target_link_libraries(ModelFormatsPluginTest PRIVATE ${MODEL_DISPATCH_LIBS})
+target_compile_features(ModelFormatsPluginTest PRIVATE cxx_std_20)
+set_target_properties(ModelFormatsPluginTest PROPERTIES
+    OUTPUT_NAME "ModelFormatsPluginTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelFormatsPluginTest
+    COMMAND ModelFormatsPluginTest "${ULTRACANVAS_ROOT}/media/models"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelFormatsPluginTest")
+
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the
 # real CSSLayout engine: an auto-width flex column grows with an inner row of

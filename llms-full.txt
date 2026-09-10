@@ -239,7 +239,20 @@ the backing implementation can be replaced without affecting callers.
     file/memory/stream import and export, signature validation,
     `FormatCapabilities`, a `WarningCallback` a lossy conversion must use, and
     `Precision` (`NumericPrecision::Compact` / `Full`) choosing between six
-    significant digits and exact round-trip digits for text formats. Converters themselves live in `Plugins/Models/<FORMAT>/`:
+    significant digits and exact round-trip digits for text formats.
+    Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
+    `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
+    `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the
+    Vector/CDR/XAR/EPS plugins, with COLLADA (tinyxml2) and `.blend` (zlib) as
+    options inside it. `UltraCanvasModelFormatsPlugin`
+    (`Plugins/Models/UltraCanvasModelFormatsPlugin.h`) is the façade:
+    `CreateConverterForExtension`, `LoadModelDocument`, `SaveModelDocument`,
+    `SupportedLoadExtensions` / `SupportedSaveExtensions`, and an
+    `IGraphicsPlugin` implementation reaching `LoadGraphicsFile` /
+    `SaveGraphicsFile` and the `Model3D` category.
+    `RegisterModelFormatsPlugin()` registers it and the STL plugin together.
+    `.dxf` is dispatchable but not claimed, so a DXF still opens as a drawing
+    by default. Per-format converters, under `Plugins/Models/<FORMAT>/`:
     `ThreeDSConverter` (`Plugins/Models/3DS/UltraCanvas3DSConverter.h`) reads
     Autodesk 3DS - meshes, object matrices, Phong materials with texture maps,
     per-face material groups, cameras and lights - and is read-only.

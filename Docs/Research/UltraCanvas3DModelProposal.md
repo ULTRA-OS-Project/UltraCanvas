@@ -340,12 +340,34 @@ Each step is independently mergeable and comes with a test and a demo page.
 6. **3MF.** The manufacturing pair for STL, and the reason `UnitScaleToMeters`
    and components/instancing exist. ZIP is available (`UltraCanvasZipPackage`).
 7. **OFF, then AMF** — small, and they close out the mesh-format set.
-8. **FileLoader integration**: a `UltraCanvasModelFormatsPlugin` exposing the
-   matrix to `LoadGraphicsFile`/`SaveGraphicsFile`, so the `Model3D` category
-   stops being STL-only and the Filer's Model badges become real. Register it
-   from framework init rather than from a demo page — today `RegisterSTLPlugin()`
-   has exactly one caller, in `UltraCanvasFileLoaderExamples.cpp`, so `.stl` is
-   invisible to FileLoader until that demo page is opened.
+8. **FileLoader integration — done.** `UltraCanvasModelFormatsPlugin`
+   (`Plugins/Models/`) exposes the matrix to `LoadGraphicsFile` /
+   `SaveGraphicsFile`, so the `Model3D` category is no longer STL-only and the
+   Filer's Model badges have something behind them.
+   `RegisterModelFormatsPlugin()` is called from `Apps/DemoApp/main.cpp`
+   beside `RegisterVectorFormatsPlugin()`, and registers the STL plugin too —
+   which fixes the older bug that `.stl` was invisible to FileLoader unless a
+   particular demo page had been opened.
+
+   The converters also moved out of the core library into a real plugin target
+   (`Plugins/Models/CMakeLists.txt`, `UltraCanvasModelsPlugin`,
+   `ULTRACANVAS_HAS_MODELS_PLUGIN=1`), built like the Vector, CDR, XAR and EPS
+   plugins and listed in `ULTRACANVAS_PLUGIN_TARGETS`. COLLADA and `.blend` are
+   options within it, since each pulls a dependency (tinyxml2, zlib) the rest
+   does not need, and each gets its own define so a caller can `#ifdef` on
+   exactly what was built.
+
+   Two details worth knowing. **`.dxf` is dispatchable but not claimed**: a DXF
+   is a drawing far more often than a model, so `LoadGraphicsFile` keeps giving
+   the Vector plugin's 2D reader, and a caller that wants the 3D entities asks
+   for the converter by name. And **extension dispatch is a separate
+   translation unit** from the `IGraphicsPlugin` façade
+   (`UltraCanvasModelFormatsDispatch.cpp` against
+   `UltraCanvasModelFormatsPlugin.cpp`), because the façade hands back a viewer
+   element and therefore needs the UI stack, while conversion needs nothing but
+   the converters and the document. A tool that only converts files links a
+   fraction of the framework, and the dispatch stays testable without a
+   display.
 
 Then, closing the 1.0 gate from the versioning investigation:
 

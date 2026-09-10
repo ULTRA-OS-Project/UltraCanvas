@@ -283,7 +283,12 @@ namespace {
         // real capability through the graphics plugin registry (registration
         // is idempotent). Other graphics plugins (CDR, XAR, ...) show up here
         // automatically once the host application registers them too.
+        // Registered by RegisterModelFormatsPlugin() at startup now; this
+        // call is kept only for builds without the Models plugin, and the
+        // registry ignores a duplicate.
+#ifndef ULTRACANVAS_HAS_MODELS_PLUGIN
         RegisterSTLPlugin();
+#endif
 
         auto groups = ResolveFileGroups();
 

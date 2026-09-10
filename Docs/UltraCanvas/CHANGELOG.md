@@ -1,3 +1,37 @@
+#### 2026-09-10 *0.8.9*
+- **The 3D formats are a plugin now, not five classes in the core library.**
+  `Plugins/Models/CMakeLists.txt` builds `UltraCanvasModelsPlugin` as its own
+  static library with `ULTRACANVAS_HAS_MODELS_PLUGIN=1`, listed in
+  `ULTRACANVAS_PLUGIN_TARGETS` and switched by `ULTRACANVAS_PLUGIN_MODELS` -
+  the same shape as the Vector, CDR, XAR and EPS plugins. Until now the
+  converters were compiled unconditionally into the core library, so every
+  application linked 3DS, OBJ, DXF, COLLADA and Blender support whether or not
+  it opened a model, and COLLADA's tinyxml2 dependency came with it. COLLADA
+  and `.blend` are now options inside the plugin, each with its own define
+  (`ULTRACANVAS_HAS_COLLADA_CONVERTER`, `ULTRACANVAS_HAS_BLEND_CONVERTER`), so
+  a build without tinyxml2 or zlib still gets the rest.
+- **One call loads any 3D format.** `UltraCanvasModelFormatsPlugin` mirrors
+  `UltraCanvasVectorFormatsPlugin`: `CreateConverterForExtension`,
+  `LoadModelDocument`, `SaveModelDocument`, and an `IGraphicsPlugin`
+  implementation so `LoadGraphicsFile` / `SaveGraphicsFile`, the FileLoader
+  format inventory and the `Model3D` category reach every format. `GetFileInfo`
+  reports vertices, faces, materials, unit, up axis and bounds - and for a
+  `.blend`, the inspector's summary instead.
+  `RegisterModelFormatsPlugin()` runs from `main.cpp` beside the vector one and
+  registers the STL plugin too, fixing the older bug that `.stl` was invisible
+  to FileLoader unless one particular demo page had been opened.
+- **`.dxf` is dispatchable but deliberately not claimed**, so a DXF still opens
+  as a drawing through the Vector plugin by default; a caller wanting the 3D
+  entities asks for the converter by name. Extension dispatch sits in its own
+  translation unit away from the `IGraphicsPlugin` façade, because the façade
+  returns a viewer element and needs the UI stack while conversion does not -
+  so a converting tool links a fraction of the framework.
+  `Tests/ModelFormatsPluginTest.cpp` adds 30 assertions over the seam itself:
+  every claimed extension resolves, every converter agrees with the dispatch
+  about its own extension, every save extension really has a writer, and all
+  four geometry samples load - then a 3DS converts to OBJ and back - without
+  the caller naming a format.
+
 #### 2026-09-10 *0.8.8*
 - **Blender `.blend` files are recognised and explained, never imported.**
   `ModelConverter::BlendConverter` and `ReadBlendFileInfo`
