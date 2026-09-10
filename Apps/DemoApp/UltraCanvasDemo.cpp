@@ -1363,6 +1363,19 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasVennDiagramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md");
 
+        diagramBuilder.AddItem("parliamentdiagram", "Parliament Diagram",
+                               "Legislature seat chart: hemicycle, horseshoe, circle, Westminster "
+                               "benches and grid layouts with majority marker, legend and coalition "
+                               "building",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateParliamentDiagramExamples(); },
+                               "DemoApp/UltraCanvasParliamentDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasParliamentDiagram.md")
+                .AddVariant("parliamentdiagram", "Bundestag")
+                .AddVariant("parliamentdiagram", "European Parliament")
+                .AddVariant("parliamentdiagram", "House of Commons")
+                .AddVariant("parliamentdiagram", "Coalition Builder");
+
         diagramBuilder.AddItem("packetdiagram", "Packet Diagram",
                                "Bit-accurate protocol header and frame structure: RFC word grid "
                                "with fields wrapping across rows, proportional byte strips, "

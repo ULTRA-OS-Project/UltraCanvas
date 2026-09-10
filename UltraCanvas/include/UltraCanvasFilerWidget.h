@@ -78,8 +78,8 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.24.0
-// Last Modified: 2026-09-04
+// Version: 1.25.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -292,6 +292,22 @@ namespace UltraCanvas {
         NoneBadge,
         Bar,
         Icon
+    };
+
+    // ===== ASKING BEFORE A DROP IS CARRIED OUT =====
+    // Whether dropping dragged files into a folder asks first. A drag is the
+    // one file operation that can be started by accident - a press that
+    // wandered a few pixels - and the drop is done before it is noticed, so
+    // the host can have the widget confirm it.
+    //   NeverConfirm — carry the drop out straight away (the default, and
+    //                  what every earlier release did).
+    //   MoveOnly     — ask only when the drop moves the files, the case that
+    //                  changes where they live; a copy is carried out.
+    //   AlwaysConfirm — ask for every drop, copies included.
+    enum class FilerDropConfirmation {
+        NeverConfirm,
+        MoveOnly,
+        AlwaysConfirm
     };
 
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
@@ -699,6 +715,14 @@ namespace UltraCanvas {
         // move, so the other action is always one modifier away.
         void SetDropOnFolderCopies(bool copies) { dropOnFolderCopies = copies; }
         bool GetDropOnFolderCopies() const { return dropOnFolderCopies; }
+
+        // Whether a drop asks before it is carried out (see
+        // FilerDropConfirmation). The question names what is about to happen -
+        // how many entries, moved or copied, and into which folder - and
+        // nothing is touched until it is answered. Files dragged in from
+        // another program are copies and are covered by AlwaysConfirm.
+        void SetDropConfirmation(FilerDropConfirmation mode) { dropConfirmation = mode; }
+        FilerDropConfirmation GetDropConfirmation() const { return dropConfirmation; }
 
         // The selection info bar shown under the folder display. One line
         // describing the selection: name, type, size, modified date and
@@ -1411,6 +1435,7 @@ namespace UltraCanvas {
 
         bool dragEnabled = true;
         bool dropOnFolderCopies = false;   // plain drop on a folder: move / copy
+        FilerDropConfirmation dropConfirmation = FilerDropConfirmation::NeverConfirm;
         bool dragOutArmed = false;         // press may still become a drag
         Point2Di dragOutPressPoint;
         int  dragPressIndex = -1;          // entry the press landed on
@@ -2094,8 +2119,17 @@ namespace UltraCanvas {
         void EndDragGesture();             // clears the armed / running state
         // Moves (or copies) `paths` into `destDir`, skipping sources that are
         // already there and folders dropped into themselves. Rescans on change.
+        // Asks first when SetDropConfirmation says this drop needs it.
         void DropPathsInto(const std::vector<std::string>& paths,
                            const std::string& destDir, bool copy);
+        // Does dropConfirmation want this drop confirmed?
+        bool DropNeedsConfirmation(bool copy) const;
+        // The "Move / Copy N items into <folder>?" dialog. `proceed` runs on
+        // the confirming answer and nothing runs on the other one; with
+        // dialogs disabled it runs straight away, so a drop is never lost.
+        void ConfirmDrop(const std::vector<std::string>& sources,
+                         const std::string& destDir, bool copy,
+                         std::function<void()> proceed);
         // Folder entry under a widget-local point that the running drag may be
         // dropped on (never one of the dragged items), or -1.
         int  DragDropFolderAt(const Point2Di& localPoint) const;

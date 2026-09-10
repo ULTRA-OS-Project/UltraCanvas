@@ -49,8 +49,8 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.24.0
-// Last Modified: 2026-09-04
+// Version: 1.25.0
+// Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -3900,14 +3900,70 @@ namespace UltraCanvas {
             sources.push_back(src);
         }
         if (sources.empty()) return;
-        PasteFilesInto(destDir, std::move(sources), /*cut=*/!copy,
-                       [this, destDir, copy](bool changed) {
-            if (!changed) return;
-            Refresh();
-            NotifyFolderModified(destDir);
-            // A move also emptied the folder the files came from.
-            if (!copy) NotifyFolderModified();
-        });
+
+        // The paste machinery takes the sources by value; the confirmation
+        // hands it a copy so the same set can be described in the question.
+        auto perform = [this, sources, destDir, copy]() {
+            PasteFilesInto(destDir, std::vector<std::string>(sources),
+                           /*cut=*/!copy,
+                           [this, destDir, copy](bool changed) {
+                if (!changed) return;
+                Refresh();
+                NotifyFolderModified(destDir);
+                // A move also emptied the folder the files came from.
+                if (!copy) NotifyFolderModified();
+            });
+        };
+
+        if (DropNeedsConfirmation(copy))
+            ConfirmDrop(sources, destDir, copy, perform);
+        else
+            perform();
+    }
+
+    bool UltraCanvasFilerWidget::DropNeedsConfirmation(bool copy) const {
+        switch (dropConfirmation) {
+            case FilerDropConfirmation::AlwaysConfirm: return true;
+            case FilerDropConfirmation::MoveOnly:      return !copy;
+            default:                                   return false;
+        }
+    }
+
+    void UltraCanvasFilerWidget::ConfirmDrop(const std::vector<std::string>& sources,
+                                             const std::string& destDir,
+                                             bool copy,
+                                             std::function<void()> proceed) {
+        if (!proceed) return;
+
+        const std::string verb = copy ? "Copy" : "Move";
+        const std::string destName = fs::path(destDir).filename().string();
+        std::string what;
+        if (sources.size() == 1) {
+            what = "\"" + fs::path(sources.front()).filename().string() + "\"";
+        } else {
+            what = std::to_string(sources.size()) + " items";
+        }
+
+        DialogConfig cfg;
+        cfg.title = verb + " files";
+        cfg.dialogType = DialogType::Question;
+        cfg.message = verb + " " + what + " into \"" +
+                      (destName.empty() ? destDir : destName) + "\"?";
+        // The full path answers "which folder of that name" - a drop lands on
+        // whatever folder happened to be under the cursor.
+        cfg.details = destDir;
+        cfg.buttons = DialogButtons::NoButtons;   // custom buttons below
+        cfg.width = 480;
+        cfg.height = 200;
+
+        auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+        if (!dialog) {   // dialogs disabled - the drop still happens
+            proceed();
+            return;
+        }
+        dialog->AddCustomButton(verb, DialogResult::Yes, proceed);
+        dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
+        UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
     }
 
     // ===== NATIVE DRAG & DROP =====
@@ -3959,7 +4015,17 @@ namespace UltraCanvas {
             sources.push_back(src);
         }
         if (sources.empty()) return;
-        PasteFilesInto(currentPath, std::move(sources), /*cut=*/false);
+
+        const std::string dest = currentPath;
+        auto perform = [this, sources, dest]() {
+            PasteFilesInto(dest, std::vector<std::string>(sources), /*cut=*/false);
+        };
+        // Files handed over by another program (or another pane of this
+        // window) are copied, so only AlwaysConfirm asks about them.
+        if (DropNeedsConfirmation(/*copy=*/true))
+            ConfirmDrop(sources, dest, /*copy=*/true, perform);
+        else
+            perform();
     }
 
     std::string UltraCanvasFilerWidget::UniquePathIn(const std::string& folder,

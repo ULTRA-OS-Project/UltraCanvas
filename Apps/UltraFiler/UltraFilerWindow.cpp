@@ -1019,10 +1019,12 @@ void UltraFilerWindow::ApplySettings() {
     for (auto& state : tabStates) {
         if (!state->filer) continue;
         state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+        state->filer->SetDropConfirmation(settings.dropConfirmation);
         state->filer->SetShowLockState(settings.showLockState);
     }
     if (folderPreview) {
         folderPreview->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+        folderPreview->SetDropConfirmation(settings.dropConfirmation);
         folderPreview->SetShowLockState(settings.showLockState);
     }
     // Display > Home folder: curate the home folder's display - every tab and
@@ -2866,12 +2868,15 @@ void UltraFilerWindow::BuildTabbedContainer() {
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     tabbedContainer->SetContentHost(tabContentHost);
 
-    // "+" at the end of the tab list opens another tab on the current folder.
+    // "+" at the end of the tab list opens another tab - on the folder the
+    // active tab is showing, or on the Home folder, per Settings > Handling >
+    // Tabs. The current folder is what it always was and stays the default.
     tabbedContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
     tabbedContainer->SetShowNewTabButton(true);
     tabbedContainer->SetNewButtonColor(Color(249, 249, 251, 255));
     tabbedContainer->onNewTabRequest = [this]() {
-        std::string path = filer ? filer->GetPath() : std::string();
+        std::string path;
+        if (!settings.newTabOpensHome && filer) path = filer->GetPath();
         if (path.empty()) path = UserHomeDir();
         AddNewTab(path, true);
     };
@@ -2936,8 +2941,10 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     // With the preview up, a delete of the previewed file moves the selection
     // (and with it the preview) on to the next entry instead of emptying it.
     state->filer->SetSelectNextAfterDelete(previewEnabled);
-    // Handling > Drag & Drop: move or copy on a plain drop onto a folder.
+    // Handling > Drag & Drop: move or copy on a plain drop onto a folder,
+    // and whether the drop asks before it is carried out.
     state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
+    state->filer->SetDropConfirmation(settings.dropConfirmation);
     // Display > Files in use: mark files another program is holding.
     state->filer->SetShowLockState(settings.showLockState);
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)

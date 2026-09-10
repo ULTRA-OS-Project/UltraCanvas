@@ -386,6 +386,45 @@
   rows, each captioned with its format - so the DXF reader that a `.dwg` file
   reaches only after decoding is demonstrated on its own input too.
 
+#### 2026-09-10 *0.8.2*
+- **UltraCanvasParliamentDiagram** *(1.0.0)*: new legislature seat chart, the
+  "parliament diagram" of election reports - every seat one marker coloured by
+  party, parties side by side in insertion order. Four layouts render the same
+  party list: the classic `Hemicycle` of concentric arcs, whose span
+  `SetArcSpan()` widens from 180 degrees into a horseshoe; `Circle`;
+  `Westminster`, two blocks of benches facing each other across an aisle with
+  the governing parties on the left, the rest opposite and a Speaker's chair at
+  the head; and `Grid`. In the arc layouts each arc takes seats in proportion
+  to its length and the seats are handed to the parties by sweeping the angle,
+  which gives every party the familiar wedge; the number of arcs is the
+  smallest that fits every seat unless `SetRowCount()` fixes it. A dashed
+  majority marker sits at the half-way seat, the seat total in the empty
+  centre, and a legend with seat counts under or beside the chamber. Parties
+  carry a `government` flag - it fills the Westminster benches, fades the
+  opposition with `SetHighlightGovernment()`, and feeds
+  `GetGovernmentSeats()` / `GovernmentHasMajority()` - and a `vacant` flag for
+  hollow seats such as the Speaker's. Hovering a seat or legend entry fades the
+  other parties and shows a tooltip with the seat count and share; clicking
+  selects, with `onPartyHover`, `onPartyClick`, `onSeatClick` and
+  `onSelectionChange` callbacks. Three sample chambers ship in
+  `ParliamentDiagramSamples`. DemoApp gains `Diagrams > Parliament Diagram`
+  with four tabs - Bundestag hemicycle, European Parliament horseshoe, House of
+  Commons on Westminster benches, and a coalition builder where clicking
+  parties assembles a majority. Docs in
+  `Docs/UltraCanvas/UltraCanvasParliamentDiagram.md`.
+#### 2026-09-10 *0.8.1*
+- **A drop can ask before it is carried out.** Dragging files onto a folder of
+  `UltraCanvasFilerWidget` moved them the moment the button came up, and a drag
+  is the one file operation that starts by accident - a press that wandered a
+  few pixels on the way somewhere else - so the first sign of it was a folder
+  that had emptied itself. `SetDropConfirmation(FilerDropConfirmation)` now
+  chooses when the drop asks first: `NeverConfirm` (the default, unchanged
+  behaviour), `MoveOnly` - the half that changes where the files live - or
+  `AlwaysConfirm`, copies and files dragged in from other programs included.
+  The question names what is about to happen, how many entries and into which
+  folder, with the folder's full path underneath, and nothing is touched until
+  it is answered; with dialogs disabled the drop is carried out rather than
+  lost. (`Docs/UltraCanvas/UltraCanvasFilerWidget.md` > Drag & drop.)
 #### 2026-09-10 *0.8.0*
 - **A home icon that shows whose home it is.** `media/icons/home-user.svg`
   joins the shared icon set: a house with the user in it, drawn in the flat
