@@ -41,6 +41,9 @@ this document is where those annotations come from.
 | `ColladaConverter` | `Plugins/Models/COLLADA/` | Reads COLLADA 1.4/1.5: `<unit>`, `<up_axis>`, the node hierarchy with ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`, `profile_COMMON` materials with transparency and textures, vertex colours, and matrix or TRS animation channels. The first format that states everything the structure holds. |
 | `BlendConverter` | `Plugins/Models/Blend/` | Recognises a Blender `.blend`, reports what it contains — version, objects, meshes, materials, modifiers, stored vertex count — and **declines to import geometry**, with the reason. See §2.6. |
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
+| `StepConverter` | `Plugins/Models/STEP/` | Reads **and writes** ISO 10303-21 (AP203/214/242) into `ModelDocument::Brep` — trimmed NURBS and analytic surfaces with their topology, held exactly rather than tessellated away. The first B-rep converter. See §2.5. |
+| `AlembicConverter` | `Plugins/Models/Alembic/` | Reads the Ogawa container and AbcGeom's `Xform`, `PolyMesh`, `SubD` and `FaceSet` — first time sample only, read-only. No SDK. |
+| `X3DConverter` | `Plugins/Models/X3D/` | Reads X3D's XML encoding: the `Transform`/`Group` hierarchy with DEF/USE instancing, `IndexedFaceSet` with its parallel index streams, the Immersive profile's Box/Sphere/Cylinder/Cone, `Appearance`/`Material`/`ImageTexture`, lights, viewpoints, and TimeSensor-plus-interpolator animation through `ROUTE`s. Read-only; the VRML classic encoding is a different syntax and is refused rather than half-read. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
 Two observations drive the design:
@@ -199,6 +202,16 @@ from the cage. So even the format whose whole purpose is baked geometry came
 out of this scene half-mirrored. The `.blend` is not an unlucky case; this
 scene's exports are, and the OBJ is the only one of the four that had the
 modifiers applied.
+
+The `.x3d` export settles which side of the line the split falls on. It carries
+**11 749 vertices in 8 110 quads** — the OBJ's counts exactly — and its X range
+is symmetric at ±0.9732. So the difference is not "evaluated formats keep the
+modifiers and scene formats do not", and it is not a property of any format at
+all: two exports of one scene, written by one application on one day, disagree
+about whether a modifier had been applied. That is the argument for reading
+what a file says rather than what its format is supposed to mean, and
+`Tests/ModelX3DTest.cpp` asserts the symmetry as deliberately as
+`Tests/ModelColladaTest.cpp` asserts its absence.
 
 `.blend` is also self-describing through an embedded SDNA block, which makes
 the *file* readable even though the *model* is not. So the decision is:
@@ -422,6 +435,17 @@ cross-format comparison in §2.6: the suite asserts that the OBJ is symmetric
 about X and the Alembic is not, so a later change cannot quietly "fix" the
 difference between two exports of one scene.
 
+`Tests/ModelX3DTest.cpp` covers the second XML scene format. Its synthetic half
+is where the reader's real decisions live, because one Blender export reaches
+none of them: DEF/USE instancing on a geometry and on a whole subtree (and the
+two malformed cases — a dangling reference and one that names the node it sits
+inside — that must not take the reader with them), the transform composition
+the spec defines as `T * C * R * SR * S * -SR * -C` rather than a TRS triple,
+per-face colours, reversed winding, and the geometric primitives, each checked
+by the one property a winding mistake always breaks: every face normal must
+point away from the centre. The sample half is the cross-format assertion in
+§2.6.
+
 `Tests/ModelStepTest.cpp` covers the first B-rep reader in two halves. The Part
 21 grammar is unit-tested on text written inline — doubled quotes, `\X2\`
 escapes, comments between any two tokens, `$` and `*`, out-of-order ids, a
@@ -488,6 +512,21 @@ Each step is independently mergeable and comes with a test and a demo page.
    with real animation. Nothing in the structure had to change to hold it,
    which is the strongest evidence so far that the design is right.
 
+3.6. **X3D — done.** `Plugins/Models/X3D/UltraCanvasX3DConverter.cpp` reads the
+   XML encoding, validated against the aircraft's `.x3d`
+   (`Tests/ModelX3DTest.cpp`, 118 assertions). It is the second XML scene
+   format and it landed for the same reason COLLADA did — the sample arrived —
+   but it exercises three things COLLADA does not: DEF/USE instancing, where
+   the *same element* is both the definition and, seen from a `USE`, the
+   reference; the Immersive profile's geometric primitives, which are real
+   geometry rather than a convenience, so a hand-written X3D is often nothing
+   else; and animation as ROUTE plumbing, where the keyframes belong to a node
+   that has no idea which node it drives. Nothing in the structure had to
+   change to hold any of it. Read-only, for the same reason COLLADA is: a
+   caller wanting to write a scene should write glTF. The VRML classic
+   encoding (`.wrl`, `.x3dv`) is the same node set in a different syntax and is
+   deliberately not claimed.
+
 4. **glTF 2.0 / GLB.** The interchange target: scene graph, PBR materials,
    skins, animation, morph targets. Once this reads and writes, UltraCanvas can
    exchange with the rest of the industry. JSON is already available through
@@ -519,10 +558,10 @@ Each step is independently mergeable and comes with a test and a demo page.
    The converters also moved out of the core library into a real plugin target
    (`Plugins/Models/CMakeLists.txt`, `UltraCanvasModelsPlugin`,
    `ULTRACANVAS_HAS_MODELS_PLUGIN=1`), built like the Vector, CDR, XAR and EPS
-   plugins and listed in `ULTRACANVAS_PLUGIN_TARGETS`. COLLADA and `.blend` are
-   options within it, since each pulls a dependency (tinyxml2, zlib) the rest
-   does not need, and each gets its own define so a caller can `#ifdef` on
-   exactly what was built.
+   plugins and listed in `ULTRACANVAS_PLUGIN_TARGETS`. COLLADA, X3D and
+   `.blend` are options within it, since each pulls a dependency (tinyxml2 for
+   the two XML readers, zlib) the rest does not need, and each gets its own
+   define so a caller can `#ifdef` on exactly what was built.
 
    Two details worth knowing. **`.dxf` is dispatchable but not claimed**: a DXF
    is a drawing far more often than a model, so `LoadGraphicsFile` keeps giving

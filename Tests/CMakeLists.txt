@@ -921,6 +921,42 @@ else()
     message(STATUS "  Skipping ModelColladaTest (tinyxml2 not found)")
 endif()
 
+# ===== X3D MODEL READER TEST =====
+# X3D is the second XML scene format, and the one whose export of the E-45
+# carries exactly the OBJ's 8110 quads - so this suite is a cross-format check
+# as much as a reader check. Needs tinyxml2, the same library COLLADA needs.
+if(TEST_TINYXML2_FOUND)
+    message(STATUS "  Building ModelX3DTest...")
+    add_executable(ModelX3DTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ModelX3DTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    )
+    target_include_directories(ModelX3DTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+        ${TEST_TINYXML2_INCLUDE_DIRS}
+    )
+    target_link_libraries(ModelX3DTest PRIVATE ${TEST_TINYXML2_LIBRARIES})
+    target_link_directories(ModelX3DTest PRIVATE ${TEST_TINYXML2_LIBRARY_DIRS})
+    target_compile_features(ModelX3DTest PRIVATE cxx_std_20)
+    set_target_properties(ModelX3DTest PROPERTIES
+        OUTPUT_NAME "ModelX3DTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME ModelX3DTest
+        COMMAND ModelX3DTest "${ULTRACANVAS_ROOT}/media/models/X3D/E-45-Aircraft.x3d"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: ModelX3DTest")
+else()
+    message(STATUS "  Skipping ModelX3DTest (tinyxml2 not found)")
+endif()
+
 # ===== BLENDER FILE INSPECTOR TEST =====
 # The .blend inspector and the converter that deliberately declines to import
 # geometry. Needs zlib to inflate a compressed save file.
@@ -995,8 +1031,10 @@ if(PkgConfig_FOUND)
 endif()
 if(DISPATCH_TINYXML2_FOUND)
     list(APPEND MODEL_DISPATCH_SOURCES
-        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp)
-    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_COLLADA_CONVERTER=1)
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp)
+    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_COLLADA_CONVERTER=1
+                                       ULTRACANVAS_HAS_X3D_CONVERTER=1)
     list(APPEND MODEL_DISPATCH_INCLUDES ${DISPATCH_TINYXML2_INCLUDE_DIRS})
     list(APPEND MODEL_DISPATCH_LIBS ${DISPATCH_TINYXML2_LIBRARIES})
 endif()
