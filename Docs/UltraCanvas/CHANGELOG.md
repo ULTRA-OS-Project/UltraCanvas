@@ -1,3 +1,20 @@
+#### 2026-09-10 *0.8.5*
+- **Text formats choose their write precision.**
+  `ModelConverter::ConversionOptions::Precision` selects between
+  `NumericPrecision::Compact` - the C++ stream default of 6 significant digits,
+  which is what OBJ files in the wild contain - and `NumericPrecision::Full`,
+  enough digits that every value read back is bit-identical to the one written:
+  17 for the document's double positions and 9 for its float attributes
+  (`max_digits10` for each). Compact stays the default, so existing output is
+  unchanged. The difference matters wherever geometry sits far from the origin:
+  a survey coordinate of 1234567.8912345678 comes back as 1234570 under
+  Compact, 2.11 units - two metres - lost to six digits, while Full returns it
+  bit-for-bit. The cost is about a third more file size (the E-45 aircraft goes
+  from 1.37 MB to 1.87 MB as OBJ). The OBJ writer honours it for vertices,
+  texture coordinates, normals and the `.mtl` library; the option sits on
+  `ConversionOptions` because every text format the matrix gains - PLY ASCII,
+  glTF's JSON, COLLADA, X3D - faces the same choice.
+
 #### 2026-09-10 *0.8.4*
 - **OBJ reads and writes through the universal 3D structure.**
   `ModelConverter::OBJConverter` (`Plugins/Models/OBJ/`) is the first format on

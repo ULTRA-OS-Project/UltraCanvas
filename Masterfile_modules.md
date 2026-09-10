@@ -65,8 +65,9 @@ the backing implementation can be replaced without affecting callers.
     (`DataFormats/UltraCanvasModelConverter.h`) — the read/write interface
     every 3D format implements, mirroring `IVectorFormatConverter`:
     file/memory/stream import and export, signature validation,
-    `FormatCapabilities`, and a `WarningCallback` a lossy conversion must
-    use. Converters themselves live in `Plugins/Models/<FORMAT>/`:
+    `FormatCapabilities`, a `WarningCallback` a lossy conversion must use, and
+    `Precision` (`NumericPrecision::Compact` / `Full`) choosing between six
+    significant digits and exact round-trip digits for text formats. Converters themselves live in `Plugins/Models/<FORMAT>/`:
     `ThreeDSConverter` (`Plugins/Models/3DS/UltraCanvas3DSConverter.h`) reads
     Autodesk 3DS - meshes, object matrices, Phong materials with texture maps,
     per-face material groups, cameras and lights - and is read-only.

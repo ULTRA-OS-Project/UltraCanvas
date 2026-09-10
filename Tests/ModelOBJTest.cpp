@@ -22,6 +22,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <vector>
@@ -106,6 +107,62 @@ static void TestParsingCorners() {
     auto triangles = conv.ImportFromMemory(Bytes("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"), quiet);
     Check(triangles && triangles->Meshes[0].Primitives[0].Mode == PrimitiveMode::Triangles,
           "an all-triangle file uses Triangles, not Polygons");
+}
+
+// Six significant digits is the C++ stream default and what OBJ files in the
+// wild contain. It is also catastrophic for a coordinate far from the origin,
+// which is what ConversionOptions::Precision exists to let a caller avoid.
+static void TestPrecision() {
+    std::printf("Write precision\n");
+    OBJConverter conv;
+
+    // A survey-scale coordinate with detail in the low bits.
+    MeshPrimitive prim;
+    prim.Positions = { Vec3d(1234567.8912345678, -987654.3210987654, 42.123456789012345),
+                       Vec3d(1234568.8912345678, -987654.3210987654, 42.123456789012345),
+                       Vec3d(1234567.8912345678, -987653.3210987654, 42.123456789012345) };
+    prim.Indices = {0, 1, 2};
+    ModelMesh mesh;
+    mesh.Name = "survey";
+    mesh.Primitives.push_back(prim);
+    const ModelDocument source = ModelDocument::FromSingleMesh(std::move(mesh), "survey");
+
+    auto roundTrip = [&conv, &source](NumericPrecision precision, Vec3d& out, size_t& bytes) {
+        ConversionOptions write;
+        write.Precision = precision;
+        const std::filesystem::path path =
+                std::filesystem::temp_directory_path() / "ultracanvas-precision.obj";
+        if (!conv.Export(source, path.string(), write)) return false;
+        bytes = static_cast<size_t>(std::filesystem::file_size(path));
+        ConversionOptions read;
+        auto back = conv.Import(path.string(), read);
+        std::filesystem::remove(path);
+        if (!back || back->Meshes.empty() || back->Meshes[0].Primitives.empty()) return false;
+        out = back->Meshes[0].Primitives[0].Positions[0];
+        return true;
+    };
+
+    Vec3d compact, full;
+    size_t compactBytes = 0, fullBytes = 0;
+    Check(roundTrip(NumericPrecision::Compact, compact, compactBytes),
+          "the document writes and reads back at Compact precision");
+    Check(roundTrip(NumericPrecision::Full, full, fullBytes),
+          "the document writes and reads back at Full precision");
+
+    const Vec3d& original = source.Meshes[0].Primitives[0].Positions[0];
+    Check(std::memcmp(&full, &original, sizeof(Vec3d)) == 0,
+          "Full precision returns the position bit-for-bit");
+    Check(std::fabs(compact.x - original.x) > 1.0,
+          "Compact precision loses whole units on a far-from-origin coordinate");
+    Check(fullBytes > compactBytes, "Full precision costs file size, as documented");
+    std::printf("  (Compact lost %.2f units; %zu bytes vs %zu)\n",
+                std::fabs(compact.x - original.x), compactBytes, fullBytes);
+
+    // Compact stays the default, so nothing changes for a caller who has not
+    // asked: an OBJ is a deliverable far more often than an intermediate.
+    const ConversionOptions defaults;
+    Check(defaults.Precision == NumericPrecision::Compact,
+          "Compact is the default, so existing output is unchanged");
 }
 
 static void TestCapabilities() {
@@ -220,6 +277,7 @@ static void TestSample(const char* objPath, const char* dsPath) {
 int main(int argc, char** argv) {
     TestValidation();
     TestParsingCorners();
+    TestPrecision();
     TestCapabilities();
     if (argc > 1) TestSample(argv[1], argc > 2 ? argv[2] : nullptr);
     else std::printf("Sample: skipped (pass an .obj path to run it)\n");

@@ -23,6 +23,8 @@
 #include <cctype>
 #include <cstdlib>
 #include <fstream>
+#include <iomanip>
+#include <limits>
 #include <map>
 #include <sstream>
 #include <unordered_map>
@@ -587,6 +589,30 @@ private:
 
 // ===== WRITER =====
 
+// Sets a stream's precision for as long as it is in scope, then puts back what
+// was there. Positions are double and attributes are float, so the two need
+// different digit counts to round-trip exactly and the writer switches between
+// them as it goes.
+class ScopedPrecision {
+public:
+    ScopedPrecision(std::ostream& stream, NumericPrecision precision, bool forDouble)
+            : stream_(stream), previous_(stream.precision()) {
+        if (precision == NumericPrecision::Compact) return;
+        // max_digits10: the shortest digit count that guarantees
+        // value -> text -> value returns the identical value.
+        stream_.precision(forDouble ? std::numeric_limits<double>::max_digits10
+                                    : std::numeric_limits<float>::max_digits10);
+    }
+    ~ScopedPrecision() { stream_.precision(previous_); }
+
+    ScopedPrecision(const ScopedPrecision&) = delete;
+    ScopedPrecision& operator=(const ScopedPrecision&) = delete;
+
+private:
+    std::ostream& stream_;
+    std::streamsize previous_;
+};
+
 void WriteGeometry(const ModelDocument& document, std::ostream& out,
                    const std::string& materialLibrary, const ConversionOptions& options) {
     out << "# Wavefront OBJ written by " << options.Generator << "\n";
@@ -608,22 +634,37 @@ void WriteGeometry(const ModelDocument& document, std::ostream& out,
         out << "o " << (mesh.Name.empty() ? "mesh" : mesh.Name) << "\n";
 
         for (const auto& prim : mesh.Primitives) {
-            for (const auto& p : prim.Positions) {
-                const Vec3d w = world.TransformPoint(p);
-                out << "v " << w.x << " " << w.y << " " << w.z << "\n";
+            {
+                // Positions carry the document's double precision, and are the
+                // reason the Full setting exists: a CAD coordinate far from the
+                // origin has already lost millimetres by six digits.
+                ScopedPrecision digits(out, options.Precision, true);
+                for (const auto& p : prim.Positions) {
+                    const Vec3d w = world.TransformPoint(p);
+                    out << "v " << w.x << " " << w.y << " " << w.z << "\n";
+                }
             }
+
             const VertexAttribute* uv = prim.FindAttribute(AttributeSemantic::TexCoord, 0);
-            if (uv) {
-                for (size_t i = 0; i + 1 < uv->Values.size(); i += 2)
-                    out << "vt " << uv->Values[i] << " " << uv->Values[i + 1] << "\n";
-            }
-            for (const auto& n : prim.Normals) {
-                if (!normalsUsable) { out << "vn " << n.x << " " << n.y << " " << n.z << "\n"; continue; }
-                const Vec3d t(normalMatrix[0] * n.x + normalMatrix[3] * n.y + normalMatrix[6] * n.z,
-                              normalMatrix[1] * n.x + normalMatrix[4] * n.y + normalMatrix[7] * n.z,
-                              normalMatrix[2] * n.x + normalMatrix[5] * n.y + normalMatrix[8] * n.z);
-                const Vec3d u = t.Normalized();
-                out << "vn " << u.x << " " << u.y << " " << u.z << "\n";
+            {
+                // Texture coordinates and normals are float in the document, so
+                // float's exact-round-trip digit count is all they can use.
+                ScopedPrecision digits(out, options.Precision, false);
+                if (uv) {
+                    for (size_t i = 0; i + 1 < uv->Values.size(); i += 2)
+                        out << "vt " << uv->Values[i] << " " << uv->Values[i + 1] << "\n";
+                }
+                for (const auto& n : prim.Normals) {
+                    if (!normalsUsable) {
+                        out << "vn " << n.x << " " << n.y << " " << n.z << "\n";
+                        continue;
+                    }
+                    const Vec3d t(normalMatrix[0] * n.x + normalMatrix[3] * n.y + normalMatrix[6] * n.z,
+                                  normalMatrix[1] * n.x + normalMatrix[4] * n.y + normalMatrix[7] * n.z,
+                                  normalMatrix[2] * n.x + normalMatrix[5] * n.y + normalMatrix[8] * n.z);
+                    const Vec3d u = t.Normalized();
+                    out << "vn " << u.x << " " << u.y << " " << u.z << "\n";
+                }
             }
 
             if (prim.Material >= 0 && prim.Material < static_cast<int>(document.Materials.size()))
@@ -744,8 +785,12 @@ std::shared_ptr<ModelStorage::ModelDocument> OBJConverter::ImportFromStream(
     return reader.Run(stream);
 }
 
-std::string OBJConverter::BuildMaterialLibrary(const ModelDocument& document) {
+std::string OBJConverter::BuildMaterialLibrary(const ModelDocument& document,
+                                              NumericPrecision precision) {
     std::ostringstream out;
+    // Material parameters are float, so float's exact digit count is the most
+    // they can carry.
+    ScopedPrecision digits(out, precision, false);
     out << "# MTL library written by UltraCanvas\n";
     for (const auto& material : document.Materials) {
         ModelMaterial resolved = material;
@@ -799,7 +844,7 @@ bool OBJConverter::Export(const ModelDocument& document, const std::string& file
         const std::string libraryPath = DirectoryOf(filename) + libraryName;
         std::ofstream library(libraryPath);
         if (library) {
-            library << BuildMaterialLibrary(document);
+            library << BuildMaterialLibrary(document, options.Precision);
         } else {
             options.Warn("OBJ: cannot write the material library " + libraryPath +
                          "; the model is written without materials");

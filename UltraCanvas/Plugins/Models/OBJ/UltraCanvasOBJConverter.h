@@ -67,7 +67,9 @@ public:
     // The .mtl text for a document, so a caller writing an OBJ somewhere this
     // converter cannot reach (an archive, a network stream) can place the
     // library itself.
-    static std::string BuildMaterialLibrary(const ModelStorage::ModelDocument& document);
+    static std::string BuildMaterialLibrary(
+            const ModelStorage::ModelDocument& document,
+            NumericPrecision precision = NumericPrecision::Compact);
 };
 
 } // namespace ModelConverter

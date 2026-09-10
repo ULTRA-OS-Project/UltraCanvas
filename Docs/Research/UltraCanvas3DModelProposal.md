@@ -335,10 +335,18 @@ Recorded rather than hidden:
   the reader says so. Untested — the sample has no camera or light.
 - **Smoothing groups are resolved into normals** on 3DS import as they are for
   OBJ, so neither round-trips them.
-- **OBJ writes at the stream's default precision** (6 significant digits), so a
-  document with double positions loses precision through an OBJ round trip even
-  though the reader parses into double. Fine for the format's own fidelity,
-  wrong for a CAD document — the writer should set an explicit precision.
+- ~~**OBJ writes at the stream's default precision**~~ — fixed.
+  `ConversionOptions::Precision` (`NumericPrecision::Compact` / `Full`) chooses
+  between the stream default of 6 significant digits and enough digits to
+  round-trip every value exactly: 17 for the double positions, 9 for the float
+  attributes (`max_digits10` for each). Compact remains the default, because an
+  OBJ is a deliverable more often than an intermediate. The difference is not
+  academic — a survey coordinate of `1234567.8912345678` comes back as
+  `1234570` under Compact, 2.11 units lost — and the cost is about a third more
+  file size (the E-45 aircraft goes from 1.37 MB to 1.87 MB). The option lives
+  on `ConversionOptions` rather than on the OBJ converter because every text
+  format the matrix gains — PLY ASCII, glTF's JSON, COLLADA, X3D — faces the
+  same choice.
 - **OBJ `l` and `p` elements are not read**, so a file's polylines and points
   are dropped with a warning even though the document has modes for both.
 

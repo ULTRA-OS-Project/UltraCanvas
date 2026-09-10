@@ -64,6 +64,27 @@ enum class ModelFormat {
 
 // ===== CONVERSION OPTIONS =====
 
+// How many digits a text format writes per number. Only text formats are
+// affected — a binary writer stores the value itself, so there is nothing to
+// choose.
+enum class NumericPrecision {
+    // The C++ stream default: 6 significant digits. Compact, and lossy — it is
+    // enough for a model authored in the range a modeller works in, and it is
+    // what OBJ, PLY and STL files in the wild almost always contain.
+    Compact,
+    // Enough digits that every value read back is bit-identical to the one
+    // written: 17 for the double positions, 9 for the float attributes
+    // (max_digits10 for each). Costs about a third more file size — the E-45
+    // aircraft sample goes from 1.37 MB to 1.87 MB as OBJ. Use it for CAD,
+    // survey and geospatial models, where coordinates sit far from the origin,
+    // and whenever a file is an intermediate step rather than a deliverable.
+    //
+    // The difference is not academic: a survey coordinate of 1234567.8912345678
+    // comes back as 1234570 under Compact — 2.11 units, or two metres, lost to
+    // six significant digits.
+    Full
+};
+
 struct ConversionOptions {
     // --- geometry ---
     // Reduce every primitive to indexed triangles on import. Consumers that
@@ -96,6 +117,10 @@ struct ConversionOptions {
     // Prefer the compact binary encoding where a format has both (STL, PLY,
     // FBX, glTF/GLB).
     bool PreferBinary = true;
+    // Digits per number for text formats. See NumericPrecision: Compact is the
+    // stream default of 6 significant digits, Full round-trips every value
+    // exactly at roughly twice the file size.
+    NumericPrecision Precision = NumericPrecision::Compact;
     std::string Generator = "UltraCanvas";
 
     // Every fallback, approximation and dropped feature is reported here, the
