@@ -979,12 +979,6 @@ namespace UltraCanvas {
                               "Docs/UltraCanvas/UltraCanvasVectorConverters.md");
 #endif
 
-        vectorBuilder.AddItem("stlmodels", "STL 3D Models", "Stereolithography meshes (ASCII and binary) read by the self-contained STL loader and shaded in an orbiting 3D view",
-                              ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateSTLModelExamples(); },
-                              "DemoApp/UltraCanvasSTLExamples.cpp",
-                              "Docs/UltraCanvas/UltraCanvasSTLElement.md");
-
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
 
@@ -1647,6 +1641,14 @@ namespace UltraCanvas {
                                   "DemoApp/UltraCanvasGLSurfaceExamples.cpp",
                                   "Docs/UltraCanvas/UltraCanvasGLSurfaceExamples.md");
 #endif
+
+        // Outside the GL guard: UltraCanvasSTLElement falls back to a mesh summary
+        // without GL, so the loader and its statistics stay demonstrable there.
+        graphics3DBuilder.AddItem("stlmodels", "STL 3D Models", "Stereolithography meshes (ASCII and binary) read by the self-contained STL loader and shaded in an orbiting OpenGL view",
+                                  ImplementationStatus::FullyImplemented,
+                                  [this]() { return CreateSTLModelExamples(); },
+                                  "DemoApp/UltraCanvasSTLExamples.cpp",
+                                  "Docs/UltraCanvas/UltraCanvasSTLElement.md");
 
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);

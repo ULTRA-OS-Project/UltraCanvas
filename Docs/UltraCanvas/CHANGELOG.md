@@ -1,5 +1,5 @@
 #### 2026-09-10 *0.8.1*
-- **STL models have a demo page.** *Vector Graphics → STL 3D Models*
+- **STL models have a demo page.** *3D Graphics → STL 3D Models*
   (`Apps/DemoApp/UltraCanvasSTLExamples.cpp`) reads every `.stl` file in
   `media/vector/STL` through `UltraCanvasSTLLoader` and shows it in an
   `UltraCanvasSTLElement` - shaded and orbitable on GL builds, a mesh summary

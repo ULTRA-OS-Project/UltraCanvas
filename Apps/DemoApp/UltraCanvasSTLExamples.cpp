@@ -1,6 +1,6 @@
 // Apps/DemoApp/UltraCanvasSTLExamples.cpp
 // STL (stereolithography) 3D model demo - the Models/STL plugin's self-contained
-// mesh reader shown next to the other vector formats.
+// mesh reader, in the 3D Graphics section beside the OpenGL showcase.
 // Every .stl file in media/vector/STL is parsed by UltraCanvasSTLLoader (ASCII and
 // binary, auto-detected) and displayed in an UltraCanvasSTLElement: a shaded,
 // mouse-orbited 3D view on GL builds, a mesh info placeholder otherwise. The stats

@@ -39299,7 +39299,7 @@ directions.
 `Models/STL/UltraCanvas3DTypes.h` (`Vec3`, `Mat4`, `Mesh3D`, `BoundingBox3D`),
 `Models/STL/UltraCanvasSTLPlugin.h` (`IGraphicsPlugin` registration + save API).
 
-**Demo:** *Vector Graphics → STL 3D Models*
+**Demo:** *3D Graphics → STL 3D Models*
 (`Apps/DemoApp/UltraCanvasSTLExamples.cpp`), which reads every `.stl` file in
 `media/vector/STL`.
 

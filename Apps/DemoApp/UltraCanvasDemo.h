@@ -413,8 +413,9 @@ namespace UltraCanvas {
 #ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateDWGVectorExamples();
 #endif
-        // STL 3D models: the Models/STL loader is part of the core library, so this
-        // page is always available (it falls back to a mesh summary without GL).
+        // STL 3D models (3D Graphics category): the Models/STL loader is part of the
+        // core library, so this page is always available - it falls back to a mesh
+        // summary when the build has no GL.
         std::shared_ptr<UltraCanvasUIElement> CreateSTLModelExamples();
 #ifdef ULTRACANVAS_HAS_OCR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateOCRExamples();
