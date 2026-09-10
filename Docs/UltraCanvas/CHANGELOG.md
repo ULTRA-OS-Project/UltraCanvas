@@ -1,4 +1,4 @@
-#### 2026-09-09 *0.3.117*
+#### 2026-09-10 *0.3.119*
 - **Radio group: a programmatic selection now shows.**
   `UltraCanvasRadioGroup::SelectButton()` unchecked the group's other buttons
   but never checked the one being selected. That is invisible on the click
