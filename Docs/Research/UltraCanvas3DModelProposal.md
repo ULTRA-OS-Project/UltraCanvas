@@ -190,6 +190,16 @@ it in X, since the mirror is one of the unapplied modifiers. The `.dae` export
 in §2.2 shows the same thing from the other side: it was exported without
 applying the mirror, and holds exactly the 1 147 positions the `.blend` does.
 
+The `.abc` export is a third witness, and the clearest one, because Alembic
+carries geometry that has already been evaluated: it holds **2 934 vertices in
+1 681 faces**, and the hull's own X range stops dead at zero. The archive's
+top-level bound is symmetric at ±0.9732 while the mesh inside it only spans
+[-0.9732, 0] — Blender wrote the bound from the evaluated model and the mesh
+from the cage. So even the format whose whole purpose is baked geometry came
+out of this scene half-mirrored. The `.blend` is not an unlucky case; this
+scene's exports are, and the OBJ is the only one of the four that had the
+modifiers applied.
+
 `.blend` is also self-describing through an embedded SDNA block, which makes
 the *file* readable even though the *model* is not. So the decision is:
 
@@ -401,6 +411,17 @@ them wrongly produces a model that looks plausible and is not the part:
 - one solid placed by two nodes is meshed once and shared, and a face with its
   own material becomes its own primitive.
 
+`Tests/ModelAlembicTest.cpp` covers the Ogawa container and AbcGeom against the
+same aircraft. Two of its assertions are worth naming. The first is the face
+winding: Alembic winds a face's indices the opposite way from the outward-normal
+convention, and because the file carries its own per-corner normals, comparing
+each face's computed normal against the stored one is an *independent* check of
+a decision that is otherwise invisible until a model renders inside out — 1 680
+of 1 681 faces disagree without the reversal, 10 with it. The second is the
+cross-format comparison in §2.6: the suite asserts that the OBJ is symmetric
+about X and the Alembic is not, so a later change cannot quietly "fix" the
+difference between two exports of one scene.
+
 `Tests/ModelStepTest.cpp` covers the first B-rep reader in two halves. The Part
 21 grammar is unit-tested on text written inline — doubled quotes, `\X2\`
 escapes, comments between any two tokens, `$` and `*`, out-of-order ids, a
@@ -606,6 +627,19 @@ Recorded rather than hidden:
   channels — what Blender writes, and what the sample uses — are read.
 - **COLLADA cameras and lights are not read**, though the document has fields
   for both and the sample has neither.
+- **Alembic reads its first time sample only.** An archive holding an animation
+  arrives as its first frame. The document has `ModelAnimation` and morph
+  targets to carry the rest, and the reader's `FormatCapabilities` says
+  `Animations = false` rather than implying otherwise. Cameras, curves, points
+  and NuPatch objects are skipped with a warning naming the schema.
+- **Alembic `SubD` is read as its control cage.** The subdivided surface is not
+  in the file — it is what the receiving application is meant to compute — so
+  the cage is what a reader can honestly return, with a warning saying so.
+  Reading it as a mesh silently under-reports the model, and subdividing it
+  here would invent geometry the file does not contain.
+- **Alembic states no unit and no up axis.** Y-up is recorded because every
+  writer of the format works that way, but it is a convention rather than
+  something the file said, and a Z-up archive would arrive on its side.
 - **The COLLADA texture chain is unexercised.** The sampler2D → surface → image
   indirection is implemented, but the sample's `<library_images/>` is empty, so
   no test covers it against a real file.

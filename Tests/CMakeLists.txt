@@ -684,6 +684,41 @@ add_test(
 )
 message(STATUS "    Test registered: ModelStorageTest")
 
+# ===== ALEMBIC READER TEST =====
+# The Ogawa container and AbcGeom, against the same E-45 aircraft the 3DS, OBJ,
+# DXF and COLLADA suites read - exported from the same .blend, and like the
+# .dae exported without applying the mirror modifier. The suite pins that
+# difference rather than letting a later change quietly "fix" it, and checks
+# the face winding against the per-corner normals the file itself carries,
+# which is the one decision in an Alembic reader that is invisible until a
+# model renders inside out.
+message(STATUS "  Building ModelAlembicTest...")
+add_executable(ModelAlembicTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelAlembicTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelAlembicTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelAlembicTest PRIVATE cxx_std_20)
+set_target_properties(ModelAlembicTest PROPERTIES
+    OUTPUT_NAME "ModelAlembicTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelAlembicTest
+    COMMAND ModelAlembicTest "${ULTRACANVAS_ROOT}/media/models"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelAlembicTest")
+
 # ===== STEP READER / WRITER TEST =====
 # The first B-rep reader: ISO 10303-21 syntax as unit tests, and AP203/214
 # entity meanings against the hand-authored samples in media/models/STEP. The

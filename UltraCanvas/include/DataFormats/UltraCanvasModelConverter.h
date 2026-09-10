@@ -79,6 +79,11 @@ enum class ModelFormat {
     // and points at an export rather than importing a partial model.
     Blend,      // Blender
 
+    // Caches: geometry already evaluated, sampled over time. Not a modelling
+    // format and not an exact one — what is in the file is what an artist saw
+    // on the frame it was written.
+    Alembic,    // Alembic .abc (Ogawa backend)
+
     // Internal
     UltraCanvas // native serialisation of ModelDocument
 };

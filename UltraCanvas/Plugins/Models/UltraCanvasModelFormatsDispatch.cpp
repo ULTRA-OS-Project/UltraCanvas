@@ -18,6 +18,7 @@
 #include "Models/OBJ/UltraCanvasOBJConverter.h"
 #include "Models/DXF/UltraCanvasDXFModelConverter.h"
 #include "Models/STEP/UltraCanvasStepConverter.h"
+#include "Models/Alembic/UltraCanvasAlembicConverter.h"
 
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     #include "Models/COLLADA/UltraCanvasColladaConverter.h"
@@ -72,6 +73,7 @@ UltraCanvasModelFormatsPlugin::CreateConverterForExtension(const std::string& ex
     if (extension == "dxf") return std::make_unique<DXFModelConverter>();
     if (extension == "step" || extension == "stp" || extension == "p21")
         return std::make_unique<StepConverter>();
+    if (extension == "abc") return std::make_unique<AlembicConverter>();
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     if (extension == "dae") return std::make_unique<ColladaConverter>();
 #endif
@@ -85,7 +87,7 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
     // Not "dxf": a DXF is a drawing far more often than a model, so the Vector
     // plugin's reader stays the default for it. CreateConverterForExtension
     // still answers for it, because an explicit caller has already chosen.
-    std::vector<std::string> extensions = {"3ds", "obj", "step", "stp", "p21"};
+    std::vector<std::string> extensions = {"3ds", "obj", "step", "stp", "p21", "abc"};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     extensions.push_back("dae");
 #endif
@@ -103,7 +105,8 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedSaveExtensions(
 
 std::vector<ModelFormat> UltraCanvasModelFormatsPlugin::AvailableFormats() {
     std::vector<ModelFormat> formats = {ModelFormat::ThreeDS, ModelFormat::OBJ,
-                                        ModelFormat::DXF, ModelFormat::STEP};
+                                        ModelFormat::DXF, ModelFormat::STEP,
+                                        ModelFormat::Alembic};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     formats.push_back(ModelFormat::COLLADA);
 #endif

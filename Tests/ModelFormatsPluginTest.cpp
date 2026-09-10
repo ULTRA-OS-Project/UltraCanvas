@@ -46,6 +46,7 @@ static const std::vector<Sample>& Samples() {
             {"obj", "OBJ/E-45-Aircraft.obj", true},
             {"dxf", "DXF/E-45-Aircraft.dxf", true},
             {"step", "STEP/Box.step", true},
+            {"abc", "Alembic/E-45-Aircraft.abc", true},
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
             {"dae", "COLLADA/E-45-Aircraft.dae", true},
 #endif
@@ -86,18 +87,22 @@ static void TestDispatchTable() {
     Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("ply") == nullptr,
           "a format this build has no converter for resolves to nothing");
 
-    // And says so rather than returning null in silence: a caller handed an
-    // .abc or a .ply has to be able to tell "unsupported" from "corrupt".
+    // And says so rather than returning null in silence: a caller handed a
+    // .fbx has to be able to tell "unsupported" from "corrupt". The example is
+    // deliberately a format this build genuinely lacks — this assertion caught
+    // its own staleness once already, when .abc gained a reader.
     std::string reported;
     ConversionOptions listening;
     listening.WarningCallback = [&reported](const std::string& message) { reported = message; };
-    Check(UltraCanvasModelFormatsPlugin::LoadModelDocument("aircraft.abc", listening) == nullptr,
+    Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("fbx") == nullptr,
+          "this build has no FBX reader, which is what makes it the right example");
+    Check(UltraCanvasModelFormatsPlugin::LoadModelDocument("aircraft.fbx", listening) == nullptr,
           "an unsupported extension loads nothing");
-    Check(reported.find("abc") != std::string::npos && reported.find("obj") != std::string::npos,
+    Check(reported.find("fbx") != std::string::npos && reported.find("obj") != std::string::npos,
           "and the warning names both the format it cannot read and the ones it can");
     reported.clear();
     ModelStorage::ModelDocument empty;
-    Check(!UltraCanvasModelFormatsPlugin::SaveModelDocument(empty, "out.abc", listening),
+    Check(!UltraCanvasModelFormatsPlugin::SaveModelDocument(empty, "out.fbx", listening),
           "and saving to one writes nothing");
     Check(!reported.empty(), "with a warning rather than a silent false");
 

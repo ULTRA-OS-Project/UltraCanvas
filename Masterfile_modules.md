@@ -99,6 +99,10 @@ the backing implementation can be replaced without affecting callers.
     AP203/214/242 entity layer (`UltraCanvasStepConverter.h`) that fills
     `ModelDocument::Brep` and writes it back out. Consult that header for what
     it reads and what it deliberately does not.
+    **Alembic** (`Plugins/Models/Alembic/`) is split the same way: an Ogawa
+    container and object/property layer (`UltraCanvasOgawaFile.h`) under an
+    AbcGeom reader (`UltraCanvasAlembicConverter.h`) for Xform, PolyMesh, SubD
+    and FaceSet. First time sample only, and read-only.
     Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
     `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
     `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the

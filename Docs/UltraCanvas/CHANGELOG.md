@@ -1,3 +1,40 @@
+#### 2026-09-10 *0.8.12*
+- **Alembic (.abc) reads.** `Plugins/Models/Alembic/` is split the same way the
+  STEP reader is: `UltraCanvasOgawaFile.h` is the Ogawa container and Alembic's
+  object/property model with no idea what a mesh is, and
+  `UltraCanvasAlembicConverter.h` is AbcGeom on top of it. No SDK - Ogawa is a
+  flat file of groups and data blocks addressed by absolute offset, and the
+  header blobs that name them decode in about four hundred lines.
+- **What is read**: `AbcGeom_Xform` as the node hierarchy (Alembic's row-major
+  matrices transposed, and decomposed to TRS where that is exact),
+  `AbcGeom_PolyMesh` with its n-gons kept rather than triangulated,
+  `AbcGeom_SubD` as its control cage with a warning that the subdivided surface
+  is not in the file, `AbcGeom_FaceSet` as one primitive per set so a material
+  assignment survives, and per-corner normals and indexed UVs. First time
+  sample only; the capability report says `Animations = false` rather than
+  implying otherwise.
+- **Two conventions that are silent corruption when got wrong.** Alembic winds
+  a face's indices the opposite way from the outward-normal convention, so
+  every face is reversed on import - the sample disagrees with its own stored
+  normals on 1680 of 1681 faces if it is not, and its signed volume comes out
+  negative. And `N` and `uv` are face-varying, one value per corner rather than
+  per vertex, so corners are de-indexed into distinct document vertices exactly
+  as the OBJ reader does for its three index streams.
+- **An HDF5-backed archive is told apart from a non-Alembic file** and reported
+  as such, because "not Alembic" would be a lie and a re-export fixes it.
+- **`Tests/ModelAlembicTest.cpp`** against `media/models/Alembic/E-45-Aircraft.abc`
+  - the same aircraft as the 3DS, OBJ, DXF and COLLADA samples, from the same
+  .blend. It checks the winding against the normals the file itself carries,
+  and asserts the cross-format difference rather than hiding it: the OBJ is
+  symmetric about X and the Alembic is not, because this export - like the .dae
+  - was written without applying the mirror modifier. Proposal section 2.6
+  gained it as a third witness: even the format whose whole purpose is baked
+  geometry came out of this scene half-mirrored.
+- `ModelFormat` gained `Alembic`; the plugin dispatches `.abc` for reading.
+  Read only: writing an Alembic a DCC will accept means matching a schema far
+  more strictly than reading it, and a document that needs to leave the
+  framework has OBJ, STEP and the rest.
+
 #### 2026-09-10 *0.8.11*
 - **STEP reads and writes: the first B-rep converter.** `Plugins/Models/STEP/`
   fills `ModelDocument::Brep` from ISO 10303-21 files - AP203, AP214 and AP242 -
