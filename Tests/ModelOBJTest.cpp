@@ -188,7 +188,11 @@ static void TestSample(const char* objPath, const char* dsPath) {
     auto doc = conv.Import(objPath, options);
     if (!doc) { std::printf("  [FAIL] import returned nothing\n"); ++failures; return; }
 
-    Check(doc->Title == "E-45-Aircraft", "the document is titled from the file name");
+    // From the path rather than hard-coded: the rule under test is "the title
+    // is the file's stem", and a constant only tests that the sample still
+    // lives where it did.
+    Check(doc->Title == std::filesystem::path(objPath).stem().string(),
+          "the document is titled from the file name");
     Check(doc->Up == UpAxis::YUp, "OBJ is read as Y-up, the format's de-facto convention");
     Check(doc->Meshes.size() == 2 && doc->Nodes.size() == 2, "both objects arrive as mesh nodes");
     Check(doc->TotalFaceCount() == 8110, "all 8110 faces are read");

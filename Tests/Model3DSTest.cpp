@@ -18,6 +18,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -87,7 +88,12 @@ static void TestSample(const char* path) {
     auto doc = conv.Import(path, options);
     if (!doc) { std::printf("  [FAIL] import returned nothing\n"); ++failures; return; }
 
-    Check(doc->Title == "E-45-Aircraft", "the document is titled from the file name");
+    // Derived from the path rather than hard-coded: the rule under test is
+    // "the title is the file's stem", and a constant here only tests that the
+    // sample still lives where it did — it fails on any copy of the same file,
+    // which is not a defect in the reader.
+    Check(doc->Title == std::filesystem::path(path).stem().string(),
+          "the document is titled from the file name");
     Check(doc->SourceFormat == "3ds", "the source format is recorded");
     Check(doc->Up == UpAxis::ZUp, "3DS is read as Z-up");
     Check(doc->SourceUnit == ModelUnit::Unspecified,

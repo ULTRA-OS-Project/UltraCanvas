@@ -20,6 +20,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -211,7 +212,11 @@ static void TestSample(const char* dxfPath, const char* dsPath) {
     auto doc = conv.Import(dxfPath, options);
     if (!doc) { std::printf("  [FAIL] import returned nothing\n"); ++failures; return; }
 
-    Check(doc->Title == "E-45-Aircraft", "the document is titled from the file name");
+    // From the path rather than hard-coded: the rule under test is "the title
+    // is the file's stem", and a constant only tests that the sample still
+    // lives where it did.
+    Check(doc->Title == std::filesystem::path(dxfPath).stem().string(),
+          "the document is titled from the file name");
     Check(doc->Up == UpAxis::ZUp, "DXF is Z-up");
     Check(doc->Metadata.count("dxf.version") == 1 && doc->Metadata.at("dxf.version") == "AC1009",
           "the DXF version is recorded (R12)");
