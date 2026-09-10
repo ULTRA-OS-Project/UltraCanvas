@@ -1,3 +1,29 @@
+#### 2026-09-10 *0.8.2*
+- **UltraCanvasParliamentDiagram** *(1.0.0)*: new legislature seat chart, the
+  "parliament diagram" of election reports - every seat one marker coloured by
+  party, parties side by side in insertion order. Four layouts render the same
+  party list: the classic `Hemicycle` of concentric arcs, whose span
+  `SetArcSpan()` widens from 180 degrees into a horseshoe; `Circle`;
+  `Westminster`, two blocks of benches facing each other across an aisle with
+  the governing parties on the left, the rest opposite and a Speaker's chair at
+  the head; and `Grid`. In the arc layouts each arc takes seats in proportion
+  to its length and the seats are handed to the parties by sweeping the angle,
+  which gives every party the familiar wedge; the number of arcs is the
+  smallest that fits every seat unless `SetRowCount()` fixes it. A dashed
+  majority marker sits at the half-way seat, the seat total in the empty
+  centre, and a legend with seat counts under or beside the chamber. Parties
+  carry a `government` flag - it fills the Westminster benches, fades the
+  opposition with `SetHighlightGovernment()`, and feeds
+  `GetGovernmentSeats()` / `GovernmentHasMajority()` - and a `vacant` flag for
+  hollow seats such as the Speaker's. Hovering a seat or legend entry fades the
+  other parties and shows a tooltip with the seat count and share; clicking
+  selects, with `onPartyHover`, `onPartyClick`, `onSeatClick` and
+  `onSelectionChange` callbacks. Three sample chambers ship in
+  `ParliamentDiagramSamples`. DemoApp gains `Diagrams > Parliament Diagram`
+  with four tabs - Bundestag hemicycle, European Parliament horseshoe, House of
+  Commons on Westminster benches, and a coalition builder where clicking
+  parties assembles a majority. Docs in
+  `Docs/UltraCanvas/UltraCanvasParliamentDiagram.md`.
 #### 2026-09-10 *0.8.1*
 - **A drop can ask before it is carried out.** Dragging files onto a folder of
   `UltraCanvasFilerWidget` moved them the moment the button came up, and a drag
