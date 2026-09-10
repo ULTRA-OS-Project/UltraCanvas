@@ -1834,8 +1834,11 @@ namespace UltraCanvas {
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/PixelFX"); });
 #endif
+        // Specification only — no SmartHome sources, no build target, none of the
+        // widgets in Docs/Modules/Smarthome/README.md exist yet. "Planned", not
+        // "PartiallyImplemented": there is nothing partial to show.
         modulesBuilder.AddItem("smarthome", "Smart Home module", "UltraCanvas Smart Home Module",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::Planned,
                                [this]() { return CreateModuleDocScreen("Docs/Modules/Smarthome"); });
         modulesBuilder.AddItem("ultraai", "Ultra AI", "Ultra AI Module",
                                ImplementationStatus::PartiallyImplemented,

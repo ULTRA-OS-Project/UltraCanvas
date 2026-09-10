@@ -10,6 +10,7 @@
 #include "UltraCanvasEvent.h"
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasInlineMath.h"
 #include "UltraCanvasSpellChecker.h"
 #include "UltraCanvasSmoothScroll.h"
 #include <algorithm>
@@ -46,6 +47,16 @@ namespace UltraCanvas {
         bool isAbbreviation = false;
         bool isFootnote = false;
         bool isAnchorReturn = false;   // ↩ return icon on {#id} headings — scrolls back to jump source
+    };
+
+    // A formula typeset by the LaTeX module and placed inline in a text layout: the layout
+    // holds a U+FFFC placeholder at `byteIndex` whose shape attribute reserves the formula's
+    // box; after the text is drawn the formula is drawn at the placeholder's baseline
+    // (IndexToPos().x, IndexToBaseline()). See UltraCanvasInlineMath.h.
+    struct MarkdownInlineMath {
+        int byteIndex = 0;              // of the placeholder in the layout's text
+        float ascent = 0.f;
+        std::shared_ptr<UltraCanvasInlineMath> math;
     };
 
 // Syntax highlighting mode
@@ -303,7 +314,9 @@ namespace UltraCanvas {
         TableHederRow,
         TableSeparatorRow,
         TableRow,
-        MarkdownImage   // image-only line: custom-drawn decoded bitmap (layout == nullptr)
+        MarkdownImage,  // image-only line: custom-drawn decoded bitmap (layout == nullptr)
+        MathBlock,          // closing $$ of a display-math block: draws the whole formula (layout == nullptr)
+        MathBlockCollapsed  // opening $$ and the source lines of a block: zero height in rendered form
     };
 
     // Maps one contiguous visible-text segment back to its source-line position.
@@ -358,6 +371,7 @@ namespace UltraCanvas {
         LineLayoutType layoutType = LineLayoutType::PlainLine;
         Rect2Df bounds = {0,0,0,0};
         std::vector<MarkdownHitRect> hitRects; // bounds inside layout
+        std::vector<MarkdownInlineMath> inlineMath; // $...$ formulas placed in `layout`
         std::unique_ptr<ITextLayout> layout;
         Point2Df layoutShift = {0, 0}; // for MD mode some elements render text layout shifted to right or bottom
         // Visible-cp ↔ source-line-cp mapping. See CpRun. Use VisibleCpToSourceCp /
@@ -407,6 +421,16 @@ namespace UltraCanvas {
         int  naturalHeight = 0;
         bool isValid  = false;      // local file, header loaded, dims > 0
         bool isRemote = false;      // http/https/data: — placeholder only
+    };
+
+    // Display-math block: `$$` on a line of its own opens it, the next such line closes it.
+    // The opening fence and the source lines collapse to zero height in rendered form (the
+    // current line still shows its raw text while editing); the closing fence renders the
+    // whole formula, centred, from the source gathered off the collapsed lines above it.
+    struct MathBlockLayout : LineLayoutBase {
+        std::string source;             // a collapsed source line's text
+        std::shared_ptr<UltraCanvasInlineMath> math;   // set on the closing fence only
+        float mathWidth = 0.f;
     };
 
     // Inline styling run emitted by the markdown/plain-text parser and consumed by MakeLineLayout
@@ -930,7 +954,9 @@ namespace UltraCanvas {
         };
         // Walk rawLine emitting visible text (markup stripped) and a list of styling runs in
         // visible-text byte coords. Handles **bold**, *italic* / _italic_, `code`, ~~strike~~,
-        // ~subscript~, ^superscript^, `$math$` (LaTeX command → Unicode substitution),
+        // ~subscript~, ^superscript^, `$math$` / `$$math$$` (a U+FFFC placeholder carrying the
+        // LaTeX in InlineRun::url when the LaTeX module is available, else a Unicode
+        // substitution of the commands),
         // [text](url), ![alt](url), [^footnote], `:shortcode:` emoji, ASCII emoticons
         // (`:-)`, `;)`, `8-)`, `<3`, …), and backslash escapes. Sub/superscript content must
         // be non-empty and contain no whitespace. No nested inline.
@@ -947,10 +973,17 @@ namespace UltraCanvas {
         // and record link/image/footnote hit rects on `outHitRects`. Also scans `visibleText`
         // for known abbreviations (from markdownAbbreviations) and adds underline + hit rects
         // for each match. Byte offsets in `runs` and `layout` must both refer to `visibleText`.
+        // Pixels per em for formulas at the current font size (points at 96 dpi).
+        float MathPixelSize() const;
+
+        // `outInlineMath` receives the $...$ formulas placed in the layout (typeset through
+        // `ctx` when the LaTeX module is available); both may be null.
         void ApplyInlineRunsAndAbbreviations(ITextLayout* layout,
                                              const std::string& visibleText,
                                              const std::vector<InlineRun>& runs,
-                                             std::vector<MarkdownHitRect>& outHitRects);
+                                             std::vector<MarkdownHitRect>& outHitRects,
+                                             std::vector<MarkdownInlineMath>* outInlineMath = nullptr,
+                                             IRenderContext* ctx = nullptr);
 
         // ===== SPELL CHECK INTERNALS =====
         // Byte offsets here are into textContent, which is the verbatim

@@ -1,10 +1,20 @@
 # UltraCanvasLaTeXView
 
-Renders a LaTeX (math) formula as a native UltraCanvas UI element, using an
-embedded [MicroTeX](https://github.com/NanoMichael/MicroTeX) engine. The formula
+Renders a LaTeX (math) formula as a native UltraCanvas UI element. The formula
 is typeset to **vector paths** and drawn through the element's `IRenderContext`,
 so it participates in the normal layout / transform / clip pipeline and stays
 crisp at any zoom — there is no rasterized surface to blit.
+
+Two typesetters live in the module during the transition described in
+[`UltraCanvasLaTeXEngineProposal.md`](UltraCanvasLaTeXEngineProposal.md):
+the framework's own [`UltraCanvasMathEngine`](UltraCanvasMathEngine.md)
+(the default) and the embedded
+[MicroTeX](https://github.com/NanoMichael/MicroTeX), kept as the oracle the
+native engine is tested against. The CMake cache variable
+`ULTRACANVAS_LATEX_ENGINE` (`native`, the default, or `microtex`) picks the
+build default and the environment variable `ULTRACANVAS_LATEX_ENGINE` overrides
+it at run time, so the two can be compared on the same formula. The public API
+below is the same for both.
 
 ## Load-on-demand module
 
@@ -58,6 +68,7 @@ height of `0` lets the element size itself to the formula via the layout engine.
 | `SetTextSize(float)` / `GetTextSize()` | Font size in pixels (default 20); drives intrinsic size. |
 | `SetTextColor(const Color&)` / `GetTextColor()` | Foreground color (default black). |
 | `SetMaxWidth(float)` | Wrap width for inter-line math; `0` (default) = intrinsic width. |
+| `SetDisplayStyle(bool)` / `IsDisplayStyle()` | Display style (default: large operators with limits, full-size fractions, as inside `\[ \]`) or text style (as inside `$ $`, for a formula in a line of text). |
 | `IsValid()` / `GetLastError()` | Whether the last `SetLaTeX` produced a render, and why not. |
 
 ## Where the module and font are found
@@ -70,7 +81,8 @@ On first use the loader searches for the module in this order:
    in `bin/`), `<exe>/../lib/ultracanvas/`,
 4. the dynamic linker's own search path (rpath / `LD_LIBRARY_PATH`).
 
-The module then loads `latinmodern-math.clm2` (+ `.otf`) from the first
+The module then loads the math font — `latinmodern-math.otf` for the native
+engine, `latinmodern-math.clm2` (+ `.otf`) for MicroTeX — from the first
 directory that has it:
 1. `SetLaTeXFontSearchDir(...)`, then `$MICROTEX_FONTDIR`,
 2. `GetResourcesDir() + "media/microtex"` — the framework's own resource root,
@@ -87,13 +99,18 @@ If `CreateLaTeXView` returns `nullptr`, check `GetLaTeXModuleError()`.
 
 ## Diagnostics
 
-A view never fails silently. When the formula cannot be typeset — the math
-font was not found, or the source has a syntax error — the element draws the
-reason as a short red message in place of the formula and sizes itself to
-that message, so the problem is visible in the UI and not just through
-`IsValid()` / `GetLastError()`. A font lookup that failed is retried after
-`SetLaTeXFontSearchDir(...)` is called, so an application can recover a view
-at runtime instead of recreating it.
+A view never fails silently. When the math font was not found the element
+draws the reason as a short red message in place of the formula and sizes
+itself to that message, so the problem is visible in the UI and not just
+through `IsValid()` / `GetLastError()`. A font lookup that failed is retried
+after `SetLaTeXFontSearchDir(...)` is called, so an application can recover a
+view at runtime instead of recreating it.
+
+With the native engine a formula with a mistake still renders: the parts
+that parse are typeset, the offending command is drawn in red monospace at
+its place, `IsValid()` is false and `GetLastError()` names the first problem
+(`unknown command \foo`, `missing \right`, ...). With MicroTeX a syntax
+error replaces the whole formula by the message.
 
 ## Build / deployment
 
@@ -119,10 +136,20 @@ formula->SetLaTeX("\\text{if } x \\geq 0 \\text{ then } \\sqrt{x}\\in\\mathbb{R}
 ## Notes
 
 - Renders **math-mode** LaTeX (equations, symbols, matrices, fractions, roots,
-  big operators, accents). It is not a full document typesetter.
-- Glyphs are drawn as filled vector paths (`GLYPH_RENDER_TYPE=1`); `\text{...}`
-  runs use the framework's Pango text layout.
+  big operators, accents). It is not a full document typesetter. The native
+  engine's supported command set is listed in
+  [`UltraCanvasMathEngine.md`](UltraCanvasMathEngine.md).
+- Glyphs are drawn as filled vector paths. With the native engine `\text{...}`
+  uses the math font's own upright glyphs and only characters the font lacks
+  (Cyrillic, CJK, ...) go through the framework's Pango text layout; MicroTeX
+  sends every `\text{...}` run to Pango.
 - The C ABI between core and module is in `UltraCanvasLaTeXModuleABI.h`
-  (versioned via `ULTRACANVAS_LATEX_ABI_VERSION`).
+  (versioned via `ULTRACANVAS_LATEX_ABI_VERSION`, currently 3: the view
+  factory plus the inline-math entry points `UltraCanvasInlineMath` uses).
 - See `THIRD_PARTY_LICENSES.md` for MicroTeX (MIT) and Latin Modern Math
   (GUST/OFL) licensing.
+- The plan to replace the vendored engine with a native one is
+  [`UltraCanvasLaTeXEngineProposal.md`](UltraCanvasLaTeXEngineProposal.md);
+  its first piece, the OpenType math font reader that makes any MATH-table
+  font usable without a `.clm2`, is
+  [`UltraCanvasMathFont`](UltraCanvasMathFont.md) and ships inside this module.

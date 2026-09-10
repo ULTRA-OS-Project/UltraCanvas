@@ -23,7 +23,29 @@
 //   ULTRACANVAS_DEBUG_LOG=<path>  On, appending to that file. The file is
 //                                 flushed after every line, so it survives a
 //                                 crash. If it cannot be opened, the sink
-//                                 falls back to stderr.
+//                                 falls back to the platform default below.
+//
+// On Android the same reasoning applies with one substitution: a native app's
+// stderr is not a console that is merely hidden, it is /dev/null, so the sink
+// there writes to **logcat** instead (tag `UltraCanvas`, so a bring-up needs
+// only `adb logcat -s UltraCanvas:V`). An APK also inherits no environment a
+// developer can set, so the runtime knob is the Android-native equivalent of
+// the variable above:
+//
+//   adb shell setprop debug.ultracanvas.log 1        # on, to logcat
+//   adb shell setprop debug.ultracanvas.log /sdcard/uc.log
+//   adb shell setprop debug.ultracanvas.log 0        # off
+//
+// ULTRACANVAS_DEBUG_LOG still wins where something does set it (a test
+// harness, a wrapper activity); the property is consulted only when it is
+// unset. `stderr` as a value means logcat there, because the literal request
+// cannot be honoured — and silently discarding the log is the failure this
+// whole mechanism exists to prevent.
+//
+// Note this covers the framework's own `debugOutput` only. Anything a library
+// or a legacy call site writes straight to stdout/stderr still needs the
+// stdio pump the Android backend installs in `android_main`
+// (`OS/Android/UltraCanvasAndroidLog.h`).
 //
 // Enabling costs one predictable branch per `<<` when the sink is off, so
 // leaving the call sites compiled in is cheap. Values that have no
@@ -44,9 +66,15 @@
 #include <iostream>
 #include <mutex>
 #include <ostream>
+#include <streambuf>
 #include <string>
 #include <type_traits>
 #include <utility>
+
+#if defined(__ANDROID__)
+#include <android/log.h>
+#include <sys/system_properties.h>
+#endif
 
 namespace UltraCanvas {
 
@@ -80,6 +108,67 @@ namespace UltraCanvas {
             return out;
         }
 
+#if defined(__ANDROID__)
+
+        // logcat is line-oriented: one __android_log_write per line, so
+        // `debugOutput << a << b << std::endl` arrives as one entry rather than
+        // three. Everything up to the newline is buffered here.
+        class LogcatBuf : public std::streambuf {
+        protected:
+            int overflow(int ch) override {
+                if (ch == traits_type::eof()) {
+                    Emit();
+                    return 0;
+                }
+                if (ch == '\n') {
+                    Emit();
+                } else {
+                    line_.push_back(static_cast<char>(ch));
+                    // logcat truncates a message around 4 KB, and a runaway
+                    // line must not grow the buffer without bound.
+                    if (line_.size() >= 3800) Emit();
+                }
+                return ch;
+            }
+
+            // std::endl reaches this as '\n' followed by sync(), so by now
+            // there is normally nothing left; an unterminated line flushed
+            // explicitly still gets out.
+            int sync() override {
+                Emit();
+                return 0;
+            }
+
+        private:
+            void Emit() {
+                if (line_.empty()) return;
+                __android_log_write(ANDROID_LOG_INFO, "UltraCanvas", line_.c_str());
+                line_.clear();
+            }
+
+            std::string line_;
+        };
+
+        inline std::ostream& LogcatStream() {
+            // Leaked deliberately, exactly as DebugSink is and for the same
+            // reason: shutdown paths log from static destructors, and a
+            // destroyed streambuf would be written through.
+            static std::ostream* stream = new std::ostream(new LogcatBuf());
+            return *stream;
+        }
+
+#endif // __ANDROID__
+
+        // Where a sink with no file points: the platform's "somewhere a
+        // developer can actually read" stream.
+        inline std::ostream& DefaultStream() {
+#if defined(__ANDROID__)
+            return LogcatStream();
+#else
+            return std::cerr;
+#endif
+        }
+
         // Resolves ULTRACANVAS_DEBUG_LOG once, on first use, and owns the log
         // file when one was requested.
         class DebugSink {
@@ -104,39 +193,61 @@ namespace UltraCanvas {
                 std::lock_guard<std::mutex> lock(mutex_);
                 file_.close();
                 if (path.empty()) {
-                    stream_ = &std::cerr;
+                    stream_ = &DefaultStream();
                     return;
                 }
                 file_.open(path, std::ios::out | std::ios::app);
                 stream_ = file_.is_open() ? static_cast<std::ostream*>(&file_)
-                                          : static_cast<std::ostream*>(&std::cerr);
+                                          : &DefaultStream();
                 enabled_ = true;
             }
 
             void SetEnabled(bool enabled) { enabled_ = enabled; }
 
         private:
-            DebugSink() {
+            // ULTRACANVAS_DEBUG_LOG, or on Android the `debug.ultracanvas.log`
+            // system property when that variable is unset: an APK's process
+            // inherits no environment a developer can set, so setprop is the
+            // only knob available on a device.
+            static std::string ReadSetting() {
                 const char* raw = std::getenv("ULTRACANVAS_DEBUG_LOG");
-                if (!raw || !*raw) {
+                if (raw && *raw) return raw;
+#if defined(__ANDROID__)
+                char value[PROP_VALUE_MAX] = {};
+                if (__system_property_get("debug.ultracanvas.log", value) > 0) {
+                    return value;
+                }
+#endif
+                return std::string();
+            }
+
+            DebugSink() {
+                const std::string requested = ReadSetting();
+                if (requested.empty()) {
 #ifdef ULTRACANVAS_DEBUG
                     enabled_ = true;
 #endif
                     return;
                 }
 
-                const std::string setting = LowerCased(raw);
+                const std::string setting = LowerCased(requested.c_str());
                 if (EqualsAnyOf(setting, {"0", "off", "no", "none", "false"})) {
                     return;
                 }
                 enabled_ = true;
-                if (EqualsAnyOf(setting, {"1", "on", "yes", "true", "stderr", "-"})) {
+                // "logcat" is a keyword on every platform, not just Android:
+                // treating it as a path elsewhere would silently create a file
+                // called "logcat" instead of reporting the mistake. "stderr"
+                // lands on logcat under Android for the same reason the sink
+                // exists there at all - the literal request cannot be honoured.
+                if (EqualsAnyOf(setting,
+                                {"1", "on", "yes", "true", "stderr", "logcat", "-"})) {
                     return;
                 }
 
                 // Anything else is a path. Keep the original spelling: the
                 // lower-cased copy is only for keyword matching.
-                file_.open(raw, std::ios::out | std::ios::app);
+                file_.open(requested, std::ios::out | std::ios::app);
                 if (file_.is_open()) {
                     stream_ = &file_;
                 }
@@ -144,7 +255,7 @@ namespace UltraCanvas {
 
             bool           enabled_ = false;
             std::ofstream  file_;
-            std::ostream*  stream_ = &std::cerr;
+            std::ostream*  stream_ = &DefaultStream();
             std::mutex     mutex_;
         };
 
@@ -229,7 +340,8 @@ namespace UltraCanvas {
     }
 
     // Redirects debugOutput to `path` (appending), overriding
-    // ULTRACANVAS_DEBUG_LOG. An empty path returns the sink to stderr.
+    // ULTRACANVAS_DEBUG_LOG. An empty path returns the sink to the platform
+    // default - stderr, or logcat on Android.
     inline void SetDebugOutputFile(const std::string& path) {
         Detail::DebugSink::Instance().SetLogFile(path);
     }

@@ -1,8 +1,8 @@
 # EmailCleaner — concept
 
-**Status:** Phase 2 implemented (analysis engine, the three views, and acting
-on a selected block).
-**Version:** 0.2.0
+**Status:** Phase 3 implemented (analysis engine, the three views, acting on a
+selected block, and correcting what it decides).
+**Version:** 0.3.0
 **Author:** UltraCanvas Framework / ULTRA OS
 
 ## The problem
@@ -81,6 +81,7 @@ never writes to UltraMail's tables.
 | `EmailCleanerUnsubscribe` | Types | Reads `List-Unsubscribe` / `List-Unsubscribe-Post`, and judges whether taking the offer is wise. |
 | `EmailCleanerActions` | Store, Unsubscribe | Plans an action on a selection (pure), and carries the plan out through a backend interface. |
 | `EmailCleanerMailBackend` | Actions, UltraNet | The half that leaves the machine: the Trash move and the unsubscribe request. |
+| `EmailCleanerAttachments` | Types, Classifier, UltraNet MIME | Reads one attachment back out of the cached message — and refuses the risky ones. |
 | `ui/` | UltraCanvas | Draws. Runs no SQL of its own and makes no classification decisions. |
 
 Everything below `ui/` is headless and unit-tested: no display, no network.
@@ -226,10 +227,47 @@ vault. When either is missing the panel says which, and the local half still
 works — that is the normal state on a machine where UltraMail has not been set
 up, not an error.
 
-## What Phase 2 leaves out
+## Correcting it, and looking inside (Phase 3)
 
-- **A rule editor in the UI.** Rules are editable as a text file today.
-- **Learning from the user.** Marking a block "this is fine" or "this is spam"
-  should adjust future verdicts; today the rules are static.
-- **Attachment inspection.** The index knows types and sizes; opening one in
-  `UltraCanvasMediaViewer` (as UltraMail already does) is a natural next step.
+Three things the earlier phases left open, and the judgement in each.
+
+**The user's verdict beats the classifier's.** "This is fine" and "This is
+spam" record what the user says about a sender — one address, or a whole
+domain — and that decides their mail from then on. Two properties make it safe
+to use: the classifier's own verdict is kept alongside in the store, so *taking
+a correction back restores what it actually said*, message by message, rather
+than leaving a hand-set value with nothing to return to; and an address
+correction beats a domain one, so "all of this domain is spam except this one
+address" is sayable. It is deliberately not the same control as **Block**: "I
+do not want to hear from them" and "your verdict about them is wrong" are
+different statements, and a sender can warrant either, both, or neither.
+
+**The rules are editable where they are used.** They were always data — a text
+file layered over the built-in table — but editing meant finding `rules.txt` in
+the data directory and opening it in something else. **Rules…** is that file, in
+a dialog: the user's own rules listed, added and removed, seeded with the
+strongest term behind the current selection, saved and re-analysed in one step.
+The built-ins stay out of reach on purpose. They are the floor the user's rules
+are layered on, and a rule set the user can break is one they can also silently
+disarm. A phrase typed here goes through the same parse and the same
+normalisation as a hand-edited line, so the two cannot mean different things.
+
+**Attachments can be looked at — except the ones that matter.** The index holds
+metadata only; the bytes stay in the .eml UltraMail cached, and are read back
+out on demand. Executable, script and macro-bearing attachments are **not**
+opened and **not** copied anywhere: nothing is written to disk and no button is
+offered, only a note saying why. An application whose subject is unwanted mail —
+one that classifies partly *on* those attachment types — must not be the thing
+that opens them. The refusal is checked twice, against the index row and against
+the part the message really carries, so neither a stale index nor a misleading
+filename can get one through.
+
+## What Phase 3 leaves out
+
+- **Learning terms, not just senders.** A correction is scoped to the sender
+  who prompted it. Inferring rules from a marked block would generalise to the
+  next address a spammer rotates to, but auto-generated keyword rules are how a
+  detector starts flagging wanted mail; the rule editor keeps that a decision.
+- **Attachment scanning.** Risky types are refused by extension and media type.
+  Actually inspecting content (an archive's members, a document's macros) is a
+  different problem and would want a real scanner behind it.

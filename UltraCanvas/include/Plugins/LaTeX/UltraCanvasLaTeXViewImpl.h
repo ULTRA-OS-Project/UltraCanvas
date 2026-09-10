@@ -14,6 +14,7 @@
 #ifdef ULTRACANVAS_PLUGIN_LATEX
 
 #include "Plugins/LaTeX/UltraCanvasLaTeXView.h"
+#include "Plugins/LaTeX/UltraCanvasMathEngine.h"
 
 #include <memory>
 #include <optional>
@@ -36,7 +37,9 @@ public:
     void SetTextColor(const Color& color) override;
     const Color& GetTextColor() const override { return color_; }
     void SetMaxWidth(float pixels) override;
-    bool IsValid() const override { return render_ != nullptr; }
+    void SetDisplayStyle(bool display) override;
+    bool IsDisplayStyle() const override { return displayStyle_; }
+    bool IsValid() const override { return render_ != nullptr || (native_.root != nullptr && !native_.HasErrors()); }
     const std::string& GetLastError() const override { return lastError_; }
 
     // ===== UltraCanvasUIElement overrides =====
@@ -57,8 +60,10 @@ private:
     float textSize_ = 20.f;
     Color color_ = Colors::Black;
     float maxWidth_ = 0.f;
+    bool displayStyle_ = true;
 
-    microtex::Render* render_ = nullptr;
+    microtex::Render* render_ = nullptr;      // MicroTeX result (when that engine is selected)
+    MathTypesetResult native_;                // native engine result (when selected)
     bool needsReparse_ = true;
     std::string lastError_;
     // Set when the engine itself could not be initialised (math font not

@@ -15,6 +15,7 @@
 
 #include <jni.h>
 #include <string>
+#include <vector>
 
 namespace UltraCanvas {
 namespace AndroidJni {
@@ -40,6 +41,11 @@ namespace AndroidJni {
 
     // UTF-8 std::string from a jstring (empty for null).
     std::string ToStdString(JNIEnv* env, jstring str);
+
+    // Split a newline-separated list, dropping empty entries. The Java side
+    // returns path lists this way (the SAF picker, the clipboard's URI items)
+    // because one String crosses JNI far more cheaply than a String[].
+    std::vector<std::string> SplitLines(const std::string& text);
 
 } // namespace AndroidJni
 } // namespace UltraCanvas

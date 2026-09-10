@@ -141,6 +141,219 @@
   which only the binary bitmap formats produce (a BDF written by the test
   comes back as `ADOBE_STANDARD`, which FreeType selects by itself), so it
   probes the system's X11 bitmap fonts and skips where a machine has none.
+#### 2026-09-09 *0.3.113*
+- **Android: framework diagnostics reach logcat.** `debugOutput` and the
+  process's stdio went nowhere on Android, where there is no terminal to
+  inherit, so a crash or a warning left no trace at all. Both are now routed
+  through `__android_log_write` under the app's tag.
+- **Android packaging builds x86_64 first.** The emulator most development
+  actually runs on is x86_64; building arm64 first meant the usual loop waited
+  on the ABI it was least likely to use.
+- **Android: real input dialogs instead of "Cancel" stubs.** The native dialog
+  bridge answered every prompt as if the user had cancelled. It now shows the
+  platform's own dialogs and returns what the user chose.
+- **Android: TLS verifies against the platform's trust roots.** The Linux TLS
+  implementation had no way to reach Android's system CA store, so certificate
+  verification could not be done properly on the platform.
+- **Android: images and files can be pasted from the clipboard.** The backend
+  was text-only — an image or file copied in any other app was invisible.
+  A clip's non-text items are `content://` URIs, which no POSIX call can open,
+  so the activity copies each through the app's `ContentResolver` into the
+  cache and the backend hands back paths, the same copy-to-cache bargain the
+  SAF picker already makes. `GetAvailableFormats` now reports what the clip
+  actually advertises rather than always `text/plain`. Writing files to the
+  clipboard stays unimplemented on purpose: it needs a `ContentProvider`
+  declared in the *application's* manifest, which framework code cannot supply
+  on an app's behalf, and a bare filesystem path would look like it worked
+  while being unopenable by every other app.
+- **Android: audio is on.** It was on the "waits on the cross-compiled
+  sysroot" list it never belonged on — the backend is miniaudio, vendored
+  in-tree, which speaks AAudio natively with OpenSL ES beneath it, both reached
+  through `dlopen` rather than a link line. No new dependency, no new link
+  library, and no manifest permission for playback. The optional codec
+  libraries stay absent, which costs formats rather than the backend.
+  `scripts/android-syntax-check.sh` type-checks the miniaudio translation unit
+  against the real NDK, so enabling it is a change rather than a claim.
+#### 2026-09-09 *0.3.117*
+- **LaTeX documents open as documents (LaTeX engine Phase 3).** New
+  `UltraCanvasLaTeXDocumentReader`
+  (`include/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h`, core
+  library) imports the `article` document subset of a `.tex` file into
+  `UCRichDocument`, the model the ODT/DOCX readers fill: `\maketitle`,
+  sectioning with article numbering, paragraphs and line breaks, text
+  formatting and colours, `itemize` / `enumerate` / `description`, quotes,
+  alignment environments, `tabular` with `\multicolumn` / `\multirow`,
+  floats with numbered captions, `\includegraphics` (embedded as media,
+  sized from `width=` / `height=` / `scale=`), verbatim and listings,
+  footnotes, `\label` / `\ref` / `\eqref`, `\cite` with `thebibliography`,
+  `\newtheorem` environments, `\newcommand` / `\def` / `\newenvironment`
+  expansion, `\input` / `\include`, accents and text symbols. Formulas are
+  kept as LaTeX source (the definitions they use prepended) and typeset by
+  the math engine wherever the document is shown. Unknown commands and
+  environments, missing images, undefined labels and TikZ pictures are
+  reported as line-numbered diagnostics while the rest of the document
+  still imports. It is an importer, not a TeX interpreter: no page layout,
+  no arbitrary packages, no writer.
+- `UCRichDocument` gained `RichTextRun::math` (inline formula source) and
+  `RichBlockType::MathBlock` (display formula). `ToMarkdown` writes them as
+  `$...$` and `$$` fences, emits `^x^` / `~x~` for single-word super- and
+  subscripts, and pads spanning table cells so the Markdown grid stays
+  aligned; `FromMarkdown` reads `$$` fences back; `ToHTML` and the ODT/DOCX
+  writers degrade a math block to a centred `$$...$$` paragraph.
+- `WordDocumentFormat::LaTeX`: `DetectWordDocumentFormat` recognises a
+  LaTeX head (`\documentclass`, `\begin{document}`, a sectioning command;
+  comments skipped) or a `.tex` / `.latex` / `.ltx` text file, and
+  `UCWordDocumentIO::Load` / `LoadLaTeX` dispatch to the reader, so
+  `UltraCanvasFileLoader::LoadTextDocument` (and its dialog filter), the
+  Filer's preview page and the Media Viewer open `.tex` as the rendered
+  document. `UltraCanvasSupportedFormats` lists `tex`. Texter keeps editing
+  `.tex` as source.
+- Demo "LaTeX Documents": a formula-only file still goes to the LaTeX view;
+  an article-style file renders through the reader in a Markdown TextArea
+  with its diagnostics in the header; only TikZ / pgfplots documents fall
+  back to a reference image. New sample `media/LaTex/article-quadratic-note.tex`.
+- `Tests/LaTeXDocumentTest.cpp` (registered as `LaTeXDocumentTest`): the
+  vocabulary above, macros, diagnostics with line numbers, Markdown and ODT
+  round trips of the math model parts, format detection, and the shipped
+  `media/LaTex` corpus (every file imports without a diagnostic). Docs:
+  `UltraCanvasLaTeXDocumentReader.md`; the proposal, the ODT/DOCX
+  proposal, the Media Viewer, Filer and element catalogue pages updated.
+
+#### 2026-09-09 *0.3.116*
+- **Inline math in the text stack (LaTeX engine Phase 2).** Formulas now
+  render typeset inside text: `UltraCanvasTextArea`'s Markdown mode sets
+  `$...$` (text style), `$$...$$` (display style, inline) and `$$` fenced
+  blocks (centred) through the LaTeX module's native engine, baseline-aligned
+  with the surrounding words - in paragraphs, headings, list items,
+  blockquotes and table cells. Word and ODT documents therefore show their
+  equations typeset (the OMML / MathML importers already produced `$latex$`
+  runs; the Markdown serializer now keeps them unescaped instead of
+  doubling their backslashes). Without the LaTeX module the previous
+  Unicode substitution remains. A `$` pair counts as math only without a
+  space after the opener / before the closer and no digit after the closer.
+- New core API `UltraCanvasInlineMath` (`include/UltraCanvasInlineMath.h`):
+  `Typeset(latex, px, colour, display, ctx)` returns width, ascent, descent
+  and `Draw(ctx, x, baseline)`, reaching the module through four new ABI
+  entry points (`UltraCanvasLaTeXModule_TypesetInline` / `_InlineMetrics` /
+  `_DrawInline` / `_ReleaseInline`, ABI 3) so any element that lays out text
+  can place a formula. Text layouts gained
+  `TextAttributeFactory::CreateShape(width, ascent, descent)` (a Pango
+  shape attribute with a height) and `ITextLayout::IndexToBaseline()`.
+- Markdown table cells keep backslashes other than `\|` for the inline
+  parser (they were stripped, which broke escapes and LaTeX in cells).
+- `Tests/InlineMathTest.cpp` (registered as `InlineMathTest`): the handle
+  through a real `dlopen` of the module, the parser's placeholder and
+  cursor map, and an offscreen TextArea render whose ink proves the inline
+  rule and the centred block. `Tests/WordFormatsTest.cpp` checks the
+  Markdown output of an OMML fraction. The element catalogue lists the
+  LaTeX view and the inline-math handle.
+
+#### 2026-09-09 *0.3.115*
+- **LaTeX: the native math engine (Phase 1) is the LaTeX view's default
+  typesetter.** `UltraCanvasMathEngine` (`include/Plugins/LaTeX/`,
+  `Plugins/LaTeX/`, documented in `Docs/UltraCanvas/UltraCanvasMathEngine.md`)
+  replaces MicroTeX behind `UltraCanvasLaTeXView`: `UltraCanvasMathParser`
+  turns LaTeX into an atom tree (~180 commands, ~600 symbols, the matrix /
+  align / cases / array environments with full column specs, `\newcommand`,
+  text mode, colours, boxes, `\cancel`, `\sideset`, `\longdiv`, ...),
+  `UltraCanvasMathLayout` sets it by The TeXbook's Appendix G rules with the
+  font's OpenType MATH constants (spacing table, scripts, fractions,
+  radicals, delimiters with variants and assemblies, large operators with
+  limits, accents, arrays with per-cell rules), and `UltraCanvasMathRender`
+  draws the box tree through `IRenderContext` as outline paths. Any OpenType
+  math font works; the `.clm2` is no longer needed by the default engine.
+  Errors no longer blank the formula: the parts that parse are typeset, the
+  offending command is shown in red at its place and `GetLastError()` names
+  it. `\text{}` uses the math font's upright glyphs; characters the font
+  lacks go through the context's text layout.
+- `UltraCanvasLaTeXView` gains `SetDisplayStyle(bool)` / `IsDisplayStyle()`
+  (display, the default, or text style) — module ABI 2. The CMake cache
+  variable `ULTRACANVAS_LATEX_ENGINE` (`native` | `microtex`) sets the build
+  default and the environment variable of the same name overrides it at
+  run time; MicroTeX stays in the module as the test oracle.
+- `Tests/MathEngineTest.cpp` (registered as `MathEngineTest`): parser atom
+  trees, layout metrics against the font's constants, and a MicroTeX oracle
+  run over the demo corpus plus forty formulas (mean deviation 6% width /
+  7% height; every shipped `.tex` typesets without a diagnostic).
+- `Docs/UltraCanvas/UltraCanvasLaTeXView.md` and the engine proposal
+  updated for the two-engine transition.
+
+#### 2026-09-09 *0.3.114*
+- **LaTeX: investigation of a native math engine, and its first piece.**
+  `Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md` reports what the
+  vendored MicroTeX plugin contains (19,462 compiled engine lines behind a
+  321-line adapter, a FontForge-generated `.clm2` font, one font, no
+  baseline for inline use), where the "1 GB LaTeX" concern really comes from
+  (TeX distributions ship packages and fonts; engines are small), and sizes a
+  native math typesetter on the framework's own vector layer
+  (`IRenderContext` paths, `VectorStorage`, FreeType) at 10-13k lines. It
+  proposes a phase plan - font layer, native engine behind the existing
+  module ABI with MicroTeX as the test oracle, inline math for the text stack
+  (imported Word/ODT equations are currently shown as flat text), a LaTeX
+  document-subset importer, TikZ and pgfplots subsets - and argues against a
+  real TeX. The chart engine is untouched by this work; it appears only as
+  the target of the last-phase pgfplots reader.
+- **Phase 0 shipped: `UltraCanvasMathFont`**
+  (`include/Plugins/LaTeX/UltraCanvasMathFont.h`,
+  `Plugins/LaTeX/UltraCanvasMathFont.cpp`, built into `libUltraCanvasLaTeX`,
+  documented in `Docs/UltraCanvas/UltraCanvasMathFont.md`) reads an OpenType
+  math font directly through FreeType: all 56 MATH constants, italics
+  correction, top-accent attachment, extended shapes, math kerning, size
+  variants, glyph assemblies, exact glyph metrics and cached outlines. Any
+  font with a MATH table works at runtime without a `.clm2`; a font without
+  one still loads for metrics and outlines; a malformed table is refused
+  cleanly.
+- `Tests/MathFontTest.cpp` (registered as `MathFontTest`) links the vendored
+  engine as an oracle and compares the `.otf` reader with the `.clm2` over
+  all 4,802 glyphs of Latin Modern Math - constants, advances, heights,
+  depths, 1,002 italics corrections, 2,475 top-accent attachments, 176
+  variant lists and 114 assemblies equal - checks math kerning on a
+  synthetic MATH table loaded from memory, and loads STIX / TeX Gyre math
+  fonts when installed.
+- **Cross-checked against the Ladybird port's processor-detection findings**
+  (`OS/MSWindows/UltraCanvasWindowsDiagnostics.cpp`), which changed three things
+  here. **x86 instruction sets are read from CPUID** — leaf 1, leaf 7 subleaf 0,
+  leaf 0x80000001 — on every platform, sharing the bit assignments and the
+  psABI-level rules that file verified flag-by-flag against `/proc/cpuinfo`.
+  Neither Win32's `IsProcessorFeaturePresent` nor a filtered `/proc/cpuinfo`
+  list names GFNI, VAES or VPCLMULQDQ, which are exactly the VEX-encoded
+  extensions `-march=native` picks up without AVX-512 — so a CPU could hold
+  every feature the panel printed and still refuse the binary, which is how an
+  AVX2-capable Ryzen 5 5500U came to fault on `VGF2P8AFFINEQB`. New
+  `CPUInfo::x86MicroarchitectureLevel` names the highest x86-64 psABI level the
+  machine satisfies, shown as *Baseline level: x86-64-v3*: that is a flag a
+  packager can paste, and GFNI/VAES/VPCLMULQDQ/SHA are listed without raising
+  it, because no `-march=x86-64-vN` emits them. The detection is guarded on the
+  **architecture**, not the compiler, since MSYS2's CLANGARM64 defines
+  `__clang__`.
+- **`CPUInfo::emulation` reports a process that is not running natively** on the
+  CPU it describes — `IsWow64Process2` on Windows, `sysctl.proc_translated`
+  (Rosetta) on macOS — shown as a *Running under* row. Under emulation the two
+  halves of `CPUInfo` describe different things: the model and core counts are
+  the silicon's, the instruction sets are the emulator's, and Windows on ARM
+  offers no AVX-512 at all. That is the gap that reached the field as
+  `lagom-gfx.dll` faulting with `ILLEGAL_INSTRUCTION` on Windows 11 while the
+  same package ran on Windows 10.
+
+#### 2026-09-09 *0.3.112*
+- **Work that was pushed but never published now announces itself.** A branch
+  can carry days of finished work and still be invisible to `main`: no pull
+  request was ever opened for it, or its pull request was merged and the
+  commits pushed afterwards are stranded on a branch nothing tracks. Neither
+  announces itself — the push succeeds, the session ends, and the change is
+  simply not in the product, which surfaces days later as "the fix did not
+  arrive". `scripts/check_publication.py` answers it mechanically: run with no
+  arguments it lists the commits on the current branch that are not in `main`
+  and exits non-zero when there are any; `--all` sweeps every branch on the
+  remote and separates the ones fully merged, the ones carrying unpublished
+  work, and the ones that share no history with `main` (they predate a history
+  rewrite, so nothing can be concluded from their commits). It cannot see pull
+  request state — that needs GitHub — so it names the check to run there and
+  what each answer means. `AGENTS.md` rule 3 now requires running it after a
+  push and **saying so unprompted** when there is no open pull request: not
+  opening one unasked is the rule, leaving the user to discover that nothing
+  was published is not.
+#### 2026-09-09 *0.3.111*
 - **A double-click that starts a program now says so: the busy pointer.**
   Spawning a program takes milliseconds, the program appearing takes seconds,
   and nothing in between told the user their double-click had arrived — so a

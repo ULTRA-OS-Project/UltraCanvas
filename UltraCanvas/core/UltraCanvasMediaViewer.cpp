@@ -1,8 +1,8 @@
 // core/UltraCanvasMediaViewer.cpp
 // Implementation of the comprehensive media / photo / document viewer widget.
 // See UltraCanvasMediaViewer.h for the feature overview.
-// Version: 1.6.0
-// Last Modified: 2026-09-03
+// Version: 1.7.0
+// Last Modified: 2026-09-09
 // V1.6.0: Vector documents no renderer here can rasterize (Xara, CorelDRAW,
 //   EPS/PostScript) are shown from the preview bitmap they carry inside
 //   themselves, the way a *.ucd container is - so a file manager's detail pane
@@ -33,6 +33,7 @@
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
+#include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
 #include "UltraCanvasEBookViewer.h"   // EPUB / FB2 / MOBI e-book view
 #include "UltraCanvasEmbeddedPreview.h" // preview bitmap inside a vector document
@@ -52,6 +53,7 @@
 #include "UltraCanvasMediaCodecRegistry.h"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -1681,11 +1683,31 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
         surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
         auto* ta = static_cast<UltraCanvasTextArea*>(textView.get());
         std::string content;
-        if (!ReadTextFile(path, content)) {
+        std::string ext = LowerExt(path);
+        bool importedDocument = false;
+        if (ext == "tex" || ext == "latex" || ext == "ltx") {
+            // A LaTeX file is shown as the document it describes: the reader
+            // maps the article subset onto the rich-document model, which the
+            // Markdown mode renders with its formulas typeset. When the file
+            // is not a document (a bare formula fragment, an unreadable file)
+            // the source is shown instead.
+            UCRichDocument document;
+            std::string error;
+            if (UCWordDocumentIO::LoadLaTeX(path, document, error)) {
+                RichDocumentMarkdownOptions options;
+                if (!document.media.empty()) {
+                    options.imageDirectory = (std::filesystem::temp_directory_path()
+                        / ("UltraCanvas-media-" + std::to_string(
+                               std::chrono::steady_clock::now().time_since_epoch().count()))).string();
+                }
+                content = document.ToMarkdown(options);
+                importedDocument = true;
+            }
+        }
+        if (!importedDocument && !ReadTextFile(path, content)) {
             if (infoLabel) infoLabel->SetText("Failed to open text file: " + BaseName(path));
         } else {
-            std::string ext = LowerExt(path);
-            if (ext == "md" || ext == "markdown") {
+            if (ext == "md" || ext == "markdown" || importedDocument) {
                 ta->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
                 ta->SetHighlightSyntax(false);
             } else {

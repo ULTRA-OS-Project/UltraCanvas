@@ -388,6 +388,52 @@ namespace {
         return c;
     }
 
+    // The search box, which gives up its in-field button before it gives up
+    // the field it sits in.
+    //
+    // A flex row shrinks its shrinkable child first, so as the command bar
+    // narrows the text input is squeezed away while the fixed-width button
+    // keeps its 118 px - the field disappears and a clipped sliver of blue
+    // button is all that is left of the search control. The button is the one
+    // of the two that can be done without: Enter runs the same scan, and the
+    // filer offers it again in the middle of an empty result. So the box says
+    // when it no longer has room for both and the window drops the button.
+    //
+    // The answer is only known once the layout engine has sized the box, which
+    // is what Arrange() is; a resize callback would be reading the previous
+    // width. But the answer must not be *acted on* there: hiding a child in
+    // the middle of the pass that is arranging it leaves the flex line half
+    // measured, and the text input comes out zero-wide and stays that way
+    // even after the window is widened again. So Arrange only reports, and the
+    // window applies it on the next turn of the event loop. Hiding the button
+    // cannot change the box's own width - that comes from its flex basis, not
+    // its content - so the report does not flip back and forth.
+    class UltraFilerSearchBox : public UltraCanvasContainer {
+    public:
+        UltraFilerSearchBox(const std::string& id, float w, float h)
+                : UltraCanvasContainer(id, -1, -1, w, h) {}
+
+        // How wide the box must be before the button earns its place: the
+        // button, the gap, and enough field left to read what was typed.
+        float widthForButton = 0.0f;
+        // Fired only when the answer changes, not on every layout pass.
+        std::function<void(bool fits)> onButtonFitChanged;
+        bool ButtonFits() const { return buttonFits; }
+
+        void Arrange(const Rect2Df& finalRect,
+                     const CSSLayout::LayoutContext& ctx) override {
+            UltraCanvasContainer::Arrange(finalRect, ctx);
+            const bool fits =
+                    static_cast<float>(GetContentArea().width) >= widthForButton;
+            if (fits == buttonFits) return;
+            buttonFits = fits;
+            if (onButtonFitChanged) onButtonFitChanged(fits);
+        }
+
+    private:
+        bool buttonFits = true;
+    };
+
     std::shared_ptr<UltraCanvasContainer> MakeToolRow(const std::string& id) {
         auto row = MakeLayoutBox(id);
         row->layout.SetFlexRow().SetFlexGap(4)
@@ -1705,6 +1751,19 @@ void UltraFilerWindow::ReapSearchWorkers(bool waitForAll) {
     }
 }
 
+void UltraFilerWindow::ApplyScanButtonFit() {
+    // Off the layout pass that produced the answer: see UltraFilerSearchBox.
+    // A one-shot timer is this window's usual way of saying "next turn of the
+    // event loop" (see ArmFolderPreviewDelay).
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) { UpdateScanButton(); return; }
+    if (scanFitTimer != InvalidTimerId) return;   // one is already pending
+    scanFitTimer = app->StartTimer(1, false, [this](TimerId) {
+        scanFitTimer = InvalidTimerId;
+        UpdateScanButton();
+    });
+}
+
 void UltraFilerWindow::UpdateScanButton() {
     if (!scanButton) return;
     const bool searching = static_cast<bool>(searchState);
@@ -1727,8 +1786,11 @@ void UltraFilerWindow::UpdateScanButton() {
         }
     }
     // Nothing to search for and nothing running: the field is a plain search
-    // field again and gets its full width back.
-    scanButton->SetVisible(searching || hasQuery);
+    // field again and gets its full width back. And when the command bar has
+    // narrowed to where the button would leave no readable field, the button
+    // goes instead of the field - Enter still starts the scan, and the filer
+    // still offers it in the middle of an empty result.
+    scanButton->SetVisible((searching || hasQuery) && scanButtonFits);
 }
 
 // ===== COMMAND BAR (New / clipboard / rename / delete / search / sort / view / preview) =====
@@ -1819,7 +1881,23 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     // itself, so the two children read as one control.
     // Fixed width: the field gives way to the button rather than the whole box
     // growing, so the controls to its right do not shift when it appears.
-    searchBox = MakeLayoutBox("ufl-search-box", 320, 26);
+    auto box = std::make_shared<UltraFilerSearchBox>("ufl-search-box", 320, 26);
+    {
+        ContainerStyle st;
+        st.autoShowScrollbars           = false;
+        st.forceShowVerticalScrollbar   = false;
+        st.forceShowHorizontalScrollbar = false;
+        box->SetContainerStyle(st);
+    }
+    // Below this the button goes and the field keeps what is left: the
+    // button's 118, the row's 3 px gap, and 70 px of field - about eight
+    // characters at this size, enough to see what is being searched for.
+    box->widthForButton = 118 + 3 + 70;
+    box->onButtonFitChanged = [this](bool fits) {
+        scanButtonFits = fits;
+        ApplyScanButtonFit();
+    };
+    searchBox = box;
     searchBox->layout.SetFlexRow().SetFlexGap(3)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     searchBox->SetBackgroundColor(Colors::White);
@@ -1830,7 +1908,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     searchInput = CreateTextInput("ufl-search", 0, 0, 200, 24);
     searchInput->SetFontSize(kUiFontSize);
-    searchInput->SetPlaceholder("Search");
+    searchInput->SetPlaceholder("Filter / Search");
     {
         // Borderless inside the box - the box draws the frame.
         TextInputStyle st = searchInput->GetStyle();

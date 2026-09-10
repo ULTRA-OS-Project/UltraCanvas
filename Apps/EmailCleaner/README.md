@@ -72,6 +72,9 @@ Apps/EmailCleaner/
     EmailCleanerMailBackend.{h,cpp}  the outward half: Trash resolution and the
                                      UID MOVE, the RFC 8058 one-click POST, the
                                      unsubscribe mail
+    EmailCleanerAttachments.{h,cpp}  reads one attachment back out of the cached
+                                     .eml — and refuses executables, scripts and
+                                     macro-bearing documents outright
   ui/                                UltraCanvas UI layer
     EmailCleanerApp.{h,cpp}          app manager: owns store + ingest + window
     EmailCleanerAccountBar.{h,cpp}   account picker, Load mail / Re-analyse, the
@@ -85,7 +88,11 @@ Apps/EmailCleaner/
                                      attachment types, message list
     EmailCleanerActionsPanel.{h,cpp} Block / Unsubscribe / Move to Trash for the
                                      selected block: the live plan preview, the
-                                     confirmation, and the blocklist
+                                     confirmation, the blocklist — and "this is
+                                     fine" / "this is spam" with its undo list
+    EmailCleanerRulesDialog.{h,cpp}  the keyword rule editor: the user's rules
+                                     listed, added and removed, then saved and
+                                     re-analysed in one step
   main.cpp                           entry point
   CMakeLists.txt                     EmailCleanerEngine + the EmailCleaner app
 ```
@@ -141,11 +148,40 @@ The mail half needs UltraNet's IMAP plug-in and the account's password from
 UltraMail's vault. Without them the panel says which is missing and the local
 half still works.
 
+## Correcting a verdict
+
+**This is fine** and **This is spam** record what you say about the selected
+sender or domain, and that decides their mail from then on. The classifier's own
+verdict is kept alongside, so **Corrected senders…** can take a correction back
+and restore what it actually said — message by message, not a guess. A
+correction on an address beats one on its domain, so "all of this domain is spam
+except this one address" is sayable.
+
+It is not the same thing as **Block**. "I do not want to hear from them" and
+"your verdict about them is wrong" are different statements about a sender, and
+either can be true without the other.
+
+## Looking at an attachment
+
+A message with attachments carries an **Attachments** button in the message
+list. The index holds only metadata — the bytes stay in the .eml UltraMail
+cached and are read back on demand — so what you open is the message as it
+arrived.
+
+Executable, script and macro-bearing attachments are **not** opened and **not**
+copied anywhere. There is no button for them, only a note saying why: an app
+whose subject is unwanted mail, and which classifies partly *on* those types,
+must not be the thing that opens them. The check runs twice, against the index
+row and against the part the message really carries, so neither a stale index
+nor a misleading filename gets one through.
+
 ## Editing the rules
 
-The rules are data. On first run the app writes `rules.txt` into its data
-directory; anything added there is layered **on top of** the built-in table, so
-editing it can only sharpen detection:
+The rules are data. **Rules…** in the toolbar opens the editable file in a
+dialog — add and remove your own rules, then save and re-analyse in one step —
+and it is still a plain text file you can edit by hand. Either way your rules
+are layered **on top of** the built-in table, so they can only sharpen
+detection, never switch a built-in rule off:
 
 ```
 # category | weight | field | phrase      ('*' = no word boundary)

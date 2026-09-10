@@ -657,7 +657,12 @@ namespace UltraCanvas {
         dep("Image effects", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)", "libvips (LGPL 2.1)");
 
         header("Smart Home module");
-        dep("No additional third party", "(core only)", "(core only)", "(core only)");
+        dep("Engine, public API,\ndashboard widgets", "(core only)", "(core only)", "(core only)");
+        dep("Matter backend\n(default OFF)", "connectedhomeip (Apache 2)\nmbedTLS (Apache 2)", "connectedhomeip (Apache 2)\nmbedTLS (Apache 2)", "connectedhomeip (Apache 2)\nmbedTLS (Apache 2)");
+        dep("Thread backend\n(default OFF)", "OpenThread (BSD 3-Clause)\nmbedTLS (Apache 2)", "OpenThread (BSD 3-Clause)\nmbedTLS (Apache 2)", "OpenThread (BSD 3-Clause)\nmbedTLS (Apache 2)");
+        dep("Zigbee backend\n(default OFF)", "(core only)\nASH/EZSP in-tree", "Silicon Labs EZSP (libezsp)", "Silicon Labs EZSP (libezsp)");
+        dep("Z-Wave backend\n(default OFF)", "OpenZWave 1.6 (LGPL 2.1)\ndynamically linked", "OpenZWave (LGPL 2.1)", "OpenZWave (LGPL 2.1)");
+        dep("KNX backend\n(default OFF)", "(core only)\nKNXnet/IP over sockets", "(core only)\nKNXnet/IP over sockets", "(core only)\nKNXnet/IP over sockets");
 
         header("Ultra AI module");
         dep("No additional third party", "(core only)", "(core only)", "(core only)");

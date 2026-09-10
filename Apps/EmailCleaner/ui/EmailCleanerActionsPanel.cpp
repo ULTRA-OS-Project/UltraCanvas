@@ -74,21 +74,54 @@ std::shared_ptr<UltraCanvasContainer> ActionsPanel::Build(float x, float y,
     root_->AddChild(apply_);
     cursor += 118.0f;
 
-    blocklist_ = CreateButton("ecActBlocklist", cursor, kRowY, 175, kControlH,
+    // ---- Second row: what the user says the verdict should be --------------
+    // Separate from Block on purpose: "I do not want to hear from them" and
+    // "your verdict about them is wrong" are different statements, and a
+    // sender can warrant either, both, or neither.
+    const float row2 = kRowY + kControlH + 6;
+    float cursor2 = 8.0f;
+
+    root_->AddChild(CreateLabel("ecActVerdictLabel", cursor2, row2 + 4, 150, 20,
+                                "Correct the verdict"));
+    cursor2 += 156.0f;
+
+    markFine_ = CreateButton("ecActFine", cursor2, row2, 130, kControlH, "This is fine");
+    markFine_->onClick = [this]() { MarkVerdict(true); };
+    root_->AddChild(markFine_);
+    cursor2 += 138.0f;
+
+    markSpam_ = CreateButton("ecActSpam", cursor2, row2, 130, kControlH, "This is spam");
+    markSpam_->onClick = [this]() { MarkVerdict(false); };
+    root_->AddChild(markSpam_);
+    cursor2 += 150.0f;
+
+    overrides_ = CreateButton("ecActOverrides", cursor2, row2, 190, kControlH,
+                              "Corrected senders…");
+    overrides_->onClick = [this]() { ShowOverrides(); };
+    root_->AddChild(overrides_);
+    cursor2 += 198.0f;
+
+    blocklist_ = CreateButton("ecActBlocklist", cursor2, row2, 175, kControlH,
                               "Blocked senders…");
     blocklist_->onClick = [this]() { ShowBlocklist(); };
     root_->AddChild(blocklist_);
 
+    // What the classifier currently says about the selection, so "correct the
+    // verdict" is not a guess about what is being corrected.
+    verdict_ = CreateLabel("ecActVerdict", 8, row2 + kControlH + 4, width - 16, 20, "");
+    verdict_->SetTextColor(kQuietColor);
+    root_->AddChild(verdict_);
+
     // Two lines under the controls: what would happen, and what to watch out
     // for. They are separate so a long warning cannot push the summary away.
-    summary_ = CreateLabel("ecActSummary", 8, kRowY + kControlH + 6, width - 16, 20,
+    summary_ = CreateLabel("ecActSummary", 8, row2 + kControlH + 24, width - 16, 20,
                            "Pick a sender on the map to act on it.");
     summary_->SetTextColor(kQuietColor);
     root_->AddChild(summary_);
 
     // Two lines' worth, wrapped: a plan can raise more than one warning and a
     // truncated warning is worse than no warning at all.
-    warning_ = CreateLabel("ecActWarning", 8, kRowY + kControlH + 30, width - 16, 54, "");
+    warning_ = CreateLabel("ecActWarning", 8, row2 + kControlH + 46, width - 16, 54, "");
     warning_->SetTextColor(kWarningColor);
     warning_->SetWrap(TextWrap::WrapWord);
     root_->AddChild(warning_);
@@ -130,6 +163,42 @@ void ActionsPanel::UpdatePlan() {
     if (unsubscribe_)  unsubscribe_->SetDisabled(!haveTarget);
     if (deleteMail_)   deleteMail_->SetDisabled(!haveTarget);
     if (unwantedOnly_) unwantedOnly_->SetDisabled(!haveTarget);
+
+    if (markFine_)  markFine_->SetDisabled(!haveTarget);
+    if (markSpam_)  markSpam_->SetDisabled(!haveTarget);
+
+    // What the corpus currently says about this selection, and whether that is
+    // the classifier's reading or the user's correction of it.
+    if (verdict_) {
+        if (!haveTarget) {
+            verdict_->SetText("");
+        } else {
+            VerdictOverride existing;
+            const bool corrected = store_->FindOverride(target_.senderAddr,
+                                                        target_.domain, existing);
+            if (corrected) {
+                verdict_->SetText("You marked " + existing.pattern + " as " +
+                                  CategoryLabel(existing.category) +
+                                  " — that beats the classifier for their mail. "
+                                  "Take it back under \"Corrected senders…\".");
+            } else {
+                MessageFilter f;
+                f.accountId = accountId_;
+                if (target_.IsDomain()) f.senderDomain = target_.domain;
+                else                    f.senderAddr   = target_.senderAddr;
+                std::vector<CategoryTotal> totals;
+                std::string dominant = "nothing yet";
+                if (store_->GetCategoryTotals(f, totals) && !totals.empty()) {
+                    const CategoryTotal* top = &totals.front();
+                    for (const CategoryTotal& t : totals)
+                        if (t.messageCount > top->messageCount) top = &t;
+                    dominant = CategoryLabel(top->category);
+                }
+                verdict_->SetText("Classified as " + dominant +
+                                  ". Say so if that is wrong.");
+            }
+        }
+    }
 
     if (!haveTarget) {
         plan_ = ActionPlan{};
@@ -213,6 +282,144 @@ void ActionsPanel::Apply(const ActionPlan& plan) {
     UpdatePlan();
 }
 
+void ActionsPanel::MarkVerdict(bool wanted) {
+    if (!store_ || !target_.Valid()) return;
+
+    // One category per direction rather than a picker: the user is answering
+    // "is this wanted?", and asking them to also choose between six spam
+    // families turns a one-click correction into a form. The classifier keeps
+    // its finer reading in the base verdict either way.
+    const MessageCategory category =
+        wanted ? MessageCategory::Personal : MessageCategory::ProductSpam;
+
+    const std::string what = target_.Describe();
+    std::string message =
+        wanted ? ("Mark " + what + " as wanted?\n\nTheir mail stops counting as "
+                  "unwanted on the map and in the totals, whatever the rules say "
+                  "about it.")
+               : ("Mark " + what + " as spam?\n\nTheir mail counts as unwanted "
+                  "from now on, whatever the rules say about it.");
+    if (target_.IsDomain()) {
+        message += "\n\n⚠ This covers every sender under " + target_.domain +
+                   ", including any you have not seen yet.";
+    }
+    message += "\n\nThis does not delete or block anything, and it can be taken "
+               "back under \"Corrected senders…\".";
+
+    UltraCanvasDialogManager::ShowConfirmation(
+        message, wanted ? "Mark as wanted" : "Mark as spam",
+        [this, category, wanted](bool confirmed) {
+            if (!confirmed || !store_) return;
+            VerdictOverride entry;
+            entry.pattern  = target_.IsDomain() ? target_.domain : target_.senderAddr;
+            entry.isDomain = target_.IsDomain();
+            entry.category = category;
+            entry.reason   = wanted ? "marked wanted" : "marked spam";
+            entry.added    = static_cast<int64_t>(std::time(nullptr));
+
+            const UltraDbResult r = store_->SetOverride(entry);
+            if (!r) {
+                UltraCanvasDialogManager::ShowWarning(
+                    "Could not record that: " + r.message, "Not saved", nullptr);
+                return;
+            }
+            store_->ApplyOverridesToMessages();
+            UpdatePlan();
+            // onApplied repaints from the database, and the app rewrites the
+            // status line while it does — so the sentence goes after it.
+            if (onApplied) onApplied(ActionOutcome{});
+            if (onStatus) {
+                onStatus("Marked " + entry.pattern + " as " +
+                         (wanted ? "wanted" : "spam") +
+                         ". Their mail is re-counted from here on; undo it under "
+                         "\"Corrected senders…\".");
+            }
+        },
+        nullptr);
+}
+
+void ActionsPanel::ShowOverrides() {
+    if (!store_) return;
+
+    std::vector<VerdictOverride> entries;
+    store_->ListOverrides(entries);
+
+    DialogConfig config;
+    config.title      = "Corrected senders";
+    config.width      = 660;
+    config.height     = 420;
+    config.dialogType = DialogType::Custom;
+    config.buttons    = DialogButtons::NoButtons;
+
+    auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    auto* dlg = dialog.get();
+    dialog->layout.SetFlexColumn()
+                  .SetFlexGap(10)
+                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    dialog->SetPadding(14);
+
+    auto heading = CreateLabel(
+        "ecOvHeading", 0, 0, 620, 40,
+        entries.empty() ? "You have not corrected any verdicts yet."
+                        : "These beat the classifier for their senders' mail. "
+                          "Taking one back restores what the classifier "
+                          "actually said, message by message.");
+    heading->SetWrap(TextWrap::WrapWord);
+    dialog->AddChild(heading);
+
+    auto list = CreateScrollableContainer("ecOvList", 0, 0, 620, 280);
+    float y = 0.0f;
+    int index = 0;
+    for (const VerdictOverride& entry : entries) {
+        const std::string id = "ecOv" + std::to_string(index++);
+        auto row = CreateContainer(id, 0, y, 600, 40);
+
+        row->AddChild(CreateLabel(id + ".text", 0, 0, 480, 19,
+                                  entry.isDomain ? (entry.pattern + " (whole domain)")
+                                                 : entry.pattern));
+        std::string sub = std::string(entry.Wanted() ? "wanted" : "spam") +
+                          " · " + CategoryLabel(entry.category);
+        if (entry.added > 0) sub += " · " + FormatDate(entry.added);
+        auto subLabel = CreateLabel(id + ".sub", 0, 19, 480, 18, sub);
+        subLabel->SetTextColor(kQuietColor);
+        row->AddChild(subLabel);
+
+        const std::string pattern = entry.pattern;
+        auto undo = CreateButton(id + ".undo", 490, 8, 96, 24, "Undo");
+        auto* rowPtr = row.get();
+        undo->onClick = [this, pattern, rowPtr]() {
+            if (!store_) return;
+            store_->RemoveOverride(pattern);
+            store_->ApplyOverridesToMessages();
+            rowPtr->SetVisible(false);
+            UpdatePlan();
+            if (onApplied) onApplied(ActionOutcome{});
+            if (onStatus)
+                onStatus("Took back the correction for " + pattern +
+                         " — the classifier's own verdict is back.");
+        };
+        row->AddChild(undo);
+
+        list->AddChild(row);
+        y += 44.0f;
+    }
+    dialog->AddChild(list);
+    list->layoutItem.SetFlexGrow(1);
+
+    auto buttonRow = CreateContainer("ecOvButtons", 0, 0, 0, 34);
+    buttonRow->layout.SetFlexRow()
+                     .SetFlexGap(10)
+                     .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    buttonRow->AddStretchSpacer(1);
+    auto closeBtn = std::make_shared<UltraCanvasButton>("ecOvClose", 0, 0, 90, 28);
+    closeBtn->SetText("Close");
+    closeBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::OK); };
+    buttonRow->AddChild(closeBtn);
+    dialog->AddChild(buttonRow);
+
+    UltraCanvasDialogManager::ShowDialog(dialog, nullptr, nullptr);
+}
+
 void ActionsPanel::ShowBlocklist() {
     if (!store_) return;
 
@@ -277,6 +484,7 @@ void ActionsPanel::ShowBlocklist() {
             rowPtr->SetVisible(false);
             UpdatePlan();
             if (onApplied) onApplied(ActionOutcome{});
+            if (onStatus) onStatus("Unblocked " + pattern + ".");
         };
         row->AddChild(unblock);
 
