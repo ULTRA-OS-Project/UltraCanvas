@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- UltraCanvas: the arrow that says "this opens a menu" - the secondary
+     section of a split button, and anywhere else a control lists further
+     choices. A stroked chevron rather than a "▾" glyph, which a text renderer
+     draws at a fraction of the control around it. The view box is cropped to
+     the chevron, so the icon fills the size it is given. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 15" width="24" height="15">
+  <path d="M2.6 3.6L12 12.4 21.4 3.6" fill="none" stroke="#37373c" stroke-width="3.4"
+        stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

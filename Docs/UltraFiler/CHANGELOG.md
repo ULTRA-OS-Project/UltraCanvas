@@ -37,6 +37,43 @@
   folder that was named, such as the containing folder of a search result or
   an entry of the History or Favorites view, still opens on that folder - and
   the choice is saved as `handling.tabs.new.tab` in the config file.
+#### 2026-09-10 *1.26.0*
+- **The Home tab is called Home.** A folder tab is named after the folder it
+  shows, and the home folder is named after the account that owns it - so the
+  tab the file manager opens on carried a login name and said nothing about
+  what was in it. It now reads **Home**, with the home icon beside it: the
+  same mark the folder tree's Home row and the Computer page's Home tile
+  carry, so the three places that lead to that folder finally look alike.
+  Every other tab is unchanged - it keeps the folder's own name and no icon.
+  The name follows the tab: navigating into the home folder renames the tab
+  and puts the icon on, leaving it takes both away again. The Computer page's
+  Home tile, which carried the account name under the same icon, now reads
+  *Home* as well (framework side: `displayNameProvider`,
+  `Docs/UltraCanvas/CHANGELOG.md` 0.8.0) - the folder it opens, its name and
+  what can be done with it are unchanged, only what the tile is labelled.
+- **A tab says which of the user's places it is in.** The main user folders -
+  Desktop, Documents, Downloads, Music, Pictures and Videos - now put their
+  icon on the tab, the same icons the folder tree and the file display already
+  draw for them: the monitor for Desktop, the download arrow, the picture, the
+  notes, the play mark, the document. A tab keeps the icon *inside* the folder
+  too, so one three folders deep in Downloads still shows the download mark -
+  which is the whole use of a mark on a tab, and what the folder name alone
+  ("2024") does not tell. The nearest folder wins, so a Pictures folder kept
+  inside Documents shows the picture icon rather than the document one, and
+  the home folder is deliberately not inherited downwards: everything the user
+  has is under it, and an icon on every tab marks nothing.
+- **A home icon with the user in it.** The plain black house has been replaced
+  by `home-user.svg` - a house with its occupant, in the flat two-tone shape
+  of the folder icons - in the tree, on the Computer page's Home tile and on
+  the new Home tab alike. (Framework side: `Docs/UltraCanvas/CHANGELOG.md`
+  0.8.0.)
+- **The New folder arrow is worth aiming at.** The split button's menu section
+  was marked with a "▾" character, which the text renderer drew a few
+  pixels across inside a section nearly thirty wide: it read as a speck rather
+  than as the "there is more here" arrow it is. It now carries the framework's
+  `dropdown.svg` at 14 px, in the button's own text color, centered in its
+  section. Nothing about what the button does has changed - the primary
+  section still creates a folder, the arrow still lists the other kinds.
 
 #### 2026-09-09 *1.25.0*
 - **Double-clicking a font opens it, full size, in its own window.** A font was

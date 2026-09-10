@@ -9513,7 +9513,7 @@ bcDropdown->onItemDropdown = [](int idx, const BreadcrumbItem& item) {
 const std::string iconsRoot = "media/icons/";
 
 auto bcIcons = CreateBreadcrumb("bc_icons", 380, 820, 580, 30);
-bcIcons->AddItem(BreadcrumbItem::IconOnly(iconsRoot + "home-icon.png", "Home"));
+bcIcons->AddItem(BreadcrumbItem::IconOnly(iconsRoot + "home-user.svg", "Home"));
 bcIcons->AddItem(BreadcrumbItem::WithIcon("Documents", iconsRoot + "folder.png"));
 bcIcons->AddItem(BreadcrumbItem::WithIcon("Projects",  iconsRoot + "folder.png"));
 bcIcons->AddItem(BreadcrumbItem::WithIcon("Report.txt", iconsRoot + "document.png"));
@@ -9847,8 +9847,8 @@ FILE: Docs/UltraCanvas/UltraCanvasButtonExamples.md
 
 # UltraCanvasButton Documentation
 
-**Version:** 1.0.1  
-**Last Modified:** 2026-08-31  
+**Version:** 1.0.2  
+**Last Modified:** 2026-09-10  
 **Author:** UltraCanvas Framework
 
 ## Overview
@@ -10139,6 +10139,40 @@ autoBtn->SetAutoresize(true);
 autoBtn->SetText("This is a longer text that will auto-resize");
 ```
 
+### Split Button (a primary action plus a menu)
+
+A split button is one button with two sections: the primary one runs the
+action, the secondary one — the arrow — opens a menu through
+`onSecondaryClick`. Mark the arrow with `media/icons/dropdown.svg` rather than
+a `▾` character: a text renderer draws that glyph at a fraction of the
+section around it, while the icon fills the size it is given.
+
+```cpp
+auto newButton = CreateButton("New", 1, 10, 10, 138, 28, "New folder");
+newButton->SetSplitEnabled(true);
+newButton->SetSplitRatio(0.8f);              // 80 % action, 20 % arrow
+newButton->SetSplitSecondaryText("");        // the icon is the whole content
+newButton->SetSplitSecondaryIcon("media/icons/dropdown.svg");
+newButton->SetSplitSecondaryIconSize(14, 14);
+newButton->SetSplitSeparator(true, Color(0, 0, 0, 60), 1.0f);
+newButton->onClick = [](){ CreateFolder(); };
+newButton->onSecondaryClick = [](){ ShowNewEntryMenu(); };
+```
+
+**A masked button masks both icons.** `SetUseIconAsMask(true)` is button-wide:
+with it set, the secondary icon is painted in the color from
+`SetSplitSecondaryIconColors()`, which defaults to white — invisible on a light
+button. Give it the button's text color when the primary icon is masked:
+
+```cpp
+newButton->SetUseIconAsMask(true);
+newButton->SetIconMaskColor(Color(55, 55, 60, 255));
+newButton->SetSplitSecondaryIconColors(Color(55, 55, 60, 255),   // normal
+                                       Color(55, 55, 60, 255),   // hovered
+                                       Color(55, 55, 60, 255),   // pressed
+                                       Color(55, 55, 60, 128));  // disabled
+```
+
 ### Disabled Button
 
 ```cpp
@@ -10168,6 +10202,7 @@ The button automatically handles:
 
 | Version | Date | Changes |
 |---------|------|---------|
+| 1.0.2 | 2026-09-10 | Document the split button: the `dropdown.svg` arrow, and that `SetUseIconAsMask()` colors the secondary icon through `SetSplitSecondaryIconColors()` |
 | 1.0.1 | 2026-08-31 | Document `onToggle`, `onSecondaryClick` and `onContextMenu`, and that `onClick` is left-button only |
 | 1.0.0 | 2025-01-08 | Initial documentation based on actual implementation |
 
@@ -19246,6 +19281,28 @@ compiled **standalone**, without the framework library, by several test targets
 that only want `Trim()` — a JSON dependency inside it leaves every one of them
 with undefined references at link time.
 
+## Entry names
+
+An entry is drawn under its file name. `displayNameProvider(entry)` lets the
+host draw another one: return the name to show, or `""` to keep the file name.
+Only the drawn name changes — sorting, renaming, the clipboard and every file
+operation still work on the real one — so it is for entries that *mean*
+something other than a file of that name.
+
+```cpp
+filer->displayNameProvider = [](const FilerEntry& e) -> std::string {
+    if (e.path == UserHomeDir()) return "Home";   // not the account name
+    return {};                                    // everything else as-is
+};
+```
+
+Like `folderIconProvider` below it is asked while the entry is painted, so it
+must be a lookup rather than a disk walk. It is asked ahead of every built-in
+rule, including a desktop launcher's own `Name=`
+(`FilerEntry::linkDisplayName`). UltraFiler answers it on its Computer page,
+where the home folder is shown as *Home* — what the folder tree's row and the
+folder tab call it too — instead of the account the folder is named after.
+
 ## Folder icons
 
 Folders are drawn as a colored folder shape. `folderIconProvider(entry)` lets
@@ -19941,6 +19998,7 @@ scan, which feeds its matches in through `AppendToFileList()` while it runs.
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
+| `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
 | `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
@@ -49382,7 +49440,7 @@ auto flatToolbar = UltraCanvasToolbarBuilder("FlatToolbar")
     .SetOrientation(ToolbarOrientation::Horizontal)
     .SetAppearance(ToolbarAppearance::Flat())
     .SetDimensions(20, 300, 960, 48)
-    .AddButton("home",     "", "media/icons/home-icon.png",     [](){})
+    .AddButton("home",     "", "media/icons/home-user.svg",     [](){})
     .AddButton("profile",  "", "media/icons/profile-icon.png",  [](){})
     .AddButton("settings", "", "media/icons/settings.png",      [](){})
     .AddStretch(1.0f)

@@ -887,6 +887,28 @@ compiled **standalone**, without the framework library, by several test targets
 that only want `Trim()` — a JSON dependency inside it leaves every one of them
 with undefined references at link time.
 
+## Entry names
+
+An entry is drawn under its file name. `displayNameProvider(entry)` lets the
+host draw another one: return the name to show, or `""` to keep the file name.
+Only the drawn name changes — sorting, renaming, the clipboard and every file
+operation still work on the real one — so it is for entries that *mean*
+something other than a file of that name.
+
+```cpp
+filer->displayNameProvider = [](const FilerEntry& e) -> std::string {
+    if (e.path == UserHomeDir()) return "Home";   // not the account name
+    return {};                                    // everything else as-is
+};
+```
+
+Like `folderIconProvider` below it is asked while the entry is painted, so it
+must be a lookup rather than a disk walk. It is asked ahead of every built-in
+rule, including a desktop launcher's own `Name=`
+(`FilerEntry::linkDisplayName`). UltraFiler answers it on its Computer page,
+where the home folder is shown as *Home* — what the folder tree's row and the
+folder tab call it too — instead of the account the folder is named after.
+
 ## Folder icons
 
 Folders are drawn as a colored folder shape. `folderIconProvider(entry)` lets
@@ -1582,6 +1604,7 @@ scan, which feeds its matches in through `AppendToFileList()` while it runs.
 | `onColumnWidthsChanged()` | A column splitter drag ended, or a width was set from code |
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
+| `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
 | `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |

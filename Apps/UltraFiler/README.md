@@ -28,6 +28,18 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   and closed (the last one stays open). The strip stays visible while the
   History or Favorites view replaces the folder display, so clicking a tab
   returns to browsing it.
+  home folder is the exception: its tab reads **Home**, under the home icon,
+  rather than the account name the folder is named after — the same name and
+  mark the folder tree's Home row and the Computer page's Home tile carry. A
+  tab in one of the main user folders — Desktop, Documents, Downloads, Music,
+  Pictures, Videos — carries that folder's icon, and keeps it *inside* the
+  folder as well, so a tab deep in Downloads still says which of the user's
+  places it is in; the nearest one wins where they are nested. The
+  **"+" at the end of the tab list** opens an additional tab on the current
+  folder. Every tab has its own folder view, Back / Forward history, sort and
+  view settings; tabs can be reordered by dragging and closed (the last one
+  stays open). The strip stays visible while the History or Favorites view
+  replaces the folder display, so clicking a tab returns to browsing it.
 - **Navigation:** Back / Forward history (per tab), Up, Refresh, clickable
   breadcrumb path (each segment's dropdown lists sibling folders), folder
   tree with lazy expansion, and the History toggle (see below).
