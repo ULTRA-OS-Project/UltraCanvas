@@ -678,6 +678,9 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
+        # COLLADA needs tinyxml2, which the core library already links for the
+        # SVG, DOCX and XLSX readers.
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Text/UltraCanvasMarkdown.cpp
         #        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Charts/UltraCanvasChartElement.cpp

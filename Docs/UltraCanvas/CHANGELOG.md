@@ -1,3 +1,29 @@
+#### 2026-09-10 *0.8.7*
+- **COLLADA reads into the universal 3D structure.**
+  `ModelConverter::ColladaConverter` (`Plugins/Models/COLLADA/`) reads COLLADA
+  1.4/1.5 into `ModelStorage::ModelDocument`, and it is the format that finally
+  exercises the whole of it: `<unit meter="1"/>` and `<up_axis>` - the first
+  sample to state either - a node hierarchy four deep, `<polylist>` n-gons,
+  `profile_COMMON` materials with transparency and the sampler2D-surface-image
+  texture chain, vertex colours, and animation. Nothing in the structure had to
+  change to hold it.
+  Three COLLADA details are handled rather than approximated: a node's
+  transform is an ordered *sequence* of `<translate>`, `<rotate>`, `<scale>`
+  and `<matrix>` composed in document order (Blender writes three separate
+  `<rotate>` elements, and reading them into fixed slots gives the wrong pose);
+  `<p>` indices are per-corner and per-stream like OBJ's, so unique tuples
+  become vertices; and a matrix-valued animation channel is decomposed per
+  keyframe into translation, rotation and scale, because that is what the
+  document interpolates. `Tests/ModelColladaTest.cpp` covers it with 41
+  assertions, including translate-then-rotate against rotate-then-translate.
+- **The DAE sample is deliberately not the same aircraft.** Its export holds
+  half the hull (an unapplied mirror modifier), is far lower-poly than the 3DS,
+  and displaces its two meshes by an armature's transforms. The reader's world
+  bounds were checked against an independent walk of the same node chain and
+  agree exactly, so the file is what it is - and the test asserts those
+  differences on purpose, so a later change cannot quietly "fix" the reader
+  into matching the other exports.
+
 #### 2026-09-10 *0.8.6*
 - **DXF read as geometry, not as a drawing.**
   `ModelConverter::DXFModelConverter` (`Plugins/Models/DXF/`) reads the 3D

@@ -1,6 +1,6 @@
 # UltraCanvas 3D Model Structure — Survey and Proposal
 
-**Status:** structure defined and merged; 3DS, OBJ and DXF read into it, OBJ writes from it; more converters to follow
+**Status:** structure defined and merged; 3DS, OBJ, DXF and COLLADA read into it, OBJ writes from it; glTF next
 **Scope:** `ModelStorage::ModelDocument`
 (`UltraCanvas/include/DataFormats/UltraCanvasModelStorage.h`) and the
 converters that will read into and write out of it.
@@ -38,6 +38,7 @@ this document is where those annotations come from.
 | `FilerFileCategory::Model3D` | `UltraCanvasFilerWidget.cpp:272-280` | obj/ply/3ds/3mf/gltf/glb/dae/fbx get a Model badge. Labels only. |
 | `ThreeDSConverter` | `Plugins/Models/3DS/` | Reads Autodesk 3DS into `ModelDocument`: meshes, object matrices, materials with texture maps, per-face material groups, cameras and lights. The first scene format on the structure. |
 | `OBJConverter` | `Plugins/Models/OBJ/` | Reads **and writes** Wavefront OBJ + MTL: n-gons kept as n-gons, the three index streams resolved into unique corners, objects, groups, `usemtl`, vertex colours, and the MTL PBR extension. The first writer on the structure. |
+| `ColladaConverter` | `Plugins/Models/COLLADA/` | Reads COLLADA 1.4/1.5: `<unit>`, `<up_axis>`, the node hierarchy with ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`, `profile_COMMON` materials with transparency and textures, vertex colours, and matrix or TRS animation channels. The first format that states everything the structure holds. |
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
@@ -279,6 +280,15 @@ Each step is independently mergeable and comes with a test and a demo page.
    format.
 3. **PLY.** Exercises the open-ended attribute design harder than anything
    else, and brings point clouds with it. ASCII and both binary orders.
+3.5. **COLLADA — done.** `Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp`
+   reads it, validated against the aircraft's `.dae`
+   (`Tests/ModelColladaTest.cpp`, 41 assertions). It landed before glTF because
+   the sample arrived, and it turned out to be the format that finally
+   exercises the whole structure: the first with a declared unit
+   (`<unit meter="1"/>`), the first with a node hierarchy four deep, the first
+   with real animation. Nothing in the structure had to change to hold it,
+   which is the strongest evidence so far that the design is right.
+
 4. **glTF 2.0 / GLB.** The interchange target: scene graph, PBR materials,
    skins, animation, morph targets. Once this reads and writes, UltraCanvas can
    exchange with the rest of the industry. JSON is already available through
@@ -369,6 +379,18 @@ Recorded rather than hidden:
   block is missing. The reader warns when it finds 3D entities in `BLOCKS`.
 - **Two DXF tag scanners now exist** — this one and the Vector plugin's. They
   should share one.
+- **COLLADA `<library_controllers>` is not read**, so a skinned mesh arrives in
+  its bind pose. The document has `ModelSkin` and the joints are already read
+  as nodes, so this is a bounded piece of work rather than a design gap.
+- **COLLADA per-axis rotation tracks** (`rotationX`/`Y`/`Z` channels) are not
+  read: the document animates whole rotations as quaternions, and combining
+  three separate angle tracks needs all of them together. Matrix-valued
+  channels — what Blender writes, and what the sample uses — are read.
+- **COLLADA cameras and lights are not read**, though the document has fields
+  for both and the sample has neither.
+- **The COLLADA texture chain is unexercised.** The sampler2D → surface → image
+  indirection is implemented, but the sample's `<library_images/>` is empty, so
+  no test covers it against a real file.
 
 ### What the sample files confirmed
 
@@ -405,6 +427,24 @@ Two OBJ-specific findings worth recording:
   library, so the material *assignment* survives even when the definitions do
   not. The reference also has spaces in it, which is why the library and map
   filenames are parsed as the remainder of the line rather than as a token.
+
+### The DAE that is not the same aircraft
+
+Worth recording because it looks like a reader bug and is not. The `.dae`
+export differs from the OBJ, 3DS and DXF ones in three ways, all properties of
+the file:
+
+- it holds **half the hull** — X spans `[-0.9732, 0]` where the others span
+  `[-0.9732, 0.9732]`, a mirror modifier that was never applied;
+- it is **far lower-poly** — 1 995 triangles against the 3DS's 16 220;
+- its two meshes are **displaced from each other** by an armature's node
+  transforms, so the canopy sits well clear of the hull.
+
+The reader's world bounds were checked against an independent walk of the same
+node chain and agree exactly, so the composition is right and the file is what
+it is. `Tests/ModelColladaTest.cpp` asserts these differences deliberately, so
+that a later change cannot quietly "fix" the reader into matching the other
+exports.
 
 ### What the first real file changed
 

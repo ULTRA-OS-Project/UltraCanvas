@@ -771,6 +771,42 @@ add_test(
 )
 message(STATUS "    Test registered: ModelDXFTest")
 
+# ===== COLLADA MODEL READER TEST =====
+# COLLADA is the first format that states unit, up axis, a node hierarchy and
+# animation, so this is where those paths meet a real file. Needs tinyxml2.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(TEST_TINYXML2 QUIET tinyxml2)
+endif()
+if(TEST_TINYXML2_FOUND)
+    message(STATUS "  Building ModelColladaTest...")
+    add_executable(ModelColladaTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ModelColladaTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    )
+    target_include_directories(ModelColladaTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+        ${TEST_TINYXML2_INCLUDE_DIRS}
+    )
+    target_link_libraries(ModelColladaTest PRIVATE ${TEST_TINYXML2_LIBRARIES})
+    target_link_directories(ModelColladaTest PRIVATE ${TEST_TINYXML2_LIBRARY_DIRS})
+    target_compile_features(ModelColladaTest PRIVATE cxx_std_20)
+    set_target_properties(ModelColladaTest PROPERTIES
+        OUTPUT_NAME "ModelColladaTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME ModelColladaTest
+        COMMAND ModelColladaTest "${ULTRACANVAS_ROOT}/media/models/COLLADA/E-45-Aircraft.dae"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: ModelColladaTest")
+else()
+    message(STATUS "  Skipping ModelColladaTest (tinyxml2 not found)")
+endif()
+
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the
 # real CSSLayout engine: an auto-width flex column grows with an inner row of

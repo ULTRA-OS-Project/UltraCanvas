@@ -252,6 +252,12 @@ the backing implementation can be replaced without affecting callers.
     polylines, lines and points - one mesh per layer with the layer's ACI
     colour, complementing the Vector plugin's DXF reader rather than replacing
     it (a drawing belongs in `VectorDocument`, a model here).
+    `ColladaConverter` (`Plugins/Models/COLLADA/UltraCanvasColladaConverter.h`)
+    reads COLLADA 1.4/1.5 - `<unit>`, `<up_axis>`, the node hierarchy with
+    ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`,
+    `profile_COMMON` materials with transparency and textures, vertex colours,
+    and matrix or TRS animation channels (matrix keyframes are decomposed into
+    translation, rotation and scale). XML through tinyxml2.
 
 - **UltraCanvasCADPalette** (`DataFormats/UltraCanvasCADPalette.h`) - the
   AutoCAD Color Index palette, `AciPaletteColor(aci)`: exact classic colours
