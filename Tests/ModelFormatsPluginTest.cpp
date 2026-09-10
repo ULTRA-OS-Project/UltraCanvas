@@ -86,6 +86,21 @@ static void TestDispatchTable() {
     Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("ply") == nullptr,
           "a format this build has no converter for resolves to nothing");
 
+    // And says so rather than returning null in silence: a caller handed an
+    // .abc or a .ply has to be able to tell "unsupported" from "corrupt".
+    std::string reported;
+    ConversionOptions listening;
+    listening.WarningCallback = [&reported](const std::string& message) { reported = message; };
+    Check(UltraCanvasModelFormatsPlugin::LoadModelDocument("aircraft.abc", listening) == nullptr,
+          "an unsupported extension loads nothing");
+    Check(reported.find("abc") != std::string::npos && reported.find("obj") != std::string::npos,
+          "and the warning names both the format it cannot read and the ones it can");
+    reported.clear();
+    ModelStorage::ModelDocument empty;
+    Check(!UltraCanvasModelFormatsPlugin::SaveModelDocument(empty, "out.abc", listening),
+          "and saving to one writes nothing");
+    Check(!reported.empty(), "with a warning rather than a silent false");
+
     Check(UltraCanvasModelFormatsPlugin::AvailableFormats().size() == Samples().size(),
           "AvailableFormats lists exactly what was built");
 }

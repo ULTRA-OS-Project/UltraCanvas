@@ -121,7 +121,22 @@ std::shared_ptr<ModelStorage::ModelDocument> UltraCanvasModelFormatsPlugin::Load
 std::shared_ptr<ModelStorage::ModelDocument> UltraCanvasModelFormatsPlugin::LoadModelDocument(
         const std::string& filePath, const ConversionOptions& options) {
     auto converter = CreateConverterForExtension(filePath);
-    if (!converter || !converter->CanImport()) return nullptr;
+    if (!converter) {
+        // Saying which formats this build does carry is the difference between
+        // a user learning that .abc is not supported and a user believing
+        // their file is corrupt.
+        std::string known;
+        for (const std::string& extension : SupportedLoadExtensions())
+            known += (known.empty() ? "" : ", ") + extension;
+        options.Warn("Models: no reader for '" + ExtensionOf(filePath) +
+                     "' in this build; it carries " + known);
+        return nullptr;
+    }
+    if (!converter->CanImport()) {
+        options.Warn("Models: " + converter->GetFormatName() +
+                     " is recognised but cannot be read");
+        return nullptr;
+    }
     auto document = converter->Import(filePath, options);
 
     // Honoured here rather than in each converter, so it means the same thing
@@ -145,7 +160,19 @@ bool UltraCanvasModelFormatsPlugin::SaveModelDocument(const ModelStorage::ModelD
                                                       const std::string& filePath,
                                                       const ConversionOptions& options) {
     auto converter = CreateConverterForExtension(filePath);
-    if (!converter || !converter->CanExport()) return false;
+    if (!converter) {
+        std::string known;
+        for (const std::string& extension : SupportedSaveExtensions())
+            known += (known.empty() ? "" : ", ") + extension;
+        options.Warn("Models: no writer for '" + ExtensionOf(filePath) +
+                     "' in this build; it can write " + known);
+        return false;
+    }
+    if (!converter->CanExport()) {
+        options.Warn("Models: " + converter->GetFormatName() +
+                     " can be read but not written");
+        return false;
+    }
     return converter->Export(document, filePath, options);
 }
 
