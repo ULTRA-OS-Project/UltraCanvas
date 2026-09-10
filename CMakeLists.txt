@@ -350,6 +350,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
