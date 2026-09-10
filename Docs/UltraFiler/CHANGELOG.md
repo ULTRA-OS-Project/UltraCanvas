@@ -1,4 +1,4 @@
-#### 2026-09-10 *1.27.0*
+#### 2026-09-10 *1.28.0*
 - **A dragged-and-dropped move asks first.** Dropping files onto a folder of
   the file display carried the move out the moment the button came up, and a
   drag is the one file operation that starts by accident - a press that
@@ -11,7 +11,7 @@
   a drop lands on whatever was under the cursor - and nothing is touched until
   it is answered. Files dragged in from another program are copies, so only
   *Always* asks about those. (Framework side:
-  `Docs/UltraCanvas/CHANGELOG.md` 0.3.120.)
+  `Docs/UltraCanvas/CHANGELOG.md` 0.8.1.)
 - **The settings window opens on its sections instead of inside one.** The tree
   led with a *Settings* row that held everything and stood for nothing, below
   it every section and every page was already open, and the window opened on
@@ -25,7 +25,7 @@
   row deep, sitting beside the three that group everything else; it is now the
   second page of *Extras*, next to *Open prompt*. What it does is unchanged.
 
-#### 2026-09-10 *1.26.0*
+#### 2026-09-10 *1.27.0*
 - **The "+" of the tab strip can open the Home folder instead of the folder
   in front of you.** Opening a tab has always meant "the same folder once
   more", which is what a second view of the folder being worked in wants, and

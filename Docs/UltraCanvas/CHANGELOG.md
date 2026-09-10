@@ -1,4 +1,4 @@
-#### 2026-09-10 *0.3.120*
+#### 2026-09-10 *0.8.1*
 - **A drop can ask before it is carried out.** Dragging files onto a folder of
   `UltraCanvasFilerWidget` moved them the moment the button came up, and a drag
   is the one file operation that starts by accident - a press that wandered a
