@@ -1,3 +1,63 @@
+#### 2026-09-10 *0.8.11*
+- **STEP reads and writes: the first B-rep converter.** `Plugins/Models/STEP/`
+  fills `ModelDocument::Brep` from ISO 10303-21 files - AP203, AP214 and AP242 -
+  and writes them back out. Nothing is tessellated on the way in unless the
+  caller asks (`ConversionOptions::TessellateOnImport`): the exact surfaces are
+  the point, and a mesh made at a tolerance the file never stated is a decision
+  only the caller can make.
+- **The syntax layer is separate and testable on its own.**
+  `UltraCanvasStepFile.h` parses Part 21 and interprets nothing: instances,
+  parameters, strings with doubled quotes and `\X2\` escapes, comments between
+  any two tokens, `$` and `*`, and - the one that matters - *complex instances*,
+  the parenthesised pile of records that a rational NURBS can only be written
+  as. A reader that handles only simple instances reads no curved freeform
+  geometry at all, from any STEP file, ever.
+- **What the entity layer reads**: lines, circles, ellipses, parabolas,
+  hyperbolas, polylines, rational and polynomial B-spline curves and trimmed
+  curves; planes, cylinders, cones, spheres, tori, surfaces of extrusion and
+  revolution, and rational and polynomial B-spline surfaces; the pcurves that
+  trim them, through `surface_curve`, `seam_curve` and `intersection_curve` -
+  and where a file carries none, the surface is inverted instead, in closed form
+  for the analytic types and numerically for NURBS; `edge_curve`,
+  `oriented_edge`, `edge_loop`, `poly_loop`, `vertex_loop`, `face_bound`,
+  `face_outer_bound`, `advanced_face`, `closed_shell`, `open_shell`,
+  `manifold_solid_brep`, `brep_with_voids`, `shell_based_surface_model` and
+  `faceted_brep`; `si_unit` and `conversion_based_unit`, so an inch part is
+  recognised as inches rather than arriving a thousand times too large; product
+  names; and the six-deep `styled_item` chain down to `colour_rgb`, per face and
+  per body.
+- **What it does not, said rather than implied**: assembly placements are not
+  applied, so a multi-part file arrives with every part in its own coordinates -
+  the reader warns when it finds them. PMI, tolerances and construction history
+  are not read.
+- **Writing produces an `advanced_brep_shape_representation`**, with the
+  presentation chain for colours and the product structure AP203 requires around
+  a shape. A document holding meshes rather than solids is written as a faceted
+  b-rep: one plane per facet, with edges shared between neighbours, which is
+  what STEP has for a mesh and what a CAD system will read back. There is no
+  six-digit mode - the reason to write STEP is that the numbers are exact, and a
+  NURBS weight of cos 45 degrees rounded to six digits is no longer an arc.
+- **`ModelFormat` gained STEP, IGES, ACIS, Parasolid and OpenNURBS**, and
+  `FormatCapabilities` gained `Brep`, `NurbsSurfaces` and `Assemblies` - so a
+  converter that fills exact bodies rather than triangles can say so, instead of
+  looking like a broken mesh reader.
+- **`Tests/ModelStepTest.cpp`** with three **hand-authored** samples in
+  `media/models/STEP`, hand-authored because a reader tested only against files
+  its own writer produced proves nothing. `Box.step` states one face's loop
+  backwards with a `.F.` bound orientation and meshes to signed volume exactly
+  6000 in exactly 12 triangles - a reader that ignores that flag builds the face
+  inside out, and the signed volume is the only measure that notices. `Pin.step`
+  is in inches through a `conversion_based_unit`, has a seam edge used twice by
+  one loop, and carries a body colour with one face overridden; its meshed
+  volume closes on pi*r^2*h from below as the tolerance tightens. `NurbsSheet.step`
+  is a rational patch whose weights make it an exact arc, so every point of it is
+  5 from the axis to 1e-15, and its boundary carries no pcurves - the meshed area
+  being a quarter cylinder's is what proves the surface was inverted correctly.
+  All three round-trip through the writer to the *same meshed volume to 1e-9*.
+- The Models plugin now dispatches `.step`, `.stp` and `.p21` for both reading
+  and writing, so `LoadGraphicsFile` and `SaveGraphicsFile` reach them; STEP has
+  no external dependency, so it is always built.
+
 #### 2026-09-10 *0.8.10*
 - **The 3D structure holds B-rep exactly, instead of tessellating it away.**
   `ModelDocument::Brep` is a `BrepData`

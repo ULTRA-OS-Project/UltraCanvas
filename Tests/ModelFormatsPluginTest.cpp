@@ -45,6 +45,7 @@ static const std::vector<Sample>& Samples() {
             {"3ds", "3DS/E-45-Aircraft.3ds", true},
             {"obj", "OBJ/E-45-Aircraft.obj", true},
             {"dxf", "DXF/E-45-Aircraft.dxf", true},
+            {"step", "STEP/Box.step", true},
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
             {"dae", "COLLADA/E-45-Aircraft.dae", true},
 #endif
@@ -148,6 +149,17 @@ static void TestSamples(const std::string& mediaRoot) {
     const size_t expected = std::count_if(Samples().begin(), Samples().end(),
                                           [](const Sample& s) { return s.ImportsGeometry; });
     Check(loaded == expected, "every geometry format in this build loaded");
+
+    // A B-rep format holds no triangles until something asks, so it needs its
+    // own check: the dispatch has to give back a document that is not empty
+    // even though it has no mesh in it.
+    {
+        const std::filesystem::path path = std::filesystem::path(mediaRoot) / "STEP/Box.step";
+        ConversionOptions quiet;
+        auto exact = UltraCanvasModelFormatsPlugin::LoadModelDocument(path.string(), quiet);
+        Check(exact != nullptr && exact->Meshes.empty() && !exact->Brep.Solids.empty(),
+              "a STEP file arrives as exact bodies with no mesh, through the same one call");
+    }
 
     // The seam that matters most: read one format, write another, read it
     // back — without the caller naming a converter at either end.

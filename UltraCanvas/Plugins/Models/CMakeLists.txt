@@ -56,6 +56,8 @@ set(MODELS_PLUGIN_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/3DS/UltraCanvas3DSConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/OBJ/UltraCanvasOBJConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/DXF/UltraCanvasDXFModelConverter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/STEP/UltraCanvasStepFile.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/STEP/UltraCanvasStepConverter.cpp
 )
 
 if(MODELS_COLLADA_ENABLED)
@@ -141,7 +143,7 @@ install(FILES ${MODELS_PLUGIN_HEADERS}
 )
 
 # ===== STATUS OUTPUT =====
-message(STATUS "  Formats: 3DS, OBJ (read+write), DXF 3D entities")
+message(STATUS "  Formats: 3DS, OBJ (read+write), DXF 3D entities, STEP B-rep (read+write)")
 if(MODELS_COLLADA_ENABLED)
     message(STATUS "  [✓] COLLADA (.dae) - ENABLED")
 else()

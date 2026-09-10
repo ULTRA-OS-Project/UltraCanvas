@@ -684,6 +684,39 @@ add_test(
 )
 message(STATUS "    Test registered: ModelStorageTest")
 
+# ===== STEP READER / WRITER TEST =====
+# The first B-rep reader: ISO 10303-21 syntax as unit tests, and AP203/214
+# entity meanings against the hand-authored samples in media/models/STEP. The
+# samples are hand-authored on purpose - a reader tested only against files its
+# own writer produced proves nothing - and the geometric assertions (a meshed
+# block's signed volume, a pin's volume against pi*r^2*h, a rational patch's
+# radius) cannot come out right by accident.
+message(STATUS "  Building ModelStepTest...")
+add_executable(ModelStepTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelStepTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelStepTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelStepTest PRIVATE cxx_std_20)
+set_target_properties(ModelStepTest PROPERTIES
+    OUTPUT_NAME "ModelStepTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelStepTest
+    COMMAND ModelStepTest "${ULTRACANVAS_ROOT}/media/models/STEP"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelStepTest")
+
 # ===== B-REP STORAGE TEST =====
 # ModelStorage::BrepData - exact trimmed surfaces and the topology that closes
 # them into solids, plus the tessellator that approximates them. The assertions

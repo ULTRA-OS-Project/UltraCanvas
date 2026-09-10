@@ -53,10 +53,21 @@ enum class ModelFormat {
     ThreeMF,    // 3D Manufacturing Format (.3mf)
     AMF,        // Additive Manufacturing Format
 
-    // CAD, read for the mesh entities it carries — not for its B-rep solids,
-    // which are out of scope for this document (see the 3D model proposal).
+    // CAD, read for the mesh entities it carries. Its B-rep solids
+    // (3DSOLID / REGION / BODY / SURFACE) belong in ModelDocument::Brep; the
+    // reader for them is not written yet.
     DXF,        // AutoCAD Drawing Exchange Format
     DWG,        // AutoCAD Drawing
+
+    // Boundary representation: trimmed NURBS and analytic surfaces with the
+    // topology that closes them into solids. These carry no meshes at all —
+    // a reader fills ModelDocument::Brep, and the caller decides at what
+    // tolerance, if ever, to tessellate. See UltraCanvasBrepStorage.h.
+    STEP,       // ISO 10303 AP203/214/242 (.step, .stp)
+    IGES,       // ANSI/US PRO IGES 5.3 (.iges, .igs)
+    ACIS,       // ACIS SAT / SAB (.sat, .sab) — also DWG's 3DSOLID payload
+    Parasolid,  // Parasolid XT (.x_t, .x_b)
+    OpenNURBS,  // Rhinoceros 3DM (.3dm)
 
     // Point clouds
     PCD,        // Point Cloud Library
@@ -183,6 +194,15 @@ struct FormatCapabilities {
     bool CustomAttributes = false;  // arbitrary per-vertex properties
     bool Metadata = false;
     bool DoublePrecision = false;   // positions survive without float rounding
+
+    // Boundary representation: the format carries exact trimmed surfaces and
+    // topology rather than (or as well as) triangles, and the converter fills
+    // ModelDocument::Brep. A format with Brep and without Meshes — STEP, IGES,
+    // Parasolid — is not a broken mesh reader; it is a reader of something
+    // else, and a caller that wants triangles asks for TessellateBreps().
+    bool Brep = false;
+    bool NurbsSurfaces = false;     // as opposed to analytic surfaces only
+    bool Assemblies = false;        // several named bodies with placements
 };
 
 // ===== CONVERTER INTERFACE =====

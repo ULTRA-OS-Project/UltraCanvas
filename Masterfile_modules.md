@@ -93,6 +93,12 @@ the backing implementation can be replaced without affecting callers.
     `FormatCapabilities`, a `WarningCallback` a lossy conversion must use, and
     `Precision` (`NumericPrecision::Compact` / `Full`) choosing between six
     significant digits and exact round-trip digits for text formats.
+    The first B-rep converter is **STEP** (`Plugins/Models/STEP/`), split into
+    a Part 21 syntax layer (`UltraCanvasStepFile.h` - instances, complex
+    instances, strings, escapes, comments; it interprets nothing) and an
+    AP203/214/242 entity layer (`UltraCanvasStepConverter.h`) that fills
+    `ModelDocument::Brep` and writes it back out. Consult that header for what
+    it reads and what it deliberately does not.
     Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
     `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
     `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the

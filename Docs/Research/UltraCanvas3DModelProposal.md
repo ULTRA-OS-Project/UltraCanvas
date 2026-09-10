@@ -401,6 +401,36 @@ them wrongly produces a model that looks plausible and is not the part:
 - one solid placed by two nodes is meshed once and shared, and a face with its
   own material becomes its own primitive.
 
+`Tests/ModelStepTest.cpp` covers the first B-rep reader in two halves. The Part
+21 grammar is unit-tested on text written inline — doubled quotes, `\X2\`
+escapes, comments between any two tokens, `$` and `*`, out-of-order ids, a
+truncated file, and the complex instance that a rational NURBS can only be
+written as. The entity layer runs against three **hand-authored** samples in
+`media/models/STEP`, hand-authored precisely because a reader tested only
+against files its own writer produced proves nothing:
+
+- `Box.step` — a 10×20×30 mm block whose left face states its loop backwards
+  with a `.F.` bound orientation. It meshes to exactly 12 triangles with signed
+  volume 6000 and area 2200; a reader that ignores that flag builds one face
+  inside out, and the signed volume is the only measure that notices.
+- `Pin.step` — a cylinder in **inches**, through a `conversion_based_unit`
+  rather than an SI one (the case that arrives a thousand times the wrong size),
+  with a seam edge used twice by one loop and a presentation chain colouring the
+  body brass with one face overridden red. Its meshed volume is under π·r²·h and
+  closes on it as the tolerance tightens: 4998.8 → 5019.5 → 5026.1 of 5026.5.
+- `NurbsSheet.step` — a quarter cylinder as a *rational* B-spline surface, the
+  complex-instance form. The middle control column carries weight cos 45°, which
+  is what makes the patch an exact arc rather than a parabola, so every point of
+  it is 5 from the axis to 10⁻¹⁵. Its boundary carries no pcurves, so the meshed
+  area being a quarter cylinder's proves the surface was inverted correctly.
+
+Then each is written back out and re-read: same solids, faces, edges, surfaces,
+unit and colours, and — because the surfaces are exact on both sides — the *same
+meshed volume to 10⁻⁹*, not merely a close one. A unit cube of twelve triangles
+written as a faceted b-rep comes back as 12 faces, 8 vertices and 18 edges,
+which is Euler's formula for a triangulated cube and only holds if neighbouring
+facets share their edges.
+
 ## 5. Proposal — converters, in order
 
 Each step is independently mergeable and comes with a test and a demo page.
@@ -579,11 +609,38 @@ Recorded rather than hidden:
 - **The COLLADA texture chain is unexercised.** The sampler2D → surface → image
   indirection is implemented, but the sample's `<library_images/>` is empty, so
   no test covers it against a real file.
-- **No B-rep reader exists yet.** The structure holds STEP, IGES, ACIS,
-  Parasolid, OpenNURBS and DWG `3DSOLID`, and `BrepStorageTest` builds bodies of
-  every kind and meshes them; but nothing yet reads a `.step` or `.iges` file
-  into it. That is the next converter, and it is now a parsing job rather than a
-  design one — which is the whole reason for doing the structure first.
+- ~~**No B-rep reader exists yet**~~ — **STEP now reads and writes.**
+  `Plugins/Models/STEP/` is a Part 21 parser (`UltraCanvasStepFile.h`, syntax
+  only, including the complex instances every rational NURBS is written as) and
+  an AP203/214/242 entity layer (`UltraCanvasStepConverter.h`) that fills
+  `ModelDocument::Brep`. What it reads is listed in that header; what it does
+  not is below. It writes too, as an `advanced_brep_shape_representation`, and a
+  document holding meshes rather than solids is written as a faceted b-rep with
+  shared edges — which is what STEP has for a mesh and what a CAD system will
+  open. IGES, ACIS/SAT, Parasolid XT and OpenNURBS remain unread; the structure
+  holds what they carry, so each is now a parsing job.
+- **STEP assemblies arrive unplaced.** `next_assembly_usage_occurrence` and the
+  `representation_relationship_with_transformation` that goes with it are not
+  followed, so every part of a multi-part file arrives in its own coordinates.
+  The reader warns when it sees them rather than putting everything at the
+  origin and letting the user find out. Applying them means walking the product
+  structure, which is a bounded piece of work — but one with no sample here to
+  verify against, and untested assembly maths is worse than a warning.
+- **STEP PMI, tolerances and construction history are not read.** They are what
+  AP242 adds over AP203, and the geometry does not depend on them.
+  `BrepSolid::Extras` and `BrepFace::Extras` exist for them; nothing fills them
+  yet beyond the source instance id.
+- **A degenerate STEP edge without a pcurve is skipped.** A `vertex_loop` — a
+  cone's apex, a sphere's pole — bounds nothing that can be walked in parameter
+  space, so the face is bounded by its other loops and the parameterisation near
+  the pole is the tessellator's guess. Files that carry the pcurve are fine; the
+  hand-authored samples do not exercise it.
+- **The STEP writer emits no pcurves.** It relies on the reader inverting the
+  surface, which is exact for the analytic types and iterative for NURBS. That
+  round-trips through this reader — the test proves the meshed volume is
+  identical — but a receiving system with a stricter trimming model may prefer
+  them, and a face on a wildly non-monotonic NURBS patch is where projection
+  would be worst.
 - **B-rep tessellation is bounded, not optimal.** The face mesher samples the
   trimming loops to the chord tolerance, decimates what the tolerance does not
   need, ear-clips the region with its holes bridged in, seeds a grid of interior
