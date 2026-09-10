@@ -1885,7 +1885,7 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     searchInput = CreateTextInput("ufl-search", 0, 0, 200, 24);
     searchInput->SetFontSize(kUiFontSize);
-    searchInput->SetPlaceholder("Search");
+    searchInput->SetPlaceholder("Filter / Search");
     {
         // Borderless inside the box - the box draws the frame.
         TextInputStyle st = searchInput->GetStyle();
