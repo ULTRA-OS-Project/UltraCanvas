@@ -9,11 +9,13 @@
 #ifdef ULTRACANVAS_PLUGIN_LATEX
 
 #include "Plugins/LaTeX/UltraCanvasLaTeXBackend.h"
+#include "Plugins/LaTeX/UltraCanvasMathRender.h"
 
 #include "microtex.h"
 #include "render/render.h"
 
 #include <algorithm>
+#include <cmath>
 #include <exception>
 
 namespace UltraCanvas {
@@ -65,11 +67,20 @@ void UltraCanvasLaTeXViewImpl::SetMaxWidth(float pixels) {
     RequestRedraw();
 }
 
+void UltraCanvasLaTeXViewImpl::SetDisplayStyle(bool display) {
+    if (displayStyle_ == display) return;
+    displayStyle_ = display;
+    needsReparse_ = true;
+    InvalidateLayout();
+    RequestRedraw();
+}
+
 // ===== engine =====
 
 void UltraCanvasLaTeXViewImpl::ReleaseRender() {
     delete render_;
     render_ = nullptr;
+    native_ = MathTypesetResult{};
 }
 
 bool UltraCanvasLaTeXViewImpl::EnsureRender(IRenderContext* ctx) {
@@ -79,8 +90,34 @@ bool UltraCanvasLaTeXViewImpl::EnsureRender(IRenderContext* ctx) {
         engineInitFailedGeneration_ != GetLaTeXEngineFontDirGeneration()) {
         needsReparse_ = true;
     }
-    if (!needsReparse_) return render_ != nullptr;
-    if (!ctx) return render_ != nullptr; // can't (re)parse without a context yet
+    if (!needsReparse_) return render_ != nullptr || native_.root != nullptr;
+    if (!ctx) return render_ != nullptr || native_.root != nullptr; // can't (re)parse without a context yet
+
+    if (UseNativeLaTeXEngine()) {
+        ReleaseRender();
+        if (!EnsureNativeLaTeXEngineInitialized()) {
+            lastError_ = GetNativeLaTeXEngineError();
+            engineInitFailed_ = true;
+            engineInitFailedGeneration_ = GetLaTeXEngineFontDirGeneration();
+            needsReparse_ = false;
+            return false;
+        }
+        engineInitFailed_ = false;
+        const std::string tex = TrimWS(latex_);
+        needsReparse_ = false;
+        if (tex.empty()) { lastError_.clear(); return false; }
+        MathContextTextFallback fallback(ctx);
+        MathTypesetOptions opt;
+        opt.fontSize = textSize_;
+        opt.color = color_.ToARGB();
+        opt.maxWidth = maxWidth_;
+        opt.style = displayStyle_ ? MathStyle::Display() : MathStyle::Text();
+        opt.textFallback = &fallback;
+        native_ = GetSharedMathEngine().Typeset(tex, opt);
+        // The formula renders even with errors; report the first one.
+        lastError_ = native_.diagnostics.empty() ? std::string() : native_.diagnostics.front().message;
+        return native_.root != nullptr;
+    }
 
     if (!EnsureLaTeXEngineInitialized()) {
         lastError_ = "math font latinmodern-math.clm2 not found (engine not initialised)";
@@ -108,7 +145,9 @@ bool UltraCanvasLaTeXViewImpl::EnsureRender(IRenderContext* ctx) {
             maxWidth_,
             textSize_,
             textSize_ / 3.f,
-            static_cast<microtex::color>(color_.ToARGB()));
+            static_cast<microtex::color>(color_.ToARGB()),
+            true,
+            microtex::OverrideTeXStyle{true, displayStyle_ ? microtex::TexStyle::display : microtex::TexStyle::text});
         lastError_.clear();
     } catch (const std::exception& e) {
         lastError_ = e.what();
@@ -129,7 +168,7 @@ const Color     kErrorColor(180, 40, 40, 255);
 } // namespace
 
 ITextLayout* UltraCanvasLaTeXViewImpl::EnsureErrorLayout(IRenderContext* ctx) {
-    if (render_ || lastError_.empty()) {
+    if (render_ || native_.root || lastError_.empty()) {
         errorLayout_.reset();
         errorLayoutText_.clear();
         return nullptr;
@@ -174,6 +213,9 @@ Size2Df UltraCanvasLaTeXViewImpl::MeasureOwnContent(std::optional<float> /*defin
         return Size2Df(static_cast<float>(render_->getWidth()),
                        static_cast<float>(render_->getHeight()));
     }
+    if (native_.root) {
+        return Size2Df(std::ceil(native_.width), std::ceil(native_.TotalHeight()));
+    }
     // No render: size to the error message so it is laid out (a 0x0 element
     // is culled by its container and would never get to draw the message).
     if (ITextLayout* err = EnsureErrorLayout(ctx)) {
@@ -190,7 +232,18 @@ void UltraCanvasLaTeXViewImpl::Render(IRenderContext* ctx, const Rect2Df& dirtyR
     const int contentX = GetBorderLeftWidth() + GetPaddingLeft();
     const int contentY = GetBorderTopWidth()  + GetPaddingTop();
 
-    if (!EnsureRender(ctx) || !render_) {
+    EnsureRender(ctx);
+    if (native_.root) {
+        ctx->PushState();
+        {
+            const Rect2Df crect = GetLocalContentRect();
+            if (crect.width > 0 && crect.height > 0) ctx->ClipRect(crect);
+            DrawMathBox(ctx, *native_.root, contentX, contentY + native_.height, color_);
+        }
+        ctx->PopState();
+        return;
+    }
+    if (!render_) {
         // Nothing could be typeset: show the reason instead of a blank box.
         // The element is the LaTeX view itself painting its own content.
         if (ITextLayout* err = EnsureErrorLayout(ctx)) {

@@ -48,6 +48,16 @@ Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 >   LaTeX; the ODT/DOCX readers emit formulas as `$latex$` runs, which the
 >   TextArea markdown pipeline renders.
 >
+> **2026-09:** LaTeX joined the same model. `WordDocumentFormat::LaTeX` and
+> `UCWordDocumentIO::LoadLaTeX` dispatch `.tex` files (detected by their
+> `\documentclass` head or extension) to
+> `Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader`, and the model
+> gained `RichTextRun::math` (inline formula source) and
+> `RichBlockType::MathBlock` (display formula) — `ToMarkdown` writes them as
+> `$…$` and `$$` fences, `FromMarkdown` reads the fences back, the ODT/DOCX
+> writers store a block as a centred `$$…$$` paragraph. See
+> [`UltraCanvasLaTeXDocumentReader.md`](UltraCanvasLaTeXDocumentReader.md).
+>
 > Remaining from the plan: read-only rich view via `ToHTML()`+HTMLConverter
 > (blocked on the eBook/HTML subsystem not yet being part of the build),
 > `ConvertFile` once the universal FileLoader API exists, and the Phase-5

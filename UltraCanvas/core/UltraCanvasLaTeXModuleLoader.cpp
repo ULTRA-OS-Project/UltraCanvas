@@ -37,6 +37,10 @@ struct Module {
     UltraCanvasLaTeXModule_CreateViewFn       create   = nullptr;
     UltraCanvasLaTeXModule_DestroyViewFn      destroy  = nullptr;
     UltraCanvasLaTeXModule_SetFontSearchDirFn setFont  = nullptr;
+    UltraCanvasLaTeXModule_TypesetInlineFn typesetInline = nullptr;
+    UltraCanvasLaTeXModule_InlineMetricsFn inlineMetrics = nullptr;
+    UltraCanvasLaTeXModule_DrawInlineFn    drawInline    = nullptr;
+    UltraCanvasLaTeXModule_ReleaseInlineFn releaseInline = nullptr;
 };
 
 std::once_flag g_loadOnce;
@@ -162,6 +166,14 @@ void LoadOnce() {
         g_module.destroy = destroyFn;
         g_module.setFont = reinterpret_cast<UltraCanvasLaTeXModule_SetFontSearchDirFn>(
             Sym(h, ULTRACANVAS_LATEX_SYM_SET_FONT_DIR));
+        g_module.typesetInline = reinterpret_cast<UltraCanvasLaTeXModule_TypesetInlineFn>(
+            Sym(h, ULTRACANVAS_LATEX_SYM_TYPESET_INLINE));
+        g_module.inlineMetrics = reinterpret_cast<UltraCanvasLaTeXModule_InlineMetricsFn>(
+            Sym(h, ULTRACANVAS_LATEX_SYM_INLINE_METRICS));
+        g_module.drawInline = reinterpret_cast<UltraCanvasLaTeXModule_DrawInlineFn>(
+            Sym(h, ULTRACANVAS_LATEX_SYM_DRAW_INLINE));
+        g_module.releaseInline = reinterpret_cast<UltraCanvasLaTeXModule_ReleaseInlineFn>(
+            Sym(h, ULTRACANVAS_LATEX_SYM_RELEASE_INLINE));
 
         if (g_module.setFont && !g_fontDir.empty()) g_module.setFont(g_fontDir.c_str());
         return;
@@ -202,6 +214,25 @@ std::shared_ptr<UltraCanvasLaTeXView> CreateLaTeXView(
     return std::shared_ptr<UltraCanvasLaTeXView>(raw, [destroy](UltraCanvasLaTeXView* p) {
         if (p && destroy) destroy(p);
     });
+}
+
+// ----- inline math entry points (used by core/UltraCanvasInlineMath.cpp) -----
+
+struct LaTeXInlineEntryPoints {
+    UltraCanvasLaTeXModule_TypesetInlineFn typeset = nullptr;
+    UltraCanvasLaTeXModule_InlineMetricsFn metrics = nullptr;
+    UltraCanvasLaTeXModule_DrawInlineFn draw = nullptr;
+    UltraCanvasLaTeXModule_ReleaseInlineFn release = nullptr;
+};
+
+bool GetLaTeXInlineEntryPoints(LaTeXInlineEntryPoints& out) {
+    if (!IsLaTeXModuleAvailable()) return false;
+    if (!g_module.typesetInline || !g_module.inlineMetrics || !g_module.drawInline || !g_module.releaseInline) return false;
+    out.typeset = g_module.typesetInline;
+    out.metrics = g_module.inlineMetrics;
+    out.draw = g_module.drawInline;
+    out.release = g_module.releaseInline;
+    return true;
 }
 
 void UnloadLaTeXModule() {

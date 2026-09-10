@@ -12,13 +12,14 @@
 // the app sandbox, and the APK's assets have been unpacked to $HOME/share
 // (where SetResourcesDir's Android arm looks), so path-based
 // resource/config/font code works unchanged.
-// Version: 1.1.0
-// Last Modified: 2026-09-01
+// Version: 1.2.0
+// Last Modified: 2026-09-07
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasAndroidApplication.h"
 #include "UltraCanvasAndroidAssets.h"
+#include "UltraCanvasAndroidLog.h"
 
 #include <android/looper.h>
 #include <android/native_activity.h>
@@ -67,6 +68,13 @@ namespace {
 } // namespace
 
 void android_main(android_app* app) {
+    // First, before anything can produce a diagnostic: on Android stdout and
+    // stderr go to /dev/null, so without this every warning from the
+    // dependency stack (fontconfig, cairo, Pango) and every std::cout/cerr
+    // call site in shared framework code is lost. debugOutput reaches logcat
+    // on its own (UltraCanvasDebug.h); this covers everything that does not.
+    UltraCanvas::RedirectStdioToLogcat();
+
     UltraCanvas::UltraCanvasAndroidApplication::SetAndroidApp(app);
     ExportSandboxEnvironment(app);
 

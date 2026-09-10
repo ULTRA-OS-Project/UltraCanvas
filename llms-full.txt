@@ -152,7 +152,8 @@ The following features are planned for future releases:
 -   **UltraOS support** - Native support for UltraOS platform
 -   **Vulkan backend** - Additional GPU rendering backend
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
--   **SmartHome drivers** - Device drivers for Matter, Thread, and Zigbee protocols
+-   **SmartHome drivers** - Device drivers for the protocols the module specifies:
+    Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
 -   **Wayland support** - Native Wayland windowing on Linux
 
 ----------
@@ -1806,9 +1807,133 @@ for the full search order.
 
 ### Smart Home module
 
+The engine, the public API and the dashboard widgets need nothing beyond the
+core. Each protocol backend is a separate CMake option and **every one is OFF
+by default**, so a default build of this module still pulls in no third party.
+Turning one on requires its vendor SDK to be installed; CMake fails at
+configure time naming what is missing.
+
 | Purpose | Linux | macOS | Windows |
 |---|---|---|---|
-| No additional third party | (core only) | (core only) | (core only) |
+| Engine, public API, dashboard widgets | (core only) | (core only) | (core only) |
+| Matter backend (`ULTRACANVAS_SMARTHOME_MATTER`, default OFF) | a **built** connectedhomeip (Apache 2; brings its own mbedTLS), packaged by `SmartHome/scripts/package-chip.sh` — recipe below | same | not tried (the SDK's Linux platform layer) |
+| Thread backend (`ULTRACANVAS_SMARTHOME_THREAD`, default OFF) | a **built** OpenThread, `OT_PLATFORM=posix` (BSD 3-Clause; brings its own mbedTLS) — recipe below | same | not tried (OpenThread's POSIX layer) |
+| Zigbee backend (`ULTRACANVAS_SMARTHOME_ZIGBEE`, default OFF) | (core only) — ASH and EZSP implemented in-tree; needs a serial NCP at run time | same | same |
+| Z-Wave backend (`ULTRACANVAS_SMARTHOME_ZWAVE`, default OFF) | OpenZWave 1.6 (**LGPL 2.1**, `libopenzwave1.6-dev`, **linked dynamically**) | OpenZWave 1.6 | OpenZWave 1.6 |
+| KNX backend (`ULTRACANVAS_SMARTHOME_KNX`, default OFF) | (core only) — KNXnet/IP over sockets; **builds today** | (core only) | (core only) |
+
+> **mbedTLS, not OpenSSL.** Matter's device attestation and OpenThread's
+> commissioner both need X.509 and ECDSA on P-256. Neither asks UltraCrypt for
+> it — connectedhomeip carries its own attestation credentials provider — so the
+> question is only which backend those SDKs are built against. mbedTLS is what
+> both default to, so they share one stack; it is ~1 MB static against OpenSSL's
+> ~4–5 MB; and OpenSSL is linked only on Linux and Android today, so it would be
+> a *new* dependency on Windows and macOS. libsodium was never a candidate here:
+> it has no P-256 and no X.509, so UltraCrypt's 2026-08-10 backend ruling is
+> untouched by this.
+
+> **Z-Wave is LGPL, and the link is enforced.** OpenZWave is LGPL 2.1, unlike
+> everything else in this table, and its packages ship `libopenzwave.a`
+> *alongside* `libopenzwave.so` — so a plain `-lopenzwave` can quietly pull the
+> archive in and carry the relinking obligation into the binary. CMake asks for
+> the shared object by name and refuses to configure if only the static one is
+> present. `SmartHome/tests/ZWaveLinkTest.cpp` is the runtime half; after any
+> change to how this is linked, check:
+>
+> ```
+> ldd  <binary> | grep openzwave           # must list libopenzwave.so
+> nm -C <binary> | grep " T OpenZWave::"   # must be empty
+> ```
+
+> **Building OpenThread for the Thread backend.** OpenThread is not packaged
+> and does not install (`cmake --install` yields one binary and no headers or
+> archives), so a host links against its build tree. This is the build that
+> the backend was verified against (checkout `f34c5e5`, 2026-09):
+>
+> ```
+> git clone https://github.com/openthread/openthread.git
+> cd openthread
+> git submodule update --init third_party/mbedtls/repo     # vendored mbedTLS
+> cmake -S . -B build -G Ninja -DOT_PLATFORM=posix \
+>       -DOT_FTD=ON -DOT_MTD=OFF -DOT_RCP=OFF -DOT_UPTIME=ON \
+>       -DOT_COMMISSIONER=ON -DOT_JOINER=ON -DOT_BORDER_ROUTER=ON \
+>       -DOT_SRP_CLIENT=ON -DOT_DNS_CLIENT=ON -DOT_ECDSA=ON \
+>       -DOT_PING_SENDER=ON -DOT_UDP_FORWARD=ON \
+>       -DOT_DAEMON=OFF -DOT_APP_CLI=OFF -DOT_APP_NCP=OFF -DOT_APP_RCP=OFF \
+>       -DOT_COMPILE_WARNING_AS_ERROR=OFF -DCMAKE_BUILD_TYPE=Release
+> cmake --build build
+> ```
+>
+> Two of those switches are not obvious: `OT_UPTIME=ON`, because the posix
+> core config turns on uptime-prefixed logging and the build stops in
+> `log.cpp` without it; and `OT_RCP=OFF`, because the RCP-only library does
+> not compile under that same config and a host does not need it. The
+> mbedTLS submodule's own `framework` sub-submodule may fail to fetch; it is
+> not needed. Then point UltraCanvas at both trees:
+>
+> ```
+> cmake -DULTRACANVAS_SMARTHOME_THREAD=ON \
+>       -DOPENTHREAD_SOURCE_DIR=/path/to/openthread \
+>       -DOPENTHREAD_BUILD_DIR=/path/to/openthread/build ..
+> ```
+>
+> `SmartHome/tests/ThreadLinkTest.cpp` checks the link is real: the backend's
+> `GetHardwareInfo()` must carry `otGetVersionString()`'s answer. At run time
+> the backend needs a radio co-processor, named by a URL such as
+> `spinel+hdlc+uart:///dev/ttyACM0`; OpenThread's `otSysInit` exits the
+> process if that device is missing.
+
+> **Building connectedhomeip for the Matter backend.** The SDK's own
+> `bootstrap.sh` fetches its toolchain from CIPD (chrome-infra-packages),
+> and pigweed from googlesource; neither is reachable from every network,
+> so this is the route that worked without them (checkout of 2026-09-09,
+> Ubuntu 24.04):
+>
+> ```
+> sudo apt install generate-ninja ninja-build              # gn, ninja
+> git clone --depth 1 https://github.com/project-chip/connectedhomeip.git chip
+> cd chip
+> # pigweed lives on googlesource; the GitHub mirror carries the same commits
+> git config submodule.third_party/pigweed/repo.url https://github.com/google/pigweed.git
+> git submodule update --init --depth 1 \
+>     third_party/pigweed/repo third_party/nlassert/repo third_party/nlio/repo \
+>     third_party/mbedtls/repo third_party/jsoncpp/repo third_party/perfetto/repo \
+>     third_party/inipp/repo examples/common/QRCode/repo third_party/uriparser/repo \
+>     third_party/editline/repo third_party/libwebsockets/repo
+> python3 -m venv ../chipvenv && . ../chipvenv/bin/activate
+> pip install -r scripts/setup/requirements.build.txt -c scripts/setup/constraints.txt requests
+> # bootstrap would have written this; for a gcc host build it only has to exist
+> touch build_overrides/pigweed_environment.gni
+> # the ZAP code generator, from its GitHub release (the tag without a suffix)
+> python3 scripts/tools/zap/zap_download.py --zap RELEASE --zap-version v2026.08.24 --extract-root ../zap
+> export ZAP_INSTALL_PATH=../zap/zap-v2026.08.24 PW_ENVSETUP_NO_CIPD=1
+> gn gen --root=examples/chip-tool out/host --args='chip_crypto="mbedtls" is_debug=false chip_build_tests=false'
+> ninja -C out/host chip-tool
+> # collect what chip-tool links into one archive + a link list
+> /path/to/UltraCanvas/SmartHome/scripts/package-chip.sh . out/host ../chip-package
+> ```
+>
+> If `ninja` stops on a missing `third_party/.../repo/...` source, that
+> submodule is one this list does not name for your checkout; add it to the
+> `git submodule update` line. A submodule whose fetch was interrupted can be
+> left half-initialised — `rm -rf .git/modules/<name> third_party/<name>/repo`
+> and fetch it again. Then point UltraCanvas at the three directories:
+>
+> ```
+> cmake -DULTRACANVAS_SMARTHOME_MATTER=ON \
+>       -DCHIP_SOURCE_DIR=/path/to/chip \
+>       -DCHIP_BUILD_DIR=/path/to/chip/out/host \
+>       -DCHIP_PACKAGE_DIR=/path/to/chip-package ..
+> ```
+>
+> The backend is compiled with chip-tool's project configuration
+> (`examples/chip-tool/include/CHIPProjectAppConfig.h`), because the packaged
+> objects were, and that configuration shapes the SDK's structures.
+> `SmartHome/tests/MatterLinkTest.cpp` checks the link is real. At run time
+> the controller needs a writable storage directory (its fabric and
+> credentials persist there), mDNS on the network, and — for Thread devices —
+> a Thread border router on the same LAN; Bluetooth commissioning goes
+> through BlueZ over D-Bus, which is why `gio`/`glib` appear on the link line.
 
 ### Ultra AI module
 
@@ -1974,9 +2099,10 @@ questions that come after it:
   real `ClipboardManager`, real activity lifecycle — so every Android-specific
   path this backend added (§4) is exercisable without a phone. The parts an
   emulator does *not* prove are GPU-driver behaviour and real touch hardware.
-- **One concrete gap to close before the first run:** the backend logs through
-  `std::cerr`/`std::cout`, and on Android those go nowhere. Fix that before
-  spending a day guessing why a black screen is black (§5.3).
+- **The first run is now debuggable** — it was not when this was written. On
+  Android stdout and stderr are `/dev/null`, so every framework diagnostic and
+  every cairo/Pango/fontconfig warning was being discarded; both now reach
+  logcat (§5.3).
 - **Neither this container nor the repository's CI can run any of it today.**
   No `/dev/kvm`, no `vmx`/`svm`, and `CONFIG_ANDROID_BINDER_IPC` is unset (§8).
   The first run happens on a workstation or on a GitHub-hosted `ubuntu-latest`
@@ -2161,31 +2287,31 @@ For a native crash, `adb bugreport` or `adb pull /data/tombstones/` and then:
 adb logcat | $ANDROID_NDK_HOME/ndk-stack -sym path/to/obj/local/x86_64
 ```
 
-### 5.3 Make the first run debuggable — do this *before* the first run
+### 5.3 Making the first run debuggable — done
 
-The backend currently emits diagnostics through `std::cerr`/`std::cout` (the
-only such calls under `OS/Android/` are the nine in
-`GLContextManagerEGL_Android.cpp`, and the framework's shared logging uses the
-same streams). **On Android, a native app's stdout and stderr go to
-`/dev/null`.** A first run therefore produces a black screen and no
-explanation.
+**On Android a native app's stdout and stderr go to `/dev/null`**, so before
+this was fixed a first run would have produced a black screen and no
+explanation. Both halves of the framework's output are now routed to logcat:
 
-Two ways out, in order of preference:
+| Source | Where it goes | Tag |
+|---|---|---|
+| `debugOutput` — the framework's diagnostic stream, incl. the backend's 20 call sites | logcat directly, via a `streambuf` sink in `UltraCanvasDebug.h` | `UltraCanvas` |
+| Everything else — cairo/Pango/fontconfig warnings, the EGL manager, the ~50 legacy `std::cout`/`std::cerr` sites in core | a stdio pump installed by `android_main` (`OS/Android/UltraCanvasAndroidLog.{h,cpp}`) | `UltraCanvas-stdio` |
 
-1. **Add a logcat sink** — route the framework's logging through
-   `__android_log_print` under `#ifdef __ANDROID__` (tag e.g. `UltraCanvas`,
-   which then makes `adb logcat -s UltraCanvas:V` the one command a newcomer
-   needs). This is a small, self-contained change and the right permanent
-   answer. It is *not* made in this document because nothing here can compile
-   it — the environment has no NDK, and the repository's rule is that Android
-   code lands compiled ([port investigation §6, lesson 3](AndroidPortInvestigation.md)).
-2. **Redirect stdio at runtime**, as a stopgap on an emulator only:
-   `adb root && adb shell setprop log.redirect-stdio true`, then restart the
-   app. Requires a non-Play (`default`/`aosp`) image and only affects processes
-   started afterwards.
+```sh
+adb logcat -s UltraCanvas:V UltraCanvas-stdio:V
+adb shell setprop debug.ultracanvas.log 1     # an APK has no environment to set
+```
 
-This is the highest-value follow-up in this document: it costs an hour and it
-determines whether the first device run takes a day or a week.
+The sink went into `UltraCanvasDebug.h` rather than into the backend because
+that header already solves this exact problem for Windows GUI-subsystem
+builds, which have no console either — same mechanism, different sink. The
+system property is the Android arm of `ULTRACANVAS_DEBUG_LOG`, which an APK
+cannot be given.
+
+The stopgap this replaces, still worth knowing for a build that predates it:
+`adb root && adb shell setprop log.redirect-stdio true`, then restart the app
+(non-Play image only, and only affects processes started afterwards).
 
 ---
 
@@ -2233,8 +2359,9 @@ Notes that decide whether this is useful or noise:
 
 - **The assertion must be real.** "The activity started" is nearly worthless —
   a crashed native library still leaves an activity. Assert on a line the app
-  logs after its first successful composite (which needs §5.3 done first), and
-  keep the screenshot as an artifact for the human.
+  logs after its first successful composite — `adb logcat -s UltraCanvas:V`
+  now carries those (§5.3) — and keep the screenshot as an artifact for the
+  human.
 - **Two ABIs, one job.** Once `arm64-v8a` and `x86_64` both build, CI runs the
   x86_64 one; arm64 is covered by the compile gate plus a manual device run.
 - **The sysroot must be cached**, not rebuilt: a from-scratch vcpkg build of
@@ -2302,9 +2429,9 @@ compile gate rather than a test.
 
 ## 9. Recommended order of work
 
-1. **Add the logcat sink** (§5.3). One hour, and every step after it is
-   cheaper. Land it compiled, through the existing `android-syntax-check.sh`
-   gate.
+1. ~~**Add the logcat sink** (§5.3)~~ — **done.** Both the `debugOutput` sink
+   and the stdio pump are in, type-checked by the existing
+   `android-syntax-check.sh` gate.
 2. **Build the `x64-android` sysroot first**:
    `scripts/android-bootstrap-sysroot.sh x86_64` (then `--with-net`). Expect
    the iteration the script's header predicts — pango, cairo, glib.
@@ -2499,7 +2626,7 @@ exists. Required files and their contracts:
 | `UltraCanvasAndroidFileLoader.cpp` | `NotifyRecentFile` stub |
 | `GLContextManagerEGL_Android.cpp` | Near-copy of `GLContextManagerEGL_Linux.cpp` (201 lines, zero X11 references) with `eglBindAPI(EGL_OPENGL_ES_API)`, `EGL_OPENGL_ES3_BIT`, and the desktop core/compat profile attribs removed |
 | `UltraNetSupport.cpp` | Copy of the Linux one (pure `getenv`, fully bionic-compatible); optionally improved later via JNI `ConnectivityManager` proxy query |
-| `UltraNetTlsImpl.cpp` | Copy of the Linux OpenSSL implementation; must ship a CA bundle (`SSL_CTX_set_default_verify_paths` finds nothing in the app sandbox) or bridge to Android's trust store via JNI |
+| `UltraNetTlsImpl.cpp` | Copy of the Linux OpenSSL implementation; must ship a CA bundle (`SSL_CTX_set_default_verify_paths` finds nothing in the app sandbox) or bridge to Android's trust store via JNI. **Status: done, and neither of those two ways.** The Linux file is reused as-is with an `__ANDROID__` arm that reads the platform's own roots straight off disk (`/apex/com.android.conscrypt/cacerts`, else `/system/etc/security/cacerts`) — no JNI, and no bundled roots to go stale. They must be enumerated rather than used as a hash directory: Android names them with the pre-1.0 subject hash, so a modern `X509_LOOKUP_hash_dir` finds nothing and says nothing |
 | `UltraNetDnsImpl.cpp` | Do **not** port the Linux one — it uses `res_ninit`/`res_nquery`/`ns_parserr`, which bionic does not export, and links `-lresolv`, which doesn't exist on Android. Use the existing **c-ares** path instead: when `ULTRANET_HAS_CARES` is set, `core/UltraNet/UltraNetDnsCares.cpp` supplies the resolver and the per-platform DNS file is excluded entirely. Make c-ares mandatory for the Android target |
 
 ### 3.3 Event loop and lifecycle
@@ -2640,7 +2767,7 @@ device".**
 | X11/Xcursor/Xrandr, GTK3, GLX, desktop OpenGL | Never referenced by the Android platform arm |
 | librsvg | Skip (Rust+gobject; SVG falls back gracefully) |
 | GStreamer | Skip video for phase 1 (`VideoBackendNull` exists exactly for this); the right Android backend later is MediaCodec/ExoPlayer, not GStreamer-android |
-| miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free |
+| miniaudio | **Works on Android out of the box** (AAudio/OpenSL backends already in the vendored header) — audio is nearly free. **Status: on.** It was the one entry in the Android CMake block whose dependency is vendored rather than pending in the sysroot, so it needed no link changes at all (AAudio and OpenSL ES are both reached through `dlopen`). The CI syntax check compiles the backend TU — and with it the whole `MINIAUDIO_IMPLEMENTATION` — for aarch64 |
 | Optional audio codecs (FLAC/vorbis/opus/LAME) | All plain C with known NDK builds; each just unlocks a format |
 | MuPDF (PDF plugin) | Official Android build exists; defer to a later phase |
 | tesseract/leptonica (OCR), zbar, CDR (libcdr/ICU), Vectorizer (Rust) | Defer / off by default for Android |
@@ -2784,8 +2911,9 @@ Process lessons for the Android effort:
   committed-text path.
 - Native dialogs via SAF/AlertDialog with the async bridge + `content://`
   URI adapter.
-- UltraNet fully on: vendored curl + OpenSSL + c-ares, CA bundle from the
-  system trust store via JNI.
+- UltraNet fully on: vendored curl + OpenSSL + c-ares. ~~CA bundle from the
+  system trust store via JNI~~ — done, and without JNI: the roots are read
+  from the platform's cacerts directory directly (§3.2).
 - EGL/GLES context manager; re-enable GL surfaces.
 
 **Phase 3 — parity extras**
@@ -2793,7 +2921,9 @@ Process lessons for the Android effort:
   touch path), and pinch/rotate recognition on top of it~~ — done. Recognition
   lives in the core (`UpdateTouchGesture`) rather than the Android backend,
   since the touch stream and the geometry are both platform-neutral.
-- Audio (miniaudio AAudio — near-free), then video via MediaCodec backend.
+- ~~Audio (miniaudio AAudio — near-free)~~ — done, and it was indeed free:
+  enabling the existing option, no new dependency, no new link line. Video via
+  a MediaCodec backend is still open.
 - PDF (MuPDF android), image pipeline decision (trimmed libvips vs.
   platform decoders), printing via `PrintManager`.
 - Plugin packaging as `jniLibs`, Play-store packaging polish.
@@ -3450,7 +3580,8 @@ The following features are planned for future releases:
 -   **UltraOS support** - Native support for UltraOS platform
 -   **Vulkan backend** - Additional GPU rendering backend
 -   **3D model support** - Loading and rendering .3ds, .3dm formats
--   **SmartHome drivers** - Device drivers for Matter, Thread, and Zigbee protocols
+-   **SmartHome drivers** - Device drivers for the protocols the module specifies:
+    Matter, Thread, Zigbee, Z-Wave, WiFi and Bluetooth (see `Docs/Modules/Smarthome/README.md`)
 -   **Wayland support** - Native Wayland windowing on Linux
 
 ----------
@@ -18614,7 +18745,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `Models3D` | 3D | stl (plus obj, ply, 3ds, 3mf, gltf, glb, dae, fbx as a file category) | a shaded three-quarter view of the mesh, rasterized in software; only STL is rendered so far, the other formats keep their glyph |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
-| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx read through the rich-document reader and HTML stripped of its tags |
+| `Docs` | Docs | odt, doc, docx, rtf, md, html, tex, and the e-book containers | the same page, with odt / doc / docx / tex read through the rich-document reader (a `.tex` shows its title and sections, not its markup) and HTML stripped of its tags |
 | `Spreadsheets` | Spreadsheets | ods, xlsx, csv, tsv | the first cells of the first sheet as a small grid (xls keeps its glyph). The grid's column widths follow the content: a column is as wide as its widest shown cell, floored at about six characters so text stays recognizable — unless its own content is narrower (a column of one-digit values takes only what it needs). Columns that then no longer fit are clipped at the right edge instead of squeezing every column down to a letter |
 | `Videos` | Videos | mp4, mkv, avi, mov, webm, wmv | the poster frame, when a video backend is available |
 | `Audio` | Audio | mp3, flac, wav, ogg, m4a, m4b, aac, opus | **nothing** — no thumbnail producer here reads cover art yet, so the Thumbnails switches report audio as unsupported. The Detail view switches are the point of this kind: a host's viewer does play the file |
@@ -26412,16 +26543,161 @@ CreateKanbanBoardFromText(id, x, y, w, h, mermaidText, design, &error);
 ```
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md
+==============================================================================
+
+# UltraCanvasLaTeXDocumentReader
+
+The LaTeX **document-subset importer**: reads an `article`-style `.tex`
+source and produces the shared rich-document model (`UCRichDocument`) that
+the ODT and DOCX readers fill, so a LaTeX document opens, previews and
+renders wherever those do. It is Phase 3 of
+[`UltraCanvasLaTeXEngineProposal.md`](UltraCanvasLaTeXEngineProposal.md).
+
+It is an importer, not a TeX interpreter. A fixed vocabulary of commands and
+environments is mapped onto paragraphs, headings, lists, tables, images,
+code blocks and formula runs; user macros are expanded; everything outside
+the vocabulary degrades to its arguments' text and is reported as a
+diagnostic. Formulas are **not** typeset here: they travel as LaTeX source
+(inline `math` runs and `MathBlock` blocks) and are set by the
+[math engine](UltraCanvasMathEngine.md) wherever the document is shown,
+through `UltraCanvasTextArea`'s Markdown mode and `UltraCanvasInlineMath`.
+
+| Piece | Where |
+|---|---|
+| `UltraCanvasLaTeXDocumentReader` | `include/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h`, `Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp` |
+| Front door for all word-processing formats | `UCWordDocumentIO::Load` / `LoadLaTeX`, `DetectWordDocumentFormat` (`WordDocumentFormat::LaTeX`) in `Plugins/Documents/Word/UltraCanvasWordDocumentIO.h` |
+| The model | `UCRichDocument` (`RichTextRun::math`, `RichBlockType::MathBlock` are the parts added for LaTeX) |
+| Tests | `Tests/LaTeXDocumentTest.cpp` (runs the shipped `media/LaTex` corpus too) |
+
+The reader is compiled into the core library next to the Word module; it
+needs no plugin and no render context.
+
+## Reading a document
+
+```cpp
+#include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
+
+UCRichDocument document;
+std::string error;
+std::vector<LaTeXDocumentDiagnostic> diagnostics;
+if (!UltraCanvasLaTeXDocumentReader::Load("paper.tex", document, error, &diagnostics)) {
+    // unreadable file or no document content at all
+}
+for (const auto& d : diagnostics) {
+    // d.line, d.message — e.g. "unknown command \foo (arguments kept as text)"
+}
+std::string markdown = document.ToMarkdown(options);   // what the TextArea renders
+```
+
+`Parse(source, document, diagnostics, options)` does the same on a string.
+`Load` fills `LaTeXDocumentReadOptions::baseDirectory` with the file's
+directory, which is where `\includegraphics`, `\graphicspath`, `\input` and
+`\include` resolve. `numberSections` (default on) prefixes unstarred
+sectioning commands with article-style numbers ("2.1 Method").
+
+Most callers never touch the reader directly: `UCWordDocumentIO::Load`
+dispatches to it when `DetectWordDocumentFormat` classifies the file as
+LaTeX, which it does by content (a `\documentclass`, `\begin{document}` or
+sectioning command at the head, comments skipped) or by a `.tex` / `.latex`
+/ `.ltx` extension on a text file holding commands. That is the path taken
+by `UltraCanvasFileLoader::LoadTextDocument`, the Filer's preview page, the
+Media Viewer (a `.tex` opens as the rendered document, not its markup) and
+the demo's "LaTeX Documents" page. There is no LaTeX writer;
+`UCWordDocumentIO::Save` to `.tex` fails with a message.
+
+The Texter editor keeps opening `.tex` files as source: a text editor edits
+the markup, and the rendered form has no way back to it.
+
+## What is mapped
+
+| LaTeX | Model |
+|---|---|
+| `\title`, `\author` (with `\and`), `\date`, `\maketitle` | Centred H1 and paragraphs; `metadata.title` / `author` |
+| `\part`, `\chapter`, `\section`, `\subsection`, `\subsubsection`, `\paragraph`, `\subparagraph`, starred forms, `\appendix` | Headings 1–6, numbered as `article` does |
+| Blank line, `\par`, `\\`, `\newline` | Paragraph break, hard line break |
+| `\textbf` `\textit` `\emph` (toggles) `\texttt` `\underline` `\sout` `\textsuperscript` `\textsubscript` `\textcolor` `\href` `\url`, the declarations `\bfseries` `\itshape` `\ttfamily` `\color` and the size commands `\tiny` … `\Huge`, scoped by `{…}` groups and environments | Run flags, `color`, `fontSizePt`, `linkTarget` |
+| `itemize`, `enumerate`, `description` (nested), `\item[label]` | `ListItem` with `listLevel`, `orderedList`; description labels bold |
+| `quote`, `quotation`, `verse` | `BlockQuote` |
+| `center`, `flushleft`, `flushright`, `\centering` | Block alignment |
+| `abstract` | Bold centred "Abstract" line, then paragraphs |
+| `tabular` and friends (`tabular*`, `tabularx`, `longtable`), `\hline`/booktabs rules, `\multicolumn` (`columnSpan`), `\multirow` (`rowSpan`) | `Table`; the first row is the header |
+| `figure`, `table`, `wrapfigure`, `\caption` | Centred bold "Figure n:" / "Table n:" paragraph |
+| `\includegraphics[width=…,height=…,scale=…]{file}` | `Image` block with the file embedded as media (`width=0.5\textwidth` uses the article text width of 345 pt); a missing file keeps a placeholder and a diagnostic |
+| `verbatim`, `lstlisting[language=…]`, `minted{lang}`, `\verb` | `CodeBlock` with `codeLanguage`; inline code run |
+| `$…$`, `\(…\)`, `\ensuremath` | Inline `math` run |
+| `\[…\]`, `$$…$$`, `equation`, `align`, `gather`, `multline`, `eqnarray`, `flalign`, `alignat` and starred forms | `MathBlock` (alignment environments keep their `\begin…\end` wrapper for the engine) |
+| `\newcommand`, `\renewcommand`, `\providecommand`, `\def`, `\let`, `\newenvironment`, `\DeclareMathOperator` | Expanded in text; the definitions a formula uses are prepended to its source so the engine expands them too |
+| `\label`, `\ref`, `\eqref`, `\autoref`, `\cref` | Section, caption, item and equation numbers resolved after the whole source is read; an undefined label prints `??` with a diagnostic |
+| `\cite` family, `thebibliography`, `\bibitem` | `[n]` by bibliography order (the key when unknown); a "References" heading and an ordered list |
+| `\footnote`, `\thanks`, `\footnotemark`/`\footnotetext` | Superscript number in the text; the notes follow a rule at the end of the document |
+| `\newtheorem` environments, `proof` | Bold "Theorem n (note)." head with an italic body; "Proof." … ∎ |
+| `\input`, `\include` | Spliced in place (relative to `baseDirectory`, `.tex` appended when missing; bounded by `maxInputFiles`) |
+| `\newpage`, `\clearpage`; `\hrule`, `\rule{\textwidth}{…}` | `PageBreak`; `HorizontalRule` |
+| Accents (`\'e`, `\"a`, `\^o`, `\c{c}`, `\v{s}`, `\H{o}`, …), `\ss` `\ae` `\o` `\l` …, `--`/`---`, `` `` ``/`''`, `~`, `\%` `\$` `\&` `\_` `\#` `\{` `\}`, `\ldots`, `\LaTeX`, `\today` | Unicode text (precomposed letters where Latin-1 / Extended-A has them) |
+| `\definecolor` (rgb, RGB, HTML, gray, cmyk), `\colorlet`, dvips base names | `#RRGGBB` run colours |
+| `minipage`, `multicols`, `titlepage`, `subequations`, size/shape environments, `\vspace`, `\hspace`, `\noindent`, `\tableofcontents`, `\usepackage`, layout settings | Transparent or ignored, no diagnostic |
+| `tikzpicture`, `axis`, `pgfpicture` and the other picture environments | Skipped with a centred "[tikzpicture picture]" placeholder and a diagnostic (Phase 4 territory) |
+
+Anything else: an unknown command is reported once per name, its optional
+arguments are dropped and its braced arguments are kept as text; an unknown
+environment is reported and its body is kept. The result is always a
+document — never a blank pane.
+
+Diagnostics carry the 1-based source line (best effort after macro
+splicing). `FormatDiagnostics()` renders them as `line 12: …` lines for an
+error pane or a log.
+
+## Rendering the result
+
+`UCRichDocument::ToMarkdown` writes a `math` run as `$source$` (unescaped)
+and a `MathBlock` as a `$$` fence pair, which is exactly what
+`UltraCanvasTextArea`'s Markdown mode typesets through the LaTeX module
+(see "Math in Markdown mode" in
+[`UltraCanvasTextAreaExamples.md`](UltraCanvasTextAreaExamples.md)).
+Superscript and subscript runs become `^x^` / `~x~` around single words.
+`ToHTML` wraps formulas in `<span class="math">$…$</span>` and
+`<p class="math">$$…$$</p>`; the ODT and DOCX writers, which have no formula
+writer, store a display block as a centred `$$…$$` paragraph that typesets
+again after a re-import.
+
+A `.tex` file with an embedded `\includegraphics` yields `document.media`
+entries; pass `RichDocumentMarkdownOptions::imageDirectory` so the
+serializer writes them where the renderer can load them (the Media Viewer
+and the demo use a per-load temp directory, as the ODT demo does).
+
+## Limits
+
+Deliberately outside the subset: page breaking to a paper size, float
+placement, hyphenation, `\newpage` semantics beyond a page-break marker,
+arbitrary packages, and TikZ / pgfplots pictures (see the proposal's Phase
+4). Equation numbers are resolved for `\eqref` but not drawn beside the
+formula (the engine ignores `\tag`); `\pageref` prints `?`. Font families
+(`\textsf`, `\textsc`) do not survive into the run model, and the Markdown
+renderer drops colours and sizes it cannot express, as it does for Word
+documents.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasLaTeXView.md
 ==============================================================================
 
 # UltraCanvasLaTeXView
 
-Renders a LaTeX (math) formula as a native UltraCanvas UI element, using an
-embedded [MicroTeX](https://github.com/NanoMichael/MicroTeX) engine. The formula
+Renders a LaTeX (math) formula as a native UltraCanvas UI element. The formula
 is typeset to **vector paths** and drawn through the element's `IRenderContext`,
 so it participates in the normal layout / transform / clip pipeline and stays
 crisp at any zoom — there is no rasterized surface to blit.
+
+Two typesetters live in the module during the transition described in
+[`UltraCanvasLaTeXEngineProposal.md`](UltraCanvasLaTeXEngineProposal.md):
+the framework's own [`UltraCanvasMathEngine`](UltraCanvasMathEngine.md)
+(the default) and the embedded
+[MicroTeX](https://github.com/NanoMichael/MicroTeX), kept as the oracle the
+native engine is tested against. The CMake cache variable
+`ULTRACANVAS_LATEX_ENGINE` (`native`, the default, or `microtex`) picks the
+build default and the environment variable `ULTRACANVAS_LATEX_ENGINE` overrides
+it at run time, so the two can be compared on the same formula. The public API
+below is the same for both.
 
 ## Load-on-demand module
 
@@ -26475,6 +26751,7 @@ height of `0` lets the element size itself to the formula via the layout engine.
 | `SetTextSize(float)` / `GetTextSize()` | Font size in pixels (default 20); drives intrinsic size. |
 | `SetTextColor(const Color&)` / `GetTextColor()` | Foreground color (default black). |
 | `SetMaxWidth(float)` | Wrap width for inter-line math; `0` (default) = intrinsic width. |
+| `SetDisplayStyle(bool)` / `IsDisplayStyle()` | Display style (default: large operators with limits, full-size fractions, as inside `\[ \]`) or text style (as inside `$ $`, for a formula in a line of text). |
 | `IsValid()` / `GetLastError()` | Whether the last `SetLaTeX` produced a render, and why not. |
 
 ## Where the module and font are found
@@ -26487,7 +26764,8 @@ On first use the loader searches for the module in this order:
    in `bin/`), `<exe>/../lib/ultracanvas/`,
 4. the dynamic linker's own search path (rpath / `LD_LIBRARY_PATH`).
 
-The module then loads `latinmodern-math.clm2` (+ `.otf`) from the first
+The module then loads the math font — `latinmodern-math.otf` for the native
+engine, `latinmodern-math.clm2` (+ `.otf`) for MicroTeX — from the first
 directory that has it:
 1. `SetLaTeXFontSearchDir(...)`, then `$MICROTEX_FONTDIR`,
 2. `GetResourcesDir() + "media/microtex"` — the framework's own resource root,
@@ -26504,13 +26782,18 @@ If `CreateLaTeXView` returns `nullptr`, check `GetLaTeXModuleError()`.
 
 ## Diagnostics
 
-A view never fails silently. When the formula cannot be typeset — the math
-font was not found, or the source has a syntax error — the element draws the
-reason as a short red message in place of the formula and sizes itself to
-that message, so the problem is visible in the UI and not just through
-`IsValid()` / `GetLastError()`. A font lookup that failed is retried after
-`SetLaTeXFontSearchDir(...)` is called, so an application can recover a view
-at runtime instead of recreating it.
+A view never fails silently. When the math font was not found the element
+draws the reason as a short red message in place of the formula and sizes
+itself to that message, so the problem is visible in the UI and not just
+through `IsValid()` / `GetLastError()`. A font lookup that failed is retried
+after `SetLaTeXFontSearchDir(...)` is called, so an application can recover a
+view at runtime instead of recreating it.
+
+With the native engine a formula with a mistake still renders: the parts
+that parse are typeset, the offending command is drawn in red monospace at
+its place, `IsValid()` is false and `GetLastError()` names the first problem
+(`unknown command \foo`, `missing \right`, ...). With MicroTeX a syntax
+error replaces the whole formula by the message.
 
 ## Build / deployment
 
@@ -26536,13 +26819,23 @@ formula->SetLaTeX("\\text{if } x \\geq 0 \\text{ then } \\sqrt{x}\\in\\mathbb{R}
 ## Notes
 
 - Renders **math-mode** LaTeX (equations, symbols, matrices, fractions, roots,
-  big operators, accents). It is not a full document typesetter.
-- Glyphs are drawn as filled vector paths (`GLYPH_RENDER_TYPE=1`); `\text{...}`
-  runs use the framework's Pango text layout.
+  big operators, accents). It is not a full document typesetter. The native
+  engine's supported command set is listed in
+  [`UltraCanvasMathEngine.md`](UltraCanvasMathEngine.md).
+- Glyphs are drawn as filled vector paths. With the native engine `\text{...}`
+  uses the math font's own upright glyphs and only characters the font lacks
+  (Cyrillic, CJK, ...) go through the framework's Pango text layout; MicroTeX
+  sends every `\text{...}` run to Pango.
 - The C ABI between core and module is in `UltraCanvasLaTeXModuleABI.h`
-  (versioned via `ULTRACANVAS_LATEX_ABI_VERSION`).
+  (versioned via `ULTRACANVAS_LATEX_ABI_VERSION`, currently 3: the view
+  factory plus the inline-math entry points `UltraCanvasInlineMath` uses).
 - See `THIRD_PARTY_LICENSES.md` for MicroTeX (MIT) and Latin Modern Math
   (GUST/OFL) licensing.
+- The plan to replace the vendored engine with a native one is
+  [`UltraCanvasLaTeXEngineProposal.md`](UltraCanvasLaTeXEngineProposal.md);
+  its first piece, the OpenType math font reader that makes any MATH-table
+  font usable without a `.clm2`, is
+  [`UltraCanvasMathFont`](UltraCanvasMathFont.md) and ships inside this module.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasLabelExamples.md
@@ -28850,6 +29143,376 @@ no icon and no display name, and the directories that only look like bundles.
 It runs on every platform, because the reading has to work on every platform.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMathEngine.md
+==============================================================================
+
+# UltraCanvasMathEngine
+
+The framework's own LaTeX **math typesetter**: parses a formula, lays it out
+by the rules of TeX (The TeXbook, Appendix G) with the metrics of an OpenType
+math font, and returns a box tree that `UltraCanvasMathRender` draws through
+any `IRenderContext`. It is Phase 1 of
+[`UltraCanvasLaTeXEngineProposal.md`](UltraCanvasLaTeXEngineProposal.md) and
+the engine behind [`UltraCanvasLaTeXView`](UltraCanvasLaTeXView.md).
+
+| Piece | Header | What it does |
+|---|---|---|
+| `UltraCanvasMathEngine` | `include/Plugins/LaTeX/UltraCanvasMathEngine.h` | The facade: owns the font, `Typeset()` a string into a `MathTypesetResult` |
+| `UltraCanvasMathFont` | `UltraCanvasMathFont.h` | The OpenType MATH font reader ([its own page](UltraCanvasMathFont.md)) |
+| `UltraCanvasMathParser` | `UltraCanvasMathParser.h` | LaTeX source to the atom tree |
+| `UltraCanvasMathLayout` | `UltraCanvasMathLayout.h` | Atom tree to the box tree |
+| model | `UltraCanvasMathModel.h` | Styles, atoms, boxes, diagnostics |
+| tables | `UltraCanvasMathSymbols.h` | Symbol commands, math alphabets, operators, colours |
+| `DrawMathBox` | `UltraCanvasMathRender.h` | Box tree to `IRenderContext`; the text fallback |
+
+All of it lives in the on-demand `libUltraCanvasLaTeX` module. Nothing but
+the renderer touches the UI framework, so parsing and layout run on any
+thread and are unit-tested without a window (`Tests/MathEngineTest.cpp`).
+
+## Typesetting a formula
+
+```cpp
+#include "Plugins/LaTeX/UltraCanvasMathEngine.h"
+
+UltraCanvas::UltraCanvasMathEngine engine;
+engine.LoadFont(GetResourcesDir() + "media/microtex/latinmodern-math.otf");
+
+UltraCanvas::MathTypesetOptions options;
+options.fontSize = 24.f;                          // pixels per em
+options.style = UltraCanvas::MathStyle::Display(); // or MathStyle::Text() for inline use
+UltraCanvas::MathTypesetResult r = engine.Typeset("\\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}", options);
+
+// r.width, r.height (above the baseline), r.depth (below), r.root (the boxes)
+for (const auto& d : r.diagnostics) std::cerr << d.message << " at " << d.sourceStart << "\n";
+```
+
+`Typeset` never throws. A formula with an unknown command still comes back
+with a root box: the recoverable parts are typeset, the offending command is
+an `Error` box the renderer shows in red monospace, and every problem is a
+`MathDiagnostic` with the byte span in the source. `HasErrors()` is what
+`UltraCanvasLaTeXView::IsValid()` reports.
+
+The shared instance the LaTeX view uses is `GetSharedMathEngine()`; the
+module loads its font from the same directories as the MicroTeX `.clm2`
+(see the LaTeX view page). An engine of your own can load any OpenType font
+with a MATH table — Latin Modern Math (bundled), STIX Two Math, the TeX
+Gyre math family, Libertinus Math, Cambria Math — and refuses a font
+without one (`GetLastError()` says so).
+
+### Options
+
+| Field | Meaning |
+|---|---|
+| `fontSize` | Pixels per em of the base size; scripts scale by the font's `ScriptPercentScaleDown` constants |
+| `style` | `Display()` (as inside `\[ \]`) or `Text()` (as inside `$ $`); also `Script`/`ScriptScript` |
+| `color` | Foreground unless `\color` changes it; the box tree carries colour scopes |
+| `maxWidth` | > 0 breaks a long top-level row at relations and binary operators into left-aligned lines |
+| `textFallback` | An `IMathTextFallback` that measures runs the math font lacks (Cyrillic, CJK, ...); `MathContextTextFallback(ctx)` does it with the render context's text layouts |
+| `preamble` | `\newcommand`, `\definecolor`, `\DeclareMathOperator` ... parsed before the formula |
+
+## Drawing
+
+```cpp
+#include "Plugins/LaTeX/UltraCanvasMathRender.h"
+
+MathContextTextFallback fallback(ctx);   // optional, for \text{} in scripts the font lacks
+options.textFallback = &fallback;
+MathTypesetResult r = engine.Typeset(src, options);
+DrawMathBox(ctx, *r.root, x, y + r.height, Colors::Black);   // (x, baseline)
+```
+
+Glyphs are emitted as outline paths (`MoveTo`/`BezierCurveTo`/`Fill`), so
+the formula follows the context's transform and stays crisp at any zoom;
+rules are rectangles; `\fbox`, `\colorbox`, `\shadowbox`, `\ovalbox`,
+`\cancel` and `\rotatebox` are drawn from their box types. The renderer is
+about 180 lines; a host that wants the formula as a retained vector scene
+walks `MathBox` itself — every box has `width`/`height`/`depth`, children at
+`(dx, dy)` relative to the parent's origin (left end of the baseline, y
+down), and the source span it came from.
+
+## Inline math for the text stack
+
+The engine reports a baseline, which is what lets a formula sit in a line
+of text. From the core, `UltraCanvasInlineMath` (`include/UltraCanvasInlineMath.h`)
+reaches the module through its ABI without linking it:
+
+```cpp
+#include "UltraCanvasInlineMath.h"
+
+if (UltraCanvasInlineMath::IsAvailable()) {                // loads the module on first call
+    auto f = UltraCanvasInlineMath::Typeset("\\frac{a}{b}", 16.f, Colors::Black, /*display*/ false, ctx);
+    // reserve f->GetWidth() x (f->GetAscent() + f->GetDescent()) in your layout ...
+    f->Draw(ctx, x, baselineY);                             // ... then draw it on the baseline
+}
+```
+
+`UltraCanvasTextArea`'s Markdown mode does exactly this for `$...$`, `$$...$$`
+and `$$` blocks (see [`UltraCanvasTextAreaExamples.md`](UltraCanvasTextAreaExamples.md),
+"Math in Markdown mode"), so Word and ODT documents with equations render
+them typeset. The module ABI entry points behind it are
+`UltraCanvasLaTeXModule_TypesetInline`, `_InlineMetrics`, `_DrawInline` and
+`_ReleaseInline` (ABI 3).
+
+## What is supported
+
+The parser understands the LaTeX math subset users actually type — the
+whole of the framework's demo corpus (`media/LaTex/*.tex`) renders without
+a diagnostic:
+
+* **Structure:** groups, `^` `_` (with the double-script leniency of `x'^2`),
+  primes, `\left ... \middle ... \right`, `\big`–`\Bigg` (l/r/m), `\\`
+  line breaks at top level, `%` comments, `~`.
+* **Fractions and roots:** `\frac`, `\dfrac`, `\tfrac`, `\cfrac`, `\binom`
+  family, `\genfrac`, `\over`, `\atop`, `\choose`, `\brace`, `\brack`,
+  `\above`, `\sqrt[n]`.
+* **Operators:** `\sum`-like large operators with limits in display style,
+  integrals with side scripts, `\limits`/`\nolimits`, the named functions
+  (`\sin` ... `\lim`), `\operatorname`, `\operatorname*`,
+  `\DeclareMathOperator`, `\mathop` and the other class wrappers, `\sideset`,
+  `\prescript`, `\substack`, `\bmod`/`\pmod`/`\pod`/`\mod`.
+* **Accents and decorations:** `\hat` ... `\vec`, the wide variants,
+  `\overline`, `\underline`, `\overbrace`, `\underbrace`, brackets and
+  parens, `\overrightarrow` family, `\overset`, `\underset`, `\stackrel`,
+  `\xrightarrow[below]{above}` family, `\not`, `\cancel`, `\bcancel`,
+  `\xcancel`.
+* **Alphabets:** `\mathrm`, `\mathit`, `\mathbf`, `\boldsymbol`, `\mathsf`,
+  `\mathtt`, `\mathcal`, `\mathscr`, `\mathfrak`, `\mathbb`, `\mathds` and
+  the `\rm`/`\bf`/... switches, mapped to the Unicode mathematical
+  alphanumerics with the letterlike-symbol holes; ~600 symbol commands
+  (Greek, operators, relations, arrows, delimiters, dots, Hebrew, misc).
+* **Text:** `\text`, `\mbox`, `\textbf` ... with `$...$` inside, text
+  accents (`\'e`), spaces preserved; characters the math font lacks go to
+  the host's text layout.
+* **Environments:** `array` with full column specs (`l c r | @{} >{} *{n}{}`
+  and `\newcolumntype`), `matrix` family incl. `smallmatrix`, `cases`,
+  `rcases`, `dcases`, `align`/`aligned`/`alignat`/`split`/`flalign`,
+  `gather`, `multline`, `eqnarray`, `subarray`, plus `\hline`,
+  `\multicolumn`, `\hdotsfor`, `\intertext`, `\\[len]`, `\rowcolor`,
+  `\cellcolor`, and user `\newenvironment`s.
+* **Styles, sizes, colour, boxes:** `\displaystyle` ... `\scriptscriptstyle`,
+  `\tiny` ... `\Huge`, `\color`, `\textcolor`, `\colorbox`, `\fcolorbox`,
+  `\definecolor` (rgb/RGB/gray/cmyk/HTML), `#RRGGBB` and the dvipsnames
+  colours, `\fbox`, `\boxed`, `\shadowbox`, `\doublebox`, `\ovalbox`,
+  `\cornersize`, `\phantom` family, `\smash`, `\rlap`/`\llap`/`\clap`,
+  `\rotatebox`, `\reflectbox`, `\scalebox`, `\resizebox`, `\rule`, spacing
+  commands with TeX units, `\longdiv`.
+* **Definitions:** `\newcommand`/`\renewcommand`/`\providecommand` with
+  optional arguments, `\def`, `\newenvironment`, `\DeclareMathOperator`.
+
+Not supported, by design: document mode (paragraphs, sections, `tabular`
+outside math is treated as `array`), TikZ, equation numbering (`\tag`,
+`\label`, `\ref` are accepted and ignored), and any package that is not
+one of the built-ins. An unknown command is diagnosed, not fatal.
+
+## How the layout works
+
+The box builder follows Appendix G with the OpenType MATH constants in
+place of TeX's font parameters:
+
+* inter-atom spacing from the Ord/Op/Bin/Rel/Open/Close/Punct/Inner table,
+  with the Bin-to-Ord rules and no medium/thick spaces in script styles;
+* italic correction after math-italic characters, folded into superscript
+  placement;
+* scripts by `SuperscriptShiftUp`, `SubscriptShiftDown`, the gap minimum and
+  the `SuperscriptBottomMaxWithSubscript` adjustment; math kerning when the
+  font has it;
+* fractions on the axis with the numerator/denominator gap minima, stacks
+  for `\atop`/`\binom`; radicals with the vertical gap and the degree kerns;
+* delimiters by TeX's 90%/5pt rule, choosing the smallest pre-drawn variant
+  and assembling extenders beyond the largest; the same for wide accents,
+  braces and arrows horizontally;
+* large operators take their display variant and sit on the axis; limits
+  by the four limit constants;
+* arrays with LaTeX's `\arraycolsep`, struts and baseline distances, cells in
+  text style (matrices), display style (`align`) or script style
+  (`smallmatrix`), vertical rules drawn per cell so `\multicolumn` behaves;
+* everything vertically centred on the axis where TeX centres it (`\vcenter`
+  for arrays, delimiters, operators).
+
+## Verifying it
+
+`Tests/MathEngineTest.cpp` checks the parser's atom trees, the layout
+against the font's numbers (a glyph box is its advance and bounding box, the
+fraction rule sits on the axis, scripts obey the constants, `a=b` gets two
+thick spaces, display operators grow, delimiters reach their target, arrays
+centre on the axis), and then runs the vendored MicroTeX as an **oracle**
+over the demo corpus and forty more formulas: both engines must agree on
+width and height within a tolerance (mean deviation is about 6% / 7%; the
+differences that remain are places where the native engine follows LaTeX
+and MicroTeX does not — `\Big` is a fixed size, arrays use text style,
+matrix rows are 1.2 em apart, a fraction keeps `\nulldelimiterspace`).
+
+`Tests/MathFontTest.cpp` covers the font layer.
+
+## Limits
+
+* One math font per engine; no fallback *math* font. Text runs fall back
+  through the host.
+* `\text` uses the math font's upright glyphs (Latin Modern Math has a full
+  Latin and Greek text repertoire), not the surrounding UI font.
+* Line breaking is the simple greedy split at relations; there is no
+  `\allowdisplaybreaks` or penalty model.
+* Equation numbers, `\tag` and cross-references are ignored.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMathFont.md
+==============================================================================
+
+# UltraCanvasMathFont
+
+Reads an **OpenType math font** straight from its file: the `MATH` table
+(constants, italics correction, top-accent attachment, extended shapes, math
+kerning, size variants, glyph assemblies), the glyph metrics and the glyph
+outlines. It is everything a TeX-style math typesetter needs from a font, in
+font units, with no `.clm2` conversion step, no fontconfig, no Pango and no
+render context.
+
+Header: `include/Plugins/LaTeX/UltraCanvasMathFont.h`. Implementation:
+`Plugins/LaTeX/UltraCanvasMathFont.cpp`, built into the on-demand
+`libUltraCanvasLaTeX` module. Backed by FreeType, a hard dependency of the
+framework. Test: `Tests/MathFontTest.cpp`.
+
+This is Phase 0 of
+[`UltraCanvasLaTeXEngineProposal.md`](UltraCanvasLaTeXEngineProposal.md): the
+font layer of the native math engine that is to replace the vendored MicroTeX.
+Today the shipped LaTeX view still typesets through MicroTeX and its `.clm2`
+metrics; this reader is what makes any font with a `MATH` table — Latin
+Modern Math, STIX, the TeX Gyre math family, Libertinus Math, Cambria Math —
+usable at runtime without FontForge.
+
+## Reading a font
+
+```cpp
+#include "Plugins/LaTeX/UltraCanvasMathFont.h"
+
+UltraCanvas::UltraCanvasMathFont font;
+if (!font.Load("/usr/share/fonts/opentype/stix-word/STIXMath-Regular.otf")) {
+    std::cerr << font.GetLastError() << "\n";
+    return;
+}
+if (!font.HasMathTable()) { /* a text font: metrics and outlines only */ }
+
+const int upem = font.GetUnitsPerEm();                       // 1000 for Latin Modern
+const int axis = font.GetConstant(MathConstant::AxisHeight); // font units
+const float axisPx = font.GetConstantScaled(MathConstant::AxisHeight, 20.f); // at 20 px
+```
+
+`Load` returns false, with the reason in `GetLastError()`, for a missing or
+unreadable file or one that is not a scalable font. A font **without** a
+`MATH` table still loads — `HasMathTable()` is false and every `MATH` query
+returns its documented "absent" value — so the same object can serve a text
+face for `\text{…}`. A malformed `MATH` table is reported the same way
+(`GetLastError()` says "malformed MATH table") and the rest of the font stays
+usable; it never crashes on a bad file.
+
+`LoadFromMemory(data, size)` opens a font image (the bytes are copied);
+`Unload()` releases everything. Each object owns its own FreeType library, so
+different objects can be used from different threads; one object must not be
+used from two threads at once.
+
+## Units
+
+Every length is in **font units** with y pointing up, exactly as the font
+file stores them; scale once by `fontSizePx / GetUnitsPerEm()`. The three
+percentage constants (`ScriptPercentScaleDown`, `ScriptScriptPercentScaleDown`,
+`RadicalDegreeBottomRaisePercent`) are percentages; `GetConstantScaled`
+returns them as a factor (`0.7`) rather than a length.
+
+## The MATH table
+
+| Call | What it returns |
+|---|---|
+| `GetConstant(MathConstant)` | One of the 56 MathConstants, in table order (`MathConstant::AxisHeight`, `FractionRuleThickness`, `SuperscriptShiftUp`, …); `MathConstantName()` gives the spec's spelling |
+| `GetItalicsCorrection(glyph)` / `HasItalicsCorrection` | Italics correction, 0 when the font defines none |
+| `GetTopAccentAttachment(glyph)` / `HasTopAccentAttachment` | Where an accent is centred; when the font defines none, the specification's default of half the advance |
+| `IsExtendedShape(glyph)` | Tall operators whose superscripts are placed by height |
+| `GetMathKern(glyph, MathKernCorner)` / `GetMathKernValue(glyph, corner, height)` | The kern table for a corner (null when absent) and the value in effect at a height; `MathKernTable` holds n correction heights and n+1 values |
+| `GetMinConnectorOverlap()` | Minimum overlap of assembly parts |
+| `GetGlyphVariants(glyph, MathStretchDirection)` | Pre-drawn size variants, smallest first, each with its extent in the stretch direction |
+| `GetGlyphAssembly(glyph, direction, out)` | The recipe for arbitrary sizes: parts with connector lengths, full advance and the extender flag, plus the assembly's italics correction |
+
+Typical stretching code asks for the variants first and, when the largest
+is still too small, builds the assembly:
+
+```cpp
+const uint32_t brace = font.GetGlyphIndex('{');
+for (const MathGlyphVariant& v : font.GetGlyphVariants(brace, MathStretchDirection::Vertical)) {
+    if (v.advance >= neededHeight) { use(v.glyph); break; }
+}
+MathGlyphAssembly assembly;
+if (font.GetGlyphAssembly(brace, MathStretchDirection::Vertical, assembly)) {
+    // assembly.parts: bottom, extender, middle, extender, top for a brace
+}
+```
+
+## Glyphs, metrics and outlines
+
+| Call | What it returns |
+|---|---|
+| `GetGlyphIndex(char32_t)` | Glyph index of a code point, 0 when the font lacks it |
+| `GetGlyphName(glyph)` | The PostScript glyph name (`"parenleft"`) when the font carries names |
+| `GetGlyphMetrics(glyph, out)` | Advance and the **exact** outline bounding box; `Height()` and `Depth()` are the TeX height above and depth below the baseline, never negative |
+| `GetGlyphOutline(glyph, out)` | The outline as `MoveTo` / `LineTo` / `QuadTo` / `CubicTo` / `Close` segments in font units, cached per glyph; a blank glyph such as a space returns true with an empty outline, an out-of-range index returns false |
+
+Feeding an outline to a render context is one loop:
+
+```cpp
+MathGlyphOutline outline;
+font.GetGlyphOutline(glyph, outline);
+const double s = fontSizePx / font.GetUnitsPerEm();
+ctx->ClearPath();
+for (const MathOutlineSegment& seg : outline.segments) {
+    switch (seg.command) {
+        case MathOutlineCommand::MoveTo:  ctx->MoveTo(x + seg.x1 * s, y - seg.y1 * s); break;
+        case MathOutlineCommand::LineTo:  ctx->LineTo(x + seg.x1 * s, y - seg.y1 * s); break;
+        case MathOutlineCommand::QuadTo:  ctx->QuadraticCurveTo(x + seg.x1 * s, y - seg.y1 * s,
+                                                                x + seg.x2 * s, y - seg.y2 * s); break;
+        case MathOutlineCommand::CubicTo: ctx->BezierCurveTo(x + seg.x1 * s, y - seg.y1 * s,
+                                                             x + seg.x2 * s, y - seg.y2 * s,
+                                                             x + seg.x3 * s, y - seg.y3 * s); break;
+        case MathOutlineCommand::Close:   ctx->ClosePath(); break;
+    }
+}
+ctx->Fill();
+```
+
+(`y` is the baseline in the context's y-down space, hence the sign flip.)
+
+## Face facts
+
+`GetFamilyName()`, `GetStyleName()`, `GetUnitsPerEm()`, `GetAscender()`,
+`GetDescender()` (negative), `GetXHeight()` (OS/2 `sxHeight`, 0 when the
+font has none), `GetGlyphCount()`, `GetPath()`.
+
+## How it is verified
+
+The bundled Latin Modern Math exists twice in the tree: as
+`media/microtex/latinmodern-math.otf` and as the `.clm2` that FontForge
+produced from that same file for MicroTeX. `Tests/MathFontTest.cpp` links the
+vendored engine as an oracle and compares the two readers over **all 4,802
+glyphs**: every constant, advance, height, depth, italics correction,
+top-accent attachment, variant list and assembly must be equal — and is.
+Math kerning, which none of the math fonts at hand carries, is checked on a
+synthetic `MATH` table appended to a text font and loaded from memory; the
+same path shows that a truncated table is refused cleanly. When STIX Math or
+a TeX Gyre math font is installed, the test loads it too. During development
+the reader was also compared with HarfBuzz's `hb_ot_math_*` API on seven
+math fonts with identical results, extended-shape flags included.
+
+## Limits
+
+- **No shaping and no cmap fallback.** The reader maps one code point to one
+  glyph and knows nothing about ligatures or fallback fonts; the engine
+  above it owns the Unicode-math style mapping (`𝑥` for an italic `x`) and
+  the fallback chain. `\text{…}` keeps going through the framework's Pango
+  layout.
+- **Device tables are ignored.** The `MATH` table can carry per-size hinting
+  deltas; every vector math renderer ignores them and so does this one.
+- **One face per object.** A `.ttc` collection is opened by face index;
+  there is no enumeration here — use
+  [`UltraCanvasFontFile`](UltraCanvasFontFile.md) for that.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMatrixDiagram.md
 ==============================================================================
 
@@ -29359,7 +30022,7 @@ embedded preview pane of **UltraFiler** (`Apps/UltraFiler`, with
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
 | `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL | `UltraCanvasSTLElement` (OpenGL viewer, 2D fallback) |
-| `Text` | txt, md, json, xml, source code, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown) |
+| `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `UCDoc` | UCD v2 containers (`*.ucd`) | Image surface (embedded preview thumbnail) or text view (header summary) |
 | `Video` | MP4/M4V, MKV, WebM, MOV, AVI, WMV/ASF, FLV, MPG, OGV, 3GP, M2TS | `UltraCanvasVideoPlayerElement` (`ULTRACANVAS_ENABLE_VIDEO`) |
@@ -46076,6 +46739,44 @@ machinery so the edit is undoable and raises `onTextChanged` like a typed one:
 bool ReplaceTextRange(size_t startByte, size_t byteLength, const std::string& replacement);
 ```
 
+## Math in Markdown mode
+
+In `MarkdownHybrid` editing mode a formula between dollar signs is typeset
+by the framework's LaTeX engine and set into the line like a word:
+
+```markdown
+Einstein wrote $E = mc^2$; the roots are $x = \frac{-b \pm \sqrt{b^2-4ac}}{2a}$.
+
+$$
+\int_0^1 x^2 \, dx = \frac{1}{3}
+$$
+```
+
+- `$...$` is text-style math (fractions and operators sized for a line of
+  text); `$$...$$` on one line is display-style math inline.
+- `$$` alone on a line opens a display block; the next `$$` line closes it.
+  The block is rendered centred at the closing fence, and the source lines
+  between show only while the caret is on them.
+- A pair of dollar signs counts as math only when it looks like one: no space
+  right after the opener or before the closer, and no digit after the closer,
+  so `costs $5 and $10` stays text.
+- Formulas take the Markdown style's `mathTextColor` and the area's font size
+  (in points; the engine works in pixels at 96 dpi). They work inside table
+  cells, list items, headings and blockquotes.
+- The rendering is baseline-aligned: the engine reports the formula's width,
+  ascent and descent, the text layout reserves that box with a shape
+  attribute on a U+FFFC placeholder (`TextAttributeFactory::CreateShape`),
+  and the formula is drawn after the text at `IndexToPos()` /
+  `IndexToBaseline()` of the placeholder. `UltraCanvasInlineMath.h` is the
+  handle any other text-laying element can use the same way.
+- Without the LaTeX module (not built, or its math font missing) the old
+  behaviour remains: the commands are substituted with Unicode
+  (`\alpha` becomes α) and the run is shown in italics.
+
+Word and ODT documents keep their equations this way: the importers turn
+OMML / MathML into `$latex$` runs, the Markdown serializer leaves them
+unescaped, and the document view typesets them.
+
 ## Notes and Best Practices
 
 1. **Memory Management**: Use smart pointers for component lifecycle management
@@ -49894,6 +50595,9 @@ from an external "Show password" checkbox. See
 | Audio waveform, input level | `UltraCanvasWaveformElement`, `UltraCanvasLevelMeter` | `UltraCanvasWaveformElement.h`, `UltraCanvasAudioRecorderElement.h` |
 | A gallery or a timed slideshow | `UltraCanvasAlbum`, `UltraCanvasSlideshow` | matching `*.h` |
 | eBooks | `UltraCanvasEBookViewer` | `UltraCanvasEBookViewer.h` |
+| A LaTeX formula (equation, matrix, ...) as an element | `UltraCanvasLaTeXView` via `CreateLaTeXView()` | `Plugins/LaTeX/UltraCanvasLaTeXView.h` |
+| A LaTeX document (`article`: sections, lists, tables, figures, formulas) as a rich document | `UltraCanvasLaTeXDocumentReader` → `UCRichDocument` → `ToMarkdown()` into a `UltraCanvasTextArea` in Markdown mode; `UCWordDocumentIO::Load` and `UltraCanvasFileLoader::LoadTextDocument` dispatch to it for `.tex` | `Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h` |
+| A formula inside a line of text you lay out yourself | `UltraCanvasInlineMath` (typeset, measure, draw at a baseline); `UltraCanvasTextArea`'s Markdown mode already does this for `$...$` | `UltraCanvasInlineMath.h` |
 | Raw OpenGL | `UltraCanvasGLSurface` | `UltraCanvasGLSurface.h` |
 
 `UltraCanvasImageElement` is the answer to "I just need to draw a picture" — it
@@ -52004,7 +52708,7 @@ and reports the true code.
 |---|---|
 | *unset* | Debug builds log to stderr; Release builds log nothing. |
 | `0`, `off`, `no`, `none`, `false` | Off, in every build configuration. |
-| `1`, `on`, `yes`, `true`, `stderr`, `-` | On, to stderr. |
+| `1`, `on`, `yes`, `true`, `stderr`, `logcat`, `-` | On, to stderr. (`logcat` is a keyword on every platform so it is never mistaken for a filename; it only means anything on Android.) |
 | *any other value* | On, appending to that file. |
 
 This works in **Release** builds. It used to not: `debugOutput` compiled to a
@@ -55108,10 +55812,17 @@ FILE: Docs/Modules/Smarthome/README.md
 
 ## UltraCanvas Smart Home Module - Feature Overview
 
+> **Status: planned — specification only.** Nothing described below is
+> implemented yet: there is no `SmartHome/` source directory, no CMake target,
+> and none of the widget classes named here exist in the tree. This document is
+> the design target for the module, not a description of shipping code. The
+> demo application lists the module as *Planned* and shows this page in place of
+> a live example.
+
 ### Dashboard Panel (`SmartHomePanel`)
 
 -   **Device Organization** - Automatic grouping by room with collapsible sections
--   **Scene Cards** - Quick-activate preset configurations (e.g., \"Movie Night\", \"Good Morning\")
+-   **Scene Cards** - Quick-activate preset configurations (e.g., "Movie Night", "Good Morning")
 -   **Filtering & Search** - Filter by room, device category, or search by name
 -   **Multiple Layouts** - Grid, list, compact, or detailed view modes
 -   **Real-time Status** - Online/offline indicators, battery levels, last-seen timestamps
@@ -55125,55 +55836,26 @@ FILE: Docs/Modules/Smarthome/README.md
 
 ### Device-Specific Controls
 
-Widget
-
-Features
-
-**Light Control**
-
-On/off, brightness slider, color temperature (2700K-6500K), RGB color wheel, preset colors
-
-**Thermostat Control**
-
-Circular temperature dial, current/target temps, Heat/Cool/Auto/Eco modes, fan control, humidity display
-
-**Lock Control**
-
-Lock/unlock with animated icon, access log history, battery status, confirmation option
-
-**Blind Control**
-
-Position slider (0-100%), tilt angle, visual preview, Open/Stop/Close buttons
-
-**Sensor Display**
-
-Large value readout, unit display, 24h history graph, min/max tracking, threshold alerts
+| Widget | Features |
+|---|---|
+| **Light Control** | On/off, brightness slider, color temperature (2700K-6500K), RGB color wheel, preset colors |
+| **Thermostat Control** | Circular temperature dial, current/target temps, Heat/Cool/Auto/Eco modes, fan control, humidity display |
+| **Lock Control** | Lock/unlock with animated icon, access log history, battery status, confirmation option |
+| **Blind Control** | Position slider (0-100%), tilt angle, visual preview, Open/Stop/Close buttons |
+| **Sensor Display** | Large value readout, unit display, 24h history graph, min/max tracking, threshold alerts |
 
 ### Dialogs & Wizards
 
-Dialog
-
-Purpose
-
-**Device Dialog**
-
-View/edit device name, room assignment, category; shows protocol, manufacturer, model
-
-**Pairing Wizard**
-
-Step-by-step: Select protocol → Search → Configure → Complete; supports Matter, Thread, Zigbee, Z-Wave, WiFi, Bluetooth
-
-**Scene Editor**
-
-Create/edit scenes with device selection and state configuration
-
-**Automation Editor**
-
-Build rules with triggers (time, device state, sunrise/sunset), conditions, and actions
+| Dialog | Purpose |
+|---|---|
+| **Device Dialog** | View/edit device name, room assignment, category; shows protocol, manufacturer, model |
+| **Pairing Wizard** | Step-by-step: Select protocol → Search → Configure → Complete; supports Matter, Thread, Zigbee, Z-Wave, WiFi, Bluetooth |
+| **Scene Editor** | Create/edit scenes with device selection and state configuration |
+| **Automation Editor** | Build rules with triggers (time, device state, sunrise/sunset), conditions, and actions |
 
 ### Protocol Support
 
-Ready for integration with: **Matter**, **Thread**, **Zigbee**, **Z-Wave**, **WiFi**, **Bluetooth**"
+Ready for integration with: **Matter**, **Thread**, **Zigbee**, **Z-Wave**, **WiFi**, **Bluetooth**
 
 ==============================================================================
 FILE: Docs/Modules/Smarthome/intro.md

@@ -23,6 +23,7 @@
 namespace UltraCanvas {
 
 using WordFormatInternal::EscapeXml;
+using WordFormatInternal::MathBlockAsParagraph;
 using WordFormatInternal::ParseLengthPt;
 
 namespace {
@@ -1081,6 +1082,12 @@ private:
                     break;
                 case RichBlockType::PageBreak:
                     body << "<text:p text:style-name=\"PPageBreak\"/>\n";
+                    ++i;
+                    break;
+                case RichBlockType::MathBlock:
+                    // No MathML writer: the formula source travels as a centred
+                    // "$$...$$" paragraph (typeset again after a re-import).
+                    WriteParagraph(body, MathBlockAsParagraph(block));
                     ++i;
                     break;
                 case RichBlockType::Paragraph:

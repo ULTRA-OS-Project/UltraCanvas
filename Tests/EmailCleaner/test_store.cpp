@@ -56,10 +56,9 @@ TEST(Store_OpenIsIdempotentAndMigrates) {
     AnalysisStore store = OpenStore();
     REQUIRE(store.IsOpen());
 
-    // v2 added the unsubscribe columns and the blocklist table.
     int version = 0;
     REQUIRE(UltraDb_GetSchemaVersion(store.Connection(), version));
-    REQUIRE_EQ(version, 2);
+    REQUIRE_EQ(version, AnalysisStore::kSchemaVersion);
 
     // Re-opening the same connection must keep what is already there. This is
     // the property that matters: re-registering the name would drop the
@@ -67,7 +66,7 @@ TEST(Store_OpenIsIdempotentAndMigrates) {
     REQUIRE(store.UpsertMessage(MakeMessage("a@x.example", 1, kDay)));
     REQUIRE(store.Open(store.Connection(), ":memory:"));
     REQUIRE(UltraDb_GetSchemaVersion(store.Connection(), version));
-    REQUIRE_EQ(version, 2);
+    REQUIRE_EQ(version, AnalysisStore::kSchemaVersion);
 
     std::vector<AnalyzedMessage> messages;
     REQUIRE(store.ListMessages(MessageFilter{}, messages));

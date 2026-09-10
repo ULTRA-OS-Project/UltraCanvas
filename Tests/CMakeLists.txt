@@ -446,6 +446,8 @@ if(TINYXML2_TEST_FOUND)
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
+        # UCWordDocumentIO dispatches .tex to the LaTeX document reader
+        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
         ${ULTRACANVAS_SRC_DIR}/third_party/miniz/miniz.c
         # Trim() lives in UltraCanvasTextUtils.cpp; see HTMLReaderTest above.
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasTextUtils.cpp
@@ -475,6 +477,48 @@ else()
 endif()
 
 # ===== MIND MAP IO TEST =====
+# ===== LATEX DOCUMENT TEST =====
+# The LaTeX document-subset importer (UltraCanvasLaTeXDocumentReader →
+# UCRichDocument): structure, text commands, macros, tables, references,
+# math runs/blocks, diagnostics, Markdown/ODT round trips of the math model
+# parts, format detection, and the shipped media/LaTex corpus. Needs the Word
+# module sources (for UCWordDocumentIO) like WordFormatsTest, not the UI stack.
+if(TINYXML2_TEST_FOUND)
+    message(STATUS "  Building LaTeXDocumentTest...")
+    add_executable(LaTeXDocumentTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/LaTeXDocumentTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasZipPackage.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasRichDocument.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocLegacyFormat.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasMathToLatex.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz/miniz.c
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
+    )
+    target_include_directories(LaTeXDocumentTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/third_party/miniz
+        ${TINYXML2_TEST_INCLUDE_DIRS}
+    )
+    target_link_libraries(LaTeXDocumentTest PRIVATE ${TINYXML2_TEST_LIBRARIES})
+    target_compile_features(LaTeXDocumentTest PRIVATE cxx_std_20)
+    set_target_properties(LaTeXDocumentTest PROPERTIES
+        OUTPUT_NAME "LaTeXDocumentTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME LaTeXDocumentTest
+        COMMAND LaTeXDocumentTest ${CMAKE_BINARY_DIR}/latexdocument-test-out ${ULTRACANVAS_ROOT}/media/LaTex
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: LaTeXDocumentTest")
+else()
+    message(STATUS "  tinyxml2 not found - LaTeXDocumentTest disabled")
+endif()
+
 # Interchange: Mermaid, FreeMind/Freeplane .mm, OPML, indented text, CSV, XMind
 # content.json, SVG export and format sniffing. Checks round-trip fidelity and
 # that a failed import leaves the caller's model untouched. Needs the same
@@ -1803,4 +1847,91 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FontFileTest")
 else()
     message(STATUS "  FontFileTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== MATH FONT TEST =====
+# The OpenType math font reader behind the native LaTeX engine (Phase 0 of
+# Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md), checked against the
+# .clm2 the vendored MicroTeX engine reads for the same font - so the test
+# links microtex_core as its oracle and needs the LaTeX plugin enabled.
+if(TARGET UltraCanvas AND TARGET microtex_core)
+    message(STATUS "  Building MathFontTest...")
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(MATHFONT_FREETYPE QUIET freetype2)
+    endif()
+    add_executable(MathFontTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MathFontTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathFont.cpp
+    )
+    target_include_directories(MathFontTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${MATHFONT_FREETYPE_INCLUDE_DIRS})
+    target_compile_features(MathFontTest PRIVATE cxx_std_20)
+    target_compile_definitions(MathFontTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_directories(MathFontTest PRIVATE ${MATHFONT_FREETYPE_LIBRARY_DIRS})
+    target_link_libraries(MathFontTest PRIVATE UltraCanvas microtex_core ${MATHFONT_FREETYPE_LIBRARIES})
+    set_target_properties(MathFontTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MathFontTest COMMAND MathFontTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MathFontTest")
+else()
+    message(STATUS "  MathFontTest skipped (UltraCanvas or microtex_core target not present)")
+endif()
+
+# ===== MATH ENGINE TEST =====
+# The native math engine (parser, layout, facade) with the vendored MicroTeX
+# as its oracle - Phase 1 of Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md.
+if(TARGET UltraCanvas AND TARGET microtex_core)
+    message(STATUS "  Building MathEngineTest...")
+    find_package(PkgConfig QUIET)
+    if(PKG_CONFIG_FOUND)
+        pkg_check_modules(MATHENGINE_FREETYPE QUIET freetype2)
+    endif()
+    add_executable(MathEngineTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/MathEngineTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathFont.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathSymbols.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathParser.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathLayout.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/LaTeX/UltraCanvasMathEngine.cpp
+    )
+    target_include_directories(MathEngineTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${MATHENGINE_FREETYPE_INCLUDE_DIRS})
+    target_compile_features(MathEngineTest PRIVATE cxx_std_20)
+    target_compile_definitions(MathEngineTest PRIVATE
+        UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_directories(MathEngineTest PRIVATE ${MATHENGINE_FREETYPE_LIBRARY_DIRS})
+    target_link_libraries(MathEngineTest PRIVATE UltraCanvas microtex_core ${MATHENGINE_FREETYPE_LIBRARIES})
+    set_target_properties(MathEngineTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MathEngineTest COMMAND MathEngineTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: MathEngineTest")
+else()
+    message(STATUS "  MathEngineTest skipped (UltraCanvas or microtex_core target not present)")
+endif()
+
+# ===== INLINE MATH TEST =====
+# The core's handle on the LaTeX module for formulas inside text (Phase 2 of
+# Docs/UltraCanvas/UltraCanvasLaTeXEngineProposal.md): the module is loaded
+# with dlopen from <build>/lib, so the module target must be built first.
+if(TARGET UltraCanvas AND TARGET UltraCanvasLaTeX)
+    message(STATUS "  Building InlineMathTest...")
+    add_executable(InlineMathTest ${CMAKE_CURRENT_SOURCE_DIR}/InlineMathTest.cpp)
+    target_include_directories(InlineMathTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(InlineMathTest PRIVATE cxx_std_20)
+    target_compile_definitions(InlineMathTest PRIVATE UC_MEDIA_DIR="${ULTRACANVAS_ROOT}/media")
+    target_link_libraries(InlineMathTest PRIVATE UltraCanvas)
+    add_dependencies(InlineMathTest UltraCanvasLaTeX)
+    set_target_properties(InlineMathTest PROPERTIES RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    add_test(NAME InlineMathTest COMMAND InlineMathTest WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: InlineMathTest")
+else()
+    message(STATUS "  InlineMathTest skipped (UltraCanvas or UltraCanvasLaTeX target not present)")
 endif()

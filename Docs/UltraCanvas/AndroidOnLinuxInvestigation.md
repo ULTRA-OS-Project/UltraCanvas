@@ -49,9 +49,10 @@ questions that come after it:
   real `ClipboardManager`, real activity lifecycle — so every Android-specific
   path this backend added (§4) is exercisable without a phone. The parts an
   emulator does *not* prove are GPU-driver behaviour and real touch hardware.
-- **One concrete gap to close before the first run:** the backend logs through
-  `std::cerr`/`std::cout`, and on Android those go nowhere. Fix that before
-  spending a day guessing why a black screen is black (§5.3).
+- **The first run is now debuggable** — it was not when this was written. On
+  Android stdout and stderr are `/dev/null`, so every framework diagnostic and
+  every cairo/Pango/fontconfig warning was being discarded; both now reach
+  logcat (§5.3).
 - **Neither this container nor the repository's CI can run any of it today.**
   No `/dev/kvm`, no `vmx`/`svm`, and `CONFIG_ANDROID_BINDER_IPC` is unset (§8).
   The first run happens on a workstation or on a GitHub-hosted `ubuntu-latest`
@@ -236,31 +237,31 @@ For a native crash, `adb bugreport` or `adb pull /data/tombstones/` and then:
 adb logcat | $ANDROID_NDK_HOME/ndk-stack -sym path/to/obj/local/x86_64
 ```
 
-### 5.3 Make the first run debuggable — do this *before* the first run
+### 5.3 Making the first run debuggable — done
 
-The backend currently emits diagnostics through `std::cerr`/`std::cout` (the
-only such calls under `OS/Android/` are the nine in
-`GLContextManagerEGL_Android.cpp`, and the framework's shared logging uses the
-same streams). **On Android, a native app's stdout and stderr go to
-`/dev/null`.** A first run therefore produces a black screen and no
-explanation.
+**On Android a native app's stdout and stderr go to `/dev/null`**, so before
+this was fixed a first run would have produced a black screen and no
+explanation. Both halves of the framework's output are now routed to logcat:
 
-Two ways out, in order of preference:
+| Source | Where it goes | Tag |
+|---|---|---|
+| `debugOutput` — the framework's diagnostic stream, incl. the backend's 20 call sites | logcat directly, via a `streambuf` sink in `UltraCanvasDebug.h` | `UltraCanvas` |
+| Everything else — cairo/Pango/fontconfig warnings, the EGL manager, the ~50 legacy `std::cout`/`std::cerr` sites in core | a stdio pump installed by `android_main` (`OS/Android/UltraCanvasAndroidLog.{h,cpp}`) | `UltraCanvas-stdio` |
 
-1. **Add a logcat sink** — route the framework's logging through
-   `__android_log_print` under `#ifdef __ANDROID__` (tag e.g. `UltraCanvas`,
-   which then makes `adb logcat -s UltraCanvas:V` the one command a newcomer
-   needs). This is a small, self-contained change and the right permanent
-   answer. It is *not* made in this document because nothing here can compile
-   it — the environment has no NDK, and the repository's rule is that Android
-   code lands compiled ([port investigation §6, lesson 3](AndroidPortInvestigation.md)).
-2. **Redirect stdio at runtime**, as a stopgap on an emulator only:
-   `adb root && adb shell setprop log.redirect-stdio true`, then restart the
-   app. Requires a non-Play (`default`/`aosp`) image and only affects processes
-   started afterwards.
+```sh
+adb logcat -s UltraCanvas:V UltraCanvas-stdio:V
+adb shell setprop debug.ultracanvas.log 1     # an APK has no environment to set
+```
 
-This is the highest-value follow-up in this document: it costs an hour and it
-determines whether the first device run takes a day or a week.
+The sink went into `UltraCanvasDebug.h` rather than into the backend because
+that header already solves this exact problem for Windows GUI-subsystem
+builds, which have no console either — same mechanism, different sink. The
+system property is the Android arm of `ULTRACANVAS_DEBUG_LOG`, which an APK
+cannot be given.
+
+The stopgap this replaces, still worth knowing for a build that predates it:
+`adb root && adb shell setprop log.redirect-stdio true`, then restart the app
+(non-Play image only, and only affects processes started afterwards).
 
 ---
 
@@ -308,8 +309,9 @@ Notes that decide whether this is useful or noise:
 
 - **The assertion must be real.** "The activity started" is nearly worthless —
   a crashed native library still leaves an activity. Assert on a line the app
-  logs after its first successful composite (which needs §5.3 done first), and
-  keep the screenshot as an artifact for the human.
+  logs after its first successful composite — `adb logcat -s UltraCanvas:V`
+  now carries those (§5.3) — and keep the screenshot as an artifact for the
+  human.
 - **Two ABIs, one job.** Once `arm64-v8a` and `x86_64` both build, CI runs the
   x86_64 one; arm64 is covered by the compile gate plus a manual device run.
 - **The sysroot must be cached**, not rebuilt: a from-scratch vcpkg build of
@@ -377,9 +379,9 @@ compile gate rather than a test.
 
 ## 9. Recommended order of work
 
-1. **Add the logcat sink** (§5.3). One hour, and every step after it is
-   cheaper. Land it compiled, through the existing `android-syntax-check.sh`
-   gate.
+1. ~~**Add the logcat sink** (§5.3)~~ — **done.** Both the `debugOutput` sink
+   and the stdio pump are in, type-checked by the existing
+   `android-syntax-check.sh` gate.
 2. **Build the `x64-android` sysroot first**:
    `scripts/android-bootstrap-sysroot.sh x86_64` (then `--with-net`). Expect
    the iteration the script's header predicts — pango, cairo, glib.

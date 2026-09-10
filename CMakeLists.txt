@@ -84,7 +84,12 @@ if(ANDROID)
     set(ULTRACANVAS_PLUGIN_PDF OFF CACHE BOOL "Build PDF plugin (requires MuPDF / libmupdf-dev)")
     set(ULTRACANVAS_PLUGIN_OCR OFF CACHE BOOL "Build OCR plugin (requires tesseract + leptonica)")
     set(ULTRACANVAS_PLUGIN_VECTORIZER OFF CACHE BOOL "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)")
-    set(ULTRACANVAS_ENABLE_AUDIO OFF CACHE BOOL "Build audio backend")
+    # ULTRACANVAS_ENABLE_AUDIO is deliberately NOT in this list, and stays at
+    # its ON default: its backend is miniaudio, vendored in-tree rather than
+    # waiting on the sysroot, and it speaks AAudio natively with OpenSL ES
+    # beneath it - both reached through dlopen, so there is nothing extra to
+    # link and no NDK-side dependency. Only its optional codec libraries are
+    # missing from a minimal sysroot, which costs formats, not the backend.
     set(ULTRACANVAS_ENABLE_VIDEO OFF CACHE BOOL "Enable video playback & recording (requires platform media framework)")
     set(ULTRACANVAS_ENABLE_DATABASE OFF CACHE BOOL "Build the UltraDatabase data-access library")
     set(ULTRACANVAS_USE_VIRTUALFS OFF CACHE BOOL "Build the VirtualFS module and the UltraCanvas bridge to it")
@@ -203,6 +208,20 @@ endif()
 option(BUILD_ULTRACLOUD "Build the UltraCloud module" ON)
 if(BUILD_ULTRACLOUD AND TARGET UltraDatabase)
     add_subdirectory(UltraCloud)
+endif()
+
+# ===== SMART HOME =====
+# Devices, rooms, scenes and automations for the connected home. The engine and
+# the public facade always build; the dashboard widgets follow the UltraCanvas
+# UI library. Every protocol backend is off by default and stays that way until
+# its vendor SDK is vendored — see SmartHome/STATUS.md.
+option(BUILD_SMARTHOME "Build the Smart Home module" ON)
+option(ULTRACANVAS_BUILD_SMARTHOME_TESTS "Build the Smart Home test suite" OFF)
+if(BUILD_SMARTHOME)
+    if(ULTRACANVAS_BUILD_SMARTHOME_TESTS)
+        enable_testing()   # must be the top-level call, as for every other suite
+    endif()
+    add_subdirectory(SmartHome)
 endif()
 
 # ===== ULTRAMAIL =====

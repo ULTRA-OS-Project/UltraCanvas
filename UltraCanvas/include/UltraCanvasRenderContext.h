@@ -697,6 +697,12 @@ namespace UltraCanvas {
 
         // spacer (width in pixels)
         std::unique_ptr<ITextAttribute> CreateShapeSpacer(double width);
+        // Reserve a box of `width` x (`ascent` above the baseline + `descent`
+        // below) for an inline object (a formula, an icon) drawn by the caller
+        // after the layout; apply it to a placeholder character such as U+FFFC.
+        // The line grows to hold the box; IndexToPos() of the placeholder gives
+        // its top-left, so its baseline is pos.y + ascent.
+        std::unique_ptr<ITextAttribute> CreateShape(double width, double ascent, double descent);
 
         // absolute line height, may be used with CreateShapeSpacer to preserve space
         std::unique_ptr<ITextAttribute> CreateAbsoluteLineHeight(double lineHeight);
@@ -816,6 +822,9 @@ namespace UltraCanvas {
         // ===== HIT TESTING & POSITION =====
         virtual UCLayoutHitResult XYToIndex(int pixelX, int pixelY) const = 0;
         virtual Rect2Di IndexToPos(int byteIndex) const = 0;
+        // Baseline (pixels from the layout's top) of the line holding `byteIndex`;
+        // with IndexToPos().x this places an inline object at the text's baseline.
+        virtual double IndexToBaseline(int byteIndex) const = 0;
         virtual UCLayoutLineXPos IndexToLineX(int byteIndex, bool trailing) const = 0;
         virtual UCCursorPos GetCursorPos(int byteIndex) const = 0;
         virtual UCCursorMoveResult MoveCursorVisually(bool strongCursor, int oldIndex,

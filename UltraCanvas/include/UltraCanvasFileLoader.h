@@ -131,7 +131,9 @@ namespace UltraCanvas {
         // Opens the native file dialog and parses the chosen word-processing
         // document into a UCRichDocument (see Plugins/Documents/Word). Formats:
         // .odt and .docx are fully parsed (detection is signature-based, so
-        // renamed files still load); .md/.markdown parse as Markdown; anything
+        // renamed files still load); .tex is imported by the LaTeX document
+        // reader (article subset, formulas kept for the math engine);
+        // .md/.markdown parse as Markdown; anything
         // else readable as text becomes plain paragraphs. Legacy Word 97-2003
         // .doc files are detected and rejected with a clear loadError telling
         // the user to convert to .docx. If the caller supplies no filters, a

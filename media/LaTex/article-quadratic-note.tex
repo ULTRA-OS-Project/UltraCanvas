@@ -1,0 +1,102 @@
+\documentclass[11pt]{article}
+% An article-class document: imported by the UltraCanvas LaTeX document
+% reader (sections, lists, a table, a figure, footnotes, references), with
+% every formula typeset live by the math engine.
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\vect}[1]{\mathbf{#1}}
+\newtheorem{theorem}{Theorem}
+\title{A Short Note on Quadratic Equations}
+\author{The UltraCanvas Team}
+\date{September 2026}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We restate the quadratic formula, classify its roots by the discriminant
+and show how an article-style document travels through the framework:
+this text is read by \texttt{UltraCanvasLaTeXDocumentReader}, not
+typeset by \TeX. Caf\'e, na\"{\i}ve, Stra{\ss}e --- ``quotes'' and 50\% of \$5.
+\end{abstract}
+
+\section{Introduction}\label{sec:intro}
+A quadratic equation $ax^2 + bx + c = 0$ with $a \neq 0$ has its roots in
+$\R$ or in $\mathbb{C}$. They are given by equation~\eqref{eq:roots} in
+Section~\ref{sec:formula}; the vector form $\vect{x}$ uses a document
+macro.\footnote{Footnotes are collected at the end of the imported
+document, with \emph{formatting} preserved.} See also \cite{knuth84} and
+\href{https://ultra-os.org}{the project website}.
+
+\subsection{Text styles}
+\textbf{Bold}, \textit{italic}, \emph{emphasis}, \texttt{monospace},
+\underline{underlined} and \textcolor{red}{coloured} text, plus
+{\bfseries a bold group}.
+\begin{itemize}
+  \item The first root uses $x_1 = \frac{-b + \sqrt{\Delta}}{2a}$.
+  \item The second root uses $x_2 = \frac{-b - \sqrt{\Delta}}{2a}$.
+  \begin{enumerate}
+    \item Nested ordered item.
+    \item Another nested item.
+  \end{enumerate}
+\end{itemize}
+\begin{description}
+  \item[Discriminant] $\Delta = b^2 - 4ac$.
+  \item[Vertex] $x_v = -\frac{b}{2a}$.
+\end{description}
+\begin{quote}
+Mathematics is the art of giving the same name to different things.
+\end{quote}
+
+\section{The formula}\label{sec:formula}
+\begin{equation}\label{eq:roots}
+  x = \frac{-b \pm \sqrt{b^2 - 4ac}}{2a}
+\end{equation}
+Completing the square gives, in aligned steps,
+\begin{align}
+  a x^2 + b x + c &= 0 \label{eq:start} \\
+  \left(x + \frac{b}{2a}\right)^2 &= \frac{b^2 - 4ac}{4a^2}
+\end{align}
+and the vertex form $y = a(x - x_v)^2 + y_v$ follows from \eqref{eq:start}.
+\[
+  \sum_{k=0}^{n} \binom{n}{k} x^k = (1 + x)^n
+\]
+
+\begin{theorem}[Vieta]
+If $x_1$ and $x_2$ are the roots, then $x_1 + x_2 = -\frac{b}{a}$ and
+$x_1 x_2 = \frac{c}{a}$.
+\end{theorem}
+
+\begin{table}[h]
+  \centering
+  \caption{Root classification by discriminant}\label{tab:cases}
+  \begin{tabular}{|l|c|r|}
+    \hline
+    Case & $\Delta$ & Real roots \\ \hline
+    two distinct & $\Delta > 0$ & 2 \\
+    one repeated & $\Delta = 0$ & 1 \\
+    \multicolumn{2}{|c|}{complex pair ($\Delta < 0$)} & 0 \\ \hline
+  \end{tabular}
+\end{table}
+Table~\ref{tab:cases} lists the three cases.
+
+\begin{figure}[h]
+  \centering
+  \includegraphics[width=0.35\textwidth]{../Logo_Texter.png}
+  \caption{An included image resolves relative to the document}
+  \label{fig:logo}
+\end{figure}
+Figure~\ref{fig:logo} was embedded from the file next to the source.
+
+\section*{Source listing}
+\begin{verbatim}
+double discriminant(double a, double b, double c) {
+    return b * b - 4 * a * c;
+}
+\end{verbatim}
+
+\begin{thebibliography}{9}
+\bibitem{knuth84} D. E. Knuth, \emph{The \TeX book}, Addison-Wesley, 1984.
+\end{thebibliography}
+\end{document}
