@@ -96,21 +96,82 @@ This is the list the structure has to be able to hold.
 Point clouds are not a separate structure: they are a primitive whose mode is
 `Points` and whose extra channels are named attributes.
 
-### 2.5 CAD / B-rep — the deliberate exclusion
+### 2.5 CAD / B-rep — held exactly, not tessellated away
 
 **STEP** (ISO 10303 AP203/214/242), **IGES**, **ACIS/SAT**, **Parasolid**,
 **3DM/OpenNURBS**, and the **`3DSOLID`/`REGION`/`BODY`/`SURFACE`** entities in
 DWG and DXF do not contain meshes. They contain *boundary representations*:
 trimmed NURBS surfaces, topological faces, edges, loops and vertices, solid
-bodies, assemblies and PMI annotation. Holding those losslessly requires a
-topology model that has nothing in common with the one below — a different
-structure, not more fields on this one.
+bodies, assemblies and PMI annotation.
 
-**The decision: B-rep is out of scope for `ModelDocument`.** A B-rep reader
-tessellates to triangles on import (which is what every viewer does anyway) and
-records the loss through the warning callback. If UltraCanvas later needs
-parametric solids, they get their own `BrepStorage` document alongside this
-one, exactly as 2D vector and 3D mesh are separate documents today.
+> **This section previously argued the opposite**, and the reversal is worth
+> recording rather than quietly editing away. The original decision was that
+> B-rep was out of scope, that a reader should tessellate on import and warn,
+> and that parametric solids could have their own document later if anyone
+> wanted them. That was wrong on the point that matters: **a triangle mesh is a
+> *view* of a B-rep, taken at a tolerance the file never stated.** A reader that
+> tessellates and discards has decided, on the user's behalf and irreversibly,
+> that the model is approximate from now on. Every later question — is this
+> hole exactly 12 mm, does this face meet that one, what is the volume, can
+> this be written back out as STEP — is then unanswerable, and no amount of
+> warning at import time gives the answer back. The structure is called
+> universal; a universal 3D structure that cannot hold what half of engineering
+> ships is not.
+
+**The decision: `ModelDocument` holds B-rep exactly, alongside meshes.**
+`ModelDocument::Brep` is a `BrepData` — the pool declared in
+`UltraCanvasBrepStorage.h` — and a `ModelNode` points at a solid in it exactly
+as it points at a mesh. The two coexist: a node may carry both the exact body
+and the mesh that was made from it.
+
+The hierarchy is the one every B-rep kernel and every B-rep file format agrees
+on, so a reader copies rather than converts:
+
+```
+Solid  -> Shells    the first is the outer boundary, the rest are voids
+Shell  -> Faces
+Face   -> Surface + Loops   the first bounds it, the rest are holes
+Loop   -> Coedges           an ordered, closed circuit
+Coedge -> Edge + orientation + optional parameter-space curve
+Edge   -> Curve + two Vertices + a parameter range
+Vertex -> a point
+```
+
+Geometry is analytic where the format states it analytically and NURBS where it
+does not, because that is how the formats themselves are written and converting
+either way loses something:
+
+| | analytic | general |
+|---|---|---|
+| curves | line, circle, ellipse, parabola, hyperbola, polyline | rational B-spline: degree, knots, control points, weights |
+| surfaces | plane, cylinder, cone, sphere, torus, extrusion, revolution, ruled | rational B-spline tensor product |
+
+That table is the intersection of what STEP's `geometry_schema`, IGES entities
+100–198, the ACIS surface types and OpenNURBS all carry. A cylinder is two
+numbers and a placement in all four; storing it as a control net would be
+lossy, larger and slower, and would make "is this hole round" unanswerable.
+
+**Trimming** is the part a mesh structure has no analogue for, and the part
+that decides whether a face can be meshed at all. A `BrepCoedge` carries an
+optional `ParameterCurve` — STEP's pcurve, IGES entity 142, the ACIS coedge's
+own curve — because the 3D edge curve alone does not say which side of itself
+is material. Where a file carries none, `BrepSurface::Project` inverts the
+surface: closed-form for every analytic type, and a seeded descent for NURBS.
+
+**Tessellation moves out of the reader and becomes an operation:**
+`ModelDocument::TessellateBreps(options)`. That is the whole difference. It can
+be run at a tolerance the caller picks, run twice for two levels of detail,
+re-run finer without re-reading the file, or never run at all by a consumer
+that wants the surfaces. The exact bodies stay. What the old rule called
+"tessellates and warns" is now something the caller asks for and the document
+does — and `BrepData::Validate` is what a reader owes its caller instead:
+structural soundness, every index in range, every loop closed, and every edge
+of a closed shell used exactly twice in opposite directions.
+
+What is still out of scope, and stated as such rather than implied: PMI
+(dimensions, tolerances, annotation), constructive-solid history trees, and
+assembly-level constraints. `BrepSolid::Extras` and `BrepFace::Extras` carry
+those as text so a reader loses nothing silently, but nothing interprets them.
 
 ### 2.6 Application-native files — the second deliberate exclusion
 
@@ -197,11 +258,15 @@ ModelDocument
 ├─ SourceUnit, UnitScaleToMeters, Up, Chirality
 ├─ Scenes[]      ModelScene   { Name, Roots[] }              + DefaultScene
 ├─ Nodes[]       ModelNode    { TRS or Matrix, Children[], Parent,
-│                               Mesh, Camera, Light, Skin, MorphWeights[], Extras{} }
+│                               Mesh, Solid, Camera, Light, Skin,
+│                               MorphWeights[], Extras{} }
 ├─ Meshes[]      ModelMesh    { Name, Primitives[] }
 │                MeshPrimitive{ Mode, Positions[], Normals[], Tangents[],
 │                               Attributes[], Indices[], FaceStarts[],
-│                               Material, Targets[] }
+│                               SmoothingGroups[], Material, Targets[] }
+├─ Brep          BrepData     { Curves[], Curves2D[], Surfaces[], Vertices[],
+│                               Edges[], Loops[], Faces[], Shells[], Solids[] }
+│                              exact trimmed surfaces and topology - §2.5
 ├─ Materials[]   ModelMaterial{ PBR block, optional Phong block, textures,
 │                               AlphaMode, DoubleSided, IOR, Extras{} }
 ├─ Images[]      ModelImage   { Uri or embedded Data, MimeType }
@@ -233,19 +298,42 @@ structure: the GL element narrows to float when it uploads.
 
 **Materials keep both models rather than normalising to one.** See §3.4.
 
+**Exact bodies live beside meshes, not instead of them.** `Brep` is a member of
+the document rather than a separate document, and a node points at a solid the
+same way it points at a mesh, so a CAD file's exact surfaces and the mesh made
+from them are one object. See §2.5, which reverses the earlier decision and
+says why. The vector and matrix types both halves are built from moved to
+`UltraCanvasModelMath.h`, because a document owns its `BrepData` and the B-rep
+header therefore cannot include the mesh one.
+
 ### 4.2 Operations the structure provides
 
-`Triangulate()` / `TriangulateAll()`, `RecomputeNormals()` (area-weighted),
-`WeldVertices(tolerance)`, `FlattenTransforms()`, `ConvertUpAxis()`,
-`GlobalTransform(node)`, `ComputeBounds()`, `DecomposeTRS()`.
+`Triangulate()` / `TriangulateAll()`, `RecomputeNormals()` (area-weighted, and
+smoothing-group-aware), `WeldVertices(tolerance)`, `FlattenTransforms()`,
+`ConvertUpAxis()`, `GlobalTransform(node)`, `ComputeBounds()`,
+`DecomposeTRS()`, `TessellateBreps(options)`, and on the B-rep pool
+`Validate()`, `TessellateFace()` and `ComputeBounds()`.
 
-These exist because every converter would otherwise write its own. Two are
+These exist because every converter would otherwise write its own. Four are
 worth explaining:
+
+- **`Triangulate` ear-clips rather than fans.** A fan about the first vertex is
+  right for a convex face and wrong for a concave one, where it emits triangles
+  outside the polygon. Convex faces still take the fan — the same answer, far
+  cheaper — and only a concave face pays for the clipper.
+- **`TessellateBreps` is where a B-rep becomes triangles**, and it is the
+  caller's decision rather than a reader's. It leaves the exact bodies in
+  place, meshes an instanced solid once, splits by material, and reports
+  per-face failures rather than aborting. §2.5 has the argument.
 
 - **`FlattenTransforms`** bakes world transforms into vertices and reduces the
   graph to one node per mesh — what a writer for a format with no scene graph
   (STL, OBJ, PLY, OFF) needs, and what the GL viewer wants. It drops skins and
   animations, which are meaningless once a pose is baked, and reports how many.
+- **`WeldVertices` searches a neighbourhood, not a cell.** Candidates come from
+  the vertex's lattice cell and its 26 neighbours, and the merge is decided by
+  distance — because rounding is discontinuous exactly where geometry sits, so
+  bucketing alone failed on the seams most worth welding.
 - **`WeldVertices` is attribute-aware.** Two corners at the same position with
   different normals do *not* merge, because merging them would destroy the
   faceting the file specified. Measured on the 510 671-triangle STL sample in
@@ -281,9 +369,37 @@ at a time. It lives on the plugin side so core never depends on a plugin type.
 decomposition including shear rejection, double-precision retention at 10⁶,
 every primitive topology, n-gon preservation and triangulation, strip winding,
 point clouds with custom attributes, instancing, transform flattening,
-up-axis conversion, unit bookkeeping, and both directions of the material
-derivation — then runs the whole path against the real STL sample when given
-one. 30 assertions, all passing.
+up-axis conversion, unit bookkeeping, both directions of the material
+derivation, concave ear clipping by area, welding across a lattice boundary,
+and smoothing groups through both normal generation and triangulation — then
+runs the whole path against the real STL sample when given one.
+
+`Tests/BrepStorageTest.cpp` (also CTest-registered, and needing no sample file
+because it builds its bodies) covers the exact half. Its assertions are
+deliberately geometric, because a B-rep that holds the right numbers and meshes
+them wrongly produces a model that looks plausible and is not the part:
+
+- a rational quadratic B-spline reproduces a circular arc to 10⁻¹², and drops
+  visibly off it when the weights are removed — so the rational path is real;
+- analytic surfaces invert: a point evaluated on a sphere or torus projects
+  back to the parameters it came from;
+- validation catches a dangling surface index, a loop that does not close, and
+  an edge used twice in the same direction — while leaving an open shell alone,
+  because a sheet body is legitimate;
+- a meshed box has signed volume exactly 48 for a 2×4×6 body, which is only
+  true if every one of its six faces is wound outward, and exactly 12
+  triangles, which is only true if the sampler decimates what the tolerance
+  does not need;
+- a meshed cylinder puts every vertex on the exact surface and brackets the
+  true lateral area from below, at 96 / 384 / 1534 triangles for tolerances of
+  0.1 / 0.01 / 0.001;
+- a plate with a square hole meshes to area exactly 96 with no triangle inside
+  the hole — area alone would pass with overlapping triangles, which is what a
+  naive triangulation of a bridged polygon produces;
+- an untrimmed bicubic patch meshes with every edge midpoint inside the chord
+  tolerance of the true surface;
+- one solid placed by two nodes is meshed once and shared, and a face with its
+  own material becomes its own primitive.
 
 ## 5. Proposal — converters, in order
 
@@ -381,22 +497,40 @@ Then, closing the 1.0 gate from the versioning investigation:
 
 Recorded rather than hidden:
 
-- **Concave n-gons triangulate by fan** about the first vertex, which is
-  correct for the convex faces mesh formats emit in practice but wrong for a
-  concave face. Ear clipping is the fix, needed before a PLY or OBJ reader
-  meets hand-authored concave geometry.
-- **OBJ smoothing groups** are resolved into normals at import and not carried,
-  so an OBJ → OBJ round trip loses the `s` statements. Adding a per-face
-  smoothing-group array is cheap if the round trip turns out to matter.
+- ~~**Concave n-gons triangulate by fan**~~ — fixed. `MeshPrimitive::Triangulate`
+  ear-clips in the plane Newell's method fits to the face, so an L-shaped or
+  slotted n-gon comes out as its own area rather than its convex hull. A
+  triangle or a convex polygon still takes the fan, which is the same answer
+  for a fraction of the work, so nothing got slower. The measure in the test is
+  area: the L-shaped face is 5 units, and a fan about its first vertex gives 7.
+  The ear clipper lives in `UltraCanvasPolygonTriangulation.h` because the
+  B-rep face tessellator needs the same thing with holes, and used to have half
+  of it.
+- ~~**OBJ smoothing groups** are resolved into normals and not carried~~ —
+  fixed. `MeshPrimitive::SmoothingGroups` is a 32-bit mask per face — the same
+  idea as the 3DS `SMOOTH_GROUP` chunk, so both formats can use it — and the
+  OBJ reader fills it while the writer emits `s` statements only where the
+  value changes, `s` being stateful. `RecomputeNormals` now honours the groups
+  rather than ignoring them: faces sharing a group average, faces sharing none
+  crease, and the vertex where the two meet is *split* so both normals can
+  exist, with attributes, tangents and morph deltas following the split.
+  Triangulation carries each face's mask onto the triangles it produces.
 - **`KHR_materials_*` extension blocks** land in `ModelMaterial::Extras` as
   text rather than typed fields. Correct for the long tail; the common ones
   (transmission, clearcoat, sheen, ior beyond the existing field) may deserve
   promotion once a glTF reader exists to fill them.
 - **No native serialisation yet.** `ModelFormat::UltraCanvas` is declared but
   has no writer; the document is not yet persistable in its own right.
-- **Welding is a hash-grid merge**, so two vertices within tolerance but
-  straddling a lattice boundary do not merge. Exact enough for de-duplicating
-  soup, not a substitute for a proper spatial merge.
+- ~~**Welding is a hash-grid merge**~~ — fixed. The lattice is still how
+  candidates are found, but a vertex is now compared against its own cell *and
+  its 26 neighbours*, and the merge is decided by real distance rather than by
+  two quantised coordinates being equal. That matters more than it sounds:
+  rounding is discontinuous exactly where geometry likes to sit — on the axis
+  planes, at the origin, on every round number a CAD user typed — so
+  single-cell bucketing failed on precisely the seams worth welding. Attributes
+  still gate the merge exactly, because a normal or UV seam is a discontinuity
+  the file meant, and a tolerance of zero still merges only bit-identical
+  vertices.
 - **3DS KFDATA is not read.** The keyframer section carries the node
   hierarchy, pivots and position/rotation/scale tracks. The reader warns when
   it is present, so a scene with a hierarchy is known to arrive as a flat list
@@ -445,6 +579,31 @@ Recorded rather than hidden:
 - **The COLLADA texture chain is unexercised.** The sampler2D → surface → image
   indirection is implemented, but the sample's `<library_images/>` is empty, so
   no test covers it against a real file.
+- **No B-rep reader exists yet.** The structure holds STEP, IGES, ACIS,
+  Parasolid, OpenNURBS and DWG `3DSOLID`, and `BrepStorageTest` builds bodies of
+  every kind and meshes them; but nothing yet reads a `.step` or `.iges` file
+  into it. That is the next converter, and it is now a parsing job rather than a
+  design one — which is the whole reason for doing the structure first.
+- **B-rep tessellation is bounded, not optimal.** The face mesher samples the
+  trimming loops to the chord tolerance, decimates what the tolerance does not
+  need, ear-clips the region with its holes bridged in, seeds a grid of interior
+  points sized from the surface's own curvature, and then refines by red-green
+  splitting whatever a uniform grid missed. A cylinder of radius 5 and height 10
+  comes out at 96 / 384 / 1534 triangles for tolerances of 0.1 / 0.01 / 0.001,
+  which is within about 1.5x of the ideal strip; a box comes out at exactly 12.
+  Where it stops short: the refinement has a depth limit, and a face that hits
+  it says so through the warning callback rather than silently under-meshing.
+- **Degenerate edges without a pcurve are skipped.** A sphere's pole or a cone's
+  apex has no extent in space, and reconstructing its span in parameter space
+  needs the pcurve the file may not have carried. The loop closes anyway
+  because the seam is unwrapped, but the parameterisation near the pole is the
+  tessellator's guess rather than the file's statement.
+- **The B-rep `Extras` maps are inert.** PMI, product ids and assembly paths
+  are carried as text so nothing is lost, and nothing reads them.
+- **`ModelDocument::FlattenTransforms` does not bake solids.** It reduces the
+  graph to one node per mesh, so a solid that has not been tessellated is left
+  behind. Call `TessellateBreps` first; transforming a NURBS control net is
+  well-defined but nothing needs it yet.
 
 ### What the sample files confirmed
 
@@ -525,9 +684,12 @@ converter would have hit them too:
   See §2.6: the geometry an artist sees is produced by the application's
   evaluation and is not in the file. `.blend` is recognised and described so a
   user gets an answer instead of a failure, but never imported as geometry.
-- **B-rep and parametric solids** — STEP, IGES, ACIS, Parasolid, OpenNURBS and
-  the DWG `3DSOLID` family. See §2.5: they need their own structure, and a
-  mesh document that pretended to hold them would lie about what it round-trips.
+- ~~**B-rep and parametric solids**~~ — **no longer a non-goal.** See §2.5:
+  `ModelDocument::Brep` holds trimmed NURBS and analytic surfaces with their
+  topology, and tessellation became an operation the caller asks for rather
+  than a loss a reader imposes. What remains out of scope within B-rep is PMI,
+  CSG history and assembly constraints — carried as `Extras` text, interpreted
+  by nothing.
 - **A renderer.** `ModelDocument` is an exchange and editing structure.
   Rendering stays with `UltraCanvasSTLElement` / `UltraCanvasGLSurface`, which
   consume a flattened mesh.

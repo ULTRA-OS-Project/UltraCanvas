@@ -27,6 +27,8 @@
 
 #include <cctype>
 #include <iostream>
+#include <string>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -116,7 +118,18 @@ std::shared_ptr<ModelStorage::ModelDocument> UltraCanvasModelFormatsPlugin::Load
         const std::string& filePath, const ConversionOptions& options) {
     auto converter = CreateConverterForExtension(filePath);
     if (!converter || !converter->CanImport()) return nullptr;
-    return converter->Import(filePath, options);
+    auto document = converter->Import(filePath, options);
+
+    // Honoured here rather than in each converter, so it means the same thing
+    // for every format: a B-rep reader fills ModelDocument::Brep and nothing
+    // else, and a caller that wants triangles says so once. The exact bodies
+    // stay either way — that is the whole point of holding them.
+    if (document && options.TessellateOnImport && !document->Brep.Solids.empty()) {
+        std::vector<std::string> problems;
+        document->TessellateBreps(options.Tessellation, &problems);
+        for (const std::string& problem : problems) options.Warn(problem);
+    }
+    return document;
 }
 
 bool UltraCanvasModelFormatsPlugin::SaveModelDocument(const ModelStorage::ModelDocument& document,

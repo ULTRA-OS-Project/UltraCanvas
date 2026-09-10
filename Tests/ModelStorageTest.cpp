@@ -29,6 +29,12 @@ static void Check(bool ok, const std::string& what) {
     if (!ok) ++failures;
 }
 static bool Near(double a, double b, double eps = 1e-9) { return std::fabs(a - b) <= eps; }
+static void CheckNear(double actual, double expected, double eps, const std::string& what) {
+    const bool ok = Near(actual, expected, eps);
+    std::printf("  [%s] %s (%.10g vs %.10g)\n", ok ? "PASS" : "FAIL", what.c_str(),
+                actual, expected);
+    if (!ok) ++failures;
+}
 
 static void TestMath() {
     std::printf("Math\n");
@@ -223,12 +229,190 @@ static void TestRealFile(const char* path) {
     Check(Near(back.bounds.min.x, mesh.bounds.min.x, 1e-3), "converting back preserves the bounds");
 }
 
+// A concave n-gon is the case a fan triangulation gets wrong: fanning about
+// the first vertex emits triangles that lie outside the polygon, filling the
+// notch in. Ear clipping only ever emits triangles inside it, so the test is
+// the area — which a fan overstates by exactly the notch.
+static void TestConcaveTriangulation() {
+    std::printf("Concave n-gons\n");
+
+    // An L: a 3x3 square with a 2x2 bite out of its top-right corner.
+    MeshPrimitive ell;
+    ell.Mode = PrimitiveMode::Polygons;
+    ell.Positions = {{0, 0, 0}, {3, 0, 0}, {3, 1, 0}, {1, 1, 0}, {1, 3, 0}, {0, 3, 0}};
+    ell.Indices = {0, 1, 2, 3, 4, 5};
+    ell.FaceStarts = {0, 6};
+
+    Check(ell.FaceCount() == 1, "one six-cornered face");
+    Check(ell.Triangulate(), "which triangulates");
+    Check(ell.FaceCount() == 4, "into four triangles, as any n-gon of six corners does");
+
+    auto area = [](const MeshPrimitive& prim) {
+        double total = 0.0;
+        for (size_t i = 0; i + 2 < prim.Indices.size(); i += 3) {
+            const Vec3d& a = prim.Positions[prim.Indices[i]];
+            const Vec3d& b = prim.Positions[prim.Indices[i + 1]];
+            const Vec3d& c = prim.Positions[prim.Indices[i + 2]];
+            total += (b - a).Cross(c - a).Length() * 0.5;
+        }
+        return total;
+    };
+    // The L's area is 5. A fan about vertex 0 gives 7 — the 3x3 square's 9
+    // minus the two triangles it happens to miss — so this number alone
+    // separates ear clipping from what was there before.
+    CheckNear(area(ell), 5.0, 1e-9, "covering the L's own area, not its convex hull");
+
+    // No triangle may sit in the bite.
+    bool inNotch = false;
+    for (size_t i = 0; i + 2 < ell.Indices.size(); i += 3) {
+        const Vec3d centroid = (ell.Positions[ell.Indices[i]] +
+                                ell.Positions[ell.Indices[i + 1]] +
+                                ell.Positions[ell.Indices[i + 2]]) * (1.0 / 3.0);
+        if (centroid.x > 1.0 && centroid.y > 1.0) inNotch = true;
+    }
+    Check(!inNotch, "and no triangle in the notch");
+
+    // A convex quad must still come out as the obvious two triangles: the fast
+    // path has to agree with the slow one.
+    MeshPrimitive quad;
+    quad.Mode = PrimitiveMode::Polygons;
+    quad.Positions = {{0, 0, 0}, {2, 0, 0}, {2, 2, 0}, {0, 2, 0}};
+    quad.Indices = {0, 1, 2, 3};
+    quad.FaceStarts = {0, 4};
+    quad.Triangulate();
+    Check(quad.FaceCount() == 2, "a convex quad still becomes two triangles");
+    CheckNear(area(quad), 4.0, 1e-9, "covering its area");
+
+    // Winding must survive: a clockwise face stays clockwise, or a mesh comes
+    // back inside out.
+    MeshPrimitive clockwise;
+    clockwise.Mode = PrimitiveMode::Polygons;
+    clockwise.Positions = {{0, 3, 0}, {1, 3, 0}, {1, 1, 0}, {3, 1, 0}, {3, 0, 0}, {0, 0, 0}};
+    clockwise.Indices = {0, 1, 2, 3, 4, 5};
+    clockwise.FaceStarts = {0, 6};
+    clockwise.Triangulate();
+    double signedArea = 0.0;
+    for (size_t i = 0; i + 2 < clockwise.Indices.size(); i += 3) {
+        const Vec3d& a = clockwise.Positions[clockwise.Indices[i]];
+        const Vec3d& b = clockwise.Positions[clockwise.Indices[i + 1]];
+        const Vec3d& c = clockwise.Positions[clockwise.Indices[i + 2]];
+        signedArea += (b - a).Cross(c - a).z * 0.5;
+    }
+    CheckNear(signedArea, -5.0, 1e-9,
+              "a clockwise concave face keeps its winding, so normals do not flip");
+}
+
+// Welding used to bucket a quantised coordinate and compare buckets, which
+// fails for the one case that matters: two vertices within tolerance whose
+// rounded coordinates land in different cells. That happens at every round
+// number — which is where CAD geometry sits.
+static void TestWeldingAcrossCellBoundaries() {
+    std::printf("Welding\n");
+
+    ModelMesh mesh;
+    MeshPrimitive prim;
+    prim.Mode = PrimitiveMode::Triangles;
+    // Two triangles meeting at a seam on x = 1, with the second copy of each
+    // shared vertex a nanometre away — on the other side of the lattice
+    // boundary that any quantisation by 1e-6 puts exactly at 1.0.
+    prim.Positions = {{0, 0, 0}, {1.0, 0, 0}, {1.0, 1, 0},
+                      {2, 0, 0}, {1.0 - 1e-9, 0, 0}, {1.0 - 1e-9, 1, 0}};
+    prim.Indices = {0, 1, 2, 3, 4, 5};
+
+    ModelDocument document;
+    mesh.Primitives.push_back(prim);
+    document.AddMesh(mesh);
+
+    const size_t removed = document.WeldVertices(1e-6);
+    Check(removed == 2,
+          "two vertices a nanometre apart merge even though they straddle a cell boundary");
+    Check(document.Meshes[0].Primitives[0].Positions.size() == 4,
+          "leaving four distinct vertices");
+    Check(document.Meshes[0].Primitives[0].FaceCount() == 2,
+          "and both triangles intact");
+
+    // Attributes still gate the merge: a UV seam is a real discontinuity.
+    ModelDocument seamed;
+    MeshPrimitive withUVs = prim;
+    VertexAttribute uv;
+    uv.Semantic = AttributeSemantic::TexCoord;
+    uv.Components = 2;
+    uv.Values = {0, 0,  1, 0,  1, 1,  0, 0,  0.5f, 0,  0.5f, 1};
+    withUVs.Attributes.push_back(uv);
+    ModelMesh seamedMesh;
+    seamedMesh.Primitives.push_back(withUVs);
+    seamed.AddMesh(seamedMesh);
+    Check(seamed.WeldVertices(1e-6) == 0,
+          "but vertices whose texture coordinates differ do not merge");
+
+    // A tolerance of zero must still mean exactly what it did: identical only.
+    ModelDocument exact;
+    ModelMesh exactMesh;
+    exactMesh.Primitives.push_back(prim);
+    exact.AddMesh(exactMesh);
+    Check(exact.WeldVertices(0.0) == 0,
+          "and a zero tolerance merges nothing that is not bit-identical");
+}
+
+// Smoothing groups are a per-face statement about which edges crease. Carrying
+// them is what lets an OBJ round-trip its `s` statements; honouring them is
+// what makes generated normals right.
+static void TestSmoothingGroups() {
+    std::printf("Smoothing groups\n");
+
+    // Two quads meeting at a right angle along a shared edge — a folded sheet.
+    MeshPrimitive fold;
+    fold.Mode = PrimitiveMode::Polygons;
+    fold.Positions = {{0, 0, 0}, {1, 0, 0}, {1, 1, 0}, {0, 1, 0},
+                      {1, 0, 1}, {0, 1, 1}};
+    // Second face reuses the shared edge's vertices 1 and 2.
+    fold.Indices = {0, 1, 2, 3,  1, 4, 5, 2};
+    fold.FaceStarts = {0, 4, 8};
+    Check(fold.FaceCount() == 2, "a folded sheet of two quads");
+
+    MeshPrimitive smoothed = fold;
+    smoothed.SmoothingGroups = {1, 1};      // same group: smooth across the fold
+    smoothed.RecomputeNormals();
+    Check(smoothed.Positions.size() == 6,
+          "faces in the same group share their vertices, so nothing is split");
+
+    MeshPrimitive creased = fold;
+    creased.SmoothingGroups = {1, 2};       // no shared bit: crease
+    creased.RecomputeNormals();
+    Check(creased.Positions.size() == 8,
+          "faces in different groups split the two vertices they share, so the fold creases");
+    Check(creased.Indices.size() == fold.Indices.size(),
+          "the faces still have the same corners, now pointing at the split vertices");
+
+    // The creased normals must be the two face normals, not their average.
+    bool sawFaceNormal = false;
+    for (const Vec3f& normal : creased.Normals)
+        if (std::fabs(normal.z - 1.0f) < 1e-5f || std::fabs(normal.z + 1.0f) < 1e-5f)
+            sawFaceNormal = true;
+    Check(sawFaceNormal, "and each side keeps its own face normal rather than an average");
+
+    // Triangulation has to carry the masks through, or the round trip loses
+    // them the moment a consumer asks for triangles.
+    MeshPrimitive triangulated = fold;
+    triangulated.SmoothingGroups = {1, 4};
+    triangulated.Triangulate();
+    Check(triangulated.FaceCount() == 4, "two quads triangulate to four triangles");
+    Check(triangulated.SmoothingGroups.size() == 4,
+          "and every triangle inherits its face's smoothing group");
+    Check(triangulated.SmoothingGroups[0] == 1 && triangulated.SmoothingGroups[1] == 1 &&
+          triangulated.SmoothingGroups[2] == 4 && triangulated.SmoothingGroups[3] == 4,
+          "in the right order");
+}
+
 int main(int argc, char** argv) {
     TestMath();
     TestTopology();
     TestSceneGraph();
     TestUpAxis();
     TestMaterials();
+    TestConcaveTriangulation();
+    TestWeldingAcrossCellBoundaries();
+    TestSmoothingGroups();
     if (argc > 1) TestRealFile(argv[1]);
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
                 failures, failures == 1 ? "" : "s");

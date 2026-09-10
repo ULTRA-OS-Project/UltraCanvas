@@ -18,9 +18,17 @@
 //
 // Every field below is annotated with the formats that fill it. A field no
 // format fills does not belong here; see
-// Docs/Research/UltraCanvas3DModelProposal.md for the survey those
-// annotations come from, and for what is deliberately out of scope
-// (B-rep/NURBS solids: STEP, IGES, ACIS and the DWG 3DSOLID family).
+// Docs/Research/UltraCanvas3DModelProposal.md for the survey those annotations
+// come from.
+//
+// The document holds two kinds of geometry, not one. Meshes are below;
+// BrepData (UltraCanvasBrepStorage.h) holds exact trimmed-surface bodies — what
+// STEP, IGES, ACIS, Parasolid, OpenNURBS and DWG 3DSOLID/REGION/BODY actually
+// contain. A node points at either. Tessellation is then a document operation
+// at a tolerance the caller chooses, rather than a decision a reader makes once
+// and irreversibly; the exact surfaces stay alongside the mesh they produced.
+// The vector and matrix types both halves are built from moved to
+// UltraCanvasModelMath.h so the B-rep header can use them without a cycle.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-10
@@ -29,6 +37,10 @@
 
 #ifndef ULTRACANVAS_MODEL_STORAGE_H
 #define ULTRACANVAS_MODEL_STORAGE_H
+
+#include "DataFormats/UltraCanvasBrepStorage.h"
+#include "DataFormats/UltraCanvasModelMath.h"
+#include "DataFormats/UltraCanvasPolygonTriangulation.h"
 
 #include <cmath>
 #include <cstdint>
@@ -40,115 +52,6 @@
 
 namespace UltraCanvas {
 namespace ModelStorage {
-
-// ===== SCALARS =====
-
-// Positions are double. CAD, survey and geospatial sources place geometry far
-// from the origin, where float has already lost millimetre precision (a
-// coordinate of 1e6 resolves to ~0.06); the 2D model learned the same lesson
-// and moved to double. Everything else — normals, tangents, texture
-// coordinates, colours, weights — is float, because it is bounded and small.
-    struct Vec3d {
-        double x = 0.0, y = 0.0, z = 0.0;
-
-        Vec3d() = default;
-        Vec3d(double vx, double vy, double vz) : x(vx), y(vy), z(vz) {}
-
-        Vec3d operator+(const Vec3d& o) const { return {x + o.x, y + o.y, z + o.z}; }
-        Vec3d operator-(const Vec3d& o) const { return {x - o.x, y - o.y, z - o.z}; }
-        Vec3d operator*(double s) const { return {x * s, y * s, z * s}; }
-        Vec3d& operator+=(const Vec3d& o) { x += o.x; y += o.y; z += o.z; return *this; }
-
-        double Dot(const Vec3d& o) const { return x * o.x + y * o.y + z * o.z; }
-        Vec3d Cross(const Vec3d& o) const {
-            return {y * o.z - z * o.y, z * o.x - x * o.z, x * o.y - y * o.x};
-        }
-        double Length() const { return std::sqrt(x * x + y * y + z * z); }
-        Vec3d Normalized() const {
-            double len = Length();
-            if (len <= 1e-15) return {0.0, 0.0, 0.0};
-            return {x / len, y / len, z / len};
-        }
-    };
-
-    struct Vec3f {
-        float x = 0.0f, y = 0.0f, z = 0.0f;
-        Vec3f() = default;
-        Vec3f(float vx, float vy, float vz) : x(vx), y(vy), z(vz) {}
-    };
-
-    struct Vec4f {
-        float x = 0.0f, y = 0.0f, z = 0.0f, w = 0.0f;
-        Vec4f() = default;
-        Vec4f(float vx, float vy, float vz, float vw) : x(vx), y(vy), z(vz), w(vw) {}
-    };
-
-// Rotation as a unit quaternion (x, y, z, w) — the form glTF, FBX and USD all
-// store and the only one that interpolates without gimbal loss. COLLADA's
-// axis-angle and 3DS's Euler triples convert on import.
-    struct Quatd {
-        double x = 0.0, y = 0.0, z = 0.0, w = 1.0;
-
-        Quatd() = default;
-        Quatd(double qx, double qy, double qz, double qw) : x(qx), y(qy), z(qz), w(qw) {}
-
-        static Quatd Identity() { return {}; }
-        static Quatd FromAxisAngle(const Vec3d& axis, double radians);
-
-        Quatd Normalized() const;
-        Quatd operator*(const Quatd& o) const;   // this ∘ o: apply o first
-        Vec3d Rotate(const Vec3d& v) const;
-    };
-
-// Column-major 4x4, the OpenGL memory layout: m[col * 4 + row], so a
-// translation sits in m[12..14] and the array can be handed to glUniformMatrix4fv
-// after narrowing. Same convention as the existing float Mat4 in the STL
-// plugin, in double.
-    struct Matrix4x4 {
-        double m[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};
-
-        static Matrix4x4 Identity() { return {}; }
-        static Matrix4x4 Translation(const Vec3d& t);
-        static Matrix4x4 Scaling(const Vec3d& s);
-        static Matrix4x4 FromQuaternion(const Quatd& q);
-        // T * R * S, the composition order every scene format defines TRS in.
-        static Matrix4x4 FromTRS(const Vec3d& translation, const Quatd& rotation,
-                                 const Vec3d& scale);
-
-        Matrix4x4 operator*(const Matrix4x4& o) const;   // this * o: apply o first
-        Vec3d TransformPoint(const Vec3d& p) const;      // w = 1, divides by w
-        Vec3d TransformDirection(const Vec3d& v) const;  // w = 0, no translation
-        // Normals transform by the inverse transpose; returns false and leaves
-        // the result identity when the matrix is not invertible.
-        bool InverseTransposeUpper3x3(double out[9]) const;
-        // Inverse of an affine transform (last row 0,0,0,1). Returns false and
-        // leaves `out` identity when the upper 3x3 is singular. Readers of
-        // formats that store world-space vertices beside an object matrix
-        // (3DS) need it to recover object-local coordinates.
-        bool InverseAffine(Matrix4x4& out) const;
-        bool IsIdentity(double epsilon = 1e-12) const;
-        // Decompose into TRS. Returns false when the matrix carries shear or a
-        // mirror that TRS cannot express — the caller should keep the matrix.
-        bool DecomposeTRS(Vec3d& translation, Quatd& rotation, Vec3d& scale) const;
-    };
-
-// ===== BOUNDS =====
-
-    struct Bounds3D {
-        Vec3d Min{ std::numeric_limits<double>::max(),
-                   std::numeric_limits<double>::max(),
-                   std::numeric_limits<double>::max() };
-        Vec3d Max{ -std::numeric_limits<double>::max(),
-                   -std::numeric_limits<double>::max(),
-                   -std::numeric_limits<double>::max() };
-
-        bool IsValid() const { return Min.x <= Max.x; }
-        void Expand(const Vec3d& p);
-        void Expand(const Bounds3D& other);
-        Vec3d Center() const;
-        Vec3d Size() const;
-        double Radius() const;   // half the bounding diagonal; 1.0 when empty
-    };
 
 // ===== UNITS AND ORIENTATION =====
 
@@ -263,6 +166,20 @@ namespace ModelStorage {
         int Material = -1;                         // index into ModelDocument::Materials
         std::vector<MorphTarget> Targets;
 
+        // One smoothing-group bitmask per face, or empty when the source had
+        // none. OBJ `s` statements and the 3DS SMOOTH_GROUP chunk are the same
+        // idea under two spellings: faces that share a group smooth across
+        // their shared edge, faces that share none crease. Both are 32-bit
+        // masks and a face may be in several groups at once; OBJ's `s 0` and
+        // `s off` are the value 0.
+        //
+        // These are resolved into normals at import — that is what a renderer
+        // needs — but keeping the masks means an OBJ read and written back
+        // still says `s 1`, and that a writer for a format with groups can
+        // emit them instead of baking a normal per corner. Parallel to
+        // FaceCount(), not to the vertices.
+        std::vector<uint32_t> SmoothingGroups;
+
         size_t VertexCount() const { return Positions.size(); }
         // Faces for the current Mode: triangles, lines, points or polygons.
         size_t FaceCount() const;
@@ -274,16 +191,33 @@ namespace ModelStorage {
         const VertexAttribute* FindAttribute(const std::string& name) const;
 
         // Convert any face topology to indexed Triangles in place. Strips and
-        // fans expand, polygons fan-triangulate about their first vertex
-        // (correct for the convex faces every mesh format in practice emits;
-        // concave n-gons are noted in the proposal as a later ear-clipping
-        // step). Points and lines are left alone and return false.
+        // fans expand; polygons are ear-clipped in the plane Newell's method
+        // fits to them, so a concave n-gon — an L-shaped face, a letterbox
+        // slot — comes out as its own area rather than its convex hull. A
+        // triangle or a convex quad short-circuits to the fan, which is the
+        // same answer for a fraction of the work. Points and lines are left
+        // alone and return false.
+        //
+        // SmoothingGroups, being per-face, are expanded alongside: every
+        // triangle a face produces inherits the face's mask.
         bool Triangulate();
 
         // Area-weighted vertex normals from the geometry. Used when a file has
         // none (OBJ without vn, PLY without nx) or ships degenerate ones (an
         // STL facet normal of (0,0,0)).
+        //
+        // When SmoothingGroups are present the groups are honoured rather than
+        // ignored: faces that share a group average together, faces that share
+        // none crease, and a vertex where the two meet is split so that both
+        // normals can exist. Attributes, tangents and morph deltas follow the
+        // split. Without groups every face at a vertex averages, which is the
+        // right guess when the file said nothing.
         void RecomputeNormals();
+
+    private:
+        // The group-aware half of RecomputeNormals. Returns false when the
+        // primitive is not in a shape it can work on, so the caller falls back.
+        bool RecomputeNormalsBySmoothingGroup();
     };
 
 // A named group of primitives — glTF mesh, OBJ o/g, PLY's single element set,
@@ -471,6 +405,11 @@ namespace ModelStorage {
         int Parent = -1;                   // node index; -1 for a root
 
         int Mesh = -1;                     // index into ModelDocument::Meshes
+        // Index into ModelDocument::Brep.Solids — the exact body a CAD file
+        // placed here. A node may carry both: the solid is what the file said,
+        // the mesh is what TessellateBreps() made of it, and keeping the pair
+        // is what lets the tessellation be redone finer without re-reading.
+        int Solid = -1;
         int Camera = -1;
         int Light = -1;
         int Skin = -1;
@@ -516,6 +455,12 @@ namespace ModelStorage {
         int DefaultScene = -1;
         std::vector<ModelNode> Nodes;
         std::vector<ModelMesh> Meshes;
+        // Exact boundary representation: trimmed NURBS and analytic surfaces
+        // with the topology that closes them into solids. Filled by the CAD
+        // formats — STEP, IGES, ACIS/SAT, Parasolid, OpenNURBS, DWG's
+        // 3DSOLID/REGION/BODY — which carry no meshes at all. Empty for every
+        // mesh format, and costing nothing when it is.
+        BrepData Brep;
         std::vector<ModelMaterial> Materials;
         std::vector<ModelImage> Images;
         std::vector<ModelSampler> Samplers;
@@ -525,6 +470,8 @@ namespace ModelStorage {
         std::vector<ModelLight> Lights;
 
         // --- queries ---
+        // No meshes and no B-rep bodies. A document holding only exact solids
+        // is not empty, even before anything has been tessellated.
         bool Empty() const;
         size_t TotalVertexCount() const;
         size_t TotalFaceCount() const;
@@ -556,10 +503,32 @@ namespace ModelStorage {
         // Rotate the model so Up becomes the requested axis, adjusting the
         // roots' transforms rather than the vertices. No-op when it matches.
         void ConvertUpAxis(UpAxis target);
-        // Merge byte-identical vertices within tolerance, building Indices.
-        // STL arrives as unindexed triangle soup — three quarters of the
-        // airplane sample's 1.5 M vertices are duplicates.
+        // Merge coincident vertices within tolerance, building Indices. STL
+        // arrives as unindexed triangle soup — three quarters of the airplane
+        // sample's 1.5 M vertices are duplicates.
+        //
+        // The lattice a vertex quantises into is searched together with its 26
+        // neighbours, so two vertices a nanometre apart merge even when the
+        // cell boundary runs between them. (Bucketing alone does not: it is a
+        // hash of the rounded coordinate, and rounding is discontinuous exactly
+        // where geometry tends to sit — on the axis planes, at the origin, at
+        // every round number a CAD user typed.) Vertices still only merge when
+        // their other attributes agree exactly, because a normal or UV seam is
+        // a real discontinuity and welding across it is a visible bug.
         size_t WeldVertices(double tolerance = 1e-9);
+
+        // Approximate every B-rep solid as a mesh and attach it to the node
+        // that placed it, leaving the exact bodies in place. Nodes that already
+        // have a mesh are left alone. Returns the number of solids meshed;
+        // per-face failures are appended to `problems` when non-null rather
+        // than aborting the rest.
+        //
+        // This is the operation the "a B-rep reader tessellates and warns"
+        // rule used to hide inside a reader. Out here it can be re-run at a
+        // finer tolerance, skipped entirely by a consumer that wants the
+        // surfaces, or run twice for two levels of detail.
+        size_t TessellateBreps(const BrepTessellationOptions& options = {},
+                               std::vector<std::string>* problems = nullptr);
     };
 
 } // namespace ModelStorage

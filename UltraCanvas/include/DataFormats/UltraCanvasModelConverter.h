@@ -123,6 +123,15 @@ struct ConversionOptions {
     // Embed image bytes in the output where the format allows (GLB, 3MF, FBX).
     bool EmbedImages = false;
 
+    // --- B-rep ---
+    // What to do with exact bodies on import. The document always keeps them;
+    // this only decides whether a mesh is built alongside, and how fine. A
+    // viewer wants it on; a converter writing STEP to IGES wants it off,
+    // because tessellating and discarding is exactly the loss the B-rep
+    // structure exists to prevent.
+    bool TessellateOnImport = false;
+    ModelStorage::BrepTessellationOptions Tessellation;
+
     // --- writing ---
     // Prefer the compact binary encoding where a format has both (STL, PLY,
     // FBX, glTF/GLB).

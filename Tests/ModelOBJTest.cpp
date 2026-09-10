@@ -274,11 +274,78 @@ static void TestSample(const char* objPath, const char* dsPath) {
           "the OBJ's quads are the 3DS's triangle pairs");
 }
 
+// `s` statements used to be resolved into normals and dropped, so an OBJ read
+// and written back lost every crease it had asked for. The document carries the
+// masks now, and this is the round trip that proves it.
+static void TestSmoothingGroups() {
+    std::printf("Smoothing groups\n");
+
+    const std::string source =
+            "v 0 0 0\nv 1 0 0\nv 1 1 0\nv 0 1 0\nv 2 0 0\nv 2 1 0\nv 3 0 0\nv 3 1 0\n"
+            "s 1\n"
+            "f 1 2 3 4\n"
+            "s 2\n"
+            "f 2 5 6 3\n"
+            "s off\n"
+            "f 5 7 8 6\n";
+
+    OBJConverter converter;
+    ConversionOptions options;
+    // Normal generation would split vertices by group, which is right but
+    // would obscure what this test is about.
+    options.GenerateMissingNormals = false;
+    auto document = converter.ImportFromMemory(Bytes(source), options);
+    Check(document != nullptr, "an OBJ with s statements imports");
+    if (!document) return;
+
+    Check(document->Meshes.size() == 1 && document->Meshes[0].Primitives.size() == 1,
+          "as one primitive");
+    const MeshPrimitive& prim = document->Meshes[0].Primitives[0];
+    Check(prim.FaceCount() == 3, "with three faces");
+    Check(prim.SmoothingGroups.size() == 3, "each carrying a smoothing group");
+    if (prim.SmoothingGroups.size() == 3) {
+        Check(prim.SmoothingGroups[0] == 1u, "s 1 becomes the first bit");
+        Check(prim.SmoothingGroups[1] == 2u, "s 2 the second");
+        Check(prim.SmoothingGroups[2] == 0u, "and s off becomes no group at all");
+    }
+
+    // Write it back and read the statements out of the text itself: what
+    // matters is what a third-party reader would see.
+    std::vector<uint8_t> written;
+    Check(converter.ExportToMemory(*document, written, options), "and exports again");
+    const std::string text(written.begin(), written.end());
+    Check(text.find("\ns 1\n") != std::string::npos, "the written OBJ says s 1");
+    Check(text.find("\ns 2\n") != std::string::npos, "and s 2");
+    Check(text.find("\ns off\n") != std::string::npos, "and s off");
+
+    // `s` is stateful, so a correct writer states it only where it changes.
+    size_t statements = 0;
+    for (size_t at = text.find("\ns "); at != std::string::npos; at = text.find("\ns ", at + 1))
+        ++statements;
+    Check(statements == 3, "and states it exactly three times, not once per face");
+
+    auto again = converter.ImportFromMemory(written, options);
+    Check(again != nullptr, "the written OBJ reads back");
+    if (!again || again->Meshes.empty() || again->Meshes[0].Primitives.empty()) return;
+    const MeshPrimitive& round = again->Meshes[0].Primitives[0];
+    Check(round.SmoothingGroups == prim.SmoothingGroups,
+          "with exactly the smoothing groups it started with");
+
+    // A file that never mentions smoothing should not gain a per-face array it
+    // does not need.
+    auto plain = converter.ImportFromMemory(
+            Bytes("v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n"), options);
+    Check(plain && !plain->Meshes.empty() &&
+          plain->Meshes[0].Primitives[0].SmoothingGroups.empty(),
+          "an OBJ with no s statement carries no groups, rather than a default one");
+}
+
 int main(int argc, char** argv) {
     TestValidation();
     TestParsingCorners();
     TestPrecision();
     TestCapabilities();
+    TestSmoothingGroups();
     if (argc > 1) TestSample(argv[1], argc > 2 ? argv[2] : nullptr);
     else std::printf("Sample: skipped (pass an .obj path to run it)\n");
 

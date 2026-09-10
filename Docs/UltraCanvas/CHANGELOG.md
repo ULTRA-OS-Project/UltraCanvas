@@ -1,3 +1,69 @@
+#### 2026-09-10 *0.8.10*
+- **The 3D structure holds B-rep exactly, instead of tessellating it away.**
+  `ModelDocument::Brep` is a `BrepData`
+  (`DataFormats/UltraCanvasBrepStorage.h`): trimmed surfaces - plane, cylinder,
+  cone, sphere, torus, extrusion, revolution, ruled and rational B-spline -
+  with the topology that closes them into solids (solid, shell, face, loop,
+  coedge, edge, vertex), curves in space and in a surface's parameter space,
+  and `ModelNode::Solid` to place a body as `Mesh` places a mesh. That is what
+  STEP, IGES, ACIS/SAT, Parasolid XT, OpenNURBS `.3dm` and DWG's `3DSOLID` /
+  `REGION` / `BODY` / `SURFACE` actually contain. The proposal argued the
+  opposite until now, and `Docs/Research/UltraCanvas3DModelProposal.md` §2.5
+  records the reversal rather than quietly editing it: a triangle mesh is a
+  *view* of a B-rep taken at a tolerance the file never stated, so a reader
+  that tessellates and discards decides irreversibly, for the user, that the
+  model is approximate from now on - and no warning gives that back.
+- **Tessellation became an operation the caller asks for.**
+  `ModelDocument::TessellateBreps(options)` approximates every solid at a
+  chord and angular tolerance the caller picks, attaches the mesh to the node
+  that placed the body, and leaves the exact bodies in place - so it can be
+  re-run finer without re-reading the file, run twice for two levels of detail,
+  or never run at all. Per face it samples the trimming loops to tolerance,
+  decimates what the tolerance does not need, ear-clips the region with its
+  holes bridged in, seeds interior points on a grid sized from the surface's
+  own curvature, and red-green refines whatever the grid missed. A 2x4x6 box
+  meshes to exactly 12 triangles with signed volume 48; a cylinder of radius 5
+  and height 10 to 96 / 384 / 1534 triangles at tolerances of 0.1 / 0.01 /
+  0.001, every vertex exactly on the surface.
+- **`BrepData::Validate` is what a reader owes its caller.** Every index in
+  range, every loop actually closed, and - for a shell marked closed - every
+  edge used exactly twice and in opposite directions. A STEP file referencing a
+  surface it never defines is not rare, and without this the symptom is a wrong
+  mesh rather than an error.
+- **Concave n-gons triangulate correctly.** `MeshPrimitive::Triangulate` ear-
+  clips in the plane Newell's method fits to the face, so an L-shaped or
+  slotted face comes out as its own area rather than its convex hull - the
+  test's L is 5 units, and the fan it replaces gave 7. Convex faces still take
+  the fan, which is the same answer far cheaper, so nothing got slower. The
+  clipper lives in `DataFormats/UltraCanvasPolygonTriangulation.h` because the
+  B-rep face mesher needs the same thing with holes.
+- **Smoothing groups round-trip, and are honoured.**
+  `MeshPrimitive::SmoothingGroups` carries a 32-bit mask per face - the same
+  idea as OBJ's `s` and the 3DS `SMOOTH_GROUP` chunk. The OBJ reader fills it;
+  the writer emits `s` only where the value changes, `s` being stateful.
+  `RecomputeNormals` now creases where the file asked, splitting the vertex
+  where a smoothed face meets a creased one so both normals can exist, with
+  attributes, tangents and morph deltas following the split; triangulation
+  carries each face's mask onto the triangles it produces.
+- **Welding merges across lattice boundaries.** `WeldVertices` still buckets to
+  find candidates but now searches a cell and its 26 neighbours and decides by
+  real distance. Rounding is discontinuous exactly where geometry sits - the
+  axis planes, the origin, every round number a CAD user typed - so
+  single-cell bucketing failed on precisely the seams worth welding.
+  Attributes still gate the merge exactly, and a zero tolerance still merges
+  only bit-identical vertices.
+- **`Tests/BrepStorageTest.cpp`** (CTest-registered, no sample file needed -
+  it builds its bodies, which is the point) asserts geometric quantities
+  rather than structure: the signed volume of a meshed box, the radial error of
+  a meshed cylinder and sphere, the area of a plate with a hole and that no
+  triangle lies inside it, a rational quadratic B-spline reproducing a circular
+  arc to 1e-12, and inverse projection round-tripping on sphere, torus and a
+  bicubic patch. `ModelStorageTest` and `ModelOBJTest` gained the concave,
+  welding and smoothing-group cases. All seven model suites pass.
+- Vectors and matrices moved to `DataFormats/UltraCanvasModelMath.h` (unchanged
+  otherwise, same namespace) so the B-rep header can use them without a
+  circular include - a `ModelDocument` owns its `BrepData`.
+
 #### 2026-09-10 *0.8.9*
 - **The 3D formats are a plugin now, not five classes in the core library.**
   `Plugins/Models/CMakeLists.txt` builds `UltraCanvasModelsPlugin` as its own

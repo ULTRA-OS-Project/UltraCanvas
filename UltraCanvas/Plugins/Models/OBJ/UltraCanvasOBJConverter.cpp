@@ -273,6 +273,7 @@ private:
 
         maxFaceCorners_ = std::max(maxFaceCorners_, face.size());
         faceStarts_.push_back(static_cast<uint32_t>(indices_.size()));
+        faceGroups_.push_back(smoothingGroup_);
         indices_.insert(indices_.end(), face.begin(), face.end());
     }
 
@@ -344,10 +345,24 @@ private:
     }
 
     void ReadSmoothing(const std::string& value) {
-        // Smoothing groups decide how normals are generated for files that
-        // carry none. The document stores normals, not groups, so this is only
-        // consulted when generating them — and the loss is documented.
-        smoothing_ = !(value == "off" || value == "0");
+        // `s off` and `s 0` mean the same thing: no smoothing. Anything else is
+        // a group number, and OBJ's groups are small integers rather than a
+        // mask, so the number selects a bit. The document carries the mask per
+        // face, so an `s` statement now survives a round trip instead of being
+        // resolved into normals and forgotten.
+        if (value == "off" || value == "0" || value.empty()) {
+            smoothingGroup_ = 0;
+            smoothing_ = false;
+            return;
+        }
+        long group = 0;
+        try { group = std::stol(value); } catch (...) { group = 1; }
+        if (group <= 0) { smoothingGroup_ = 0; smoothing_ = false; return; }
+        // 32 bits is what 3DS and every other format with groups gives them;
+        // a file numbering beyond that wraps rather than being dropped.
+        smoothingGroup_ = 1u << ((static_cast<unsigned>(group) - 1u) % 32u);
+        smoothingNames_[smoothingGroup_] = value;
+        smoothing_ = true;
     }
 
     void FlushPrimitive() {
@@ -387,6 +402,14 @@ private:
             prim.Attributes.push_back(std::move(color));
         }
 
+        // Only worth carrying when the file actually varied them; a mesh that
+        // is entirely one group says nothing a writer needs.
+        bool varies = false;
+        for (uint32_t group : faceGroups_)
+            if (group != faceGroups_.front()) { varies = true; break; }
+        if (varies || (!faceGroups_.empty() && faceGroups_.front() != 1u))
+            prim.SmoothingGroups = faceGroups_;
+
         if (!smoothing_ && prim.Normals.empty()) flatShadedPrimitives_ = true;
         pendingPrimitives_.push_back(std::move(prim));
         ResetPrimitive();
@@ -399,6 +422,7 @@ private:
         primitiveColors_.clear();
         indices_.clear();
         faceStarts_.clear();
+        faceGroups_.clear();
         vertexCache_.clear();
         maxFaceCorners_ = 0;
     }
@@ -541,8 +565,8 @@ private:
                     if (prim.Normals.empty()) prim.RecomputeNormals();
         }
         if (flatShadedPrimitives_)
-            options_.Warn("OBJ: smoothing groups are resolved into vertex normals and not "
-                          "carried, so 's' statements do not survive a round trip");
+            options_.Warn("OBJ: the file turns smoothing off for some faces and carries no "
+                          "vertex normals; the generated normals crease where it asked");
         if (pbrStated_)
             options_.Warn("OBJ: the file uses the MTL PBR extension (Pr/Pm); those values are "
                           "taken as authoritative over the derived ones");
@@ -577,6 +601,9 @@ private:
     std::string groupName_;
     int currentMaterial_ = -1;
     bool smoothing_ = true;
+    uint32_t smoothingGroup_ = 1u;                     // OBJ's implicit `s 1`
+    std::vector<uint32_t> faceGroups_;
+    std::map<uint32_t, std::string> smoothingNames_;   // mask bit -> the file's own number
 
     std::map<std::string, int> materialIndexByName_;
     std::map<std::string, int> imageIndexByName_;
@@ -673,9 +700,33 @@ void WriteGeometry(const ModelDocument& document, std::ostream& out,
             const bool hasUV = uv != nullptr;
             const bool hasNormals = !prim.Normals.empty();
             const size_t faces = prim.FaceCount();
+            // `s` is stateful in OBJ: it applies until the next one. Writing it
+            // only on a change is both smaller and what every other writer
+            // does, and it is what makes an OBJ -> document -> OBJ round trip
+            // give back the same `s` statements it was given.
+            const bool hasGroups = prim.SmoothingGroups.size() == faces;
+            uint32_t currentGroup = 1u;
+            bool groupStated = false;
             for (size_t f = 0; f < faces; ++f) {
                 const std::vector<uint32_t> face = prim.Face(f);
                 if (face.size() < 3) continue;   // points and lines have no OBJ face form
+                if (hasGroups) {
+                    const uint32_t group = prim.SmoothingGroups[f];
+                    if (!groupStated || group != currentGroup) {
+                        if (group == 0) {
+                            out << "s off\n";
+                        } else {
+                            // OBJ names one group per face, so the lowest bit
+                            // set is the one written; a mask with several is a
+                            // richer statement than the format can make.
+                            int bit = 0;
+                            while (bit < 31 && ((group >> bit) & 1u) == 0u) ++bit;
+                            out << "s " << (bit + 1) << "\n";
+                        }
+                        currentGroup = group;
+                        groupStated = true;
+                    }
+                }
                 out << "f";
                 for (uint32_t corner : face) {
                     const size_t v = positionBase + corner;

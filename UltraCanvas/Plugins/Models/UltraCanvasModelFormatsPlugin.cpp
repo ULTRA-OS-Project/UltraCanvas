@@ -60,7 +60,14 @@ bool UltraCanvasModelFormatsPlugin::CanHandle(const GraphicsFileInfo& fileInfo) 
 
 std::shared_ptr<UltraCanvasUIElement> UltraCanvasModelFormatsPlugin::LoadGraphics(
         const std::string& filePath) {
-    auto document = LoadModelDocument(filePath);
+    ConversionOptions options;
+    // A viewer needs triangles, so a format that carries only exact bodies
+    // (STEP, IGES, a DWG 3DSOLID) is tessellated on the way in. The default
+    // tolerance is derived from each body's own size, which is what a viewer
+    // wants and what saves a millimetre-versus-metre model from arriving as
+    // either one triangle or a million.
+    options.TessellateOnImport = true;
+    auto document = LoadModelDocument(filePath, options);
     if (!document) return nullptr;
 
     // The document is a scene; a viewer wants one buffer. Flattening applies
@@ -124,6 +131,13 @@ GraphicsFileInfo UltraCanvasModelFormatsPlugin::GetFileInfo(const std::string& f
     auto document = converter->CanImport() ? converter->Import(filePath, options) : nullptr;
     if (!document) return info;
 
+    if (!document->Brep.Solids.empty()) {
+        // An exact body has no vertex or face count until someone chooses a
+        // tolerance, so the browser is told what the file actually holds.
+        info.metadata["solids"] = std::to_string(document->Brep.Solids.size());
+        info.metadata["brepFaces"] = std::to_string(document->Brep.Faces.size());
+        info.metadata["surfaces"] = std::to_string(document->Brep.Surfaces.size());
+    }
     info.metadata["vertices"] = std::to_string(document->TotalVertexCount());
     info.metadata["faces"] = std::to_string(document->TotalFaceCount());
     info.metadata["meshes"] = std::to_string(document->Meshes.size());

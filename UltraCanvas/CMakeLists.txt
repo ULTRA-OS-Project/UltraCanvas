@@ -706,6 +706,12 @@ set(ULTRACANVAS_CORE_SOURCES
         # DataFormats section: the universal 3D scene structure
         # (ModelStorage::ModelDocument) every 3D file format reads into and
         # writes out of - the 3D counterpart of VectorStorage::VectorDocument.
+        # ModelMath holds the vectors and matrices both halves are built from;
+        # BrepStorage holds the exact trimmed-surface bodies STEP, IGES, ACIS,
+        # Parasolid, OpenNURBS and DWG 3DSOLID carry, and tessellates them.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasModelMath.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasPolygonTriangulation.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasBrepStorage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasModelStorage.cpp
 
         # DataFormats section: the AutoCAD Color Index palette, shared by the

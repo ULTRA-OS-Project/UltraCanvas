@@ -51,16 +51,41 @@ the backing implementation can be replaced without affecting callers.
     coordinates), `Normals`, `Tangents`, open-ended named `Attributes`
     (texture coordinate and colour sets, skin joints/weights, and arbitrary
     per-vertex properties such as PLY's or LiDAR intensity), `Indices` and
-    `FaceStarts` (n-gons survive), `Material`, morph `Targets`.
+    `FaceStarts` (n-gons survive), `SmoothingGroups` (a 32-bit mask per face,
+    filled from OBJ `s` statements and the 3DS `SMOOTH_GROUP` chunk, so
+    creases round-trip instead of being resolved into normals and lost),
+    `Material`, morph `Targets`.
   - `ModelMaterial` — PBR metallic-roughness plus an optional fixed-function
     `PhongParams`, whichever the source stated; `DeriveMissingModel()` fills
     the other. `TextureRef`, `ModelImage`, `ModelSampler`.
   - `ModelNode` / `ModelScene` / `ModelSkin` / `ModelAnimation` — scene graph
     with TRS or matrix transforms, instancing, skinning and keyframe
     animation.
-  - Operations: `Triangulate` / `TriangulateAll`, `RecomputeNormals`,
-    `WeldVertices` (attribute-aware), `FlattenTransforms`, `ConvertUpAxis`,
-    `GlobalTransform`, `ComputeBounds`, `Matrix4x4::DecomposeTRS`.
+  - `Brep` (`BrepData`, `DataFormats/UltraCanvasBrepStorage.h`) — exact
+    boundary representation held **beside** the meshes, not instead of them:
+    what STEP, IGES, ACIS/SAT, Parasolid XT, OpenNURBS `.3dm` and DWG's
+    `3DSOLID` / `REGION` / `BODY` / `SURFACE` actually contain. Trimmed
+    surfaces — plane, cylinder, cone, sphere, torus, extrusion, revolution,
+    ruled and rational B-spline — with the topology that closes them into
+    solids (solid → shell → face → loop → coedge → edge → vertex), curves in
+    space and in the surface's parameter space, and `Validate()` for the
+    structural soundness a reader owes its caller. A `ModelNode::Solid` places
+    a body as `ModelNode::Mesh` places a mesh. Implementation in
+    `core/DataFormats/UltraCanvasBrepStorage.cpp`.
+  - Operations: `Triangulate` / `TriangulateAll` (ear clipping, so concave
+    n-gons are right), `RecomputeNormals` (area-weighted, and
+    smoothing-group-aware — it splits a vertex where a crease requires two
+    normals), `WeldVertices` (attribute-aware, and searching a cell's 26
+    neighbours so vertices straddling a lattice boundary still merge),
+    `FlattenTransforms`, `ConvertUpAxis`, `GlobalTransform`, `ComputeBounds`,
+    `TessellateBreps` (approximating exact bodies at a tolerance the *caller*
+    chooses, and leaving them in place), `Matrix4x4::DecomposeTRS`.
+  - Supporting core headers, both used by the mesh and B-rep halves:
+    `DataFormats/UltraCanvasModelMath.h` (`Vec2d`, `Vec3d`, `Vec3f`, `Vec4f`,
+    `Quatd`, `Matrix4x4`, `Bounds3D` — separate so `BrepStorage.h` can use
+    them without a circular include) and
+    `DataFormats/UltraCanvasPolygonTriangulation.h` (ear clipping with hole
+    bridging, and Newell projection for polygons in space).
   - `ModelConverter::IModelFormatConverter`
     (`DataFormats/UltraCanvasModelConverter.h`) — the read/write interface
     every 3D format implements, mirroring `IVectorFormatConverter`:

@@ -661,6 +661,9 @@ message(STATUS "    Test registered: ContourGeometryTest")
 message(STATUS "  Building ModelStorageTest...")
 add_executable(ModelStorageTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelStorageTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelMesh3D.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
@@ -681,6 +684,37 @@ add_test(
 )
 message(STATUS "    Test registered: ModelStorageTest")
 
+# ===== B-REP STORAGE TEST =====
+# ModelStorage::BrepData - exact trimmed surfaces and the topology that closes
+# them into solids, plus the tessellator that approximates them. The assertions
+# are geometric (a meshed box's signed volume, a meshed cylinder's radial
+# error, a plate-with-hole's area) because a B-rep that holds the right numbers
+# and meshes them wrongly produces a model that looks plausible and is not the
+# part. No sample file: the bodies are built in the test, which is the point -
+# the structure has to be constructible from a reader's point of view.
+message(STATUS "  Building BrepStorageTest...")
+add_executable(BrepStorageTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/BrepStorageTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(BrepStorageTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(BrepStorageTest PRIVATE cxx_std_20)
+set_target_properties(BrepStorageTest PROPERTIES
+    OUTPUT_NAME "BrepStorageTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME BrepStorageTest
+    COMMAND BrepStorageTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: BrepStorageTest")
+
 # ===== 3DS MODEL READER TEST =====
 # The 3DS chunk reader against the real E-45 aircraft in media/models/3DS -
 # the first scene format read into ModelDocument, so also the first end-to-end
@@ -690,6 +724,9 @@ message(STATUS "  Building Model3DSTest...")
 add_executable(Model3DSTest
     ${CMAKE_CURRENT_SOURCE_DIR}/Model3DSTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelMesh3D.cpp
 )
@@ -719,6 +756,9 @@ add_executable(ModelOBJTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelOBJTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
 )
 target_include_directories(ModelOBJTest PRIVATE
@@ -749,6 +789,9 @@ add_executable(ModelDXFTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelDXFTest.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
 )
@@ -783,7 +826,10 @@ if(TEST_TINYXML2_FOUND)
     add_executable(ModelColladaTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ModelColladaTest.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp
-        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     )
     target_include_directories(ModelColladaTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
@@ -817,7 +863,10 @@ if(ZLIB_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/ModelBlendTest.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendFile.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendConverter.cpp
-        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     )
     target_include_directories(ModelBlendTest PRIVATE
         ${ULTRACANVAS_INCLUDE_DIR}
@@ -852,6 +901,9 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
 )

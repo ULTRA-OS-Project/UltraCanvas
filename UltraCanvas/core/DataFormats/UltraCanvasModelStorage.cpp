@@ -9,243 +9,13 @@
 
 #include <algorithm>
 #include <cstring>
+#include <map>
+#include <set>
 #include <unordered_map>
+#include <utility>
 
 namespace UltraCanvas {
 namespace ModelStorage {
-
-// ===== QUATERNION =====
-
-Quatd Quatd::FromAxisAngle(const Vec3d& axis, double radians) {
-    Vec3d a = axis.Normalized();
-    double half = radians * 0.5;
-    double s = std::sin(half);
-    return {a.x * s, a.y * s, a.z * s, std::cos(half)};
-}
-
-Quatd Quatd::Normalized() const {
-    double len = std::sqrt(x * x + y * y + z * z + w * w);
-    if (len <= 1e-15) return Identity();
-    return {x / len, y / len, z / len, w / len};
-}
-
-Quatd Quatd::operator*(const Quatd& o) const {
-    return {w * o.x + x * o.w + y * o.z - z * o.y,
-            w * o.y - x * o.z + y * o.w + z * o.x,
-            w * o.z + x * o.y - y * o.x + z * o.w,
-            w * o.w - x * o.x - y * o.y - z * o.z};
-}
-
-Vec3d Quatd::Rotate(const Vec3d& v) const {
-    // v + 2 * cross(q.xyz, cross(q.xyz, v) + q.w * v)
-    Vec3d u{x, y, z};
-    Vec3d t = u.Cross(v) + v * w;
-    return v + u.Cross(t) * 2.0;
-}
-
-// ===== MATRIX =====
-
-Matrix4x4 Matrix4x4::Translation(const Vec3d& t) {
-    Matrix4x4 r;
-    r.m[12] = t.x; r.m[13] = t.y; r.m[14] = t.z;
-    return r;
-}
-
-Matrix4x4 Matrix4x4::Scaling(const Vec3d& s) {
-    Matrix4x4 r;
-    r.m[0] = s.x; r.m[5] = s.y; r.m[10] = s.z;
-    return r;
-}
-
-Matrix4x4 Matrix4x4::FromQuaternion(const Quatd& q) {
-    Quatd n = q.Normalized();
-    double xx = n.x * n.x, yy = n.y * n.y, zz = n.z * n.z;
-    double xy = n.x * n.y, xz = n.x * n.z, yz = n.y * n.z;
-    double wx = n.w * n.x, wy = n.w * n.y, wz = n.w * n.z;
-
-    Matrix4x4 r;
-    r.m[0] = 1.0 - 2.0 * (yy + zz);  r.m[1] = 2.0 * (xy + wz);        r.m[2]  = 2.0 * (xz - wy);
-    r.m[4] = 2.0 * (xy - wz);        r.m[5] = 1.0 - 2.0 * (xx + zz);  r.m[6]  = 2.0 * (yz + wx);
-    r.m[8] = 2.0 * (xz + wy);        r.m[9] = 2.0 * (yz - wx);        r.m[10] = 1.0 - 2.0 * (xx + yy);
-    return r;
-}
-
-Matrix4x4 Matrix4x4::FromTRS(const Vec3d& translation, const Quatd& rotation, const Vec3d& scale) {
-    return Translation(translation) * FromQuaternion(rotation) * Scaling(scale);
-}
-
-Matrix4x4 Matrix4x4::operator*(const Matrix4x4& o) const {
-    Matrix4x4 r;
-    for (int col = 0; col < 4; ++col) {
-        for (int row = 0; row < 4; ++row) {
-            double sum = 0.0;
-            for (int k = 0; k < 4; ++k) sum += m[k * 4 + row] * o.m[col * 4 + k];
-            r.m[col * 4 + row] = sum;
-        }
-    }
-    return r;
-}
-
-Vec3d Matrix4x4::TransformPoint(const Vec3d& p) const {
-    double x = m[0] * p.x + m[4] * p.y + m[8]  * p.z + m[12];
-    double y = m[1] * p.x + m[5] * p.y + m[9]  * p.z + m[13];
-    double z = m[2] * p.x + m[6] * p.y + m[10] * p.z + m[14];
-    double w = m[3] * p.x + m[7] * p.y + m[11] * p.z + m[15];
-    if (w != 0.0 && w != 1.0) return {x / w, y / w, z / w};
-    return {x, y, z};
-}
-
-Vec3d Matrix4x4::TransformDirection(const Vec3d& v) const {
-    return {m[0] * v.x + m[4] * v.y + m[8]  * v.z,
-            m[1] * v.x + m[5] * v.y + m[9]  * v.z,
-            m[2] * v.x + m[6] * v.y + m[10] * v.z};
-}
-
-bool Matrix4x4::InverseTransposeUpper3x3(double out[9]) const {
-    // Column-major upper 3x3 as a[row][col].
-    const double a00 = m[0], a01 = m[4], a02 = m[8];
-    const double a10 = m[1], a11 = m[5], a12 = m[9];
-    const double a20 = m[2], a21 = m[6], a22 = m[10];
-
-    const double c00 =  (a11 * a22 - a12 * a21);
-    const double c01 = -(a10 * a22 - a12 * a20);
-    const double c02 =  (a10 * a21 - a11 * a20);
-    const double det = a00 * c00 + a01 * c01 + a02 * c02;
-    if (std::fabs(det) < 1e-18) {
-        const double identity[9] = {1,0,0, 0,1,0, 0,0,1};
-        std::memcpy(out, identity, sizeof(identity));
-        return false;
-    }
-    const double inv = 1.0 / det;
-    // inverse = adj / det; transpose of the inverse is the cofactor matrix / det.
-    out[0] = c00 * inv;
-    out[1] = c01 * inv;
-    out[2] = c02 * inv;
-    out[3] = -(a01 * a22 - a02 * a21) * inv;
-    out[4] =  (a00 * a22 - a02 * a20) * inv;
-    out[5] = -(a00 * a21 - a01 * a20) * inv;
-    out[6] =  (a01 * a12 - a02 * a11) * inv;
-    out[7] = -(a00 * a12 - a02 * a10) * inv;
-    out[8] =  (a00 * a11 - a01 * a10) * inv;
-    return true;
-}
-
-bool Matrix4x4::InverseAffine(Matrix4x4& out) const {
-    double it[9];
-    // InverseTransposeUpper3x3 returns the cofactor matrix over the
-    // determinant, which is the transpose of the inverse; transposing it back
-    // gives the inverse of the upper 3x3.
-    if (!InverseTransposeUpper3x3(it)) { out = Matrix4x4::Identity(); return false; }
-
-    const double inv3[9] = {it[0], it[3], it[6],
-                            it[1], it[4], it[7],
-                            it[2], it[5], it[8]};   // row-major inverse of the 3x3
-
-    out = Matrix4x4::Identity();
-    // Column-major store: out.m[col * 4 + row] = inv3[row][col].
-    for (int row = 0; row < 3; ++row)
-        for (int col = 0; col < 3; ++col)
-            out.m[col * 4 + row] = inv3[row * 3 + col];
-
-    // The translation of the inverse is -inv3 * t.
-    const double tx = m[12], ty = m[13], tz = m[14];
-    out.m[12] = -(inv3[0] * tx + inv3[1] * ty + inv3[2] * tz);
-    out.m[13] = -(inv3[3] * tx + inv3[4] * ty + inv3[5] * tz);
-    out.m[14] = -(inv3[6] * tx + inv3[7] * ty + inv3[8] * tz);
-    return true;
-}
-
-bool Matrix4x4::IsIdentity(double epsilon) const {
-    static const Matrix4x4 kIdentity;
-    for (int i = 0; i < 16; ++i)
-        if (std::fabs(m[i] - kIdentity.m[i]) > epsilon) return false;
-    return true;
-}
-
-bool Matrix4x4::DecomposeTRS(Vec3d& translation, Quatd& rotation, Vec3d& scale) const {
-    translation = {m[12], m[13], m[14]};
-
-    Vec3d c0{m[0], m[1], m[2]};
-    Vec3d c1{m[4], m[5], m[6]};
-    Vec3d c2{m[8], m[9], m[10]};
-
-    scale = {c0.Length(), c1.Length(), c2.Length()};
-    if (scale.x <= 1e-15 || scale.y <= 1e-15 || scale.z <= 1e-15) {
-        rotation = Quatd::Identity();
-        return false;
-    }
-
-    // A negative determinant is a mirror; TRS with a positive scale cannot
-    // express it, so fold the flip into the X scale and carry on.
-    Vec3d n0 = c0 * (1.0 / scale.x);
-    Vec3d n1 = c1 * (1.0 / scale.y);
-    Vec3d n2 = c2 * (1.0 / scale.z);
-    if (n0.Cross(n1).Dot(n2) < 0.0) {
-        scale.x = -scale.x;
-        n0 = n0 * -1.0;
-    }
-
-    // Shear: the normalised axes must stay orthogonal.
-    const double shearXY = n0.Dot(n1), shearXZ = n0.Dot(n2), shearYZ = n1.Dot(n2);
-    const bool orthogonal = std::fabs(shearXY) < 1e-6 &&
-                            std::fabs(shearXZ) < 1e-6 &&
-                            std::fabs(shearYZ) < 1e-6;
-
-    // Rotation matrix (columns n0, n1, n2) to quaternion, Shepperd's method:
-    // pick the largest diagonal term so the division never loses precision.
-    const double r00 = n0.x, r01 = n1.x, r02 = n2.x;
-    const double r10 = n0.y, r11 = n1.y, r12 = n2.y;
-    const double r20 = n0.z, r21 = n1.z, r22 = n2.z;
-    const double trace = r00 + r11 + r22;
-    if (trace > 0.0) {
-        double s = std::sqrt(trace + 1.0) * 2.0;
-        rotation = {(r21 - r12) / s, (r02 - r20) / s, (r10 - r01) / s, 0.25 * s};
-    } else if (r00 > r11 && r00 > r22) {
-        double s = std::sqrt(1.0 + r00 - r11 - r22) * 2.0;
-        rotation = {0.25 * s, (r01 + r10) / s, (r02 + r20) / s, (r21 - r12) / s};
-    } else if (r11 > r22) {
-        double s = std::sqrt(1.0 + r11 - r00 - r22) * 2.0;
-        rotation = {(r01 + r10) / s, 0.25 * s, (r12 + r21) / s, (r02 - r20) / s};
-    } else {
-        double s = std::sqrt(1.0 + r22 - r00 - r11) * 2.0;
-        rotation = {(r02 + r20) / s, (r12 + r21) / s, 0.25 * s, (r10 - r01) / s};
-    }
-    rotation = rotation.Normalized();
-    return orthogonal;
-}
-
-// ===== BOUNDS =====
-
-void Bounds3D::Expand(const Vec3d& p) {
-    if (p.x < Min.x) Min.x = p.x;
-    if (p.y < Min.y) Min.y = p.y;
-    if (p.z < Min.z) Min.z = p.z;
-    if (p.x > Max.x) Max.x = p.x;
-    if (p.y > Max.y) Max.y = p.y;
-    if (p.z > Max.z) Max.z = p.z;
-}
-
-void Bounds3D::Expand(const Bounds3D& other) {
-    if (!other.IsValid()) return;
-    Expand(other.Min);
-    Expand(other.Max);
-}
-
-Vec3d Bounds3D::Center() const {
-    if (!IsValid()) return {};
-    return {(Min.x + Max.x) * 0.5, (Min.y + Max.y) * 0.5, (Min.z + Max.z) * 0.5};
-}
-
-Vec3d Bounds3D::Size() const {
-    if (!IsValid()) return {};
-    return Max - Min;
-}
-
-double Bounds3D::Radius() const {
-    if (!IsValid()) return 1.0;
-    double r = (Max - Min).Length() * 0.5;
-    return r > 1e-12 ? r : 1.0;
-}
 
 // ===== UNITS =====
 
@@ -373,6 +143,27 @@ const VertexAttribute* MeshPrimitive::FindAttribute(const std::string& name) con
     return nullptr;
 }
 
+namespace {
+
+// A convex polygon fans correctly and in a fraction of the time, so the
+// expensive path is taken only when it buys something. Convexity is judged
+// against the polygon's own Newell normal, which is the only stable reference
+// for a face that is not exactly planar.
+bool PolygonIsConvex(const std::vector<Vec3d>& points) {
+    if (points.size() < 4) return true;
+    const Vec3d normal = NewellNormal(points).Normalized();
+    if (normal.Length() < 0.5) return false;   // degenerate: let ear clipping judge
+    for (size_t i = 0; i < points.size(); ++i) {
+        const Vec3d& a = points[(i + points.size() - 1) % points.size()];
+        const Vec3d& b = points[i];
+        const Vec3d& c = points[(i + 1) % points.size()];
+        if ((b - a).Cross(c - b).Dot(normal) < 0.0) return false;
+    }
+    return true;
+}
+
+} // namespace
+
 bool MeshPrimitive::Triangulate() {
     const bool isTriangleTopology = Mode == PrimitiveMode::Triangles ||
                                     Mode == PrimitiveMode::TriangleStrip ||
@@ -389,27 +180,107 @@ bool MeshPrimitive::Triangulate() {
     }
 
     const size_t faces = FaceCount();
+    const bool carriesGroups = SmoothingGroups.size() == faces;
+
     std::vector<uint32_t> out;
+    std::vector<uint32_t> groups;
     out.reserve(faces * 3);
+    if (carriesGroups) groups.reserve(faces);
+
+    std::vector<Vec3d> corners;
+    std::vector<uint32_t> local;
     for (size_t f = 0; f < faces; ++f) {
         const std::vector<uint32_t> face = Face(f);
-        // Fan about the first vertex. Correct for convex faces, which is what
-        // mesh formats emit in practice; concave n-gons need ear clipping and
-        // are recorded as a follow-up in the proposal.
-        for (size_t k = 2; k < face.size(); ++k) {
+        if (face.size() < 3) continue;
+
+        const size_t before = out.size();
+
+        if (face.size() == 3) {
             out.push_back(face[0]);
-            out.push_back(face[k - 1]);
-            out.push_back(face[k]);
+            out.push_back(face[1]);
+            out.push_back(face[2]);
+        } else {
+            corners.clear();
+            corners.reserve(face.size());
+            bool resolvable = true;
+            for (uint32_t index : face) {
+                if (index >= Positions.size()) { resolvable = false; break; }
+                corners.push_back(Positions[index]);
+            }
+
+            bool clipped = false;
+            if (resolvable && !PolygonIsConvex(corners)) {
+                // The concave case, and the reason this is not a fan: ear
+                // clipping only ever emits triangles that lie inside the
+                // polygon, so an L-shaped face keeps its notch.
+                local.clear();
+                if (TriangulatePolygon3D(corners, local) && !local.empty()) {
+                    for (uint32_t k : local) out.push_back(face[k]);
+                    clipped = true;
+                }
+            }
+            if (!clipped) {
+                // Convex, or a polygon ear clipping could not resolve — a
+                // self-intersecting or fully collinear face. The fan is what
+                // the file's own author most likely meant.
+                for (size_t k = 2; k < face.size(); ++k) {
+                    out.push_back(face[0]);
+                    out.push_back(face[k - 1]);
+                    out.push_back(face[k]);
+                }
+            }
+        }
+
+        if (carriesGroups) {
+            const size_t produced = (out.size() - before) / 3;
+            groups.insert(groups.end(), produced, SmoothingGroups[f]);
         }
     }
 
     Indices = std::move(out);
     FaceStarts.clear();
+    if (carriesGroups) SmoothingGroups = std::move(groups);
+    else SmoothingGroups.clear();
     Mode = PrimitiveMode::Triangles;
     return true;
 }
 
+namespace {
+
+// Union-find over a face's smoothing groups. Two faces at a vertex smooth
+// together when their masks share a bit; a mask of 0 ("s off") shares nothing,
+// not even with another 0, which is exactly OBJ's rule.
+struct SmoothingClusters {
+    std::vector<int> Parent;
+    void Reset(size_t n) {
+        Parent.resize(n);
+        for (size_t i = 0; i < n; ++i) Parent[i] = static_cast<int>(i);
+    }
+    int Find(int x) {
+        while (Parent[static_cast<size_t>(x)] != x) {
+            Parent[static_cast<size_t>(x)] = Parent[static_cast<size_t>(Parent[static_cast<size_t>(x)])];
+            x = Parent[static_cast<size_t>(x)];
+        }
+        return x;
+    }
+    void Union(int a, int b) {
+        a = Find(a); b = Find(b);
+        if (a != b) Parent[static_cast<size_t>(a)] = b;
+    }
+};
+
+} // namespace
+
 void MeshPrimitive::RecomputeNormals() {
+    // With smoothing groups present, "the normal at this vertex" is not one
+    // vector: a corner where a smoothed face meets a creased one has two, and
+    // the vertex has to be split for the crease to exist at all. That path is
+    // taken only for the topologies a file can actually attach groups to.
+    const bool groupsUsable =
+            SmoothingGroups.size() == FaceCount() &&
+            (Mode == PrimitiveMode::Triangles || Mode == PrimitiveMode::Polygons);
+    if (groupsUsable && RecomputeNormalsBySmoothingGroup()) return;
+
     std::vector<Vec3d> accum(Positions.size(), Vec3d{});
 
     const size_t faces = FaceCount();
@@ -433,6 +304,132 @@ void MeshPrimitive::RecomputeNormals() {
         const Vec3d n = accum[i].Normalized();
         Normals[i] = Vec3f(static_cast<float>(n.x), static_cast<float>(n.y), static_cast<float>(n.z));
     }
+}
+
+bool MeshPrimitive::RecomputeNormalsBySmoothingGroup() {
+    const size_t faces = FaceCount();
+    if (faces == 0 || Positions.empty()) return false;
+
+    // Face normals first: un-normalised, so their length is twice the area and
+    // averaging them weights by area for free.
+    std::vector<Vec3d> faceNormals(faces);
+    std::vector<std::vector<uint32_t>> faceCorners(faces);
+    for (size_t f = 0; f < faces; ++f) {
+        faceCorners[f] = Face(f);
+        std::vector<Vec3d> points;
+        points.reserve(faceCorners[f].size());
+        for (uint32_t index : faceCorners[f]) {
+            if (index >= Positions.size()) { points.clear(); break; }
+            points.push_back(Positions[index]);
+        }
+        if (points.size() >= 3) faceNormals[f] = NewellNormal(points);
+    }
+
+    // Which faces touch each vertex.
+    std::vector<std::vector<uint32_t>> incident(Positions.size());
+    for (size_t f = 0; f < faces; ++f)
+        for (uint32_t index : faceCorners[f])
+            if (index < Positions.size()) incident[index].push_back(static_cast<uint32_t>(f));
+
+    std::vector<Vec3d> positions;
+    std::vector<Vec3f> normals;
+    std::vector<Vec4f> tangents;
+    std::vector<std::vector<float>> attributes(Attributes.size());
+    std::vector<std::vector<Vec3d>> morphPositions(Targets.size());
+    std::vector<std::vector<Vec3f>> morphNormals(Targets.size());
+
+    // corner (face, vertex) -> new vertex index
+    std::map<std::pair<uint32_t, uint32_t>, uint32_t> remap;
+    SmoothingClusters clusters;
+
+    for (uint32_t v = 0; v < Positions.size(); ++v) {
+        const std::vector<uint32_t>& touching = incident[v];
+        if (touching.empty()) {
+            // An unreferenced vertex still has to keep its slot, or every
+            // index after it shifts.
+            remap[{std::numeric_limits<uint32_t>::max(), v}] =
+                    static_cast<uint32_t>(positions.size());
+            positions.push_back(Positions[v]);
+            normals.emplace_back(0.0f, 0.0f, 0.0f);
+            if (v < Tangents.size()) tangents.push_back(Tangents[v]);
+            for (size_t a = 0; a < Attributes.size(); ++a) {
+                const auto& src = Attributes[a];
+                const size_t stride = static_cast<size_t>(src.Components);
+                for (size_t k = 0; k < stride; ++k)
+                    attributes[a].push_back(v * stride + k < src.Values.size()
+                                            ? src.Values[v * stride + k] : 0.0f);
+            }
+            for (size_t t = 0; t < Targets.size(); ++t) {
+                if (v < Targets[t].PositionDeltas.size())
+                    morphPositions[t].push_back(Targets[t].PositionDeltas[v]);
+                if (v < Targets[t].NormalDeltas.size())
+                    morphNormals[t].push_back(Targets[t].NormalDeltas[v]);
+            }
+            continue;
+        }
+
+        clusters.Reset(touching.size());
+        for (size_t i = 0; i < touching.size(); ++i)
+            for (size_t j = i + 1; j < touching.size(); ++j)
+                if ((SmoothingGroups[touching[i]] & SmoothingGroups[touching[j]]) != 0)
+                    clusters.Union(static_cast<int>(i), static_cast<int>(j));
+
+        std::map<int, uint32_t> emitted;
+        for (size_t i = 0; i < touching.size(); ++i) {
+            const int root = clusters.Find(static_cast<int>(i));
+            auto it = emitted.find(root);
+            if (it == emitted.end()) {
+                Vec3d sum;
+                for (size_t j = 0; j < touching.size(); ++j)
+                    if (clusters.Find(static_cast<int>(j)) == root) sum += faceNormals[touching[j]];
+                const Vec3d unit = sum.Normalized();
+
+                const uint32_t fresh = static_cast<uint32_t>(positions.size());
+                positions.push_back(Positions[v]);
+                normals.emplace_back(static_cast<float>(unit.x), static_cast<float>(unit.y),
+                                     static_cast<float>(unit.z));
+                if (v < Tangents.size()) tangents.push_back(Tangents[v]);
+                for (size_t a = 0; a < Attributes.size(); ++a) {
+                    const auto& src = Attributes[a];
+                    const size_t stride = static_cast<size_t>(src.Components);
+                    for (size_t k = 0; k < stride; ++k)
+                        attributes[a].push_back(v * stride + k < src.Values.size()
+                                                ? src.Values[v * stride + k] : 0.0f);
+                }
+                for (size_t t = 0; t < Targets.size(); ++t) {
+                    if (v < Targets[t].PositionDeltas.size())
+                        morphPositions[t].push_back(Targets[t].PositionDeltas[v]);
+                    if (v < Targets[t].NormalDeltas.size())
+                        morphNormals[t].push_back(Targets[t].NormalDeltas[v]);
+                }
+                it = emitted.emplace(root, fresh).first;
+            }
+            remap[{touching[i], v}] = it->second;
+        }
+    }
+
+    // Rewrite the faces against the split vertices. Face sizes are unchanged,
+    // so FaceStarts still describes them.
+    std::vector<uint32_t> indices;
+    indices.reserve(Indices.empty() ? Positions.size() : Indices.size());
+    for (size_t f = 0; f < faces; ++f)
+        for (uint32_t corner : faceCorners[f]) {
+            auto it = remap.find({static_cast<uint32_t>(f), corner});
+            indices.push_back(it != remap.end() ? it->second : corner);
+        }
+
+    Positions = std::move(positions);
+    Normals = std::move(normals);
+    Tangents = std::move(tangents);
+    for (size_t a = 0; a < Attributes.size(); ++a)
+        Attributes[a].Values = std::move(attributes[a]);
+    for (size_t t = 0; t < Targets.size(); ++t) {
+        Targets[t].PositionDeltas = std::move(morphPositions[t]);
+        Targets[t].NormalDeltas = std::move(morphNormals[t]);
+        Targets[t].TangentDeltas.clear();
+    }
+    Indices = std::move(indices);
+    return true;
 }
 
 // ===== MESH =====
@@ -528,7 +525,9 @@ bool ModelDocument::Empty() const {
     for (const auto& mesh : Meshes)
         for (const auto& p : mesh.Primitives)
             if (!p.Positions.empty()) return false;
-    return true;
+    // A STEP or IGES document holds no triangles until something asks for
+    // them. It is not empty; it is exact.
+    return Brep.Empty();
 }
 
 size_t ModelDocument::TotalVertexCount() const {
@@ -724,13 +723,23 @@ void ModelDocument::ConvertUpAxis(UpAxis target) {
 size_t ModelDocument::WeldVertices(double tolerance) {
     size_t removed = 0;
 
-    // Quantise to the tolerance and hash the resulting lattice cell together
-    // with the other attributes, so only vertices that agree in every respect
-    // merge. Exact-match welding (tolerance <= 0) uses the values themselves.
-    const double inv = tolerance > 0.0 ? 1.0 / tolerance : 0.0;
+    // Vertices are bucketed into a lattice of cells the size of the tolerance,
+    // and a candidate is looked for in its own cell *and its 26 neighbours*.
+    // That neighbourhood is the whole difference from a plain hash: rounding a
+    // coordinate is discontinuous exactly where geometry likes to sit — on an
+    // axis plane, at the origin, on every round number a CAD user typed — so a
+    // single-cell lookup fails to merge precisely the seams that matter most.
+    // The cell is only a candidate filter; the merge itself is decided by real
+    // distance, and by the other attributes agreeing exactly, because a normal
+    // or UV seam is a discontinuity the file meant.
+    const double inv = tolerance > 0.0 ? 1.0 / tolerance : 1e9;
     auto quantise = [inv](double v) -> long long {
-        return inv > 0.0 ? static_cast<long long>(std::llround(v * inv))
-                         : static_cast<long long>(std::llround(v * 1e9));
+        return static_cast<long long>(std::floor(v * inv));
+    };
+    auto cellHash = [](long long x, long long y, long long z) -> uint64_t {
+        return static_cast<uint64_t>(x) * 73856093ULL ^
+               static_cast<uint64_t>(y) * 19349663ULL ^
+               static_cast<uint64_t>(z) * 83492791ULL;
     };
 
     for (auto& mesh : Meshes) {
@@ -739,24 +748,22 @@ size_t ModelDocument::WeldVertices(double tolerance) {
 
             const size_t before = prim.Positions.size();
 
-            std::unordered_map<std::string, uint32_t> seen;
-            seen.reserve(before);
+            std::unordered_map<uint64_t, std::vector<uint32_t>> buckets;
+            buckets.reserve(before);
 
             std::vector<Vec3d> positions;
             std::vector<Vec3f> normals;
             std::vector<Vec4f> tangents;
             std::vector<std::vector<float>> attributeValues(prim.Attributes.size());
+            std::vector<std::string> attributeKeys;
             std::vector<uint32_t> remap(before);
+            attributeKeys.reserve(before);
 
             std::string key;
             for (size_t v = 0; v < before; ++v) {
+                // Everything but the position, packed so that two vertices
+                // agree only if every attribute does.
                 key.clear();
-                const long long qx = quantise(prim.Positions[v].x);
-                const long long qy = quantise(prim.Positions[v].y);
-                const long long qz = quantise(prim.Positions[v].z);
-                key.append(reinterpret_cast<const char*>(&qx), sizeof(qx));
-                key.append(reinterpret_cast<const char*>(&qy), sizeof(qy));
-                key.append(reinterpret_cast<const char*>(&qz), sizeof(qz));
                 if (v < prim.Normals.size())
                     key.append(reinterpret_cast<const char*>(&prim.Normals[v]), sizeof(Vec3f));
                 if (v < prim.Tangents.size())
@@ -769,17 +776,42 @@ size_t ModelDocument::WeldVertices(double tolerance) {
                                    stride * sizeof(float));
                 }
 
-                auto it = seen.find(key);
-                if (it != seen.end()) {
-                    remap[v] = it->second;
+                const Vec3d& position = prim.Positions[v];
+                const long long qx = quantise(position.x);
+                const long long qy = quantise(position.y);
+                const long long qz = quantise(position.z);
+
+                uint32_t match = std::numeric_limits<uint32_t>::max();
+                for (int dz = -1; dz <= 1 && match == std::numeric_limits<uint32_t>::max(); ++dz)
+                    for (int dy = -1; dy <= 1 && match == std::numeric_limits<uint32_t>::max(); ++dy)
+                        for (int dx = -1; dx <= 1 && match == std::numeric_limits<uint32_t>::max(); ++dx) {
+                            auto it = buckets.find(cellHash(qx + dx, qy + dy, qz + dz));
+                            if (it == buckets.end()) continue;
+                            for (uint32_t candidate : it->second) {
+                                if (attributeKeys[candidate] != key) continue;
+                                const Vec3d delta = positions[candidate] - position;
+                                // A zero tolerance keeps the old contract: only
+                                // vertices that are bit-for-bit the same merge.
+                                if (tolerance > 0.0 ? delta.Length() <= tolerance
+                                                    : (delta.x == 0.0 && delta.y == 0.0 &&
+                                                       delta.z == 0.0)) {
+                                    match = candidate;
+                                    break;
+                                }
+                            }
+                        }
+
+                if (match != std::numeric_limits<uint32_t>::max()) {
+                    remap[v] = match;
                     continue;
                 }
 
                 const uint32_t fresh = static_cast<uint32_t>(positions.size());
-                seen.emplace(key, fresh);
+                buckets[cellHash(qx, qy, qz)].push_back(fresh);
                 remap[v] = fresh;
+                attributeKeys.push_back(key);
 
-                positions.push_back(prim.Positions[v]);
+                positions.push_back(position);
                 if (v < prim.Normals.size()) normals.push_back(prim.Normals[v]);
                 if (v < prim.Tangents.size()) tangents.push_back(prim.Tangents[v]);
                 for (size_t a = 0; a < prim.Attributes.size(); ++a) {
@@ -810,6 +842,131 @@ size_t ModelDocument::WeldVertices(double tolerance) {
         }
     }
     return removed;
+}
+
+// ===== TESSELLATION =====
+
+namespace {
+
+// One primitive per material, accumulated as faces are meshed.
+struct PrimitiveBuilder {
+    int Material = -1;
+    std::vector<Vec3d> Positions;
+    std::vector<Vec3f> Normals;
+    std::vector<float> UVs;
+    std::vector<uint32_t> Indices;
+};
+
+MeshPrimitive FinishPrimitive(PrimitiveBuilder& builder, bool wantUVs) {
+    MeshPrimitive prim;
+    prim.Mode = PrimitiveMode::Triangles;
+    prim.Material = builder.Material;
+    prim.Positions = std::move(builder.Positions);
+    prim.Normals = std::move(builder.Normals);
+    prim.Indices = std::move(builder.Indices);
+    if (wantUVs && !builder.UVs.empty()) {
+        VertexAttribute uv;
+        uv.Semantic = AttributeSemantic::TexCoord;
+        uv.Name = "TEXCOORD_0";
+        uv.Components = 2;
+        uv.Values = std::move(builder.UVs);
+        prim.Attributes.push_back(std::move(uv));
+    }
+    return prim;
+}
+
+} // namespace
+
+size_t ModelDocument::TessellateBreps(const BrepTessellationOptions& options,
+                                      std::vector<std::string>* problems) {
+    if (Brep.Solids.empty()) return 0;
+
+    // A solid drawn by several nodes is meshed once; the nodes share the mesh,
+    // which is the same instancing rule the rest of the document follows.
+    std::map<int, int> meshForSolid;
+
+    auto tessellate = [&](int solidIndex) -> int {
+        auto cached = meshForSolid.find(solidIndex);
+        if (cached != meshForSolid.end()) return cached->second;
+        if (solidIndex < 0 || static_cast<size_t>(solidIndex) >= Brep.Solids.size()) return -1;
+
+        const BrepSolid& solid = Brep.Solids[static_cast<size_t>(solidIndex)];
+
+        BrepTessellationOptions resolved = options;
+        // Resolve "0 means pick one" here rather than per face, so every face
+        // of a body is meshed to the same standard.
+        resolved.ChordTolerance = Brep.ResolveChordTolerance(solidIndex, options);
+
+        std::vector<PrimitiveBuilder> builders;
+        auto builderFor = [&builders, &resolved](int material, int faceIndex) -> PrimitiveBuilder& {
+            if (resolved.SplitByFace) {
+                builders.emplace_back();
+                builders.back().Material = material;
+                (void)faceIndex;
+                return builders.back();
+            }
+            for (PrimitiveBuilder& builder : builders)
+                if (builder.Material == material) return builder;
+            builders.emplace_back();
+            builders.back().Material = material;
+            return builders.back();
+        };
+
+        for (int shellIndex : solid.Shells) {
+            if (shellIndex < 0 || static_cast<size_t>(shellIndex) >= Brep.Shells.size()) continue;
+            for (int faceIndex : Brep.Shells[static_cast<size_t>(shellIndex)].Faces) {
+                if (faceIndex < 0 || static_cast<size_t>(faceIndex) >= Brep.Faces.size()) continue;
+                const BrepFace& face = Brep.Faces[static_cast<size_t>(faceIndex)];
+                const int material = face.Material >= 0 ? face.Material : solid.Material;
+                PrimitiveBuilder& builder = builderFor(material, faceIndex);
+                Brep.TessellateFace(faceIndex, resolved, builder.Positions, builder.Normals,
+                                    builder.UVs, builder.Indices, problems);
+            }
+        }
+
+        ModelMesh mesh;
+        mesh.Name = solid.Name.empty() ? ("solid_" + std::to_string(solidIndex)) : solid.Name;
+        for (PrimitiveBuilder& builder : builders) {
+            if (builder.Indices.empty()) continue;
+            mesh.Primitives.push_back(FinishPrimitive(builder, resolved.GenerateUVs));
+        }
+        if (mesh.Primitives.empty()) {
+            meshForSolid[solidIndex] = -1;
+            return -1;
+        }
+
+        const int meshIndex = AddMesh(std::move(mesh));
+        meshForSolid[solidIndex] = meshIndex;
+        return meshIndex;
+    };
+
+    size_t tessellated = 0;
+    bool placed = false;
+    for (ModelNode& node : Nodes) {
+        if (node.Solid < 0) continue;
+        placed = true;
+        if (node.Mesh >= 0) continue;   // already meshed; leave it alone
+        const int meshIndex = tessellate(node.Solid);
+        if (meshIndex >= 0) { node.Mesh = meshIndex; ++tessellated; }
+    }
+
+    if (!placed) {
+        // The solids were read without a scene graph — a STEP file with one
+        // product, a DWG 3DSOLID in model space. Give each one a node so the
+        // document is drawable at all.
+        for (size_t i = 0; i < Brep.Solids.size(); ++i) {
+            const int meshIndex = tessellate(static_cast<int>(i));
+            if (meshIndex < 0) continue;
+            ModelNode node;
+            node.Name = Brep.Solids[i].Name.empty() ? ("solid_" + std::to_string(i))
+                                                    : Brep.Solids[i].Name;
+            node.Solid = static_cast<int>(i);
+            node.Mesh = meshIndex;
+            AddNode(std::move(node));
+            ++tessellated;
+        }
+    }
+    return tessellated;
 }
 
 } // namespace ModelStorage
