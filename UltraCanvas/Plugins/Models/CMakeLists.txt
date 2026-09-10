@@ -60,6 +60,7 @@ set(MODELS_PLUGIN_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/STEP/UltraCanvasStepConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Alembic/UltraCanvasOgawaFile.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/Alembic/UltraCanvasAlembicConverter.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/PLY/UltraCanvasPLYConverter.cpp
 )
 
 if(MODELS_COLLADA_ENABLED)
@@ -166,7 +167,7 @@ install(FILES ${MODELS_PLUGIN_HEADERS}
 )
 
 # ===== STATUS OUTPUT =====
-message(STATUS "  Formats: 3DS, OBJ (read+write), DXF 3D entities, STEP B-rep (read+write), Alembic")
+message(STATUS "  Formats: 3DS, OBJ (read+write), DXF 3D entities, STEP B-rep (read+write), Alembic, PLY (read+write)")
 if(MODELS_COLLADA_ENABLED)
     message(STATUS "  [✓] COLLADA (.dae) - ENABLED")
 else()
