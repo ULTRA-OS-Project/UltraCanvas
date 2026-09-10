@@ -3294,6 +3294,14 @@ namespace UltraCanvas {
     }
 
     std::string UltraCanvasFilerWidget::DisplayNameOf(const FilerEntry& e) const {
+        // What the host calls this entry wins over every rule below: it is the
+        // only one of them that knows the entry means something other than a
+        // file of that name (UltraFiler's Computer page shows the home folder
+        // as "Home" rather than under the account it is named after).
+        if (displayNameProvider) {
+            const std::string provided = displayNameProvider(e);
+            if (!provided.empty()) return provided;
+        }
         // A launcher that carries its own name is shown by it: the file name
         // of a desktop entry is an id nobody reads
         // ("org.mozilla.firefox.desktop"), while its Name= is what the menus
