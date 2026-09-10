@@ -1,7 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.8.1 - Gmail and Outlook / Microsoft 365 sign in with OAuth2
-//                  through the browser; syncs and sends use the stored
-//                  password or a fresh bearer token
+// Version: 0.9.0 - server settings per account: provider table, autoconfig
+//                  lookup (worker thread + wait dialog), or the manual settings
+//                  page; stored on the account and used by every sync and send
 // Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
@@ -17,7 +17,8 @@
 #include "UltraMailContactCollector.h"
 #include "UltraMailSyncService.h"
 #include "UltraMailOAuth.h"
-#include "UltraMailOAuthWaitDialog.h"
+#include "UltraMailWaitDialog.h"
+#include "UltraMailServerSettingsDialog.h"
 
 #include <UltraCloud/UltraCloudMemory.h>
 
@@ -403,7 +404,7 @@ void UltraMailApp::HandleSendDraft(const Draft& draft) {
         return;
     }
 
-    DiscoveryResult disc = AutoDiscovery::FromPresets(draft.fromAddr);
+    DiscoveryResult disc = SettingsForEmail(draft.fromAddr);
     const std::string smtpUrl = disc.found ? AutoDiscovery::SmtpServerUrl(disc.smtp) : "";
 
     // Always queue to the persistent outbox first (survives restarts / offline).
@@ -447,7 +448,7 @@ void UltraMailApp::HandleSendDraft(const Draft& draft) {
 void UltraMailApp::FlushAndReport(const Draft& draft,
                                   UltraCanvas::UltraCanvasWindowBase* parent,
                                   const std::string& recipients) {
-    DiscoveryResult disc = AutoDiscovery::FromPresets(draft.fromAddr);
+    DiscoveryResult disc = SettingsForEmail(draft.fromAddr);
     auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
     auto* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
     if (!smtp) {
@@ -456,8 +457,8 @@ void UltraMailApp::FlushAndReport(const Draft& draft,
         return;
     }
     Outbox ob(outbox_);
-    auto stats = ob.Flush(*smtp, [this](const std::string& acc, UltraNetCredentials& out) {
-        return ResolveCredentials(acc, EmailForAccount(acc), out);
+    auto stats = ob.Flush(*smtp, [this](const std::string& acc, UltraNetMailOptions& o) {
+        return PrepareSmtp(acc, o);
     });
     if (stats.sent > 0) {
         AlertSuccess(parent, "Message sent to " + recipients + ".");
@@ -481,7 +482,7 @@ void UltraMailApp::FlushAndReport(const Draft& draft,
 void UltraMailApp::RetryOutbox(const std::string& fromAddr) {
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
 
-    DiscoveryResult disc = AutoDiscovery::FromPresets(fromAddr);
+    DiscoveryResult disc = SettingsForEmail(fromAddr);
     auto plugin = UltraNet_GetPlugin(disc.smtp.security == MailSecurity::SslTls ? "smtps" : "smtp");
     auto* smtp = plugin ? dynamic_cast<IMailProtocolPlugin*>(plugin.get()) : nullptr;
     if (!smtp) {
@@ -496,8 +497,8 @@ void UltraMailApp::RetryOutbox(const std::string& fromAddr) {
     }
 
     Outbox ob(outbox_);
-    auto stats = ob.Flush(*smtp, [this](const std::string& acc, UltraNetCredentials& out) {
-        return ResolveCredentials(acc, EmailForAccount(acc), out);
+    auto stats = ob.Flush(*smtp, [this](const std::string& acc, UltraNetMailOptions& o) {
+        return PrepareSmtp(acc, o);
     });
     if (stats.failed == 0) {
         AlertSuccess(parent, "The outbox was sent (" + std::to_string(stats.sent)
@@ -618,7 +619,7 @@ void UltraMailApp::StartBackgroundSync() {
     // keeps the last-sync time of an account that is already registered, so
     // this is safe to repeat after an account was added.
     for (const auto& a : accounts_) {
-        DiscoveryResult d = AutoDiscovery::FromPresets(a.email);
+        DiscoveryResult d = SettingsFor(a);
         std::string url = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
         scheduler_.SetAccount(a.accountId, url, /*intervalSec=*/300);
     }
@@ -637,7 +638,7 @@ void UltraMailApp::RunSyncs(bool force) {
     std::vector<ScheduledAccount> targets;
     if (force) {
         for (const auto& a : accounts_) {
-            DiscoveryResult d = AutoDiscovery::FromPresets(a.email);
+            DiscoveryResult d = SettingsFor(a);
             ScheduledAccount sa;
             sa.accountId = a.accountId;
             sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
@@ -652,7 +653,7 @@ void UltraMailApp::RunSyncs(bool force) {
 void UltraMailApp::SyncAccount(const std::string& accountId) {
     for (const auto& a : accounts_) {
         if (a.accountId != accountId) continue;
-        DiscoveryResult d = AutoDiscovery::FromPresets(a.email);
+        DiscoveryResult d = SettingsFor(a);
         ScheduledAccount sa;
         sa.accountId = a.accountId;
         sa.serverUrl = d.found ? AutoDiscovery::ImapServerUrl(d.imap) : "";
@@ -690,18 +691,17 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
 
     const int64_t now = static_cast<int64_t>(std::time(nullptr));
     for (const auto& acc : targets) {
-        std::string email;
-        for (const auto& a : accounts_) if (a.accountId == acc.accountId) email = a.email;
+        const Account* account = nullptr;
+        for (const auto& a : accounts_) if (a.accountId == acc.accountId) account = &a;
+        const std::string email = account ? account->email : "";
         const std::string who = email.empty() ? acc.accountId : email;
+        const DiscoveryResult settings = account ? SettingsFor(*account) : DiscoveryResult{};
 
-        // No preset matched the address and there is no manual setup yet, so
-        // there is no server to talk to. Say so on a user action instead of
-        // skipping the account without a word.
-        if (acc.serverUrl.empty()) {
-            if (userInitiated)
-                AlertWarning(parent, "New mail cannot be fetched for " + who + ".",
-                             "The incoming (IMAP) server for this address is not "
-                             "known. Manual server settings are not available yet.");
+        // No server is known for the account (neither stored nor in the
+        // provider table). On a user action open the settings page so it can
+        // be fixed right here; the timer just skips it.
+        if (acc.serverUrl.empty() || !settings.found) {
+            if (userInitiated && account) EditServerSettings(acc.accountId);
             continue;
         }
 
@@ -718,8 +718,12 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         }
 
         UltraNetMailOptions opts;
-        opts.credentials.username = email;
-        opts.useTls = true; opts.implicitTls = true;
+        opts.useTls      = settings.imap.security != MailSecurity::Plain;
+        opts.implicitTls = settings.imap.security == MailSecurity::SslTls;
+        const std::string username =
+            settings.imap.username.empty() ? email : settings.imap.username;
+        const std::string provider = OAuthProviderFor(settings);
+        opts.credentials.username = username;
 
         auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
         const std::string aid = acc.accountId;
@@ -735,8 +739,8 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // The credentials are resolved on the worker: an expired OAuth2 token
         // is refreshed through the provider first, which must not block the UI.
         svc->SyncInBackground(aid, acc.serverUrl, opts,
-                              [this, aid, email](UltraNetMailOptions& o) {
-                                  return ResolveCredentials(aid, email, o.credentials);
+                              [this, aid, username, provider](UltraNetMailOptions& o) {
+                                  return ResolveCredentials(aid, username, provider, o.credentials);
                               },
                               [this, svc, aid, who, userInitiated](SyncOutcome outcome) {
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
@@ -965,11 +969,96 @@ void UltraMailApp::HandleAddAccount() {
 }
 
 void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
+    // 1. The provider table answers instantly for the well-known providers.
+    DiscoveryResult disc = AutoDiscovery::FromPresets(draft.email);
+    if (disc.found) { CompleteAccountSetup(draft, disc); return; }
+
+    // 2. Adding an address again keeps the servers it already has (found by
+    //    autoconfig or entered by hand the first time).
+    for (const auto& a : accounts_) {
+        if (a.email == draft.email && a.HasServers()) {
+            CompleteAccountSetup(draft, SettingsFor(a));
+            return;
+        }
+    }
+
+    // 3. Ask the network, then the user.
+    LookupServerSettings(draft);
+}
+
+void UltraMailApp::LookupServerSettings(const AccountDraft& draft) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    const std::string domain = EmailDomain(draft.email);
+
+    // The lookup is a few HTTPS requests; Cancel just drops the answer.
+    auto cancelled = std::make_shared<std::atomic<bool>>(false);
+    std::weak_ptr<UltraCanvasModalDialog> waiting = WaitDialog::Show(parent,
+        "Looking up server settings",
+        "UltraMail is asking " + domain + " and the Thunderbird provider database "
+        "for the mail servers of " + draft.email + "…",
+        [cancelled]() { cancelled->store(true); });
+
+    std::thread([this, draft, parent, cancelled, waiting]() {
+        AutoDiscovery discovery;
+        DiscoveryResult found = discovery.Discover(draft.email);
+
+        auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        app->PostToUIThread([this, draft, parent, cancelled, waiting, found]() {
+            if (cancelled->load()) return;
+            WaitDialog::Close(waiting);
+            if (found.found) { CompleteAccountSetup(draft, found); return; }
+
+            // Nothing published for the domain: the manual page, seeded with
+            // the conventional host names so most of it is already right.
+            ServerSettingsDialog::Show(parent, draft.email,
+                "No mail settings are published for " + EmailDomain(draft.email)
+                + ". Enter the servers from your provider's help page; the "
+                  "account is added once they are saved.",
+                AutoDiscovery::GuessForDomain(draft.email),
+                [this, draft](const DiscoveryResult& manual) {
+                    CompleteAccountSetup(draft, manual);
+                });
+        });
+    }).detach();
+}
+
+void UltraMailApp::EditServerSettings(const std::string& accountId) {
+    const Account* found = nullptr;
+    for (const auto& a : accounts_) if (a.accountId == accountId) found = &a;
+    if (!found) return;
+    const Account account = *found;   // the list may change under the dialog
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+
+    DiscoveryResult current = SettingsFor(account);
+    if (!current.found) current = AutoDiscovery::GuessForDomain(account.email);
+    ServerSettingsDialog::Show(parent, account.email,
+        "New mail cannot be fetched for " + account.email + " because its mail "
+        "servers are not known. Enter them from your provider's help page.",
+        current,
+        [this, account](const DiscoveryResult& manual) {
+            Account updated = account;
+            AutoDiscovery::ApplyTo(updated, manual);
+            if (UltraDbResult up = store_.UpsertAccount(updated); !up) {
+                AlertError(window_ ? window_.get() : nullptr,
+                           "The server settings could not be saved.", DetailLine(up));
+                return;
+            }
+            Refresh();
+            StartBackgroundSync();
+            SyncAccount(account.accountId);
+        });
+}
+
+void UltraMailApp::CompleteAccountSetup(const AccountDraft& draft, const DiscoveryResult& disc) {
     Account a;
     a.accountId   = SlugFromEmail(draft.email);
     a.email       = draft.email;
     a.displayName = draft.displayName.empty() ? LocalPart(draft.email) : draft.displayName;
     a.shortName   = LocalPart(draft.email);
+    // The servers are stored with the account, so later syncs and sends do
+    // not depend on the provider table (or on the network) again.
+    AutoDiscovery::ApplyTo(a, disc);
 
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
 
@@ -978,11 +1067,6 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
         return;
     }
 
-    // Auto-discover the server settings from the address (offline provider
-    // presets; the wizard's network autoconfig + login verify run in the
-    // engine's AutoDiscovery::Discover).
-    DiscoveryResult disc = AutoDiscovery::FromPresets(draft.email);
-
     // Store the password out of the config, in the credential vault — which
     // needs the master password first. If the store fails the account still
     // works, but every later sync would be rejected for no visible reason, so
@@ -990,11 +1074,11 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
     const std::string accountId = a.accountId;
     const std::string email     = draft.email;
     const std::string password  = draft.password;
-    // Gmail signs in with Google through the browser when no password was
-    // typed (an app password typed here still works the classic way).
+    // Gmail and Outlook sign in through the browser when no password was
+    // typed (an app password typed at Gmail still works the classic way).
     const std::string provider  = OAuthProviderFor(disc);
     const bool useOAuth = !provider.empty() && password.empty();
-    // Runs after the discovery alert is dismissed, so the master-password
+    // Runs after the settings alert is dismissed, so the master-password
     // prompt is not stacked underneath it.
     // Once the password (or the sign-in) is in the vault the account is
     // complete: put it on the background schedule and fetch its inbox right
@@ -1013,8 +1097,8 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
                              + OAuthProviderDisplayName(provider) + " into " + dataDir_
                              + "/oauth.ini under [" + provider + "] (client_id = …), or "
                              "set ULTRAMAIL_" + upper + "_CLIENT_ID — see "
-                             "Apps/UltraMail/README.md, \"OAuth2 sign-in\". Alternatively "
-                             "add the account again with an app password.");
+                             "Docs/UltraMail/AccountSetup.md. Alternatively add the "
+                             "account again with an app password.");
                 return;
             }
             // The tokens go into the vault, so open it before the browser
@@ -1057,40 +1141,37 @@ void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
 
     Refresh();
 
-    // Report what discovery found. Success is a success alert; a failed
-    // auto-detect leaves the account unable to send or receive, so it is a
-    // warning that names the consequence rather than an informational note.
-    if (disc.found) {
-        std::string detail = "Incoming (IMAP): " + AutoDiscovery::ImapServerUrl(disc.imap)
-                           + "\nOutgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
-        // Providers that expect OAuth2 (Gmail, Outlook), Yahoo and iCloud
-        // reject the normal account password over IMAP. Gmail and Outlook sign
-        // in through the browser; a typed password there, and Yahoo / iCloud
-        // always, need an app password from the provider's security settings;
-        // say so here, where the user can still act on it.
-        if (useOAuth)
-            detail += "\nSign-in: " + OAuthProviderDisplayName(provider)
-                    + " account, in your browser (next step).";
-        else if (!provider.empty() && !ProviderAcceptsPassword(disc))
-            detail += "\nSign-in: password — but " + disc.displayName + " no longer "
-                      "accepts passwords in mail programs. Add the account again "
-                      "with the password empty to sign in with "
-                    + OAuthProviderDisplayName(provider) + " in your browser.";
-        else if (ProviderNeedsAppPassword(disc))
-            detail += "\nSign-in: password. " + disc.displayName
-                    + " needs an app password for mail programs (generated in "
-                      "your account's security settings); the normal sign-in "
-                      "password is rejected.";
-        AlertSuccess(parent, "Account ready — settings detected ("
-                             + disc.displayName + ").", detail, storePassword);
-    } else {
-        AlertWarning(parent,
-            "The account was added, but its server settings could not be "
-            "detected from the address.",
-            "UltraMail cannot send or receive for " + draft.email
-            + " until the incoming and outgoing servers are set up.",
-            storePassword);
-    }
+    // Report the servers the account will use and where they came from.
+    std::string summary;
+    if (disc.source == "manual")
+        summary = "Account ready — server settings saved.";
+    else if (disc.source == "autoconfig")
+        summary = "Account ready — settings found for " + EmailDomain(draft.email)
+                + (disc.displayName.empty() ? "" : " (" + disc.displayName + ")") + ".";
+    else
+        summary = "Account ready — settings detected"
+                + (disc.displayName.empty() ? "" : " (" + disc.displayName + ")") + ".";
+    std::string detail = "Incoming (IMAP): " + AutoDiscovery::ImapServerUrl(disc.imap)
+                       + "\nOutgoing (SMTP): " + AutoDiscovery::SmtpServerUrl(disc.smtp);
+    // Providers that expect OAuth2 (Gmail, Outlook), Yahoo and iCloud
+    // reject the normal account password over IMAP. Gmail and Outlook sign
+    // in through the browser; a typed password there, and Yahoo / iCloud
+    // always, need an app password from the provider's security settings;
+    // say so here, where the user can still act on it.
+    if (useOAuth)
+        detail += "\nSign-in: " + OAuthProviderDisplayName(provider)
+                + " account, in your browser (next step).";
+    else if (!provider.empty() && !ProviderAcceptsPassword(disc))
+        detail += "\nSign-in: password — but " + disc.displayName + " no longer "
+                  "accepts passwords in mail programs. Add the account again "
+                  "with the password empty to sign in with "
+                + OAuthProviderDisplayName(provider) + " in your browser.";
+    else if (ProviderNeedsAppPassword(disc))
+        detail += "\nSign-in: password. " + disc.displayName
+                + " needs an app password for mail programs (generated in "
+                  "your account's security settings); the normal sign-in "
+                  "password is rejected.";
+    AlertSuccess(parent, summary, detail, storePassword);
 }
 
 std::string UltraMailApp::EmailForAccount(const std::string& accountId) const {
@@ -1099,10 +1180,36 @@ std::string UltraMailApp::EmailForAccount(const std::string& accountId) const {
 }
 
 UltraNetResult UltraMailApp::ResolveCredentials(const std::string& accountId,
-                                                const std::string& email,
+                                                const std::string& username,
+                                                const std::string& providerId,
                                                 UltraNetCredentials& out) {
-    const DiscoveryResult disc = AutoDiscovery::FromPresets(email);
-    return oauth_.CredentialsFor(vault_, accountId, email, OAuthProviderFor(disc), out);
+    return oauth_.CredentialsFor(vault_, accountId, username, providerId, out);
+}
+
+DiscoveryResult UltraMailApp::SettingsFor(const Account& account) {
+    return AutoDiscovery::ForAccount(account);
+}
+
+DiscoveryResult UltraMailApp::SettingsForEmail(const std::string& email) const {
+    for (const auto& a : accounts_) if (a.email == email) return SettingsFor(a);
+    return AutoDiscovery::FromPresets(email);
+}
+
+UltraNetResult UltraMailApp::PrepareSmtp(const std::string& accountId, UltraNetMailOptions& o) {
+    const Account* account = nullptr;
+    for (const auto& a : accounts_) if (a.accountId == accountId) account = &a;
+    if (!account)
+        return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                     "the account of this message no longer exists");
+    const DiscoveryResult settings = SettingsFor(*account);
+    if (!settings.found)
+        return UltraNetResult::Error(UltraNetResultCode::InvalidState,
+                                     "no outgoing (SMTP) server is known for " + account->email);
+    o.useTls      = settings.smtp.security != MailSecurity::Plain;
+    o.implicitTls = settings.smtp.security == MailSecurity::SslTls;
+    const std::string username =
+        settings.smtp.username.empty() ? account->email : settings.smtp.username;
+    return ResolveCredentials(accountId, username, OAuthProviderFor(settings), o.credentials);
 }
 
 void UltraMailApp::StartOAuthSignIn(const std::string& accountId, const std::string& email,

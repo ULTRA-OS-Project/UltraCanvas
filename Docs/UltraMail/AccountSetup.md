@@ -14,8 +14,14 @@ Companion documents: [`Concept.md`](Concept.md) (the design),
 2. Enter your name, your address and — depending on the provider — a password,
    an app password, or nothing. The hint under the password field tells you
    which, as soon as the address is typed.
-3. **Continue.** UltraMail looks the address up in its provider table and
-   shows the incoming (IMAP) and outgoing (SMTP) servers it will use.
+3. **Continue.** UltraMail looks the address up in its provider table
+   (section 2). For any other domain it asks the provider — the domain's own
+   autoconfig document, then the Thunderbird provider database — while a
+   "Looking up server settings" dialog waits (Cancel gives up). If nothing
+   is published, the **server settings page** opens, prefilled with the
+   conventional host names, and you enter the servers from your provider's
+   help page (section 5). Either way UltraMail shows the incoming (IMAP)
+   and outgoing (SMTP) servers it will use, and stores them with the account.
 4. The first time, UltraMail asks you to **choose a master password**. It
    encrypts your account passwords and sign-ins on disk and is never stored
    itself — if you forget it, you enter your account passwords again.
@@ -245,16 +251,39 @@ account again to retry.
   time (a password, an app password, or the browser sign-in) replaces what
   the vault held. An account has exactly one sign-in method.
 
-## 5. Other providers
+## 5. Other providers: autoconfig and manual settings
 
-Addresses that are not in the table above — a company domain, a hosting
-provider, a university — are accepted by the wizard, but UltraMail does not
-yet know their servers: the account is added and marked as unable to fetch
-or send, and Reload says that the incoming server is not known. The
-autoconfig lookup (the provider's `autoconfig.<domain>` document, its
-`.well-known/autoconfig` document, and the Thunderbird ISPDB) and a manual
-server settings page are on the roadmap; until then only the providers in
-section 2 work end to end.
+Addresses outside the table — a company domain, a hosting provider, a
+university — go through two more steps.
+
+**Autoconfig lookup.** UltraMail fetches, in this order, the domain's own
+`https://autoconfig.<domain>/mail/config-v1.1.xml`, its
+`https://<domain>/.well-known/autoconfig/mail/config-v1.1.xml`, and the
+Thunderbird provider database (`autoconfig.thunderbird.net`). Most hosting
+providers and many organisations publish one of these; the first hit gives
+the servers, ports, security and the username pattern, and the wizard
+reports "settings found for <domain>". The lookup runs off the UI thread
+behind a wait dialog and takes a few seconds at most.
+
+**Manual settings page.** When nothing is published, the page opens with
+*Incoming (IMAP)* and *Outgoing (SMTP)* rows — host, port, security
+(SSL/TLS, STARTTLS, None) — and the *Username*, prefilled with
+`imap.<domain>` 993 SSL/TLS, `smtp.<domain>` 587 STARTTLS and the full
+address. Correct them from your provider's "mail program settings" or
+"IMAP/SMTP" help page and **Save**; the account is added with those
+servers, the password goes into the vault, and the first sync starts. The
+page validates in place (a host must be given, ports are 1–65535).
+
+The settings are **stored on the account**, so later syncs and sends never
+look them up again. The page also opens by itself when Reload finds an
+account without known servers — for example one that was added before
+this version for a domain outside the table — and adding the same address
+again keeps the servers it already has.
+
+Sign-in for these accounts is the account password, unless the provider
+says otherwise in its help page (some require an app password when
+two-factor authentication is on). The browser sign-in is available only for
+Gmail and Outlook.
 
 ## 6. When it does not work
 
@@ -263,7 +292,9 @@ section 2 work end to end.
 | *New mail could not be fetched … authentication failed* | Gmail / Yahoo / iCloud: you typed the account password; use an app password (section 2). Outlook: passwords are not accepted; add the account again with the password empty. |
 | *No OAuth client is configured for Google / Microsoft* | Register a client and put it into `oauth.ini` (section 3), or — Gmail only — use an app password. |
 | *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
-| *The incoming (IMAP) server for this address is not known* | The provider is not in the table yet (section 5). |
+| *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
+| *Server settings for …* opens on Reload | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |
+| *New mail could not be fetched … host not found / connection refused* | A server name or port on the settings page is wrong. Add the account again with the same address and correct the page. |
 | *The sign-in has expired; sign in again* | The refresh token was revoked or expired (Google revokes the tokens of an app in *Testing* after seven days). Add the account again to sign in anew. |
 | *Signed in, but the mail session is refused* (Microsoft 365) | Ask the tenant administrator to enable IMAP and Authenticated SMTP for the mailbox. |
 | *Your mail account passwords are locked* | Enter the master password — Reload, sending, or adding an account asks for it. |

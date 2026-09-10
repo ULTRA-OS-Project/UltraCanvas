@@ -60,7 +60,8 @@ Apps/UltraMail/
                                   LocalStore: folders, incremental envelopes,
                                   .eml body cache, two-sided flag changes
     UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
-                                  Mozilla-autoconfig XML (over UltraNet HTTP)
+                                  Mozilla-autoconfig XML (over UltraNet HTTP);
+                                  ForAccount (stored settings, else presets)
     UltraMailCredentialVault.{h,cpp} per-account secrets out of the config:
                                   a password or an OAuth2 token set, in UltraVault
     UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail): provider table, app
@@ -100,8 +101,10 @@ Apps/UltraMail/
     UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body, attachment
                                   strip, Send / Attach file / Attach cloud link
                                   (UltraCloud picker → share link into the body)
-    UltraMailOAuthWaitDialog.{h,cpp} "Sign in with Google": what to do in the
-                                  browser, Cancel; closes when the redirect lands
+    UltraMailWaitDialog.{h,cpp}   a step running elsewhere (browser sign-in,
+                                  settings lookup): text + Cancel; closed by the app
+    UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
+                                  port, security, username; validates in place
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```
@@ -139,9 +142,16 @@ current folder, and the share link lands in the body. Run with
 **Account setup:** the wizard collects name / email / password; on submit,
 `AutoDiscovery` resolves the incoming (IMAP) and outgoing (SMTP) servers from
 the address — instant offline provider presets (Gmail, Outlook, Yahoo, iCloud,
-GMX, web.de, mailbox.org, Posteo, …), falling back to a Mozilla-autoconfig /
-ISPDB lookup over UltraNet HTTP. The password (or OAuth token set) is stored
-in the `CredentialVault`, never in the config. Try it: run with
+GMX, web.de, mailbox.org, Posteo), then a Mozilla-autoconfig / Thunderbird
+ISPDB lookup over UltraNet HTTP on a worker thread (behind a cancellable wait
+dialog), and finally the **manual server settings page**
+(`UltraMailServerSettingsDialog`: IMAP/SMTP host · port · security, username;
+prefilled with `imap.<domain>` / `smtp.<domain>`). The servers are **stored on
+the account** (`Account::imap/smtp`, schema 2) and every sync and send reads
+them through `AutoDiscovery::ForAccount`, which falls back to the presets for
+accounts stored before. Reload opens the page for an account whose servers
+are unknown. The password (or OAuth token set) is stored in the
+`CredentialVault`, never in the config. Try it: run with
 `ULTRAMAIL_DEMO_ADD=you@gmail.com` to exercise discovery + vault + the result
 dialog.
 

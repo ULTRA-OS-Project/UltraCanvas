@@ -3,9 +3,8 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
-// Version: 0.7.0 - Gmail signs in with Google (OAuth2) through the browser;
-//                  IMAP/SMTP sessions use the stored password or a fresh
-//                  bearer token.
+// Version: 0.8.0 - server settings per account: provider table, autoconfig
+//                  lookup, or the manual settings page; stored on the account.
 // Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -65,7 +64,28 @@ private:
     void ResizeViews(float width, float height);
 
     void HandleAddAccount();
+    // The wizard's identity step is done: find the servers (provider table,
+    // stored settings of an account with the same address, then the autoconfig
+    // lookup on a worker thread, then the manual page) and complete the setup.
     void HandleWizardSubmit(const AccountDraft& draft);
+    // The autoconfig lookup with a cancellable wait dialog; falls through to
+    // the manual settings page when nothing was found.
+    void LookupServerSettings(const AccountDraft& draft);
+    // Store the account with its servers, seed the inbox, report the settings,
+    // and store the password / run the browser sign-in.
+    void CompleteAccountSetup(const AccountDraft& draft, const DiscoveryResult& settings);
+    // The manual settings page for an existing account whose servers are not
+    // known (or to correct them); saves, then syncs the account.
+    void EditServerSettings(const std::string& accountId);
+    // The servers an account uses: stored on the account, else the provider
+    // table (AutoDiscovery::ForAccount).
+    static DiscoveryResult SettingsFor(const Account& account);
+    // Same, by address — for the composer's From address; the provider table
+    // when no account carries it.
+    DiscoveryResult SettingsForEmail(const std::string& email) const;
+    // Fill an SMTP session's options for an account: username, TLS mode of
+    // its outgoing server, and the credentials (see ResolveCredentials).
+    UltraNetResult PrepareSmtp(const std::string& accountId, UltraNetMailOptions& options);
     // Browser sign-in for an OAuth2 provider ("google"): opens the consent page,
     // waits (with a cancellable dialog) for the redirect on a worker thread,
     // stores the tokens in the vault — which must be open — and runs the first
@@ -77,10 +97,11 @@ private:
     // Resolve the IMAP/SMTP credentials of an account from the vault: its
     // password, or a fresh OAuth2 bearer token (refreshing through the provider
     // when expired — one HTTPS request, so call it off the UI thread where the
-    // caller can). The vault must be open. Takes the address rather than
-    // looking it up so a worker thread never reads the UI-owned account list.
-    UltraNetResult ResolveCredentials(const std::string& accountId, const std::string& email,
-                                      UltraNetCredentials& out);
+    // caller can). The vault must be open. Takes the username and the OAuth
+    // provider rather than looking them up, so a worker thread never reads the
+    // UI-owned account list.
+    UltraNetResult ResolveCredentials(const std::string& accountId, const std::string& username,
+                                      const std::string& providerId, UltraNetCredentials& out);
     // "Reload email": sync every account now (when the IMAP plug-in is present)
     // and re-read the store.
     void HandleReload();

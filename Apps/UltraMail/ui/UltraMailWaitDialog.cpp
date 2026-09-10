@@ -1,7 +1,7 @@
-// Apps/UltraMail/ui/UltraMailOAuthWaitDialog.cpp
-// Version: 0.1.0
+// Apps/UltraMail/ui/UltraMailWaitDialog.cpp
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
-#include "UltraMailOAuthWaitDialog.h"
+#include "UltraMailWaitDialog.h"
 
 #include "UltraMailTheme.h"
 
@@ -13,11 +13,11 @@ using namespace UltraCanvas;
 
 namespace UltraMail {
 
-std::shared_ptr<UltraCanvasModalDialog> OAuthWaitDialog::Show(
-        UltraCanvasWindowBase* parent, const std::string& providerName,
-        const std::string& email, std::function<void()> onCancel) {
+std::shared_ptr<UltraCanvasModalDialog> WaitDialog::Show(
+        UltraCanvasWindowBase* parent, const std::string& title,
+        const std::string& text, std::function<void()> onCancel) {
     DialogConfig config;
-    config.title      = "Sign in with " + providerName;
+    config.title      = title;
     config.width      = 460;
     config.height     = 250;
     config.dialogType = DialogType::Custom;
@@ -34,22 +34,19 @@ std::shared_ptr<UltraCanvasModalDialog> OAuthWaitDialog::Show(
     dialog->SetPadding(20);
     dialog->SetBackgroundColor(Theme::kCardBackground);
 
-    auto text = CreateLabel("oauthWaitText", 0, 0, 420, 110,
-        "Your browser has opened " + providerName + "'s sign-in page. Sign in as "
-        + email + " and allow UltraMail to read and send your mail, then come back "
-        "here — this window closes by itself once the sign-in is done.");
-    text->SetWrap(TextWrap::WrapWord);
-    text->SetFontSize(Theme::kSizeBody);
-    text->SetTextColor(Theme::kTextSecondary);
-    dialog->AddChild(text);
-    text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto label = CreateLabel("waitText", 0, 0, 420, 110, text);
+    label->SetWrap(TextWrap::WrapWord);
+    label->SetFontSize(Theme::kSizeBody);
+    label->SetTextColor(Theme::kTextSecondary);
+    dialog->AddChild(label);
+    label->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto buttonRow = CreateContainer("oauthWaitButtons", 0, 0, 0, Theme::kToolbarHeight);
+    auto buttonRow = CreateContainer("waitButtons", 0, 0, 0, Theme::kToolbarHeight);
     buttonRow->layout.SetFlexRow()
                      .SetFlexGap(Theme::kInnerGap)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     buttonRow->AddStretchSpacer(1);
-    auto cancelBtn = CreateButton("oauthWaitCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
+    auto cancelBtn = CreateButton("waitCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
     Theme::StyleSecondary(cancelBtn);
     cancelBtn->onClick = [dlg]() { dlg->CloseDialog(DialogResult::Cancel); };
     buttonRow->AddChild(cancelBtn);
@@ -58,7 +55,7 @@ std::shared_ptr<UltraCanvasModalDialog> OAuthWaitDialog::Show(
     UltraCanvasDialogManager::ShowDialog(
         dialog,
         [onCancel](DialogResult result) {
-            // Closed by the app (Close → OK) means the sign-in finished; any
+            // Closed by the app (Close → OK) means the step finished; any
             // other way out is the user giving up.
             if (result != DialogResult::OK && onCancel) onCancel();
         },
@@ -66,8 +63,18 @@ std::shared_ptr<UltraCanvasModalDialog> OAuthWaitDialog::Show(
     return dialog;
 }
 
-void OAuthWaitDialog::Close(const std::weak_ptr<UltraCanvasModalDialog>& dialog) {
+void WaitDialog::Close(const std::weak_ptr<UltraCanvasModalDialog>& dialog) {
     if (auto d = dialog.lock()) d->CloseDialog(DialogResult::OK);
+}
+
+std::shared_ptr<UltraCanvasModalDialog> OAuthWaitDialog::Show(
+        UltraCanvasWindowBase* parent, const std::string& providerName,
+        const std::string& email, std::function<void()> onCancel) {
+    return WaitDialog::Show(parent, "Sign in with " + providerName,
+        "Your browser has opened " + providerName + "'s sign-in page. Sign in as "
+        + email + " and allow UltraMail to read and send your mail, then come back "
+        "here — this window closes by itself once the sign-in is done.",
+        std::move(onCancel));
 }
 
 } // namespace UltraMail

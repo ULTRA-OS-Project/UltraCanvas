@@ -1,3 +1,32 @@
+#### 2026-09-10 *0.9.0*
+- **Any provider: autoconfig lookup and a manual settings page.** An address
+  outside the provider table no longer ends as an account that cannot fetch.
+  The wizard now asks the domain's own autoconfig document, its
+  `.well-known` copy and the Thunderbird ISPDB (`AutoDiscovery::Discover`,
+  on a worker thread behind a cancellable "Looking up server settings"
+  dialog) and, when nothing is published, opens the **server settings page**
+  (`UltraMailServerSettingsDialog`: incoming / outgoing host · port ·
+  security dropdown, username; prefilled with `imap.<domain>` 993 SSL/TLS
+  and `smtp.<domain>` 587 STARTTLS via `AutoDiscovery::GuessForDomain`;
+  validates in place). The account-ready dialog says where the settings
+  came from.
+- **Server settings are stored on the account.** `Account` carries
+  `imap` / `smtp` (`MailServerSettings`: host, port, security, username,
+  oauth flag) and `providerName`; `LocalStore` schema 2 adds the columns.
+  Every sync and send resolves the servers through
+  `AutoDiscovery::ForAccount` — the stored ones, else the provider table for
+  accounts created before — and applies the stored security (SSL/TLS,
+  STARTTLS, plain) and username instead of assuming implicit TLS and the
+  address. `Outbox::Flush` takes an options resolver that sets the SMTP
+  session's username and TLS mode along with the credentials.
+- **Reload opens the settings page** for an account whose servers are not
+  known, instead of only saying so; saving stores them and syncs at once.
+  Adding an address again keeps the servers it already has.
+- `MailSecurity` and `MailServerSettings` moved from `UltraMailDiscovery.h`
+  to `UltraMailTypes.h`; the plaintext value is `MailSecurity::Plain` (the
+  old `None` collides with the X11 macro once a UI translation unit includes
+  the type). `OAuthWaitDialog` became the generic `WaitDialog`.
+
 #### 2026-09-10 *0.8.3*
 - **Account setup guide.** `Docs/UltraMail/AccountSetup.md`: how to sign in
   to each provider in the table (Gmail, Outlook / Microsoft 365, Yahoo,

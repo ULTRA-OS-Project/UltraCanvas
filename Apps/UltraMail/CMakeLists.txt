@@ -98,7 +98,8 @@ set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailContactsView.cpp
     ui/UltraMailComposeWindow.cpp
     ui/UltraMailPassphraseDialog.cpp
-    ui/UltraMailOAuthWaitDialog.cpp
+    ui/UltraMailWaitDialog.cpp
+    ui/UltraMailServerSettingsDialog.cpp
 )
 
 add_executable(UltraMail main.cpp ${ULTRAMAIL_UI_SOURCES})

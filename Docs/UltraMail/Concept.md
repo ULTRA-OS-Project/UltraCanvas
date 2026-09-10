@@ -138,6 +138,10 @@ If discovery or verification fails, the wizard drops into the
 **manual settings** page (incoming server/port/TLS/IMAP-or-POP3,
 outgoing server/port/TLS, username) with everything it *did* find
 prefilled — the user corrects one field instead of typing seven.
+*(Shipped in 0.9.0 as `UltraMailServerSettingsDialog` — IMAP only, no
+POP3 yet, no login verify; the page is also the fallback when the
+autoconfig lookup finds nothing, and Reload opens it for an account
+without known servers.)*
 
 ### 2.3 What the user never has to do
 
