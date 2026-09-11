@@ -1,4 +1,4 @@
-#### 2026-09-11 *0.8.15*
+#### 2026-09-11 *0.8.16*
 - **DirectX .x (.x) reads, text and binary.** `Plugins/Models/XFile/` is split the
   way the STEP and Alembic readers are: `UltraCanvasXFile.h` is the container -
   the `xof` header, the two tokenisers and a generic tree of typed objects, with
