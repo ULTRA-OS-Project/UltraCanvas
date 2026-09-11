@@ -314,6 +314,15 @@ the backing implementation can be replaced without affecting callers.
     matrix and the reversed winding cancels against it, so the reader alters
     neither and instead *checks* the winding against the file's own normals.
     Consult that header before assuming anything about its handedness.
+    **MilkShape 3D** (`Plugins/Models/MS3D/UltraCanvasMS3DConverter.h`) is the
+    one reader with no container layer, because an `.ms3d` has no container to
+    speak of: a fixed sequence of packed little-endian structs, a count then
+    that many records, with no chunks or offsets. It reads the triangle groups
+    as meshes, per-corner normals and UVs, materials with their texture and
+    alpha-map paths, smoothing groups as `MeshPrimitive::SmoothingGroups`
+    bitmasks, the joint hierarchy (parented by name) with its rotation and
+    translation keyframes, and both of the format's two skinning records.
+    Read-only, and no optional dependency.
     Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
     `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
     `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the

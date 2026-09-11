@@ -19,6 +19,7 @@
 #include "Models/DXF/UltraCanvasDXFModelConverter.h"
 #include "Models/STEP/UltraCanvasStepConverter.h"
 #include "Models/Alembic/UltraCanvasAlembicConverter.h"
+#include "Models/MS3D/UltraCanvasMS3DConverter.h"
 #include "Models/PLY/UltraCanvasPLYConverter.h"
 #include "Models/XFile/UltraCanvasXFileConverter.h"
 
@@ -82,6 +83,7 @@ UltraCanvasModelFormatsPlugin::CreateConverterForExtension(const std::string& ex
     if (extension == "step" || extension == "stp" || extension == "p21")
         return std::make_unique<StepConverter>();
     if (extension == "abc") return std::make_unique<AlembicConverter>();
+    if (extension == "ms3d") return std::make_unique<MS3DConverter>();
     if (extension == "ply") return std::make_unique<PLYConverter>();
     if (extension == "x") return std::make_unique<XFileConverter>();
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
@@ -110,7 +112,7 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
     // plugin's reader stays the default for it. CreateConverterForExtension
     // still answers for it, because an explicit caller has already chosen.
     std::vector<std::string> extensions = {"3ds", "obj", "step", "stp", "p21", "abc",
-                                           "ply", "x"};
+                                           "ply", "x", "ms3d"};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     extensions.push_back("dae");
 #endif
@@ -124,8 +126,9 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
     extensions.push_back("fbx");
 #endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
-    // Claimed so a file browser can describe a .blend, even though loading it
-    // as geometry deliberately yields nothing.
+    // A .blend yields the cage Blender stored, not the evaluated model, and
+    // the converter warns naming the modifiers that are unapplied. See
+    // proposal 2.6 for why reading it beats refusing to.
     extensions.push_back("blend");
 #endif
     return extensions;
@@ -139,7 +142,7 @@ std::vector<ModelFormat> UltraCanvasModelFormatsPlugin::AvailableFormats() {
     std::vector<ModelFormat> formats = {ModelFormat::ThreeDS, ModelFormat::OBJ,
                                         ModelFormat::DXF, ModelFormat::STEP,
                                         ModelFormat::Alembic, ModelFormat::PLY,
-                                        ModelFormat::XFile};
+                                        ModelFormat::XFile, ModelFormat::MS3D};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     formats.push_back(ModelFormat::COLLADA);
 #endif
