@@ -1024,6 +1024,38 @@ add_test(
 )
 message(STATUS "    Test registered: ModelXFileTest")
 
+# ===== MILKSHAPE 3D MODEL READER TEST =====
+# The simplest format in the matrix, and the suite that writes the most of its
+# own input: an .ms3d is a fixed sequence of packed structs, so building one by
+# hand costs about as much as reading one - and it is the only way to reach the
+# joint hierarchy, the two skinning records, the smoothing-group bitmask and
+# the versioned optional tail, none of which the sample export carries. Needs
+# nothing beyond the standard library, so it is always built.
+message(STATUS "  Building ModelMS3DTest...")
+add_executable(ModelMS3DTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelMS3DTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/MS3D/UltraCanvasMS3DConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelMS3DTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelMS3DTest PRIVATE cxx_std_20)
+set_target_properties(ModelMS3DTest PROPERTIES
+    OUTPUT_NAME "ModelMS3DTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelMS3DTest
+    COMMAND ModelMS3DTest "${ULTRACANVAS_ROOT}/media/models/MS3D/E-45-Aircraft.ms3d"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelMS3DTest")
+
 # ===== BLENDER FILE INSPECTOR TEST =====
 # The .blend inspector and the converter that deliberately declines to import
 # geometry. Needs zlib to inflate a compressed save file.
@@ -1123,6 +1155,7 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFileConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/MS3D/UltraCanvasMS3DConverter.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
@@ -1184,6 +1217,45 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelFormatsPluginTest")
+
+# ===== MODEL PREVIEW SEAM TEST =====
+# The inversion that lets core's Filer thumbnails and media viewer display a
+# format only the Models plugin can read: core declares what it wants in
+# include/UltraCanvasModelPreview.h and RegisterModelFormatsPlugin() fills it
+# in. This reuses the dispatch test's source list minus its main(), and adds
+# core's seam, core's STL loader and the Mesh3D bridge - it builds the real
+# provider itself rather than calling RegisterModelFormatsPlugin(), which
+# lives behind the IGraphicsPlugin facade and would pull in the UI stack.
+set(MODEL_PREVIEW_SOURCES ${MODEL_DISPATCH_SOURCES})
+list(REMOVE_ITEM MODEL_PREVIEW_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelFormatsPluginTest.cpp)
+list(APPEND MODEL_PREVIEW_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelPreviewSeamTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasModelPreview.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelMesh3D.cpp
+)
+
+message(STATUS "  Building ModelPreviewSeamTest...")
+add_executable(ModelPreviewSeamTest ${MODEL_PREVIEW_SOURCES})
+target_include_directories(ModelPreviewSeamTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+    ${MODEL_DISPATCH_INCLUDES}
+)
+target_compile_definitions(ModelPreviewSeamTest PRIVATE ${MODEL_DISPATCH_DEFINES})
+target_link_libraries(ModelPreviewSeamTest PRIVATE ${MODEL_DISPATCH_LIBS})
+target_compile_features(ModelPreviewSeamTest PRIVATE cxx_std_20)
+set_target_properties(ModelPreviewSeamTest PROPERTIES
+    OUTPUT_NAME "ModelPreviewSeamTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelPreviewSeamTest
+    COMMAND ModelPreviewSeamTest "${ULTRACANVAS_ROOT}/media/models"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelPreviewSeamTest")
 
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the

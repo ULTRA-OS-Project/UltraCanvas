@@ -9,7 +9,7 @@
 // Model3D category stops being STL-only.
 //
 // Which converters exist depends on how the plugin was built — COLLADA needs
-// tinyxml2 and .blend inspection needs zlib, so both are compile-time
+// tinyxml2 and the .blend reader needs zlib, so both are compile-time
 // optional. Ask GetSupportedExtensions rather than assuming.
 //
 // One extension is deliberately NOT claimed: .dxf. A DXF is a drawing far more
@@ -51,8 +51,8 @@ namespace UltraCanvas {
 
         // Loads the model and hands back a viewer: the document is flattened
         // to a mesh and given to an UltraCanvasSTLElement, which shades it on
-        // GL builds and summarises it otherwise. A format that declines to
-        // import (.blend) returns null — GetFileInfo still describes it.
+        // GL builds and summarises it otherwise. A format that cannot be read
+        // at all returns null — GetFileInfo still describes it.
         std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const std::string& filePath) override;
         std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const GraphicsFileInfo& fileInfo) override;
         std::shared_ptr<UltraCanvasUIElement> CreateGraphics(int width, int height,

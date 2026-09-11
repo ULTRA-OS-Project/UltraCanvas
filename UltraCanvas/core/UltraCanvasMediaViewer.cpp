@@ -32,6 +32,7 @@
 #include "UltraCanvasFileLoader.h"   // FileDialogOptions, DialogResult, FileFilter
 #include "UltraCanvasSpreadsheet.h"  // ODS / CSV / TSV (always built into the core lib)
 #include "Models/STL/UltraCanvasSTLElement.h"  // STL 3D viewer (GL or 2D fallback)
+#include "UltraCanvasModelPreview.h"    // which 3D formats this build reads
 #include "UltraCanvasTextArea.h"      // text / source / markdown view
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h" // .tex → rich document → markdown
 #include "UltraCanvasSyntaxTokenizer.h" // resolve source language from extension
@@ -1224,7 +1225,14 @@ bool UltraCanvasMediaViewer::IsModelFile(const std::string& path) {
     // 3D models open in UltraCanvasSTLElement (OpenGL viewer, or a 2D info
     // placeholder when GL is disabled). The element is always built into the
     // core library, so no backend guard is needed.
-    return LowerExt(path) == "stl";
+    //
+    // Which *formats* reach it is not core's to decide: .stl is core's own,
+    // and everything else - OBJ, COLLADA, FBX, X3D/VRML, Alembic, MilkShape,
+    // .blend, STEP - arrives when the application has registered the Models
+    // plugin. Asking the seam rather than naming an extension is what stops
+    // this test going stale every time a reader lands, which is exactly what
+    // it did: it still said "stl" after nine other formats had readers.
+    return CanPreviewModelExtension(path);
 }
 
 bool UltraCanvasMediaViewer::IsFontFile(const std::string& path) {

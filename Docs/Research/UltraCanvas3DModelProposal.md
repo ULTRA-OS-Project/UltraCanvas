@@ -45,6 +45,7 @@ this document is where those annotations come from.
 | `AlembicConverter` | `Plugins/Models/Alembic/` | Reads the Ogawa container and AbcGeom's `Xform`, `PolyMesh`, `SubD` and `FaceSet` — first time sample only, read-only. No SDK. |
 | `X3DConverter` | `Plugins/Models/X3D/` | Reads X3D in both text encodings — XML (`.x3d`) and Classic VRML (`.x3dv`), which VRML97 (`.wrl`) also writes: the `Transform`/`Group` hierarchy with DEF/USE instancing, `IndexedFaceSet` with its parallel index streams, the Immersive profile's Box/Sphere/Cylinder/Cone, `Appearance`/`Material`/`ImageTexture`, lights, viewpoints, and TimeSensor-plus-interpolator animation through `ROUTE`s. The one reader here split by *encoding* rather than by container — see §2.9. Read-only; VRML 1.0 is refused by name. |
 | `FbxConverter` | `Plugins/Models/FBX/` | Reads FBX 7.x binary and 6.x/7.x ASCII: the connection graph, the full transform chain, meshes with independently indexed layers, Phong materials with textures, and animation. The only format here whose scene is a graph rather than a tree, and the only extension naming two object models — see §2.8. Read-only, needs zlib. |
+| `MS3DConverter` | `Plugins/Models/MS3D/` | Reads MilkShape 3D: triangle groups as meshes, per-corner normals and UVs, materials with texture and alpha-map paths, smoothing groups as bitmasks, the joint hierarchy with its keyframes, and both of the format's two skinning records. The one format here with no container layer worth splitting off — see §2.10. Read-only. |
 | `XFileConverter` | `Plugins/Models/XFile/` | Reads Direct3D retained mode's `.x`, text and binary: the Frame hierarchy, n-gon meshes, per-face material lists, Phong materials with a texture name. The one **left-handed** format in the set — see §2.7. Read-only, geometry only. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
@@ -179,7 +180,12 @@ What is still out of scope, and stated as such rather than implied: PMI
 assembly-level constraints. `BrepSolid::Extras` and `BrepFace::Extras` carry
 those as text so a reader loses nothing silently, but nothing interprets them.
 
-### 2.6 Application-native files — the second deliberate exclusion
+### 2.6 Application-native files — the exclusion that was reversed
+
+*The conclusion first, because this section argues its way to the opposite of
+where it starts: `.blend` **is** read, and what it yields is the stored cage
+with a warning naming the modifiers that are unapplied. The measurements below
+are the reason the warning has to stay, not a reason to refuse.*
 
 **`.blend`** (and by the same argument `.max`, `.ma`/`.mb`, `.c4d`) is not an
 interchange format. It is a dump of the application's in-memory structures,
@@ -445,6 +451,36 @@ arrive at the same world bounds, which is what says the two readers agree. Both
 are symmetric in X, so both had the mirror applied. Two exports of one scene, in
 two encodings of one format, differing in how far down the modifier stack the
 exporter went.
+
+### 2.10 A format with nothing to split off
+
+Every reader in this survey that earned a two-layer split had a *generic*
+container underneath its semantics: Ogawa under AbcGeom, Part 21 under AP203,
+FBX's record tree under Autodesk's object set, Blender's SDNA under its object
+model, an `xof` token stream under Direct3D's. The split is worth making when
+the lower layer can read a file full of record types it has never heard of.
+
+MilkShape 3D has no such layer, and it is worth recording as the counter-case.
+An `.ms3d` is a fixed sequence of packed little-endian structs: a count, then
+that many records, then the next count. No chunks, no tags, no offsets, no
+names. There is nothing that can be read generically, because there is nothing
+generic in it - the layout *is* the semantics. Splitting it anyway would
+produce a lower layer whose only job is to hand the upper layer the same
+structs in the same order, which is ceremony rather than structure.
+
+So `Plugins/Models/MS3D/` is one file, as OBJ, PLY, 3DS, DXF and the X3D
+semantic layer are. The rule that falls out of the two cases together: **split
+when the container can outlive the schema**, not merely when a format is
+binary.
+
+The format is worth having for a second reason. It is a *game* format rather
+than an interchange one, and the survey had no other: positions indexed and
+shared while normals and texture coordinates sit per triangle corner, triangles
+and nothing else, a smoothing-group number per face, and skinning stored twice
+over because a later revision added three weighted bones beside the single one
+every file already had. The document held all of it without changing - the
+smoothing-group masks and the two skin attribute sets were already there for
+OBJ and glTF respectively.
 ## 3. What the structure must therefore carry
 
 Reading down the survey, the union of elements is smaller than it looks,
@@ -828,6 +864,15 @@ Each step is independently mergeable and comes with a test and a demo page.
    it exposed applies to the XML encoding too. VRML 1.0 shares the extension
    and nothing else, and is refused by name.
 
+3.10. **MilkShape 3D — done.** `Plugins/Models/MS3D/` reads it, validated
+   against the aircraft's `.ms3d` (`Tests/ModelMS3DTest.cpp`, 87 assertions,
+   most of them against files the suite writes itself). What it added to this
+   document is §2.10, which is a negative result worth keeping: it is the one
+   format here with no container layer worth splitting off, and the rule that
+   falls out is to split when the container can outlive the schema rather than
+   whenever a format is binary. It is also the survey's only *game* format, and
+   the structure held its smoothing groups and its two skinning records without
+   changing. **Still to do:** nothing in the format is unread.
 4. **glTF 2.0 / GLB.** The interchange target: scene graph, PBR materials,
    skins, animation, morph targets. Once this reads and writes, UltraCanvas can
    exchange with the rest of the industry. JSON is already available through

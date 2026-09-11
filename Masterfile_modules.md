@@ -142,6 +142,15 @@ the backing implementation can be replaced without affecting callers.
     matrix and the reversed winding cancels against it, so the reader alters
     neither and instead *checks* the winding against the file's own normals.
     Consult that header before assuming anything about its handedness.
+    **MilkShape 3D** (`Plugins/Models/MS3D/UltraCanvasMS3DConverter.h`) is the
+    one reader with no container layer, because an `.ms3d` has no container to
+    speak of: a fixed sequence of packed little-endian structs, a count then
+    that many records, with no chunks or offsets. It reads the triangle groups
+    as meshes, per-corner normals and UVs, materials with their texture and
+    alpha-map paths, smoothing groups as `MeshPrimitive::SmoothingGroups`
+    bitmasks, the joint hierarchy (parented by name) with its rotation and
+    translation keyframes, and both of the format's two skinning records.
+    Read-only, and no optional dependency.
     Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
     `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
     `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the
@@ -153,9 +162,18 @@ the backing implementation can be replaced without affecting callers.
     `SupportedLoadExtensions` / `SupportedSaveExtensions`, and an
     `IGraphicsPlugin` implementation reaching `LoadGraphicsFile` /
     `SaveGraphicsFile` and the `Model3D` category.
-    `RegisterModelFormatsPlugin()` registers it and the STL plugin together.
-    `.dxf` is dispatchable but not claimed, so a DXF still opens as a drawing
-    by default. Per-format converters, under `Plugins/Models/<FORMAT>/`:
+    `RegisterModelFormatsPlugin()` registers it and the STL plugin together,
+    and installs the **model preview provider**
+    (`include/UltraCanvasModelPreview.h`) that lets core display a format only
+    this plugin can read. Core carries one reader, STL, because the Filer's
+    thumbnails have always needed one; the plugin links against core, so core
+    cannot call it. The seam inverts the question instead of the dependency -
+    core asks "is this extension one you read" and "turn this path into a
+    `Mesh3D`", and falls back to STL when nothing has answered. That is what
+    `UltraCanvasFilerWidget`'s 3D thumbnails, `UltraCanvasMediaViewer`'s
+    `MediaKind::Model` and `UltraCanvasSTLElement::LoadFromFile` all go
+    through. `.dxf` is dispatchable but not claimed, so a DXF still opens as a
+    drawing by default - and still previews as one. Per-format converters, under `Plugins/Models/<FORMAT>/`:
     `ThreeDSConverter` (`Plugins/Models/3DS/UltraCanvas3DSConverter.h`) reads
     Autodesk 3DS - meshes, object matrices, Phong materials with texture maps,
     per-face material groups, cameras and lights - and is read-only.

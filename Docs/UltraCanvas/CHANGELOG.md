@@ -23,6 +23,121 @@
   expression repeated on three steps, and a `workflow_dispatch` validation run
   counts as a check rather than a release - so manually validating a branch no
   longer submits anything to Apple either.
+#### 2026-09-11 *0.8.26*
+- **The Filer and the media viewer show every 3D format this build reads, not
+  just STL.** Both live in core; every format but STL lives in the Models
+  plugin, which links *against* core - so core could not call it, and both
+  viewers simply asked `ext == "stl"`. That answer had been wrong for nine
+  formats and counting: `UltraCanvasMediaViewer::IsModelFile` still named one
+  extension after OBJ, PLY, 3DS, COLLADA, DirectX .x, Alembic, .blend, STEP,
+  FBX and MilkShape had readers, and the Filer's thumbnail worker refused
+  everything else with the comment "the other 3D formats have no loader that
+  works without a GL context".
+- **`include/UltraCanvasModelPreview.h` is the inversion**, and it inverts the
+  question rather than the dependency. Core declares what it wants - is this
+  extension one you read, and turn this path into a `Mesh3D` - and
+  `RegisterModelFormatsPlugin()` installs an implementation on its way in. No
+  provider installed means the answers fall back to STL, which is exactly what
+  a build with `ULTRACANVAS_PLUGIN_MODELS=OFF` gets and what every caller got
+  before. The provider hands back a flat mesh rather than a `ModelDocument`,
+  because core has no idea that type exists and a thumbnail wants one triangle
+  buffer rather than a scene.
+- **The GL context was never the obstacle.** `RenderModelPreviewPixmap` has
+  always been a software rasterizer - it rotates, projects and shades the
+  triangles itself - so widening it needed no renderer work at all, only a way
+  to get the triangles. The existing triangle cap still applies afterwards,
+  which is what keeps a subdivided FBX from stalling a preview worker.
+- **A STEP file previews now too.** It carries exact bodies and no triangles
+  until something asks, and the provider asks: `TessellateOnImport` is on for
+  previews specifically, so a `.step` draws as the solid it describes instead
+  of as a blank tile.
+- **`.dxf` still does not preview as a model**, matching the dispatch's own
+  deliberate refusal to claim it - a DXF is a drawing far more often than a
+  model, and the Vector reader stays its default. `ModelPreviewSeamTest`
+  asserts that from the preview side, where `ModelFormatsPluginTest` already
+  asserted it from the dispatch side.
+- **`UltraCanvasSTLElement::LoadFromFile` is no longer STL-only** either, which
+  is what makes the media viewer work without further changes: the element only
+  ever wanted a triangle buffer, so it now takes one from the same seam.
+- **`Tests/ModelPreviewSeamTest.cpp`** (new) pins the contract rather than any
+  one format: that a build with no provider behaves exactly as before, that a
+  provider widens both questions, that a half-built provider is refused whole
+  rather than called through a null `std::function`, that a provider returning
+  no triangles reports failure rather than an empty preview, and that clearing
+  it narrows core back to STL. Its sample half loads every export of the
+  aircraft through the real provider and asserts each gives the preview a
+  bounding sphere to frame and a normal per vertex to shade - and that the
+  OBJ's 8110 quads arrive as exactly 16220 triangles, so nothing is dropped on
+  the way through the flattening.
+#### 2026-09-11 *0.8.28*
+- **MilkShape 3D (.ms3d) reads.** `Plugins/Models/MS3D/` is the one reader here
+  with no container layer to split off, and deliberately so: an .ms3d is a
+  fixed sequence of packed little-endian structs with no chunks, tags or
+  offsets. A count, then that many records, to the end of the file. There is no
+  generic grammar underneath it to isolate, so isolating one would be ceremony.
+- **It is a game format, and the shape of it says so.** Positions are indexed
+  and shared while normals and texture coordinates are stored per *triangle
+  corner*, so corners whose streams disagree become distinct document vertices
+  - the same resolution the OBJ, COLLADA, X3D, FBX and Alembic readers perform.
+  A group is a named triangle list with one material, which is exactly a mesh
+  with one primitive, so groups become meshes.
+- **A smoothing group is a number, and `MeshPrimitive` holds a bitmask.**
+  MilkShape numbers them 1..32 with 0 meaning none, so the number is the *bit*,
+  not the value - group 3 is bit 2. Getting that off by one creases a model
+  everywhere, and the test pins all three cases.
+- **Skinning is stored twice over**, and the two records disagree by design.
+  Every vertex carries a single `boneId`; an optional later block adds three
+  more bones with percentage weights. The block wins where it is present, and
+  the vertex's own bone takes whatever share the other three leave - a file
+  that has the block wrote the single id only for readers that predate it.
+- **Joints name their parents by string**, so the hierarchy is resolved by name
+  and a parent declared after its child still works; a parent cycle is broken
+  and reported rather than recursed. Rotation keys are absolute orientations
+  composed with the rest pose and translation keys are relative to the rest
+  position, which is how MilkShape's own viewer reads them.
+- **One thing the specification does not settle**, and this reader says so
+  rather than implying an answer: MilkShape's `ms3dspec.h` comments a
+  keyframe's `time` as seconds, while its interface works in frames and the
+  file separately stores `fAnimationFPS` and `iTotalFrames`. The field is taken
+  as seconds, as the header says, and the frame rate and frame count go into
+  metadata so a caller that disagrees can convert. The test pins that choice.
+- **Everything past the joints is optional and versioned** - comments, vertex
+  weights, joint colours, model settings - each with its own version number. A
+  file may stop at any block boundary, and a version this reader does not know
+  stops it there rather than guessing at the layout beyond, keeping everything
+  already read. A declared count is never trusted over the bytes present: the
+  counts are 16-bit, so a claimed 60000 vertices in a ten-byte file is refused
+  before anything is reserved for it.
+- **`Tests/ModelMS3DTest.cpp`** (87 assertions) **builds .ms3d files by hand**,
+  because the sample carries no joints, no skinning, no smoothing groups and no
+  textures - and a fixed struct sequence is about as easy to write as to read.
+  Clean under ASan/UBSan, including every truncation of a complete file.
+- **The sample is a canopy, not an aircraft**, and that is the finding worth
+  keeping. Every other export of the E-45 in this repository carries both of
+  its meshes; the .ms3d carries **one** - 1488 triangles, exactly twice the
+  Alembic canopy's 744 faces, with material `Material.004` and the hull absent
+  entirely. Its axes are permuted relative to the other exports, which the
+  spans prove rather than assume: 1.1182, 3.0373 and 1.4645 are the Alembic
+  canopy's X, Z and Y to four decimal places, and the symmetric axis stays
+  symmetric. A later change that started "finding" a second mesh would be
+  inventing it, so the count of one is asserted.
+- **Every 3D extension now reaches the framework, not just the dispatch.** The
+  Models plugin claimed .step, .stp, .p21, .abc, .x, .ms3d and .blend, and
+  `LoadModelDocument` read all of them - but `GraphicsFormatDetector`'s
+  extension table listed none, so a `GraphicsFileInfo` for any of those files
+  had `formatType == Unknown`, `IsValid()` was false, and
+  `UltraCanvasGraphicsPluginRegistry::CanHandle()` refused a file the very next
+  call would have loaded. The table now carries the 3D extensions the framework
+  reads (and the ones its open readers will add), and `CanHandle` asks whether a
+  plugin claimed the extension *before* consulting the table, because a
+  registered plugin knows its own formats and the table is only the fallback for
+  what nothing registered for. `ModelFormatsPluginTest` asserts the agreement
+  from both sides, so a format added to the dispatch without the table cannot
+  pass again.
+- **Proposal 2.6 no longer contradicts its own conclusion.** The section that
+  argues .blend into being read was still titled "the second deliberate
+  exclusion", and two comments in the Models plugin still said loading a .blend
+  "deliberately yields nothing". All three now say what the code does.
 
 #### 2026-09-11 *0.8.25*
 - **VRML97 (.wrl) reads, and with it X3D's Classic VRML encoding (.x3dv).** X3D
