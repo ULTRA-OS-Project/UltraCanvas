@@ -41,6 +41,7 @@ this document is where those annotations come from.
 | `ColladaConverter` | `Plugins/Models/COLLADA/` | Reads COLLADA 1.4/1.5: `<unit>`, `<up_axis>`, the node hierarchy with ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`, `profile_COMMON` materials with transparency and textures, vertex colours, and matrix or TRS animation channels. The first format that states everything the structure holds. |
 | `BlendConverter` | `Plugins/Models/Blend/` | Recognises a Blender `.blend`, reports what it contains — version, objects, meshes, materials, modifiers, stored vertex count — and **declines to import geometry**, with the reason. See §2.6. |
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
+| `MS3DConverter` | `Plugins/Models/MS3D/` | Reads MilkShape 3D: triangle groups as meshes, per-corner normals and UVs, materials with texture and alpha-map paths, smoothing groups as bitmasks, the joint hierarchy with its keyframes, and both of the format's two skinning records. The one format here with no container layer worth splitting off — see §2.10. Read-only. |
 | `XFileConverter` | `Plugins/Models/XFile/` | Reads Direct3D retained mode's `.x`, text and binary: the Frame hierarchy, n-gon meshes, per-face material lists, Phong materials with a texture name. The one **left-handed** format in the set — see §2.7. Read-only, geometry only. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
@@ -253,6 +254,36 @@ really are inside out rather than loading it in silence. That is the same
 principle as the Alembic reader's winding assertion, reaching the opposite
 conclusion because the file is built the opposite way: Alembic stores no
 compensating reflection, so its faces genuinely must be reversed on import.
+
+### 2.10 A format with nothing to split off
+
+Every reader in this survey that earned a two-layer split had a *generic*
+container underneath its semantics: Ogawa under AbcGeom, Part 21 under AP203,
+FBX's record tree under Autodesk's object set, Blender's SDNA under its object
+model, an `xof` token stream under Direct3D's. The split is worth making when
+the lower layer can read a file full of record types it has never heard of.
+
+MilkShape 3D has no such layer, and it is worth recording as the counter-case.
+An `.ms3d` is a fixed sequence of packed little-endian structs: a count, then
+that many records, then the next count. No chunks, no tags, no offsets, no
+names. There is nothing that can be read generically, because there is nothing
+generic in it - the layout *is* the semantics. Splitting it anyway would
+produce a lower layer whose only job is to hand the upper layer the same
+structs in the same order, which is ceremony rather than structure.
+
+So `Plugins/Models/MS3D/` is one file, as OBJ, PLY, 3DS, DXF and the X3D
+semantic layer are. The rule that falls out of the two cases together: **split
+when the container can outlive the schema**, not merely when a format is
+binary.
+
+The format is worth having for a second reason. It is a *game* format rather
+than an interchange one, and the survey had no other: positions indexed and
+shared while normals and texture coordinates sit per triangle corner, triangles
+and nothing else, a smoothing-group number per face, and skinning stored twice
+over because a later revision added three weighted bones beside the single one
+every file already had. The document held all of it without changing - the
+smoothing-group masks and the two skin attribute sets were already there for
+OBJ and glTF respectively.
 
 ## 3. What the structure must therefore carry
 
@@ -551,6 +582,16 @@ Each step is independently mergeable and comes with a test and a demo page.
    report says `Animations = false` rather than implying otherwise. **Still to
    do:** the two MSZIP encodings, and animation once a file with some exists.
 
+
+3.10. **MilkShape 3D — done.** `Plugins/Models/MS3D/` reads it, validated
+   against the aircraft's `.ms3d` (`Tests/ModelMS3DTest.cpp`, 87 assertions,
+   most of them against files the suite writes itself). What it added to this
+   document is §2.10, which is a negative result worth keeping: it is the one
+   format here with no container layer worth splitting off, and the rule that
+   falls out is to split when the container can outlive the schema rather than
+   whenever a format is binary. It is also the survey's only *game* format, and
+   the structure held its smoothing groups and its two skinning records without
+   changing. **Still to do:** nothing in the format is unread.
 4. **glTF 2.0 / GLB.** The interchange target: scene graph, PBR materials,
    skins, animation, morph targets. Once this reads and writes, UltraCanvas can
    exchange with the rest of the industry. JSON is already available through

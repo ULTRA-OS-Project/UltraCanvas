@@ -951,6 +951,38 @@ add_test(
 )
 message(STATUS "    Test registered: ModelXFileTest")
 
+# ===== MILKSHAPE 3D MODEL READER TEST =====
+# The simplest format in the matrix, and the suite that writes the most of its
+# own input: an .ms3d is a fixed sequence of packed structs, so building one by
+# hand costs about as much as reading one - and it is the only way to reach the
+# joint hierarchy, the two skinning records, the smoothing-group bitmask and
+# the versioned optional tail, none of which the sample export carries. Needs
+# nothing beyond the standard library, so it is always built.
+message(STATUS "  Building ModelMS3DTest...")
+add_executable(ModelMS3DTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelMS3DTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/MS3D/UltraCanvasMS3DConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelMS3DTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelMS3DTest PRIVATE cxx_std_20)
+set_target_properties(ModelMS3DTest PROPERTIES
+    OUTPUT_NAME "ModelMS3DTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelMS3DTest
+    COMMAND ModelMS3DTest "${ULTRACANVAS_ROOT}/media/models/MS3D/E-45-Aircraft.ms3d"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelMS3DTest")
+
 # ===== BLENDER FILE INSPECTOR TEST =====
 # The .blend inspector and the converter that deliberately declines to import
 # geometry. Needs zlib to inflate a compressed save file.
@@ -1008,6 +1040,7 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFileConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/MS3D/UltraCanvasMS3DConverter.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
