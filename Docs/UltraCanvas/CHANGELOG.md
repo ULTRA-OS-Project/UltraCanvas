@@ -1,3 +1,56 @@
+#### 2026-09-11 *0.8.16*
+- **DirectX .x (.x) reads, text and binary.** `Plugins/Models/XFile/` is split the
+  way the STEP and Alembic readers are: `UltraCanvasXFile.h` is the container -
+  the `xof` header, the two tokenisers and a generic tree of typed objects, with
+  no idea what a mesh is - and `UltraCanvasXFileConverter.h` is Direct3D retained
+  mode's object set on top of it. Retained mode is long gone; its file format is
+  still what Blender, 3ds Max, a great many game-asset pipelines and two decades
+  of sample code emit.
+- **What is read**: the `Frame` hierarchy with a matrix per frame, `Mesh` with its
+  n-gon faces kept as n-gons, `MeshNormals`, `MeshTextureCoords`,
+  `MeshVertexColors`, `MeshMaterialList` with one primitive per material, and
+  `Material` with its `TextureFilename`. `{ Name }` references resolve, so a
+  material or mesh shared between objects is read once.
+- **The left-handed trap, and why this reader touches nothing.** Direct3D's space
+  is left-handed, so an exporter coming from a right-handed application puts a
+  *reflection* in the root frame (determinant -1) and reverses the face indices
+  to compensate. Both halves are in the file and they cancel. The E-45 sample
+  proves it numerically: its meshes have **negative** signed volume in their own
+  object space and **positive** volume once the frame chain is applied, and their
+  winding disagrees with the file's own `MeshNormals` in object space while
+  agreeing in world space on 93 of 93 and 925 of 937 faces. So neither the matrix
+  nor the winding is altered - a reader that "fixed" what it saw in object space
+  would deliver a model that is inside out. This is the exact opposite of the
+  Alembic reader's decision, for the opposite reason, and the two are worth
+  reading together.
+- **That is measured rather than assumed.** Where a mesh carries `MeshNormals`,
+  the winding is checked against them *through the node's world transform* -
+  which costs only the sign of its determinant, since that is all a reflection
+  changes about orientation - and a file whose faces really are inside out is
+  reported instead of quietly loaded.
+- **The binary encoding is read too**, and is tested by building one byte by byte
+  and asserting it produces the same document as the same scene in text. The two
+  MSZIP encodings (`tzip`, `bzip`) are recognised and refused by name, because
+  MSZIP is not plain zlib and a silent empty result would be indistinguishable
+  from a corrupt file.
+- **A count is never trusted over the bytes present**: a `Mesh` claiming a hundred
+  thousand vertices it does not carry, or a binary `FLOAT_LIST` longer than the
+  file, is refused rather than allocated. Both are covered by tests.
+- **`Tests/ModelXFileTest.cpp`** (74 assertions) against
+  `media/models/XFile/E-45-Aircraft.x`. Its synthetic half carries the weight,
+  because one text export reaches neither the binary encoding nor any of the
+  cases that make this format treacherous. Its sample half is a cross-format
+  assertion: this is the **same export as the `.dae`** - 1995 triangles once
+  fanned, two meshes, and the mirror modifier not applied - so proposal section
+  2.6 gains a fourth witness on that side of the split.
+- `ModelFormat` gained `XFile`; the plugin dispatches `.x` for reading, with no
+  optional dependency, so it is always built. Read only, and geometry only:
+  `AnimationSet`, `XSkinMeshHeader` and `SkinWeights` are reported rather than
+  read, because the quaternion convention of an .x rotation key cannot be
+  verified against a sample that carries none, and a silently wrong animation is
+  worse than a missing one. The capability report says `Animations = false` and
+  `Skinning = false` rather than implying otherwise.
+
 #### 2026-09-10 *0.8.14*
 - **Alembic (.abc) reads.** `Plugins/Models/Alembic/` is split the same way the
   STEP reader is: `UltraCanvasOgawaFile.h` is the Ogawa container and Alembic's
