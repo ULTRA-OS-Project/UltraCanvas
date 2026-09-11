@@ -103,14 +103,17 @@ the backing implementation can be replaced without affecting callers.
     container and object/property layer (`UltraCanvasOgawaFile.h`) under an
     AbcGeom reader (`UltraCanvasAlembicConverter.h`) for Xform, PolyMesh, SubD
     and FaceSet. First time sample only, and read-only.
-    **FBX** (`Plugins/Models/FBX/`) is split the same way again: the binary
-    container - header, node records, typed properties and deflate arrays
-    (`UltraCanvasFbxFile.h`) - under a reader for Autodesk's object set
-    (`UltraCanvasFbxConverter.h`). It is the one format whose scene is a
-    *connection graph* rather than a tree, and the one with a real transform
-    chain (pivots, offsets, pre- and post-rotations); consult that header
-    before assuming a node's placement is TRS. Binary only, read-only, and
-    gated on zlib.
+    **FBX** (`Plugins/Models/FBX/`) is split the same way again: the container
+    - header, node records, typed properties and deflate arrays, in both the
+    binary and the ASCII encoding (`UltraCanvasFbxFile.h`) - under a reader for
+    Autodesk's object set (`UltraCanvasFbxConverter.h`). It is the one format
+    whose scene is a *connection graph* rather than a tree, and the one with a
+    real transform chain (pivots, offsets, pre- and post-rotations); consult
+    that header before assuming a node's placement is TRS. `.fbx` is also the
+    one extension naming two file formats: 7.x binary and 6.x ASCII share
+    neither a byte layout nor an object model (6.x has no object ids, keeps
+    geometry inside the `Model`, and writes animation as `Takes`), and both are
+    read. Read-only, and gated on zlib.
     Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
     `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
     `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the

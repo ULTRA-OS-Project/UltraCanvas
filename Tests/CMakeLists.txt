@@ -961,7 +961,9 @@ endif()
 # FBX is the one format whose scene is a connection graph rather than a tree,
 # and the one with a real transform chain. Its container is deflate-compressed,
 # so this needs zlib - and the suite builds binary FBX by hand, because nothing
-# about the container is reachable from an exported sample alone.
+# about the container is reachable from an exported sample alone. Two samples,
+# because .fbx names two formats: a 7.4 binary and a 6.1 ASCII, which agree on
+# neither their byte layout nor their object model.
 find_package(ZLIB QUIET)
 if(ZLIB_FOUND)
     message(STATUS "  Building ModelFbxTest...")
@@ -988,6 +990,7 @@ if(ZLIB_FOUND)
     add_test(
         NAME ModelFbxTest
         COMMAND ModelFbxTest "${ULTRACANVAS_ROOT}/media/models/FBX/E-45-Aircraft.fbx"
+                             "${ULTRACANVAS_ROOT}/media/models/FBX/E-45-Aircraft-6.1-ascii.fbx"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelFbxTest")

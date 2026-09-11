@@ -245,16 +245,34 @@ static void TestValidation() {
           "a DirectX .x file is rejected");
     Check(converter.ValidateData(Scene(nullptr, nullptr)), "a binary FBX is accepted");
 
+    // ASCII has no "Kaydara FBX Binary" magic to match on, so validation has
+    // to recognise it from its comment header and first record instead.
+    const std::string ascii = "; FBX 6.1.0 project file\n; ----------------------\n\n"
+                              "FBXHeaderExtension:  {\n\tFBXHeaderVersion: 1003\n"
+                              "\tFBXVersion: 6100\n}\n";
+    const std::vector<uint8_t> asciiBytes(ascii.begin(), ascii.end());
+    Check(converter.ValidateData(asciiBytes), "an ASCII FBX is accepted too");
+
     std::vector<std::string> warnings;
-    const std::string ascii = "; FBX 7.4.0 project file\n; ----------------------\n\n"
-                              "FBXHeaderExtension:  {\n\tFBXHeaderVersion: 1003\n}\n";
-    Check(Read(std::vector<uint8_t>(ascii.begin(), ascii.end()), &warnings) == nullptr,
-          "the ASCII encoding reads as nothing");
-    bool named = false;
+    // It parses; it just says nothing. The complaint should be about the
+    // absent content, not about the encoding, which the reader handles.
+    Check(Read(asciiBytes, &warnings) == nullptr, "a header with no objects reads as nothing");
+    bool aboutContent = false;
     for (const std::string& w : warnings)
-        if (w.find("ASCII") != std::string::npos && w.find("binary") != std::string::npos)
-            named = true;
-    Check(named, "and the warning names it and says what to re-export as");
+        if (w.find("no models") != std::string::npos) aboutContent = true;
+    Check(aboutContent, "and the warning is about the missing models, not the encoding");
+
+    // An ASCII file is a byte vector, not a C string: a number running to the
+    // last byte must stop at the buffer's end rather than at a NUL that is not
+    // there.
+    warnings.clear();
+    const std::string cut = "; FBX 6.1.0 project file\n"
+                            "FBXHeaderExtension:  {\n\tFBXVersion: 6100\n}\n"
+                            "Objects:  {\n\tModel: \"Model::Box\", \"Mesh\" {\n"
+                            "\t\tVertices: 0,0,0,1,0,0,0,1,0";
+    Check(Read(std::vector<uint8_t>(cut.begin(), cut.end()), &warnings) == nullptr,
+          "an ASCII file cut mid-record reads as nothing");
+    Check(!warnings.empty(), "rather than running off the end of the buffer");
 
     warnings.clear();
     std::vector<uint8_t> truncated = Scene(nullptr, nullptr);
@@ -618,6 +636,209 @@ static void TestAnimation() {
     }
 }
 
+// FBX 6.x is not the same format as 7.x, and it is the one that is usually
+// ASCII: no object ids, geometry inside the Model, Properties60 one field
+// shorter than Properties70, textures bound to the model, animation in Takes.
+static void TestLegacyAscii() {
+    std::printf("ASCII, and the 6.x object model\n");
+
+    const std::string text =
+            "; FBX 6.1.0 project file\n"
+            "FBXHeaderExtension:  {\n"
+            "\tFBXHeaderVersion: 1003\n"
+            "\tFBXVersion: 6100\n"
+            "}\n"
+            "Creator: \"Blender version 2.78\"\n"
+            "Objects:  {\n"
+            "\tModel: \"Model::Camera Switcher\", \"CameraSwitcher\" {\n"
+            "\t\tVersion: 232\n"
+            "\t}\n"
+            "\tModel: \"Model::Producer Perspective\", \"Camera\" {\n"
+            "\t\tVersion: 232\n"
+            "\t}\n"
+            "\tModel: \"Model::Quad\", \"Mesh\" {\n"
+            "\t\tVersion: 232\n"
+            "\t\tProperties60:  {\n"
+            "\t\t\tProperty: \"Lcl Translation\", \"Lcl Translation\", \"A+\",3,4,5\n"
+            "\t\t\tProperty: \"Lcl Scaling\", \"Lcl Scaling\", \"A+\",2,2,2\n"
+            "\t\t}\n"
+            "\t\tShading: Y\n"
+            "\t\tVertices: 0,0,0,1,0,0,\n"
+            "\t\t\t1,1,0,0,1,0\n"
+            "\t\tPolygonVertexIndex: 0,1,2,-4\n"
+            "\t\tGeometryVersion: 124\n"
+            "\t\tLayerElementMaterial: 0 {\n"
+            "\t\t\tMappingInformationType: \"AllSame\"\n"
+            "\t\t\tReferenceInformationType: \"IndexToDirect\"\n"
+            "\t\t\tMaterials: 0\n"
+            "\t\t}\n"
+            "\t}\n"
+            "\tMaterial: \"Material::Paint\", \"\" {\n"
+            "\t\tShadingModel: \"lambert\"\n"
+            "\t\tProperties60:  {\n"
+            "\t\t\tProperty: \"DiffuseColor\", \"ColorRGB\", \"\",1.0,0.5,0.25\n"
+            "\t\t\tProperty: \"DiffuseFactor\", \"double\", \"\",0.5\n"
+            "\t\t\tProperty: \"Opacity\", \"double\", \"\",0.5\n"
+            "\t\t}\n"
+            "\t}\n"
+            "\tTexture: \"Texture::Skin\", \"TextureVideoClip\" {\n"
+            "\t\tRelativeFilename: \"textures\\hull.png\"\n"
+            "\t}\n"
+            "\tGlobalSettings:  {\n"
+            "\t\tProperties60:  {\n"
+            "\t\t\tProperty: \"UpAxis\", \"int\", \"\",2\n"
+            "\t\t\tProperty: \"UnitScaleFactor\", \"double\", \"\",100\n"
+            "\t\t}\n"
+            "\t}\n"
+            "}\n"
+            "Connections:  {\n"
+            "\tConnect: \"OO\", \"Model::Quad\", \"Model::Scene\"\n"
+            "\tConnect: \"OO\", \"Material::Paint\", \"Model::Quad\"\n"
+            "\tConnect: \"OO\", \"Texture::Skin\", \"Model::Quad\"\n"
+            "}\n"
+            "Takes:  {\n"
+            "\tCurrent: \"Default Take\"\n"
+            "\tTake: \"Default Take\" {\n"
+            "\t\tModel: \"Model::Quad\" {\n"
+            "\t\t\tChannel: \"Transform\" {\n"
+            "\t\t\t\tChannel: \"T\" {\n"
+            "\t\t\t\t\tChannel: \"X\" {\n"
+            "\t\t\t\t\t\tDefault: 0\n"
+            "\t\t\t\t\t\tKeyVer: 4005\n"
+            "\t\t\t\t\t\tKeyCount: 2\n"
+            "\t\t\t\t\t\tKey: \n"
+            "\t\t\t\t\t\t\t0,0,L,\n"
+            "\t\t\t\t\t\t\t46186158000,10,L\n"
+            "\t\t\t\t\t\tColor: 1,0,0\n"
+            "\t\t\t\t\t}\n"
+            "\t\t\t\t\tChannel: \"Y\" {\n"
+            "\t\t\t\t\t\tDefault: 7\n"
+            "\t\t\t\t\t\tKeyCount: 0\n"
+            "\t\t\t\t\t}\n"
+            "\t\t\t\t\tLayerType: 1\n"
+            "\t\t\t\t}\n"
+            "\t\t\t}\n"
+            "\t\t}\n"
+            "\t}\n"
+            "}\n";
+
+    std::vector<std::string> warnings;
+    auto document = Read(std::vector<uint8_t>(text.begin(), text.end()), &warnings);
+    Check(document != nullptr, "an FBX 6.1 ASCII file parses");
+    if (!document) return;
+    Check(document->Metadata["fbx.version"] == "6100" &&
+          document->Metadata["fbx.encoding"] == "ascii",
+          "and reports the generation and encoding it was read from");
+
+    // The Camera Switcher and the Producer cameras are exporter boilerplate,
+    // and their absence is stated rather than silent.
+    Check(document->Nodes.size() == 1 && document->Nodes[0].Name == "Quad",
+          "only the real model becomes a node");
+    Check(document->Metadata.count("fbx.producerModels") == 1,
+          "and the boilerplate camera models it skipped are counted in metadata");
+
+    // Properties60 records are one field shorter than Properties70's. Reading
+    // them at the 7.x offset returns the flags string instead of the number.
+    Check(Near(document->Nodes[0].Translation.x, 3.0, 1e-12) &&
+          Near(document->Nodes[0].Scale.y, 2.0, 1e-12),
+          "Properties60 values are read at their own offset, not Properties70's");
+
+    // Geometry is inside the Model here, not a separate object, and the
+    // numbers are one property each rather than one array.
+    Check(document->Meshes.size() == 1, "the Model's own Vertices become a mesh");
+    if (!document->Meshes.empty()) {
+        const MeshPrimitive& prim = document->Meshes[0].Primitives[0];
+        Check(prim.VertexCount() == 4 && prim.FaceCount() == 1 && prim.Face(0).size() == 4,
+              "a quad, with its numbers read one property at a time");
+        Check(prim.Material == 0, "bound to the material connected to its model");
+    }
+    Check(Near(document->ComputeBounds().Max.x, 5.0, 1e-9),
+          "and the transform applies, so the chain is the same one 7.x uses");
+
+    // A texture connects to the model, not to a material property.
+    Check(document->Images.size() == 1 && document->Images[0].Uri == "textures/hull.png",
+          "the texture is read");
+    Check(document->Materials.size() == 1 && document->Materials[0].BaseColorTexture.IsSet(),
+          "and reaches the material, which in 6.x is only inferable from sharing a model");
+    Check(Near(document->Materials[0].BaseColorFactor.w, 0.5, 1e-6),
+          "Opacity is read where 7.x would say TransparencyFactor");
+
+    // GlobalSettings lives inside Objects in 6.x.
+    Check(document->Up == UpAxis::ZUp,
+          "GlobalSettings is found inside Objects, and its Z-up is honoured");
+    Check(Near(document->UnitScaleToMeters, 1.0, 1e-12) &&
+          document->SourceUnit == ModelUnit::Meter,
+          "and a UnitScaleFactor of 100 centimetres is a metre");
+
+    // Animation is a Takes block, not stacks and curve nodes.
+    Check(document->Animations.size() == 1 && document->Animations[0].Channels.size() == 1,
+          "a Take becomes one animation with one channel");
+    if (!document->Animations.empty() && !document->Animations[0].Channels.empty()) {
+        const ModelAnimation& track = document->Animations[0];
+        Check(track.Name == "Default Take", "named as the Take is");
+        Check(Near(track.Duration(), 1.0f, 1e-5),
+              "with the same ticks per second the binary generation uses");
+        const AnimationSampler& sampler = track.Samplers[0];
+        Check(sampler.Values.size() == 6 && Near(sampler.Values[3], 10.0, 1e-6),
+              "the X channel's keys");
+        Check(Near(sampler.Values[1], 7.0, 1e-6) && Near(sampler.Values[4], 7.0, 1e-6),
+              "and an axis with no keys holds its Default, not zero");
+    }
+}
+
+static void TestLegacySample(const char* path) {
+    std::printf("Sample (6.1 ASCII): %s\n", path);
+    FbxConverter converter;
+    std::vector<std::string> warnings;
+    ConversionOptions options;
+    options.WarningCallback = [&warnings](const std::string& w) { warnings.push_back(w); };
+
+    auto doc = converter.Import(path, options);
+    if (!doc) { std::printf("  [FAIL] import returned nothing\n"); ++failures; return; }
+
+    Check(doc->Metadata["fbx.version"] == "6100" && doc->Metadata["fbx.encoding"] == "ascii",
+          "read as FBX 6.1, ASCII");
+    Check(doc->Generator.rfind("Blender", 0) == 0, "the Creator record reaches Generator");
+    Check(doc->Nodes.size() == 6 && doc->Meshes.size() == 2,
+          "six nodes - the two meshes and the four-bone armature, with the eight "
+          "boilerplate camera models skipped");
+    Check(doc->Metadata.count("fbx.producerModels") == 1, "which metadata records");
+
+    // This export is NOT the one the 7.4 binary sample is. It has 8110 faces
+    // and 11749 positions - the OBJ and X3D counts - where the binary has 1681
+    // and 2934. Two exports of one scene, in the same format, on opposite sides
+    // of the mirror-modifier split.
+    Check(doc->TotalFaceCount() == 8110,
+          "8110 faces - the OBJ and X3D count, not the 1681 of the 7.4 binary sample");
+    Check(doc->TotalVertexCount() == 32440,
+          "32440 corners once the layers are resolved, exactly as the X3D reader produces");
+
+    const Bounds3D bounds = doc->ComputeBounds();
+    Check(Near(bounds.Min.x, -0.9732, 1e-3) && Near(bounds.Max.x, 0.9732, 1e-3),
+          "and it is symmetric about X: this export had its mirror modifier applied");
+
+    Check(doc->Materials.size() == 2 && doc->Images.size() == 2,
+          "both materials, each with the texture that shares its model");
+    bool textured = true;
+    for (const ModelMaterial& material : doc->Materials)
+        if (!material.BaseColorTexture.IsSet()) textured = false;
+    Check(textured, "which is the only way 6.x states that binding");
+
+    Check(doc->Animations.size() == 2, "both Takes are read");
+    const ModelAnimation* armature = nullptr;
+    for (const ModelAnimation& animation : doc->Animations)
+        if (animation.Name == "ArmatureAction") armature = &animation;
+    Check(armature != nullptr, "including the one named ArmatureAction");
+    if (armature)
+        Check(Near(armature->Duration(), 0.8333333f, 1e-4),
+              "running 0.8333333 s - the same duration the .dae and the 7.4 binary carry");
+
+    bool skinning = false;
+    for (const std::string& w : warnings)
+        if (w.find("skin deformers") != std::string::npos) skinning = true;
+    Check(skinning, "and the skin deformers this generation writes are reported, not read");
+}
+
 static void TestSample(const char* path) {
     std::printf("Sample: %s\n", path);
     FbxConverter converter;
@@ -717,8 +938,11 @@ int main(int argc, char** argv) {
     TestLayers();
     TestMaterials();
     TestAnimation();
+    TestLegacyAscii();
     if (argc > 1) TestSample(argv[1]);
-    else std::printf("Sample: skipped (pass an .fbx path to run it)\n");
+    else std::printf("Sample: skipped (pass a binary .fbx path to run it)\n");
+    if (argc > 2) TestLegacySample(argv[2]);
+    else std::printf("Sample (6.1 ASCII): skipped (pass a second .fbx path to run it)\n");
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
                 failures, failures == 1 ? "" : "s");

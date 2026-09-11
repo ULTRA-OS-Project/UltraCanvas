@@ -38,10 +38,31 @@
 // and corners whose streams disagree become distinct document vertices - the
 // same resolution the OBJ, COLLADA, X3D and .x readers perform.
 //
+// **Both generations are read, and they are not the same format.** The 7.x
+// files that are usually binary are described above. The 6.x files that are
+// usually ASCII share the connection idea and almost nothing else:
+//
+//   * objects have no ids at all - everything is named `"Class::Name"` and the
+//     connections refer to those strings, so this reader synthesises an id per
+//     name and the rest of it never learns the difference;
+//   * there is no separate `Geometry` object: a `Model` holds its own
+//     `Vertices` and `PolygonVertexIndex`;
+//   * parameters live in `Properties60`, whose records are one field shorter
+//     than `Properties70`'s;
+//   * a texture connects to the *model*, not to a material property, so the
+//     binding has to be inferred - which is exact with one of each, and
+//     reported rather than guessed at otherwise;
+//   * animation is a `Takes` block of nested `Channel` records rather than
+//     stacks, layers and curve nodes. Same ticks, same three paths.
+//
+// Two things a 6.x file always contains and no scene refers to: a
+// "Camera Switcher" model and seven "Producer" cameras, which every exporter
+// inserts. They are skipped, and the count is recorded in metadata so their
+// absence is stated rather than silent.
+//
 // Reading only. Skinning (Deformer / SubDeformer clusters), blend shapes and
 // embedded media are recognised and reported rather than read; the capability
-// report says so rather than implying otherwise. The ASCII encoding is a
-// different syntax and is refused by name - see UltraCanvasFbxFile.h.
+// report says so rather than implying otherwise.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-11
@@ -60,7 +81,7 @@ class FbxConverter : public ImportOnlyConverter {
 public:
     ModelFormat GetFormat() const override { return ModelFormat::FBX; }
     std::string GetFormatName() const override { return "Autodesk FBX"; }
-    std::string GetFormatVersion() const override { return "7.1 - 7.7, binary"; }
+    std::string GetFormatVersion() const override { return "6.x and 7.x, binary and ASCII"; }
     std::vector<std::string> GetFileExtensions() const override { return {".fbx"}; }
     std::string GetMimeType() const override { return "application/octet-stream"; }
     FormatCapabilities GetCapabilities() const override;

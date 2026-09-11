@@ -19,6 +19,8 @@
 
 #include "Models/FBX/UltraCanvasFbxFile.h"
 
+#include <cctype>
+#include <cstdlib>
 #include <cstring>
 
 #include <zlib.h>
@@ -47,39 +49,72 @@ const Node* File::Find(const std::string& name) const {
 
 // ===== Properties70 =====
 
-const Node* FindProperty(const Node& owner, const std::string& name) {
-    const Node* properties = owner.Find("Properties70");
-    if (!properties) return nullptr;
-    for (const Node& entry : properties->Children) {
-        if (entry.Name != "P") continue;
-        if (entry.TextAt(0) == name) return &entry;
+PropertyRecord FindPropertyRecord(const Node& owner, const std::string& name) {
+    // 7.x: Properties70 > P(name, type, subtype, flags, values...)
+    if (const Node* properties = owner.Find("Properties70")) {
+        for (const Node& entry : properties->Children) {
+            if (entry.Name == "P" && entry.TextAt(0) == name) return {&entry, 4};
+        }
     }
-    return nullptr;
+    // 6.x: Properties60 > Property(name, type, flags, values...) - one field
+    // shorter, which is the whole difference.
+    if (const Node* properties = owner.Find("Properties60")) {
+        for (const Node& entry : properties->Children) {
+            if (entry.Name == "Property" && entry.TextAt(0) == name) return {&entry, 3};
+        }
+    }
+    return {};
+}
+
+const Node* FindProperty(const Node& owner, const std::string& name) {
+    return FindPropertyRecord(owner, name).Entry;
 }
 
 bool HasProperty(const Node& owner, const std::string& name) {
-    return FindProperty(owner, name) != nullptr;
+    return FindPropertyRecord(owner, name).Entry != nullptr;
 }
 
-// A P record is (name, type, subtype, flags, values...), so the values start
-// at index 4.
 double PropertyReal(const Node& owner, const std::string& name, double fallback) {
-    const Node* entry = FindProperty(owner, name);
-    if (!entry || entry->Properties.size() < 5) return fallback;
-    return entry->RealAt(4, fallback);
+    const PropertyRecord record = FindPropertyRecord(owner, name);
+    if (!record || record.Entry->Properties.size() <= record.ValueIndex) return fallback;
+    return record.Entry->RealAt(record.ValueIndex, fallback);
 }
 
 bool PropertyVec3(const Node& owner, const std::string& name, double out[3]) {
-    const Node* entry = FindProperty(owner, name);
-    if (!entry || entry->Properties.size() < 7) return false;
-    for (int i = 0; i < 3; ++i) out[i] = entry->RealAt(4 + static_cast<size_t>(i), 0.0);
+    const PropertyRecord record = FindPropertyRecord(owner, name);
+    if (!record || record.Entry->Properties.size() < record.ValueIndex + 3) return false;
+    for (size_t i = 0; i < 3; ++i) out[i] = record.Entry->RealAt(record.ValueIndex + i, 0.0);
     return true;
 }
 
 std::string PropertyText(const Node& owner, const std::string& name) {
-    const Node* entry = FindProperty(owner, name);
-    if (!entry || entry->Properties.size() < 5) return {};
-    return entry->TextAt(4);
+    const PropertyRecord record = FindPropertyRecord(owner, name);
+    if (!record || record.Entry->Properties.size() <= record.ValueIndex) return {};
+    return record.Entry->TextAt(record.ValueIndex);
+}
+
+// A record is "an array" when that is literally how it was written: one array
+// property and nothing else. Everything else is read property by property.
+namespace {
+const Property* SoleArray(const Node& node) {
+    if (node.Properties.size() != 1) return nullptr;
+    return node.Properties[0].IsArray() ? &node.Properties[0] : nullptr;
+}
+} // namespace
+
+size_t ValueCount(const Node& node) {
+    if (const Property* array = SoleArray(node)) return array->ArraySize();
+    return node.Properties.size();
+}
+
+double ValueAt(const Node& node, size_t index) {
+    if (const Property* array = SoleArray(node)) return array->ArrayReal(index);
+    return index < node.Properties.size() ? node.Properties[index].AsReal() : 0.0;
+}
+
+int64_t IntegerValueAt(const Node& node, size_t index) {
+    if (const Property* array = SoleArray(node)) return array->ArrayInteger(index);
+    return index < node.Properties.size() ? node.Properties[index].AsInteger() : 0;
 }
 
 namespace {
@@ -326,6 +361,204 @@ private:
     int depth_ = 0;
 };
 
+// ===== ASCII =====
+//
+// The text encoding is one grammar:
+//
+//     name ':' values? ( '{' node* '}' )?
+//
+// with values comma-separated and free to wrap across lines - a `Vertices`
+// record runs for hundreds of them. The only subtlety is telling a bare-word
+// *value* (`Shading: Y`) from the *name* of the next record, and a colon after
+// the word is what separates them.
+
+class AsciiLexer {
+public:
+    enum class Kind { End, Ident, String, Number, Colon, Comma, OpenBrace, CloseBrace, Unknown };
+    struct Token {
+        Kind What = Kind::End;
+        std::string Text;
+        double Value = 0.0;
+    };
+
+    AsciiLexer(const char* data, size_t size) : data_(data), size_(size) {
+        current_ = Scan();
+        next_ = Scan();
+    }
+
+    const Token& Peek() const { return current_; }
+    const Token& PeekSecond() const { return next_; }
+    Token Take() {
+        Token taken = current_;
+        current_ = next_;
+        next_ = Scan();
+        return taken;
+    }
+
+private:
+    void SkipSpace() {
+        while (position_ < size_) {
+            const char c = data_[position_];
+            if (c == ' ' || c == '\t' || c == '\r' || c == '\n') { ++position_; continue; }
+            if (c == ';') {   // a comment runs to the end of its line
+                while (position_ < size_ && data_[position_] != '\n') ++position_;
+                continue;
+            }
+            break;
+        }
+    }
+
+    Token Scan() {
+        SkipSpace();
+        if (position_ >= size_) return {};
+        const char c = data_[position_];
+
+        if (c == '{') { ++position_; return {Kind::OpenBrace, "{", 0.0}; }
+        if (c == '}') { ++position_; return {Kind::CloseBrace, "}", 0.0}; }
+        if (c == ':') { ++position_; return {Kind::Colon, ":", 0.0}; }
+        if (c == ',') { ++position_; return {Kind::Comma, ",", 0.0}; }
+
+        if (c == '"') {
+            const size_t start = ++position_;
+            while (position_ < size_ && data_[position_] != '"') ++position_;
+            std::string text(data_ + start, position_ - start);
+            if (position_ < size_) ++position_;
+            return {Kind::String, std::move(text), 0.0};
+        }
+
+        // A number, including the leading sign and an exponent. `-` also starts
+        // nothing else in this grammar. The run is measured against the buffer
+        // first and copied before strtod sees it: the data is a byte vector,
+        // not a C string, so handing strtod a pointer into it would let a
+        // truncated file run the scan off the end.
+        if (c == '-' || c == '+' || c == '.' || (c >= '0' && c <= '9')) {
+            size_t end = position_;
+            while (end < size_) {
+                const char n = data_[end];
+                const bool exponentSign =
+                        (n == '-' || n == '+') && end > position_ &&
+                        (data_[end - 1] == 'e' || data_[end - 1] == 'E');
+                if ((n >= '0' && n <= '9') || n == '.' || n == 'e' || n == 'E' ||
+                    exponentSign || end == position_)
+                    ++end;
+                else
+                    break;
+            }
+            const std::string text(data_ + position_, end - position_);
+            char* stopped = nullptr;
+            const double value = std::strtod(text.c_str(), &stopped);
+            if (stopped != text.c_str()) {
+                position_ += static_cast<size_t>(stopped - text.c_str());
+                return {Kind::Number, {}, value};
+            }
+        }
+
+        if (std::isalpha(static_cast<unsigned char>(c)) || c == '_') {
+            const size_t start = position_;
+            while (position_ < size_) {
+                const char n = data_[position_];
+                if (!std::isalnum(static_cast<unsigned char>(n)) && n != '_') break;
+                ++position_;
+            }
+            return {Kind::Ident, std::string(data_ + start, position_ - start), 0.0};
+        }
+
+        ++position_;
+        return {Kind::Unknown, std::string(1, c), 0.0};
+    }
+
+    const char* data_;
+    size_t size_;
+    size_t position_ = 0;
+    Token current_;
+    Token next_;
+};
+
+class AsciiParser {
+public:
+    explicit AsciiParser(AsciiLexer& lexer) : lexer_(lexer) {}
+
+    const std::string& Error() const { return error_; }
+
+    bool ReadList(std::vector<Node>& out) {
+        while (true) {
+            const AsciiLexer::Token& token = lexer_.Peek();
+            if (token.What == AsciiLexer::Kind::End) return true;
+            if (token.What == AsciiLexer::Kind::CloseBrace) return true;
+            if (token.What != AsciiLexer::Kind::Ident) { lexer_.Take(); continue; }
+
+            Node node;
+            node.Name = lexer_.Take().Text;
+            if (lexer_.Peek().What == AsciiLexer::Kind::Colon) lexer_.Take();
+
+            ReadValues(node);
+
+            if (lexer_.Peek().What == AsciiLexer::Kind::OpenBrace) {
+                lexer_.Take();
+                if (++depth_ > kMaxDepth) {
+                    error_ = "records nested more than " + std::to_string(kMaxDepth) + " deep";
+                    return false;
+                }
+                if (!ReadList(node.Children)) return false;
+                --depth_;
+                if (lexer_.Peek().What != AsciiLexer::Kind::CloseBrace) {
+                    error_ = "the file ends inside '" + node.Name + "'";
+                    return false;
+                }
+                lexer_.Take();
+            }
+            out.push_back(std::move(node));
+        }
+    }
+
+private:
+    static constexpr int kMaxDepth = 64;
+
+    // True when the token ahead is a value rather than the name of the next
+    // record. An identifier followed by a colon is a name; anything else that
+    // can stand as a value is one.
+    bool NextIsValue() const {
+        switch (lexer_.Peek().What) {
+            case AsciiLexer::Kind::Number:
+            case AsciiLexer::Kind::String:
+                return true;
+            case AsciiLexer::Kind::Ident:
+                return lexer_.PeekSecond().What != AsciiLexer::Kind::Colon;
+            default:
+                return false;
+        }
+    }
+
+    void Append(Node& node, const AsciiLexer::Token& token) {
+        Property property;
+        if (token.What == AsciiLexer::Kind::Number) {
+            property.Code = 'D';
+            property.Real = token.Value;
+            // An integral value read back as an integer is what every caller
+            // asking for an id, a count or an index wants.
+            property.Integer = static_cast<int64_t>(token.Value);
+        } else {
+            property.Code = 'S';
+            property.Text = token.Text;
+        }
+        node.Properties.push_back(std::move(property));
+    }
+
+    void ReadValues(Node& node) {
+        if (!NextIsValue()) return;
+        Append(node, lexer_.Take());
+        while (lexer_.Peek().What == AsciiLexer::Kind::Comma) {
+            lexer_.Take();
+            if (!NextIsValue()) break;
+            Append(node, lexer_.Take());
+        }
+    }
+
+    AsciiLexer& lexer_;
+    std::string error_;
+    int depth_ = 0;
+};
+
 } // namespace
 
 bool LooksLikeFbxBinary(const std::string& head) {
@@ -340,21 +573,53 @@ bool LooksLikeFbxAscii(const std::string& head) {
            (head.compare(0, 2, "; ") == 0 && head.find("FBX") != std::string::npos);
 }
 
-bool Parse(const std::vector<uint8_t>& data, File& out, std::string& error,
-           const std::function<void(const std::string&)>& warn) {
-    const std::string head(data.begin(),
-                           data.begin() + static_cast<std::ptrdiff_t>(
-                                                  data.size() < 64 ? data.size() : 64));
-    if (LooksLikeFbxAscii(head)) {
-        error = "FBX: this is the ASCII encoding, which this reader does not read. "
-                "Re-export as binary FBX.";
+namespace {
+
+// The version an ASCII file states, which is the only place it carries one.
+uint32_t AsciiVersion(const std::vector<Node>& roots) {
+    for (const Node& root : roots) {
+        if (root.Name != "FBXHeaderExtension") continue;
+        if (const Node* version = root.Find("FBXVersion"))
+            return static_cast<uint32_t>(version->IntegerAt(0));
+    }
+    return 0;
+}
+
+bool ParseAscii(const std::vector<uint8_t>& data, File& out, std::string& error,
+                const std::function<void(const std::string&)>& warn) {
+    AsciiLexer lexer(reinterpret_cast<const char*>(data.data()), data.size());
+    AsciiParser parser(lexer);
+    if (!parser.ReadList(out.Roots)) {
+        error = "FBX: " + parser.Error();
         return false;
     }
+    out.How = Encoding::Ascii;
+    out.Version = AsciiVersion(out.Roots);
+    if (out.Version == 0) {
+        error = "FBX: the file has no FBXHeaderExtension/FBXVersion, so it states no version";
+        return false;
+    }
+    if (out.Version < 6000 && warn)
+        warn("FBX: version " + std::to_string(out.Version) +
+             " is older than this reader was written against; it is read as 6.x");
+    return true;
+}
+
+} // namespace
+
+bool Parse(const std::vector<uint8_t>& data, File& out, std::string& error,
+           const std::function<void(const std::string&)>& warn) {
+    // Enough to clear the comment banner ASCII opens with; binary needs 23.
+    const size_t sniff = data.size() < 512 ? data.size() : 512;
+    const std::string head(data.begin(), data.begin() + static_cast<std::ptrdiff_t>(sniff));
+    if (LooksLikeFbxAscii(head)) return ParseAscii(data, out, error, warn);
     if (!LooksLikeFbxBinary(head)) {
-        error = "FBX: not a binary FBX - the file does not begin 'Kaydara FBX Binary'";
+        error = "FBX: not an FBX file - it neither begins 'Kaydara FBX Binary' nor looks "
+                "like the ASCII encoding";
         return false;
     }
 
+    out.How = Encoding::Binary;
     Stream stream(data.data(), data.size());
     stream.Seek(23);
     out.Version = stream.U32();

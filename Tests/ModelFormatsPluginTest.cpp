@@ -175,6 +175,21 @@ static void TestSamples(const std::string& mediaRoot) {
                                           [](const Sample& s) { return s.ImportsGeometry; });
     Check(loaded == expected, "every geometry format in this build loaded");
 
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    // One extension, two file formats: .fbx names both the 7.x binary the table
+    // above loads and the 6.x ASCII text below, which share neither a byte
+    // layout nor an object model. Dispatch is by extension, so nothing but a
+    // load proves the second one arrives anywhere.
+    {
+        const std::filesystem::path ascii = std::filesystem::path(mediaRoot) /
+                                            "FBX/E-45-Aircraft-6.1-ascii.fbx";
+        ConversionOptions quiet;
+        auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(ascii.string(), quiet);
+        Check(document != nullptr && !document->Empty(),
+              "and .fbx loads its 6.x ASCII encoding through the same call as its 7.x binary");
+    }
+#endif
+
     // A B-rep format holds no triangles until something asks, so it needs its
     // own check: the dispatch has to give back a document that is not empty
     // even though it has no mesh in it.

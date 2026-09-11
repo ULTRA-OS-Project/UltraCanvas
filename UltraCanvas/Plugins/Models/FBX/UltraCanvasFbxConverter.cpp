@@ -33,11 +33,19 @@ constexpr double kPi = 3.14159265358979323846;
 // FBX counts time in these per second, on every platform and in every version.
 constexpr double kTicksPerSecond = 46186158000.0;
 
-// An object's Name|Class pair is one string with a 0x00 0x01 separator.
-std::string ObjectName(const Fbx::Node& node) {
-    const std::string raw = node.TextAt(1);
+// The two generations spell an object's identity differently, and in different
+// property slots: 7.x writes (id, "Name\0\1Class", "SubType") and 6.x writes
+// ("Class::Name", "SubType") with no id at all.
+std::string ObjectName(const Fbx::Node& node, bool legacy) {
+    const std::string raw = node.TextAt(legacy ? 0 : 1);
     const size_t separator = raw.find('\0');
-    return separator == std::string::npos ? raw : raw.substr(0, separator);
+    if (separator != std::string::npos) return raw.substr(0, separator);
+    const size_t colons = raw.find("::");
+    return colons == std::string::npos ? raw : raw.substr(colons + 2);
+}
+
+std::string ObjectSubtype(const Fbx::Node& node, bool legacy) {
+    return node.TextAt(legacy ? 1 : 2);
 }
 
 Quatd EulerToQuaternion(double x, double y, double z, int order) {
@@ -160,17 +168,25 @@ public:
         document_->SourceFormat = "fbx";
         document_->Metadata["fbx.version"] = std::to_string(file_.Version);
 
+        legacy_ = file_.IsLegacy();
+        document_->Metadata["fbx.encoding"] =
+                file_.How == Fbx::Encoding::Ascii ? "ascii" : "binary";
+
         ReadHeader();
+        if (legacy_) IndexLegacyObjects(); else IndexObjects();
         ReadGlobalSettings();
-        IndexObjects();
-        ReadConnections();
+        if (legacy_) ReadLegacyConnections(); else ReadConnections();
 
         // Models hanging off the scene root, which FBX spells as parent id 0.
         auto roots = childrenOf_.find(0);
         if (roots != childrenOf_.end())
             for (int64_t id : roots->second) ReadModel(id, -1);
 
-        ReadAnimations();
+        if (legacy_) ReadTakes(); else ReadAnimations();
+        if (skippedProducers_ > 0)
+            document_->Metadata["fbx.producerModels"] =
+                    std::to_string(skippedProducers_) +
+                    " boilerplate camera models the exporter inserts, not read";
 
         if (document_->Meshes.empty() && document_->Nodes.empty()) {
             options_.Warn("FBX: no models found");
@@ -200,6 +216,11 @@ private:
 
     void ReadGlobalSettings() {
         const Fbx::Node* settings = file_.Find("GlobalSettings");
+        // 6.x keeps it inside Objects rather than at the top level.
+        if (!settings) {
+            if (const Fbx::Node* objects = file_.Find("Objects"))
+                settings = objects->Find("GlobalSettings");
+        }
         if (!settings) {
             options_.Warn("FBX: no GlobalSettings; Y-up and an unstated unit are assumed");
             document_->Up = UpAxis::YUp;
@@ -255,6 +276,52 @@ private:
             const int64_t id = object.IntegerAt(0);
             if (id == 0) continue;
             objects_.emplace(id, &object);
+        }
+    }
+
+    // 6.x has no object ids: everything is named "Class::Name" and the
+    // connections refer to those strings. Synthesising an id per name lets the
+    // whole of the rest of this reader stay unaware of the difference.
+    void IndexLegacyObjects() {
+        const Fbx::Node* objects = file_.Find("Objects");
+        if (!objects) return;
+        for (const Fbx::Node& object : objects->Children) {
+            const std::string key = object.TextAt(0);
+            if (key.empty()) continue;
+            const int64_t id = ++nextLegacyId_;
+            legacyIdByName_[key] = id;
+            objects_.emplace(id, &object);
+            if (object.Name == "Model" &&
+                IsProducerBoilerplate(ObjectName(object, true)))
+                ++skippedProducers_;
+        }
+    }
+
+    // Every 6.x file carries a "Camera Switcher" and seven "Producer" cameras
+    // that the exporter inserts and no scene refers to. They are boilerplate,
+    // not content. Counting them here rather than where models are read
+    // matters: the file connects none of them to anything, so a reader that
+    // only walks Connections never meets them at all.
+    static bool IsProducerBoilerplate(const std::string& name) {
+        return name == "Camera Switcher" || name.rfind("Producer ", 0) == 0;
+    }
+
+    void ReadLegacyConnections() {
+        const Fbx::Node* connections = file_.Find("Connections");
+        if (!connections) {
+            options_.Warn("FBX: no Connections; the file states no hierarchy at all");
+            return;
+        }
+        for (const Fbx::Node& entry : connections->Children) {
+            if (entry.Name != "Connect") continue;
+            const std::string child = entry.TextAt(1);
+            const std::string parent = entry.TextAt(2);
+            auto childId = legacyIdByName_.find(child);
+            if (childId == legacyIdByName_.end()) continue;
+            // "Model::Scene" is the root and is not an object of its own.
+            auto parentId = legacyIdByName_.find(parent);
+            childrenOf_[parentId == legacyIdByName_.end() ? 0 : parentId->second]
+                    .push_back(childId->second);
         }
     }
 
@@ -332,8 +399,12 @@ private:
         if (!visited_.insert(id).second) return;   // a cycle in Connections
 
         ModelNode node;
-        node.Name = ObjectName(*model);
+        node.Name = ObjectName(*model, legacy_);
         if (node.Name.empty()) node.Name = "Model";
+
+        // Boilerplate cameras are already counted in IndexLegacyObjects; a
+        // file that does connect one still must not put it in the scene.
+        if (legacy_ && IsProducerBoilerplate(node.Name)) return;
 
         const Matrix4x4 matrix = LocalTransform(*model);
         Vec3d translation, scale;
@@ -349,7 +420,7 @@ private:
         const int index = document_->AddNode(std::move(node), parent);
         nodeIndexById_[id] = index;
 
-        const std::string subtype = model->TextAt(2);
+        const std::string subtype = ObjectSubtype(*model, legacy_);
         if (subtype == "LimbNode" || subtype == "Limb") sawBones_ = true;
 
         AttachGeometry(id, index);
@@ -365,7 +436,18 @@ private:
     }
 
     void AttachGeometry(int64_t modelId, int nodeIndex) {
-        const std::vector<int64_t> geometries = ChildrenOfType(modelId, "Geometry");
+        const Fbx::Node* model = ObjectOf(modelId);
+
+        // 7.x connects a Geometry object to the model; 6.x puts the vertices
+        // inside the Model itself. Either way what follows needs a node to read
+        // and a key to cache it under.
+        std::vector<std::pair<int64_t, const Fbx::Node*>> geometries;
+        if (legacy_) {
+            if (model && model->Find("Vertices")) geometries.push_back({modelId, model});
+        } else {
+            for (int64_t id : ChildrenOfType(modelId, "Geometry"))
+                geometries.push_back({id, ObjectOf(id)});
+        }
         if (geometries.empty()) return;
 
         // The materials connected to this *model*, in connection order: a
@@ -374,9 +456,12 @@ private:
         for (int64_t material : ChildrenOfType(modelId, "Material"))
             materials.push_back(MaterialIndexOf(material));
 
-        const Fbx::Node* model = ObjectOf(modelId);
+        // 6.x connects a texture to the *model* rather than to a material
+        // property, so the binding has to be made here instead.
+        if (legacy_) BindLegacyTextures(modelId, materials);
+
         for (size_t i = 0; i < geometries.size(); ++i) {
-            const int meshIndex = MeshFor(geometries[i], materials);
+            const int meshIndex = MeshFor(geometries[i].first, geometries[i].second, materials);
             if (meshIndex < 0) continue;
 
             int target = nodeIndex;
@@ -423,7 +508,38 @@ private:
 
     // ----- geometry -----
 
-    int MeshFor(int64_t geometryId, const std::vector<int>& materials) {
+    // 6.x has no OP connections at all, so a texture reaches a material only
+    // by both being connected to the same model. With one of each - which is
+    // what an exporter writes - that is unambiguous; anything else is reported
+    // rather than guessed at.
+    void BindLegacyTextures(int64_t modelId, const std::vector<int>& materials) {
+        const std::vector<int64_t> textures = ChildrenOfType(modelId, "Texture");
+        if (textures.empty() || materials.empty()) return;
+        if (textures.size() != materials.size() && textures.size() != 1)
+            WarnOnce("legacytexture",
+                     "FBX: a model has " + std::to_string(textures.size()) + " textures and " +
+                             std::to_string(materials.size()) +
+                             " materials, and this generation of the format does not say which "
+                             "goes with which; the first texture is used for all of them");
+
+        for (size_t i = 0; i < materials.size(); ++i) {
+            const int material = materials[i];
+            if (material < 0) continue;
+            const size_t which = textures.size() == materials.size() ? i : 0;
+            const int image = ImageIndexOf(textures[which]);
+            if (image < 0) continue;
+
+            ModelMaterial& target = document_->Materials[static_cast<size_t>(material)];
+            if (target.BaseColorTexture.IsSet()) continue;
+            TextureRef reference;
+            reference.Image = image;
+            target.BaseColorTexture = reference;
+            if (target.Phong) target.Phong->DiffuseTexture = reference;
+        }
+    }
+
+    int MeshFor(int64_t geometryId, const Fbx::Node* geometry,
+                const std::vector<int>& materials) {
         // One geometry used by two models with different material lists is two
         // document meshes, because the material sits on the primitive.
         std::string key = std::to_string(geometryId);
@@ -431,15 +547,15 @@ private:
         auto cached = meshCache_.find(key);
         if (cached != meshCache_.end()) return cached->second;
 
-        const Fbx::Node* geometry = ObjectOf(geometryId);
         if (!geometry) return -1;
-        if (geometry->TextAt(2) == "NurbsCurve" || geometry->TextAt(2) == "NurbsSurface") {
+        const std::string kind = ObjectSubtype(*geometry, legacy_);
+        if (kind == "NurbsCurve" || kind == "NurbsSurface") {
             WarnOnce("nurbs", "FBX: a NURBS geometry is not read; only meshes are");
             return -1;
         }
 
         GeometryData data;
-        data.Name = ObjectName(*geometry);
+        data.Name = ObjectName(*geometry, legacy_);
         if (!ReadGeometry(*geometry, data)) return -1;
 
         std::vector<MeshPrimitive> primitives = BuildPrimitives(data, materials);
@@ -462,20 +578,20 @@ private:
             return false;
         }
 
-        const Fbx::Property& positions = vertices->Properties[0];
-        const size_t count = positions.ArraySize() / 3;
+        const size_t count = Fbx::ValueCount(*vertices) / 3;
         data.Positions.reserve(count);
         for (size_t i = 0; i < count; ++i)
-            data.Positions.emplace_back(positions.ArrayReal(i * 3), positions.ArrayReal(i * 3 + 1),
-                                        positions.ArrayReal(i * 3 + 2));
+            data.Positions.emplace_back(Fbx::ValueAt(*vertices, i * 3),
+                                        Fbx::ValueAt(*vertices, i * 3 + 1),
+                                        Fbx::ValueAt(*vertices, i * 3 + 2));
 
         // A polygon runs until an index arrives negative; that last one is the
         // bitwise complement of the real index, which is how the format marks
         // the end without a separate count.
-        const Fbx::Property& corners = indices->Properties[0];
+        const size_t cornerCount = Fbx::ValueCount(*indices);
         std::vector<int64_t> polygon;
-        for (size_t i = 0; i < corners.ArraySize(); ++i) {
-            const int64_t raw = corners.ArrayInteger(i);
+        for (size_t i = 0; i < cornerCount; ++i) {
+            const int64_t raw = Fbx::IntegerValueAt(*indices, i);
             if (raw < 0) {
                 polygon.push_back(~raw);
                 data.Polygons.push_back(polygon);
@@ -517,17 +633,17 @@ private:
                                               : std::string("Direct");
         layer.Indexed = reference == "IndexToDirect" || reference == "Index";
 
-        const Fbx::Property& source = values->Properties[0];
-        layer.Data.resize(source.ArraySize());
-        for (size_t i = 0; i < source.ArraySize(); ++i) layer.Data[i] = source.ArrayReal(i);
+        const size_t count = Fbx::ValueCount(*values);
+        layer.Data.resize(count);
+        for (size_t i = 0; i < count; ++i) layer.Data[i] = Fbx::ValueAt(*values, i);
 
         if (layer.Indexed) {
             const Fbx::Node* index = node->Find(indexName);
             if (index && !index->Properties.empty()) {
-                const Fbx::Property& source2 = index->Properties[0];
-                layer.Index.resize(source2.ArraySize());
-                for (size_t i = 0; i < source2.ArraySize(); ++i)
-                    layer.Index[i] = source2.ArrayInteger(i);
+                const size_t indexCount = Fbx::ValueCount(*index);
+                layer.Index.resize(indexCount);
+                for (size_t i = 0; i < indexCount; ++i)
+                    layer.Index[i] = Fbx::IntegerValueAt(*index, i);
             } else {
                 // IndexToDirect with no index array means direct after all.
                 layer.Indexed = false;
@@ -551,15 +667,15 @@ private:
                 MappingFrom(node->Find("MappingInformationType")
                                     ? node->Find("MappingInformationType")->TextAt(0)
                                     : std::string());
-        const Fbx::Property& source = values->Properties[0];
+        const size_t count = Fbx::ValueCount(*values);
 
         data.MaterialPerPolygon.assign(data.Polygons.size(), 0);
         if (mapping == Layer::Mapping::AllSame) {
-            const int64_t only = source.ArraySize() ? source.ArrayInteger(0) : 0;
+            const int64_t only = count ? Fbx::IntegerValueAt(*values, 0) : 0;
             std::fill(data.MaterialPerPolygon.begin(), data.MaterialPerPolygon.end(), only);
         } else if (mapping == Layer::Mapping::ByPolygon) {
             for (size_t i = 0; i < data.MaterialPerPolygon.size(); ++i)
-                data.MaterialPerPolygon[i] = i < source.ArraySize() ? source.ArrayInteger(i) : 0;
+                data.MaterialPerPolygon[i] = i < count ? Fbx::IntegerValueAt(*values, i) : 0;
         } else {
             WarnOnce("materialmapping",
                      "FBX: a LayerElementMaterial is mapped per vertex or per corner, which a "
@@ -700,7 +816,7 @@ private:
         if (!node) return -1;
 
         ModelMaterial material;
-        material.Name = ObjectName(*node);
+        material.Name = ObjectName(*node, legacy_);
 
         PhongParams phong;
         double colour[3] = {0.8, 0.8, 0.8};
@@ -828,7 +944,7 @@ private:
         }
 
         ModelImage image;
-        image.Name = ObjectName(*texture);
+        image.Name = ObjectName(*texture, legacy_);
         image.Uri = uri;
         const size_t dot = uri.rfind('.');
         if (dot != std::string::npos) {
@@ -865,14 +981,13 @@ private:
         if (!times || !values || times->Properties.empty() || values->Properties.empty())
             return curve;
 
-        const Fbx::Property& t = times->Properties[0];
-        const Fbx::Property& v = values->Properties[0];
-        const size_t count = std::min(t.ArraySize(), v.ArraySize());
+        const size_t count = std::min(Fbx::ValueCount(*times), Fbx::ValueCount(*values));
         curve.Times.reserve(count);
         curve.Values.reserve(count);
         for (size_t i = 0; i < count; ++i) {
-            curve.Times.push_back(static_cast<double>(t.ArrayInteger(i)) / kTicksPerSecond);
-            curve.Values.push_back(v.ArrayReal(i));
+            curve.Times.push_back(static_cast<double>(Fbx::IntegerValueAt(*times, i)) /
+                                  kTicksPerSecond);
+            curve.Values.push_back(Fbx::ValueAt(*values, i));
         }
         return curve;
     }
@@ -893,7 +1008,7 @@ private:
         for (const auto& entry : objects_) {
             if (entry.second->Name != "AnimationStack") continue;
             ModelAnimation animation;
-            animation.Name = ObjectName(*entry.second);
+            animation.Name = ObjectName(*entry.second, legacy_);
 
             for (int64_t layerId : ChildrenOfType(entry.first, "AnimationLayer"))
                 for (int64_t curveNodeId : ChildrenOfType(layerId, "AnimationCurveNode"))
@@ -946,8 +1061,14 @@ private:
             }
         }
 
-        // The union of the three axes' key times: FBX curves are independent
-        // and need not agree, and the document interpolates a vector.
+        EmitChannel(ObjectOf(bound->second.first), node->second, path, curves, animation);
+    }
+
+    // Shared by both generations: the axes are independent curves and the
+    // document interpolates a vector, so their key times are unioned and each
+    // is sampled at every one of them.
+    void EmitChannel(const Fbx::Node* model, int nodeIndex, AnimationPath path,
+                     const Curve (&curves)[3], ModelAnimation& animation) {
         std::vector<double> times;
         for (int axis = 0; axis < 3; ++axis)
             times.insert(times.end(), curves[axis].Times.begin(), curves[axis].Times.end());
@@ -955,7 +1076,6 @@ private:
         times.erase(std::unique(times.begin(), times.end()), times.end());
         if (times.empty()) return;
 
-        const Fbx::Node* model = ObjectOf(bound->second.first);
         const int order = model ? static_cast<int>(Fbx::PropertyReal(*model, "RotationOrder", 0.0)) : 0;
         if (model && path == AnimationPath::Rotation) {
             for (const char* pivot : {"RotationPivot", "RotationOffset", "ScalingPivot",
@@ -1008,11 +1128,105 @@ private:
         }
 
         AnimationChannel channel;
-        channel.TargetNode = node->second;
+        channel.TargetNode = nodeIndex;
         channel.Path = path;
         channel.Sampler = static_cast<int>(animation.Samplers.size());
         animation.Samplers.push_back(std::move(sampler));
         animation.Channels.push_back(channel);
+    }
+
+    // ----- animation, the 6.x way -----
+    //
+    // There is no AnimationStack, no curve node and no connection: a `Takes`
+    // block holds a `Take` per clip, a Take holds a `Model` per animated node,
+    // and a Model holds nested `Channel` records - "Transform", then "T"/"R"/"S",
+    // then "X"/"Y"/"Z". The keys are the same ticks as 7.x, and the same three
+    // paths come out the other end.
+
+    static const Fbx::Node* ChannelNamed(const Fbx::Node& parent, const char* name) {
+        for (const Fbx::Node& child : parent.Children)
+            if (child.Name == "Channel" && child.TextAt(0) == name) return &child;
+        return nullptr;
+    }
+
+    Curve ReadLegacyAxis(const Fbx::Node& axis, double fallback) {
+        Curve curve;
+        curve.Default = fallback;
+        if (const Fbx::Node* value = axis.Find("Default")) curve.Default = value->RealAt(0, fallback);
+
+        const Fbx::Node* keys = axis.Find("Key");
+        const Fbx::Node* count = axis.Find("KeyCount");
+        if (!keys || !count) return curve;
+
+        // A key is time, value, an interpolation letter, and then that letter's
+        // own parameters - a cubic one carries four more numbers than a linear
+        // one. So KeyCount is the only thing that says where one key ends and
+        // the next begins, and the scan below looks for the letter rather than
+        // assuming a stride.
+        const int64_t expected = count->IntegerAt(0);
+        const std::vector<Fbx::Property>& values = keys->Properties;
+        auto numeric = [&values](size_t at) {
+            return at < values.size() && values[at].Code != 'S';
+        };
+
+        size_t at = 0;
+        for (int64_t key = 0; key < expected; ++key) {
+            while (at + 2 < values.size() &&
+                   !(numeric(at) && numeric(at + 1) && !numeric(at + 2)))
+                ++at;
+            if (at + 2 >= values.size()) break;
+            curve.Times.push_back(values[at].AsReal() / kTicksPerSecond);
+            curve.Values.push_back(values[at + 1].AsReal());
+            at += 3;
+        }
+        if (static_cast<int64_t>(curve.Times.size()) != expected)
+            WarnOnce("legacykeys",
+                     "FBX: a Take channel declares " + std::to_string(expected) + " keys but " +
+                             std::to_string(curve.Times.size()) +
+                             " could be read; the rest are dropped");
+        return curve;
+    }
+
+    void ReadTakes() {
+        const Fbx::Node* takes = file_.Find("Takes");
+        if (!takes) return;
+
+        for (const Fbx::Node& take : takes->Children) {
+            if (take.Name != "Take") continue;
+            ModelAnimation animation;
+            animation.Name = take.TextAt(0);
+
+            for (const Fbx::Node& model : take.Children) {
+                if (model.Name != "Model") continue;
+                auto id = legacyIdByName_.find(model.TextAt(0));
+                if (id == legacyIdByName_.end()) continue;
+                auto node = nodeIndexById_.find(id->second);
+                if (node == nodeIndexById_.end()) continue;
+
+                const Fbx::Node* transform = ChannelNamed(model, "Transform");
+                if (!transform) continue;
+                const Fbx::Node* object = ObjectOf(id->second);
+
+                struct Group { const char* Name; AnimationPath Path; double Fallback; };
+                static const Group groups[] = {
+                        {"T", AnimationPath::Translation, 0.0},
+                        {"R", AnimationPath::Rotation, 0.0},
+                        {"S", AnimationPath::Scale, 1.0}};
+                for (const Group& group : groups) {
+                    const Fbx::Node* channel = ChannelNamed(*transform, group.Name);
+                    if (!channel) continue;
+                    const char* axisNames[3] = {"X", "Y", "Z"};
+                    Curve curves[3];
+                    for (int axis = 0; axis < 3; ++axis) {
+                        curves[axis].Default = group.Fallback;
+                        if (const Fbx::Node* found = ChannelNamed(*channel, axisNames[axis]))
+                            curves[axis] = ReadLegacyAxis(*found, group.Fallback);
+                    }
+                    EmitChannel(object, node->second, group.Path, curves, animation);
+                }
+            }
+            if (!animation.Channels.empty()) document_->Animations.push_back(std::move(animation));
+        }
     }
 
     // ----- finishing -----
@@ -1068,6 +1282,10 @@ private:
     std::set<int64_t> visited_;
     std::vector<int> meshNodes_;
     std::set<std::string> warned_;
+    std::map<std::string, int64_t> legacyIdByName_;
+    int64_t nextLegacyId_ = 0;
+    int skippedProducers_ = 0;
+    bool legacy_ = false;
     bool sawBones_ = false;
 };
 
@@ -1147,18 +1365,29 @@ std::shared_ptr<ModelStorage::ModelDocument> FbxConverter::ImportFromStream(
     return ImportFromMemory(data, options);
 }
 
+namespace {
+// Binary is recognisable in 23 bytes, but ASCII names itself in its first
+// record, which sits behind a comment banner of no fixed length. 512 bytes
+// clears the banners every exporter writes.
+constexpr size_t kSniffBytes = 512;
+
+bool LooksLikeFbx(const std::string& head) {
+    return Fbx::LooksLikeFbxBinary(head) || Fbx::LooksLikeFbxAscii(head);
+}
+} // namespace
+
 bool FbxConverter::ValidateData(const std::vector<uint8_t>& data) const {
-    const size_t limit = std::min<size_t>(data.size(), 64);
-    const std::string head(data.begin(), data.begin() + static_cast<std::ptrdiff_t>(limit));
-    return Fbx::LooksLikeFbxBinary(head);
+    const size_t limit = std::min<size_t>(data.size(), kSniffBytes);
+    return LooksLikeFbx(std::string(data.begin(),
+                                    data.begin() + static_cast<std::ptrdiff_t>(limit)));
 }
 
 bool FbxConverter::ValidateFile(const std::string& filename) const {
     std::ifstream file(filename, std::ios::binary);
     if (!file) return false;
-    char head[64] = {};
-    file.read(head, 64);
-    return Fbx::LooksLikeFbxBinary(
+    char head[kSniffBytes] = {};
+    file.read(head, kSniffBytes);
+    return LooksLikeFbx(
             std::string(head, static_cast<size_t>(std::max<std::streamsize>(0, file.gcount()))));
 }
 

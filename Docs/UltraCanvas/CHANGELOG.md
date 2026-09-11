@@ -1,5 +1,6 @@
 #### 2026-09-11 *0.8.17*
-- **FBX (.fbx) reads, binary 7.1 to 7.7.** `Plugins/Models/FBX/` is split the way
+- **FBX (.fbx) reads: binary 7.1 to 7.7 and ASCII 6.x/7.x.**
+  `Plugins/Models/FBX/` is split the way
   the STEP, Alembic and .x readers are: `UltraCanvasFbxFile.h` is the container -
   the header, the node records, the typed property lists and the deflate arrays,
   with no idea what a mesh is - and `UltraCanvasFbxConverter.h` is Autodesk's
@@ -45,16 +46,45 @@
 - **A declared count is never trusted over the bytes present**: an array whose
   length disagrees with its byte count, and a record claiming more properties
   than the file holds, are refused rather than allocated. Both are pinned by
-  tests. The ASCII encoding is recognised and refused by name.
-- **`Tests/ModelFbxTest.cpp`** (76 assertions) against
-  `media/models/FBX/E-45-Aircraft.fbx`. The synthetic half builds binary FBX by
-  hand - including a deflate-compressed array asserted to give geometry identical
-  to the raw one - because nothing about the container, the layer mappings, the
-  pivots or the refusals is reachable from an exported sample. The sample half
-  pins three cross-format facts: the scene is titled `E-45_GLSL`, exactly as the
-  COLLADA export names its visual scene; its `ArmatureAction` runs 0.8333333 s,
-  exactly the duration `ModelColladaTest` asserts; and its geometry is **1681
-  polygons**, the Alembic export's to the face.
+  tests.
+- **`.fbx` names two file formats, not one encoding of one.** The 7.x binary is
+  a length-prefixed record tree; the 6.x ASCII is indented text - and they do not
+  share an object model either. 6.x has no object ids at all: everything is a
+  `"Class::Name"` string and `Connections` refers to those strings, so the reader
+  synthesises an id per name and the rest of it never learns the difference.
+  Geometry sits *inside* the `Model` rather than in an object of its own,
+  `Properties60` records carry one field fewer than `Properties70`, a texture is
+  connected to the model rather than to a material property, `GlobalSettings`
+  lives inside `Objects`, and animation is in `Takes` with a nested `Channel`
+  record per axis instead of `AnimationStack` and curve nodes. All of that is
+  read; the transform chain, the layer mappings and the tick rate are the same
+  ones 7.x uses, and the tests assert that by reading the same scene twice.
+- **One value, read two ways.** Binary writes an array as a single property;
+  ASCII writes one property per number. `Fbx::ValueCount`/`ValueAt`/
+  `IntegerValueAt` close that over both, which is what lets one `ReadGeometry`,
+  one `ReadLayer` and one `ReadCurve` serve both encodings rather than two of
+  each.
+- **Eight camera models that are not content.** Every 6.x export carries a
+  `Camera Switcher` and seven `Producer` cameras that the exporter inserts and
+  the scene never refers to - they have no `Connections` entry at all. They are
+  skipped, and `fbx.producerModels` metadata says how many, so their absence is
+  stated rather than silent.
+- **`Tests/ModelFbxTest.cpp`** (111 assertions) against two samples:
+  `media/models/FBX/E-45-Aircraft.fbx` (7.4 binary) and
+  `media/models/FBX/E-45-Aircraft-6.1-ascii.fbx` (6.1 ASCII). The synthetic half
+  builds binary FBX by hand - including a deflate-compressed array asserted to
+  give geometry identical to the raw one - because nothing about the container,
+  the layer mappings, the pivots or the refusals is reachable from an exported
+  sample. The sample half pins cross-format facts in both directions. The binary
+  export: the scene is titled `E-45_GLSL`, exactly as the COLLADA export names
+  its visual scene; its `ArmatureAction` runs 0.8333333 s, exactly the duration
+  `ModelColladaTest` asserts; and its geometry is **1681 polygons**, the Alembic
+  export's to the face. The ASCII export: **8110 faces and 32440 corners**,
+  which is the OBJ, PLY and X3D count rather than the binary's, and it is
+  symmetric about X - so the two FBX files of the same aircraft came out of
+  *different* export paths, one with the mirror modifier applied and one without.
+  Its `ArmatureAction` still runs 0.8333333 s, which is what ties the two back
+  together.
 - `ModelFormat::FBX` already existed; the plugin now dispatches `.fbx` for
   reading, behind `ULTRACANVAS_MODELS_FBX` / `ULTRACANVAS_HAS_FBX_CONVERTER` and
   gated on zlib, which its arrays need. Read only. Skin deformers, blend shapes,

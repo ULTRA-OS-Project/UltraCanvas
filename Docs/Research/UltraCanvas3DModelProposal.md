@@ -41,7 +41,7 @@ this document is where those annotations come from.
 | `ColladaConverter` | `Plugins/Models/COLLADA/` | Reads COLLADA 1.4/1.5: `<unit>`, `<up_axis>`, the node hierarchy with ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`, `profile_COMMON` materials with transparency and textures, vertex colours, and matrix or TRS animation channels. The first format that states everything the structure holds. |
 | `BlendConverter` | `Plugins/Models/Blend/` | Recognises a Blender `.blend`, reports what it contains — version, objects, meshes, materials, modifiers, stored vertex count — and **declines to import geometry**, with the reason. See §2.6. |
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
-| `FbxConverter` | `Plugins/Models/FBX/` | Reads binary FBX 7.x: the connection graph, the full transform chain, meshes with independently indexed layers, Phong materials with textures, and animation. The only format here whose scene is a graph rather than a tree — see §2.8. Read-only, needs zlib. |
+| `FbxConverter` | `Plugins/Models/FBX/` | Reads FBX 7.x binary and 6.x/7.x ASCII: the connection graph, the full transform chain, meshes with independently indexed layers, Phong materials with textures, and animation. The only format here whose scene is a graph rather than a tree, and the only extension naming two object models — see §2.8. Read-only, needs zlib. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
 Two observations drive the design:
@@ -201,15 +201,25 @@ out of this scene half-mirrored. The `.blend` is not an unlucky case; this
 scene's exports are, and the OBJ is the only one of the four that had the
 modifiers applied.
 
-The `.fbx` export lands on the same side, and adds the detail that settles what
-the split tracks. Its geometry is **2934 positions in 1681 polygons — the `.abc`
-export's, to the vertex** — while its scene is titled `E-45_GLSL` and its
-`ArmatureAction` runs 0.8333333 s, both of which the `.dae` also carries. So the
-groups are not per-format at all: FBX shares its geometry with Alembic and its
-scene metadata with COLLADA, because all three came out of the same unapplied-
-modifier path on the same day. `Tests/ModelFbxTest.cpp` asserts each of those
-three figures against the suite that already owned it, so no two of these
-readers can drift apart without one of them failing.
+The **7.4 binary `.fbx`** export lands on the same side, and adds the detail
+that settles what the split tracks. Its geometry is **2934 positions in 1681
+polygons — the `.abc` export's, to the vertex** — while its scene is titled
+`E-45_GLSL` and its `ArmatureAction` runs 0.8333333 s, both of which the `.dae`
+also carries. So the groups are not per-format at all: FBX shares its geometry
+with Alembic and its scene metadata with COLLADA, because all three came out of
+the same unapplied-modifier path on the same day. `Tests/ModelFbxTest.cpp`
+asserts each of those three figures against the suite that already owned it, so
+no two of these readers can drift apart without one of them failing.
+
+The **6.1 ASCII `.fbx`** export then removes the last doubt, because it is the
+same format landing on the *other* side: 8110 faces in 11749 positions,
+symmetric about X, which is the OBJ/PLY/X3D group exactly — while still carrying
+the same 0.8333333 s `ArmatureAction` as the binary. Two files with the same
+extension, holding the same scene, on opposite sides of the split. Whatever the
+groups track, it is not the format; it is which export session the file came out
+of. That is also why the reader must never normalise the difference away: the
+only honest thing a reader can do with two files that disagree is report what
+each one says.
 
 `.blend` is also self-describing through an embedded SDNA block, which makes
 the *file* readable even though the *model* is not. So the decision is:
@@ -268,6 +278,41 @@ decomposed, so the common case comes back as exactly the three fields that were
 written. What the structure genuinely cannot hold is the *geometric* transform,
 which places a mesh without being inherited by the node's children; that becomes
 a child node carrying the mesh, which is exact and costs one node.
+
+One more thing FBX does that no other format here does: **`.fbx` names two file
+formats.** The 7.x binary above is a length-prefixed record tree. The 6.x ASCII
+is indented text — and had it been only an encoding, a second lexer would have
+finished it. It is not. The object model underneath differs:
+
+| | 7.x | 6.x |
+|---|---|---|
+| object identity | 64-bit ids | `"Class::Name"` strings |
+| geometry | its own object, connected | nested inside the `Model` |
+| property records | `P:` in `Properties70`, 5 fields | `Property:` in `Properties60`, 4 |
+| texture → material | an `OP` connection to the property | inferred from sharing a model |
+| animation | `AnimationStack` → layer → curve node → curve | `Takes` → `Channel` per axis |
+| scene settings | `GlobalSettings`, a root record | inside `Objects` |
+
+Almost all of it absorbs into the reader rather than the structure. Synthesising
+an id per `"Class::Name"` makes 6.x's connections look like 7.x's, so everything
+downstream of the index is shared. The transform chain, the layer mappings, the
+colour × factor rule and the 46186158000-tick second are identical in both, which
+the tests assert by reading the same aircraft twice.
+
+Two things did not absorb. The first is that binary writes an array as one
+property while ASCII writes one property per number, so the container has to
+offer a `ValueCount`/`ValueAt` view that closes over both — otherwise every
+geometry reads as empty, which is exactly the bug that showed up first. The
+second is content that is not content: every 6.x export carries a `Camera
+Switcher` and seven `Producer` cameras with no connection to anything, which are
+skipped and counted into `Metadata` rather than dropped in silence.
+
+And the two exports settle a question §2.6 left open. The 6.1 ASCII export of
+this aircraft holds **8110 faces in 11749 positions and is symmetric about X**;
+the 7.4 binary holds **1681 polygons in 2934 positions and is not**. Same scene,
+same format, opposite sides of the mirror-modifier split — which is the clearest
+possible statement that the split tracks the export *session*, not the format.
+The 0.8333333 s `ArmatureAction` in both is what proves they are the same scene.
 
 ## 3. What the structure must therefore carry
 
@@ -489,7 +534,11 @@ documents differing only in that field must place a vertex differently, which is
 the only way to prove the field is being read rather than assumed to be XYZ.
 The sample half pins the cross-format facts in §2.6 and §4.5's animation
 figure: the same title as the `.dae`, the same 0.8333333 s duration, the same
-1681 polygons as the `.abc`.
+1681 polygons as the `.abc`. It runs against two samples, because `.fbx` names
+two formats — and the second one is where that pays: the 6.1 ASCII export gives
+8110 faces symmetric about X where the 7.4 binary gives 1681 that are not, so
+the suite pins the fact that one extension, one scene and one aircraft can still
+be two different exports.
 
 `Tests/ModelStepTest.cpp` covers the first B-rep reader in two halves. The Part
 21 grammar is unit-tested on text written inline — doubled quotes, `\X2\`
@@ -557,17 +606,18 @@ Each step is independently mergeable and comes with a test and a demo page.
    with real animation. Nothing in the structure had to change to hold it,
    which is the strongest evidence so far that the design is right.
 
-3.8. **FBX — done.** `Plugins/Models/FBX/` reads the binary encoding, 7.1 through
-   7.7, validated against the aircraft's `.fbx` (`Tests/ModelFbxTest.cpp`, 76
-   assertions). It was the largest remaining hole in the matrix and the one most
-   likely to be asked for, since FBX is what the animation industry actually
-   exchanges. It is split into a container layer and an object layer for the same
-   reason STEP, Alembic and `.x` are. What it added to this document is §2.8: it
-   is the only format here whose scene is a connection graph rather than a tree,
-   and the only one with a transform chain rather than a TRS triple — and
-   `ModelDocument` needed nothing new for either. Read-only, and gated on zlib
-   because its arrays are deflate streams. **Still to do:** the ASCII encoding,
-   skin deformers and blend shapes, cameras and lights, and embedded media.
+3.8. **FBX — done.** `Plugins/Models/FBX/` reads the 7.1–7.7 binary encoding and
+   the 6.x/7.x ASCII one, validated against two exports of the aircraft
+   (`Tests/ModelFbxTest.cpp`, 111 assertions). It was the largest remaining hole
+   in the matrix and the one most likely to be asked for, since FBX is what the
+   animation industry actually exchanges. It is split into a container layer and
+   an object layer for the same reason STEP, Alembic and `.x` are. What it added
+   to this document is §2.8: it is the only format here whose scene is a
+   connection graph rather than a tree, the only one with a transform chain
+   rather than a TRS triple, and the only extension naming two object models —
+   and `ModelDocument` needed nothing new for any of the three. Read-only, and
+   gated on zlib because its arrays are deflate streams. **Still to do:** skin
+   deformers and blend shapes, cameras and lights, and embedded media.
 
 4. **glTF 2.0 / GLB.** The interchange target: scene graph, PBR materials,
    skins, animation, morph targets. Once this reads and writes, UltraCanvas can

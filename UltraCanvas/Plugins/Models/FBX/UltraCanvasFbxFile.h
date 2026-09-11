@@ -1,6 +1,6 @@
 // Plugins/Models/FBX/UltraCanvasFbxFile.h
-// The FBX binary container: header, node records, properties, and the
-// deflate-compressed arrays. It knows nothing about meshes.
+// The FBX container in both its encodings: header, node records, properties,
+// and the deflate-compressed arrays. It knows nothing about meshes.
 //
 // Split from the converter for the same reason the STEP, Alembic and .x
 // readers are split from their container layers: an FBX file is a generic
@@ -27,9 +27,12 @@
 // a converter that never writes a switch over five integer widths - the same
 // trade the .x reader makes by flattening its numeric data.
 //
-// The ASCII encoding is a different syntax for the same node set and is *not*
-// read: it is recognised and refused by name, because "FBX" covering only half
-// of what an exporter can write would be worse than saying which half.
+// The ASCII encoding is read too, by a second tokeniser that produces the same
+// node tree. It is not merely a different spelling of the binary one: the 6.x
+// files that are usually ASCII have a different *object model* as well, which
+// the converter normalises rather than this layer - see
+// UltraCanvasFbxConverter.h. What this layer guarantees is that either
+// encoding, at either generation, arrives as the same `Node` tree.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-11
@@ -104,10 +107,15 @@ struct Node {
     }
 };
 
+enum class Encoding { Binary, Ascii };
+
 struct File {
     uint32_t Version = 0;
+    Encoding How = Encoding::Binary;
     std::vector<Node> Roots;
     const Node* Find(const std::string& name) const;
+    // The 6.x object model, which is not the 7.x one. See the converter.
+    bool IsLegacy() const { return Version > 0 && Version < 7000; }
 };
 
 // ===== Properties70 =====
@@ -116,7 +124,31 @@ struct File {
 // record each: name, type, subtype, flags, then the values. These reach into
 // that rather than making every caller walk it.
 
-// The `P` record named `name`, searched in the node's own Properties70.
+// Where an object keeps its parameters, and where that record's values start:
+// `Properties70` holds `P` records of (name, type, subtype, flags, values...)
+// and `Properties60` holds `Property` records of (name, type, flags, values...),
+// one field shorter. Resolving both here is what lets every accessor below -
+// and every caller - stay unaware of which generation it is reading.
+struct PropertyRecord {
+    const Node* Entry = nullptr;
+    size_t ValueIndex = 0;
+    explicit operator bool() const { return Entry != nullptr; }
+};
+
+PropertyRecord FindPropertyRecord(const Node& owner, const std::string& name);
+
+// ===== A RECORD'S NUMERIC PAYLOAD =====
+//
+// The one place the two encodings really differ in shape. Binary writes a
+// record's numbers as a single array property; ASCII writes one property per
+// number, because it has no array type at all. `Vertices` is one property of
+// 5760 doubles in a binary file and 5760 properties of one double each in a
+// text one. These read either without the caller knowing which it has.
+
+size_t ValueCount(const Node& node);
+double ValueAt(const Node& node, size_t index);
+int64_t IntegerValueAt(const Node& node, size_t index);
+// The record's node alone, for callers that only need to know it is there.
 const Node* FindProperty(const Node& owner, const std::string& name);
 double PropertyReal(const Node& owner, const std::string& name, double fallback);
 bool PropertyVec3(const Node& owner, const std::string& name, double out[3]);
