@@ -1,4 +1,4 @@
-#### 2026-09-11 *0.8.20*
+#### 2026-09-11 *0.8.23*
 - **FBX (.fbx) reads: binary 7.1 to 7.7 and ASCII 6.x/7.x.**
   `Plugins/Models/FBX/` is split the way
   the STEP, Alembic and .x readers are: `UltraCanvasFbxFile.h` is the container -
@@ -94,6 +94,7 @@
   has gone stale for the third time** - it named `.fbx`, which now has one. It
   now names an extension no format will ever use, so it cannot rot again.
 
+#### 2026-09-11 *0.8.20*
 - **The ULTRA OS module list says what each module actually is.** Every second
   entry under *ULTRA OS modules* in DemoApp's tree carried the same yellow
   "Partially Implemented" mark, whatever the state of the module behind it, so
@@ -110,6 +111,7 @@
   no sources, no build target and no caller, which is "Planned" rather than
   partial - the reading Smart Home already had. Pixel FX keeps its yellow mark
   in a build without libvips, where the module really is half there.
+
 #### 2026-09-11 *0.8.19*
 - **Blender (.blend) imports geometry.** It was the one format in the matrix
   that dispatched and returned nothing: `BlendConverter` recognised the file,
@@ -162,6 +164,7 @@
   `.fbx` carry, which is what ties all three back to this file.
 - `Tests/ModelFormatsPluginTest.cpp`'s "dispatches but declines to import"
   example no longer has a format to name; `.blend` now imports like the rest.
+
 #### 2026-09-11 *0.8.17*
 - **"This app can't run on your PC" is diagnosed, and guarded against at
   packaging time.** That dialog is Windows refusing an executable's PE header
@@ -194,6 +197,7 @@
   not a DLL or run-time failure, the three header causes, and why "an older
   version still works" should be answered by comparing the two files' headers
   before diffing the sources.
+
 #### 2026-09-11 *0.8.16*
 - **DirectX .x (.x) reads, text and binary.** `Plugins/Models/XFile/` is split the
   way the STEP and Alembic readers are: `UltraCanvasXFile.h` is the container -
@@ -661,6 +665,7 @@
   Commons on Westminster benches, and a coalition builder where clicking
   parties assembles a majority. Docs in
   `Docs/UltraCanvas/UltraCanvasParliamentDiagram.md`.
+
 #### 2026-09-10 *0.8.1*
 - **A drop can ask before it is carried out.** Dragging files onto a folder of
   `UltraCanvasFilerWidget` moved them the moment the button came up, and a drag
@@ -674,6 +679,7 @@
   folder, with the folder's full path underneath, and nothing is touched until
   it is answered; with dialogs disabled the drop is carried out rather than
   lost. (`Docs/UltraCanvas/UltraCanvasFilerWidget.md` > Drag & drop.)
+
 #### 2026-09-10 *0.8.0*
 - **A home icon that shows whose home it is.** `media/icons/home-user.svg`
   joins the shared icon set: a house with the user in it, drawn in the flat
@@ -713,6 +719,7 @@
   assigning `selectedButton` first so the re-entrant call arriving through
   `onChecked` finds a consistent group and the selection callback still fires
   exactly once, and returns early when the button is already the selection.
+
 #### 2026-09-09 *0.3.118*
 - **A font file opens full size in a window of its own.**
   `UltraCanvasMediaViewerWindow` is a new component: an
@@ -856,6 +863,7 @@
   which only the binary bitmap formats produce (a BDF written by the test
   comes back as `ADOBE_STANDARD`, which FreeType selects by itself), so it
   probes the system's X11 bitmap fonts and skips where a machine has none.
+
 #### 2026-09-09 *0.3.113*
 - **Android: framework diagnostics reach logcat.** `debugOutput` and the
   process's stdio went nowhere on Android, where there is no terminal to
@@ -889,6 +897,7 @@
   libraries stay absent, which costs formats rather than the backend.
   `scripts/android-syntax-check.sh` type-checks the miniaudio translation unit
   against the real NDK, so enabling it is a change rather than a claim.
+
 #### 2026-09-09 *0.3.117*
 - **LaTeX documents open as documents (LaTeX engine Phase 3).** New
   `UltraCanvasLaTeXDocumentReader`
@@ -1068,6 +1077,7 @@
   push and **saying so unprompted** when there is no open pull request: not
   opening one unasked is the rule, leaving the user to discover that nothing
   was published is not.
+
 #### 2026-09-09 *0.3.111*
 - **A double-click that starts a program now says so: the busy pointer.**
   Spawning a program takes milliseconds, the program appearing takes seconds,
@@ -1164,6 +1174,7 @@
   of the one before - so a heading is never the row left selected from the
   keyboard either; a closed parent is still stepped onto, since it can be
   opened from there.
+
 #### 2026-09-08 *0.3.110*
 - **Vector document model: precision, bounds, hit-testing, units and CAD
   layers.** First step of the shared-model work for the vector converter
@@ -1375,6 +1386,7 @@
   size bound still being applied, and unregistering a decoder while leaving the
   format recognised. It passes with `ULTRACANVAS_ENABLE_VIDEO=OFF` too — the
   case that shows a plugin working on a build with no platform backend.
+
 #### 2026-09-06 *0.3.107*
 - **Raster editing layer — what a bitmap editor needs and the framework did
   not have.** PixelFX has always been a complete whole-image engine (filters,
