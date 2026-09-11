@@ -45,6 +45,69 @@
   OBJ's 8110 quads arrive as exactly 16220 triangles, so nothing is dropped on
   the way through the flattening.
 
+#### 2026-09-11 *0.8.25*
+- **VRML97 (.wrl) reads, and with it X3D's Classic VRML encoding (.x3dv).** X3D
+  is one node set with more than one encoding, and VRML97 is that same classic
+  syntax a revision earlier. `Plugins/Models/X3D/` is now split the way the
+  STEP, Alembic, FBX and `.x` readers are: `UltraCanvasX3DScene.h` is the scene
+  as a tree of typed nodes with one reader per encoding under it, and
+  `UltraCanvasX3DConverter.cpp` is the node *set* on top, which no longer knows
+  which syntax it was handed.
+- **Which is the point.** These are the same three nodes with the same two
+  fields:
+
+  ```
+  <Transform translation='0 1 0'>          Transform {
+    <Shape><Box size='2 2 2'/></Shape>       translation 0 1 0
+  </Transform>                               children [ Shape {
+                                               geometry Box { size 2 2 2 } } ]
+                                           }
+  ```
+
+  Reading them twice would have meant two copies of `IndexedFaceSet`'s corner
+  resolution, of the `T · C · R · SR · S · -SR · -C` transform composition, of
+  DEF/USE, and of the ROUTE plumbing - and one copy would eventually have
+  drifted. The test asserts directly against that: the same scene in both
+  encodings must produce the same document, down to bounds agreeing to the last
+  bit.
+- **One token of lookahead is the whole grammar problem.** A field's value can
+  be a node or a literal, and both start with a bare word - `appearance
+  Appearance { ... }` against `solid TRUE`. A word followed by `{` opens a
+  node, `DEF` and `USE` always do, and everything else is a literal. The same
+  test after `[` says whether brackets hold nodes or numbers, so the parser
+  never needs to know which fields are MFNode - which matters, because knowing
+  would mean teaching it every node type in the standard first.
+- **Only a quote and a backslash are escapable in a string.** Treating every
+  backslash as an escape turns the `textures\E-45 _col.jpg` an exporter writes
+  into an `ImageTexture` url into `texturesE-45 _col.jpg`. This was wrong in the
+  XML encoding's MFString parser too, and is fixed in both.
+- **VRML 1.0 is refused by name.** It shares the `.wrl` extension and nothing
+  else - `Separator`, `Coordinate3`, a different `IndexedFaceSet` - so read as
+  VRML97 it would come out empty. Saying "this is VRML 1.0, whose node set is
+  different" beats saying "this is not a model file". `PROTO` and `EXTERNPROTO`
+  declarations are skipped whole and reported, the same answer `<ProtoInstance>`
+  already got.
+- Recognition is by **content, not extension**: both encodings must open with a
+  line that names them (`<X3D`, a DTD, or `#VRML V2.0` / `#X3D V3.3`), so a
+  `.x3d` holding classic syntax reads correctly and a `.wrl` holding XML does
+  too. The plugin now dispatches `.x3d`, `.x3dv`, `.wrl` and `.vrml` to the one
+  converter.
+- **`Tests/ModelX3DTest.cpp`** (167 assertions) now runs against two samples:
+  `media/models/X3D/E-45-Aircraft.x3d` and the new
+  `media/models/VRML/E-45-Aircraft.wrl`. The cross-format result is a new one,
+  and it is about the exporters rather than the readers: the `.wrl` holds
+  **64880 triangles - exactly eight times the `.x3d`'s 8110 quads** - because
+  Blender's VRML writer ran the subdivision modifier one level further and then
+  triangulated, where its X3D writer did not. It also **bakes the transform
+  chain into the coordinates**, writing one `Shape` where the `.x3d` writes a
+  four-deep `Transform` chain; both arrive at the same world bounds. Both are
+  symmetric in X, so both had the mirror modifier applied.
+- **`ctest` now hands `ModelX3DTest` both samples.** It was registered with the
+  `.x3d` alone, so the suite's central assertion - that one scene written in
+  both encodings produces the same document - was skipped everywhere except a
+  by-hand run. A second encoding that is only checked by hand is a second
+  encoding that drifts.
+
 #### 2026-09-11 *0.8.23*
 - **FBX (.fbx) reads: binary 7.1 to 7.7 and ASCII 6.x/7.x.**
   `Plugins/Models/FBX/` is split the way
@@ -297,6 +360,102 @@
   verified against a sample that carries none, and a silently wrong animation is
   worse than a missing one. The capability report says `Animations = false` and
   `Skinning = false` rather than implying otherwise.
+
+#### 2026-09-10 *0.8.15*
+- **X3D (.x3d) reads.** `Plugins/Models/X3D/UltraCanvasX3DConverter.h` reads the
+  XML encoding of X3D 3.0-4.0 into `ModelDocument` - the second XML scene format
+  after COLLADA, and gated on the same tinyxml2.
+- **What is read**: the `Transform`/`Group`/`Switch`/`LOD` hierarchy,
+  `IndexedFaceSet` with n-gons kept as n-gons, `IndexedTriangleSet`,
+  `IndexedQuadSet`, `TriangleSet`, `QuadSet`, the fan and strip sets,
+  `IndexedLineSet`, `LineSet`, `PointSet`, the Immersive profile's `Box`,
+  `Sphere`, `Cylinder` and `Cone`, `Appearance` with `Material`,
+  `TwoSidedMaterial`, `ImageTexture` and `TextureTransform`, `DirectionalLight`
+  / `PointLight` / `SpotLight`, `Viewpoint` and `OrthoViewpoint`, the `<head>`
+  metadata and `<unit>` statement, and animation assembled out of `TimeSensor`,
+  `PositionInterpolator` / `OrientationInterpolator` and `ROUTE`s.
+- **DEF/USE is the instancing mechanism, and it applies to every node** - a
+  Coordinate shared between two geometries, an Appearance between two Shapes, a
+  whole Transform subtree reused. A pre-pass collects every DEF; a small RAII
+  guard resolves a USE and unwinds a cycle. One geometry USE'd twice under the
+  same material is one mesh with two nodes; under a different material it has to
+  be two, because the material sits on the primitive.
+- **A `Transform` is not a TRS triple.** The spec composes it as
+  `T * C * R * SR * S * -SR * -C`, so the matrix is built and decomposed rather
+  than copied field by field: the common case decomposes back to exactly the
+  fields that were written, and a `center` or `scaleOrientation` keeps its
+  meaning instead of being silently discarded.
+- **`IndexedFaceSet`'s index streams are parallel and independent.**
+  `texCoordIndex`, `normalIndex` and `colorIndex` line up with `coordIndex` by
+  position, -1s included - except when normals or colours are declared per face,
+  where the face counter indexes them instead. A corner is the tuple of whichever
+  streams exist, and unique tuples become document vertices, exactly as the OBJ
+  and COLLADA readers resolve theirs.
+- **The geometric primitives are tessellated rather than skipped**, because a
+  hand-written X3D is usually nothing else. Caps are single n-gons rather than
+  fans of triangles, sphere pole rings are triangles rather than quads with a
+  doubled corner, and every face is wound so its normal points outward - which
+  the test asserts directly, since a winding mistake is invisible until the model
+  renders inside out.
+- **What has no field in the document is recorded, not dropped**: `creaseAngle`
+  becomes a node extra (with a warning when it is below pi and the file carries
+  no normals, since generated normals then average across every edge), the
+  `ImageTexture` url fallback list keeps its alternates in metadata, and
+  `Background`, `LineProperties` and a light's `ambientIntensity` are kept as
+  metadata and material extras.
+- **`Tests/ModelX3DTest.cpp`** (118 assertions) against
+  `media/models/X3D/E-45-Aircraft.x3d` - the same aircraft as the 3DS, OBJ, DXF,
+  COLLADA and Alembic samples. It asserts the cross-format fact rather than
+  hiding it: this export carries **exactly the OBJ's 8110 quads and is symmetric
+  about X**, so its mirror modifier *was* applied - unlike the `.dae`, `.abc` and
+  `.blend`. Proposal section 2.6 gained it: the split is not between evaluated
+  and scene formats, it is between two exports of one scene written by one
+  application on one day.
+- `ModelFormat::X3D` already existed; the plugin now dispatches `.x3d` for
+  reading, behind `ULTRACANVAS_MODELS_X3D` / `ULTRACANVAS_HAS_X3D_CONVERTER`.
+  Read only, for the reason COLLADA is: a caller wanting to write a scene should
+  write glTF. `.wrl` and `.x3dv` are the classic VRML syntax, which this reader
+  cannot parse, so they are left unclaimed rather than claimed and then refused.
+- **PLY (.ply) reads and writes.** `Plugins/Models/PLY/` covers all three
+  encodings - ascii, binary_little_endian and binary_big_endian - because a
+  reader that handles only ASCII fails on most scanner output, and one that
+  assumes the host's byte order fails silently rather than loudly.
+- **PLY is the format with no fixed schema**, and that is why it is worth
+  having: a file declares its own elements and properties, so a per-vertex
+  `quality`, `confidence` or `classification` has nowhere to go in OBJ or 3DS
+  but round-trips here as an `AttributeSemantic::Custom` under its own name.
+  That open-ended attribute list is what `ModelDocument` had them for.
+- Positions, normals, texture coordinates (`s`/`t`, `u`/`v` and
+  `texture_u`/`texture_v` all recognised), and vertex colours as either bytes
+  or floats - a uchar 255 becomes 1.0 rather than staying 255. Faces come from
+  `vertex_indices` or the older `vertex_index`, and n-gons are kept rather than
+  triangulated. A file with vertices and no faces arrives as a point cloud
+  rather than an empty mesh.
+- **An element nothing understands is stepped over by exactly its size.** In a
+  binary file a mis-sized skip does not lose one element, it destroys
+  everything after it, so an edge list or a per-face material table is measured
+  precisely even though nothing reads it - and named in a warning rather than
+  passed over in silence.
+- **`NumericPrecision` chooses the type positions are written as, not the digit
+  count.** Compact writes `property float`, which is what almost every PLY
+  carries; Full writes `property double`, which is the only way a document that
+  came from CAD survives the trip. Written as a type so the flag means
+  something in binary too - it previously had no effect there at all, producing
+  byte-identical files either way, which the round-trip test caught.
+- **`Tests/ModelPLYTest.cpp`** works against small headers built inline, where
+  PLY's awkward cases live: both spellings of every type name, all three
+  spellings of a texture coordinate, binary in either byte order (asserted on
+  the extents, since the wrong order yields denormals rather than an error), a
+  skipped element, and a truncated file. Then against
+  `media/models/PLY/E-45-Aircraft.ply` - a fourth export of the same aircraft,
+  32440 quads against the OBJ's 8110, from `E 45 Aircraft_Export_Ready.blend`.
+  It is symmetric about X, so unlike the .dae, .blend and .abc its mirror
+  modifier was applied, and its winding already agrees with the normals it
+  stores (32434 of 32440), so unlike Alembic nothing is reversed.
+- The dispatch's "no converter for this extension" assertion now names an
+  extension no one will ever implement. It had gone stale twice - once when
+  .abc gained a reader and once when .ply did - because it named a format that
+  was only unsupported *yet*.
 
 #### 2026-09-10 *0.8.14*
 - **Alembic (.abc) reads.** `Plugins/Models/Alembic/` is split the same way the
