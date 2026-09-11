@@ -3,8 +3,8 @@
 // the local store under the user data directory, shows the main window (start
 // page, or the account bar + mail view once an account exists) and runs the
 // main loop.
-// Version: 0.5.0
-// Last Modified: 2026-09-03
+// Version: 0.5.1 - the data folder is %APPDATA%\UltraMail on Windows
+// Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "ui/UltraMailApp.h"
 #include "ui/UltraMailAlerts.h"
@@ -18,10 +18,16 @@
 
 namespace {
 
-// Per-platform user data directory for UltraMail.
+// Per-platform user data directory for UltraMail: XDG on Linux, %APPDATA% on
+// Windows (where HOME is normally unset, so without this the mailbox database
+// and the credential vault landed in whatever folder the app was started from).
 std::string UserDataDir() {
     if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && *xdg)
         return std::string(xdg) + "/UltraMail";
+#if defined(_WIN32) || defined(_WIN64)
+    if (const char* appData = std::getenv("APPDATA"); appData && *appData)
+        return std::string(appData) + "/UltraMail";
+#endif
     if (const char* home = std::getenv("HOME"); home && *home)
         return std::string(home) + "/.local/share/UltraMail";
     return "./UltraMail";

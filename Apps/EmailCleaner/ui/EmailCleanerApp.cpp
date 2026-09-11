@@ -89,7 +89,7 @@ void EmailCleanerApp::WireMailBackend() {
         access.options.credentials.username =
             discovered.imap.username.empty() ? account.email : discovered.imap.username;
         access.options.credentials.password = password;
-        access.options.useTls      = discovered.imap.security != UltraMail::MailSecurity::None;
+        access.options.useTls      = discovered.imap.security != UltraMail::MailSecurity::Plain;
         access.options.implicitTls = discovered.imap.security == UltraMail::MailSecurity::SslTls;
         mailBackend_->SetAccount(access);
         ++usable;

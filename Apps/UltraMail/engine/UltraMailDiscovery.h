@@ -4,34 +4,20 @@
 // provider preset table, then a Mozilla-style autoconfig / ISPDB lookup over
 // HTTP (UltraNet). The preset and XML-parsing steps are pure and testable; the
 // network step is orchestrated in Discover().
-// Version: 0.2.0 (Phase 2)
+// Version: 0.3.0 - settings resolved per account (stored, else presets);
+//                  a starting point for the manual settings page
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include "UltraMailTypes.h"   // MailSecurity, MailServerSettings, Account
 
 #include <string>
 
 namespace UltraMail {
 
-// Connection security for a mail server.
-enum class MailSecurity {
-    None = 0,     // plaintext (discouraged)
-    StartTls,     // upgrade on the plaintext port
-    SslTls        // implicit TLS from connect
-};
-
-struct MailServerSettings {
-    std::string  host;
-    int          port = 0;
-    MailSecurity security = MailSecurity::SslTls;
-    std::string  username;     // resolved (full address or local-part)
-    bool         oauth = false; // provider expects OAuth2/XOAUTH2
-
-    bool Valid() const { return !host.empty() && port > 0; }
-};
-
 struct DiscoveryResult {
     bool               found = false;
-    std::string        source;       // "presets" | "autoconfig" | "" (none)
+    std::string        source;       // "presets" | "autoconfig" | "manual" | "" (none)
     std::string        displayName;  // provider display name, if known
     MailServerSettings imap;         // incoming
     MailServerSettings smtp;         // outgoing (submission)
@@ -47,9 +33,22 @@ public:
     static DiscoveryResult ParseAutoconfig(const std::string& xml,
                                            const std::string& email);
 
-    // Full pipeline: presets first, then autoconfig over HTTP (UltraNet).
-    // Returns the first hit (found == false if nothing resolved).
+    // Full pipeline: presets first, then autoconfig over HTTP (UltraNet):
+    // the domain's own autoconfig document, its .well-known copy, then the
+    // Thunderbird ISPDB. Returns the first hit (found == false if nothing
+    // resolved). Blocking on the network — run off the UI thread.
     DiscoveryResult Discover(const std::string& email);
+
+    // The settings an account syncs and sends with: the ones stored on the
+    // account (discovered or entered by hand) when complete, else the provider
+    // table for its address. Pure.
+    static DiscoveryResult ForAccount(const Account& account);
+    // Store a discovery result on an account.
+    static void ApplyTo(Account& account, const DiscoveryResult& discovery);
+    // A starting point for the manual settings page when nothing was found:
+    // imap.<domain>:993 (TLS) and smtp.<domain>:587 (STARTTLS), the full
+    // address as username. found is false — nothing here was verified. Pure.
+    static DiscoveryResult GuessForDomain(const std::string& email);
 
     // Build an "imap(s)://host:port/" URL for the discovered incoming server.
     static std::string ImapServerUrl(const MailServerSettings& imap);

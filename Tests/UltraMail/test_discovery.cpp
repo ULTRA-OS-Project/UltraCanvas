@@ -125,6 +125,59 @@ TEST(parse_autoconfig_missing_returns_not_found) {
 
 // ---- server URLs -----------------------------------------------------------
 
+TEST(mail_security_round_trips_through_strings) {
+    REQUIRE(MailSecurityFromString(ToString(MailSecurity::Plain)) == MailSecurity::Plain);
+    REQUIRE(MailSecurityFromString(ToString(MailSecurity::StartTls)) == MailSecurity::StartTls);
+    REQUIRE(MailSecurityFromString(ToString(MailSecurity::SslTls)) == MailSecurity::SslTls);
+    REQUIRE(MailSecurityFromString("") == MailSecurity::SslTls);   // the safe default
+}
+
+TEST(for_account_prefers_stored_settings_over_presets) {
+    Account a; a.accountId = "erika-gmail-com"; a.email = "erika@gmail.com";
+    // Nothing stored: the provider table answers.
+    DiscoveryResult r = AutoDiscovery::ForAccount(a);
+    REQUIRE(r.found);
+    REQUIRE_EQ(r.imap.host, std::string("imap.gmail.com"));
+
+    // Stored (say, entered by hand): those win, and empty usernames default
+    // to the address.
+    DiscoveryResult manual;
+    manual.imap.host = "mail.example.org"; manual.imap.port = 143;
+    manual.imap.security = MailSecurity::StartTls;
+    manual.smtp.host = "mail.example.org"; manual.smtp.port = 465;
+    manual.smtp.security = MailSecurity::SslTls;
+    AutoDiscovery::ApplyTo(a, manual);
+    REQUIRE(a.HasServers());
+    REQUIRE(a.providerName.empty());
+    r = AutoDiscovery::ForAccount(a);
+    REQUIRE(r.found);
+    REQUIRE_EQ(r.source, std::string("manual"));
+    REQUIRE_EQ(r.imap.host, std::string("mail.example.org"));
+    REQUIRE_EQ(r.imap.port, 143);
+    REQUIRE_EQ(r.imap.username, std::string("erika@gmail.com"));
+    REQUIRE_EQ(r.smtp.username, std::string("erika@gmail.com"));
+    REQUIRE_EQ(AutoDiscovery::ImapServerUrl(r.imap), std::string("imap://mail.example.org:143/"));
+    REQUIRE_EQ(AutoDiscovery::SmtpServerUrl(r.smtp), std::string("smtps://mail.example.org:465/"));
+
+    // A preset stored on the account keeps its name.
+    AutoDiscovery::ApplyTo(a, AutoDiscovery::FromPresets(a.email));
+    REQUIRE_EQ(AutoDiscovery::ForAccount(a).displayName, std::string("Gmail"));
+    REQUIRE_EQ(AutoDiscovery::ForAccount(a).source, std::string("stored"));
+}
+
+TEST(guess_for_domain_is_a_prefill_not_a_result) {
+    DiscoveryResult g = AutoDiscovery::GuessForDomain("erika@example.org");
+    REQUIRE(!g.found);
+    REQUIRE_EQ(g.imap.host, std::string("imap.example.org"));
+    REQUIRE_EQ(g.imap.port, 993);
+    REQUIRE(g.imap.security == MailSecurity::SslTls);
+    REQUIRE_EQ(g.smtp.host, std::string("smtp.example.org"));
+    REQUIRE_EQ(g.smtp.port, 587);
+    REQUIRE(g.smtp.security == MailSecurity::StartTls);
+    REQUIRE_EQ(g.imap.username, std::string("erika@example.org"));
+    REQUIRE(AutoDiscovery::GuessForDomain("not-an-address").imap.host.empty());
+}
+
 TEST(server_url_construction) {
     DiscoveryResult r = AutoDiscovery::FromPresets("a@gmail.com");
     REQUIRE_EQ(AutoDiscovery::ImapServerUrl(r.imap), std::string("imaps://imap.gmail.com:993/"));

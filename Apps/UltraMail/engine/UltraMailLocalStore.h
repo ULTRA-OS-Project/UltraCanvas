@@ -3,8 +3,8 @@
 // UltraDatabase module (a SQLite connection). Message bodies live as .eml
 // files on disk; this class owns the fast, queryable metadata — including the
 // "needs answer" state and the per-account rollups behind the account bar.
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0 - schema 2: server settings on the account
+// Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

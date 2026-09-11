@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSyncService.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 - background sync with a worker-thread prepare step
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSyncService.h"
 
@@ -28,8 +28,20 @@ SyncOutcome SyncService::SyncNow(const std::string& accountId, const std::string
 void SyncService::SyncInBackground(const std::string& accountId, const std::string& serverUrl,
                                    const UltraNetMailOptions& options,
                                    std::function<void(SyncOutcome)> onDone) {
-    std::thread([this, accountId, serverUrl, options, onDone = std::move(onDone)]() {
-        SyncOutcome result = SyncNow(accountId, serverUrl, options);
+    SyncInBackground(accountId, serverUrl, options, nullptr, std::move(onDone));
+}
+
+void SyncService::SyncInBackground(const std::string& accountId, const std::string& serverUrl,
+                                   const UltraNetMailOptions& options, PrepareFn prepare,
+                                   std::function<void(SyncOutcome)> onDone) {
+    // `opts` is the worker's own mutable copy (a plain capture of the const
+    // reference would stay const and could not be prepared in place).
+    std::thread([this, accountId, serverUrl, opts = options, prepare = std::move(prepare),
+                 onDone = std::move(onDone)]() mutable {
+        SyncOutcome result;
+        UltraNetResult prepared = prepare ? prepare(opts) : UltraNetResult::Ok();
+        result = prepared ? SyncNow(accountId, serverUrl, opts)
+                          : SyncOutcome::Fail(prepared.message);
         if (onDone) onDone(result);
     }).detach();
 }
