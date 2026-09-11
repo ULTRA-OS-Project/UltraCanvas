@@ -1,3 +1,18 @@
+#### 2026-09-11 *1.29.0*
+- **The toolbar's View picker comes before Sort, and every entry shows its
+  layout.** The two pickers sat the other way round, so choosing how the folder
+  is drawn - the more frequent of the two, and the one the eye goes to first -
+  meant reading past the sort field to reach it; *View* now stands immediately
+  after the search box, with *Sort* and its direction arrow behind it. The
+  eight entries were plain text, which left *Details*, *List* and the four
+  icon sizes to be told apart by name alone; each now carries a glyph of what
+  it produces - a row of labelled lines for *Details*, two flowing columns for
+  *List*, a 4x4 / 3x3 / 2x2 / single tile grid for the four icon sizes, a
+  descending bar chart for *Size bars* and a nest of proportional rectangles
+  for *Treemap* - so the list reads as a set of layouts, and the closed picker
+  shows the current one's glyph beside its name. The eight icons are new:
+  `media/icons/view-*.svg`.
+
 #### 2026-09-10 *1.28.0*
 - **A dragged-and-dropped move asks first.** Dropping files onto a folder of
   the file display carried the move out the moment the button came up, and a
