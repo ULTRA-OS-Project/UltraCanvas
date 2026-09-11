@@ -1019,6 +1019,47 @@ else()
     message(STATUS "  Skipping ModelBlendTest (zlib not found)")
 endif()
 
+# ===== FBX MODEL READER TEST =====
+# FBX is the one format whose scene is a connection graph rather than a tree,
+# and the one with a real transform chain. Its container is deflate-compressed,
+# so this needs zlib - and the suite builds binary FBX by hand, because nothing
+# about the container is reachable from an exported sample alone. Two samples,
+# because .fbx names two formats: a 7.4 binary and a 6.1 ASCII, which agree on
+# neither their byte layout nor their object model.
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    message(STATUS "  Building ModelFbxTest...")
+    add_executable(ModelFbxTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ModelFbxTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/FBX/UltraCanvasFbxFile.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/FBX/UltraCanvasFbxConverter.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    )
+    target_include_directories(ModelFbxTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    target_link_libraries(ModelFbxTest PRIVATE ${ZLIB_LIBRARIES})
+    target_compile_features(ModelFbxTest PRIVATE cxx_std_20)
+    set_target_properties(ModelFbxTest PROPERTIES
+        OUTPUT_NAME "ModelFbxTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME ModelFbxTest
+        COMMAND ModelFbxTest "${ULTRACANVAS_ROOT}/media/models/FBX/E-45-Aircraft.fbx"
+                             "${ULTRACANVAS_ROOT}/media/models/FBX/E-45-Aircraft-6.1-ascii.fbx"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: ModelFbxTest")
+else()
+    message(STATUS "  Skipping ModelFbxTest (zlib not found)")
+endif()
+
 # ===== MODEL FORMATS DISPATCH TEST =====
 # The seam that makes the converters a plugin matrix rather than five classes:
 # extension dispatch, the claimed-extension lists, and loading every sample
@@ -1070,8 +1111,11 @@ find_package(ZLIB QUIET)
 if(ZLIB_FOUND)
     list(APPEND MODEL_DISPATCH_SOURCES
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendFile.cpp
-        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendConverter.cpp)
-    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_BLEND_CONVERTER=1)
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendConverter.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/FBX/UltraCanvasFbxFile.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/FBX/UltraCanvasFbxConverter.cpp)
+    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_BLEND_CONVERTER=1
+                                       ULTRACANVAS_HAS_FBX_CONVERTER=1)
     list(APPEND MODEL_DISPATCH_INCLUDES ${ZLIB_INCLUDE_DIRS})
     list(APPEND MODEL_DISPATCH_LIBS ${ZLIB_LIBRARIES})
 endif()

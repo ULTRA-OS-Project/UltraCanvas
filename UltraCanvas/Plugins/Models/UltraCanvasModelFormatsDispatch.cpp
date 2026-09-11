@@ -25,6 +25,9 @@
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     #include "Models/COLLADA/UltraCanvasColladaConverter.h"
 #endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    #include "Models/FBX/UltraCanvasFbxConverter.h"
+#endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     #include "Models/Blend/UltraCanvasBlendConverter.h"
 #endif
@@ -81,6 +84,9 @@ UltraCanvasModelFormatsPlugin::CreateConverterForExtension(const std::string& ex
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     if (extension == "dae") return std::make_unique<ColladaConverter>();
 #endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    if (extension == "fbx") return std::make_unique<FbxConverter>();
+#endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     if (extension == "blend") return std::make_unique<BlendConverter>();
 #endif
@@ -94,6 +100,9 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
     std::vector<std::string> extensions = {"3ds", "obj", "step", "stp", "p21", "abc", "x", "ms3d"};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     extensions.push_back("dae");
+#endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    extensions.push_back("fbx");
 #endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     // A .blend yields the cage Blender stored, not the evaluated model, and
@@ -115,6 +124,9 @@ std::vector<ModelFormat> UltraCanvasModelFormatsPlugin::AvailableFormats() {
                                         ModelFormat::MS3D};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     formats.push_back(ModelFormat::COLLADA);
+#endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    formats.push_back(ModelFormat::FBX);
 #endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     formats.push_back(ModelFormat::Blend);
