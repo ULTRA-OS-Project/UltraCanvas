@@ -55,6 +55,9 @@ static const std::vector<Sample>& Samples() {
 #ifdef ULTRACANVAS_HAS_X3D_CONVERTER
             {"x3d", "X3D/E-45-Aircraft.x3d", true},
 #endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+            {"fbx", "FBX/E-45-Aircraft.fbx", true},
+#endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
             {"blend", "Blend/E-45-Aircraft.blend", true},
 #endif
@@ -96,22 +99,24 @@ static void TestDispatchTable() {
     Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("notaformat") == nullptr,
           "an extension no converter claims resolves to nothing");
 
-    // And says so rather than returning null in silence: a caller handed a
-    // .fbx has to be able to tell "unsupported" from "corrupt". The example is
-    // deliberately a format this build genuinely lacks — this assertion caught
-    // its own staleness once already, when .abc gained a reader.
+    // And says so rather than returning null in silence: a caller handed an
+    // unreadable file has to be able to tell "unsupported" from "corrupt". The
+    // example is an extension no one will ever implement, because naming a
+    // format that is merely unsupported *yet* is how this assertion went stale
+    // twice - once when .abc gained a reader, once when .fbx did.
     std::string reported;
     ConversionOptions listening;
     listening.WarningCallback = [&reported](const std::string& message) { reported = message; };
-    Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("fbx") == nullptr,
-          "this build has no FBX reader, which is what makes it the right example");
-    Check(UltraCanvasModelFormatsPlugin::LoadModelDocument("aircraft.fbx", listening) == nullptr,
+    Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("notaformat") == nullptr,
+          "an extension no format will ever use resolves to nothing, and cannot go stale");
+    Check(UltraCanvasModelFormatsPlugin::LoadModelDocument("aircraft.notaformat", listening) == nullptr,
           "an unsupported extension loads nothing");
-    Check(reported.find("fbx") != std::string::npos && reported.find("obj") != std::string::npos,
+    Check(reported.find("notaformat") != std::string::npos &&
+          reported.find("obj") != std::string::npos,
           "and the warning names both the format it cannot read and the ones it can");
     reported.clear();
     ModelStorage::ModelDocument empty;
-    Check(!UltraCanvasModelFormatsPlugin::SaveModelDocument(empty, "out.fbx", listening),
+    Check(!UltraCanvasModelFormatsPlugin::SaveModelDocument(empty, "out.notaformat", listening),
           "and saving to one writes nothing");
     Check(!reported.empty(), "with a warning rather than a silent false");
 
@@ -191,6 +196,20 @@ static void TestSamples(const std::string& mediaRoot) {
         auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(vrml.string(), quiet);
         Check(document != nullptr && !document->Empty(),
               "and .wrl loads its classic VRML encoding through the same call as .x3d's XML");
+    }
+#endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    // One extension, two file formats: .fbx names both the 7.x binary the table
+    // above loads and the 6.x ASCII text below, which share neither a byte
+    // layout nor an object model. Dispatch is by extension, so nothing but a
+    // load proves the second one arrives anywhere.
+    {
+        const std::filesystem::path ascii = std::filesystem::path(mediaRoot) /
+                                            "FBX/E-45-Aircraft-6.1-ascii.fbx";
+        ConversionOptions quiet;
+        auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(ascii.string(), quiet);
+        Check(document != nullptr && !document->Empty(),
+              "and .fbx loads its 6.x ASCII encoding through the same call as its 7.x binary");
     }
 #endif
 

@@ -44,6 +44,7 @@ this document is where those annotations come from.
 | `StepConverter` | `Plugins/Models/STEP/` | Reads **and writes** ISO 10303-21 (AP203/214/242) into `ModelDocument::Brep` — trimmed NURBS and analytic surfaces with their topology, held exactly rather than tessellated away. The first B-rep converter. See §2.5. |
 | `AlembicConverter` | `Plugins/Models/Alembic/` | Reads the Ogawa container and AbcGeom's `Xform`, `PolyMesh`, `SubD` and `FaceSet` — first time sample only, read-only. No SDK. |
 | `X3DConverter` | `Plugins/Models/X3D/` | Reads X3D in both text encodings — XML (`.x3d`) and Classic VRML (`.x3dv`), which VRML97 (`.wrl`) also writes: the `Transform`/`Group` hierarchy with DEF/USE instancing, `IndexedFaceSet` with its parallel index streams, the Immersive profile's Box/Sphere/Cylinder/Cone, `Appearance`/`Material`/`ImageTexture`, lights, viewpoints, and TimeSensor-plus-interpolator animation through `ROUTE`s. The one reader here split by *encoding* rather than by container — see §2.9. Read-only; VRML 1.0 is refused by name. |
+| `FbxConverter` | `Plugins/Models/FBX/` | Reads FBX 7.x binary and 6.x/7.x ASCII: the connection graph, the full transform chain, meshes with independently indexed layers, Phong materials with textures, and animation. The only format here whose scene is a graph rather than a tree, and the only extension naming two object models — see §2.8. Read-only, needs zlib. |
 | `XFileConverter` | `Plugins/Models/XFile/` | Reads Direct3D retained mode's `.x`, text and binary: the Frame hierarchy, n-gon meshes, per-face material lists, Phong materials with a texture name. The one **left-handed** format in the set — see §2.7. Read-only, geometry only. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
@@ -214,6 +215,26 @@ about whether a modifier had been applied. That is the argument for reading
 what a file says rather than what its format is supposed to mean, and
 `Tests/ModelX3DTest.cpp` asserts the symmetry as deliberately as
 `Tests/ModelColladaTest.cpp` asserts its absence.
+
+The **7.4 binary `.fbx`** export lands on the same side, and adds the detail
+that settles what the split tracks. Its geometry is **2934 positions in 1681
+polygons — the `.abc` export's, to the vertex** — while its scene is titled
+`E-45_GLSL` and its `ArmatureAction` runs 0.8333333 s, both of which the `.dae`
+also carries. So the groups are not per-format at all: FBX shares its geometry
+with Alembic and its scene metadata with COLLADA, because all three came out of
+the same unapplied-modifier path on the same day. `Tests/ModelFbxTest.cpp`
+asserts each of those three figures against the suite that already owned it, so
+no two of these readers can drift apart without one of them failing.
+
+The **6.1 ASCII `.fbx`** export then removes the last doubt, because it is the
+same format landing on the *other* side: 8110 faces in 11749 positions,
+symmetric about X, which is the OBJ/PLY/X3D group exactly — while still carrying
+the same 0.8333333 s `ArmatureAction` as the binary. Two files with the same
+extension, holding the same scene, on opposite sides of the split. Whatever the
+groups track, it is not the format; it is which export session the file came out
+of. That is also why the reader must never normalise the difference away: the
+only honest thing a reader can do with two files that disagree is report what
+each one says.
 The `.x` export is a fourth witness, and it identifies what the split actually
 tracks. It holds **1995 triangles in two meshes with the hull's X range stopping
 at zero** — which is the `.dae` export's count, mesh division and half-hull
@@ -283,6 +304,85 @@ really are inside out rather than loading it in silence. That is the same
 principle as the Alembic reader's winding assertion, reaching the opposite
 conclusion because the file is built the opposite way: Alembic stores no
 compensating reflection, so its faces genuinely must be reversed on import.
+
+### 2.8 Connections, not nesting — what FBX does differently
+
+Every other format in this survey writes its scene as a tree: a node contains
+its children, a shape contains its geometry. FBX writes neither. Its `Objects`
+block is a flat list — models, geometries, materials, textures, animation curves,
+all side by side with 64-bit ids — and a separate `Connections` block wires them
+together after the fact:
+
+```
+C: "OO", 667650837, 205769600     ; this geometry is drawn by that model
+C: "OO",   5873026, 205769600     ; this material is used by that model
+C: "OP", 516486545, 121849744, "Lcl Translation"   ; this curve node drives that
+```
+
+Nothing can be read in file order. The reader indexes the objects by id, turns
+the connections into a parent-to-children map, and only then walks from the
+scene root — which FBX spells as parent id `0`. Three consequences worth
+recording, because they are what the structure had to absorb:
+
+- **A geometry's material assignment is not global.** `LayerElementMaterial`
+  indexes the materials connected *to the model*, not a document-wide list. One
+  geometry connected to two models with different materials is therefore two
+  document meshes, since the material lives on the primitive.
+- **Instancing is free and invisible.** One geometry connected to several models
+  is the format's normal way of repeating a prop, and falls straight onto
+  `ModelNode::Mesh` sharing an index.
+- **Animation is three hops, not a channel.** A stack holds layers, a layer holds
+  curve nodes, a curve node is connected to one property of one model and to one
+  curve per axis. Only after following all of it does a channel exist.
+
+The transform is the other place FBX is alone. It is not TRS but
+
+```
+T · Roff · Rp · Rpre · R · Rpost⁻¹ · Rp⁻¹ · Soff · Sp · S · Sp⁻¹
+```
+
+— rotation and scaling pivots, offsets, and pre- and post-rotations, all of
+which Maya and 3ds Max use constantly and a Blender export leaves at identity.
+`ModelDocument` needs nothing new for it: the chain is composed and then
+decomposed, so the common case comes back as exactly the three fields that were
+written. What the structure genuinely cannot hold is the *geometric* transform,
+which places a mesh without being inherited by the node's children; that becomes
+a child node carrying the mesh, which is exact and costs one node.
+
+One more thing FBX does that no other format here does: **`.fbx` names two file
+formats.** The 7.x binary above is a length-prefixed record tree. The 6.x ASCII
+is indented text — and had it been only an encoding, a second lexer would have
+finished it. It is not. The object model underneath differs:
+
+| | 7.x | 6.x |
+|---|---|---|
+| object identity | 64-bit ids | `"Class::Name"` strings |
+| geometry | its own object, connected | nested inside the `Model` |
+| property records | `P:` in `Properties70`, 5 fields | `Property:` in `Properties60`, 4 |
+| texture → material | an `OP` connection to the property | inferred from sharing a model |
+| animation | `AnimationStack` → layer → curve node → curve | `Takes` → `Channel` per axis |
+| scene settings | `GlobalSettings`, a root record | inside `Objects` |
+
+Almost all of it absorbs into the reader rather than the structure. Synthesising
+an id per `"Class::Name"` makes 6.x's connections look like 7.x's, so everything
+downstream of the index is shared. The transform chain, the layer mappings, the
+colour × factor rule and the 46186158000-tick second are identical in both, which
+the tests assert by reading the same aircraft twice.
+
+Two things did not absorb. The first is that binary writes an array as one
+property while ASCII writes one property per number, so the container has to
+offer a `ValueCount`/`ValueAt` view that closes over both — otherwise every
+geometry reads as empty, which is exactly the bug that showed up first. The
+second is content that is not content: every 6.x export carries a `Camera
+Switcher` and seven `Producer` cameras with no connection to anything, which are
+skipped and counted into `Metadata` rather than dropped in silence.
+
+And the two exports settle a question §2.6 left open. The 6.1 ASCII export of
+this aircraft holds **8110 faces in 11749 positions and is symmetric about X**;
+the 7.4 binary holds **1681 polygons in 2934 positions and is not**. Same scene,
+same format, opposite sides of the mirror-modifier split — which is the clearest
+possible statement that the split tracks the export *session*, not the format.
+The 0.8333333 s `ArmatureAction` in both is what proves they are the same scene.
 
 ### 2.9 One node set, two encodings — the other axis a reader can split on
 
@@ -553,6 +653,24 @@ cross-format comparison in §2.6: the suite asserts that the OBJ is symmetric
 about X and the Alembic is not, so a later change cannot quietly "fix" the
 difference between two exports of one scene.
 
+`Tests/ModelFbxTest.cpp` covers FBX, and is the suite that has to build its own
+input: nothing about the binary container, the deflate-compressed arrays, the
+layer mapping combinations, the transform chain's pivots or the malformed-file
+refusals is reachable from an exported sample, so the synthetic half writes
+binary FBX by hand. Two of its assertions are worth naming. The first is that
+the same scene written with raw arrays and with compressed ones must produce
+*identical* geometry — compression is the container's business and must not
+reach the reader. The second is that `RotationOrder` changes the result: two
+documents differing only in that field must place a vertex differently, which is
+the only way to prove the field is being read rather than assumed to be XYZ.
+The sample half pins the cross-format facts in §2.6 and §4.5's animation
+figure: the same title as the `.dae`, the same 0.8333333 s duration, the same
+1681 polygons as the `.abc`. It runs against two samples, because `.fbx` names
+two formats — and the second one is where that pays: the 6.1 ASCII export gives
+8110 faces symmetric about X where the 7.4 binary gives 1681 that are not, so
+the suite pins the fact that one extension, one scene and one aircraft can still
+be two different exports.
+
 `Tests/ModelX3DTest.cpp` covers the second XML scene format. Its synthetic half
 is where the reader's real decisions live, because one Blender export reaches
 none of them: DEF/USE instancing on a geometry and on a whole subtree (and the
@@ -686,6 +804,19 @@ Each step is independently mergeable and comes with a test and a demo page.
    a quaternion in a convention no sample here can verify, and the capability
    report says `Animations = false` rather than implying otherwise. **Still to
    do:** the two MSZIP encodings, and animation once a file with some exists.
+
+3.8. **FBX — done.** `Plugins/Models/FBX/` reads the 7.1–7.7 binary encoding and
+   the 6.x/7.x ASCII one, validated against two exports of the aircraft
+   (`Tests/ModelFbxTest.cpp`, 111 assertions). It was the largest remaining hole
+   in the matrix and the one most likely to be asked for, since FBX is what the
+   animation industry actually exchanges. It is split into a container layer and
+   an object layer for the same reason STEP, Alembic and `.x` are. What it added
+   to this document is §2.8: it is the only format here whose scene is a
+   connection graph rather than a tree, the only one with a transform chain
+   rather than a TRS triple, and the only extension naming two object models —
+   and `ModelDocument` needed nothing new for any of the three. Read-only, and
+   gated on zlib because its arrays are deflate streams. **Still to do:** skin
+   deformers and blend shapes, cameras and lights, and embedded media.
 
 3.9. **VRML97 and X3D's Classic VRML encoding — done.** `.wrl`, `.vrml` and
    `.x3dv` reach the same reader as `.x3d`, validated against the aircraft's

@@ -28,6 +28,9 @@
 #ifdef ULTRACANVAS_HAS_X3D_CONVERTER
     #include "Models/X3D/UltraCanvasX3DConverter.h"
 #endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    #include "Models/FBX/UltraCanvasFbxConverter.h"
+#endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     #include "Models/Blend/UltraCanvasBlendConverter.h"
 #endif
@@ -93,6 +96,9 @@ UltraCanvasModelFormatsPlugin::CreateConverterForExtension(const std::string& ex
         extension == "vrml")
         return std::make_unique<X3DConverter>();
 #endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    if (extension == "fbx") return std::make_unique<FbxConverter>();
+#endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     if (extension == "blend") return std::make_unique<BlendConverter>();
 #endif
@@ -113,6 +119,9 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
     extensions.push_back("x3dv");
     extensions.push_back("wrl");
     extensions.push_back("vrml");
+#endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    extensions.push_back("fbx");
 #endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     // Claimed so a file browser can describe a .blend, even though loading it
@@ -136,6 +145,9 @@ std::vector<ModelFormat> UltraCanvasModelFormatsPlugin::AvailableFormats() {
 #endif
 #ifdef ULTRACANVAS_HAS_X3D_CONVERTER
     formats.push_back(ModelFormat::X3D);
+#endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+    formats.push_back(ModelFormat::FBX);
 #endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     formats.push_back(ModelFormat::Blend);

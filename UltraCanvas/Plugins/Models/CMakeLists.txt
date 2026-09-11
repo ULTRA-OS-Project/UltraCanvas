@@ -12,6 +12,7 @@
 #   COLLADA -> tinyxml2
 #   X3D     -> tinyxml2
 #   .blend  -> zlib
+#   FBX     -> zlib (its arrays are deflate streams)
 # All are detected here and reported; the plugin builds without any of them.
 #
 # Version: 1.0.0
@@ -30,6 +31,7 @@ message(STATUS "Configuring ${PLUGIN_NAME} v${PLUGIN_VERSION}")
 option(ULTRACANVAS_MODELS_COLLADA "Build the COLLADA (.dae) reader (needs tinyxml2)" ON)
 option(ULTRACANVAS_MODELS_X3D     "Build the X3D (.x3d) reader (needs tinyxml2)" ON)
 option(ULTRACANVAS_MODELS_BLEND   "Build the Blender (.blend) inspector (needs zlib)" ON)
+option(ULTRACANVAS_MODELS_FBX     "Build the FBX (.fbx) reader (needs zlib)" ON)
 
 find_package(PkgConfig QUIET)
 
@@ -49,12 +51,20 @@ if(ULTRACANVAS_MODELS_X3D AND MODELS_TINYXML2_FOUND)
     set(MODELS_X3D_ENABLED TRUE)
 endif()
 
-set(MODELS_BLEND_ENABLED FALSE)
-if(ULTRACANVAS_MODELS_BLEND)
+# One probe for both zlib users: .blend inflates its save file, FBX inflates
+# its vertex arrays.
+if(ULTRACANVAS_MODELS_BLEND OR ULTRACANVAS_MODELS_FBX)
     find_package(ZLIB QUIET)
-    if(ZLIB_FOUND)
-        set(MODELS_BLEND_ENABLED TRUE)
-    endif()
+endif()
+
+set(MODELS_BLEND_ENABLED FALSE)
+if(ULTRACANVAS_MODELS_BLEND AND ZLIB_FOUND)
+    set(MODELS_BLEND_ENABLED TRUE)
+endif()
+
+set(MODELS_FBX_ENABLED FALSE)
+if(ULTRACANVAS_MODELS_FBX AND ZLIB_FOUND)
+    set(MODELS_FBX_ENABLED TRUE)
 endif()
 
 # ===== SOURCE FILES =====
@@ -90,6 +100,12 @@ if(MODELS_BLEND_ENABLED)
     list(APPEND MODELS_PLUGIN_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Blend/UltraCanvasBlendFile.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Blend/UltraCanvasBlendConverter.cpp)
+endif()
+
+if(MODELS_FBX_ENABLED)
+    list(APPEND MODELS_PLUGIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/FBX/UltraCanvasFbxFile.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/FBX/UltraCanvasFbxConverter.cpp)
 endif()
 
 set(MODELS_PLUGIN_HEADERS
@@ -144,7 +160,7 @@ if(MODELS_COLLADA_ENABLED OR MODELS_X3D_ENABLED)
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${MODELS_TINYXML2_LIBRARIES})
 endif()
 
-if(MODELS_BLEND_ENABLED)
+if(MODELS_BLEND_ENABLED OR MODELS_FBX_ENABLED)
     target_include_directories(${PLUGIN_NAME} PRIVATE ${ZLIB_INCLUDE_DIRS})
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${ZLIB_LIBRARIES})
 endif()
@@ -160,6 +176,7 @@ target_compile_definitions(${PLUGIN_NAME}
         $<$<BOOL:${MODELS_COLLADA_ENABLED}>:ULTRACANVAS_HAS_COLLADA_CONVERTER=1>
         $<$<BOOL:${MODELS_X3D_ENABLED}>:ULTRACANVAS_HAS_X3D_CONVERTER=1>
         $<$<BOOL:${MODELS_BLEND_ENABLED}>:ULTRACANVAS_HAS_BLEND_CONVERTER=1>
+        $<$<BOOL:${MODELS_FBX_ENABLED}>:ULTRACANVAS_HAS_FBX_CONVERTER=1>
     PRIVATE
         ULTRACANVAS_MODELS_PLUGIN_VERSION="${PLUGIN_VERSION}"
 )
@@ -201,5 +218,10 @@ if(MODELS_BLEND_ENABLED)
     message(STATUS "  [✓] Blender (.blend) inspection - ENABLED")
 else()
     message(STATUS "  [✗] Blender (.blend) inspection - DISABLED (zlib not found or option off)")
+endif()
+if(MODELS_FBX_ENABLED)
+    message(STATUS "  [✓] FBX (.fbx) - ENABLED")
+else()
+    message(STATUS "  [✗] FBX (.fbx) - DISABLED (zlib not found or option off)")
 endif()
 message(STATUS "  Output library: lib${PLUGIN_NAME}.a")
