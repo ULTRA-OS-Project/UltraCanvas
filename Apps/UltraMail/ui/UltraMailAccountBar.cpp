@@ -21,11 +21,11 @@ namespace UltraMail {
 
 namespace {
 
-constexpr float kTileMinWidth = 168.0f;
-constexpr float kTileAvatar   = 36.0f;
-constexpr float kPillHeight   = 28.0f;
-constexpr float kTilePill     = 24.0f;
-constexpr float kCountSize    = 15.0f;
+constexpr float kTileMinWidth = 136.0f;
+constexpr float kTileAvatar   = 26.0f;
+constexpr float kPillHeight   = 20.0f;
+constexpr float kTilePill     = 18.0f;
+constexpr float kCountSize    = 11.0f;
 
 // A tinted "count · caption" pill. With an empty caption it is a compact
 // count-only pill (the tiles), with the caption in the tooltip.

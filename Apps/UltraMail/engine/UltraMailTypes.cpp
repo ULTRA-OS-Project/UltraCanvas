@@ -6,6 +6,21 @@
 
 namespace UltraMail {
 
+std::string ToString(MailSecurity security) {
+    switch (security) {
+        case MailSecurity::Plain:     return "none";
+        case MailSecurity::StartTls: return "starttls";
+        case MailSecurity::SslTls:   return "ssl";
+    }
+    return "ssl";
+}
+
+MailSecurity MailSecurityFromString(const std::string& s) {
+    if (s == "none")     return MailSecurity::Plain;
+    if (s == "starttls") return MailSecurity::StartTls;
+    return MailSecurity::SslTls;
+}
+
 std::string ToString(FolderRole role) {
     switch (role) {
         case FolderRole::Inbox:   return "inbox";

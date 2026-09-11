@@ -1,7 +1,8 @@
 // Apps/UltraMail/ui/UltraMailAccountWizard.cpp
-// Version: 0.3.0 - themed: secondary-text intro, styled inputs, Continue as
-//                  the primary button on the right.
-// Last Modified: 2026-09-09
+// Version: 0.4.1 - live hint per address: browser sign-in for Gmail / Outlook,
+//                  an app password for Yahoo / iCloud (or a typed password
+//                  at an OAuth2 provider)
+// Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailAccountWizard.h"
 
@@ -9,6 +10,7 @@
 #include "UltraMailAlerts.h"
 #include "UltraMailTheme.h"
 #include "UltraMailDiscovery.h"
+#include "UltraMailOAuth.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
@@ -21,15 +23,15 @@ using namespace UltraCanvas;
 namespace UltraMail {
 
 namespace {
-constexpr float kLabelWidth = 110.0f;
+constexpr float kLabelWidth = 90.0f;
 } // namespace
 
 void AccountWizard::Show(UltraCanvasWindowBase* parent,
                          std::function<void(const AccountDraft&)> onSubmit) {
     DialogConfig config;
     config.title      = "Add email account";
-    config.width      = 460;
-    config.height     = 290;
+    config.width      = 420;
+    config.height     = 270;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -53,7 +55,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
     auto intro = Theme::MakeLine("wizIntro",
-        "Enter your address and password — UltraMail finds the rest.", 36,
+        "Enter your address and password — UltraMail finds the rest.", 28,
         Theme::kSizeBody, Theme::kTextSecondary);
     intro->SetWrap(TextWrap::WrapWord);
     content->AddChild(intro);
@@ -91,6 +93,41 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     auto password = CreatePasswordInput("wizPass", 0, 0, 0, Theme::kControlHeight);
     password->SetPlaceholder("Your password");
     addRow("wizPass", "Password", password);
+
+    // Provider-specific advice that follows the address as it is typed: Gmail
+    // and Outlook sign in through the browser (OAuth2) when the password is
+    // left empty; they, Yahoo and iCloud need an app password otherwise.
+    auto hint = Theme::MakeLine("wizHint", "", 30, Theme::kSizeBody, Theme::kTextSecondary);
+    hint->SetWrap(TextWrap::WrapWord);
+    content->AddChild(hint);
+    hint->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    email->onTextChanged = [hint, password](const std::string& text) {
+        const DiscoveryResult d = AutoDiscovery::FromPresets(text);
+        const std::string provider = OAuthProviderFor(d);
+        if (!provider.empty() && !ProviderAcceptsPassword(d)) {
+            // Microsoft: the browser sign-in is the only way in.
+            const std::string name = OAuthProviderDisplayName(provider);
+            hint->SetText(OAuthApps::Has(provider)
+                ? d.displayName + ": leave the password empty to sign in with " + name
+                  + " in your browser. Passwords are no longer accepted."
+                : d.displayName + " only accepts the " + name + " browser sign-in, which "
+                  "needs an OAuth client configured (Docs/UltraMail/AccountSetup.md).");
+            password->SetPlaceholder("Leave empty to sign in with " + name);
+        } else if (!provider.empty() && OAuthApps::Has(provider)) {
+            const std::string name = OAuthProviderDisplayName(provider);
+            hint->SetText(d.displayName + ": leave the password empty to sign in with "
+                          + name + " in your browser, or enter an app password.");
+            password->SetPlaceholder("Leave empty to sign in with " + name);
+        } else if (ProviderNeedsAppPassword(d)) {
+            hint->SetText(d.displayName + " rejects the normal password in mail programs: "
+                          "enter an app password generated in your account's security "
+                          "settings.");
+            password->SetPlaceholder("App password");
+        } else {
+            hint->SetText("");
+            password->SetPlaceholder("Your password");
+        }
+    };
 
     dialog->AddChild(content);
     content->layoutItem.SetFlexGrow(1);

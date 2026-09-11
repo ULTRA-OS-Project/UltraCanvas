@@ -23,11 +23,11 @@ using namespace UltraCanvas;
 namespace UltraMail {
 
 namespace {
-constexpr float kSidebarW     = 200.0f;
-constexpr float kRowH         = 56.0f;
-constexpr float kSectionRowH  = 32.0f;
-constexpr float kRowAvatar    = 34.0f;
-constexpr float kDialogLabelW = 100.0f;
+constexpr float kSidebarW     = 170.0f;
+constexpr float kRowH         = 40.0f;
+constexpr float kSectionRowH  = 24.0f;
+constexpr float kRowAvatar    = 26.0f;
+constexpr float kDialogLabelW = 84.0f;
 
 // The contact's initial for the row avatar.
 std::string Initial(const std::string& name) {
@@ -188,7 +188,7 @@ void ContactsView::RebuildSidebar() {
     if (!sidebar_ || !store_) return;
     sidebar_->ClearChildren();
 
-    auto header = Theme::MakeLine("contactsHeader", "Contacts", 28, Theme::kSizeSecondary,
+    auto header = Theme::MakeLine("contactsHeader", "Contacts", 22, Theme::kSizeSecondary,
                                   Theme::kTextMuted, FontWeight::Bold);
     header->SetPadding(0, 10);
     sidebar_->AddChild(header);
@@ -255,8 +255,8 @@ void ContactsView::ShowContactDialog(Contact contact, bool isNew) {
 
     DialogConfig config;
     config.title      = isNew ? "Add contact" : "Edit contact";
-    config.width      = 460;
-    config.height     = 380;
+    config.width      = 420;
+    config.height     = 300;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 

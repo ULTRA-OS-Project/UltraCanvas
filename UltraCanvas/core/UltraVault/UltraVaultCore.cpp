@@ -13,7 +13,7 @@
 //   u32-length-prefixed byte strings, readerCount u32 + readers,
 //   requiresUserPresence u8.
 //
-// Version: 0.1.0
+// Version: 0.1.1 - the vault file is replaced with std::filesystem::rename (works on Windows)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "UltraVault/UltraVault.h"
@@ -23,6 +23,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <filesystem>
 #include <map>
 #include <mutex>
 #include <utility>
@@ -211,10 +212,16 @@ Result SaveFileLocked(VaultState& s) {
         std::fwrite(ciphertext.data(), 1, ciphertext.size(), f) ==
             ciphertext.size();
     wrote = (std::fclose(f) == 0) && wrote;
-    if (!wrote || std::rename(tmpPath.c_str(), s.filePath.c_str()) != 0) {
+    // std::filesystem::rename replaces an existing target on every platform;
+    // C's rename() refuses to on Windows, which made every Put after the first
+    // fail once the vault file existed.
+    std::error_code ec;
+    if (wrote) std::filesystem::rename(tmpPath, s.filePath, ec);
+    if (!wrote || ec) {
         std::remove(tmpPath.c_str());
         return Result::Error(ResultCode::IoError,
-                             "cannot update vault file: " + s.filePath);
+                             "cannot update vault file: " + s.filePath
+                             + (ec ? " (" + ec.message() + ")" : ""));
     }
     return Result::Ok();
 }

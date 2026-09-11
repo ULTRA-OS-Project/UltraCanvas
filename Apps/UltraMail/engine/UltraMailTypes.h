@@ -2,8 +2,9 @@
 // Core data types for the UltraMail engine: accounts, folders, message
 // envelopes, message flags, and the per-account status rollup that drives the
 // account bar (unread today · unread before · waiting for reply).
-// Version: 0.2.0
-// Last Modified: 2026-09-03
+// Version: 0.3.0 - server settings (IMAP/SMTP host, port, security, username)
+//                  stored on the account
+// Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -38,6 +39,27 @@ enum class FolderRole {
 std::string ToString(FolderRole role);
 FolderRole  FolderRoleFromString(const std::string& s);
 
+// Connection security for a mail server.
+enum class MailSecurity {
+    Plain = 0,    // plaintext (discouraged); not "None" — X11 defines that macro
+    StartTls,     // upgrade on the plaintext port
+    SslTls        // implicit TLS from connect
+};
+
+// "none" | "starttls" | "ssl" — the form stored in the database.
+std::string  ToString(MailSecurity security);
+MailSecurity MailSecurityFromString(const std::string& s);
+
+struct MailServerSettings {
+    std::string  host;
+    int          port = 0;
+    MailSecurity security = MailSecurity::SslTls;
+    std::string  username;     // resolved (full address or local-part)
+    bool         oauth = false; // provider expects OAuth2/XOAUTH2
+
+    bool Valid() const { return !host.empty() && port > 0; }
+};
+
 // A configured account as the local store knows it (no secrets here —
 // credentials live in the OS keychain via the credential vault).
 struct Account {
@@ -45,6 +67,15 @@ struct Account {
     std::string displayName;  // "Erika Example"
     std::string email;        // "erika@example.com"
     std::string shortName;    // nickname for the info tile, e.g. "erika"
+
+    // The servers the account syncs and sends with, stored once discovered
+    // (provider table, autoconfig) or entered by hand. Empty on accounts
+    // created before they were stored — those fall back to the provider table.
+    MailServerSettings imap;
+    MailServerSettings smtp;
+    std::string        providerName;   // "Gmail", an autoconfig display name, or ""
+
+    bool HasServers() const { return imap.Valid() && smtp.Valid(); }
 };
 
 // A mailbox folder within an account.
