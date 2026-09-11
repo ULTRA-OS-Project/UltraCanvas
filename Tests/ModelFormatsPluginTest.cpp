@@ -47,6 +47,7 @@ static const std::vector<Sample>& Samples() {
             {"dxf", "DXF/E-45-Aircraft.dxf", true},
             {"step", "STEP/Box.step", true},
             {"abc", "Alembic/E-45-Aircraft.abc", true},
+            {"x", "XFile/E-45-Aircraft.x", true},
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
             {"dae", "COLLADA/E-45-Aircraft.dae", true},
 #endif
