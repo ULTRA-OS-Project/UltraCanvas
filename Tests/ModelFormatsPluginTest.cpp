@@ -9,11 +9,16 @@
 // LoadModelDocument / SaveModelDocument without the caller knowing which
 // format it holds, and that .dxf is deliberately dispatchable but not claimed.
 //
+// One of them is about the seam *above* the dispatch rather than the dispatch
+// itself: every claimed extension has to classify as a 3D model in
+// GraphicsFormatDetector, because the registry and the FileLoader inventory
+// ask that table, not the plugin, when deciding what a file is.
+//
 // argv[1] is media/models, whose per-format subdirectories hold the samples.
 // Without it only the dispatch-table cases run.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-10
+// Version: 1.1.0
+// Last Modified: 2026-09-11
 // Author: UltraCanvas Framework
 
 #include "Models/UltraCanvasModelFormatsPlugin.h"
@@ -49,6 +54,7 @@ static const std::vector<Sample>& Samples() {
             {"abc", "Alembic/E-45-Aircraft.abc", true},
             {"ply", "PLY/E-45-Aircraft.ply", true},
             {"x", "XFile/E-45-Aircraft.x", true},
+            {"ms3d", "MS3D/E-45-Aircraft.ms3d", true},
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
             {"dae", "COLLADA/E-45-Aircraft.dae", true},
 #endif
@@ -153,6 +159,50 @@ static void TestDxfIsNotClaimed() {
     Check(allWrite, "every save extension has a converter that can actually export");
 }
 
+// Every extension the plugin claims has to survive the trip out to the rest of
+// the framework, and that trip runs through GraphicsFormatDetector rather than
+// through the plugin. A format the detector does not classify gets a
+// GraphicsFileInfo whose formatType is Unknown, which makes IsValid() false -
+// and CanHandle() used to ask IsValid() before asking whether any plugin had
+// claimed the extension, so .step, .abc, .x, .blend and .ms3d were all refused
+// by a registry that would have loaded them. Nothing in the dispatch tests
+// could catch that: the dispatch was right and the gate in front of it was not.
+static void TestEveryClaimedExtensionReachesTheFramework() {
+    std::printf("Reach: the detector agrees with what the plugin claims\n");
+
+    std::vector<std::string> claimed = UltraCanvasModelFormatsPlugin::SupportedLoadExtensions();
+    for (const std::string& extension : UltraCanvasModelFormatsPlugin::SupportedSaveExtensions())
+        if (std::find(claimed.begin(), claimed.end(), extension) == claimed.end())
+            claimed.push_back(extension);
+
+    bool allThreeD = true;
+    std::string missed;
+    for (const std::string& extension : claimed) {
+        if (GraphicsFormatDetector::DetectFromExtension(extension) !=
+            GraphicsFormatType::ThreeD) {
+            allThreeD = false;
+            missed += (missed.empty() ? "" : ", ") + extension;
+        }
+    }
+    Check(allThreeD, "every claimed extension classifies as a 3D model" +
+                     (missed.empty() ? std::string() : " (missed: " + missed + ")"));
+
+    // The consequence, stated directly rather than inferred: a file named with
+    // any claimed extension must describe itself as a valid 3D file that needs
+    // a plugin, because that is what a file browser gates its preview on.
+    bool allValid = true;
+    for (const std::string& extension : claimed) {
+        GraphicsFileInfo info("E-45-Aircraft." + extension);
+        if (!info.IsValid() || !info.RequiresPlugin()) allValid = false;
+    }
+    Check(allValid, "and describes itself as a 3D file that needs a plugin");
+
+    // .dxf stays Vector on purpose - the same decision TestDxfIsNotClaimed
+    // pins from the plugin side, asserted here from the detector's.
+    Check(GraphicsFormatDetector::DetectFromExtension("dxf") == GraphicsFormatType::Vector,
+          "and .dxf is still classified as a drawing");
+}
+
 static void TestSamples(const std::string& mediaRoot) {
     std::printf("Loading every format through one call\n");
 
@@ -254,6 +304,7 @@ static void TestSamples(const std::string& mediaRoot) {
 int main(int argc, char** argv) {
     TestDispatchTable();
     TestDxfIsNotClaimed();
+    TestEveryClaimedExtensionReachesTheFramework();
     if (argc > 1) TestSamples(argv[1]);
     else std::printf("Samples: skipped (pass the media/models path to run them)\n");
 

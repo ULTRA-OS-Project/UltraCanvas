@@ -49,6 +49,7 @@ enum class ModelFormat {
     ThreeDS,    // Autodesk 3D Studio (.3ds)
     X3D,        // X3D / VRML
     XFile,      // DirectX retained-mode .x (text and binary)
+    MS3D,       // MilkShape 3D (.ms3d)
 
     // Manufacturing
     ThreeMF,    // 3D Manufacturing Format (.3mf)
