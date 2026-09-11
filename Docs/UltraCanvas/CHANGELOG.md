@@ -1,4 +1,4 @@
-#### 2026-09-11 *0.8.18*
+#### 2026-09-11 *0.8.20*
 - **The ULTRA OS module list says what each module actually is.** Every second
   entry under *ULTRA OS modules* in DemoApp's tree carried the same yellow
   "Partially Implemented" mark, whatever the state of the module behind it, so
