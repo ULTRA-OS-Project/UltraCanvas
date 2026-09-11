@@ -46,6 +46,22 @@ bool StartsWith(const std::vector<uint8_t>& data, const uint8_t* magic, size_t l
     return data.size() >= length && std::memcmp(data.data(), magic, length) == 0;
 }
 
+// Byte swaps, written out rather than taken from a compiler builtin. Every
+// compiler this framework builds with turns these into one instruction, and
+// unlike __builtin_bswap they are also there for MSVC - a .blend reader is not
+// the place to acquire a toolchain dependency for three lines of shifting.
+uint16_t Swap16(uint16_t value) {
+    return static_cast<uint16_t>((value >> 8) | (value << 8));
+}
+uint32_t Swap32(uint32_t value) {
+    return ((value & 0x000000ffu) << 24) | ((value & 0x0000ff00u) << 8) |
+           ((value & 0x00ff0000u) >> 8) | ((value & 0xff000000u) >> 24);
+}
+uint64_t Swap64(uint64_t value) {
+    return (static_cast<uint64_t>(Swap32(static_cast<uint32_t>(value))) << 32) |
+           Swap32(static_cast<uint32_t>(value >> 32));
+}
+
 // A gzip stream, inflated. Blender writes these when "Compress" is on, which
 // was the default through 2.x; zlib's own gzip mode does the work.
 bool Inflate(const std::vector<uint8_t>& input, std::vector<uint8_t>& output,
@@ -104,14 +120,14 @@ public:
     bool U32(uint32_t& out) {
         if (!Has(4)) return false;
         std::memcpy(&out, data_ + position_, 4);
-        if (bigEndian_) out = __builtin_bswap32(out);
+        if (bigEndian_) out = Swap32(out);
         position_ += 4;
         return true;
     }
     bool U16(uint16_t& out) {
         if (!Has(2)) return false;
         std::memcpy(&out, data_ + position_, 2);
-        if (bigEndian_) out = __builtin_bswap16(out);
+        if (bigEndian_) out = Swap16(out);
         position_ += 2;
         return true;
     }
@@ -308,11 +324,11 @@ uint64_t File::ReadPointer(size_t offset) const {
     if (PointerSize == 8) {
         uint64_t value = 0;
         if (!ReadBytes(offset, &value, 8)) return 0;
-        return BigEndian ? __builtin_bswap64(value) : value;
+        return BigEndian ? Swap64(value) : value;
     }
     uint32_t value = 0;
     if (!ReadBytes(offset, &value, 4)) return 0;
-    return BigEndian ? __builtin_bswap32(value) : value;
+    return BigEndian ? Swap32(value) : value;
 }
 
 int64_t File::ReadInteger(size_t offset, const std::string& type) const {
@@ -329,9 +345,9 @@ int64_t File::ReadInteger(size_t offset, const std::string& type) const {
     if (!ReadBytes(offset, &raw, static_cast<size_t>(width))) return 0;
     if (BigEndian) {
         switch (width) {
-            case 2: raw = __builtin_bswap16(static_cast<uint16_t>(raw)); break;
-            case 4: raw = __builtin_bswap32(static_cast<uint32_t>(raw)); break;
-            case 8: raw = __builtin_bswap64(raw); break;
+            case 2: raw = Swap16(static_cast<uint16_t>(raw)); break;
+            case 4: raw = Swap32(static_cast<uint32_t>(raw)); break;
+            case 8: raw = Swap64(raw); break;
             default: break;
         }
     }
@@ -348,7 +364,7 @@ double File::ReadNumber(size_t offset, const std::string& type) const {
     if (type == "float") {
         uint32_t raw = 0;
         if (!ReadBytes(offset, &raw, 4)) return 0.0;
-        if (BigEndian) raw = __builtin_bswap32(raw);
+        if (BigEndian) raw = Swap32(raw);
         float value = 0.0f;
         std::memcpy(&value, &raw, 4);
         return value;
@@ -356,7 +372,7 @@ double File::ReadNumber(size_t offset, const std::string& type) const {
     if (type == "double") {
         uint64_t raw = 0;
         if (!ReadBytes(offset, &raw, 8)) return 0.0;
-        if (BigEndian) raw = __builtin_bswap64(raw);
+        if (BigEndian) raw = Swap64(raw);
         double value = 0.0;
         std::memcpy(&value, &raw, 8);
         return value;
@@ -479,9 +495,9 @@ bool Parse(const std::vector<uint8_t>& data, File& out,
         std::memcpy(&structIndex, file.data() + offset + 8 + out.PointerSize, 4);
         std::memcpy(&count, file.data() + offset + 12 + out.PointerSize, 4);
         if (out.BigEndian) {
-            size = __builtin_bswap32(size);
-            structIndex = __builtin_bswap32(structIndex);
-            count = __builtin_bswap32(count);
+            size = Swap32(size);
+            structIndex = Swap32(structIndex);
+            count = Swap32(count);
         }
 
         block.BodyOffset = offset + headerSize;
