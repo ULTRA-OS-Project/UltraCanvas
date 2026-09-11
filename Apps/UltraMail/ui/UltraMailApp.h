@@ -3,8 +3,9 @@
 // the main window, and wires the start page, the account bar, the mail view
 // (inbox table + message details) and the account-setup wizard together.
 // Texter-style app-composition class.
-// Version: 0.5.0
-// Last Modified: 2026-09-03
+// Version: 0.9.0 - server settings per account (provider table, autoconfig
+//                  lookup, manual page with a login check); stored on the account.
+// Last Modified: 2026-09-10
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -15,6 +16,7 @@
 #include "UltraMailContactsView.h"
 #include "UltraMailComposeWindow.h"
 #include "UltraMailPassphraseDialog.h"
+#include "UltraMailServerSettingsDialog.h"
 
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
@@ -22,6 +24,7 @@
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailCredentialVault.h"
+#include "UltraMailOAuth.h"
 
 #include <UltraCloud/UltraCloud.h>
 
@@ -62,7 +65,51 @@ private:
     void ResizeViews(float width, float height);
 
     void HandleAddAccount();
+    // The wizard's identity step is done: find the servers (provider table,
+    // stored settings of an account with the same address, then the autoconfig
+    // lookup on a worker thread, then the manual page) and complete the setup.
     void HandleWizardSubmit(const AccountDraft& draft);
+    // The autoconfig lookup with a cancellable wait dialog; falls through to
+    // the manual settings page when nothing was found.
+    void LookupServerSettings(const AccountDraft& draft);
+    // Store the account with its servers, seed the inbox, report the settings,
+    // and store the password / run the browser sign-in.
+    void CompleteAccountSetup(const AccountDraft& draft, const DiscoveryResult& settings);
+    // The manual settings page for an existing account whose servers are not
+    // known (or to correct them); checks the sign-in with the account's stored
+    // credentials, saves, then syncs the account.
+    void EditServerSettings(const std::string& accountId);
+    // The settings page's login check: resolves the credentials through
+    // `credentials` (on the worker) and lists the incoming server once with
+    // the IMAP plug-in; the outcome is delivered on the UI thread. A missing
+    // plug-in is a failed check (the page then offers "Save anyway").
+    ServerSettingsDialog::Verifier LoginVerifier(
+        std::function<UltraNetResult(const std::string& username, UltraNetCredentials&)> credentials);
+    // The servers an account uses: stored on the account, else the provider
+    // table (AutoDiscovery::ForAccount).
+    static DiscoveryResult SettingsFor(const Account& account);
+    // Same, by address — for the composer's From address; the provider table
+    // when no account carries it.
+    DiscoveryResult SettingsForEmail(const std::string& email) const;
+    // Fill an SMTP session's options for an account: username, TLS mode of
+    // its outgoing server, and the credentials (see ResolveCredentials).
+    UltraNetResult PrepareSmtp(const std::string& accountId, UltraNetMailOptions& options);
+    // Browser sign-in for an OAuth2 provider ("google"): opens the consent page,
+    // waits (with a cancellable dialog) for the redirect on a worker thread,
+    // stores the tokens in the vault — which must be open — and runs the first
+    // sync. Failures are reported with the provider's reason.
+    void StartOAuthSignIn(const std::string& accountId, const std::string& email,
+                          const std::string& providerId);
+    // The address of an account, or "" when unknown.
+    std::string EmailForAccount(const std::string& accountId) const;
+    // Resolve the IMAP/SMTP credentials of an account from the vault: its
+    // password, or a fresh OAuth2 bearer token (refreshing through the provider
+    // when expired — one HTTPS request, so call it off the UI thread where the
+    // caller can). The vault must be open. Takes the username and the OAuth
+    // provider rather than looking them up, so a worker thread never reads the
+    // UI-owned account list.
+    UltraNetResult ResolveCredentials(const std::string& accountId, const std::string& username,
+                                      const std::string& providerId, UltraNetCredentials& out);
     // "Reload email": sync every account now (when the IMAP plug-in is present)
     // and re-read the store.
     void HandleReload();
@@ -108,16 +155,36 @@ private:
 
     // Auto-collect senders of a folder's messages into the address book.
     void CollectContacts(const std::string& accountId, const std::string& folder);
-    // Register accounts with the scheduler and start a periodic background sync
-    // (only when the IMAP plug-in is available).
+    // Register every account with the scheduler and start the periodic
+    // background sync timer (only when the IMAP plug-in is available). Safe to
+    // call again after an account was added: accounts already registered keep
+    // their last-sync time and the timer is started once.
     void StartBackgroundSync();
     // Sync the accounts the scheduler reports as due (called from the timer),
     // or every account when `force` is set (the Reload button).
     void RunSyncs(bool force);
+    // Sync one account now — the first sync right after it was added.
+    void SyncAccount(const std::string& accountId);
+    // Run the given accounts through the SyncService on worker threads and
+    // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
+    // account) always say why nothing was fetched; timer syncs say so once.
+    void SyncAccounts(const std::vector<ScheduledAccount>& targets, bool userInitiated);
+    // The IMAP plug-in as the mailbox interface, or null when it is not loaded.
+    IMailboxProtocolPlugin* ImapPlugin() const;
+    // Explain that no mail can be fetched because the IMAP plug-in was not
+    // found, naming the directory that was searched.
+    void ReportMissingImapPlugin();
+    // Where the UltraNet plug-in DSOs are: ULTRAMAIL_PLUGIN_DIR, else the first
+    // Plugins/UltraNet directory next to (or up to two levels above) the
+    // executable, else the working directory's — so the app finds its plug-ins
+    // wherever it is started from, not only from the build directory.
+    static std::string ResolvePluginDirectory();
 
     // Session-lifetime: the master password is entered once, and the derived
     // key lives only while the app runs.
     CredentialVault vault_{""};
+    // OAuth2 sign-in + token refresh for providers that need it (Gmail).
+    MailOAuth       oauth_;
 
     LocalStore store_;
     ContactStore contacts_;
@@ -140,6 +207,11 @@ private:
     std::string dataDir_;
     std::string cacheDir_;
     std::string mailDir_;
+    // The plug-in directory the registry was pointed at (for diagnostics).
+    std::string pluginDir_;
+    // True once the periodic sync timer runs, so StartBackgroundSync() can be
+    // called again (after an account is added) without starting a second one.
+    bool        syncTimerStarted_ = false;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     // The account view root; hidden while the start page is up (no account

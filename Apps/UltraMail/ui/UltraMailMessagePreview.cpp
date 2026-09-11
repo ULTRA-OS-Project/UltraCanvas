@@ -28,11 +28,11 @@ namespace UltraMail {
 
 namespace {
 
-constexpr float kSubjectFont  = 19.0f;
-constexpr float kSubjectLine  = 30.0f;
-constexpr float kHeaderLine   = 18.0f;
-constexpr float kAvatarSide   = 36.0f;
-constexpr float kDateWidth    = 144.0f;
+constexpr float kSubjectFont  = 13.0f;
+constexpr float kSubjectLine  = 22.0f;
+constexpr float kHeaderLine   = 14.0f;
+constexpr float kAvatarSide   = 26.0f;
+constexpr float kDateWidth    = 110.0f;
 
 // Very small HTML-to-text reduction (for the quoted reply body): drop tags and
 // decode a few entities.
@@ -188,7 +188,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         // engine measures and lays out a native UltraCanvas tree (containers +
         // Pango-markup labels + images).
         HTML::BuildOptions opts;
-        opts.style.baseFontSizePx = 14.0f;
+        opts.style.baseFontSizePx = 12.0f;   // ≈ the 9pt UI font
         opts.enableImages = true;
         // No remote fetch in the preview: images resolve to empty (placeholder).
         opts.resourceLoader = [](const std::string&) { return std::vector<uint8_t>{}; };

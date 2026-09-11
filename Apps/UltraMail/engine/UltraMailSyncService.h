@@ -3,7 +3,7 @@
 // inbox's envelopes + bodies) and can run it on a background worker thread. The
 // completion callback fires on the worker thread — the app marshals it to the
 // UI with UltraCanvasApplication::PostToUIThread.
-// Version: 0.1.0 (Phase 2)
+// Version: 0.2.0 - background sync with a worker-thread prepare step
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -27,6 +27,13 @@ public:
     // Run SyncNow on a detached worker thread; onDone fires on that thread.
     void SyncInBackground(const std::string& accountId, const std::string& serverUrl,
                           const UltraNetMailOptions& options,
+                          std::function<void(SyncOutcome)> onDone);
+    // Same, with `prepare` run on the worker first — for work that must not
+    // block the UI thread, such as refreshing an OAuth2 token into
+    // options.credentials. A failed prepare is the outcome; nothing is fetched.
+    using PrepareFn = std::function<UltraNetResult(UltraNetMailOptions& options)>;
+    void SyncInBackground(const std::string& accountId, const std::string& serverUrl,
+                          const UltraNetMailOptions& options, PrepareFn prepare,
                           std::function<void(SyncOutcome)> onDone);
 
 private:

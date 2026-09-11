@@ -62,8 +62,8 @@ std::vector<std::string> Split(const std::string& s) {
     return out;
 }
 
-constexpr float kLabelWidth      = 64.0f;
-constexpr float kAttachRowHeight = 56.0f;   // chip height + strip padding
+constexpr float kLabelWidth      = 56.0f;
+constexpr float kAttachRowHeight = 44.0f;   // chip height + strip padding
 
 } // namespace
 

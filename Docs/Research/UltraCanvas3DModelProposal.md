@@ -44,6 +44,7 @@ this document is where those annotations come from.
 | `StepConverter` | `Plugins/Models/STEP/` | Reads **and writes** ISO 10303-21 (AP203/214/242) into `ModelDocument::Brep` — trimmed NURBS and analytic surfaces with their topology, held exactly rather than tessellated away. The first B-rep converter. See §2.5. |
 | `AlembicConverter` | `Plugins/Models/Alembic/` | Reads the Ogawa container and AbcGeom's `Xform`, `PolyMesh`, `SubD` and `FaceSet` — first time sample only, read-only. No SDK. |
 | `X3DConverter` | `Plugins/Models/X3D/` | Reads X3D in both text encodings — XML (`.x3d`) and Classic VRML (`.x3dv`), which VRML97 (`.wrl`) also writes: the `Transform`/`Group` hierarchy with DEF/USE instancing, `IndexedFaceSet` with its parallel index streams, the Immersive profile's Box/Sphere/Cylinder/Cone, `Appearance`/`Material`/`ImageTexture`, lights, viewpoints, and TimeSensor-plus-interpolator animation through `ROUTE`s. The one reader here split by *encoding* rather than by container — see §2.9. Read-only; VRML 1.0 is refused by name. |
+| `XFileConverter` | `Plugins/Models/XFile/` | Reads Direct3D retained mode's `.x`, text and binary: the Frame hierarchy, n-gon meshes, per-face material lists, Phong materials with a texture name. The one **left-handed** format in the set — see §2.7. Read-only, geometry only. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
 Two observations drive the design:
@@ -79,6 +80,7 @@ This is the list the structure has to be able to hold.
 | **FBX** | full node hierarchy, properties | meshes, per-polygon material mapping, layered elements | Lambert/Phong + textures | skeletons, animation stacks and layers | unit scale factor property |
 | **3DS** | node keyframe hierarchy | meshes, 65 536-vertex limit | fixed-function, 8.3 names | keyframe tracks | none |
 | **X3D / VRML** | grouping + `Transform` nodes | `IndexedFaceSet` | `Appearance`/`Material` | routes and interpolators | metres |
+| **DirectX .x** | `Frame` tree, one 4x4 matrix each | `Mesh` with n-gon `MeshFace`s, `MeshNormals`, `MeshTextureCoords`, `MeshVertexColors` | `MeshMaterialList` + `Material` (faceColor, power, specular, emissive) + `TextureFilename` | `AnimationSet` → `Animation` → `AnimationKey` | none stated; Y-up, **left-handed** |
 | **USD / USDZ** | prim hierarchy with composition | `UsdGeomMesh`, subdivision | `UsdPreviewSurface` | skeletons, time samples | metres per unit, up axis |
 
 ### 2.3 Manufacturing formats
@@ -212,6 +214,14 @@ about whether a modifier had been applied. That is the argument for reading
 what a file says rather than what its format is supposed to mean, and
 `Tests/ModelX3DTest.cpp` asserts the symmetry as deliberately as
 `Tests/ModelColladaTest.cpp` asserts its absence.
+The `.x` export is a fourth witness, and it identifies what the split actually
+tracks. It holds **1995 triangles in two meshes with the hull's X range stopping
+at zero** — which is the `.dae` export's count, mesh division and half-hull
+exactly. So these are not four independent exports that happened to differ:
+they are two groups, and membership is decided by which export path was taken,
+not by what the format is capable of. `Tests/ModelXFileTest.cpp` asserts the
+1995 against the COLLADA suite's own figure, so the two readers cannot drift
+apart without one of them failing.
 
 `.blend` is also self-describing through an embedded SDNA block, which makes
 the *file* readable even though the *model* is not. So the decision is:
@@ -226,6 +236,35 @@ what a converter does, not what its format could hold.
 
 That is more useful than either alternative: a silent failure tells the user
 nothing, and a geometry reader tells them something false.
+
+### 2.7 Handedness — the one thing a format can get wrong invisibly
+
+Every format above is right-handed except one. Direct3D's space is left-handed,
+so an exporter writing `.x` from a right-handed application does two things: it
+puts a **reflection** in the root frame's matrix — determinant −1, not a
+rotation — and it writes each face's indices the other way round. Both are in
+the file, and they cancel.
+
+That matters because each half, seen alone, looks like a bug. The E-45's `.x`
+meshes have *negative* signed volume in their own object space, and their
+winding disagrees with the file's own `MeshNormals` on 93 of 93 and 925 of 937
+faces. A reader that trusted either observation and "corrected" the winding
+would produce a model that is inside out — because through the frame chain the
+volume is positive and the normals agree, on exactly those same faces.
+
+So the rule for this structure is: **carry what the file says, including a
+reflecting node transform, and let world space be where handedness is resolved.**
+`ModelDocument` needs nothing new for it — `Matrix4x4::DecomposeTRS` holds a
+reflection as a negative scale on one axis, which reproduces the matrix exactly.
+
+The check is worth keeping, though, because the cancellation only holds for a
+well-formed export. `XFileConverter` compares each face's winding against the
+file's own stored normals *through the node's world transform* — which costs
+only the sign of that transform's determinant — and reports a file whose faces
+really are inside out rather than loading it in silence. That is the same
+principle as the Alembic reader's winding assertion, reaching the opposite
+conclusion because the file is built the opposite way: Alembic stores no
+compensating reflection, so its faces genuinely must be reversed on import.
 
 ### 2.9 One node set, two encodings — the other axis a reader can split on
 
@@ -288,7 +327,6 @@ arrive at the same world bounds, which is what says the two readers agree. Both
 are symmetric in X, so both had the mirror applied. Two exports of one scene, in
 two encodings of one format, differing in how far down the modifier stack the
 exporter went.
-
 ## 3. What the structure must therefore carry
 
 Reading down the survey, the union of elements is smaller than it looks,
@@ -516,6 +554,17 @@ and once as classic VRML, must give the same meshes, the same faces, the same
 vertices and bounds agreeing to the last bit. A reader with two encodings can
 pass every other test in the file while quietly diverging between them, and
 nothing but this catches it.
+`Tests/ModelXFileTest.cpp` covers the `.x` reader, and is the suite where the
+synthetic half matters most: one text export reaches neither the binary encoding
+nor any of the cases that make the format treacherous. So the binary encoding is
+built byte by byte and asserted to produce the same document as the same scene in
+text — one grammar, two spellings — and the handedness cases are constructed
+directly: a triangle wound against its own normal under an identity frame *must*
+be reported as inside out, and the same triangle under a reflecting frame *must
+not* be, because there the two cancel. Two refusals are pinned as well, both of
+the same shape: a count is never trusted over the bytes present, whether it is a
+`Mesh` claiming a hundred thousand vertices it does not carry or a binary
+`FLOAT_LIST` longer than the file.
 
 `Tests/ModelStepTest.cpp` covers the first B-rep reader in two halves. The Part
 21 grammar is unit-tested on text written inline — doubled quotes, `\X2\`
@@ -596,7 +645,18 @@ Each step is independently mergeable and comes with a test and a demo page.
    change to hold any of it. Read-only, for the same reason COLLADA is: a
    caller wanting to write a scene should write glTF.
 
-3.7. **VRML97 and X3D's Classic VRML encoding — done.** `.wrl`, `.vrml` and
+3.7. **DirectX .x — done.** `Plugins/Models/XFile/` reads it, text and binary,
+   validated against the aircraft's `.x` (`Tests/ModelXFileTest.cpp`, 74
+   assertions). It is split into a container layer and an object layer for the
+   same reason STEP and Alembic are. What it added to this document is §2.7:
+   it is the first left-handed format, and the first where the *right* answer
+   is to change nothing and check instead. Read-only and geometry only —
+   `AnimationSet` is reported rather than read, because an `.x` rotation key is
+   a quaternion in a convention no sample here can verify, and the capability
+   report says `Animations = false` rather than implying otherwise. **Still to
+   do:** the two MSZIP encodings, and animation once a file with some exists.
+
+3.8. **VRML97 and X3D's Classic VRML encoding — done.** `.wrl`, `.vrml` and
    `.x3dv` reach the same reader as `.x3d`, validated against the aircraft's
    `.wrl` (`Tests/ModelX3DTest.cpp`, now 167 assertions across two samples).
    What it added to this document is §2.9: it is the only reader here split by

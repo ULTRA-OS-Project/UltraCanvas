@@ -120,6 +120,16 @@ the backing implementation can be replaced without affecting callers.
     file holds is decided from its first line, not its extension. Read-only;
     VRML 1.0 is a different node set under the same extension and is refused by
     name.
+    **DirectX .x** (`Plugins/Models/XFile/`) is split the same way again: the
+    `xof` container and its two tokenisers, text and binary
+    (`UltraCanvasXFile.h`), under a reader for Direct3D's object set
+    (`UltraCanvasXFileConverter.h`) - Frame, Mesh, MeshNormals,
+    MeshTextureCoords, MeshVertexColors, MeshMaterialList and Material.
+    Read-only and geometry only. It is the framework's one **left-handed**
+    format: the reflection that converts it back sits in the root frame's
+    matrix and the reversed winding cancels against it, so the reader alters
+    neither and instead *checks* the winding against the file's own normals.
+    Consult that header before assuming anything about its handedness.
     Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
     `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
     `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the

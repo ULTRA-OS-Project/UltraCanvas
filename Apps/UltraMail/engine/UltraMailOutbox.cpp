@@ -162,6 +162,14 @@ UltraDbResult OutboxStore::PendingCount(int& out) const {
 
 Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp,
                                  const std::function<std::string(const std::string&)>& credentialFor) {
+    return Flush(smtp, [&credentialFor](const std::string& accountId, UltraNetMailOptions& o) {
+        o.credentials.type     = UltraNetAuthType::Basic;
+        o.credentials.password = credentialFor ? credentialFor(accountId) : std::string();
+        return UltraNetResult::Ok();
+    });
+}
+
+Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp, const OptionsResolver& prepare) {
     FlushStats stats;
     std::vector<OutboxItem> pending;
     if (!store_.ListPending(pending)) return stats;
@@ -169,11 +177,11 @@ Outbox::FlushStats Outbox::Flush(IMailProtocolPlugin& smtp,
     MailSender sender(smtp);
     for (const auto& item : pending) {
         UltraNetMailOptions opts;
-        opts.credentials.username = item.draft.fromAddr;
-        opts.credentials.password = credentialFor ? credentialFor(item.accountId) : std::string();
-        opts.useTls = true;
+        opts.useTls = true;   // the resolver may relax this for a plaintext server
+        UltraNetResult r = prepare ? prepare(item.accountId, opts) : UltraNetResult::Ok();
+        if (opts.credentials.username.empty()) opts.credentials.username = item.draft.fromAddr;
 
-        UltraNetResult r = sender.Send(item.draft, item.serverUrl, opts);
+        if (r) r = sender.Send(item.draft, item.serverUrl, opts);
         if (r) {
             store_.Remove(item.id);
             stats.sent++;

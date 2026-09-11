@@ -152,11 +152,17 @@ public:
 
         curl_easy_setopt(h.get(), CURLOPT_URL, options.serverUrl.c_str());
 
-        if (!options.credentials.username.empty()) {
-            curl_easy_setopt(h.get(), CURLOPT_USERNAME,
-                             options.credentials.username.c_str());
-            curl_easy_setopt(h.get(), CURLOPT_PASSWORD,
-                             options.credentials.password.c_str());
+        const auto& cred = options.credentials;
+        const bool useBearer = !cred.token.empty() &&
+            (cred.type == UltraNetAuthType::OAuth2 || cred.type == UltraNetAuthType::Bearer);
+        if (useBearer) {
+            // XOAUTH2 for Gmail / Microsoft: username + bearer token.
+            if (!cred.username.empty())
+                curl_easy_setopt(h.get(), CURLOPT_USERNAME, cred.username.c_str());
+            curl_easy_setopt(h.get(), CURLOPT_XOAUTH2_BEARER, cred.token.c_str());
+        } else if (!cred.username.empty()) {
+            curl_easy_setopt(h.get(), CURLOPT_USERNAME, cred.username.c_str());
+            curl_easy_setopt(h.get(), CURLOPT_PASSWORD, cred.password.c_str());
         }
         if (options.useTls && !options.implicitTls) {
             // STARTTLS upgrade (smtp://host:587)

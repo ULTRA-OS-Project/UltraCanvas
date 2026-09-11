@@ -1,7 +1,9 @@
 # UltraMail
 
 The ULTRA OS mail application. Full concept and design:
-[`Docs/UltraMail/Concept.md`](../../Docs/UltraMail/Concept.md).
+[`Docs/UltraMail/Concept.md`](../../Docs/UltraMail/Concept.md). How to sign
+in to each email provider (passwords, app passwords, the browser sign-in and
+its OAuth client setup): [`Docs/UltraMail/AccountSetup.md`](../../Docs/UltraMail/AccountSetup.md).
 
 This app versions itself: [`Docs/UltraMail/CHANGELOG.md`](../../Docs/UltraMail/CHANGELOG.md).
 
@@ -21,10 +23,15 @@ and **UltraDatabase** (local store) modules.
 > details** split), the setup wizard (with discovery), the attachment strip →
 > MediaViewer, the contact manager, and the **composer** (New email / Reply,
 > Send through a **persistent outbox**). On startup the app
-> brings up the UltraNet plug-in registry (SMTP/IMAP DSOs load if on the path;
-> `ULTRAMAIL_PLUGIN_DIR` overrides). A **background-sync scheduler** (per-account
-> intervals) drives the SyncService on a UI timer once the IMAP plug-in is
-> present, and the address book **auto-collects** the people you correspond with.
+> brings up the UltraNet plug-in registry: the SMTP/IMAP DSOs are looked for in
+> `Plugins/UltraNet` next to the executable (or up to two levels above it, then
+> the working directory); `ULTRAMAIL_PLUGIN_DIR` overrides. A new account fetches
+> its inbox as soon as its password is in the vault; a **background-sync
+> scheduler** (per-account intervals) then drives the SyncService on a UI timer
+> once the IMAP plug-in is present, and the address book **auto-collects** the
+> people you correspond with. When mail cannot be fetched — no IMAP plug-in, no
+> known server for the address, no stored password, a rejected login — Reload
+> and the first sync say so instead of doing nothing.
 > HTML message bodies are **rendered natively** in the preview through the
 > HTMLReader element builder over the UltraCanvas **CSSLayout** engine (block +
 > inline layout, headings, lists, links, colors — no web view); plain-text
@@ -53,9 +60,13 @@ Apps/UltraMail/
                                   LocalStore: folders, incremental envelopes,
                                   .eml body cache, two-sided flag changes
     UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
-                                  Mozilla-autoconfig XML (over UltraNet HTTP)
-    UltraMailCredentialVault.{h,cpp} per-account secrets out of the config
-                                  (obfuscated file backend; OS-keychain-ready)
+                                  Mozilla-autoconfig XML (over UltraNet HTTP);
+                                  ForAccount (stored settings, else presets)
+    UltraMailCredentialVault.{h,cpp} per-account secrets out of the config:
+                                  a password or an OAuth2 token set, in UltraVault
+    UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail): provider table, app
+                                  registration (env / oauth.ini), sign-in +
+                                  token refresh, credentials for IMAP/SMTP
     UltraMailComposer.{h,cpp}     Draft model + Reply/Forward/New builders
                                   (Re:/Fwd:, quoting, threading headers)
     UltraMailSender.{h,cpp}       send a Draft via the SMTP plug-in
@@ -90,6 +101,10 @@ Apps/UltraMail/
     UltraMailComposeWindow.{h,cpp} compose surface: To/Cc/Subject/Body, attachment
                                   strip, Send / Attach file / Attach cloud link
                                   (UltraCloud picker → share link into the body)
+    UltraMailWaitDialog.{h,cpp}   a step running elsewhere (browser sign-in,
+                                  settings lookup): text + Cancel; closed by the app
+    UltraMailServerSettingsDialog.{h,cpp} manual IMAP/SMTP settings page: host,
+                                  port, security, username; validates in place
   main.cpp                        entry point: init app, open store, show window
   CMakeLists.txt                  UltraMailEngine static library
 ```
@@ -127,11 +142,70 @@ current folder, and the share link lands in the body. Run with
 **Account setup:** the wizard collects name / email / password; on submit,
 `AutoDiscovery` resolves the incoming (IMAP) and outgoing (SMTP) servers from
 the address — instant offline provider presets (Gmail, Outlook, Yahoo, iCloud,
-GMX, web.de, mailbox.org, Posteo, …), falling back to a Mozilla-autoconfig /
-ISPDB lookup over UltraNet HTTP. The password (or OAuth token) is stored in the
+GMX, web.de, mailbox.org, Posteo), then a Mozilla-autoconfig / Thunderbird
+ISPDB lookup over UltraNet HTTP on a worker thread (behind a cancellable wait
+dialog), and finally the **manual server settings page**
+(`UltraMailServerSettingsDialog`: IMAP/SMTP host · port · security, username;
+prefilled with `imap.<domain>` / `smtp.<domain>`). The servers are **stored on
+the account** (`Account::imap/smtp`, schema 2) and every sync and send reads
+them through `AutoDiscovery::ForAccount`, which falls back to the presets for
+accounts stored before. Reload opens the page for an account whose servers
+are unknown. The password (or OAuth token set) is stored in the
 `CredentialVault`, never in the config. Try it: run with
 `ULTRAMAIL_DEMO_ADD=you@gmail.com` to exercise discovery + vault + the result
 dialog.
+
+**OAuth2 sign-in (Gmail, Outlook / Microsoft 365):** Google and Microsoft
+reject the account password over IMAP and SMTP, so those accounts sign in
+through the browser instead: leave the password empty in the wizard and
+UltraMail opens the provider's consent page (OAuth2 authorization code + PKCE
+through UltraNet's OAuth2 client, the redirect caught on an ephemeral loopback
+port, the typed address passed as `login_hint`). The tokens land in the vault;
+every IMAP/SMTP session then uses XOAUTH2 with a fresh bearer token, refreshed
+through the provider when the previous one expired. A typed password still
+works the classic way (an *app password*).
+
+The sign-in runs as an OAuth *client* that the provider must know. Register one
+per provider once and give it to UltraMail through `oauth.ini` in the data
+folder (`~/.local/share/UltraMail/` on Linux, `%APPDATA%\UltraMail\` on
+Windows):
+
+```ini
+[google]
+client_id     = 1234567890-abc.apps.googleusercontent.com
+client_secret = GOCSPX-…
+
+[microsoft]
+client_id     = 00000000-1111-2222-3333-444444444444
+```
+
+or through the environment: `ULTRAMAIL_GOOGLE_CLIENT_ID` /
+`ULTRAMAIL_GOOGLE_CLIENT_SECRET`, `ULTRAMAIL_MICROSOFT_CLIENT_ID` (an optional
+`…_REDIRECT_URI` overrides the provider's default). In code:
+`OAuthApps::Set("google", app)`. Until a client is configured the wizard says
+so and asks for an app password instead.
+
+*Google:* in the [Google Cloud console](https://console.cloud.google.com/)
+create a project, open *APIs & Services → OAuth consent screen* and configure
+it (External; add your own address under *Test users* while the app is in
+testing mode — the `https://mail.google.com/` scope is restricted, so an
+unverified app only serves its test users). Then *Credentials → Create
+credentials → OAuth client ID*, application type **Desktop app**; note the
+client id and secret. The redirect is `http://127.0.0.1:<port>/callback`
+(desktop clients accept any loopback port).
+
+*Microsoft:* in the [Microsoft Entra admin
+center](https://entra.microsoft.com/) open *App registrations → New
+registration*; supported account types **Accounts in any organizational
+directory and personal Microsoft accounts** (for outlook.com / hotmail.com as
+well as Microsoft 365). Under *Authentication* add the platform **Mobile and
+desktop applications** with the redirect URI `http://127.0.0.1` and enable
+**Allow public client flows**; no secret is needed. Under *API permissions*
+add the delegated *Office 365 Exchange Online* permissions
+`IMAP.AccessAsUser.All` and `SMTP.Send` (plus `offline_access`). Note the
+*Application (client) ID*. The redirect is `http://127.0.0.1:<port>/` —
+Microsoft ignores the port of a loopback URI. For a Microsoft 365 tenant the
+admin must leave IMAP and *Authenticated SMTP* enabled for the mailbox.
 
 ## What the engine provides now
 
