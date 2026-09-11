@@ -53,6 +53,46 @@
   Read only, for the reason COLLADA is: a caller wanting to write a scene should
   write glTF. `.wrl` and `.x3dv` are the classic VRML syntax, which this reader
   cannot parse, so they are left unclaimed rather than claimed and then refused.
+- **PLY (.ply) reads and writes.** `Plugins/Models/PLY/` covers all three
+  encodings - ascii, binary_little_endian and binary_big_endian - because a
+  reader that handles only ASCII fails on most scanner output, and one that
+  assumes the host's byte order fails silently rather than loudly.
+- **PLY is the format with no fixed schema**, and that is why it is worth
+  having: a file declares its own elements and properties, so a per-vertex
+  `quality`, `confidence` or `classification` has nowhere to go in OBJ or 3DS
+  but round-trips here as an `AttributeSemantic::Custom` under its own name.
+  That open-ended attribute list is what `ModelDocument` had them for.
+- Positions, normals, texture coordinates (`s`/`t`, `u`/`v` and
+  `texture_u`/`texture_v` all recognised), and vertex colours as either bytes
+  or floats - a uchar 255 becomes 1.0 rather than staying 255. Faces come from
+  `vertex_indices` or the older `vertex_index`, and n-gons are kept rather than
+  triangulated. A file with vertices and no faces arrives as a point cloud
+  rather than an empty mesh.
+- **An element nothing understands is stepped over by exactly its size.** In a
+  binary file a mis-sized skip does not lose one element, it destroys
+  everything after it, so an edge list or a per-face material table is measured
+  precisely even though nothing reads it - and named in a warning rather than
+  passed over in silence.
+- **`NumericPrecision` chooses the type positions are written as, not the digit
+  count.** Compact writes `property float`, which is what almost every PLY
+  carries; Full writes `property double`, which is the only way a document that
+  came from CAD survives the trip. Written as a type so the flag means
+  something in binary too - it previously had no effect there at all, producing
+  byte-identical files either way, which the round-trip test caught.
+- **`Tests/ModelPLYTest.cpp`** works against small headers built inline, where
+  PLY's awkward cases live: both spellings of every type name, all three
+  spellings of a texture coordinate, binary in either byte order (asserted on
+  the extents, since the wrong order yields denormals rather than an error), a
+  skipped element, and a truncated file. Then against
+  `media/models/PLY/E-45-Aircraft.ply` - a fourth export of the same aircraft,
+  32440 quads against the OBJ's 8110, from `E 45 Aircraft_Export_Ready.blend`.
+  It is symmetric about X, so unlike the .dae, .blend and .abc its mirror
+  modifier was applied, and its winding already agrees with the normals it
+  stores (32434 of 32440), so unlike Alembic nothing is reversed.
+- The dispatch's "no converter for this extension" assertion now names an
+  extension no one will ever implement. It had gone stale twice - once when
+  .abc gained a reader and once when .ply did - because it named a format that
+  was only unsupported *yet*.
 
 #### 2026-09-10 *0.8.14*
 - **Alembic (.abc) reads.** `Plugins/Models/Alembic/` is split the same way the

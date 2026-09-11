@@ -666,6 +666,14 @@ Recorded rather than hidden:
   channels — what Blender writes, and what the sample uses — are read.
 - **COLLADA cameras and lights are not read**, though the document has fields
   for both and the sample has neither.
+- **PLY's per-face properties are not read.** Some exporters attach a texture
+  coordinate list or a material index to `element face`; the bytes are stepped
+  over exactly, so nothing after them is lost, but the values are dropped. The
+  per-*vertex* properties, which is where PLY puts almost everything, are all
+  kept.
+- **PLY states neither a unit nor an up axis**, so Y-up is recorded as a
+  convention rather than as something the file said - the same footing as
+  Alembic.
 - **Alembic reads its first time sample only.** An archive holding an animation
   arrives as its first frame. The document has `ModelAnimation` and morph
   targets to carry the rest, and the reader's `FormatCapabilities` says

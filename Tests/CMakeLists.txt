@@ -684,6 +684,39 @@ add_test(
 )
 message(STATUS "    Test registered: ModelStorageTest")
 
+# ===== PLY READER / WRITER TEST =====
+# PLY has no fixed schema, so most of this suite is written against small
+# headers constructed inline, where the awkward cases are: two spellings of
+# every type, three of a texture coordinate, colours as bytes or floats, binary
+# in either byte order, an element nothing understands that must still be
+# stepped over by exactly its size, and a file that stops early. The sample is
+# a fourth export of the E-45 aircraft - 32440 quads against the OBJ's 8110,
+# and the mirror applied unlike the .dae, .blend and .abc.
+message(STATUS "  Building ModelPLYTest...")
+add_executable(ModelPLYTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelPLYTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelPLYTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelPLYTest PRIVATE cxx_std_20)
+set_target_properties(ModelPLYTest PROPERTIES
+    OUTPUT_NAME "ModelPLYTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelPLYTest
+    COMMAND ModelPLYTest "${ULTRACANVAS_ROOT}/media/models"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelPLYTest")
+
 # ===== ALEMBIC READER TEST =====
 # The Ogawa container and AbcGeom, against the same E-45 aircraft the 3DS, OBJ,
 # DXF and COLLADA suites read - exported from the same .blend, and like the
@@ -1012,6 +1045,7 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
