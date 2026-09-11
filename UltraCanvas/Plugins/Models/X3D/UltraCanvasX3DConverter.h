@@ -1,5 +1,5 @@
 // Plugins/Models/X3D/UltraCanvasX3DConverter.h
-// X3D (.x3d) reader for ModelStorage::ModelDocument.
+// X3D (.x3d, .x3dv) and VRML97 (.wrl) reader for ModelStorage::ModelDocument.
 //
 // X3D is the ISO successor to VRML97, and the XML encoding read here is the
 // one every exporter writes. It is a scene format in the same family as
@@ -29,8 +29,10 @@
 // a caller wanting to write a scene should write glTF. Writing X3D would be a
 // second large XML emitter for a format nothing new consumes.
 //
-// The VRML classic encoding (.wrl, .x3dv) is a different syntax for the same
-// node set and is *not* read here - ValidateFile says so rather than pretending.
+// Both of the standard's text encodings are read: the XML one (.x3d) and the
+// Classic VRML one (.x3dv), which VRML97 (.wrl) also writes. They are two
+// spellings of one node set, and which one a file uses is decided from its
+// first line rather than its extension. See UltraCanvasX3DScene.h.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-10
@@ -49,8 +51,12 @@ class X3DConverter : public ImportOnlyConverter {
 public:
     ModelFormat GetFormat() const override { return ModelFormat::X3D; }
     std::string GetFormatName() const override { return "X3D"; }
-    std::string GetFormatVersion() const override { return "3.0 - 4.0 (XML encoding)"; }
-    std::vector<std::string> GetFileExtensions() const override { return {".x3d"}; }
+    std::string GetFormatVersion() const override {
+        return "X3D 3.0 - 4.0 and VRML97, XML and Classic VRML encodings";
+    }
+    std::vector<std::string> GetFileExtensions() const override {
+        return {".x3d", ".x3dv", ".wrl", ".vrml"};
+    }
     std::string GetMimeType() const override { return "model/x3d+xml"; }
     FormatCapabilities GetCapabilities() const override;
 

@@ -80,7 +80,8 @@ endif()
 
 if(MODELS_X3D_ENABLED)
     list(APPEND MODELS_PLUGIN_SOURCES
-        ${CMAKE_CURRENT_SOURCE_DIR}/X3D/UltraCanvasX3DConverter.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/X3D/UltraCanvasX3DConverter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/X3D/UltraCanvasX3DScene.cpp)
 endif()
 
 if(MODELS_BLEND_ENABLED)

@@ -7,12 +7,20 @@
 // mirror modifier applied. Asserting both stops a later change quietly
 // altering either.
 //
+// The classic encoding gets its own section, and its central assertion is the
+// one that says the split was worth making: the *same scene* written as XML and
+// as classic VRML must produce the same document, field for field. Two
+// encodings of one node set is a claim a reader can either honour or quietly
+// break, and only reading both proves which.
+//
 // The synthetic cases cover what one export cannot reach: DEF/USE instancing,
 // the transform composition the spec defines (which is not a TRS triple),
 // per-face colours, reversed winding, the Immersive profile's geometric
 // primitives, and the ROUTE plumbing that is X3D's whole animation model.
 //
-// argv[1] is the .x3d. Without it only the synthetic cases run.
+// The reader takes both of the standard's text encodings, so the suite does
+// too: argv[1] is the .x3d and argv[2] the .wrl. Without them only the
+// synthetic cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-10
@@ -77,10 +85,14 @@ static void TestValidation() {
                   "<!DOCTYPE X3D PUBLIC \"ISO//Web3D//DTD X3D 3.0//EN\" "
                   "\"http://www.web3d.org/specifications/x3d-3.0.dtd\">")),
           "the DOCTYPE alone identifies it");
-    // The classic VRML encoding is the same node set in a different syntax,
-    // and this reader parses XML. Saying no is the honest answer.
-    Check(!converter.ValidateData(Bytes("#VRML V2.0 utf8\nShape { geometry Box {} }")),
-          "the VRML classic encoding is rejected rather than half-read");
+    // The classic encoding is the same node set in a different syntax, and both
+    // are read. Recognition is by content: the mandatory header line names it.
+    Check(converter.ValidateData(Bytes("#VRML V2.0 utf8\nShape { geometry Box {} }")),
+          "the VRML97 classic encoding is accepted");
+    Check(converter.ValidateData(Bytes("#X3D V3.3 utf8\nShape { geometry Box {} }")),
+          "and so is X3D's own classic encoding");
+    Check(!converter.ValidateData(Bytes("# just a shell script\nexit 0\n")),
+          "a file that merely starts with a comment is not");
 
     std::vector<std::string> warnings;
     Check(Read("<X3D><head/></X3D>", &warnings) == nullptr, "an X3D with no <Scene> reads as nothing");
@@ -576,6 +588,339 @@ static void TestHead() {
     }
 }
 
+// ===== THE CLASSIC VRML ENCODING =====
+//
+// X3D has three encodings and this reader takes both text ones. VRML97 writes
+// the same syntax as X3D's classic encoding, one revision earlier, which is why
+// a .wrl and a .x3dv arrive at the same place.
+
+// A classic-encoding document around the caller's body.
+static std::string Classic(const std::string& body, const char* header = "#VRML V2.0 utf8\n") {
+    return std::string(header) + body + "\n";
+}
+
+static void TestClassicEncoding() {
+    std::printf("The classic VRML encoding\n");
+
+    // The assertion this whole layer exists for: one scene, two spellings, one
+    // document. If these ever disagree, the node set has been implemented
+    // twice and one of the copies has drifted.
+    const std::string xml = Scene(
+            "<Transform translation='1 2 3' scale='2 2 2'>"
+            "<Shape><Appearance><Material diffuseColor='1 0 0' transparency='0.25'/></Appearance>"
+            "<IndexedFaceSet coordIndex='0 1 2 -1' solid='false'>"
+            "<Coordinate point='0 0 0 1 0 0 0 1 0'/>"
+            "</IndexedFaceSet></Shape></Transform>");
+    const std::string classic = Classic(
+            "Transform {\n"
+            "  translation 1 2 3\n"
+            "  scale 2 2 2\n"
+            "  children [\n"
+            "    Shape {\n"
+            "      appearance Appearance {\n"
+            "        material Material { diffuseColor 1 0 0  transparency 0.25 }\n"
+            "      }\n"
+            "      geometry IndexedFaceSet {\n"
+            "        coordIndex [ 0, 1, 2, -1 ]\n"
+            "        solid FALSE\n"
+            "        coord Coordinate { point [ 0 0 0, 1 0 0, 0 1 0 ] }\n"
+            "      }\n"
+            "    }\n"
+            "  ]\n"
+            "}");
+
+    auto fromXml = Read(xml);
+    auto fromClassic = Read(classic);
+    Check(fromXml != nullptr && fromClassic != nullptr, "the same scene reads in both encodings");
+    if (!fromXml || !fromClassic) return;
+
+    Check(fromXml->Meshes.size() == fromClassic->Meshes.size() &&
+          fromXml->Nodes.size() == fromClassic->Nodes.size() &&
+          fromXml->Materials.size() == fromClassic->Materials.size(),
+          "and yields the same counts of meshes, nodes and materials");
+    Check(fromXml->TotalFaceCount() == fromClassic->TotalFaceCount() &&
+          fromXml->TotalVertexCount() == fromClassic->TotalVertexCount(),
+          "the same geometry, face for face and vertex for vertex");
+
+    const Bounds3D a = fromXml->ComputeBounds();
+    const Bounds3D b = fromClassic->ComputeBounds();
+    Check(Near(a.Min.x, b.Min.x, 1e-9) && Near(a.Max.x, b.Max.x, 1e-9) &&
+          Near(a.Min.y, b.Min.y, 1e-9) && Near(a.Max.y, b.Max.y, 1e-9) &&
+          Near(a.Min.z, b.Min.z, 1e-9) && Near(a.Max.z, b.Max.z, 1e-9),
+          "and the transform composes identically - the bounds agree to the last bit");
+    Check(!fromClassic->Materials.empty() &&
+          Near(fromClassic->Materials[0].BaseColorFactor.w, 0.75, 1e-6),
+          "transparency 0.25 becomes an alpha of 0.75, as it does in the XML encoding");
+    Check(fromClassic->SourceFormat == "vrml" && fromXml->SourceFormat == "x3d",
+          "the document says which of the two it came from");
+    Check(fromClassic->Metadata.count("x3d.encoding") == 1 &&
+          fromClassic->Metadata.at("x3d.encoding") == "classic-vrml",
+          "and names the encoding rather than leaving a caller to guess");
+
+    // A bare word is a node when a brace follows it and a literal otherwise.
+    // That one token of lookahead is the whole disambiguation, so it gets a
+    // case where both appear in the same node body.
+    auto both = Read(Classic(
+            "Shape {\n"
+            "  geometry IndexedFaceSet {\n"
+            "    solid TRUE\n"
+            "    ccw FALSE\n"
+            "    coordIndex [ 0 1 2 -1 ]\n"
+            "    coord Coordinate { point [ 0 0 0, 1 0 0, 0 1 0 ] }\n"
+            "  }\n"
+            "}"));
+    Check(both != nullptr && both->TotalFaceCount() == 1,
+          "a field whose value is a word and one whose value is a node sit side by side");
+
+    // `ccw FALSE` reverses the winding, which flips the generated normal - the
+    // same check the XML encoding's case makes, and the only way to prove the
+    // bare word reached the reader as a value rather than being taken for the
+    // name of the next field.
+    auto counter = Read(Classic(
+            "Shape { geometry IndexedFaceSet { coordIndex [ 0 1 2 -1 ]\n"
+            "        coord Coordinate { point [ 0 0 0, 1 0 0, 0 1 0 ] } } }"));
+    if (both && counter && !both->Meshes.empty() && !counter->Meshes.empty()) {
+        const Vec3f clockwise = both->Meshes[0].Primitives[0].Normals[0];
+        const Vec3f other = counter->Meshes[0].Primitives[0].Normals[0];
+        Check(Near(clockwise.z, -other.z, 1e-6) && std::fabs(other.z) > 0.9f,
+              "and `ccw FALSE` flips the generated normal, so the word was read as a value");
+    }
+
+    // An empty MFNode is brackets with nothing between them, and must not be
+    // mistaken for an empty *value* list - or for a missing field.
+    std::vector<std::string> warnings;
+    auto empty = Read(Classic("Group { children [ ] }"), &warnings);
+    Check(empty != nullptr && empty->Meshes.empty() && empty->Nodes.size() == 1,
+          "an empty children list gives a group with no children, not a parse error");
+
+    // Comments run to end of line, and commas are whitespace - both inside a
+    // number list, which is where a mistake would corrupt geometry silently.
+    auto commented = Read(Classic(
+            "# a leading comment\n"
+            "Shape {   # and a trailing one\n"
+            "  geometry IndexedFaceSet {\n"
+            "    coordIndex [ 0, 1, 2, -1 ]   # the only face\n"
+            "    coord Coordinate { point [ 0 0 0,\n"
+            "                               1 0 0,   # a comment mid-array\n"
+            "                               0 1 0 ] }\n"
+            "  }\n"
+            "}"));
+    Check(commented != nullptr && commented->TotalFaceCount() == 1 &&
+          commented->TotalVertexCount() == 3,
+          "comments and commas inside a number list are whitespace");
+}
+
+static void TestClassicInstancingAndRoutes() {
+    std::printf("DEF, USE and ROUTE in the classic encoding\n");
+
+    // DEF/USE is a syntax here rather than an attribute, but it means exactly
+    // what it means in XML: one geometry, drawn twice.
+    auto shared = Read(Classic(
+            "Group {\n"
+            "  children [\n"
+            "    Transform { translation 0 0 0 children [ Shape {\n"
+            "      geometry DEF Tri IndexedFaceSet {\n"
+            "        coordIndex [ 0 1 2 -1 ]\n"
+            "        coord Coordinate { point [ 0 0 0, 1 0 0, 0 1 0 ] }\n"
+            "      } } ] }\n"
+            "    Transform { translation 5 0 0 children [ Shape {\n"
+            "      geometry USE Tri\n"
+            "    } ] }\n"
+            "  ]\n"
+            "}"));
+    Check(shared != nullptr, "a DEF'd geometry and a USE of it read");
+    if (shared) {
+        Check(shared->Meshes.size() == 1,
+              "and share one mesh rather than duplicating it - USE is instancing");
+        const Bounds3D bounds = shared->ComputeBounds();
+        Check(Near(bounds.Max.x, 6.0, 1e-6),
+              "with the second instance placed by its own Transform");
+    }
+
+    // A USE that names nothing must be reported, not silently dropped: a
+    // missing instance is a hole in the model a caller needs to hear about.
+    std::vector<std::string> warnings;
+    auto dangling = Read(Classic(
+            "Shape { geometry USE Nothing }\n"
+            "Shape { geometry IndexedFaceSet { coordIndex [ 0 1 2 -1 ]\n"
+            "        coord Coordinate { point [ 0 0 0, 1 0 0, 0 1 0 ] } } }"), &warnings);
+    bool named = false;
+    for (const std::string& w : warnings)
+        if (w.find("Nothing") != std::string::npos) named = true;
+    Check(dangling != nullptr && named, "a USE naming nothing is reported by name");
+
+    // ROUTE is `a.b TO c.d` here and four attributes in XML. Both have to reach
+    // the same channel, or animation works in one encoding only.
+    auto animated = Read(Classic(
+            "DEF Clock TimeSensor { cycleInterval 2.0 loop TRUE }\n"
+            "DEF Path PositionInterpolator {\n"
+            "  key [ 0 1 ]\n"
+            "  keyValue [ 0 0 0, 0 10 0 ]\n"
+            "}\n"
+            "DEF Mover Transform {\n"
+            "  children [ Shape { geometry IndexedFaceSet {\n"
+            "    coordIndex [ 0 1 2 -1 ]\n"
+            "    coord Coordinate { point [ 0 0 0, 1 0 0, 0 1 0 ] } } } ]\n"
+            "}\n"
+            "ROUTE Clock.fraction_changed TO Path.set_fraction\n"
+            "ROUTE Path.value_changed TO Mover.set_translation"));
+    Check(animated != nullptr && animated->Animations.size() == 1,
+          "a TimeSensor, an interpolator and two ROUTEs become one animation");
+    if (animated && animated->Animations.size() == 1) {
+        const ModelAnimation& animation = animated->Animations[0];
+        Check(animation.Channels.size() == 1 &&
+              animation.Channels[0].Path == AnimationPath::Translation,
+              "driving the translation of the Transform the second ROUTE names");
+        Check(!animation.Samplers.empty() && animation.Samplers[0].Times.size() == 2 &&
+              Near(animation.Samplers[0].Times.back(), 2.0, 1e-9),
+              "with the key times scaled by the TimeSensor's cycleInterval");
+    }
+
+    // A prototype is a node type declared in the file. Instantiating one means
+    // running its body, which this reader does not do - so it says so.
+    warnings.clear();
+    auto proto = Read(Classic(
+            "PROTO Widget [ field SFVec3f where 0 0 0 ] {\n"
+            "  Shape { geometry Box { size 1 1 1 } }\n"
+            "}\n"
+            "Shape { geometry IndexedFaceSet { coordIndex [ 0 1 2 -1 ]\n"
+            "        coord Coordinate { point [ 0 0 0, 1 0 0, 0 1 0 ] } } }"), &warnings);
+    bool saidProto = false;
+    for (const std::string& w : warnings)
+        if (w.find("PROTO") != std::string::npos || w.find("prototype") != std::string::npos)
+            saidProto = true;
+    Check(proto != nullptr && proto->TotalFaceCount() == 1,
+          "a PROTO declaration is skipped whole, and the scene after it still reads");
+    Check(saidProto, "and the skip is reported rather than silent");
+}
+
+static void TestClassicStringsAndVersions() {
+    std::printf("Strings and versions in the classic encoding\n");
+
+    // The one escaping rule that matters in practice. An exporter writes a
+    // Windows path into an ImageTexture url, and a reader that treats every
+    // backslash as an escape deletes the separators out of it.
+    auto textured = Read(Classic(
+            "Shape {\n"
+            "  appearance Appearance {\n"
+            "    texture ImageTexture { url [ \"textures\\E-45.jpg\" \"E-45.jpg\" ] }\n"
+            "  }\n"
+            "  geometry IndexedFaceSet { coordIndex [ 0 1 2 -1 ]\n"
+            "    coord Coordinate { point [ 0 0 0, 1 0 0, 0 1 0 ] } }\n"
+            "}"));
+    Check(textured != nullptr && textured->Images.size() == 1,
+          "an ImageTexture url list gives one image");
+    if (textured && textured->Images.size() == 1)
+        Check(textured->Images[0].Uri == "textures\\E-45.jpg",
+              "and its backslashes survive - only a quote or a backslash is escapable");
+
+    // An embedded quote, which *is* escapable, must not end the string.
+    auto quoted = Read(Classic(
+            "WorldInfo { title \"the \\\"E-45\\\" aircraft\" }\n"
+            "Shape { geometry IndexedFaceSet { coordIndex [ 0 1 2 -1 ]\n"
+            "        coord Coordinate { point [ 0 0 0, 1 0 0, 0 1 0 ] } } }"));
+    Check(quoted != nullptr && quoted->Title == "the \"E-45\" aircraft",
+          "an escaped quote stays inside the string it was written in");
+
+    // VRML 1.0 is a different node set under the same file extension -
+    // Separator, Coordinate3, a different IndexedFaceSet. Read as VRML97 it
+    // would come out empty, so it is refused by name instead.
+    std::vector<std::string> warnings;
+    auto old = Read("#VRML V1.0 ascii\nSeparator { Coordinate3 { point [ 0 0 0 ] } }", &warnings);
+    bool saidOne = false;
+    for (const std::string& w : warnings)
+        if (w.find("1.0") != std::string::npos) saidOne = true;
+    Check(old == nullptr && saidOne,
+          "VRML 1.0 is refused by name rather than read as an empty VRML97 scene");
+
+    // A file that never states its encoding is not one of these. The header
+    // line is mandatory in both revisions.
+    warnings.clear();
+    Check(Read("Shape { geometry Box {} }", &warnings) == nullptr,
+          "classic syntax with no header line reads as nothing");
+
+    // Truncation must stop at the end of the buffer, not run past it.
+    warnings.clear();
+    Check(Read(Classic("Shape { geometry IndexedFaceSet { coordIndex [ 0 1 2"), &warnings) ==
+                  nullptr,
+          "a file cut mid-array reads as nothing");
+    Check(!warnings.empty(), "and says the file ends inside a node");
+}
+
+// The same aircraft again, exported through Blender's VRML97 writer. This is
+// the cross-format half: the .wrl and the .x3d are the same model out of the
+// same .blend, so what they agree and disagree on is a fact about the exports
+// rather than about either reader.
+static void TestVrmlSample(const char* path) {
+    std::printf("Sample (VRML97): %s\n", path);
+    X3DConverter converter;
+    std::vector<std::string> warnings;
+    ConversionOptions options;
+    options.WarningCallback = [&warnings](const std::string& w) { warnings.push_back(w); };
+
+    auto doc = converter.Import(path, options);
+    if (!doc) { std::printf("  [FAIL] import returned nothing\n"); ++failures; return; }
+
+    Check(doc->SourceFormat == "vrml" && doc->Up == UpAxis::YUp, "read as Y-up VRML97");
+    Check(doc->Metadata.count("vrml.version") == 1 && doc->Metadata.at("vrml.version") == "2.0",
+          "at the version its header line states");
+    Check(doc->Metadata.count("x3d.encoding") == 1 &&
+          doc->Metadata.at("x3d.encoding") == "classic-vrml",
+          "through the classic encoding, which is what the extension did not say");
+
+    // The VRML exporter writes one Shape with the transform chain already
+    // applied to the coordinates, where the X3D exporter writes a four-deep
+    // Transform chain and leaves them in local space. Same model, and the
+    // reader has to arrive at the same place from both.
+    Check(doc->Meshes.size() == 1 && doc->Nodes.size() == 1,
+          "one shape under one node - this exporter bakes the chain the .x3d writes out");
+
+    Check(doc->TotalFaceCount() == 64880, "64880 faces");
+    bool allTriangles = true;
+    for (const ModelMesh& mesh : doc->Meshes)
+        for (const MeshPrimitive& prim : mesh.Primitives)
+            for (size_t f = 0; f < prim.FaceCount(); ++f)
+                if (prim.Face(f).size() != 3) allTriangles = false;
+    Check(allTriangles, "every one of them a triangle, where the .x3d holds quads");
+
+    // 64880 is 8 * 8110 exactly: the .x3d's 8110 quads, subdivided one further
+    // level into four quads each and then split into two triangles apiece. The
+    // two exporters ran the modifier stack to different depths.
+    Check(doc->TotalFaceCount() == 8110 * 8,
+          "which is exactly eight times the .x3d's 8110 - one more subdivision, then triangulated");
+
+    // Per-corner texture indices split every corner into its own vertex, the
+    // same way they do in the .x3d export.
+    Check(doc->TotalVertexCount() == 194640,
+          "and its per-corner texture indices split every corner into its own vertex");
+
+    Check(doc->Materials.size() == 1 && doc->Images.size() == 1,
+          "one material and the texture it names");
+    Check(!doc->Images.empty() && doc->Images[0].Uri == "textures\\E-45 _col.jpg",
+          "whose url keeps the backslashes of the path the exporter wrote");
+
+    bool vertexColors = false, texCoords = false;
+    for (const ModelMesh& mesh : doc->Meshes)
+        for (const MeshPrimitive& prim : mesh.Primitives) {
+            if (prim.FindAttribute(AttributeSemantic::Color, 0)) vertexColors = true;
+            if (prim.FindAttribute(AttributeSemantic::TexCoord, 0)) texCoords = true;
+        }
+    Check(vertexColors && texCoords, "with both the colour and the texture coordinate stream");
+
+    const Bounds3D bounds = doc->ComputeBounds();
+    Check(Near(bounds.Min.x, -0.9732, 1e-3) && Near(bounds.Max.x, 0.9732, 1e-3) &&
+          Near(bounds.Min.y, -1.3447, 1e-3) && Near(bounds.Max.y, 2.8458, 1e-3) &&
+          Near(bounds.Min.z, -3.2033, 1e-3) && Near(bounds.Max.z, 2.9306, 1e-3),
+          "world bounds match an independent walk of the file");
+
+    // The same three axes as the .x3d, to a few thousandths - which is what
+    // says the baked coordinates and the Transform chain describe one model.
+    Check(Near(bounds.Min.x, -bounds.Max.x, 1e-6),
+          "symmetric in X: this export had its mirror modifier applied, as the .x3d did");
+
+    Check(warnings.empty(), "and the whole file reads without a single warning");
+}
+
 static void TestSample(const char* path) {
     std::printf("Sample: %s\n", path);
     X3DConverter converter;
@@ -669,8 +1014,13 @@ int main(int argc, char** argv) {
     TestAnimation();
     TestLightsAndViewpoints();
     TestHead();
+    TestClassicEncoding();
+    TestClassicInstancingAndRoutes();
+    TestClassicStringsAndVersions();
     if (argc > 1) TestSample(argv[1]);
     else std::printf("Sample: skipped (pass an .x3d path to run it)\n");
+    if (argc > 2) TestVrmlSample(argv[2]);
+    else std::printf("Sample (VRML97): skipped (pass a .wrl path to run it)\n");
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
                 failures, failures == 1 ? "" : "s");

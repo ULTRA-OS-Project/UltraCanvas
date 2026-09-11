@@ -178,6 +178,21 @@ static void TestSamples(const std::string& mediaRoot) {
                                           [](const Sample& s) { return s.ImportsGeometry; });
     Check(loaded == expected, "every geometry format in this build loaded");
 
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    // X3D is one node set in two text encodings, and dispatch is by extension,
+    // so only a load proves the second one arrives anywhere. The table above
+    // covers the XML encoding; this covers the classic VRML one, which reaches
+    // the same reader under a different extension entirely.
+    {
+        const std::filesystem::path vrml = std::filesystem::path(mediaRoot) /
+                                           "VRML/E-45-Aircraft.wrl";
+        ConversionOptions quiet;
+        auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(vrml.string(), quiet);
+        Check(document != nullptr && !document->Empty(),
+              "and .wrl loads its classic VRML encoding through the same call as .x3d's XML");
+    }
+#endif
+
     // A B-rep format holds no triangles until something asks, so it needs its
     // own check: the dispatch has to give back a document that is not empty
     // even though it has no mesh in it.

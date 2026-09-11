@@ -43,7 +43,7 @@ this document is where those annotations come from.
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
 | `StepConverter` | `Plugins/Models/STEP/` | Reads **and writes** ISO 10303-21 (AP203/214/242) into `ModelDocument::Brep` — trimmed NURBS and analytic surfaces with their topology, held exactly rather than tessellated away. The first B-rep converter. See §2.5. |
 | `AlembicConverter` | `Plugins/Models/Alembic/` | Reads the Ogawa container and AbcGeom's `Xform`, `PolyMesh`, `SubD` and `FaceSet` — first time sample only, read-only. No SDK. |
-| `X3DConverter` | `Plugins/Models/X3D/` | Reads X3D's XML encoding: the `Transform`/`Group` hierarchy with DEF/USE instancing, `IndexedFaceSet` with its parallel index streams, the Immersive profile's Box/Sphere/Cylinder/Cone, `Appearance`/`Material`/`ImageTexture`, lights, viewpoints, and TimeSensor-plus-interpolator animation through `ROUTE`s. Read-only; the VRML classic encoding is a different syntax and is refused rather than half-read. |
+| `X3DConverter` | `Plugins/Models/X3D/` | Reads X3D in both text encodings — XML (`.x3d`) and Classic VRML (`.x3dv`), which VRML97 (`.wrl`) also writes: the `Transform`/`Group` hierarchy with DEF/USE instancing, `IndexedFaceSet` with its parallel index streams, the Immersive profile's Box/Sphere/Cylinder/Cone, `Appearance`/`Material`/`ImageTexture`, lights, viewpoints, and TimeSensor-plus-interpolator animation through `ROUTE`s. The one reader here split by *encoding* rather than by container — see §2.9. Read-only; VRML 1.0 is refused by name. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
 Two observations drive the design:
@@ -226,6 +226,68 @@ what a converter does, not what its format could hold.
 
 That is more useful than either alternative: a silent failure tells the user
 nothing, and a geometry reader tells them something false.
+
+### 2.9 One node set, two encodings — the other axis a reader can split on
+
+Every split so far in this document has been between a *container* and its
+*semantics*: Ogawa under AbcGeom, Part 21 under AP203, the FBX record tree under
+Autodesk's object set. X3D needs a different cut, and it is worth recording
+because the reasoning does not generalise from the others.
+
+X3D is one node set with several encodings. The XML one is `.x3d`; the Classic
+VRML one is `.x3dv`; and VRML97, which is that same classic syntax one revision
+earlier, is `.wrl`. These are the same three nodes with the same two fields:
+
+```
+<Transform translation='0 1 0'>          Transform {
+  <Shape><Box size='2 2 2'/></Shape>       translation 0 1 0
+</Transform>                               children [ Shape {
+                                             geometry Box { size 2 2 2 } } ]
+                                         }
+```
+
+So the layer boundary is not container-versus-meaning; it is *syntax* versus
+*node set*. `UltraCanvasX3DScene.h` is a tree of typed nodes — a type name,
+named field text, children — and each encoding has a reader that produces it.
+Everything above that is written once. The alternative was two copies of
+`IndexedFaceSet`'s corner resolution, of the `T · C · R · SR · S · -SR · -C`
+composition, of DEF/USE, and of the ROUTE plumbing, one of which would
+eventually have drifted from the other. The suite asserts the equivalence
+directly: the same scene in both encodings must produce the same document, with
+bounds agreeing to the last bit.
+
+Two details had to be decided rather than read, and both are the kind of thing
+that looks like a detail and is not:
+
+- **A field's value can be a node or a literal, and both start with a bare
+  word.** `appearance Appearance { ... }` against `solid TRUE`. One token of
+  lookahead settles it — a word followed by `{` opens a node, `DEF` and `USE`
+  always do, everything else is a literal — and the same test after `[` says
+  whether brackets hold nodes or numbers. That is what lets the parser stay
+  ignorant of which fields are MFNode; a parser that had to know would have to
+  be taught every node type in the standard before it could read one.
+- **A single string renders unquoted and a list renders quoted**, because that
+  is exactly what the XML encoding stores in an attribute. Get it wrong and
+  every SFString field arrives with its quotes still attached, which is visible
+  only in whichever field a test happens to check.
+
+The encoding is decided from the file's first line rather than its extension,
+which is not pedantry: both revisions make a header line mandatory, and it is
+the only thing that distinguishes VRML 1.0 — `Separator`, `Coordinate3`, a
+different `IndexedFaceSet` — from VRML97 under the same `.wrl`. Read as VRML97,
+a VRML 1.0 file produces an empty scene rather than an error, so it is refused
+by name instead.
+
+The two exports also add a row to §2.6's table, and this one is about the
+exporters rather than the formats. The `.wrl` holds **64880 triangles, exactly
+eight times the `.x3d`'s 8110 quads**: Blender's VRML writer ran the
+subdivision modifier one level further than its X3D writer did and then
+triangulated. It also bakes the transform chain into the coordinates, writing
+one `Shape` where the `.x3d` writes a four-deep `Transform` chain — and both
+arrive at the same world bounds, which is what says the two readers agree. Both
+are symmetric in X, so both had the mirror applied. Two exports of one scene, in
+two encodings of one format, differing in how far down the modifier stack the
+exporter went.
 
 ## 3. What the structure must therefore carry
 
@@ -446,6 +508,15 @@ by the one property a winding mistake always breaks: every face normal must
 point away from the centre. The sample half is the cross-format assertion in
 §2.6.
 
+Since the reader took the classic encoding as well, that suite gained the
+assertion §2.9 is about, and it is a different *kind* of assertion from the
+rest of this document: not that a reader produces the right answer, but that
+two paths through it produce the *same* answer. One scene, written once as XML
+and once as classic VRML, must give the same meshes, the same faces, the same
+vertices and bounds agreeing to the last bit. A reader with two encodings can
+pass every other test in the file while quietly diverging between them, and
+nothing but this catches it.
+
 `Tests/ModelStepTest.cpp` covers the first B-rep reader in two halves. The Part
 21 grammar is unit-tested on text written inline — doubled quotes, `\X2\`
 escapes, comments between any two tokens, `$` and `*`, out-of-order ids, a
@@ -523,9 +594,17 @@ Each step is independently mergeable and comes with a test and a demo page.
    else; and animation as ROUTE plumbing, where the keyframes belong to a node
    that has no idea which node it drives. Nothing in the structure had to
    change to hold any of it. Read-only, for the same reason COLLADA is: a
-   caller wanting to write a scene should write glTF. The VRML classic
-   encoding (`.wrl`, `.x3dv`) is the same node set in a different syntax and is
-   deliberately not claimed.
+   caller wanting to write a scene should write glTF.
+
+3.7. **VRML97 and X3D's Classic VRML encoding — done.** `.wrl`, `.vrml` and
+   `.x3dv` reach the same reader as `.x3d`, validated against the aircraft's
+   `.wrl` (`Tests/ModelX3DTest.cpp`, now 167 assertions across two samples).
+   What it added to this document is §2.9: it is the only reader here split by
+   *encoding* rather than by container, because X3D is one node set with more
+   than one syntax, and reading the second one twice would have meant two
+   copies of everything above the parser. The fix for the MFString escaping bug
+   it exposed applies to the XML encoding too. VRML 1.0 shares the extension
+   and nothing else, and is refused by name.
 
 4. **glTF 2.0 / GLB.** The interchange target: scene graph, PBR materials,
    skins, animation, morph targets. Once this reads and writes, UltraCanvas can

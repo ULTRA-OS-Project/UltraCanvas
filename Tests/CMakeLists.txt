@@ -963,6 +963,7 @@ if(TEST_TINYXML2_FOUND)
     add_executable(ModelX3DTest
         ${CMAKE_CURRENT_SOURCE_DIR}/ModelX3DTest.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DScene.cpp
         ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
         ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
         ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
@@ -1066,7 +1067,8 @@ endif()
 if(DISPATCH_TINYXML2_FOUND)
     list(APPEND MODEL_DISPATCH_SOURCES
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp
-        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp)
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DScene.cpp)
     list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_COLLADA_CONVERTER=1
                                        ULTRACANVAS_HAS_X3D_CONVERTER=1)
     list(APPEND MODEL_DISPATCH_INCLUDES ${DISPATCH_TINYXML2_INCLUDE_DIRS})

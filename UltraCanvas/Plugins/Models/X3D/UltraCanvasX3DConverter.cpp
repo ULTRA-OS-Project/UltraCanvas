@@ -34,6 +34,8 @@
 
 #include "Models/X3D/UltraCanvasX3DConverter.h"
 
+#include "Models/X3D/UltraCanvasX3DScene.h"
+
 #include "tinyxml2.h"
 
 #include <algorithm>
@@ -52,8 +54,12 @@ namespace UltraCanvas {
 namespace ModelConverter {
 
 using namespace ModelStorage;
-using tinyxml2::XMLDocument;
-using tinyxml2::XMLElement;
+
+// One node of the scene, whichever encoding it was read from. This reader was
+// written against tinyxml2's element and now reads X3D::Node, which carries
+// the same three things it ever used: a type name, named field text, and
+// children. See UltraCanvasX3DScene.h for why that indirection exists.
+using Element = X3D::Node;
 
 namespace {
 
@@ -67,12 +73,12 @@ constexpr double kPi = 3.14159265358979323846;
 // every numeric parser here treats a comma as whitespace and reads a flat run
 // of numbers. The field's own arity then says how to group them.
 
-const char* Attribute(const XMLElement* element, const char* name) {
+const char* Attribute(const Element* element, const char* name) {
     const char* value = element ? element->Attribute(name) : nullptr;
     return value ? value : "";
 }
 
-bool HasAttribute(const XMLElement* element, const char* name) {
+bool HasAttribute(const Element* element, const char* name) {
     return element && element->Attribute(name) != nullptr;
 }
 
@@ -88,14 +94,14 @@ std::vector<double> ParseNumbers(const char* text) {
     return values;
 }
 
-std::vector<double> ParseNumbers(const XMLElement* element, const char* name) {
+std::vector<double> ParseNumbers(const Element* element, const char* name) {
     return ParseNumbers(element ? element->Attribute(name) : nullptr);
 }
 
 // MFInt32. Read as long long first: an index stream is the one field where a
 // value out of int range means a corrupt file rather than a big number, and
 // clamping it quietly would index memory that is not there.
-std::vector<int> ParseIndices(const XMLElement* element, const char* name) {
+std::vector<int> ParseIndices(const Element* element, const char* name) {
     std::vector<int> values;
     const char* text = element ? element->Attribute(name) : nullptr;
     if (!text) return values;
@@ -111,7 +117,7 @@ std::vector<int> ParseIndices(const XMLElement* element, const char* name) {
     return values;
 }
 
-bool ParseBool(const XMLElement* element, const char* name, bool fallback) {
+bool ParseBool(const Element* element, const char* name, bool fallback) {
     const char* text = element ? element->Attribute(name) : nullptr;
     if (!text) return fallback;
     std::string value(text);
@@ -121,18 +127,18 @@ bool ParseBool(const XMLElement* element, const char* name, bool fallback) {
     return fallback;
 }
 
-double ParseScalar(const XMLElement* element, const char* name, double fallback) {
+double ParseScalar(const Element* element, const char* name, double fallback) {
     const std::vector<double> values = ParseNumbers(element, name);
     return values.empty() ? fallback : values[0];
 }
 
-Vec3d ParseVec3(const XMLElement* element, const char* name, const Vec3d& fallback) {
+Vec3d ParseVec3(const Element* element, const char* name, const Vec3d& fallback) {
     const std::vector<double> values = ParseNumbers(element, name);
     if (values.size() < 3) return fallback;
     return Vec3d(values[0], values[1], values[2]);
 }
 
-Vec3f ParseColor(const XMLElement* element, const char* name, const Vec3f& fallback) {
+Vec3f ParseColor(const Element* element, const char* name, const Vec3f& fallback) {
     const std::vector<double> values = ParseNumbers(element, name);
     if (values.size() < 3) return fallback;
     return Vec3f(static_cast<float>(values[0]), static_cast<float>(values[1]),
@@ -141,7 +147,7 @@ Vec3f ParseColor(const XMLElement* element, const char* name, const Vec3f& fallb
 
 // SFRotation: an axis and an angle in radians. A zero-length axis or a zero
 // angle is the identity, which files write constantly ("0 0 0 0").
-Quatd ParseRotation(const XMLElement* element, const char* name) {
+Quatd ParseRotation(const Element* element, const char* name) {
     const std::vector<double> values = ParseNumbers(element, name);
     if (values.size() < 4) return Quatd::Identity();
     const Vec3d axis(values[0], values[1], values[2]);
@@ -152,7 +158,7 @@ Quatd ParseRotation(const XMLElement* element, const char* name) {
 // MFString: a run of quoted strings, single or double quoted, with the other
 // kind of quote usable inside. Anything unquoted is taken as one whole string,
 // which is what an SFString attribute looks like.
-std::vector<std::string> ParseStrings(const XMLElement* element, const char* name) {
+std::vector<std::string> ParseStrings(const Element* element, const char* name) {
     std::vector<std::string> items;
     const char* text = element ? element->Attribute(name) : nullptr;
     if (!text) return items;
@@ -169,8 +175,13 @@ std::vector<std::string> ParseStrings(const XMLElement* element, const char* nam
             const char quote = value[cursor++];
             std::string item;
             while (cursor < value.size() && value[cursor] != quote) {
-                // X3D escapes an embedded quote with a backslash.
-                if (value[cursor] == '\\' && cursor + 1 < value.size()) ++cursor;
+                // X3D escapes an embedded quote with a backslash - and only a
+                // quote or another backslash. Skipping the backslash before
+                // anything else would delete the separators from the Windows
+                // path an exporter writes into an ImageTexture url.
+                if (value[cursor] == '\\' && cursor + 1 < value.size() &&
+                    (value[cursor + 1] == quote || value[cursor + 1] == '\\'))
+                    ++cursor;
                 item.push_back(value[cursor++]);
             }
             if (cursor < value.size()) ++cursor;
@@ -236,40 +247,78 @@ struct GeometryStreams {
     }
 };
 
+// A node's children as pointers. The walk below was written against an XML
+// tree of pointers and reads the same over this one; the alternative is taking
+// the address of a loop reference at eleven call sites.
+class ChildRange {
+public:
+    explicit ChildRange(const Element* node) : node_(node) {}
+
+    class Iterator {
+    public:
+        explicit Iterator(const Element* at) : at_(at) {}
+        const Element* operator*() const { return at_; }
+        Iterator& operator++() { ++at_; return *this; }
+        bool operator!=(const Iterator& other) const { return at_ != other.at_; }
+
+    private:
+        const Element* at_;
+    };
+
+    Iterator begin() const {
+        return Iterator(node_ && !node_->Children.empty() ? node_->Children.data() : nullptr);
+    }
+    Iterator end() const {
+        return Iterator(node_ && !node_->Children.empty()
+                                ? node_->Children.data() + node_->Children.size()
+                                : nullptr);
+    }
+
+private:
+    const Element* node_;
+};
+
+ChildRange ChildrenOf(const Element* node) { return ChildRange(node); }
+
+// The first child of that type, for the encodings' fixed structural nodes.
+const Element* FirstOfType(const Element* node, const char* type) {
+    return node ? node->Find(type) : nullptr;
+}
+
 // ===== READER =====
 
 class Reader {
 public:
     explicit Reader(const ConversionOptions& options) : options_(options) {}
 
-    std::shared_ptr<ModelDocument> Run(XMLDocument& xml) {
-        const XMLElement* root = xml.RootElement();
-        if (!root) {
-            options_.Warn("X3D: the file has no root element");
-            return nullptr;
-        }
-        if (std::strcmp(root->Name(), "X3D") != 0) {
-            options_.Warn(std::string("X3D: the root element is <") + root->Name() +
-                          ">, not <X3D>");
+    std::shared_ptr<ModelDocument> Run(const X3D::Scene& scene) {
+        const Element* root = &scene.Root;
+        if (root->Name != "X3D") {
+            options_.Warn("X3D: the root element is <" + root->Name + ">, not <X3D>");
             return nullptr;
         }
 
         document_ = std::make_shared<ModelDocument>();
-        document_->SourceFormat = "x3d";
+        // The two encodings are one format, and a caller that has to tell them
+        // apart is doing the reader's job. Which one this was is metadata.
+        document_->SourceFormat = scene.Vrml97 ? "vrml" : "x3d";
+        document_->Metadata["x3d.encoding"] =
+                scene.How == X3D::Encoding::ClassicVrml ? "classic-vrml" : "xml";
         // X3D is right-handed and Y-up by definition; there is no field that
         // could say otherwise, which is why UpAxis is reported false in the
         // capabilities even though the value below is certain.
         document_->Up = UpAxis::YUp;
         document_->Chirality = Handedness::RightHanded;
-        if (HasAttribute(root, "version"))
-            document_->Metadata["x3d.version"] = Attribute(root, "version");
-        if (HasAttribute(root, "profile"))
+        if (HasAttribute(root, "version") && *Attribute(root, "version"))
+            document_->Metadata[scene.Vrml97 ? "vrml.version" : "x3d.version"] =
+                    Attribute(root, "version");
+        if (HasAttribute(root, "profile") && *Attribute(root, "profile"))
             document_->Metadata["x3d.profile"] = Attribute(root, "profile");
 
-        ReadHead(root->FirstChildElement("head"));
+        ReadHead(FirstOfType(root, "head"));
 
-        const XMLElement* scene = root->FirstChildElement("Scene");
-        if (!scene) {
+        const Element* sceneNode = FirstOfType(root, "Scene");
+        if (!sceneNode) {
             options_.Warn("X3D: no <Scene>; there is nothing to read");
             return nullptr;
         }
@@ -277,13 +326,12 @@ public:
         // Every DEF in the file, before anything is read. The spec requires a
         // DEF to precede its USE, but collecting up front costs one pass and
         // makes a file that breaks that rule read correctly anyway.
-        CollectDefinitions(scene);
+        CollectDefinitions(sceneNode);
 
-        for (const XMLElement* child = scene->FirstChildElement(); child;
-             child = child->NextSiblingElement())
+        for (const Element* child : ChildrenOf(sceneNode))
             ReadChild(child, -1);
 
-        ReadRoutes(scene);
+        ReadRoutes(sceneNode);
 
         if (document_->Meshes.empty() && document_->Nodes.empty()) {
             options_.Warn("X3D: no geometry found");
@@ -296,9 +344,8 @@ public:
 private:
     // ===== DEF / USE =====
 
-    void CollectDefinitions(const XMLElement* element) {
-        for (const XMLElement* child = element->FirstChildElement(); child;
-             child = child->NextSiblingElement()) {
+    void CollectDefinitions(const Element* element) {
+        for (const Element* child : ChildrenOf(element)) {
             const char* def = child->Attribute("DEF");
             // First DEF of a name wins, which is what a browser does: a later
             // duplicate is a file error, not a redefinition.
@@ -314,7 +361,7 @@ private:
     // it goes out of scope, so the many early returns below cannot leak it.
     class Resolved {
     public:
-        Resolved(Reader& reader, const XMLElement* element) : reader_(reader) {
+        Resolved(Reader& reader, const Element* element) : reader_(reader) {
             if (!element) return;
             const char* use = element->Attribute("USE");
             if (!use || !*use) { target_ = element; return; }
@@ -341,18 +388,18 @@ private:
         Resolved(const Resolved&) = delete;
         Resolved& operator=(const Resolved&) = delete;
 
-        const XMLElement* Get() const { return target_; }
+        const Element* Get() const { return target_; }
         explicit operator bool() const { return target_ != nullptr; }
-        const XMLElement* operator->() const { return target_; }
+        const Element* operator->() const { return target_; }
 
     private:
         Reader& reader_;
-        const XMLElement* target_ = nullptr;
-        const XMLElement* guarded_ = nullptr;
+        const Element* target_ = nullptr;
+        const Element* guarded_ = nullptr;
     };
     friend class Resolved;
 
-    static std::string DefName(const XMLElement* element) {
+    static std::string DefName(const Element* element) {
         const char* def = element ? element->Attribute("DEF") : nullptr;
         if (def && *def) return def;
         const char* use = element ? element->Attribute("USE") : nullptr;
@@ -361,11 +408,11 @@ private:
 
     // ===== HEAD =====
 
-    void ReadHead(const XMLElement* head) {
+    void ReadHead(const Element* head) {
         if (!head) return;
 
-        for (const XMLElement* meta = head->FirstChildElement("meta"); meta;
-             meta = meta->NextSiblingElement("meta")) {
+        for (const Element* meta : ChildrenOf(head)) {
+            if (meta->Name != "meta") continue;
             const std::string name = Attribute(meta, "name");
             const std::string content = Attribute(meta, "content");
             if (name.empty() || content.empty()) continue;
@@ -382,8 +429,8 @@ private:
         // what UnitScaleToMeters means. Without it X3D is metres by
         // definition, so that is what a file that says nothing gets.
         bool statedUnit = false;
-        for (const XMLElement* unit = head->FirstChildElement("unit"); unit;
-             unit = unit->NextSiblingElement("unit")) {
+        for (const Element* unit : ChildrenOf(head)) {
+            if (unit->Name != "unit") continue;
             if (std::string(Attribute(unit, "category")) != "length") continue;
             const double factor = ParseScalar(unit, "conversionFactor", 0.0);
             if (factor <= 0.0) continue;
@@ -417,11 +464,11 @@ private:
 
     // ===== SCENE WALK =====
 
-    void ReadChild(const XMLElement* element, int parent) {
+    void ReadChild(const Element* element, int parent) {
         Resolved resolved(*this, element);
         if (!resolved) return;
-        const XMLElement* node = resolved.Get();
-        const std::string kind = node->Name();
+        const Element* node = resolved.Get();
+        const std::string kind = node->Name;
 
         if (kind == "Transform") {
             ReadTransform(node, parent);
@@ -481,16 +528,15 @@ private:
         return ignorable.count(kind) != 0;
     }
 
-    int MakeNode(const XMLElement* element, int parent) {
+    int MakeNode(const Element* element, int parent) {
         ModelNode node;
         node.Name = DefName(element);
-        if (node.Name.empty()) node.Name = element->Name();
+        if (node.Name.empty()) node.Name = element->Name;
         return AddNamedNode(std::move(node), element, parent);
     }
 
-    void ReadGroupChildren(const XMLElement* element, int parent) {
-        for (const XMLElement* child = element->FirstChildElement(); child;
-             child = child->NextSiblingElement())
+    void ReadGroupChildren(const Element* element, int parent) {
+        for (const Element* child : ChildrenOf(element))
             ReadChild(child, parent);
     }
 
@@ -501,7 +547,7 @@ private:
     // decomposed: the common case (both unset) decomposes back to exactly the
     // fields that were written, and the uncommon case keeps its meaning
     // instead of being silently discarded.
-    void ReadTransform(const XMLElement* element, int parent) {
+    void ReadTransform(const Element* element, int parent) {
         const Vec3d translation = ParseVec3(element, "translation", Vec3d(0.0, 0.0, 0.0));
         const Vec3d scale = ParseVec3(element, "scale", Vec3d(1.0, 1.0, 1.0));
         const Vec3d center = ParseVec3(element, "center", Vec3d(0.0, 0.0, 0.0));
@@ -551,7 +597,7 @@ private:
     }
 
     // whichChoice indexes the *children*, and -1 (the default) draws none.
-    void ReadSwitch(const XMLElement* element, int parent) {
+    void ReadSwitch(const Element* element, int parent) {
         const int choice = static_cast<int>(ParseScalar(element, "whichChoice", -1.0));
         if (choice < 0) {
             WarnOnce("switch", "X3D: a <Switch> has whichChoice = -1; none of its children "
@@ -559,9 +605,8 @@ private:
             return;
         }
         int position = 0;
-        for (const XMLElement* child = element->FirstChildElement(); child;
-             child = child->NextSiblingElement()) {
-            if (IsIgnorableNode(child->Name())) continue;
+        for (const Element* child : ChildrenOf(element)) {
+            if (IsIgnorableNode(child->Name)) continue;
             if (position++ != choice) continue;
             ReadChild(child, parent);
             return;
@@ -572,10 +617,9 @@ private:
 
     // The highest-detail level is the first child. A document has no LOD
     // concept, so the alternatives are dropped rather than all drawn at once.
-    void ReadLOD(const XMLElement* element, int parent) {
-        for (const XMLElement* child = element->FirstChildElement(); child;
-             child = child->NextSiblingElement()) {
-            if (IsIgnorableNode(child->Name())) continue;
+    void ReadLOD(const Element* element, int parent) {
+        for (const Element* child : ChildrenOf(element)) {
+            if (IsIgnorableNode(child->Name)) continue;
             WarnOnce("lod", "X3D: <LOD> is read at its first (highest-detail) level; "
                             "the lower ones are dropped");
             ReadChild(child, parent);
@@ -583,7 +627,7 @@ private:
         }
     }
 
-    void ReadWorldInfo(const XMLElement* element) {
+    void ReadWorldInfo(const Element* element) {
         const char* title = element->Attribute("title");
         if (title && *title && document_->Title.empty()) document_->Title = title;
         const std::vector<std::string> info = ParseStrings(element, "info");
@@ -595,7 +639,7 @@ private:
     // document - but it is the scene's stated backdrop, and a viewer that
     // wants to reproduce the file needs it. Kept as metadata rather than
     // dropped.
-    void ReadBackground(const XMLElement* element) {
+    void ReadBackground(const Element* element) {
         for (const char* field : {"skyColor", "groundColor", "skyAngle", "groundAngle"})
             if (HasAttribute(element, field))
                 document_->Metadata[std::string("x3d.background.") + field] =
@@ -617,7 +661,7 @@ private:
     // the appearance, because that is where X3D puts it. It is part of the
     // cache key: the same Appearance used by a solid and a non-solid geometry
     // is two materials in the document, which is the only way to keep both.
-    int ReadAppearance(const XMLElement* appearanceElement, bool doubleSided) {
+    int ReadAppearance(const Element* appearanceElement, bool doubleSided) {
         Resolved appearance(*this, appearanceElement);
         if (!appearance) return -1;
 
@@ -635,11 +679,10 @@ private:
         float opacity = 1.0f;
         bool sawMaterial = false;
 
-        for (const XMLElement* child = appearance->FirstChildElement(); child;
-             child = child->NextSiblingElement()) {
+        for (const Element* child : ChildrenOf(appearance.Get())) {
             Resolved node(*this, child);
             if (!node) continue;
-            const std::string kind = node->Name();
+            const std::string kind = node->Name;
 
             if (kind == "Material" || kind == "TwoSidedMaterial") {
                 sawMaterial = true;
@@ -661,15 +704,14 @@ private:
                 // hold; the rest are a blending stack it has no field for.
                 WarnOnce("multiTexture",
                          "X3D: <" + kind + "> - only the first texture layer is read");
-                for (const XMLElement* layer = node->FirstChildElement(); layer;
-                     layer = layer->NextSiblingElement()) {
+                for (const Element* layer : ChildrenOf(node.Get())) {
                     Resolved inner(*this, layer);
                     if (!inner) continue;
-                    if (std::string(inner->Name()) == "ImageTexture") {
+                    if (inner->Name == "ImageTexture") {
                         phong.DiffuseTexture = ReadImageTexture(inner.Get());
                         break;
                     }
-                    if (std::string(inner->Name()) == "TextureTransform") {
+                    if (inner->Name == "TextureTransform") {
                         ReadTextureTransform(inner.Get(), phong.DiffuseTexture);
                         break;
                     }
@@ -686,9 +728,8 @@ private:
             } else if (kind == "LineProperties" || kind == "FillProperties") {
                 // Line width, hatching and stipple - drawing style, not a
                 // material the document can hold. Recorded, not dropped.
-                for (const tinyxml2::XMLAttribute* attribute = node->FirstAttribute();
-                     attribute; attribute = attribute->Next())
-                    material.Extras["x3d." + kind + "." + attribute->Name()] = attribute->Value();
+                for (const auto& field : node->Fields)
+                    material.Extras["x3d." + kind + "." + field.first] = field.second;
             } else if (kind == "ComposedShader" || kind == "PackagedShader" ||
                        kind == "ProgramShader") {
                 WarnOnce("shader", "X3D: <" + kind + "> is not read; the material keeps its "
@@ -721,7 +762,7 @@ private:
         return index;
     }
 
-    void ReadMaterialFields(const XMLElement* element, PhongParams& phong,
+    void ReadMaterialFields(const Element* element, PhongParams& phong,
                             ModelMaterial& material, float& opacity) {
         phong.Diffuse = ParseColor(element, "diffuseColor", Vec3f(0.8f, 0.8f, 0.8f));
         phong.Specular = ParseColor(element, "specularColor", Vec3f(0.0f, 0.0f, 0.0f));
@@ -748,7 +789,7 @@ private:
     // one a browser uses. Nothing here touches the filesystem, so the first is
     // taken and the alternates are kept in metadata rather than thrown away -
     // they are usually the only record of where the texture came from.
-    TextureRef ReadImageTexture(const XMLElement* element) {
+    TextureRef ReadImageTexture(const Element* element) {
         TextureRef texture;
         const std::string name = DefName(element);
 
@@ -790,7 +831,7 @@ private:
 
     // repeatS / repeatT default true, which is the document's default sampler,
     // so a sampler is only created when the file actually clamps.
-    void ApplyTextureWrap(const XMLElement* element, TextureRef& texture) {
+    void ApplyTextureWrap(const Element* element, TextureRef& texture) {
         const bool repeatS = ParseBool(element, "repeatS", true);
         const bool repeatT = ParseBool(element, "repeatT", true);
         if (repeatS && repeatT) return;
@@ -802,7 +843,7 @@ private:
         document_->Samplers.push_back(sampler);
     }
 
-    void ReadTextureTransform(const XMLElement* element, TextureRef& texture) {
+    void ReadTextureTransform(const Element* element, TextureRef& texture) {
         const std::vector<double> translation = ParseNumbers(element, "translation");
         const std::vector<double> scale = ParseNumbers(element, "scale");
         const std::vector<double> center = ParseNumbers(element, "center");
@@ -829,12 +870,11 @@ private:
 
     // ===== SHAPE =====
 
-    void ReadShape(const XMLElement* shape, int parent) {
-        const XMLElement* appearanceElement = nullptr;
-        const XMLElement* geometryElement = nullptr;
-        for (const XMLElement* child = shape->FirstChildElement(); child;
-             child = child->NextSiblingElement()) {
-            const std::string kind = child->Name();
+    void ReadShape(const Element* shape, int parent) {
+        const Element* appearanceElement = nullptr;
+        const Element* geometryElement = nullptr;
+        for (const Element* child : ChildrenOf(shape)) {
+            const std::string kind = child->Name;
             if (kind == "Appearance") appearanceElement = child;
             else if (!IsIgnorableNode(kind) && !geometryElement) geometryElement = child;
         }
@@ -845,7 +885,7 @@ private:
                 options_.Warn("X3D: a <Shape> carries no geometry node");
             return;
         }
-        const std::string kind = geometry->Name();
+        const std::string kind = geometry->Name;
 
         // `solid` lives on the geometry, but back-face culling is a material
         // property in the document. solid="false" means "draw both sides".
@@ -914,7 +954,7 @@ private:
 
     // ===== GEOMETRY =====
 
-    bool BuildGeometry(const XMLElement* geometry, const std::string& kind,
+    bool BuildGeometry(const Element* geometry, const std::string& kind,
                        MeshPrimitive& prim) {
         if (kind == "IndexedFaceSet") return BuildIndexedFaceSet(geometry, prim);
         if (kind == "IndexedTriangleSet") return BuildIndexedSet(geometry, prim, 3);
@@ -941,13 +981,12 @@ private:
     // Matched by node type rather than by containerField: every exporter
     // writes the type, and containerField only disambiguates nodes that can
     // sit in more than one slot, which none of these can.
-    GeometryStreams ReadStreams(const XMLElement* geometry) {
+    GeometryStreams ReadStreams(const Element* geometry) {
         GeometryStreams streams;
-        for (const XMLElement* child = geometry->FirstChildElement(); child;
-             child = child->NextSiblingElement()) {
+        for (const Element* child : ChildrenOf(geometry)) {
             Resolved node(*this, child);
             if (!node) continue;
-            const std::string kind = node->Name();
+            const std::string kind = node->Name;
 
             if (kind == "Coordinate" || kind == "CoordinateDouble") {
                 const std::vector<double> values = ParseNumbers(node.Get(), "point");
@@ -976,8 +1015,7 @@ private:
             } else if (kind == "MultiTextureCoordinate") {
                 WarnOnce("multiTexCoord",
                          "X3D: <MultiTextureCoordinate> - only the first set is read");
-                for (const XMLElement* inner = node->FirstChildElement(); inner;
-                     inner = inner->NextSiblingElement()) {
+                for (const Element* inner : ChildrenOf(node.Get())) {
                     Resolved first(*this, inner);
                     if (!first) continue;
                     streams.TexComponents = 2;
@@ -1034,7 +1072,7 @@ private:
     // tuples become document vertices. That is the same resolution the OBJ and
     // COLLADA readers perform, for the same reason: a vertex with two texture
     // coordinates is two vertices everywhere downstream.
-    bool BuildIndexedFaceSet(const XMLElement* geometry, MeshPrimitive& prim) {
+    bool BuildIndexedFaceSet(const Element* geometry, MeshPrimitive& prim) {
         const GeometryStreams streams = ReadStreams(geometry);
         if (streams.Points.empty()) {
             options_.Warn("X3D: <IndexedFaceSet> has no <Coordinate>");
@@ -1222,7 +1260,7 @@ private:
 
     // <IndexedTriangleSet> and <IndexedQuadSet>: a flat index run with a fixed
     // number of corners per face and no separators.
-    bool BuildIndexedSet(const XMLElement* geometry, MeshPrimitive& prim, int cornersPerFace) {
+    bool BuildIndexedSet(const Element* geometry, MeshPrimitive& prim, int cornersPerFace) {
         const GeometryStreams streams = ReadStreams(geometry);
         if (streams.Points.empty()) return false;
         CopyStreams(streams, prim);
@@ -1245,7 +1283,7 @@ private:
     }
 
     // <TriangleSet> and <QuadSet>: no index at all, vertices consumed in order.
-    bool BuildFlatSet(const XMLElement* geometry, MeshPrimitive& prim, int cornersPerFace) {
+    bool BuildFlatSet(const Element* geometry, MeshPrimitive& prim, int cornersPerFace) {
         const GeometryStreams streams = ReadStreams(geometry);
         if (streams.Points.empty()) return false;
         CopyStreams(streams, prim);
@@ -1279,7 +1317,7 @@ private:
     // triangles: the document has TriangleFan and TriangleStrip modes, but one
     // primitive holds one topology and these nodes carry *several* fans or
     // strips, which only separate triangles can express in one batch.
-    bool BuildStrips(const XMLElement* geometry, MeshPrimitive& prim, bool fans, bool indexed) {
+    bool BuildStrips(const Element* geometry, MeshPrimitive& prim, bool fans, bool indexed) {
         const GeometryStreams streams = ReadStreams(geometry);
         if (streams.Points.empty()) return false;
         CopyStreams(streams, prim);
@@ -1338,7 +1376,7 @@ private:
 
     // <IndexedLineSet>: -1-separated polylines, expanded to independent
     // segments because that is the only line topology the document has.
-    bool BuildIndexedLineSet(const XMLElement* geometry, MeshPrimitive& prim) {
+    bool BuildIndexedLineSet(const Element* geometry, MeshPrimitive& prim) {
         const GeometryStreams streams = ReadStreams(geometry);
         if (streams.Points.empty()) return false;
         CopyStreams(streams, prim);
@@ -1365,7 +1403,7 @@ private:
 
     // <LineSet>: vertexCount says how many of the coordinates each polyline
     // takes, consumed in order.
-    bool BuildLineSet(const XMLElement* geometry, MeshPrimitive& prim) {
+    bool BuildLineSet(const Element* geometry, MeshPrimitive& prim) {
         const GeometryStreams streams = ReadStreams(geometry);
         if (streams.Points.empty()) return false;
         CopyStreams(streams, prim);
@@ -1384,7 +1422,7 @@ private:
         return true;
     }
 
-    bool BuildPointSet(const XMLElement* geometry, MeshPrimitive& prim) {
+    bool BuildPointSet(const Element* geometry, MeshPrimitive& prim) {
         const GeometryStreams streams = ReadStreams(geometry);
         if (streams.Points.empty()) return false;
         CopyStreams(streams, prim);
@@ -1438,7 +1476,7 @@ private:
         }
     };
 
-    bool BuildBox(const XMLElement* geometry, MeshPrimitive& prim) {
+    bool BuildBox(const Element* geometry, MeshPrimitive& prim) {
         const Vec3d size = ParseVec3(geometry, "size", Vec3d(2.0, 2.0, 2.0));
         const double x = size.x * 0.5, y = size.y * 0.5, z = size.z * 0.5;
 
@@ -1463,7 +1501,7 @@ private:
         return builder.Finish(PrimitiveMode::Polygons);
     }
 
-    bool BuildSphere(const XMLElement* geometry, MeshPrimitive& prim) {
+    bool BuildSphere(const Element* geometry, MeshPrimitive& prim) {
         const double radius = ParseScalar(geometry, "radius", 1.0);
         Builder builder(prim);
 
@@ -1503,7 +1541,7 @@ private:
         return builder.Finish(PrimitiveMode::Polygons);
     }
 
-    bool BuildCylinder(const XMLElement* geometry, MeshPrimitive& prim) {
+    bool BuildCylinder(const Element* geometry, MeshPrimitive& prim) {
         const double radius = ParseScalar(geometry, "radius", 1.0);
         const double half = ParseScalar(geometry, "height", 2.0) * 0.5;
         const bool side = ParseBool(geometry, "side", true);
@@ -1533,7 +1571,7 @@ private:
         return builder.Finish(PrimitiveMode::Polygons);
     }
 
-    bool BuildCone(const XMLElement* geometry, MeshPrimitive& prim) {
+    bool BuildCone(const Element* geometry, MeshPrimitive& prim) {
         const double radius = ParseScalar(geometry, "bottomRadius", 1.0);
         const double half = ParseScalar(geometry, "height", 2.0) * 0.5;
         const bool side = ParseBool(geometry, "side", true);
@@ -1609,7 +1647,7 @@ private:
     // document states them as the transform of the node that carries it, which
     // is what glTF, USD and every renderer expect. So a light becomes a node
     // whose rotation carries -Z onto the stated direction.
-    void ReadLight(const XMLElement* element, const std::string& kind, int parent) {
+    void ReadLight(const Element* element, const std::string& kind, int parent) {
         ModelLight light;
         light.Name = DefName(element);
         if (light.Name.empty()) light.Name = kind;
@@ -1660,7 +1698,7 @@ private:
         AddNamedNode(std::move(node), element, parent);
     }
 
-    void ReadViewpoint(const XMLElement* element, const std::string& kind, int parent) {
+    void ReadViewpoint(const Element* element, const std::string& kind, int parent) {
         ModelCamera camera;
         camera.Name = Attribute(element, "description");
         if (camera.Name.empty()) camera.Name = DefName(element);
@@ -1695,7 +1733,7 @@ private:
     // later. A name reused by DEF and then USE'd names several document nodes;
     // the first - the one the DEF actually created - is the one a route
     // targets, which is what a browser does too.
-    int AddNamedNode(ModelNode node, const XMLElement* element, int parent) {
+    int AddNamedNode(ModelNode node, const Element* element, int parent) {
         const std::string name = DefName(element);
         const int index = document_->AddNode(std::move(node), parent);
         if (!name.empty() && nodeIndexByName_.find(name) == nodeIndexByName_.end())
@@ -1715,10 +1753,9 @@ private:
         std::string FromNode, FromField, ToNode, ToField;
     };
 
-    void CollectRoutes(const XMLElement* element, std::vector<Route>& routes) {
-        for (const XMLElement* child = element->FirstChildElement(); child;
-             child = child->NextSiblingElement()) {
-            if (std::string(child->Name()) == "ROUTE") {
+    void CollectRoutes(const Element* element, std::vector<Route>& routes) {
+        for (const Element* child : ChildrenOf(element)) {
+            if (child->Name == "ROUTE") {
                 Route route;
                 route.FromNode = Attribute(child, "fromNode");
                 route.FromField = Attribute(child, "fromField");
@@ -1742,7 +1779,7 @@ private:
         return field;
     }
 
-    void ReadRoutes(const XMLElement* scene) {
+    void ReadRoutes(const Element* scene) {
         std::vector<Route> routes;
         CollectRoutes(scene, routes);
         if (routes.empty()) return;
@@ -1755,7 +1792,7 @@ private:
 
             auto source = definitions_.find(route.FromNode);
             if (source == definitions_.end()) continue;
-            const std::string interpolator = source->second->Name();
+            const std::string interpolator = source->second->Name;
             if (interpolator.find("Interpolator") == std::string::npos) continue;
 
             auto target = nodeIndexByName_.find(route.ToNode);
@@ -1804,7 +1841,7 @@ private:
         if (!animation.Channels.empty()) document_->Animations.push_back(std::move(animation));
     }
 
-    bool BuildSampler(const XMLElement* element, const std::string& interpolator,
+    bool BuildSampler(const Element* element, const std::string& interpolator,
                       AnimationPath path, double cycle, AnimationSampler& sampler) {
         const std::vector<double> keys = ParseNumbers(element, "key");
         const std::vector<double> values = ParseNumbers(element, "keyValue");
@@ -1890,8 +1927,8 @@ private:
     const ConversionOptions& options_;
     std::shared_ptr<ModelDocument> document_;
 
-    std::map<std::string, const XMLElement*> definitions_;   // DEF name -> element
-    std::set<const XMLElement*> expanding_;                  // USE cycle guard
+    std::map<std::string, const Element*> definitions_;   // DEF name -> element
+    std::set<const Element*> expanding_;                  // USE cycle guard
     std::map<std::string, int> nodeIndexByName_;             // DEF name -> node index
     std::map<std::string, int> materialCache_;               // Appearance DEF + sidedness
     std::map<std::string, int> imageCache_;                  // ImageTexture DEF
@@ -1902,13 +1939,20 @@ private:
 };
 
 bool LooksLikeX3D(const std::string& head) {
-    // The DOCTYPE, the root element and the schema location - any one of them
-    // identifies the XML encoding. A .x3d that is really VRML classic syntax
-    // has none of them and is deliberately rejected rather than half-read.
-    return head.find("<X3D") != std::string::npos ||
-           head.find("DTD X3D") != std::string::npos ||
-           head.find("x3d.xsd") != std::string::npos ||
-           head.find("x3d-3.0.xsd") != std::string::npos;
+    // The XML encoding: the DOCTYPE, the root element or the schema location,
+    // any one of which identifies it. A .x3d holding classic syntax is caught
+    // by the second test rather than half-read as XML, which is the whole
+    // reason recognition looks at the bytes instead of the extension.
+    if (head.find("<X3D") != std::string::npos ||
+        head.find("DTD X3D") != std::string::npos ||
+        head.find("x3d.xsd") != std::string::npos ||
+        head.find("x3d-3.0.xsd") != std::string::npos)
+        return true;
+    // The classic encoding, whose mandatory header line names it: `#VRML V2.0`
+    // or `#X3D V3.3`. VRML 1.0 matches here too and is refused by name when it
+    // is parsed - saying "this is VRML 1.0, whose node set is different" beats
+    // saying "this is not a model file".
+    return X3D::LooksLikeClassicVrml(head);
 }
 
 } // namespace
@@ -1942,15 +1986,91 @@ FormatCapabilities X3DConverter::GetCapabilities() const {
     return caps;
 }
 
+namespace {
+
+// ===== THE XML ENCODING =====
+//
+// tinyxml2's tree, copied into the encoding-independent one. A copy rather
+// than a view: the two encodings have to arrive in the same shape for the
+// reader to have one path through them, and an X3D scene is small next to the
+// geometry it names, so the copy costs nothing worth measuring.
+void CopyElement(const tinyxml2::XMLElement* from, X3D::Node& to) {
+    to.Name = from->Name() ? from->Name() : "";
+    for (const tinyxml2::XMLAttribute* attribute = from->FirstAttribute(); attribute;
+         attribute = attribute->Next()) {
+        const std::string name = attribute->Name() ? attribute->Name() : "";
+        // containerField says which field of the parent this element fills,
+        // which is what the classic encoding states syntactically. Keeping it
+        // out of Fields means the two encodings agree on what a field is.
+        if (name == "containerField") {
+            to.ContainerField = attribute->Value() ? attribute->Value() : "";
+            continue;
+        }
+        to.Fields.emplace_back(name, attribute->Value() ? attribute->Value() : "");
+    }
+    for (const tinyxml2::XMLElement* child = from->FirstChildElement(); child;
+         child = child->NextSiblingElement()) {
+        to.Children.emplace_back();
+        CopyElement(child, to.Children.back());
+    }
+}
+
+bool BuildSceneFromXml(tinyxml2::XMLDocument& xml, X3D::Scene& out,
+                       const ConversionOptions& options) {
+    const tinyxml2::XMLElement* root = xml.RootElement();
+    if (!root) {
+        options.Warn("X3D: the file has no root element");
+        return false;
+    }
+    out.How = X3D::Encoding::Xml;
+    out.Vrml97 = false;
+    CopyElement(root, out.Root);
+    if (const char* version = out.Root.Attribute("version")) out.Version = version;
+    if (const char* profile = out.Root.Attribute("profile")) out.Profile = profile;
+    return true;
+}
+
+// Reads whichever encoding the bytes are in. Both announce themselves in their
+// first line, so nothing here has to guess.
+bool BuildScene(const std::vector<uint8_t>& data, X3D::Scene& out,
+                const ConversionOptions& options) {
+    const size_t limit = std::min<size_t>(data.size(), 4096);
+    const std::string head(data.begin(), data.begin() + static_cast<std::ptrdiff_t>(limit));
+
+    if (X3D::LooksLikeClassicVrml(head)) {
+        std::string error;
+        if (!X3D::ParseClassicVrml(data, out, error,
+                                   [&options](const std::string& message) {
+                                       options.Warn(message);
+                                   })) {
+            options.Warn(error);
+            return false;
+        }
+        return true;
+    }
+
+    tinyxml2::XMLDocument xml;
+    if (xml.Parse(reinterpret_cast<const char*>(data.data()), data.size()) !=
+        tinyxml2::XML_SUCCESS) {
+        options.Warn(std::string("X3D: cannot parse the data - ") + xml.ErrorStr());
+        return false;
+    }
+    return BuildSceneFromXml(xml, out, options);
+}
+
+} // namespace
+
 std::shared_ptr<ModelStorage::ModelDocument> X3DConverter::Import(
         const std::string& filename, const ConversionOptions& options) {
-    XMLDocument xml;
-    if (xml.LoadFile(filename.c_str()) != tinyxml2::XML_SUCCESS) {
-        options.Warn(std::string("X3D: cannot parse ") + filename + " — " + xml.ErrorStr());
+    std::ifstream file(filename, std::ios::binary);
+    if (!file) {
+        options.Warn("X3D: cannot open " + filename);
         return nullptr;
     }
-    Reader reader(options);
-    auto document = reader.Run(xml);
+    const std::vector<uint8_t> data((std::istreambuf_iterator<char>(file)),
+                                    std::istreambuf_iterator<char>());
+
+    auto document = ImportFromMemory(data, options);
     if (document && document->Title.empty()) {
         const size_t slash = filename.find_last_of("/\\");
         std::string stem = slash == std::string::npos ? filename : filename.substr(slash + 1);
@@ -1963,14 +2083,10 @@ std::shared_ptr<ModelStorage::ModelDocument> X3DConverter::Import(
 
 std::shared_ptr<ModelStorage::ModelDocument> X3DConverter::ImportFromMemory(
         const std::vector<uint8_t>& data, const ConversionOptions& options) {
-    XMLDocument xml;
-    if (xml.Parse(reinterpret_cast<const char*>(data.data()), data.size()) !=
-        tinyxml2::XML_SUCCESS) {
-        options.Warn(std::string("X3D: cannot parse the data — ") + xml.ErrorStr());
-        return nullptr;
-    }
+    X3D::Scene scene;
+    if (!BuildScene(data, scene, options)) return nullptr;
     Reader reader(options);
-    return reader.Run(xml);
+    return reader.Run(scene);
 }
 
 std::shared_ptr<ModelStorage::ModelDocument> X3DConverter::ImportFromStream(

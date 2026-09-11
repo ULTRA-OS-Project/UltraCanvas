@@ -1,3 +1,61 @@
+#### 2026-09-11 *0.8.18*
+- **VRML97 (.wrl) reads, and with it X3D's Classic VRML encoding (.x3dv).** X3D
+  is one node set with more than one encoding, and VRML97 is that same classic
+  syntax a revision earlier. `Plugins/Models/X3D/` is now split the way the
+  STEP, Alembic, FBX and `.x` readers are: `UltraCanvasX3DScene.h` is the scene
+  as a tree of typed nodes with one reader per encoding under it, and
+  `UltraCanvasX3DConverter.cpp` is the node *set* on top, which no longer knows
+  which syntax it was handed.
+- **Which is the point.** These are the same three nodes with the same two
+  fields:
+
+  ```
+  <Transform translation='0 1 0'>          Transform {
+    <Shape><Box size='2 2 2'/></Shape>       translation 0 1 0
+  </Transform>                               children [ Shape {
+                                               geometry Box { size 2 2 2 } } ]
+                                           }
+  ```
+
+  Reading them twice would have meant two copies of `IndexedFaceSet`'s corner
+  resolution, of the `T · C · R · SR · S · -SR · -C` transform composition, of
+  DEF/USE, and of the ROUTE plumbing - and one copy would eventually have
+  drifted. The test asserts directly against that: the same scene in both
+  encodings must produce the same document, down to bounds agreeing to the last
+  bit.
+- **One token of lookahead is the whole grammar problem.** A field's value can
+  be a node or a literal, and both start with a bare word - `appearance
+  Appearance { ... }` against `solid TRUE`. A word followed by `{` opens a
+  node, `DEF` and `USE` always do, and everything else is a literal. The same
+  test after `[` says whether brackets hold nodes or numbers, so the parser
+  never needs to know which fields are MFNode - which matters, because knowing
+  would mean teaching it every node type in the standard first.
+- **Only a quote and a backslash are escapable in a string.** Treating every
+  backslash as an escape turns the `textures\E-45 _col.jpg` an exporter writes
+  into an `ImageTexture` url into `texturesE-45 _col.jpg`. This was wrong in the
+  XML encoding's MFString parser too, and is fixed in both.
+- **VRML 1.0 is refused by name.** It shares the `.wrl` extension and nothing
+  else - `Separator`, `Coordinate3`, a different `IndexedFaceSet` - so read as
+  VRML97 it would come out empty. Saying "this is VRML 1.0, whose node set is
+  different" beats saying "this is not a model file". `PROTO` and `EXTERNPROTO`
+  declarations are skipped whole and reported, the same answer `<ProtoInstance>`
+  already got.
+- Recognition is by **content, not extension**: both encodings must open with a
+  line that names them (`<X3D`, a DTD, or `#VRML V2.0` / `#X3D V3.3`), so a
+  `.x3d` holding classic syntax reads correctly and a `.wrl` holding XML does
+  too. The plugin now dispatches `.x3d`, `.x3dv`, `.wrl` and `.vrml` to the one
+  converter.
+- **`Tests/ModelX3DTest.cpp`** (167 assertions) now runs against two samples:
+  `media/models/X3D/E-45-Aircraft.x3d` and the new
+  `media/models/VRML/E-45-Aircraft.wrl`. The cross-format result is a new one,
+  and it is about the exporters rather than the readers: the `.wrl` holds
+  **64880 triangles - exactly eight times the `.x3d`'s 8110 quads** - because
+  Blender's VRML writer ran the subdivision modifier one level further and then
+  triangulated, where its X3D writer did not. It also **bakes the transform
+  chain into the coordinates**, writing one `Shape` where the `.x3d` writes a
+  four-deep `Transform` chain; both arrive at the same world bounds. Both are
+  symmetric in X, so both had the mirror modifier applied.
+
 #### 2026-09-10 *0.8.15*
 - **X3D (.x3d) reads.** `Plugins/Models/X3D/UltraCanvasX3DConverter.h` reads the
   XML encoding of X3D 3.0-4.0 into `ModelDocument` - the second XML scene format
