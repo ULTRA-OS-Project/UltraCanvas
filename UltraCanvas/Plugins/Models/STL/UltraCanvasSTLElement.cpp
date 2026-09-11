@@ -6,6 +6,7 @@
 
 #include "UltraCanvasSTLElement.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasModelPreview.h"
 
 #include <cmath>
 #include <string>
@@ -108,9 +109,13 @@ UltraCanvasSTLElement::UltraCanvasSTLElement(const std::string& identifier,
 UltraCanvasSTLElement::~UltraCanvasSTLElement() = default;
 
 bool UltraCanvasSTLElement::LoadFromFile(const std::string& filePath) {
+    // Named for STL and no longer limited to it: the seam reads .stl here in
+    // core and hands everything else to the Models plugin when one is
+    // registered. The element only ever wanted a triangle buffer, so nothing
+    // about it has to change to show an OBJ or an FBX.
     Mesh3D mesh;
-    std::string error;
-    if (!UltraCanvasSTLLoader::Load(filePath, mesh, &error)) {
+    if (!LoadModelPreviewMesh(filePath, mesh)) {
+        const std::string error = "no reader for this file, or it holds no triangles";
         if (onLoadError) onLoadError(error);
         debugOutput << "[STL] Load failed: " << error << std::endl;
         return false;
@@ -319,10 +324,12 @@ UltraCanvasSTLElement::UltraCanvasSTLElement(const std::string& identifier,
     : UltraCanvasUIElement(identifier, x, y, width, height) {}
 
 bool UltraCanvasSTLElement::LoadFromFile(const std::string& filePath) {
+    // Same widening as the GL build above - the summary this fallback draws is
+    // of whatever mesh arrived, whichever reader produced it.
     Mesh3D mesh;
-    std::string error;
-    if (!UltraCanvasSTLLoader::Load(filePath, mesh, &error)) {
-        if (onLoadError) onLoadError(error);
+    if (!LoadModelPreviewMesh(filePath, mesh)) {
+        if (onLoadError)
+            onLoadError("no reader for this file, or it holds no triangles");
         return false;
     }
     SetMesh(mesh);

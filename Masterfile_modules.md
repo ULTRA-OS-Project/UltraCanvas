@@ -134,9 +134,18 @@ the backing implementation can be replaced without affecting callers.
     `SupportedLoadExtensions` / `SupportedSaveExtensions`, and an
     `IGraphicsPlugin` implementation reaching `LoadGraphicsFile` /
     `SaveGraphicsFile` and the `Model3D` category.
-    `RegisterModelFormatsPlugin()` registers it and the STL plugin together.
-    `.dxf` is dispatchable but not claimed, so a DXF still opens as a drawing
-    by default. Per-format converters, under `Plugins/Models/<FORMAT>/`:
+    `RegisterModelFormatsPlugin()` registers it and the STL plugin together,
+    and installs the **model preview provider**
+    (`include/UltraCanvasModelPreview.h`) that lets core display a format only
+    this plugin can read. Core carries one reader, STL, because the Filer's
+    thumbnails have always needed one; the plugin links against core, so core
+    cannot call it. The seam inverts the question instead of the dependency -
+    core asks "is this extension one you read" and "turn this path into a
+    `Mesh3D`", and falls back to STL when nothing has answered. That is what
+    `UltraCanvasFilerWidget`'s 3D thumbnails, `UltraCanvasMediaViewer`'s
+    `MediaKind::Model` and `UltraCanvasSTLElement::LoadFromFile` all go
+    through. `.dxf` is dispatchable but not claimed, so a DXF still opens as a
+    drawing by default - and still previews as one. Per-format converters, under `Plugins/Models/<FORMAT>/`:
     `ThreeDSConverter` (`Plugins/Models/3DS/UltraCanvas3DSConverter.h`) reads
     Autodesk 3DS - meshes, object matrices, Phong materials with texture maps,
     per-face material groups, cameras and lights - and is read-only.
