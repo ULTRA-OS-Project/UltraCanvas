@@ -1,7 +1,7 @@
 // include/UltraCanvasGraphicsPluginSystem.h
 // Complete graphics plugin system with all required components
-// Version: 1.2.4
-// Last Modified: 2025-08-17
+// Version: 1.3.0
+// Last Modified: 2026-09-11
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -104,11 +104,25 @@ namespace UltraCanvas {
                     {"emf", GraphicsFormatType::Vector}, {"wmf", GraphicsFormatType::Vector},
                     {"dxf", GraphicsFormatType::Vector}, {"dwg", GraphicsFormatType::Vector},
 
-                    // 3D model formats
+                    // 3D model formats. This table answers "what kind of file
+                    // is this", not "does this build have a reader": a .step
+                    // is a 3D model whether or not the STEP converter was
+                    // compiled in. Keeping it short was a silent bug - an
+                    // extension missing here makes GraphicsFileInfo::IsValid()
+                    // false, which used to make CanHandle() refuse a file the
+                    // registry could load perfectly well.
                     {"3dm", GraphicsFormatType::ThreeD}, {"3ds", GraphicsFormatType::ThreeD},
                     {"pov", GraphicsFormatType::ThreeD}, {"stl", GraphicsFormatType::ThreeD},
                     {"obj", GraphicsFormatType::ThreeD}, {"fbx", GraphicsFormatType::ThreeD},
                     {"dae", GraphicsFormatType::ThreeD}, {"gltf", GraphicsFormatType::ThreeD},
+                    {"glb", GraphicsFormatType::ThreeD}, {"ply", GraphicsFormatType::ThreeD},
+                    {"off", GraphicsFormatType::ThreeD}, {"abc", GraphicsFormatType::ThreeD},
+                    {"x", GraphicsFormatType::ThreeD}, {"ms3d", GraphicsFormatType::ThreeD},
+                    {"blend", GraphicsFormatType::ThreeD},
+                    {"x3d", GraphicsFormatType::ThreeD}, {"x3dv", GraphicsFormatType::ThreeD},
+                    {"wrl", GraphicsFormatType::ThreeD}, {"vrml", GraphicsFormatType::ThreeD},
+                    {"step", GraphicsFormatType::ThreeD}, {"stp", GraphicsFormatType::ThreeD},
+                    {"p21", GraphicsFormatType::ThreeD},
 
                     // Video formats
                     {"mp4", GraphicsFormatType::Video}, {"mpg", GraphicsFormatType::Video},
@@ -426,9 +440,16 @@ namespace UltraCanvas {
             return info;
         }
 
+        // A registered plugin's claim is authoritative: it knows its own
+        // extensions, and the detector table above is only the fallback for
+        // formats nothing registered for. Asking IsValid() first got this
+        // backwards - an extension the table did not list answered "no" for a
+        // file LoadGraphics() would then load, because LoadGraphics dispatches
+        // through the extension map rather than the table.
         static bool CanHandle(const std::string& filePath) {
+            if (FindPluginForFile(filePath) != nullptr) return true;
             GraphicsFileInfo info(filePath);
-            return info.IsValid() && (info.CanDisplay() || FindPluginForFile(filePath) != nullptr);
+            return info.IsValid() && info.CanDisplay();
         }
 
         static std::shared_ptr<UltraCanvasUIElement> LoadGraphics(const std::string& filePath) {
