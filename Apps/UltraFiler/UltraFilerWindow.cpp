@@ -1997,6 +1997,44 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
 
     row->AddChild(searchBox);
 
+    // View type; defaults to medium thumbnails like the Explorer screenshot.
+    // It sits ahead of the sort controls: picking the layout is the more
+    // frequent choice, and the icon in each entry makes it findable at a
+    // glance.
+    auto viewLbl = std::make_shared<UltraCanvasLabel>("ufl-view-lbl", 0, 0, 44, 24);
+    viewLbl->SetText("View");
+    viewLbl->SetFontSize(kUiFontSize);
+    viewLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+    row->AddChild(viewLbl);
+
+    // Wide enough for the longest entry ("Extra large icons") once the icon
+    // column and the arrow have taken their share - the button clips its text.
+    viewDropdown = CreateDropdown("ufl-view", 0, 0, 152, 26);
+    ApplyDropdownFontSize(viewDropdown.get());
+    // Each entry carries a glyph of the layout it selects, so the dropdown
+    // reads as a set of layouts rather than a list of names. The value stays
+    // the entry text - only onSelectionChanged's index is used.
+    viewDropdown->AddItem("Details", "Details", IconPath("view-details.svg"));
+    viewDropdown->AddItem("List", "List", IconPath("view-list.svg"));
+    viewDropdown->AddItem("Small icons", "Small icons", IconPath("view-icons-small.svg"));
+    viewDropdown->AddItem("Medium icons", "Medium icons", IconPath("view-icons-medium.svg"));
+    viewDropdown->AddItem("Large icons", "Large icons", IconPath("view-icons-large.svg"));
+    viewDropdown->AddItem("Extra large icons", "Extra large icons", IconPath("view-icons-xlarge.svg"));
+    viewDropdown->AddItem("Size bars", "Size bars", IconPath("view-size-bars.svg"));
+    viewDropdown->AddItem("Treemap", "Treemap", IconPath("view-treemap.svg"));
+    viewDropdown->SetSelectedIndex(3, false);
+    viewDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
+        if (syncingControls || !filer) return;
+        static const FilerViewType types[] = {
+            FilerViewType::Details, FilerViewType::List,
+            FilerViewType::ThumbnailsSmall, FilerViewType::ThumbnailsMedium,
+            FilerViewType::ThumbnailsBig, FilerViewType::ThumbnailsMaximized,
+            FilerViewType::BarSize, FilerViewType::TreeMap};
+        if (index >= 0 && index < 8) filer->SetViewType(types[index]);
+    };
+    viewDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    row->AddChild(viewDropdown);
+
     // Sort field + direction. The dropdown mirrors FilerSortField order.
     auto sortLbl = std::make_shared<UltraCanvasLabel>("ufl-sort-lbl", 0, 0, 42, 24);
     sortLbl->SetText("Sort");
@@ -2032,36 +2070,6 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     });
     row->AddChild(sortOrderButton);
     UpdateSortOrderButton();
-
-    // View type; defaults to medium thumbnails like the Explorer screenshot.
-    auto viewLbl = std::make_shared<UltraCanvasLabel>("ufl-view-lbl", 0, 0, 44, 24);
-    viewLbl->SetText("View");
-    viewLbl->SetFontSize(kUiFontSize);
-    viewLbl->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    row->AddChild(viewLbl);
-
-    viewDropdown = CreateDropdown("ufl-view", 0, 0, 130, 26);
-    ApplyDropdownFontSize(viewDropdown.get());
-    viewDropdown->AddItem("Details");
-    viewDropdown->AddItem("List");
-    viewDropdown->AddItem("Small icons");
-    viewDropdown->AddItem("Medium icons");
-    viewDropdown->AddItem("Large icons");
-    viewDropdown->AddItem("Extra large icons");
-    viewDropdown->AddItem("Size bars");
-    viewDropdown->AddItem("Treemap");
-    viewDropdown->SetSelectedIndex(3, false);
-    viewDropdown->onSelectionChanged = [this](int index, const DropdownItem&) {
-        if (syncingControls || !filer) return;
-        static const FilerViewType types[] = {
-            FilerViewType::Details, FilerViewType::List,
-            FilerViewType::ThumbnailsSmall, FilerViewType::ThumbnailsMedium,
-            FilerViewType::ThumbnailsBig, FilerViewType::ThumbnailsMaximized,
-            FilerViewType::BarSize, FilerViewType::TreeMap};
-        if (index >= 0 && index < 8) filer->SetViewType(types[index]);
-    };
-    viewDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    row->AddChild(viewDropdown);
 
     // Everything after this stretch sits at the right edge of the bar.
     auto stretch = MakeLayoutBox("ufl-cmd-stretch");
