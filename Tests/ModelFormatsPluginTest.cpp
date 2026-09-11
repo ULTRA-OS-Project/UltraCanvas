@@ -51,6 +51,9 @@ static const std::vector<Sample>& Samples() {
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
             {"dae", "COLLADA/E-45-Aircraft.dae", true},
 #endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+            {"x3d", "X3D/E-45-Aircraft.x3d", true},
+#endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
             {"blend", "Blend/E-45-Aircraft.blend", false},
 #endif

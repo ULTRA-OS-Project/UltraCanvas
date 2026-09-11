@@ -1,4 +1,58 @@
 #### 2026-09-10 *0.8.15*
+- **X3D (.x3d) reads.** `Plugins/Models/X3D/UltraCanvasX3DConverter.h` reads the
+  XML encoding of X3D 3.0-4.0 into `ModelDocument` - the second XML scene format
+  after COLLADA, and gated on the same tinyxml2.
+- **What is read**: the `Transform`/`Group`/`Switch`/`LOD` hierarchy,
+  `IndexedFaceSet` with n-gons kept as n-gons, `IndexedTriangleSet`,
+  `IndexedQuadSet`, `TriangleSet`, `QuadSet`, the fan and strip sets,
+  `IndexedLineSet`, `LineSet`, `PointSet`, the Immersive profile's `Box`,
+  `Sphere`, `Cylinder` and `Cone`, `Appearance` with `Material`,
+  `TwoSidedMaterial`, `ImageTexture` and `TextureTransform`, `DirectionalLight`
+  / `PointLight` / `SpotLight`, `Viewpoint` and `OrthoViewpoint`, the `<head>`
+  metadata and `<unit>` statement, and animation assembled out of `TimeSensor`,
+  `PositionInterpolator` / `OrientationInterpolator` and `ROUTE`s.
+- **DEF/USE is the instancing mechanism, and it applies to every node** - a
+  Coordinate shared between two geometries, an Appearance between two Shapes, a
+  whole Transform subtree reused. A pre-pass collects every DEF; a small RAII
+  guard resolves a USE and unwinds a cycle. One geometry USE'd twice under the
+  same material is one mesh with two nodes; under a different material it has to
+  be two, because the material sits on the primitive.
+- **A `Transform` is not a TRS triple.** The spec composes it as
+  `T * C * R * SR * S * -SR * -C`, so the matrix is built and decomposed rather
+  than copied field by field: the common case decomposes back to exactly the
+  fields that were written, and a `center` or `scaleOrientation` keeps its
+  meaning instead of being silently discarded.
+- **`IndexedFaceSet`'s index streams are parallel and independent.**
+  `texCoordIndex`, `normalIndex` and `colorIndex` line up with `coordIndex` by
+  position, -1s included - except when normals or colours are declared per face,
+  where the face counter indexes them instead. A corner is the tuple of whichever
+  streams exist, and unique tuples become document vertices, exactly as the OBJ
+  and COLLADA readers resolve theirs.
+- **The geometric primitives are tessellated rather than skipped**, because a
+  hand-written X3D is usually nothing else. Caps are single n-gons rather than
+  fans of triangles, sphere pole rings are triangles rather than quads with a
+  doubled corner, and every face is wound so its normal points outward - which
+  the test asserts directly, since a winding mistake is invisible until the model
+  renders inside out.
+- **What has no field in the document is recorded, not dropped**: `creaseAngle`
+  becomes a node extra (with a warning when it is below pi and the file carries
+  no normals, since generated normals then average across every edge), the
+  `ImageTexture` url fallback list keeps its alternates in metadata, and
+  `Background`, `LineProperties` and a light's `ambientIntensity` are kept as
+  metadata and material extras.
+- **`Tests/ModelX3DTest.cpp`** (118 assertions) against
+  `media/models/X3D/E-45-Aircraft.x3d` - the same aircraft as the 3DS, OBJ, DXF,
+  COLLADA and Alembic samples. It asserts the cross-format fact rather than
+  hiding it: this export carries **exactly the OBJ's 8110 quads and is symmetric
+  about X**, so its mirror modifier *was* applied - unlike the `.dae`, `.abc` and
+  `.blend`. Proposal section 2.6 gained it: the split is not between evaluated
+  and scene formats, it is between two exports of one scene written by one
+  application on one day.
+- `ModelFormat::X3D` already existed; the plugin now dispatches `.x3d` for
+  reading, behind `ULTRACANVAS_MODELS_X3D` / `ULTRACANVAS_HAS_X3D_CONVERTER`.
+  Read only, for the reason COLLADA is: a caller wanting to write a scene should
+  write glTF. `.wrl` and `.x3dv` are the classic VRML syntax, which this reader
+  cannot parse, so they are left unclaimed rather than claimed and then refused.
 - **PLY (.ply) reads and writes.** `Plugins/Models/PLY/` covers all three
   encodings - ascii, binary_little_endian and binary_big_endian - because a
   reader that handles only ASCII fails on most scanner output, and one that

@@ -24,6 +24,9 @@
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     #include "Models/COLLADA/UltraCanvasColladaConverter.h"
 #endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    #include "Models/X3D/UltraCanvasX3DConverter.h"
+#endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     #include "Models/Blend/UltraCanvasBlendConverter.h"
 #endif
@@ -79,6 +82,12 @@ UltraCanvasModelFormatsPlugin::CreateConverterForExtension(const std::string& ex
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     if (extension == "dae") return std::make_unique<ColladaConverter>();
 #endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    // Only the XML encoding. ".x3dv" and ".wrl" are the classic VRML syntax,
+    // which this reader cannot parse, so they are left unclaimed rather than
+    // claimed and then refused.
+    if (extension == "x3d") return std::make_unique<X3DConverter>();
+#endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     if (extension == "blend") return std::make_unique<BlendConverter>();
 #endif
@@ -92,6 +101,9 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
     std::vector<std::string> extensions = {"3ds", "obj", "step", "stp", "p21", "abc", "ply"};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     extensions.push_back("dae");
+#endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    extensions.push_back("x3d");
 #endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     // Claimed so a file browser can describe a .blend, even though loading it
@@ -111,6 +123,9 @@ std::vector<ModelFormat> UltraCanvasModelFormatsPlugin::AvailableFormats() {
                                         ModelFormat::Alembic, ModelFormat::PLY};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     formats.push_back(ModelFormat::COLLADA);
+#endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    formats.push_back(ModelFormat::X3D);
 #endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
     formats.push_back(ModelFormat::Blend);

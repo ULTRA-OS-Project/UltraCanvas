@@ -278,11 +278,18 @@ the backing implementation can be replaced without affecting callers.
     container and object/property layer (`UltraCanvasOgawaFile.h`) under an
     AbcGeom reader (`UltraCanvasAlembicConverter.h`) for Xform, PolyMesh, SubD
     and FaceSet. First time sample only, and read-only.
+    **X3D** (`Plugins/Models/X3D/UltraCanvasX3DConverter.h`) reads the XML
+    encoding: the `Transform`/`Group` hierarchy with DEF/USE instancing,
+    `IndexedFaceSet` and the other `*Set` nodes, the Immersive profile's
+    Box/Sphere/Cylinder/Cone, `Appearance`/`Material`/`ImageTexture`, lights,
+    viewpoints, and animation assembled from TimeSensor, interpolators and
+    `ROUTE`s. Read-only, and only the XML encoding — `.wrl`/`.x3dv` are the
+    classic VRML syntax and are deliberately not claimed.
     Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
     `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
     `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the
-    Vector/CDR/XAR/EPS plugins, with COLLADA (tinyxml2) and `.blend` (zlib) as
-    options inside it. `UltraCanvasModelFormatsPlugin`
+    Vector/CDR/XAR/EPS plugins, with COLLADA and X3D (both tinyxml2) and
+    `.blend` (zlib) as options inside it. `UltraCanvasModelFormatsPlugin`
     (`Plugins/Models/UltraCanvasModelFormatsPlugin.h`) is the façade:
     `CreateConverterForExtension`, `LoadModelDocument`, `SaveModelDocument`,
     `SupportedLoadExtensions` / `SupportedSaveExtensions`, and an

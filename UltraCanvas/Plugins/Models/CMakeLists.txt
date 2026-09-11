@@ -7,11 +7,12 @@
 # the format readers and writers are plugin-side, so an application that does
 # not open 3D files does not compile or link them.
 #
-# Two formats are optional within the plugin, because each pulls a dependency
+# Three formats are optional within the plugin, because each pulls a dependency
 # the rest does not need:
 #   COLLADA -> tinyxml2
+#   X3D     -> tinyxml2
 #   .blend  -> zlib
-# Both are detected here and reported; the plugin builds without either.
+# All are detected here and reported; the plugin builds without any of them.
 #
 # Version: 1.0.0
 # Last Modified: 2026-09-10
@@ -27,16 +28,25 @@ message(STATUS "Configuring ${PLUGIN_NAME} v${PLUGIN_VERSION}")
 
 # ===== OPTIONAL FORMAT DEPENDENCIES =====
 option(ULTRACANVAS_MODELS_COLLADA "Build the COLLADA (.dae) reader (needs tinyxml2)" ON)
+option(ULTRACANVAS_MODELS_X3D     "Build the X3D (.x3d) reader (needs tinyxml2)" ON)
 option(ULTRACANVAS_MODELS_BLEND   "Build the Blender (.blend) inspector (needs zlib)" ON)
 
 find_package(PkgConfig QUIET)
 
-set(MODELS_COLLADA_ENABLED FALSE)
-if(ULTRACANVAS_MODELS_COLLADA AND PkgConfig_FOUND)
+# One probe for both XML readers - they need the same library, and a second
+# pkg_check_modules for it would only be a second chance to spell it wrong.
+if(PkgConfig_FOUND AND (ULTRACANVAS_MODELS_COLLADA OR ULTRACANVAS_MODELS_X3D))
     pkg_check_modules(MODELS_TINYXML2 QUIET tinyxml2)
-    if(MODELS_TINYXML2_FOUND)
-        set(MODELS_COLLADA_ENABLED TRUE)
-    endif()
+endif()
+
+set(MODELS_COLLADA_ENABLED FALSE)
+if(ULTRACANVAS_MODELS_COLLADA AND MODELS_TINYXML2_FOUND)
+    set(MODELS_COLLADA_ENABLED TRUE)
+endif()
+
+set(MODELS_X3D_ENABLED FALSE)
+if(ULTRACANVAS_MODELS_X3D AND MODELS_TINYXML2_FOUND)
+    set(MODELS_X3D_ENABLED TRUE)
 endif()
 
 set(MODELS_BLEND_ENABLED FALSE)
@@ -66,6 +76,11 @@ set(MODELS_PLUGIN_SOURCES
 if(MODELS_COLLADA_ENABLED)
     list(APPEND MODELS_PLUGIN_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/COLLADA/UltraCanvasColladaConverter.cpp)
+endif()
+
+if(MODELS_X3D_ENABLED)
+    list(APPEND MODELS_PLUGIN_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/X3D/UltraCanvasX3DConverter.cpp)
 endif()
 
 if(MODELS_BLEND_ENABLED)
@@ -120,7 +135,7 @@ if(DEFINED ULTRACANVAS_INCLUDE_DIR)
     target_include_directories(${PLUGIN_NAME} PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
 endif()
 
-if(MODELS_COLLADA_ENABLED)
+if(MODELS_COLLADA_ENABLED OR MODELS_X3D_ENABLED)
     target_include_directories(${PLUGIN_NAME} PRIVATE ${MODELS_TINYXML2_INCLUDE_DIRS})
     target_link_directories(${PLUGIN_NAME} PRIVATE ${MODELS_TINYXML2_LIBRARY_DIRS})
     target_link_libraries(${PLUGIN_NAME} PRIVATE ${MODELS_TINYXML2_LIBRARIES})
@@ -140,6 +155,7 @@ target_compile_definitions(${PLUGIN_NAME}
         # Per-format, so a caller can #ifdef on exactly what was built rather
         # than on the plugin as a whole.
         $<$<BOOL:${MODELS_COLLADA_ENABLED}>:ULTRACANVAS_HAS_COLLADA_CONVERTER=1>
+        $<$<BOOL:${MODELS_X3D_ENABLED}>:ULTRACANVAS_HAS_X3D_CONVERTER=1>
         $<$<BOOL:${MODELS_BLEND_ENABLED}>:ULTRACANVAS_HAS_BLEND_CONVERTER=1>
     PRIVATE
         ULTRACANVAS_MODELS_PLUGIN_VERSION="${PLUGIN_VERSION}"
@@ -172,6 +188,11 @@ if(MODELS_COLLADA_ENABLED)
     message(STATUS "  [✓] COLLADA (.dae) - ENABLED")
 else()
     message(STATUS "  [✗] COLLADA (.dae) - DISABLED (tinyxml2 not found or option off)")
+endif()
+if(MODELS_X3D_ENABLED)
+    message(STATUS "  [✓] X3D (.x3d) - ENABLED")
+else()
+    message(STATUS "  [✗] X3D (.x3d) - DISABLED (tinyxml2 not found or option off)")
 endif()
 if(MODELS_BLEND_ENABLED)
     message(STATUS "  [✓] Blender (.blend) inspection - ENABLED")
