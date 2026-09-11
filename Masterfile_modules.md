@@ -99,6 +99,9 @@ the backing implementation can be replaced without affecting callers.
     AP203/214/242 entity layer (`UltraCanvasStepConverter.h`) that fills
     `ModelDocument::Brep` and writes it back out. Consult that header for what
     it reads and what it deliberately does not.
+    **PLY** (`Plugins/Models/PLY/`) reads and writes all three encodings and is
+    the format with no fixed schema: a per-vertex property nothing else has a
+    field for survives as a named `AttributeSemantic::Custom`.
     **Alembic** (`Plugins/Models/Alembic/`) is split the same way: an Ogawa
     container and object/property layer (`UltraCanvasOgawaFile.h`) under an
     AbcGeom reader (`UltraCanvasAlembicConverter.h`) for Xform, PolyMesh, SubD

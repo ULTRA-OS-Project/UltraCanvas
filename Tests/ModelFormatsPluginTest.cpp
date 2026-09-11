@@ -47,6 +47,7 @@ static const std::vector<Sample>& Samples() {
             {"dxf", "DXF/E-45-Aircraft.dxf", true},
             {"step", "STEP/Box.step", true},
             {"abc", "Alembic/E-45-Aircraft.abc", true},
+            {"ply", "PLY/E-45-Aircraft.ply", true},
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
             {"dae", "COLLADA/E-45-Aircraft.dae", true},
 #endif
@@ -84,8 +85,12 @@ static void TestDispatchTable() {
           "a dotted extension resolves");
     Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("obj") != nullptr,
           "a bare extension resolves");
-    Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("ply") == nullptr,
-          "a format this build has no converter for resolves to nothing");
+    // Deliberately not a real format. This assertion has gone stale twice, once
+    // when .abc gained a reader and once when .ply did, because it named a
+    // format that was merely unsupported *yet*. An extension no one will ever
+    // implement tests the same thing and cannot rot.
+    Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("notaformat") == nullptr,
+          "an extension no converter claims resolves to nothing");
 
     // And says so rather than returning null in silence: a caller handed a
     // .fbx has to be able to tell "unsupported" from "corrupt". The example is
