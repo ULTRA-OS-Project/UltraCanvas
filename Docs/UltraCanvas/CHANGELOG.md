@@ -1,4 +1,4 @@
-#### 2026-09-11 *0.8.18*
+#### 2026-09-11 *0.8.22*
 - **VRML97 (.wrl) reads, and with it X3D's Classic VRML encoding (.x3dv).** X3D
   is one node set with more than one encoding, and VRML97 is that same classic
   syntax a revision earlier. `Plugins/Models/X3D/` is now split the way the
@@ -151,6 +151,65 @@
   extension no one will ever implement. It had gone stale twice - once when
   .abc gained a reader and once when .ply did - because it named a format that
   was only unsupported *yet*.
+- **`ctest` now hands `ModelX3DTest` both samples.** It was registered with the
+  `.x3d` alone, so the suite's central assertion - that one scene written in
+  both encodings produces the same document - was skipped everywhere except a
+  by-hand run. A second encoding that is only checked by hand is a second
+  encoding that drifts.
+
+#### 2026-09-11 *0.8.19*
+- **Blender (.blend) imports geometry.** It was the one format in the matrix
+  that dispatched and returned nothing: `BlendConverter` recognised the file,
+  described it, and declined. It now reads the object hierarchy, the meshes,
+  n-gons, per-corner UVs, per-corner vertex colours and materials.
+- **Why the decision changed.** A .blend stores modifiers *unapplied*, so what
+  it holds is the cage before mirroring and subdivision - 1147 vertices in the
+  E-45 sample against the 11749 of the OBJ exported from it. The old argument
+  was that importing that would tell the caller something false. That is only
+  true if the reader lets the cage pass for the model. The framework already
+  had the same situation and answered it the other way round: the Alembic
+  reader returns a `SubD` control cage with a warning that the subdivided
+  surface is not in the file. So the reader now imports the cage, warns naming
+  every unapplied modifier, and records them in `Metadata` as
+  `blend.unappliedModifiers`. `Docs/Research/UltraCanvas3DModelProposal.md`
+  §2.6 is rewritten to say so rather than quietly changing position.
+- **Every read goes through the file's own SDNA.** A .blend is Blender's heap
+  written out, and the embedded SDNA block describes every struct and field in
+  the build that wrote it. `UltraCanvasBlendFile.h` is now a real container -
+  blocks, structs, and a `Ref` that reads a field *by name* at whatever offset
+  this file gives it - rather than an inspector. That is what makes one reader
+  work across builds that moved fields: the test inserts an unknown field at
+  the *front* of the Mesh struct, shifting every offset after it, and asserts
+  the geometry lands in exactly the same place.
+- **Both mesh layouts Blender has shipped.** MVert/MPoly/MLoop through 3.x, and
+  the named CustomData attribute layers of 3.6 and later, where the vertices
+  are a "position" layer, the corners a ".corner_vert" layer and the faces an
+  offsets array. Layers are found by name rather than by CD_* type number,
+  because those numbers have been reused across releases and the names have
+  not. The values a layer points at are a raw array with no SDNA struct of its
+  own, so their width comes from the bytes present over the count declared -
+  reading the block's nominal type instead gives zero, which is the bug the
+  4.x path was written with and the test caught.
+- **A node's local transform is divided out of the world matrix Blender
+  evaluated**, rather than rebuilt from loc/rot/size. Rebuilding would mean
+  reproducing parentinv, bone parents and vertex parents and getting all of
+  them right; dividing uses the answer already in the file. Verified against an
+  independent walk of every object's `obmat`, to the digit.
+- Vertex colours are **sRGB bytes** in the file and linear floats in the
+  document, so the transfer function is undone rather than the byte divided by
+  255. Normals are generated: Blender's stored ones are a cache it recomputes
+  on load, and from 3.x it often stores none at all.
+- **`Tests/ModelBlendTest.cpp`** (66 assertions) now **builds .blend files by
+  hand**, SDNA and all, because nothing about field offsets, 32-bit pointers,
+  big-endian files, the two mesh layouts or the malformed-file refusals is
+  reachable from one export. The sample half asserts the cage: 1030 faces, 1567
+  vertices once per-corner UVs split them, bounds matching an independent walk,
+  and the hull **stopping dead at x = 0** because the mirror is unapplied. The
+  scene is titled `E-45_GLSL` - the same name the `.dae` and the 7.4 binary
+  `.fbx` carry, which is what ties all three back to this file.
+- `Tests/ModelFormatsPluginTest.cpp`'s "dispatches but declines to import"
+  example no longer has a format to name; `.blend` now imports like the rest.
+
 #### 2026-09-11 *0.8.17*
 - **"This app can't run on your PC" is diagnosed, and guarded against at
   packaging time.** That dialog is Windows refusing an executable's PE header
@@ -183,6 +242,7 @@
   not a DLL or run-time failure, the three header causes, and why "an older
   version still works" should be answered by comparing the two files' headers
   before diffing the sources.
+
 #### 2026-09-11 *0.8.16*
 - **DirectX .x (.x) reads, text and binary.** `Plugins/Models/XFile/` is split the
   way the STEP and Alembic readers are: `UltraCanvasXFile.h` is the container -
@@ -650,6 +710,7 @@
   Commons on Westminster benches, and a coalition builder where clicking
   parties assembles a majority. Docs in
   `Docs/UltraCanvas/UltraCanvasParliamentDiagram.md`.
+
 #### 2026-09-10 *0.8.1*
 - **A drop can ask before it is carried out.** Dragging files onto a folder of
   `UltraCanvasFilerWidget` moved them the moment the button came up, and a drag
@@ -663,6 +724,7 @@
   folder, with the folder's full path underneath, and nothing is touched until
   it is answered; with dialogs disabled the drop is carried out rather than
   lost. (`Docs/UltraCanvas/UltraCanvasFilerWidget.md` > Drag & drop.)
+
 #### 2026-09-10 *0.8.0*
 - **A home icon that shows whose home it is.** `media/icons/home-user.svg`
   joins the shared icon set: a house with the user in it, drawn in the flat
@@ -702,6 +764,7 @@
   assigning `selectedButton` first so the re-entrant call arriving through
   `onChecked` finds a consistent group and the selection callback still fires
   exactly once, and returns early when the button is already the selection.
+
 #### 2026-09-09 *0.3.118*
 - **A font file opens full size in a window of its own.**
   `UltraCanvasMediaViewerWindow` is a new component: an
@@ -845,6 +908,7 @@
   which only the binary bitmap formats produce (a BDF written by the test
   comes back as `ADOBE_STANDARD`, which FreeType selects by itself), so it
   probes the system's X11 bitmap fonts and skips where a machine has none.
+
 #### 2026-09-09 *0.3.113*
 - **Android: framework diagnostics reach logcat.** `debugOutput` and the
   process's stdio went nowhere on Android, where there is no terminal to
@@ -878,6 +942,7 @@
   libraries stay absent, which costs formats rather than the backend.
   `scripts/android-syntax-check.sh` type-checks the miniaudio translation unit
   against the real NDK, so enabling it is a change rather than a claim.
+
 #### 2026-09-09 *0.3.117*
 - **LaTeX documents open as documents (LaTeX engine Phase 3).** New
   `UltraCanvasLaTeXDocumentReader`
@@ -1057,6 +1122,7 @@
   push and **saying so unprompted** when there is no open pull request: not
   opening one unasked is the rule, leaving the user to discover that nothing
   was published is not.
+
 #### 2026-09-09 *0.3.111*
 - **A double-click that starts a program now says so: the busy pointer.**
   Spawning a program takes milliseconds, the program appearing takes seconds,
@@ -1153,6 +1219,7 @@
   of the one before - so a heading is never the row left selected from the
   keyboard either; a closed parent is still stepped onto, since it can be
   opened from there.
+
 #### 2026-09-08 *0.3.110*
 - **Vector document model: precision, bounds, hit-testing, units and CAD
   layers.** First step of the shared-model work for the vector converter
@@ -1364,6 +1431,7 @@
   size bound still being applied, and unregistering a decoder while leaving the
   format recognised. It passes with `ULTRACANVAS_ENABLE_VIDEO=OFF` too — the
   case that shows a plugin working on a build with no platform backend.
+
 #### 2026-09-06 *0.3.107*
 - **Raster editing layer — what a bitmap editor needs and the framework did
   not have.** PixelFX has always been a complete whole-image engine (filters,

@@ -39,7 +39,7 @@ this document is where those annotations come from.
 | `ThreeDSConverter` | `Plugins/Models/3DS/` | Reads Autodesk 3DS into `ModelDocument`: meshes, object matrices, materials with texture maps, per-face material groups, cameras and lights. The first scene format on the structure. |
 | `OBJConverter` | `Plugins/Models/OBJ/` | Reads **and writes** Wavefront OBJ + MTL: n-gons kept as n-gons, the three index streams resolved into unique corners, objects, groups, `usemtl`, vertex colours, and the MTL PBR extension. The first writer on the structure. |
 | `ColladaConverter` | `Plugins/Models/COLLADA/` | Reads COLLADA 1.4/1.5: `<unit>`, `<up_axis>`, the node hierarchy with ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`, `profile_COMMON` materials with transparency and textures, vertex colours, and matrix or TRS animation channels. The first format that states everything the structure holds. |
-| `BlendConverter` | `Plugins/Models/Blend/` | Recognises a Blender `.blend`, reports what it contains — version, objects, meshes, materials, modifiers, stored vertex count — and **declines to import geometry**, with the reason. See §2.6. |
+| `BlendConverter` | `Plugins/Models/Blend/` | Reads a Blender `.blend` through the file's own embedded SDNA: the object hierarchy, meshes in both layouts Blender has shipped, n-gons, per-corner UVs and colours, and materials. What it imports is the cage **before** modifiers, and it warns naming the ones that are unapplied. See §2.6. |
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
 | `StepConverter` | `Plugins/Models/STEP/` | Reads **and writes** ISO 10303-21 (AP203/214/242) into `ModelDocument::Brep` — trimmed NURBS and analytic surfaces with their topology, held exactly rather than tessellated away. The first B-rep converter. See §2.5. |
 | `AlembicConverter` | `Plugins/Models/Alembic/` | Reads the Ogawa container and AbcGeom's `Xform`, `PolyMesh`, `SubD` and `FaceSet` — first time sample only, read-only. No SDK. |
@@ -224,18 +224,36 @@ not by what the format is capable of. `Tests/ModelXFileTest.cpp` asserts the
 apart without one of them failing.
 
 `.blend` is also self-describing through an embedded SDNA block, which makes
-the *file* readable even though the *model* is not. So the decision is:
+the *file* readable even though the *evaluated model* is not.
 
-**Recognise and describe, never import.** `BlendConverter` reads the header,
-the block index and the SDNA — the three parts that have been stable across
-many Blender releases — and reports version, pointer size, compression,
-datablock names, modifier types and the stored vertex count. Then it declines,
-with a sentence naming the modifiers and pointing at the export that would
-work. Its `FormatCapabilities` are all false, because a capability report says
-what a converter does, not what its format could hold.
+This section originally concluded **recognise and describe, never import**, on
+the grounds that a silent failure tells the user nothing and a geometry reader
+tells them something false. The first half of that still holds. The second half
+was wrong, and it is worth saying why, because the mistake is a general one.
 
-That is more useful than either alternative: a silent failure tells the user
-nothing, and a geometry reader tells them something false.
+A reader that returns the stored cage is only lying if it lets the caller
+believe the cage is the model. The cage is not noise: it is what the artist
+modelled, what they would edit, and — in this sample — the exact geometry the
+`.dae` export also carries. The framework already had the identical situation
+and answered it the other way: the Alembic reader returns a `SubD` **control
+cage** with a warning that the subdivided surface is not in the file. There is
+no principle separating the two cases, only the order they were written in.
+
+So the decision is now:
+
+**Import the cage, and name what is missing.** `BlendConverter` reads the
+object hierarchy, the meshes in both layouts Blender has shipped, n-gons, UVs,
+vertex colours and materials — all of it addressed through the file's own SDNA,
+so a build that moved a field still reads — and then warns, naming the
+modifiers that are unapplied and recording them in `Metadata`. Its
+`FormatCapabilities` claim exactly that and nothing more: meshes, scene graph
+and materials true; animation, skinning and textures false, because armature
+deform, actions and node-tree images are genuinely not read.
+
+The measurements above are what the suite now asserts, and they are the reason
+the warning has to stay: the imported hull **stops dead at x = 0**, so a caller
+who ignores the warning gets half an aircraft. Stating that is the reader's
+whole job. Refusing to state it was the easy way out of having to.
 
 ### 2.7 Handedness — the one thing a format can get wrong invisibly
 
@@ -554,6 +572,19 @@ and once as classic VRML, must give the same meshes, the same faces, the same
 vertices and bounds agreeing to the last bit. A reader with two encodings can
 pass every other test in the file while quietly diverging between them, and
 nothing but this catches it.
+
+`Tests/ModelBlendTest.cpp` covers the one reader whose *container* is another
+program's memory. Its synthetic half builds .blend files by hand, SDNA and all,
+and the assertion that justifies the effort is this: a field of a type the
+reader has never heard of is inserted at the **front** of the Mesh struct,
+shifting every offset after it, and the geometry must land in exactly the same
+place. That is the SDNA's whole claim, and nothing short of writing the file
+tests it. The same builder covers 32-bit pointers, a big-endian file — which no
+machine has written for twenty years and no sample could supply — and both of
+the two mesh layouts Blender has shipped, asserted to produce identical
+geometry from the same quad. The sample half asserts the cage and its limits:
+1030 faces, and a hull that stops dead at x = 0 because the mirror modifier is
+unapplied.
 `Tests/ModelXFileTest.cpp` covers the `.x` reader, and is the suite where the
 synthetic half matters most: one text export reaches neither the binary encoding
 nor any of the cases that make the format treacherous. So the binary encoding is
@@ -656,7 +687,7 @@ Each step is independently mergeable and comes with a test and a demo page.
    report says `Animations = false` rather than implying otherwise. **Still to
    do:** the two MSZIP encodings, and animation once a file with some exists.
 
-3.8. **VRML97 and X3D's Classic VRML encoding — done.** `.wrl`, `.vrml` and
+3.9. **VRML97 and X3D's Classic VRML encoding — done.** `.wrl`, `.vrml` and
    `.x3dv` reach the same reader as `.x3d`, validated against the aircraft's
    `.wrl` (`Tests/ModelX3DTest.cpp`, now 167 assertions across two samples).
    What it added to this document is §2.9: it is the only reader here split by
@@ -957,10 +988,12 @@ converter would have hit them too:
 
 ## 7. Non-goals
 
-- **Application-native scene files** — `.blend`, `.max`, `.ma`/`.mb`, `.c4d`.
-  See §2.6: the geometry an artist sees is produced by the application's
-  evaluation and is not in the file. `.blend` is recognised and described so a
-  user gets an answer instead of a failure, but never imported as geometry.
+- **Evaluating an application's modifier stack** — for `.blend`, `.max`,
+  `.ma`/`.mb`, `.c4d`. See §2.6: the geometry an artist sees is produced by the
+  application's evaluation, and reproducing it means reimplementing the
+  application. `.blend` is read, but what is read is the stored cage, with the
+  unapplied modifiers named in a warning and in `Metadata`. Running Mirror,
+  Subsurf and the rest is the part that stays out of scope.
 - ~~**B-rep and parametric solids**~~ — **no longer a non-goal.** See §2.5:
   `ModelDocument::Brep` holds trimmed NURBS and analytic surfaces with their
   topology, and tessellation became an operation the caller asks for rather

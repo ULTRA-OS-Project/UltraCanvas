@@ -983,7 +983,11 @@ if(TEST_TINYXML2_FOUND)
     )
     add_test(
         NAME ModelX3DTest
+        # Both samples, because the suite's central assertion is that the two
+        # encodings agree - and that half is skipped when only the .x3d is
+        # passed, which is exactly how a second encoding drifts unnoticed.
         COMMAND ModelX3DTest "${ULTRACANVAS_ROOT}/media/models/X3D/E-45-Aircraft.x3d"
+                             "${ULTRACANVAS_ROOT}/media/models/VRML/E-45-Aircraft.wrl"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelX3DTest")
