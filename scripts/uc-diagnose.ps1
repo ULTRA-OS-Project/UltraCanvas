@@ -30,15 +30,24 @@
 .PARAMETER WaitSeconds
     How long to watch for a window before reporting (default 20).
 
+.PARAMETER CheckOnly
+    Inspect the executable's PE header and stop; do not launch it. This is the
+    check that explains Windows' own "This app can't run on your PC" dialog:
+    a binary built for another CPU architecture, a truncated or empty file, or
+    a subsystem version this Windows is too old for. Exit code 0 when the file
+    could be started here, 1 when Windows would refuse it.
+
 .EXAMPLE
     .\uc-diagnose.ps1
     .\uc-diagnose.ps1 .\bin\Ladybird.exe https://example.com
+    .\uc-diagnose.ps1 -CheckOnly .\UltraFiler.exe
 #>
 [CmdletBinding()]
 param(
     [string]   $Path,
     [string[]] $Arguments = @(),
-    [int]      $WaitSeconds = 20
+    [int]      $WaitSeconds = 20,
+    [switch]   $CheckOnly
 )
 
 $ErrorActionPreference = 'Continue'
@@ -92,9 +101,111 @@ $os = Get-CimInstance Win32_OperatingSystem -ErrorAction SilentlyContinue
 $build = if ($os) { [int]($os.BuildNumber) } else { [Environment]::OSVersion.Version.Build }
 # Windows 11 kept Windows 10's major.minor; build 22000 is the boundary.
 $osName = if ($build -ge 22000) { 'Windows 11' } elseif ($build -ge 10240) { 'Windows 10' } else { 'Windows' }
+# The machine's real architecture, not the shell's: a 32-bit or an emulated
+# x64 PowerShell reports itself in PROCESSOR_ARCHITECTURE. Win32_Processor
+# answers for the silicon (9 = x64, 12 = ARM64, 0 = x86); the environment is
+# the fallback when WMI is unavailable.
+$cpu = Get-CimInstance Win32_Processor -ErrorAction SilentlyContinue | Select-Object -First 1
+$hostArch = switch ([int]$(if ($cpu) { $cpu.Architecture } else { -1 })) {
+    9  { 'x64' }
+    12 { 'ARM64' }
+    0  { 'x86' }
+    default {
+        $envArch = if ($env:PROCESSOR_ARCHITEW6432) { $env:PROCESSOR_ARCHITEW6432 } else { $env:PROCESSOR_ARCHITECTURE }
+        switch ($envArch) { 'AMD64' { 'x64' } 'ARM64' { 'ARM64' } 'x86' { 'x86' } default { $envArch } }
+    }
+}
 Write-Host "OS          : $osName (build $build) - $($os.Caption)"
-Write-Host "Architecture: $env:PROCESSOR_ARCHITECTURE"
+Write-Host "Architecture: $hostArch"
 Write-Host "Executable  : $exe"
+
+# --- PE header -------------------------------------------------------------
+# Windows checks the header before the process exists, and when it does not
+# like what it finds it shows "This app can't run on your PC" and nothing
+# else: no process, no exit code, no event-log entry, no framework log. The
+# three causes are all in the header, so read it here, before launching.
+function Read-PeHeader([string] $file) {
+    $info = [ordered]@{ Size = (Get-Item -LiteralPath $file).Length; Problems = @() }
+    if ($info.Size -eq 0) { $info.Problems += 'the file is EMPTY (0 bytes) - a download or extraction that produced nothing'; return $info }
+    if ($info.Size -lt 64) { $info.Problems += "the file is $($info.Size) bytes - too short to hold a PE header"; return $info }
+    $stream = [IO.File]::Open($file, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::ReadWrite)
+    $reader = New-Object IO.BinaryReader($stream)
+    try {
+        if ([Text.Encoding]::ASCII.GetString($reader.ReadBytes(2)) -ne 'MZ') { $info.Problems += 'no MZ signature - this is not a Windows executable'; return $info }
+        $stream.Position = 60
+        $peOffset = $reader.ReadUInt32()
+        if ($peOffset + 24 -gt $info.Size) { $info.Problems += "the PE header lies at byte $peOffset, beyond the end of the file - truncated"; return $info }
+        $stream.Position = $peOffset
+        if (($reader.ReadBytes(4) -join ',') -ne '80,69,0,0') { $info.Problems += "no PE signature at byte $peOffset"; return $info }
+        $machine  = $reader.ReadUInt16()
+        $sections = $reader.ReadUInt16()
+        $stream.Position = $peOffset + 20
+        $optSize  = $reader.ReadUInt16()
+        $opt      = $peOffset + 24
+        $stream.Position = $opt
+        $magic    = $reader.ReadUInt16()
+        $info.Machine = switch ($machine) { 0x8664 { 'x64' } 0xAA64 { 'ARM64' } 0x14C { 'x86' } 0x1C4 { 'ARM32' } default { ('0x{0:X4}' -f $machine) } }
+        $info.Bits = switch ($magic) { 0x20B { 'PE32+' } 0x10B { 'PE32' } default { ('magic 0x{0:X4}' -f $magic) } }
+        $info.Sections = $sections
+        if ($magic -eq 0x20B -or $magic -eq 0x10B) {
+            $stream.Position = $opt + 48
+            $info.SubsystemVersion = '{0}.{1:00}' -f $reader.ReadUInt16(), $reader.ReadUInt16()
+            $info.SubsystemMajor = [int]$info.SubsystemVersion.Split('.')[0]
+            $stream.Position = $opt + 68
+            $info.Subsystem = switch ($reader.ReadUInt16()) { 2 { 'GUI' } 3 { 'console' } default { "$_" } }
+        }
+        # A file cut short still has a header that parses. The section table
+        # says how long the file has to be.
+        $need = 0
+        for ($i = 0; $i -lt $sections; $i++) {
+            $stream.Position = $opt + $optSize + $i * 40 + 16
+            $end = [long]$reader.ReadUInt32() + [long]$reader.ReadUInt32()
+            if ($end -gt $need) { $need = $end }
+        }
+        $info.SectionsEnd = $need
+    } finally {
+        $reader.Close()
+    }
+    if ($info.SectionsEnd -gt $info.Size) {
+        $info.Problems += "the file is TRUNCATED: its sections end at byte $($info.SectionsEnd) but it is only $($info.Size) bytes long. Re-download the package, or extract it again with a different tool."
+    }
+    if ($info.Sections -gt 96) { $info.Problems += "$($info.Sections) sections; Windows loads at most 96" }
+    if ($info.SubsystemMajor -gt 10) { $info.Problems += "subsystem version $($info.SubsystemVersion) - newer than any Windows release" }
+    switch ($info.Machine) {
+        'ARM64' {
+            if ($hostArch -ne 'ARM64') {
+                $info.Problems += "this executable is built for ARM64 but this machine is $hostArch. It is the arm64 package; the one for this PC is the x86_64 package (UCDemo-Windows-<version>-x86_64.zip)."
+            }
+        }
+        'x64' {
+            if ($hostArch -eq 'x86') {
+                $info.Problems += 'this executable is 64-bit but this Windows is 32-bit. Nothing 64-bit can run here.'
+            } elseif ($hostArch -eq 'ARM64' -and $build -lt 22000) {
+                $info.Problems += 'this executable is x64 and this is Windows 10 on ARM, which cannot emulate x64 programs (Windows 11 can). Use the arm64 package.'
+            }
+        }
+        'x86' { }
+        default { $info.Problems += "built for $($info.Machine), which this machine ($hostArch) does not run" }
+    }
+    return $info
+}
+
+Write-Section 'Executable header'
+$pe = Read-PeHeader $exe
+if ($pe.Contains('Machine')) {
+    Write-Host "Built for   : $($pe.Machine) ($($pe.Bits)), $($pe.Subsystem) subsystem $($pe.SubsystemVersion), $($pe.Sections) sections"
+}
+Write-Host "File size   : $($pe.Size) bytes"
+if ($pe.Problems.Count -gt 0) {
+    Write-Host ''
+    Write-Host "[X] Windows will refuse to start this file with ""This app can't run on your PC""" -ForegroundColor Red
+    Write-Host "    (ERROR_BAD_EXE_FORMAT). It never becomes a process, so there is no exit" -ForegroundColor Red
+    Write-Host "    code, no event-log entry and no log to read. The reason:" -ForegroundColor Red
+    foreach ($p in $pe.Problems) { Write-Host "    - $p" -ForegroundColor Red }
+    exit 1
+}
+Write-Host "The header is one this machine can load."
+if ($CheckOnly) { exit 0 }
 
 # --- Mark of the Web -------------------------------------------------------
 # Files extracted from a downloaded ZIP inherit a Zone.Identifier stream.
@@ -146,8 +257,19 @@ try {
     $proc = [System.Diagnostics.Process]::Start($psi)
 } catch {
     Write-Host "Could not start the process: $($_.Exception.Message)" -ForegroundColor Red
-    Write-Host "A failure here, before the process exists, points at the loader or at a"
-    Write-Host "policy blocking the binary rather than at the application."
+    $win32 = $_.Exception
+    while ($win32 -and -not ($win32 -is [ComponentModel.Win32Exception])) { $win32 = $win32.InnerException }
+    $code = if ($win32) { $win32.NativeErrorCode } else { -1 }
+    switch ($code) {
+        193 { Write-Host "Win32 error 193 ERROR_BAD_EXE_FORMAT - the dialog for this is ""This app can't run on your PC"". The header check above passed, so the file changed between the check and the launch, or an endpoint-protection product is interposing." }
+        216 { Write-Host "Win32 error 216 ERROR_EXE_MACHINE_TYPE_MISMATCH - built for another CPU architecture; see the header check above." }
+        5   { Write-Host "Win32 error 5 ACCESS_DENIED - a policy (AppLocker, Smart App Control, endpoint protection) refused to let the binary run." }
+        1260 { Write-Host "Win32 error 1260 - blocked by software restriction policy / AppLocker." }
+        default {
+            Write-Host "A failure here, before the process exists, points at the loader or at a"
+            Write-Host "policy blocking the binary rather than at the application."
+        }
+    }
     exit 1
 }
 Write-Host "PID         : $($proc.Id)"
