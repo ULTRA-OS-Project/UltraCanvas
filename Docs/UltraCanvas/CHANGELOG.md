@@ -1,4 +1,4 @@
-#### 2026-09-11 *0.8.17*
+#### 2026-09-11 *0.8.18*
 - **The ULTRA OS module list says what each module actually is.** Every second
   entry under *ULTRA OS modules* in DemoApp's tree carried the same yellow
   "Partially Implemented" mark, whatever the state of the module behind it, so
@@ -15,6 +15,7 @@
   no sources, no build target and no caller, which is "Planned" rather than
   partial - the reading Smart Home already had. Pixel FX keeps its yellow mark
   in a build without libvips, where the module really is half there.
+#### 2026-09-11 *0.8.17*
 - **"This app can't run on your PC" is diagnosed, and guarded against at
   packaging time.** That dialog is Windows refusing an executable's PE header
   before any process exists - a binary built for the other CPU architecture
