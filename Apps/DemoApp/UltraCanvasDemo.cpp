@@ -1363,6 +1363,19 @@ namespace UltraCanvas {
                                "DemoApp/UltraCanvasVennDiagramExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md");
 
+        diagramBuilder.AddItem("parliamentdiagram", "Parliament Diagram",
+                               "Legislature seat chart: hemicycle, horseshoe, circle, Westminster "
+                               "benches and grid layouts with majority marker, legend and coalition "
+                               "building",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateParliamentDiagramExamples(); },
+                               "DemoApp/UltraCanvasParliamentDiagramExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasParliamentDiagram.md")
+                .AddVariant("parliamentdiagram", "Bundestag")
+                .AddVariant("parliamentdiagram", "European Parliament")
+                .AddVariant("parliamentdiagram", "House of Commons")
+                .AddVariant("parliamentdiagram", "Coalition Builder");
+
         diagramBuilder.AddItem("packetdiagram", "Packet Diagram",
                                "Bit-accurate protocol header and frame structure: RFC word grid "
                                "with fields wrapping across rows, proportional byte strips, "
@@ -1641,6 +1654,14 @@ namespace UltraCanvas {
                                   "DemoApp/UltraCanvasGLSurfaceExamples.cpp",
                                   "Docs/UltraCanvas/UltraCanvasGLSurfaceExamples.md");
 #endif
+
+        // Outside the GL guard: UltraCanvasSTLElement falls back to a mesh summary
+        // without GL, so the loader and its statistics stay demonstrable there.
+        graphics3DBuilder.AddItem("stlmodels", "STL 3D Models", "Stereolithography meshes (ASCII and binary) read by the self-contained STL loader and shaded in an orbiting OpenGL view",
+                                  ImplementationStatus::FullyImplemented,
+                                  [this]() { return CreateSTLModelExamples(); },
+                                  "DemoApp/UltraCanvasSTLExamples.cpp",
+                                  "Docs/UltraCanvas/UltraCanvasSTLElement.md");
 
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);

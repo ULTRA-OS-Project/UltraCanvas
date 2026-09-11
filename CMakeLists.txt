@@ -350,6 +350,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasBubbleChartExamples.cpp
             Apps/DemoApp/UltraCanvasQuadrantChartExamples.cpp
             Apps/DemoApp/UltraCanvasSWOTDiagramExamples.cpp
+            Apps/DemoApp/UltraCanvasParliamentDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasCircleDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasFishboneDiagramExamples.cpp
             Apps/DemoApp/UltraCanvasMatrixDiagramExamples.cpp
@@ -404,6 +405,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
+            Apps/DemoApp/UltraCanvasSTLExamples.cpp
     )
 
     # These files depend on libvips
@@ -442,6 +444,7 @@ if(BUILD_DEMO_APP)
         if(PLUGIN_TARGET MATCHES "UltraCanvasVectorPlugin")
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasDWGExamples.cpp)
         endif()
+
 
         if(PLUGIN_TARGET MATCHES "OCR")
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasOCRExamples.cpp)

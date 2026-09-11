@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailCredentialVault.cpp
-// Version: 0.4.0 (Phase 2)
+// Version: 0.5.0 - OAuth2 token sets beside passwords
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailCredentialVault.h"
 
@@ -7,6 +7,7 @@
 #include <UltraNet/UltraNetMime.h>   // UltraNet_Base64Encode / Decode
 
 #include <cstdint>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <map>
@@ -154,8 +155,65 @@ int CredentialVault::MigrateLegacy() {
 
 bool CredentialVault::Store(const std::string& account, const std::string& secret) {
     if (account.empty() || !unlocked_) return false;
-    return UltraVault::Put(KeyFor(account),
-                           UltraVault::SecretValue::FromString(secret)).IsOk();
+    if (!UltraVault::Put(KeyFor(account),
+                         UltraVault::SecretValue::FromString(secret)).IsOk())
+        return false;
+    RemoveOAuthTokens(account);   // one sign-in method per account
+    return true;
+}
+
+namespace {
+constexpr const char* kAccessSuffix  = ".oauth.access";
+constexpr const char* kRefreshSuffix = ".oauth.refresh";
+constexpr const char* kExpiresSuffix = ".oauth.expires";
+} // namespace
+
+bool CredentialVault::StoreOAuthTokens(const std::string& account, const OAuthTokens& tokens) {
+    if (account.empty() || !unlocked_ || tokens.Empty()) return false;
+    const std::string base = KeyFor(account);
+    auto put = [&](const char* suffix, const std::string& value) {
+        return UltraVault::Put(base + suffix,
+                               UltraVault::SecretValue::FromString(value)).IsOk();
+    };
+    if (!put(kAccessSuffix, tokens.accessToken) ||
+        !put(kRefreshSuffix, tokens.refreshToken) ||
+        !put(kExpiresSuffix, std::to_string(tokens.expiresAt)))
+        return false;
+    UltraVault::Delete(base);   // the password slot, if the account had one
+    return true;
+}
+
+bool CredentialVault::RetrieveOAuthTokens(const std::string& account, OAuthTokens& out) const {
+    out = OAuthTokens{};
+    if (account.empty() || !unlocked_) return false;
+    const std::string base = KeyFor(account);
+    UltraVault::SecretValue v;
+    if (!UltraVault::Get(base + kAccessSuffix, v).IsOk()) return false;
+    out.accessToken = v.AsString();
+    if (UltraVault::Get(base + kRefreshSuffix, v).IsOk()) out.refreshToken = v.AsString();
+    if (UltraVault::Get(base + kExpiresSuffix, v).IsOk())
+        out.expiresAt = std::strtoll(v.AsString().c_str(), nullptr, 10);
+    return !out.Empty();
+}
+
+bool CredentialVault::HasOAuthTokens(const std::string& account) const {
+    OAuthTokens ignore;
+    return RetrieveOAuthTokens(account, ignore);
+}
+
+bool CredentialVault::RemoveOAuthTokens(const std::string& account) {
+    if (account.empty() || !unlocked_) return false;
+    const std::string base = KeyFor(account);
+    const bool had = UltraVault::Delete(base + kAccessSuffix).IsOk();
+    UltraVault::Delete(base + kRefreshSuffix);
+    UltraVault::Delete(base + kExpiresSuffix);
+    return had;
+}
+
+SignInMethod CredentialVault::MethodFor(const std::string& account) const {
+    if (HasOAuthTokens(account)) return SignInMethod::OAuth2;
+    if (Has(account)) return SignInMethod::Password;
+    return SignInMethod::None;
 }
 
 bool CredentialVault::Retrieve(const std::string& account, std::string& out) const {

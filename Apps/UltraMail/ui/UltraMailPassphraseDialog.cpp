@@ -25,8 +25,8 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
                             std::function<void(const std::string&)> onSubmit) {
     DialogConfig config;
     config.title      = firstRun ? "Choose a master password" : "Master password";
-    config.width      = 460;
-    config.height     = firstRun ? 380 : 280;
+    config.width      = 420;
+    config.height     = firstRun ? 300 : 230;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -46,7 +46,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
                    .SetFlexGap(8)
                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    auto intro = CreateLabel("passIntro", 0, 0, 420, 84,
+    auto intro = CreateLabel("passIntro", 0, 0, 380, 60,
         firstRun
             ? "Choose a master password. It encrypts the passwords of your mail "
               "accounts, and it is not stored anywhere — if you forget it you "
@@ -60,7 +60,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
 
     // A previous wrong attempt, shown in place rather than as a stacked alert.
     if (!errorText.empty()) {
-        auto err = CreateLabel("passError", 0, 0, 420, 20, errorText);
+        auto err = CreateLabel("passError", 0, 0, 380, 16, errorText);
         err->SetWrap(TextWrap::WrapWord);
         err->SetFontSize(Theme::kSizeBody);
         err->SetTextColor(Theme::kWaitingText);
@@ -77,7 +77,7 @@ void PassphraseDialog::Show(UltraCanvasWindowBase* parent,
                    .SetFlexAlignItems(CSSLayout::AlignItems::Center);
         auto label = Theme::MakeLine(id + "Lbl", labelText, Theme::kControlHeight,
                                      Theme::kSizeBody, Theme::kTextSecondary);
-        label->SetElementSize(Size2Df(130.0f, Theme::kControlHeight));
+        label->SetElementSize(Size2Df(104.0f, Theme::kControlHeight));
         row->AddChild(label);
         Theme::StyleInput(input);
         row->AddChild(input);

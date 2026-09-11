@@ -32,6 +32,46 @@ void AddAccountWithInbox(LocalStore& s, const std::string& id,
     REQUIRE(s.UpsertFolder(f).success);
 }
 
+} // namespace
+
+TEST(accounts_store_their_server_settings) {
+    LocalStore s = FreshStore("servers");
+    Account a; a.accountId = "erika"; a.email = "erika@example.org"; a.shortName = "erika";
+    a.displayName = "Erika";
+    REQUIRE(!a.HasServers());
+    REQUIRE(s.UpsertAccount(a).success);
+
+    // Stored without servers: read back the same way (falls back to presets).
+    std::vector<Account> accs;
+    REQUIRE(s.ListAccounts(accs).success);
+    REQUIRE_EQ(accs.size(), std::size_t(1));
+    REQUIRE(!accs[0].HasServers());
+
+    a.imap.host = "mail.example.org"; a.imap.port = 993;
+    a.imap.security = MailSecurity::SslTls; a.imap.username = "erika"; a.imap.oauth = false;
+    a.smtp.host = "mail.example.org"; a.smtp.port = 587;
+    a.smtp.security = MailSecurity::StartTls; a.smtp.username = "erika@example.org";
+    a.providerName = "Example Org";
+    REQUIRE(a.HasServers());
+    REQUIRE(s.UpsertAccount(a).success);   // update in place
+
+    REQUIRE(s.ListAccounts(accs).success);
+    REQUIRE_EQ(accs.size(), std::size_t(1));
+    const Account& b = accs[0];
+    REQUIRE(b.HasServers());
+    REQUIRE_EQ(b.imap.host, std::string("mail.example.org"));
+    REQUIRE_EQ(b.imap.port, 993);
+    REQUIRE(b.imap.security == MailSecurity::SslTls);
+    REQUIRE_EQ(b.imap.username, std::string("erika"));
+    REQUIRE_EQ(b.smtp.host, std::string("mail.example.org"));
+    REQUIRE_EQ(b.smtp.port, 587);
+    REQUIRE(b.smtp.security == MailSecurity::StartTls);
+    REQUIRE_EQ(b.smtp.username, std::string("erika@example.org"));
+    REQUIRE_EQ(b.providerName, std::string("Example Org"));
+}
+
+namespace {
+
 MessageEnvelope Incoming(const std::string& acc, int64_t uid, const std::string& from,
                          const std::vector<std::string>& to) {
     MessageEnvelope m;

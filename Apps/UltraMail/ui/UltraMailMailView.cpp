@@ -26,15 +26,15 @@ const char* kColDate    = "date";
 const char* kRootId     = "inboxRoot";
 const char* kRowPrefix  = "msg_";
 
-constexpr int kFromWidth    = 190;
-constexpr int kSubjectMin   = 160;
-constexpr int kDateWidth    = 104;
-constexpr int kRowHeight    = 30;
-constexpr int kHeaderHeight = 28;
-constexpr int kSplitterGap  = 12;   // the page shows through between the cards
+constexpr int kFromWidth    = 160;
+constexpr int kSubjectMin   = 140;
+constexpr int kDateWidth    = 88;
+constexpr int kRowHeight    = 22;
+constexpr int kHeaderHeight = 22;
+constexpr int kSplitterGap  = 8;   // the page shows through between the cards
 
-constexpr int kListMinWidth    = 380;
-constexpr int kPreviewMinWidth = 400;
+constexpr int kListMinWidth    = 320;
+constexpr int kPreviewMinWidth = 340;
 
 const Color& kUnreadText = Theme::kTextPrimary;
 const Color& kReadText   = Theme::kTextSecondary;

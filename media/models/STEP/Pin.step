@@ -1,0 +1,117 @@
+ISO-10303-21;
+/* A cylindrical pin, radius 8 by height 25, stated in INCHES through a
+   conversion_based_unit rather than an SI one - the case that arrives a
+   thousand times the wrong size when a reader assumes millimetres.
+
+   It also carries the two things a planar test cannot reach: a cylindrical
+   surface whose side face is bounded by two full circles and a seam edge used
+   twice by the same loop, and a presentation chain colouring the body brass
+   with one face overridden red. */
+HEADER;
+FILE_DESCRIPTION(('A cylindrical pin'),'2;1');
+FILE_NAME('Pin.step','2026-09-10T00:00:00',('UltraCanvas'),(''),
+  'hand-authored','hand-authored','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 3 1 1 }'));
+ENDSEC;
+DATA;
+
+#900 = APPLICATION_CONTEXT('core data for automotive mechanical design processes');
+#901 = APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,#900);
+#902 = PRODUCT_CONTEXT('',#900,'mechanical');
+#903 = PRODUCT('Pin','Pin','',(#902));
+#904 = PRODUCT_DEFINITION_FORMATION('','',#903);
+#905 = PRODUCT_DEFINITION_CONTEXT('part definition',#900,'design');
+#906 = PRODUCT_DEFINITION('design','',#904,#905);
+#907 = PRODUCT_DEFINITION_SHAPE('','',#906);
+#908 = SHAPE_DEFINITION_REPRESENTATION(#907,#800);
+
+/* --- units: inches, as a conversion based unit over the metre --- */
+#910 = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT($,.METRE.) );
+#911 = LENGTH_MEASURE_WITH_UNIT(LENGTH_MEASURE(2.54E-02),#910);
+#912 = ( CONVERSION_BASED_UNIT('INCH',#911) LENGTH_UNIT() NAMED_UNIT(#910) );
+#913 = ( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) );
+#914 = ( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() );
+#915 = UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#912,
+  'distance_accuracy_value','confusion accuracy');
+#916 = ( GEOMETRIC_REPRESENTATION_CONTEXT(3)
+  GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#915))
+  GLOBAL_UNIT_ASSIGNED_CONTEXT((#912,#913,#914))
+  REPRESENTATION_CONTEXT('Context','3D') );
+
+#800 = ADVANCED_BREP_SHAPE_REPRESENTATION('Pin',(#201),#916);
+#201 = MANIFOLD_SOLID_BREP('Pin',#200);
+#200 = CLOSED_SHELL('',(#172,#182,#192));
+
+#1 = DIRECTION('',(0.,0.,1.));
+#2 = DIRECTION('',(1.,0.,0.));
+#4 = DIRECTION('',(0.,0.,-1.));
+
+#101 = CARTESIAN_POINT('',(8.,0.,0.));
+#102 = CARTESIAN_POINT('',(8.,0.,25.));
+#103 = CARTESIAN_POINT('',(0.,0.,0.));
+#104 = CARTESIAN_POINT('',(0.,0.,25.));
+
+#110 = AXIS2_PLACEMENT_3D('',#103,#1,#2);
+#111 = AXIS2_PLACEMENT_3D('',#104,#1,#2);
+#112 = AXIS2_PLACEMENT_3D('',#103,#4,#2);
+#113 = AXIS2_PLACEMENT_3D('',#104,#1,#2);
+
+#120 = CIRCLE('',#110,8.);
+#121 = CIRCLE('',#111,8.);
+#130 = VECTOR('',#1,25.);
+#122 = LINE('',#101,#130);
+
+#140 = CYLINDRICAL_SURFACE('',#110,8.);
+#141 = PLANE('',#112);
+#142 = PLANE('',#113);
+
+#150 = VERTEX_POINT('',#101);
+#151 = VERTEX_POINT('',#102);
+
+/* The two circles begin and end at the same vertex: a whole turn, which is
+   how STEP states a closed edge. */
+#160 = EDGE_CURVE('',#150,#150,#120,.T.);
+#161 = EDGE_CURVE('',#151,#151,#121,.T.);
+#162 = EDGE_CURVE('',#150,#151,#122,.T.);
+
+/* The side: round the bottom, up the seam, back round the top, down the seam.
+   The seam edge appears twice in this one loop, once each way. */
+#1701 = ORIENTED_EDGE('',*,*,#160,.T.);
+#1702 = ORIENTED_EDGE('',*,*,#162,.T.);
+#1703 = ORIENTED_EDGE('',*,*,#161,.F.);
+#1704 = ORIENTED_EDGE('',*,*,#162,.F.);
+#170 = EDGE_LOOP('',(#1701,#1702,#1703,#1704));
+#171 = FACE_OUTER_BOUND('',#170,.T.);
+#172 = ADVANCED_FACE('side',(#171),#140,.T.);
+
+#1801 = ORIENTED_EDGE('',*,*,#160,.F.);
+#180 = EDGE_LOOP('',(#1801));
+#181 = FACE_OUTER_BOUND('',#180,.T.);
+#182 = ADVANCED_FACE('bottom',(#181),#141,.T.);
+
+#1901 = ORIENTED_EDGE('',*,*,#161,.T.);
+#190 = EDGE_LOOP('',(#1901));
+#191 = FACE_OUTER_BOUND('',#190,.T.);
+#192 = ADVANCED_FACE('top',(#191),#142,.T.);
+
+/* --- presentation: the body is brass, the top face red --- */
+#600 = COLOUR_RGB('brass',0.76,0.6,0.2);
+#601 = FILL_AREA_STYLE_COLOUR('',#600);
+#602 = FILL_AREA_STYLE('',(#601));
+#603 = SURFACE_STYLE_FILL_AREA(#602);
+#604 = SURFACE_SIDE_STYLE('',(#603));
+#605 = SURFACE_STYLE_USAGE(.BOTH.,#604);
+#606 = PRESENTATION_STYLE_ASSIGNMENT((#605));
+#607 = STYLED_ITEM('brass',(#606),#201);
+
+#610 = COLOUR_RGB('red',1.,0.,0.);
+#611 = FILL_AREA_STYLE_COLOUR('',#610);
+#612 = FILL_AREA_STYLE('',(#611));
+#613 = SURFACE_STYLE_FILL_AREA(#612);
+#614 = SURFACE_SIDE_STYLE('',(#613));
+#615 = SURFACE_STYLE_USAGE(.BOTH.,#614);
+#616 = PRESENTATION_STYLE_ASSIGNMENT((#615));
+#617 = STYLED_ITEM('red',(#616),#192);
+
+ENDSEC;
+END-ISO-10303-21;

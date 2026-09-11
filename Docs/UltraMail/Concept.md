@@ -138,6 +138,10 @@ If discovery or verification fails, the wizard drops into the
 **manual settings** page (incoming server/port/TLS/IMAP-or-POP3,
 outgoing server/port/TLS, username) with everything it *did* find
 prefilled — the user corrects one field instead of typing seven.
+*(Shipped in 0.9.0 as `UltraMailServerSettingsDialog` — IMAP only, no
+POP3 yet; since 0.9.1 Save checks the IMAP sign-in first (`LoginCheck`).
+The page is also the fallback when the autoconfig lookup finds nothing,
+and Reload opens it for an account without known servers.)*
 
 ### 2.3 What the user never has to do
 
@@ -421,10 +425,13 @@ established implementation approach. Additional gaps to close:
   attachments) lives in UltraMail's `MimeCodec` so the plugins stay
   thin transport.
 - **OAuth2 / XOAUTH2** — required for Gmail and Microsoft accounts.
-  `UltraNetCredentials` gains a bearer-token field (libcurl supports
-  `CURLOPT_XOAUTH2_BEARER`); the browser-based token flow is
-  implemented in UltraMail using `UltraNet_Http*` plus a localhost
-  redirect listener on `UltraNet_TcpListen`.
+  `UltraNetCredentials` carries a bearer-token field (libcurl supports
+  `CURLOPT_XOAUTH2_BEARER`, honoured by the IMAP and SMTP plug-ins). The
+  browser-based token flow is UltraNet's OAuth2 client (`UltraNetOAuth2.h`:
+  PKCE, loopback redirect listener, code exchange, refresh); UltraMail's
+  `UltraMailOAuth` adds the provider table, the app registration and the
+  token set in the vault. *Shipped for Gmail (0.8.0) and Outlook /
+  Microsoft 365 (0.8.1).*
 - **Cancellation/progress** for long fetches — reuse the existing
   `UltraNet_CancelRequest`/transfer-callback pattern.
 

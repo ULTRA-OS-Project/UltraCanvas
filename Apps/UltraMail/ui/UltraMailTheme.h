@@ -8,7 +8,7 @@
 // Nothing here paints anything. These are values handed to catalogue elements
 // through their own SetStyle / SetTextColor / SetBorders APIs, per the
 // framework rule that applications never hand-roll a widget.
-// Version: 0.1.0
+// Version: 0.2.0 - type scale and metrics matched to UltraFiler's 9pt UI font
 // Last Modified: 2026-09-09
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -63,23 +63,25 @@ inline const UltraCanvas::Color kWaitingText    {194,  65,  12};
 // ---------------------------------------------------------------------------
 // Type
 // ---------------------------------------------------------------------------
-constexpr float kSizeTitle     = 18.0f;   // window / pane titles
-constexpr float kSizeHeading   = 15.0f;   // card headings, account name
-constexpr float kSizeBody      = 13.0f;
-constexpr float kSizeSecondary = 12.0f;
-constexpr float kSizeSmall     = 11.0f;
+// The scale matches UltraFiler's UI font (9pt for controls, lists and body
+// text), so the two apps read the same size side by side.
+constexpr float kSizeTitle     = 13.0f;   // window / pane titles
+constexpr float kSizeHeading   = 11.0f;   // card headings, account name
+constexpr float kSizeBody      = 9.0f;
+constexpr float kSizeSecondary = 8.5f;
+constexpr float kSizeSmall     = 8.0f;
 
 // ---------------------------------------------------------------------------
 // Metrics
 // ---------------------------------------------------------------------------
-constexpr float kPagePadding   = 16.0f;   // gutter between the window edge and content
-constexpr float kGap           = 12.0f;   // gap between cards / rows
-constexpr float kInnerGap      = 8.0f;    // gap inside a row
-constexpr float kCardRadius    = 10.0f;
-constexpr float kControlRadius = 6.0f;
-constexpr float kControlHeight = 32.0f;   // buttons and inputs
-constexpr float kToolbarHeight = 36.0f;
-constexpr float kAvatarSize    = 40.0f;   // the provider / contact initial square
+constexpr float kPagePadding   = 10.0f;   // gutter between the window edge and content
+constexpr float kGap           = 8.0f;    // gap between cards / rows
+constexpr float kInnerGap      = 6.0f;    // gap inside a row
+constexpr float kCardRadius    = 8.0f;
+constexpr float kControlRadius = 5.0f;
+constexpr float kControlHeight = 24.0f;   // buttons and inputs (UltraFiler: 22)
+constexpr float kToolbarHeight = 28.0f;
+constexpr float kAvatarSize    = 28.0f;   // the provider / contact initial square
 
 // ---------------------------------------------------------------------------
 // Element styles
@@ -144,8 +146,8 @@ inline UltraCanvas::GroupBoxVisualStyle CardGroupBox(float contentPadding = kGap
     s.titleColor            = kTextSecondary;
     s.titleFont.fontSize    = kSizeBody;
     s.titleFont.fontWeight  = UltraCanvas::FontWeight::Bold;
-    s.titleIndent           = 12.0f;
-    s.titleVerticalPadding  = 6.0f;
+    s.titleIndent           = 8.0f;
+    s.titleVerticalPadding  = 4.0f;
     s.contentPadding        = contentPadding;
     return s;
 }
@@ -159,8 +161,8 @@ inline UltraCanvas::TextInputStyle InputStyle() {
     s.textColor        = kTextPrimary;
     s.placeholderColor = kTextMuted;
     s.borderRadius     = static_cast<int>(kControlRadius);
-    s.paddingLeft      = 10;
-    s.paddingRight     = 10;
+    s.paddingLeft      = 6;
+    s.paddingRight     = 6;
     s.fontStyle.fontSize = kSizeBody;
     return s;
 }
@@ -178,8 +180,18 @@ inline void StyleTextArea(const TextAreaPtr& ta, bool bordered = true) {
     s.borderColor     = bordered ? kCardBorder : UltraCanvas::Colors::Transparent;
     s.backgroundColor = kCardBackground;
     s.fontColor       = kTextPrimary;
-    s.textPadding     = 8.0f;
+    s.textPadding     = 6.0f;
     ta->SetFontSize(kSizeBody + 1.0f);
+}
+
+// Dropdowns: body-size text (the element's default is larger). A template for
+// the same reason as StyleTextArea.
+template <typename DropdownPtr>
+inline void StyleDropdown(const DropdownPtr& dd) {
+    if (!dd) return;
+    auto s = dd->GetStyle();
+    s.fontSize = kSizeBody;
+    dd->SetStyle(s);
 }
 
 // ---------------------------------------------------------------------------

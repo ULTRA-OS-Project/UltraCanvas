@@ -48,6 +48,7 @@ option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
 option(ULTRACANVAS_PLUGIN_LATEX "Build LaTeX math plugin (embedded MicroTeX)" ON)
+option(ULTRACANVAS_PLUGIN_MODELS "Build 3D model formats plugin (3DS, OBJ, DXF 3D, STEP, Alembic, COLLADA, .blend)" ON)
 # Which typesetter the LaTeX view uses by default: "native" (the framework's
 # own UltraCanvasMathEngine on OpenType MATH fonts) or "microtex" (the vendored
 # engine, kept as the oracle for the native one). The environment variable
@@ -613,6 +614,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasPacketDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasVennDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasSWOTDiagram.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasParliamentDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasCircleDiagram.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneModel.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Diagrams/UltraCanvasFishboneText.cpp
@@ -667,6 +669,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # STL 3D model loader/saver (self-contained, no external deps).
         # The GL-backed viewer in UltraCanvasSTLElement.cpp compiles to a 2D
         # fallback automatically when ULTRACANVAS_ENABLE_GL is off.
+        # STL only. The loader and element stay in core because the Filer's
+        # thumbnails need them; every other 3D format lives in the Models
+        # plugin (Plugins/Models/CMakeLists.txt), along with the ModelDocument
+        # <-> Mesh3D bridge.
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLPlugin.cpp
@@ -697,6 +703,21 @@ set(ULTRACANVAS_CORE_SOURCES
         # by the vendored yyjson engine (built once as the uc-yyjson archive
         # below, shared with UltraWin's QMP client)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp
+
+        # DataFormats section: the universal 3D scene structure
+        # (ModelStorage::ModelDocument) every 3D file format reads into and
+        # writes out of - the 3D counterpart of VectorStorage::VectorDocument.
+        # ModelMath holds the vectors and matrices both halves are built from;
+        # BrepStorage holds the exact trimmed-surface bodies STEP, IGES, ACIS,
+        # Parasolid, OpenNURBS and DWG 3DSOLID carry, and tessellates them.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasModelMath.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasPolygonTriangulation.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasBrepStorage.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasModelStorage.cpp
+
+        # DataFormats section: the AutoCAD Color Index palette, shared by the
+        # 2D vector converters and the 3D model converters.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasCADPalette.cpp
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
@@ -2343,6 +2364,18 @@ if(ULTRACANVAS_PLUGIN_CDR)
     endif()
 else()
     message(STATUS "  [−] CDR Plugin - SKIPPED (disabled by option)")
+endif()
+
+# 3D Model Formats Plugin
+if(ULTRACANVAS_PLUGIN_MODELS)
+    add_subdirectory(Plugins/Models)
+    if(ULTRACANVAS_MODELS_PLUGIN_FOUND)
+        list(APPEND ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_MODELS_PLUGIN_TARGET})
+        list(APPEND ULTRACANVAS_PLUGIN_INCLUDE_DIRS ${ULTRACANVAS_MODELS_PLUGIN_INCLUDE_DIR})
+        message(STATUS "  [✓] Models Plugin - ENABLED")
+    endif()
+else()
+    message(STATUS "  [−] Models Plugin - SKIPPED (disabled by option)")
 endif()
 
 if(ULTRACANVAS_PLUGIN_XAR)

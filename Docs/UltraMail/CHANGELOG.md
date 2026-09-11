@@ -1,3 +1,159 @@
+#### 2026-09-11 *0.9.2*
+- **Type scale matched to UltraFiler.** UltraMail's text was far larger than
+  the rest of the desktop (13pt body, 15pt headings, 18pt titles next to
+  UltraFiler's 9pt UI font). `UltraMailTheme.h` now uses 9pt body text,
+  8.5pt secondary, 8pt small, 11pt headings and 13pt titles; controls are
+  24px high in a 28px toolbar, the avatar square 28px, and the paddings,
+  gaps and radii shrank with them. Every view followed: the inbox list
+  (22px rows and header, narrower From / Date columns), the message header
+  (13pt subject, 26px avatar, HTML bodies at 12px), the account cards and
+  their counters, the contact rows, the composer, the attachment chips, the
+  start page, and every dialog (wizard, master password, wait, server
+  settings, contact) with its fixed heights. Dropdowns get the body size
+  through the new `Theme::StyleDropdown`.
+
+#### 2026-09-10 *0.9.1*
+- **The settings page checks the sign-in before it saves.** Save opens one
+  IMAP session to the incoming server with the entered host, port and
+  security and the account's credentials — the typed password in the
+  wizard, or the stored password / OAuth2 token of an existing account
+  (resolved on the worker like a sync) — and only closes on success. A
+  failed check shows the reason in place and offers **Save anyway**, for a
+  server that is down right now or when the IMAP plug-in is not loaded. The
+  engine side is `LoginCheck::Imap` / `OptionsFor` in
+  `UltraMailLoginCheck.{h,cpp}` (tested with a recording mailbox); the page
+  takes a `Verifier` and runs it off the UI thread via
+  `UltraMailApp::LoginVerifier`. SMTP has no sign-in-only operation in the
+  plug-in interface, so the outgoing server is not checked.
+
+#### 2026-09-10 *0.9.0*
+- **Any provider: autoconfig lookup and a manual settings page.** An address
+  outside the provider table no longer ends as an account that cannot fetch.
+  The wizard now asks the domain's own autoconfig document, its
+  `.well-known` copy and the Thunderbird ISPDB (`AutoDiscovery::Discover`,
+  on a worker thread behind a cancellable "Looking up server settings"
+  dialog) and, when nothing is published, opens the **server settings page**
+  (`UltraMailServerSettingsDialog`: incoming / outgoing host · port ·
+  security dropdown, username; prefilled with `imap.<domain>` 993 SSL/TLS
+  and `smtp.<domain>` 587 STARTTLS via `AutoDiscovery::GuessForDomain`;
+  validates in place). The account-ready dialog says where the settings
+  came from.
+- **Server settings are stored on the account.** `Account` carries
+  `imap` / `smtp` (`MailServerSettings`: host, port, security, username,
+  oauth flag) and `providerName`; `LocalStore` schema 2 adds the columns.
+  Every sync and send resolves the servers through
+  `AutoDiscovery::ForAccount` — the stored ones, else the provider table for
+  accounts created before — and applies the stored security (SSL/TLS,
+  STARTTLS, plain) and username instead of assuming implicit TLS and the
+  address. `Outbox::Flush` takes an options resolver that sets the SMTP
+  session's username and TLS mode along with the credentials.
+- **Reload opens the settings page** for an account whose servers are not
+  known, instead of only saying so; saving stores them and syncs at once.
+  Adding an address again keeps the servers it already has.
+- `MailSecurity` and `MailServerSettings` moved from `UltraMailDiscovery.h`
+  to `UltraMailTypes.h`; the plaintext value is `MailSecurity::Plain` (the
+  old `None` collides with the X11 macro once a UI translation unit includes
+  the type). `OAuthWaitDialog` became the generic `WaitDialog`.
+
+#### 2026-09-10 *0.8.3*
+- **Account setup guide.** `Docs/UltraMail/AccountSetup.md`: how to sign in
+  to each provider in the table (Gmail, Outlook / Microsoft 365, Yahoo,
+  iCloud, GMX, WEB.DE, mailbox.org, Posteo) — servers, the sign-in each one
+  expects, where its app password is generated, the OAuth client registration
+  for the browser sign-in, what lives on the machine, and what the error
+  messages mean.
+- **Outlook is browser sign-in only.** Microsoft retired password
+  ("basic") authentication for IMAP/SMTP on Outlook.com and in Microsoft 365,
+  app passwords included. The wizard hint no longer offers an app password
+  for Outlook addresses, and the account-ready dialog says a typed password
+  will be refused. `ProviderAcceptsPassword` in `UltraMailOAuth` carries the
+  rule.
+
+#### 2026-09-10 *0.8.2*
+- **App-password hint for Yahoo and iCloud.** The wizard's live hint under
+  the password field now also covers providers that offer no OAuth2 to mail
+  apps but reject the normal account password: Yahoo and iCloud get "enter an
+  app password generated in your account's security settings" as the address
+  is typed (placeholder "App password"), the same advice the account-ready
+  dialog gives. The rule is `ProviderNeedsAppPassword` in `UltraMailOAuth`,
+  shared by the wizard and the dialog.
+
+#### 2026-09-10 *0.8.1*
+- **Outlook / Microsoft 365 sign in with Microsoft.** The second entry in the
+  OAuth2 provider table: `microsoft` — the Microsoft identity platform's
+  `common` tenant endpoints, the `IMAP.AccessAsUser.All` + `SMTP.Send` +
+  `offline_access` scopes, `prompt=select_account`, a public client (no
+  secret). Outlook, Hotmail, Live and Microsoft 365 addresses get the same
+  browser sign-in, wait dialog, vault token set and XOAUTH2 sessions as Gmail.
+  Registration: `[microsoft]` in `oauth.ini` or `ULTRAMAIL_MICROSOFT_CLIENT_ID`
+  (README, "OAuth2 sign-in").
+- **Per-provider redirect default.** Microsoft matches loopback redirects on
+  host and path with the port ignored, so its default is
+  `http://127.0.0.1:0/` (register `http://127.0.0.1`); Google keeps
+  `/callback`. `OAuthApps::Get` fills an empty `redirectUri` with
+  `DefaultRedirectUri(provider)`.
+- **Login hint.** The typed address goes to the consent page as `login_hint`
+  for both providers, so the user is not asked to pick the account again.
+
+#### 2026-09-10 *0.8.0*
+- **Gmail signs in with Google.** Leave the password empty in the account
+  wizard for a Gmail / Googlemail address and UltraMail opens Google's consent
+  page in the browser (OAuth2 authorization code + PKCE over UltraNet's OAuth2
+  client, redirect caught on an ephemeral loopback port). A "Sign in with
+  Google" dialog waits — with Cancel — until the redirect arrives, the tokens
+  go into the credential vault, and the inbox is fetched right away. Every
+  IMAP and SMTP session of such an account then authenticates with XOAUTH2
+  and a fresh bearer token: an expired one is refreshed through Google on the
+  worker thread before the fetch, and stored again. A typed password still
+  works the classic way (an app password).
+- **Engine: `UltraMailOAuth.{h,cpp}`** — the provider table (`google`:
+  endpoints, the `https://mail.google.com/` scope, `access_type=offline`,
+  `prompt=consent`), the app registration (`OAuthApps`: `Set()`, the
+  environment `ULTRAMAIL_GOOGLE_CLIENT_ID` / `_CLIENT_SECRET` /
+  `_REDIRECT_URI`, or `oauth.ini` in the data folder), and `MailOAuth`
+  (`SignIn`, `EnsureFresh`, `CredentialsFor`) with test seams for the
+  interactive authorization and the refresh. `CredentialVault` stores an
+  OAuth2 token set (access + refresh + expiry) beside the password slot — an
+  account has exactly one sign-in method (`MethodFor`). `Outbox::Flush` takes
+  a credentials resolver; `SyncService::SyncInBackground` takes a prepare step
+  that runs on the worker. The SMTP plug-in now honours XOAUTH2 bearer
+  credentials like the IMAP plug-in already did.
+- **Wizard hint.** As the address is typed, the wizard says whether to leave
+  the password empty for the browser sign-in, or — when no Google OAuth client
+  is configured — to use an app password.
+
+#### 2026-09-10 *0.7.1*
+- **A new account fetches its inbox right away.** Adding an account only
+  wrote it to the store; the first sync waited for the five-minute timer —
+  which had been started before the account existed, so it never covered it —
+  or for a manual Reload. Once the password is in the vault the account is
+  put on the schedule and synced at once, and the timer starts if it was not
+  running yet (the plug-in used to be checked only at start-up).
+- **The IMAP plug-in is found wherever the app is started from.** The UltraNet
+  registry looks for plug-ins in `Plugins/UltraNet` relative to the *working
+  directory*, which matches the build tree only when UltraMail is run from
+  there. The app now resolves the directory against the executable (up to two
+  levels above it, then the working directory), `ULTRAMAIL_PLUGIN_DIR` still
+  overriding.
+- **Nothing fails silently any more when mail cannot be fetched.** Reload and
+  the first sync of a new account used to return without a word when the IMAP
+  plug-in was not loaded, when no server was known for the address, or when no
+  password was stored. Each case now says what is missing and where (the
+  plug-in message names the directory that was searched). Errors from a sync
+  the user asked for are always shown; timer syncs still report once.
+- **Passwords of the second and later accounts are saved on Windows.**
+  UltraVault replaced the vault file with C's `rename()`, which on Windows
+  refuses to overwrite an existing file — so the first account's password was
+  stored and every later one failed with "could not be saved to the credential
+  vault". It uses `std::filesystem::rename` now.
+- **The data folder is `%APPDATA%\UltraMail` on Windows.** `HOME` is normally
+  unset there, so the mailbox database and the vault were created in whatever
+  folder the app was started from.
+- **App-password hint.** The account-ready dialog tells Gmail, Outlook and
+  Yahoo users that the normal sign-in password is rejected over IMAP and an app
+  password from the provider's security settings is needed; the earlier
+  "Sign-in: OAuth2 (browser)" line described a flow the app does not have.
+
 #### 2026-09-09 *0.7.0*
 - **Every window restyled on one theme.** `Apps/UltraMail/ui/UltraMailTheme.h`
   now holds the app's colours (near-white page, white cards with hairline

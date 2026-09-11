@@ -98,7 +98,7 @@ MailSecurity SecurityFromSocketType(const std::string& s) {
                    [](unsigned char c) { return static_cast<char>(std::toupper(c)); });
     if (t == "SSL" || t == "SSL/TLS") return MailSecurity::SslTls;
     if (t == "STARTTLS")              return MailSecurity::StartTls;
-    if (t == "PLAIN" || t == "NONE")  return MailSecurity::None;
+    if (t == "PLAIN" || t == "NONE")  return MailSecurity::Plain;
     return MailSecurity::SslTls;   // safe default
 }
 
@@ -201,6 +201,39 @@ DiscoveryResult AutoDiscovery::Discover(const std::string& email) {
         }
     }
     return DiscoveryResult{};
+}
+
+DiscoveryResult AutoDiscovery::ForAccount(const Account& account) {
+    if (account.HasServers()) {
+        DiscoveryResult r;
+        r.found       = true;
+        r.source      = account.providerName.empty() ? "manual" : "stored";
+        r.displayName = account.providerName;
+        r.imap        = account.imap;
+        r.smtp        = account.smtp;
+        if (r.imap.username.empty()) r.imap.username = account.email;
+        if (r.smtp.username.empty()) r.smtp.username = account.email;
+        return r;
+    }
+    return FromPresets(account.email);
+}
+
+void AutoDiscovery::ApplyTo(Account& account, const DiscoveryResult& discovery) {
+    account.imap         = discovery.imap;
+    account.smtp         = discovery.smtp;
+    account.providerName = discovery.displayName;
+}
+
+DiscoveryResult AutoDiscovery::GuessForDomain(const std::string& email) {
+    DiscoveryResult r;
+    const std::string domain = EmailDomain(email);
+    if (domain.empty()) return r;
+    r.source = "guess";
+    r.imap.host = "imap." + domain; r.imap.port = 993;
+    r.imap.security = MailSecurity::SslTls; r.imap.username = email;
+    r.smtp.host = "smtp." + domain; r.smtp.port = 587;
+    r.smtp.security = MailSecurity::StartTls; r.smtp.username = email;
+    return r;   // found stays false: nothing verified
 }
 
 std::string AutoDiscovery::ImapServerUrl(const MailServerSettings& imap) {
