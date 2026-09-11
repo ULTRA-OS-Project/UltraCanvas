@@ -41,6 +41,7 @@ this document is where those annotations come from.
 | `ColladaConverter` | `Plugins/Models/COLLADA/` | Reads COLLADA 1.4/1.5: `<unit>`, `<up_axis>`, the node hierarchy with ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`, `profile_COMMON` materials with transparency and textures, vertex colours, and matrix or TRS animation channels. The first format that states everything the structure holds. |
 | `BlendConverter` | `Plugins/Models/Blend/` | Reads a Blender `.blend` through the file's own embedded SDNA: the object hierarchy, meshes in both layouts Blender has shipped, n-gons, per-corner UVs and colours, and materials. What it imports is the cage **before** modifiers, and it warns naming the ones that are unapplied. See §2.6. |
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
+| `XFileConverter` | `Plugins/Models/XFile/` | Reads Direct3D retained mode's `.x`, text and binary: the Frame hierarchy, n-gon meshes, per-face material lists, Phong materials with a texture name. The one **left-handed** format in the set — see §2.7. Read-only, geometry only. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
 Two observations drive the design:
@@ -76,6 +77,7 @@ This is the list the structure has to be able to hold.
 | **FBX** | full node hierarchy, properties | meshes, per-polygon material mapping, layered elements | Lambert/Phong + textures | skeletons, animation stacks and layers | unit scale factor property |
 | **3DS** | node keyframe hierarchy | meshes, 65 536-vertex limit | fixed-function, 8.3 names | keyframe tracks | none |
 | **X3D / VRML** | grouping + `Transform` nodes | `IndexedFaceSet` | `Appearance`/`Material` | routes and interpolators | metres |
+| **DirectX .x** | `Frame` tree, one 4x4 matrix each | `Mesh` with n-gon `MeshFace`s, `MeshNormals`, `MeshTextureCoords`, `MeshVertexColors` | `MeshMaterialList` + `Material` (faceColor, power, specular, emissive) + `TextureFilename` | `AnimationSet` → `Animation` → `AnimationKey` | none stated; Y-up, **left-handed** |
 | **USD / USDZ** | prim hierarchy with composition | `UsdGeomMesh`, subdivision | `UsdPreviewSurface` | skeletons, time samples | metres per unit, up axis |
 
 ### 2.3 Manufacturing formats
@@ -200,6 +202,15 @@ out of this scene half-mirrored. The `.blend` is not an unlucky case; this
 scene's exports are, and the OBJ is the only one of the four that had the
 modifiers applied.
 
+The `.x` export is a fourth witness, and it identifies what the split actually
+tracks. It holds **1995 triangles in two meshes with the hull's X range stopping
+at zero** — which is the `.dae` export's count, mesh division and half-hull
+exactly. So these are not four independent exports that happened to differ:
+they are two groups, and membership is decided by which export path was taken,
+not by what the format is capable of. `Tests/ModelXFileTest.cpp` asserts the
+1995 against the COLLADA suite's own figure, so the two readers cannot drift
+apart without one of them failing.
+
 `.blend` is also self-describing through an embedded SDNA block, which makes
 the *file* readable even though the *evaluated model* is not.
 
@@ -231,6 +242,35 @@ The measurements above are what the suite now asserts, and they are the reason
 the warning has to stay: the imported hull **stops dead at x = 0**, so a caller
 who ignores the warning gets half an aircraft. Stating that is the reader's
 whole job. Refusing to state it was the easy way out of having to.
+
+### 2.7 Handedness — the one thing a format can get wrong invisibly
+
+Every format above is right-handed except one. Direct3D's space is left-handed,
+so an exporter writing `.x` from a right-handed application does two things: it
+puts a **reflection** in the root frame's matrix — determinant −1, not a
+rotation — and it writes each face's indices the other way round. Both are in
+the file, and they cancel.
+
+That matters because each half, seen alone, looks like a bug. The E-45's `.x`
+meshes have *negative* signed volume in their own object space, and their
+winding disagrees with the file's own `MeshNormals` on 93 of 93 and 925 of 937
+faces. A reader that trusted either observation and "corrected" the winding
+would produce a model that is inside out — because through the frame chain the
+volume is positive and the normals agree, on exactly those same faces.
+
+So the rule for this structure is: **carry what the file says, including a
+reflecting node transform, and let world space be where handedness is resolved.**
+`ModelDocument` needs nothing new for it — `Matrix4x4::DecomposeTRS` holds a
+reflection as a negative scale on one axis, which reproduces the matrix exactly.
+
+The check is worth keeping, though, because the cancellation only holds for a
+well-formed export. `XFileConverter` compares each face's winding against the
+file's own stored normals *through the node's world transform* — which costs
+only the sign of that transform's determinant — and reports a file whose faces
+really are inside out rather than loading it in silence. That is the same
+principle as the Alembic reader's winding assertion, reaching the opposite
+conclusion because the file is built the opposite way: Alembic stores no
+compensating reflection, so its faces genuinely must be reversed on import.
 
 ## 3. What the structure must therefore carry
 
@@ -452,6 +492,17 @@ the two mesh layouts Blender has shipped, asserted to produce identical
 geometry from the same quad. The sample half asserts the cage and its limits:
 1030 faces, and a hull that stops dead at x = 0 because the mirror modifier is
 unapplied.
+`Tests/ModelXFileTest.cpp` covers the `.x` reader, and is the suite where the
+synthetic half matters most: one text export reaches neither the binary encoding
+nor any of the cases that make the format treacherous. So the binary encoding is
+built byte by byte and asserted to produce the same document as the same scene in
+text — one grammar, two spellings — and the handedness cases are constructed
+directly: a triangle wound against its own normal under an identity frame *must*
+be reported as inside out, and the same triangle under a reflecting frame *must
+not* be, because there the two cancel. Two refusals are pinned as well, both of
+the same shape: a count is never trusted over the bytes present, whether it is a
+`Mesh` claiming a hundred thousand vertices it does not carry or a binary
+`FLOAT_LIST` longer than the file.
 
 `Tests/ModelStepTest.cpp` covers the first B-rep reader in two halves. The Part
 21 grammar is unit-tested on text written inline — doubled quotes, `\X2\`
@@ -518,6 +569,17 @@ Each step is independently mergeable and comes with a test and a demo page.
    (`<unit meter="1"/>`), the first with a node hierarchy four deep, the first
    with real animation. Nothing in the structure had to change to hold it,
    which is the strongest evidence so far that the design is right.
+
+3.7. **DirectX .x — done.** `Plugins/Models/XFile/` reads it, text and binary,
+   validated against the aircraft's `.x` (`Tests/ModelXFileTest.cpp`, 74
+   assertions). It is split into a container layer and an object layer for the
+   same reason STEP and Alembic are. What it added to this document is §2.7:
+   it is the first left-handed format, and the first where the *right* answer
+   is to change nothing and check instead. Read-only and geometry only —
+   `AnimationSet` is reported rather than read, because an `.x` rotation key is
+   a quaternion in a convention no sample here can verify, and the capability
+   report says `Animations = false` rather than implying otherwise. **Still to
+   do:** the two MSZIP encodings, and animation once a file with some exists.
 
 4. **glTF 2.0 / GLB.** The interchange target: scene graph, PBR materials,
    skins, animation, morph targets. Once this reads and writes, UltraCanvas can

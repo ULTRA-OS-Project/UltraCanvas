@@ -921,6 +921,36 @@ else()
     message(STATUS "  Skipping ModelColladaTest (tinyxml2 not found)")
 endif()
 
+# ===== DIRECTX .X MODEL READER TEST =====
+# The .x reader, and the only suite whose subject is a left-handed format: the
+# winding cases below are what stop a model loading inside out. Needs nothing
+# beyond the standard library, so it is always built.
+message(STATUS "  Building ModelXFileTest...")
+add_executable(ModelXFileTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelXFileTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFileConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelXFileTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelXFileTest PRIVATE cxx_std_20)
+set_target_properties(ModelXFileTest PROPERTIES
+    OUTPUT_NAME "ModelXFileTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelXFileTest
+    COMMAND ModelXFileTest "${ULTRACANVAS_ROOT}/media/models/XFile/E-45-Aircraft.x"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelXFileTest")
+
 # ===== BLENDER FILE INSPECTOR TEST =====
 # The .blend inspector and the converter that deliberately declines to import
 # geometry. Needs zlib to inflate a compressed save file.
@@ -976,6 +1006,8 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFileConverter.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
     ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp

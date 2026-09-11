@@ -48,6 +48,7 @@ enum class ModelFormat {
     FBX,        // Autodesk FBX
     ThreeDS,    // Autodesk 3D Studio (.3ds)
     X3D,        // X3D / VRML
+    XFile,      // DirectX retained-mode .x (text and binary)
 
     // Manufacturing
     ThreeMF,    // 3D Manufacturing Format (.3mf)
