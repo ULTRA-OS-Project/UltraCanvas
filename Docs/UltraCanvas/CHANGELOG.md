@@ -50,6 +50,23 @@
   canopy's X, Z and Y to four decimal places, and the symmetric axis stays
   symmetric. A later change that started "finding" a second mesh would be
   inventing it, so the count of one is asserted.
+- **Every 3D extension now reaches the framework, not just the dispatch.** The
+  Models plugin claimed .step, .stp, .p21, .abc, .x, .ms3d and .blend, and
+  `LoadModelDocument` read all of them - but `GraphicsFormatDetector`'s
+  extension table listed none, so a `GraphicsFileInfo` for any of those files
+  had `formatType == Unknown`, `IsValid()` was false, and
+  `UltraCanvasGraphicsPluginRegistry::CanHandle()` refused a file the very next
+  call would have loaded. The table now carries the 3D extensions the framework
+  reads (and the ones its open readers will add), and `CanHandle` asks whether a
+  plugin claimed the extension *before* consulting the table, because a
+  registered plugin knows its own formats and the table is only the fallback for
+  what nothing registered for. `ModelFormatsPluginTest` asserts the agreement
+  from both sides, so a format added to the dispatch without the table cannot
+  pass again.
+- **Proposal 2.6 no longer contradicts its own conclusion.** The section that
+  argues .blend into being read was still titled "the second deliberate
+  exclusion", and two comments in the Models plugin still said loading a .blend
+  "deliberately yields nothing". All three now say what the code does.
 
 #### 2026-09-11 *0.8.19*
 - **Blender (.blend) imports geometry.** It was the one format in the matrix

@@ -176,7 +176,12 @@ What is still out of scope, and stated as such rather than implied: PMI
 assembly-level constraints. `BrepSolid::Extras` and `BrepFace::Extras` carry
 those as text so a reader loses nothing silently, but nothing interprets them.
 
-### 2.6 Application-native files — the second deliberate exclusion
+### 2.6 Application-native files — the exclusion that was reversed
+
+*The conclusion first, because this section argues its way to the opposite of
+where it starts: `.blend` **is** read, and what it yields is the stored cage
+with a warning naming the modifiers that are unapplied. The measurements below
+are the reason the warning has to stay, not a reason to refuse.*
 
 **`.blend`** (and by the same argument `.max`, `.ma`/`.mb`, `.c4d`) is not an
 interchange format. It is a dump of the application's in-memory structures,

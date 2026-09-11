@@ -96,8 +96,9 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
     extensions.push_back("dae");
 #endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
-    // Claimed so a file browser can describe a .blend, even though loading it
-    // as geometry deliberately yields nothing.
+    // A .blend yields the cage Blender stored, not the evaluated model, and
+    // the converter warns naming the modifiers that are unapplied. See
+    // proposal 2.6 for why reading it beats refusing to.
     extensions.push_back("blend");
 #endif
     return extensions;
