@@ -19,10 +19,14 @@
 #include "Models/DXF/UltraCanvasDXFModelConverter.h"
 #include "Models/STEP/UltraCanvasStepConverter.h"
 #include "Models/Alembic/UltraCanvasAlembicConverter.h"
+#include "Models/PLY/UltraCanvasPLYConverter.h"
 #include "Models/XFile/UltraCanvasXFileConverter.h"
 
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     #include "Models/COLLADA/UltraCanvasColladaConverter.h"
+#endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    #include "Models/X3D/UltraCanvasX3DConverter.h"
 #endif
 #ifdef ULTRACANVAS_HAS_FBX_CONVERTER
     #include "Models/FBX/UltraCanvasFbxConverter.h"
@@ -78,9 +82,19 @@ UltraCanvasModelFormatsPlugin::CreateConverterForExtension(const std::string& ex
     if (extension == "step" || extension == "stp" || extension == "p21")
         return std::make_unique<StepConverter>();
     if (extension == "abc") return std::make_unique<AlembicConverter>();
+    if (extension == "ply") return std::make_unique<PLYConverter>();
     if (extension == "x") return std::make_unique<XFileConverter>();
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     if (extension == "dae") return std::make_unique<ColladaConverter>();
+#endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    // One reader, four extensions: X3D's XML encoding (.x3d), its Classic VRML
+    // encoding (.x3dv), and VRML97 (.wrl, .vrml), which is that same syntax one
+    // revision earlier. Which encoding a file holds is decided from its first
+    // line, not from the name it arrived under.
+    if (extension == "x3d" || extension == "x3dv" || extension == "wrl" ||
+        extension == "vrml")
+        return std::make_unique<X3DConverter>();
 #endif
 #ifdef ULTRACANVAS_HAS_FBX_CONVERTER
     if (extension == "fbx") return std::make_unique<FbxConverter>();
@@ -95,9 +109,16 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
     // Not "dxf": a DXF is a drawing far more often than a model, so the Vector
     // plugin's reader stays the default for it. CreateConverterForExtension
     // still answers for it, because an explicit caller has already chosen.
-    std::vector<std::string> extensions = {"3ds", "obj", "step", "stp", "p21", "abc", "x"};
+    std::vector<std::string> extensions = {"3ds", "obj", "step", "stp", "p21", "abc",
+                                           "ply", "x"};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     extensions.push_back("dae");
+#endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    extensions.push_back("x3d");
+    extensions.push_back("x3dv");
+    extensions.push_back("wrl");
+    extensions.push_back("vrml");
 #endif
 #ifdef ULTRACANVAS_HAS_FBX_CONVERTER
     extensions.push_back("fbx");
@@ -111,15 +132,19 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
 }
 
 std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedSaveExtensions() {
-    return {"obj", "step", "stp"};
+    return {"obj", "step", "stp", "ply"};
 }
 
 std::vector<ModelFormat> UltraCanvasModelFormatsPlugin::AvailableFormats() {
     std::vector<ModelFormat> formats = {ModelFormat::ThreeDS, ModelFormat::OBJ,
                                         ModelFormat::DXF, ModelFormat::STEP,
-                                        ModelFormat::Alembic, ModelFormat::XFile};
+                                        ModelFormat::Alembic, ModelFormat::PLY,
+                                        ModelFormat::XFile};
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
     formats.push_back(ModelFormat::COLLADA);
+#endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    formats.push_back(ModelFormat::X3D);
 #endif
 #ifdef ULTRACANVAS_HAS_FBX_CONVERTER
     formats.push_back(ModelFormat::FBX);
