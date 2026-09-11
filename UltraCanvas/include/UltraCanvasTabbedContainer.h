@@ -61,6 +61,15 @@ namespace UltraCanvas {
         BeforeTabs         // Left of the first tab
     };
 
+// ===== NEW TAB BUTTON SHAPE =====
+    // The "+" is not a full-height block of the tab bar: it is a small shape
+    // centred in its slot, so its hover highlight sits clear of the tab
+    // outlines next to it.
+    enum class NewTabButtonShape {
+        RoundedSquare,     // Square with rounded corners (newTabButtonCornerRadius)
+        Circle             // Round highlight
+    };
+
 // ===== TAB DATA =====
     struct TabData {
         std::string title;
@@ -172,7 +181,14 @@ namespace UltraCanvas {
         // ===== NEW TAB BUTTON =====
         NewTabButtonPosition newTabButtonPosition = NewTabButtonPosition::AfterTabs;
         bool showNewTabButton = false;
-        int newTabButtonWidth = 32;
+        int newTabButtonWidth = 32;              // Width of the slot reserved in the tab bar
+        // Space kept clear between the tab list and the "+" slot. A rounded tab
+        // strokes its outline half a pixel outside its bounds, so a slot that
+        // starts exactly where the last tab ends paints over that edge.
+        int newTabButtonGap = 4;
+        NewTabButtonShape newTabButtonShape = NewTabButtonShape::RoundedSquare;
+        int newTabButtonSize = 24;               // Side of the shape, centred in the slot (clamped to fit)
+        float newTabButtonCornerRadius = 6.0f;   // RoundedSquare only
         bool hoveredNewTabButton = false;
         Color newTabButtonColor = Color(240, 240, 240);
         Color newTabButtonHoverColor = Color(220, 220, 255);
@@ -267,7 +283,15 @@ namespace UltraCanvas {
         int GetIconSize() const { return iconSize; }
         bool CalcBadgeDimensions(TabData* tabData);
 
-        void SetNewTabButtonWidth(int w) { newTabButtonWidth = w; }
+        void SetNewTabButtonWidth(int w) { newTabButtonWidth = w; InvalidateTabbar(); }
+        void SetNewTabButtonGap(int gap) { newTabButtonGap = std::max(0, gap); InvalidateTabbar(); }
+        int GetNewTabButtonGap() const { return newTabButtonGap; }
+        void SetNewTabButtonShape(NewTabButtonShape shape) { newTabButtonShape = shape; InvalidateTabbar(); }
+        NewTabButtonShape GetNewTabButtonShape() const { return newTabButtonShape; }
+        void SetNewTabButtonSize(int size) { newTabButtonSize = std::max(0, size); InvalidateTabbar(); }
+        int GetNewTabButtonSize() const { return newTabButtonSize; }
+        void SetNewTabButtonCornerRadius(float radius) { newTabButtonCornerRadius = std::max(0.0f, radius); InvalidateTabbar(); }
+        float GetNewTabButtonCornerRadius() const { return newTabButtonCornerRadius; }
         void SetInactiveTabBackgroundColor(const Color& c) { inactiveTabColor = c; }
         void SetActiveTabBackgroundColor(const Color& c) { activeTabColor = c; }
         void SetInactiveTabTextColor(const Color& c) { inactiveTabTextColor = c; }
@@ -390,7 +414,9 @@ namespace UltraCanvas {
         Rect2Di GetContentAreaBounds();
         Rect2Di GetTabBounds(int index);
         Rect2Di GetCloseButtonBounds(int index);
-        Rect2Di GetNewTabButtonBounds();
+        Rect2Di GetNewTabButtonBounds();        // The slot reserved in the tab bar
+        Rect2Di GetNewTabButtonShapeBounds();   // The drawn (and clickable) shape inside the slot
+        int GetNewTabButtonReservedSpace() const { return newTabButtonWidth + newTabButtonGap + tabSpacing; }
         int GetTabAtPosition(int x, int y);
         bool ShouldShowCloseButton(const TabData* tab);
         void CalculateLayout();

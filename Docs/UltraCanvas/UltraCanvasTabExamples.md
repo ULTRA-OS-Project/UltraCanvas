@@ -106,6 +106,16 @@ enum class NewTabButtonPosition {
 };
 ```
 
+### NewTabButtonShape
+How the "+" button is drawn inside its slot.
+
+```cpp
+enum class NewTabButtonShape {
+    RoundedSquare,  // Square with rounded corners (default)
+    Circle          // Round button
+};
+```
+
 ## TabData Structure
 
 Represents individual tab properties.
@@ -190,21 +200,37 @@ void ClearDropdownSearch()
 ```cpp
 void SetShowNewTabButton(bool show)                     // Default: false
 void SetNewTabButtonPosition(NewTabButtonPosition pos)  // Default: AfterTabs
-void SetNewTabButtonWidth(int width)                    // Default: 32
-void SetNewButtonColor(const Color& color)
+void SetNewTabButtonWidth(int width)                    // Slot width in the tab bar. Default: 32
+void SetNewTabButtonGap(int gap)                        // Space between the tabs and the slot. Default: 4
+void SetNewTabButtonShape(NewTabButtonShape shape)      // Default: RoundedSquare
+void SetNewTabButtonSize(int size)                      // Side of the shape, centred in the slot. Default: 24
+void SetNewTabButtonCornerRadius(float radius)          // RoundedSquare corners. Default: 6
+void SetNewButtonColor(const Color& color)              // Idle fill of the shape
+Color newTabButtonHoverColor;                           // Fill while the mouse is over it
+Color newTabButtonIconColor;                            // The "+" strokes
 std::function<void()> onNewTabRequest;                  // Clicked
 ```
 
 `NewTabButtonPosition::AfterTabs` draws the "+" directly behind the last tab
 (so it walks along as tabs are added and removed), `FarRight` pins it to the
 right end of the tab bar, `BeforeTabs` puts it in front of the first tab. The
-space it needs is reserved before the tabs are laid out, so the button never
-overlaps a tab. The callback only reports the click — creating the tab is the
-application's job:
+space it needs — slot width plus gap — is reserved before the tabs are laid
+out, so the button never overlaps a tab.
+
+The button is not a full-height block of the tab bar: it is a small rounded
+square (or a circle) centred in its slot, and only that shape is painted, idle
+and hovered alike. Set the idle colour to the tab bar colour (or transparent)
+for a browser-style "+" that only lights up on hover. The gap keeps the shape
+clear of the neighbouring tab's outline, which is stroked half a pixel outside
+the tab's bounds. The callback only reports the click — creating the tab is
+the application's job:
 
 ```cpp
 tabs->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
 tabs->SetShowNewTabButton(true);
+tabs->SetNewTabButtonShape(NewTabButtonShape::Circle);   // or RoundedSquare (default)
+tabs->SetNewButtonColor(Colors::Transparent);            // highlight on hover only
+tabs->newTabButtonHoverColor = Color(225, 225, 230);
 tabs->onNewTabRequest = [tabs]() {
     tabs->SetActiveTab(tabs->AddTab("Untitled", MakePage()));
 };

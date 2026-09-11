@@ -2873,7 +2873,11 @@ void UltraFilerWindow::BuildTabbedContainer() {
     // Tabs. The current folder is what it always was and stays the default.
     tabbedContainer->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
     tabbedContainer->SetShowNewTabButton(true);
-    tabbedContainer->SetNewButtonColor(Color(249, 249, 251, 255));
+    // Idle it is just the "+" on the strip; the rounded square only shows
+    // while the mouse is over it, a gap clear of the last tab's outline.
+    tabbedContainer->SetNewTabButtonShape(NewTabButtonShape::RoundedSquare);
+    tabbedContainer->SetNewButtonColor(Colors::Transparent);
+    tabbedContainer->newTabButtonHoverColor = Color(228, 228, 232, 255);
     tabbedContainer->onNewTabRequest = [this]() {
         std::string path;
         if (!settings.newTabOpensHome && filer) path = filer->GetPath();

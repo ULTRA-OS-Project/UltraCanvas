@@ -468,7 +468,7 @@ namespace UltraCanvas {
         }
 
         if (showNewTabButton) {
-            availableSpace -= newTabButtonWidth + tabSpacing;
+            availableSpace -= GetNewTabButtonReservedSpace();
         }
 
         int totalTabSpace = 0;
@@ -833,19 +833,37 @@ namespace UltraCanvas {
     void UltraCanvasTabbedContainer::RenderNewTabButton(IRenderContext *ctx) {
         if (!showNewTabButton) return;
 
-        Rect2Di buttonBounds = GetNewTabButtonBounds();
-        if (buttonBounds.width <= 0) return;
+        Rect2Di shape = GetNewTabButtonShapeBounds();
+        if (shape.width <= 0 || shape.height <= 0) return;
 
+        // Only the shape is painted - never the whole slot - so the button
+        // cannot cover the outline of the tab next to it, and the hover
+        // highlight reads as a small rounded button rather than a block cut
+        // out of the tab bar.
         Color bgColor = hoveredNewTabButton ? newTabButtonHoverColor : newTabButtonColor;
+        Point2Dd center(shape.x + shape.width / 2.0, shape.y + shape.height / 2.0);
 
-        ctx->DrawFilledRectangle(buttonBounds, bgColor);
+        if (bgColor.a > 0) {
+            if (newTabButtonShape == NewTabButtonShape::Circle) {
+                ctx->DrawFilledCircle(center, shape.width / 2.0f, bgColor, Colors::Transparent, 0.0f);
+            } else {
+                float radius = std::min(newTabButtonCornerRadius, shape.width / 2.0f);
+                ctx->DrawFilledRectangle(shape, bgColor, 0.0f, Colors::Transparent, radius);
+            }
+        }
 
-        Point2Di center(buttonBounds.x + buttonBounds.width / 2, buttonBounds.y + buttonBounds.height / 2);
-        int size = 8;
+        // The "+" itself: two 1px strokes snapped to pixel centres so they
+        // come out crisp instead of as a two-pixel smear.
+        int arm = std::max(3, shape.width * 5 / 24);
+        double cx = std::floor(center.x) + 0.5;
+        double cy = std::floor(center.y) + 0.5;
 
+        ctx->PushState();
         ctx->SetStrokePaint(newTabButtonIconColor);
-        ctx->DrawLine(Point2Dd(center.x - size/2, center.y), Point2Dd(center.x + size/2, center.y));
-        ctx->DrawLine(Point2Dd(center.x, center.y - size/2), Point2Dd(center.x, center.y + size/2));
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawLine(Point2Dd(cx - arm, cy), Point2Dd(cx + arm, cy));
+        ctx->DrawLine(Point2Dd(cx, cy - arm), Point2Dd(cx, cy + arm));
+        ctx->PopState();
     }
 
     void UltraCanvasTabbedContainer::RenderOverflowButton(IRenderContext* ctx) {
@@ -934,7 +952,7 @@ namespace UltraCanvas {
         }
 
         if (showNewTabButton) {
-            Rect2Di newTabBounds = GetNewTabButtonBounds();
+            Rect2Di newTabBounds = GetNewTabButtonShapeBounds();
             if (newTabBounds.Contains(x, y)) {
                 if (onNewTabRequest) {
                     onNewTabRequest();
@@ -1084,7 +1102,7 @@ namespace UltraCanvas {
             }
 
             if (showNewTabButton) {
-                Rect2Di newTabBounds = GetNewTabButtonBounds();
+                Rect2Di newTabBounds = GetNewTabButtonShapeBounds();
                 bool wasHovered = hoveredNewTabButton;
                 hoveredNewTabButton = newTabBounds.Contains(x, y);
                 if (wasHovered != hoveredNewTabButton) {
@@ -1309,11 +1327,15 @@ namespace UltraCanvas {
 
         switch (newTabButtonPosition) {
             case NewTabButtonPosition::AfterTabs: {
+                // The slot starts a gap behind the last tab, not flush against
+                // it: the tab's outline is stroked half a pixel past its bounds
+                // and must stay uncovered.
                 xPos = tabAreaBounds.x;
                 for (int i = tabScrollOffset; i < std::min(tabScrollOffset + maxVisibleTabs, (int)tabs.size()); i++) {
                     if (!tabs[i]->visible) continue;
                     xPos += CalculateTabWidth(i) + tabSpacing;
                 }
+                xPos += newTabButtonGap;
                 break;
             }
 
@@ -1332,7 +1354,26 @@ namespace UltraCanvas {
                 break;
         }
 
-        return Rect2Di(xPos, 0, newTabButtonWidth, tabBarBounds.height - 1);
+        return Rect2Di(xPos, tabBarBounds.y, newTabButtonWidth, tabBarBounds.height);
+    }
+
+    Rect2Di UltraCanvasTabbedContainer::GetNewTabButtonShapeBounds() {
+        Rect2Di slot = GetNewTabButtonBounds();
+        if (slot.width <= 0 || slot.height <= 0) {
+            return Rect2Di(0, 0, 0, 0);
+        }
+
+        // A square no larger than the slot, centred in it. Keeping at least a
+        // pixel of slot around it means the highlight never touches the tab
+        // bar's edges or the neighbouring tab.
+        int side = std::min({newTabButtonSize, slot.width - 2, slot.height - 2});
+        if (side <= 0) {
+            return Rect2Di(0, 0, 0, 0);
+        }
+
+        return Rect2Di(slot.x + (slot.width - side) / 2,
+                       slot.y + (slot.height - side) / 2,
+                       side, side);
     }
 
     int UltraCanvasTabbedContainer::GetTabAtPosition(int x, int y) {
@@ -1374,7 +1415,7 @@ namespace UltraCanvas {
             availableSpace = tabAreaBounds.height;
 
             if (showNewTabButton && newTabButtonPosition != NewTabButtonPosition::FarRight) {
-                availableSpace -= newTabButtonWidth + tabSpacing;
+                availableSpace -= GetNewTabButtonReservedSpace();
             }
 
             if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Right) {
@@ -1402,7 +1443,7 @@ namespace UltraCanvas {
             availableSpace = tabAreaBounds.width;
 
             if (showNewTabButton && newTabButtonPosition != NewTabButtonPosition::FarRight) {
-                availableSpace -= newTabButtonWidth + tabSpacing;
+                availableSpace -= GetNewTabButtonReservedSpace();
             }
 
             if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Right) {
@@ -1490,7 +1531,7 @@ namespace UltraCanvas {
         int availableSpace = isVertical ? tabAreaBounds.height : tabAreaBounds.width;
 
         if (showNewTabButton && newTabButtonPosition != NewTabButtonPosition::FarRight) {
-            availableSpace -= newTabButtonWidth + tabSpacing;
+            availableSpace -= GetNewTabButtonReservedSpace();
         }
         if (overflowDropdownVisible && overflowDropdownPosition == OverflowDropdownPosition::Right) {
             availableSpace -= overflowDropdownWidth + tabSpacing;
@@ -1814,7 +1855,7 @@ namespace UltraCanvas {
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
-                    area.width -= newTabButtonWidth + tabSpacing;
+                    area.width -= GetNewTabButtonReservedSpace();
                 }
                 break;
             }
@@ -1840,7 +1881,7 @@ namespace UltraCanvas {
                 }
 
                 if (showNewTabButton && newTabButtonPosition == NewTabButtonPosition::FarRight) {
-                    area.height -= newTabButtonWidth + tabSpacing;
+                    area.height -= GetNewTabButtonReservedSpace();
                 }
                 break;
             }
