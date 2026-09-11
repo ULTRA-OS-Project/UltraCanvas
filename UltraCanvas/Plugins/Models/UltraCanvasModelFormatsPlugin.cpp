@@ -20,6 +20,7 @@
 #endif
 
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasModelPreview.h"
 
 #include <algorithm>
 #include <cctype>
@@ -186,6 +187,33 @@ void RegisterModelFormatsPlugin() {
     // FileLoader until that page was opened. Registering it here makes one
     // call cover the whole Model3D category.
     RegisterSTLPlugin();
+
+    // And teach core to *display* the formats it cannot read. The Filer's
+    // thumbnails and the media viewer's 3D pane ask
+    // UltraCanvasModelPreview.h, which knows only STL until something fills
+    // this in; core cannot call the plugin, because the plugin links against
+    // core. See that header for why the seam is shaped this way.
+    ModelPreviewProvider provider;
+    provider.Extensions = [] {
+        return UltraCanvasModelFormatsPlugin::SupportedLoadExtensions();
+    };
+    provider.Load = [](const std::string& path, Mesh3D& out) {
+        // Warnings are the caller's business on a load it asked for; a
+        // thumbnail is not, so this one stays quiet rather than logging once
+        // per tile per folder listing.
+        ConversionOptions options;
+        options.TriangulateOnImport = true;
+        // A format that carries only exact bodies (STEP, and a DWG's 3DSOLID)
+        // has no triangles until someone asks for them, and a preview is
+        // exactly the caller that should ask.
+        options.TessellateOnImport = true;
+        auto document =
+                UltraCanvasModelFormatsPlugin::LoadModelDocument(path, options);
+        if (!document || document->Empty()) return false;
+        out = ModelDocumentToMesh3D(*document);
+        return !out.Empty();
+    };
+    SetModelPreviewProvider(std::move(provider));
 }
 
 } // namespace UltraCanvas

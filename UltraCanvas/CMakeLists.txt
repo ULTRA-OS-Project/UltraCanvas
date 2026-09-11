@@ -666,13 +666,21 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/UltraCanvasQRCode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/third_party/qrcodegen.cpp
 
+        # The seam that lets the Filer's thumbnails and the media viewer
+        # display a format core cannot itself read: core declares what it
+        # wants and RegisterModelFormatsPlugin() fills it in, so the
+        # dependency still runs plugin -> core. See
+        # include/UltraCanvasModelPreview.h.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModelPreview.cpp
+
         # STL 3D model loader/saver (self-contained, no external deps).
         # The GL-backed viewer in UltraCanvasSTLElement.cpp compiles to a 2D
         # fallback automatically when ULTRACANVAS_ENABLE_GL is off.
-        # STL only. The loader and element stay in core because the Filer's
-        # thumbnails need them; every other 3D format lives in the Models
-        # plugin (Plugins/Models/CMakeLists.txt), along with the ModelDocument
-        # <-> Mesh3D bridge.
+        # The loader and element stay in core because the Filer's thumbnails
+        # need them and STL needs nothing to read; every other 3D format lives
+        # in the Models plugin (Plugins/Models/CMakeLists.txt) along with the
+        # ModelDocument <-> Mesh3D bridge, and reaches these two through the
+        # seam above rather than by being linked here.
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLElement.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Models/STL/UltraCanvasSTLPlugin.cpp

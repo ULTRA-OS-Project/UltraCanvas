@@ -1,3 +1,49 @@
+#### 2026-09-11 *0.8.26*
+- **The Filer and the media viewer show every 3D format this build reads, not
+  just STL.** Both live in core; every format but STL lives in the Models
+  plugin, which links *against* core - so core could not call it, and both
+  viewers simply asked `ext == "stl"`. That answer had been wrong for nine
+  formats and counting: `UltraCanvasMediaViewer::IsModelFile` still named one
+  extension after OBJ, PLY, 3DS, COLLADA, DirectX .x, Alembic, .blend, STEP,
+  FBX and MilkShape had readers, and the Filer's thumbnail worker refused
+  everything else with the comment "the other 3D formats have no loader that
+  works without a GL context".
+- **`include/UltraCanvasModelPreview.h` is the inversion**, and it inverts the
+  question rather than the dependency. Core declares what it wants - is this
+  extension one you read, and turn this path into a `Mesh3D` - and
+  `RegisterModelFormatsPlugin()` installs an implementation on its way in. No
+  provider installed means the answers fall back to STL, which is exactly what
+  a build with `ULTRACANVAS_PLUGIN_MODELS=OFF` gets and what every caller got
+  before. The provider hands back a flat mesh rather than a `ModelDocument`,
+  because core has no idea that type exists and a thumbnail wants one triangle
+  buffer rather than a scene.
+- **The GL context was never the obstacle.** `RenderModelPreviewPixmap` has
+  always been a software rasterizer - it rotates, projects and shades the
+  triangles itself - so widening it needed no renderer work at all, only a way
+  to get the triangles. The existing triangle cap still applies afterwards,
+  which is what keeps a subdivided FBX from stalling a preview worker.
+- **A STEP file previews now too.** It carries exact bodies and no triangles
+  until something asks, and the provider asks: `TessellateOnImport` is on for
+  previews specifically, so a `.step` draws as the solid it describes instead
+  of as a blank tile.
+- **`.dxf` still does not preview as a model**, matching the dispatch's own
+  deliberate refusal to claim it - a DXF is a drawing far more often than a
+  model, and the Vector reader stays its default. `ModelPreviewSeamTest`
+  asserts that from the preview side, where `ModelFormatsPluginTest` already
+  asserted it from the dispatch side.
+- **`UltraCanvasSTLElement::LoadFromFile` is no longer STL-only** either, which
+  is what makes the media viewer work without further changes: the element only
+  ever wanted a triangle buffer, so it now takes one from the same seam.
+- **`Tests/ModelPreviewSeamTest.cpp`** (new) pins the contract rather than any
+  one format: that a build with no provider behaves exactly as before, that a
+  provider widens both questions, that a half-built provider is refused whole
+  rather than called through a null `std::function`, that a provider returning
+  no triangles reports failure rather than an empty preview, and that clearing
+  it narrows core back to STL. Its sample half loads every export of the
+  aircraft through the real provider and asserts each gives the preview a
+  bounding sphere to frame and a normal per vertex to shade - and that the
+  OBJ's 8110 quads arrive as exactly 16220 triangles, so nothing is dropped on
+  the way through the flattening.
 #### 2026-09-11 *0.8.28*
 - **MilkShape 3D (.ms3d) reads.** `Plugins/Models/MS3D/` is the one reader here
   with no container layer to split off, and deliberately so: an .ms3d is a
