@@ -113,8 +113,8 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   automatically, and creating anything first ends the search (field, live
   filter and result display), so the fresh entry is visible — Cut / Copy /
   Paste (system clipboard interop), Rename, Delete (with confirmation),
-  sort field + direction, view type selection, video preview mode, Preview
-  toggle.
+  view type selection (every entry carries an icon of the layout it
+  selects), sort field + direction, video preview mode, Preview toggle.
 - **Live folder:** the file display rescans by itself when the folder changes
   behind it — another application saving a file into it, a download finishing,
   a script deleting one. The check runs on a background worker, and the refresh

@@ -99,6 +99,9 @@ the backing implementation can be replaced without affecting callers.
     AP203/214/242 entity layer (`UltraCanvasStepConverter.h`) that fills
     `ModelDocument::Brep` and writes it back out. Consult that header for what
     it reads and what it deliberately does not.
+    **PLY** (`Plugins/Models/PLY/`) reads and writes all three encodings and is
+    the format with no fixed schema: a per-vertex property nothing else has a
+    field for survives as a named `AttributeSemantic::Custom`.
     **Alembic** (`Plugins/Models/Alembic/`) is split the same way: an Ogawa
     container and object/property layer (`UltraCanvasOgawaFile.h`) under an
     AbcGeom reader (`UltraCanvasAlembicConverter.h`) for Xform, PolyMesh, SubD
@@ -114,6 +117,21 @@ the backing implementation can be replaced without affecting callers.
     neither a byte layout nor an object model (6.x has no object ids, keeps
     geometry inside the `Model`, and writes animation as `Takes`), and both are
     read. Read-only, and gated on zlib.
+
+    **X3D and VRML97** (`Plugins/Models/X3D/`) are split the same way again,
+    along an axis none of the others need: one *semantic* layer over two
+    *encodings*. `UltraCanvasX3DScene.h` is the scene as a tree of typed nodes,
+    with a reader per encoding under it — XML via tinyxml2, and the Classic
+    VRML syntax that `.x3dv` and `.wrl` both use — and
+    `UltraCanvasX3DConverter.h` is the node set on top, which does not know
+    which syntax it was handed. It reads the `Transform`/`Group` hierarchy with
+    DEF/USE instancing, `IndexedFaceSet` and the other `*Set` nodes, the
+    Immersive profile's Box/Sphere/Cylinder/Cone,
+    `Appearance`/`Material`/`ImageTexture`, lights, viewpoints, and animation
+    assembled from TimeSensor, interpolators and `ROUTE`s. Which encoding a
+    file holds is decided from its first line, not its extension. Read-only;
+    VRML 1.0 is a different node set under the same extension and is refused by
+    name.
     **DirectX .x** (`Plugins/Models/XFile/`) is split the same way again: the
     `xof` container and its two tokenisers, text and binary
     (`UltraCanvasXFile.h`), under a reader for Direct3D's object set
@@ -136,8 +154,9 @@ the backing implementation can be replaced without affecting callers.
     Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
     `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
     `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the
-    Vector/CDR/XAR/EPS plugins, with COLLADA (tinyxml2) and `.blend` and FBX
-    (both zlib) as options inside it. `UltraCanvasModelFormatsPlugin`
+    Vector/CDR/XAR/EPS plugins, with COLLADA and X3D (both tinyxml2) and
+    `.blend` and FBX (both zlib) as options inside it.
+    `UltraCanvasModelFormatsPlugin`
     (`Plugins/Models/UltraCanvasModelFormatsPlugin.h`) is the façade:
     `CreateConverterForExtension`, `LoadModelDocument`, `SaveModelDocument`,
     `SupportedLoadExtensions` / `SupportedSaveExtensions`, and an

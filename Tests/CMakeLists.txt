@@ -684,6 +684,39 @@ add_test(
 )
 message(STATUS "    Test registered: ModelStorageTest")
 
+# ===== PLY READER / WRITER TEST =====
+# PLY has no fixed schema, so most of this suite is written against small
+# headers constructed inline, where the awkward cases are: two spellings of
+# every type, three of a texture coordinate, colours as bytes or floats, binary
+# in either byte order, an element nothing understands that must still be
+# stepped over by exactly its size, and a file that stops early. The sample is
+# a fourth export of the E-45 aircraft - 32440 quads against the OBJ's 8110,
+# and the mirror applied unlike the .dae, .blend and .abc.
+message(STATUS "  Building ModelPLYTest...")
+add_executable(ModelPLYTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelPLYTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelPLYTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelPLYTest PRIVATE cxx_std_20)
+set_target_properties(ModelPLYTest PROPERTIES
+    OUTPUT_NAME "ModelPLYTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelPLYTest
+    COMMAND ModelPLYTest "${ULTRACANVAS_ROOT}/media/models"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelPLYTest")
+
 # ===== ALEMBIC READER TEST =====
 # The Ogawa container and AbcGeom, against the same E-45 aircraft the 3DS, OBJ,
 # DXF and COLLADA suites read - exported from the same .blend, and like the
@@ -921,6 +954,46 @@ else()
     message(STATUS "  Skipping ModelColladaTest (tinyxml2 not found)")
 endif()
 
+# ===== X3D MODEL READER TEST =====
+# X3D is the second XML scene format, and the one whose export of the E-45
+# carries exactly the OBJ's 8110 quads - so this suite is a cross-format check
+# as much as a reader check. Needs tinyxml2, the same library COLLADA needs.
+if(TEST_TINYXML2_FOUND)
+    message(STATUS "  Building ModelX3DTest...")
+    add_executable(ModelX3DTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ModelX3DTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DScene.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    )
+    target_include_directories(ModelX3DTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+        ${TEST_TINYXML2_INCLUDE_DIRS}
+    )
+    target_link_libraries(ModelX3DTest PRIVATE ${TEST_TINYXML2_LIBRARIES})
+    target_link_directories(ModelX3DTest PRIVATE ${TEST_TINYXML2_LIBRARY_DIRS})
+    target_compile_features(ModelX3DTest PRIVATE cxx_std_20)
+    set_target_properties(ModelX3DTest PROPERTIES
+        OUTPUT_NAME "ModelX3DTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME ModelX3DTest
+        # Both samples, because the suite's central assertion is that the two
+        # encodings agree - and that half is skipped when only the .x3d is
+        # passed, which is exactly how a second encoding drifts unnoticed.
+        COMMAND ModelX3DTest "${ULTRACANVAS_ROOT}/media/models/X3D/E-45-Aircraft.x3d"
+                             "${ULTRACANVAS_ROOT}/media/models/VRML/E-45-Aircraft.wrl"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: ModelX3DTest")
+else()
+    message(STATUS "  Skipping ModelX3DTest (tinyxml2 not found)")
+endif()
 # ===== DIRECTX .X MODEL READER TEST =====
 # The .x reader, and the only suite whose subject is a left-handed format: the
 # winding cases below are what stop a model loading inside out. Needs nothing
@@ -1079,6 +1152,7 @@ set(MODEL_DISPATCH_SOURCES
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFile.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/XFile/UltraCanvasXFileConverter.cpp
     ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/MS3D/UltraCanvasMS3DConverter.cpp
@@ -1101,8 +1175,11 @@ if(PkgConfig_FOUND)
 endif()
 if(DISPATCH_TINYXML2_FOUND)
     list(APPEND MODEL_DISPATCH_SOURCES
-        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp)
-    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_COLLADA_CONVERTER=1)
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DConverter.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/X3D/UltraCanvasX3DScene.cpp)
+    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_COLLADA_CONVERTER=1
+                                       ULTRACANVAS_HAS_X3D_CONVERTER=1)
     list(APPEND MODEL_DISPATCH_INCLUDES ${DISPATCH_TINYXML2_INCLUDE_DIRS})
     list(APPEND MODEL_DISPATCH_LIBS ${DISPATCH_TINYXML2_LIBRARIES})
 endif()

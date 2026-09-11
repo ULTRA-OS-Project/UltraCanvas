@@ -41,6 +41,9 @@ this document is where those annotations come from.
 | `ColladaConverter` | `Plugins/Models/COLLADA/` | Reads COLLADA 1.4/1.5: `<unit>`, `<up_axis>`, the node hierarchy with ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`, `profile_COMMON` materials with transparency and textures, vertex colours, and matrix or TRS animation channels. The first format that states everything the structure holds. |
 | `BlendConverter` | `Plugins/Models/Blend/` | Reads a Blender `.blend` through the file's own embedded SDNA: the object hierarchy, meshes in both layouts Blender has shipped, n-gons, per-corner UVs and colours, and materials. What it imports is the cage **before** modifiers, and it warns naming the ones that are unapplied. See §2.6. |
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
+| `StepConverter` | `Plugins/Models/STEP/` | Reads **and writes** ISO 10303-21 (AP203/214/242) into `ModelDocument::Brep` — trimmed NURBS and analytic surfaces with their topology, held exactly rather than tessellated away. The first B-rep converter. See §2.5. |
+| `AlembicConverter` | `Plugins/Models/Alembic/` | Reads the Ogawa container and AbcGeom's `Xform`, `PolyMesh`, `SubD` and `FaceSet` — first time sample only, read-only. No SDK. |
+| `X3DConverter` | `Plugins/Models/X3D/` | Reads X3D in both text encodings — XML (`.x3d`) and Classic VRML (`.x3dv`), which VRML97 (`.wrl`) also writes: the `Transform`/`Group` hierarchy with DEF/USE instancing, `IndexedFaceSet` with its parallel index streams, the Immersive profile's Box/Sphere/Cylinder/Cone, `Appearance`/`Material`/`ImageTexture`, lights, viewpoints, and TimeSensor-plus-interpolator animation through `ROUTE`s. The one reader here split by *encoding* rather than by container — see §2.9. Read-only; VRML 1.0 is refused by name. |
 | `FbxConverter` | `Plugins/Models/FBX/` | Reads FBX 7.x binary and 6.x/7.x ASCII: the connection graph, the full transform chain, meshes with independently indexed layers, Phong materials with textures, and animation. The only format here whose scene is a graph rather than a tree, and the only extension naming two object models — see §2.8. Read-only, needs zlib. |
 | `MS3DConverter` | `Plugins/Models/MS3D/` | Reads MilkShape 3D: triangle groups as meshes, per-corner normals and UVs, materials with texture and alpha-map paths, smoothing groups as bitmasks, the joint hierarchy with its keyframes, and both of the format's two skinning records. The one format here with no container layer worth splitting off — see §2.10. Read-only. |
 | `XFileConverter` | `Plugins/Models/XFile/` | Reads Direct3D retained mode's `.x`, text and binary: the Frame hierarchy, n-gon meshes, per-face material lists, Phong materials with a texture name. The one **left-handed** format in the set — see §2.7. Read-only, geometry only. |
@@ -209,6 +212,16 @@ out of this scene half-mirrored. The `.blend` is not an unlucky case; this
 scene's exports are, and the OBJ is the only one of the four that had the
 modifiers applied.
 
+The `.x3d` export settles which side of the line the split falls on. It carries
+**11 749 vertices in 8 110 quads** — the OBJ's counts exactly — and its X range
+is symmetric at ±0.9732. So the difference is not "evaluated formats keep the
+modifiers and scene formats do not", and it is not a property of any format at
+all: two exports of one scene, written by one application on one day, disagree
+about whether a modifier had been applied. That is the argument for reading
+what a file says rather than what its format is supposed to mean, and
+`Tests/ModelX3DTest.cpp` asserts the symmetry as deliberately as
+`Tests/ModelColladaTest.cpp` asserts its absence.
+
 The **7.4 binary `.fbx`** export lands on the same side, and adds the detail
 that settles what the split tracks. Its geometry is **2934 positions in 1681
 polygons — the `.abc` export's, to the vertex** — while its scene is titled
@@ -376,6 +389,68 @@ the 7.4 binary holds **1681 polygons in 2934 positions and is not**. Same scene,
 same format, opposite sides of the mirror-modifier split — which is the clearest
 possible statement that the split tracks the export *session*, not the format.
 The 0.8333333 s `ArmatureAction` in both is what proves they are the same scene.
+
+### 2.9 One node set, two encodings — the other axis a reader can split on
+
+Every split so far in this document has been between a *container* and its
+*semantics*: Ogawa under AbcGeom, Part 21 under AP203, the FBX record tree under
+Autodesk's object set. X3D needs a different cut, and it is worth recording
+because the reasoning does not generalise from the others.
+
+X3D is one node set with several encodings. The XML one is `.x3d`; the Classic
+VRML one is `.x3dv`; and VRML97, which is that same classic syntax one revision
+earlier, is `.wrl`. These are the same three nodes with the same two fields:
+
+```
+<Transform translation='0 1 0'>          Transform {
+  <Shape><Box size='2 2 2'/></Shape>       translation 0 1 0
+</Transform>                               children [ Shape {
+                                             geometry Box { size 2 2 2 } } ]
+                                         }
+```
+
+So the layer boundary is not container-versus-meaning; it is *syntax* versus
+*node set*. `UltraCanvasX3DScene.h` is a tree of typed nodes — a type name,
+named field text, children — and each encoding has a reader that produces it.
+Everything above that is written once. The alternative was two copies of
+`IndexedFaceSet`'s corner resolution, of the `T · C · R · SR · S · -SR · -C`
+composition, of DEF/USE, and of the ROUTE plumbing, one of which would
+eventually have drifted from the other. The suite asserts the equivalence
+directly: the same scene in both encodings must produce the same document, with
+bounds agreeing to the last bit.
+
+Two details had to be decided rather than read, and both are the kind of thing
+that looks like a detail and is not:
+
+- **A field's value can be a node or a literal, and both start with a bare
+  word.** `appearance Appearance { ... }` against `solid TRUE`. One token of
+  lookahead settles it — a word followed by `{` opens a node, `DEF` and `USE`
+  always do, everything else is a literal — and the same test after `[` says
+  whether brackets hold nodes or numbers. That is what lets the parser stay
+  ignorant of which fields are MFNode; a parser that had to know would have to
+  be taught every node type in the standard before it could read one.
+- **A single string renders unquoted and a list renders quoted**, because that
+  is exactly what the XML encoding stores in an attribute. Get it wrong and
+  every SFString field arrives with its quotes still attached, which is visible
+  only in whichever field a test happens to check.
+
+The encoding is decided from the file's first line rather than its extension,
+which is not pedantry: both revisions make a header line mandatory, and it is
+the only thing that distinguishes VRML 1.0 — `Separator`, `Coordinate3`, a
+different `IndexedFaceSet` — from VRML97 under the same `.wrl`. Read as VRML97,
+a VRML 1.0 file produces an empty scene rather than an error, so it is refused
+by name instead.
+
+The two exports also add a row to §2.6's table, and this one is about the
+exporters rather than the formats. The `.wrl` holds **64880 triangles, exactly
+eight times the `.x3d`'s 8110 quads**: Blender's VRML writer ran the
+subdivision modifier one level further than its X3D writer did and then
+triangulated. It also bakes the transform chain into the coordinates, writing
+one `Shape` where the `.x3d` writes a four-deep `Transform` chain — and both
+arrive at the same world bounds, which is what says the two readers agree. Both
+are symmetric in X, so both had the mirror applied. Two exports of one scene, in
+two encodings of one format, differing in how far down the modifier stack the
+exporter went.
 
 ### 2.10 A format with nothing to split off
 
@@ -632,6 +707,26 @@ two formats — and the second one is where that pays: the 6.1 ASCII export give
 the suite pins the fact that one extension, one scene and one aircraft can still
 be two different exports.
 
+`Tests/ModelX3DTest.cpp` covers the second XML scene format. Its synthetic half
+is where the reader's real decisions live, because one Blender export reaches
+none of them: DEF/USE instancing on a geometry and on a whole subtree (and the
+two malformed cases — a dangling reference and one that names the node it sits
+inside — that must not take the reader with them), the transform composition
+the spec defines as `T * C * R * SR * S * -SR * -C` rather than a TRS triple,
+per-face colours, reversed winding, and the geometric primitives, each checked
+by the one property a winding mistake always breaks: every face normal must
+point away from the centre. The sample half is the cross-format assertion in
+§2.6.
+
+Since the reader took the classic encoding as well, that suite gained the
+assertion §2.9 is about, and it is a different *kind* of assertion from the
+rest of this document: not that a reader produces the right answer, but that
+two paths through it produce the *same* answer. One scene, written once as XML
+and once as classic VRML, must give the same meshes, the same faces, the same
+vertices and bounds agreeing to the last bit. A reader with two encodings can
+pass every other test in the file while quietly diverging between them, and
+nothing but this catches it.
+
 `Tests/ModelBlendTest.cpp` covers the one reader whose *container* is another
 program's memory. Its synthetic half builds .blend files by hand, SDNA and all,
 and the assertion that justifies the effort is this: a field of a type the
@@ -722,6 +817,19 @@ Each step is independently mergeable and comes with a test and a demo page.
    with real animation. Nothing in the structure had to change to hold it,
    which is the strongest evidence so far that the design is right.
 
+3.6. **X3D — done.** `Plugins/Models/X3D/UltraCanvasX3DConverter.cpp` reads the
+   XML encoding, validated against the aircraft's `.x3d`
+   (`Tests/ModelX3DTest.cpp`, 118 assertions). It is the second XML scene
+   format and it landed for the same reason COLLADA did — the sample arrived —
+   but it exercises three things COLLADA does not: DEF/USE instancing, where
+   the *same element* is both the definition and, seen from a `USE`, the
+   reference; the Immersive profile's geometric primitives, which are real
+   geometry rather than a convenience, so a hand-written X3D is often nothing
+   else; and animation as ROUTE plumbing, where the keyframes belong to a node
+   that has no idea which node it drives. Nothing in the structure had to
+   change to hold any of it. Read-only, for the same reason COLLADA is: a
+   caller wanting to write a scene should write glTF.
+
 3.7. **DirectX .x — done.** `Plugins/Models/XFile/` reads it, text and binary,
    validated against the aircraft's `.x` (`Tests/ModelXFileTest.cpp`, 74
    assertions). It is split into a container layer and an object layer for the
@@ -745,6 +853,16 @@ Each step is independently mergeable and comes with a test and a demo page.
    and `ModelDocument` needed nothing new for any of the three. Read-only, and
    gated on zlib because its arrays are deflate streams. **Still to do:** skin
    deformers and blend shapes, cameras and lights, and embedded media.
+
+3.9. **VRML97 and X3D's Classic VRML encoding — done.** `.wrl`, `.vrml` and
+   `.x3dv` reach the same reader as `.x3d`, validated against the aircraft's
+   `.wrl` (`Tests/ModelX3DTest.cpp`, now 167 assertions across two samples).
+   What it added to this document is §2.9: it is the only reader here split by
+   *encoding* rather than by container, because X3D is one node set with more
+   than one syntax, and reading the second one twice would have meant two
+   copies of everything above the parser. The fix for the MFString escaping bug
+   it exposed applies to the XML encoding too. VRML 1.0 shares the extension
+   and nothing else, and is refused by name.
 
 3.10. **MilkShape 3D — done.** `Plugins/Models/MS3D/` reads it, validated
    against the aircraft's `.ms3d` (`Tests/ModelMS3DTest.cpp`, 87 assertions,
@@ -786,10 +904,10 @@ Each step is independently mergeable and comes with a test and a demo page.
    The converters also moved out of the core library into a real plugin target
    (`Plugins/Models/CMakeLists.txt`, `UltraCanvasModelsPlugin`,
    `ULTRACANVAS_HAS_MODELS_PLUGIN=1`), built like the Vector, CDR, XAR and EPS
-   plugins and listed in `ULTRACANVAS_PLUGIN_TARGETS`. COLLADA and `.blend` are
-   options within it, since each pulls a dependency (tinyxml2, zlib) the rest
-   does not need, and each gets its own define so a caller can `#ifdef` on
-   exactly what was built.
+   plugins and listed in `ULTRACANVAS_PLUGIN_TARGETS`. COLLADA, X3D and
+   `.blend` are options within it, since each pulls a dependency (tinyxml2 for
+   the two XML readers, zlib) the rest does not need, and each gets its own
+   define so a caller can `#ifdef` on exactly what was built.
 
    Two details worth knowing. **`.dxf` is dispatchable but not claimed**: a DXF
    is a drawing far more often than a model, so `LoadGraphicsFile` keeps giving
@@ -894,6 +1012,14 @@ Recorded rather than hidden:
   channels — what Blender writes, and what the sample uses — are read.
 - **COLLADA cameras and lights are not read**, though the document has fields
   for both and the sample has neither.
+- **PLY's per-face properties are not read.** Some exporters attach a texture
+  coordinate list or a material index to `element face`; the bytes are stepped
+  over exactly, so nothing after them is lost, but the values are dropped. The
+  per-*vertex* properties, which is where PLY puts almost everything, are all
+  kept.
+- **PLY states neither a unit nor an up axis**, so Y-up is recorded as a
+  convention rather than as something the file said - the same footing as
+  Alembic.
 - **Alembic reads its first time sample only.** An archive holding an animation
   arrives as its first frame. The document has `ModelAnimation` and morph
   targets to carry the rest, and the reader's `FormatCapabilities` says

@@ -52,10 +52,14 @@ static const std::vector<Sample>& Samples() {
             {"dxf", "DXF/E-45-Aircraft.dxf", true},
             {"step", "STEP/Box.step", true},
             {"abc", "Alembic/E-45-Aircraft.abc", true},
+            {"ply", "PLY/E-45-Aircraft.ply", true},
             {"x", "XFile/E-45-Aircraft.x", true},
             {"ms3d", "MS3D/E-45-Aircraft.ms3d", true},
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
             {"dae", "COLLADA/E-45-Aircraft.dae", true},
+#endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+            {"x3d", "X3D/E-45-Aircraft.x3d", true},
 #endif
 #ifdef ULTRACANVAS_HAS_FBX_CONVERTER
             {"fbx", "FBX/E-45-Aircraft.fbx", true},
@@ -94,8 +98,12 @@ static void TestDispatchTable() {
           "a dotted extension resolves");
     Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("obj") != nullptr,
           "a bare extension resolves");
+    // Deliberately not a real format. This assertion has gone stale twice, once
+    // when .abc gained a reader and once when .ply did, because it named a
+    // format that was merely unsupported *yet*. An extension no one will ever
+    // implement tests the same thing and cannot rot.
     Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("notaformat") == nullptr,
-          "a format this build has no converter for resolves to nothing");
+          "an extension no converter claims resolves to nothing");
 
     // And says so rather than returning null in silence: a caller handed an
     // unreadable file has to be able to tell "unsupported" from "corrupt". The
@@ -226,6 +234,20 @@ static void TestSamples(const std::string& mediaRoot) {
                                           [](const Sample& s) { return s.ImportsGeometry; });
     Check(loaded == expected, "every geometry format in this build loaded");
 
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    // X3D is one node set in two text encodings, and dispatch is by extension,
+    // so only a load proves the second one arrives anywhere. The table above
+    // covers the XML encoding; this covers the classic VRML one, which reaches
+    // the same reader under a different extension entirely.
+    {
+        const std::filesystem::path vrml = std::filesystem::path(mediaRoot) /
+                                           "VRML/E-45-Aircraft.wrl";
+        ConversionOptions quiet;
+        auto document = UltraCanvasModelFormatsPlugin::LoadModelDocument(vrml.string(), quiet);
+        Check(document != nullptr && !document->Empty(),
+              "and .wrl loads its classic VRML encoding through the same call as .x3d's XML");
+    }
+#endif
 #ifdef ULTRACANVAS_HAS_FBX_CONVERTER
     // One extension, two file formats: .fbx names both the 7.x binary the table
     // above loads and the 6.x ASCII text below, which share neither a byte
