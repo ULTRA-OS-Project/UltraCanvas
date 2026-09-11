@@ -155,11 +155,20 @@ the backing implementation can be replaced without affecting callers.
     `profile_COMMON` materials with transparency and textures, vertex colours,
     and matrix or TRS animation channels (matrix keyframes are decomposed into
     translation, rotation and scale). XML through tinyxml2.
-    `BlendConverter` (`Plugins/Models/Blend/UltraCanvasBlendConverter.h`) and
-    `ReadBlendFileInfo` (`UltraCanvasBlendFile.h`) recognise a Blender
-    `.blend` and report its version, datablock names, modifier types and
-    stored vertex count, but never import geometry: a `.blend` holds the
-    unevaluated scene, so the visible model is not in the file. Needs zlib.
+    **Blender** (`Plugins/Models/Blend/`) is split the same way as the others,
+    and the container half is the unusual one: a `.blend` is Blender's heap
+    written out, with an embedded SDNA block describing every struct and field
+    in the build that wrote it. `UltraCanvasBlendFile.h` is that container -
+    blocks, structs, and a `Ref` that reads a field *by name* at whatever
+    offset this file gives it, so a build that moved a field still reads -
+    and `UltraCanvasBlendConverter.h` is Blender's object model on top:
+    the object hierarchy, meshes in both layouts Blender has shipped
+    (MVert/MPoly/MLoop through 3.x, named CustomData attribute layers from
+    3.6), n-gons, per-corner UVs and colours, and materials. `ReadBlendFileInfo`
+    remains for callers that want only a description. **What is read is the
+    cage before modifiers** - a `.blend` stores them unapplied, so the
+    evaluated model is not in the file - and the reader warns naming them and
+    records them in `Metadata`. Read-only; needs zlib.
 
 - **UltraCanvasCADPalette** (`DataFormats/UltraCanvasCADPalette.h`) - the
   AutoCAD Color Index palette, `AciPaletteColor(aci)`: exact classic colours

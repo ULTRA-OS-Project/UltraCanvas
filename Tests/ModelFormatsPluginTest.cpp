@@ -37,7 +37,7 @@ static void Check(bool ok, const std::string& what) {
 struct Sample {
     const char* Extension;
     const char* RelativePath;
-    bool ImportsGeometry;   // .blend deliberately does not
+    bool ImportsGeometry;   // false for a format that dispatches but declines
 };
 
 static const std::vector<Sample>& Samples() {
@@ -55,7 +55,7 @@ static const std::vector<Sample>& Samples() {
             {"fbx", "FBX/E-45-Aircraft.fbx", true},
 #endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
-            {"blend", "Blend/E-45-Aircraft.blend", false},
+            {"blend", "Blend/E-45-Aircraft.blend", true},
 #endif
     };
     return samples;
