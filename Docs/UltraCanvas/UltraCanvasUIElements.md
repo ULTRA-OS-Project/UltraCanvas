@@ -80,6 +80,7 @@ from an external "Show password" checkbox. See
 | A formula inside a line of text you lay out yourself | `UltraCanvasInlineMath` (typeset, measure, draw at a baseline); `UltraCanvasTextArea`'s Markdown mode already does this for `$...$` | `UltraCanvasInlineMath.h` |
 | Every glyph in a font file, scrolling, without installing it | `UltraCanvasFontViewer` | `UltraCanvasFontViewer.h` |
 | Raw OpenGL | `UltraCanvasGLSurface` | `UltraCanvasGLSurface.h` |
+| A 3D mesh from an `.stl` file — shaded, orbited with the mouse | `UltraCanvasSTLElement` | `Models/STL/UltraCanvasSTLElement.h` |
 
 `UltraCanvasImageElement` is the answer to "I just need to draw a picture" — it
 goes through the shared `UCImage` cache, handles scaling modes, SVG and animated

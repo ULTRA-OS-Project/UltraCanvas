@@ -34,16 +34,16 @@
 #pragma once
 
 #include "UltraCanvasMetafileConverters.h"   // ExportOnlyConverter
+#include "DataFormats/UltraCanvasCADPalette.h"   // AciPaletteColor
 
 namespace UltraCanvas {
     namespace VectorConverter {
 
-        // The AutoCAD Color Index palette (defined in UltraCanvasDXFReader.cpp):
-        // exact classic colours 1-9 and greys 250-255, the standard 24-hue
-        // construction for 10-249. Shared between the writer's nearest-ACI
-        // fallback and the reader's ACI resolution so colours round-trip
-        // consistently through ACI-only consumers (LibreDWG among them).
-        Color AciPaletteColor(int aci);
+        // The AutoCAD Color Index palette. It now lives in core
+        // (DataFormats/UltraCanvasCADPalette.h) because the 3D model
+        // converters resolve ACI too and neither plugin owns it; this name
+        // stays so the vector converters read unchanged.
+        inline Color AciPaletteColor(int aci) { return UltraCanvas::AciPaletteColor(aci); }
 
         class DXFConverter : public ExportOnlyConverter {
         public:

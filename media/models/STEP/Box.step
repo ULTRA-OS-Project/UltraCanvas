@@ -1,0 +1,173 @@
+ISO-10303-21;
+/* A 10 x 20 x 30 mm block, written by hand rather than by an exporter so that
+   the reader is tested against something it did not produce. The instance ids
+   are deliberately not in dependency order, and the left face states its loop
+   backwards with a .F. bound orientation, because both are things real
+   exporters do and both have broken readers before. */
+HEADER;
+FILE_DESCRIPTION(('A rectangular block'),'2;1');
+FILE_NAME('Box.step','2026-09-10T00:00:00',('UltraCanvas'),(''),
+  'hand-authored','hand-authored','');
+FILE_SCHEMA(('AUTOMOTIVE_DESIGN { 1 0 10303 214 3 1 1 }'));
+ENDSEC;
+DATA;
+
+/* --- product structure --- */
+#900 = APPLICATION_CONTEXT('core data for automotive mechanical design processes');
+#901 = APPLICATION_PROTOCOL_DEFINITION('international standard','automotive_design',2000,#900);
+#902 = PRODUCT_CONTEXT('',#900,'mechanical');
+#903 = PRODUCT('Block','Block \X2\00D7\X0\ hand authored','',(#902));
+#904 = PRODUCT_DEFINITION_FORMATION('','',#903);
+#905 = PRODUCT_DEFINITION_CONTEXT('part definition',#900,'design');
+#906 = PRODUCT_DEFINITION('design','',#904,#905);
+#907 = PRODUCT_DEFINITION_SHAPE('','',#906);
+#908 = SHAPE_DEFINITION_REPRESENTATION(#907,#800);
+
+/* --- units: millimetres --- */
+#910 = ( LENGTH_UNIT() NAMED_UNIT(*) SI_UNIT(.MILLI.,.METRE.) );
+#911 = ( NAMED_UNIT(*) PLANE_ANGLE_UNIT() SI_UNIT($,.RADIAN.) );
+#912 = ( NAMED_UNIT(*) SI_UNIT($,.STERADIAN.) SOLID_ANGLE_UNIT() );
+#913 = UNCERTAINTY_MEASURE_WITH_UNIT(LENGTH_MEASURE(1.E-07),#910,
+  'distance_accuracy_value','confusion accuracy');
+#914 = ( GEOMETRIC_REPRESENTATION_CONTEXT(3)
+  GLOBAL_UNCERTAINTY_ASSIGNED_CONTEXT((#913))
+  GLOBAL_UNIT_ASSIGNED_CONTEXT((#910,#911,#912))
+  REPRESENTATION_CONTEXT('Context','3D') );
+
+/* --- the body --- */
+#800 = ADVANCED_BREP_SHAPE_REPRESENTATION('Block',(#801),#914);
+#801 = MANIFOLD_SOLID_BREP('Block',#802);
+#802 = CLOSED_SHELL('',(#310,#320,#330,#340,#350,#360));
+
+/* --- corners --- */
+#101 = CARTESIAN_POINT('',(0.,0.,0.));
+#102 = CARTESIAN_POINT('',(10.,0.,0.));
+#103 = CARTESIAN_POINT('',(10.,20.,0.));
+#104 = CARTESIAN_POINT('',(0.,20.,0.));
+#105 = CARTESIAN_POINT('',(0.,0.,30.));
+#106 = CARTESIAN_POINT('',(10.,0.,30.));
+#107 = CARTESIAN_POINT('',(10.,20.,30.));
+#108 = CARTESIAN_POINT('',(0.,20.,30.));
+
+#111 = VERTEX_POINT('',#101);
+#112 = VERTEX_POINT('',#102);
+#113 = VERTEX_POINT('',#103);
+#114 = VERTEX_POINT('',#104);
+#115 = VERTEX_POINT('',#105);
+#116 = VERTEX_POINT('',#106);
+#117 = VERTEX_POINT('',#107);
+#118 = VERTEX_POINT('',#108);
+
+/* --- directions --- */
+#1 = DIRECTION('',(0.,0.,1.));
+#2 = DIRECTION('',(1.,0.,0.));
+#3 = DIRECTION('',(0.,1.,0.));
+#4 = DIRECTION('',(0.,0.,-1.));
+#5 = DIRECTION('',(-1.,0.,0.));
+#6 = DIRECTION('',(0.,-1.,0.));
+
+/* --- vectors: a STEP attribute of an entity type is always a reference --- */
+#140 = VECTOR('',#2,10.);
+#141 = VECTOR('',#3,20.);
+#142 = VECTOR('',#5,10.);
+#143 = VECTOR('',#6,20.);
+#144 = VECTOR('',#1,30.);
+
+/* --- lines, each running from its edge's start vertex --- */
+#121 = LINE('',#101,#140);
+#122 = LINE('',#102,#141);
+#123 = LINE('',#103,#142);
+#124 = LINE('',#104,#143);
+#125 = LINE('',#105,#140);
+#126 = LINE('',#106,#141);
+#127 = LINE('',#107,#142);
+#128 = LINE('',#108,#143);
+#129 = LINE('',#101,#144);
+#130 = LINE('',#102,#144);
+#131 = LINE('',#103,#144);
+#132 = LINE('',#104,#144);
+
+/* --- edges --- */
+#201 = EDGE_CURVE('',#111,#112,#121,.T.);
+#202 = EDGE_CURVE('',#112,#113,#122,.T.);
+#203 = EDGE_CURVE('',#113,#114,#123,.T.);
+#204 = EDGE_CURVE('',#114,#111,#124,.T.);
+#205 = EDGE_CURVE('',#115,#116,#125,.T.);
+#206 = EDGE_CURVE('',#116,#117,#126,.T.);
+#207 = EDGE_CURVE('',#117,#118,#127,.T.);
+#208 = EDGE_CURVE('',#118,#115,#128,.T.);
+#209 = EDGE_CURVE('',#111,#115,#129,.T.);
+#210 = EDGE_CURVE('',#112,#116,#130,.T.);
+#211 = EDGE_CURVE('',#113,#117,#131,.T.);
+#212 = EDGE_CURVE('',#114,#118,#132,.T.);
+
+/* --- bottom, z = 0, outward normal -Z --- */
+#311 = AXIS2_PLACEMENT_3D('',#101,#4,#2);
+#312 = PLANE('',#311);
+#313 = EDGE_LOOP('',(#3131,#3132,#3133,#3134));
+#3131 = ORIENTED_EDGE('',*,*,#204,.F.);
+#3132 = ORIENTED_EDGE('',*,*,#203,.F.);
+#3133 = ORIENTED_EDGE('',*,*,#202,.F.);
+#3134 = ORIENTED_EDGE('',*,*,#201,.F.);
+#314 = FACE_OUTER_BOUND('',#313,.T.);
+#310 = ADVANCED_FACE('bottom',(#314),#312,.T.);
+
+/* --- top, z = 30, outward normal +Z --- */
+#321 = AXIS2_PLACEMENT_3D('',#105,#1,#2);
+#322 = PLANE('',#321);
+#323 = EDGE_LOOP('',(#3231,#3232,#3233,#3234));
+#3231 = ORIENTED_EDGE('',*,*,#205,.T.);
+#3232 = ORIENTED_EDGE('',*,*,#206,.T.);
+#3233 = ORIENTED_EDGE('',*,*,#207,.T.);
+#3234 = ORIENTED_EDGE('',*,*,#208,.T.);
+#324 = FACE_OUTER_BOUND('',#323,.T.);
+#320 = ADVANCED_FACE('top',(#324),#322,.T.);
+
+/* --- front, y = 0, outward normal -Y --- */
+#331 = AXIS2_PLACEMENT_3D('',#101,#6,#2);
+#332 = PLANE('',#331);
+#333 = EDGE_LOOP('',(#3331,#3332,#3333,#3334));
+#3331 = ORIENTED_EDGE('',*,*,#201,.T.);
+#3332 = ORIENTED_EDGE('',*,*,#210,.T.);
+#3333 = ORIENTED_EDGE('',*,*,#205,.F.);
+#3334 = ORIENTED_EDGE('',*,*,#209,.F.);
+#334 = FACE_OUTER_BOUND('',#333,.T.);
+#330 = ADVANCED_FACE('front',(#334),#332,.T.);
+
+/* --- right, x = 10, outward normal +X --- */
+#341 = AXIS2_PLACEMENT_3D('',#102,#2,#3);
+#342 = PLANE('',#341);
+#343 = EDGE_LOOP('',(#3431,#3432,#3433,#3434));
+#3431 = ORIENTED_EDGE('',*,*,#202,.T.);
+#3432 = ORIENTED_EDGE('',*,*,#211,.T.);
+#3433 = ORIENTED_EDGE('',*,*,#206,.F.);
+#3434 = ORIENTED_EDGE('',*,*,#210,.F.);
+#344 = FACE_OUTER_BOUND('',#343,.T.);
+#340 = ADVANCED_FACE('right',(#344),#342,.T.);
+
+/* --- back, y = 20, outward normal +Y --- */
+#351 = AXIS2_PLACEMENT_3D('',#103,#3,#5);
+#352 = PLANE('',#351);
+#353 = EDGE_LOOP('',(#3531,#3532,#3533,#3534));
+#3531 = ORIENTED_EDGE('',*,*,#203,.T.);
+#3532 = ORIENTED_EDGE('',*,*,#212,.T.);
+#3533 = ORIENTED_EDGE('',*,*,#207,.F.);
+#3534 = ORIENTED_EDGE('',*,*,#211,.F.);
+#354 = FACE_OUTER_BOUND('',#353,.T.);
+#350 = ADVANCED_FACE('back',(#354),#352,.T.);
+
+/* --- left, x = 0, outward normal -X. Its loop is written backwards and the
+   bound says so with .F., which is the case a reader that ignores the flag
+   gets inside out. --- */
+#361 = AXIS2_PLACEMENT_3D('',#104,#5,#6);
+#362 = PLANE('',#361);
+#363 = EDGE_LOOP('',(#3631,#3632,#3633,#3634));
+#3631 = ORIENTED_EDGE('',*,*,#212,.T.);
+#3632 = ORIENTED_EDGE('',*,*,#208,.T.);
+#3633 = ORIENTED_EDGE('',*,*,#209,.F.);
+#3634 = ORIENTED_EDGE('',*,*,#204,.F.);
+#364 = FACE_OUTER_BOUND('',#363,.F.);
+#360 = ADVANCED_FACE('left',(#364),#362,.T.);
+
+ENDSEC;
+END-ISO-10303-21;

@@ -1,3 +1,391 @@
+#### 2026-09-10 *0.8.14*
+- **Alembic (.abc) reads.** `Plugins/Models/Alembic/` is split the same way the
+  STEP reader is: `UltraCanvasOgawaFile.h` is the Ogawa container and Alembic's
+  object/property model with no idea what a mesh is, and
+  `UltraCanvasAlembicConverter.h` is AbcGeom on top of it. No SDK - Ogawa is a
+  flat file of groups and data blocks addressed by absolute offset, and the
+  header blobs that name them decode in about four hundred lines.
+- **What is read**: `AbcGeom_Xform` as the node hierarchy (Alembic's row-major
+  matrices transposed, and decomposed to TRS where that is exact),
+  `AbcGeom_PolyMesh` with its n-gons kept rather than triangulated,
+  `AbcGeom_SubD` as its control cage with a warning that the subdivided surface
+  is not in the file, `AbcGeom_FaceSet` as one primitive per set so a material
+  assignment survives, and per-corner normals and indexed UVs. First time
+  sample only; the capability report says `Animations = false` rather than
+  implying otherwise.
+- **Two conventions that are silent corruption when got wrong.** Alembic winds
+  a face's indices the opposite way from the outward-normal convention, so
+  every face is reversed on import - the sample disagrees with its own stored
+  normals on 1680 of 1681 faces if it is not, and its signed volume comes out
+  negative. And `N` and `uv` are face-varying, one value per corner rather than
+  per vertex, so corners are de-indexed into distinct document vertices exactly
+  as the OBJ reader does for its three index streams.
+- **An HDF5-backed archive is told apart from a non-Alembic file** and reported
+  as such, because "not Alembic" would be a lie and a re-export fixes it.
+- **`Tests/ModelAlembicTest.cpp`** against `media/models/Alembic/E-45-Aircraft.abc`
+  - the same aircraft as the 3DS, OBJ, DXF and COLLADA samples, from the same
+  .blend. It checks the winding against the normals the file itself carries,
+  and asserts the cross-format difference rather than hiding it: the OBJ is
+  symmetric about X and the Alembic is not, because this export - like the .dae
+  - was written without applying the mirror modifier. Proposal section 2.6
+  gained it as a third witness: even the format whose whole purpose is baked
+  geometry came out of this scene half-mirrored.
+- `ModelFormat` gained `Alembic`; the plugin dispatches `.abc` for reading.
+  Read only: writing an Alembic a DCC will accept means matching a schema far
+  more strictly than reading it, and a document that needs to leave the
+  framework has OBJ, STEP and the rest.
+
+#### 2026-09-10 *0.8.13*
+- **STEP reads and writes: the first B-rep converter.** `Plugins/Models/STEP/`
+  fills `ModelDocument::Brep` from ISO 10303-21 files - AP203, AP214 and AP242 -
+  and writes them back out. Nothing is tessellated on the way in unless the
+  caller asks (`ConversionOptions::TessellateOnImport`): the exact surfaces are
+  the point, and a mesh made at a tolerance the file never stated is a decision
+  only the caller can make.
+- **The syntax layer is separate and testable on its own.**
+  `UltraCanvasStepFile.h` parses Part 21 and interprets nothing: instances,
+  parameters, strings with doubled quotes and `\X2\` escapes, comments between
+  any two tokens, `$` and `*`, and - the one that matters - *complex instances*,
+  the parenthesised pile of records that a rational NURBS can only be written
+  as. A reader that handles only simple instances reads no curved freeform
+  geometry at all, from any STEP file, ever.
+- **What the entity layer reads**: lines, circles, ellipses, parabolas,
+  hyperbolas, polylines, rational and polynomial B-spline curves and trimmed
+  curves; planes, cylinders, cones, spheres, tori, surfaces of extrusion and
+  revolution, and rational and polynomial B-spline surfaces; the pcurves that
+  trim them, through `surface_curve`, `seam_curve` and `intersection_curve` -
+  and where a file carries none, the surface is inverted instead, in closed form
+  for the analytic types and numerically for NURBS; `edge_curve`,
+  `oriented_edge`, `edge_loop`, `poly_loop`, `vertex_loop`, `face_bound`,
+  `face_outer_bound`, `advanced_face`, `closed_shell`, `open_shell`,
+  `manifold_solid_brep`, `brep_with_voids`, `shell_based_surface_model` and
+  `faceted_brep`; `si_unit` and `conversion_based_unit`, so an inch part is
+  recognised as inches rather than arriving a thousand times too large; product
+  names; and the six-deep `styled_item` chain down to `colour_rgb`, per face and
+  per body.
+- **What it does not, said rather than implied**: assembly placements are not
+  applied, so a multi-part file arrives with every part in its own coordinates -
+  the reader warns when it finds them. PMI, tolerances and construction history
+  are not read.
+- **Writing produces an `advanced_brep_shape_representation`**, with the
+  presentation chain for colours and the product structure AP203 requires around
+  a shape. A document holding meshes rather than solids is written as a faceted
+  b-rep: one plane per facet, with edges shared between neighbours, which is
+  what STEP has for a mesh and what a CAD system will read back. There is no
+  six-digit mode - the reason to write STEP is that the numbers are exact, and a
+  NURBS weight of cos 45 degrees rounded to six digits is no longer an arc.
+- **`ModelFormat` gained STEP, IGES, ACIS, Parasolid and OpenNURBS**, and
+  `FormatCapabilities` gained `Brep`, `NurbsSurfaces` and `Assemblies` - so a
+  converter that fills exact bodies rather than triangles can say so, instead of
+  looking like a broken mesh reader.
+- **`Tests/ModelStepTest.cpp`** with three **hand-authored** samples in
+  `media/models/STEP`, hand-authored because a reader tested only against files
+  its own writer produced proves nothing. `Box.step` states one face's loop
+  backwards with a `.F.` bound orientation and meshes to signed volume exactly
+  6000 in exactly 12 triangles - a reader that ignores that flag builds the face
+  inside out, and the signed volume is the only measure that notices. `Pin.step`
+  is in inches through a `conversion_based_unit`, has a seam edge used twice by
+  one loop, and carries a body colour with one face overridden; its meshed
+  volume closes on pi*r^2*h from below as the tolerance tightens. `NurbsSheet.step`
+  is a rational patch whose weights make it an exact arc, so every point of it is
+  5 from the axis to 1e-15, and its boundary carries no pcurves - the meshed area
+  being a quarter cylinder's is what proves the surface was inverted correctly.
+  All three round-trip through the writer to the *same meshed volume to 1e-9*.
+- The Models plugin now dispatches `.step`, `.stp` and `.p21` for both reading
+  and writing, so `LoadGraphicsFile` and `SaveGraphicsFile` reach them; STEP has
+  no external dependency, so it is always built.
+
+#### 2026-09-10 *0.8.12*
+- **The 3D structure holds B-rep exactly, instead of tessellating it away.**
+  `ModelDocument::Brep` is a `BrepData`
+  (`DataFormats/UltraCanvasBrepStorage.h`): trimmed surfaces - plane, cylinder,
+  cone, sphere, torus, extrusion, revolution, ruled and rational B-spline -
+  with the topology that closes them into solids (solid, shell, face, loop,
+  coedge, edge, vertex), curves in space and in a surface's parameter space,
+  and `ModelNode::Solid` to place a body as `Mesh` places a mesh. That is what
+  STEP, IGES, ACIS/SAT, Parasolid XT, OpenNURBS `.3dm` and DWG's `3DSOLID` /
+  `REGION` / `BODY` / `SURFACE` actually contain. The proposal argued the
+  opposite until now, and `Docs/Research/UltraCanvas3DModelProposal.md` §2.5
+  records the reversal rather than quietly editing it: a triangle mesh is a
+  *view* of a B-rep taken at a tolerance the file never stated, so a reader
+  that tessellates and discards decides irreversibly, for the user, that the
+  model is approximate from now on - and no warning gives that back.
+- **Tessellation became an operation the caller asks for.**
+  `ModelDocument::TessellateBreps(options)` approximates every solid at a
+  chord and angular tolerance the caller picks, attaches the mesh to the node
+  that placed the body, and leaves the exact bodies in place - so it can be
+  re-run finer without re-reading the file, run twice for two levels of detail,
+  or never run at all. Per face it samples the trimming loops to tolerance,
+  decimates what the tolerance does not need, ear-clips the region with its
+  holes bridged in, seeds interior points on a grid sized from the surface's
+  own curvature, and red-green refines whatever the grid missed. A 2x4x6 box
+  meshes to exactly 12 triangles with signed volume 48; a cylinder of radius 5
+  and height 10 to 96 / 384 / 1534 triangles at tolerances of 0.1 / 0.01 /
+  0.001, every vertex exactly on the surface.
+- **`BrepData::Validate` is what a reader owes its caller.** Every index in
+  range, every loop actually closed, and - for a shell marked closed - every
+  edge used exactly twice and in opposite directions. A STEP file referencing a
+  surface it never defines is not rare, and without this the symptom is a wrong
+  mesh rather than an error.
+- **Concave n-gons triangulate correctly.** `MeshPrimitive::Triangulate` ear-
+  clips in the plane Newell's method fits to the face, so an L-shaped or
+  slotted face comes out as its own area rather than its convex hull - the
+  test's L is 5 units, and the fan it replaces gave 7. Convex faces still take
+  the fan, which is the same answer far cheaper, so nothing got slower. The
+  clipper lives in `DataFormats/UltraCanvasPolygonTriangulation.h` because the
+  B-rep face mesher needs the same thing with holes.
+- **Smoothing groups round-trip, and are honoured.**
+  `MeshPrimitive::SmoothingGroups` carries a 32-bit mask per face - the same
+  idea as OBJ's `s` and the 3DS `SMOOTH_GROUP` chunk. The OBJ reader fills it;
+  the writer emits `s` only where the value changes, `s` being stateful.
+  `RecomputeNormals` now creases where the file asked, splitting the vertex
+  where a smoothed face meets a creased one so both normals can exist, with
+  attributes, tangents and morph deltas following the split; triangulation
+  carries each face's mask onto the triangles it produces.
+- **Welding merges across lattice boundaries.** `WeldVertices` still buckets to
+  find candidates but now searches a cell and its 26 neighbours and decides by
+  real distance. Rounding is discontinuous exactly where geometry sits - the
+  axis planes, the origin, every round number a CAD user typed - so
+  single-cell bucketing failed on precisely the seams worth welding.
+  Attributes still gate the merge exactly, and a zero tolerance still merges
+  only bit-identical vertices.
+- **`Tests/BrepStorageTest.cpp`** (CTest-registered, no sample file needed -
+  it builds its bodies, which is the point) asserts geometric quantities
+  rather than structure: the signed volume of a meshed box, the radial error of
+  a meshed cylinder and sphere, the area of a plate with a hole and that no
+  triangle lies inside it, a rational quadratic B-spline reproducing a circular
+  arc to 1e-12, and inverse projection round-tripping on sphere, torus and a
+  bicubic patch. `ModelStorageTest` and `ModelOBJTest` gained the concave,
+  welding and smoothing-group cases. All seven model suites pass.
+- Vectors and matrices moved to `DataFormats/UltraCanvasModelMath.h` (unchanged
+  otherwise, same namespace) so the B-rep header can use them without a
+  circular include - a `ModelDocument` owns its `BrepData`.
+
+#### 2026-09-10 *0.8.11*
+- **The 3D formats are a plugin now, not five classes in the core library.**
+  `Plugins/Models/CMakeLists.txt` builds `UltraCanvasModelsPlugin` as its own
+  static library with `ULTRACANVAS_HAS_MODELS_PLUGIN=1`, listed in
+  `ULTRACANVAS_PLUGIN_TARGETS` and switched by `ULTRACANVAS_PLUGIN_MODELS` -
+  the same shape as the Vector, CDR, XAR and EPS plugins. Until now the
+  converters were compiled unconditionally into the core library, so every
+  application linked 3DS, OBJ, DXF, COLLADA and Blender support whether or not
+  it opened a model, and COLLADA's tinyxml2 dependency came with it. COLLADA
+  and `.blend` are now options inside the plugin, each with its own define
+  (`ULTRACANVAS_HAS_COLLADA_CONVERTER`, `ULTRACANVAS_HAS_BLEND_CONVERTER`), so
+  a build without tinyxml2 or zlib still gets the rest.
+- **One call loads any 3D format.** `UltraCanvasModelFormatsPlugin` mirrors
+  `UltraCanvasVectorFormatsPlugin`: `CreateConverterForExtension`,
+  `LoadModelDocument`, `SaveModelDocument`, and an `IGraphicsPlugin`
+  implementation so `LoadGraphicsFile` / `SaveGraphicsFile`, the FileLoader
+  format inventory and the `Model3D` category reach every format. `GetFileInfo`
+  reports vertices, faces, materials, unit, up axis and bounds - and for a
+  `.blend`, the inspector's summary instead.
+  `RegisterModelFormatsPlugin()` runs from `main.cpp` beside the vector one and
+  registers the STL plugin too, fixing the older bug that `.stl` was invisible
+  to FileLoader unless one particular demo page had been opened.
+- **`.dxf` is dispatchable but deliberately not claimed**, so a DXF still opens
+  as a drawing through the Vector plugin by default; a caller wanting the 3D
+  entities asks for the converter by name. Extension dispatch sits in its own
+  translation unit away from the `IGraphicsPlugin` façade, because the façade
+  returns a viewer element and needs the UI stack while conversion does not -
+  so a converting tool links a fraction of the framework.
+  `Tests/ModelFormatsPluginTest.cpp` adds 30 assertions over the seam itself:
+  every claimed extension resolves, every converter agrees with the dispatch
+  about its own extension, every save extension really has a writer, and all
+  four geometry samples load - then a 3DS converts to OBJ and back - without
+  the caller naming a format.
+
+#### 2026-09-10 *0.8.10*
+- **Blender `.blend` files are recognised and explained, never imported.**
+  `ModelConverter::BlendConverter` and `ReadBlendFileInfo`
+  (`Plugins/Models/Blend/`) read a `.blend`'s header, block index and embedded
+  SDNA - the three parts stable across many Blender releases - and report what
+  the file holds: version, pointer size, compression, the names of its objects,
+  meshes and materials, the modifier types present, and how many vertices are
+  actually stored. Then the converter declines, naming the modifiers and
+  pointing at the export that would work.
+  The refusal is the feature. A `.blend` stores the *unevaluated* scene, so the
+  model an artist sees is not in the file: the E-45 sample holds **1147
+  vertices** behind Mirror, Subsurf and EdgeSplit modifiers, while the same
+  model exported to OBJ with those applied is **11749**. A geometry reader
+  would deliver a tenth of the aircraft, and half of it in X since the mirror
+  is one of the unapplied modifiers - which is also why the `.dae` export holds
+  exactly those same 1147 positions. Silent failure tells a user nothing; a
+  partial import tells them something false.
+  gzip save files are inflated; zstd (Blender 3.0's default) is reported by
+  name rather than failing obscurely. `Tests/ModelBlendTest.cpp` covers it with
+  24 assertions, and `FormatCapabilities` is all-false because a capability
+  report says what a converter does, not what its format could hold.
+
+#### 2026-09-10 *0.8.9*
+- **COLLADA reads into the universal 3D structure.**
+  `ModelConverter::ColladaConverter` (`Plugins/Models/COLLADA/`) reads COLLADA
+  1.4/1.5 into `ModelStorage::ModelDocument`, and it is the format that finally
+  exercises the whole of it: `<unit meter="1"/>` and `<up_axis>` - the first
+  sample to state either - a node hierarchy four deep, `<polylist>` n-gons,
+  `profile_COMMON` materials with transparency and the sampler2D-surface-image
+  texture chain, vertex colours, and animation. Nothing in the structure had to
+  change to hold it.
+  Three COLLADA details are handled rather than approximated: a node's
+  transform is an ordered *sequence* of `<translate>`, `<rotate>`, `<scale>`
+  and `<matrix>` composed in document order (Blender writes three separate
+  `<rotate>` elements, and reading them into fixed slots gives the wrong pose);
+  `<p>` indices are per-corner and per-stream like OBJ's, so unique tuples
+  become vertices; and a matrix-valued animation channel is decomposed per
+  keyframe into translation, rotation and scale, because that is what the
+  document interpolates. `Tests/ModelColladaTest.cpp` covers it with 41
+  assertions, including translate-then-rotate against rotate-then-translate.
+- **The DAE sample is deliberately not the same aircraft.** Its export holds
+  half the hull (an unapplied mirror modifier), is far lower-poly than the 3DS,
+  and displaces its two meshes by an armature's transforms. The reader's world
+  bounds were checked against an independent walk of the same node chain and
+  agree exactly, so the file is what it is - and the test asserts those
+  differences on purpose, so a later change cannot quietly "fix" the reader
+  into matching the other exports.
+
+#### 2026-09-10 *0.8.8*
+- **DXF read as geometry, not as a drawing.**
+  `ModelConverter::DXFModelConverter` (`Plugins/Models/DXF/`) reads the 3D
+  entity set into `ModelStorage::ModelDocument`: `3DFACE` (a 4th corner
+  repeating the 3rd is a triangle, not a degenerate quad), polyface meshes,
+  polygon meshes, 3D polylines, lines and points - one mesh per layer, the
+  layer's ACI colour as its material, `$INSUNITS` as the document's unit, Z-up.
+  This is the geometry the Vector plugin's DXF reader has to discard, because
+  `VectorDocument` is 2D and has nowhere to put a Z. The two are complements:
+  a floor plan is a drawing, an exported model is geometry, and a file that is
+  only a drawing is now refused with a warning naming the other reader rather
+  than returned as an empty document.
+- **The ACI palette moved to core.** `DataFormats/UltraCanvasCADPalette.h`
+  holds `AciPaletteColor` - the exact classic colours 1-9, the 250-255 grey
+  ramp and the 24-hue construction for 10-249 - because the 2D vector
+  converters and the 3D model converters both resolve ACI and neither plugin
+  owns it. `VectorConverter::AciPaletteColor` stays as a forwarder, so the
+  vector converters read unchanged.
+- **Three formats of one aircraft now agree.** `media/models/` carries the E-45
+  as 3DS, OBJ and DXF exports of the same scene. The DXF and 3DS land on
+  identical bounds with no conversion, the OBJ lands on them after
+  `ConvertUpAxis`, the DXF and OBJ each hold 8110 quads, and triangulating
+  either gives the 3DS's 16220 triangles exactly. `Tests/ModelDXFTest.cpp`
+  adds 41 assertions, among them a synthetic polyface mesh that caught a real
+  bug: a polyface *position* vertex carries flags 192 (128 | 64) and a face
+  record carries 128 alone, so testing bit 128 by itself matched both and no
+  polyface mesh would have loaded its positions at all.
+
+#### 2026-09-10 *0.8.7*
+- **Text formats choose their write precision.**
+  `ModelConverter::ConversionOptions::Precision` selects between
+  `NumericPrecision::Compact` - the C++ stream default of 6 significant digits,
+  which is what OBJ files in the wild contain - and `NumericPrecision::Full`,
+  enough digits that every value read back is bit-identical to the one written:
+  17 for the document's double positions and 9 for its float attributes
+  (`max_digits10` for each). Compact stays the default, so existing output is
+  unchanged. The difference matters wherever geometry sits far from the origin:
+  a survey coordinate of 1234567.8912345678 comes back as 1234570 under
+  Compact, 2.11 units - two metres - lost to six digits, while Full returns it
+  bit-for-bit. The cost is about a third more file size (the E-45 aircraft goes
+  from 1.37 MB to 1.87 MB as OBJ). The OBJ writer honours it for vertices,
+  texture coordinates, normals and the `.mtl` library; the option sits on
+  `ConversionOptions` because every text format the matrix gains - PLY ASCII,
+  glTF's JSON, COLLADA, X3D - faces the same choice.
+
+#### 2026-09-10 *0.8.6*
+- **OBJ reads and writes through the universal 3D structure.**
+  `ModelConverter::OBJConverter` (`Plugins/Models/OBJ/`) is the first format on
+  `ModelStorage::ModelDocument` with both directions, so it is also the first
+  round trip: OBJ to document to OBJ and back returns the same vertices, faces,
+  bounds, names and materials. **N-gons survive** - the E-45 aircraft sample is
+  8110 quads and no triangles, and it comes back as 8110 quads. OBJ's three
+  independent index streams (11749 positions against 12227 texture
+  coordinates in that file) resolve into unique corners rather than being
+  assumed parallel, `o`/`g`/`usemtl` split meshes and primitives, and the
+  reader handles negative indices, all four face-corner forms, vertex colours
+  and the MTL PBR extension. The writer emits a companion `.mtl` beside the
+  model and reports everything OBJ cannot hold - the node hierarchy it bakes
+  flat, animation, skinning, cameras, lights, morph targets, point and line
+  primitives.
+- **Two readers now agree on the same aircraft.** `media/models/` carries the
+  E-45 as both a Y-up OBJ of quads and a Z-up 3DS of triangles.
+  `ConvertUpAxis` on the OBJ document reproduces the 3DS bounds to four
+  decimals on every axis, both readers find 12227 vertices, and the quad count
+  is exactly half the triangle count - the up-axis conversion, the n-gon
+  representation and the vertex-splitting rule checked against ground truth
+  instead of against themselves. `Tests/ModelOBJTest.cpp` holds it, with 34
+  assertions including malformed input and the parsing corners.
+
+#### 2026-09-10 *0.8.5*
+- **3DS models read into the universal 3D structure.**
+  `ModelConverter::ThreeDSConverter` (`Plugins/Models/3DS/`) reads Autodesk
+  3D Studio files into `ModelStorage::ModelDocument` - the first scene format
+  on the new structure, and the one that proves it holds a scene: named meshes,
+  per-object matrices, materials with diffuse/specular/bump maps, per-face
+  material groups split into one primitive each, cameras and lights. 3DS stores
+  vertices in world space beside each object's own matrix, so the reader puts
+  the matrix on the node and the inverse into the vertices - the object frame
+  survives as real structure and composes back to exactly the coordinates the
+  file held. Every read is bounds-checked against its enclosing chunk, so a
+  truncated or hostile file yields a warning rather than an overrun, and what
+  the format loses is reported: 12-character truncated texture names, several
+  images stacked in one map slot, a KFDATA hierarchy this reader does not yet
+  read. `media/models/3DS/E-45-Aircraft.3ds` is the sample;
+  `Tests/Model3DSTest.cpp` covers it with 25 assertions including the
+  malformed-input cases.
+- **A white specular is no longer read as metal.**
+  `ModelMaterial::DeriveMissingModel` derived metalness from the Phong specular
+  alone, so every painted surface with a white highlight - the commonest
+  material in MTL, 3DS and COLLADA files - became raw metal, which renders
+  black without an environment. Metal now also requires a dark diffuse, since
+  having no diffuse albedo is what physically distinguishes one, and takes its
+  base colour from the specular. `Matrix4x4::InverseAffine` joins the structure
+  for readers of formats that store world-space vertices beside an object
+  matrix.
+
+#### 2026-09-10 *0.8.4*
+- **One 3D structure for every 3D format.** `ModelStorage::ModelDocument`
+  (`DataFormats/UltraCanvasModelStorage.h`) is to 3D what
+  `VectorStorage::VectorDocument` is to 2D: the in-memory model each 3D file
+  format reads into and writes out of. It is a core service, which the flat
+  `Mesh3D` inside the STL plugin could never be - scenes, nodes with TRS or
+  matrix transforms and instancing, meshes of primitives with double-precision
+  positions and open-ended named vertex attributes (n-gons survive; point
+  clouds are just `Points` mode), PBR *and* fixed-function Phong materials with
+  a derivation between them, textures, skins, morph targets, keyframe
+  animation, cameras, lights, and the declared unit, up axis and handedness
+  that decide whether an import arrives the right size and the right way up.
+  Operations every converter would otherwise rewrite come with it:
+  triangulation, area-weighted normals, attribute-aware welding, transform
+  flattening, up-axis conversion and TRS decomposition.
+  `ModelConverter::IModelFormatConverter`
+  (`DataFormats/UltraCanvasModelConverter.h`) is the matching read/write
+  interface, shaped like `IVectorFormatConverter` down to the warning callback
+  a lossy conversion must use.
+  `Plugins/Models/UltraCanvasModelMesh3D.{h,cpp}` bridges to the existing
+  `Mesh3D`, so the STL viewer and the Filer thumbnails keep working while
+  formats migrate one at a time. `Tests/ModelStorageTest.cpp` covers it, and
+  runs against a real 510 671-triangle STL when given one.
+  The survey behind every field - what STL, OBJ/MTL, PLY, OFF, glTF/GLB,
+  COLLADA, FBX, 3DS, X3D, USD, 3MF, AMF and the point-cloud formats each
+  contain, and why B-rep (STEP, IGES, ACIS, DWG `3DSOLID`) is deliberately not
+  in scope - is
+  [UltraCanvas3DModelProposal](../Research/UltraCanvas3DModelProposal.md).
+
+#### 2026-09-10 *0.8.3*
+- **STL models have a demo page.** *3D Graphics → STL 3D Models*
+  (`Apps/DemoApp/UltraCanvasSTLExamples.cpp`) reads every `.stl` file in
+  `media/vector/STL` through `UltraCanvasSTLLoader` and shows it in an
+  `UltraCanvasSTLElement` - shaded and orbitable on GL builds, a mesh summary
+  without GL. The page reports what the parser found (triangles, vertices,
+  extent, centre, ASCII vs binary, parse time), cycles the model material,
+  toggles auto-rotation and opens the model fullscreen; samples are parsed on
+  first view and cached, and the directory is scanned at page build, so a new
+  sample file needs no code change. The element is now in the UI element
+  catalogue and documented in
+  [UltraCanvasSTLElement](UltraCanvasSTLElement.md).
+- **The CAD page shows its DXF samples.** *Vector Graphics → DWG / DXF
+  Drawings* claimed both formats but only displayed the three `.dwg` samples.
+  It now carries the `media/vector/DXF` drawings as well - five tiles in two
+  rows, each captioned with its format - so the DXF reader that a `.dwg` file
+  reaches only after decoding is demonstrated on its own input too.
+
 #### 2026-09-10 *0.8.2*
 - **UltraCanvasParliamentDiagram** *(1.0.0)*: new legislature seat chart, the
   "parliament diagram" of election reports - every seat one marker coloured by

@@ -653,6 +653,385 @@ add_test(
 )
 message(STATUS "    Test registered: ContourGeometryTest")
 
+# ===== MODEL STORAGE TEST =====
+# ModelStorage::ModelDocument, the universal 3D scene structure every 3D file
+# format reads into and writes out of. Pure geometry and data - no UI stack and
+# no GL - so it runs anywhere. Pass an .stl path as argv[1] to also exercise the
+# Mesh3D bridge against a real file.
+message(STATUS "  Building ModelStorageTest...")
+add_executable(ModelStorageTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelStorageTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelMesh3D.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STL/UltraCanvasSTLLoader.cpp
+)
+target_include_directories(ModelStorageTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelStorageTest PRIVATE cxx_std_20)
+set_target_properties(ModelStorageTest PROPERTIES
+    OUTPUT_NAME "ModelStorageTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelStorageTest
+    COMMAND ModelStorageTest "${ULTRACANVAS_ROOT}/media/vector/STL/Toy airplane model for children B0011994 3d model file for 3d printer.stl"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelStorageTest")
+
+# ===== ALEMBIC READER TEST =====
+# The Ogawa container and AbcGeom, against the same E-45 aircraft the 3DS, OBJ,
+# DXF and COLLADA suites read - exported from the same .blend, and like the
+# .dae exported without applying the mirror modifier. The suite pins that
+# difference rather than letting a later change quietly "fix" it, and checks
+# the face winding against the per-corner normals the file itself carries,
+# which is the one decision in an Alembic reader that is invisible until a
+# model renders inside out.
+message(STATUS "  Building ModelAlembicTest...")
+add_executable(ModelAlembicTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelAlembicTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelAlembicTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelAlembicTest PRIVATE cxx_std_20)
+set_target_properties(ModelAlembicTest PROPERTIES
+    OUTPUT_NAME "ModelAlembicTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelAlembicTest
+    COMMAND ModelAlembicTest "${ULTRACANVAS_ROOT}/media/models"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelAlembicTest")
+
+# ===== STEP READER / WRITER TEST =====
+# The first B-rep reader: ISO 10303-21 syntax as unit tests, and AP203/214
+# entity meanings against the hand-authored samples in media/models/STEP. The
+# samples are hand-authored on purpose - a reader tested only against files its
+# own writer produced proves nothing - and the geometric assertions (a meshed
+# block's signed volume, a pin's volume against pi*r^2*h, a rational patch's
+# radius) cannot come out right by accident.
+message(STATUS "  Building ModelStepTest...")
+add_executable(ModelStepTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelStepTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelStepTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelStepTest PRIVATE cxx_std_20)
+set_target_properties(ModelStepTest PROPERTIES
+    OUTPUT_NAME "ModelStepTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelStepTest
+    COMMAND ModelStepTest "${ULTRACANVAS_ROOT}/media/models/STEP"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelStepTest")
+
+# ===== B-REP STORAGE TEST =====
+# ModelStorage::BrepData - exact trimmed surfaces and the topology that closes
+# them into solids, plus the tessellator that approximates them. The assertions
+# are geometric (a meshed box's signed volume, a meshed cylinder's radial
+# error, a plate-with-hole's area) because a B-rep that holds the right numbers
+# and meshes them wrongly produces a model that looks plausible and is not the
+# part. No sample file: the bodies are built in the test, which is the point -
+# the structure has to be constructible from a reader's point of view.
+message(STATUS "  Building BrepStorageTest...")
+add_executable(BrepStorageTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/BrepStorageTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(BrepStorageTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(BrepStorageTest PRIVATE cxx_std_20)
+set_target_properties(BrepStorageTest PROPERTIES
+    OUTPUT_NAME "BrepStorageTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME BrepStorageTest
+    COMMAND BrepStorageTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: BrepStorageTest")
+
+# ===== 3DS MODEL READER TEST =====
+# The 3DS chunk reader against the real E-45 aircraft in media/models/3DS -
+# the first scene format read into ModelDocument, so also the first end-to-end
+# check that the structure holds meshes, object matrices, materials and texture
+# maps together. Malformed-input cases run with or without the sample.
+message(STATUS "  Building Model3DSTest...")
+add_executable(Model3DSTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/Model3DSTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelMesh3D.cpp
+)
+target_include_directories(Model3DSTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(Model3DSTest PRIVATE cxx_std_20)
+set_target_properties(Model3DSTest PROPERTIES
+    OUTPUT_NAME "Model3DSTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME Model3DSTest
+    COMMAND Model3DSTest ${ULTRACANVAS_ROOT}/media/models/3DS/E-45-Aircraft.3ds
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: Model3DSTest")
+
+# ===== OBJ MODEL READER/WRITER TEST =====
+# OBJ is the first format on ModelDocument with both a reader and a writer, so
+# this is where the round trip lives - and where the same aircraft, exported
+# once as OBJ (Y-up, quads) and once as 3DS (Z-up, triangles), is checked to
+# land on the same geometry through two independent readers.
+message(STATUS "  Building ModelOBJTest...")
+add_executable(ModelOBJTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelOBJTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+)
+target_include_directories(ModelOBJTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelOBJTest PRIVATE cxx_std_20)
+set_target_properties(ModelOBJTest PROPERTIES
+    OUTPUT_NAME "ModelOBJTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelOBJTest
+    COMMAND ModelOBJTest
+            "${ULTRACANVAS_ROOT}/media/models/OBJ/E-45-Aircraft.obj"
+            "${ULTRACANVAS_ROOT}/media/models/3DS/E-45-Aircraft.3ds"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelOBJTest")
+
+# ===== DXF 3D MODEL READER TEST =====
+# DXF read as geometry rather than as a drawing: the 3D entities the Vector
+# plugin's DXF reader has to flatten. Checks both kinds of DXF - the exported
+# model in media/models/DXF, and a drawing from media/vector/DXF that must be
+# refused with an explanation instead of returned empty.
+message(STATUS "  Building ModelDXFTest...")
+add_executable(ModelDXFTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelDXFTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
+)
+target_include_directories(ModelDXFTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+)
+target_compile_features(ModelDXFTest PRIVATE cxx_std_20)
+set_target_properties(ModelDXFTest PROPERTIES
+    OUTPUT_NAME "ModelDXFTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelDXFTest
+    COMMAND ModelDXFTest
+            "${ULTRACANVAS_ROOT}/media/models/DXF/E-45-Aircraft.dxf"
+            "${ULTRACANVAS_ROOT}/media/models/3DS/E-45-Aircraft.3ds"
+            "${ULTRACANVAS_ROOT}/media/vector/DXF/women-body.dxf"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelDXFTest")
+
+# ===== COLLADA MODEL READER TEST =====
+# COLLADA is the first format that states unit, up axis, a node hierarchy and
+# animation, so this is where those paths meet a real file. Needs tinyxml2.
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(TEST_TINYXML2 QUIET tinyxml2)
+endif()
+if(TEST_TINYXML2_FOUND)
+    message(STATUS "  Building ModelColladaTest...")
+    add_executable(ModelColladaTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ModelColladaTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    )
+    target_include_directories(ModelColladaTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+        ${TEST_TINYXML2_INCLUDE_DIRS}
+    )
+    target_link_libraries(ModelColladaTest PRIVATE ${TEST_TINYXML2_LIBRARIES})
+    target_link_directories(ModelColladaTest PRIVATE ${TEST_TINYXML2_LIBRARY_DIRS})
+    target_compile_features(ModelColladaTest PRIVATE cxx_std_20)
+    set_target_properties(ModelColladaTest PROPERTIES
+        OUTPUT_NAME "ModelColladaTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME ModelColladaTest
+        COMMAND ModelColladaTest "${ULTRACANVAS_ROOT}/media/models/COLLADA/E-45-Aircraft.dae"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: ModelColladaTest")
+else()
+    message(STATUS "  Skipping ModelColladaTest (tinyxml2 not found)")
+endif()
+
+# ===== BLENDER FILE INSPECTOR TEST =====
+# The .blend inspector and the converter that deliberately declines to import
+# geometry. Needs zlib to inflate a compressed save file.
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    message(STATUS "  Building ModelBlendTest...")
+    add_executable(ModelBlendTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ModelBlendTest.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendFile.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendConverter.cpp
+        ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    )
+    target_include_directories(ModelBlendTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+        ${ZLIB_INCLUDE_DIRS}
+    )
+    target_link_libraries(ModelBlendTest PRIVATE ${ZLIB_LIBRARIES})
+    target_compile_features(ModelBlendTest PRIVATE cxx_std_20)
+    set_target_properties(ModelBlendTest PROPERTIES
+        OUTPUT_NAME "ModelBlendTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(
+        NAME ModelBlendTest
+        COMMAND ModelBlendTest "${ULTRACANVAS_ROOT}/media/models/Blend/E-45-Aircraft.blend"
+        WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    message(STATUS "    Test registered: ModelBlendTest")
+else()
+    message(STATUS "  Skipping ModelBlendTest (zlib not found)")
+endif()
+
+# ===== MODEL FORMATS DISPATCH TEST =====
+# The seam that makes the converters a plugin matrix rather than five classes:
+# extension dispatch, the claimed-extension lists, and loading every sample
+# through one call. It compiles the dispatch TU rather than the IGraphicsPlugin
+# facade, which is why it needs no UI *symbols* - but the facade's header still
+# reaches UltraCanvasImage.h and so needs the core's include paths, Cairo's
+# among them. The link edge below is how this repository carries those; without
+# it the target builds only where Cairo happens to sit on the compiler's
+# default search path, which is Linux and not macOS.
+set(MODEL_DISPATCH_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelFormatsPluginTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/UltraCanvasModelFormatsDispatch.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/3DS/UltraCanvas3DSConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/OBJ/UltraCanvasOBJConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasOgawaFile.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Alembic/UltraCanvasAlembicConverter.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelMath.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasPolygonTriangulation.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasBrepStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasModelStorage.cpp
+    ${ULTRACANVAS_CORE_DIR}/DataFormats/UltraCanvasCADPalette.cpp
+)
+set(MODEL_DISPATCH_DEFINES "")
+set(MODEL_DISPATCH_INCLUDES "")
+set(MODEL_DISPATCH_LIBS "")
+if(TARGET UltraCanvas)
+    list(APPEND MODEL_DISPATCH_LIBS UltraCanvas)
+endif()
+
+find_package(PkgConfig QUIET)
+if(PkgConfig_FOUND)
+    pkg_check_modules(DISPATCH_TINYXML2 QUIET tinyxml2)
+endif()
+if(DISPATCH_TINYXML2_FOUND)
+    list(APPEND MODEL_DISPATCH_SOURCES
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp)
+    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_COLLADA_CONVERTER=1)
+    list(APPEND MODEL_DISPATCH_INCLUDES ${DISPATCH_TINYXML2_INCLUDE_DIRS})
+    list(APPEND MODEL_DISPATCH_LIBS ${DISPATCH_TINYXML2_LIBRARIES})
+endif()
+
+find_package(ZLIB QUIET)
+if(ZLIB_FOUND)
+    list(APPEND MODEL_DISPATCH_SOURCES
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendFile.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Models/Blend/UltraCanvasBlendConverter.cpp)
+    list(APPEND MODEL_DISPATCH_DEFINES ULTRACANVAS_HAS_BLEND_CONVERTER=1)
+    list(APPEND MODEL_DISPATCH_INCLUDES ${ZLIB_INCLUDE_DIRS})
+    list(APPEND MODEL_DISPATCH_LIBS ${ZLIB_LIBRARIES})
+endif()
+
+message(STATUS "  Building ModelFormatsPluginTest...")
+add_executable(ModelFormatsPluginTest ${MODEL_DISPATCH_SOURCES})
+target_include_directories(ModelFormatsPluginTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+    ${MODEL_DISPATCH_INCLUDES}
+)
+target_compile_definitions(ModelFormatsPluginTest PRIVATE ${MODEL_DISPATCH_DEFINES})
+target_link_libraries(ModelFormatsPluginTest PRIVATE ${MODEL_DISPATCH_LIBS})
+target_compile_features(ModelFormatsPluginTest PRIVATE cxx_std_20)
+set_target_properties(ModelFormatsPluginTest PROPERTIES
+    OUTPUT_NAME "ModelFormatsPluginTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelFormatsPluginTest
+    COMMAND ModelFormatsPluginTest "${ULTRACANVAS_ROOT}/media/models"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelFormatsPluginTest")
+
 # ===== CSS LAYOUT AUTO-EXPAND TEST =====
 # The auto-expanding, centred card pattern (UltraMail's account tile) on the
 # real CSSLayout engine: an auto-width flex column grows with an inner row of

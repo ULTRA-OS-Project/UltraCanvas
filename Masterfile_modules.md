@@ -35,6 +35,120 @@ the backing implementation can be replaced without affecting callers.
   - `JSON::EscapeString` and framework-type helpers
     `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
 
+- **UltraCanvasModelStorage** (`DataFormats/UltraCanvasModelStorage.h`) — the
+  framework's universal 3D scene structure, `ModelStorage::ModelDocument`: the
+  in-memory model every 3D file format reads into and writes out of, as
+  `VectorStorage::VectorDocument` is for 2D. Core implementation in
+  `core/DataFormats/UltraCanvasModelStorage.cpp`. Content is addressed by
+  index (glTF-style flat arrays), because 3D formats are natively
+  reference-based and one mesh drawn by many nodes is the normal case.
+  Public surface:
+  - `ModelDocument` — asset metadata; `SourceUnit` / `UnitScaleToMeters` /
+    `Up` / `Chirality` (what the file declared; readers never rescale
+    geometry); `Scenes`, `Nodes`, `Meshes`, `Materials`, `Images`,
+    `Samplers`, `Skins`, `Animations`, `Cameras`, `Lights`.
+  - `ModelMesh` / `MeshPrimitive` — `Positions` (double, for CAD-scale
+    coordinates), `Normals`, `Tangents`, open-ended named `Attributes`
+    (texture coordinate and colour sets, skin joints/weights, and arbitrary
+    per-vertex properties such as PLY's or LiDAR intensity), `Indices` and
+    `FaceStarts` (n-gons survive), `SmoothingGroups` (a 32-bit mask per face,
+    filled from OBJ `s` statements and the 3DS `SMOOTH_GROUP` chunk, so
+    creases round-trip instead of being resolved into normals and lost),
+    `Material`, morph `Targets`.
+  - `ModelMaterial` — PBR metallic-roughness plus an optional fixed-function
+    `PhongParams`, whichever the source stated; `DeriveMissingModel()` fills
+    the other. `TextureRef`, `ModelImage`, `ModelSampler`.
+  - `ModelNode` / `ModelScene` / `ModelSkin` / `ModelAnimation` — scene graph
+    with TRS or matrix transforms, instancing, skinning and keyframe
+    animation.
+  - `Brep` (`BrepData`, `DataFormats/UltraCanvasBrepStorage.h`) — exact
+    boundary representation held **beside** the meshes, not instead of them:
+    what STEP, IGES, ACIS/SAT, Parasolid XT, OpenNURBS `.3dm` and DWG's
+    `3DSOLID` / `REGION` / `BODY` / `SURFACE` actually contain. Trimmed
+    surfaces — plane, cylinder, cone, sphere, torus, extrusion, revolution,
+    ruled and rational B-spline — with the topology that closes them into
+    solids (solid → shell → face → loop → coedge → edge → vertex), curves in
+    space and in the surface's parameter space, and `Validate()` for the
+    structural soundness a reader owes its caller. A `ModelNode::Solid` places
+    a body as `ModelNode::Mesh` places a mesh. Implementation in
+    `core/DataFormats/UltraCanvasBrepStorage.cpp`.
+  - Operations: `Triangulate` / `TriangulateAll` (ear clipping, so concave
+    n-gons are right), `RecomputeNormals` (area-weighted, and
+    smoothing-group-aware — it splits a vertex where a crease requires two
+    normals), `WeldVertices` (attribute-aware, and searching a cell's 26
+    neighbours so vertices straddling a lattice boundary still merge),
+    `FlattenTransforms`, `ConvertUpAxis`, `GlobalTransform`, `ComputeBounds`,
+    `TessellateBreps` (approximating exact bodies at a tolerance the *caller*
+    chooses, and leaving them in place), `Matrix4x4::DecomposeTRS`.
+  - Supporting core headers, both used by the mesh and B-rep halves:
+    `DataFormats/UltraCanvasModelMath.h` (`Vec2d`, `Vec3d`, `Vec3f`, `Vec4f`,
+    `Quatd`, `Matrix4x4`, `Bounds3D` — separate so `BrepStorage.h` can use
+    them without a circular include) and
+    `DataFormats/UltraCanvasPolygonTriangulation.h` (ear clipping with hole
+    bridging, and Newell projection for polygons in space).
+  - `ModelConverter::IModelFormatConverter`
+    (`DataFormats/UltraCanvasModelConverter.h`) — the read/write interface
+    every 3D format implements, mirroring `IVectorFormatConverter`:
+    file/memory/stream import and export, signature validation,
+    `FormatCapabilities`, a `WarningCallback` a lossy conversion must use, and
+    `Precision` (`NumericPrecision::Compact` / `Full`) choosing between six
+    significant digits and exact round-trip digits for text formats.
+    The first B-rep converter is **STEP** (`Plugins/Models/STEP/`), split into
+    a Part 21 syntax layer (`UltraCanvasStepFile.h` - instances, complex
+    instances, strings, escapes, comments; it interprets nothing) and an
+    AP203/214/242 entity layer (`UltraCanvasStepConverter.h`) that fills
+    `ModelDocument::Brep` and writes it back out. Consult that header for what
+    it reads and what it deliberately does not.
+    **Alembic** (`Plugins/Models/Alembic/`) is split the same way: an Ogawa
+    container and object/property layer (`UltraCanvasOgawaFile.h`) under an
+    AbcGeom reader (`UltraCanvasAlembicConverter.h`) for Xform, PolyMesh, SubD
+    and FaceSet. First time sample only, and read-only.
+    Converters live in the **Models plugin** (`UltraCanvasModelsPlugin`,
+    `Plugins/Models/`, gated by `ULTRACANVAS_PLUGIN_MODELS` and announced by
+    `ULTRACANVAS_HAS_MODELS_PLUGIN`), built as its own static library like the
+    Vector/CDR/XAR/EPS plugins, with COLLADA (tinyxml2) and `.blend` (zlib) as
+    options inside it. `UltraCanvasModelFormatsPlugin`
+    (`Plugins/Models/UltraCanvasModelFormatsPlugin.h`) is the façade:
+    `CreateConverterForExtension`, `LoadModelDocument`, `SaveModelDocument`,
+    `SupportedLoadExtensions` / `SupportedSaveExtensions`, and an
+    `IGraphicsPlugin` implementation reaching `LoadGraphicsFile` /
+    `SaveGraphicsFile` and the `Model3D` category.
+    `RegisterModelFormatsPlugin()` registers it and the STL plugin together.
+    `.dxf` is dispatchable but not claimed, so a DXF still opens as a drawing
+    by default. Per-format converters, under `Plugins/Models/<FORMAT>/`:
+    `ThreeDSConverter` (`Plugins/Models/3DS/UltraCanvas3DSConverter.h`) reads
+    Autodesk 3DS - meshes, object matrices, Phong materials with texture maps,
+    per-face material groups, cameras and lights - and is read-only.
+    `OBJConverter` (`Plugins/Models/OBJ/UltraCanvasOBJConverter.h`) reads and
+    writes Wavefront OBJ with its MTL library: n-gon faces kept as n-gons,
+    the position/texcoord/normal index streams resolved into unique corners,
+    objects, groups and `usemtl`, vertex colours, and the MTL PBR extension.
+    `DXFModelConverter` (`Plugins/Models/DXF/UltraCanvasDXFModelConverter.h`)
+    reads DXF's 3D entity set - `3DFACE`, polyface and polygon meshes, 3D
+    polylines, lines and points - one mesh per layer with the layer's ACI
+    colour, complementing the Vector plugin's DXF reader rather than replacing
+    it (a drawing belongs in `VectorDocument`, a model here).
+    `ColladaConverter` (`Plugins/Models/COLLADA/UltraCanvasColladaConverter.h`)
+    reads COLLADA 1.4/1.5 - `<unit>`, `<up_axis>`, the node hierarchy with
+    ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`,
+    `profile_COMMON` materials with transparency and textures, vertex colours,
+    and matrix or TRS animation channels (matrix keyframes are decomposed into
+    translation, rotation and scale). XML through tinyxml2.
+    `BlendConverter` (`Plugins/Models/Blend/UltraCanvasBlendConverter.h`) and
+    `ReadBlendFileInfo` (`UltraCanvasBlendFile.h`) recognise a Blender
+    `.blend` and report its version, datablock names, modifier types and
+    stored vertex count, but never import geometry: a `.blend` holds the
+    unevaluated scene, so the visible model is not in the file. Needs zlib.
+
+- **UltraCanvasCADPalette** (`DataFormats/UltraCanvasCADPalette.h`) - the
+  AutoCAD Color Index palette, `AciPaletteColor(aci)`: exact classic colours
+  1-9, the 250-255 grey ramp, and the standard 24-hue construction for 10-249.
+  Core rather than plugin-owned because both the 2D vector converters and the
+  3D model converters resolve ACI.
+  See `Docs/Research/UltraCanvas3DModelProposal.md` for the format survey the
+  structure is derived from, and what is deliberately out of scope (B-rep
+  solids: STEP, IGES, ACIS, DWG `3DSOLID`).
+
 - **UltraCanvasFileAssociations** (`UltraCanvasFileAssociations.h`) — the
   cross-platform "Open with" service: which applications the OS registers
   for a file, and detached launching. Core worker/cache in

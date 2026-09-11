@@ -28,6 +28,13 @@
 #ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
 #include "UltraCanvasVectorFormatsPlugin.h"
 #endif
+// Its own guard, not nested inside the Vector plugin's: the two are
+// independent options, and ULTRACANVAS_PLUGIN_VECTOR defaults OFF while the
+// Models plugin defaults ON. Nested, the header went missing from exactly the
+// default build, and RegisterModelFormatsPlugin() below stopped resolving.
+#ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
+#include "Models/UltraCanvasModelFormatsPlugin.h"
+#endif
 
 // OS-specific initialization if needed
 #ifdef _WIN32
@@ -131,6 +138,12 @@ bool InitializeSystem(UltraCanvasApplication& g_app, const std::string& aName) {
         // stay with the converter-backed plugin.
 #ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
         RegisterVectorFormatsPlugin();
+#endif
+        // The 3D formats. This also registers the STL plugin, which until now
+        // had a single caller inside a demo page - so .stl was invisible to
+        // FileLoader unless that page happened to be opened.
+#ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
+        RegisterModelFormatsPlugin();
 #endif
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         RegisterCDRPlugin();
