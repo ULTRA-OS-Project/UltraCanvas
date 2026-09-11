@@ -7035,17 +7035,6 @@ namespace UltraCanvas {
                 ctx->FillRoundedRectangle(Rect2Dd(item.rect), 5);
             }
         }
-        // Hover icon menu on top of its item, inside the scrolled space so it
-        // tracks the item; hit rects are recorded in content space.
-        if (hoverIconMenu && hoveredIndex >= 0 && renamingIndex < 0 &&
-            viewType != FilerViewType::TreeMap) {
-            for (const ItemLayout& item : items) {
-                if (static_cast<int>(item.entryIndex) == hoveredIndex) {
-                    DrawHoverIconMenu(ctx, item);
-                    break;
-                }
-            }
-        }
         ctx->PopState();
 
         PrefetchThumbnails(ctx, bounds);
@@ -7054,6 +7043,32 @@ namespace UltraCanvas {
 
         if (viewType == FilerViewType::Details) DrawDetailsHeader(ctx, bounds);
         DrawColumnSplitters(ctx, bounds);
+        // Hover icon menu on top of its item. It is painted after the column
+        // dividers because in the List and BarSize views those run down the
+        // whole height of the entries, straight through the spot at the
+        // item's right end where the buttons sit — painted with the items,
+        // the menu ended up behind the divider line. It stays in the scrolled
+        // space so it tracks the item (hit rects are recorded in content
+        // space), and under the Details header, which a row can be scrolled
+        // beneath.
+        if (hoverIconMenu && hoveredIndex >= 0 && renamingIndex < 0 &&
+            viewType != FilerViewType::TreeMap) {
+            for (const ItemLayout& item : items) {
+                if (static_cast<int>(item.entryIndex) != hoveredIndex) continue;
+                Rect2Di clip = bounds;
+                if (viewType == FilerViewType::Details) {
+                    int headerBottom = ContentBounds().y + detailsHeaderHeight;
+                    clip.height = std::max(0, clip.y + clip.height - headerBottom);
+                    clip.y = headerBottom;
+                }
+                ctx->PushState();
+                ctx->ClipRect(Rect2Dd(clip));
+                ctx->Translate(-scrollOffsetX, -scrollOffsetY);
+                DrawHoverIconMenu(ctx, item);
+                ctx->PopState();
+                break;
+            }
+        }
         DrawScrollbar(ctx);
         DrawSelectionInfoBar(ctx, bounds);
         // Drop-folder highlight above the whole view (including chrome); the
