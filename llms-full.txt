@@ -53697,6 +53697,7 @@ Two ship in the Windows package. Which one you want depends on the symptom:
 
 | Symptom | Use |
 |---|---|
+| Windows says **"This app can't run on your PC"** | either — both check the file's PE header first, see [below](#this-app-cant-run-on-your-pc) |
 | The app exits immediately, or you just want the exit code | `uc-diagnose.bat` |
 | **No window ever appears**, or you don't know whether it died or is stuck | `uc-diagnose.ps1` |
 
@@ -53833,7 +53834,10 @@ the victim, not the cause.
 **No log at all.** The process died before any UltraCanvas code ran, so the
 problem is the loader, not the application. Go to the exit code and to
 **Event Viewer → Windows Logs → Application**, which records an entry naming
-the executable and the failing module.
+the executable and the failing module. If there is no exit code either —
+Windows showed *"This app can't run on your PC"* instead of starting anything —
+see [that section](#this-app-cant-run-on-your-pc): the file itself is being
+rejected, and the launchers' header check says why.
 
 **A log file that exists but is empty.** Worth separating from the case above:
 creating the file *succeeded*, so the process ran far enough to open one. That
@@ -53842,6 +53846,71 @@ kill the process before it can touch the filesystem. Either the binary predates
 0.3.80 and does not honour `ULTRACANVAS_DEBUG_LOG` (the file is then the
 application's own log, opened and never flushed), or the process stopped
 between opening it and the first flushed line. Go to the next section.
+
+## "This app can't run on your PC"
+
+A blue dialog from Windows itself — *This app can't run on your PC. To find a
+version for your PC, check with the software publisher.* (in Thai
+*โปรแกรมนี้ไม่สามารถทำงานในพีซีของคุณได้*, in German *Diese App kann auf dem PC
+nicht ausgeführt werden*) — is a different failure from everything else in this
+document. It is `CreateProcess` failing with `ERROR_BAD_EXE_FORMAT` (193) or
+`ERROR_EXE_MACHINE_TYPE_MISMATCH` (216): Windows read the file's PE header,
+decided it cannot map it, and **never created a process**. So there is no exit
+code, no crash, no event-log entry, no framework log and no DLL involved — the
+executable itself is what Windows rejects, and every executable in the package
+is rejected the same way. Nothing the application does at run time can cause
+it, and neither can a missing DLL (that is `0xC0000135`) or a mismatched one
+(`0xC000007B`, which shows a different dialog naming the application).
+
+The header can be wrong in only a few ways, and all of them are visible without
+running anything:
+
+1. **Built for another CPU architecture.** CI produces an `x86_64` and an
+   `arm64` Windows package from the same sources; the file lists are identical
+   and only the PE header differs. The arm64 package on an ordinary x64 PC
+   gives exactly this dialog for every `.exe` in it. (The reverse — the x86_64
+   package on an ARM64 machine — runs under emulation on Windows 11 and gives
+   this dialog on Windows 10, which cannot emulate x64.) Check the name of the
+   ZIP you downloaded: `UCDemo-Windows-<version>-x86_64.zip` is the one for an
+   Intel/AMD machine.
+2. **A truncated or empty file.** A download that stopped early, or an
+   extraction that gave up part-way (some tools stop silently on a long path
+   or a name with characters they cannot handle), leaves an `.exe` whose
+   header parses but whose sections run past the end of the file. Windows
+   treats that as a bad format. A 0-byte file is the extreme case.
+3. **A subsystem version newer than the installed Windows.** Not something
+   the MinGW toolchain produces on its own (it links 5.02 or 6.00), but it is
+   the check the loader makes, so the scripts make it too.
+
+Both launchers now read the header before they do anything else and name the
+reason:
+
+```
+=== Executable header ===
+Built for   : ARM64 (PE32+), GUI subsystem 6.00, 11 sections
+File size   : 21843456 bytes
+
+[X] Windows will refuse to start this file with "This app can't run on your PC"
+    (ERROR_BAD_EXE_FORMAT). It never becomes a process, so there is no exit
+    code, no event-log entry and no log to read. The reason:
+    - this executable is built for ARM64 but this machine is x64. It is the
+      arm64 package; the one for this PC is the x86_64 package
+      (UCDemo-Windows-<version>-x86_64.zip).
+```
+
+`uc-diagnose.ps1 -CheckOnly .\UltraFiler.exe` does only this check and exits
+0 or 1; `uc-diagnose.bat` runs it automatically before launching.
+
+**Why an older package "still works".** A report of the shape "0.3.109 starts,
+the current build shows this dialog" sounds like a regression in the sources,
+and the first instinct is to diff the two builds. Diff the two *files* first:
+if the working one is x64 and the failing one ARM64, or the failing one is
+shorter than its section table says, the sources were never involved. The
+build itself guards against shipping such a file — `package-win.sh` runs
+`scripts/verify-pe.sh` over every `.exe` and `.dll` before zipping and fails
+the package if any is built for the wrong architecture, truncated, or has a
+header Windows would not load — so a package that CI published contains
+correct files, and what arrived on the machine is what to look at.
 
 ## ILLEGAL_INSTRUCTION: built for a CPU this machine is not
 

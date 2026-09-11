@@ -50,6 +50,38 @@
   `.fbx` carry, which is what ties all three back to this file.
 - `Tests/ModelFormatsPluginTest.cpp`'s "dispatches but declines to import"
   example no longer has a format to name; `.blend` now imports like the rest.
+#### 2026-09-11 *0.8.17*
+- **"This app can't run on your PC" is diagnosed, and guarded against at
+  packaging time.** That dialog is Windows refusing an executable's PE header
+  before any process exists - a binary built for the other CPU architecture
+  (the arm64 package on an x64 PC, or the x86_64 one on Windows 10 on ARM), a
+  truncated or empty file, or a subsystem version the installed Windows is too
+  old for - so it leaves no exit code, no event-log entry and no framework log,
+  and every executable in the package fails the same way. Nothing in the
+  launchers could see it: `uc-diagnose.ps1` only decoded what a *running*
+  process left behind. Both launchers now read the header first.
+  `uc-diagnose.ps1` prints the image's machine type, subsystem, subsystem
+  version, section count and size, compares the machine type with the real
+  CPU (`Win32_Processor`, not the shell's own architecture), checks that the
+  section table fits inside the file, and names the reason Windows would
+  refuse it; `-CheckOnly` does only that and exits 0 or 1. `uc-diagnose.bat`
+  refuses a 0-byte file itself and runs the PowerShell check before launching.
+  A launch that still fails is decoded by its Win32 error (193 bad format,
+  216 machine-type mismatch, 5 / 1260 policy block) instead of a generic line.
+- `scripts/verify-pe.sh <x86_64|aarch64> files...` makes the same checks on
+  the build side, reading the header bytes directly so the GNU and LLVM
+  objdumps of the two MSYS2 environments do not matter, and `package-win.sh`
+  runs it over every `.exe` and `.dll` in `dist/` before zipping. The x86_64
+  and arm64 CI packages are built from the same sources with identical file
+  lists, and until now nothing but the PE header told them apart; a package
+  containing a wrong-architecture or truncated binary now fails to build with
+  the file named, rather than shipping and producing that dialog on a user's
+  machine.
+- `Docs/UltraCanvas/UltraCanvasWindowsDiagnostics.md` gains a section on the
+  dialog: what it is (`ERROR_BAD_EXE_FORMAT` from `CreateProcess`), why it is
+  not a DLL or run-time failure, the three header causes, and why "an older
+  version still works" should be answered by comparing the two files' headers
+  before diffing the sources.
 #### 2026-09-11 *0.8.16*
 - **DirectX .x (.x) reads, text and binary.** `Plugins/Models/XFile/` is split the
   way the STEP and Alembic readers are: `UltraCanvasXFile.h` is the container -
