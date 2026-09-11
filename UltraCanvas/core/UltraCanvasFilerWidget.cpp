@@ -91,6 +91,7 @@
 #include "UltraCanvasVideoThumbnail.h"
 #include "UltraCanvasZipPackage.h"
 #include "Models/STL/UltraCanvasSTLLoader.h"
+#include "UltraCanvasModelPreview.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -659,7 +660,7 @@ namespace UltraCanvas {
                     return ImagePipelineLoadsExtension(ext) ||
                            FormatCarriesEmbeddedPreview(ext);
                 case FilerPreviewType::Models3D:
-                    return ext == "stl";
+                    return CanPreviewModelExtension(ext);
                 // FreeType is a hard dependency, so a specimen can always be
                 // rasterized - except for the two web formats, which need the
                 // zlib / Brotli support the installed FreeType may lack.
@@ -779,13 +780,13 @@ namespace UltraCanvas {
 
         std::shared_ptr<UCPixmap> RenderModelPreviewPixmap(const std::string& path,
                                                            int w, int h, float scale) {
-            if (!UltraCanvasSTLLoader::HasSTLExtension(path)) return nullptr;
             Mesh3D mesh;
-            if (!UltraCanvasSTLLoader::Load(path, mesh) || mesh.Empty()) return nullptr;
-            // The drawing itself now lives in UltraCanvasModelRaster.h, because
-            // the media viewer's non-GL fallback wants the same picture and had
-            // been drawing a line of text instead. The cap and the bounds are
-            // checked in there, so this is the load and nothing else.
+            // Every format this build can turn into triangles, not just STL:
+            // core's own loader for .stl, and the Models plugin through the
+            // provider seam for the rest. The drawing is then
+            // UltraCanvasModelRaster.h, shared with the media viewer's non-GL
+            // fallback; the cap and the bounds are checked in there.
+            if (!LoadModelPreviewMesh(path, mesh)) return nullptr;
             return RenderMeshPreviewPixmap(mesh, w, h, scale);
         }
 
@@ -7352,11 +7353,13 @@ namespace UltraCanvas {
             // The first page of the document, rendered by the PDF plugin.
             case FilerPreviewType::PDF:
                 return PdfPreviewAvailable() ? e.path : std::string{};
-            // Only STL is rasterized so far; the other 3D formats have no
-            // loader that works without a GL context.
+            // Rasterized on the CPU from whatever this build can read: core's
+            // STL loader always, and every format the Models plugin registers
+            // once the application has called RegisterModelFormatsPlugin().
+            // None of it needs a GL context - the preview projects and shades
+            // the triangles itself.
             case FilerPreviewType::Models3D:
-                return UltraCanvasSTLLoader::HasSTLExtension(e.path)
-                               ? e.path : std::string{};
+                return CanPreviewModelExtension(e.path) ? e.path : std::string{};
             // A line of the font's own glyphs, rasterized by FreeType. The
             // font does not have to be installed for this, so a folder of
             // downloaded fonts previews as readily as one of photos; a
