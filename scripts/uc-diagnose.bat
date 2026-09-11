@@ -87,6 +87,30 @@ if not errorlevel 1 (
     echo.
 )
 
+rem --- Can Windows load this file at all? -----------------------------------
+rem "This app can't run on your PC" is Windows refusing the file before a
+rem process exists: wrong CPU architecture (the arm64 package on an x64 PC),
+rem a truncated or empty file, or a subsystem version this Windows is too old
+rem for. None of that leaves an exit code or a log, so it is checked up front.
+rem The size test needs nothing; the header test is done by uc-diagnose.ps1,
+rem which ships beside this file.
+for %%A in ("%TARGET%") do set "SIZE=%%~zA"
+if "%SIZE%"=="0" (
+    echo [X] "%TARGET%" is EMPTY ^(0 bytes^). Windows shows "This app can't run on
+    echo     your PC" for such a file. The download or the extraction produced
+    echo     nothing - fetch the package again, or extract it with another tool.
+    exit /b 1
+)
+if exist "%HERE%uc-diagnose.ps1" (
+    powershell -NoProfile -ExecutionPolicy Bypass -File "%HERE%uc-diagnose.ps1" -CheckOnly -Path "%TARGET%"
+    if errorlevel 1 (
+        echo.
+        echo Not launching: Windows would refuse this file ^(see above^).
+        exit /b 1
+    )
+    echo.
+)
+
 rem --- Run it --------------------------------------------------------------
 rem ULTRACANVAS_DEBUG_LOG makes the framework's debugOutput write to a file in
 rem any build configuration, including Release; the crash reporter appends the

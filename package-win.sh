@@ -66,6 +66,21 @@ done
 cp ./build/*.dll "$DIST_DIR/" 2>/dev/null || true
 echo "Copied EXE"
 
+# Refuse to package a binary Windows would refuse to run. The x86_64 and
+# arm64 packages are built from the same sources with the same file list, so
+# only the PE header says which is which - and a wrong-architecture, truncated
+# or zero-length executable produces nothing more than Windows' "This app
+# can't run on your PC" on the target machine. Checking the header here turns
+# that into a failed build with the file named. (scripts/verify-pe.sh; the
+# same checks run on the user's machine in uc-diagnose.ps1.)
+VERIFY_ARCH="${MSYSTEM_CARCH:-x86_64}"
+echo ""
+echo "Verifying PE headers ($VERIFY_ARCH)..."
+if ! "$SCRIPT_DIR/scripts/verify-pe.sh" "$VERIFY_ARCH" "$DIST_DIR"/*.exe "$DIST_DIR"/*.dll; then
+    echo "Error: a packaged executable or DLL is not a valid $VERIFY_ARCH Windows binary (see above)" >&2
+    exit 1
+fi
+
 if $DO_SIGN; then
     powershell -ExecutionPolicy Bypass -File SignUltraTexter.ps1 -Mode Sign -ExePath dist/UltraCanvasTexter.exe
     powershell -ExecutionPolicy Bypass -File SignUltraDemo.ps1 -Mode Sign -ExePath dist/UltraCanvasDemo.exe
