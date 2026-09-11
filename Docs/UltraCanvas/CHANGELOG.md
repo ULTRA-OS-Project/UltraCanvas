@@ -1,3 +1,55 @@
+#### 2026-09-11 *0.8.19*
+- **Blender (.blend) imports geometry.** It was the one format in the matrix
+  that dispatched and returned nothing: `BlendConverter` recognised the file,
+  described it, and declined. It now reads the object hierarchy, the meshes,
+  n-gons, per-corner UVs, per-corner vertex colours and materials.
+- **Why the decision changed.** A .blend stores modifiers *unapplied*, so what
+  it holds is the cage before mirroring and subdivision - 1147 vertices in the
+  E-45 sample against the 11749 of the OBJ exported from it. The old argument
+  was that importing that would tell the caller something false. That is only
+  true if the reader lets the cage pass for the model. The framework already
+  had the same situation and answered it the other way round: the Alembic
+  reader returns a `SubD` control cage with a warning that the subdivided
+  surface is not in the file. So the reader now imports the cage, warns naming
+  every unapplied modifier, and records them in `Metadata` as
+  `blend.unappliedModifiers`. `Docs/Research/UltraCanvas3DModelProposal.md`
+  §2.6 is rewritten to say so rather than quietly changing position.
+- **Every read goes through the file's own SDNA.** A .blend is Blender's heap
+  written out, and the embedded SDNA block describes every struct and field in
+  the build that wrote it. `UltraCanvasBlendFile.h` is now a real container -
+  blocks, structs, and a `Ref` that reads a field *by name* at whatever offset
+  this file gives it - rather than an inspector. That is what makes one reader
+  work across builds that moved fields: the test inserts an unknown field at
+  the *front* of the Mesh struct, shifting every offset after it, and asserts
+  the geometry lands in exactly the same place.
+- **Both mesh layouts Blender has shipped.** MVert/MPoly/MLoop through 3.x, and
+  the named CustomData attribute layers of 3.6 and later, where the vertices
+  are a "position" layer, the corners a ".corner_vert" layer and the faces an
+  offsets array. Layers are found by name rather than by CD_* type number,
+  because those numbers have been reused across releases and the names have
+  not. The values a layer points at are a raw array with no SDNA struct of its
+  own, so their width comes from the bytes present over the count declared -
+  reading the block's nominal type instead gives zero, which is the bug the
+  4.x path was written with and the test caught.
+- **A node's local transform is divided out of the world matrix Blender
+  evaluated**, rather than rebuilt from loc/rot/size. Rebuilding would mean
+  reproducing parentinv, bone parents and vertex parents and getting all of
+  them right; dividing uses the answer already in the file. Verified against an
+  independent walk of every object's `obmat`, to the digit.
+- Vertex colours are **sRGB bytes** in the file and linear floats in the
+  document, so the transfer function is undone rather than the byte divided by
+  255. Normals are generated: Blender's stored ones are a cache it recomputes
+  on load, and from 3.x it often stores none at all.
+- **`Tests/ModelBlendTest.cpp`** (66 assertions) now **builds .blend files by
+  hand**, SDNA and all, because nothing about field offsets, 32-bit pointers,
+  big-endian files, the two mesh layouts or the malformed-file refusals is
+  reachable from one export. The sample half asserts the cage: 1030 faces, 1567
+  vertices once per-corner UVs split them, bounds matching an independent walk,
+  and the hull **stopping dead at x = 0** because the mirror is unapplied. The
+  scene is titled `E-45_GLSL` - the same name the `.dae` and the 7.4 binary
+  `.fbx` carry, which is what ties all three back to this file.
+- `Tests/ModelFormatsPluginTest.cpp`'s "dispatches but declines to import"
+  example no longer has a format to name; `.blend` now imports like the rest.
 #### 2026-09-11 *0.8.17*
 - **"This app can't run on your PC" is diagnosed, and guarded against at
   packaging time.** That dialog is Windows refusing an executable's PE header
