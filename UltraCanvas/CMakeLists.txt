@@ -666,6 +666,13 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/UltraCanvasQRCode.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/QRCode/third_party/qrcodegen.cpp
 
+        # The software mesh rasterizer: a shaded three-quarter still with no
+        # GL anywhere in it. Written for the Filer's thumbnails, which are
+        # produced on background workers that have no current context, and
+        # shared with UltraCanvasSTLElement's non-GL fallback, which used to
+        # print a line of text where the model should be.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModelRaster.cpp
+
         # STL 3D model loader/saver (self-contained, no external deps).
         # The GL-backed viewer in UltraCanvasSTLElement.cpp compiles to a 2D
         # fallback automatically when ULTRACANVAS_ENABLE_GL is off.

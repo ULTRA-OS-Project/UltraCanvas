@@ -2357,6 +2357,32 @@ endif()
 
 message(STATUS "")
 
+# ===== MODEL RASTER TEST =====
+# The software mesh rasterizer, which used to be a private function inside
+# UltraCanvasFilerWidget.cpp and so could only be checked by looking at a
+# folder. Extracting it for the media viewer's non-GL fallback made it
+# directly callable; this is what that bought. Links UltraCanvas for UCPixmap.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ModelRasterTest...")
+    add_executable(ModelRasterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ModelRasterTest.cpp
+    )
+    target_include_directories(ModelRasterTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+    )
+    target_compile_features(ModelRasterTest PRIVATE cxx_std_20)
+    target_link_libraries(ModelRasterTest PRIVATE UltraCanvas)
+    set_target_properties(ModelRasterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ModelRasterTest COMMAND ModelRasterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ModelRasterTest")
+else()
+    message(STATUS "  ModelRasterTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== FONT FILE TEST =====
 # Reading a font definition file as a document: its name records, and the
 # line of its own glyphs the filer thumbnails it with. Runs against the
