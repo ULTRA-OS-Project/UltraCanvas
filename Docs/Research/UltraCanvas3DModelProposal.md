@@ -41,6 +41,7 @@ this document is where those annotations come from.
 | `ColladaConverter` | `Plugins/Models/COLLADA/` | Reads COLLADA 1.4/1.5: `<unit>`, `<up_axis>`, the node hierarchy with ordered transform elements, `<polylist>`/`<triangles>`/`<polygons>`, `profile_COMMON` materials with transparency and textures, vertex colours, and matrix or TRS animation channels. The first format that states everything the structure holds. |
 | `BlendConverter` | `Plugins/Models/Blend/` | Recognises a Blender `.blend`, reports what it contains — version, objects, meshes, materials, modifiers, stored vertex count — and **declines to import geometry**, with the reason. See §2.6. |
 | `DXFModelConverter` | `Plugins/Models/DXF/` | Reads the 3D entity set — `3DFACE`, polyface meshes, polygon meshes, 3D polylines, lines and points — into `ModelDocument`, one mesh per layer with the layer's ACI colour as its material. The complement of the reader below, not a replacement. |
+| `FbxConverter` | `Plugins/Models/FBX/` | Reads binary FBX 7.x: the connection graph, the full transform chain, meshes with independently indexed layers, Phong materials with textures, and animation. The only format here whose scene is a graph rather than a tree — see §2.8. Read-only, needs zlib. |
 | 3D CAD entities | `Plugins/Vector/UltraCanvasDXFReader.cpp` | DXF/DWG `3DFACE`, polyface and polygon meshes are **read and then flattened to 2D** — correct for a drawing; `DXFModelConverter` is where the same entities go when the file is a model. `3DSOLID`, `REGION`, `BODY`, `SURFACE` are counted and skipped by both. |
 
 Two observations drive the design:
@@ -200,6 +201,16 @@ out of this scene half-mirrored. The `.blend` is not an unlucky case; this
 scene's exports are, and the OBJ is the only one of the four that had the
 modifiers applied.
 
+The `.fbx` export lands on the same side, and adds the detail that settles what
+the split tracks. Its geometry is **2934 positions in 1681 polygons — the `.abc`
+export's, to the vertex** — while its scene is titled `E-45_GLSL` and its
+`ArmatureAction` runs 0.8333333 s, both of which the `.dae` also carries. So the
+groups are not per-format at all: FBX shares its geometry with Alembic and its
+scene metadata with COLLADA, because all three came out of the same unapplied-
+modifier path on the same day. `Tests/ModelFbxTest.cpp` asserts each of those
+three figures against the suite that already owned it, so no two of these
+readers can drift apart without one of them failing.
+
 `.blend` is also self-describing through an embedded SDNA block, which makes
 the *file* readable even though the *model* is not. So the decision is:
 
@@ -213,6 +224,50 @@ what a converter does, not what its format could hold.
 
 That is more useful than either alternative: a silent failure tells the user
 nothing, and a geometry reader tells them something false.
+
+### 2.8 Connections, not nesting — what FBX does differently
+
+Every other format in this survey writes its scene as a tree: a node contains
+its children, a shape contains its geometry. FBX writes neither. Its `Objects`
+block is a flat list — models, geometries, materials, textures, animation curves,
+all side by side with 64-bit ids — and a separate `Connections` block wires them
+together after the fact:
+
+```
+C: "OO", 667650837, 205769600     ; this geometry is drawn by that model
+C: "OO",   5873026, 205769600     ; this material is used by that model
+C: "OP", 516486545, 121849744, "Lcl Translation"   ; this curve node drives that
+```
+
+Nothing can be read in file order. The reader indexes the objects by id, turns
+the connections into a parent-to-children map, and only then walks from the
+scene root — which FBX spells as parent id `0`. Three consequences worth
+recording, because they are what the structure had to absorb:
+
+- **A geometry's material assignment is not global.** `LayerElementMaterial`
+  indexes the materials connected *to the model*, not a document-wide list. One
+  geometry connected to two models with different materials is therefore two
+  document meshes, since the material lives on the primitive.
+- **Instancing is free and invisible.** One geometry connected to several models
+  is the format's normal way of repeating a prop, and falls straight onto
+  `ModelNode::Mesh` sharing an index.
+- **Animation is three hops, not a channel.** A stack holds layers, a layer holds
+  curve nodes, a curve node is connected to one property of one model and to one
+  curve per axis. Only after following all of it does a channel exist.
+
+The transform is the other place FBX is alone. It is not TRS but
+
+```
+T · Roff · Rp · Rpre · R · Rpost⁻¹ · Rp⁻¹ · Soff · Sp · S · Sp⁻¹
+```
+
+— rotation and scaling pivots, offsets, and pre- and post-rotations, all of
+which Maya and 3ds Max use constantly and a Blender export leaves at identity.
+`ModelDocument` needs nothing new for it: the chain is composed and then
+decomposed, so the common case comes back as exactly the three fields that were
+written. What the structure genuinely cannot hold is the *geometric* transform,
+which places a mesh without being inherited by the node's children; that becomes
+a child node carrying the mesh, which is exact and costs one node.
 
 ## 3. What the structure must therefore carry
 
@@ -422,6 +477,20 @@ cross-format comparison in §2.6: the suite asserts that the OBJ is symmetric
 about X and the Alembic is not, so a later change cannot quietly "fix" the
 difference between two exports of one scene.
 
+`Tests/ModelFbxTest.cpp` covers FBX, and is the suite that has to build its own
+input: nothing about the binary container, the deflate-compressed arrays, the
+layer mapping combinations, the transform chain's pivots or the malformed-file
+refusals is reachable from an exported sample, so the synthetic half writes
+binary FBX by hand. Two of its assertions are worth naming. The first is that
+the same scene written with raw arrays and with compressed ones must produce
+*identical* geometry — compression is the container's business and must not
+reach the reader. The second is that `RotationOrder` changes the result: two
+documents differing only in that field must place a vertex differently, which is
+the only way to prove the field is being read rather than assumed to be XYZ.
+The sample half pins the cross-format facts in §2.6 and §4.5's animation
+figure: the same title as the `.dae`, the same 0.8333333 s duration, the same
+1681 polygons as the `.abc`.
+
 `Tests/ModelStepTest.cpp` covers the first B-rep reader in two halves. The Part
 21 grammar is unit-tested on text written inline — doubled quotes, `\X2\`
 escapes, comments between any two tokens, `$` and `*`, out-of-order ids, a
@@ -487,6 +556,18 @@ Each step is independently mergeable and comes with a test and a demo page.
    (`<unit meter="1"/>`), the first with a node hierarchy four deep, the first
    with real animation. Nothing in the structure had to change to hold it,
    which is the strongest evidence so far that the design is right.
+
+3.8. **FBX — done.** `Plugins/Models/FBX/` reads the binary encoding, 7.1 through
+   7.7, validated against the aircraft's `.fbx` (`Tests/ModelFbxTest.cpp`, 76
+   assertions). It was the largest remaining hole in the matrix and the one most
+   likely to be asked for, since FBX is what the animation industry actually
+   exchanges. It is split into a container layer and an object layer for the same
+   reason STEP, Alembic and `.x` are. What it added to this document is §2.8: it
+   is the only format here whose scene is a connection graph rather than a tree,
+   and the only one with a transform chain rather than a TRS triple — and
+   `ModelDocument` needed nothing new for either. Read-only, and gated on zlib
+   because its arrays are deflate streams. **Still to do:** the ASCII encoding,
+   skin deformers and blend shapes, cameras and lights, and embedded media.
 
 4. **glTF 2.0 / GLB.** The interchange target: scene graph, PBR materials,
    skins, animation, morph targets. Once this reads and writes, UltraCanvas can

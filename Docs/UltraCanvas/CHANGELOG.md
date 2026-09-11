@@ -1,3 +1,69 @@
+#### 2026-09-11 *0.8.17*
+- **FBX (.fbx) reads, binary 7.1 to 7.7.** `Plugins/Models/FBX/` is split the way
+  the STEP, Alembic and .x readers are: `UltraCanvasFbxFile.h` is the container -
+  the header, the node records, the typed property lists and the deflate arrays,
+  with no idea what a mesh is - and `UltraCanvasFbxConverter.h` is Autodesk's
+  object set on top of it. It closes the largest remaining hole in the format
+  matrix.
+- **FBX is not a scene tree on disk.** Every object - model, geometry, material,
+  texture, animation curve - is a flat entry in one `Objects` list with a 64-bit
+  id, and a separate `Connections` list wires them together. The hierarchy, which
+  mesh a node draws, which material a face uses and which curve drives which
+  property are all connections, not nesting. So the reader indexes the objects,
+  turns the connections into a graph, and only then walks anything.
+- **A node's transform is not TRS.** The format composes it as
+  `T · Roff · Rp · Rpre · R · Rpost⁻¹ · Rp⁻¹ · Soff · Sp · S · Sp⁻¹`, with pivots,
+  offsets and pre/post-rotations that Maya and 3ds Max use constantly and a
+  Blender export leaves at identity. The whole chain is built and then
+  decomposed, so the common case returns exactly the three fields that were
+  written and the uncommon case keeps its meaning. `Lcl Rotation` is Euler
+  degrees in whatever order `RotationOrder` names, which is read rather than
+  assumed - the test asserts that changing the order changes the result.
+- **A geometric transform is not inherited**, which one transform per node cannot
+  say, so a model that has one gets a child node carrying the mesh rather than
+  having it baked into vertices.
+- **Its layers are independently indexed.** Normals, UVs, colours and material
+  assignments each declare their own `MappingInformationType` (per corner, per
+  vertex, per polygon, all same) and `ReferenceInformationType` (direct or
+  through an index). All the combinations resolve, and corners whose streams
+  disagree become distinct document vertices - the same resolution the OBJ,
+  COLLADA, X3D and .x readers perform.
+- **A polygon ends at a negative index, which is the bitwise complement of the
+  real one.** Reading it as a negation silently loses the last corner of every
+  face, turning every quad into a triangle; the test pins the quad.
+- **Colour times factor is what the format means.** `DiffuseColor` ×
+  `DiffuseFactor`, `SpecularColor` × `SpecularFactor`, and - the one that
+  matters - `EmissiveColor` × `EmissiveFactor`, because exporters write the
+  diffuse colour into `EmissiveColor` and zero into the factor. A reader that
+  ignores the factor makes every model glow.
+- **Animation is read**: an `AnimationStack` becomes one animation, and each
+  `AnimationCurveNode` is followed through its OP connection to the model and
+  property it drives and through three more to one curve per axis. Key times are
+  FBX ticks at 46186158000 per second. The three axis curves need not share key
+  times, so their union is sampled; an axis with no curve at all takes the curve
+  node's own default rather than zero.
+- **A declared count is never trusted over the bytes present**: an array whose
+  length disagrees with its byte count, and a record claiming more properties
+  than the file holds, are refused rather than allocated. Both are pinned by
+  tests. The ASCII encoding is recognised and refused by name.
+- **`Tests/ModelFbxTest.cpp`** (76 assertions) against
+  `media/models/FBX/E-45-Aircraft.fbx`. The synthetic half builds binary FBX by
+  hand - including a deflate-compressed array asserted to give geometry identical
+  to the raw one - because nothing about the container, the layer mappings, the
+  pivots or the refusals is reachable from an exported sample. The sample half
+  pins three cross-format facts: the scene is titled `E-45_GLSL`, exactly as the
+  COLLADA export names its visual scene; its `ArmatureAction` runs 0.8333333 s,
+  exactly the duration `ModelColladaTest` asserts; and its geometry is **1681
+  polygons**, the Alembic export's to the face.
+- `ModelFormat::FBX` already existed; the plugin now dispatches `.fbx` for
+  reading, behind `ULTRACANVAS_MODELS_FBX` / `ULTRACANVAS_HAS_FBX_CONVERTER` and
+  gated on zlib, which its arrays need. Read only. Skin deformers, blend shapes,
+  embedded media, cameras and lights are reported rather than read, and the
+  capability report says so rather than implying otherwise.
+- **`Tests/ModelFormatsPluginTest.cpp`'s "no reader for this extension" example
+  has gone stale for the third time** - it named `.fbx`, which now has one. It
+  now names an extension no format will ever use, so it cannot rot again.
+
 #### 2026-09-10 *0.8.14*
 - **Alembic (.abc) reads.** `Plugins/Models/Alembic/` is split the same way the
   STEP reader is: `UltraCanvasOgawaFile.h` is the Ogawa container and Alembic's

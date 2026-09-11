@@ -50,6 +50,9 @@ static const std::vector<Sample>& Samples() {
 #ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
             {"dae", "COLLADA/E-45-Aircraft.dae", true},
 #endif
+#ifdef ULTRACANVAS_HAS_FBX_CONVERTER
+            {"fbx", "FBX/E-45-Aircraft.fbx", true},
+#endif
 #ifdef ULTRACANVAS_HAS_BLEND_CONVERTER
             {"blend", "Blend/E-45-Aircraft.blend", false},
 #endif
@@ -84,25 +87,27 @@ static void TestDispatchTable() {
           "a dotted extension resolves");
     Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("obj") != nullptr,
           "a bare extension resolves");
-    Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("ply") == nullptr,
+    Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("notaformat") == nullptr,
           "a format this build has no converter for resolves to nothing");
 
-    // And says so rather than returning null in silence: a caller handed a
-    // .fbx has to be able to tell "unsupported" from "corrupt". The example is
-    // deliberately a format this build genuinely lacks — this assertion caught
-    // its own staleness once already, when .abc gained a reader.
+    // And says so rather than returning null in silence: a caller handed an
+    // unreadable file has to be able to tell "unsupported" from "corrupt". The
+    // example is an extension no one will ever implement, because naming a
+    // format that is merely unsupported *yet* is how this assertion went stale
+    // twice - once when .abc gained a reader, once when .fbx did.
     std::string reported;
     ConversionOptions listening;
     listening.WarningCallback = [&reported](const std::string& message) { reported = message; };
-    Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("fbx") == nullptr,
-          "this build has no FBX reader, which is what makes it the right example");
-    Check(UltraCanvasModelFormatsPlugin::LoadModelDocument("aircraft.fbx", listening) == nullptr,
+    Check(UltraCanvasModelFormatsPlugin::CreateConverterForExtension("notaformat") == nullptr,
+          "an extension no format will ever use resolves to nothing, and cannot go stale");
+    Check(UltraCanvasModelFormatsPlugin::LoadModelDocument("aircraft.notaformat", listening) == nullptr,
           "an unsupported extension loads nothing");
-    Check(reported.find("fbx") != std::string::npos && reported.find("obj") != std::string::npos,
+    Check(reported.find("notaformat") != std::string::npos &&
+          reported.find("obj") != std::string::npos,
           "and the warning names both the format it cannot read and the ones it can");
     reported.clear();
     ModelStorage::ModelDocument empty;
-    Check(!UltraCanvasModelFormatsPlugin::SaveModelDocument(empty, "out.fbx", listening),
+    Check(!UltraCanvasModelFormatsPlugin::SaveModelDocument(empty, "out.notaformat", listening),
           "and saving to one writes nothing");
     Check(!reported.empty(), "with a warning rather than a silent false");
 
