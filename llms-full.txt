@@ -316,11 +316,20 @@ the backing implementation can be replaced without affecting callers.
     `profile_COMMON` materials with transparency and textures, vertex colours,
     and matrix or TRS animation channels (matrix keyframes are decomposed into
     translation, rotation and scale). XML through tinyxml2.
-    `BlendConverter` (`Plugins/Models/Blend/UltraCanvasBlendConverter.h`) and
-    `ReadBlendFileInfo` (`UltraCanvasBlendFile.h`) recognise a Blender
-    `.blend` and report its version, datablock names, modifier types and
-    stored vertex count, but never import geometry: a `.blend` holds the
-    unevaluated scene, so the visible model is not in the file. Needs zlib.
+    **Blender** (`Plugins/Models/Blend/`) is split the same way as the others,
+    and the container half is the unusual one: a `.blend` is Blender's heap
+    written out, with an embedded SDNA block describing every struct and field
+    in the build that wrote it. `UltraCanvasBlendFile.h` is that container -
+    blocks, structs, and a `Ref` that reads a field *by name* at whatever
+    offset this file gives it, so a build that moved a field still reads -
+    and `UltraCanvasBlendConverter.h` is Blender's object model on top:
+    the object hierarchy, meshes in both layouts Blender has shipped
+    (MVert/MPoly/MLoop through 3.x, named CustomData attribute layers from
+    3.6), n-gons, per-corner UVs and colours, and materials. `ReadBlendFileInfo`
+    remains for callers that want only a description. **What is read is the
+    cage before modifiers** - a `.blend` stores them unapplied, so the
+    evaluated model is not in the file - and the reader warns naming them and
+    records them in `Metadata`. Read-only; needs zlib.
 
 - **UltraCanvasCADPalette** (`DataFormats/UltraCanvasCADPalette.h`) - the
   AutoCAD Color Index palette, `AciPaletteColor(aci)`: exact classic colours
@@ -46668,6 +46677,16 @@ enum class NewTabButtonPosition {
 };
 ```
 
+### NewTabButtonShape
+How the "+" button is drawn inside its slot.
+
+```cpp
+enum class NewTabButtonShape {
+    RoundedSquare,  // Square with rounded corners (default)
+    Circle          // Round button
+};
+```
+
 ## TabData Structure
 
 Represents individual tab properties.
@@ -46752,21 +46771,37 @@ void ClearDropdownSearch()
 ```cpp
 void SetShowNewTabButton(bool show)                     // Default: false
 void SetNewTabButtonPosition(NewTabButtonPosition pos)  // Default: AfterTabs
-void SetNewTabButtonWidth(int width)                    // Default: 32
-void SetNewButtonColor(const Color& color)
+void SetNewTabButtonWidth(int width)                    // Slot width in the tab bar. Default: 32
+void SetNewTabButtonGap(int gap)                        // Space between the tabs and the slot. Default: 4
+void SetNewTabButtonShape(NewTabButtonShape shape)      // Default: RoundedSquare
+void SetNewTabButtonSize(int size)                      // Side of the shape, centred in the slot. Default: 24
+void SetNewTabButtonCornerRadius(float radius)          // RoundedSquare corners. Default: 6
+void SetNewButtonColor(const Color& color)              // Idle fill of the shape
+Color newTabButtonHoverColor;                           // Fill while the mouse is over it
+Color newTabButtonIconColor;                            // The "+" strokes
 std::function<void()> onNewTabRequest;                  // Clicked
 ```
 
 `NewTabButtonPosition::AfterTabs` draws the "+" directly behind the last tab
 (so it walks along as tabs are added and removed), `FarRight` pins it to the
 right end of the tab bar, `BeforeTabs` puts it in front of the first tab. The
-space it needs is reserved before the tabs are laid out, so the button never
-overlaps a tab. The callback only reports the click — creating the tab is the
-application's job:
+space it needs — slot width plus gap — is reserved before the tabs are laid
+out, so the button never overlaps a tab.
+
+The button is not a full-height block of the tab bar: it is a small rounded
+square (or a circle) centred in its slot, and only that shape is painted, idle
+and hovered alike. Set the idle colour to the tab bar colour (or transparent)
+for a browser-style "+" that only lights up on hover. The gap keeps the shape
+clear of the neighbouring tab's outline, which is stroked half a pixel outside
+the tab's bounds. The callback only reports the click — creating the tab is
+the application's job:
 
 ```cpp
 tabs->SetNewTabButtonPosition(NewTabButtonPosition::AfterTabs);
 tabs->SetShowNewTabButton(true);
+tabs->SetNewTabButtonShape(NewTabButtonShape::Circle);   // or RoundedSquare (default)
+tabs->SetNewButtonColor(Colors::Transparent);            // highlight on hover only
+tabs->newTabButtonHoverColor = Color(225, 225, 230);
 tabs->onNewTabRequest = [tabs]() {
     tabs->SetActiveTab(tabs->AddTab("Untitled", MakePage()));
 };
