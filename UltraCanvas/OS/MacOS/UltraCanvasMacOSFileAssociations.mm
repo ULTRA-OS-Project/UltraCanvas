@@ -14,16 +14,22 @@
 // everything not served for two weeks.
 // Launching a specific application hands the whole selection to
 // -[NSWorkspace openURLs:withApplicationAtURL:configuration:completionHandler:],
-// exactly like a Finder "Open With"; default open stays /usr/bin/open, and
-// a user-picked application launches through `open -a` for a bundle or a
-// direct detached exec otherwise.
+// exactly like a Finder "Open With". A default open asks Launch Services
+// which application Finder would use (URLForApplicationToOpenURL:) and then
+// goes through the same call, grouped by that application: spawning
+// /usr/bin/open instead - what this used to do - cannot report anything,
+// because a detached spawn never sees the exit code of what it started, so
+// a file with no registered application "launched" successfully and then did
+// nothing whatsoever. That tool is now only the fallback for a system older
+// than the API. A user-picked application launches through `open -a` for a
+// bundle or a direct detached exec otherwise.
 // Enumeration needs the type-by-extension lookup that arrived with macOS 12
 // (UTType); on anything older the backend reports no candidates and the
 // Filer menu falls back to its manual entries plus the picker.
 // All entry points are serialized by the core's backend mutex (see
 // UltraCanvasFileAssociationsBackend.h) — no locking here.
-// Version: 1.2.0
-// Last Modified: 2026-09-04
+// Version: 1.3.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileAssociationsBackend.h"
@@ -260,12 +266,104 @@ std::vector<FileAssociationApp> ResolveFile(const std::string& fileName) {
     return apps;
 }
 
+namespace {
+
+    // An absolute path, so a caller's relative name cannot be resolved
+    // against this process's working directory instead of the folder on
+    // screen - and, for the open tool below, cannot start with a "-" that it
+    // would read as an option.
+    std::string AbsolutePathOf(const std::string& path) {
+        std::error_code ec;
+        const fs::path full = fs::absolute(path, ec);
+        return ec ? path : full.lexically_normal().string();
+    }
+
+    // /usr/bin/open, the way this used to launch everything. Kept for the
+    // system too old for the Launch Services path below - and nothing else:
+    // a detached spawn cannot see the exit code of what it started, so a
+    // file nothing is registered for "launched" successfully and then did
+    // nothing at all, with no way for the caller to say so.
+    bool LaunchThroughOpenTool(const std::vector<std::string>& paths,
+                               std::string& outError) {
+        std::vector<std::string> argv{"open"};
+        for (const std::string& path : paths)
+            argv.push_back(AbsolutePathOf(path));
+        const std::string workingDir = paths.empty()
+                ? std::string() : fs::path(paths[0]).parent_path().string();
+        return LaunchDetachedProcess(argv, workingDir, outError);
+    }
+
+    NSURL* FileURL(const std::string& path) {
+        NSString* text = [NSString stringWithUTF8String:
+                AbsolutePathOf(path).c_str()];
+        return text ? [NSURL fileURLWithPath:text] : nil;
+    }
+
+} // namespace
+
 bool LaunchDefault(const std::vector<std::string>& paths, std::string& outError) {
-    std::vector<std::string> argv{"open"};
-    argv.insert(argv.end(), paths.begin(), paths.end());
-    const std::string workingDir = paths.empty()
-            ? std::string() : fs::path(paths[0]).parent_path().string();
-    return LaunchDetachedProcess(argv, workingDir, outError);
+    if (paths.empty()) return false;
+    if (@available(macOS 10.15, *)) {
+        @autoreleasepool {
+            NSWorkspace* workspace = [NSWorkspace sharedWorkspace];
+            // Which application Finder would open each file with, asked
+            // BEFORE anything is launched: this is the only point at which
+            // "nothing is registered for this file type" can still be
+            // reported to the caller. Files are grouped by that application,
+            // so a selection still opens one window per application, the way
+            // a Finder double-click on several files does - keyed by the
+            // application's path rather than by the NSURL, since URL equality
+            // is stricter than "the same application", and kept in an
+            // Objective-C collection so the launch order is the order the
+            // files came in.
+            NSMutableArray<NSString*>* order = [NSMutableArray array];
+            NSMutableDictionary<NSString*, NSURL*>* applications =
+                    [NSMutableDictionary dictionary];
+            NSMutableDictionary<NSString*, NSMutableArray<NSURL*>*>* grouped =
+                    [NSMutableDictionary dictionary];
+            std::string failures;
+            auto note = [&failures](const std::string& line) {
+                if (!failures.empty()) failures += "\n";
+                failures += line;
+            };
+            for (const std::string& path : paths) {
+                const std::string name = fs::path(path).filename().string();
+                NSURL* url = FileURL(path);
+                NSURL* application = url ? [workspace URLForApplicationToOpenURL:url]
+                                         : nil;
+                NSString* key = application ? (application.path
+                                                       ?: application.absoluteString)
+                                            : nil;
+                if (!url) {
+                    note("Could not open \"" + name + "\".");
+                    continue;
+                }
+                if (!key) {
+                    note("No application is registered for \"" + name + "\".");
+                    continue;
+                }
+                if (!grouped[key]) {
+                    [order addObject:key];
+                    applications[key] = application;
+                    grouped[key] = [NSMutableArray array];
+                }
+                [grouped[key] addObject:url];
+            }
+            for (NSString* key in order) {
+                // Launching is asynchronous and outlives this process, so
+                // nothing here waits for the application to come up; what
+                // mattered - that there IS one - is already known.
+                [workspace openURLs:grouped[key]
+                    withApplicationAtURL:applications[key]
+                           configuration:[NSWorkspaceOpenConfiguration configuration]
+                       completionHandler:nil];
+            }
+            if (failures.empty()) return true;
+            outError = failures;
+            return false;
+        }
+    }
+    return LaunchThroughOpenTool(paths, outError);
 }
 
 bool LaunchWith(const FileAssociationApp& app,

@@ -1,3 +1,25 @@
+#### 2026-09-12 *0.8.37*
+- **A double-click that opens nothing now says so on macOS too.** The default
+  open spawned `/usr/bin/open` detached - and a detached spawn never sees the
+  exit code of what it started, so every launch was reported as successful. A
+  file type Launch Services has no application for came back "launched",
+  nothing appeared, and neither the file display nor the user was told
+  anything: the same silent double-click Windows had, from the opposite cause
+  (there the launch really failed and the reason was thrown away; here the
+  failure was never visible in the first place).
+- `FileAssociations::OpenWithDefaultApplication` now asks Launch Services
+  which application Finder would use (`URLForApplicationToOpenURL:`) before
+  launching anything, and hands the files to it with
+  `openURLs:withApplicationAtURL:` - the call the "Open with >" launches
+  already used. A file with no application is named in the error; the rest of
+  the selection still opens, grouped by application, so a mixed selection
+  produces one window per application rather than one per file. The `open`
+  tool stays as the fallback for a system older than the API.
+- Paths handed to the macOS backend are made absolute first, so a relative
+  name cannot be resolved against this process's working directory instead of
+  the folder on screen - and cannot begin with a "-" that the `open` tool
+  would read as an option.
+
 #### 2026-09-12 *0.8.36*
 - **A file just pasted into the folder gets its thumbnail.** The first decode
   of a file that has only this moment been written routinely cannot read it -
