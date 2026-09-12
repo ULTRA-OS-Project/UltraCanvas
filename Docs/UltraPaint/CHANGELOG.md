@@ -1,3 +1,28 @@
+#### 2026-09-12 *0.1.1*
+- **Adjust > Colour to Alpha...** - pick a colour and make it transparent.
+  The dialog carries the framework colour picker (whose eyedropper samples the
+  colour straight off the canvas, so the colour need not be known in advance),
+  a **Tolerance** slider measured the same way the Magic Wand and the Fill
+  tool measure it, a **Softness** slider that ramps the edge instead of
+  cutting it, **Transparency %** and **Remove colour fringe**.
+- **Transparency is a percentage, not just on or off:** at 100% the colour is
+  gone, at 40% it keeps 60% of its opacity - the same control fades a colour
+  back as well as removing it. Alpha is only ever scaled down, so pixels that
+  were already transparent stay transparent, and a layer with no transparency
+  gains it.
+- It previews live on the canvas, respects the selection and lands as a single
+  undo entry, like every other adjustment. Backed by the new
+  `PixelFX::Colour::ColourToAlpha` (UltraCanvas 0.8.33).
+- The Magic Wand with *Contiguous* off plus `Del` still does the hard-edged
+  version; this is the one to reach for on anti-aliased artwork, where that
+  route leaves jagged edges and a fringe of the colour it removed.
+- **Dragging a slider in any parameter dialog now updates the preview.** The
+  value label moved and the canvas did not: the framework slider only reported
+  a committed value when it was not being dragged, so Brightness / Contrast,
+  Levels, the blurs, Curves and the rest showed the result of the value the
+  dialog opened with until it was closed. Fixed in UltraCanvas 0.8.33; every
+  dialog in the app picks it up.
+
 #### 2026-09-06 *0.1.0*
 - **First release of UltraPaint**, the UltraCanvas bitmap editor, built on the
   new raster-editing layer of the framework (`UCRasterDocument`,

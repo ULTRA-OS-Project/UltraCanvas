@@ -393,6 +393,34 @@ namespace PixelFX {
         PFXImage AddAlpha(const PFXImage& image);
         PFXImage RemoveAlpha(const PFXImage& image);
 
+        // ===== COLOUR KEYING =====
+        // Turn one colour into transparency ("colour to alpha"). Every pixel is
+        // measured against `key` with the same colour distance the flood fill
+        // and the magic wand use — the mean absolute per-channel difference over
+        // the colour bands, 0..255 — and loses alpha according to where that
+        // distance falls:
+        //
+        //   distance <= tolerance                 keyed by the full `amount`
+        //   tolerance < d < tolerance + softness  ramped smoothly between the
+        //                                         two, which is what keeps an
+        //                                         anti-aliased edge clean
+        //                                         instead of jagged
+        //   distance >= tolerance + softness      untouched
+        //
+        // `amount` is HOW transparent the keyed colour becomes, 0..1: 1 removes
+        // it completely, 0.4 leaves those pixels at 60% of the alpha they had —
+        // a partial fade rather than a hole. Alpha is always scaled, never
+        // raised, so pixels that were already transparent stay transparent, and
+        // an image without an alpha band gains one.
+        //
+        // `despill` un-mixes the key colour out of the pixels that end up only
+        // partly transparent (out = key + (in - key) / alphaKept), so a logo
+        // keyed off a white page keeps no white fringe. The key colour takes one
+        // entry per colour band; a shorter vector repeats its last entry.
+        PFXImage ColourToAlpha(const PFXImage& image, const std::vector<double>& key,
+                               double tolerance = 0.0, double softness = 32.0,
+                               double amount = 1.0, bool despill = true);
+
     } // namespace Colour
 
 // ============================================================================

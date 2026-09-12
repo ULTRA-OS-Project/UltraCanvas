@@ -213,10 +213,12 @@ const SliderVisualStyle& GetStyle() const;
 ## Event Callbacks
 
 ```cpp
-// Value changed (after release)
+// Value changed: a committed value - set programmatically, stepped by the
+// keyboard or the wheel, or settled on at the end of a drag (fired once on
+// release, and only when the drag actually moved the value)
 std::function<void(float)> onValueChanged;
 
-// Value changing (during drag)
+// Value changing (continuously, during a drag)
 std::function<void(float)> onValueChanging;
 
 // Mouse events

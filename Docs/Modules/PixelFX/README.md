@@ -17,6 +17,7 @@ PixelFX is UltraCanvas's comprehensive bitmap manipulation and analytics engine,
 -   **Frequency Domain** -- FFT transforms and frequency-based filtering
 -   **Geometric Transforms** -- Resize, rotate, affine, and perspective corrections
 -   **Drawing Operations** -- Shapes, lines, text, and flood fill with anti-aliasing
+-   **Colour Keying** -- `Colour::ColourToAlpha` turns a chosen colour into transparency with a tolerance, a soft ramp that keeps anti-aliased edges clean, a strength so the colour can be faded rather than only removed, and fringe removal
 -   **Statistical Analysis** -- Min/max detection, deviation, profiles, and measurements
 ----------------
 ### Why PixelFX?

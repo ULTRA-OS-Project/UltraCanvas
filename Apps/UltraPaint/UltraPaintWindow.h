@@ -92,6 +92,7 @@ private:
     void CmdSelectModify(int kind);   // 0 feather, 1 grow, 2 shrink
     void CmdSelectFromAlpha();
     void CmdCurves();
+    void CmdColourToAlpha();
     void CmdFilter(const PaintFilter& filter);
     void CmdAbout();
     void CmdQuit();
