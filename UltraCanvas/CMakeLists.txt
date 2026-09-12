@@ -2621,6 +2621,10 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         # this a MinGW build names the MODULE libUltraCanvasLaTeX.dll and the
         # module is never found (same reason the chart element modules set it).
         set_target_properties(UltraCanvasLaTeX PROPERTIES PREFIX "")
+    elseif(APPLE)
+        # CMake gives a MODULE library the ".so" suffix on macOS; the loader
+        # and package-macos.sh look for libUltraCanvasLaTeX.dylib.
+        set_target_properties(UltraCanvasLaTeX PROPERTIES SUFFIX ".dylib")
     endif()
     target_include_directories(UltraCanvasLaTeX PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include

@@ -74,9 +74,9 @@ height of `0` lets the element size itself to the formula via the layout engine.
 ## Where the module and font are found
 
 On first use the loader searches for the module — `libUltraCanvasLaTeX.so`,
-`libUltraCanvasLaTeX.dylib` or `UltraCanvasLaTeX.dll` (a MinGW build tree
-from before the module dropped its `lib` prefix is also accepted) — in this
-order:
+`libUltraCanvasLaTeX.dylib` or `UltraCanvasLaTeX.dll` (the older names a
+build tree may still carry, `libUltraCanvasLaTeX.dll` on MinGW and
+`libUltraCanvasLaTeX.so` on macOS, are accepted too) — in this order:
 1. a path set via `SetLaTeXModulePath(...)`,
 2. `$ULTRACANVAS_PLUGIN_DIR`,
 3. `<exe>/`, `<exe>/plugins/`, `<exe>/lib/` (dev build: executable at the

@@ -58,7 +58,9 @@ std::vector<std::string> ModuleFileNames() {
     // tree from before that setting carries the toolchain's "lib" prefix.
     return {"UltraCanvasLaTeX.dll", "libUltraCanvasLaTeX.dll"};
 #elif defined(__APPLE__)
-    return {"libUltraCanvasLaTeX.dylib"};
+    // CMake names the MODULE ".dylib" (SUFFIX set in UltraCanvas/CMakeLists);
+    // a build tree from before that setting carries CMake's ".so" default.
+    return {"libUltraCanvasLaTeX.dylib", "libUltraCanvasLaTeX.so"};
 #else
     return {"libUltraCanvasLaTeX.so"};
 #endif

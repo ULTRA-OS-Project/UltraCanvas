@@ -518,14 +518,20 @@ build_app_bundle() {
     # inside a bundle the core's loader probes Contents/PlugIns/ (as
     # <exe>/../PlugIns/). Without it CreateLaTeXView() returns nullptr and the
     # demo's LaTeX page reports the module as not found.
-    local latex_module="$BUILD_DIR/lib/libUltraCanvasLaTeX.dylib"
-    if [ -f "$latex_module" ]; then
+    # CMake's default suffix for a MODULE on macOS is ".so"; the build sets
+    # ".dylib", but accept a tree from before that and ship it under the
+    # name the loader asks for.
+    local latex_module=""
+    for cand in "$BUILD_DIR/lib/libUltraCanvasLaTeX.dylib" "$BUILD_DIR/lib/libUltraCanvasLaTeX.so"; do
+        if [ -f "$cand" ]; then latex_module="$cand"; break; fi
+    done
+    if [ -n "$latex_module" ]; then
         mkdir -p "$contents_dir/PlugIns"
         cp "$latex_module" "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
         chmod 644 "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
-        echo "  Copied LaTeX module (PlugIns/)"
+        echo "  Copied LaTeX module: $(basename "$latex_module") -> PlugIns/libUltraCanvasLaTeX.dylib"
     else
-        echo "  Warning: LaTeX module not found at $latex_module - this bundle will not render LaTeX"
+        echo "  Warning: LaTeX module not found in $BUILD_DIR/lib - this bundle will not render LaTeX"
     fi
 
     # Bundle Homebrew dylibs

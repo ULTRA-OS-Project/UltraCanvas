@@ -10,7 +10,9 @@
   either. So none of the LaTeX work was visible in a packaged demo.
   - `UltraCanvas/CMakeLists.txt`: the module gets `PREFIX ""` on Windows,
     matching the loader's `UltraCanvasLaTeX.dll` (as the chart element
-    modules already do).
+    modules already do), and `SUFFIX ".dylib"` on macOS - CMake's default
+    for a MODULE there is `.so`, so the file had never carried the name the
+    loader and the bundle script look for.
   - `package-win.sh` ships the module as `lib/UltraCanvasLaTeX.dll`, runs it
     through the PE header check, and warns loudly when the build has none;
     the transitive DLL pass already walks subdirectories.
@@ -18,7 +20,7 @@
     collects and rewrites its Homebrew dependencies like the executable's,
     and signs it with the frameworks.
   - `core/UltraCanvasLaTeXModuleLoader.cpp`: probes both DLL names on
-    Windows and `<exe>/../PlugIns/` on macOS; opens absolute paths with
+    Windows, both `.dylib` and `.so` names plus `<exe>/../PlugIns/` on macOS; opens absolute paths with
     `LOAD_WITH_ALTERED_SEARCH_PATH` so a module in `lib/` resolves the core
     DLL beside the executable; spells out codes 126 and 193 in the error.
   - Demo: the LaTeX Documents menu entry no longer credits MicroTeX, and the
