@@ -3824,8 +3824,9 @@ namespace UltraCanvas {
                 if (!changed) return;
                 Refresh();
                 NotifyFolderModified(destDir);
-                // A move also emptied the folder the files came from.
-                if (!copy) NotifyFolderModified();
+                // The folder the files came from is reported by the paste
+                // itself (PendingPaste::vacatedFolders), which names it even
+                // when it is not the folder this widget shows.
             });
         };
 
@@ -4128,11 +4129,22 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::FinishPendingPaste() {
         if (!pendingPaste) return;
         const bool changed = pendingPaste->changed;
+        const std::string destination = pendingPaste->folder;
+        std::vector<std::string> vacated = std::move(pendingPaste->vacatedFolders);
         std::function<void(bool)> onDone = std::move(pendingPaste->onDone);
         pendingPaste.reset();
-        if (onDone) { onDone(changed); return; }   // the caller owns refresh / history
-        Refresh();
-        if (changed) NotifyFolderModified();
+        if (onDone) onDone(changed);               // the caller owns refresh / history
+        else {
+            Refresh();
+            if (changed) NotifyFolderModified();
+        }
+        // The destination was just reported (by onDone or by the branch above);
+        // the folders a move emptied were not, and only this widget knows them.
+        // A folder cut here and pasted somewhere else has to leave the host's
+        // folder tree here as well as appear there.
+        std::unordered_set<std::string> reported{destination};
+        for (const std::string& folder : vacated)
+            if (reported.insert(folder).second) NotifyFolderModified(folder);
     }
 
     bool UltraCanvasFilerWidget::PasteCurrentAndAdvance(PasteConflictAction action) {
@@ -4210,6 +4222,12 @@ namespace UltraCanvas {
         if (ec) {
             whyFailed = ec.message();
             return false;
+        }
+        // A move leaves the folder the entry came from one entry shorter:
+        // remember it, so FinishPendingPaste can report it as changed too.
+        if (pp.cut) {
+            const std::string vacated = from.parent_path().string();
+            if (!vacated.empty()) pp.vacatedFolders.push_back(vacated);
         }
         pp.changed = true;
         return true;

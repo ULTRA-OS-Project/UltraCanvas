@@ -43,6 +43,11 @@
 // the drive's name as the button that opens it, and the free / total sizes.
 // The sizes are read on a worker thread (UltraFilerVolumeSpace.h), and the
 // cards follow mounts and unmounts like the tree's drive rows.
+// The folder tree follows what the user does to folders as well as what the
+// machine does to volumes: every change reported through the filer widgets'
+// onFolderModified re-syncs that folder's rows with the disk
+// (RefreshTreeFolder), so a folder created, renamed, deleted or moved by a cut
+// and paste is in the tree where it is on disk, without a restart.
 // Version: 1.19.0
 // Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
@@ -362,6 +367,46 @@ namespace {
             return an < bn;
         });
         return dirs;
+    }
+
+    // The rows `path` gets in the folder tree, sorted the way the tree shows
+    // them. Settings > Display > Home folder decides what the Home entry
+    // shows. Curated ("Show only predefined folders", the Windows default):
+    // the main user folders (kHomeTreeFolders) and nothing else, so a profile
+    // does not spill "3D Objects", "Saved Games" and every working folder into
+    // the tree. The paths come from the platform (SHGetKnownFolderPath /
+    // xdg-user-dirs), so a redirected or localized folder - "Bilder", a
+    // Documents folder moved into OneDrive - is the one listed, under its own
+    // icon. "Show all content" (the Linux / macOS default) lists every
+    // subfolder, with the main folders still carrying their icons and a
+    // redirected one listed once, by its real path.
+    std::vector<TreeChild> TreeChildrenOf(const std::string& path, bool curatedHome) {
+        std::vector<TreeChild> children;
+        const bool isHome = IsUserHomeDir(path);
+        if (isHome && curatedHome) {
+            children = HomeTreeChildren();
+        } else if (isHome) {
+            std::unordered_set<std::string> curated;
+            for (const TreeChild& c : HomeTreeChildren()) {
+                curated.insert(FolderIdentityKey(c.path));
+                children.push_back(c);
+            }
+            for (const fs::path& dir : ListSubdirectories(path)) {
+                if (curated.count(FolderIdentityKey(dir.string()))) continue;
+                children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
+            }
+        } else {
+            for (const fs::path& dir : ListSubdirectories(path))
+                children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
+        }
+        std::sort(children.begin(), children.end(),
+                  [](const TreeChild& a, const TreeChild& b) {
+            std::string an = a.label, bn = b.label;
+            std::transform(an.begin(), an.end(), an.begin(), ::tolower);
+            std::transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
+            return an < bn;
+        });
+        return children;
     }
 
     // What a volume is called in the tree. The framework labels the system
@@ -730,9 +775,10 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     folderPreview->SetFolderPrefetchEnabled(false);
     folderPreview->SetActivateOpensWithDefaultApp(true);
     // Work done through the pane's context menu (a paste, a delete, ...) is
-    // work done in that folder, exactly as in the main folder display.
+    // work done in that folder, exactly as in the main folder display - the
+    // History and the folder tree follow it the same way.
     folderPreview->onFolderModified = [this](const std::string& folder) {
-        RecordFolderInHistory(folder);
+        HandleFolderModified(folder, folderPreview.get());
     };
     folderPreview->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
@@ -2283,11 +2329,8 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
     filer->PasteFilesInto(dest, std::move(sources), /*cut=*/true,
                           [this, dest](bool changed) {
         if (!changed) return;
-        RecordFolderInHistory(dest);
-        for (auto& state : tabStates) {
-            if (state->filer && state->filer->GetPath() == dest)
-                state->filer->Refresh();
-        }
+        // Re-lists every display of the folder, the tree and the History.
+        HandleFolderModified(dest);
     });
     return true;
 }
@@ -2370,16 +2413,12 @@ void UltraFilerWindow::DropDriveNode(const std::string& path) {
         moved = true;
     }
 
-    if (folderTree) folderTree->RemoveNode(path);
+    // Its row, its subtree and the record that any of it was scanned: the same
+    // stick plugged back in is a fresh tree, not the one this window last saw.
+    DropTreeSubtree(path);
     treeDriveNodeIds.erase(
             std::remove(treeDriveNodeIds.begin(), treeDriveNodeIds.end(), path),
             treeDriveNodeIds.end());
-    // Forget that anything under the volume was ever scanned: the same stick
-    // plugged back in is a fresh tree, not the one this window last saw.
-    for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
-        if (IsPathInside(*it, path)) it = treeChildrenLoaded.erase(it);
-        else ++it;
-    }
 
     if (moved && statusLabel)
         statusLabel->SetText("\"" + path + "\" is no longer connected");
@@ -2427,47 +2466,114 @@ void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
-    // Settings > Display > Home folder decides what the Home entry shows.
-    // Curated ("Show only predefined folders", the Windows default): the main
-    // user folders (kHomeTreeFolders) and nothing else, so a profile does not
-    // spill "3D Objects", "Saved Games" and every working folder into the
-    // tree. The paths come from the platform (SHGetKnownFolderPath /
-    // xdg-user-dirs), so a redirected or localized folder - "Bilder", a
-    // Documents folder moved into OneDrive - is the one listed, under its own
-    // icon. "Show all content" (the Linux / macOS default) lists every
-    // subfolder, with the main folders still carrying their icons and a
-    // redirected one listed once, by its real path.
-    std::vector<TreeChild> children;
-    const bool isHome = IsUserHomeDir(path);
-    if (isHome && settings.homeShowPredefinedOnly) {
-        children = HomeTreeChildren();
-    } else if (isHome) {
-        std::unordered_set<std::string> curated;
-        for (const TreeChild& c : HomeTreeChildren()) {
-            curated.insert(FolderIdentityKey(c.path));
-            children.push_back(c);
-        }
-        for (const fs::path& dir : ListSubdirectories(path)) {
-            if (curated.count(FolderIdentityKey(dir.string()))) continue;
-            children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
-        }
-    } else {
-        for (const fs::path& dir : ListSubdirectories(path))
-            children.push_back({dir.string(), dir.filename().string(), "folder-brown.svg"});
-    }
-    std::sort(children.begin(), children.end(),
-              [](const TreeChild& a, const TreeChild& b) {
-        std::string an = a.label, bn = b.label;
-        std::transform(an.begin(), an.end(), an.begin(), ::tolower);
-        std::transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
-        return an < bn;
-    });
     // Add the real children before removing the placeholder: a node whose
     // last child is removed is demoted to a leaf, which drops its expanded
     // state and made the first expansion of a folder appear to do nothing.
-    for (const TreeChild& c : children)
+    for (const TreeChild& c : TreeChildrenOf(path, settings.homeShowPredefinedOnly))
         AddTreeFolderNode(path, c.path, c.label, c.icon);
     folderTree->RemoveNode(PlaceholderId(path));
+}
+
+void UltraFilerWindow::DropTreeSubtree(const std::string& path) {
+    if (folderTree) folderTree->RemoveNode(path);
+    // Forget that anything at or below it was ever scanned: a folder of the
+    // same name put back there later is a fresh subtree, not this one.
+    for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
+        if (IsPathInside(*it, path)) it = treeChildrenLoaded.erase(it);
+        else ++it;
+    }
+}
+
+// Brings the folder tree back in line with the disk after the content of
+// `folder` changed - a subfolder created, renamed, deleted, or moved in or out
+// by a cut and paste (Ctrl+X / Ctrl+V), a drag and drop or a context menu.
+// Without this a folder moved away kept its row (and its whole subtree) until
+// the window was restarted, and the folder it landed in never grew one.
+// Only what the tree already shows is touched: a folder nobody has expanded
+// yet stays unscanned, and only the expand button it would be drawn with is
+// put right.
+void UltraFilerWindow::RefreshTreeFolder(const std::string& folder) {
+    if (!folderTree || folder.empty()) return;
+    TreeNode* node = folderTree->FindNode(folder);
+    if (!node) return;   // the tree never reached this far: nothing is stale
+
+    std::error_code ec;
+    // The changed folder can be the one that went away: a move reports the
+    // folder an entry left, and that folder may itself have been moved.
+    if (!fs::is_directory(folder, ec) || ec) {
+        DropTreeSubtree(folder);
+        RefreshPinnedTreeNodes();
+        folderTree->RequestRedraw();
+        return;
+    }
+
+    if (!treeChildrenLoaded.count(folder)) {
+        // Never expanded, so it holds no rows that could be wrong - only the
+        // expand button, which the "..." placeholder child carries.
+        if (TreeFolderHasChildren(folder, curatedHomeActive.load()))
+            QueueSubfolderProbe(folder);   // adds the placeholder if it is missing
+        else
+            folderTree->RemoveNode(PlaceholderId(folder));
+        folderTree->RequestRedraw();
+        return;
+    }
+
+    const std::vector<TreeChild> wanted =
+            TreeChildrenOf(folder, settings.homeShowPredefinedOnly);
+    std::unordered_set<std::string> wantedPaths;
+    for (const TreeChild& c : wanted) wantedPaths.insert(c.path);
+
+    // Rows whose folder is gone - moved away, renamed or deleted. Collected
+    // before anything is removed: dropping a row edits node->children.
+    std::vector<std::string> gone;
+    std::unordered_set<std::string> kept;
+    for (const std::unique_ptr<TreeNode>& child : node->children) {
+        const std::string& id = child->data.nodeId;
+        if (id.find(kPlaceholderSuffix) != std::string::npos) continue;
+        if (wantedPaths.count(id)) kept.insert(id);
+        else                       gone.push_back(id);
+    }
+    for (const std::string& path : gone) DropTreeSubtree(path);
+
+    // Rows that appeared - a folder created here, or one pasted or dropped in.
+    bool added = false;
+    for (const TreeChild& c : wanted) {
+        if (kept.count(c.path)) continue;
+        AddTreeFolderNode(folder, c.path, c.label, c.icon);
+        added = true;
+    }
+    // A new row is appended, so it would sit below the rows already there;
+    // the tree lists a folder's children by name, the way TreeChildrenOf
+    // sorted them.
+    if (added) folderTree->SortNodeChildren(folder, false, true);
+    // A pin into a folder that is gone leaves the Pinned section, exactly as
+    // it does when the folder is deleted from the tree's own context menu.
+    if (!gone.empty()) RefreshPinnedTreeNodes();
+    if (added || !gone.empty()) folderTree->RequestRedraw();
+}
+
+// What the window does with a folder the user changed the content of, from
+// wherever the change came: the folder joins the History view's Folders tab,
+// the folder tree is brought back in line with the disk, and every other
+// display of that same folder re-lists it. `source` is the widget that did the
+// work and reported it - it has already re-listed itself, and asking it again
+// from inside its own notification would only cost a second scan.
+void UltraFilerWindow::HandleFolderModified(const std::string& folder,
+                                            UltraCanvasFilerWidget* source) {
+    RecordFolderInHistory(folder);
+    RefreshTreeFolder(folder);
+    // A folder cut away in one tab and pasted in another changed both folders,
+    // and only the pasting widget knows it: without this the tab the folder
+    // came from went on listing it until it was navigated away from.
+    for (auto& state : tabStates) {
+        UltraCanvasFilerWidget* tabFiler = state->filer.get();
+        if (!tabFiler || tabFiler == source) continue;
+        if (tabFiler->IsShowingFileList()) continue;   // search results: not a folder
+        if (tabFiler->GetPath() == folder) tabFiler->Refresh();
+    }
+    if (folderPreview && folderPreview.get() != source &&
+        folderPreview->GetPath() == folder)
+        folderPreview->Refresh();
 }
 
 // ===== FOLDER TREE: CLOUD STORAGE SECTION =====
@@ -2814,12 +2920,9 @@ void UltraFilerWindow::PasteIntoFolder(const std::string& folder) {
     filer->PasteFilesInto(folder, std::move(paths), cut,
                           [this, folder](bool changed) {
         if (!changed) return;
-        // Pasting is work done in the folder, exactly like a paste in the filer.
-        RecordFolderInHistory(folder);
-        for (auto& state : tabStates) {
-            if (state->filer && state->filer->GetPath() == folder)
-                state->filer->Refresh();
-        }
+        // Pasting is work done in the folder, exactly like a paste in the
+        // filer: the History, the tree and every display of it follow.
+        HandleFolderModified(folder);
     });
 }
 
@@ -2839,11 +2942,7 @@ void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
         }
         // Take the folder out of the tree, its pins, and the bookkeeping of
         // scanned nodes (it may be recreated and scanned again later).
-        if (folderTree) folderTree->RemoveNode(path);
-        for (auto it = treeChildrenLoaded.begin(); it != treeChildrenLoaded.end();) {
-            if (IsPathInside(*it, path)) it = treeChildrenLoaded.erase(it);
-            else ++it;
-        }
+        DropTreeSubtree(path);
         RefreshPinnedTreeNodes();
         // Tabs that were inside the deleted folder move to its parent; tabs
         // showing the parent re-list it without the deleted entry.
@@ -3119,9 +3218,10 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     };
     // Work done in a folder - a file created, pasted, dropped in or out,
     // renamed, duplicated, deleted, packed or extracted - is what puts it in
-    // the History view's Folders tab. Merely looking at a folder does not.
-    tab->filer->onFolderModified = [this](const std::string& folder) {
-        RecordFolderInHistory(folder);
+    // the History view's Folders tab, and what the folder tree follows.
+    // Merely looking at a folder does neither.
+    tab->filer->onFolderModified = [this, tab](const std::string& folder) {
+        HandleFolderModified(folder, tab->filer.get());
     };
     tab->filer->onError = [this](const std::string& message) {
         if (statusLabel) statusLabel->SetText("Error: " + message);
@@ -3334,6 +3434,11 @@ void UltraFilerWindow::BuildHistoryView() {
             if (parent.empty()) return;
             SetHistoryVisible(false);
             AddNewTab(parent, true);
+        };
+        // Work done from this list - an entry cut away, deleted, renamed -
+        // changed a real folder, which the folder tree has to follow.
+        histFiler->onFolderModified = [this, self = histFiler.get()](const std::string& folder) {
+            HandleFolderModified(folder, self);
         };
         histFiler->onError = [this](const std::string& message) {
             if (statusLabel) statusLabel->SetText("Error: " + message);
@@ -3582,6 +3687,11 @@ void UltraFilerWindow::BuildFavoritesView() {
             if (parent.empty()) return;
             ShowBrowsingView();
             AddNewTab(parent, true);
+        };
+        // Work done from this list - an entry cut away, deleted, renamed -
+        // changed a real folder, which the folder tree has to follow.
+        favFiler->onFolderModified = [this, self = favFiler.get()](const std::string& folder) {
+            HandleFolderModified(folder, self);
         };
         favFiler->onError = [this](const std::string& message) {
             if (statusLabel) statusLabel->SetText("Error: " + message);

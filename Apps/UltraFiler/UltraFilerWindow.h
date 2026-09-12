@@ -47,6 +47,10 @@
 // acting on the current selection. The main user folders (Desktop, Documents,
 // Downloads, Music, Pictures, Videos) carry icons of their own without
 // anything being set.
+// The tree follows what the user does to folders: every change a filer widget
+// reports through onFolderModified (a folder created, renamed, deleted, or
+// moved by a cut and paste, a drop or a context menu) re-syncs that folder's
+// rows with the disk - see RefreshTreeFolder.
 // The tree's drive entries (the drive roots on Windows, "File System" and the
 // mounted volumes elsewhere) are painted with the configured drive background
 // colour, and the selected folder with the configured highlight colour; both
@@ -165,6 +169,17 @@ private:
     // Scans `node`'s subfolders into real child nodes (once per node) and drops
     // the placeholder that stood for them.
     void EnsureTreeChildren(TreeNode* node);
+    // Brings the tree back in line with the disk after the content of `folder`
+    // changed - a subfolder created, renamed, deleted, or moved in or out by a
+    // cut and paste, a drop or a context menu. Rows that are gone leave the
+    // tree with their subtrees, rows that appeared are inserted in name order,
+    // and a folder the tree has not scanned yet only has its expand button put
+    // right. A folder the tree does not show is not scanned for this.
+    void RefreshTreeFolder(const std::string& folder);
+    // Takes `path`, everything below it and the record that any of it was ever
+    // scanned out of the tree. Used wherever a folder leaves the tree: deleted,
+    // moved away, or sitting on a volume that was unmounted.
+    void DropTreeSubtree(const std::string& path);
     // Brings the drive rows back in line with what is actually mounted: a row
     // is added for every volume that appeared and removed for every one that
     // is gone, together with everything the tree remembers about it. Any tab
@@ -315,6 +330,14 @@ private:
     // created / pasted / renamed / deleted something, ...). Browsing a folder
     // is not enough - the Folders tab lists folders that were worked in.
     void RecordFolderInHistory(const std::string& folder);
+    // What the window does with a folder whose content the user changed, from
+    // wherever the change came (the file display, the folder preview, a paste
+    // or a drop onto a tree node): it joins the History view's Folders tab, the
+    // folder tree is re-synced with the disk, and every other display showing
+    // that folder re-lists it. `source` is the widget that reported the change
+    // and has already re-listed itself; pass it so it is not scanned twice.
+    void HandleFolderModified(const std::string& folder,
+                              UltraCanvasFilerWidget* source = nullptr);
     // A history tile was activated: leaves the History view and shows the path
     // in the browsing view (a folder is opened, a file's folder is opened).
     // The Favorites view's tiles go through it too.
