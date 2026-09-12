@@ -53,7 +53,8 @@ them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
 
 ## Menus
 
-- **File:** New (presets, background), Open, Save, Save As, Export with
+- **File:** New (presets, background), New Window, Open, Import Image
+  (merge into this image or open a new window), Save, Save As, Export with
   Options (the framework's format dialog), Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
   as New Image, Delete, Fill with Foreground / Background.
@@ -101,10 +102,44 @@ every pixel of a colour and `Del` erases them.
 ## Files
 
 Opens what libvips loads (PNG, JPEG, WebP, AVIF, HEIC, TIFF, GIF, BMP, JXL,
-TGA, PSD, camera RAW, SVG, …). *Save* / *Save As* write the flattened image
+TGA, PSD, camera RAW, …). *Save* / *Save As* write the flattened image
 in the format of the extension; *Export with Options* adds the per-format
 knobs. Layered work is kept in **`.ucraster`** — a ZIP with `document.json`
 and one PNG per layer.
+
+### Dropping a file on the canvas
+
+A file dragged onto the canvas asks what to do with it rather than replacing
+the open image:
+
+| Answer | What happens |
+|---|---|
+| **Merge image** | it lands as a new layer, centred, with the Move tool selected. A bitmap bigger than the canvas offers *Scale to fit the canvas*, ticked by default — otherwise it would be cropped to the canvas without saying so |
+| **Open new window** | it gets an editor of its own; the current image is untouched |
+| **Cancel** | nothing happens |
+
+Several files dropped together ask once and all follow the same answer.
+*File ▸ Import Image…* asks the same question for a file picked from the
+file dialog, and *File ▸ New Window* (`Ctrl+Alt+N`) opens an empty one.
+The application exits when its last window closes.
+
+### Vector drawings
+
+A drawing has no pixels until someone picks a resolution, so opening or
+dropping one asks for the raster size — starting at the drawing's natural
+size, and at whatever fits the canvas when it is being merged — plus the page
+for a multi-page PDF. It is rendered at that size (not scaled up from a
+thumbnail) and opens as an unsaved image, so *Save* asks where to put it
+rather than overwriting the drawing with pixels.
+
+**SVG**, **SVGZ**, **PDF** and **AI** work out of the box, and **EPS** / **PS**
+where libvips was built with a PostScript delegate. The rest arrive with the
+graphics plugins the application registers: **DXF**, **DWG**, **EMF** and
+**WMF** from the Vector plugin (`-DULTRACANVAS_PLUGIN_VECTOR=ON`), **XAR**,
+**CDR** and **EPS** from their own viewer plugins. The framework side is
+[`UltraCanvasVectorRaster`](../../Docs/UltraCanvas/UltraCanvasVectorRaster.md);
+`GetVectorRasterExtensions()` is what the running build can actually
+rasterize, and it is what the Open dialog's filter lists.
 
 ## Usage
 
@@ -112,6 +147,7 @@ and one PNG per layer.
 UltraPaint                 # blank canvas
 UltraPaint photo.jpg       # open an image
 UltraPaint work.ucraster   # open a layered project
+UltraPaint logo.svg        # asks for the raster size, then opens it
 ```
 
 ## Building
@@ -130,7 +166,7 @@ and brushes build without it.
 | File | Contents |
 |---|---|
 | `main.cpp` | Application bootstrap (same shape as UltraViewer) |
-| `UltraPaintWindow.{h,cpp}` | Window composition, menus, panels, every command, filter preview |
+| `UltraPaintWindow.{h,cpp}` | Window composition, the open-window registry, menus, panels, every command, import / drop handling, filter preview |
 | `UltraPaintTools.{h,cpp}` | The tools and their option panels |
 | `UltraPaintFilters.{h,cpp}` | The PixelFX filter catalogue and the parameter dialog |
-| `UltraPaintDialogs.{h,cpp}` | New Image, Scale / Canvas Size, Text, Layer Properties, Colour to Alpha |
+| `UltraPaintDialogs.{h,cpp}` | New Image, Scale / Canvas Size, Text, Layer Properties, Colour to Alpha, Import (drop / vector raster size) |

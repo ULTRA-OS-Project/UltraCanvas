@@ -99,4 +99,7 @@ checks, plus the supported-format inventory). `VectorModelTest` covers the share
 
 ## See Also
 
+- [UltraCanvasVectorRaster](UltraCanvasVectorRaster.md) — the other direction
+  out of these formats: a drawing rasterized into an editable `UCRasterLayer`
+  at a chosen pixel size (what a bitmap editor does with a dropped SVG)
 - [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md), [UltraCanvasXARExamples](UltraCanvasXARExamples.md), [UltraCanvasEPSExamples](UltraCanvasEPSExamples.md), [UltraCanvasCDRExamples](UltraCanvasCDRExamples.md) — the format plugins (rendering/UI elements)

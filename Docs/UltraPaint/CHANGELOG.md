@@ -1,3 +1,34 @@
+#### 2026-09-12 *0.2.0*
+- **Dropping an image asks what to do with it.** A file dragged onto the
+  canvas no longer replaces the open image without warning: the drop opens a
+  small dialog naming the file and its size with **Merge image** and **Open
+  new window** (and Cancel). Merge lands it as a new layer, centred, with the
+  Move tool selected so it can be dragged into place; Open new window gives it
+  an editor of its own and leaves the current image alone.
+- **UltraPaint is multi-window.** *File > New Window* (`Ctrl+Alt+N`), a window
+  per "Open new window" drop, and the application exits with the last window
+  rather than the first. *Quit* now counts the unsaved images across every
+  window instead of asking about the one in front.
+- **A bitmap bigger than the canvas offers to fit.** Merging a 4000 px photo
+  into an 800 px canvas used to be possible only by cropping it invisibly;
+  the drop dialog offers *Scale to fit the canvas when merging*, ticked when
+  the image does not fit, and resamples through PixelFX.
+- **Vector drawings open as bitmaps.** Dropping or opening an SVG, PDF, EPS
+  or - where the application has the Vector plugin - a DXF / DWG / EMF / WMF /
+  XAR asks for the raster size first, starting at the drawing's natural size,
+  with a page picker for a multi-page PDF. It is rendered at that size rather
+  than scaled up from a thumbnail, keeps no file path (so *Save* asks where to
+  put it instead of overwriting the drawing with pixels), and merges into the
+  open image at whatever size fits the canvas. Backed by the new
+  `UltraCanvasVectorRaster` (UltraCanvas 0.8.38).
+- **File > Import Image...** does the same as a drop from the file dialog:
+  merge into this image, or open it in a new window.
+- Dropping several files at once asks once and applies the answer to all of
+  them; files UltraPaint cannot read are ignored rather than reported one by
+  one. The Open dialog's filter now lists the vector formats too, and a
+  loader's error is trimmed to its reason instead of showing libvips' whole
+  log.
+
 #### 2026-09-12 *0.1.1*
 - **Adjust > Colour to Alpha...** - pick a colour and make it transparent.
   The dialog carries the framework colour picker (whose eyedropper samples the

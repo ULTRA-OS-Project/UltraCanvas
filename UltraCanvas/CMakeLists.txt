@@ -405,6 +405,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRasterDocument.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBrushEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPaintSurface.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorRaster.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColumnsTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListModel.cpp

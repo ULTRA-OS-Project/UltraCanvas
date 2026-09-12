@@ -1,8 +1,8 @@
 // Apps/UltraPaint/UltraPaintDialogs.cpp
-// New Image, Scale Image / Canvas Size, Text, Layer Properties and
+// New Image, Scale Image / Canvas Size, Text, Layer Properties, Import and
 // Colour to Alpha windows.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.1.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 #include "UltraPaintDialogs.h"
@@ -11,6 +11,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 namespace UltraCanvas {
 
@@ -58,6 +59,11 @@ namespace {
         { "3840 x 2160 (4K)", 3840, 2160 }, { "A4 300 dpi", 2480, 3508 }, { "Instagram square", 1080, 1080 },
         { "Icon 512", 512, 512 }, { "Icon 256", 256, 256 }
     };
+
+    std::string FileNameOnly(const std::string& path) {
+        if (path.empty()) return "Untitled";
+        return std::filesystem::path(path).filename().string();
+    }
 }
 
 // ===========================================================================
@@ -278,6 +284,151 @@ UltraPaintLayerDialog::UltraPaintLayerDialog(const UltraPaintLayerProps& initial
         r.locked = lockedBox->IsChecked();
         if (onAccept) onAccept(r);
     }));
+}
+
+// ===========================================================================
+// IMPORT
+// ===========================================================================
+
+UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& request)
+    : UltraCanvasWindow(), req(request) {
+    // The size controls belong to one drawing; a multi-file drop takes each
+    // file at its own natural size instead.
+    const bool showSize = req.vector && req.extraFiles == 0;
+    const bool paged = showSize && req.pageCount > 1;
+    config_.title = req.offerMerge ? "Open or Merge" : "Open Drawing";
+    config_.width = 470;
+    config_.height = 128 + (req.vector && !req.provider.empty() ? 20 : 0) +
+                     (showSize ? 64 : 0) + (paged ? 28 : 0) + (req.offerMerge ? 28 : 0);
+    config_.minWidth = 420;
+    config_.minHeight = 140;
+    config_.resizable = false;
+    config_.deleteOnClose = true;
+    SetPadding(12);
+    layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    std::string heading = FileNameOnly(req.path);
+    if (req.extraFiles == 1) heading += " and 1 more file";
+    else if (req.extraFiles > 1) heading += " and " + std::to_string(req.extraFiles) + " more files";
+    auto name = CreateLabel("upi-name", 0, 0, 0, 22, heading);
+    name->SetFontWeight(FontWeight::Bold);
+    name->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AddChild(name);
+
+    auto addSubtitle = [this](const std::string& id, const std::string& text) {
+        if (text.empty()) return;
+        auto sub = CreateLabel(id, 0, 0, 0, 18, text);
+        sub->SetFontSize(11);
+        sub->SetTextColor(Color(90, 90, 100, 255));
+        sub->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        AddChild(sub);
+    };
+    const std::string size = (req.naturalWidth > 0 && req.naturalHeight > 0)
+            ? std::to_string(req.naturalWidth) + " x " + std::to_string(req.naturalHeight) + " px"
+            : std::string();
+    if (req.vector) {
+        addSubtitle("upi-sub", size.empty() ? "Vector drawing" : "Vector drawing, " + size + " at its natural size");
+        if (!req.provider.empty()) addSubtitle("upi-provider", "Rendered by " + req.provider);
+    } else {
+        addSubtitle("upi-sub", size);
+    }
+
+    if (showSize) {
+        // A vector drawing has no pixels until one asks for them, so the size
+        // is the question: it defaults to the natural size, or to whatever
+        // fits the open canvas when the drawing is going to be merged into it.
+        int startW = std::max(1, req.naturalWidth);
+        int startH = std::max(1, req.naturalHeight);
+        if (req.offerMerge && req.canvasWidth > 0 && req.canvasHeight > 0 &&
+            (startW > req.canvasWidth || startH > req.canvasHeight)) {
+            const double k = std::min(static_cast<double>(req.canvasWidth) / startW,
+                                      static_cast<double>(req.canvasHeight) / startH);
+            startW = std::max(1, static_cast<int>(std::lround(startW * k)));
+            startH = std::max(1, static_cast<int>(std::lround(startH * k)));
+        }
+        widthSpin = CreateIntSpinner("upi-w", 0, 0, 120, 24, 1, 20000, startW, 1);
+        widthSpin->SetSuffix(" px");
+        widthSpin->onValueChanged = [this](double) { SyncFromWidth(); };
+        AddChild(LabelledRow("upi-w-row", "Raster width:", widthSpin, 120));
+        heightSpin = CreateIntSpinner("upi-h", 0, 0, 120, 24, 1, 20000, startH, 1);
+        heightSpin->SetSuffix(" px");
+        heightSpin->onValueChanged = [this](double) { SyncFromHeight(); };
+        AddChild(LabelledRow("upi-h-row", "Raster height:", heightSpin, 120));
+
+        if (paged) {
+            pageSpin = CreateIntSpinner("upi-page", 0, 0, 120, 24, 1, req.pageCount, 1, 1);
+            pageSpin->SetSuffix(" of " + std::to_string(req.pageCount));
+            AddChild(LabelledRow("upi-page-row", "Page:", pageSpin, 120));
+        }
+    }
+
+    // Merging a bitmap larger than the canvas would silently crop it, so the
+    // fit is offered (and taken by default) exactly when it would.
+    if (req.offerMerge && !req.vector && req.canvasWidth > 0 && req.canvasHeight > 0 &&
+        (req.naturalWidth > req.canvasWidth || req.naturalHeight > req.canvasHeight)) {
+        fitBox = std::make_shared<UltraCanvasCheckbox>("upi-fit", 0, 0, 0, 24,
+                                                       "Scale to fit the canvas when merging");
+        fitBox->SetChecked(true);
+        fitBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        AddChild(fitBox);
+    }
+
+    // ----- buttons -----
+    auto row = std::make_shared<UltraCanvasContainer>("upi-buttons", 0, 0, 0, 34);
+    row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center)
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexEnd);
+    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto addButton = [&](const std::string& id, const std::string& text, int width,
+                         UltraPaintImportResult::Action action) {
+        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, text);
+        b->onClick = [this, action]() { Finish(action); };
+        b->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->AddChild(b);
+        return b;
+    };
+    addButton("upi-cancel", "Cancel", 88, UltraPaintImportResult::Action::Cancel);
+    if (req.offerMerge) {
+        addButton("upi-merge", "Merge image", 136, UltraPaintImportResult::Action::Merge);
+        addButton("upi-window", "Open new window", 176, UltraPaintImportResult::Action::NewWindow);
+    } else {
+        addButton("upi-open", "Open", 96, UltraPaintImportResult::Action::Open);
+    }
+    AddChild(row);
+}
+
+void UltraPaintImportDialog::SyncFromWidth() {
+    if (syncing || !widthSpin || !heightSpin) return;
+    if (req.naturalWidth <= 0 || req.naturalHeight <= 0) return;
+    syncing = true;
+    const double w = widthSpin->GetValue();
+    heightSpin->SetValue(std::max(1.0, std::round(w * req.naturalHeight / req.naturalWidth)));
+    syncing = false;
+}
+
+void UltraPaintImportDialog::SyncFromHeight() {
+    if (syncing || !widthSpin || !heightSpin) return;
+    if (req.naturalWidth <= 0 || req.naturalHeight <= 0) return;
+    syncing = true;
+    const double h = heightSpin->GetValue();
+    widthSpin->SetValue(std::max(1.0, std::round(h * req.naturalWidth / req.naturalHeight)));
+    syncing = false;
+}
+
+UltraPaintImportResult UltraPaintImportDialog::Collect(UltraPaintImportResult::Action action) const {
+    UltraPaintImportResult r;
+    r.action = action;
+    r.width = widthSpin ? static_cast<int>(widthSpin->GetValue()) : req.naturalWidth;
+    r.height = heightSpin ? static_cast<int>(heightSpin->GetValue()) : req.naturalHeight;
+    r.page = pageSpin ? std::max(0, static_cast<int>(pageSpin->GetValue()) - 1) : 0;
+    r.scaleToFit = fitBox && fitBox->IsChecked();
+    return r;
+}
+
+void UltraPaintImportDialog::Finish(UltraPaintImportResult::Action action) {
+    // Same order as UltraPaintDialogParts::ButtonRow: the callback runs while
+    // the dialog is still alive, then the window closes itself.
+    if (onAccept) onAccept(Collect(action));
+    Close();
 }
 
 // ===========================================================================

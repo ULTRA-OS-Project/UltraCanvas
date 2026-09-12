@@ -1,3 +1,28 @@
+#### 2026-09-12 *0.8.38*
+- **Vector artwork can become pixels.** New `UltraCanvasVectorRaster.h`
+  (`IsVectorGraphicsPath` / `GetVectorRasterExtensions` /
+  `InspectVectorFile` / `RasterizeVectorFile`): it reports what a drawing
+  asks to be drawn at and how many pages it has, then renders it into an
+  editable `UCRasterLayer` at whatever pixel size the caller wants. Doc:
+  [UltraCanvasVectorRaster](UltraCanvasVectorRaster.md).
+- The size is rendered, not scaled up: SVG goes through librsvg at the scale
+  that lands on the requested pixels, a PDF page through `pdfload` at the
+  matching dpi. One dimension alone keeps the aspect ratio, neither gives the
+  natural size, and a size past `maxPixels` (256 Mpx) is an error rather than
+  an allocation.
+- Two rasterizers behind the one call. The libvips pipeline covers SVG/SVGZ,
+  PDF/AI and (where the build has a PostScript delegate) EPS/PS; everything
+  else goes to whichever registered `IGraphicsPlugin` claims the extension as
+  a vector format - its element is rendered into an offscreen render context
+  and read back - so the Vector plugin's DXF, DWG, EMF, WMF and XAR rasterize
+  as soon as an application registers it. Both halves answer at runtime, and
+  `GetVectorRasterExtensions()` is what a file filter should list.
+- The background is composited *under* the drawing, so an SVG with no backdrop
+  keeps its alpha by default and an opaque background flattens it without
+  touching what is drawn over it.
+- Tested by `VectorRasterTest` (CTest), which skips itself on a build with no
+  SVG rasterizer rather than failing.
+
 #### 2026-09-12 *0.8.37*
 - **A double-click that opens nothing now says so on macOS too.** The default
   open spawned `/usr/bin/open` detached - and a detached spawn never sees the

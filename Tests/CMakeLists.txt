@@ -2619,3 +2619,25 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  OffscreenRenderTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== VECTOR RASTERIZER TEST =====
+# UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
+# into a raster layer at a chosen pixel size (the path a bitmap editor takes
+# when an SVG is dropped on it).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building VectorRasterTest...")
+    add_executable(VectorRasterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorRasterTest.cpp
+    )
+    target_include_directories(VectorRasterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorRasterTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorRasterTest PRIVATE UltraCanvas)
+    set_target_properties(VectorRasterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorRasterTest COMMAND VectorRasterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorRasterTest")
+else()
+    message(STATUS "  VectorRasterTest skipped (UltraCanvas target not present)")
+endif()

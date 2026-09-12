@@ -4,8 +4,12 @@
 // panels on the right and a status bar at the bottom. Owns the document,
 // the tools and every command (file, edit, image, layer, select, adjust,
 // filter, view).
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+//
+// The editor is multi-window: the class also holds the registry of open
+// windows, so File > New Window and "Open new window" on a dropped image add
+// to it and the application exits with the last of them.
+// Version: 1.1.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -41,7 +45,21 @@ public:
     bool Initialize(const std::vector<std::string>& paths);
     void Show();
 
+    // Creates, registers and shows a further editor window on `paths` (empty:
+    // a blank canvas). The windows own themselves — the registry drops one
+    // when it closes, and the application exits with the last of them — so
+    // the returned pointer may be ignored.
+    static std::shared_ptr<UltraPaintWindow> OpenWindow(const std::vector<std::string>& paths);
+    static int WindowCount();
+
 private:
+    // ----- window registry -----
+    static std::vector<std::shared_ptr<UltraPaintWindow>>& OpenWindows();
+    // Drops `window` from the registry on the next turn of the event loop:
+    // the call arrives from inside that window's own close, so the object
+    // cannot be destroyed yet.
+    static void RetireWindow(UltraPaintWindow* closed);
+
     // ----- construction -----
     void BuildMenuBar();
     void BuildToolbar();
@@ -56,6 +74,32 @@ private:
     void SetDocument(std::shared_ptr<UCRasterDocument> doc, const std::string& title);
     void NewImage(const UltraPaintNewImageResult& r);
     void OpenFile(const std::string& path);
+    // The straight "replace what is open with this file" path; OpenFile()
+    // sends vector artwork through the import dialog first.
+    bool LoadIntoWindow(const std::string& path);
+
+    // ----- import: dropped files and vector artwork -----
+    // Files dropped on the canvas: asks once what to do with them, then does
+    // it to all of them.
+    void HandleDroppedFiles(const std::vector<std::string>& files);
+    // Asks what to do with `path` — open it here, open a new window for it,
+    // or merge it into the open image — and carries the answer out.
+    // `fromDrop` decides which of those the dialog offers; `alsoFiles` are the
+    // rest of a multi-file drop, which follow the same answer.
+    void ImportFile(const std::string& path, bool fromDrop,
+                    const std::vector<std::string>& alsoFiles = {});
+    // Carries out the dialog's answer. `preloaded` is the document already
+    // read for the dialog (a dropped bitmap is decoded to measure it), so the
+    // file is not read a second time; null means read it now.
+    void ApplyImport(const std::string& path, const UltraPaintImportResult& result,
+                     std::shared_ptr<UCRasterDocument> preloaded = nullptr);
+    // Reads a file into a document, rasterizing vector artwork at `result`'s
+    // size and page. Null with the reason already shown when it cannot be read.
+    std::shared_ptr<UCRasterDocument> LoadDocument(const std::string& path,
+                                                   const UltraPaintImportResult& result);
+    // Merges a document's flattened pixels into the open image as a new layer.
+    void MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
+                       const std::string& path, bool scaleToFit);
     bool SaveToPath(const std::string& path);
     void ConfirmDiscard(const std::string& question, const std::function<void()>& proceed);
     void UpdateTitle();
@@ -63,8 +107,11 @@ private:
     void UpdateUndoButtons();
 
     // ----- commands -----
+    static std::vector<std::string> OpenableExtensions();
     void CmdNew();
+    void CmdNewWindow();
     void CmdOpen();
+    void CmdImport();
     void CmdSave();
     void CmdSaveAs();
     void CmdExport();
@@ -152,6 +199,9 @@ private:
     std::weak_ptr<UltraCanvasWindow> activeDialog;
 
     UltraPaintNewImageResult lastNewImage;
+    // A command-line vector drawing: its size dialog waits until the window
+    // is on screen rather than opening behind it.
+    std::string pendingImport;
     double pointerX = 0, pointerY = 0;
     bool pointerInside = false;
 };

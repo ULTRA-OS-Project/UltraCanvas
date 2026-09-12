@@ -586,6 +586,14 @@ engine; these classes hold the pixels being edited and hand them to it.
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
   `onViewChanged`, `onFilesDropped`; `PaintPointerEvent` carries image
   coordinates.
+- **UltraCanvasVectorRaster** (`UltraCanvasVectorRaster.h`) — vector artwork
+  into an editable layer at a chosen pixel size: `IsVectorGraphicsPath`,
+  `GetVectorRasterExtensions`, `InspectVectorFile` (natural size, page count,
+  which rasterizer applies) and `RasterizeVectorFile` → `UCRasterLayer`.
+  Renders *at* the requested size through libvips (`svgload`/`pdfload`/the
+  PostScript delegate) or, for any extension a registered `IGraphicsPlugin`
+  claims as vector, through that plugin's element in an offscreen render
+  context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
 

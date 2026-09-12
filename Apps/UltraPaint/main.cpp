@@ -3,8 +3,8 @@
 // selections, brushes and shapes on the framework's raster-editing layer
 // (UCRasterDocument / UltraCanvasPaintSurface), adjustments and filters
 // through PixelFX (libvips).
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.1.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -62,6 +62,7 @@ static void PrintUsage(const char* programName) {
     debugOutput << "  " << programName << "                 # blank canvas" << std::endl;
     debugOutput << "  " << programName << " photo.jpg       # open an image" << std::endl;
     debugOutput << "  " << programName << " work.ucraster   # open a layered project" << std::endl;
+    debugOutput << "  " << programName << " logo.svg        # a drawing: asks for the raster size" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -105,12 +106,14 @@ int main(int argc, char* argv[]) {
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraPaint.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
-        UltraPaintWindow mainWindow;
-        if (!mainWindow.Initialize(pathsToOpen)) {
+        // The editor is multi-window: UltraPaintWindow keeps every open window
+        // alive itself (File > New Window, and "Open new window" on a dropped
+        // image add to that list), and the application exits with the last of
+        // them.
+        if (!UltraPaintWindow::OpenWindow(pathsToOpen)) {
             HandleFatalError("Failed to create main window");
             return EXIT_FAILURE;
         }
-        mainWindow.Show();
 
         debugOutput << "=== UltraPaint Ready ===" << std::endl;
         app.Run();
