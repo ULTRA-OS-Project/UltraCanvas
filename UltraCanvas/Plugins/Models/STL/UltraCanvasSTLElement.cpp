@@ -6,7 +6,8 @@
 
 #include "UltraCanvasSTLElement.h"
 #include "UltraCanvasDebug.h"
-#include "UltraCanvasModelPreview.h"
+#include "UltraCanvasModelPreview.h"   // which formats reach LoadFromFile
+#include "UltraCanvasModelRaster.h"    // and how the non-GL build draws them
 
 #include <cmath>
 #include <string>
@@ -340,6 +341,12 @@ bool UltraCanvasSTLElement::LoadFromFile(const std::string& filePath) {
 void UltraCanvasSTLElement::SetMesh(const Mesh3D& mesh) {
     mesh_ = mesh;
     if (!mesh_.bounds.IsValid()) mesh_.ComputeBounds();
+    InvalidateRender();
+}
+
+void UltraCanvasSTLElement::InvalidateRender() {
+    rendered_.reset();
+    renderedWidth_ = renderedHeight_ = 0;
 }
 
 bool UltraCanvasSTLElement::SaveToFile(const std::string& filePath, STLFormat format,
@@ -355,15 +362,42 @@ void UltraCanvasSTLElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRe
     ctx->SetFillPaint(Color(30, 33, 40, 255));
     ctx->FillRectangle(box);
 
+    const int w = static_cast<int>(std::lround(b.width));
+    const int h = static_cast<int>(std::lround(b.height));
+
+    // Rasterize once per size. Nothing in this view moves - there is no orbit
+    // and no zoom without GL - so a cached still is not an optimisation so
+    // much as the honest amount of work.
+    if (w > 0 && h > 0 && (!rendered_ || w != renderedWidth_ || h != renderedHeight_)) {
+        rendered_ = RenderMeshPreviewPixmap(mesh_, w, h);
+        renderedWidth_ = w;
+        renderedHeight_ = h;
+    }
+
+    if (rendered_) {
+        // Fit rather than fill: the rasterizer already framed the model inside
+        // a square of its own, so stretching it here would undo that.
+        ctx->DrawPixmap(*rendered_, box, ImageFitMode::Contain);
+        return;
+    }
+
+    // No mesh, a degenerate one, or a mesh over the preview cap. Say which -
+    // "nothing to draw" and "too big to draw" are different answers, and a
+    // blank rectangle tells the reader neither.
     ctx->SetFillPaint(Color(220, 220, 225, 255));
     ctx->SetFontSize(13);
-    std::string label = mesh_.Empty()
-        ? std::string("STL: (no mesh loaded)")
-        : ("STL: " + (mesh_.name.empty() ? std::string("model") : mesh_.name) +
-           " — " + std::to_string(mesh_.TriangleCount()) + " triangles");
+    std::string label;
+    if (mesh_.Empty()) {
+        label = "3D model: (no mesh loaded)";
+    } else if (mesh_.TriangleCount() > kModelPreviewTriangleCap) {
+        label = "3D model: " + std::to_string(mesh_.TriangleCount()) +
+                " triangles — too large to preview";
+    } else {
+        label = "3D model: " + (mesh_.name.empty() ? std::string("model") : mesh_.name) +
+                " — " + std::to_string(mesh_.TriangleCount()) +
+                " triangles, no usable bounds";
+    }
     ctx->DrawText(label, Point2Dd{b.x + 10.0, b.y + 22.0});
-    ctx->DrawText("(build with -DULTRACANVAS_ENABLE_GL=ON for 3D preview)",
-                  Point2Dd{b.x + 10.0, b.y + 42.0});
 }
 
 #endif // ULTRACANVAS_ENABLE_GL

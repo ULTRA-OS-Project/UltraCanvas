@@ -102,7 +102,13 @@ namespace UltraCanvas {
 
 #else // !ULTRACANVAS_ENABLE_GL
 
-// ===== NON-GL FALLBACK (data + 2D placeholder) =====
+// ===== NON-GL FALLBACK (data + software-rendered still) =====
+//
+// Without GL there is no interaction to offer - no orbit, no zoom - so this
+// draws the one thing that is still worth drawing: a shaded three-quarter
+// still of the mesh, from the same software rasterizer the Filer's thumbnails
+// use (UltraCanvasModelRaster.h). It used to print the model's triangle count
+// and a line suggesting the reader rebuild with GL enabled.
     class UltraCanvasSTLElement : public UltraCanvasUIElement {
     public:
         UltraCanvasSTLElement(const std::string& identifier,
@@ -126,7 +132,15 @@ namespace UltraCanvas {
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
     private:
+        // The rasterized still, kept until the mesh or the element's size
+        // changes. Re-rendering per frame would be wasteful and pointless:
+        // nothing about this view moves, so the same pixels would come back.
+        void InvalidateRender();
+
         Mesh3D mesh_;
+        std::shared_ptr<UCPixmap> rendered_;
+        int renderedWidth_ = 0;
+        int renderedHeight_ = 0;
     };
 
 #endif // ULTRACANVAS_ENABLE_GL

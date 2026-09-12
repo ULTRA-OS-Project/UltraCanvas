@@ -1,3 +1,43 @@
+#### 2026-09-11 *0.8.32*
+- **A build without GL now shows the model instead of a sentence about GL.**
+  `UltraCanvasSTLElement`'s non-GL fallback drew a dark rectangle, the triangle
+  count, and the line *"(build with -DULTRACANVAS_ENABLE_GL=ON for 3D preview)"*
+  - while the Filer, in the same process, had been drawing a shaded
+  three-quarter view of the same mesh all along. The picture was always
+  available; it was sitting in another file, private to the widget that wrote
+  it.
+- **`include/UltraCanvasModelRaster.h` is that rasterizer, extracted.** Nothing
+  about the maths moved with it - the same pose, the same framing, the same
+  flat two-sided shading off triangle geometry rather than stored normals, the
+  same transparent background. `UltraCanvasFilerWidget` now loads the mesh and
+  calls it; the element caches one still per size, because nothing in a
+  non-interactive view moves and re-rendering per frame would produce the same
+  pixels.
+- **The extraction found a bug that had been invisible.** A mesh whose every
+  vertex sits at one point produced a *fully transparent* tile rather than
+  being refused, because `BoundingBox3D::Radius()` substitutes 1.0 for a
+  degenerate box - the right answer for framing, the wrong one for deciding
+  whether there is anything to draw. The Filer then recorded that empty tile as
+  a successful preview, so the file showed nothing at all instead of falling
+  back to its type glyph. The extent is now measured directly and such a mesh
+  is refused.
+- **The fallback also says which nothing it is.** "No mesh loaded", "too large
+  to preview" and "no usable bounds" are three different answers, and a blank
+  rectangle told the reader none of them.
+- **`Tests/ModelRasterTest.cpp`** (new) is the first test this code has ever
+  had - it was previously reachable only through a thumbnail worker, so it
+  could only be checked by looking at a folder. It pins the refusals (empty,
+  degenerate, over the cap), the output geometry (exact size, HiDPI scale,
+  a scale below 1 clamped rather than shrinking the tile), that the model
+  covers a reasonable share of the tile without touching its edges, that a cube
+  shows at least three distinct face shades so the light is really applied,
+  that the pose lights the top more than the bottom, that two renders of one
+  mesh are pixel-identical - the caches depend on it - and that a triangle is
+  drawn whichever way it is wound, since most STL in the wild is inconsistent.
+  Clean under ASan/UBSan.
+- The GL path is untouched. Where GL is enabled the real viewer still runs, as
+  it should the moment anyone drags to rotate.
+
 #### 2026-09-11 *0.8.31*
 - **macOS signing and notarization now run only on a push to `main`.** A pull
   request packages the same bundle unsigned, which is exactly what the Windows
