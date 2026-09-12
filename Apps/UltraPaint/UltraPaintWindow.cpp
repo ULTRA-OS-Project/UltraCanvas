@@ -223,6 +223,9 @@ void UltraPaintWindow::BuildMenuBar() {
     // Curves sits with the adjustments, right after Levels.
     adjustItems.insert(adjustItems.begin() + std::min<size_t>(4, adjustItems.size()),
                        M::ActionWithShortcut("Curves...", "Ctrl+M", [this]() { CmdCurves(); }));
+    // Colour to Alpha changes transparency rather than tone, so it sits on its own at the end.
+    adjustItems.push_back(M::Separator());
+    adjustItems.push_back(M::Action("Colour to Alpha...", [this]() { CmdColourToAlpha(); }));
 
     menuBar = MenuBuilder("up-menubar", 0, 0, 0, kMenuHeight)
         .SetType(MenuType::Menubar)
@@ -1186,6 +1189,44 @@ void UltraPaintWindow::CmdCurves() {
     dlg->Show();
 #else
     UltraCanvasDialogManager::ShowError("Curves needs a build with libvips.", "Curves", nullptr, window.get());
+#endif
+}
+
+void UltraPaintWindow::CmdColourToAlpha() {
+#ifdef HAS_LIBVIPS
+    if (!document) return;
+    auto layer = document->GetActiveLayer();
+    if (!layer || layer->locked) { if (statusHint) statusHint->SetText("The active layer is locked"); return; }
+    if (previewActive) { if (statusHint) statusHint->SetText("Finish the open filter dialog first"); return; }
+    BeginPreview();
+
+    UltraPaintColourToAlphaParams initial;
+    initial.colour = foreground.ToColor();
+    initial.colour.a = 255;
+
+    auto opFor = [](const UltraPaintColourToAlphaParams& p) {
+        return [p](const PixelFX::PFXImage& img) -> PixelFX::PFXImage {
+            if (p.transparency <= 0) return img;
+            return PixelFX::Colour::ColourToAlpha(img,
+                    { static_cast<double>(p.colour.r), static_cast<double>(p.colour.g), static_cast<double>(p.colour.b) },
+                    p.tolerance, p.softness, p.transparency / 100.0, p.despill);
+        };
+    };
+
+    auto dlg = std::make_shared<UltraPaintColourToAlphaDialog>(initial);
+    dlg->onPreview = [this, opFor](const UltraPaintColourToAlphaParams& p, bool enabled) {
+        // Not a ternary: opFor returns a lambda, so the two arms have no common type.
+        if (enabled) ShowPreview(opFor(p)); else ShowPreview(nullptr);
+    };
+    dlg->onAccept = [this, opFor](const UltraPaintColourToAlphaParams& p) {
+        EndPreview(p.transparency > 0, "Colour to Alpha", opFor(p));
+    };
+    dlg->onCancel = [this]() { EndPreview(false, "Colour to Alpha", nullptr); };
+    dlg->Create();
+    dlg->Show();
+    ShowPreview(opFor(initial));
+#else
+    UltraCanvasDialogManager::ShowError("Colour to Alpha needs a build with libvips.", "Colour to Alpha", nullptr, window.get());
 #endif
 }
 

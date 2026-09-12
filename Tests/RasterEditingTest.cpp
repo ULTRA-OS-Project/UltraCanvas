@@ -2,8 +2,9 @@
 // Headless checks of the raster-editing layer: UCRasterLayer blend and
 // composite arithmetic, UCRasterSelection shapes and algebra, the brush
 // engine (strokes, opacity cap, fills, shapes, gradients, wand),
-// UCRasterDocument layers / undo / redo / selection-aware filters, and the
-// PNG and .ucraster round trips (the last two only with libvips).
+// UCRasterDocument layers / undo / redo / selection-aware filters, colour
+// keying (Colour to Alpha), and the PNG and .ucraster round trips (the last
+// three only with libvips).
 // Version: 1.0.0
 // Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
@@ -22,6 +23,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <string>
+#include <vector>
 
 using namespace UltraCanvas;
 
@@ -330,6 +332,86 @@ static void TestPixelFXAndFiles() {
     CHECK(p2.GetLayer(1)->opacity == 0.25f && p2.GetLayer(1)->blendMode == RasterBlendMode::Screen);
     std::filesystem::remove_all(dir);
 }
+
+// PixelFX::Colour::ColourToAlpha - turning a colour into transparency, the
+// engine behind UltraPaint's Adjust > Colour to Alpha.
+static void TestColourToAlpha() {
+    const std::vector<double> white = { 255, 255, 255 };
+    // white, near-white, mid grey, black - distances 0, 5, 127, 255 from white
+    UCRasterLayer l(4, 1, RasterPixel(255, 255, 255, 255));
+    l.SetPixel(1, 0, RasterPixel(250, 250, 250, 255));
+    l.SetPixel(2, 0, RasterPixel(128, 128, 128, 255));
+    l.SetPixel(3, 0, RasterPixel(0, 0, 0, 255));
+
+    auto keyed = [&](double tolerance, double softness, double amount, bool despill) {
+        UCRasterLayer out;
+        CHECK(out.FromPixelFX(PixelFX::Colour::ColourToAlpha(l.ToPixelFX(), white,
+                                                             tolerance, softness, amount, despill)));
+        return out;
+    };
+
+    // An exact match goes, everything else stays.
+    UCRasterLayer hard = keyed(0, 0, 1.0, false);
+    CHECK(hard.GetPixel(0, 0).a == 0);
+    CHECK(hard.GetPixel(1, 0).a == 255 && hard.GetPixel(2, 0).a == 255 && hard.GetPixel(3, 0).a == 255);
+
+    // Tolerance reaches the near-white pixel; it is the same distance the
+    // magic wand and the flood fill measure, so 8 covers a difference of 5.
+    UCRasterLayer tol = keyed(8, 0, 1.0, false);
+    CHECK(tol.GetPixel(0, 0).a == 0 && tol.GetPixel(1, 0).a == 0);
+    CHECK(tol.GetPixel(2, 0).a == 255 && tol.GetPixel(3, 0).a == 255);
+
+    // The percentage: half transparency leaves half the alpha, it does not
+    // remove the colour.
+    UCRasterLayer half = keyed(8, 0, 0.5, false);
+    CHECK_NEAR(half.GetPixel(0, 0).a, 128, 1);
+    CHECK_NEAR(half.GetPixel(1, 0).a, 128, 1);
+    CHECK(half.GetPixel(2, 0).a == 255);
+
+    // amount 0 is a no-op however wide the tolerance.
+    UCRasterLayer none = keyed(255, 0, 0.0, true);
+    for (int x = 0; x < 4; ++x) CHECK(none.GetPixel(x, 0).a == 255);
+
+    // Softness ramps rather than steps: alpha never falls as the distance from
+    // the key grows, and climbs over the body of the ramp. The near-white
+    // pixel sits far enough into the foot of the smoothstep to still round to
+    // zero, so only the ends are pinned exactly.
+    UCRasterLayer soft = keyed(0, 255, 1.0, false);
+    CHECK(soft.GetPixel(0, 0).a == 0);
+    CHECK(soft.GetPixel(0, 0).a <= soft.GetPixel(1, 0).a);
+    CHECK(soft.GetPixel(1, 0).a < soft.GetPixel(2, 0).a);
+    CHECK(soft.GetPixel(2, 0).a < soft.GetPixel(3, 0).a);
+    CHECK(soft.GetPixel(3, 0).a == 255);
+
+    // Despill un-mixes the key out of a part-transparent pixel: mid grey is
+    // half black under white, so it comes back black at about half alpha.
+    UCRasterLayer spill = keyed(0, 255, 1.0, true);
+    CHECK_NEAR(spill.GetPixel(2, 0).a, 127, 3);
+    CHECK_NEAR(spill.GetPixel(2, 0).r, 0, 3);
+
+    // Alpha is scaled, never raised: an already-transparent pixel far from the
+    // key keeps the alpha it had.
+    UCRasterLayer faint(1, 1, RasterPixel(0, 0, 0, 100));
+    UCRasterLayer keptFaint;
+    CHECK(keptFaint.FromPixelFX(PixelFX::Colour::ColourToAlpha(faint.ToPixelFX(), white, 0, 0, 1.0, false)));
+    CHECK(keptFaint.GetPixel(0, 0).a == 100);
+
+    // An image with no alpha band gains one.
+    PixelFX::PFXImage opaque = PixelFX::Colour::ExtractBand(l.ToPixelFX(), 0, 3);
+    CHECK(PixelFX::Colour::ColourToAlpha(opaque, white, 0, 0, 1.0, false).Bands() == 4);
+
+    // Through the document it is one undoable edit, clipped to the selection.
+    UCRasterDocument doc(8, 4, RasterPixel(255, 255, 255, 255));
+    doc.GetSelection().SetRectangle(Rect2Di(0, 0, 4, 4));
+    doc.CommitSelectionChange("half");
+    CHECK(doc.ApplyFilter("Colour to Alpha", [&](const PixelFX::PFXImage& i) {
+        return PixelFX::Colour::ColourToAlpha(i, white, 0, 0, 1.0, false);
+    }));
+    CHECK(doc.GetLayer(0)->GetPixel(1, 1).a == 0);
+    CHECK(doc.GetLayer(0)->GetPixel(6, 1).a == 255);
+    doc.Undo();
+    CHECK(doc.GetLayer(0)->GetPixel(1, 1).a == 255);
+}
 #endif
 
 int main() {
@@ -344,6 +426,7 @@ int main() {
     TestDocument();
 #ifdef HAS_LIBVIPS
     TestPixelFXAndFiles();
+    TestColourToAlpha();
 #endif
     std::printf("RasterEditingTest: %d checks, %d failures\n", checks, failures);
     return failures == 0 ? 0 : 1;

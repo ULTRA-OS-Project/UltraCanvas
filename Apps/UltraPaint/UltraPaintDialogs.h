@@ -1,8 +1,9 @@
 // Apps/UltraPaint/UltraPaintDialogs.h
 // UltraPaint's small parameter windows: New Image (size, background),
-// Scale Image, Canvas Size and the Text tool's entry. Each is an
-// UltraCanvasWindow built out of framework elements (spinners, dropdowns,
-// text input, buttons) and reports through callbacks.
+// Scale Image, Canvas Size, the Text tool's entry, layer properties and
+// Colour to Alpha. Each is an UltraCanvasWindow built out of framework
+// elements (spinners, dropdowns, text input, colour picker, buttons) and
+// reports through callbacks.
 // Version: 1.0.0
 // Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
@@ -16,6 +17,7 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasColorPicker.h"
 
 #include <functional>
 #include <memory>
@@ -99,6 +101,41 @@ private:
     std::shared_ptr<UltraCanvasSpinner> opacitySpin;
     std::shared_ptr<UltraCanvasDropdown> blendDrop;
     std::shared_ptr<UltraCanvasCheckbox> visibleBox, lockedBox;
+};
+
+// ===== COLOUR TO ALPHA =====
+// Which colour to key out of the layer and how hard. `transparency` is a
+// percentage so the colour can be faded rather than only removed outright:
+// 100 makes it fully transparent, 40 takes 40% of its opacity away.
+struct UltraPaintColourToAlphaParams {
+    Color colour = Colors::White;
+    int  tolerance = 0;       // 0..255, how far from the colour still counts as it
+    int  softness = 32;       // 0..255, the width of the ramp past the tolerance
+    int  transparency = 100;  // 0..100 %
+    bool despill = true;      // un-mix the colour out of the part-transparent edges
+};
+
+class UltraPaintColourToAlphaDialog : public UltraCanvasWindow {
+public:
+    explicit UltraPaintColourToAlphaDialog(const UltraPaintColourToAlphaParams& initial);
+
+    const UltraPaintColourToAlphaParams& GetParams() const { return params; }
+    bool IsPreviewEnabled() const { return previewEnabled; }
+
+    // Live while the user drags; `enabled` false means "show the original".
+    std::function<void(const UltraPaintColourToAlphaParams&, bool enabled)> onPreview;
+    std::function<void(const UltraPaintColourToAlphaParams&)> onAccept;
+    std::function<void()> onCancel;
+
+private:
+    void EmitPreview();
+
+    UltraPaintColourToAlphaParams params;
+    bool previewEnabled = true;
+    bool accepted = false;
+    std::shared_ptr<UltraCanvasColorPicker> picker;
+    std::shared_ptr<UltraCanvasContainer> sliders;
+    std::shared_ptr<UltraCanvasCheckbox> previewBox;
 };
 
 // ===== SHARED BUILDING BLOCKS =====

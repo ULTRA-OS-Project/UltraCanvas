@@ -128,9 +128,11 @@ std::vector<std::unique_ptr<PaintTool>> CreatePaintTools();
 // ===== OPTION WIDGET HELPERS (shared by the tools and the window) =====
 namespace PaintOptionWidgets {
     // A "Label  [slider]  value" row; `onChange` gets the new value.
+    // `labelWidth` 0 uses the column width the tool options panel shares;
+    // pass a wider one for a label that does not fit in it.
     void AddSliderRow(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
                       float minVal, float maxVal, float value, float step, bool integer,
-                      const std::function<void(float)>& onChange);
+                      const std::function<void(float)>& onChange, float labelWidth = 0);
     void AddCheckbox(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
                      bool checked, const std::function<void(bool)>& onChange);
     void AddDropdown(UltraCanvasContainer& panel, const std::string& id, const std::string& label,

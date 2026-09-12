@@ -1,10 +1,12 @@
 // Apps/UltraPaint/UltraPaintDialogs.cpp
-// New Image, Scale Image / Canvas Size, Text and Layer Properties windows.
+// New Image, Scale Image / Canvas Size, Text, Layer Properties and
+// Colour to Alpha windows.
 // Version: 1.0.0
 // Last Modified: 2026-09-06
 // Author: UltraCanvas Framework
 
 #include "UltraPaintDialogs.h"
+#include "UltraPaintTools.h"   // PaintOptionWidgets
 #include "UltraCanvasRasterLayer.h"
 
 #include <algorithm>
@@ -276,6 +278,92 @@ UltraPaintLayerDialog::UltraPaintLayerDialog(const UltraPaintLayerProps& initial
         r.locked = lockedBox->IsChecked();
         if (onAccept) onAccept(r);
     }));
+}
+
+// ===========================================================================
+// COLOUR TO ALPHA
+// ===========================================================================
+
+UltraPaintColourToAlphaDialog::UltraPaintColourToAlphaDialog(const UltraPaintColourToAlphaParams& initial)
+    : UltraCanvasWindow(), params(initial) {
+    config_.title = "Colour to Alpha";
+    config_.width = 380; config_.height = 560;
+    config_.minWidth = 340; config_.minHeight = 500;
+    config_.resizable = false;
+    config_.deleteOnClose = true;
+    SetPadding(12);
+    layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    // Two labels rather than one string with a newline in it: UltraCanvasLabel
+    // draws a single line.
+    const char* hintLines[] = { "Pick the colour to make transparent.",
+                                "The eyedropper samples it off the canvas." };
+    for (int i = 0; i < 2; ++i) {
+        auto hint = CreateLabel("upc-hint" + std::to_string(i), 0, 0, 0, 17, hintLines[i]);
+        hint->SetFontSize(11);
+        hint->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        AddChild(hint);
+    }
+
+    // The colour itself: the framework picker, whose built-in eyedropper lets
+    // the user take the colour straight off the image behind this window.
+    // Same proportions the right-hand panel's picker uses, so it reads as the
+    // same control.
+    picker = CreateColorPicker("upc-colour", params.colour, 0, 0, 290, 300);
+    picker->SetUIScale(0.78f);
+    picker->SetShowAlpha(false);
+    picker->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    picker->onColorChanged = [this](const Color& c) { params.colour = c; EmitPreview(); };
+    picker->onColorChanging = [this](const Color& c) { params.colour = c; EmitPreview(); };
+    AddChild(picker);
+
+    sliders = std::make_shared<UltraCanvasContainer>("upc-sliders", 0, 0, 0, 124);
+    sliders->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    sliders->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    constexpr float kLabelW = 132.0f;   // wide enough for "Transparency %"
+    PaintOptionWidgets::AddSliderRow(*sliders, "upc-tol", "Tolerance", 0, 255, static_cast<float>(params.tolerance), 1, true,
+                                     [this](float v) { params.tolerance = static_cast<int>(v); EmitPreview(); }, kLabelW);
+    PaintOptionWidgets::AddSliderRow(*sliders, "upc-soft", "Softness", 0, 255, static_cast<float>(params.softness), 1, true,
+                                     [this](float v) { params.softness = static_cast<int>(v); EmitPreview(); }, kLabelW);
+    PaintOptionWidgets::AddSliderRow(*sliders, "upc-amount", "Transparency %", 0, 100, static_cast<float>(params.transparency), 1, true,
+                                     [this](float v) { params.transparency = static_cast<int>(v); EmitPreview(); }, kLabelW);
+    PaintOptionWidgets::AddCheckbox(*sliders, "upc-despill", "Remove colour fringe from soft edges", params.despill,
+                                    [this](bool v) { params.despill = v; EmitPreview(); });
+    AddChild(sliders);
+
+    auto row = std::make_shared<UltraCanvasContainer>("upc-buttons", 0, 0, 0, 32);
+    row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    previewBox = std::make_shared<UltraCanvasCheckbox>("upc-preview", 0, 0, 90, 24, "Preview");
+    previewBox->SetChecked(true);
+    previewBox->onStateChanged = [this](CheckedState, CheckedState n) {
+        previewEnabled = n == CheckedState::Checked;
+        if (onPreview) onPreview(params, previewEnabled);
+    };
+    previewBox->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    row->AddChild(previewBox);
+
+    auto cancel = std::make_shared<UltraCanvasButton>("upc-cancel", 0, 0, 80, 28, "Cancel");
+    cancel->onClick = [this]() { Close(); };
+    cancel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    row->AddChild(cancel);
+
+    auto ok = std::make_shared<UltraCanvasButton>("upc-ok", 0, 0, 80, 28, "OK");
+    ok->onClick = [this]() {
+        accepted = true;
+        if (onAccept) onAccept(params);
+        Close();
+    };
+    ok->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    row->AddChild(ok);
+    AddChild(row);
+
+    onWindowClosed = [this]() { if (!accepted && onCancel) onCancel(); };
+}
+
+void UltraPaintColourToAlphaDialog::EmitPreview() {
+    if (previewEnabled && onPreview) onPreview(params, true);
 }
 
 } // namespace UltraCanvas

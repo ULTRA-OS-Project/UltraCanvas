@@ -63,9 +63,9 @@ namespace {
 
 void AddSliderRow(UltraCanvasContainer& panel, const std::string& id, const std::string& label,
                   float minVal, float maxVal, float value, float step, bool integer,
-                  const std::function<void(float)>& onChange) {
+                  const std::function<void(float)>& onChange, float labelWidth) {
     auto row = MakeRow(id + "-row");
-    auto lbl = CreateLabel(id + "-label", 0, 0, kLabelW, kRowH, label);
+    auto lbl = CreateLabel(id + "-label", 0, 0, labelWidth > 0 ? labelWidth : kLabelW, kRowH, label);
     lbl->SetFontSize(11);
     lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     row->AddChild(lbl);

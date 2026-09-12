@@ -819,6 +819,17 @@ namespace UltraCanvas {
             isDragging = false;
             activeHandle = RangeHandle::NoneRange;
 
+            // Report the value the drag settled on. SetValue() hands the
+            // intermediate values to onValueChanging while the drag is live and
+            // fires onValueChanged only when it is not dragging, so a handler
+            // that acts on the committed value - a filter preview that is too
+            // costly to re-run per pointer move, say - would otherwise never
+            // hear the result of a drag at all. Range mode has no such gap: its
+            // callbacks fire from SetLowerValue / SetUpperValue either way.
+            if (!isRangeMode && onValueChanged && std::abs(currentValue - dragStartValue) > 0.001f) {
+                onValueChanged(currentValue);
+            }
+
             if (onRelease) onRelease(event);
             if (onClick) onClick(event);
 

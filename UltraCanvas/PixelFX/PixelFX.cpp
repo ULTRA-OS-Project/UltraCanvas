@@ -598,6 +598,70 @@ namespace PixelFX {
         PFXImage AddAlpha(const PFXImage& image) { return HasAlpha(image) ? image : PFXImage(image.bandjoin_const({255.0})); }
         PFXImage RemoveAlpha(const PFXImage& image) { return !HasAlpha(image) ? image : PFXImage(image.extract_band(0, vips::VImage::option()->set("n", image.bands() - 1))); }
 
+        PFXImage ColourToAlpha(const PFXImage& image, const std::vector<double>& key,
+                               double tolerance, double softness, double amount, bool despill) {
+            if (key.empty()) throw PixelFXException("ColourToAlpha: the key colour needs at least one band");
+            amount = std::clamp(amount, 0.0, 1.0);
+            tolerance = std::clamp(tolerance, 0.0, 255.0);
+            softness = std::clamp(softness, 0.0, 255.0);
+
+            // Work in 8-bit sRGB with an alpha band to scale; an opaque image
+            // gains one, since that is what the caller is asking for.
+            vips::VImage src = image.colourspace(VIPS_INTERPRETATION_sRGB);
+            if (src.format() != VIPS_FORMAT_UCHAR) src = src.cast(VIPS_FORMAT_UCHAR);
+            if (!src.has_alpha()) src = src.bandjoin_const({255.0});
+            const int colourBands = src.bands() - 1;
+            if (colourBands <= 0) return image;
+            if (amount <= 0.0) return PFXImage(src);
+
+            // The key colour per colour band (a shorter vector repeats its last entry).
+            std::vector<double> keyBands(colourBands), negKey(colourBands), ones(colourBands, 1.0);
+            for (int b = 0; b < colourBands; ++b) {
+                keyBands[b] = key[static_cast<size_t>(b) < key.size() ? b : key.size() - 1];
+                negKey[b] = -keyBands[b];
+            }
+
+            vips::VImage colour = src.extract_band(0, vips::VImage::option()->set("n", colourBands));
+            vips::VImage alpha = src.extract_band(colourBands).cast(VIPS_FORMAT_FLOAT);
+
+            // Distance from the key, 0..255, as uchar so the ramp below is a
+            // plain 256-entry lookup rather than per-pixel float branching.
+            vips::VImage distance = colour.cast(VIPS_FORMAT_FLOAT)
+                    .linear(ones, negKey).abs().bandmean().cast(VIPS_FORMAT_UCHAR);
+
+            // keep[d]: the fraction of its alpha a pixel at distance d holds on
+            // to. divisor[d] is the same, floored at 1/255 so the un-mix below
+            // can divide by it.
+            std::vector<uint8_t> keep(256), divisor(256);
+            const double high = tolerance + softness;
+            for (int d = 0; d < 256; ++d) {
+                double outside;                       // 0 deep inside the key, 1 clear of it
+                if (d <= tolerance) outside = 0.0;
+                else if (d >= high) outside = 1.0;
+                else {
+                    const double n = (d - tolerance) / (high - tolerance);
+                    outside = n * n * (3.0 - 2.0 * n);   // smoothstep
+                }
+                const double kept = 1.0 - amount * (1.0 - outside);
+                keep[static_cast<size_t>(d)] = static_cast<uint8_t>(std::lround(std::clamp(kept, 0.0, 1.0) * 255.0));
+                divisor[static_cast<size_t>(d)] = std::max<uint8_t>(keep[static_cast<size_t>(d)], 1);
+            }
+
+            vips::VImage keptFactor = MapLut(PFXImage(distance), {keep}).cast(VIPS_FORMAT_FLOAT).linear(1.0 / 255.0, 0.0);
+            vips::VImage alphaOut = (alpha * keptFactor).cast(VIPS_FORMAT_UCHAR);
+
+            vips::VImage colourOut = colour;
+            if (despill) {
+                // What the pixel would have been before the key colour was mixed
+                // into it: key + (in - key) / keptAlpha.
+                vips::VImage div = MapLut(PFXImage(distance), {divisor}).cast(VIPS_FORMAT_FLOAT).linear(1.0 / 255.0, 0.0);
+                colourOut = (colour.cast(VIPS_FORMAT_FLOAT).linear(ones, negKey) / div).linear(ones, keyBands);
+            }
+
+            vips::VImage out = colourOut.cast(VIPS_FORMAT_UCHAR).bandjoin(alphaOut);
+            return PFXImage(out.copy(vips::VImage::option()->set("interpretation", VIPS_INTERPRETATION_sRGB)));
+        }
+
     } // namespace Colour
 
 // ============================================================================

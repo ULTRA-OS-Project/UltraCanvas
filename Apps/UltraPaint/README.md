@@ -64,7 +64,7 @@ them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
 - **Select:** All, None, Invert, From Layer Alpha, Feather, Grow, Shrink.
 - **Adjust:** Brightness / Contrast, Hue / Saturation, Gamma, Levels,
   Curves, Posterize, Threshold, Solarize, Invert, Desaturate, Sepia,
-  Equalize, Auto Contrast.
+  Equalize, Auto Contrast, Colour to Alpha.
 - **Filter:** Gaussian / Box / Motion Blur, Median; Sharpen, Unsharp Mask;
   Sobel, Laplacian, Canny, Emboss, Find Edges; Add Noise, Despeckle;
   Pixelate, Oil Paint; Erode, Dilate.
@@ -75,6 +75,28 @@ Preview toggle and OK / Cancel; the preview runs on the canvas itself and is
 one undo entry once accepted. All of them respect the selection. The
 catalogue is data in `UltraPaintFilters.cpp` — one entry per filter, and
 the menus are generated from it.
+
+### Colour to Alpha
+
+*Adjust ▸ Colour to Alpha…* turns one colour into transparency across the
+layer — knocking a white page out from behind a scanned logo, dropping a
+flat backdrop, or just fading a colour back.
+
+| Control | What it does |
+|---|---|
+| Colour | The colour to key out. Starts at the foreground colour; the picker's eyedropper takes it straight off the canvas |
+| Tolerance | How far a pixel may be from that colour and still count as it (0–255, the same distance the magic wand and the fill use) |
+| Softness | The width of the ramp past the tolerance. A few steps of softness is what keeps an anti-aliased edge smooth instead of jagged |
+| Transparency % | How transparent the colour becomes: 100 removes it, 40 takes 40 % of its opacity away and leaves the rest |
+| Remove colour fringe | Un-mixes the key colour out of the pixels left partly transparent, so a logo keyed off white keeps no white halo |
+
+Alpha is only ever scaled down, so pixels that were already transparent stay
+that way, and a layer with no transparency gains it. Like every other
+adjustment it previews live, respects the selection and lands as one undo
+entry.
+
+For a hard-edged cut instead, the Magic Wand with *Contiguous* off selects
+every pixel of a colour and `Del` erases them.
 
 ## Files
 
@@ -111,4 +133,4 @@ and brushes build without it.
 | `UltraPaintWindow.{h,cpp}` | Window composition, menus, panels, every command, filter preview |
 | `UltraPaintTools.{h,cpp}` | The tools and their option panels |
 | `UltraPaintFilters.{h,cpp}` | The PixelFX filter catalogue and the parameter dialog |
-| `UltraPaintDialogs.{h,cpp}` | New Image, Scale / Canvas Size, Text, Layer Properties |
+| `UltraPaintDialogs.{h,cpp}` | New Image, Scale / Canvas Size, Text, Layer Properties, Colour to Alpha |

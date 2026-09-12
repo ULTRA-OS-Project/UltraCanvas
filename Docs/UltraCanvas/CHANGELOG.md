@@ -1,3 +1,41 @@
+#### 2026-09-12 *0.8.33*
+- **A colour can now be turned into transparency:**
+  `PixelFX::Colour::ColourToAlpha(image, key, tolerance, softness, amount,
+  despill)`. Until now the framework could *select* by colour (the magic wand
+  and the tolerant flood fill) and could erase a selection, but nothing keyed
+  a colour out: the only route was a hard 0/255 wand mask plus a delete, which
+  leaves jagged edges on anti-aliased artwork and a fringe of the removed
+  colour around whatever is left.
+- Every pixel is measured against the key with **the same colour distance the
+  wand and the fill already use** - the mean absolute per-channel difference,
+  0..255 - so a tolerance of 32 means the same thing in all three. Pixels
+  within `tolerance` are keyed in full, pixels past `tolerance + softness` are
+  untouched, and the band between the two is smoothstepped, which is what
+  keeps an anti-aliased edge smooth rather than stepped.
+- **`amount` is a fraction, not a switch:** 1.0 removes the colour outright,
+  0.4 takes 40% of its opacity away and leaves the rest, so the same call
+  fades a colour back as well as knocking it out. Alpha is always scaled and
+  never raised - already-transparent pixels stay transparent - and an image
+  with no alpha band gains one.
+- `despill` un-mixes the key colour out of the pixels left only partly
+  transparent (`out = key + (in - key) / alphaKept`), so a logo keyed off a
+  white page carries no white halo into whatever it is composited over.
+- The ramp is a 256-entry lookup applied with `Colour::MapLut` over the
+  distance image rather than per-pixel float work, so the cost is one pass
+  whatever the thresholds.
+- **`UltraCanvasSlider` now fires `onValueChanged` when a drag ends**, which
+  its documentation always said it did. `SetValue()` routes to
+  `onValueChanging` while `isDragging` is set and to `onValueChanged`
+  otherwise, and `HandleMouseUp()` cleared the flag without a final call - so
+  on a slider with both handlers a drag produced a stream of "changing" values
+  and no "changed" one, ever. Anything that acts on the committed value
+  because acting per pointer-move is too expensive simply never ran: every
+  parameter dialog in UltraPaint (and Curves, and the tool options) took the
+  new number into its label and left the canvas showing the old result. The
+  release now reports the value the drag settled on, once, and only when the
+  drag actually moved it. Range mode is unchanged - its callbacks always fired
+  from `SetLowerValue` / `SetUpperValue` either way.
+
 #### 2026-09-11 *0.8.32*
 - **A build without GL now shows the model instead of a sentence about GL.**
   `UltraCanvasSTLElement`'s non-GL fallback drew a dark rectangle, the triangle

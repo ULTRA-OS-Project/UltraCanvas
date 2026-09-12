@@ -58,6 +58,15 @@ doc->ApplyFilter("Gaussian Blur", [](const PixelFX::PFXImage& img) {
     return PixelFX::Convolution::GaussianBlur(img, 4.0);
 });
 
+// Turn one colour into transparency. The distance metric is the one the
+// magic wand and the flood fill use, so a tolerance means the same thing in
+// all three; the last two arguments are how transparent the colour becomes
+// (1.0 = gone, 0.4 = 40% of its opacity taken away) and whether to un-mix it
+// out of the part-transparent edge pixels.
+doc->ApplyFilter("Colour to Alpha", [](const PixelFX::PFXImage& img) {
+    return PixelFX::Colour::ColourToAlpha(img, {255, 255, 255}, 12, 32, 1.0, true);
+});
+
 doc->Undo();
 std::string err;
 doc->SaveToFile("out.png", err);               // flattened, format by extension
