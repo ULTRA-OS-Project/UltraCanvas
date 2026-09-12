@@ -11129,6 +11129,11 @@ namespace UltraCanvas {
                 return ownedRelease;
             }
             case UCEventType::MouseDoubleClick: {
+                // Only the left button opens an entry. Windows reports a
+                // double-click for the right and middle buttons too, and a
+                // second right-click on a file is aiming at the context menu,
+                // not at opening it.
+                if (event.button != UCMouseButton::Left) return false;
                 // While the rename editor is open a double-click can only be
                 // inside it (a click anywhere else commits on its MouseDown):
                 // it belongs to the editor, never opens the entry behind it.

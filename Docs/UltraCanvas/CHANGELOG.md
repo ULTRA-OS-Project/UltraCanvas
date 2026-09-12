@@ -1,3 +1,41 @@
+#### 2026-09-12 *0.8.34*
+- **Opening a file with its registered program works on Windows where it
+  quietly did not.** `FileAssociations::OpenWithDefaultApplication` went
+  straight to `ShellExecuteEx` with whatever path spelling the caller
+  carried and no COM apartment, which is two ways for a perfectly registered
+  file type to come back "no application is associated": the shell resolves
+  neither a relative name nor a `C:/like/this` spelling - both of which
+  `std::filesystem` hands through, since a listing keeps the separators the
+  folder was opened with - and a verb handler is a COM object, so the file
+  types whose association is more than a command line failed on a thread
+  without an apartment. The path is now made absolute and native for every
+  shell call (`SHParseDisplayName`, which backs "Open with > *program*", is
+  just as strict), and COM is initialized around the launch.
+- **A file type with nothing registered puts up Windows' own "How do you want
+  to open this file?" chooser**, the way a double-click in Explorer does,
+  instead of failing silently; what the user picks there opens the file and
+  is remembered by the shell, so the next open needs no chooser. A chooser
+  closed without a choice is an answer, not an error. A launch that does fail
+  now carries the shell's reason - file not found, access denied, held by
+  another program, the registered program did not answer - rather than
+  "could not open".
+- **`FileAssociations::HasDefaultApplication(path)`**: does the OS name a
+  program that would open this file? The candidate list answered a different
+  question and was being read for this one - it also carries the applications
+  that merely offer to open the type, and on Windows falls back to the
+  unfiltered handler list, i.e. every application on the machine that ever
+  registered itself, for exactly the types nothing is registered for.
+- **The Windows backend no longer mistakes `OpenWith.exe` for a registered
+  program** - the shell names that chooser stub precisely when nothing is
+  registered - and it now adds the program the registry *does* name to the
+  candidate list when the handler enumeration misses it, which a ProgID
+  registered without `OpenWithProgids` (plenty of older installers) always
+  did. That program is the one flagged as the default, so "Open with >" leads
+  with it.
+- **`UltraCanvasFilerWidget` only opens an entry on a LEFT double-click.**
+  Windows reports a double-click for the right and middle buttons too, so a
+  second right-click on a file - aimed at the context menu - opened it.
+
 #### 2026-09-12 *0.8.33*
 - **A colour can now be turned into transparency:**
   `PixelFX::Colour::ColourToAlpha(image, key, tolerance, softness, amount,

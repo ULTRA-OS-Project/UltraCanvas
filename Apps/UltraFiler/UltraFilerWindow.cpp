@@ -940,11 +940,16 @@ bool UltraFilerWindow::CanShowInDetailView(const FilerEntry& entry) const {
 
 bool UltraFilerWindow::HasRegisteredApplication(const std::string& path) {
     if (path.empty()) return false;
-    // Served from the prewarm cache the folder scan queued, so this is a cache
-    // read on the UI thread rather than an association-database parse. A
-    // platform with no enumeration backend reports none, which is the right
+    // The DEFAULT application, not merely a candidate: the question every
+    // caller here asks is "would opening this file start a program", and a
+    // list of applications that would offer to open it is not that. On
+    // Windows it is the difference between an answer and a guess - a file
+    // type nothing is registered for still enumerates half the machine.
+    // Served from the prewarm cache the folder scan queued, so this is a
+    // cache read on the UI thread rather than an association-database parse.
+    // A platform with no enumeration backend reports none, which is the right
     // answer here: nothing else will open the file, so we do.
-    return !FileAssociations::GetApplicationsForFiles({path}).empty();
+    return FileAssociations::HasDefaultApplication(path);
 }
 
 void UltraFilerWindow::OpenInMediaWindow(const std::string& path) {
@@ -3036,6 +3041,24 @@ void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
             return;
         }
 #endif
+        // Settings > Handling > Opening files: with "the registered program"
+        // chosen (the default on Windows, where a double-click means exactly
+        // that), the program this system assigns to the file type wins over
+        // the preview - for previewable files too. A file type nothing is
+        // registered for falls through to the preview below, so the setting
+        // never turns a double-click into nothing happening.
+        //
+        // Only for a file that is on the disk: an entry inside an archive is
+        // a virtual path, which no other program can open - the preview reads
+        // those through VirtualFS, and is the only thing that can show them.
+        if (settings.doubleClickOpensRegisteredApp) {
+            std::error_code ec;
+            if (fs::is_regular_file(entry.path, ec) && !ec &&
+                HasRegisteredApplication(entry.path)) {
+                if (tab->filer) tab->filer->OpenEntryWithOS(entry);
+                return;
+            }
+        }
         if (!CanShowInDetailView(entry)) {
             // Not previewable: run it / open it, Explorer-style. The widget
             // launches executables directly (scripts through its Run-or-Open

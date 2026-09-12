@@ -1408,8 +1408,10 @@ auto-scrolls at the viewport edge, Escape abandons it (the previous
 selection returns), and a press-and-release without movement keeps its old
 meaning — a plain click on empty space clears the selection (a Ctrl click
 leaves it alone).
-Double-clicking an entry opens/activates it (folders and archives are entered,
-files fire `onFileActivated`). A single click on the **name** of the entry that
+Double-clicking an entry with the **left** button opens/activates it (folders
+and archives are entered, files fire `onFileActivated`); the right and middle
+buttons do not, although Windows reports a double-click for those too — a
+second right-click on an entry is aimed at the context menu. A single click on the **name** of the entry that
 is already the only selected one starts an inline rename after a short delay
 (Windows style — the delay is what separates a rename click from the first
 click of a double-click).
