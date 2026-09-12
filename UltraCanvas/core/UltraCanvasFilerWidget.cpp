@@ -49,7 +49,7 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.26.0
+// Version: 1.27.0
 // Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
@@ -7468,6 +7468,45 @@ namespace UltraCanvas {
         // Tries an application icon gets from the shell before the tile
         // settles on its type glyph.
         constexpr uint8_t kNativeIconMaxAttempts = 3;
+        // Tries a content decode gets when the file could not be READ - see
+        // ThumbSlot::attempts - and how long the slot waits between them. A
+        // file that was just copied into the folder is held by whatever wrote
+        // it, by the search indexer or by the virus scanner for a moment, and
+        // a moment is longer than the microseconds an immediate retry takes.
+        constexpr uint8_t kUnreadableMaxAttempts = 4;
+        constexpr auto kUnreadableRetryDelay = std::chrono::milliseconds(300);
+
+        // Can this file be read right now? Asked only after a decode produced
+        // nothing, to tell "there is no preview in this file" (final) from
+        // "the file could not be opened" (try again in a moment). An empty
+        // file counts as readable: it was read, and it holds no preview.
+        bool FileReadableNow(const std::string& path) {
+            std::ifstream f(PathFromUtf8(path), std::ios::binary);
+            if (!f.is_open()) return false;
+            char probe = 0;
+            f.read(&probe, 1);
+            return f.good() || f.eof();
+        }
+
+        // How long after it was written a file still counts as "just
+        // arrived", and its failed decode as something to try again.
+        constexpr auto kFreshFileWindow = std::chrono::seconds(10);
+
+        // The question above catches a file that is STILL held. A file whose
+        // holder let go in the microseconds between the failed decode and
+        // that question reads fine and would be retired on the strength of
+        // one attempt that never got at its content - which is exactly the
+        // file that was just pasted into the folder. So a file written
+        // moments ago is given the same benefit of the doubt.
+        bool WrittenVeryRecently(const std::string& path) {
+            std::error_code ec;
+            const auto written = fs::last_write_time(path, ec);
+            if (ec) return false;
+            const auto age = fs::file_time_type::clock::now() - written;
+            // A timestamp in the future (a clock that was set back, a file
+            // from another machine) is not "just written".
+            return age >= decltype(age)::zero() && age < kFreshFileWindow;
+        }
     } // namespace
 
     void UltraCanvasFilerWidget::ReleaseThumbSlotLocked(const std::string& key,
@@ -7838,6 +7877,13 @@ namespace UltraCanvas {
                     // serialize). Entries whose slot was pruned or already
                     // finished — the queue is rebuilt every frame and may
                     // repeat in-flight work — are dropped on the way.
+                    const auto now = std::chrono::steady_clock::now();
+                    // The earliest moment a request that is only waiting out
+                    // its retry delay becomes takeable; the wait below ends
+                    // then rather than on the next notify, which may never
+                    // come (nothing repaints while a tile waits for a file to
+                    // become readable).
+                    std::chrono::steady_clock::time_point due{};
                     auto qit = thumbQueue.begin();
                     while (qit != thumbQueue.end()) {
                         auto sit = thumbSlots.find(ThumbSlotKey(
@@ -7845,6 +7891,13 @@ namespace UltraCanvas {
                         if (sit == thumbSlots.end() ||
                             sit->second.state != ThumbState::Pending) {
                             qit = thumbQueue.erase(qit);
+                            continue;
+                        }
+                        if (sit->second.retryAfter > now) {
+                            if (due == std::chrono::steady_clock::time_point{} ||
+                                sit->second.retryAfter < due)
+                                due = sit->second.retryAfter;
+                            ++qit;
                             continue;
                         }
                         if (thumbPathsInFlight.count(qit->path) == 0) break;
@@ -7859,21 +7912,34 @@ namespace UltraCanvas {
                     // Nothing to decode: read a text-content preview instead.
                     // Image work always wins, because a tile waiting for a
                     // photo is the more visible gap.
-                    while (!textQueue.empty() && textPath.empty()) {
-                        std::string p = std::move(textQueue.front());
-                        textQueue.pop_front();
-                        auto sit = textSlots.find(p);
+                    for (auto tit = textQueue.begin(); tit != textQueue.end();) {
+                        auto sit = textSlots.find(*tit);
                         if (sit == textSlots.end() ||
                             sit->second.state != TextPreviewState::Pending ||
-                            textPathsInFlight.count(p) != 0) {
+                            textPathsInFlight.count(*tit) != 0) {
+                            tit = textQueue.erase(tit);
                             continue;
                         }
-                        textPathsInFlight.insert(p);
+                        // Waiting out a retry delay: leave it where it is and
+                        // let the wait below end when it comes due.
+                        if (sit->second.retryAfter > now) {
+                            if (due == std::chrono::steady_clock::time_point{} ||
+                                sit->second.retryAfter < due)
+                                due = sit->second.retryAfter;
+                            ++tit;
+                            continue;
+                        }
+                        textPathsInFlight.insert(*tit);
                         textGeneration = thumbGeneration;
-                        textPath = std::move(p);
+                        textPath = std::move(*tit);
+                        textQueue.erase(tit);
+                        break;
                     }
                     if (!textPath.empty()) break;
-                    thumbCond.wait(lk);
+                    if (due != std::chrono::steady_clock::time_point{})
+                        thumbCond.wait_until(lk, due);
+                    else
+                        thumbCond.wait(lk);
                 }
             }
 
@@ -7892,11 +7958,25 @@ namespace UltraCanvas {
                     if (thumbShutdown) return;
                     if (textGeneration == thumbGeneration) {
                         TextPreviewSlot& slot = textSlots[textPath];
-                        slot.state = (readable && !snippet.lines.empty())
-                                             ? TextPreviewState::Ready
-                                             : TextPreviewState::Failed;
-                        slot.snippet = std::move(snippet);
-                        textReport = slot.state == TextPreviewState::Ready;
+                        if (readable && !snippet.lines.empty()) {
+                            slot.state = TextPreviewState::Ready;
+                            slot.snippet = std::move(snippet);
+                            textReport = true;
+                        } else if (!readable &&
+                                   ++slot.attempts < kUnreadableMaxAttempts) {
+                            // The file could not be read - said by the reader
+                            // itself, so no second open is needed to find out.
+                            // Not an answer about the file: try again shortly.
+                            slot.state = TextPreviewState::Pending;
+                            slot.retryAfter = std::chrono::steady_clock::now() +
+                                              kUnreadableRetryDelay * slot.attempts;
+                            // The repaint is what re-records the want, which
+                            // is what puts the file back in the queue.
+                            textReport = true;
+                        } else {
+                            slot.state = TextPreviewState::Failed;
+                            slot.snippet = std::move(snippet);
+                        }
                     }
                 }
                 if (textReport) PostThumbnailRedraw();
@@ -7991,6 +8071,17 @@ namespace UltraCanvas {
                 });
             }
 
+            // Whether this failure says anything about the file, asked
+            // before the lock is taken: it opens the file, and nothing that
+            // opens a file may run under the mutex the UI thread's paint path
+            // takes. Only a decode that produced nothing asks at all - see
+            // the retry rule below.
+            const bool unreadable =
+                    !pm && !nativeIcon && !FileReadableNow(req.path);
+            const bool transientFailure =
+                    unreadable ||
+                    (!pm && !nativeIcon && WrittenVeryRecently(req.path));
+
             bool report = false;
             bool producedNothing = false;
             {
@@ -8026,16 +8117,33 @@ namespace UltraCanvas {
                         slot.qoi = nullptr;
                         slot.bytes = 0;
                         slot.rawBytes = 0;
-                        // A content decode that produced nothing produces
-                        // nothing the second time too, so the slot is retired
-                        // and the tile stops asking. An application icon can
-                        // fail on a file the shell would serve a moment later,
-                        // so it goes back to Pending for another try; the
-                        // attempt count keeps that from becoming a loop, and a
-                        // slot the view scrolls away from is pruned along with
-                        // its count, so coming back is a fresh start.
-                        if (nativeIcon && ++slot.attempts < kNativeIconMaxAttempts) {
+                        // A content decode that READ the file and found no
+                        // preview in it produces nothing the second time too,
+                        // so the slot is retired and the tile stops asking.
+                        // One that could not read the file at all says
+                        // nothing about the file: a file that was just
+                        // written - pasted into the folder a moment ago - is
+                        // routinely held by whatever wrote it, by the search
+                        // indexer or by the virus scanner, and retiring the
+                        // slot on that left the tile with its type glyph
+                        // until something rescanned the folder. It goes back
+                        // to Pending with a moment's grace instead. An
+                        // application icon can likewise fail on a file the
+                        // shell would serve a moment later. The attempt count
+                        // keeps either from becoming a loop, and a slot the
+                        // view scrolls away from is pruned along with its
+                        // count, so coming back is a fresh start.
+                        const uint8_t maxAttempts =
+                                nativeIcon ? kNativeIconMaxAttempts
+                                           : kUnreadableMaxAttempts;
+                        const bool retryable = nativeIcon || transientFailure;
+                        if (retryable && ++slot.attempts < maxAttempts) {
                             slot.state = ThumbState::Pending;
+                            // Growing grace: whatever is holding the file has
+                            // longer for each try, and four tries span not
+                            // quite two seconds in all.
+                            slot.retryAfter = std::chrono::steady_clock::now() +
+                                              kUnreadableRetryDelay * slot.attempts;
                         } else {
                             slot.state = ThumbState::Failed;
                             producedNothing = true;
@@ -8047,10 +8155,14 @@ namespace UltraCanvas {
             // A tile that silently keeps its type glyph is indistinguishable
             // from one whose preview kind is switched off, so name the file
             // that produced nothing: when a whole folder of pictures loses its
-            // thumbnails, this log is what says where it went.
+            // thumbnails, this log is what says where it went. Only a slot
+            // that has actually been retired gets here - a decode waiting out
+            // its retry delay has not given up on the file yet.
             if (producedNothing) {
                 debugOutput << "UltraCanvasFilerWidget: no thumbnail produced for \""
-                            << req.path << "\"" << std::endl;
+                            << req.path << "\""
+                            << (unreadable ? " (the file could not be read)" : "")
+                            << std::endl;
             }
             // A sibling worker may be parked on a queued request for the
             // path just released.

@@ -19044,11 +19044,23 @@ Notes:
   thumbnails, in the same viewport-driven order (visible tiles first, then one
   screen of prefetch), so no preview ever blocks a frame. Image work has
   priority over reading text.
-- A preview that comes back empty marks the file as failed (it is not retried)
-  and the tile keeps its glyph — indistinguishable, on screen, from a kind that
-  is simply switched off. The worker therefore logs
-  `no thumbnail produced for "<path>"` for each such file, which is what names
-  the cause when a whole folder loses its previews.
+- A preview that comes back empty because the file **was read and holds no
+  preview** marks the file as failed (it is not retried) and the tile keeps its
+  glyph — indistinguishable, on screen, from a kind that is simply switched
+  off. The worker therefore logs `no thumbnail produced for "<path>"` for each
+  such file, which is what names the cause when a whole folder loses its
+  previews.
+- One that comes back empty because the file **could not be read** says nothing
+  about the file and is retried: up to four attempts, 300 ms apart and growing,
+  before the slot is retired. This is the file that has just arrived in the
+  folder — a paste, a drop, a download — and is still held by whatever wrote
+  it, by the search indexer or by the virus scanner. Without the retry such a
+  tile kept the type glyph for the life of the listing, and only a rescan (F5,
+  leaving the folder and coming back, the folder watch reacting to a later
+  change) brought its thumbnail in. A file written within the last ten seconds
+  gets the same benefit of the doubt even where it reads fine by the time the
+  question is asked — the holder may simply have let go in between. The same
+  rule governs the text-content previews.
 - Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D, Fonts) are only drawn
   where a page is legible — from roughly a 40 px box up. The small icon column of
   the Details and List rows keeps the type glyph, so a folder listing does not

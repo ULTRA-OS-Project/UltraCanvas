@@ -1,3 +1,25 @@
+#### 2026-09-12 *0.8.36*
+- **A file just pasted into the folder gets its thumbnail.** The first decode
+  of a file that has only this moment been written routinely cannot read it -
+  on Windows the copy's own handle, the search indexer and the virus scanner
+  each hold a new file for a moment - and the widget took that for the answer:
+  "this file has no preview", slot retired, tile left with its type glyph for
+  the life of the listing. Only a rescan brought the picture in, which is why
+  the fix for it was to leave the folder and come back.
+- A decode that produces nothing is now asked WHY. The file was read and holds
+  no preview (a document saved without one, a format no decoder here handles):
+  unchanged, the slot is retired at once and the worker logs it. The file could
+  not be read: up to four tries, 300 ms apart and growing, before giving up -
+  and a file written within the last ten seconds gets the same benefit of the
+  doubt even where it reads fine by the time the question is asked, since the
+  holder may have let go in the microseconds in between. The retry waits on the
+  decode worker (`wait_until`), so nothing spins and no repaint is needed to
+  drive it.
+- The **text-content previews** (Text, Docs, Spreadsheets) follow the same
+  rule, from the same cause: their reader already reports whether it could read
+  the file, and an unreadable file is now retried rather than recorded as
+  having no text.
+
 #### 2026-09-12 *0.8.35*
 - **The padlock badge on a held file is smaller, sits on the left, and says
   who is holding the file.** It was drawn at 38 % of the icon's edge in the

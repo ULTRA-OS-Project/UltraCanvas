@@ -78,7 +78,7 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.26.0
+// Version: 1.27.0
 // Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 #pragma once
@@ -1513,12 +1513,19 @@ namespace UltraCanvas {
             // than a preview of its content, and a folder of photos or
             // videos must not be able to push them out.
             bool nativeIcon = false;
-            // Extractions of a native icon already spent on this slot. The
-            // shell can fail on a file it would serve a moment later (a busy
-            // shell, an exhausted handle table), so an icon gets a few tries
-            // before the tile settles on its type glyph — unlike a content
-            // decode, which fails the same way every time.
+            // Decodes already spent on this slot. A content decode that read
+            // the file and found no preview in it fails the same way every
+            // time and is retired at once; one that could not read the file
+            // at all is a different thing entirely — a file that has just
+            // been written is routinely unreadable for a moment (the copy's
+            // own handle, the indexer, the virus scanner), and the tile was
+            // settling on its type glyph for the life of the listing because
+            // of it. Those, and a native icon the shell would serve a moment
+            // later, get a few tries before the slot is retired.
             uint8_t attempts = 0;
+            // Not before this: a retry that runs immediately runs inside the
+            // same moment that just failed, and spends the attempts on it.
+            std::chrono::steady_clock::time_point retryAfter{};
         };
         struct ThumbRequest {
             std::string path;
@@ -1625,6 +1632,12 @@ namespace UltraCanvas {
         struct TextPreviewSlot {
             TextPreviewState state = TextPreviewState::Pending;
             TextPreviewSnippet snippet;
+            // Same rule as ThumbSlot's: a file that was read and holds no
+            // text is done with, a file that could not be read is tried
+            // again a few times - a document pasted into the folder a moment
+            // ago is routinely unreadable for exactly that long.
+            uint8_t attempts = 0;
+            std::chrono::steady_clock::time_point retryAfter{};
         };
         std::unordered_map<std::string, TextPreviewSlot> textSlots;  // by path
         std::deque<std::string> textQueue;             // paths to read
