@@ -1,3 +1,29 @@
+#### 2026-09-12 *0.8.38*
+- **LaTeX: the module is actually shipped in the Windows and macOS packages,
+  and is found there.** The demo's "LaTeX Documents" page in the Windows
+  package (`UCDemo-Windows-*`) reported "LaTeX module (UltraCanvasLaTeX.dll)
+  not found ... LoadLibrary failed (code 126)" for every candidate: the
+  module is a dlopen()ed CMake MODULE, which CMake emits to `build/lib`
+  rather than the build root, so `package-win.sh`'s `cp ./build/*.dll` never
+  picked it up - and a MinGW build named it `libUltraCanvasLaTeX.dll`, a
+  name the loader never asked for. `package-macos.sh` did not bundle it
+  either. So none of the LaTeX work was visible in a packaged demo.
+  - `UltraCanvas/CMakeLists.txt`: the module gets `PREFIX ""` on Windows,
+    matching the loader's `UltraCanvasLaTeX.dll` (as the chart element
+    modules already do).
+  - `package-win.sh` ships the module as `lib/UltraCanvasLaTeX.dll`, runs it
+    through the PE header check, and warns loudly when the build has none;
+    the transitive DLL pass already walks subdirectories.
+  - `package-macos.sh` bundles it as `Contents/PlugIns/libUltraCanvasLaTeX.dylib`,
+    collects and rewrites its Homebrew dependencies like the executable's,
+    and signs it with the frameworks.
+  - `core/UltraCanvasLaTeXModuleLoader.cpp`: probes both DLL names on
+    Windows and `<exe>/../PlugIns/` on macOS; opens absolute paths with
+    `LOAD_WITH_ALTERED_SEARCH_PATH` so a module in `lib/` resolves the core
+    DLL beside the executable; spells out codes 126 and 193 in the error.
+  - Demo: the LaTeX Documents menu entry no longer credits MicroTeX.
+  - `Docs/UltraCanvas/UltraCanvasLaTeXView.md`: search order updated.
+
 #### 2026-09-12 *0.8.37*
 - **A double-click that opens nothing now says so on macOS too.** The default
   open spawned `/usr/bin/open` detached - and a detached spawn never sees the

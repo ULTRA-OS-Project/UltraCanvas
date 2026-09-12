@@ -2616,6 +2616,12 @@ if(ULTRACANVAS_PLUGIN_LATEX)
         # searches find it during dev/test; installers can relocate it.
         LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
     )
+    if(WIN32)
+        # The core's loader asks LoadLibrary for "UltraCanvasLaTeX.dll". Without
+        # this a MinGW build names the MODULE libUltraCanvasLaTeX.dll and the
+        # module is never found (same reason the chart element modules set it).
+        set_target_properties(UltraCanvasLaTeX PROPERTIES PREFIX "")
+    endif()
     target_include_directories(UltraCanvasLaTeX PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/include
         ${CMAKE_CURRENT_SOURCE_DIR}/include/CSSLayout

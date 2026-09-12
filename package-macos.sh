@@ -380,6 +380,15 @@ codesign_bundle() {
         fi
     done
 
+    # Plug-in modules loaded at runtime (the LaTeX engine) are signed like
+    # the frameworks: inside-out, before the executable and the bundle.
+    for dylib in "$app_bundle/Contents/PlugIns/"*.dylib; do
+        if [ -f "$dylib" ]; then
+            codesign --force --timestamp --options runtime \
+                --sign "$IDENTITY" "$dylib"
+        fi
+    done
+
     # Sign the main executable with hardened runtime + secure timestamp
     codesign --force --timestamp --options runtime \
         --sign "$IDENTITY" "$app_bundle/Contents/MacOS/"*
@@ -505,8 +514,31 @@ build_app_bundle() {
         echo "  Copied demo example sources"
     fi
 
+    # The LaTeX math module is a dlopen()ed CMake MODULE emitted to build/lib;
+    # inside a bundle the core's loader probes Contents/PlugIns/ (as
+    # <exe>/../PlugIns/). Without it CreateLaTeXView() returns nullptr and the
+    # demo's LaTeX page reports the module as not found.
+    local latex_module="$BUILD_DIR/lib/libUltraCanvasLaTeX.dylib"
+    if [ -f "$latex_module" ]; then
+        mkdir -p "$contents_dir/PlugIns"
+        cp "$latex_module" "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
+        chmod 644 "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib"
+        echo "  Copied LaTeX module (PlugIns/)"
+    else
+        echo "  Warning: LaTeX module not found at $latex_module - this bundle will not render LaTeX"
+    fi
+
     # Bundle Homebrew dylibs
     bundle_dylibs "$contents_dir/MacOS/$exe_name" "$contents_dir/Frameworks"
+
+    # The module's own Homebrew dependencies (cairo, pango, ...) are largely
+    # the executable's, but collect and rewrite them from the module as well
+    # so a dependency only it has is bundled and its load commands point into
+    # Frameworks/ (@executable_path resolves against the app, which is right
+    # for a plugin the app loads).
+    if [ -f "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" ]; then
+        bundle_dylibs "$contents_dir/PlugIns/libUltraCanvasLaTeX.dylib" "$contents_dir/Frameworks"
+    fi
 
     # Code sign
     if $DO_SIGN; then

@@ -8,8 +8,8 @@
 // UnloadLaTeXModule()); allocation/deallocation of views always happen inside
 // the module via the matching create/destroy entry points.
 //
-// Version: 1.1.0
-// Last Modified: 2026-09-08
+// Version: 1.2.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 #ifdef ULTRACANVAS_PLUGIN_LATEX
@@ -51,19 +51,39 @@ std::string    g_fontDir;             // forwarded to the module after load
 
 // --- platform shims ---------------------------------------------------------
 
-const char* ModuleFileName() {
+// File names the module may carry on this platform, most likely first.
+std::vector<std::string> ModuleFileNames() {
 #if defined(_WIN32)
-    return "UltraCanvasLaTeX.dll";
+    // CMake names the MODULE "UltraCanvasLaTeX.dll" (PREFIX ""); a MinGW build
+    // tree from before that setting carries the toolchain's "lib" prefix.
+    return {"UltraCanvasLaTeX.dll", "libUltraCanvasLaTeX.dll"};
 #elif defined(__APPLE__)
-    return "libUltraCanvasLaTeX.dylib";
+    return {"libUltraCanvasLaTeX.dylib"};
 #else
-    return "libUltraCanvasLaTeX.so";
+    return {"libUltraCanvasLaTeX.so"};
 #endif
 }
 
+std::string ModuleFileName() { return ModuleFileNames().front(); }
+
+#if defined(_WIN32)
+bool IsAbsoluteWindowsPath(const std::string& p) {
+    return (p.size() > 2 && p[1] == ':') ||
+           (p.size() > 2 && (p[0] == '\\' || p[0] == '/') && (p[1] == '\\' || p[1] == '/'));
+}
+#endif
+
 void* OpenLib(const std::string& path) {
 #if defined(_WIN32)
-    return reinterpret_cast<void*>(LoadLibraryA(path.c_str()));
+    // With an absolute path, let the module's own directory lead the search
+    // for its dependencies (the package ships it in lib/ next to the
+    // executable, with the core DLL and the runtime beside the .exe). The
+    // flag's behaviour is undefined for a relative path, so the bare-name
+    // probe goes through plain LoadLibrary.
+    HMODULE h = IsAbsoluteWindowsPath(path)
+        ? LoadLibraryExA(path.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH)
+        : LoadLibraryA(path.c_str());
+    return reinterpret_cast<void*>(h);
 #else
     // RTLD_GLOBAL so the module can resolve UltraCanvas core symbols from the
     // already-loaded host image (works whether core is shared or statically
@@ -90,7 +110,13 @@ void CloseLib(void* h) {
 
 std::string LastDlError() {
 #if defined(_WIN32)
-    return "LoadLibrary failed (code " + std::to_string(GetLastError()) + ")";
+    const DWORD code = GetLastError();
+    std::string msg = "LoadLibrary failed (code " + std::to_string(code) + ")";
+    // The two codes a deployment problem produces, spelled out so the message
+    // in the UI says what to check instead of just a number.
+    if (code == ERROR_MOD_NOT_FOUND)       msg += " - the file, or a DLL it depends on, was not found";
+    else if (code == ERROR_BAD_EXE_FORMAT) msg += " - not a valid image for this architecture";
+    return msg;
 #else
     const char* e = dlerror();
     return e ? std::string(e) : std::string("unknown dynamic-link error");
@@ -107,30 +133,40 @@ bool LooksLikeFile(const std::string& p) {
 
 std::vector<std::string> CandidatePaths() {
     std::vector<std::string> out;
-    const std::string fname = ModuleFileName();
+    const std::vector<std::string> names = ModuleFileNames();
 
+    // Directories to probe, in priority order; each is tried with every
+    // file name the module may carry.
+    std::vector<std::string> dirs;
     if (!g_modulePathOverride.empty()) {
         if (LooksLikeFile(g_modulePathOverride)) out.push_back(g_modulePathOverride);
-        else out.push_back(g_modulePathOverride + "/" + fname);
+        else dirs.push_back(g_modulePathOverride);
     }
     if (const char* env = std::getenv("ULTRACANVAS_PLUGIN_DIR"); env && *env) {
-        out.push_back(std::string(env) + "/" + fname);
+        dirs.emplace_back(env);
     }
     const std::string exe = GetExecutableDir();
     if (!exe.empty()) {
-        out.push_back(exe + "/" + fname);
-        out.push_back(exe + "/plugins/" + fname);
+        dirs.push_back(exe);
+        dirs.push_back(exe + "/plugins");
         // Dev build: the apps are emitted at the build root while the module
         // (a CMake MODULE) goes to <build>/lib. With a static core there is
         // no rpath for the bare-name dlopen below to fall back on, so this
-        // layout has to be probed explicitly.
-        out.push_back(exe + "/lib/" + fname);
+        // layout has to be probed explicitly. The Windows package ships the
+        // module in lib/ next to the executable for the same reason.
+        dirs.push_back(exe + "/lib");
         // Package layout: executable in bin/, module in lib/.
-        out.push_back(exe + "/../lib/" + fname);
-        out.push_back(exe + "/../lib/ultracanvas/" + fname);
+        dirs.push_back(exe + "/../lib");
+        dirs.push_back(exe + "/../lib/ultracanvas");
+#if defined(__APPLE__)
+        // App bundle: Contents/MacOS/<exe>, module in Contents/PlugIns/.
+        dirs.push_back(exe + "/../PlugIns");
+#endif
     }
+    for (const auto& d : dirs)
+        for (const auto& n : names) out.push_back(d + "/" + n);
     // Finally let the dynamic linker search its own paths (rpath/LD_LIBRARY_PATH).
-    out.push_back(fname);
+    for (const auto& n : names) out.push_back(n);
     return out;
 }
 
@@ -178,8 +214,7 @@ void LoadOnce() {
         if (g_module.setFont && !g_fontDir.empty()) g_module.setFont(g_fontDir.c_str());
         return;
     }
-    g_error = "LaTeX module (" + std::string(ModuleFileName()) +
-              ") not found. Tried:" + tried;
+    g_error = "LaTeX module (" + ModuleFileName() + ") not found. Tried:" + tried;
 }
 
 } // namespace
