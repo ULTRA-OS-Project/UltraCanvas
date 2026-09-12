@@ -16,8 +16,8 @@ struct. The per-platform backends are internal
 | Platform | Enumeration | Default open | Launch picked app |
 |---|---|---|---|
 | Linux / BSD | ✓ freedesktop (shared-mime-info, mimeapps.list, .desktop, mimeinfo.cache; plain text parsing, no GIO/GTK dependency) | ✓ registered handler, `xdg-open` fallback | ✓ |
-| Windows | ✓ shell association APIs (`SHAssocEnumHandlers` + `IAssocHandler`, the list Explorer's own "Open with" shows; default from `AssocQueryString`) | ✓ ShellExecuteEx "open" | ✓ `IAssocHandler::Invoke` on the selection |
-| macOS | ✓ NSWorkspace / Launch Services (`URLsForApplicationsToOpenContentType:`, default from `URLForApplicationToOpenContentType:`; needs macOS 12) | ✓ `/usr/bin/open` | ✓ `openURLs:withApplicationAtURL:` |
+| Windows | ✓ shell association APIs (`SHAssocEnumHandlers` + `IAssocHandler`, the list Explorer's own "Open with" shows; default from `AssocQueryString`, added to the list when the enumeration misses it) | ✓ ShellExecuteEx "open" on a native path, under COM, with the shell's "Open with" chooser as the no-association fallback | ✓ `IAssocHandler::Invoke` on the selection |
+| macOS | ✓ NSWorkspace / Launch Services (`URLsForApplicationsToOpenContentType:`, default from `URLForApplicationToOpenContentType:`; needs macOS 12) | ✓ `URLForApplicationToOpenURL:` + `openURLs:withApplicationAtURL:` (`/usr/bin/open` below macOS 10.15) | ✓ `openURLs:withApplicationAtURL:` |
 | WASM | — (empty) | — (error) | — (error) |
 
 `Terminal=true` desktop entries are skipped on Linux (Explorer and Finder do
@@ -44,9 +44,28 @@ struct FileAssociationApp {
   prefers them for the first file, its default application first. Cache-served
   when prewarmed; a cold call resolves synchronously, bounded by the distinct
   file types in the selection.
+- `HasDefaultApplication(path)` — does the OS name a **default** application
+  for this file, i.e. would opening it start a program? Ask this before
+  handling a file some other way (a viewer of your own, a preview pane): the
+  candidate list answers a different question, since it also carries the
+  applications that merely offer to open the type. Cache-served like the
+  list.
 - `OpenWithDefaultApplication(paths, outError)` — Explorer / Finder
   double-click semantics. A selection spanning several types launches each
-  type's default handler once with its files.
+  type's default handler once with its files. On Windows a file type with no
+  registered program puts up the shell's own "How do you want to open this
+  file?" chooser, exactly as a double-click in Explorer does; the choice made
+  there is registered by the shell, so the next open needs no chooser. A
+  chooser closed without a choice is not reported as an error, and a launch
+  that does fail reports the reason the shell gave (file not found, access
+  denied, the program did not answer) rather than a bare "could not open".
+  On macOS the application Finder would use is resolved **before** anything is
+  launched (`URLForApplicationToOpenURL:`), so a file type with nothing
+  registered is reported instead of vanishing: spawning `/usr/bin/open` — what
+  this used to do — cannot report anything at all, because a detached spawn
+  never sees the exit code of what it started. Files are grouped by the
+  application that will open them, so a mixed selection still opens one window
+  per application.
 - `OpenWithApplication(app, paths, outError)` — launch a specific enumerated
   application.
 - `OpenWithApplicationPath(applicationPath, paths, outError)` — launch an
@@ -142,6 +161,19 @@ code.
 
 ## Version
 
+- 1.2.1 (2026-09-12): macOS default open goes through Launch Services
+  (`URLForApplicationToOpenURL:` + `openURLs:withApplicationAtURL:`) instead of
+  spawning `/usr/bin/open`, so "nothing is registered for this file type" is
+  an answer the caller gets rather than a launch that silently does nothing.
+  Paths are made absolute first, on that path and on the pre-10.15 fallback.
+- 1.2.0 (2026-09-12): `HasDefaultApplication()`. Windows default-open
+  reworked: COM initialized around `ShellExecuteEx` (its verb handlers are
+  COM objects), a full native path instead of whatever spelling the caller
+  carried, the shell's "Open with" chooser for a type with no handler, and
+  the shell's own reason in the error text. The program the registry names
+  as the default is added to the candidate list when the handler enumeration
+  does not report it, and `OpenWith.exe` — what the shell answers with when
+  nothing is registered — is no longer mistaken for a registered program.
 - 1.1.0 (2026-08-24): P2 + P3 — Windows (`SHAssocEnumHandlers` /
   `IAssocHandler`, icon extraction to PNG) and macOS (NSWorkspace /
   Launch Services) enumeration backends. "Open with >" now lists real

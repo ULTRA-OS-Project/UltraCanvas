@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.9.0
-// Last Modified: 2026-09-09
+// Version: 1.10.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -133,6 +133,24 @@ public:
     // from the History view - names its own folder and is not affected.
     bool newTabOpensHome = false;
 
+    // Handling > Opening files: what a double-click (or Enter) on a file does
+    // when this system has a program registered for that file type - start
+    // that program, the way a double-click in Explorer or the Finder does, or
+    // show the file in UltraFiler's own preview. A file type nothing is
+    // registered for is previewed either way: there is nothing else to do
+    // with it, and the preview is what UltraFiler has that a desktop file
+    // manager does not.
+    //
+    // Windows ships with the registered program, because that is what a
+    // double-click means there and every file type on a Windows installation
+    // is assigned to something; Linux and macOS ship with the preview, the
+    // behaviour every release up to now had on all three.
+#if defined(_WIN32) || defined(_WIN64)
+    bool doubleClickOpensRegisteredApp = true;
+#else
+    bool doubleClickOpensRegisteredApp = false;
+#endif
+
     // Extras > Open prompt: the command line program the "Open prompt" menu
     // entry starts. Empty means "whatever this OS provides" - the platform
     // default is detected at run time (see UltraFilerPrompt).
@@ -218,6 +236,9 @@ public:
         if (it != kv.end()) dropConfirmation = ParseDropConfirmation(it->second);
         it = kv.find("handling.tabs.new.tab");
         if (it != kv.end()) newTabOpensHome = (it->second == "home");
+        it = kv.find("handling.files.double.click");
+        if (it != kv.end())
+            doubleClickOpensRegisteredApp = (it->second == "application");
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
         return true;
@@ -267,6 +288,9 @@ public:
              << FormatDropConfirmation(dropConfirmation) << "\n";
         file << "handling.tabs.new.tab = "
              << (newTabOpensHome ? "home" : "current") << "\n";
+        file << "handling.files.double.click = "
+             << (doubleClickOpensRegisteredApp ? "application" : "preview")
+             << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         return true;
     }

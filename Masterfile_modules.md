@@ -228,6 +228,10 @@ the backing implementation can be replaced without affecting callers.
   Public surface (`namespace FileAssociations` + `FileAssociationApp`):
   - `GetApplicationsForFiles` — candidates for a selection (intersection),
     default application first, cache-served once prewarmed.
+  - `HasDefaultApplication` — does the OS name a default program for this
+    file, i.e. would opening it start one? Ask this before handling a file
+    some other way; the candidate list also carries applications that merely
+    offer to open the type.
   - `OpenWithDefaultApplication` / `OpenWithApplication` /
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also

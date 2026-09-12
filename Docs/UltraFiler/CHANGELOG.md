@@ -1,3 +1,36 @@
+#### 2026-09-12 *1.30.0*
+- **A double-click starts the program the file type is assigned to.** On
+  Windows a double-click means one thing - the file opens in the program
+  registered for it - and UltraFiler did not do it: every file the preview
+  could show was shown in the preview instead, and the registration was never
+  even asked about. *Settings > Handling > Opening files* now chooses between
+  **Start the registered program** and **Show it in the preview**, and it
+  ships set to the registered program on Windows (what Explorer does) and to
+  the preview on Linux and macOS (what every earlier release did everywhere).
+  The choice is saved as `handling.files.double.click`. A file type this
+  system has no program for is previewed whichever way it is set, so the
+  setting can never turn a double-click into nothing happening; a file that
+  cannot be previewed - a program, an installer, a file type UltraFiler does
+  not read - still goes to the system as before; and the context menu's *Open
+  with* is unchanged.
+- **What counts as "a program is registered for this" is now the default
+  program**, not any application that offered to open the type. On Windows
+  the difference is the whole answer: a file type nothing is registered for
+  enumerates half the machine, so "is this assigned to a program" was
+  answering yes for everything. The font viewer rule - a font file opens in
+  the system's viewer when there is one, and in UltraFiler's own window when
+  there is not - was reading the same wrong answer.
+- **Opening a file on Windows now reports why when it fails**, instead of
+  "Could not open". The status line names the reason the shell gave - the
+  file was not found, access was denied, another program is holding it, the
+  registered program did not answer - and a file type with no program behind
+  it puts up Windows' own "How do you want to open this file?" chooser,
+  exactly as a double-click in Explorer does. (Framework side:
+  `Docs/UltraCanvas/CHANGELOG.md` 0.8.34.)
+- **A double-click with the right mouse button no longer opens the file it is
+  on.** Windows reports a double-click for the right and middle buttons too,
+  and a second right-click on a file is aiming at the context menu.
+
 #### 2026-09-11 *1.29.0*
 - **The toolbar's View picker comes before Sort, and every entry shows its
   layout.** The two pickers sat the other way round, so choosing how the folder

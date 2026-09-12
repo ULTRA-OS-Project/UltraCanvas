@@ -10,8 +10,8 @@
 // handlers Explorer's own "Open with" lists) and macOS (NSWorkspace /
 // Launch Services, macOS 12+). WebAssembly has no application registry and
 // reports no candidates.
-// Version: 1.1.0
-// Last Modified: 2026-08-24
+// Version: 1.2.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -41,6 +41,17 @@ namespace UltraCanvas {
         // on the platforms without an enumeration backend.
         std::vector<FileAssociationApp> GetApplicationsForFiles(
                 const std::vector<std::string>& paths);
+
+        // True when the OS names a DEFAULT application for this file — the
+        // program a double-click in Explorer / Finder / the desktop's file
+        // manager starts. This is the question to ask before handling a file
+        // some other way ("has this file type an owner?"); the candidate list
+        // above answers a different one, since it also carries the
+        // applications that merely offer to open the type, and on Windows
+        // falls back to the unfiltered handler list for a type nothing is
+        // registered for. Cache read like GetApplicationsForFiles, and false
+        // on the platforms without an enumeration backend.
+        bool HasDefaultApplication(const std::string& path);
 
         // Launch with the OS default application (Explorer / Finder
         // double-click semantics), detached: closing the caller never takes

@@ -445,11 +445,23 @@ Notes:
   thumbnails, in the same viewport-driven order (visible tiles first, then one
   screen of prefetch), so no preview ever blocks a frame. Image work has
   priority over reading text.
-- A preview that comes back empty marks the file as failed (it is not retried)
-  and the tile keeps its glyph — indistinguishable, on screen, from a kind that
-  is simply switched off. The worker therefore logs
-  `no thumbnail produced for "<path>"` for each such file, which is what names
-  the cause when a whole folder loses its previews.
+- A preview that comes back empty because the file **was read and holds no
+  preview** marks the file as failed (it is not retried) and the tile keeps its
+  glyph — indistinguishable, on screen, from a kind that is simply switched
+  off. The worker therefore logs `no thumbnail produced for "<path>"` for each
+  such file, which is what names the cause when a whole folder loses its
+  previews.
+- One that comes back empty because the file **could not be read** says nothing
+  about the file and is retried: up to four attempts, 300 ms apart and growing,
+  before the slot is retired. This is the file that has just arrived in the
+  folder — a paste, a drop, a download — and is still held by whatever wrote
+  it, by the search indexer or by the virus scanner. Without the retry such a
+  tile kept the type glyph for the life of the listing, and only a rescan (F5,
+  leaving the folder and coming back, the folder watch reacting to a later
+  change) brought its thumbnail in. A file written within the last ten seconds
+  gets the same benefit of the doubt even where it reads fine by the time the
+  question is asked — the holder may simply have let go in between. The same
+  rule governs the text-content previews.
 - Page-shaped previews (Text, Docs, Spreadsheets, PDF, 3D, Fonts) are only drawn
   where a page is legible — from roughly a 40 px box up. The small icon column of
   the Details and List rows keeps the type glyph, so a folder listing does not
@@ -755,9 +767,16 @@ cannot answer (`FileLockProbeAvailable()`, see
 
 A held file is marked three ways, so the state is visible in every view:
 
-- a **padlock badge** in the bottom-right corner of its icon (mirroring the
-  shortcut arrow on the left), for a file the system actually refuses —
-  drawn only where the icon is at least 24 px, like the shortcut badge;
+- a **padlock badge** in the bottom-left corner of its icon, for a file the
+  system actually refuses — a quarter of the icon's edge (capped at 22 px, so
+  a maximized tile does not carry a padlock the size of a file) and drawn only
+  where the icon is at least 24 px. On a shortcut, whose arrow badge already
+  has that corner, it stacks directly above the arrow instead. **Hovering it
+  says who is holding the file**: the tooltip opens with what the listing
+  already knows (*"In use by another program (cannot be replaced)"*) and
+  fills in the program's name as soon as the holder probe it started comes
+  back — that probe is run for the hovered file only, exactly because naming
+  the holder is the expensive half of the question;
 - an **attribute letter** among `D` / `L` / `R` / `H` / `A`: `X` for a file
   that cannot be replaced right now, `O` for one merely open elsewhere (which
   on Unix blocks nothing). It shows in the Details view's `Attr` column, in
@@ -775,9 +794,11 @@ folder on a slow volume opens at the same speed either way.
 
 `GetEntryLockState(path)` reads back what the last probe found, without
 probing. Holders are deliberately **not** collected for a listing — naming the
-program costs a Restart Manager session per file on Windows; a host that wants
-the name asks `ProbeFileLock(path, true)` for the one file it is showing, the
-way UltraFiler's Attributes dialog does.
+program costs a Restart Manager session per file on Windows; they are asked
+for one file at a time, when the cursor comes to rest on that file's padlock
+badge, and a host that wants the name elsewhere asks
+`ProbeFileLock(path, true)` itself, the way UltraFiler's Attributes dialog
+does.
 
 Directories are never probed: what holds a folder open is usually a program's
 *working directory*, which no probe here can see.
@@ -1408,8 +1429,10 @@ auto-scrolls at the viewport edge, Escape abandons it (the previous
 selection returns), and a press-and-release without movement keeps its old
 meaning — a plain click on empty space clears the selection (a Ctrl click
 leaves it alone).
-Double-clicking an entry opens/activates it (folders and archives are entered,
-files fire `onFileActivated`). A single click on the **name** of the entry that
+Double-clicking an entry with the **left** button opens/activates it (folders
+and archives are entered, files fire `onFileActivated`); the right and middle
+buttons do not, although Windows reports a double-click for those too — a
+second right-click on an entry is aimed at the context menu. A single click on the **name** of the entry that
 is already the only selected one starts an inline rename after a short delay
 (Windows style — the delay is what separates a rename click from the first
 click of a double-click).

@@ -49,8 +49,8 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.25.0
-// Last Modified: 2026-09-09
+// Version: 1.27.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -2636,6 +2636,8 @@ namespace UltraCanvas {
             mediaInfoCache.clear();
             lockQueue.clear();
             lockCache.clear();
+            lockHolderQueue.clear();
+            lockHoldersAsked.clear();
         }
         DropThumbnailCache();
 
@@ -7399,6 +7401,56 @@ namespace UltraCanvas {
         }
     }
 
+    Rect2Di UltraCanvasFilerWidget::EntryIconRect(const ItemLayout& item,
+                                                  ImageFitMode* outFit) const {
+        Rect2Di rect;
+        ImageFitMode fit;
+        ThumbGeometryForItem(item, rect, fit);
+        if (outFit) *outFit = fit;
+        // The thumbnail grid shrinks a folder glyph inside its image box; the
+        // badges follow the glyph, not the box it was centered in.
+        if (item.entryIndex < entries.size() &&
+            entries[item.entryIndex].isDirectory &&
+            style.folderIconScale < 1.0f) {
+            switch (viewType) {
+                case FilerViewType::ThumbnailsSmall:
+                case FilerViewType::ThumbnailsMedium:
+                case FilerViewType::ThumbnailsBig:
+                case FilerViewType::ThumbnailsMaximized: {
+                    const int w = std::max(2, static_cast<int>(
+                            rect.width * style.folderIconScale));
+                    const int h = std::max(2, static_cast<int>(
+                            rect.height * style.folderIconScale));
+                    rect = Rect2Di(rect.x + (rect.width - w) / 2,
+                                   rect.y + (rect.height - h) / 2, w, h);
+                    break;
+                }
+                default: break;
+            }
+        }
+        return rect;
+    }
+
+    bool UltraCanvasFilerWidget::LockBadgeAt(const Point2Di& contentPoint,
+                                             size_t& outEntry) const {
+        if (!showLockState) return false;
+        for (const ItemLayout& item : items) {
+            if (!item.rect.Contains(contentPoint)) continue;
+            if (item.entryIndex >= entries.size()) return false;
+            const FilerEntry& e = entries[item.entryIndex];
+            // Exactly the entries that draw one: the badge marks a file the
+            // system refuses right now, nothing else.
+            if (e.isDirectory || e.path.empty()) return false;
+            if (GetEntryLockState(e.path) != FileLockState::Locked) return false;
+            const Rect2Di badge =
+                    LockBadgeRect(EntryIconRect(item), e.isShortcut);
+            if (badge.width <= 0 || !badge.Contains(contentPoint)) return false;
+            outEntry = item.entryIndex;
+            return true;
+        }
+        return false;
+    }
+
     namespace {
         // Keeps the retained pixmap bytes bounded: browsing a huge folder in
         // a big tile size cannot grow without limit.
@@ -7416,6 +7468,45 @@ namespace UltraCanvas {
         // Tries an application icon gets from the shell before the tile
         // settles on its type glyph.
         constexpr uint8_t kNativeIconMaxAttempts = 3;
+        // Tries a content decode gets when the file could not be READ - see
+        // ThumbSlot::attempts - and how long the slot waits between them. A
+        // file that was just copied into the folder is held by whatever wrote
+        // it, by the search indexer or by the virus scanner for a moment, and
+        // a moment is longer than the microseconds an immediate retry takes.
+        constexpr uint8_t kUnreadableMaxAttempts = 4;
+        constexpr auto kUnreadableRetryDelay = std::chrono::milliseconds(300);
+
+        // Can this file be read right now? Asked only after a decode produced
+        // nothing, to tell "there is no preview in this file" (final) from
+        // "the file could not be opened" (try again in a moment). An empty
+        // file counts as readable: it was read, and it holds no preview.
+        bool FileReadableNow(const std::string& path) {
+            std::ifstream f(PathFromUtf8(path), std::ios::binary);
+            if (!f.is_open()) return false;
+            char probe = 0;
+            f.read(&probe, 1);
+            return f.good() || f.eof();
+        }
+
+        // How long after it was written a file still counts as "just
+        // arrived", and its failed decode as something to try again.
+        constexpr auto kFreshFileWindow = std::chrono::seconds(10);
+
+        // The question above catches a file that is STILL held. A file whose
+        // holder let go in the microseconds between the failed decode and
+        // that question reads fine and would be retired on the strength of
+        // one attempt that never got at its content - which is exactly the
+        // file that was just pasted into the folder. So a file written
+        // moments ago is given the same benefit of the doubt.
+        bool WrittenVeryRecently(const std::string& path) {
+            std::error_code ec;
+            const auto written = fs::last_write_time(path, ec);
+            if (ec) return false;
+            const auto age = fs::file_time_type::clock::now() - written;
+            // A timestamp in the future (a clock that was set back, a file
+            // from another machine) is not "just written".
+            return age >= decltype(age)::zero() && age < kFreshFileWindow;
+        }
     } // namespace
 
     void UltraCanvasFilerWidget::ReleaseThumbSlotLocked(const std::string& key,
@@ -7786,6 +7877,13 @@ namespace UltraCanvas {
                     // serialize). Entries whose slot was pruned or already
                     // finished — the queue is rebuilt every frame and may
                     // repeat in-flight work — are dropped on the way.
+                    const auto now = std::chrono::steady_clock::now();
+                    // The earliest moment a request that is only waiting out
+                    // its retry delay becomes takeable; the wait below ends
+                    // then rather than on the next notify, which may never
+                    // come (nothing repaints while a tile waits for a file to
+                    // become readable).
+                    std::chrono::steady_clock::time_point due{};
                     auto qit = thumbQueue.begin();
                     while (qit != thumbQueue.end()) {
                         auto sit = thumbSlots.find(ThumbSlotKey(
@@ -7793,6 +7891,13 @@ namespace UltraCanvas {
                         if (sit == thumbSlots.end() ||
                             sit->second.state != ThumbState::Pending) {
                             qit = thumbQueue.erase(qit);
+                            continue;
+                        }
+                        if (sit->second.retryAfter > now) {
+                            if (due == std::chrono::steady_clock::time_point{} ||
+                                sit->second.retryAfter < due)
+                                due = sit->second.retryAfter;
+                            ++qit;
                             continue;
                         }
                         if (thumbPathsInFlight.count(qit->path) == 0) break;
@@ -7807,21 +7912,34 @@ namespace UltraCanvas {
                     // Nothing to decode: read a text-content preview instead.
                     // Image work always wins, because a tile waiting for a
                     // photo is the more visible gap.
-                    while (!textQueue.empty() && textPath.empty()) {
-                        std::string p = std::move(textQueue.front());
-                        textQueue.pop_front();
-                        auto sit = textSlots.find(p);
+                    for (auto tit = textQueue.begin(); tit != textQueue.end();) {
+                        auto sit = textSlots.find(*tit);
                         if (sit == textSlots.end() ||
                             sit->second.state != TextPreviewState::Pending ||
-                            textPathsInFlight.count(p) != 0) {
+                            textPathsInFlight.count(*tit) != 0) {
+                            tit = textQueue.erase(tit);
                             continue;
                         }
-                        textPathsInFlight.insert(p);
+                        // Waiting out a retry delay: leave it where it is and
+                        // let the wait below end when it comes due.
+                        if (sit->second.retryAfter > now) {
+                            if (due == std::chrono::steady_clock::time_point{} ||
+                                sit->second.retryAfter < due)
+                                due = sit->second.retryAfter;
+                            ++tit;
+                            continue;
+                        }
+                        textPathsInFlight.insert(*tit);
                         textGeneration = thumbGeneration;
-                        textPath = std::move(p);
+                        textPath = std::move(*tit);
+                        textQueue.erase(tit);
+                        break;
                     }
                     if (!textPath.empty()) break;
-                    thumbCond.wait(lk);
+                    if (due != std::chrono::steady_clock::time_point{})
+                        thumbCond.wait_until(lk, due);
+                    else
+                        thumbCond.wait(lk);
                 }
             }
 
@@ -7840,11 +7958,25 @@ namespace UltraCanvas {
                     if (thumbShutdown) return;
                     if (textGeneration == thumbGeneration) {
                         TextPreviewSlot& slot = textSlots[textPath];
-                        slot.state = (readable && !snippet.lines.empty())
-                                             ? TextPreviewState::Ready
-                                             : TextPreviewState::Failed;
-                        slot.snippet = std::move(snippet);
-                        textReport = slot.state == TextPreviewState::Ready;
+                        if (readable && !snippet.lines.empty()) {
+                            slot.state = TextPreviewState::Ready;
+                            slot.snippet = std::move(snippet);
+                            textReport = true;
+                        } else if (!readable &&
+                                   ++slot.attempts < kUnreadableMaxAttempts) {
+                            // The file could not be read - said by the reader
+                            // itself, so no second open is needed to find out.
+                            // Not an answer about the file: try again shortly.
+                            slot.state = TextPreviewState::Pending;
+                            slot.retryAfter = std::chrono::steady_clock::now() +
+                                              kUnreadableRetryDelay * slot.attempts;
+                            // The repaint is what re-records the want, which
+                            // is what puts the file back in the queue.
+                            textReport = true;
+                        } else {
+                            slot.state = TextPreviewState::Failed;
+                            slot.snippet = std::move(snippet);
+                        }
                     }
                 }
                 if (textReport) PostThumbnailRedraw();
@@ -7939,6 +8071,17 @@ namespace UltraCanvas {
                 });
             }
 
+            // Whether this failure says anything about the file, asked
+            // before the lock is taken: it opens the file, and nothing that
+            // opens a file may run under the mutex the UI thread's paint path
+            // takes. Only a decode that produced nothing asks at all - see
+            // the retry rule below.
+            const bool unreadable =
+                    !pm && !nativeIcon && !FileReadableNow(req.path);
+            const bool transientFailure =
+                    unreadable ||
+                    (!pm && !nativeIcon && WrittenVeryRecently(req.path));
+
             bool report = false;
             bool producedNothing = false;
             {
@@ -7974,16 +8117,33 @@ namespace UltraCanvas {
                         slot.qoi = nullptr;
                         slot.bytes = 0;
                         slot.rawBytes = 0;
-                        // A content decode that produced nothing produces
-                        // nothing the second time too, so the slot is retired
-                        // and the tile stops asking. An application icon can
-                        // fail on a file the shell would serve a moment later,
-                        // so it goes back to Pending for another try; the
-                        // attempt count keeps that from becoming a loop, and a
-                        // slot the view scrolls away from is pruned along with
-                        // its count, so coming back is a fresh start.
-                        if (nativeIcon && ++slot.attempts < kNativeIconMaxAttempts) {
+                        // A content decode that READ the file and found no
+                        // preview in it produces nothing the second time too,
+                        // so the slot is retired and the tile stops asking.
+                        // One that could not read the file at all says
+                        // nothing about the file: a file that was just
+                        // written - pasted into the folder a moment ago - is
+                        // routinely held by whatever wrote it, by the search
+                        // indexer or by the virus scanner, and retiring the
+                        // slot on that left the tile with its type glyph
+                        // until something rescanned the folder. It goes back
+                        // to Pending with a moment's grace instead. An
+                        // application icon can likewise fail on a file the
+                        // shell would serve a moment later. The attempt count
+                        // keeps either from becoming a loop, and a slot the
+                        // view scrolls away from is pruned along with its
+                        // count, so coming back is a fresh start.
+                        const uint8_t maxAttempts =
+                                nativeIcon ? kNativeIconMaxAttempts
+                                           : kUnreadableMaxAttempts;
+                        const bool retryable = nativeIcon || transientFailure;
+                        if (retryable && ++slot.attempts < maxAttempts) {
                             slot.state = ThumbState::Pending;
+                            // Growing grace: whatever is holding the file has
+                            // longer for each try, and four tries span not
+                            // quite two seconds in all.
+                            slot.retryAfter = std::chrono::steady_clock::now() +
+                                              kUnreadableRetryDelay * slot.attempts;
                         } else {
                             slot.state = ThumbState::Failed;
                             producedNothing = true;
@@ -7995,10 +8155,14 @@ namespace UltraCanvas {
             // A tile that silently keeps its type glyph is indistinguishable
             // from one whose preview kind is switched off, so name the file
             // that produced nothing: when a whole folder of pictures loses its
-            // thumbnails, this log is what says where it went.
+            // thumbnails, this log is what says where it went. Only a slot
+            // that has actually been retired gets here - a decode waiting out
+            // its retry delay has not given up on the file yet.
             if (producedNothing) {
                 debugOutput << "UltraCanvasFilerWidget: no thumbnail produced for \""
-                            << req.path << "\"" << std::endl;
+                            << req.path << "\""
+                            << (unreadable ? " (the file could not be read)" : "")
+                            << std::endl;
             }
             // A sibling worker may be parked on a queued request for the
             // path just released.
@@ -8031,9 +8195,10 @@ namespace UltraCanvas {
         // A shortcut wears the icon of what it points at, so the arrow badge
         // drawn over it afterwards is the only thing that says it is one; the
         // padlock is the same idea for a file another program is holding, and
-        // sits in the opposite corner so a locked shortcut shows both. Asking
-        // whether it is held only queues the probe - the answer arrives with a
-        // repaint, which is why this is read here and not waited for.
+        // shares the same corner - stacked above the arrow where an entry
+        // carries both. Asking whether it is held only queues the probe - the
+        // answer arrives with a repaint, which is why this is read here and
+        // not waited for.
         struct EntryBadges {
             UltraCanvasFilerWidget* widget;
             IRenderContext* ctx;
@@ -8042,7 +8207,7 @@ namespace UltraCanvas {
             bool locked;
             ~EntryBadges() {
                 if (shortcut) widget->DrawShortcutOverlay(ctx, rect);
-                if (locked) widget->DrawLockOverlay(ctx, rect);
+                if (locked) widget->DrawLockOverlay(ctx, rect, shortcut);
             }
         } badge{this, ctx, rect, e.isShortcut, EntryLockInfo(e).Blocks()};
 
@@ -8168,17 +8333,37 @@ namespace UltraCanvas {
         ctx->FillLinePath(arrowHead);
     }
 
+    Rect2Di UltraCanvasFilerWidget::LockBadgeRect(const Rect2Di& iconRect,
+                                                  bool shortcut) const {
+        // Below this the badge is a smudge over the icon it annotates, and
+        // the attribute letter and the info bar still say the file is held.
+        const int edge = std::min(iconRect.width, iconRect.height);
+        if (edge < 24) return Rect2Di();
+        // A mark, not a second icon: a quarter of the icon's edge, and capped
+        // so a maximized tile does not carry a padlock the size of a file.
+        const int box = std::max(9, std::min(22, static_cast<int>(
+                std::lround(edge * 0.24))));
+        // Bottom-left, the corner an overlay badge lives in. A shortcut's
+        // arrow already has that corner, so on a locked shortcut the padlock
+        // stacks directly above it - both marks stay on the same side.
+        int y = iconRect.y + iconRect.height - box - 1;
+        if (shortcut) {
+            const int arrow = static_cast<int>(std::lround(
+                    std::max(10.0, edge * 0.38)));
+            y -= arrow + 2;
+        }
+        return Rect2Di(iconRect.x + 1, y, box, box);
+    }
+
     void UltraCanvasFilerWidget::DrawLockOverlay(IRenderContext* ctx,
-                                                 const Rect2Di& rect) {
-        // Bottom-right, mirroring the shortcut badge on the left: a white tile
-        // with a padlock in it. Same size rule - below it the badge would be a
-        // smudge over the icon it annotates, and the attribute letter and the
-        // info bar still say the file is held.
-        const int edge = std::min(rect.width, rect.height);
-        if (edge < 24) return;
-        const double box = std::max(10.0, edge * 0.38);
-        const Rect2Dd badge(rect.x + rect.width - box - 1,
-                            rect.y + rect.height - box - 1, box, box);
+                                                 const Rect2Di& rect,
+                                                 bool shortcut) {
+        // A white tile with a padlock in it, in the bottom-left corner of the
+        // icon (above the arrow badge on a shortcut).
+        const Rect2Di badgeRect = LockBadgeRect(rect, shortcut);
+        if (badgeRect.width <= 0) return;
+        const double box = badgeRect.width;
+        const Rect2Dd badge(badgeRect.x, badgeRect.y, box, box);
 
         ctx->SetFillPaint(Color(255, 255, 255, 235));
         ctx->FillRoundedRectangle(badge, 2);
@@ -8426,17 +8611,11 @@ namespace UltraCanvas {
             ctx->SetFillPaint(selected ? style.selectionColor : style.hoverColor);
             ctx->FillRoundedRectangle(Rect2Dd(item.rect), 5);
         }
-        // Same geometry the prefetch requests, so the cache keys line up.
-        Rect2Di img;
+        // Same geometry the prefetch requests, so the cache keys line up -
+        // and the same the badge hit tests use (a folder glyph shrunk inside
+        // its image box included).
         ImageFitMode fit;
-        ThumbGeometryForItem(item, img, fit);
-        if (e.isDirectory && style.folderIconScale < 1.0f) {
-            // Shrink the folder glyph inside its image box, centered.
-            int w = std::max(2, (int)(img.width * style.folderIconScale));
-            int h = std::max(2, (int)(img.height * style.folderIconScale));
-            img = Rect2Di(img.x + (img.width - w) / 2,
-                          img.y + (img.height - h) / 2, w, h);
-        }
+        const Rect2Di img = EntryIconRect(item, &fit);
         DrawEntryIcon(ctx, e, img, fit);
         // Display > File extensions: the type tag over the foot of the icon
         // box. The box, not the fitted image: a landscape photo leaves the
@@ -8975,6 +9154,7 @@ namespace UltraCanvas {
             aspectQueue.clear();
             mediaQueue.clear();
             lockQueue.clear();
+            lockHolderQueue.clear();
         }
         statsCond.notify_all();
         if (statsWorker.joinable()) statsWorker.join();
@@ -8986,6 +9166,7 @@ namespace UltraCanvas {
             std::string aspectPath;
             MediaProbeRequest media;
             std::vector<std::string> lockBatch;
+            std::string holderPath;
             bool haveMedia = false;
             uint64_t gen;
             {
@@ -8993,7 +9174,7 @@ namespace UltraCanvas {
                 statsCond.wait(lk, [this]() {
                     return statsShutdown || !statsQueue.empty() ||
                            !aspectQueue.empty() || !mediaQueue.empty() ||
-                           !lockQueue.empty();
+                           !lockQueue.empty() || !lockHolderQueue.empty();
                 });
                 if (statsShutdown) return;
                 // Shortest jobs first: lock probes are one open per file and
@@ -9006,6 +9187,12 @@ namespace UltraCanvas {
                 if (!lockQueue.empty()) {
                     lockBatch.assign(lockQueue.begin(), lockQueue.end());
                     lockQueue.clear();
+                } else if (!lockHolderQueue.empty()) {
+                    // One file, and a cursor is resting on its badge waiting
+                    // for the answer: ahead of everything but the listing's
+                    // own lock marking.
+                    holderPath = std::move(lockHolderQueue.front());
+                    lockHolderQueue.pop_front();
                 } else if (!aspectQueue.empty()) {
                     aspectPath = std::move(aspectQueue.front());
                     aspectQueue.pop_front();
@@ -9043,6 +9230,29 @@ namespace UltraCanvas {
                     }
                 }
                 if (report) PostFolderStatsRedraw();
+                continue;
+            }
+
+            if (!holderPath.empty()) {
+                // Naming the programs that hold one file: a Restart Manager
+                // session on Windows, a /proc walk on Linux - which is why
+                // only the hovered file is ever asked.
+                FileLockInfo info;
+                RunGuarded("file lock holders", holderPath, [&]() {
+                    info = ProbeFileLock(holderPath, true);
+                });
+                bool report = false;
+                {
+                    std::lock_guard<std::mutex> lk(statsMutex);
+                    if (statsShutdown) return;
+                    if (gen == statsGeneration && info.InUse()) {
+                        lockCache[holderPath] = info;
+                        report = !info.holders.empty();
+                    }
+                }
+                // The tooltip is already up with the state-only sentence; put
+                // it up again now that it can name the program.
+                if (report) PostTooltipRefresh();
                 continue;
             }
 
@@ -9153,6 +9363,19 @@ namespace UltraCanvas {
             }
             if (report) PostFolderStatsRedraw();
         }
+    }
+
+    void UltraCanvasFilerWidget::PostTooltipRefresh() {
+        // Not coalesced with the redraw above: this one has to run on the UI
+        // thread whether or not anything needs repainting, and there is at
+        // most one of them in flight anyway (one cursor, one hovered badge).
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        auto alive = thumbAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // widget destroyed meanwhile
+            RefreshHoverTooltip();
+        });
     }
 
     void UltraCanvasFilerWidget::PostFolderStatsRedraw() {
@@ -9681,6 +9904,8 @@ namespace UltraCanvas {
             std::lock_guard<std::mutex> lk(statsMutex);
             lockQueue.clear();
             lockCache.clear();
+            lockHolderQueue.clear();
+            lockHoldersAsked.clear();
         }
         RequestRedraw();
     }
@@ -9948,19 +10173,33 @@ namespace UltraCanvas {
             entry  = iconEntry;
             action = iconAction;
             text   = kIconMenuTips[iconAction];
-        } else if (nameTooltips && renamingIndex < 0 && !IsInInfoBar(localPoint) &&
+        } else if (renamingIndex < 0 && !IsInInfoBar(localPoint) &&
                    hoveredSplitter < 0) {
             Point2Di content = ToContentPoint(localPoint);
-            for (const ItemLayout& item : items) {
-                if (!item.rect.Contains(content)) continue;
-                if (item.entryIndex < nameTruncated.size() &&
-                    nameTruncated[item.entryIndex] &&
-                    IsOnItemName(item, content)) {
-                    target = TooltipTarget::ItemName;
-                    entry  = item.entryIndex;
-                    text   = DisplayNameOf(entries[item.entryIndex]);
+            // The padlock badge says what it means: which program is holding
+            // the file, and what that stops. It wins over the name underneath
+            // it - it is the smaller target, and the one the cursor was aimed
+            // at - and it answers whether or not name tooltips are on.
+            size_t lockEntry = 0;
+            if (LockBadgeAt(content, lockEntry)) {
+                text = LockTooltipText(entries[lockEntry]);
+                if (!text.empty()) {
+                    target = TooltipTarget::LockBadge;
+                    entry  = lockEntry;
                 }
-                break;
+            }
+            if (target == TooltipTarget::NoneTarget && nameTooltips) {
+                for (const ItemLayout& item : items) {
+                    if (!item.rect.Contains(content)) continue;
+                    if (item.entryIndex < nameTruncated.size() &&
+                        nameTruncated[item.entryIndex] &&
+                        IsOnItemName(item, content)) {
+                        target = TooltipTarget::ItemName;
+                        entry  = item.entryIndex;
+                        text   = DisplayNameOf(entries[item.entryIndex]);
+                    }
+                    break;
+                }
             }
         }
 
@@ -9985,6 +10224,39 @@ namespace UltraCanvas {
         tooltipTarget = TooltipTarget::NoneTarget;
         tooltipAction = -1;
         UltraCanvasTooltipManager::HideTooltip();
+    }
+
+    void UltraCanvasFilerWidget::RefreshHoverTooltip() {
+        // Only the padlock badge's text can arrive after the tooltip is up
+        // (the holder probe is a background call), and re-deriving it is what
+        // turns "In use by another program" into the program's name without
+        // the user moving the cursor.
+        if (tooltipTarget != TooltipTarget::LockBadge) return;
+        if (tooltipEntry >= entries.size()) return;
+        auto* win = GetWindow();
+        if (!win) return;
+        const std::string text = LockTooltipText(entries[tooltipEntry]);
+        if (text.empty()) { HideHoverTooltip(); return; }
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(win, text,
+                                                        lastPointerWindow);
+    }
+
+    std::string UltraCanvasFilerWidget::LockTooltipText(const FilerEntry& e) {
+        const FileLockInfo info = EntryLockInfo(e);
+        std::string text = FileLockText(info);
+        if (text.empty()) return text;
+        // Nothing named the holder yet: ask for this one file, once. The
+        // answer lands in the same cache entry and puts the tooltip up again
+        // with the program's name in it.
+        if (info.holders.empty()) {
+            std::lock_guard<std::mutex> lk(statsMutex);
+            if (lockHoldersAsked.insert(e.path).second) {
+                lockHolderQueue.push_back(e.path);
+                StartFolderStatsWorkerLocked();
+                statsCond.notify_one();
+            }
+        }
+        return text;
     }
 
     void UltraCanvasFilerWidget::RememberPointer(const UCEvent& event) {
@@ -11129,6 +11401,11 @@ namespace UltraCanvas {
                 return ownedRelease;
             }
             case UCEventType::MouseDoubleClick: {
+                // Only the left button opens an entry. Windows reports a
+                // double-click for the right and middle buttons too, and a
+                // second right-click on a file is aiming at the context menu,
+                // not at opening it.
+                if (event.button != UCMouseButton::Left) return false;
                 // While the rename editor is open a double-click can only be
                 // inside it (a click anywhere else commits on its MouseDown):
                 // it belongs to the editor, never opens the entry behind it.

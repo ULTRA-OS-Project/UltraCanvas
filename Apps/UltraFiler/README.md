@@ -235,10 +235,17 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   sound, the default), *5 s clip* (a five-second muted preview in the
   `UltraCanvasAlbum` hover style, then pause) or *Still image* (paused
   first frame).
-- **Open files:** double-click / Enter shows a previewable file in the
-  preview pane and launches every other file with the application the OS
-  registers for it (`UltraCanvasFileAssociations`), like a double-click in
-  Explorer. **Open with >** is the first entry of the context menu, and
+- **Open files:** double-click / Enter either starts the program this system
+  has registered for the file, exactly as a double-click in Explorer or the
+  Finder does, or shows the file in the preview pane —
+  *Settings > Handling > Opening files* chooses, and it ships set to the
+  registered program on Windows and to the preview on Linux and macOS. A file
+  type nothing is registered for is previewed whichever is set, so a
+  double-click never comes to nothing; a file that cannot be previewed always
+  goes to the system (`UltraCanvasFileAssociations`), and on Windows a type
+  with no program behind it puts up the shell's own "How do you want to open
+  this file?" chooser, again as Explorer does. **Open with >** is the first
+  entry of the context menu, and
   clicking it does the same as a double-click — opens the selection with the
   default application; its submenu lists all registered applications for the
   selection (default first, with icons) plus **Other application…**, a
@@ -286,6 +293,7 @@ to the running application immediately and is saved to the config file
 | Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves. **Confirmation** — whether the drop asks before it is carried out: **Always**, **Only when files are moved** (the default) or **None**. The question names how many entries are about to be moved or copied and into which folder; files dragged in from another program are copies, so only *Always* asks about those |
+| Handling > Opening files | **Double-click (or Enter) on a file** — **Start the registered program**, the way Explorer and the Finder do (the default on Windows), or **Show it in the preview**, keeping the file inside UltraFiler (the default on Linux and macOS). A file type this system has no program for is previewed either way, so the setting never turns a double-click into nothing happening; a file that cannot be previewed always goes to the system, and the context menu's *Open with* starts a program whichever is set |
 | Handling > Tabs | **New tab** — what the **"+"** at the end of the tab strip opens: a **new view of the current folder** (the default) or the **Home folder**. Only the "+" follows this; a tab opened on a named folder — the containing folder of a search result, an entry of the History or Favorites view — still opens on that folder |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |
 | Extras > History & Favorites | Clears the recently-used lists, the pinned entries, and the per-folder view settings |

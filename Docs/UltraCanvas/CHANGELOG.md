@@ -1,3 +1,106 @@
+#### 2026-09-12 *0.8.37*
+- **A double-click that opens nothing now says so on macOS too.** The default
+  open spawned `/usr/bin/open` detached - and a detached spawn never sees the
+  exit code of what it started, so every launch was reported as successful. A
+  file type Launch Services has no application for came back "launched",
+  nothing appeared, and neither the file display nor the user was told
+  anything: the same silent double-click Windows had, from the opposite cause
+  (there the launch really failed and the reason was thrown away; here the
+  failure was never visible in the first place).
+- `FileAssociations::OpenWithDefaultApplication` now asks Launch Services
+  which application Finder would use (`URLForApplicationToOpenURL:`) before
+  launching anything, and hands the files to it with
+  `openURLs:withApplicationAtURL:` - the call the "Open with >" launches
+  already used. A file with no application is named in the error; the rest of
+  the selection still opens, grouped by application, so a mixed selection
+  produces one window per application rather than one per file. The `open`
+  tool stays as the fallback for a system older than the API.
+- Paths handed to the macOS backend are made absolute first, so a relative
+  name cannot be resolved against this process's working directory instead of
+  the folder on screen - and cannot begin with a "-" that the `open` tool
+  would read as an option.
+
+#### 2026-09-12 *0.8.36*
+- **A file just pasted into the folder gets its thumbnail.** The first decode
+  of a file that has only this moment been written routinely cannot read it -
+  on Windows the copy's own handle, the search indexer and the virus scanner
+  each hold a new file for a moment - and the widget took that for the answer:
+  "this file has no preview", slot retired, tile left with its type glyph for
+  the life of the listing. Only a rescan brought the picture in, which is why
+  the fix for it was to leave the folder and come back.
+- A decode that produces nothing is now asked WHY. The file was read and holds
+  no preview (a document saved without one, a format no decoder here handles):
+  unchanged, the slot is retired at once and the worker logs it. The file could
+  not be read: up to four tries, 300 ms apart and growing, before giving up -
+  and a file written within the last ten seconds gets the same benefit of the
+  doubt even where it reads fine by the time the question is asked, since the
+  holder may have let go in the microseconds in between. The retry waits on the
+  decode worker (`wait_until`), so nothing spins and no repaint is needed to
+  drive it.
+- The **text-content previews** (Text, Docs, Spreadsheets) follow the same
+  rule, from the same cause: their reader already reports whether it could read
+  the file, and an unreadable file is now retried rather than recorded as
+  having no text.
+
+#### 2026-09-12 *0.8.35*
+- **The padlock badge on a held file is smaller, sits on the left, and says
+  who is holding the file.** It was drawn at 38 % of the icon's edge in the
+  bottom-right corner with no size cap, so on a thumbnail tile it read as a
+  second icon rather than a mark on the first, and it covered the part of a
+  picture that is usually its subject. It is now a quarter of the edge, capped
+  at 22 px, in the bottom-left corner - the corner overlay badges live in -
+  and on a shortcut, whose arrow badge already has that corner, it stacks
+  directly above the arrow so both marks stay on the same side.
+- **Hovering the badge opens a tooltip.** It starts with what the listing
+  already knows (*"In use by another program (cannot be replaced)"*) and fills
+  in the program's name as soon as it can: resting on a badge starts a
+  holder probe for that one file - the expensive half of the question, which
+  is why a listing never asks it - and the tooltip is put up again with the
+  answer without the cursor having to move. The badge wins over the file-name
+  tooltip underneath it, and answers whether or not name tooltips are on.
+- The icon box a badge is placed against is now derived once
+  (`EntryIconRect`) for drawing and for hit-testing alike, so a badge's
+  tooltip lands exactly where the badge is drawn - in every view, and on a
+  folder glyph shrunk inside its image box.
+
+#### 2026-09-12 *0.8.34*
+- **Opening a file with its registered program works on Windows where it
+  quietly did not.** `FileAssociations::OpenWithDefaultApplication` went
+  straight to `ShellExecuteEx` with whatever path spelling the caller
+  carried and no COM apartment, which is two ways for a perfectly registered
+  file type to come back "no application is associated": the shell resolves
+  neither a relative name nor a `C:/like/this` spelling - both of which
+  `std::filesystem` hands through, since a listing keeps the separators the
+  folder was opened with - and a verb handler is a COM object, so the file
+  types whose association is more than a command line failed on a thread
+  without an apartment. The path is now made absolute and native for every
+  shell call (`SHParseDisplayName`, which backs "Open with > *program*", is
+  just as strict), and COM is initialized around the launch.
+- **A file type with nothing registered puts up Windows' own "How do you want
+  to open this file?" chooser**, the way a double-click in Explorer does,
+  instead of failing silently; what the user picks there opens the file and
+  is remembered by the shell, so the next open needs no chooser. A chooser
+  closed without a choice is an answer, not an error. A launch that does fail
+  now carries the shell's reason - file not found, access denied, held by
+  another program, the registered program did not answer - rather than
+  "could not open".
+- **`FileAssociations::HasDefaultApplication(path)`**: does the OS name a
+  program that would open this file? The candidate list answered a different
+  question and was being read for this one - it also carries the applications
+  that merely offer to open the type, and on Windows falls back to the
+  unfiltered handler list, i.e. every application on the machine that ever
+  registered itself, for exactly the types nothing is registered for.
+- **The Windows backend no longer mistakes `OpenWith.exe` for a registered
+  program** - the shell names that chooser stub precisely when nothing is
+  registered - and it now adds the program the registry *does* name to the
+  candidate list when the handler enumeration misses it, which a ProgID
+  registered without `OpenWithProgids` (plenty of older installers) always
+  did. That program is the one flagged as the default, so "Open with >" leads
+  with it.
+- **`UltraCanvasFilerWidget` only opens an entry on a LEFT double-click.**
+  Windows reports a double-click for the right and middle buttons too, so a
+  second right-click on a file - aimed at the context menu - opened it.
+
 #### 2026-09-12 *0.8.33*
 - **A colour can now be turned into transparency:**
   `PixelFX::Colour::ColourToAlpha(image, key, tolerance, softness, amount,

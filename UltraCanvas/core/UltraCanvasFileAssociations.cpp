@@ -7,8 +7,8 @@
 // Threading model: every backend call — from the worker and from cold-path
 // synchronous lookups alike — runs under one backend mutex, so the backends
 // stay lock-free. The cache has its own mutex and is safe from any thread.
-// Version: 1.0.0
-// Last Modified: 2026-08-16
+// Version: 1.1.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasFileAssociations.h"
@@ -209,6 +209,13 @@ std::vector<FileAssociationApp> GetApplicationsForFiles(
                      result.end());
     }
     return result;
+}
+
+bool HasDefaultApplication(const std::string& path) {
+    if (path.empty()) return false;
+    for (const FileAssociationApp& app : Service::Instance().Lookup(path))
+        if (app.isDefault) return true;
+    return false;
 }
 
 bool OpenWithDefaultApplication(const std::vector<std::string>& paths,

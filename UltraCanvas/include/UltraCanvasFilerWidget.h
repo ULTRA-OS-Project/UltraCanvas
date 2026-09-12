@@ -78,8 +78,8 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.25.0
-// Last Modified: 2026-09-09
+// Version: 1.27.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -1212,7 +1212,7 @@ namespace UltraCanvas {
         // icon-menu button wins over the item name underneath it.
         // (NoneTarget, not None: X11 #defines None, same reason
         // FilerDatasetField spells its empty value NoneData.)
-        enum class TooltipTarget { NoneTarget, IconButton, ItemName };
+        enum class TooltipTarget { NoneTarget, IconButton, ItemName, LockBadge };
         TooltipTarget tooltipTarget = TooltipTarget::NoneTarget;
         size_t tooltipEntry  = 0;
         int    tooltipAction = -1;   // IconMenuAction when target == IconButton
@@ -1513,12 +1513,19 @@ namespace UltraCanvas {
             // than a preview of its content, and a folder of photos or
             // videos must not be able to push them out.
             bool nativeIcon = false;
-            // Extractions of a native icon already spent on this slot. The
-            // shell can fail on a file it would serve a moment later (a busy
-            // shell, an exhausted handle table), so an icon gets a few tries
-            // before the tile settles on its type glyph — unlike a content
-            // decode, which fails the same way every time.
+            // Decodes already spent on this slot. A content decode that read
+            // the file and found no preview in it fails the same way every
+            // time and is retired at once; one that could not read the file
+            // at all is a different thing entirely — a file that has just
+            // been written is routinely unreadable for a moment (the copy's
+            // own handle, the indexer, the virus scanner), and the tile was
+            // settling on its type glyph for the life of the listing because
+            // of it. Those, and a native icon the shell would serve a moment
+            // later, get a few tries before the slot is retired.
             uint8_t attempts = 0;
+            // Not before this: a retry that runs immediately runs inside the
+            // same moment that just failed, and spends the attempts on it.
+            std::chrono::steady_clock::time_point retryAfter{};
         };
         struct ThumbRequest {
             std::string path;
@@ -1625,6 +1632,12 @@ namespace UltraCanvas {
         struct TextPreviewSlot {
             TextPreviewState state = TextPreviewState::Pending;
             TextPreviewSnippet snippet;
+            // Same rule as ThumbSlot's: a file that was read and holds no
+            // text is done with, a file that could not be read is tried
+            // again a few times - a document pasted into the folder a moment
+            // ago is routinely unreadable for exactly that long.
+            uint8_t attempts = 0;
+            std::chrono::steady_clock::time_point retryAfter{};
         };
         std::unordered_map<std::string, TextPreviewSlot> textSlots;  // by path
         std::deque<std::string> textQueue;             // paths to read
@@ -1700,6 +1713,13 @@ namespace UltraCanvas {
         // a change - is what makes the marking current.
         std::unordered_map<std::string, FileLockInfo> lockCache;
         std::deque<std::string> lockQueue;
+        // WHO holds a file is asked only for the one file the cursor rests on
+        // (the badge tooltip): on Windows the answer costs a Restart Manager
+        // session per file, which is not something a listing may pay. The
+        // answer is merged into the same cache entry; `lockHoldersAsked`
+        // keeps a cursor sitting on a badge from queueing it every frame.
+        std::deque<std::string> lockHolderQueue;
+        std::unordered_set<std::string> lockHoldersAsked;
 
         // Mutable so a const getter (GetEntryLockState) can read a cache the
         // worker writes; the lock is what makes that read safe.
@@ -1717,6 +1737,9 @@ namespace UltraCanvas {
         void StartFolderStatsWorkerLocked();
         void StopFolderStatsWorker();
         void FolderStatsWorkerMain();
+        // Re-derives the hovered badge's tooltip text on the UI thread, for an
+        // answer that arrived on the worker after the tooltip was shown.
+        void PostTooltipRefresh();
         void PostFolderStatsRedraw();
 
         std::shared_ptr<UltraCanvasMenu> activePopupMenu;
@@ -1921,12 +1944,27 @@ namespace UltraCanvas {
         // mark that tells a shortcut apart from the file it points at, whose
         // icon it otherwise wears exactly.
         void DrawShortcutOverlay(IRenderContext* ctx, const Rect2Di& rect);
-        // The padlock badge in the opposite corner: another program is
-        // holding this file, so replacing, renaming or deleting it fails
-        // until that program lets go. Only for a file the system actually
-        // refuses (FileLockState::Locked) - a file merely open elsewhere
-        // blocks nothing and is left to the attribute letter.
-        void DrawLockOverlay(IRenderContext* ctx, const Rect2Di& rect);
+        // The padlock badge in the bottom-left corner of the icon: another
+        // program is holding this file, so replacing, renaming or deleting it
+        // fails until that program lets go. Only for a file the system
+        // actually refuses (FileLockState::Locked) - a file merely open
+        // elsewhere blocks nothing and is left to the attribute letter.
+        // Hovering it says which program holds the file.
+        // `shortcut` says the arrow badge already owns the bottom-left
+        // corner, so the padlock stacks above it instead of on top of it.
+        void DrawLockOverlay(IRenderContext* ctx, const Rect2Di& rect,
+                             bool shortcut);
+        // The box an entry's icon is drawn in, per view - the geometry the
+        // badges are placed against, so their hit tests land where they are
+        // drawn. `outFit` reports the fit mode the same call decided.
+        Rect2Di EntryIconRect(const ItemLayout& item,
+                              ImageFitMode* outFit = nullptr) const;
+        // Where the padlock badge sits inside an icon box, or an empty rect
+        // when the box is too small to carry one.
+        Rect2Di LockBadgeRect(const Rect2Di& iconRect, bool shortcut) const;
+        // The entry whose padlock badge is under `contentPoint` (a point in
+        // content coordinates), if any.
+        bool LockBadgeAt(const Point2Di& contentPoint, size_t& outEntry) const;
         void DrawSelectionState(IRenderContext* ctx, const ItemLayout& item, bool hovered);
         // True when the entry sits on the clipboard as a pending "cut", so the
         // view can ghost it until the move completes (Explorer-style).
@@ -2071,6 +2109,13 @@ namespace UltraCanvas {
         void UpdateHoverTooltip(const Point2Di& localPoint,
                                 const Point2Di& windowPoint);
         void HideHoverTooltip();
+        // Puts the current tooltip up again with freshly derived text, for a
+        // tooltip whose text arrives after it was shown (the padlock badge,
+        // waiting for the holder names). A no-op while nothing is hovered.
+        void RefreshHoverTooltip();
+        // The sentence a padlock badge shows, and the holder-name probe it
+        // starts on first hover.
+        std::string LockTooltipText(const FilerEntry& e);
         // Re-derives the hovered item, its icon menu and its tooltip at the
         // last known pointer position. Runs once per paint and returns
         // immediately unless the content moved under the cursor since the

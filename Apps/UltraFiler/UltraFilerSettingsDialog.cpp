@@ -16,7 +16,10 @@
 // individual formats inside them, are drawn as a thumbnail in the file
 // display / opened in the detail pane beside it), Handling > Drag & Drop
 // (what a plain drop onto a folder does - move or copy - and whether it asks
-// first), Handling > Tabs (what the "+" of the folder tab strip opens - the
+// first), Handling > Opening files (what a double-click on a file does when
+// the system has a program registered for it - start that program, the way
+// Explorer and the Finder do, or show the file in UltraFiler's preview),
+// Handling > Tabs (what the "+" of the folder tab strip opens - the
 // current folder again or the Home folder), Extras > Open prompt (the command
 // line program UltraFiler opens, picked with the file dialog and stored with
 // "Save app") and Extras > History & Favorites (clearing the recently-used
@@ -31,8 +34,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
-// Version: 1.11.0
-// Last Modified: 2026-09-09
+// Version: 1.12.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -102,6 +105,7 @@ namespace {
     constexpr const char* kPageHandling = "handling";
     constexpr const char* kPageDragDrop = "handling/drag-drop";
     constexpr const char* kPageTabs = "handling/tabs";
+    constexpr const char* kPageOpeningFiles = "handling/opening-files";
     constexpr const char* kPageExtras = "extras";
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "extras/history-favorites";
@@ -187,6 +191,12 @@ namespace {
         std::shared_ptr<UltraCanvasRadio>       newTabCurrentRadio;
         std::shared_ptr<UltraCanvasRadio>       newTabHomeRadio;
         UltraCanvasRadioGroup                   newTabGroup;
+
+        // Handling > Opening files: what a double-click on a file does when
+        // the system has a program registered for it.
+        std::shared_ptr<UltraCanvasRadio>       openAppRadio;
+        std::shared_ptr<UltraCanvasRadio>       openPreviewRadio;
+        UltraCanvasRadioGroup                   openActivationGroup;
 
         // Extras > Open prompt
         std::shared_ptr<UltraCanvasTextInput> promptInput;   // chosen application
@@ -1215,6 +1225,49 @@ namespace {
         return parts.page;
     }
 
+    // ===== HANDLING > OPENING FILES =====
+    std::shared_ptr<UltraCanvasContainer> BuildOpeningFilesPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-opening", "Opening files",
+                "Double-click (or Enter) on a file - what it does when this "
+                "system has a program registered for that kind of file:");
+
+        const bool app = d->settings->doubleClickOpensRegisteredApp;
+
+        d->openAppRadio = MakeChoice("ufl-set-open-app",
+                "Start the registered program", app);
+        d->openPreviewRadio = MakeChoice("ufl-set-open-preview",
+                "Show it in the preview", !app);
+        d->openActivationGroup.AddRadioButton(d->openAppRadio);
+        d->openActivationGroup.AddRadioButton(d->openPreviewRadio);
+        d->openActivationGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->doubleClickOpensRegisteredApp =
+                    (selected == d->openAppRadio);
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->openAppRadio);
+        parts.body->AddChild(d->openPreviewRadio);
+
+        AddNote(parts, "ufl-set-open-note1",
+                "\"Start the registered program\" is what a double-click does "
+                "in Explorer and the Finder: the file opens in the program its "
+                "type is assigned to, and UltraFiler stays as it is.");
+        AddNote(parts, "ufl-set-open-note2",
+                "\"Show it in the preview\" keeps the file inside UltraFiler "
+                "whenever it can show it - pictures, documents, spreadsheets, "
+                "3D models, e-books, fonts, video, audio and text - which is "
+                "faster than starting a program for a look at a file.");
+        AddNote(parts, "ufl-set-open-note3",
+                "A file this system has no program for is shown in the preview "
+                "either way, so this never turns a double-click into nothing "
+                "happening. Whichever is chosen, the context menu's \"Open "
+                "with\" still starts a program, and a file that cannot be "
+                "previewed - a program, an installer, a file type UltraFiler "
+                "does not read - always goes to the system.");
+        return parts.page;
+    }
+
     // ===== HANDLING > TABS =====
     std::shared_ptr<UltraCanvasContainer> BuildTabsPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-tabs", "Tabs",
@@ -1604,6 +1657,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageDetailView, "Detail view");
         AddTreeNode(d, "settings", kPageHandling, "Handling");
         AddTreeNode(d, kPageHandling, kPageDragDrop, "Drag & Drop");
+        AddTreeNode(d, kPageHandling, kPageOpeningFiles, "Opening files");
         AddTreeNode(d, kPageHandling, kPageTabs, "Tabs");
         AddTreeNode(d, "settings", kPageExtras, "Extras");
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, "Open prompt");
@@ -1635,6 +1689,7 @@ namespace {
         AddPage(d, kPageDetailView,
                 BuildFormatSwitchPage(d, FilerPreviewTarget::DetailView));
         AddPage(d, kPageDragDrop, BuildDragDropPage(d));
+        AddPage(d, kPageOpeningFiles, BuildOpeningFilesPage(d));
         AddPage(d, kPageTabs, BuildTabsPage(d));
         AddPage(d, kPageOpenPrompt, BuildOpenPromptPage(d));
         AddPage(d, kPageLists, BuildListsPage(d));
