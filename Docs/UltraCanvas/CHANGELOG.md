@@ -21,7 +21,14 @@
     Windows and `<exe>/../PlugIns/` on macOS; opens absolute paths with
     `LOAD_WITH_ALTERED_SEARCH_PATH` so a module in `lib/` resolves the core
     DLL beside the executable; spells out codes 126 and 193 in the error.
-  - Demo: the LaTeX Documents menu entry no longer credits MicroTeX.
+  - Demo: the LaTeX Documents menu entry no longer credits MicroTeX, and the
+    page no longer has a reference-image path. A pre-rendered `.png` / `.gif`
+    beside a `.tex` demonstrated nothing of the framework; every file now
+    goes through a live path - the LaTeX view for a formula-only document,
+    the document reader for everything else, which reports what it cannot
+    typeset (a TikZ picture, an unknown package) as a diagnostic in the
+    header while the rest of the document still renders. `media/LaTex`
+    holds `.tex` sources only.
   - `Docs/UltraCanvas/UltraCanvasLaTeXView.md`: search order updated.
 
 #### 2026-09-12 *0.8.37*
