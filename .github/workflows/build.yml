@@ -72,6 +72,15 @@ jobs:
       run:
         shell: ${{ startsWith(matrix.os, 'windows') && 'msys2 {0}' || 'bash' }}
 
+    # Is this run producing release artifacts, or checking a change?
+    #
+    # Only a push to main is a release build. A pull_request run and a
+    # workflow_dispatch validation run are not, and the macOS signing and
+    # notarization steps below are skipped for them - see the comment on
+    # "Package (macOS)" for why that matters.
+    env:
+      RELEASE_BUILD: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v5
@@ -425,8 +434,10 @@ jobs:
         if: runner.os == 'Windows'
         run: ./package-win.sh --no-sign
 
+      # Release builds only, so a pull request never decodes the signing
+      # certificate onto a runner it does not need it on.
       - name: Import code signing certificate (macOS)
-        if: runner.os == 'macOS'
+        if: runner.os == 'macOS' && env.RELEASE_BUILD == 'true'
         env:
           MACOS_CERTIFICATE: ${{ secrets.MACOS_CERTIFICATE }}
           MACOS_CERTIFICATE_PWD: ${{ secrets.MACOS_CERTIFICATE_PWD }}
@@ -453,8 +464,29 @@ jobs:
 
           rm $RUNNER_TEMP/certificate.p12
 
-      - name: Package (macOS)
-        if: runner.os == 'macOS'
+      # A pull request packages the same bundle, unsigned - which is exactly
+      # what the Windows row above has always done with --no-sign.
+      #
+      # Signing and notarization are network calls to Apple: `codesign`
+      # contacts the timestamp service, and `notarytool submit --wait` uploads
+      # the bundle and then polls appstoreconnect until Apple answers. Both
+      # ran on every PR build, and on 2026-09-11 they failed four times in one
+      # afternoon across four different pull requests - twice on the timestamp
+      # service and twice on the notary, each time with the build and the whole
+      # test suite already green. A red check that says nothing about the diff
+      # trains reviewers to ignore red checks, and each one cost a re-run of a
+      # 40-minute macOS job.
+      #
+      # Nothing about the packaging itself is skipped: the app bundles are
+      # still assembled, the dylibs still collected and relinked, the artifact
+      # still uploaded. Only the two steps that ask Apple a question are gone,
+      # so a PR still proves package-macos.sh runs end to end.
+      - name: Package (macOS, unsigned - pull requests and manual runs)
+        if: runner.os == 'macOS' && env.RELEASE_BUILD != 'true'
+        run: ./package-macos.sh --no-sign
+
+      - name: Package (macOS, signed and notarized - push to main)
+        if: runner.os == 'macOS' && env.RELEASE_BUILD == 'true'
         env:
           APPLE_SIGN_ID: ${{ secrets.APPLE_SIGN_ID }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
@@ -462,6 +494,9 @@ jobs:
           APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
         run: ./package-macos.sh --notarize
 
+      # Unconditional on macOS, and `|| true` inside: on a run that never
+      # imported a certificate there is no keychain to delete, and this must
+      # not be the step that turns such a run red.
       - name: Cleanup keychain (macOS)
         if: always() && runner.os == 'macOS'
         run: |

@@ -1,4 +1,4 @@
-#### 2026-09-11 *0.8.29*
+#### 2026-09-11 *0.8.32*
 - **A build without GL now shows the model instead of a sentence about GL.**
   `UltraCanvasSTLElement`'s non-GL fallback drew a dark rectangle, the triangle
   count, and the line *"(build with -DULTRACANVAS_ENABLE_GL=ON for 3D preview)"*
@@ -37,6 +37,32 @@
   Clean under ASan/UBSan.
 - The GL path is untouched. Where GL is enabled the real viewer still runs, as
   it should the moment anyone drags to rotate.
+
+#### 2026-09-11 *0.8.31*
+- **macOS signing and notarization now run only on a push to `main`.** A pull
+  request packages the same bundle unsigned, which is exactly what the Windows
+  row of the build matrix has always done with `--no-sign`.
+- **Why: they are network calls to Apple, and they were failing.** `codesign`
+  contacts Apple's timestamp service and `notarytool submit --wait` uploads the
+  bundle and then polls appstoreconnect until Apple answers. Both ran on every
+  PR build. On 2026-09-11 they failed **four times in one afternoon across four
+  different pull requests** - twice on the timestamp service, twice on the
+  notary (`NSURLErrorDomain -1009`, "The Internet connection appears to be
+  offline") - every time with the build and the whole test suite already green.
+  A red check that says nothing about the diff trains reviewers to ignore red
+  checks, and each one cost a re-run of a 40-minute macOS job.
+- **Nothing about the packaging itself is skipped.** The app bundles are still
+  assembled, the Homebrew dylibs still collected and relinked, the artifact
+  still uploaded, so a pull request still proves `package-macos.sh` runs end to
+  end. Only the two steps that ask Apple a question are gone - along with
+  decoding the signing certificate onto a runner that no longer needs it. The
+  macOS artifact from a PR run is therefore unsigned, and Gatekeeper will say
+  so; the signed, notarized, stapled bundles still come from `main`, which is
+  where the release artifacts have always come from.
+- The condition is a single job-level `RELEASE_BUILD` flag rather than the same
+  expression repeated on three steps, and a `workflow_dispatch` validation run
+  counts as a check rather than a release - so manually validating a branch no
+  longer submits anything to Apple either.
 
 #### 2026-09-11 *0.8.28*
 - **MilkShape 3D (.ms3d) reads.** `Plugins/Models/MS3D/` is the one reader here
