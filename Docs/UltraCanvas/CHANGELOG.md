@@ -1,49 +1,29 @@
-#### 2026-09-11 *0.8.26*
-- **The Filer and the media viewer show every 3D format this build reads, not
-  just STL.** Both live in core; every format but STL lives in the Models
-  plugin, which links *against* core - so core could not call it, and both
-  viewers simply asked `ext == "stl"`. That answer had been wrong for nine
-  formats and counting: `UltraCanvasMediaViewer::IsModelFile` still named one
-  extension after OBJ, PLY, 3DS, COLLADA, DirectX .x, Alembic, .blend, STEP,
-  FBX and MilkShape had readers, and the Filer's thumbnail worker refused
-  everything else with the comment "the other 3D formats have no loader that
-  works without a GL context".
-- **`include/UltraCanvasModelPreview.h` is the inversion**, and it inverts the
-  question rather than the dependency. Core declares what it wants - is this
-  extension one you read, and turn this path into a `Mesh3D` - and
-  `RegisterModelFormatsPlugin()` installs an implementation on its way in. No
-  provider installed means the answers fall back to STL, which is exactly what
-  a build with `ULTRACANVAS_PLUGIN_MODELS=OFF` gets and what every caller got
-  before. The provider hands back a flat mesh rather than a `ModelDocument`,
-  because core has no idea that type exists and a thumbnail wants one triangle
-  buffer rather than a scene.
-- **The GL context was never the obstacle.** `RenderModelPreviewPixmap` has
-  always been a software rasterizer - it rotates, projects and shades the
-  triangles itself - so widening it needed no renderer work at all, only a way
-  to get the triangles. The existing triangle cap still applies afterwards,
-  which is what keeps a subdivided FBX from stalling a preview worker.
-- **A STEP file previews now too.** It carries exact bodies and no triangles
-  until something asks, and the provider asks: `TessellateOnImport` is on for
-  previews specifically, so a `.step` draws as the solid it describes instead
-  of as a blank tile.
-- **`.dxf` still does not preview as a model**, matching the dispatch's own
-  deliberate refusal to claim it - a DXF is a drawing far more often than a
-  model, and the Vector reader stays its default. `ModelPreviewSeamTest`
-  asserts that from the preview side, where `ModelFormatsPluginTest` already
-  asserted it from the dispatch side.
-- **`UltraCanvasSTLElement::LoadFromFile` is no longer STL-only** either, which
-  is what makes the media viewer work without further changes: the element only
-  ever wanted a triangle buffer, so it now takes one from the same seam.
-- **`Tests/ModelPreviewSeamTest.cpp`** (new) pins the contract rather than any
-  one format: that a build with no provider behaves exactly as before, that a
-  provider widens both questions, that a half-built provider is refused whole
-  rather than called through a null `std::function`, that a provider returning
-  no triangles reports failure rather than an empty preview, and that clearing
-  it narrows core back to STL. Its sample half loads every export of the
-  aircraft through the real provider and asserts each gives the preview a
-  bounding sphere to frame and a normal per vertex to shade - and that the
-  OBJ's 8110 quads arrive as exactly 16220 triangles, so nothing is dropped on
-  the way through the flattening.
+#### 2026-09-11 *0.8.31*
+- **macOS signing and notarization now run only on a push to `main`.** A pull
+  request packages the same bundle unsigned, which is exactly what the Windows
+  row of the build matrix has always done with `--no-sign`.
+- **Why: they are network calls to Apple, and they were failing.** `codesign`
+  contacts Apple's timestamp service and `notarytool submit --wait` uploads the
+  bundle and then polls appstoreconnect until Apple answers. Both ran on every
+  PR build. On 2026-09-11 they failed **four times in one afternoon across four
+  different pull requests** - twice on the timestamp service, twice on the
+  notary (`NSURLErrorDomain -1009`, "The Internet connection appears to be
+  offline") - every time with the build and the whole test suite already green.
+  A red check that says nothing about the diff trains reviewers to ignore red
+  checks, and each one cost a re-run of a 40-minute macOS job.
+- **Nothing about the packaging itself is skipped.** The app bundles are still
+  assembled, the Homebrew dylibs still collected and relinked, the artifact
+  still uploaded, so a pull request still proves `package-macos.sh` runs end to
+  end. Only the two steps that ask Apple a question are gone - along with
+  decoding the signing certificate onto a runner that no longer needs it. The
+  macOS artifact from a PR run is therefore unsigned, and Gatekeeper will say
+  so; the signed, notarized, stapled bundles still come from `main`, which is
+  where the release artifacts have always come from.
+- The condition is a single job-level `RELEASE_BUILD` flag rather than the same
+  expression repeated on three steps, and a `workflow_dispatch` validation run
+  counts as a check rather than a release - so manually validating a branch no
+  longer submits anything to Apple either.
+
 #### 2026-09-11 *0.8.28*
 - **MilkShape 3D (.ms3d) reads.** `Plugins/Models/MS3D/` is the one reader here
   with no container layer to split off, and deliberately so: an .ms3d is a
@@ -113,6 +93,53 @@
   argues .blend into being read was still titled "the second deliberate
   exclusion", and two comments in the Models plugin still said loading a .blend
   "deliberately yields nothing". All three now say what the code does.
+
+#### 2026-09-11 *0.8.26*
+- **The Filer and the media viewer show every 3D format this build reads, not
+  just STL.** Both live in core; every format but STL lives in the Models
+  plugin, which links *against* core - so core could not call it, and both
+  viewers simply asked `ext == "stl"`. That answer had been wrong for nine
+  formats and counting: `UltraCanvasMediaViewer::IsModelFile` still named one
+  extension after OBJ, PLY, 3DS, COLLADA, DirectX .x, Alembic, .blend, STEP,
+  FBX and MilkShape had readers, and the Filer's thumbnail worker refused
+  everything else with the comment "the other 3D formats have no loader that
+  works without a GL context".
+- **`include/UltraCanvasModelPreview.h` is the inversion**, and it inverts the
+  question rather than the dependency. Core declares what it wants - is this
+  extension one you read, and turn this path into a `Mesh3D` - and
+  `RegisterModelFormatsPlugin()` installs an implementation on its way in. No
+  provider installed means the answers fall back to STL, which is exactly what
+  a build with `ULTRACANVAS_PLUGIN_MODELS=OFF` gets and what every caller got
+  before. The provider hands back a flat mesh rather than a `ModelDocument`,
+  because core has no idea that type exists and a thumbnail wants one triangle
+  buffer rather than a scene.
+- **The GL context was never the obstacle.** `RenderModelPreviewPixmap` has
+  always been a software rasterizer - it rotates, projects and shades the
+  triangles itself - so widening it needed no renderer work at all, only a way
+  to get the triangles. The existing triangle cap still applies afterwards,
+  which is what keeps a subdivided FBX from stalling a preview worker.
+- **A STEP file previews now too.** It carries exact bodies and no triangles
+  until something asks, and the provider asks: `TessellateOnImport` is on for
+  previews specifically, so a `.step` draws as the solid it describes instead
+  of as a blank tile.
+- **`.dxf` still does not preview as a model**, matching the dispatch's own
+  deliberate refusal to claim it - a DXF is a drawing far more often than a
+  model, and the Vector reader stays its default. `ModelPreviewSeamTest`
+  asserts that from the preview side, where `ModelFormatsPluginTest` already
+  asserted it from the dispatch side.
+- **`UltraCanvasSTLElement::LoadFromFile` is no longer STL-only** either, which
+  is what makes the media viewer work without further changes: the element only
+  ever wanted a triangle buffer, so it now takes one from the same seam.
+- **`Tests/ModelPreviewSeamTest.cpp`** (new) pins the contract rather than any
+  one format: that a build with no provider behaves exactly as before, that a
+  provider widens both questions, that a half-built provider is refused whole
+  rather than called through a null `std::function`, that a provider returning
+  no triangles reports failure rather than an empty preview, and that clearing
+  it narrows core back to STL. Its sample half loads every export of the
+  aircraft through the real provider and asserts each gives the preview a
+  bounding sphere to frame and a normal per vertex to shade - and that the
+  OBJ's 8110 quads arrive as exactly 16220 triangles, so nothing is dropped on
+  the way through the flattening.
 
 #### 2026-09-11 *0.8.25*
 - **VRML97 (.wrl) reads, and with it X3D's Classic VRML encoding (.x3dv).** X3D
