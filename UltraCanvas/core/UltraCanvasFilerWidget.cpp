@@ -49,8 +49,8 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.25.0
-// Last Modified: 2026-09-09
+// Version: 1.26.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -2636,6 +2636,8 @@ namespace UltraCanvas {
             mediaInfoCache.clear();
             lockQueue.clear();
             lockCache.clear();
+            lockHolderQueue.clear();
+            lockHoldersAsked.clear();
         }
         DropThumbnailCache();
 
@@ -7399,6 +7401,56 @@ namespace UltraCanvas {
         }
     }
 
+    Rect2Di UltraCanvasFilerWidget::EntryIconRect(const ItemLayout& item,
+                                                  ImageFitMode* outFit) const {
+        Rect2Di rect;
+        ImageFitMode fit;
+        ThumbGeometryForItem(item, rect, fit);
+        if (outFit) *outFit = fit;
+        // The thumbnail grid shrinks a folder glyph inside its image box; the
+        // badges follow the glyph, not the box it was centered in.
+        if (item.entryIndex < entries.size() &&
+            entries[item.entryIndex].isDirectory &&
+            style.folderIconScale < 1.0f) {
+            switch (viewType) {
+                case FilerViewType::ThumbnailsSmall:
+                case FilerViewType::ThumbnailsMedium:
+                case FilerViewType::ThumbnailsBig:
+                case FilerViewType::ThumbnailsMaximized: {
+                    const int w = std::max(2, static_cast<int>(
+                            rect.width * style.folderIconScale));
+                    const int h = std::max(2, static_cast<int>(
+                            rect.height * style.folderIconScale));
+                    rect = Rect2Di(rect.x + (rect.width - w) / 2,
+                                   rect.y + (rect.height - h) / 2, w, h);
+                    break;
+                }
+                default: break;
+            }
+        }
+        return rect;
+    }
+
+    bool UltraCanvasFilerWidget::LockBadgeAt(const Point2Di& contentPoint,
+                                             size_t& outEntry) const {
+        if (!showLockState) return false;
+        for (const ItemLayout& item : items) {
+            if (!item.rect.Contains(contentPoint)) continue;
+            if (item.entryIndex >= entries.size()) return false;
+            const FilerEntry& e = entries[item.entryIndex];
+            // Exactly the entries that draw one: the badge marks a file the
+            // system refuses right now, nothing else.
+            if (e.isDirectory || e.path.empty()) return false;
+            if (GetEntryLockState(e.path) != FileLockState::Locked) return false;
+            const Rect2Di badge =
+                    LockBadgeRect(EntryIconRect(item), e.isShortcut);
+            if (badge.width <= 0 || !badge.Contains(contentPoint)) return false;
+            outEntry = item.entryIndex;
+            return true;
+        }
+        return false;
+    }
+
     namespace {
         // Keeps the retained pixmap bytes bounded: browsing a huge folder in
         // a big tile size cannot grow without limit.
@@ -8031,9 +8083,10 @@ namespace UltraCanvas {
         // A shortcut wears the icon of what it points at, so the arrow badge
         // drawn over it afterwards is the only thing that says it is one; the
         // padlock is the same idea for a file another program is holding, and
-        // sits in the opposite corner so a locked shortcut shows both. Asking
-        // whether it is held only queues the probe - the answer arrives with a
-        // repaint, which is why this is read here and not waited for.
+        // shares the same corner - stacked above the arrow where an entry
+        // carries both. Asking whether it is held only queues the probe - the
+        // answer arrives with a repaint, which is why this is read here and
+        // not waited for.
         struct EntryBadges {
             UltraCanvasFilerWidget* widget;
             IRenderContext* ctx;
@@ -8042,7 +8095,7 @@ namespace UltraCanvas {
             bool locked;
             ~EntryBadges() {
                 if (shortcut) widget->DrawShortcutOverlay(ctx, rect);
-                if (locked) widget->DrawLockOverlay(ctx, rect);
+                if (locked) widget->DrawLockOverlay(ctx, rect, shortcut);
             }
         } badge{this, ctx, rect, e.isShortcut, EntryLockInfo(e).Blocks()};
 
@@ -8168,17 +8221,37 @@ namespace UltraCanvas {
         ctx->FillLinePath(arrowHead);
     }
 
+    Rect2Di UltraCanvasFilerWidget::LockBadgeRect(const Rect2Di& iconRect,
+                                                  bool shortcut) const {
+        // Below this the badge is a smudge over the icon it annotates, and
+        // the attribute letter and the info bar still say the file is held.
+        const int edge = std::min(iconRect.width, iconRect.height);
+        if (edge < 24) return Rect2Di();
+        // A mark, not a second icon: a quarter of the icon's edge, and capped
+        // so a maximized tile does not carry a padlock the size of a file.
+        const int box = std::max(9, std::min(22, static_cast<int>(
+                std::lround(edge * 0.24))));
+        // Bottom-left, the corner an overlay badge lives in. A shortcut's
+        // arrow already has that corner, so on a locked shortcut the padlock
+        // stacks directly above it - both marks stay on the same side.
+        int y = iconRect.y + iconRect.height - box - 1;
+        if (shortcut) {
+            const int arrow = static_cast<int>(std::lround(
+                    std::max(10.0, edge * 0.38)));
+            y -= arrow + 2;
+        }
+        return Rect2Di(iconRect.x + 1, y, box, box);
+    }
+
     void UltraCanvasFilerWidget::DrawLockOverlay(IRenderContext* ctx,
-                                                 const Rect2Di& rect) {
-        // Bottom-right, mirroring the shortcut badge on the left: a white tile
-        // with a padlock in it. Same size rule - below it the badge would be a
-        // smudge over the icon it annotates, and the attribute letter and the
-        // info bar still say the file is held.
-        const int edge = std::min(rect.width, rect.height);
-        if (edge < 24) return;
-        const double box = std::max(10.0, edge * 0.38);
-        const Rect2Dd badge(rect.x + rect.width - box - 1,
-                            rect.y + rect.height - box - 1, box, box);
+                                                 const Rect2Di& rect,
+                                                 bool shortcut) {
+        // A white tile with a padlock in it, in the bottom-left corner of the
+        // icon (above the arrow badge on a shortcut).
+        const Rect2Di badgeRect = LockBadgeRect(rect, shortcut);
+        if (badgeRect.width <= 0) return;
+        const double box = badgeRect.width;
+        const Rect2Dd badge(badgeRect.x, badgeRect.y, box, box);
 
         ctx->SetFillPaint(Color(255, 255, 255, 235));
         ctx->FillRoundedRectangle(badge, 2);
@@ -8426,17 +8499,11 @@ namespace UltraCanvas {
             ctx->SetFillPaint(selected ? style.selectionColor : style.hoverColor);
             ctx->FillRoundedRectangle(Rect2Dd(item.rect), 5);
         }
-        // Same geometry the prefetch requests, so the cache keys line up.
-        Rect2Di img;
+        // Same geometry the prefetch requests, so the cache keys line up -
+        // and the same the badge hit tests use (a folder glyph shrunk inside
+        // its image box included).
         ImageFitMode fit;
-        ThumbGeometryForItem(item, img, fit);
-        if (e.isDirectory && style.folderIconScale < 1.0f) {
-            // Shrink the folder glyph inside its image box, centered.
-            int w = std::max(2, (int)(img.width * style.folderIconScale));
-            int h = std::max(2, (int)(img.height * style.folderIconScale));
-            img = Rect2Di(img.x + (img.width - w) / 2,
-                          img.y + (img.height - h) / 2, w, h);
-        }
+        const Rect2Di img = EntryIconRect(item, &fit);
         DrawEntryIcon(ctx, e, img, fit);
         // Display > File extensions: the type tag over the foot of the icon
         // box. The box, not the fitted image: a landscape photo leaves the
@@ -8975,6 +9042,7 @@ namespace UltraCanvas {
             aspectQueue.clear();
             mediaQueue.clear();
             lockQueue.clear();
+            lockHolderQueue.clear();
         }
         statsCond.notify_all();
         if (statsWorker.joinable()) statsWorker.join();
@@ -8986,6 +9054,7 @@ namespace UltraCanvas {
             std::string aspectPath;
             MediaProbeRequest media;
             std::vector<std::string> lockBatch;
+            std::string holderPath;
             bool haveMedia = false;
             uint64_t gen;
             {
@@ -8993,7 +9062,7 @@ namespace UltraCanvas {
                 statsCond.wait(lk, [this]() {
                     return statsShutdown || !statsQueue.empty() ||
                            !aspectQueue.empty() || !mediaQueue.empty() ||
-                           !lockQueue.empty();
+                           !lockQueue.empty() || !lockHolderQueue.empty();
                 });
                 if (statsShutdown) return;
                 // Shortest jobs first: lock probes are one open per file and
@@ -9006,6 +9075,12 @@ namespace UltraCanvas {
                 if (!lockQueue.empty()) {
                     lockBatch.assign(lockQueue.begin(), lockQueue.end());
                     lockQueue.clear();
+                } else if (!lockHolderQueue.empty()) {
+                    // One file, and a cursor is resting on its badge waiting
+                    // for the answer: ahead of everything but the listing's
+                    // own lock marking.
+                    holderPath = std::move(lockHolderQueue.front());
+                    lockHolderQueue.pop_front();
                 } else if (!aspectQueue.empty()) {
                     aspectPath = std::move(aspectQueue.front());
                     aspectQueue.pop_front();
@@ -9043,6 +9118,29 @@ namespace UltraCanvas {
                     }
                 }
                 if (report) PostFolderStatsRedraw();
+                continue;
+            }
+
+            if (!holderPath.empty()) {
+                // Naming the programs that hold one file: a Restart Manager
+                // session on Windows, a /proc walk on Linux - which is why
+                // only the hovered file is ever asked.
+                FileLockInfo info;
+                RunGuarded("file lock holders", holderPath, [&]() {
+                    info = ProbeFileLock(holderPath, true);
+                });
+                bool report = false;
+                {
+                    std::lock_guard<std::mutex> lk(statsMutex);
+                    if (statsShutdown) return;
+                    if (gen == statsGeneration && info.InUse()) {
+                        lockCache[holderPath] = info;
+                        report = !info.holders.empty();
+                    }
+                }
+                // The tooltip is already up with the state-only sentence; put
+                // it up again now that it can name the program.
+                if (report) PostTooltipRefresh();
                 continue;
             }
 
@@ -9153,6 +9251,19 @@ namespace UltraCanvas {
             }
             if (report) PostFolderStatsRedraw();
         }
+    }
+
+    void UltraCanvasFilerWidget::PostTooltipRefresh() {
+        // Not coalesced with the redraw above: this one has to run on the UI
+        // thread whether or not anything needs repainting, and there is at
+        // most one of them in flight anyway (one cursor, one hovered badge).
+        UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
+        if (!app) return;
+        auto alive = thumbAlive;
+        app->PostToUIThread([this, alive]() {
+            if (!alive->load()) return;   // widget destroyed meanwhile
+            RefreshHoverTooltip();
+        });
     }
 
     void UltraCanvasFilerWidget::PostFolderStatsRedraw() {
@@ -9681,6 +9792,8 @@ namespace UltraCanvas {
             std::lock_guard<std::mutex> lk(statsMutex);
             lockQueue.clear();
             lockCache.clear();
+            lockHolderQueue.clear();
+            lockHoldersAsked.clear();
         }
         RequestRedraw();
     }
@@ -9948,19 +10061,33 @@ namespace UltraCanvas {
             entry  = iconEntry;
             action = iconAction;
             text   = kIconMenuTips[iconAction];
-        } else if (nameTooltips && renamingIndex < 0 && !IsInInfoBar(localPoint) &&
+        } else if (renamingIndex < 0 && !IsInInfoBar(localPoint) &&
                    hoveredSplitter < 0) {
             Point2Di content = ToContentPoint(localPoint);
-            for (const ItemLayout& item : items) {
-                if (!item.rect.Contains(content)) continue;
-                if (item.entryIndex < nameTruncated.size() &&
-                    nameTruncated[item.entryIndex] &&
-                    IsOnItemName(item, content)) {
-                    target = TooltipTarget::ItemName;
-                    entry  = item.entryIndex;
-                    text   = DisplayNameOf(entries[item.entryIndex]);
+            // The padlock badge says what it means: which program is holding
+            // the file, and what that stops. It wins over the name underneath
+            // it - it is the smaller target, and the one the cursor was aimed
+            // at - and it answers whether or not name tooltips are on.
+            size_t lockEntry = 0;
+            if (LockBadgeAt(content, lockEntry)) {
+                text = LockTooltipText(entries[lockEntry]);
+                if (!text.empty()) {
+                    target = TooltipTarget::LockBadge;
+                    entry  = lockEntry;
                 }
-                break;
+            }
+            if (target == TooltipTarget::NoneTarget && nameTooltips) {
+                for (const ItemLayout& item : items) {
+                    if (!item.rect.Contains(content)) continue;
+                    if (item.entryIndex < nameTruncated.size() &&
+                        nameTruncated[item.entryIndex] &&
+                        IsOnItemName(item, content)) {
+                        target = TooltipTarget::ItemName;
+                        entry  = item.entryIndex;
+                        text   = DisplayNameOf(entries[item.entryIndex]);
+                    }
+                    break;
+                }
             }
         }
 
@@ -9985,6 +10112,39 @@ namespace UltraCanvas {
         tooltipTarget = TooltipTarget::NoneTarget;
         tooltipAction = -1;
         UltraCanvasTooltipManager::HideTooltip();
+    }
+
+    void UltraCanvasFilerWidget::RefreshHoverTooltip() {
+        // Only the padlock badge's text can arrive after the tooltip is up
+        // (the holder probe is a background call), and re-deriving it is what
+        // turns "In use by another program" into the program's name without
+        // the user moving the cursor.
+        if (tooltipTarget != TooltipTarget::LockBadge) return;
+        if (tooltipEntry >= entries.size()) return;
+        auto* win = GetWindow();
+        if (!win) return;
+        const std::string text = LockTooltipText(entries[tooltipEntry]);
+        if (text.empty()) { HideHoverTooltip(); return; }
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(win, text,
+                                                        lastPointerWindow);
+    }
+
+    std::string UltraCanvasFilerWidget::LockTooltipText(const FilerEntry& e) {
+        const FileLockInfo info = EntryLockInfo(e);
+        std::string text = FileLockText(info);
+        if (text.empty()) return text;
+        // Nothing named the holder yet: ask for this one file, once. The
+        // answer lands in the same cache entry and puts the tooltip up again
+        // with the program's name in it.
+        if (info.holders.empty()) {
+            std::lock_guard<std::mutex> lk(statsMutex);
+            if (lockHoldersAsked.insert(e.path).second) {
+                lockHolderQueue.push_back(e.path);
+                StartFolderStatsWorkerLocked();
+                statsCond.notify_one();
+            }
+        }
+        return text;
     }
 
     void UltraCanvasFilerWidget::RememberPointer(const UCEvent& event) {

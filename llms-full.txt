@@ -19354,9 +19354,16 @@ cannot answer (`FileLockProbeAvailable()`, see
 
 A held file is marked three ways, so the state is visible in every view:
 
-- a **padlock badge** in the bottom-right corner of its icon (mirroring the
-  shortcut arrow on the left), for a file the system actually refuses —
-  drawn only where the icon is at least 24 px, like the shortcut badge;
+- a **padlock badge** in the bottom-left corner of its icon, for a file the
+  system actually refuses — a quarter of the icon's edge (capped at 22 px, so
+  a maximized tile does not carry a padlock the size of a file) and drawn only
+  where the icon is at least 24 px. On a shortcut, whose arrow badge already
+  has that corner, it stacks directly above the arrow instead. **Hovering it
+  says who is holding the file**: the tooltip opens with what the listing
+  already knows (*"In use by another program (cannot be replaced)"*) and
+  fills in the program's name as soon as the holder probe it started comes
+  back — that probe is run for the hovered file only, exactly because naming
+  the holder is the expensive half of the question;
 - an **attribute letter** among `D` / `L` / `R` / `H` / `A`: `X` for a file
   that cannot be replaced right now, `O` for one merely open elsewhere (which
   on Unix blocks nothing). It shows in the Details view's `Attr` column, in
@@ -19374,9 +19381,11 @@ folder on a slow volume opens at the same speed either way.
 
 `GetEntryLockState(path)` reads back what the last probe found, without
 probing. Holders are deliberately **not** collected for a listing — naming the
-program costs a Restart Manager session per file on Windows; a host that wants
-the name asks `ProbeFileLock(path, true)` for the one file it is showing, the
-way UltraFiler's Attributes dialog does.
+program costs a Restart Manager session per file on Windows; they are asked
+for one file at a time, when the cursor comes to rest on that file's padlock
+badge, and a host that wants the name elsewhere asks
+`ProbeFileLock(path, true)` itself, the way UltraFiler's Attributes dialog
+does.
 
 Directories are never probed: what holds a folder open is usually a program's
 *working directory*, which no probe here can see.

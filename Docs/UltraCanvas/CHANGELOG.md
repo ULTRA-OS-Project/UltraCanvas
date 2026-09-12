@@ -1,3 +1,24 @@
+#### 2026-09-12 *0.8.35*
+- **The padlock badge on a held file is smaller, sits on the left, and says
+  who is holding the file.** It was drawn at 38 % of the icon's edge in the
+  bottom-right corner with no size cap, so on a thumbnail tile it read as a
+  second icon rather than a mark on the first, and it covered the part of a
+  picture that is usually its subject. It is now a quarter of the edge, capped
+  at 22 px, in the bottom-left corner - the corner overlay badges live in -
+  and on a shortcut, whose arrow badge already has that corner, it stacks
+  directly above the arrow so both marks stay on the same side.
+- **Hovering the badge opens a tooltip.** It starts with what the listing
+  already knows (*"In use by another program (cannot be replaced)"*) and fills
+  in the program's name as soon as it can: resting on a badge starts a
+  holder probe for that one file - the expensive half of the question, which
+  is why a listing never asks it - and the tooltip is put up again with the
+  answer without the cursor having to move. The badge wins over the file-name
+  tooltip underneath it, and answers whether or not name tooltips are on.
+- The icon box a badge is placed against is now derived once
+  (`EntryIconRect`) for drawing and for hit-testing alike, so a badge's
+  tooltip lands exactly where the badge is drawn - in every view, and on a
+  folder glyph shrunk inside its image box.
+
 #### 2026-09-12 *0.8.34*
 - **Opening a file with its registered program works on Windows where it
   quietly did not.** `FileAssociations::OpenWithDefaultApplication` went
