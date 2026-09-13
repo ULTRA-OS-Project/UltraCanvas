@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasCDRExamples.cpp
 // CDR vector graphics demo examples for UltraCanvas Framework
-// Version: 1.1.0
-// Last Modified: 2026-08-26
+// Version: 1.2.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -12,6 +12,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "../Plugins/Vector/CDR/UltraCanvasCDRPlugin.h"
 #include <algorithm>
+#include <functional>
 #include <iostream>
 #include <memory>
 
@@ -242,287 +243,134 @@ namespace UltraCanvas {
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
         container->AddChild(statusLabel);
 
-        // ===== CDR FILE 1 =====
-        auto cdrContainer1 = std::make_shared<UltraCanvasContainer>("CDRContainer1", 20, 100, 300, 280);
-        cdrContainer1->SetBackgroundColor(Colors::White);
-        cdrContainer1->SetBorders(2, Color(180, 180, 180, 255));
+        // One tile per sample drawing in media/vector/CDR/. Each carries the
+        // controls the element exposes: page navigation for multi-page
+        // documents, zoom / fit, and "Save as..." for the shown page.
+        auto makeTile = [&](const std::string& id, int x, int y,
+                            const std::string& fileName) {
+            auto tile = std::make_shared<UltraCanvasContainer>(id, x, y, 300, 300);
+            tile->SetBackgroundColor(Colors::White);
+            tile->SetBorders(2, Color(180, 180, 180, 255));
 
-        auto cdrElement1 = std::make_shared<UltraCanvasCDRElement>("CDR1", 10, 10, 280, 220);
-        cdrElement1->SetFitMode(CDRFitMode::FitPage);
+            auto element = std::make_shared<UltraCanvasCDRElement>(id + "El", 10, 10, 280, 220);
+            element->SetFitMode(CDRFitMode::FitPage);
 
-        std::string cdrFile1 = NormalizePath(GetResourcesDir() + "media/vector/CDR/demo.cdr");
-        if (cdrElement1->LoadFromFile(cdrFile1)) {
-            statusLabel->SetText("Loaded: " + cdrFile1 + " (" +
-                                 std::to_string(cdrElement1->GetPageCount()) + " pages)");
-        }
-
-        auto cdrLabel1 = std::make_shared<UltraCanvasLabel>("CDRLabel1", 10, 240, 180, 30);
-        cdrLabel1->SetText("demo.cdr");
-        cdrLabel1->SetAlignment(TextAlignment::Center);
-        cdrLabel1->SetFontSize(11);
-        cdrContainer1->AddChild(cdrLabel1);
-
-        cdrContainer1->AddChild(MakeCDRSaveAsButton("SaveAs1", 200, 240, 90, 25,
-                                                    cdrElement1, cdrFile1, statusLabel));
-
-        auto demoHandler1 = std::make_shared<CDRDemoHandler>(cdrFile1);
-        cdrElement1->SetEventCallback([demoHandler1, cdrContainer1, statusLabel, cdrFile1](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler1->OnCDRClick();
-                    statusLabel->SetText("Opened fullscreen: " + cdrFile1);
-                    return true;
-                case UCEventType::MouseEnter:
-                    cdrContainer1->SetBordersColor(Color(0, 122, 204, 255));
-                    return true;
-                case UCEventType::MouseLeave:
-                    cdrContainer1->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                default:
-                    return false;
+            std::string path = NormalizePath(GetResourcesDir() + "media/vector/CDR/" + fileName);
+            if (element->LoadFromFile(path)) {
+                statusLabel->SetText("Loaded: " + path + " (" +
+                                     std::to_string(element->GetPageCount()) + " pages)");
+            } else {
+                statusLabel->SetText("Failed to load " + path);
             }
-        });
 
-        cdrContainer1->AddChild(cdrElement1);
-        container->AddChild(cdrContainer1);
-        // ===== CDR FILE 2 =====
-        auto cdrContainer2 = std::make_shared<UltraCanvasContainer>("CDRContainer2", 340, 100, 300, 280);
-        cdrContainer2->SetBackgroundColor(Colors::White);
-        cdrContainer2->SetBorders(2, Color(180, 180, 180, 255));
+            auto nameLabel = std::make_shared<UltraCanvasLabel>(id + "Name", 10, 234, 280, 22);
+            nameLabel->SetText(fileName);
+            nameLabel->SetAlignment(TextAlignment::Center);
+            nameLabel->SetFontSize(11);
+            tile->AddChild(nameLabel);
 
-        auto cdrElement2 = std::make_shared<UltraCanvasCDRElement>("CDR2", 10, 10, 280, 220);
-        cdrElement2->SetFitMode(CDRFitMode::FitPage);
+            auto makeButton = [&](const std::string& suffix, int bx, int bw,
+                                  const std::string& text, std::function<void()> action) {
+                auto btn = std::make_shared<UltraCanvasButton>(id + suffix, bx, 260, bw, 26);
+                btn->SetText(text);
+                btn->SetFontSize(9);
+                btn->onClick = std::move(action);
+                tile->AddChild(btn);
+            };
 
-        std::string cdrFile2 = NormalizePath(GetResourcesDir() + "media/vector/CDR/demo1.cdr");
-        cdrElement2->LoadFromFile(cdrFile2);
+            // Page navigation. The label doubles as the page indicator.
+            auto pageLabel = std::make_shared<UltraCanvasLabel>(id + "Page", 40, 260, 58, 26);
+            pageLabel->SetAlignment(TextAlignment::Center);
+            pageLabel->SetFontSize(10);
+            pageLabel->SetText(element->IsLoaded()
+                                       ? "1/" + std::to_string(element->GetPageCount())
+                                       : "-/-");
+            element->onPageChanged = [pageLabel, element](int page) {
+                pageLabel->SetText(std::to_string(page + 1) + "/" +
+                                   std::to_string(element->GetPageCount()));
+            };
 
-        auto cdrLabel2 = std::make_shared<UltraCanvasLabel>("CDRLabel2", 10, 240, 180, 30);
-        cdrLabel2->SetText("demo1.cdr");
-        cdrLabel2->SetAlignment(TextAlignment::Center);
-        cdrLabel2->SetFontSize(11);
-        cdrContainer2->AddChild(cdrLabel2);
+            makeButton("Prev", 10, 26, "\xE2\x97\x80", [element]() {   // U+25C0
+                if (element->IsLoaded() && element->GetCurrentPage() > 0) {
+                    element->SetCurrentPage(element->GetCurrentPage() - 1);
+                }
+            });
+            tile->AddChild(pageLabel);
+            makeButton("Next", 102, 26, "\xE2\x96\xB6", [element]() {  // U+25B6
+                if (element->IsLoaded() &&
+                    element->GetCurrentPage() < element->GetPageCount() - 1) {
+                    element->SetCurrentPage(element->GetCurrentPage() + 1);
+                }
+            });
 
-        cdrContainer2->AddChild(MakeCDRSaveAsButton("SaveAs2", 200, 240, 90, 25,
-                                                    cdrElement2, cdrFile2, statusLabel));
+            // Zoom / fit.
+            makeButton("ZoomOut", 134, 26, "\xE2\x88\x92", [element]() {  // U+2212
+                element->SetFitMode(CDRFitMode::FitNone);
+                element->SetZoom(element->GetZoom() / 1.25f);
+            });
+            makeButton("ZoomIn", 164, 26, "+", [element]() {
+                element->SetFitMode(CDRFitMode::FitNone);
+                element->SetZoom(element->GetZoom() * 1.25f);
+            });
+            makeButton("Fit", 194, 34, "Fit", [element]() {
+                element->SetFitMode(CDRFitMode::FitPage);
+            });
 
-        auto demoHandler2 = std::make_shared<CDRDemoHandler>(cdrFile2);
-        cdrElement2->SetEventCallback([demoHandler2, cdrContainer2, statusLabel, cdrFile2](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler2->OnCDRClick();
-                    statusLabel->SetText("Opened fullscreen: " + cdrFile2);
-                    return true;
-                case UCEventType::MouseEnter:
-                    cdrContainer2->SetBordersColor(Color(0, 122, 204, 255));
-                    return true;
-                case UCEventType::MouseLeave:
-                    cdrContainer2->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                default:
-                    return false;
-            }
-        });
+            tile->AddChild(MakeCDRSaveAsButton(id + "Save", 232, 260, 58, 26,
+                                               element, path, statusLabel));
 
-        cdrContainer2->AddChild(cdrElement2);
-        container->AddChild(cdrContainer2);
+            auto handler = std::make_shared<CDRDemoHandler>(path);
+            element->SetEventCallback([handler, tile, statusLabel, path](const UCEvent& event) {
+                switch (event.type) {
+                    case UCEventType::MouseUp:
+                        handler->OnCDRClick();
+                        statusLabel->SetText("Opened fullscreen: " + path);
+                        return true;
+                    case UCEventType::MouseEnter:
+                        tile->SetBordersColor(Color(0, 122, 204, 255));
+                        return true;
+                    case UCEventType::MouseLeave:
+                        tile->SetBordersColor(Color(180, 180, 180, 255));
+                        return true;
+                    default:
+                        return false;
+                }
+            });
 
-        // ===== CDR FILE 3 (CMX format) =====
-        // Stays disabled: no .cmx sample ships under media/vector/CDR yet.
-//        auto cdrContainer3 = std::make_shared<UltraCanvasContainer>("CDRContainer3", 660, 100, 300, 280);
-//        cdrContainer3->SetBackgroundColor(Colors::White);
-//        cdrContainer3->SetBorders(2, Color(180, 180, 180, 255));
-//
-//        auto cdrElement3 = std::make_shared<UltraCanvasCDRElement>("CDR3", 10, 10, 280, 220);
-//        cdrElement3->SetFitMode(CDRFitMode::FitPage);
-//
-//        std::string cdrFile3 = NormalizePath(GetResourcesDir() + "media/vector/CDR/artwork.cmx");
-//        cdrElement3->LoadFromFile(cdrFile3);
-//
-//        auto cdrLabel3 = std::make_shared<UltraCanvasLabel>("CDRLabel3", 10, 240, 280, 30);
-//        cdrLabel3->SetText("artwork.cmx");
-//        cdrLabel3->SetAlignment(TextAlignment::Center);
-//        cdrLabel3->SetFontSize(11);
-//        cdrContainer3->AddChild(cdrLabel3);
-//
-//        auto demoHandler3 = std::make_shared<CDRDemoHandler>(cdrFile3);
-//        cdrElement3->SetEventCallback([demoHandler3, cdrContainer3, statusLabel, cdrFile3](const UCEvent& event) {
-//            switch (event.type) {
-//                case UCEventType::MouseUp:
-//                    demoHandler3->OnCDRClick();
-//                    statusLabel->SetText("Opened fullscreen: " + cdrFile3);
-//                    return true;
-//                case UCEventType::MouseEnter:
-//                    cdrContainer3->SetBordersColor(Color(0, 122, 204, 255));
-//                    return true;
-//                case UCEventType::MouseLeave:
-//                    cdrContainer3->SetBordersColor(Color(180, 180, 180, 255));
-//                    return true;
-//                default:
-//                    return false;
-//            }
-//        });
-//
-//        cdrContainer3->AddChild(cdrElement3);
-//        container->AddChild(cdrContainer3);
-
-        // ===== SECOND ROW =====
-
-        // ===== CDR FILE 4 =====
-        auto cdrContainer4 = std::make_shared<UltraCanvasContainer>("CDRContainer4", 20, 400, 300, 280);
-        cdrContainer4->SetBackgroundColor(Colors::White);
-        cdrContainer4->SetBorders(2, Color(180, 180, 180, 255));
-
-        auto cdrElement4 = std::make_shared<UltraCanvasCDRElement>("CDR4", 10, 10, 280, 220);
-        cdrElement4->SetFitMode(CDRFitMode::FitPage);
-
-        std::string cdrFile4 = NormalizePath(GetResourcesDir() + "media/vector/CDR/logo.cdr");
-        cdrElement4->LoadFromFile(cdrFile4);
-
-        // Page navigation for multi-page document
-        auto prevBtn4 = std::make_shared<UltraCanvasButton>("Prev4", 10, 240, 40, 25);
-        prevBtn4->SetText("◀");
-        prevBtn4->SetFontSize(10);
-        prevBtn4->onClick = [cdrElement4]() {
-            if (cdrElement4->IsLoaded() && cdrElement4->GetCurrentPage() > 0) {
-                cdrElement4->SetCurrentPage(cdrElement4->GetCurrentPage() - 1);
-            }
-        };
-        cdrContainer4->AddChild(prevBtn4);
-
-        auto pageLabel4 = std::make_shared<UltraCanvasLabel>("PageLabel4", 55, 240, 110, 25);
-        pageLabel4->SetText("logo.cdr");
-        pageLabel4->SetAlignment(TextAlignment::Center);
-        pageLabel4->SetFontSize(10);
-        cdrContainer4->AddChild(pageLabel4);
-
-        cdrElement4->onPageChanged = [pageLabel4, cdrElement4](int page) {
-            pageLabel4->SetText("Page " + std::to_string(page + 1) + "/" +
-                                std::to_string(cdrElement4->GetPageCount()));
+            tile->AddChild(element);
+            container->AddChild(tile);
         };
 
-        auto nextBtn4 = std::make_shared<UltraCanvasButton>("Next4", 170, 240, 40, 25);
-        nextBtn4->SetText("▶");
-        nextBtn4->SetFontSize(10);
-        nextBtn4->onClick = [cdrElement4]() {
-            if (cdrElement4->IsLoaded() &&
-                cdrElement4->GetCurrentPage() < cdrElement4->GetPageCount() - 1) {
-                cdrElement4->SetCurrentPage(cdrElement4->GetCurrentPage() + 1);
-            }
-        };
-        cdrContainer4->AddChild(nextBtn4);
-
-        cdrContainer4->AddChild(MakeCDRSaveAsButton("SaveAs4", 215, 240, 75, 25,
-                                                    cdrElement4, cdrFile4, statusLabel));
-
-        auto demoHandler4 = std::make_shared<CDRDemoHandler>(cdrFile4);
-        cdrElement4->SetEventCallback([demoHandler4, cdrContainer4, statusLabel, cdrFile4](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler4->OnCDRClick();
-                    statusLabel->SetText("Opened fullscreen: " + cdrFile4);
-                    return true;
-                case UCEventType::MouseEnter:
-                    cdrContainer4->SetBordersColor(Color(0, 122, 204, 255));
-                    return true;
-                case UCEventType::MouseLeave:
-                    cdrContainer4->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                default:
-                    return false;
-            }
-        });
-
-        cdrContainer4->AddChild(cdrElement4);
-        container->AddChild(cdrContainer4);
-        // ===== ZOOM DEMO (CDR FILE 5) =====
-        auto cdrContainer5 = std::make_shared<UltraCanvasContainer>("CDRContainer5", 340, 400, 300, 280);
-        cdrContainer5->SetBackgroundColor(Colors::White);
-        cdrContainer5->SetBorders(2, Color(180, 180, 180, 255));
-
-        auto cdrElement5 = std::make_shared<UltraCanvasCDRElement>("CDR5", 10, 10, 280, 220);
-        cdrElement5->SetFitMode(CDRFitMode::FitPage);
-
-        std::string cdrFile5 = NormalizePath(GetResourcesDir() + "media/vector/CDR/detailed.cdr");
-        cdrElement5->LoadFromFile(cdrFile5);
-
-        // Zoom controls
-        auto zoomOutBtn5 = std::make_shared<UltraCanvasButton>("ZoomOut5", 10, 240, 35, 25);
-        zoomOutBtn5->SetText("−");
-        zoomOutBtn5->onClick = [cdrElement5]() {
-            cdrElement5->SetFitMode(CDRFitMode::FitNone);
-            cdrElement5->SetZoom(cdrElement5->GetZoom() / 1.25f);
-        };
-        cdrContainer5->AddChild(zoomOutBtn5);
-
-        auto zoomLabel5 = std::make_shared<UltraCanvasLabel>("ZoomLabel5", 50, 240, 90, 25);
-        zoomLabel5->SetText("Zoom Demo");
-        zoomLabel5->SetAlignment(TextAlignment::Center);
-        zoomLabel5->SetFontSize(10);
-        cdrContainer5->AddChild(zoomLabel5);
-
-        auto zoomInBtn5 = std::make_shared<UltraCanvasButton>("ZoomIn5", 145, 240, 35, 25);
-        zoomInBtn5->SetText("+");
-        zoomInBtn5->onClick = [cdrElement5]() {
-            cdrElement5->SetFitMode(CDRFitMode::FitNone);
-            cdrElement5->SetZoom(cdrElement5->GetZoom() * 1.25f);
-        };
-        cdrContainer5->AddChild(zoomInBtn5);
-
-        auto fitBtn5 = std::make_shared<UltraCanvasButton>("Fit5", 185, 240, 40, 25);
-        fitBtn5->SetText("Fit");
-        fitBtn5->onClick = [cdrElement5]() {
-            cdrElement5->SetFitMode(CDRFitMode::FitPage);
-        };
-        cdrContainer5->AddChild(fitBtn5);
-
-        cdrContainer5->AddChild(MakeCDRSaveAsButton("SaveAs5", 230, 240, 60, 25,
-                                                    cdrElement5, cdrFile5, statusLabel));
-
-        auto demoHandler5 = std::make_shared<CDRDemoHandler>(cdrFile5);
-        cdrElement5->SetEventCallback([demoHandler5, cdrContainer5, statusLabel, cdrFile5](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler5->OnCDRClick();
-                    statusLabel->SetText("Opened fullscreen: " + cdrFile5);
-                    return true;
-                case UCEventType::MouseEnter:
-                    cdrContainer5->SetBordersColor(Color(0, 122, 204, 255));
-                    return true;
-                case UCEventType::MouseLeave:
-                    cdrContainer5->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                default:
-                    return false;
-            }
-        });
-
-        cdrContainer5->AddChild(cdrElement5);
-        container->AddChild(cdrContainer5);
+        // Every .cdr file shipped under media/vector/CDR. No .cmx / .ccx / .cdt
+        // sample ships yet, though the plugin reads those too.
+        makeTile("CDRContainer1", 20, 95, "detailed.cdr");
+        makeTile("CDRContainer2", 340, 95, "door-panel.cdr");
+        makeTile("CDRContainer3", 660, 95, "dubai-atlantis.cdr");
 
         // ===== INFO PANEL =====
-        auto infoContainer = std::make_shared<UltraCanvasContainer>("InfoPanel", 660, 400, 300, 280);
+        auto infoContainer = std::make_shared<UltraCanvasContainer>("InfoPanel", 20, 410, 470, 280);
         infoContainer->SetBackgroundColor(Color(240, 248, 255, 255));
         infoContainer->SetBorders(2, Color(100, 149, 237, 255));
 
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 10, 10, 280, 25);
+        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 10, 10, 450, 25);
         infoTitle->SetText("CDR Plugin Features");
         infoTitle->SetFontWeight(FontWeight::Bold);
         infoTitle->SetFontSize(13);
         infoContainer->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10,55, 280, 200);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 42, 450, 230);
         infoText->SetText(
-                "✓ CorelDRAW CDR format\n"
-                "✓ Corel Presentation Exchange CMX\n"
-                "✓ Multi-page document support\n"
-                "✓ Vector paths and shapes\n"
-                "✓ Text with styling\n"
-                "✓ Transformations (rotate, scale)\n"
-                "✓ Groups and layers\n"
-                "✓ Stroke and fill styles\n"
-                "✓ Zoom and pan controls\n"
-                "✓ Fit modes (page, width, height)\n"
-                "✓ Save as SVG (XAR planned)\n"
+                "\xE2\x9C\x93 CorelDRAW CDR format\n"
+                "\xE2\x9C\x93 Corel Presentation Exchange CMX\n"
+                "\xE2\x9C\x93 Multi-page document support\n"
+                "\xE2\x9C\x93 Vector paths and shapes\n"
+                "\xE2\x9C\x93 Text with styling\n"
+                "\xE2\x9C\x93 Transformations (rotate, scale)\n"
+                "\xE2\x9C\x93 Groups and layers\n"
+                "\xE2\x9C\x93 Stroke and fill styles\n"
+                "\xE2\x9C\x93 Zoom and pan controls\n"
+                "\xE2\x9C\x93 Fit modes (page, width, height)\n"
+                "\xE2\x9C\x93 Save as SVG (XAR planned)\n"
                 "\n"
                 "Uses libcdr for parsing."
         );
@@ -531,6 +379,37 @@ namespace UltraCanvas {
         infoContainer->AddChild(infoText);
 
         container->AddChild(infoContainer);
+
+        // ===== THE BUNDLED DRAWINGS =====
+        auto howContainer = std::make_shared<UltraCanvasContainer>("HowPanel", 510, 410, 470, 280);
+        howContainer->SetBackgroundColor(Color(255, 250, 240, 255));
+        howContainer->SetBorders(2, Color(222, 184, 135, 255));
+
+        auto howTitle = std::make_shared<UltraCanvasLabel>("HowTitle", 10, 10, 450, 25);
+        howTitle->SetText("The bundled drawings");
+        howTitle->SetFontWeight(FontWeight::Bold);
+        howTitle->SetFontSize(13);
+        howContainer->AddChild(howTitle);
+
+        auto howText = std::make_shared<UltraCanvasLabel>("HowText", 10, 42, 450, 230);
+        howText->SetText(
+                "detailed.cdr - 3.3 MB, one 614 x 384 pt page: 67 draw calls,\n"
+                "but 10 gradients and 6 embedded bitmaps - the fill and image\n"
+                "paths, and the one worth zooming into.\n\n"
+                "door-panel.cdr - 237 KB, one Letter page, 400 draw calls of\n"
+                "flat-filled line work: no gradients, no bitmaps.\n\n"
+                "dubai-atlantis.cdr - 97 KB, one Letter page and the busiest\n"
+                "of the three at 725 draw calls.\n\n"
+                "All three are single-page, so the page arrows stay inert here;\n"
+                "zoom and fit work in place, a click opens the drawing\n"
+                "fullscreen, and \"Save as...\" writes the shown page out\n"
+                "through the plugin's SVG exporter."
+        );
+        howText->SetFontSize(11);
+        howText->SetTextColor(Color(50, 50, 50, 255));
+        howContainer->AddChild(howText);
+
+        container->AddChild(howContainer);
 
         return container;
     }

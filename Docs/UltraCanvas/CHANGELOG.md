@@ -1,3 +1,28 @@
+#### 2026-09-13 *0.8.40*
+- **Demo: the SVG and CDR pages show every sample in their folder, and the
+  CDR folder loses its placeholders.**
+  - `media/vector/CDR/`: `demo.cdr`, `demo1.cdr`, `logo.cdr` and the
+    `demo.jpg` reference render are gone. Three of the page's five
+    hand-written tiles pointed at them, so the page is rebuilt around one
+    tile helper over the three drawings that remain - `detailed.cdr`,
+    `door-panel.cdr`, `dubai-atlantis.cdr` - each with page navigation,
+    zoom / fit and "Save as...". A second panel gives each drawing's real
+    shape, read out of the parsed `CDRDocument`: 67 draw calls but 10
+    gradients and 6 embedded bitmaps (detailed), 400 flat-filled draw calls
+    (door-panel), 725 (dubai-atlantis); all three are single-page.
+  - SVG: the page showed 4 of the 8 shipped drawings through four
+    copy-pasted blocks that also handed three elements the same id
+    (`SVGContainer`, `DemoSVG2`). Replaced by one tile helper over all eight
+    - `demo`, `demo1`, `demo2`, `svg-test`, `robot`, `astronaut`,
+    `photo-camera`, `Logo_Texter` - four to a row, each with its file name,
+    a shared status line and unique ids. All eight verified to decode.
+  - EPS: `Apple5.eps` and `Midget.eps` stay off the page on purpose. Despite
+    the extension neither is PostScript - both are RISC OS TopDraw documents
+    (`Top!` / `TopDraw` magic, no `%!PS` header, no PostScript body) - so
+    `Tests/EPSProbeTest` reports them as load failures and tiles for them
+    would render nothing. Said so in the source and in
+    `UltraCanvasEPSExamples.md` rather than leaving it to be rediscovered.
+
 #### 2026-09-13 *0.8.39*
 - **Demo: the vector pages cover every sample the repo actually ships.**
   - `media/vector/XAR/`: `demo.xar` and the lower-case `backside.xar` are

@@ -170,6 +170,11 @@ namespace UltraCanvas {
             container->AddChild(tile);
         };
 
+        // Every real .eps file shipped under media/vector/EPS. Apple5.eps and
+        // Midget.eps are deliberately absent: despite the extension they are
+        // RISC OS TopDraw documents ("Top!" / "TopDraw" magic, no PostScript
+        // at all), so the interpreter has nothing to run and EPSProbeTest
+        // reports them as load failures.
         makeTile("EPSContainer1", 20, 100, "demo.eps");
         makeTile("EPSContainer2", 340, 100, "gears.eps");
 
