@@ -1,3 +1,19 @@
+#### 2026-09-13 *0.8.42*
+- **`media/` root tidied: a stray file deleted, two sample assets filed
+  under `media/docs/`.**
+  - `media/audio` is gone. It was a 1-byte regular file containing a single
+    newline, unrelated to the `media/audios/` directory beside it, and
+    nothing read it.
+  - `media/Logo_Texter.png` and `media/MarkdownExample.md` move into
+    `media/docs/`, beside the `document.odt` and `spreadsheet.ods` samples.
+    All four live references follow them: the demo's Markdown page
+    (`UltraCanvasDemo.cpp`) and its commented-out sibling in
+    `UltraCanvasDemoExamples.cpp`, Texter's splash logo
+    (`UltraCanvasTextEditor.cpp`), `Tests/FontFileTest`'s "a PNG is not a
+    font" fixture, and the `\includegraphics` path in
+    `media/LaTex/article-quadratic-note.tex`. The packaging scripts copy
+    `media/` whole, so nothing changes for a packaged build.
+
 #### 2026-09-13 *0.8.41*
 - **`media/vector/EPS/Apple5.eps` and `Midget.eps` are deleted.** Neither
   was ever an EPS: both are RISC OS TopDraw documents (`Top!` / `TopDraw`

@@ -1687,7 +1687,7 @@ namespace UltraCanvas {
 
         textDocBuilder.AddItem("markdown", "Markdown", "Markdown document rendering",
                                ImplementationStatus::FullyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"media/MarkdownExample.md")); });
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"media/docs/MarkdownExample.md")); });
 
 //        textDocBuilder.AddItem("codeeditor", "Code Editor", "Syntax highlighting text editor",
 //                               ImplementationStatus::PartiallyImplemented,

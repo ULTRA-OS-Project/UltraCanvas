@@ -168,7 +168,7 @@ void TestBadInput() {
     // decline it rather than produce a half-filled record. A PNG is the
     // interesting case - it is exactly what a thumbnail worker hands this
     // module by mistake if the extension table ever mis-classifies one.
-    const fs::path notAFont = fs::path(UC_MEDIA_DIR) / "Logo_Texter.png";
+    const fs::path notAFont = fs::path(UC_MEDIA_DIR) / "docs" / "Logo_Texter.png";
     if (!fs::exists(notAFont)) {
         std::cout << "  [SKIP] " << notAFont.string() << " not present\n";
         return;
