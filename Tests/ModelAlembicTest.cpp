@@ -2,7 +2,7 @@
 // The Alembic reader: the Ogawa container, Alembic's object and property
 // model, and AbcGeom on top of them.
 //
-// The sample is media/models/Alembic/E-45-Aircraft.abc — the same aircraft the
+// The sample is media/3D/Alembic/E-45-Aircraft.abc — the same aircraft the
 // 3DS, OBJ, DXF and COLLADA suites read, exported from the same .blend by
 // Blender in 2017. That makes the cross-format comparisons here worth more
 // than any single-format assertion: the Alembic and the COLLADA were both
@@ -15,7 +15,7 @@
 // agree with the one the file stored" is an independent check of a decision
 // that is otherwise invisible until a model renders inside out.
 //
-// argv[1] is media/models. Without it only the container cases run.
+// argv[1] is media/3D. Without it only the container cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-10
@@ -260,7 +260,7 @@ int main(int argc, char** argv) {
         TestSample(argv[1]);
         TestAgainstTheObjExport(argv[1]);
     } else {
-        std::printf("Sample: skipped (pass the media/models path to run it)\n");
+        std::printf("Sample: skipped (pass the media/3D path to run it)\n");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",

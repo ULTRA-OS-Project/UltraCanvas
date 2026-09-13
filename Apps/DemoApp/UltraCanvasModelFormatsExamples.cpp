@@ -62,7 +62,7 @@ namespace {
     // ===== THE SAMPLES =====
 
     struct SampleSpec {
-        const char* relativePath;   // under media/models/
+        const char* relativePath;   // under media/3D/
         const char* extension;      // what the dispatch is asked for
         const char* note;           // why this one is worth looking at
     };
@@ -70,7 +70,7 @@ namespace {
     // Ordered smallest file first, which also happens to run from the most
     // compact binary format to the most verbose. Everything here is under
     // 600 kB so the page stays responsive even though each sample is parsed
-    // on demand - the larger samples in media/models (the 18 MB .blend, the
+    // on demand - the larger samples in media/3D (the 18 MB .blend, the
     // 6.9 MB VRML, the 3.9 MB PLY) are read by the same dispatch and are
     // deliberately not listed; see kOmittedNote.
     const std::vector<SampleSpec>& Samples() {
@@ -88,7 +88,7 @@ namespace {
                  "smoothing groups arrive as a bitmask."},
                 {"FBX/E-45-Aircraft.fbx", "fbx",
                  "Binary FBX - the same model as the 2.2 MB ASCII variant in\n"
-                 "media/models/FBX, an order of magnitude smaller. What the\n"
+                 "media/3D/FBX, an order of magnitude smaller. What the\n"
                  "header declared lands in ModelDocument::Metadata as\n"
                  "fbx.version, fbx.encoding and fbx.application."},
                 {"Alembic/E-45-Aircraft.abc", "abc",
@@ -383,7 +383,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     container->AddChild(statusLabel);
 
     // ===== SAMPLE TABLE =====
-    const std::string modelsDir = NormalizePath(GetResourcesDir() + "media/models/");
+    const std::string modelsDir = NormalizePath(GetResourcesDir() + "media/3D/");
     auto samples = std::make_shared<std::vector<FormatSample>>();
     for (const SampleSpec& spec : Samples()) {
         FormatSample sample;

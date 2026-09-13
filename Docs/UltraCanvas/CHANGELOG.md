@@ -1,3 +1,47 @@
+#### 2026-09-13 *0.8.41*
+- **3DS, COLLADA and X3D/VRML now write as well as read.** Six of the plugin's
+  formats are writable where three were: OBJ, PLY and STEP are joined by
+  `.3ds`, `.dae`, and X3D in **both** of its text encodings - `.x3d` emits XML
+  and `.x3dv`/`.wrl`/`.vrml` emit Classic VRML, chosen from the extension,
+  because they are two spellings of one node set rather than two formats.
+- **Each writer reports what the format cannot carry rather than truncating in
+  silence.** 3DS caps vertices and faces at 65 535 because the counts are
+  `uint16`, so a primitive over the limit is skipped with a warning instead of
+  wrapping into garbage; names truncate to 12 characters and are de-duplicated
+  so two long names do not collapse into one material reference.
+- **Up axis is the one thing a writer changes about the numbers, and it says
+  so.** 3DS is always Z-up and X3D always Y-up, with no field in either to
+  declare otherwise, so a document in the other convention is rotated and
+  warned about. COLLADA declares the document's own axis in `<up_axis>` and
+  rotates nothing. Reading a file and writing it back in its own format is
+  therefore identity.
+- **The X3D up-axis correction is an enclosing `Transform`, not a field on each
+  root.** Writing it per-root looked right until a root with a rotation of its
+  own met it: `Transform` has exactly one rotation field, so the correction
+  replaced the node's and moved the geometry. The round-trip test's bounding-box
+  comparison caught it.
+- **COLLADA keeps what `profile_COMMON` cannot.** The metallic/roughness pair
+  has nowhere to go in a fixed-function profile, so it is written into
+  `<extra>`; this converter reads it back and another will ignore it, which
+  beats dropping it on the floor.
+- **`SupportedSaveExtensions()` gained `p21`**, which routes to the STEP
+  converter and was writable all along without being advertised.
+- **`Tests/ModelWriterTest.cpp`** (new) round-trips each writer - write, read
+  back with this framework's own reader, compare - over a hand-built document
+  and ten real samples. Counts alone would pass a writer that emitted every
+  triangle at the origin, so the geometry is compared through its bounding box
+  as well, with the format's own up-axis conversion applied so the deliberate
+  rotation passes and a wrong one fails. It also asserts that
+  `SupportedSaveExtensions()` and the converters' `CanExport()` agree **in both
+  directions**, which is the drift that would otherwise advertise a format
+  nothing writes.
+- **`media/models` is now `media/3D`, and `media/vector/STL` moved into it.**
+  STL is a 3D format that was sitting in the vector corpus; every sample the 3D
+  readers use is now under one directory. All 65 references across the tests,
+  the demo pages, the build and the docs were updated - the STL demo page reads
+  `media/3D/STL` - and the changelog's historical entries were deliberately left
+  naming the old paths, because they describe where the files were at the time.
+
 #### 2026-09-13 *0.8.40*
 - **The demo app's 3D section now shows the formats the framework reads.** It
   had two entries - STL, and an OpenGL tab whose meshes came from the demo's

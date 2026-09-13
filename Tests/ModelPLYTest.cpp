@@ -8,13 +8,13 @@
 // binary in either byte order, an element nothing understands that still has
 // to be stepped over exactly, and a file that stops early.
 //
-// The sample in media/models/PLY is the E-45 aircraft again, and it is a
+// The sample in media/3D/PLY is the E-45 aircraft again, and it is a
 // different export from the others: 32 440 quads against the OBJ's 8 110, from
 // 'E 45 Aircraft_Export_Ready.blend' rather than the plain one. It is only the
 // second export in the set (with the OBJ, 3DS and DXF) whose mirror modifier
 // was applied, which the cross-format check at the end pins.
 //
-// argv[1] is media/models. Without it only the inline cases run.
+// argv[1] is media/3D. Without it only the inline cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-10
@@ -507,7 +507,7 @@ int main(int argc, char** argv) {
         TestRoundTrip(argv[1]);
         TestAgainstTheOtherExports(argv[1]);
     } else {
-        std::printf("Sample: skipped (pass the media/models path to run it)\n");
+        std::printf("Sample: skipped (pass the media/3D path to run it)\n");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",

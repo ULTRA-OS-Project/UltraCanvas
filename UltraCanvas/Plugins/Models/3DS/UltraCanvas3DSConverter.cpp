@@ -16,6 +16,7 @@
 #include <cstring>
 #include <fstream>
 #include <map>
+#include <set>
 #include <sstream>
 
 namespace UltraCanvas {
@@ -888,6 +889,493 @@ bool ThreeDSConverter::ValidateFile(const std::string& filename) const {
     file.seekg(0, std::ios::end);
     return length >= kChunkHeaderSize &&
            length <= static_cast<uint32_t>(std::max<std::streamoff>(0, file.tellg()));
+}
+
+
+// ===== WRITER =====
+//
+// The inverse of the reader above, and bounded by the same chunk grammar. Two
+// things make it more than a transcription: the document is a scene graph and
+// 3DS is a flat object list, so node transforms are composed and baked; and
+// every count in the format is a uint16, so a primitive the format cannot
+// address is refused rather than silently wrapped.
+
+namespace {
+
+// 3DS names are NUL-terminated but capped at 12 characters by every tool that
+// reads them - the reader warns when it sees one at exactly that length,
+// because it is almost certainly a truncation someone else performed.
+constexpr size_t kMaxNameLength = 12;
+// The counts are uint16, so this is a hard ceiling, not a policy.
+constexpr size_t kMaxPerObject = 65535;
+
+// Truncates to the format's limit and keeps the result unique, because two
+// long names that share their first twelve characters would otherwise become
+// one - and a material name is how a face group refers to its material.
+class NameAllocator {
+public:
+    std::string Take(const std::string& wanted, const std::string& fallback) {
+        std::string base = wanted.empty() ? fallback : wanted;
+        // Only bytes a 3DS name may hold; control characters would end the
+        // string early in a reader that scans for the terminator.
+        for (char& c : base)
+            if (static_cast<unsigned char>(c) < 0x20) c = '_';
+
+        std::string candidate = base.substr(0, kMaxNameLength);
+        if (used_.insert(candidate).second) return candidate;
+
+        for (int suffix = 1; suffix < 10000; ++suffix) {
+            const std::string tag = std::to_string(suffix);
+            const size_t keep = kMaxNameLength > tag.size() ? kMaxNameLength - tag.size() : 0;
+            candidate = base.substr(0, keep) + tag;
+            if (used_.insert(candidate).second) return candidate;
+        }
+        return base.substr(0, kMaxNameLength);   // give up; collision is better than a loop
+    }
+
+private:
+    std::set<std::string> used_;
+};
+
+// Little-endian by specification, written byte by byte rather than memcpy'd, so
+// the output does not depend on the host's byte order.
+class ChunkWriter {
+public:
+    explicit ChunkWriter(std::vector<uint8_t>& out) : out_(out) {}
+
+    void U8(uint8_t v) { out_.push_back(v); }
+    void U16(uint16_t v) {
+        out_.push_back(static_cast<uint8_t>(v & 0xFF));
+        out_.push_back(static_cast<uint8_t>((v >> 8) & 0xFF));
+    }
+    void U32(uint32_t v) {
+        for (int i = 0; i < 4; ++i) out_.push_back(static_cast<uint8_t>((v >> (8 * i)) & 0xFF));
+    }
+    void I16(int16_t v) { U16(static_cast<uint16_t>(v)); }
+    void F32(float v) {
+        uint32_t bits = 0;
+        static_assert(sizeof(float) == 4, "3DS stores IEEE-754 binary32");
+        std::memcpy(&bits, &v, 4);
+        U32(bits);
+    }
+    void Name(const std::string& s) {
+        for (char c : s) out_.push_back(static_cast<uint8_t>(c));
+        out_.push_back(0);
+    }
+
+    // Opens a chunk and returns the offset of its length field, which is
+    // back-patched by Close() once the payload is known - the only way to write
+    // a format whose lengths cover their own header.
+    size_t Open(uint16_t id) {
+        U16(id);
+        const size_t lengthAt = out_.size();
+        U32(0);
+        return lengthAt;
+    }
+    void Close(size_t lengthAt) {
+        const size_t start = lengthAt - 2;               // back to the id
+        const uint32_t total = static_cast<uint32_t>(out_.size() - start);
+        for (int i = 0; i < 4; ++i)
+            out_[lengthAt + static_cast<size_t>(i)] =
+                    static_cast<uint8_t>((total >> (8 * i)) & 0xFF);
+    }
+
+    // A whole chunk whose payload is one 24-bit colour, the encoding 3DS uses
+    // for every material colour.
+    void Color24(uint16_t id, const Vec3f& rgb) {
+        const size_t at = Open(id);
+        const size_t inner = Open(CHUNK_COLOR_24);
+        auto byte = [](float v) {
+            const float clamped = v < 0.0f ? 0.0f : (v > 1.0f ? 1.0f : v);
+            return static_cast<uint8_t>(clamped * 255.0f + 0.5f);
+        };
+        U8(byte(rgb.x)); U8(byte(rgb.y)); U8(byte(rgb.z));
+        Close(inner);
+        Close(at);
+    }
+
+    // A whole chunk whose payload is one percentage, as 3DS's int form.
+    void Percentage(uint16_t id, float unitFraction) {
+        const size_t at = Open(id);
+        const size_t inner = Open(CHUNK_INT_PERCENTAGE);
+        const float clamped = unitFraction < 0.0f ? 0.0f : (unitFraction > 1.0f ? 1.0f : unitFraction);
+        I16(static_cast<int16_t>(clamped * 100.0f + 0.5f));
+        Close(inner);
+        Close(at);
+    }
+
+private:
+    std::vector<uint8_t>& out_;
+};
+
+// One 3DS object: a flat vertex array, triangles, and the faces each material
+// owns. Several document primitives merge into one of these, because 3DS gives
+// an object a single vertex array and distinguishes materials per face.
+struct FlatObject {
+    std::string name;
+    std::vector<Vec3d> positions;
+    std::vector<float> uvs;              // 2 per vertex, empty when none
+    std::vector<uint32_t> faces;         // 3 per triangle
+    std::vector<uint32_t> smoothing;     // 1 per triangle, empty when none
+    // material name -> the faces using it
+    std::vector<std::pair<std::string, std::vector<uint32_t>>> materialFaces;
+};
+
+// Y-up to Z-up: (x, y, z) -> (x, -z, y). 3DS has no way to declare an up axis,
+// so a document that is not already Z-up has to be rotated or it will import
+// lying on its side everywhere.
+Vec3d ToZUp(const Vec3d& p) { return Vec3d(p.x, -p.z, p.y); }
+
+class Writer {
+public:
+    Writer(const ModelDocument& document, const ConversionOptions& options)
+            : doc_(document), options_(options),
+              rotateToZUp_(document.Up == UpAxis::YUp) {}
+
+    bool Run(std::vector<uint8_t>& out) {
+        ReportLosses();
+        AssignMaterialNames();
+        CollectObjects();
+        if (objects_.empty()) {
+            options_.Warn("3DS: the document holds no triangle geometry that 3DS can store; "
+                          "nothing was written");
+            return false;
+        }
+
+        ChunkWriter w(out);
+        const size_t main = w.Open(CHUNK_MAIN);
+
+        const size_t version = w.Open(CHUNK_M3D_VERSION);
+        w.U32(3);                      // release 3, what the reader expects
+        w.Close(version);
+
+        const size_t mdata = w.Open(CHUNK_MDATA);
+        const size_t meshVersion = w.Open(CHUNK_MESH_VERSION);
+        w.U32(3);
+        w.Close(meshVersion);
+
+        // 3DS's one unit hint. The document records metres per unit; 3DS's
+        // master scale is a multiplier on the stored numbers, and 1.0 is the
+        // only honest value for geometry written unscaled.
+        const size_t scale = w.Open(CHUNK_MASTER_SCALE);
+        w.F32(1.0f);
+        w.Close(scale);
+
+        for (size_t i = 0; i < doc_.Materials.size(); ++i) WriteMaterial(w, i);
+        for (const FlatObject& object : objects_) WriteObject(w, object);
+
+        w.Close(mdata);
+        w.Close(main);
+        return true;
+    }
+
+private:
+    // ---- losses -------------------------------------------------------
+    void ReportLosses() {
+        if (rotateToZUp_)
+            options_.Warn("3DS: the document is Y-up and 3DS is always Z-up, so every position "
+                          "and normal was rotated (x, y, z) -> (x, -z, y); the numbers in the "
+                          "file are not the numbers in the document");
+        if (!doc_.Animations.empty())
+            options_.Warn("3DS: " + std::to_string(doc_.Animations.size()) +
+                          " animation(s) dropped - this writer emits no KFDATA");
+        if (!doc_.Skins.empty())
+            options_.Warn("3DS: skinning dropped - 3DS stores no joints or weights");
+        if (!doc_.Cameras.empty() || !doc_.Lights.empty())
+            options_.Warn("3DS: cameras and lights dropped - this writer emits geometry and "
+                          "materials only");
+        if (!doc_.Brep.Solids.empty())
+            options_.Warn("3DS: " + std::to_string(doc_.Brep.Solids.size()) +
+                          " exact solid(s) dropped - 3DS stores meshes, so tessellate first "
+                          "if the bodies matter");
+        for (const ModelMesh& mesh : doc_.Meshes)
+            for (const MeshPrimitive& prim : mesh.Primitives) {
+                if (!prim.Targets.empty()) {
+                    options_.Warn("3DS: morph targets dropped - 3DS stores none");
+                    break;
+                }
+            }
+        for (const ModelMesh& mesh : doc_.Meshes)
+            for (const MeshPrimitive& prim : mesh.Primitives)
+                if (prim.FindAttribute(AttributeSemantic::Color) != nullptr) {
+                    options_.Warn("3DS: per-vertex colours dropped - 3DS has no vertex colour");
+                    return;
+                }
+    }
+
+    // ---- materials ----------------------------------------------------
+    void AssignMaterialNames() {
+        materialNames_.reserve(doc_.Materials.size());
+        for (size_t i = 0; i < doc_.Materials.size(); ++i)
+            materialNames_.push_back(
+                    materialNamer_.Take(doc_.Materials[i].Name, "mat" + std::to_string(i)));
+    }
+
+    void WriteMaterial(ChunkWriter& w, size_t index) {
+        ModelMaterial material = doc_.Materials[index];
+        // 3DS is fixed-function throughout, so a PBR-only material has to have
+        // its Phong side derived before there is anything to write.
+        if (!material.Phong.has_value()) material.DeriveMissingModel();
+        const PhongParams& phong = *material.Phong;
+
+        const size_t entry = w.Open(CHUNK_MAT_ENTRY);
+
+        const size_t name = w.Open(CHUNK_MAT_NAME);
+        w.Name(materialNames_[index]);
+        w.Close(name);
+
+        w.Color24(CHUNK_MAT_AMBIENT,  phong.Ambient);
+        w.Color24(CHUNK_MAT_DIFFUSE,  phong.Diffuse);
+        w.Color24(CHUNK_MAT_SPECULAR, phong.Specular);
+
+        // 3DS stores shininess as a percentage, not as a Phong exponent. The
+        // reader's inverse of this mapping is what makes a round trip stable.
+        const float shininess = phong.Shininess <= 0.0f
+                                        ? 0.0f
+                                        : std::min(1.0f, phong.Shininess / 128.0f);
+        w.Percentage(CHUNK_MAT_SHININESS, shininess);
+        w.Percentage(CHUNK_MAT_TRANSPARENCY, 1.0f - material.BaseColorFactor.w);
+
+        if (material.DoubleSided) {
+            const size_t twoSide = w.Open(CHUNK_MAT_TWO_SIDE);
+            w.Close(twoSide);          // presence is the flag; it has no payload
+        }
+
+        WriteTextureMap(w, CHUNK_MAT_TEXMAP,
+                        phong.DiffuseTexture.IsSet() ? phong.DiffuseTexture
+                                                     : material.BaseColorTexture);
+        WriteTextureMap(w, CHUNK_MAT_SPECMAP, phong.SpecularTexture);
+        WriteTextureMap(w, CHUNK_MAT_BUMPMAP, material.NormalTexture);
+
+        w.Close(entry);
+    }
+
+    void WriteTextureMap(ChunkWriter& w, uint16_t chunkId, const TextureRef& ref) {
+        if (!ref.IsSet()) return;
+        if (ref.Image < 0 || ref.Image >= static_cast<int>(doc_.Images.size())) return;
+        const ModelImage& image = doc_.Images[static_cast<size_t>(ref.Image)];
+        if (image.Uri.empty()) {
+            options_.Warn("3DS: an embedded texture was dropped - 3DS references textures by "
+                          "file name and cannot carry image data");
+            return;
+        }
+        const size_t map = w.Open(chunkId);
+        w.Percentage(CHUNK_INT_PERCENTAGE, 1.0f);
+        const size_t mapName = w.Open(CHUNK_MAT_MAPNAME);
+        // Texture names share the 12-character limit, and this one is a file
+        // name a reader will try to open, so the truncation is worth naming.
+        std::string uri = image.Uri;
+        const size_t slash = uri.find_last_of("/\\");
+        if (slash != std::string::npos) uri = uri.substr(slash + 1);
+        if (uri.size() > kMaxNameLength)
+            options_.Warn("3DS: texture file name '" + uri + "' exceeds the format's "
+                          "12-character limit and was truncated");
+        w.Name(uri.substr(0, kMaxNameLength));
+        w.Close(mapName);
+        w.Close(map);
+    }
+
+    // ---- geometry -----------------------------------------------------
+    void CollectObjects() {
+        if (doc_.Nodes.empty()) {
+            // No scene graph: each mesh is its own object, untransformed.
+            for (size_t i = 0; i < doc_.Meshes.size(); ++i)
+                AddObject(doc_.Meshes[i], Matrix4x4::Identity(), doc_.Meshes[i].Name,
+                          "object" + std::to_string(i));
+            return;
+        }
+        for (size_t i = 0; i < doc_.Nodes.size(); ++i) {
+            const ModelNode& node = doc_.Nodes[i];
+            if (node.Mesh < 0 || node.Mesh >= static_cast<int>(doc_.Meshes.size())) continue;
+            // 3DS has no hierarchy this writer emits, so an ancestor's
+            // transform has to be composed in rather than referenced.
+            AddObject(doc_.Meshes[static_cast<size_t>(node.Mesh)],
+                      doc_.GlobalTransform(static_cast<int>(i)),
+                      node.Name.empty() ? doc_.Meshes[static_cast<size_t>(node.Mesh)].Name
+                                        : node.Name,
+                      "object" + std::to_string(i));
+        }
+    }
+
+    void AddObject(const ModelMesh& mesh, const Matrix4x4& transform,
+                   const std::string& wantedName, const std::string& fallbackName) {
+        FlatObject object;
+        object.name = objectNamer_.Take(wantedName, fallbackName);
+
+        bool anyUv = false;
+        for (const MeshPrimitive& prim : mesh.Primitives)
+            if (prim.FindAttribute(AttributeSemantic::TexCoord, 0) != nullptr) anyUv = true;
+
+        for (const MeshPrimitive& source : mesh.Primitives) {
+            // Only surfaces; a 3DS file has no way to say "these are points".
+            if (source.Mode == PrimitiveMode::Points || source.Mode == PrimitiveMode::Lines ||
+                source.Mode == PrimitiveMode::LineStrip || source.Mode == PrimitiveMode::LineLoop) {
+                options_.Warn("3DS: a point or line primitive in '" + object.name +
+                              "' was dropped - 3DS stores triangles only");
+                continue;
+            }
+
+            MeshPrimitive prim = source;
+            if (prim.Mode != PrimitiveMode::Triangles && !prim.Triangulate()) {
+                options_.Warn("3DS: a primitive in '" + object.name +
+                              "' could not be triangulated and was dropped");
+                continue;
+            }
+
+            const size_t vertexBase = object.positions.size();
+            const size_t faceCount = prim.Indices.size() / 3;
+            if (vertexBase + prim.Positions.size() > kMaxPerObject ||
+                object.faces.size() / 3 + faceCount > kMaxPerObject) {
+                options_.Warn("3DS: '" + object.name + "' would exceed the format's 65 535 "
+                              "vertex/face ceiling, so a primitive of " +
+                              std::to_string(prim.Positions.size()) + " vertices and " +
+                              std::to_string(faceCount) + " faces was dropped; split the mesh "
+                              "before writing 3DS");
+                continue;
+            }
+
+            for (const Vec3d& p : prim.Positions) {
+                const Vec3d world = transform.TransformPoint(p);
+                object.positions.push_back(rotateToZUp_ ? ToZUp(world) : world);
+            }
+
+            // 3DS gives an object one texture-coordinate array parallel to its
+            // vertices, so a primitive without UVs still has to contribute
+            // placeholders when a sibling has them, or the arrays desynchronise.
+            if (anyUv) {
+                const VertexAttribute* uv = prim.FindAttribute(AttributeSemantic::TexCoord, 0);
+                for (size_t v = 0; v < prim.Positions.size(); ++v) {
+                    if (uv && uv->Components >= 2 && v < uv->Count()) {
+                        object.uvs.push_back(uv->Values[v * static_cast<size_t>(uv->Components)]);
+                        object.uvs.push_back(uv->Values[v * static_cast<size_t>(uv->Components) + 1]);
+                    } else {
+                        object.uvs.push_back(0.0f);
+                        object.uvs.push_back(0.0f);
+                    }
+                }
+            }
+
+            std::vector<uint32_t> ownFaces;
+            ownFaces.reserve(faceCount);
+            for (size_t f = 0; f < faceCount; ++f) {
+                ownFaces.push_back(static_cast<uint32_t>(object.faces.size() / 3));
+                for (int corner = 0; corner < 3; ++corner)
+                    object.faces.push_back(
+                            static_cast<uint32_t>(vertexBase + prim.Indices[f * 3 + static_cast<size_t>(corner)]));
+            }
+
+            // Smoothing groups are per-face and 3DS has the same concept, so
+            // they are carried rather than baked into split normals.
+            if (prim.SmoothingGroups.size() == faceCount) {
+                object.smoothing.insert(object.smoothing.end(),
+                                        prim.SmoothingGroups.begin(), prim.SmoothingGroups.end());
+            } else if (!object.smoothing.empty() || !prim.SmoothingGroups.empty()) {
+                object.smoothing.resize(object.faces.size() / 3, 1u);
+            }
+
+            if (prim.Material >= 0 && prim.Material < static_cast<int>(materialNames_.size()))
+                object.materialFaces.emplace_back(materialNames_[static_cast<size_t>(prim.Material)],
+                                                  std::move(ownFaces));
+        }
+
+        if (object.positions.empty() || object.faces.empty()) return;
+        if (!object.smoothing.empty()) object.smoothing.resize(object.faces.size() / 3, 1u);
+        objects_.push_back(std::move(object));
+    }
+
+    void WriteObject(ChunkWriter& w, const FlatObject& object) {
+        const size_t named = w.Open(CHUNK_NAMED_OBJECT);
+        w.Name(object.name);
+
+        const size_t tri = w.Open(CHUNK_N_TRI_OBJECT);
+
+        const size_t points = w.Open(CHUNK_POINT_ARRAY);
+        w.U16(static_cast<uint16_t>(object.positions.size()));
+        for (const Vec3d& p : object.positions) {
+            w.F32(static_cast<float>(p.x));
+            w.F32(static_cast<float>(p.y));
+            w.F32(static_cast<float>(p.z));
+        }
+        w.Close(points);
+
+        if (!object.uvs.empty()) {
+            const size_t tex = w.Open(CHUNK_TEX_VERTS);
+            w.U16(static_cast<uint16_t>(object.uvs.size() / 2));
+            for (float value : object.uvs) w.F32(value);
+            w.Close(tex);
+        }
+
+        const size_t faces = w.Open(CHUNK_FACE_ARRAY);
+        const size_t faceCount = object.faces.size() / 3;
+        w.U16(static_cast<uint16_t>(faceCount));
+        for (size_t f = 0; f < faceCount; ++f) {
+            w.U16(static_cast<uint16_t>(object.faces[f * 3]));
+            w.U16(static_cast<uint16_t>(object.faces[f * 3 + 1]));
+            w.U16(static_cast<uint16_t>(object.faces[f * 3 + 2]));
+            w.U16(0x0007);   // all three edges visible, the value a modeller expects
+        }
+
+        // Sub-chunks live inside FACE_ARRAY, after the face data - which is why
+        // the reader resumes its scan at the cursor rather than at the body.
+        for (const auto& [materialName, materialFaceList] : object.materialFaces) {
+            const size_t group = w.Open(CHUNK_MSH_MAT_GROUP);
+            w.Name(materialName);
+            w.U16(static_cast<uint16_t>(materialFaceList.size()));
+            for (uint32_t face : materialFaceList) w.U16(static_cast<uint16_t>(face));
+            w.Close(group);
+        }
+
+        if (object.smoothing.size() == faceCount) {
+            const size_t smooth = w.Open(CHUNK_SMOOTH_GROUP);
+            for (uint32_t mask : object.smoothing) w.U32(mask);
+            w.Close(smooth);
+        }
+
+        w.Close(faces);
+        w.Close(tri);
+        w.Close(named);
+    }
+
+    const ModelDocument& doc_;
+    const ConversionOptions& options_;
+    bool rotateToZUp_ = false;
+    std::vector<std::string> materialNames_;
+    NameAllocator materialNamer_;
+    NameAllocator objectNamer_;
+    std::vector<FlatObject> objects_;
+};
+
+} // namespace
+
+bool ThreeDSConverter::ExportToMemory(const ModelDocument& document,
+                                      std::vector<uint8_t>& outData,
+                                      const ConversionOptions& options) {
+    outData.clear();
+    Writer writer(document, options);
+    return writer.Run(outData);
+}
+
+bool ThreeDSConverter::Export(const ModelDocument& document, const std::string& filename,
+                              const ConversionOptions& options) {
+    std::vector<uint8_t> data;
+    if (!ExportToMemory(document, data, options)) return false;
+    std::ofstream file(filename, std::ios::binary);
+    if (!file) {
+        options.Warn("3DS: cannot write " + filename);
+        return false;
+    }
+    file.write(reinterpret_cast<const char*>(data.data()),
+               static_cast<std::streamsize>(data.size()));
+    return static_cast<bool>(file);
+}
+
+bool ThreeDSConverter::ExportToStream(const ModelDocument& document, std::ostream& stream,
+                                      const ConversionOptions& options) {
+    std::vector<uint8_t> data;
+    if (!ExportToMemory(document, data, options)) return false;
+    stream.write(reinterpret_cast<const char*>(data.data()),
+                 static_cast<std::streamsize>(data.size()));
+    return static_cast<bool>(stream);
 }
 
 } // namespace ModelConverter

@@ -14,7 +14,7 @@
 // GraphicsFormatDetector, because the registry and the FileLoader inventory
 // ask that table, not the plugin, when deciding what a file is.
 //
-// argv[1] is media/models, whose per-format subdirectories hold the samples.
+// argv[1] is media/3D, whose per-format subdirectories hold the samples.
 // Without it only the dispatch-table cases run.
 //
 // Version: 1.1.0
@@ -306,7 +306,7 @@ int main(int argc, char** argv) {
     TestDxfIsNotClaimed();
     TestEveryClaimedExtensionReachesTheFramework();
     if (argc > 1) TestSamples(argv[1]);
-    else std::printf("Samples: skipped (pass the media/models path to run them)\n");
+    else std::printf("Samples: skipped (pass the media/3D path to run them)\n");
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
                 failures, failures == 1 ? "" : "s");

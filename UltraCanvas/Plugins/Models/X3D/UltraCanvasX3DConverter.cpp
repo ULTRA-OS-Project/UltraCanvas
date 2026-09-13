@@ -2110,5 +2110,523 @@ bool X3DConverter::ValidateFile(const std::string& filename) const {
                                     static_cast<size_t>(std::max<std::streamsize>(0, file.gcount()))));
 }
 
+
+// ===== WRITER =====
+//
+// X3D's two text encodings spell one node set, so the writer emits nodes
+// through a small sink and lets the sink decide the syntax: XML elements with
+// attributes, or Classic VRML's `Node { field value }`. Everything above the
+// sink - which nodes, which fields, in what order - is written once.
+
+namespace {
+
+std::string XmlAttributeEscape(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char c : text) {
+        switch (c) {
+            case '&':  out += "&amp;";  break;
+            case '<':  out += "&lt;";   break;
+            case '>':  out += "&gt;";   break;
+            case '"':  out += "&quot;"; break;
+            case '\'': out += "&apos;"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20 && c != '\t' && c != '\n' && c != '\r')
+                    out += '_';
+                else
+                    out += c;
+        }
+    }
+    return out;
+}
+
+// A DEF name is an identifier in the Classic encoding, so it may not carry
+// spaces or punctuation that would end the token - and an XML file that shares
+// the name has to agree, or the two encodings stop describing one scene.
+std::string SanitiseDefName(const std::string& name, const std::string& fallback) {
+    std::string out;
+    for (char c : name) {
+        const unsigned char u = static_cast<unsigned char>(c);
+        out += (std::isalnum(u) || c == '_') ? c : '_';
+    }
+    if (out.empty() || std::isdigit(static_cast<unsigned char>(out[0]))) out = "_" + out;
+    return out.empty() ? fallback : out;
+}
+
+// One field of one node, already formatted. Keeping the value as text lets the
+// two encodings differ only in how they punctuate the pair.
+struct Field {
+    std::string name;
+    std::string value;
+    bool quoted = false;     // SFString / MFString: quoted in both encodings
+    // A multi-valued field (MFInt32, MFVec3f, MFColor). The Classic encoding
+    // requires these in brackets and the XML encoding requires them without -
+    // getting it wrong is the difference between a file that parses and one
+    // that does not, so the distinction is carried rather than guessed.
+    bool multi = false;
+};
+
+// Emits nodes in one of the two encodings. Both are line-oriented and nested,
+// so one traversal drives either.
+class Sink {
+public:
+    Sink(std::ostream& out, bool classic) : out_(out), classic_(classic) {}
+
+    bool Classic() const { return classic_; }
+
+    void Open(const std::string& node, const std::vector<Field>& fields,
+              const std::string& def = std::string()) {
+        Indent();
+        if (classic_) {
+            if (!def.empty()) out_ << "DEF " << def << " ";
+            out_ << node << " {";
+            for (const Field& f : fields) out_ << " " << f.name << " " << Value(f);
+            out_ << "\n";
+        } else {
+            out_ << "<" << node;
+            if (!def.empty()) out_ << " DEF='" << XmlAttributeEscape(def) << "'";
+            for (const Field& f : fields)
+                out_ << " " << f.name << "='" << XmlAttributeEscape(Value(f)) << "'";
+            out_ << ">\n";
+        }
+        stack_.push_back(node);
+        ++depth_;
+    }
+
+    // A node with no children. Worth its own spelling because the XML encoding
+    // can close it in place and the Classic one cannot.
+    void Leaf(const std::string& node, const std::vector<Field>& fields,
+              const std::string& def = std::string()) {
+        Indent();
+        if (classic_) {
+            if (!def.empty()) out_ << "DEF " << def << " ";
+            out_ << node << " {";
+            for (const Field& f : fields) out_ << " " << f.name << " " << Value(f);
+            out_ << " }\n";
+        } else {
+            out_ << "<" << node;
+            if (!def.empty()) out_ << " DEF='" << XmlAttributeEscape(def) << "'";
+            for (const Field& f : fields)
+                out_ << " " << f.name << "='" << XmlAttributeEscape(Value(f)) << "'";
+            out_ << "/>\n";
+        }
+    }
+
+    // A reference to an earlier DEF, which is how both encodings instance.
+    void Use(const std::string& node, const std::string& def) {
+        Indent();
+        if (classic_) out_ << "USE " << def << "\n";
+        else out_ << "<" << node << " USE='" << XmlAttributeEscape(def) << "'/>\n";
+    }
+
+    // In the Classic encoding a child node is the value of a field, so the
+    // field name is written before the child; the XML encoding nests the child
+    // element directly and needs nothing here.
+    void BeginField(const std::string& name) {
+        if (!classic_) return;
+        Indent();
+        out_ << name << "\n";
+    }
+    void EndField() {}
+
+    // `children` is an MFNode, so the Classic encoding brackets the list.
+    void BeginChildren() {
+        if (!classic_) return;
+        Indent();
+        out_ << "children [\n";
+        ++depth_;
+    }
+    void EndChildren() {
+        if (!classic_) return;
+        --depth_;
+        Indent();
+        out_ << "]\n";
+    }
+
+    void Close() {
+        --depth_;
+        const std::string node = stack_.back();
+        stack_.pop_back();
+        Indent();
+        out_ << (classic_ ? "}" : "</" + node + ">") << "\n";
+    }
+
+    std::ostream& Raw() { return out_; }
+
+private:
+    void Indent() { for (int i = 0; i < depth_; ++i) out_ << "  "; }
+    std::string Value(const Field& f) const {
+        std::string inner = f.quoted ? "\"" + f.value + "\"" : f.value;
+        return (classic_ && f.multi) ? "[ " + inner + " ]" : inner;
+    }
+
+    std::ostream& out_;
+    bool classic_;
+    int depth_ = 0;
+    std::vector<std::string> stack_;
+};
+
+class ScopedPrecision {
+public:
+    ScopedPrecision(std::ostream& stream, NumericPrecision precision, bool forDouble)
+            : stream_(stream), previous_(stream.precision()) {
+        stream_.precision(precision == NumericPrecision::Full ? (forDouble ? 17 : 9) : 6);
+    }
+    ~ScopedPrecision() { stream_.precision(previous_); }
+    ScopedPrecision(const ScopedPrecision&) = delete;
+    ScopedPrecision& operator=(const ScopedPrecision&) = delete;
+
+private:
+    std::ostream& stream_;
+    std::streamsize previous_;
+};
+
+class Writer {
+public:
+    Writer(const ModelDocument& document, const ConversionOptions& options)
+            : doc_(document), options_(options), rotateToYUp_(document.Up == UpAxis::ZUp) {}
+
+    void Run(std::ostream& out, bool classic) {
+        ReportLosses();
+        ScopedPrecision digits(out, options_.Precision, true);
+
+        if (classic) {
+            out << "#X3D V3.3 utf8\n"
+                << "PROFILE Interchange\n"
+                << "# Written by "
+                << (options_.Generator.empty() ? "UltraCanvas" : options_.Generator) << "\n\n";
+        } else {
+            out << "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+                << "<!DOCTYPE X3D PUBLIC \"ISO//Web3D//DTD X3D 3.3//EN\" "
+                   "\"http://www.web3d.org/specifications/x3d-3.3.dtd\">\n"
+                << "<X3D profile='Interchange' version='3.3'>\n"
+                << "  <head>\n"
+                << "    <meta name='generator' content='"
+                << XmlAttributeEscape(options_.Generator.empty() ? "UltraCanvas"
+                                                                 : options_.Generator)
+                << "'/>\n";
+            if (!doc_.Title.empty())
+                out << "    <meta name='title' content='" << XmlAttributeEscape(doc_.Title)
+                    << "'/>\n";
+            out << "  </head>\n";
+        }
+
+        Sink sink(out, classic);
+        if (!classic) out << "  <Scene>\n";
+
+        // The up-axis correction is one Transform enclosing the whole scene,
+        // not a rotation field on each root. A root may already carry a
+        // rotation of its own, and Transform has exactly one rotation field -
+        // so writing the correction there would silently replace the node's.
+        if (rotateToYUp_) {
+            sink.Open("Transform", {{"rotation", "1 0 0 -1.5707963", false, false}});
+            sink.BeginChildren();
+        }
+
+        if (doc_.Nodes.empty()) {
+            for (size_t m = 0; m < doc_.Meshes.size(); ++m) WriteMeshShapes(sink, m);
+        } else {
+            for (int root : RootNodes()) WriteNode(sink, root);
+        }
+
+        if (rotateToYUp_) {
+            sink.EndChildren();
+            sink.Close();
+        }
+
+        if (!classic) out << "  </Scene>\n</X3D>\n";
+    }
+
+private:
+    // ---- scene --------------------------------------------------------
+    const std::vector<int>& RootNodes() {
+        if (!roots_.empty()) return roots_;
+        if (doc_.DefaultScene >= 0 && doc_.DefaultScene < static_cast<int>(doc_.Scenes.size()) &&
+            !doc_.Scenes[static_cast<size_t>(doc_.DefaultScene)].Roots.empty()) {
+            roots_ = doc_.Scenes[static_cast<size_t>(doc_.DefaultScene)].Roots;
+            return roots_;
+        }
+        for (size_t i = 0; i < doc_.Nodes.size(); ++i)
+            if (doc_.Nodes[i].Parent < 0) roots_.push_back(static_cast<int>(i));
+        return roots_;
+    }
+
+    static std::string Number(double v) {
+        std::ostringstream s;
+        s.precision(9);
+        s << v;
+        return s.str();
+    }
+
+    void WriteNode(Sink& sink, int index) {
+        if (index < 0 || index >= static_cast<int>(doc_.Nodes.size())) return;
+        const ModelNode& node = doc_.Nodes[static_cast<size_t>(index)];
+
+        // X3D's Transform is TRS, and it has no matrix field at all - so a
+        // transform that will not decompose has to be baked into the vertices
+        // instead of written, which is a change worth reporting.
+        Vec3d translation = node.Translation;
+        Quatd rotation = node.Rotation;
+        Vec3d scale = node.Scale;
+        bool bakeMatrix = false;
+        if (node.Matrix.has_value()) {
+            if (!node.Matrix->DecomposeTRS(translation, rotation, scale)) {
+                bakeMatrix = true;
+                options_.Warn("X3D: node '" + node.Name + "' carries a matrix with shear, which "
+                              "Transform cannot express; its geometry was baked into world "
+                              "coordinates instead");
+            }
+        }
+
+        std::vector<Field> fields;
+        if (!bakeMatrix) {
+            if (translation.x != 0.0 || translation.y != 0.0 || translation.z != 0.0)
+                fields.push_back({"translation", Number(translation.x) + " " +
+                                                 Number(translation.y) + " " +
+                                                 Number(translation.z), false, false});
+            if (scale.x != 1.0 || scale.y != 1.0 || scale.z != 1.0)
+                fields.push_back({"scale", Number(scale.x) + " " + Number(scale.y) + " " +
+                                           Number(scale.z), false, false});
+            // X3D writes a rotation as axis + angle, not as a quaternion.
+            const double w = std::max(-1.0, std::min(1.0, rotation.w));
+            const double angle = 2.0 * std::acos(w);
+            const double sine = std::sqrt(std::max(0.0, 1.0 - w * w));
+            if (angle > 1e-9 && sine > 1e-9)
+                fields.push_back({"rotation", Number(rotation.x / sine) + " " +
+                                              Number(rotation.y / sine) + " " +
+                                              Number(rotation.z / sine) + " " + Number(angle),
+                                  false, false});
+        }
+
+        sink.Open("Transform", fields,
+                  SanitiseDefName(node.Name, "node" + std::to_string(index)));
+        sink.BeginChildren();
+
+        if (node.Mesh >= 0 && node.Mesh < static_cast<int>(doc_.Meshes.size()))
+            WriteMeshShapes(sink, static_cast<size_t>(node.Mesh),
+                            bakeMatrix ? doc_.GlobalTransform(index) : Matrix4x4::Identity());
+        for (int child : node.Children) WriteNode(sink, child);
+
+        sink.EndChildren();
+        sink.Close();
+    }
+
+    // ---- geometry -----------------------------------------------------
+    void WriteMeshShapes(Sink& sink, size_t meshIndex,
+                         const Matrix4x4& bake = Matrix4x4::Identity()) {
+        const ModelMesh& mesh = doc_.Meshes[meshIndex];
+        const bool baking = !bake.IsIdentity(1e-15);
+
+        for (const MeshPrimitive& source : mesh.Primitives) {
+            if (source.Mode == PrimitiveMode::Points || source.Mode == PrimitiveMode::Lines ||
+                source.Mode == PrimitiveMode::LineStrip || source.Mode == PrimitiveMode::LineLoop) {
+                options_.Warn("X3D: a point or line primitive in '" + mesh.Name +
+                              "' was dropped - this writer emits IndexedFaceSet only");
+                continue;
+            }
+            if (source.Positions.empty() || source.FaceCount() == 0) continue;
+
+            sink.Open("Shape", {});
+
+            sink.BeginField("appearance");
+            WriteAppearance(sink, source.Material);
+            sink.EndField();
+
+            sink.BeginField("geometry");
+            WriteIndexedFaceSet(sink, source, baking ? &bake : nullptr);
+            sink.EndField();
+
+            sink.Close();
+        }
+    }
+
+    void WriteAppearance(Sink& sink, int materialIndex) {
+        sink.Open("Appearance", {});
+
+        ModelMaterial material;
+        if (materialIndex >= 0 && materialIndex < static_cast<int>(doc_.Materials.size()))
+            material = doc_.Materials[static_cast<size_t>(materialIndex)];
+        if (!material.Phong.has_value()) material.DeriveMissingModel();
+        const PhongParams& phong = *material.Phong;
+
+        // X3D's Material is fixed-function and states ambient as an intensity
+        // rather than a colour, so the colour has to be reduced to one number.
+        const float ambientIntensity =
+                (phong.Ambient.x + phong.Ambient.y + phong.Ambient.z) / 3.0f;
+
+        std::vector<Field> fields;
+        auto colour = [](const Vec3f& c) {
+            return Number(c.x) + " " + Number(c.y) + " " + Number(c.z);
+        };
+        fields.push_back({"diffuseColor", colour(phong.Diffuse), false});
+        fields.push_back({"specularColor", colour(phong.Specular), false});
+        fields.push_back({"emissiveColor", colour(material.EmissiveFactor), false});
+        fields.push_back({"ambientIntensity", Number(ambientIntensity), false});
+        // X3D's shininess is a 0..1 fraction, not a Phong exponent.
+        fields.push_back({"shininess",
+                          Number(std::min(1.0, std::max(0.0, phong.Shininess / 128.0))), false});
+        fields.push_back({"transparency", Number(1.0f - material.BaseColorFactor.w), false});
+
+        sink.BeginField("material");
+        sink.Leaf("Material", fields,
+                  materialIndex >= 0
+                          ? SanitiseDefName(material.Name, "mat" + std::to_string(materialIndex))
+                          : std::string());
+        sink.EndField();
+
+        const TextureRef& map = phong.DiffuseTexture.IsSet() ? phong.DiffuseTexture
+                                                             : material.BaseColorTexture;
+        if (map.IsSet() && map.Image >= 0 && map.Image < static_cast<int>(doc_.Images.size())) {
+            const ModelImage& image = doc_.Images[static_cast<size_t>(map.Image)];
+            if (image.Uri.empty()) {
+                options_.Warn("X3D: an embedded texture was dropped - this writer references "
+                              "textures by URL and does not write PixelTexture data");
+            } else {
+                sink.BeginField("texture");
+                sink.Leaf("ImageTexture", {{"url", image.Uri, true, true}});
+                sink.EndField();
+            }
+        }
+
+        sink.Close();
+    }
+
+    void WriteIndexedFaceSet(Sink& sink, const MeshPrimitive& prim, const Matrix4x4* bake) {
+        // coordIndex is one stream with -1 ending each face, which is what
+        // makes IndexedFaceSet the n-gon workhorse: a quad stays a quad.
+        std::ostringstream coordIndex;
+        const size_t faceCount = prim.FaceCount();
+        for (size_t f = 0; f < faceCount; ++f) {
+            for (uint32_t index : prim.Face(f)) coordIndex << index << " ";
+            coordIndex << "-1 ";
+        }
+
+        const VertexAttribute* uv = prim.FindAttribute(AttributeSemantic::TexCoord, 0);
+        const VertexAttribute* colour = prim.FindAttribute(AttributeSemantic::Color, 0);
+
+        std::vector<Field> fields;
+        fields.push_back({"coordIndex", coordIndex.str(), false, true});
+        // The parallel streams are per-vertex here, so X3D needs telling that
+        // they index the same way the coordinates do.
+        if (!prim.Normals.empty()) fields.push_back({"normalPerVertex", "true", false});
+        if (colour) fields.push_back({"colorPerVertex", "true", false});
+        fields.push_back({"solid", "false", false});
+        sink.Open("IndexedFaceSet", fields);
+
+        std::ostringstream points;
+        for (const Vec3d& p : prim.Positions) {
+            // No up-axis correction here: the whole scene, baked subtrees
+            // included, sits under the enclosing Transform that carries it.
+            const Vec3d v = bake ? bake->TransformPoint(p) : p;
+            points << Number(v.x) << " " << Number(v.y) << " " << Number(v.z) << " ";
+        }
+        sink.BeginField("coord");
+        sink.Leaf("Coordinate", {{"point", points.str(), false, true}});
+        sink.EndField();
+
+        if (!prim.Normals.empty()) {
+            std::ostringstream vectors;
+            for (const Vec3f& n : prim.Normals)
+                vectors << Number(n.x) << " " << Number(n.y) << " " << Number(n.z) << " ";
+            sink.BeginField("normal");
+            sink.Leaf("Normal", {{"vector", vectors.str(), false, true}});
+            sink.EndField();
+        }
+        if (uv && uv->Components >= 2) {
+            std::ostringstream points2;
+            for (size_t v = 0; v < uv->Count(); ++v)
+                points2 << Number(uv->Values[v * static_cast<size_t>(uv->Components)]) << " "
+                        << Number(uv->Values[v * static_cast<size_t>(uv->Components) + 1]) << " ";
+            sink.BeginField("texCoord");
+            sink.Leaf("TextureCoordinate", {{"point", points2.str(), false, true}});
+            sink.EndField();
+        }
+        if (colour && colour->Components >= 3) {
+            std::ostringstream values;
+            for (size_t v = 0; v < colour->Count(); ++v) {
+                const size_t at = v * static_cast<size_t>(colour->Components);
+                values << Number(colour->Values[at]) << " " << Number(colour->Values[at + 1])
+                       << " " << Number(colour->Values[at + 2]) << " ";
+            }
+            sink.BeginField("color");
+            sink.Leaf("Color", {{"color", values.str(), false, true}});
+            sink.EndField();
+        }
+
+        sink.Close();
+    }
+
+    // ---- losses -------------------------------------------------------
+    void ReportLosses() {
+        if (rotateToYUp_)
+            options_.Warn("X3D: the document is Z-up and X3D is always Y-up, so the scene is "
+                          "written under a -90 degree rotation about X");
+        if (!doc_.Animations.empty())
+            options_.Warn("X3D: " + std::to_string(doc_.Animations.size()) +
+                          " animation(s) dropped - this writer emits no interpolators or ROUTEs");
+        if (!doc_.Skins.empty())
+            options_.Warn("X3D: skinning dropped - this writer emits no H-Anim");
+        if (!doc_.Cameras.empty() || !doc_.Lights.empty())
+            options_.Warn("X3D: cameras and lights dropped - this writer emits geometry and "
+                          "materials only");
+        if (!doc_.Brep.Solids.empty())
+            options_.Warn("X3D: " + std::to_string(doc_.Brep.Solids.size()) +
+                          " exact solid(s) dropped - X3D stores meshes, so tessellate first if "
+                          "the bodies matter");
+        for (const ModelMesh& mesh : doc_.Meshes)
+            for (const MeshPrimitive& prim : mesh.Primitives)
+                if (!prim.Targets.empty()) {
+                    options_.Warn("X3D: morph targets dropped - this writer emits no "
+                                  "CoordinateInterpolator");
+                    return;
+                }
+    }
+
+    const ModelDocument& doc_;
+    const ConversionOptions& options_;
+    bool rotateToYUp_ = false;
+    std::vector<int> roots_;
+};
+
+// The Classic encoding is what .x3dv, .wrl and .vrml hold; everything else
+// gets the XML one.
+bool WantsClassicEncoding(const std::string& filename) {
+    const size_t dot = filename.find_last_of('.');
+    if (dot == std::string::npos) return false;
+    std::string ext = filename.substr(dot + 1);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == "x3dv" || ext == "wrl" || ext == "vrml";
+}
+
+} // namespace
+
+bool X3DConverter::ExportToStream(const ModelDocument& document, std::ostream& stream,
+                                  const ConversionOptions& options) {
+    Writer writer(document, options);
+    writer.Run(stream, false);
+    return static_cast<bool>(stream);
+}
+
+bool X3DConverter::Export(const ModelDocument& document, const std::string& filename,
+                          const ConversionOptions& options) {
+    std::ofstream file(filename);
+    if (!file) {
+        options.Warn("X3D: cannot write " + filename);
+        return false;
+    }
+    Writer writer(document, options);
+    writer.Run(file, WantsClassicEncoding(filename));
+    return static_cast<bool>(file);
+}
+
+bool X3DConverter::ExportToMemory(const ModelDocument& document, std::vector<uint8_t>& outData,
+                                  const ConversionOptions& options) {
+    std::ostringstream stream;
+    if (!ExportToStream(document, stream, options)) return false;
+    const std::string text = stream.str();
+    outData.assign(text.begin(), text.end());
+    return true;
+}
+
 } // namespace ModelConverter
 } // namespace UltraCanvas

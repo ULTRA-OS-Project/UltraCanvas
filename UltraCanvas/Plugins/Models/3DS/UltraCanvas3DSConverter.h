@@ -10,13 +10,26 @@
 // meshes, per-object matrices, materials with texture maps, and per-face
 // material groups.
 //
-// Reading only. Writing 3DS would mean emitting a format whose own vendor
-// superseded it twice over, with limits the document does not have; a caller
-// wanting interchange writes glTF or OBJ. See
-// Docs/Research/UltraCanvas3DModelProposal.md.
+// Read and write. The writer exists because 3DS is still what a great many
+// tools and asset pipelines accept, not because it is a good container: its
+// limits are real and the writer reports each one it hits rather than
+// truncating in silence. A caller that only wants interchange should still
+// prefer OBJ or glTF. See Docs/Research/UltraCanvas3DModelProposal.md.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-10
+// What the writer cannot carry, and says so:
+//   * 65 535 vertices and 65 535 faces per object - the counts are uint16.
+//     A primitive over either limit is skipped with a warning rather than
+//     wrapped around into garbage.
+//   * 12-character names. Longer ones are truncated and de-duplicated.
+//   * Triangles only. N-gons are triangulated on the way out.
+//   * Fixed-function materials, one texture slot each.
+//   * No skinning, morph targets, animation or per-vertex colour.
+//   * Z-up. A Y-up document is rotated into it, which is a change to the
+//     numbers and is warned about; a 3DS read back out is unrotated, so a
+//     round trip is identity.
+//
+// Version: 1.1.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,7 +41,7 @@
 namespace UltraCanvas {
 namespace ModelConverter {
 
-class ThreeDSConverter : public ImportOnlyConverter {
+class ThreeDSConverter : public IModelFormatConverter {
 public:
     ModelFormat GetFormat() const override { return ModelFormat::ThreeDS; }
     std::string GetFormatName() const override { return "Autodesk 3D Studio"; }
@@ -46,6 +59,20 @@ public:
     std::shared_ptr<ModelStorage::ModelDocument> ImportFromStream(
             std::istream& stream,
             const ConversionOptions& options = ConversionOptions()) override;
+
+    bool CanImport() const override { return true; }
+    bool CanExport() const override { return true; }
+
+    bool Export(const ModelStorage::ModelDocument& document,
+                const std::string& filename,
+                const ConversionOptions& options = ConversionOptions()) override;
+    bool ExportToMemory(const ModelStorage::ModelDocument& document,
+                        std::vector<uint8_t>& outData,
+                        const ConversionOptions& options = ConversionOptions()) override;
+    // 3DS is binary, so the stream must be opened in binary mode by the caller.
+    bool ExportToStream(const ModelStorage::ModelDocument& document,
+                        std::ostream& stream,
+                        const ConversionOptions& options = ConversionOptions()) override;
 
     bool ValidateFile(const std::string& filename) const override;
     bool ValidateData(const std::vector<uint8_t>& data) const override;

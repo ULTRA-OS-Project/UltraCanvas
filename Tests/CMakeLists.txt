@@ -679,7 +679,7 @@ set_target_properties(ModelStorageTest PROPERTIES
 )
 add_test(
     NAME ModelStorageTest
-    COMMAND ModelStorageTest "${ULTRACANVAS_ROOT}/media/vector/STL/Toy airplane model for children B0011994 3d model file for 3d printer.stl"
+    COMMAND ModelStorageTest "${ULTRACANVAS_ROOT}/media/3D/STL/Toy airplane model for children B0011994 3d model file for 3d printer.stl"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelStorageTest")
@@ -712,7 +712,7 @@ set_target_properties(ModelPLYTest PROPERTIES
 )
 add_test(
     NAME ModelPLYTest
-    COMMAND ModelPLYTest "${ULTRACANVAS_ROOT}/media/models"
+    COMMAND ModelPLYTest "${ULTRACANVAS_ROOT}/media/3D"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelPLYTest")
@@ -747,14 +747,14 @@ set_target_properties(ModelAlembicTest PROPERTIES
 )
 add_test(
     NAME ModelAlembicTest
-    COMMAND ModelAlembicTest "${ULTRACANVAS_ROOT}/media/models"
+    COMMAND ModelAlembicTest "${ULTRACANVAS_ROOT}/media/3D"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelAlembicTest")
 
 # ===== STEP READER / WRITER TEST =====
 # The first B-rep reader: ISO 10303-21 syntax as unit tests, and AP203/214
-# entity meanings against the hand-authored samples in media/models/STEP. The
+# entity meanings against the hand-authored samples in media/3D/STEP. The
 # samples are hand-authored on purpose - a reader tested only against files its
 # own writer produced proves nothing - and the geometric assertions (a meshed
 # block's signed volume, a pin's volume against pi*r^2*h, a rational patch's
@@ -780,7 +780,7 @@ set_target_properties(ModelStepTest PROPERTIES
 )
 add_test(
     NAME ModelStepTest
-    COMMAND ModelStepTest "${ULTRACANVAS_ROOT}/media/models/STEP"
+    COMMAND ModelStepTest "${ULTRACANVAS_ROOT}/media/3D/STEP"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelStepTest")
@@ -817,7 +817,7 @@ add_test(
 message(STATUS "    Test registered: BrepStorageTest")
 
 # ===== 3DS MODEL READER TEST =====
-# The 3DS chunk reader against the real E-45 aircraft in media/models/3DS -
+# The 3DS chunk reader against the real E-45 aircraft in media/3D/3DS -
 # the first scene format read into ModelDocument, so also the first end-to-end
 # check that the structure holds meshes, object matrices, materials and texture
 # maps together. Malformed-input cases run with or without the sample.
@@ -842,7 +842,7 @@ set_target_properties(Model3DSTest PROPERTIES
 )
 add_test(
     NAME Model3DSTest
-    COMMAND Model3DSTest ${ULTRACANVAS_ROOT}/media/models/3DS/E-45-Aircraft.3ds
+    COMMAND Model3DSTest ${ULTRACANVAS_ROOT}/media/3D/3DS/E-45-Aircraft.3ds
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: Model3DSTest")
@@ -874,8 +874,8 @@ set_target_properties(ModelOBJTest PROPERTIES
 add_test(
     NAME ModelOBJTest
     COMMAND ModelOBJTest
-            "${ULTRACANVAS_ROOT}/media/models/OBJ/E-45-Aircraft.obj"
-            "${ULTRACANVAS_ROOT}/media/models/3DS/E-45-Aircraft.3ds"
+            "${ULTRACANVAS_ROOT}/media/3D/OBJ/E-45-Aircraft.obj"
+            "${ULTRACANVAS_ROOT}/media/3D/3DS/E-45-Aircraft.3ds"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelOBJTest")
@@ -883,7 +883,7 @@ message(STATUS "    Test registered: ModelOBJTest")
 # ===== DXF 3D MODEL READER TEST =====
 # DXF read as geometry rather than as a drawing: the 3D entities the Vector
 # plugin's DXF reader has to flatten. Checks both kinds of DXF - the exported
-# model in media/models/DXF, and a drawing from media/vector/DXF that must be
+# model in media/3D/DXF, and a drawing from media/vector/DXF that must be
 # refused with an explanation instead of returned empty.
 message(STATUS "  Building ModelDXFTest...")
 add_executable(ModelDXFTest
@@ -908,8 +908,8 @@ set_target_properties(ModelDXFTest PROPERTIES
 add_test(
     NAME ModelDXFTest
     COMMAND ModelDXFTest
-            "${ULTRACANVAS_ROOT}/media/models/DXF/E-45-Aircraft.dxf"
-            "${ULTRACANVAS_ROOT}/media/models/3DS/E-45-Aircraft.3ds"
+            "${ULTRACANVAS_ROOT}/media/3D/DXF/E-45-Aircraft.dxf"
+            "${ULTRACANVAS_ROOT}/media/3D/3DS/E-45-Aircraft.3ds"
             "${ULTRACANVAS_ROOT}/media/vector/DXF/women-body.dxf"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
@@ -946,7 +946,7 @@ if(TEST_TINYXML2_FOUND)
     )
     add_test(
         NAME ModelColladaTest
-        COMMAND ModelColladaTest "${ULTRACANVAS_ROOT}/media/models/COLLADA/E-45-Aircraft.dae"
+        COMMAND ModelColladaTest "${ULTRACANVAS_ROOT}/media/3D/COLLADA/E-45-Aircraft.dae"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelColladaTest")
@@ -986,8 +986,8 @@ if(TEST_TINYXML2_FOUND)
         # Both samples, because the suite's central assertion is that the two
         # encodings agree - and that half is skipped when only the .x3d is
         # passed, which is exactly how a second encoding drifts unnoticed.
-        COMMAND ModelX3DTest "${ULTRACANVAS_ROOT}/media/models/X3D/E-45-Aircraft.x3d"
-                             "${ULTRACANVAS_ROOT}/media/models/VRML/E-45-Aircraft.wrl"
+        COMMAND ModelX3DTest "${ULTRACANVAS_ROOT}/media/3D/X3D/E-45-Aircraft.x3d"
+                             "${ULTRACANVAS_ROOT}/media/3D/VRML/E-45-Aircraft.wrl"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelX3DTest")
@@ -1019,7 +1019,7 @@ set_target_properties(ModelXFileTest PROPERTIES
 )
 add_test(
     NAME ModelXFileTest
-    COMMAND ModelXFileTest "${ULTRACANVAS_ROOT}/media/models/XFile/E-45-Aircraft.x"
+    COMMAND ModelXFileTest "${ULTRACANVAS_ROOT}/media/3D/XFile/E-45-Aircraft.x"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelXFileTest")
@@ -1051,7 +1051,7 @@ set_target_properties(ModelMS3DTest PROPERTIES
 )
 add_test(
     NAME ModelMS3DTest
-    COMMAND ModelMS3DTest "${ULTRACANVAS_ROOT}/media/models/MS3D/E-45-Aircraft.ms3d"
+    COMMAND ModelMS3DTest "${ULTRACANVAS_ROOT}/media/3D/MS3D/E-45-Aircraft.ms3d"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelMS3DTest")
@@ -1084,7 +1084,7 @@ if(ZLIB_FOUND)
     )
     add_test(
         NAME ModelBlendTest
-        COMMAND ModelBlendTest "${ULTRACANVAS_ROOT}/media/models/Blend/E-45-Aircraft.blend"
+        COMMAND ModelBlendTest "${ULTRACANVAS_ROOT}/media/3D/Blend/E-45-Aircraft.blend"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelBlendTest")
@@ -1124,8 +1124,8 @@ if(ZLIB_FOUND)
     )
     add_test(
         NAME ModelFbxTest
-        COMMAND ModelFbxTest "${ULTRACANVAS_ROOT}/media/models/FBX/E-45-Aircraft.fbx"
-                             "${ULTRACANVAS_ROOT}/media/models/FBX/E-45-Aircraft-6.1-ascii.fbx"
+        COMMAND ModelFbxTest "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft.fbx"
+                             "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelFbxTest")
@@ -1213,10 +1213,41 @@ set_target_properties(ModelFormatsPluginTest PROPERTIES
 )
 add_test(
     NAME ModelFormatsPluginTest
-    COMMAND ModelFormatsPluginTest "${ULTRACANVAS_ROOT}/media/models"
+    COMMAND ModelFormatsPluginTest "${ULTRACANVAS_ROOT}/media/3D"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelFormatsPluginTest")
+
+# ===== MODEL WRITER TEST =====
+# The 3DS, COLLADA and X3D writers. Same source list as the dispatch test minus
+# its main(): the writers live inside the converters, so nothing extra is
+# needed to reach them, and the round trips read back through the very readers
+# already compiled in here.
+set(MODEL_WRITER_SOURCES ${MODEL_DISPATCH_SOURCES})
+list(REMOVE_ITEM MODEL_WRITER_SOURCES
+    ${CMAKE_CURRENT_SOURCE_DIR}/ModelFormatsPluginTest.cpp)
+list(APPEND MODEL_WRITER_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/ModelWriterTest.cpp)
+
+message(STATUS "  Building ModelWriterTest...")
+add_executable(ModelWriterTest ${MODEL_WRITER_SOURCES})
+target_include_directories(ModelWriterTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins
+    ${MODEL_DISPATCH_INCLUDES}
+)
+target_compile_definitions(ModelWriterTest PRIVATE ${MODEL_DISPATCH_DEFINES})
+target_link_libraries(ModelWriterTest PRIVATE ${MODEL_DISPATCH_LIBS})
+target_compile_features(ModelWriterTest PRIVATE cxx_std_20)
+set_target_properties(ModelWriterTest PROPERTIES
+    OUTPUT_NAME "ModelWriterTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ModelWriterTest
+    COMMAND ModelWriterTest "${ULTRACANVAS_ROOT}/media/3D"
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ModelWriterTest")
 
 # ===== MODEL PREVIEW SEAM TEST =====
 # The inversion that lets core's Filer thumbnails and media viewer display a
@@ -1252,7 +1283,7 @@ set_target_properties(ModelPreviewSeamTest PROPERTIES
 )
 add_test(
     NAME ModelPreviewSeamTest
-    COMMAND ModelPreviewSeamTest "${ULTRACANVAS_ROOT}/media/models"
+    COMMAND ModelPreviewSeamTest "${ULTRACANVAS_ROOT}/media/3D"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelPreviewSeamTest")
