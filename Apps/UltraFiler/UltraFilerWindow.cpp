@@ -43,15 +43,13 @@
 // the drive's name as the button that opens it, and the free / total sizes.
 // The sizes are read on a worker thread (UltraFilerVolumeSpace.h), and the
 // cards follow mounts and unmounts like the tree's drive rows.
-// Version: 1.20.0
-// Last Modified: 2026-09-13
 // The folder tree follows what the user does to folders as well as what the
 // machine does to volumes: every change reported through the filer widgets'
 // onFolderModified re-syncs that folder's rows with the disk
 // (RefreshTreeFolder), so a folder created, renamed, deleted or moved by a cut
 // and paste is in the tree where it is on disk, without a restart.
-// Version: 1.19.0
-// Last Modified: 2026-09-06
+// Version: 1.20.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
