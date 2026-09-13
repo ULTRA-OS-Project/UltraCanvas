@@ -230,6 +230,12 @@ namespace UltraCanvas {
         void SetElementSize(const Size2Df & sz);
         void SetElementSize(const CSSLayout::Dimension &w, const CSSLayout::Dimension &h);
 
+        // True while this element is open as a popup on its window (menu,
+        // dropdown list, date-picker calendar, ...). Popups are rendered into
+        // their own surface and composited above the window content, so the
+        // compositor uses this to work out what stacks above what.
+        bool IsPopupElement() const { return isPopup; }
+
         virtual Point2Df GetPositionInWindow() const;
         Rect2Df GetBoundsInWindow() const {
             return GetBounds().SetPosition(GetPositionInWindow());

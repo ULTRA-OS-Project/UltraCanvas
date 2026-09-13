@@ -79,9 +79,11 @@ namespace UltraCanvas {
         phaseVisible = false;
 
         // The content surface never contains the caret, so a plain
-        // re-composition erases it.
+        // re-composition erases it. It has to be a full one: the caret-area
+        // shortcut needs a caret on the window to know which pixels to
+        // restore, and this call is the moment there stops being one.
         if (window) {
-            RequestComposition(true);
+            RequestComposition(false);
         }
         owner = nullptr;
         window = nullptr;
@@ -128,6 +130,17 @@ namespace UltraCanvas {
         } else {
             window->RequestWindowComposition();
         }
+    }
+
+    UltraCanvasUIElement* UltraCanvasCaret::GetPopupLayer() const {
+        // Same walk as UltraCanvasUIElement::InvalidateRect: the nearest popup
+        // ancestor owns the surface the caret's owner is drawn into, and stops
+        // at the window itself (which is a container, but never a popup).
+        for (UltraCanvasUIElement* cur = owner; cur && cur != window;
+             cur = cur->GetParentContainer()) {
+            if (cur->IsPopupElement()) return cur;
+        }
+        return nullptr;
     }
 
     void UltraCanvasCaret::Composite(UltraCanvasWindowBase* win, NativeSurfacePtr toSurface) {

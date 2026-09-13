@@ -22,8 +22,10 @@ namespace UltraCanvas {
     // pixels for everyone.
     //
     // The caret is painted once into its own small offscreen surface and
-    // composited (alpha-blended) over the owning window's native surface as
-    // the final step of window composition. A blink toggle therefore never
+    // composited (alpha-blended) over the owning window's native surface
+    // during window composition, on top of the layer its owner lives in
+    // (the window content, or the popup hosting the focused widget) and
+    // below every layer stacked above that one. A blink toggle therefore never
     // re-renders any widget: when nothing else changed, the window only
     // restores the few pixels under the caret from its content surface and
     // blends the caret back on top (see UltraCanvasWindowBase::UpdateAndRender).
@@ -69,9 +71,15 @@ namespace UltraCanvas {
         const Rect2Di& GetRect() const { return rect; }
         bool IsPhaseVisible() const { return owner != nullptr && phaseVisible; }
 
+        // The popup the caret's owner lives in, or nullptr when the owner sits
+        // in the window's own content. The caret belongs to that layer: the
+        // window composites it directly above it, so a menu opened over the
+        // caret covers it instead of letting it blink through the menu.
+        UltraCanvasUIElement* GetPopupLayer() const;
+
         // Blend the caret over `toSurface` if it lives on `win` and is in its
-        // visible blink phase. Called by UltraCanvasWindowBase at the end of
-        // window composition.
+        // visible blink phase. Called by UltraCanvasWindowBase while
+        // compositing the window, once the caret's own layer has been flushed.
         void Composite(UltraCanvasWindowBase* win, NativeSurfacePtr toSurface);
 
         // Drop all references to a window being destroyed.

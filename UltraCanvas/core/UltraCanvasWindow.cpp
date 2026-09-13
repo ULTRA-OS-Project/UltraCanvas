@@ -628,18 +628,44 @@ namespace UltraCanvas {
             }
         }
 
+        auto& caret = UltraCanvasCaret::GetInstance();
+
+        // The caret belongs to the layer of the widget that owns it: the
+        // window content, or the popup the focused widget lives in. Anything
+        // stacked above that layer must cover it — a menu opened over the text
+        // cursor used to have the caret blinking through it.
+        UltraCanvasUIElement* caretLayer =
+                caret.IsOnWindow(this) ? caret.GetPopupLayer() : nullptr;
+
         // A caret blink toggle only needs the few pixels under the caret
-        // refreshed. That shortcut is valid only when no overlay could cover
-        // the caret area: with popups or a tooltip visible, fall back to a
-        // full composite so the stacking order stays correct.
-        if (_needsCaretComposition && !_needsWindowComposition) {
-            bool hasOverlays = UltraCanvasTooltipManager::IsVisible();
-            if (!hasOverlays) {
+        // refreshed. That shortcut is valid only while no overlay stacked above
+        // the caret's layer covers those pixels; otherwise fall back to a full
+        // composite so the stacking order stays correct.
+        if (_needsCaretComposition && !_needsWindowComposition && caret.IsOnWindow(this)) {
+            // No surface to restore the caret's layer from => full composite.
+            bool caretCovered = UltraCanvasTooltipManager::IsVisible() ||
+                                (caretLayer && !caretLayer->renderContext);
+            if (!caretCovered) {
+                const Rect2Di& cr = caret.GetRect();
+                Rect2Df caretRect((float)cr.x, (float)cr.y, (float)cr.width, (float)cr.height);
+                // Popups are composited in list order, so only the ones after
+                // the caret's own layer are above it.
+                bool aboveCaretLayer = (caretLayer == nullptr);
                 for (auto& pe : popupElements) {
-                    if (pe.element && pe.element->IsVisible()) { hasOverlays = true; break; }
+                    auto* p = pe.element;
+                    if (!p) continue;
+                    if (!aboveCaretLayer) {
+                        if (p == caretLayer) aboveCaretLayer = true;
+                        continue;
+                    }
+                    if (!p->IsVisible()) continue;
+                    if (p->GetBoundsInWindow().Intersects(caretRect)) {
+                        caretCovered = true;
+                        break;
+                    }
                 }
             }
-            if (hasOverlays) {
+            if (caretCovered) {
                 _needsWindowComposition = true;
             }
         }
@@ -648,6 +674,13 @@ namespace UltraCanvas {
         if (_needsWindowComposition) {
             renderContext->FlushToSurface(nativeSurface, {0, 0});
 
+            // Caret above the window content when its owner lives there...
+            bool caretPending = caret.IsOnWindow(this);
+            if (caretPending && !caretLayer) {
+                caret.Composite(this, nativeSurface);
+                caretPending = false;
+            }
+
             if (!popupElements.empty()) {
                 for (auto& pe : popupElements) {
                     auto* p = pe.element;
@@ -655,12 +688,20 @@ namespace UltraCanvas {
                     auto pos = p->GetPositionInWindow();
                     p->renderContext->FlushToSurface(nativeSurface,
                                                      {(float)pos.x, (float)pos.y});
+                    // ...or directly above the popup hosting it, so popups
+                    // opened later still cover the caret.
+                    if (caretPending && p == caretLayer) {
+                        caret.Composite(this, nativeSurface);
+                        caretPending = false;
+                    }
                 }
             }
 
-            // Caret goes above the window content and popups (the focused
-            // widget may live inside a popup), but below tooltips.
-            UltraCanvasCaret::GetInstance().Composite(this, nativeSurface);
+            // Hosting popup gone or not drawn this frame: the caret is still
+            // owned by someone, so draw it rather than dropping it.
+            if (caretPending) {
+                caret.Composite(this, nativeSurface);
+            }
 
             auto tooltipCtx = UltraCanvasTooltipManager::Render(this);
             if (tooltipCtx) {
@@ -673,16 +714,25 @@ namespace UltraCanvas {
             InvalidateWindowNative();
         } else if (_needsCaretComposition) {
             // Blink-phase-only frame: no widget rendered anything. Restore the
-            // pixels under the caret from the content surface, then blend the
-            // caret back on top when it is in its visible phase.
-            auto& caret = UltraCanvasCaret::GetInstance();
+            // pixels under the caret from the surface its layer was drawn into
+            // — the window content, or the popup hosting the focused widget —
+            // then blend the caret back on top in its visible phase.
             if (caret.IsOnWindow(this)) {
                 const Rect2Di& r = caret.GetRect();
-                renderContext->FlushRegionToSurface(nativeSurface,
-                        Rect2Dd(r.x, r.y, r.width, r.height),
-                        {(double)r.x, (double)r.y});
-                caret.Composite(this, nativeSurface);
-                InvalidateWindowNative();
+                IRenderContext* layerCtx = renderContext.get();
+                Rect2Dd region(r.x, r.y, r.width, r.height);
+                if (caretLayer) {
+                    // Popup surfaces are in popup-local coordinates.
+                    Point2Df popupPos = caretLayer->GetPositionInWindow();
+                    layerCtx = caretLayer->renderContext.get();
+                    region = Rect2Dd(r.x - popupPos.x, r.y - popupPos.y, r.width, r.height);
+                }
+                if (layerCtx) {
+                    layerCtx->FlushRegionToSurface(nativeSurface, region,
+                                                   {(double)r.x, (double)r.y});
+                    caret.Composite(this, nativeSurface);
+                    InvalidateWindowNative();
+                }
             }
         }
 
