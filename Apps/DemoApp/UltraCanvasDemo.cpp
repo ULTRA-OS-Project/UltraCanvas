@@ -1663,6 +1663,21 @@ namespace UltraCanvas {
                                   "DemoApp/UltraCanvasSTLExamples.cpp",
                                   "Docs/UltraCanvas/UltraCanvasSTLElement.md");
 
+#ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
+        // The rest of the 3D matrix. Also outside the GL guard, and for the same
+        // reason: UltraCanvasSTLElement draws a shaded software still without GL,
+        // so the readers stay demonstrable in a build that has no OpenGL at all.
+        graphics3DBuilder.AddItem("modelformats", "3D Model Formats",
+                                  "3DS, COLLADA, FBX, Alembic, DirectX .x, MilkShape and STEP read into one universal ModelDocument, with what each format actually carried",
+                                  ImplementationStatus::FullyImplemented,
+                                  [this]() { return CreateModelFormatsExamples(); },
+                                  "DemoApp/UltraCanvasModelFormatsExamples.cpp",
+                                  "Docs/UltraCanvas/UltraCanvasModelFormats.md")
+                .AddVariant("modelformats", "STEP (exact B-rep)")
+                .AddVariant("modelformats", "MilkShape / 3D Studio")
+                .AddVariant("modelformats", "COLLADA / FBX / Alembic");
+#endif
+
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);
 

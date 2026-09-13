@@ -1,3 +1,46 @@
+#### 2026-09-13 *0.8.39*
+- **The demo app's 3D section now shows the formats the framework reads.** It
+  had two entries - STL, and an OpenGL tab whose meshes came from the demo's
+  own Wavefront OBJ parser - so 3DS, COLLADA, FBX, Alembic, DirectX .x,
+  MilkShape and STEP were reachable through FileLoader and the Filer but
+  appeared nowhere a visitor would look for 3D support.
+- **New page, 3D Graphics > 3D Model Formats**
+  (`Apps/DemoApp/UltraCanvasModelFormatsExamples.cpp`). Each sample is read by
+  `LoadModelDocument` into a `ModelStorage::ModelDocument` and the page reports
+  what that document turned out to hold - scenes, nodes, meshes, materials,
+  images, animations, cameras, lights, B-rep solids, declared unit, up-axis and
+  handedness - beside the converter's own `FormatCapabilities`. The point is
+  where the formats *differ*: the same aircraft arrives in centimetres from
+  FBX, in metres from COLLADA and unitless from MilkShape, with node counts
+  from 1 to 7, and all three are correct.
+- **STEP is on the page precisely because it has no triangles.** A .step holds
+  trimmed NURBS and analytic surfaces; the mesh shown is tessellated on import,
+  and the panel says so with a non-zero B-rep solid count beside it.
+- **Import warnings are shown rather than logged.** Every fallback and dropped
+  feature a converter reports through `WarningCallback` reaches the status bar,
+  so the 3DS sample's truncated 12-character texture names and the FBX sample's
+  layered diffuse textures are visible instead of silently absorbed.
+- **Samples are the small ones on purpose** - every file is under 600 kB, from
+  a 4 kB STEP sheet to a 548 kB DirectX .x - and the page names the large ones
+  it skips (the 18 MB .blend, the 6.9 MB VRML, the 3.9 MB PLY) rather than
+  leaving them looking unsupported. Parsing is on demand and cached, so opening
+  the page costs one file.
+- **The OpenGL "3D Models" tab loads through the framework now.** It asked its
+  own `LoadOBJ` and so was OBJ-only; it now asks `LoadModelPreviewMesh` - the
+  same seam the Filer and the media viewer use - and gained a STEP pin plus the
+  aircraft in MilkShape, COLLADA and 3D Studio. Entries are added only where
+  `CanPreviewModelExtension` says this build can read them, so a dropdown entry
+  never promises a format and then shows the fallback sphere. `LoadOBJ` stays
+  underneath for a build with `ULTRACANVAS_PLUGIN_MODELS=OFF`.
+- **`Docs/UltraCanvas/UltraCanvasModelFormats.md`** (new) documents the
+  dispatch, the capability table as the converters actually report it - three
+  formats write, OBJ, PLY and STEP, and the rest are read-only - and the two
+  things that surprise people: a STEP file contains no triangles, and readers
+  never rescale geometry.
+- Both new demo sources are guarded by `ULTRACANVAS_HAS_MODELS_PLUGIN` and
+  compiled only when the plugin is built; neither is inside the GL guard, since
+  `UltraCanvasSTLElement` draws a shaded software still without OpenGL.
+
 #### 2026-09-12 *0.8.38*
 - **LaTeX: the module is actually shipped in the Windows and macOS packages,
   and is found there.** The demo's "LaTeX Documents" page in the Windows
