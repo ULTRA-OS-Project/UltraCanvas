@@ -412,7 +412,11 @@ std::string Parser::ParseAttributeValue() {
     std::string value;
     while (!AtEnd()) {
         char c = Cur();
-        if (std::isspace(static_cast<unsigned char>(c)) || c == '>' || c == '/') break;
+        // An unquoted attribute value ends only at whitespace or '>' (HTML5).
+        // A '/' is part of the value — otherwise src=https://host/path breaks
+        // at the first slash and the rest of the tag leaks as text. (A bare
+        // self-closing '/' with no value is handled in ParseAttributes/ParseTag.)
+        if (std::isspace(static_cast<unsigned char>(c)) || c == '>') break;
         value += c;
         ++pos;
     }

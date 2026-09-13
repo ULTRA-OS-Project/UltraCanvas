@@ -1,7 +1,8 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
-// Version: 0.3.0 - compact themed header: sender avatar, from / to on two
-//                  lines, date and Reply on the right, a rule above the body.
-// Last Modified: 2026-09-09
+// Version: 0.4.2 - taller header so From/To are not clipped; the HTML body fills
+//                  the pane width (reflows) and gets a horizontal scrollbar when
+//                  content cannot reflow, instead of being clipped.
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 
@@ -14,6 +15,8 @@
 
 #include "UltraMailMimeCodec.h"
 #include "UltraMailTheme.h"
+
+#include <UltraNet/UltraNetMime.h>
 
 #include <cctype>
 #include <ctime>
@@ -29,10 +32,12 @@ namespace UltraMail {
 namespace {
 
 constexpr float kSubjectFont  = 13.0f;
-constexpr float kSubjectLine  = 22.0f;
-constexpr float kHeaderLine   = 14.0f;
+constexpr float kHeaderLine   = 16.0f;   // line box for the 9pt / 8.5pt header text
 constexpr float kAvatarSide   = 26.0f;
 constexpr float kDateWidth    = 110.0f;
+// The header row holds two stacked text lines (from / to), so it must be tall
+// enough for both plus the 1px gap — otherwise the second line is clipped.
+constexpr float kHeaderHeight = 2.0f * kHeaderLine + 6.0f;
 
 // Very small HTML-to-text reduction (for the quoted reply body): drop tags and
 // decode a few entities.
@@ -97,16 +102,26 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
                  .SetFlexGap(Theme::kInnerGap)
                  .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    subject_ = Theme::MakeLine("prevSubject", "Select a message", kSubjectLine, kSubjectFont,
+    // Auto-height, word-wrapping subject: a long subject wraps to the pane
+    // width and grows downward instead of overflowing horizontally (which drew
+    // a scrollbar and painted over the header row). Never shrink it.
+    subject_ = Theme::MakeText("prevSubject", "Select a message", kSubjectFont,
                                Theme::kTextPrimary, FontWeight::Bold);
+    subject_->SetWrap(TextWrap::WrapWord);
     root_->AddChild(subject_);
+    subject_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // Header row: [avatar] from / to ........ date  [Reply]
-    header_ = CreateContainer("prevHeader", 0, 0, 0, kAvatarSide + 4);
+    header_ = CreateContainer("prevHeader", 0, 0, 0, kHeaderHeight);
     auto& header = header_;
     header->layout.SetFlexRow()
                   .SetFlexGap(10)
                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+    // Chrome row — never scroll (a long from/to must not fabricate a scrollbar).
+    if (auto s = header->GetContainerStyle(); true) {
+        s.autoShowScrollbars = false;
+        header->SetContainerStyle(s);
+    }
 
     avatarHost_ = CreateContainer("prevAvatarHost", 0, 0, kAvatarSide, kAvatarSide);
     avatarHost_->layout.SetFlexRow();
@@ -159,6 +174,13 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     bodyHost_ = CreateContainer("prevBodyHost", 0, 0, 0, 0);
     bodyHost_->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // The body host IS the scroll view for a tall message: keep the vertical
+    // scrollbar (auto), but never a horizontal one — HTML reflows to the width,
+    // and when the vertical bar appears it must not fabricate horizontal overflow.
+    if (auto s = bodyHost_->GetContainerStyle(); true) {
+        s.autoShowHorizontalScrollbar = false;
+        bodyHost_->SetContainerStyle(s);
+    }
     root_->AddChild(bodyHost_);
     bodyHost_->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
@@ -180,10 +202,7 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     if (!bodyHost_) return;
     bodyHost_->ClearChildren();
 
-    const float w = bodyHost_->GetWidth();
-    const float h = bodyHost_->GetHeight();
-
-    if (isHtml && w > 0 && h > 0) {
+    if (isHtml) {
         // Full render through the HTMLReader element builder: the CSSLayout
         // engine measures and lays out a native UltraCanvas tree (containers +
         // Pango-markup labels + images).
@@ -195,9 +214,24 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
         HTML::ElementBuilder builder;
         HTML::BuildResult r = builder.Build(body, opts);
         if (r.root) {
-            r.root->SetPosition(0, 0);
-            r.root->SetSize(w, h);
-            bodyHost_->AddChild(r.root);
+            // Host the tree in a dedicated scroll container (the proven pattern
+            // from UltraCanvasEBookViewer): a plain container sized by the flex
+            // column, holding r.root with no stretch/size/grow. It clips and
+            // scrolls; the tree measures at the container width and takes its
+            // natural height — so the body sits below the header (no overlap)
+            // and scrolls vertically when tall. The builder disables the tree's
+            // own scrollbars precisely so the host scrolls instead.
+            auto scroll = CreateContainer("prevBodyScroll", 0, 0, 0, 0);
+            scroll->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+            // Keep the vertical auto-scrollbar; also allow a horizontal one so
+            // content that genuinely cannot reflow (fixed-width tables, large
+            // images) can be scrolled to instead of being clipped.
+            // Give the body a definite width so it reflows to the pane rather
+            // than laying out over-wide (responsive emails fill the pane).
+            r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
+            bodyHost_->AddChild(scroll);
+            scroll->AddChild(r.root);
+            scroll->ScrollToVertical(0);
             return;
         }
         // Fall through to a text area if the build produced nothing.
@@ -238,23 +272,30 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     hasMessage_ = true;
     curAccount_ = env.accountId;
 
+    // Decode RFC 2047 encoded-words for display (idempotent: messages synced
+    // before header decoding are still stored raw).
+    const std::string subject  = UltraNet_MimeDecodeHeader(env.subject);
+    const std::string fromName = UltraNet_MimeDecodeHeader(env.fromName);
+    std::vector<std::string> toList = env.to;
+    for (auto& addr : toList) addr = UltraNet_MimeDecodeHeader(addr);
+
     // Name on the first line; address and recipients on the second, with the
     // full sender in the tooltip.
-    const std::string sender = env.fromName.empty()
-        ? env.fromAddr : (env.fromName + " <" + env.fromAddr + ">");
-    std::string meta = env.fromName.empty() ? "" : env.fromAddr;
-    if (!env.to.empty()) meta += (meta.empty() ? "to " : "  ·  to ") + JoinAddresses(env.to);
+    const std::string sender = fromName.empty()
+        ? env.fromAddr : (fromName + " <" + env.fromAddr + ">");
+    std::string meta = fromName.empty() ? "" : env.fromAddr;
+    if (!toList.empty()) meta += (meta.empty() ? "to " : "  ·  to ") + JoinAddresses(toList);
     if (subject_) {
-        subject_->SetText(env.subject.empty() ? "(no subject)" : env.subject);
+        subject_->SetText(subject.empty() ? "(no subject)" : subject);
         subject_->SetFontSize(kSubjectFont);
         subject_->SetFontWeight(FontWeight::Bold);
         subject_->SetTextColor(Theme::kTextPrimary);
-        subject_->SetTooltip(env.subject);
+        subject_->SetTooltip(subject);
     }
     if (header_) header_->SetVisible(true);
     if (rule_)   rule_->SetVisible(true);
     if (from_) {
-        from_->SetText(env.fromName.empty() ? env.fromAddr : env.fromName);
+        from_->SetText(fromName.empty() ? env.fromAddr : fromName);
         from_->SetTooltip(sender);
     }
     if (to_) {
@@ -265,7 +306,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
     if (avatarHost_) {
         avatarHost_->ClearChildren();
         avatarHost_->AddChild(Theme::MakeAvatar("prevAvatar",
-                                                SenderInitial(env.fromName, env.fromAddr),
+                                                SenderInitial(fromName, env.fromAddr),
                                                 kAvatarSide));
     }
 
@@ -298,12 +339,13 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         current_.attachments = pm.attachments;
     }
 
-    // Capture the selection for a possible Reply.
+    // Capture the selection for a possible Reply (decoded, so the quoted reply
+    // header and Re: subject read correctly).
     current_.messageId = env.messageId;
-    current_.fromName  = env.fromName;
+    current_.fromName  = fromName;
     current_.fromAddr  = env.fromAddr;
-    current_.to        = env.to;
-    current_.subject   = env.subject;
+    current_.to        = toList;
+    current_.subject   = subject;
     current_.date      = FormatShortDate(env.date);
 }
 

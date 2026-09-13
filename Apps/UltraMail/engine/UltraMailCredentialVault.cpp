@@ -1,15 +1,17 @@
 // Apps/UltraMail/engine/UltraMailCredentialVault.cpp
-// Version: 0.5.0 - OAuth2 token sets beside passwords
+// Version: 0.6.0 - device-key auto-unlock (Thunderbird-style, no prompt)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailCredentialVault.h"
 
 #include <UltraVault/UltraVault.h>
 #include <UltraNet/UltraNetMime.h>   // UltraNet_Base64Encode / Decode
+#include <UltraCrypt/UltraCryptCore.h>   // UltraCrypt_RandomBytes
 
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <iterator>
 #include <map>
 #include <string>
 #include <vector>
@@ -21,6 +23,22 @@ namespace UltraMail {
 namespace {
 
 constexpr const char* kVaultFile = "ultramail.vault";
+// The device key holds a random passphrase so the vault unlocks without a
+// prompt (see the header). NOT "vault.key" — that name belongs to the 0.1
+// legacy format below and would confuse its migration.
+constexpr const char* kDeviceKeyFile = "device.key";
+
+// A random passphrase (hex of 32 crypto-random bytes) for a new vault's device
+// key; empty if secure randomness is unavailable.
+std::string RandomPassphrase() {
+    std::vector<uint8_t> bytes;
+    if (!UltraCrypt_RandomBytes(bytes, 32)) return {};
+    static const char* hex = "0123456789abcdef";
+    std::string out;
+    out.reserve(bytes.size() * 2);
+    for (uint8_t b : bytes) { out.push_back(hex[b >> 4]); out.push_back(hex[b & 0xF]); }
+    return out;
+}
 
 // ---- 0.1-format reader (kept only to migrate away from it) ----------------
 // The old vault XOR-ed each secret against a key stored in the same directory.
@@ -130,6 +148,53 @@ void CredentialVault::Lock() {
     if (!unlocked_) return;
     UltraVault::Shutdown();   // wipes the decrypted store and derived key
     unlocked_ = false;
+}
+
+std::string CredentialVault::DeviceKeyPath() const {
+    return (fs::path(dir_) / kDeviceKeyFile).string();
+}
+
+bool CredentialVault::TryAutoUnlock() {
+    if (unlocked_) return true;
+
+    // A stored device key: unlock silently with it.
+    std::error_code ec;
+    if (fs::exists(DeviceKeyPath(), ec)) {
+        std::ifstream in(DeviceKeyPath(), std::ios::binary);
+        std::string pass((std::istreambuf_iterator<char>(in)),
+                         std::istreambuf_iterator<char>());
+        while (!pass.empty() && (pass.back() == '\n' || pass.back() == '\r')) pass.pop_back();
+        return !pass.empty() && Unlock(pass) == VaultStatus::Ok;
+    }
+
+    // No device key. If a vault already exists it was made with a master
+    // password we don't have — the caller must prompt once, then persist the
+    // key. Only create a fresh vault + key when there is nothing to migrate.
+    if (Exists()) return false;
+
+    const std::string pass = RandomPassphrase();
+    if (pass.empty()) return false;                 // no secure RNG on this build
+    if (!PersistDeviceKey(pass)) return false;      // could not write the key file
+    if (Unlock(pass) == VaultStatus::Ok) return true;
+    // Creating the vault failed: drop the key file so a retry is not blocked.
+    fs::remove(DeviceKeyPath(), ec);
+    return false;
+}
+
+bool CredentialVault::PersistDeviceKey(const std::string& passphrase) {
+    if (passphrase.empty()) return false;
+    std::error_code ec;
+    fs::create_directories(dir_, ec);
+    { std::ofstream out(DeviceKeyPath(), std::ios::binary | std::ios::trunc);
+      if (!out) return false;
+      out << passphrase;
+      if (!out) return false; }
+    // Owner-only: the local key is the only thing standing between the folder
+    // and the secrets, so keep it off other users (Thunderbird's key4.db posture).
+    fs::permissions(DeviceKeyPath(),
+                    fs::perms::owner_read | fs::perms::owner_write,
+                    fs::perm_options::replace, ec);
+    return true;
 }
 
 int CredentialVault::MigrateLegacy() {

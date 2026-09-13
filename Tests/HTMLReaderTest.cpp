@@ -129,6 +129,43 @@ static void TestParserXhtmlAndEntities() {
     }
 }
 
+static void TestParserUnquotedAttributes() {
+    Parser parser;
+    // Real-world email HTML: unquoted attribute values, a URL with "://" and
+    // path slashes, inside <a><img></a>. The URL must be captured whole, and
+    // nothing from the tag may leak out as a text node.
+    Document doc = parser.Parse(
+        "<body><a href=#><img style=\"display:block\" "
+        "src=https://www.gstatic.com/gumdrop/files/logo-w646px-h128px-2x.png "
+        "width=162 height=auto border=0 alt=\"\"></a></body>");
+
+    Node* img = doc.root->FindFirst("img");
+    CHECK(img != nullptr);
+    if (img) {
+        CHECK_EQ(img->GetAttribute("src"),
+                 std::string("https://www.gstatic.com/gumdrop/files/logo-w646px-h128px-2x.png"));
+        CHECK_EQ(img->GetAttribute("width"), std::string("162"));
+        CHECK_EQ(img->GetAttribute("height"), std::string("auto"));
+        CHECK_EQ(img->GetAttribute("border"), std::string("0"));
+    }
+    // Nothing from the <img> tag leaks as visible text (previously the URL and
+    // trailing attributes rendered as a text run).
+    CHECK_EQ(ExtractPlainText(
+        "<body><a href=#><img src=https://www.gstatic.com/x/y.png width=162 "
+        "height=auto border=0 alt=\"\"></a></body>"),
+        std::string(""));
+
+    // An unquoted href keeps ':' '/' and '=' (query strings): value ends only
+    // at whitespace or '>'.
+    Document doc2 = parser.Parse("<a href=https://c.gle/x?a=b>here</a>");
+    Node* a = doc2.root->FindFirst("a");
+    CHECK(a != nullptr);
+    if (a) {
+        CHECK_EQ(a->GetAttribute("href"), std::string("https://c.gle/x?a=b"));
+        CHECK_EQ(a->TextContent(), std::string("here"));
+    }
+}
+
 static void TestExtractPlainText() {
     std::string text = ExtractPlainText(
         "<html><head><style>p{color:red}</style></head>"
@@ -327,6 +364,7 @@ int main() {
     TestParserBasics();
     TestParserFragmentAndRecovery();
     TestParserXhtmlAndEntities();
+    TestParserUnquotedAttributes();
     TestExtractPlainText();
     TestCssColor();
     TestCssLength();

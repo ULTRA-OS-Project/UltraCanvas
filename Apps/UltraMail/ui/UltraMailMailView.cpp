@@ -1,11 +1,14 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
-// Version: 0.3.0 - both panes are themed cards; the list has taller rows,
-//                  a quiet header and soft hover / selection colours.
-// Last Modified: 2026-09-09
+// Version: 0.4.0 - decode RFC 2047 headers for display; the list/preview
+//                  splitter stays put across message selection (only a manual
+//                  drag moves it).
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMailView.h"
 
 #include "UltraMailTheme.h"
+
+#include <UltraNet/UltraNetMime.h>
 
 #include <cstdlib>
 #include <cstring>
@@ -200,8 +203,12 @@ void MailView::RebuildList() {
         if (isUnread) ++unread;
         const Color& text = isUnread ? kUnreadText : kReadText;
 
-        std::string sender  = m.fromName.empty() ? m.fromAddr : m.fromName;
-        std::string subject = m.subject.empty() ? "(no subject)" : m.subject;
+        // Decode defensively: messages synced before header decoding are still
+        // stored raw. Decoding already-decoded text is a no-op.
+        std::string sender  = UltraNet_MimeDecodeHeader(
+            m.fromName.empty() ? m.fromAddr : m.fromName);
+        std::string subject = m.subject.empty()
+            ? std::string("(no subject)") : UltraNet_MimeDecodeHeader(m.subject);
 
         // State glyphs in front of the sender: ● unread, ↩ waiting for a reply.
         std::string state = std::string(isUnread ? "● " : "") + (isWaiting ? "↩ " : "");
@@ -236,6 +243,18 @@ void MailView::RebuildList() {
 
 void MailView::SelectRow(int row) {
     if (row < 0 || row >= static_cast<int>(messages_.size())) return;
+    // Pin the list pane to its current width before the preview rebuilds its
+    // body: that content change triggers a relayout which would otherwise let
+    // the weight-based divider drift. A fixed pane keeps its width through
+    // relayout and window resize, and a manual splitter drag updates the fixed
+    // size — so the divider only moves when the user drags it. (Width is 0
+    // before the first layout; skip until then.)
+    if (split_ && split_->PaneCount() >= 1) {
+        if (auto pane = split_->GetPane(0)) {
+            int listW = static_cast<int>(pane->GetWidth());
+            if (listW > 0) split_->SetPaneFixedSize(0, listW);
+        }
+    }
     preview_.Show(messages_[static_cast<std::size_t>(row)]);
 }
 

@@ -1,6 +1,6 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.9.6 - the toolbar and account bar no longer collapse (flex-shrink
-//                  0) or paint scrollbars over themselves under a full inbox
+// Version: 0.9.7 - the vault auto-unlocks with a local device key (Thunderbird-
+//                  style, no master-password prompt); old vaults migrate once
 // Last Modified: 2026-09-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
@@ -122,6 +122,12 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     UltraNet_SetPluginDirectory(pluginDir_);
     UltraNet_RefreshPlugins();
 
+    // Unlock the credential vault with the local device key so the user is not
+    // prompted (Thunderbird-style; see CredentialVault). A brand-new vault is
+    // created here; an old master-password vault stays locked until the first
+    // action prompts once (then the key is persisted).
+    vault_.TryAutoUnlock();
+
     store_.ListAccounts(accounts_);
     store_.GetAccountStatus(status_);
     return true;
@@ -158,6 +164,14 @@ std::shared_ptr<UltraCanvasWindow> UltraMailApp::CreateMainWindow() {
     // Register accounts for background sync (the live loop starts only when the
     // IMAP plug-in is present).
     StartBackgroundSync();
+
+    // Migration: an existing vault made with a master password (before device
+    // keys) stays locked after Initialize's silent attempt. Prompt once now so
+    // mail syncs; EnsureVaultUnlocked persists the entered password as the
+    // device key, so this is the only time it is asked.
+    if (!accounts_.empty() && !vault_.IsUnlocked()) {
+        EnsureVaultUnlocked([this]() { RunSyncs(/*force=*/false); Refresh(); });
+    }
 
     // Demo path: seed mail, auto-collect senders, and open the contact manager.
     if (const char* dcol = std::getenv("ULTRAMAIL_DEMO_COLLECT"); dcol && *dcol == '1') {
@@ -951,15 +965,26 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
                                        const std::string& errorText) {
     if (vault_.IsUnlocked()) { if (onUnlocked) onUnlocked(); return; }
 
+    // Default path: unlock silently with the local device key (no prompt). This
+    // also creates a fresh vault on first run. Only an old master-password vault
+    // (device key not yet written) falls through to the dialog below.
+    if (errorText.empty() && vault_.TryAutoUnlock()) {
+        if (onUnlocked) onUnlocked();
+        return;
+    }
+
     UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
-    // No vault file yet means this is the first run: ask the user to choose a
-    // master password (with confirmation) rather than to recall one.
-    const bool firstRun = !vault_.Exists();
+    // Reaching the dialog means an existing vault must be opened with the master
+    // password it was made with; ask the user to recall it (not choose one).
+    const bool firstRun = false;
 
     PassphraseDialog::Show(parent, firstRun, errorText,
         [this, onUnlocked, parent](const std::string& passphrase) {
             switch (vault_.Unlock(passphrase)) {
                 case VaultStatus::Ok:
+                    // Persist the working passphrase as the device key so this
+                    // is the last time the user is asked (Thunderbird-style).
+                    vault_.PersistDeviceKey(passphrase);
                     if (onUnlocked) onUnlocked();
                     return;
                 case VaultStatus::WrongPassphrase:

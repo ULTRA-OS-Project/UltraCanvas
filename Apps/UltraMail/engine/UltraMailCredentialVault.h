@@ -6,15 +6,16 @@
 // XChaCha20-Poly1305 via UltraCrypt, authenticating the header so tampering
 // with the stored cost parameters is detected.
 //
-// The passphrase is UltraMail's master password. It is never written to disk,
-// so the vault genuinely cannot be read without the user: Unlock() must
-// succeed before Store() / Retrieve() will do anything. That is the difference
-// from the 0.1 vault, which XOR-ed secrets against a key file kept beside the
-// ciphertext — anyone who could read the folder could recover every password.
+// By default UltraMail unlocks the vault with a random device key stored beside
+// it (vault.key, owner-only) — the same posture as Thunderbird with no Primary
+// Password: secrets are encrypted at rest, but the key is readable by anyone
+// with access to the account folder, so the user is never prompted. Unlock()
+// still accepts an explicit passphrase, so a future opt-in "Primary Password"
+// can re-introduce a real prompt without changing the storage format.
 //
-// Vaults written by that 0.1 format are migrated on the first successful
-// unlock (see MigrateLegacy) and the old files are removed.
-// Version: 0.5.0 - OAuth2 token sets (access + refresh + expiry) beside passwords
+// Vaults written by the 0.1 format (XOR against a sidecar key file) are migrated
+// on the first successful unlock (see MigrateLegacy) and the old files removed.
+// Version: 0.6.0 - device-key auto-unlock (Thunderbird-style, no prompt)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -66,6 +67,18 @@ public:
     // passphrase is rejected: it would derive a key anyone could reproduce.
     VaultStatus Unlock(const std::string& passphrase);
 
+    // Unlock without prompting, using the local device key (see the file
+    // header). Returns true when the vault is open afterwards:
+    //  - device key present  -> unlock with it;
+    //  - no key, no vault yet -> generate a key, write it, create the vault;
+    //  - no key but a vault exists (migration from a master-password vault)
+    //    -> returns false so the caller prompts once, then PersistDeviceKey().
+    bool TryAutoUnlock();
+
+    // Write `passphrase` as the device key (owner-only perms), so the next
+    // launch unlocks silently. Call after a manual Unlock() succeeds.
+    bool PersistDeviceKey(const std::string& passphrase);
+
     // True once Unlock() has succeeded.
     bool IsUnlocked() const { return unlocked_; }
 
@@ -103,6 +116,9 @@ private:
     // Import a 0.1-format vault (vault.key + creds.dat) into UltraVault and
     // delete it. Returns the number of secrets carried over.
     int MigrateLegacy();
+
+    // Path of the device key file (the random passphrase, owner-only).
+    std::string DeviceKeyPath() const;
 
     std::string dir_;
     bool        unlocked_ = false;

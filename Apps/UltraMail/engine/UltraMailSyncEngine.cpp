@@ -1,5 +1,5 @@
 // Apps/UltraMail/engine/UltraMailSyncEngine.cpp
-// Version: 0.1.0 (Phase 2)
+// Version: 0.1.1 - envelope subject/from/to are RFC 2047 decoded when stored
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSyncEngine.h"
 
@@ -9,6 +9,7 @@
 #include <fstream>
 #include <string>
 #include <UltraCanvasUtils.h>
+#include <UltraNet/UltraNetMime.h>
 namespace fs = std::filesystem;
 
 namespace UltraMail {
@@ -157,9 +158,14 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
         m.uid       = static_cast<int64_t>(e.uid);
         m.messageId = e.messageId;
         m.inReplyTo = e.inReplyTo;
-        m.subject   = e.subject;
+        // Subject / display names arrive as RFC 2047 encoded-words on the
+        // envelope path (unlike a full message parse). Decode them once here so
+        // the store — list, preview and collected contacts — holds readable text.
+        m.subject   = UltraNet_MimeDecodeHeader(e.subject);
         ParseFromField(e.from, m.fromName, m.fromAddr);
+        m.fromName = UltraNet_MimeDecodeHeader(m.fromName);
         m.to    = e.to;
+        for (auto& addr : m.to) addr = UltraNet_MimeDecodeHeader(addr);
         m.date  = ParseRfc2822Date(e.date);
         m.flags = MapNetFlagsToLocal(e.flags);
         // Automated/bulk detection needs List-*/Precedence headers, which the
