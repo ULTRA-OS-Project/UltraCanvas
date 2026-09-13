@@ -1,7 +1,17 @@
 // Apps/DemoApp/UltraCanvasGLModelsTab.cpp
-// "3D Models" tab of the OpenGL showcase: loads complex .obj meshes from disk
-// into an UltraCanvasGLSurface and renders them with Phong lighting. The camera
+// "3D Models" tab of the OpenGL showcase: loads complex meshes from disk into
+// an UltraCanvasGLSurface and renders them with Phong lighting. The camera
 // orbits with mouse drag and zooms with the wheel.
+//
+// Meshes arrive through UltraCanvasModelPreview.h - the framework seam the
+// Filer and the media viewer use - so this tab shows every format the Models
+// plugin reads rather than only the Wavefront OBJ its own parser handles. The
+// demo's LoadOBJ stays as the fallback for a build with no Models plugin,
+// where the seam answers for .stl and nothing else.
+//
+// For what each format actually carried - scene graph, materials, units,
+// exact solids - see the "3D Model Formats" page in the same 3D section; this
+// tab is about drawing the geometry, not about surveying the readers.
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -17,6 +27,10 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
+// Which formats this build can turn into geometry, and the call that does it.
+// It brings UltraCanvas::Vec3 / Mat4 into scope alongside gldemo's own, so the
+// four uses below are qualified rather than bare.
+#include "UltraCanvasModelPreview.h"
 
 #include <memory>
 #include <vector>
@@ -177,7 +191,40 @@ private:
     int lastX_ = 0, lastY_ = 0;
 };
 
+// The framework's Mesh3D as the interleaved buffer this tab uploads. Mesh3D
+// keeps positions and normals in separate arrays; the vertex layout here is
+// position(3) + normal(3) per vertex, so they are woven together once on load
+// rather than on every frame.
+Mesh Mesh3DToDemoMesh(const Mesh3D& src) {
+    Mesh out;
+    const size_t vertexCount = src.positions.size();
+    out.vertices.reserve(vertexCount * 6);
+    for (size_t i = 0; i < vertexCount; ++i) {
+        const UltraCanvas::Vec3& p = src.positions[i];
+        // A reader that supplies no normals is normal, not an error: the
+        // framing below only needs positions, and a zero normal shades black
+        // rather than crashing. GenerateMissingNormals covers the readers that
+        // go through the plugin; this is the belt for the ones that do not.
+        const UltraCanvas::Vec3 n = i < src.normals.size()
+                                            ? src.normals[i]
+                                            : UltraCanvas::Vec3(0.0f, 1.0f, 0.0f);
+        out.vertices.insert(out.vertices.end(), {p.x, p.y, p.z, n.x, n.y, n.z});
+    }
+    out.indices = src.indices;
+    if (src.bounds.IsValid()) {
+        out.boundsMin = gldemo::Vec3(src.bounds.min.x, src.bounds.min.y, src.bounds.min.z);
+        out.boundsMax = gldemo::Vec3(src.bounds.max.x, src.bounds.max.y, src.bounds.max.z);
+    }
+    return out;
+}
+
 // Load (and cache) the CPU mesh for the given catalog entry.
+//
+// The framework seam is asked first, so the tab draws whatever the Models
+// plugin can read. LoadOBJ remains underneath it for the one case the seam
+// cannot serve: a build with ULTRACANVAS_PLUGIN_MODELS=OFF, where the seam
+// answers for .stl alone and the three procedural .obj files below would
+// otherwise all fall back to a sphere.
 const Mesh& EnsureMesh(const std::shared_ptr<ModelDemoState>& st, int index) {
     if (!st->loaded[index]) {
         Mesh mesh;
@@ -185,7 +232,15 @@ const Mesh& EnsureMesh(const std::shared_ptr<ModelDemoState>& st, int index) {
         bool ok = false;
         if (!e.file.empty()) {
             std::string path = NormalizePath(GetResourcesDir() + e.file);
-            ok = LoadOBJ(path, mesh);
+            Mesh3D loaded;
+            if (LoadModelPreviewMesh(path, loaded)) {
+                mesh = Mesh3DToDemoMesh(loaded);
+                ok = !mesh.indices.empty();
+            }
+            if (!ok) ok = LoadOBJ(path, mesh);
+            // Every model is framed the same way regardless of the units it was
+            // authored in - a STEP pin in millimetres and an aircraft in
+            // arbitrary units both end up filling the same view.
             if (ok) mesh.NormalizeToUnit();
         }
         if (!ok) {
@@ -221,19 +276,45 @@ void UploadMesh(ModelGLResources& gl, const Mesh& mesh) {
 std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     auto root = std::make_shared<UltraCanvasContainer>("GLModelsTab", 0, 0, 1004, 692);
 
-    auto title = std::make_shared<UltraCanvasLabel>("GLModelsTitle", 16, 8, 700, 24);
-    title->SetText("Complex 3D Models — Wavefront OBJ loaded into the GL surface");
+    auto title = std::make_shared<UltraCanvasLabel>("GLModelsTitle", 16, 8, 760, 24);
+    title->SetText("Complex 3D Models — every format the framework reads, in the GL surface");
     title->SetFontSize(14);
     title->SetFontWeight(FontWeight::Bold);
     title->SetTextColor(Color(40, 40, 120, 255));
     root->AddChild(title);
 
     auto state = std::make_shared<ModelDemoState>();
+    // The three procedural OBJs this tab has always carried. Their triangle
+    // counts are in the labels because they are generated to a known size.
     state->catalog = {
         {"Torus Knot (11,520 tris)", "media/models/torusknot.obj", Color(230, 120, 60, 255)},
         {"Spring Coil (9,216 tris)", "media/models/spring.obj",   Color(120, 200, 130, 255)},
         {"Ico Sphere (1,280 tris)",  "media/models/icosphere.obj", Color(120, 160, 230, 255)},
     };
+
+    // Small samples in other formats, added only where this build can actually
+    // read them - COLLADA needs tinyxml2 and the FBX reader needs zlib, so both
+    // are build options. Asking CanPreviewModelExtension keeps a dropdown entry
+    // from promising a format and then showing the fallback sphere, and means a
+    // format added to the plugin later appears here without editing this list
+    // twice. Deliberately the small files: the same aircraft also ships as an
+    // 18 MB .blend and a 6.9 MB VRML, which are no better to look at.
+    struct FormatSample { const char* label; const char* file; Color color; };
+    static const FormatSample kFormatSamples[] = {
+        {"STEP — machined pin (B-rep, tessellated)", "media/models/STEP/Pin.step",
+         Color(200, 200, 210, 255)},
+        {"MilkShape 3D — aircraft (.ms3d)", "media/models/MS3D/E-45-Aircraft.ms3d",
+         Color(210, 170, 90, 255)},
+        {"COLLADA — aircraft (.dae)", "media/models/COLLADA/E-45-Aircraft.dae",
+         Color(150, 190, 210, 255)},
+        {"3D Studio — aircraft (.3ds)", "media/models/3DS/E-45-Aircraft.3ds",
+         Color(190, 150, 190, 255)},
+    };
+    for (const FormatSample& sample : kFormatSamples) {
+        if (!CanPreviewModelExtension(sample.file)) continue;
+        state->catalog.push_back({sample.label, sample.file, sample.color});
+    }
+
     state->meshes.resize(state->catalog.size());
     state->loaded.assign(state->catalog.size(), false);
 
@@ -284,16 +365,16 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
             state->spin += float(info.deltaTime) * state->autoSpeed;
 
         float aspect = info.height > 0 ? float(info.width) / float(info.height) : 1.0f;
-        Mat4 proj = Perspective(45.0f * kPi / 180.0f, aspect, 0.05f, 100.0f);
+        gldemo::Mat4 proj = Perspective(45.0f * kPi / 180.0f, aspect, 0.05f, 100.0f);
 
         // Orbit camera position from yaw/pitch/distance
         float cp = std::cos(state->pitch), sp = std::sin(state->pitch);
         float cy = std::cos(state->yaw), sy = std::sin(state->yaw);
-        Vec3 eye{state->distance * cp * sy,
-                 state->distance * sp,
-                 state->distance * cp * cy};
-        Mat4 view = LookAt(eye, {0, 0, 0}, {0, 1, 0});
-        Mat4 model = RotateY(state->spin);
+        gldemo::Vec3 eye{state->distance * cp * sy,
+                         state->distance * sp,
+                         state->distance * cp * cy};
+        gldemo::Mat4 view = LookAt(eye, {0, 0, 0}, {0, 1, 0});
+        gldemo::Mat4 model = RotateY(state->spin);
 
         // Lighting is done in world space, so the normal matrix uses model only.
         auto nrmModel = NormalMatrix(model);
@@ -383,7 +464,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
 
     auto info = std::make_shared<UltraCanvasLabel>("ModelInfo", 10, 186, 270, 360);
     info->SetText(
-        "Real OBJ meshes are streamed from\n"
+        "Real meshes are streamed from\n"
         "media/models/ into the GL surface\n"
         "and shaded with a two-light Phong\n"
         "model plus a rim term.\n\n"
@@ -392,10 +473,17 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
         "• Mouse wheel to zoom\n"
         "• Dropdown switches the model\n"
         "• 4x MSAA smooths the silhouette\n\n"
-        "The loader handles v / vn / faces,\n"
-        "polygon triangulation and negative\n"
-        "indices, and computes smooth normals\n"
-        "when a file provides none.\n\n"
+        "Loading goes through the framework\n"
+        "seam (UltraCanvasModelPreview.h), so\n"
+        "the list holds whatever the Models\n"
+        "plugin reads - a STEP solid arrives\n"
+        "tessellated, having had no triangles\n"
+        "in the file at all. Every model is\n"
+        "normalised to a unit sphere, so the\n"
+        "units it was authored in do not\n"
+        "change the framing.\n\n"
+        "See 3D Graphics > 3D Model Formats\n"
+        "for what each file actually carried.\n\n"
         "Click the icon in the canvas corner or\n"
         "double-click the canvas to maximize it;\n"
         "Esc or another double-click restores."

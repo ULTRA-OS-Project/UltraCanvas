@@ -418,6 +418,13 @@ namespace UltraCanvas {
         // core library, so this page is always available - it falls back to a mesh
         // summary when the build has no GL.
         std::shared_ptr<UltraCanvasUIElement> CreateSTLModelExamples();
+#ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
+        // Every other 3D format (3D Graphics category): 3DS, COLLADA, FBX,
+        // Alembic, DirectX .x, MilkShape and STEP, read through the Models
+        // plugin's dispatch into one ModelDocument. Guarded because the plugin
+        // is an option; the STL page above is not, since its loader is in core.
+        std::shared_ptr<UltraCanvasUIElement> CreateModelFormatsExamples();
+#endif
 #ifdef ULTRACANVAS_HAS_OCR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateOCRExamples();
 #endif

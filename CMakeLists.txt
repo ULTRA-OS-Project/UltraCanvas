@@ -446,6 +446,13 @@ if(BUILD_DEMO_APP)
         endif()
 
 
+        # The 3D format survey page. Guarded the same way its source is: it
+        # calls the plugin's dispatch directly, so without the plugin there is
+        # nothing for it to show and nothing for it to link against.
+        if(PLUGIN_TARGET MATCHES "ModelsPlugin")
+            list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasModelFormatsExamples.cpp)
+        endif()
+
         if(PLUGIN_TARGET MATCHES "OCR")
             list(APPEND DEMO_SOURCES Apps/DemoApp/UltraCanvasOCRExamples.cpp)
         endif()
