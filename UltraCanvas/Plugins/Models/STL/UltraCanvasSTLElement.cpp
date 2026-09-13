@@ -9,6 +9,7 @@
 #include "UltraCanvasModelPreview.h"   // which formats reach LoadFromFile
 #include "UltraCanvasModelRaster.h"    // and how the non-GL build draws them
 
+#include <algorithm>
 #include <cmath>
 #include <string>
 #include <vector>
@@ -266,6 +267,14 @@ void UltraCanvasSTLElement::OnGLCleanup() {
     glReady_ = false;
 }
 
+void UltraCanvasSTLElement::SetViewPose(const ModelViewPose& pose) {
+    yaw_ = pose.yaw;
+    const float limit = kPi * 0.5f - 0.01f;
+    pitch_ = std::clamp(pose.pitch, -limit, limit);
+    distance_ = std::clamp(pose.distance, 0.2f, 50.0f);
+    RequestRender();
+}
+
 bool UltraCanvasSTLElement::OnEvent(const UCEvent& event) {
     switch (event.type) {
         case UCEventType::MouseDown:
@@ -349,6 +358,60 @@ void UltraCanvasSTLElement::InvalidateRender() {
     renderedWidth_ = renderedHeight_ = 0;
 }
 
+void UltraCanvasSTLElement::SetViewPose(const ModelViewPose& pose) {
+    constexpr float kHalfPi = 1.5707963267948966f;
+    pose_.yaw = pose.yaw;
+    pose_.pitch = std::clamp(pose.pitch, -(kHalfPi - 0.01f), kHalfPi - 0.01f);
+    pose_.distance = std::clamp(pose.distance, 0.2f, 50.0f);
+    InvalidateRender();
+    RequestRedraw();
+}
+
+bool UltraCanvasSTLElement::OnEvent(const UCEvent& event) {
+    // The same gestures the GL build offers: drag orbits, wheel dollies. The
+    // work per frame is a software re-raster rather than a GPU draw, which at
+    // a viewer's size is a few milliseconds for the meshes this renderer
+    // accepts at all.
+    switch (event.type) {
+        case UCEventType::MouseDown:
+            if (event.button == UCMouseButton::Left) {
+                dragging_ = true;
+                lastMouseX_ = event.pointer.x;
+                lastMouseY_ = event.pointer.y;
+                return true;
+            }
+            break;
+        case UCEventType::MouseUp:
+            if (event.button == UCMouseButton::Left) {
+                dragging_ = false;
+                return true;
+            }
+            break;
+        case UCEventType::MouseMove:
+            if (dragging_) {
+                const int dx = event.pointer.x - lastMouseX_;
+                const int dy = event.pointer.y - lastMouseY_;
+                lastMouseX_ = event.pointer.x;
+                lastMouseY_ = event.pointer.y;
+                ModelViewPose next = pose_;
+                next.yaw += dx * 0.01f;
+                next.pitch += dy * 0.01f;
+                SetViewPose(next);
+                return true;
+            }
+            break;
+        case UCEventType::MouseWheel: {
+            ModelViewPose next = pose_;
+            next.distance *= (event.wheelDelta > 0) ? 0.9f : 1.1f;
+            SetViewPose(next);
+            return true;
+        }
+        default:
+            break;
+    }
+    return UltraCanvasUIElement::OnEvent(event);
+}
+
 bool UltraCanvasSTLElement::SaveToFile(const std::string& filePath, STLFormat format,
                                        std::string* outError) const {
     return UltraCanvasSTLLoader::Save(filePath, mesh_, format, outError);
@@ -365,19 +428,19 @@ void UltraCanvasSTLElement::Render(IRenderContext* ctx, const Rect2Df& /*dirtyRe
     const int w = static_cast<int>(std::lround(b.width));
     const int h = static_cast<int>(std::lround(b.height));
 
-    // Rasterize once per size. Nothing in this view moves - there is no orbit
-    // and no zoom without GL - so a cached still is not an optimisation so
-    // much as the honest amount of work.
+    // Rasterize once per (size, pose): the cache is dropped by SetViewPose, so
+    // a view that has not moved is not drawn twice.
     if (w > 0 && h > 0 && (!rendered_ || w != renderedWidth_ || h != renderedHeight_)) {
-        rendered_ = RenderMeshPreviewPixmap(mesh_, w, h);
+        rendered_ = RenderMeshPixmap(mesh_, w, h, pose_, modelColor_);
         renderedWidth_ = w;
         renderedHeight_ = h;
     }
 
     if (rendered_) {
-        // Fit rather than fill: the rasterizer already framed the model inside
-        // a square of its own, so stretching it here would undo that.
-        ctx->DrawPixmap(*rendered_, box, ImageFitMode::Contain);
+        // The rasterizer already framed the model in a buffer of exactly this
+        // size, so it is drawn 1:1 rather than fitted - fitting would rescale
+        // a picture that is already the right shape.
+        ctx->DrawPixmap(*rendered_, box, ImageFitMode::Fill);
         return;
     }
 

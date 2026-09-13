@@ -71,6 +71,7 @@
 #include "UltraCanvasImage.h"
 #include "UltraCanvasImageAnimation.h"
 #include "UltraCanvasToneCurve.h"     // ToneCurveSet used by MediaAdjustments
+#include "Models/STL/UltraCanvas3DTypes.h"  // Mesh3D / ModelViewPose for the 3D pane
 #include "UltraCanvasTimer.h"
 #include <string>
 #include <vector>
@@ -421,6 +422,18 @@ public:
     // other action stays on Ctrl+wheel either way.
     void SetDocumentWheelZoom(bool zoom);
     bool GetDocumentWheelZoom() const { return documentWheelZoom; }
+
+    // ===== 3D MODELS =====
+    // The view the user has orbited the model to, when a model is what is on
+    // show. Hand it to RenderMeshPixmap() / RasterizeMesh()
+    // (UltraCanvasModelRaster.h) and the still that comes back is this view -
+    // which is how a host turns "the framing I set here" into a bitmap.
+    // False when the current file is not a 3D model.
+    bool GetModelViewPose(ModelViewPose& out) const;
+    bool SetModelViewPose(const ModelViewPose& pose);
+    // The mesh on show, so a host can rasterize it without reading the file a
+    // second time. Null when the current file is not a 3D model.
+    const Mesh3D* GetModelMesh() const;
 
     // ===== TOP BARS (EMBEDDED MODE) =====
     // Show/hide everything above the display surface: the folder breadcrumb,

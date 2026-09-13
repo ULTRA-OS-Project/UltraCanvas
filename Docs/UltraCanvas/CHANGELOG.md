@@ -1,3 +1,46 @@
+#### 2026-09-13 *0.8.40*
+- **A 3D model can become a bitmap, from a view the user chose.**
+  `UltraCanvasModelRaster.h` grew the whole path from a model file to an
+  editable layer, the 3D counterpart of `UltraCanvasVectorRaster`:
+  `IsModelGraphicsPath` / `GetModelRasterExtensions` (a runtime answer - STL
+  from core, the rest once `RegisterModelFormatsPlugin()` has installed the
+  preview provider), `InspectModelFile` (triangles, vertices, bounds, without
+  rendering) and `RasterizeModelFile` / `RasterizeMesh` → `UCRasterLayer`, with
+  size, background, model colour and a pixel cap in `ModelRasterOptions`. Doc:
+  [UltraCanvasModelRaster](UltraCanvasModelRaster.md).
+- A drawing is missing only a size; a model is missing a **view** as well, so
+  `ModelViewPose` (yaw, pitch, camera distance in model radii) moved into
+  `UltraCanvas3DTypes.h` where both the viewer and the rasterizer can use it,
+  and `RenderMeshPixmap(mesh, w, h, pose, colour)` sits next to the fixed-pose
+  `RenderMeshPreviewPixmap` the Filer thumbnails with. The camera matches the
+  GL viewer's to the letter - unit-radius normalise, yaw then pitch, eye at
+  `(0, 0, distance)`, 45° field of view - which is what makes the saved bitmap
+  the view that was on screen rather than an approximation of it.
+- **`UltraCanvasSTLElement` orbits without GL too.** The software variant kept
+  a fixed three-quarter still; it now drags to turn and wheels to dolly like
+  the GL one, drawing through `RenderMeshPixmap` with its own pose. Both
+  variants expose `GetViewPose` / `SetViewPose`, and the colour is settable.
+- **The media viewer hands its 3D view out.** `GetModelViewPose`,
+  `SetModelViewPose` and `GetModelMesh` (all false / null unless a model is
+  shown) let a host embed the viewer as a view *picker* and then render what
+  the user framed without parsing the model a second time.
+- **New `UltraCanvasModelViewDialog`** (`ShowModelViewDialog()`): "turn this 3D
+  model into a bitmap", asking which view. The 3D pane is the media viewer with
+  its top bars off, so orbiting, zooming and every model format the build reads
+  come for free; the dialog adds the raster size (linked spinners), the
+  background, the triangle count and *Reset view*. The accept buttons are the
+  caller's (`ModelViewAction`), and `Rasterize()` renders from the mesh the
+  viewer already holds. Doc:
+  [UltraCanvasModelViewDialog](UltraCanvasModelViewDialog.md).
+- `Tests/ModelRasterTest` gained the file half: a binary STL written by the
+  test, the geometry `InspectModelFile` reports, an exactly delivered size, the
+  pose deciding the picture (a quarter turn narrows a box twice as wide as it
+  is deep, more distance shrinks it), the background composited under the
+  model, the caller's colour, and absurd or unreadable requests refused with a
+  reason. `Tests/DesktopEntryTest` now also reads the launcher this repository
+  ships, so a typo in it fails a test rather than a desktop silently refusing a
+  drop.
+
 #### 2026-09-13 *0.8.39*
 - **Dialog captions line up, and survive translation.** New
   `UltraCanvasFormLayout.h` (`CreateFormGrid` / `AddFormRow` /

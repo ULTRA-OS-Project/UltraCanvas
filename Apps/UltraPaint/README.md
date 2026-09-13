@@ -141,6 +141,48 @@ graphics plugins the application registers: **DXF**, **DWG**, **EMF** and
 `GetVectorRasterExtensions()` is what the running build can actually
 rasterize, and it is what the Open dialog's filter lists.
 
+### 3D models
+
+A model has neither pixels nor a size — and, unlike a drawing, no view either,
+so there is nothing to open until somebody says where the camera stands.
+Opening or dropping one therefore opens a **3D import dialog**: the model in a
+viewer (drag to orbit, wheel to zoom), the bitmap size, and the background
+(transparent, white or black). The bitmap that comes back is exactly the view
+shown there.
+
+**STL** works in every build. **OBJ**, **PLY**, **3DS**, **COLLADA**, **FBX**,
+**X3D/VRML**, **Alembic**, **MilkShape**, **DirectX `.x`**, **`.blend`** and
+**STEP** arrive with the Models plugin, which UltraPaint links and registers
+when it is built. The framework side is
+[`UltraCanvasModelRaster`](../../Docs/UltraCanvas/UltraCanvasModelRaster.md)
+and
+[`UltraCanvasModelViewDialog`](../../Docs/UltraCanvas/UltraCanvasModelViewDialog.md);
+as with drawings, `GetModelRasterExtensions()` is what the running build can
+actually read, and it is what the Open dialog's filter lists.
+
+### Dropping a file on the application icon
+
+Dropping files on the UltraPaint icon in a dock, a taskbar or on the desktop
+does the same as passing them on the command line: one editor window each,
+with a drawing or a model going through its import dialog first. What makes
+the desktop offer the drop at all is the shortcut in
+`Apps/UltraPaint/UltraPaint.desktop`, whose `MimeType=` lists the types
+UltraPaint reads and whose `Exec=UltraPaint %F` is expanded with the dropped
+paths.
+
+`make install` puts it, the `.ucraster` MIME type and the application icon
+where the desktop looks:
+
+```bash
+cmake --install .            # share/applications, share/mime/packages, share/icons
+update-desktop-database ~/.local/share/applications   # or the system-wide path
+update-mime-database       ~/.local/share/mime
+```
+
+To register a build that was never installed, copy the entry to
+`~/.local/share/applications/` and make its `Exec=` the absolute path of the
+binary.
+
 ## Usage
 
 ```
@@ -148,6 +190,8 @@ UltraPaint                 # blank canvas
 UltraPaint photo.jpg       # open an image
 UltraPaint work.ucraster   # open a layered project
 UltraPaint logo.svg        # asks for the raster size, then opens it
+UltraPaint part.stl        # asks for the view and the size, then opens it
+UltraPaint a.png b.png     # one window each - what a drop on the icon expands to
 ```
 
 ## Building
@@ -170,3 +214,4 @@ and brushes build without it.
 | `UltraPaintTools.{h,cpp}` | The tools and their option panels |
 | `UltraPaintFilters.{h,cpp}` | The PixelFX filter catalogue and the parameter dialog |
 | `UltraPaintDialogs.{h,cpp}` | New Image, Scale / Canvas Size, Text, Layer Properties, Colour to Alpha, Import (drop / vector raster size) |
+| `UltraPaint.desktop`, `UltraPaint-mimetypes.xml` | The freedesktop shortcut the desktop launches and drops files onto, and the `.ucraster` MIME type |

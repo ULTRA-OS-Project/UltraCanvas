@@ -1221,6 +1221,23 @@ bool UltraCanvasMediaViewer::IsSpreadsheetFile(const std::string& path) {
     return e == "ods" || e == "csv" || e == "tsv";
 }
 
+bool UltraCanvasMediaViewer::GetModelViewPose(ModelViewPose& out) const {
+    if (activeKind != MediaKind::Model || !modelView) return false;
+    out = static_cast<const UltraCanvasSTLElement*>(modelView.get())->GetViewPose();
+    return true;
+}
+
+bool UltraCanvasMediaViewer::SetModelViewPose(const ModelViewPose& pose) {
+    if (activeKind != MediaKind::Model || !modelView) return false;
+    static_cast<UltraCanvasSTLElement*>(modelView.get())->SetViewPose(pose);
+    return true;
+}
+
+const Mesh3D* UltraCanvasMediaViewer::GetModelMesh() const {
+    if (activeKind != MediaKind::Model || !modelView) return nullptr;
+    return &static_cast<const UltraCanvasSTLElement*>(modelView.get())->GetMesh();
+}
+
 bool UltraCanvasMediaViewer::IsModelFile(const std::string& path) {
     // 3D models open in UltraCanvasSTLElement (OpenGL viewer, or a 2D info
     // placeholder when GL is disabled). The element is always built into the

@@ -1,3 +1,25 @@
+#### 2026-09-13 *0.2.2*
+- **3D models can be imported as images.** Opening, dropping or importing an
+  STL - or an OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape, `.x`,
+  `.blend` or STEP, which UltraPaint now links the Models plugin for - opens a
+  3D import dialog: the model in a viewer (drag to orbit, wheel to zoom), the
+  bitmap size and the background. The layer that comes back is exactly the view
+  shown there. A model dropped on the canvas offers the same *Merge image* /
+  *Open new window* as a bitmap does, and the model extensions are in the Open
+  dialog's filter. Framework side:
+  [UltraCanvasModelRaster](../UltraCanvas/UltraCanvasModelRaster.md),
+  [UltraCanvasModelViewDialog](../UltraCanvas/UltraCanvasModelViewDialog.md).
+- **Files can be dropped on the UltraPaint icon.** `UltraPaint.desktop` is the
+  shortcut that makes a dock, a taskbar or the desktop offer the drop at all -
+  `Exec=UltraPaint %F` with a `MimeType=` list covering the images, drawings,
+  models and `.ucraster` projects UltraPaint reads - and `make install` now
+  puts it, the `.ucraster` MIME type, the application icon and the binary where
+  a desktop looks for them. Dropping on the icon takes the same path as the
+  command line, so a drawing or a model still gets its import dialog.
+- A command line - or a drop - of several files opens **one window per file**
+  instead of only the first. Right-clicking the launcher icon offers *New
+  Window*.
+
 #### 2026-09-13 *0.2.1*
 - **Every dialog's captions now share one column.** New Image, Scale Image /
   Canvas Size, Text, Layer Properties and the import question were a flex row

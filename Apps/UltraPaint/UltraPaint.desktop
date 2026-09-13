@@ -1,0 +1,40 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraPaint. It is what makes the editor appear
+# in the application menu, in a file manager's "Open with", and - the reason it
+# exists - what makes a file dropped on the UltraPaint icon in a dock, a
+# taskbar or on the desktop arrive as an argument: the shell starts Exec with
+# the dropped paths in place of %F, and UltraPaint's argv handling opens each
+# one exactly as File > Open would (a drawing or a 3D model through its import
+# dialog).
+#
+# A desktop that decides whether an icon may accept a drop at all asks whether
+# the application handles the file's type, so MimeType= below lists what
+# UltraPaint reads, not only what it prefers. It is deliberately wider than any
+# single build: the image formats come from whatever libvips carries, the
+# vector ones from librsvg / poppler, and the 3D ones from the Models plugin,
+# so a type this build cannot read is refused with a message rather than
+# silently dropped by the desktop.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the association to be picked up.
+Type=Application
+Version=1.5
+Name=UltraPaint
+GenericName=Bitmap Editor
+Comment=Edit images with layers, selections, brushes, filters and 3D imports
+Exec=UltraPaint %F
+TryExec=UltraPaint
+Icon=UltraPaint
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraPaint
+Categories=Graphics;2DGraphics;RasterGraphics;Photography;
+Actions=NewWindow;
+Keywords=image;bitmap;photo;paint;draw;raster;layer;filter;3D;model;
+MimeType=image/png;image/jpeg;image/gif;image/bmp;image/webp;image/tiff;image/heif;image/heic;image/avif;image/jxl;image/qoi;image/x-tga;image/x-portable-pixmap;image/x-portable-graymap;image/x-portable-bitmap;image/x-portable-anymap;image/vnd.adobe.photoshop;image/vnd.microsoft.icon;image/x-icon;image/x-exr;image/vnd.radiance;image/x-adobe-dng;image/x-canon-cr2;image/x-nikon-nef;image/x-sony-arw;image/svg+xml;image/svg+xml-compressed;application/pdf;application/postscript;image/x-eps;application/illustrator;model/stl;model/x.stl-ascii;model/x.stl-binary;model/obj;model/step;model/vnd.collada+xml;model/x3d+xml;model/x3d+vrml;model/vrml;image/x-3ds;application/x-blender;application/x-ultracanvas-raster;
+
+# Right-click the launcher icon: a second editor window on a blank canvas.
+# UltraPaint is multi-window, and every window is its own document.
+[Desktop Action NewWindow]
+Name=New Window
+Exec=UltraPaint

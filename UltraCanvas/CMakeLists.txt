@@ -433,6 +433,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasToneCurve.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasCurveEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasCurvesDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasMetadataDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasModelViewDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasSpinner.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTimePicker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPagination.cpp
@@ -858,7 +860,6 @@ if(ULTRACANVAS_HAS_VIPS)
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
-        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasMetadataDialog.cpp
     )
 endif()
 
@@ -2686,6 +2687,9 @@ set(ULTRACANVAS_LIBRARIES ${ULTRACANVAS_LIB_NAME} ${ULTRACANVAS_PLUGIN_TARGETS} 
 # LIBVIPS_FOUND — the parent uses this to gate vips-dependent demo sources.
 set(LIBVIPS_FOUND ${ULTRACANVAS_HAS_VIPS} PARENT_SCOPE)
 set(ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
+# Named individually as well, so an application can link one plugin without
+# taking every other format's code with it (UltraPaint wants the 3D readers).
+set(ULTRACANVAS_MODELS_PLUGIN_TARGET ${ULTRACANVAS_MODELS_PLUGIN_TARGET} PARENT_SCOPE)
 set(ULTRACANVAS_INCLUDE_DIRS 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${ULTRACANVAS_PLUGIN_INCLUDE_DIRS}

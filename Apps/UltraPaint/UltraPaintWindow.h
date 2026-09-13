@@ -42,13 +42,17 @@ public:
     ~UltraPaintWindow();
 
     // Creates the window; opens `paths[0]` when given, else a blank canvas.
+    // Further paths are not this window's — OpenWindow() gives each of them
+    // one of its own.
     bool Initialize(const std::vector<std::string>& paths);
     void Show();
 
     // Creates, registers and shows a further editor window on `paths` (empty:
-    // a blank canvas). The windows own themselves — the registry drops one
-    // when it closes, and the application exits with the last of them — so
-    // the returned pointer may be ignored.
+    // a blank canvas). A window holds one image, so a second and further path
+    // — a selection dropped on the application's icon, or a command line of
+    // them — each get a window too; the returned one is the first. The windows
+    // own themselves — the registry drops one when it closes, and the
+    // application exits with the last of them — so the pointer may be ignored.
     static std::shared_ptr<UltraPaintWindow> OpenWindow(const std::vector<std::string>& paths);
     static int WindowCount();
 
@@ -88,6 +92,10 @@ private:
     // rest of a multi-file drop, which follow the same answer.
     void ImportFile(const std::string& path, bool fromDrop,
                     const std::vector<std::string>& alsoFiles = {});
+    // A 3D model takes the framework's model-view dialog instead: it has no
+    // view either, and one has to be chosen before there are any pixels.
+    void ImportModel(const std::string& path, bool fromDrop,
+                     const std::vector<std::string>& alsoFiles = {});
     // Carries out the dialog's answer. `preloaded` is the document already
     // read for the dialog (a dropped bitmap is decoded to measure it), so the
     // file is not read a second time; null means read it now.

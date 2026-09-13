@@ -18,8 +18,10 @@
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasVectorRaster.h"
+#include "UltraCanvasModelRaster.h"
 #include "UltraCanvasDebug.h"
 #include "../dialogs/UltraCanvasCurvesDialog.h"
+#include "../dialogs/UltraCanvasModelViewDialog.h"
 #ifdef HAS_LIBVIPS
 #include "../dialogs/UltraCanvasImageExportDialog.h"
 #include "PixelFX/PixelFX.h"
@@ -61,21 +63,36 @@ namespace {
     }
 
     // Files the editor will take from a drop: everything the image pipeline
-    // decodes, its own projects, and any vector artwork this build can
-    // rasterize (which is where .svg, .pdf, .dxf, ... come from).
+    // decodes, its own projects, any vector artwork this build can rasterize
+    // (.svg, .pdf, .dxf, ...) and any 3D model it can read (.stl, .obj,
+    // .ply, ... — whatever the Models plugin brought).
     bool IsOpenablePath(const std::string& path) {
         if (UCRasterDocument::IsProjectFile(path)) return true;
         const std::string ext = LowerExtOf(path);
         if (std::find(kImageExtensions.begin(), kImageExtensions.end(), ext) != kImageExtensions.end()) return true;
+        return IsVectorGraphicsPath(path) || IsModelGraphicsPath(path);
+    }
+
+    // A 3D model: no pixels, and not even a natural size — somebody has to
+    // choose a view as well, which is a different question from a drawing's.
+    // A project is never one of these even if a plugin claims its extension.
+    bool IsModelPath(const std::string& path) {
+        if (UCRasterDocument::IsProjectFile(path)) return false;
+        return IsModelGraphicsPath(path);
+    }
+
+    // Vector artwork: no pixels of its own, so the editor has to be told a
+    // size before it can hold it.
+    bool IsVectorPath(const std::string& path) {
+        if (UCRasterDocument::IsProjectFile(path)) return false;
+        if (IsModelGraphicsPath(path)) return false;   // a model is asked differently
         return IsVectorGraphicsPath(path);
     }
 
-    // True for a file that has no pixel size of its own, so the editor has to
-    // be told one before it can hold it. A project is never one of these even
-    // when a vector plugin claims its extension.
-    bool NeedsRasterSize(const std::string& path) {
-        if (UCRasterDocument::IsProjectFile(path)) return false;
-        return IsVectorGraphicsPath(path);
+    // True for a file the editor cannot simply decode — it has to ask
+    // something first. Both of the above qualify.
+    bool NeedsImportDialog(const std::string& path) {
+        return IsModelPath(path) || IsVectorPath(path);
     }
 
     // libvips reports a failure as its whole error buffer, which for a missing
@@ -258,9 +275,11 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
     };
 
     // ----- first document -----
-    if (!paths.empty() && NeedsRasterSize(paths.front())) {
-        // Vector artwork needs a raster size chosen before it becomes an
-        // image; the dialog that asks waits for Show().
+    if (!paths.empty() && NeedsImportDialog(paths.front())) {
+        // Vector artwork needs a raster size, and a 3D model a view as well,
+        // before either becomes an image; the dialog that asks waits for
+        // Show() — this is also the path a file dropped on the application's
+        // icon takes, since the shell starts us with it on the command line.
         pendingImport = paths.front();
         NewImage(lastNewImage);
     } else if (!paths.empty()) {
@@ -302,6 +321,12 @@ std::shared_ptr<UltraPaintWindow> UltraPaintWindow::OpenWindow(const std::vector
     UltraPaintWindow* raw = editor.get();
     editor->window->onWindowClosed = [raw]() { RetireWindow(raw); };
     editor->Show();
+
+    // A window holds one image, so the rest of a multi-file open each get one
+    // of their own. This is what a selection dropped on the application's icon
+    // in a dock or taskbar looks like: the desktop expands the launcher's
+    // "Exec=UltraPaint %F" with every dropped path at once.
+    for (size_t i = 1; i < paths.size(); ++i) OpenWindow({ paths[i] });
     return editor;
 }
 
@@ -688,9 +713,9 @@ void UltraPaintWindow::NewImage(const UltraPaintNewImageResult& r) {
 }
 
 void UltraPaintWindow::OpenFile(const std::string& path) {
-    // Vector artwork carries no pixels, so it cannot just be opened: the
-    // import dialog asks for the raster size first.
-    if (NeedsRasterSize(path)) {
+    // Vector artwork carries no pixels and a model carries neither pixels
+    // nor a view, so neither can just be opened: the import dialog asks first.
+    if (NeedsImportDialog(path)) {
         ImportFile(path, false);
         return;
     }
@@ -729,8 +754,67 @@ void UltraPaintWindow::HandleDroppedFiles(const std::vector<std::string>& files)
     ImportFile(first, true, std::vector<std::string>(usable.begin() + 1, usable.end()));
 }
 
+void UltraPaintWindow::ImportModel(const std::string& path, bool fromDrop,
+                                   const std::vector<std::string>& alsoFiles) {
+    // A model needs a view before it needs a size, so it gets the framework's
+    // 3D import dialog: the media viewer with its top bars off, which is the
+    // same 3D pane the file manager and the viewer use, plus the bitmap size
+    // and the background. Whatever the user orbits to is what gets rendered.
+    std::vector<ModelViewAction> actions;
+    if (fromDrop && document && document->IsValid()) {
+        actions.push_back(ModelViewAction{"merge", "Merge image", false});
+        actions.push_back(ModelViewAction{"window", "Open new window", true});
+    } else {
+        actions.push_back(ModelViewAction{"open", "Open", true});
+    }
+
+    ShowModelViewDialog(path, actions, window.get(),
+                        [this, path, alsoFiles](UltraCanvasModelViewDialog& dialog,
+                                                const ModelViewResult& view) {
+        // Render from the mesh the dialog's viewer already holds — asking it
+        // rather than the path keeps a big model from being parsed twice.
+        std::string error;
+        std::shared_ptr<UCRasterLayer> layer = dialog.Rasterize(error);
+        if (!layer) {
+            UltraCanvasDialogManager::ShowError("Could not render " + path + "\n" + ShortError(error),
+                                                "Import", nullptr, window.get());
+            return;
+        }
+
+        auto incoming = std::make_shared<UCRasterDocument>(layer->GetWidth(), layer->GetHeight(),
+                                                           view.background);
+        incoming->GetLayer(0)->CopyFrom(*layer, 0, 0);
+        incoming->SetLayerName(0, layer->name);
+        incoming->InvalidateComposite();
+        incoming->ClearHistory();
+        // A rendered view is an unsaved image: it has no file of its own, so
+        // Save asks where to put it rather than writing pixels over the model.
+        incoming->SetModified(true);
+
+        UltraPaintImportResult result;
+        if (view.actionId == "merge")       result.action = UltraPaintImportResult::Action::Merge;
+        else if (view.actionId == "window") result.action = UltraPaintImportResult::Action::NewWindow;
+        else                                result.action = UltraPaintImportResult::Action::Open;
+        ApplyImport(path, result, incoming);
+
+        // The rest of a multi-file drop follow the same answer; each is read
+        // on its own terms (a model at its default view, a drawing at its
+        // natural size).
+        UltraPaintImportResult forTheRest = result;
+        forTheRest.width = 0;
+        forTheRest.height = 0;
+        forTheRest.page = 0;
+        for (const auto& more : alsoFiles) ApplyImport(more, forTheRest);
+    });
+}
+
 void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
                                   const std::vector<std::string>& alsoFiles) {
+    if (IsModelPath(path)) {
+        ImportModel(path, fromDrop, alsoFiles);
+        return;
+    }
+
     UltraPaintImportRequest request;
     request.path = path;
     request.extraFiles = alsoFiles.size();
@@ -745,7 +829,7 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
     // decoded here so the dialog can say how big it is (and so merging it
     // does not decode it a second time).
     std::shared_ptr<UCRasterDocument> preloaded;
-    if (NeedsRasterSize(path)) {
+    if (IsVectorPath(path)) {
         const VectorSourceInfo info = InspectVectorFile(path);
         if (!info.ok) {
             UltraCanvasDialogManager::ShowError("Could not read " + path + "\n" + ShortError(info.error),
@@ -829,7 +913,30 @@ void UltraPaintWindow::ApplyImport(const std::string& path, const UltraPaintImpo
 
 std::shared_ptr<UCRasterDocument> UltraPaintWindow::LoadDocument(const std::string& path,
                                                                  const UltraPaintImportResult& result) {
-    if (NeedsRasterSize(path)) {
+    if (IsModelPath(path)) {
+        // Reached for the other files of a multi-file drop: nobody framed
+        // these, so they come in at the viewer's opening view.
+        ModelRasterOptions options;
+        if (result.width > 0) options.width = result.width;
+        if (result.height > 0) options.height = result.height;
+        std::string error;
+        auto layer = RasterizeModelFile(path, options, error);
+        if (!layer) {
+            UltraCanvasDialogManager::ShowError("Could not render " + path + "\n" + ShortError(error),
+                                                "Import", nullptr, window.get());
+            return nullptr;
+        }
+        auto doc = std::make_shared<UCRasterDocument>(layer->GetWidth(), layer->GetHeight(),
+                                                      RasterPixel(0, 0, 0, 0));
+        doc->GetLayer(0)->CopyFrom(*layer, 0, 0);
+        doc->SetLayerName(0, layer->name);
+        doc->InvalidateComposite();
+        doc->ClearHistory();
+        doc->SetModified(true);
+        return doc;
+    }
+
+    if (IsVectorPath(path)) {
         VectorRasterOptions options;
         options.width = std::max(0, result.width);
         options.height = std::max(0, result.height);
@@ -1085,6 +1192,9 @@ std::vector<std::string> UltraPaintWindow::OpenableExtensions() {
     exts.push_back("ucraster");
     for (const auto& v : GetVectorRasterExtensions()) {
         if (std::find(exts.begin(), exts.end(), v) == exts.end()) exts.push_back(v);
+    }
+    for (const auto& m : GetModelRasterExtensions()) {
+        if (std::find(exts.begin(), exts.end(), m) == exts.end()) exts.push_back(m);
     }
     return exts;
 }

@@ -2344,6 +2344,10 @@ if(TARGET UltraCanvas)
     target_include_directories(DesktopEntryTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(DesktopEntryTest PRIVATE cxx_std_20)
     target_link_libraries(DesktopEntryTest PRIVATE UltraCanvas)
+    # The launcher this repository ships, checked with the same reader.
+    target_compile_definitions(DesktopEntryTest PRIVATE
+        ULTRAPAINT_DESKTOP_FILE="${ULTRACANVAS_ROOT}/Apps/UltraPaint/UltraPaint.desktop"
+    )
     set_target_properties(DesktopEntryTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
