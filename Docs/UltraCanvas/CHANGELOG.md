@@ -1,4 +1,4 @@
-#### 2026-09-13 *0.8.43*
+#### 2026-09-13 *0.8.44*
 - **A toolbar is as thick as the items in it.** The height a horizontal
   `UltraCanvasToolbar` is constructed with - the width of a vertical one - is
   now a floor rather than a fixed size, so it grows to fit its buttons instead
@@ -16,7 +16,7 @@
   (CSS Sizing §4). An item's constraints are unchanged: still main-axis only.
   Doc: [CSSLayout](../CSSLayout.md).
 
-#### 2026-09-13 *0.8.42*
+#### 2026-09-13 *0.8.43*
 - **A 3D model can become a bitmap, from a view the user chose.**
   `UltraCanvasModelRaster.h` grew the whole path from a model file to an
   editable layer, the 3D counterpart of `UltraCanvasVectorRaster`:
@@ -59,7 +59,7 @@
   ships, so a typo in it fails a test rather than a desktop silently refusing a
   drop.
 
-#### 2026-09-13 *0.8.41*
+#### 2026-09-13 *0.8.42*
 - **Dialog captions line up, and survive translation.** New
   `UltraCanvasFormLayout.h` (`CreateFormGrid` / `AddFormRow` /
   `AddFormWideRow` / `CreateFormCellRow`): the "caption: control" form as one
@@ -106,7 +106,7 @@
   when the image actually carries metadata. Doc:
   [UltraCanvasMetadataDialog](UltraCanvasMetadataDialog.md).
 
-#### 2026-09-12 *0.8.40*
+#### 2026-09-12 *0.8.41*
 - **Vector artwork can become pixels.** New `UltraCanvasVectorRaster.h`
   (`IsVectorGraphicsPath` / `GetVectorRasterExtensions` /
   `InspectVectorFile` / `RasterizeVectorFile`): it reports what a drawing
@@ -131,7 +131,83 @@
 - Tested by `VectorRasterTest` (CTest), which skips itself on a build with no
   SVG rasterizer rather than failing.
 
+#### 2026-09-13 *0.8.40*
+- **The demo app's 3D section now shows the formats the framework reads.** It
+  had two entries - STL, and an OpenGL tab whose meshes came from the demo's
+  own Wavefront OBJ parser - so 3DS, COLLADA, FBX, Alembic, DirectX .x,
+  MilkShape and STEP were reachable through FileLoader and the Filer but
+  appeared nowhere a visitor would look for 3D support.
+- **New page, 3D Graphics > 3D Model Formats**
+  (`Apps/DemoApp/UltraCanvasModelFormatsExamples.cpp`). Each sample is read by
+  `LoadModelDocument` into a `ModelStorage::ModelDocument` and the page reports
+  what that document turned out to hold - scenes, nodes, meshes, materials,
+  images, animations, cameras, lights, B-rep solids, declared unit, up-axis and
+  handedness - beside the converter's own `FormatCapabilities`. The point is
+  where the formats *differ*: the same aircraft arrives in centimetres from
+  FBX, in metres from COLLADA and unitless from MilkShape, with node counts
+  from 1 to 7, and all three are correct.
+- **STEP is on the page precisely because it has no triangles.** A .step holds
+  trimmed NURBS and analytic surfaces; the mesh shown is tessellated on import,
+  and the panel says so with a non-zero B-rep solid count beside it.
+- **Import warnings are shown rather than logged.** Every fallback and dropped
+  feature a converter reports through `WarningCallback` reaches the status bar,
+  so the 3DS sample's truncated 12-character texture names and the FBX sample's
+  layered diffuse textures are visible instead of silently absorbed.
+- **Samples are the small ones on purpose** - every file is under 600 kB, from
+  a 4 kB STEP sheet to a 548 kB DirectX .x - and the page names the large ones
+  it skips (the 18 MB .blend, the 6.9 MB VRML, the 3.9 MB PLY) rather than
+  leaving them looking unsupported. Parsing is on demand and cached, so opening
+  the page costs one file.
+- **The OpenGL "3D Models" tab loads through the framework now.** It asked its
+  own `LoadOBJ` and so was OBJ-only; it now asks `LoadModelPreviewMesh` - the
+  same seam the Filer and the media viewer use - and gained a STEP pin plus the
+  aircraft in MilkShape, COLLADA and 3D Studio. Entries are added only where
+  `CanPreviewModelExtension` says this build can read them, so a dropdown entry
+  never promises a format and then shows the fallback sphere. `LoadOBJ` stays
+  underneath for a build with `ULTRACANVAS_PLUGIN_MODELS=OFF`.
+- **`Docs/UltraCanvas/UltraCanvasModelFormats.md`** (new) documents the
+  dispatch, the capability table as the converters actually report it - three
+  formats write, OBJ, PLY and STEP, and the rest are read-only - and the three
+  things that surprise people: a STEP file contains no triangles, readers never
+  rescale geometry, and writing a *mesh* to STEP yields a faceted b-rep (one
+  planar face per triangle, at the mesh's accuracy rather than a model's) while
+  a document of exact bodies is written as those bodies. Documentation only -
+  no converter is touched by this change.
+- Both new demo sources are guarded by `ULTRACANVAS_HAS_MODELS_PLUGIN` and
+  compiled only when the plugin is built; neither is inside the GL guard, since
+  `UltraCanvasSTLElement` draws a shaded software still without OpenGL.
+
 #### 2026-09-13 *0.8.39*
+- **`UltraCanvasFilerWidget` folder icons show the first pictures inside the
+  folder**, peeking out of the folder shape the way Explorer's do: up to two
+  cards stand in the open folder, their upper part above the front flap, each
+  the ordinary thumbnail of one of the folder's first pictures by name. On by
+  default; *Display > Folder previews* in the context menu turns it off, and
+  `SetFolderPreviewsEnabled` / `AreFolderPreviewsEnabled` are the API (the
+  switch fires `onDisplayFormatsChanged` so a host can persist it). Only the
+  tile-sized icons carry them - the four thumbnail grids, and any icon box of
+  32 px or more; the icon column of the Details and List rows keeps the plain
+  shape. A folder the host gave an icon through `folderIconProvider` keeps it,
+  a bundle keeps its own, and an archive interior is never listed for it.
+  - Which files a folder shows takes a directory listing, which the paint
+    path may not make, so the folder is queued for the background workers
+    that decode the thumbnails: one listing per folder on screen, no file
+    opened and no metadata call (the kind comes from the name, file-or-folder
+    from the listing itself), keeping the first eight previewable files -
+    bitmaps, vector graphics, videos, PDFs, 3D models, fonts - and giving up
+    after 4096 entries. Viewport-driven like the decodes: only the folders
+    the frame draws (plus the prefetch band) are listed, a pending listing
+    that scrolls out of range is dropped, the finished ones are dropped with
+    the thumbnail cache on a rescan and capped at 4096.
+  - The pictures go through the same thumbnail cache and budget as the tiles,
+    requested at the card size, so the Display > Thumbnails switches govern
+    them exactly as they govern the file's own tile, and a picture inside a
+    folder is decoded once per size however many folders and views show it.
+    Until the listing lands the folder is the plain shape; a folder with
+    nothing to show stays that way, and a card whose decode is still on its
+    way is a blank sheet, so a folder never pops from open back to closed.
+  - `Docs/UltraCanvas/UltraCanvasFilerWidget.md`: new *Folder previews*
+    section. `Tests/FilerFolderPreviewTest.cpp` pins the card geometry.
 - **A cut and paste now tells the host about both ends of the move.**
   `onFolderModified` named the folder the entries landed in and nothing else,
   so the folder they were taken *out* of was never reported - and a host that
