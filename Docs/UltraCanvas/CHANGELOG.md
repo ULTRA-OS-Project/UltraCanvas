@@ -1,3 +1,35 @@
+#### 2026-09-13 *0.8.39*
+- **`UltraCanvasFilerWidget` folder icons show the first pictures inside the
+  folder**, peeking out of the folder shape the way Explorer's do: up to two
+  cards stand in the open folder, their upper part above the front flap, each
+  the ordinary thumbnail of one of the folder's first pictures by name. On by
+  default; *Display > Folder previews* in the context menu turns it off, and
+  `SetFolderPreviewsEnabled` / `AreFolderPreviewsEnabled` are the API (the
+  switch fires `onDisplayFormatsChanged` so a host can persist it). Only the
+  tile-sized icons carry them - the four thumbnail grids, and any icon box of
+  32 px or more; the icon column of the Details and List rows keeps the plain
+  shape. A folder the host gave an icon through `folderIconProvider` keeps it,
+  a bundle keeps its own, and an archive interior is never listed for it.
+  - Which files a folder shows takes a directory listing, which the paint
+    path may not make, so the folder is queued for the background workers
+    that decode the thumbnails: one listing per folder on screen, no file
+    opened and no metadata call (the kind comes from the name, file-or-folder
+    from the listing itself), keeping the first eight previewable files -
+    bitmaps, vector graphics, videos, PDFs, 3D models, fonts - and giving up
+    after 4096 entries. Viewport-driven like the decodes: only the folders
+    the frame draws (plus the prefetch band) are listed, a pending listing
+    that scrolls out of range is dropped, the finished ones are dropped with
+    the thumbnail cache on a rescan and capped at 4096.
+  - The pictures go through the same thumbnail cache and budget as the tiles,
+    requested at the card size, so the Display > Thumbnails switches govern
+    them exactly as they govern the file's own tile, and a picture inside a
+    folder is decoded once per size however many folders and views show it.
+    Until the listing lands the folder is the plain shape; a folder with
+    nothing to show stays that way, and a card whose decode is still on its
+    way is a blank sheet, so a folder never pops from open back to closed.
+  - `Docs/UltraCanvas/UltraCanvasFilerWidget.md`: new *Folder previews*
+    section. `Tests/FilerFolderPreviewTest.cpp` pins the card geometry.
+
 #### 2026-09-12 *0.8.38*
 - **LaTeX: the module is actually shipped in the Windows and macOS packages,
   and is found there.** The demo's "LaTeX Documents" page in the Windows
