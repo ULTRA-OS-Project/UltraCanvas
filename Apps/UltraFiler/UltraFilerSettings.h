@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.10.0
-// Last Modified: 2026-09-12
+// Version: 1.11.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -109,6 +109,14 @@ public:
     // busy network volume that is one extra open per file, which is the
     // reason this can be turned off. On where the platform can answer at all.
     bool showLockState = true;
+
+    // Display > Folder previews: whether a folder's icon in the thumbnail
+    // views shows the first pictures inside it, peeking out of the folder
+    // the way Explorer's folder icons do. Each shown folder is listed once in
+    // the background and its first pictures decoded like any other
+    // thumbnail; on a slow network volume that is one listing per folder on
+    // screen, which is the reason this can be turned off.
+    bool folderPreviews = true;
 
     // Handling > Drag & Drop: what dropping dragged files onto a folder of the
     // file display does without a modifier - move them (the default) or copy
@@ -230,6 +238,10 @@ public:
         if (it != kv.end())
             showLockState =
                     (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("display.folder.previews");
+        if (it != kv.end())
+            folderPreviews =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("handling.dragdrop.drop.on.folder");
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
         it = kv.find("handling.dragdrop.confirmation");
@@ -282,6 +294,8 @@ public:
              << FormatExtensionBadge(extensionBadge) << "\n";
         file << "display.inuse.marking = "
              << (showLockState ? "true" : "false") << "\n";
+        file << "display.folder.previews = "
+             << (folderPreviews ? "true" : "false") << "\n";
         file << "handling.dragdrop.drop.on.folder = "
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
         file << "handling.dragdrop.confirmation = "
