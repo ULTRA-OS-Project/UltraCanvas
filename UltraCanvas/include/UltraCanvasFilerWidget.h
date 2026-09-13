@@ -56,7 +56,8 @@
 // same key again moves on to the next such entry (wrapping around).
 // Changes the user makes to a folder's content (create / paste / drop /
 // rename / duplicate / delete / compress / extract) are reported through
-// onFolderModified, apart from the rescan notification onFolderRefreshed.
+// onFolderModified, apart from the rescan notification onFolderRefreshed; a
+// move reports both the folder the entries arrived in and the ones they left.
 // Which file kinds show a real content preview instead of their type glyph is
 // selectable per kind (Display > Thumbnails: Bitmaps, Vector graphics, 3D,
 // PDF, Text, Docs, Spreadsheets, Videos, Audio, Fonts — all on by default), so
@@ -1028,10 +1029,15 @@ namespace UltraCanvas {
         // deleted, packed or extracted. The argument is the folder that
         // changed; normally the displayed one, but a subfolder when that is
         // where the change landed (files dropped onto it, an archive written
-        // into it). Unlike onFolderRefreshed this reports *user actions*, not
-        // rescans: navigation, sorting, view changes and a plain Refresh()
-        // never fire it. A file-list display (ShowFileList) only reports
-        // changes whose folder is known, since its entries span many folders.
+        // into it). A move reports both ends, once each: the folder the
+        // entries were pasted or dropped into, and every folder they were
+        // taken out of — a cut and paste across folders (Ctrl+X here, Ctrl+V
+        // there) changes a folder this widget may not even be showing, and a
+        // host's folder tree has no other way to hear of it. Unlike
+        // onFolderRefreshed this reports *user actions*, not rescans:
+        // navigation, sorting, view changes and a plain Refresh() never fire
+        // it. A file-list display (ShowFileList) only reports changes whose
+        // folder is known, since its entries span many folders.
         std::function<void(const std::string& folderPath)> onFolderModified;
         std::function<void(FilerViewType)> onViewTypeChanged;
         std::function<void(FilerSortField, bool)> onSortChanged;
@@ -2259,6 +2265,13 @@ namespace UltraCanvas {
             PasteConflictAction action = PasteConflictAction::KeepBoth;
             bool applyToAll = false;   // reuse `action` for later conflicts
             bool changed = false;
+            // The folders a move actually emptied - the parent of every
+            // source that was renamed away. The caller of a paste knows the
+            // destination and nothing else, so these are reported to
+            // onFolderModified by FinishPendingPaste (a Ctrl+X in one folder
+            // and a Ctrl+V in another is the case this exists for: without
+            // it the folder the entry left never hears that it changed).
+            std::vector<std::string> vacatedFolders;
             // Failure handling: skip every failing entry / grant each one
             // silent retry, and the per-entry state they consume.
             bool skipFailedForAll = false;
