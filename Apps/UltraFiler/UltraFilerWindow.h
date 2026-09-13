@@ -695,6 +695,11 @@ private:
     // Display > Home folder mode, mirrored for the probe worker: `settings`
     // belongs to the UI thread, the "has subfolders?" probe does not.
     std::atomic<bool> curatedHomeActive{false};
+    // Display > Files > Show hidden files as it was last pushed to the folder
+    // displays, so ApplySettings only pushes it when it actually changed and
+    // a display revealed by hand stays revealed. Starts at the shipped
+    // default, which is what a fresh display is created with.
+    bool hiddenFilesApplied = false;
     // Set by the monitor's thread, cleared by the UI thread that acts on it:
     // one tree pass per burst, however many notifications an insertion makes.
     std::atomic<bool> volumeRefreshPending{false};

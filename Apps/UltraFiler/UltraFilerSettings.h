@@ -103,6 +103,17 @@ public:
     bool showFileExtensions = true;
     FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
 
+    // Display > Files: whether the file display lists what the platform
+    // calls hidden - the dot names everywhere, plus the hidden attribute on
+    // Windows and the hidden flag on macOS. Off, as every file manager ships:
+    // this is the switch a user turns on once and leaves on. It is what each
+    // folder display starts with; the display's own Display > Hidden files
+    // menu entry (and the "Show hidden files" button of the hidden-items
+    // strip) still reveal one display without changing this. Showing hidden
+    // files also suspends the Home folder curation below - the toggle means
+    // "show me everything".
+    bool showHiddenFiles = false;
+
     // Display > Files in use: whether the file display marks files another
     // program is holding - the reason an overwrite, a rename or a delete of
     // one fails. Each shown file is probed in the background; on a slow or
@@ -234,6 +245,10 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("display.extensions.badge");
         if (it != kv.end()) extensionBadge = ParseExtensionBadge(it->second);
+        it = kv.find("display.files.show.hidden");
+        if (it != kv.end())
+            showHiddenFiles =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("display.inuse.marking");
         if (it != kv.end())
             showLockState =
@@ -292,6 +307,8 @@ public:
              << (showFileExtensions ? "true" : "false") << "\n";
         file << "display.extensions.badge = "
              << FormatExtensionBadge(extensionBadge) << "\n";
+        file << "display.files.show.hidden = "
+             << (showHiddenFiles ? "true" : "false") << "\n";
         file << "display.inuse.marking = "
              << (showLockState ? "true" : "false") << "\n";
         file << "display.folder.previews = "
