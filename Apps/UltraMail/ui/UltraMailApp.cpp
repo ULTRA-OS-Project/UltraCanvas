@@ -1,7 +1,7 @@
 // Apps/UltraMail/ui/UltraMailApp.cpp
-// Version: 0.9.1 - the manual settings page checks the sign-in at the incoming
-//                  server before it saves
-// Last Modified: 2026-09-10
+// Version: 0.9.6 - the toolbar and account bar no longer collapse (flex-shrink
+//                  0) or paint scrollbars over themselves under a full inbox
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailApp.h"
 
@@ -253,10 +253,20 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                [this]() { HandleReload(); });
     makeAction("umContacts", "Contacts", 76, "", false, [this]() { OpenContacts(); });
     toolbar->AddStretchSpacer(1);
+    makeAction("umSettings", "Settings", 76, "", false, [this]() {
+        if (!selectedAccount_.empty()) HandleAccountSettings(selectedAccount_);
+    });
     makeAction("umAddAccount", "Add account", 92, "", false,
                [this]() { HandleAddAccount(); });
+    makeAction("umDeleteAccount", "Delete account", 108, "", false, [this]() {
+        if (!selectedAccount_.empty()) HandleDeleteAccount(selectedAccount_);
+    });
     accountView_->AddChild(toolbar);
-    toolbar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // Freeze the chrome rows: grow 0, shrink 0. Without shrink 0 (the flex
+    // default is 1) a tall inbox list pushes the column past the window and the
+    // engine crushes the toolbar and account bar toward zero height.
+    toolbar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // ----- Account bar: one summary card, or a tile per account -----
     auto bar = accountBar_.Build();
@@ -265,7 +275,19 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
         Refresh();
     };
     accountView_->AddChild(bar);
-    bar->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    bar->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                   .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    // These rows are single-row chrome; they must never show a scrollbar (which
+    // otherwise paints over them when space is tight). The mail area below keeps
+    // its scrollbar — the inbox list must scroll.
+    auto noScroll = [](const std::shared_ptr<UltraCanvasContainer>& c) {
+        auto s = c->GetContainerStyle();
+        s.autoShowScrollbars = false;
+        c->SetContainerStyle(s);
+    };
+    noScroll(toolbar);
+    noScroll(bar);
 
     // ----- Mail area: inbox table | message details -----
     mailView_.SetStore(&store_);
@@ -293,10 +315,17 @@ void UltraMailApp::HandleReload() {
     // Say what is missing before asking for a master password that would
     // then unlock nothing useful.
     if (!ImapPlugin()) { ReportMissingImapPlugin(); return; }
+    // Reload acts on the account whose tile is selected (the one whose inbox is
+    // shown), not every account: it must not fetch — or pop a settings dialog
+    // for — an account the user is not looking at. The periodic background sync
+    // still covers the rest. Fall back to the first account if nothing is
+    // selected (should not happen once accounts exist).
+    std::string target = selectedAccount_;
+    if (target.empty()) target = accounts_.front().accountId;
     // Reload is a foreground action, so unlike the timer it may ask for the
     // master password; the sync runs once the vault is open (not on Cancel).
-    EnsureVaultUnlocked([this]() {
-        RunSyncs(/*force=*/true);
+    EnsureVaultUnlocked([this, target]() {
+        SyncAccount(target);
         Refresh();
     });
 }
@@ -967,6 +996,49 @@ void UltraMailApp::HandleAddAccount() {
         [this](const AccountDraft& draft) { HandleWizardSubmit(draft); });
 }
 
+void UltraMailApp::HandleDeleteAccount(const std::string& accountId) {
+    const std::string email = EmailForAccount(accountId);
+    if (email.empty()) return;   // already gone / unknown id
+
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    UltraCanvasAlert::Confirm(
+        "Remove " + email + "?\n\nThis deletes the mail downloaded to this "
+        "computer for the account. Mail on the server is not affected.",
+        "Remove account",
+        [this, accountId, email, parent](bool confirmed) {
+            if (!confirmed) return;
+
+            // Stop future background syncs for the account first. An in-flight
+            // sync worker (syncsInFlight_) still holds valid store_/mailDir_
+            // references; at worst it re-inserts a few rows after this, which
+            // the next removal (or a restart) clears — acceptable here.
+            scheduler_.Remove(accountId);
+
+            // Forget the stored password / OAuth tokens. Best-effort: these are
+            // no-ops when the vault is locked, and the leftover encrypted
+            // entries are harmless (overwritten if the address is re-added).
+            vault_.Remove(accountId);
+            vault_.RemoveOAuthTokens(accountId);
+
+            // Delete the messages, folders and account row in one transaction.
+            if (UltraDbResult rm = store_.RemoveAccount(accountId); !rm) {
+                AlertError(parent, "The account could not be removed.", DetailLine(rm));
+                return;
+            }
+
+            // Delete the downloaded mail bodies (mailDir_/<accountId>/…).
+            std::error_code ec;
+            std::filesystem::remove_all(std::filesystem::path(mailDir_) / accountId, ec);
+
+            // Drop the selection; Refresh() re-selects the first account left.
+            if (selectedAccount_ == accountId) selectedAccount_.clear();
+            Refresh();
+
+            AlertSuccess(parent, email + " was removed.");
+        },
+        parent);
+}
+
 void UltraMailApp::HandleWizardSubmit(const AccountDraft& draft) {
     // 1. The provider table answers instantly for the well-known providers.
     DiscoveryResult disc = AutoDiscovery::FromPresets(draft.email);
@@ -1015,7 +1087,8 @@ void UltraMailApp::LookupServerSettings(const AccountDraft& draft) {
             const std::string password = draft.password;
             ServerSettingsDialog::Verifier verify;
             if (!password.empty()) {
-                verify = LoginVerifier([password](const std::string& username,
+                verify = LoginVerifier([password](const ServerSettingsDialog::Result&,
+                                                  const std::string& username,
                                                   UltraNetCredentials& c) {
                     c.type = UltraNetAuthType::Basic;
                     c.username = username;
@@ -1028,8 +1101,8 @@ void UltraMailApp::LookupServerSettings(const AccountDraft& draft) {
                 + ". Enter the servers from your provider's help page; the "
                   "sign-in is checked and the account added once they are saved.",
                 AutoDiscovery::GuessForDomain(draft.email),
-                [this, draft](const DiscoveryResult& manual) {
-                    CompleteAccountSetup(draft, manual);
+                [this, draft](const ServerSettingsDialog::Result& r) {
+                    CompleteAccountSetup(draft, r.settings);
                 },
                 verify);
         });
@@ -1053,8 +1126,9 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
         const std::string accountId = account.accountId;
         ServerSettingsDialog::Verifier verify;
         if (vault_.MethodFor(accountId) != SignInMethod::None) {
-            verify = LoginVerifier([this, accountId, current](const std::string& username,
-                                                                UltraNetCredentials& c) {
+            verify = LoginVerifier([this, accountId, current](
+                    const ServerSettingsDialog::Result&,
+                    const std::string& username, UltraNetCredentials& c) {
                 return ResolveCredentials(accountId, username, OAuthProviderFor(current), c);
             });
         }
@@ -1063,9 +1137,9 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
             "servers are not known. Enter them from your provider's help page; the "
             "sign-in is checked before they are saved.",
             current,
-            [this, account](const DiscoveryResult& manual) {
+            [this, account](const ServerSettingsDialog::Result& r) {
                 Account updated = account;
-                AutoDiscovery::ApplyTo(updated, manual);
+                AutoDiscovery::ApplyTo(updated, r.settings);
                 if (UltraDbResult up = store_.UpsertAccount(updated); !up) {
                     AlertError(window_ ? window_.get() : nullptr,
                                "The server settings could not be saved.", DetailLine(up));
@@ -1079,9 +1153,102 @@ void UltraMailApp::EditServerSettings(const std::string& accountId) {
     });
 }
 
+void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
+    const Account* found = nullptr;
+    for (const auto& a : accounts_) if (a.accountId == accountId) found = &a;
+    if (!found) return;
+    const Account account = *found;   // the list may change under the dialog
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+
+    DiscoveryResult current = SettingsFor(account);
+    if (!current.found) current = AutoDiscovery::GuessForDomain(account.email);
+
+    // Editing signs in with either a newly typed password or the account's
+    // stored credentials, so the vault is opened first (the later Store /
+    // OAuth sign-in then needs no second prompt).
+    EnsureVaultUnlocked([this, account, current, parent]() {
+        const std::string accountId = account.accountId;
+        // Capabilities come from the provider, not the current sign-in method,
+        // so a Gmail account created with a password can still switch to Google
+        // sign-in: Gmail offers both (app password OR OAuth), Outlook is OAuth
+        // only, a generic IMAP account is password only.
+        const std::string provider = OAuthProviderFor(current);   // "" for generic
+
+        ServerSettingsDialog::AccountFields fields;
+        fields.edit            = true;
+        fields.displayName     = account.displayName;
+        fields.acceptsPassword = ProviderAcceptsPassword(current);
+        fields.canOAuth        = !provider.empty();
+        fields.providerName    = provider.empty() ? std::string()
+                                                   : OAuthProviderDisplayName(provider);
+
+        // The login check uses the typed new password when present, else the
+        // account's stored credentials. It only runs on the password path; the
+        // OAuth button re-signs in through the browser instead.
+        ServerSettingsDialog::Verifier verify;
+        if (fields.acceptsPassword) {
+            verify = LoginVerifier([this, accountId, provider](
+                    const ServerSettingsDialog::Result& r,
+                    const std::string& username, UltraNetCredentials& c) {
+                if (!r.newPassword.empty()) {
+                    c.type = UltraNetAuthType::Basic;
+                    c.username = username;
+                    c.password = r.newPassword;
+                    return UltraNetResult::Ok();
+                }
+                return ResolveCredentials(accountId, username, provider, c);
+            });
+        }
+
+        ServerSettingsDialog::Show(parent, account.email,
+            "Edit the settings for " + account.email + ". The sign-in is checked "
+            "before the changes are saved.",
+            current,
+            [this, account, provider](const ServerSettingsDialog::Result& r) {
+                Account updated = account;
+                AutoDiscovery::ApplyTo(updated, r.settings);
+                updated.displayName =
+                    r.displayName.empty() ? LocalPart(account.email) : r.displayName;
+                if (UltraDbResult up = store_.UpsertAccount(updated); !up) {
+                    AlertError(window_ ? window_.get() : nullptr,
+                               "The account settings could not be saved.", DetailLine(up));
+                    return;
+                }
+                // A typed password replaces the stored one (the vault is open).
+                if (!r.newPassword.empty()) vault_.Store(account.accountId, r.newPassword);
+                Refresh();
+                StartBackgroundSync();
+                // The "Sign in with <provider>" button flags a re-auth: run the
+                // browser sign-in (switching a password account to OAuth too).
+                // Without a configured OAuth client, say what is missing rather
+                // than let the sign-in fail obscurely.
+                if (r.reauth) {
+                    if (!OAuthApps::Has(provider)) { ReportMissingOAuthClient(provider); return; }
+                    StartOAuthSignIn(account.accountId, account.email, provider);
+                    return;
+                }
+                SyncAccount(account.accountId);
+            },
+            verify, fields);
+    });
+}
+
+void UltraMailApp::ReportMissingOAuthClient(const std::string& providerId) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    const std::string name = OAuthProviderDisplayName(providerId);
+    std::string upper = providerId;
+    for (char& c : upper) c = static_cast<char>(std::toupper(static_cast<unsigned char>(c)));
+    AlertWarning(parent, "UltraMail cannot sign in to " + name + " yet.",
+                 "No OAuth client is configured for it. Put the client id of an "
+                 "OAuth client registered with " + name + " into " + dataDir_
+                 + "/oauth.ini under [" + providerId + "] (client_id = …), or set "
+                 "ULTRAMAIL_" + upper + "_CLIENT_ID — see Docs/UltraMail/AccountSetup.md.");
+}
+
 ServerSettingsDialog::Verifier UltraMailApp::LoginVerifier(
-        std::function<UltraNetResult(const std::string& username, UltraNetCredentials&)> credentials) {
-    return [this, credentials](const DiscoveryResult& settings,
+        std::function<UltraNetResult(const ServerSettingsDialog::Result& candidate,
+                                     const std::string& username, UltraNetCredentials&)> credentials) {
+    return [this, credentials](const ServerSettingsDialog::Result& candidate,
                                std::function<void(UltraNetResult)> onResult) {
         IMailboxProtocolPlugin* imap = ImapPlugin();
         if (!imap) {
@@ -1092,10 +1259,11 @@ ServerSettingsDialog::Verifier UltraMailApp::LoginVerifier(
         }
         // The check talks to the server (and may refresh an OAuth2 token
         // first), so it runs on a worker; the answer comes back on the UI.
-        std::thread([imap, settings, credentials, onResult]() {
+        const DiscoveryResult settings = candidate.settings;
+        std::thread([imap, candidate, settings, credentials, onResult]() {
             UltraNetCredentials c;
             UltraNetResult r = credentials
-                ? credentials(settings.imap.username, c) : UltraNetResult::Ok();
+                ? credentials(candidate, settings.imap.username, c) : UltraNetResult::Ok();
             if (r) r = LoginCheck::Imap(*imap, settings.imap, c);
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
             if (!app) return;

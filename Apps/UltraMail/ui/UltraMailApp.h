@@ -65,6 +65,11 @@ private:
     void ResizeViews(float width, float height);
 
     void HandleAddAccount();
+    // Confirm, then remove an account entirely: its background-sync entry, its
+    // vault credentials, its store rows (messages + folders + account) and its
+    // downloaded mail under mailDir_/<accountId>. Mail on the server is not
+    // touched. Falls back to the start page when the last account is removed.
+    void HandleDeleteAccount(const std::string& accountId);
     // The wizard's identity step is done: find the servers (provider table,
     // stored settings of an account with the same address, then the autoconfig
     // lookup on a worker thread, then the manual page) and complete the setup.
@@ -79,12 +84,18 @@ private:
     // known (or to correct them); checks the sign-in with the account's stored
     // credentials, saves, then syncs the account.
     void EditServerSettings(const std::string& accountId);
+    // The full account settings page (toolbar "Settings"): edit the display
+    // name, the IMAP/SMTP servers and the password — or re-run the browser
+    // sign-in for an OAuth account — checking the sign-in before saving.
+    void HandleAccountSettings(const std::string& accountId);
     // The settings page's login check: resolves the credentials through
     // `credentials` (on the worker) and lists the incoming server once with
     // the IMAP plug-in; the outcome is delivered on the UI thread. A missing
-    // plug-in is a failed check (the page then offers "Save anyway").
+    // plug-in is a failed check (the page then offers "Save anyway"). The
+    // candidate carries a typed new password when the user changed it.
     ServerSettingsDialog::Verifier LoginVerifier(
-        std::function<UltraNetResult(const std::string& username, UltraNetCredentials&)> credentials);
+        std::function<UltraNetResult(const ServerSettingsDialog::Result& candidate,
+                                     const std::string& username, UltraNetCredentials&)> credentials);
     // The servers an account uses: stored on the account, else the provider
     // table (AutoDiscovery::ForAccount).
     static DiscoveryResult SettingsFor(const Account& account);
@@ -100,6 +111,9 @@ private:
     // sync. Failures are reported with the provider's reason.
     void StartOAuthSignIn(const std::string& accountId, const std::string& email,
                           const std::string& providerId);
+    // Warn that "Sign in with <provider>" cannot run because no OAuth client id
+    // is configured, naming oauth.ini / the env var that would supply it.
+    void ReportMissingOAuthClient(const std::string& providerId);
     // The address of an account, or "" when unknown.
     std::string EmailForAccount(const std::string& accountId) const;
     // Resolve the IMAP/SMTP credentials of an account from the vault: its
@@ -110,8 +124,9 @@ private:
     // UI-owned account list.
     UltraNetResult ResolveCredentials(const std::string& accountId, const std::string& username,
                                       const std::string& providerId, UltraNetCredentials& out);
-    // "Reload email": sync every account now (when the IMAP plug-in is present)
-    // and re-read the store.
+    // "Reload email": sync the selected account now (when the IMAP plug-in is
+    // present) and re-read the store. Only the selected account, so Reload never
+    // fetches — or opens a settings dialog for — an account not in view.
     void HandleReload();
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);

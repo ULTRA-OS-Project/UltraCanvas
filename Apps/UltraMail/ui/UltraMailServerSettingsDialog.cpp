@@ -1,5 +1,7 @@
 // Apps/UltraMail/ui/UltraMailServerSettingsDialog.cpp
-// Version: 0.2.0 - login check before saving
+// Version: 0.3.2 - password and/or "Sign in with <provider>" per capability;
+//                  the sign-in error grows to fit; saving preserves the
+//                  account's OAuth/provider identity (does not clear it)
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailServerSettingsDialog.h"
 
@@ -60,12 +62,16 @@ int ParsePort(const std::string& text) {
 
 void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string& email,
                                 const std::string& intro, const DiscoveryResult& prefill,
-                                std::function<void(const DiscoveryResult&)> onSave,
-                                Verifier verify) {
+                                std::function<void(const Result&)> onSave,
+                                Verifier verify, const AccountFields& account) {
     DialogConfig config;
-    config.title      = "Server settings for " + email;
+    config.title      = account.edit ? ("Settings for " + email)
+                                      : ("Server settings for " + email);
     config.width      = 520;
-    config.height     = 330;
+    // The account settings page carries a display-name row and up to two
+    // credential rows (a password field and/or a "Sign in with …" button) on
+    // top of the server rows, plus room for a multi-line sign-in error.
+    config.height     = account.edit ? 460 : 340;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;  // Custom dialog builds its own.
 
@@ -87,6 +93,27 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     introLine->SetWrap(TextWrap::WrapWord);
     content->AddChild(introLine);
     introLine->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    // Display-name row (account settings page only), above the servers.
+    std::shared_ptr<UltraCanvasTextInput> nameInput;
+    if (account.edit) {
+        auto row = CreateContainer("srvNameRow", 0, 0, 0, Theme::kControlHeight);
+        row->layout.SetFlexRow()
+                   .SetFlexGap(Theme::kInnerGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        auto label = Theme::MakeLine("srvNameLbl", "Display name", Theme::kControlHeight,
+                                     Theme::kSizeBody, Theme::kTextSecondary);
+        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
+        row->AddChild(label);
+        nameInput = CreateTextInput("srvName", 0, 0, 0, Theme::kControlHeight);
+        nameInput->SetPlaceholder(EmailLocalPart(email));
+        nameInput->SetText(account.displayName);
+        Theme::StyleInput(nameInput);
+        row->AddChild(nameInput);
+        nameInput->layoutItem.SetFlexGrow(1);
+        content->AddChild(row);
+        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    }
 
     // One server row: caption · host (grows) · port · security.
     struct ServerRow {
@@ -152,6 +179,45 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     content->AddChild(userRow);
     userRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
+    // Credential rows (account settings page only). A provider may offer both:
+    // Gmail takes an app password OR "Sign in with Google", so a password row
+    // and an OAuth-button row can appear together. The OAuth button's action is
+    // wired below, once collect/result exist.
+    auto credRow = [&content](const std::string& id, const std::string& caption) {
+        auto row = CreateContainer(id, 0, 0, 0, Theme::kControlHeight);
+        row->layout.SetFlexRow()
+                   .SetFlexGap(Theme::kInnerGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        auto label = Theme::MakeLine(id + "Lbl", caption, Theme::kControlHeight,
+                                     Theme::kSizeBody, Theme::kTextSecondary);
+        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
+        row->AddChild(label);
+        content->AddChild(row);
+        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return row;
+    };
+
+    std::shared_ptr<UltraCanvasTextInput> passInput;
+    std::shared_ptr<UltraCanvasButton>    oauthBtn;
+    if (account.edit && account.acceptsPassword) {
+        auto row = credRow("srvPassRow", "Password");
+        passInput = CreatePasswordInput("srvPass", 0, 0, 0, Theme::kControlHeight);
+        passInput->SetPlaceholder("Leave blank to keep the current password");
+        Theme::StyleInput(passInput);
+        row->AddChild(passInput);
+        passInput->layoutItem.SetFlexGrow(1);
+    }
+    if (account.edit && account.canOAuth) {
+        auto row = credRow("srvOAuthRow", "Sign-in");
+        const std::string prov = account.providerName.empty() ? "the provider"
+                                                              : account.providerName;
+        oauthBtn = CreateButton("srvReauth", 0, 0, 0, Theme::kControlHeight,
+                                "Sign in with " + prov);
+        Theme::StyleSecondary(oauthBtn);
+        row->AddChild(oauthBtn);
+        oauthBtn->layoutItem.SetFlexGrow(1);
+    }
+
     auto note = Theme::MakeLine("srvNote",
         "Ports are usually 993 (IMAP, SSL/TLS) or 143 (STARTTLS), and 465 (SMTP, "
         "SSL/TLS) or 587 (STARTTLS). Most providers list them under \"mail program "
@@ -161,10 +227,14 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     content->AddChild(note);
     note->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    // Validation feedback, in place.
-    auto status = Theme::MakeLine("srvStatus", "", 16, Theme::kSizeBody, Theme::kWaitingText);
+    // Validation feedback, in place. It grows into the column's spare vertical
+    // space so a long sign-in error wraps across as many lines as it needs
+    // instead of being clipped to one line.
+    auto status = Theme::MakeText("srvStatus", "", Theme::kSizeBody, Theme::kWaitingText);
     status->SetWrap(TextWrap::WrapWord);
+    status->SetAlignment(TextAlignment::Left);
     content->AddChild(status);
+    status->layoutItem.SetFlexGrow(1);
     status->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     dialog->AddChild(content);
@@ -183,10 +253,12 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
 
     // The validated result, filled by Save and handed out when the dialog
     // closes with OK.
-    auto result = std::make_shared<DiscoveryResult>();
+    auto result = std::make_shared<Result>();
     // Read + validate the fields; false (with the reason in `status`) when
-    // something is missing.
-    auto collect = [imap, smtp, user, status, email](DiscoveryResult& r) {
+    // something is missing. Fills the servers plus, on the settings page, the
+    // edited display name and any typed new password.
+    auto collect = [imap, smtp, user, status, email, nameInput, passInput, prefill](Result& out) {
+        DiscoveryResult& r = out.settings;
         r = DiscoveryResult{};
         r.imap.host = Trim(imap.host->GetText());
         r.imap.port = ParsePort(imap.port->GetText());
@@ -197,6 +269,14 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         const std::string username = Trim(user->GetText());
         r.imap.username = username.empty() ? email : username;
         r.smtp.username = r.imap.username;
+        // Carry the provider identity the page does not edit — the OAuth
+        // capability flags and the provider name — so saving edited servers
+        // does not silently turn a Gmail/Outlook account into a generic one.
+        r.imap.oauth  = prefill.imap.oauth;
+        r.smtp.oauth  = prefill.smtp.oauth;
+        r.displayName = prefill.displayName;
+        out.displayName = nameInput ? Trim(nameInput->GetText()) : std::string();
+        out.newPassword = passInput ? passInput->GetText() : std::string();  // not trimmed
 
         if (r.imap.host.empty())      { status->SetText("Enter the incoming (IMAP) server."); return false; }
         if (r.imap.port == 0)         { status->SetText("The incoming port must be a number from 1 to 65535."); return false; }
@@ -207,13 +287,26 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         return true;
     };
 
+    // The OAuth "Sign in again" button saves the (validated) name + servers and
+    // flags a re-auth; the app then runs the browser sign-in. No login check
+    // here — the check is the browser round-trip.
+    if (oauthBtn) {
+        oauthBtn->onClick = [dlg, collect, result]() {
+            Result r;
+            if (!collect(r)) return;
+            r.reauth = true;
+            *result = r;
+            dlg->CloseDialog(DialogResult::OK);
+        };
+    }
+
     // "Save anyway" appears after a failed check, for a server that is down
     // right now or a check that could not run (no plug-in).
     auto anywayBtn = CreateButton("srvSaveAnyway", 0, 0, 130, Theme::kControlHeight, "Save anyway");
     Theme::StyleSecondary(anywayBtn);
     anywayBtn->SetVisible(false);
     anywayBtn->onClick = [dlg, collect, result]() {
-        DiscoveryResult r;
+        Result r;
         if (!collect(r)) return;
         *result = r;
         dlg->CloseDialog(DialogResult::OK);
@@ -231,7 +324,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     UltraCanvasButton* save   = saveBtn.get();
     UltraCanvasButton* anyway = anywayBtn.get();
     saveBtn->onClick = [weak, collect, result, verify, status, save, anyway]() {
-        DiscoveryResult r;
+        Result r;
         if (!collect(r)) return;
         auto dlg = weak.lock();
         if (!dlg) return;
@@ -241,7 +334,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
             return;
         }
         status->SetTextColor(Theme::kTextSecondary);
-        status->SetText("Checking the sign-in at " + r.imap.host + "…");
+        status->SetText("Checking the sign-in at " + r.settings.imap.host + "…");
         save->SetDisabled(true);
         anyway->SetVisible(false);
         verify(r, [weak, result, r, status, save, anyway](UltraNetResult outcome) {
@@ -255,7 +348,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
             save->SetDisabled(false);
             status->SetTextColor(Theme::kWaitingText);
             const std::string detail = DetailLine(outcome);
-            status->SetText("The sign-in at " + r.imap.host + " did not succeed: "
+            status->SetText("The sign-in at " + r.settings.imap.host + " did not succeed: "
                             + FriendlyMessage(outcome)
                             + (detail.empty() ? "" : " (" + detail + ")"));
             anyway->SetVisible(true);
@@ -267,7 +360,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     UltraCanvasDialogManager::ShowDialog(
         dialog,
         [result, onSave](DialogResult res) {
-            if (res == DialogResult::OK && result->found && onSave) onSave(*result);
+            if (res == DialogResult::OK && result->settings.found && onSave) onSave(*result);
         },
         parent);
 }

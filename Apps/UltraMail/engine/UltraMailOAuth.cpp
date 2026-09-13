@@ -131,7 +131,12 @@ void OAuthApps::Clear() {
 // ===== Providers ==============================================================
 
 std::string OAuthProviderFor(const DiscoveryResult& discovery) {
-    if (!discovery.found || !discovery.imap.oauth) return "";
+    // Detect the provider from its (unambiguous) IMAP host or display name, not
+    // from a stored oauth flag: the flag can be lost when an account's settings
+    // are edited and re-saved, but imap.gmail.com is always Google. Resolving a
+    // password Gmail account to "google" is harmless — CredentialsFor still
+    // uses its password when no OAuth token is stored.
+    if (!discovery.found) return "";
     if (discovery.imap.host == "imap.gmail.com" || discovery.displayName == "Gmail")
         return "google";
     if (discovery.imap.host == "outlook.office365.com" || discovery.displayName == "Outlook")
