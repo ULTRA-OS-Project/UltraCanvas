@@ -1,3 +1,38 @@
+#### 2026-09-12 *0.8.38*
+- **LaTeX: the module is actually shipped in the Windows and macOS packages,
+  and is found there.** The demo's "LaTeX Documents" page in the Windows
+  package (`UCDemo-Windows-*`) reported "LaTeX module (UltraCanvasLaTeX.dll)
+  not found ... LoadLibrary failed (code 126)" for every candidate: the
+  module is a dlopen()ed CMake MODULE, which CMake emits to `build/lib`
+  rather than the build root, so `package-win.sh`'s `cp ./build/*.dll` never
+  picked it up - and a MinGW build named it `libUltraCanvasLaTeX.dll`, a
+  name the loader never asked for. `package-macos.sh` did not bundle it
+  either. So none of the LaTeX work was visible in a packaged demo.
+  - `UltraCanvas/CMakeLists.txt`: the module gets `PREFIX ""` on Windows,
+    matching the loader's `UltraCanvasLaTeX.dll` (as the chart element
+    modules already do), and `SUFFIX ".dylib"` on macOS - CMake's default
+    for a MODULE there is `.so`, so the file had never carried the name the
+    loader and the bundle script look for.
+  - `package-win.sh` ships the module as `lib/UltraCanvasLaTeX.dll`, runs it
+    through the PE header check, and warns loudly when the build has none;
+    the transitive DLL pass already walks subdirectories.
+  - `package-macos.sh` bundles it as `Contents/PlugIns/libUltraCanvasLaTeX.dylib`,
+    collects and rewrites its Homebrew dependencies like the executable's,
+    and signs it with the frameworks.
+  - `core/UltraCanvasLaTeXModuleLoader.cpp`: probes both DLL names on
+    Windows, both `.dylib` and `.so` names plus `<exe>/../PlugIns/` on macOS; opens absolute paths with
+    `LOAD_WITH_ALTERED_SEARCH_PATH` so a module in `lib/` resolves the core
+    DLL beside the executable; spells out codes 126 and 193 in the error.
+  - Demo: the LaTeX Documents menu entry no longer credits MicroTeX, and the
+    page no longer has a reference-image path. A pre-rendered `.png` / `.gif`
+    beside a `.tex` demonstrated nothing of the framework; every file now
+    goes through a live path - the LaTeX view for a formula-only document,
+    the document reader for everything else, which reports what it cannot
+    typeset (a TikZ picture, an unknown package) as a diagnostic in the
+    header while the rest of the document still renders. `media/LaTex`
+    holds `.tex` sources only.
+  - `Docs/UltraCanvas/UltraCanvasLaTeXView.md`: search order updated.
+
 #### 2026-09-12 *0.8.37*
 - **A double-click that opens nothing now says so on macOS too.** The default
   open spawned `/usr/bin/open` detached - and a detached spawn never sees the

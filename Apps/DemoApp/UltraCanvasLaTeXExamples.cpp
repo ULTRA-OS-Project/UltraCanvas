@@ -6,25 +6,24 @@
 // Every file is rendered *live* from its source, on one of two paths:
 //   * a formula-only document (a single \[ ... \] / equation body) is typeset
 //     by the on-demand LaTeX module's math engine in a UltraCanvasLaTeXView;
-//   * an article-style document (sections, lists, tables, figures, ...) is
-//     imported by UltraCanvasLaTeXDocumentReader into the rich-document
-//     model and shown as rendered Markdown in a read-only TextArea, where its
-//     formulas are typeset inline by the same engine.
-// Only TikZ / pgfplots pictures are outside both paths; such a document
-// falls back to a reference .png/.gif sitting beside the source (labelled
-// honestly as a reference render) if one exists.
+//   * any other document (sections, lists, tables, figures, ...) is imported
+//     by UltraCanvasLaTeXDocumentReader into the rich-document model and
+//     shown as rendered Markdown in a read-only TextArea, where its formulas
+//     are typeset inline by the same engine.
+// Nothing on this page is a pre-rendered picture: what the framework cannot
+// typeset (a TikZ / pgfplots picture, an unknown package) the reader reports
+// as a diagnostic in the header while the rest of the document still renders.
 //
 // New examples appear automatically when a .tex file is dropped into the
 // media/LaTex folder.
-// Version: 3.0.0
-// Last Modified: 2026-09-09
+// Version: 3.1.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasLabel.h"
-#include "UltraCanvasImageElement.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasUtils.h"    // NormalizePath, LoadFile, Trim
@@ -46,21 +45,6 @@ namespace {
         std::transform(s.begin(), s.end(), s.begin(),
                        [](unsigned char c) { return std::tolower(c); });
         return s;
-    }
-
-    // TikZ / pgfplots pictures are beyond both the math engine and the
-    // document reader (proposal Phase 4): such a file shows its reference
-    // image.
-    bool UsesTikZ(const std::string& source) {
-        static const char* kMarkers[] = {
-            "tikzpicture", "pgfplot", "\\begin{axis}", "tikzset",
-            "usetikzlibrary", "\\tikz", "pgfmath", "\\draw", "\\node",
-        };
-        const std::string lower = ToLowerCopy(source);
-        for (const char* marker : kMarkers) {
-            if (lower.find(marker) != std::string::npos) return true;
-        }
-        return false;
     }
 
     // Pull the body out of a full .tex document: the content between
@@ -134,39 +118,6 @@ namespace {
         return std::string();
     }
 
-    // Reference-image fallback for TikZ documents — clearly labelled as a
-    // reference render, not a live one.
-    std::shared_ptr<UltraCanvasUIElement> CreateReferenceImage(
-        const std::filesystem::path& texPath, const std::string& stem) {
-
-        std::filesystem::path imagePath = texPath;
-        imagePath.replace_extension(".png");
-        std::error_code ec;
-        if (!std::filesystem::exists(imagePath, ec)) {
-            imagePath.replace_extension(".gif");
-        }
-
-        if (std::filesystem::exists(imagePath, ec)) {
-            auto image = std::make_shared<UltraCanvasImageElement>("LaTeXImage_" + stem, 0, 0, 0, 0);
-            image->LoadFromFile(imagePath.string());
-            image->SetFitMode(ImageFitMode::Contain);
-            image->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            return image;
-        }
-
-        auto missing = std::make_shared<UltraCanvasLabel>("LaTeXNoImage_" + stem, 0, 0, 0, 0);
-        missing->SetText("This document uses TikZ / pgfplots graphics, which are outside the\n"
-                         "built-in LaTeX support, and no reference image (" + stem +
-                         ".png / .gif) was found beside the source.");
-        missing->SetFontSize(12);
-        missing->SetTextColor(Color(150, 60, 60, 255));
-        missing->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
-        missing->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        return missing;
-    }
-
     // Article-style documents: the reader's rich document, serialized to
     // Markdown and rendered by the TextArea (formulas typeset inline).
     std::shared_ptr<UltraCanvasUIElement> CreateDocumentView(
@@ -224,10 +175,10 @@ namespace {
         page->SetPadding(8, 10, 8, 10);
         page->SetBackgroundColor(Colors::White);
 
-        // Decide the rendering path.
-        const bool tikz = UsesTikZ(source);
-        const std::string formula = tikz ? std::string() : ExtractSingleFormula(source);
-        const bool formulaDoc = !tikz && !formula.empty();
+        // Decide the rendering path: a formula-only document goes to the
+        // LaTeX view, everything else to the document reader.
+        const std::string formula = ExtractSingleFormula(source);
+        const bool formulaDoc = !formula.empty();
         std::shared_ptr<UltraCanvasLaTeXView> liveView;
         if (formulaDoc) {
             liveView = CreateLaTeXView("LaTeXView_" + stem, 0, 0, 0, 0);
@@ -263,13 +214,9 @@ namespace {
             failed->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                               .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
             body = failed;
-        } else if (!tikz) {
+        } else {
             body = CreateDocumentView(texPath, stem, headerText);
             headerColor = Color(40, 80, 140, 255);
-        } else {
-            headerText = "Reference image (this document uses TikZ / pgfplots pictures):";
-            headerColor = Color(150, 90, 40, 255);
-            body = CreateReferenceImage(texPath, stem);
         }
 
         // ----- Rendered output header -----
@@ -282,8 +229,7 @@ namespace {
         page->AddChild(renderedLabel);
 
         // ----- Rendered output body -----
-        // A centred, growing area that holds the live view, the document view
-        // or the image.
+        // A centred, growing area that holds the live view or the document view.
         auto renderArea = std::make_shared<UltraCanvasContainer>("LaTeXRenderArea_" + stem, 0, 0, 0, 0);
         renderArea->layout.SetFlexRow()
                           .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
@@ -346,8 +292,8 @@ namespace {
         root->AddChild(info);
 
         auto note = std::make_shared<UltraCanvasLabel>("LaTeXScopeNote", 0, 0, 0, 18);
-        note->SetText("Scope: math (amsmath) and the article document subset; "
-                      "TikZ / pgfplots pictures fall back to a reference image beside the source.");
+        note->SetText("Scope: math (amsmath) and the article document subset. Everything shown "
+                      "is typeset by the framework; what it cannot render is reported as a diagnostic.");
         note->SetFontSize(11);
         note->SetTextColor(Color(90, 90, 90, 255));
         note->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
@@ -403,17 +349,10 @@ namespace {
         tabs->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                         .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        int firstLiveTab = -1;
-        for (size_t i = 0; i < texFiles.size(); ++i) {
-            const auto& texPath = texFiles[i];
-            if (firstLiveTab < 0 && !UsesTikZ(LoadFile(texPath.string()))) {
-                firstLiveTab = static_cast<int>(i);
-            }
+        for (const auto& texPath : texFiles) {
             tabs->AddTab(texPath.stem().string(), CreateLaTeXTabPage(texPath));
         }
-        // Open on a live-rendered document so the framework's own output is
-        // the first thing the user sees.
-        tabs->SetActiveTab(firstLiveTab >= 0 ? firstLiveTab : 0);
+        tabs->SetActiveTab(0);
         root->AddChild(tabs);
 
         return root;

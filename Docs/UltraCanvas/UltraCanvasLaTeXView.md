@@ -73,13 +73,24 @@ height of `0` lets the element size itself to the formula via the layout engine.
 
 ## Where the module and font are found
 
-On first use the loader searches for the module in this order:
+On first use the loader searches for the module — `libUltraCanvasLaTeX.so`,
+`libUltraCanvasLaTeX.dylib` or `UltraCanvasLaTeX.dll` (the older names a
+build tree may still carry, `libUltraCanvasLaTeX.dll` on MinGW and
+`libUltraCanvasLaTeX.so` on macOS, are accepted too) — in this order:
 1. a path set via `SetLaTeXModulePath(...)`,
 2. `$ULTRACANVAS_PLUGIN_DIR`,
 3. `<exe>/`, `<exe>/plugins/`, `<exe>/lib/` (dev build: executable at the
-   build root, module in `<build>/lib`), `<exe>/../lib/` (package: executable
-   in `bin/`), `<exe>/../lib/ultracanvas/`,
+   build root, module in `<build>/lib`; also the Windows package, which ships
+   the module in `lib/`), `<exe>/../lib/` (Linux package: executable in
+   `bin/`), `<exe>/../lib/ultracanvas/`, and on macOS `<exe>/../PlugIns/`
+   (the `.app` bundle's `Contents/PlugIns/`),
 4. the dynamic linker's own search path (rpath / `LD_LIBRARY_PATH`).
+
+On Windows an absolute candidate is opened with
+`LOAD_WITH_ALTERED_SEARCH_PATH`, so a module in `lib/` finds the core DLL and
+the runtime beside the executable. A `LoadLibrary` code 126 in
+`GetLaTeXModuleError()` means the file, or a DLL it imports, is missing from
+the package.
 
 The module then loads the math font — `latinmodern-math.otf` for the native
 engine, `latinmodern-math.clm2` (+ `.otf`) for MicroTeX — from the first
