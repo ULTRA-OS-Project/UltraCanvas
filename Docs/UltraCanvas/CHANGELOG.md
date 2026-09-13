@@ -1,4 +1,4 @@
-#### 2026-09-13 *0.8.40*
+#### 2026-09-13 *0.8.41*
 - **3DS, COLLADA and X3D/VRML now write as well as read.** Six of the plugin's
   formats are writable where three were: OBJ, PLY and STEP are joined by
   `.3ds`, `.dae`, and X3D in **both** of its text encodings - `.x3d` emits XML
@@ -42,7 +42,7 @@
   `media/3D/STL` - and the changelog's historical entries were deliberately left
   naming the old paths, because they describe where the files were at the time.
 
-#### 2026-09-13 *0.8.39*
+#### 2026-09-13 *0.8.40*
 - **The demo app's 3D section now shows the formats the framework reads.** It
   had two entries - STL, and an OpenGL tab whose meshes came from the demo's
   own Wavefront OBJ parser - so 3DS, COLLADA, FBX, Alembic, DirectX .x,
@@ -87,6 +87,24 @@
 - Both new demo sources are guarded by `ULTRACANVAS_HAS_MODELS_PLUGIN` and
   compiled only when the plugin is built; neither is inside the GL guard, since
   `UltraCanvasSTLElement` draws a shaded software still without OpenGL.
+
+#### 2026-09-13 *0.8.39*
+- **A cut and paste now tells the host about both ends of the move.**
+  `onFolderModified` named the folder the entries landed in and nothing else,
+  so the folder they were taken *out* of was never reported - and a host that
+  keeps a folder tree (UltraFiler) had no way to learn that a folder had left
+  it. Cutting a folder with `Ctrl+X` and pasting it elsewhere left its row, and
+  its whole subtree, sitting under the folder it had moved away from until the
+  application was restarted.
+- The paste machinery now remembers the parent folder of every source a move
+  really renamed away (`PendingPaste::vacatedFolders`) and reports each of them
+  once, after the destination has been dealt with. A cut pasted back into the
+  folder it came from is still a no-op and reports nothing, and a copy reports
+  only the destination, as before.
+- A drop onto a subfolder no longer reports the folder the files came from by
+  hand - the same mechanism names it. It names it by path rather than as "the
+  folder I show", so it is now reported in a file-list display too, where an
+  unnamed folder is dropped.
 
 #### 2026-09-12 *0.8.38*
 - **LaTeX: the module is actually shipped in the Windows and macOS packages,
