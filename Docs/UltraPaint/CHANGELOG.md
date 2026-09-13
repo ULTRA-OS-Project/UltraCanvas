@@ -1,3 +1,16 @@
+#### 2026-09-13 *0.2.4*
+- **UltraPaint has a new icon.** The three overlapping brush strokes replace
+  the blue palette everywhere the editor is drawn: the window and the taskbar
+  entry that follows it, the launcher in an application menu and in a filer,
+  and the icon compiled into the Windows `.exe`. Only
+  `media/appicon/UltraPaint.svg` had been redrawn, and that is the *scalable*
+  half of a pair - `SetDefaultWindowIcon`, the `.ico` the build generates and
+  the `256x256` entry `make install` writes all read
+  `media/appicon/UltraPaint.png`, which still held the old artwork, so the new
+  icon appeared only where a desktop happened to prefer the SVG. The PNG is
+  rendered from the SVG through librsvg, which is what the framework itself
+  draws SVG with, so the scalable and the fixed-size icon agree at every size.
+
 #### 2026-09-13 *0.2.3*
 - **The Adjust and Filter dialogs are visible again.** Every dialog the editor
   opens is now created as the window's own - transient for it and centred on
