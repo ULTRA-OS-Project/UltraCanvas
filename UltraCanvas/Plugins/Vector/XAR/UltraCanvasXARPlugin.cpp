@@ -242,9 +242,9 @@ namespace UltraCanvas {
         int h = def->fillPixmap->GetHeight();
         auto tinted = std::make_shared<UCPixmap>();
         if (!tinted->Init(w, h)) return def->fillPixmap.get();
-        // Empirically verified against Xara's own renderings (the cogwheel in
-        // media/vector/XAR/demo.xar against the file's embedded preview, and a
-        // flattened soft-shadow contone against its author's PDF export):
+        // Empirically verified against Xara's own renderings (a cogwheel
+        // drawing compared with the file's embedded preview, and a flattened
+        // soft-shadow contone against its author's PDF export):
         // luminance 0 maps to the fill's START colour, luminance 255 to the
         // END colour, and the bitmap's own (inverted) alpha is preserved so
         // the page shows through transparent regions.
@@ -488,7 +488,8 @@ namespace UltraCanvas {
         // that ellipse, offset half a step from the axes — so a 4-sided
         // shape with axis-aligned axes is an axis-aligned square whose
         // corners sit at (±major + ±minor)/√2. Verified against the square
-        // mosaics in backside.xar (21.5pt grid pitch = the square side).
+        // mosaics of a Xara-authored test drawing (21.5pt grid pitch = the
+        // square side).
         const bool asEllipse = isCircular;
         const int count = asEllipse ? 64 : n;
         const double vertexStep = asEllipse ? (2.0 * M_PI / count) : step;

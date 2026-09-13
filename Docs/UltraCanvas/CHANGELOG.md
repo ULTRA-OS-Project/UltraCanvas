@@ -1,3 +1,31 @@
+#### 2026-09-13 *0.8.39*
+- **Demo: the vector pages cover every sample the repo actually ships.**
+  - `media/vector/XAR/`: `demo.xar` and the lower-case `backside.xar` are
+    gone; the three Xara Designer Pro X19 drawings that remain -
+    `Midget.xar`, `Apple5.xar` and `Backside.xar` - are what the demo shows.
+    The XAR page now has a tile per drawing (it showed two) and a second
+    panel describing what each one exercises: 524 paths over multi-stage
+    linear and elliptical fills plus 7 text stories (Midget), 691
+    filled-and-stroked paths in 3 groups (Apple5), and 259 paths, 175
+    QuickShape polygons, 46 soft shadows and 26 text stories (Backside).
+    Counts are `Tests/XARProbeTest`'s, which now defaults to those three
+    files rather than the two that were deleted.
+  - New **AI Artwork** page (`DemoApp/UltraCanvasAIExamples.cpp`, Vector
+    Elements) for `media/vector/AI/`, the one vector folder with no demo.
+    Since Illustrator 9 an `.ai` file *is* a PDF - both samples are
+    `%PDF-1.5`, one page, with Illustrator's `AIPrivateData` stream attached -
+    so the page reads them with the MuPDF-backed `UltraCanvasPDFView`:
+    a sample dropdown, page navigation, zoom / fit-page / fit-width, a live
+    zoom read-out and a panel spelling out that reading is the PDF engine's
+    job and writing is the Vector plugin's export-only `AIConverter`.
+    `UltraCanvasPDFView::LoadFromPath()` names the format
+    (`"application/pdf"`) rather than guessing it from the extension, and
+    MuPDF's own detection reads the `%PDF-` header, so neither load path
+    needs an `.ai` special case. Documented in
+    `Docs/UltraCanvas/UltraCanvasAIExamples.md`.
+  - The stray `info.txt` placeholders under `media/` (seven of them, six
+    empty) are deleted; no code or doc referenced them.
+
 #### 2026-09-12 *0.8.38*
 - **LaTeX: the module is actually shipped in the Windows and macOS packages,
   and is found there.** The demo's "LaTeX Documents" page in the Windows

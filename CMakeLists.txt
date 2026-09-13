@@ -402,6 +402,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLevelMeterExamples.cpp
             Apps/DemoApp/UltraCanvasAudioAnalysisExamples.cpp
             Apps/DemoApp/UltraCanvasPDFExamples.cpp
+            Apps/DemoApp/UltraCanvasAIExamples.cpp
             Apps/DemoApp/UltraCanvasLaTeXExamples.cpp
             Apps/DemoApp/UltraCanvasFileLoaderExamples.cpp
             Apps/DemoApp/UltraCanvasVideoExamples.cpp
