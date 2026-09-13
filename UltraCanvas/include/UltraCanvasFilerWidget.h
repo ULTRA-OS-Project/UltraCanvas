@@ -571,6 +571,22 @@ namespace UltraCanvas {
         void SetShowHiddenFiles(bool show);
         bool GetShowHiddenFiles() const { return showHiddenFiles; }
 
+        // Hidden-items notice: a strip along the foot of the display naming
+        // how many entries the listing leaves out - the hidden ones, plus
+        // what a curated home folder (SetCuratedHomeFolder) keeps back - with
+        // a "Show hidden files" button that switches this display to showing
+        // everything. It only appears while something IS left out, and takes
+        // its height out of the file area, so no entry is drawn under it.
+        // Off by default: hosts switch it on for the folders where the
+        // display holds something back the user never asked to hide
+        // (UltraFiler does for the home folder).
+        void SetHiddenItemsNoticeEnabled(bool enabled);
+        bool IsHiddenItemsNoticeEnabled() const { return hiddenNoticeEnabled; }
+        // How many entries the current listing leaves out - hidden entries
+        // and, in a curated home folder, the subfolders the curation drops.
+        // 0 while hidden files are shown, since then nothing is held back.
+        int GetHiddenItemCount() const { return hiddenItemCount; }
+
         // "In use" marking: whether the display says that another program is
         // holding a file - the reason an overwrite, a rename or a delete of it
         // fails. Each shown file is probed in the background (one open that is
@@ -1154,6 +1170,13 @@ namespace UltraCanvas {
         std::function<void()> onFilterEmptyAction;
         std::shared_ptr<UltraCanvasButton> filterEmptyButton;
         bool showHiddenFiles = false;
+        // Hidden-items notice (SetHiddenItemsNoticeEnabled): whether the host
+        // wants the strip at all, how many entries the last scan left out,
+        // and the "Show hidden files" button of the strip - another real
+        // UltraCanvasButton child this self-rendered view draws itself.
+        bool hiddenNoticeEnabled = false;
+        int  hiddenItemCount = 0;
+        std::shared_ptr<UltraCanvasButton> hiddenNoticeButton;
         bool showLockState = true;
         // Whether the shown entries are files on disk (a real folder, or the
         // file-list display's found paths) rather than the interior of an
@@ -1827,8 +1850,12 @@ namespace UltraCanvas {
         // entry, no widget state touched — runs on the prefetch worker as well
         // as the UI thread. With includeHidden the hidden entries are listed
         // too (flagged), so a prefetched listing can serve either setting.
+        // Without it they are skipped before the stat they would cost, and
+        // `hiddenSkipped` (when given) counts how many were left out - what
+        // the hidden-items notice says.
         void ScanRealDirectory(const std::string& path, bool includeHidden,
-                               std::vector<FilerEntry>& out) const;
+                               std::vector<FilerEntry>& out,
+                               int* hiddenSkipped = nullptr) const;
         // Fills `e` by stat-ing `path` (name, sizes, times, type info); false
         // when the path no longer exists. Used by the file-list display.
         bool StatEntryForPath(const std::string& path, FilerEntry& e) const;
@@ -2006,6 +2033,21 @@ namespace UltraCanvas {
         // the label with the pass's context).
         void UpdateFilterEmptyButton();
         void PositionFilterEmptyButton(IRenderContext* ctx);
+        // ===== HIDDEN-ITEMS NOTICE (helpers) =====
+        // Is the strip on screen right now? (Wanted by the host, something
+        // held back, hidden files off, and a view that has a foot to put it
+        // on - the whole-area views have none.)
+        bool HiddenNoticeVisible() const;
+        // The strip's height when it is shown, and where it sits: across the
+        // foot of the display, above the selection info bar.
+        int  HiddenNoticeStripHeight() const;
+        Rect2Di HiddenNoticeBar() const;
+        // "3 items are hidden here" for the count of the current listing.
+        std::string HiddenNoticeText() const;
+        // Create / show / hide the strip's button for the current listing.
+        void UpdateHiddenNoticeButton();
+        void PositionHiddenNoticeButton(IRenderContext* ctx);
+        void DrawHiddenItemsNotice(IRenderContext* ctx);
         void DrawEntryIcon(IRenderContext* ctx, const FilerEntry& e,
                            const Rect2Di& rect,
                            ImageFitMode imageFit = ImageFitMode::Contain);
@@ -2050,9 +2092,18 @@ namespace UltraCanvas {
         // splitter). No-op for the views without columns.
         void DrawColumnSplitters(IRenderContext* ctx, const Rect2Di& bounds);
         void DrawSelectionInfoBar(IRenderContext* ctx, const Rect2Di& bounds);
-        int  InfoBarHeight() const {
+        // The selection info bar's own height, and the hidden-items strip's
+        // above it.
+        int  SelectionInfoBarHeight() const {
             return (showSelectionInfo && style.infoBarHeight > 0)
                     ? style.infoBarHeight : 0;
+        }
+        int  HiddenNoticeHeight() const;
+        // Everything the two bottom strips take off the file area. The view
+        // layout, the scroll extents and ContentBounds all measure the file
+        // area with this, so neither strip ever has an entry under it.
+        int  InfoBarHeight() const {
+            return SelectionInfoBarHeight() + HiddenNoticeHeight();
         }
         bool IsInInfoBar(const Point2Di& localPoint) const;
         // Selection description for the info bar: `primary` is the bold lead

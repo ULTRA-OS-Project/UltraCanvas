@@ -2163,6 +2163,141 @@ namespace UltraCanvas {
                              static_cast<float>(w), static_cast<float>(h)));
     }
 
+    // ===== HIDDEN-ITEMS NOTICE =====
+    // A folder display that silently drops entries is how a user comes to
+    // believe a folder is empty. Where the host asks for it, the display says
+    // so along its foot instead - how many entries it is holding back, and a
+    // button that shows them.
+
+    void UltraCanvasFilerWidget::SetHiddenItemsNoticeEnabled(bool enabled) {
+        if (hiddenNoticeEnabled == enabled) return;
+        hiddenNoticeEnabled = enabled;
+        // The strip takes its height out of the file area, so the view has to
+        // reflow around it - appearing and disappearing alike.
+        InvalidateFilerLayout();
+        UpdateHiddenNoticeButton();
+        RequestRedraw();
+    }
+
+    int UltraCanvasFilerWidget::HiddenNoticeStripHeight() const {
+        return std::max(26, static_cast<int>(style.fontSize) + 14);
+    }
+
+    bool UltraCanvasFilerWidget::HiddenNoticeVisible() const {
+        if (!hiddenNoticeEnabled || hiddenItemCount <= 0 || showHiddenFiles)
+            return false;
+        // The whole-area views paint every pixel they are given and have no
+        // foot to put a strip on.
+        if (viewType == FilerViewType::GourceTree ||
+            viewType == FilerViewType::View3D)
+            return false;
+        // In a pane too short to hold the files and the strip, the files win.
+        auto b = GetLocalBounds();
+        return static_cast<int>(b.height) >=
+               SelectionInfoBarHeight() + HiddenNoticeStripHeight() * 3;
+    }
+
+    int UltraCanvasFilerWidget::HiddenNoticeHeight() const {
+        return HiddenNoticeVisible() ? HiddenNoticeStripHeight() : 0;
+    }
+
+    Rect2Di UltraCanvasFilerWidget::HiddenNoticeBar() const {
+        auto b = GetLocalBounds();
+        const int h = HiddenNoticeHeight();
+        return Rect2Di(static_cast<int>(b.x),
+                       static_cast<int>(b.y + b.height)
+                               - SelectionInfoBarHeight() - h,
+                       static_cast<int>(b.width), h);
+    }
+
+    std::string UltraCanvasFilerWidget::HiddenNoticeText() const {
+        return hiddenItemCount == 1
+                ? std::string("1 item is hidden here")
+                : std::to_string(hiddenItemCount) + " items are hidden here";
+    }
+
+    void UltraCanvasFilerWidget::UpdateHiddenNoticeButton() {
+        if (!HiddenNoticeVisible()) {
+            if (hiddenNoticeButton) hiddenNoticeButton->SetVisible(false);
+            return;
+        }
+        if (!hiddenNoticeButton) {
+            hiddenNoticeButton = CreateButton(
+                    GetIdentifier() + "-hidden-notice", 0, 0, 140, 24,
+                    "Show hidden files");
+            ButtonStyle bs;
+            bs.normalColor  = Color(66, 133, 244, 255);
+            bs.hoverColor   = Color(90, 150, 250, 255);
+            bs.pressedColor = Color(52, 112, 214, 255);
+            bs.normalTextColor = bs.hoverTextColor = bs.pressedTextColor =
+                    Colors::White;
+            bs.borderWidth = 0.0f;
+            bs.cornerRadius = 4.0f;
+            bs.fontFamily = style.fontFamily;
+            bs.fontSize = style.smallFontSize;
+            bs.fontWeight = FontWeight::Bold;
+            hiddenNoticeButton->SetStyle(bs);
+            // The strip is a notice, not a stop on the way through the
+            // window: Tab must not land on it.
+            hiddenNoticeButton->SetAcceptsFocus(false);
+            hiddenNoticeButton->SetOnClick([this]() {
+                // Exactly what the Display > Hidden files menu entry does -
+                // for this display only, and only until it is switched back.
+                SetShowHiddenFiles(true);
+            });
+            AddChild(hiddenNoticeButton);
+        }
+        hiddenNoticeButton->SetVisible(true);
+        RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::PositionHiddenNoticeButton(IRenderContext* ctx) {
+        if (!hiddenNoticeButton || !hiddenNoticeButton->IsVisible()) return;
+        const Rect2Di bar = HiddenNoticeBar();
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = style.smallFontSize;
+        fsty.fontWeight = FontWeight::Bold;
+        ctx->SetFontStyle(fsty);
+        Size2Di ts = ctx->GetTextLineDimensions(hiddenNoticeButton->GetText());
+        const int h = std::max(18, bar.height - 6);
+        const int w = std::min(std::max(60, bar.width / 2), ts.width + 24);
+        PlaceChildAt(hiddenNoticeButton,
+                     Rect2Df(static_cast<float>(bar.x + bar.width - w - 8),
+                             static_cast<float>(bar.y + (bar.height - h) / 2),
+                             static_cast<float>(w), static_cast<float>(h)));
+    }
+
+    void UltraCanvasFilerWidget::DrawHiddenItemsNotice(IRenderContext* ctx) {
+        const Rect2Di bar = HiddenNoticeBar();
+        if (bar.height <= 0 || bar.width <= 0) return;
+        ctx->SetFillPaint(style.infoBarBackground);
+        ctx->FillRectangle(Rect2Dd(bar));
+        ctx->SetStrokePaint(style.gridLineColor);
+        ctx->SetStrokeWidth(1.0f);
+        ctx->DrawLine(Point2Dd(bar.x, bar.y),
+                      Point2Dd(bar.x + bar.width, bar.y));
+
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = style.smallFontSize;
+        fsty.fontWeight = FontWeight::Normal;
+        ctx->SetFontStyle(fsty);
+        const int pad = 8;
+        // Whatever the button leaves: the count is the less important half of
+        // the strip, and is ellipsized rather than drawn under the button.
+        int avail = bar.width - 2 * pad;
+        if (hiddenNoticeButton && hiddenNoticeButton->IsVisible())
+            avail = static_cast<int>(hiddenNoticeButton->GetBounds().x)
+                    - bar.x - 2 * pad;
+        if (avail <= 12) return;
+        std::string shown = EllipsizeText(ctx, HiddenNoticeText(), avail);
+        Size2Di ts = ctx->GetTextLineDimensions(shown);
+        ctx->SetTextPaint(style.secondaryTextColor);
+        ctx->DrawText(shown, Point2Dd(bar.x + pad,
+                                      bar.y + (bar.height - ts.height) / 2.0));
+    }
+
     void UltraCanvasFilerWidget::ApplyEntryTypeInfo(FilerEntry& e) const {
         if (e.isDirectory) {
             // A macOS bundle is a directory the platform presents as one
@@ -2496,7 +2631,8 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::ScanRealDirectory(const std::string& path,
                                                    bool includeHidden,
-                                                   std::vector<FilerEntry>& out) const {
+                                                   std::vector<FilerEntry>& out,
+                                                   int* hiddenSkipped) const {
         std::error_code ec;
         for (fs::directory_iterator it(path, ec), end; it != end;
              it.increment(ec)) {
@@ -2511,7 +2647,10 @@ namespace UltraCanvas {
             // for the metadata call. Entries hidden by attribute (Windows) or
             // file flag (macOS) are only recognisable from that call and are
             // skipped below.
-            if (e.isHidden && !includeHidden) continue;
+            if (e.isHidden && !includeHidden) {
+                if (hiddenSkipped) ++*hiddenSkipped;
+                continue;
+            }
 
             // One metadata call per entry: type, size, times, the write bit
             // and (Windows / macOS) the hidden state all come from the same
@@ -2527,7 +2666,10 @@ namespace UltraCanvas {
                                      &fad)) {
                 e.isHidden = e.isHidden ||
                         (fad.dwFileAttributes & FILE_ATTRIBUTE_HIDDEN) != 0;
-                if (e.isHidden && !includeHidden) continue;
+                if (e.isHidden && !includeHidden) {
+                    if (hiddenSkipped) ++*hiddenSkipped;
+                    continue;
+                }
                 e.isDirectory =
                         (fad.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
                 if (!e.isDirectory)
@@ -2553,7 +2695,10 @@ namespace UltraCanvas {
                 // macOS / BSD: the Finder-hidden flag (chflags hidden) - what
                 // keeps ~/Library out of sight there.
                 e.isHidden = e.isHidden || (st.st_flags & UF_HIDDEN) != 0;
-                if (e.isHidden && !includeHidden) continue;
+                if (e.isHidden && !includeHidden) {
+                    if (hiddenSkipped) ++*hiddenSkipped;
+                    continue;
+                }
 #endif
                 e.isDirectory = (st.st_mode & S_IFMT) == S_IFDIR;
                 if (!e.isDirectory)
@@ -2645,11 +2790,17 @@ namespace UltraCanvas {
         bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
         listingIsRealDirectory = fileListMode || isRealDir;
 
+        // What this listing leaves out, for the hidden-items notice: the
+        // hidden entries filtered below, plus the subfolders a curated home
+        // folder keeps back. Counted while the listing is built - afterwards
+        // the entries that were dropped are gone.
+        int heldBack = 0;
+
         if (fileListMode) {
             for (const std::string& p : fileListPaths) {
                 FilerEntry e;
                 if (!StatEntryForPath(p, e)) continue;
-                if (e.isHidden && !showHiddenFiles) continue;
+                if (e.isHidden && !showHiddenFiles) { ++heldBack; continue; }
                 entries.push_back(std::move(e));
             }
         } else if (isRealDir) {
@@ -2660,10 +2811,13 @@ namespace UltraCanvas {
             bool fromCache = usePrefetched && folderPrefetchEnabled &&
                              TakePrefetchedListing(currentPath, listing);
             if (!fromCache)
-                ScanRealDirectory(currentPath, showHiddenFiles, listing);
+                ScanRealDirectory(currentPath, showHiddenFiles, listing,
+                                  &heldBack);
             if (fromCache && !showHiddenFiles) {
-                for (FilerEntry& e : listing)
-                    if (!e.isHidden) entries.push_back(std::move(e));
+                for (FilerEntry& e : listing) {
+                    if (e.isHidden) { ++heldBack; continue; }
+                    entries.push_back(std::move(e));
+                }
             } else {
                 entries = std::move(listing);
             }
@@ -2700,7 +2854,7 @@ namespace UltraCanvas {
                 e.createdTime = ParseIso8601(v.createdTime);
                 e.extension = e.isDirectory ? "" : LowerExtension(e.name);
                 ApplyEntryTypeInfo(e);
-                if (e.isHidden && !showHiddenFiles) continue;
+                if (e.isHidden && !showHiddenFiles) { ++heldBack; continue; }
                 entries.push_back(std::move(e));
             }
             if (entries.empty()) {
@@ -2737,7 +2891,7 @@ namespace UltraCanvas {
             for (FilerEntry& e : entries) {
                 if (e.isDirectory) {
                     const std::string key = CuratedIdentityKey(e.path);
-                    if (!curated.count(key)) continue;
+                    if (!curated.count(key)) { ++heldBack; continue; }
                     present.insert(key);
                 }
                 kept.push_back(std::move(e));
@@ -2750,6 +2904,11 @@ namespace UltraCanvas {
                     entries.push_back(std::move(e));
             }
         }
+
+        // Showing everything holds nothing back, whatever the scan counted
+        // (a prefetched listing carries the hidden entries, and the curation
+        // is suspended) - so the notice has nothing to offer either.
+        hiddenItemCount = showHiddenFiles ? 0 : heldBack;
 
         for (FilerEntry& e : entries) DecorateEntry(e);
 
@@ -2814,6 +2973,7 @@ namespace UltraCanvas {
 
         InvalidateFilerLayout();
         UpdateFilterEmptyButton();
+        UpdateHiddenNoticeButton();
         RequestRedraw();
 
         // The folder is on screen — line up its subfolders for the prefetch
@@ -6284,6 +6444,12 @@ namespace UltraCanvas {
             layoutValid = true;
             RestoreScrollAnchor(anchor);
         }
+        // The hidden-items strip stands down in a display too short to hold
+        // both it and the files, so its button follows the display's height -
+        // which changes with no rescan to hang the update on.
+        if (HiddenNoticeVisible() !=
+            (hiddenNoticeButton && hiddenNoticeButton->IsVisible()))
+            UpdateHiddenNoticeButton();
         // A reveal requested while a resize was still in flight (see
         // EnsureSelectionVisible) is applied here, against the settled layout.
         if (pendingRevealEntry >= 0) {
@@ -6862,6 +7028,21 @@ namespace UltraCanvas {
             ctx->Translate(Point2Df(b.x, b.y));
             filterEmptyButton->Render(ctx, Rect2Df(0, 0, b.width, b.height));
             ctx->PopState();
+        }
+
+        // The hidden-items strip along the foot: its own chrome, drawn like
+        // the info bar, plus a real button child placed and drawn here.
+        if (HiddenNoticeVisible()) {
+            PositionHiddenNoticeButton(ctx);
+            DrawHiddenItemsNotice(ctx);
+            if (hiddenNoticeButton && hiddenNoticeButton->IsVisible()) {
+                Rect2Df hb = hiddenNoticeButton->GetBounds();
+                ctx->PushState();
+                ctx->ClipRect(Rect2Dd(lb.x, lb.y, lb.width, lb.height));
+                ctx->Translate(Point2Df(hb.x, hb.y));
+                hiddenNoticeButton->Render(ctx, Rect2Df(0, 0, hb.width, hb.height));
+                ctx->PopState();
+            }
         }
 
         // The inline rename editor is a child element the self-rendered view
@@ -10381,7 +10562,7 @@ namespace UltraCanvas {
 
     void UltraCanvasFilerWidget::DrawSelectionInfoBar(IRenderContext* ctx,
                                                       const Rect2Di& bounds) {
-        int h = InfoBarHeight();
+        int h = SelectionInfoBarHeight();
         if (h <= 0 || bounds.height <= h) return;
         Rect2Di bar(bounds.x, bounds.y + bounds.height - h, bounds.width, h);
         ctx->SetFillPaint(style.infoBarBackground);

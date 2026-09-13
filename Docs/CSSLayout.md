@@ -291,6 +291,21 @@ the intrinsic tracks it also spans, and the flexible track absorbs it. A grid
 with no `fr` track still distributes a spanning item over its intrinsic tracks.
 `Tests/CSSLayoutFormGridTest.cpp` pins both.
 
+## Flex base sizes and wrapping content
+
+`ComputeIntrinsicSizes()` publishes **max-content** sizes — what the content takes with
+unbounded space, i.e. one line for text. A flex **row** takes an item's published
+max-content *width* as its flex base size directly, which is exactly right. A flex
+**column** must not do the same with the published *height*: the main size of a column
+item depends on the cross size it is given, so the engine measures such an item instead
+(`FlexLayout.cpp`, `computeBaseSize`), and the block path inside that measure resolves
+the content width first and then asks the widget for its height at that width
+(`MeasureOwnContent(contentWidth)`). That is what makes a wrapped label in a flex column
+as tall as its lines rather than one line tall.
+
+So: a widget whose height depends on its width reports that dependency through
+`MeasureOwnContent()` — the definite-width branch — and nothing else is required of it.
+
 ## Troubleshooting: my widget renders nothing at all
 
 The most common contract violation fails **silently**: an auto-sized leaf widget

@@ -1,4 +1,4 @@
-#### 2026-09-13 *0.8.43*
+#### 2026-09-13 *0.8.45*
 - **Fixed the text caret blinking through an open menu.** A menu (or any
   popup) opened over the text cursor - Texter's *Edit* menu over the editing
   position is the case this was found in - had the caret blinking on top of
@@ -31,6 +31,39 @@
   - `Tests/CaretStackingTest` is the regression test: it opens a real window
     under Xvfb, puts a menu over the caret and reads the composited pixels
     back. It skips itself where there is no display.
+
+#### 2026-09-13 *0.8.43*
+- **A folder display can say what it is holding back.** A file display that
+  drops entries without a word is how a user comes to believe a folder is
+  empty - and deletes it. `UltraCanvasFilerWidget::SetHiddenItemsNoticeEnabled`
+  (off by default) turns on a strip across the foot of the display that reads
+  "3 items are hidden here" whenever the current listing leaves something out,
+  with a **Show hidden files** button doing what the Display > Hidden files
+  context-menu entry does - for that display only. `GetHiddenItemCount()`
+  reads the same number: the hidden entries the scan skipped plus, in a
+  curated home folder (`SetCuratedHomeFolder`), the subfolders the curation
+  keeps back. The count is taken while the listing is built, since afterwards
+  the dropped entries are gone, and `ScanRealDirectory` grew an optional
+  out-parameter for it so the hidden entries are still skipped before the stat
+  they would otherwise cost. The strip takes its height out of the file area
+  the way the selection info bar does - it sits directly above it - so no
+  entry is ever drawn under it; it stays out of the whole-area views
+  (GourceTree, View3D) and of a pane too short to hold both files and strip.
+  Its button is a real `UltraCanvasButton` child, placed and drawn by the
+  self-rendered view like the name filter's "no matches" action.
+- **Wrapped text in a flex column was drawn one line tall.** A column flex
+  container took each auto-height item's published `intrinsic.maxContentHeight`
+  as its flex base size. That is the height the content takes with *unbounded*
+  width - one line, for text - so every wrapped `UltraCanvasLabel` in a flex
+  column got a one-line box and drew its text clipped through it, top and
+  bottom (the label centres its text vertically). Visible on every UltraFiler
+  settings page: the line under each page title and the notes block at its foot
+  both showed a couple of half-cut lines. The shortcut is right for a row,
+  where the published max-content *width* really is the base size, and is kept
+  there; a column now measures the item, and the block path inside that measure
+  resolves the content width first and asks the widget for its height at that
+  width. Anything whose height depends on its width - wrapped labels above all
+  - now sizes correctly in a flex column.
 
 #### 2026-09-13 *0.8.42*
 - **`media/` root tidied: a stray file deleted, two sample assets filed

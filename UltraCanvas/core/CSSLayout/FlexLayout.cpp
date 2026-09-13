@@ -122,10 +122,20 @@ namespace UltraCanvas {
                 // Prefer a published intrinsic.maxContent* (border-box units).
                 // Widgets like UltraCanvasLabel publish this via ComputeIntrinsicSizes;
                 // for those, we skip the otherwise-redundant Measure(Unbounded) pass.
-                if (el.intrinsic.valid) {
-                    float ic = axis.isRow ? el.intrinsic.maxContentWidth
-                                          : el.intrinsic.maxContentHeight;
-                    if (ic > 0) return ic;
+                //
+                // Row only. An intrinsic max-content *height* is the height the
+                // content takes with unbounded width - one line, for text - and
+                // in a column that is the main axis, so taking it here gave every
+                // wrapped label a one-line base height and clipped the rest of
+                // its text away. A column item's main size has to be measured
+                // against the cross size it will actually get, which is what the
+                // Measure pass below does (the block path resolves the content
+                // width first, then asks the widget for its height at that
+                // width). Widgets whose height does not depend on their width
+                // pay one measure for it.
+                if (el.intrinsic.valid && axis.isRow &&
+                    el.intrinsic.maxContentWidth > 0) {
+                    return el.intrinsic.maxContentWidth;
                 }
 
                 // Fallback: Measure with Unbounded main, cross from container.

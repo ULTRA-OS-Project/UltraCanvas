@@ -157,6 +157,15 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
     folder's files, and nothing else. **Display > Hidden files** in the context
     menu always reveals the full physical listing — that toggle means "show me
     everything", whatever the setting says.
+  - **The home folder says what it is holding back.** While its display leaves
+    anything out — the profile's hidden files (`NTUSER.DAT`, the
+    profile junctions) and the subfolders the curation drops — a strip across
+    the foot of the file display reads
+    *"7 items are hidden here"* and carries a **Show hidden files** button that
+    reveals them for that display. No other folder shows it: elsewhere only
+    what the system calls hidden is missing, which is what every file manager
+    does and needs no announcement. *Settings > Display > Files > Show hidden
+    files* is the same choice made permanently, for every display.
   - **Cloud Storage** collects the sync folders this machine actually has —
     OneDrive (personal and every business tenant), Google Drive, Dropbox
     (personal and business) and iCloud Drive — instead of leaving them
@@ -291,6 +300,7 @@ to the running application immediately and is saved to the config file
 |---|---|
 | Display > Treeview | The folder tree's colours: the row background of the drive entries and the highlight of the selected folder, each picked with `UltraCanvasColorPicker` |
 | Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
+| Display > Files | **Show hidden files** — whether the file displays list what the platform calls hidden: a dot name everywhere, the hidden attribute on Windows (`NTUSER.DAT`, the profile junctions), the hidden flag on macOS. Off by default, as every file manager ships. It is what each folder display *starts* with: one display can still be switched on its own (its **Display > Hidden files** context-menu entry, or the Home folder's **Show hidden files** button) without changing the setting. Showing hidden files also shows the Home folder whole, whatever *Display > Home folder* says; the folder tree leaves hidden folders out either way |
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves. **Confirmation** — whether the drop asks before it is carried out: **Always**, **Only when files are moved** (the default) or **None**. The question names how many entries are about to be moved or copied and into which folder; files dragged in from another program are copies, so only *Always* asks about those |
 | Handling > Opening files | **Double-click (or Enter) on a file** — **Start the registered program**, the way Explorer and the Finder do (the default on Windows), or **Show it in the preview**, keeping the file inside UltraFiler (the default on Linux and macOS). A file type this system has no program for is previewed either way, so the setting never turns a double-click into nothing happening; a file that cannot be previewed always goes to the system, and the context menu's *Open with* starts a program whichever is set |
