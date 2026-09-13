@@ -1,5 +1,5 @@
 // Tests/Model3DSTest.cpp
-// The 3DS reader against the real E-45 aircraft sample in media/models/3DS.
+// The 3DS reader against the real E-45 aircraft sample in media/3D/3DS.
 //
 // 3DS is the first scene format UltraCanvas reads into ModelDocument, so this
 // is also the first end-to-end check that the structure holds one: several

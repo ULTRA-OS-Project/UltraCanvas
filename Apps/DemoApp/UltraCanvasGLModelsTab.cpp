@@ -287,9 +287,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     // The three procedural OBJs this tab has always carried. Their triangle
     // counts are in the labels because they are generated to a known size.
     state->catalog = {
-        {"Torus Knot (11,520 tris)", "media/models/torusknot.obj", Color(230, 120, 60, 255)},
-        {"Spring Coil (9,216 tris)", "media/models/spring.obj",   Color(120, 200, 130, 255)},
-        {"Ico Sphere (1,280 tris)",  "media/models/icosphere.obj", Color(120, 160, 230, 255)},
+        {"Torus Knot (11,520 tris)", "media/3D/torusknot.obj", Color(230, 120, 60, 255)},
+        {"Spring Coil (9,216 tris)", "media/3D/spring.obj",   Color(120, 200, 130, 255)},
+        {"Ico Sphere (1,280 tris)",  "media/3D/icosphere.obj", Color(120, 160, 230, 255)},
     };
 
     // Small samples in other formats, added only where this build can actually
@@ -301,13 +301,13 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     // 18 MB .blend and a 6.9 MB VRML, which are no better to look at.
     struct FormatSample { const char* label; const char* file; Color color; };
     static const FormatSample kFormatSamples[] = {
-        {"STEP — machined pin (B-rep, tessellated)", "media/models/STEP/Pin.step",
+        {"STEP — machined pin (B-rep, tessellated)", "media/3D/STEP/Pin.step",
          Color(200, 200, 210, 255)},
-        {"MilkShape 3D — aircraft (.ms3d)", "media/models/MS3D/E-45-Aircraft.ms3d",
+        {"MilkShape 3D — aircraft (.ms3d)", "media/3D/MS3D/E-45-Aircraft.ms3d",
          Color(210, 170, 90, 255)},
-        {"COLLADA — aircraft (.dae)", "media/models/COLLADA/E-45-Aircraft.dae",
+        {"COLLADA — aircraft (.dae)", "media/3D/COLLADA/E-45-Aircraft.dae",
          Color(150, 190, 210, 255)},
-        {"3D Studio — aircraft (.3ds)", "media/models/3DS/E-45-Aircraft.3ds",
+        {"3D Studio — aircraft (.3ds)", "media/3D/3DS/E-45-Aircraft.3ds",
          Color(190, 150, 190, 255)},
     };
     for (const FormatSample& sample : kFormatSamples) {
@@ -465,7 +465,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     auto info = std::make_shared<UltraCanvasLabel>("ModelInfo", 10, 186, 270, 360);
     info->SetText(
         "Real meshes are streamed from\n"
-        "media/models/ into the GL surface\n"
+        "media/3D/ into the GL surface\n"
         "and shaded with a two-light Phong\n"
         "model plus a rim term.\n\n"
         "Interaction:\n"

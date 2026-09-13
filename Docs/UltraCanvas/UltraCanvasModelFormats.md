@@ -64,10 +64,10 @@ Reported by the converters themselves in a build with tinyxml2 and zlib:
 |---|---|---|---|---|
 | Wavefront OBJ | — | ✓ | — | ✓ |
 | Stanford PLY | — | — | — | ✓ |
-| Autodesk 3D Studio (`.3ds`) | — | ✓ | — | — |
-| COLLADA (`.dae`) | ✓ | ✓ | — | — |
+| Autodesk 3D Studio (`.3ds`) | — | ✓ | — | ✓ |
+| COLLADA (`.dae`) | ✓ | ✓ | — | ✓ |
 | Autodesk FBX | ✓ | ✓ | — | — |
-| X3D / VRML (`.x3d .x3dv .wrl .vrml`) | ✓ | ✓ | — | — |
+| X3D / VRML (`.x3d .x3dv .wrl .vrml`) | ✓ | ✓ | — | ✓ |
 | DirectX (`.x`) | ✓ | ✓ | — | — |
 | MilkShape 3D (`.ms3d`) | ✓ | ✓ | — | — |
 | Alembic (`.abc`) | ✓ (first time sample) | — | — | — |
@@ -75,9 +75,11 @@ Reported by the converters themselves in a build with tinyxml2 and zlib:
 | STEP (`.step .stp .p21`) | ✓ | ✓ | ✓ | ✓ |
 | AutoCAD DXF — 3D entities | — | ✓ | — | — |
 
-Three formats are writable — OBJ, PLY and STEP — and everything else is
-read-only. That is a property of the writers this repository has, not of the
-formats.
+Six formats are writable — OBJ, PLY, STEP, 3DS, COLLADA and X3D/VRML — and the
+rest are read-only. That is a property of the writers this repository has, not
+of the formats. `ModelWriterTest` asserts that this list and the converters'
+own `CanExport()` agree in both directions, so a format cannot be advertised
+as writable without a writer, or gain one without being advertised.
 
 The table is a summary; the build decides the rest. COLLADA and X3D need
 tinyxml2, and the `.blend` and FBX readers need zlib, so each is a separate
@@ -92,6 +94,28 @@ null for a format this build does not carry.
 ```cpp
 UltraCanvasModelFormatsPlugin::SaveModelDocument(*document, "out.step", options);
 ```
+
+### What each writer cannot carry
+
+Every writer reports its own losses through `WarningCallback`; these are the
+ones worth knowing before choosing a target.
+
+| | Limit |
+|---|---|
+| **3DS** | 65 535 vertices and faces per object — the counts are `uint16`, so a primitive over either limit is **skipped with a warning** rather than wrapped into garbage. Names truncate to 12 characters. Triangles only. No skinning, morph targets, animation or vertex colour. |
+| **COLLADA** | No skinning, morph targets or animation. `profile_COMMON` is fixed-function, so the metallic/roughness pair is written into `<extra>` — this converter reads it back, another will ignore it. |
+| **X3D / VRML** | No animation, cameras, lights, skinning or morph targets. The geometric primitives (`Box`, `Sphere`, `Cone`, `Cylinder`) are tessellated on the way in and come back out as the meshes they became. |
+
+**Up axis is the one thing a writer changes about the numbers.** 3DS is always
+Z-up and X3D always Y-up, with no field in either to say otherwise, so a
+document in the other convention is rotated — and warned about. COLLADA
+declares the document's own axis in `<up_axis>` and rotates nothing. A file
+read and written back through the same format is therefore unchanged.
+
+X3D's two text encodings are both written, and the extension decides which:
+`.x3d` gets the XML encoding, `.x3dv`, `.wrl` and `.vrml` get Classic VRML.
+`ExportToStream` and `ExportToMemory` have no extension to read, so they write
+XML.
 
 **Writing a mesh to STEP does not produce a CAD model.** STEP describes
 surfaces, and a mesh has none of its own, so the writer makes them: one planar

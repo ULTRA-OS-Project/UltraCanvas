@@ -6,12 +6,12 @@
 // text written inline, because the Part 21 grammar has corners — doubled
 // quotes, \X2\ escapes, comments, complex instances — that a sample file will
 // not reliably contain. The geometry cases run against the hand-authored
-// samples in media/models/STEP and assert *measurements*: the volume of the
+// samples in media/3D/STEP and assert *measurements*: the volume of the
 // meshed box is 6000 or the reader got a face's orientation wrong; the area of
 // the NURBS sheet is a quarter cylinder's or the rational weights were
 // ignored. Those numbers cannot be right by accident.
 //
-// argv[1] is media/models/STEP. Without it only the syntax cases run.
+// argv[1] is media/3D/STEP. Without it only the syntax cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-10
@@ -489,7 +489,7 @@ int main(int argc, char** argv) {
         TestNurbsSheet(root);
         TestRoundTrip(root);
     } else {
-        std::printf("Samples: skipped (pass the media/models/STEP path to run them)\n");
+        std::printf("Samples: skipped (pass the media/3D/STEP path to run them)\n");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",

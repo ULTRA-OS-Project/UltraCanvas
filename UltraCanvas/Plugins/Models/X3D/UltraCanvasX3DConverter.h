@@ -25,17 +25,27 @@
 //     the interpolator drives one field of one node. That is the same shape as
 //     an AnimationChannel plus an AnimationSampler, so it maps across whole.
 //
-// Reading only. X3D's remaining consumers are archives and the Web3D browsers;
-// a caller wanting to write a scene should write glTF. Writing X3D would be a
-// second large XML emitter for a format nothing new consumes.
+// Read and write. Both of the standard's text encodings, in both directions:
+// the XML one (.x3d) and the Classic VRML one (.x3dv), which VRML97 (.wrl)
+// also writes. They are two spellings of one node set, so the writer builds the
+// scene once and serialises it twice - which encoding comes out is decided by
+// the file extension, since that is the only thing a caller has said. When
+// reading, the encoding is decided from the file's first line instead, because
+// there the content is available and the extension is often wrong. See
+// UltraCanvasX3DScene.h.
 //
-// Both of the standard's text encodings are read: the XML one (.x3d) and the
-// Classic VRML one (.x3dv), which VRML97 (.wrl) also writes. They are two
-// spellings of one node set, and which one a file uses is decided from its
-// first line rather than its extension. See UltraCanvasX3DScene.h.
+// What the writer emits is the Interchange profile's core: Transform, Shape,
+// Appearance, Material, ImageTexture and IndexedFaceSet, which is what every
+// X3D and VRML consumer reads. What it does not carry, and says so:
+//   * animation - no TimeSensor, interpolator or ROUTE plumbing is written;
+//   * cameras and lights;
+//   * skinning and morph targets;
+//   * the geometric primitives (Box, Sphere, Cone, Cylinder) - those are read
+//     and tessellated on the way in, and come back out as the meshes they
+//     became rather than as primitives again.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-10
+// Version: 1.1.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -47,7 +57,7 @@
 namespace UltraCanvas {
 namespace ModelConverter {
 
-class X3DConverter : public ImportOnlyConverter {
+class X3DConverter : public IModelFormatConverter {
 public:
     ModelFormat GetFormat() const override { return ModelFormat::X3D; }
     std::string GetFormatName() const override { return "X3D"; }
@@ -69,6 +79,22 @@ public:
     std::shared_ptr<ModelStorage::ModelDocument> ImportFromStream(
             std::istream& stream,
             const ConversionOptions& options = ConversionOptions()) override;
+
+    bool CanImport() const override { return true; }
+    bool CanExport() const override { return true; }
+
+    // The extension picks the encoding: .x3d writes XML, .x3dv/.wrl/.vrml
+    // write Classic VRML. Anything else writes XML.
+    bool Export(const ModelStorage::ModelDocument& document,
+                const std::string& filename,
+                const ConversionOptions& options = ConversionOptions()) override;
+    // No file name, so no extension to read: these write the XML encoding.
+    bool ExportToMemory(const ModelStorage::ModelDocument& document,
+                        std::vector<uint8_t>& outData,
+                        const ConversionOptions& options = ConversionOptions()) override;
+    bool ExportToStream(const ModelStorage::ModelDocument& document,
+                        std::ostream& stream,
+                        const ConversionOptions& options = ConversionOptions()) override;
 
     bool ValidateFile(const std::string& filename) const override;
     bool ValidateData(const std::vector<uint8_t>& data) const override;

@@ -1087,5 +1087,582 @@ bool ColladaConverter::ValidateFile(const std::string& filename) const {
                                         static_cast<size_t>(std::max<std::streamsize>(0, file.gcount()))));
 }
 
+
+// ===== WRITER =====
+//
+// COLLADA is XML, so the writer emits text rather than building a tinyxml2
+// tree: the numeric formatting is the part that matters for a geometry format,
+// and a stream gives exact control over it.
+//
+// The shape mirrors what the reader above expects, which is also what the
+// specification's common profile prescribes: one <geometry> per document mesh
+// with a single <vertices> and one primitive element per document primitive,
+// every <input> at offset 0 over parallel arrays. Sharing one offset is legal
+// COLLADA and means one index per corner instead of one per stream, which the
+// reader's corner cache then resolves straight back to the vertices it started
+// from.
+
+namespace {
+
+// XML text may not carry these raw. Names come from other formats' files, so
+// they are arbitrary bytes as far as this writer is concerned.
+std::string XmlEscape(const std::string& text) {
+    std::string out;
+    out.reserve(text.size());
+    for (char c : text) {
+        switch (c) {
+            case '&':  out += "&amp;";  break;
+            case '<':  out += "&lt;";   break;
+            case '>':  out += "&gt;";   break;
+            case '"':  out += "&quot;"; break;
+            case '\'': out += "&apos;"; break;
+            default:
+                // Control characters are not representable in XML 1.0 at all.
+                if (static_cast<unsigned char>(c) < 0x20 && c != '\t' && c != '\n' && c != '\r')
+                    out += '_';
+                else
+                    out += c;
+        }
+    }
+    return out;
+}
+
+// An id has to be an XML NCName: no spaces, no leading digit, a restricted
+// character set. Document names are none of those things, so ids are generated
+// and the original name is kept in the name= attribute where it belongs.
+std::string MakeId(const char* prefix, size_t index) {
+    return std::string(prefix) + std::to_string(index);
+}
+
+class ScopedPrecision {
+public:
+    ScopedPrecision(std::ostream& stream, NumericPrecision precision, bool forDouble)
+            : stream_(stream), previous_(stream.precision()) {
+        stream_.precision(precision == NumericPrecision::Full ? (forDouble ? 17 : 9) : 6);
+    }
+    ~ScopedPrecision() { stream_.precision(previous_); }
+    ScopedPrecision(const ScopedPrecision&) = delete;
+    ScopedPrecision& operator=(const ScopedPrecision&) = delete;
+
+private:
+    std::ostream& stream_;
+    std::streamsize previous_;
+};
+
+// One mesh's primitives merged into parallel per-vertex arrays, which is what
+// lets every <input> share offset 0.
+struct MergedMesh {
+    std::vector<Vec3d> positions;
+    std::vector<float> normals;      // 3 per vertex
+    std::vector<float> texcoords;    // 2 per vertex
+    std::vector<float> colors;       // 4 per vertex
+    bool hasNormals = false;
+    bool hasTexcoords = false;
+    bool hasColors = false;
+
+    struct Part {
+        std::vector<uint32_t> indices;
+        std::vector<uint32_t> faceSizes;   // empty = all triangles
+        int material = -1;
+    };
+    std::vector<Part> parts;
+};
+
+class Writer {
+public:
+    Writer(const ModelDocument& document, const ConversionOptions& options)
+            : doc_(document), options_(options) {}
+
+    void Run(std::ostream& out) {
+        ReportLosses();
+        ScopedPrecision digits(out, options_.Precision, true);
+        out << std::fixed;
+        out.unsetf(std::ios::fixed);   // default float format at the chosen precision
+
+        out << "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n";
+        out << "<COLLADA xmlns=\"http://www.collada.org/2005/11/COLLADASchema\" version=\"1.4.1\">\n";
+        WriteAsset(out);
+        WriteImages(out);
+        WriteEffects(out);
+        WriteMaterials(out);
+        WriteGeometries(out);
+        WriteVisualScenes(out);
+        out << "  <scene>\n"
+               "    <instance_visual_scene url=\"#scene0\"/>\n"
+               "  </scene>\n";
+        out << "</COLLADA>\n";
+    }
+
+private:
+    // ---- asset --------------------------------------------------------
+    void WriteAsset(std::ostream& out) {
+        out << "  <asset>\n"
+               "    <contributor>\n";
+        if (!doc_.Author.empty())
+            out << "      <author>" << XmlEscape(doc_.Author) << "</author>\n";
+        out << "      <authoring_tool>"
+            << XmlEscape(options_.Generator.empty() ? "UltraCanvas" : options_.Generator)
+            << "</authoring_tool>\n";
+        if (!doc_.Copyright.empty())
+            out << "      <copyright>" << XmlEscape(doc_.Copyright) << "</copyright>\n";
+        out << "    </contributor>\n";
+
+        // <unit meter=> is metres per drawing unit, which is exactly what the
+        // document records - so a unitless document writes no unit rather than
+        // inventing one.
+        if (doc_.UnitScaleToMeters > 0.0) {
+            const char* symbol = ModelUnitSymbol(doc_.SourceUnit);
+            out << "    <unit meter=\"" << doc_.UnitScaleToMeters << "\" name=\""
+                << XmlEscape(symbol && *symbol ? symbol : "unit") << "\"/>\n";
+        }
+        out << "    <up_axis>" << (doc_.Up == UpAxis::ZUp ? "Z_UP" : "Y_UP") << "</up_axis>\n";
+        out << "  </asset>\n";
+    }
+
+    // ---- images, effects, materials -----------------------------------
+    void WriteImages(std::ostream& out) {
+        if (doc_.Images.empty()) return;
+        out << "  <library_images>\n";
+        for (size_t i = 0; i < doc_.Images.size(); ++i) {
+            const ModelImage& image = doc_.Images[i];
+            if (image.Uri.empty()) {
+                options_.Warn("COLLADA: an embedded image was dropped - this writer references "
+                              "textures by URI and does not write image data");
+                continue;
+            }
+            out << "    <image id=\"" << MakeId("image", i) << "\" name=\""
+                << XmlEscape(image.Name.empty() ? MakeId("image", i) : image.Name) << "\">\n"
+                << "      <init_from>" << XmlEscape(image.Uri) << "</init_from>\n"
+                << "    </image>\n";
+        }
+        out << "  </library_images>\n";
+    }
+
+    // profile_COMMON is fixed-function, so a PBR-only material needs its Phong
+    // side derived first - the same step the OBJ and 3DS writers take.
+    void WriteEffects(std::ostream& out) {
+        if (doc_.Materials.empty()) return;
+        out << "  <library_effects>\n";
+        for (size_t i = 0; i < doc_.Materials.size(); ++i) {
+            ModelMaterial material = doc_.Materials[i];
+            if (!material.Phong.has_value()) material.DeriveMissingModel();
+            const PhongParams& phong = *material.Phong;
+
+            out << "    <effect id=\"" << MakeId("effect", i) << "\">\n"
+                << "      <profile_COMMON>\n";
+
+            const TextureRef& diffuseMap = phong.DiffuseTexture.IsSet() ? phong.DiffuseTexture
+                                                                       : material.BaseColorTexture;
+            const bool haveMap = diffuseMap.IsSet() && diffuseMap.Image >= 0 &&
+                                 diffuseMap.Image < static_cast<int>(doc_.Images.size()) &&
+                                 !doc_.Images[static_cast<size_t>(diffuseMap.Image)].Uri.empty();
+            if (haveMap) {
+                const std::string surface = MakeId("effect", i) + "-surface";
+                const std::string sampler = MakeId("effect", i) + "-sampler";
+                out << "        <newparam sid=\"" << surface << "\">\n"
+                    << "          <surface type=\"2D\">\n"
+                    << "            <init_from>" << MakeId("image", static_cast<size_t>(diffuseMap.Image))
+                    << "</init_from>\n"
+                    << "          </surface>\n"
+                    << "        </newparam>\n"
+                    << "        <newparam sid=\"" << sampler << "\">\n"
+                    << "          <sampler2D>\n"
+                    << "            <source>" << surface << "</source>\n"
+                    << "          </sampler2D>\n"
+                    << "        </newparam>\n";
+            }
+
+            out << "        <technique sid=\"common\">\n"
+                << "          <phong>\n";
+            WriteColor(out, "emission", material.EmissiveFactor, 1.0f);
+            WriteColor(out, "ambient", phong.Ambient, 1.0f);
+            if (haveMap) {
+                out << "            <diffuse>\n"
+                    << "              <texture texture=\"" << MakeId("effect", i)
+                    << "-sampler\" texcoord=\"TEX0\"/>\n"
+                    << "            </diffuse>\n";
+            } else {
+                WriteColor(out, "diffuse", phong.Diffuse, material.BaseColorFactor.w);
+            }
+            WriteColor(out, "specular", phong.Specular, 1.0f);
+            out << "            <shininess><float>" << phong.Shininess << "</float></shininess>\n";
+            out << "            <index_of_refraction><float>" << material.IndexOfRefraction
+                << "</float></index_of_refraction>\n";
+            out << "            <transparency><float>" << material.BaseColorFactor.w
+                << "</float></transparency>\n";
+            out << "          </phong>\n"
+                << "        </technique>\n";
+            // profile_COMMON has no metallic-roughness, and silently throwing
+            // the pair away would make a glTF-shaped material lossy through a
+            // round trip it did not need to be.
+            out << "        <extra><technique profile=\"UltraCanvas\">\n"
+                << "          <metallic>" << material.MetallicFactor << "</metallic>\n"
+                << "          <roughness>" << material.RoughnessFactor << "</roughness>\n"
+                << "        </technique></extra>\n";
+            out << "      </profile_COMMON>\n"
+                << "    </effect>\n";
+        }
+        out << "  </library_effects>\n";
+    }
+
+    void WriteColor(std::ostream& out, const char* element, const Vec3f& rgb, float alpha) {
+        out << "            <" << element << ">\n"
+            << "              <color>" << rgb.x << " " << rgb.y << " " << rgb.z << " " << alpha
+            << "</color>\n"
+            << "            </" << element << ">\n";
+    }
+
+    void WriteMaterials(std::ostream& out) {
+        if (doc_.Materials.empty()) return;
+        out << "  <library_materials>\n";
+        for (size_t i = 0; i < doc_.Materials.size(); ++i) {
+            out << "    <material id=\"" << MakeId("material", i) << "\" name=\""
+                << XmlEscape(doc_.Materials[i].Name.empty() ? MakeId("material", i)
+                                                            : doc_.Materials[i].Name)
+                << "\">\n"
+                << "      <instance_effect url=\"#" << MakeId("effect", i) << "\"/>\n"
+                << "    </material>\n";
+        }
+        out << "  </library_materials>\n";
+    }
+
+    // ---- geometry -----------------------------------------------------
+    MergedMesh Merge(const ModelMesh& mesh) {
+        MergedMesh merged;
+        for (const MeshPrimitive& prim : mesh.Primitives) {
+            if (!prim.Normals.empty()) merged.hasNormals = true;
+            if (prim.FindAttribute(AttributeSemantic::TexCoord, 0)) merged.hasTexcoords = true;
+            if (prim.FindAttribute(AttributeSemantic::Color, 0)) merged.hasColors = true;
+        }
+
+        for (const MeshPrimitive& prim : mesh.Primitives) {
+            if (prim.Mode == PrimitiveMode::Points) {
+                options_.Warn("COLLADA: a point primitive in '" + mesh.Name +
+                              "' was dropped - this writer emits polygons and lines only");
+                continue;
+            }
+
+            const size_t base = merged.positions.size();
+            merged.positions.insert(merged.positions.end(), prim.Positions.begin(),
+                                    prim.Positions.end());
+
+            // A stream a sibling primitive has but this one does not still needs
+            // its slots filled, or the arrays stop being parallel and every
+            // index after this primitive reads the wrong vertex.
+            if (merged.hasNormals) {
+                for (size_t v = 0; v < prim.Positions.size(); ++v) {
+                    const bool have = v < prim.Normals.size();
+                    merged.normals.push_back(have ? prim.Normals[v].x : 0.0f);
+                    merged.normals.push_back(have ? prim.Normals[v].y : 0.0f);
+                    merged.normals.push_back(have ? prim.Normals[v].z : 0.0f);
+                }
+            }
+            if (merged.hasTexcoords) {
+                const VertexAttribute* uv = prim.FindAttribute(AttributeSemantic::TexCoord, 0);
+                for (size_t v = 0; v < prim.Positions.size(); ++v) {
+                    const bool have = uv && uv->Components >= 2 && v < uv->Count();
+                    const size_t at = v * static_cast<size_t>(uv ? uv->Components : 0);
+                    merged.texcoords.push_back(have ? uv->Values[at] : 0.0f);
+                    merged.texcoords.push_back(have ? uv->Values[at + 1] : 0.0f);
+                }
+            }
+            if (merged.hasColors) {
+                const VertexAttribute* colour = prim.FindAttribute(AttributeSemantic::Color, 0);
+                for (size_t v = 0; v < prim.Positions.size(); ++v) {
+                    const bool have = colour && colour->Components >= 3 && v < colour->Count();
+                    const size_t at = v * static_cast<size_t>(colour ? colour->Components : 0);
+                    merged.colors.push_back(have ? colour->Values[at] : 1.0f);
+                    merged.colors.push_back(have ? colour->Values[at + 1] : 1.0f);
+                    merged.colors.push_back(have ? colour->Values[at + 2] : 1.0f);
+                    merged.colors.push_back(have && colour->Components >= 4
+                                                    ? colour->Values[at + 3] : 1.0f);
+                }
+            }
+
+            MergedMesh::Part part;
+            part.material = prim.Material;
+            const size_t faceCount = prim.FaceCount();
+            bool allTriangles = true;
+            for (size_t f = 0; f < faceCount; ++f) {
+                const std::vector<uint32_t> face = prim.Face(f);
+                if (face.size() < 2) continue;
+                if (face.size() != 3) allTriangles = false;
+                part.faceSizes.push_back(static_cast<uint32_t>(face.size()));
+                for (uint32_t index : face)
+                    part.indices.push_back(static_cast<uint32_t>(base) + index);
+            }
+            if (part.indices.empty()) continue;
+            // <triangles> is the smaller spelling and means the same thing when
+            // every face has three corners; <polylist> keeps a quad a quad.
+            if (allTriangles && prim.Mode != PrimitiveMode::Lines &&
+                prim.Mode != PrimitiveMode::LineStrip && prim.Mode != PrimitiveMode::LineLoop)
+                part.faceSizes.clear();
+            merged.parts.push_back(std::move(part));
+        }
+        return merged;
+    }
+
+    void WriteSource(std::ostream& out, const std::string& id, const std::string& arrayId,
+                     const std::vector<float>& values, int stride, const char* const* params) {
+        out << "      <source id=\"" << id << "\">\n"
+            << "        <float_array id=\"" << arrayId << "\" count=\"" << values.size() << "\">";
+        for (size_t i = 0; i < values.size(); ++i) out << (i ? " " : "") << values[i];
+        out << "</float_array>\n"
+            << "        <technique_common>\n"
+            << "          <accessor source=\"#" << arrayId << "\" count=\""
+            << (stride > 0 ? values.size() / static_cast<size_t>(stride) : 0)
+            << "\" stride=\"" << stride << "\">\n";
+        for (int i = 0; i < stride; ++i)
+            out << "            <param name=\"" << params[i] << "\" type=\"float\"/>\n";
+        out << "          </accessor>\n"
+            << "        </technique_common>\n"
+            << "      </source>\n";
+    }
+
+    void WriteGeometries(std::ostream& out) {
+        if (doc_.Meshes.empty()) return;
+        out << "  <library_geometries>\n";
+        for (size_t m = 0; m < doc_.Meshes.size(); ++m) {
+            const ModelMesh& mesh = doc_.Meshes[m];
+            const MergedMesh merged = Merge(mesh);
+            if (merged.parts.empty() || merged.positions.empty()) continue;
+
+            const std::string geometryId = MakeId("geometry", m);
+            out << "    <geometry id=\"" << geometryId << "\" name=\""
+                << XmlEscape(mesh.Name.empty() ? geometryId : mesh.Name) << "\">\n"
+                << "      <mesh>\n";
+
+            std::vector<float> positions;
+            positions.reserve(merged.positions.size() * 3);
+            for (const Vec3d& p : merged.positions) {
+                positions.push_back(static_cast<float>(p.x));
+                positions.push_back(static_cast<float>(p.y));
+                positions.push_back(static_cast<float>(p.z));
+            }
+            static const char* kXYZ[] = {"X", "Y", "Z"};
+            static const char* kST[]  = {"S", "T"};
+            static const char* kRGBA[] = {"R", "G", "B", "A"};
+            WriteSource(out, geometryId + "-positions", geometryId + "-positions-array",
+                        positions, 3, kXYZ);
+            if (merged.hasNormals)
+                WriteSource(out, geometryId + "-normals", geometryId + "-normals-array",
+                            merged.normals, 3, kXYZ);
+            if (merged.hasTexcoords)
+                WriteSource(out, geometryId + "-texcoords", geometryId + "-texcoords-array",
+                            merged.texcoords, 2, kST);
+            if (merged.hasColors)
+                WriteSource(out, geometryId + "-colors", geometryId + "-colors-array",
+                            merged.colors, 4, kRGBA);
+
+            out << "      <vertices id=\"" << geometryId << "-vertices\">\n"
+                << "        <input semantic=\"POSITION\" source=\"#" << geometryId
+                << "-positions\"/>\n"
+                << "      </vertices>\n";
+
+            for (size_t p = 0; p < merged.parts.size(); ++p) {
+                const MergedMesh::Part& part = merged.parts[p];
+                const bool polylist = !part.faceSizes.empty();
+                const char* element = polylist ? "polylist" : "triangles";
+                const size_t faces = polylist ? part.faceSizes.size() : part.indices.size() / 3;
+
+                out << "      <" << element << " count=\"" << faces << "\"";
+                if (part.material >= 0 && part.material < static_cast<int>(doc_.Materials.size()))
+                    out << " material=\"" << MakeId("material", static_cast<size_t>(part.material))
+                        << "-symbol\"";
+                out << ">\n";
+
+                // Every input shares offset 0 because the arrays above are
+                // parallel; the index list is then one entry per corner.
+                out << "        <input semantic=\"VERTEX\" source=\"#" << geometryId
+                    << "-vertices\" offset=\"0\"/>\n";
+                if (merged.hasNormals)
+                    out << "        <input semantic=\"NORMAL\" source=\"#" << geometryId
+                        << "-normals\" offset=\"0\"/>\n";
+                if (merged.hasTexcoords)
+                    out << "        <input semantic=\"TEXCOORD\" source=\"#" << geometryId
+                        << "-texcoords\" offset=\"0\" set=\"0\"/>\n";
+                if (merged.hasColors)
+                    out << "        <input semantic=\"COLOR\" source=\"#" << geometryId
+                        << "-colors\" offset=\"0\" set=\"0\"/>\n";
+
+                if (polylist) {
+                    out << "        <vcount>";
+                    for (size_t i = 0; i < part.faceSizes.size(); ++i)
+                        out << (i ? " " : "") << part.faceSizes[i];
+                    out << "</vcount>\n";
+                }
+                out << "        <p>";
+                for (size_t i = 0; i < part.indices.size(); ++i)
+                    out << (i ? " " : "") << part.indices[i];
+                out << "</p>\n";
+                out << "      </" << element << ">\n";
+            }
+
+            out << "      </mesh>\n"
+                << "    </geometry>\n";
+            geometryIdByMesh_[m] = geometryId;
+            materialsByMesh_[m] = CollectMaterials(merged);
+        }
+        out << "  </library_geometries>\n";
+    }
+
+    static std::vector<int> CollectMaterials(const MergedMesh& merged) {
+        std::vector<int> materials;
+        for (const MergedMesh::Part& part : merged.parts)
+            if (part.material >= 0 &&
+                std::find(materials.begin(), materials.end(), part.material) == materials.end())
+                materials.push_back(part.material);
+        return materials;
+    }
+
+    // ---- scene --------------------------------------------------------
+    void WriteVisualScenes(std::ostream& out) {
+        out << "  <library_visual_scenes>\n"
+            << "    <visual_scene id=\"scene0\" name=\""
+            << XmlEscape(doc_.Title.empty() ? "scene" : doc_.Title) << "\">\n";
+
+        if (doc_.Nodes.empty()) {
+            // No hierarchy in the document: one node per mesh at the origin,
+            // because COLLADA has no way to instance geometry outside a scene.
+            for (size_t m = 0; m < doc_.Meshes.size(); ++m) {
+                if (!geometryIdByMesh_.count(m)) continue;
+                out << "      <node id=\"" << MakeId("node", m) << "\" name=\""
+                    << XmlEscape(doc_.Meshes[m].Name.empty() ? MakeId("node", m)
+                                                             : doc_.Meshes[m].Name)
+                    << "\" type=\"NODE\">\n";
+                WriteInstanceGeometry(out, m, 8);
+                out << "      </node>\n";
+            }
+        } else {
+            const std::vector<int>& roots = RootNodes();
+            for (int root : roots) WriteNode(out, root, 6);
+        }
+
+        out << "    </visual_scene>\n"
+            << "  </library_visual_scenes>\n";
+    }
+
+    const std::vector<int>& RootNodes() {
+        if (!roots_.empty()) return roots_;
+        if (doc_.DefaultScene >= 0 && doc_.DefaultScene < static_cast<int>(doc_.Scenes.size()) &&
+            !doc_.Scenes[static_cast<size_t>(doc_.DefaultScene)].Roots.empty()) {
+            roots_ = doc_.Scenes[static_cast<size_t>(doc_.DefaultScene)].Roots;
+            return roots_;
+        }
+        for (size_t i = 0; i < doc_.Nodes.size(); ++i)
+            if (doc_.Nodes[i].Parent < 0) roots_.push_back(static_cast<int>(i));
+        return roots_;
+    }
+
+    void WriteNode(std::ostream& out, int index, int indent) {
+        if (index < 0 || index >= static_cast<int>(doc_.Nodes.size())) return;
+        const ModelNode& node = doc_.Nodes[static_cast<size_t>(index)];
+        const std::string pad(static_cast<size_t>(indent), ' ');
+
+        out << pad << "<node id=\"" << MakeId("node", static_cast<size_t>(index)) << "\" name=\""
+            << XmlEscape(node.Name.empty() ? MakeId("node", static_cast<size_t>(index)) : node.Name)
+            << "\" type=\"NODE\">\n";
+
+        // One <matrix> rather than translate/rotate/scale: it is exact for
+        // every transform the document can hold, shear included, and the reader
+        // decomposes it back to TRS when it decomposes cleanly.
+        const Matrix4x4 local = node.LocalMatrix();
+        if (!local.IsIdentity(1e-15)) {
+            out << pad << "  <matrix sid=\"transform\">";
+            // COLLADA writes row-major; the document stores column-major.
+            for (int row = 0; row < 4; ++row)
+                for (int col = 0; col < 4; ++col)
+                    out << ((row || col) ? " " : "") << local.m[col * 4 + row];
+            out << "</matrix>\n";
+        }
+
+        if (node.Mesh >= 0 && geometryIdByMesh_.count(static_cast<size_t>(node.Mesh)))
+            WriteInstanceGeometry(out, static_cast<size_t>(node.Mesh), indent + 2);
+
+        for (int child : node.Children) WriteNode(out, child, indent + 2);
+        out << pad << "</node>\n";
+    }
+
+    void WriteInstanceGeometry(std::ostream& out, size_t mesh, int indent) {
+        const std::string pad(static_cast<size_t>(indent), ' ');
+        const std::vector<int>& materials = materialsByMesh_[mesh];
+        out << pad << "<instance_geometry url=\"#" << geometryIdByMesh_[mesh] << "\"";
+        if (materials.empty()) {
+            out << "/>\n";
+            return;
+        }
+        out << ">\n"
+            << pad << "  <bind_material>\n"
+            << pad << "    <technique_common>\n";
+        for (int material : materials) {
+            const std::string id = MakeId("material", static_cast<size_t>(material));
+            out << pad << "      <instance_material symbol=\"" << id << "-symbol\" target=\"#"
+                << id << "\"/>\n";
+        }
+        out << pad << "    </technique_common>\n"
+            << pad << "  </bind_material>\n"
+            << pad << "</instance_geometry>\n";
+    }
+
+    // ---- losses -------------------------------------------------------
+    void ReportLosses() {
+        if (!doc_.Animations.empty())
+            options_.Warn("COLLADA: " + std::to_string(doc_.Animations.size()) +
+                          " animation(s) dropped - this writer emits no <library_animations>");
+        if (!doc_.Skins.empty())
+            options_.Warn("COLLADA: skinning dropped - this writer emits no "
+                          "<library_controllers>");
+        if (!doc_.Cameras.empty() || !doc_.Lights.empty())
+            options_.Warn("COLLADA: cameras and lights dropped - this writer emits geometry and "
+                          "materials only");
+        if (!doc_.Brep.Solids.empty())
+            options_.Warn("COLLADA: " + std::to_string(doc_.Brep.Solids.size()) +
+                          " exact solid(s) dropped - COLLADA stores meshes, so tessellate first "
+                          "if the bodies matter");
+        for (const ModelMesh& mesh : doc_.Meshes)
+            for (const MeshPrimitive& prim : mesh.Primitives)
+                if (!prim.Targets.empty()) {
+                    options_.Warn("COLLADA: morph targets dropped - this writer emits no "
+                                  "morph controllers");
+                    return;
+                }
+    }
+
+    const ModelDocument& doc_;
+    const ConversionOptions& options_;
+    std::map<size_t, std::string> geometryIdByMesh_;
+    std::map<size_t, std::vector<int>> materialsByMesh_;
+    std::vector<int> roots_;
+};
+
+} // namespace
+
+bool ColladaConverter::ExportToStream(const ModelDocument& document, std::ostream& stream,
+                                      const ConversionOptions& options) {
+    Writer writer(document, options);
+    writer.Run(stream);
+    return static_cast<bool>(stream);
+}
+
+bool ColladaConverter::Export(const ModelDocument& document, const std::string& filename,
+                              const ConversionOptions& options) {
+    std::ofstream file(filename);
+    if (!file) {
+        options.Warn("COLLADA: cannot write " + filename);
+        return false;
+    }
+    return ExportToStream(document, file, options);
+}
+
+bool ColladaConverter::ExportToMemory(const ModelDocument& document,
+                                      std::vector<uint8_t>& outData,
+                                      const ConversionOptions& options) {
+    std::ostringstream stream;
+    if (!ExportToStream(document, stream, options)) return false;
+    const std::string text = stream.str();
+    outData.assign(text.begin(), text.end());
+    return true;
+}
+
 } // namespace ModelConverter
 } // namespace UltraCanvas
