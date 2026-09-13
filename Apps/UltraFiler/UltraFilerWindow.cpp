@@ -48,8 +48,8 @@
 // onFolderModified re-syncs that folder's rows with the disk
 // (RefreshTreeFolder), so a folder created, renamed, deleted or moved by a cut
 // and paste is in the tree where it is on disk, without a restart.
-// Version: 1.19.0
-// Last Modified: 2026-09-06
+// Version: 1.20.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -972,6 +972,8 @@ void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
     // The same hook reports the Display > File extensions switches.
     settings.showFileExtensions = source->AreFileExtensionsInNames();
     settings.extensionBadge     = source->GetExtensionBadge();
+    // And Display > Folder previews.
+    settings.folderPreviews = source->AreFolderPreviewsEnabled();
     settings.Save();
     ApplySettings();
 }
@@ -1046,6 +1048,9 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     // the tag the thumbnail tiles carry.
     target->SetFileExtensionsInNames(settings.showFileExtensions);
     target->SetExtensionBadge(settings.extensionBadge);
+    // Display > Folder previews: the first pictures inside a folder on its
+    // icon.
+    target->SetFolderPreviewsEnabled(settings.folderPreviews);
     applyingDisplayFormats = wasApplying;
 }
 
