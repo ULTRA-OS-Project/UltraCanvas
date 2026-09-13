@@ -33,7 +33,7 @@ auto filer = CreateFilerWidget("my-filer", "/home/user/Documents", 0, 0, 900, 60
 |---|---|
 | `Details` | Text columns: name (with mini thumbnail), size, type, modified date, created date, attributes and an info column (play duration via `infoProvider`, compression factor of archive-compressed entries). Column headers are clickable and toggle the sort, and every column can be resized by dragging the splitter on its right edge — see [Resizable columns](#resizable-columns). |
 | `List` | Compact icon + name entries flowing top-to-bottom into columns (horizontal scrolling). The column width is draggable — see [Resizable columns](#resizable-columns). |
-| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension. Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. The grid's column count comes from the tile edge, which would leave a too-narrow-for-one-more-column strip empty on the right; by default (`SetFlexibleTileWidths(true)`) that leftover is distributed across the row Explorer-style, so the cells stretch smoothly with the window until the next column fits and the grid always fills the width. Only the cell widens (long names wrap later) — the image box keeps the square edge, centered, so resizing neither changes thumbnail sizes nor re-decodes anything. Set it to `false` for fixed-width tiles with the right-hand gap. |
+| `ThumbnailsSmall` / `ThumbnailsMedium` / `ThumbnailsBig` / `ThumbnailsMaximized` | Thumbnail grids with growing tile sizes. Images and SVGs show their real bitmap (via the shared `UCImage` cache); images larger than the tile are scaled down to fit, while images already smaller than the tile keep their original size (centered) instead of being upscaled. Video files show their **poster frame** (a frame from a short way into the clip, grabbed via `CaptureVideoThumbnailPixmap`) when a video backend is available — without one the capture fails once and the tile keeps its glyph. PDFs show their first page, STL models a shaded render, and text / documents / spreadsheets a miniature page of their own content; each of these kinds can be switched off individually — see [Selective previews](#selective-previews). Files without (or with a switched-off) preview draw a category-colored glyph with their extension, and a folder shows the first pictures inside it peeking out of the folder shape (see [Folder previews](#folder-previews)). Thumbnails are decoded **asynchronously** on background worker threads: the folder page appears immediately (each image tile shows the generic glyph first) and tiles fill in as their decode completes, so opening a folder full of photos never blocks the window. Decoding is **viewport-driven**: only visible tiles plus a prefetch band of one screen ahead in scroll direction are ever decoded, visible tiles always decode first, and queued decodes that scroll out of range are dropped. With `SetCompressedThumbnails(true)` the finished thumbnails are additionally held QOI-compressed in memory (2–6× smaller, bit-exact) and decompressed on demand into a small hot cache while drawn; `GetThumbnailCacheStats()` exposes the footprint for comparison. Tiles are square by the selected edge, so a row of landscape photos would leave a wide empty band above and below each image; by default (`SetShrinkThumbnailRows(true)`) a grid row whose thumbnails **all** display shorter than the tile edge is shortened to the tallest image actually shown in it, while any row that contains a full-height item (a folder, a glyph file, a vector/portrait/square or not-yet-measured image) keeps the full edge. The natural image sizes are read from file headers (no decode) on the same background worker as the folder statistics and cached, so a folder of photos lays out and appears immediately — every row starts at the full edge and shortens as its measurements land. Set it to `false` for a strict square grid. The grid's column count comes from the tile edge, which would leave a too-narrow-for-one-more-column strip empty on the right; by default (`SetFlexibleTileWidths(true)`) that leftover is distributed across the row Explorer-style, so the cells stretch smoothly with the window until the next column fits and the grid always fills the width. Only the cell widens (long names wrap later) — the image box keeps the square edge, centered, so resizing neither changes thumbnail sizes nor re-decodes anything. Set it to `false` for fixed-width tiles with the right-hand gap. |
 | `BarSize` | One row per entry with a bar proportional to its size (directories use a recursive size computed asynchronously on a background worker, capped for safety; bars reflow as the walks complete). The name column and the size label column are draggable — see [Resizable columns](#resizable-columns). |
 | `TreeMap` | Squarified treemap weighted by entry size, colored by file category. |
 | `GourceTree` | Force-directed tree (Gource style) — reserved, shows a placeholder until implemented. |
@@ -959,6 +959,58 @@ application's config directory (`SaveImageFileAsQoi`, `ImageCairo.h`) and shows
 that copy, so the icon survives the original being moved or deleted. *Extras >
 Remove folder icon* takes it away again.
 
+## Folder previews
+
+A folder drawn as the built-in shape shows the **first pictures inside it
+peeking out of the folder**, the way Explorer's folder icons do: up to two
+cards stand in the open folder, their upper part above the front flap. On by
+default (`SetFolderPreviewsEnabled`, `AreFolderPreviewsEnabled`), also toggled
+by the context menu's *Display > Folder previews*; the switch fires
+`onDisplayFormatsChanged` like the other Display switches, so a host that
+persists those persists this one the same way.
+
+```cpp
+filer->SetFolderPreviewsEnabled(false);   // plain folder shapes only
+```
+
+What it costs, and where it is drawn:
+
+- Only the **tile-sized icons** carry previews — the four thumbnail grids, and
+  any other view whose icon box is at least 32 px. The 16 px icon column of the
+  Details and List rows keeps the plain shape, where a picture would be a
+  smudge.
+- A folder the host gave an icon through [`folderIconProvider`](#folder-icons)
+  keeps that icon; an application bundle keeps its own; the folders of an
+  archive interior (VirtualFS) are never listed for it.
+- **Listing the folder happens on the background workers** that decode the
+  thumbnails — one directory listing per folder on screen, no file opened, no
+  metadata call: the kind comes from the name, file-or-folder from the listing
+  itself. The listing keeps the folder's first eight previewable files by name
+  (bitmaps, vector graphics, videos, PDFs, 3D models and fonts; text-shaped
+  files preview as a page of their own content, which a card this size cannot
+  show) and gives up after 4096 entries. Like the thumbnails it is
+  **viewport-driven**: only the folders the current frame draws (plus the
+  prefetch band) are listed, and a pending listing that scrolls out of range
+  is dropped.
+- The pictures are the **ordinary thumbnails** of those files, requested at
+  the card size through the same cache and the same budget — so the
+  [Selective previews](#selective-previews) switches govern them exactly as
+  they govern the file's own tile (a kind switched off never shows inside a
+  folder either), and a picture is decoded once per size however many folders
+  and views show it.
+- Until the listing lands the folder is drawn as the plain shape; a folder
+  holding nothing previewable stays that way, and one that cannot be listed
+  (no permission) does too until the next rescan. A card whose decode is still
+  on its way — or failed — shows as a blank sheet, so a folder never pops from
+  "open" back to "closed".
+
+The listings are dropped with the thumbnail cache — on a rescan, so the folder
+watch's rescan after a change is what makes the previews current — and are
+capped at 4096 folders, past which everything outside the current frame goes.
+
+`FolderPreviewCardRects(box, count)` is the card geometry, public and pure so
+it can be tested (`Tests/FilerFolderPreviewTest.cpp`).
+
 ## Selection access
 
 `GetSelectedEntries()` returns the selected entries, `ClearSelection()` /
@@ -1628,7 +1680,7 @@ scan, which feeds its matches in through `AppendToFileList()` while it runs.
 | `confirmDelete(entries) -> bool` | Before deleting — return false to abort |
 | `infoProvider(entry) -> string` | Per entry at scan time (e.g. media duration) |
 | `displayNameProvider(entry) -> string` | Per entry while it is drawn — return the name to draw instead of the file name, `""` to keep it (see [Entry names](#entry-names)) |
-| `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)) |
+| `folderIconProvider(entry) -> string` | Per folder entry while it is drawn — return an image path to draw instead of the folder shape, `""` to keep it (see [Folder icons](#folder-icons)); a folder drawn as the shape shows the first pictures inside it (see [Folder previews](#folder-previews)) |
 | `onShare / onPrint / onAttributes / onAccess (entries)` | Their menu items |
 | `extrasMenuProvider() -> vector<MenuItemData>` | Called on every context-menu open; non-empty results are appended to the Extras submenu behind a separator, so item flags can follow host state |
 | `onSettings()` | Settings menu item |

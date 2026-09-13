@@ -2306,6 +2306,32 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER FOLDER PREVIEW TEST =====
+# Display > Folder previews: the geometry of the cards that peek out of a
+# folder icon (UltraCanvasFilerWidget::FolderPreviewCardRects) - at most two,
+# inside the box, above the front flap, front card right of and lower than the
+# back one, and a pure function of the box so the draw and the prefetch ask
+# the thumbnail cache for the same size.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerFolderPreviewTest...")
+    add_executable(FilerFolderPreviewTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerFolderPreviewTest.cpp
+    )
+    target_include_directories(FilerFolderPreviewTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerFolderPreviewTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerFolderPreviewTest PRIVATE UltraCanvas)
+    set_target_properties(FilerFolderPreviewTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerFolderPreviewTest COMMAND FilerFolderPreviewTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerFolderPreviewTest")
+else()
+    message(STATUS "  FilerFolderPreviewTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== SHELL LINK TEST =====
 # Reading a Windows shortcut (.lnk) on any platform: what it points at, the
 # icon it names, and how its Windows path maps onto the host filesystem. The

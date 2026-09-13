@@ -34,8 +34,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
-// Version: 1.12.0
-// Last Modified: 2026-09-12
+// Version: 1.13.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -147,6 +147,9 @@ namespace {
         std::shared_ptr<UltraCanvasCheckbox> extensionsInNamesBox;
         // Display > Files in use: the "mark held files" checkbox.
         std::shared_ptr<UltraCanvasCheckbox> lockMarkingBox;
+        // Display > Thumbnails: the "pictures inside a folder on its icon"
+        // checkbox above the kind list.
+        std::shared_ptr<UltraCanvasCheckbox> folderPreviewsBox;
         std::vector<std::pair<FilerExtensionBadge,
                               std::shared_ptr<UltraCanvasRadio>>> badgeRadios;
         UltraCanvasRadioGroup                extensionBadgeGroup;
@@ -928,6 +931,20 @@ namespace {
                 : "A kind switched off - or one format ticked off under it - "
                   "leaves the whole width to the file display. Greyed "
                   "formats: this build has no view for them.");
+
+        if (thumbnails) {
+            // Display > Folder previews: the first pictures inside a folder
+            // peeking out of its icon, drawn with the same thumbnails the
+            // switches below govern.
+            d->folderPreviewsBox = MakeCheckbox(idBase + "-folder-previews",
+                    "Show the first pictures inside a folder on its icon",
+                    kTextWidth, d->settings->folderPreviews, [d](bool on) {
+                if (!d->settings) return;
+                d->settings->folderPreviews = on;
+                ApplyAndSave(d);
+            });
+            parts.body->AddChild(d->folderPreviewsBox);
+        }
 
         auto buttons = MakeButtonRow(idBase + "-buttons");
         buttons->AddChild(MakeButton(idBase + "-all-on", "Everything on", 120,

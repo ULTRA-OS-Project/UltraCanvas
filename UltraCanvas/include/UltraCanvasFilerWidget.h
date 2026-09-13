@@ -72,14 +72,17 @@
 // the host can extend the context menu's Extras submenu via
 // extrasMenuProvider. A folder can be drawn as an icon of the host's
 // choosing rather than as the built-in folder shape (folderIconProvider).
-// extrasMenuProvider.
+// A folder drawn as the shape shows the first pictures inside it peeking out
+// of the folder, Explorer-style (Display > Folder previews): the folder is
+// listed by the same background workers that decode the thumbnails, and its
+// previews are the ordinary thumbnails of those files.
 // The displayed names keep their file extension or drop it, and a thumbnail
 // tile can show the extension as a bar or a small tag over the foot of its
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.27.0
-// Last Modified: 2026-09-12
+// Version: 1.28.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -657,6 +660,24 @@ namespace UltraCanvas {
         void SetHoverIconMenuEnabled(bool enabled);
         bool IsHoverIconMenuEnabled() const { return hoverIconMenu; }
 
+        // "Folder previews": a folder drawn as the built-in shape shows the
+        // first pictures inside it peeking out of the folder, the way
+        // Explorer's folder icons do. On by default; also toggled by the
+        // Display > Folder previews context-menu checkbox. Only the tile-sized
+        // icons carry them (the icon column of a Details / List row is too
+        // small for a picture to read), and a folder the host gave an icon
+        // through folderIconProvider keeps that icon. Fires
+        // onDisplayFormatsChanged so a host can persist it.
+        void SetFolderPreviewsEnabled(bool enabled);
+        bool AreFolderPreviewsEnabled() const { return folderPreviews; }
+        // The rects of the cards peeking out of a folder drawn in `rect`,
+        // front card first, at most two: `count` is how many pictures the
+        // folder has to show. Pure geometry (public so it can be tested);
+        // the draw and the prefetch share it so both ask the thumbnail cache
+        // for the same size.
+        static std::vector<Rect2Di> FolderPreviewCardRects(const Rect2Di& rect,
+                                                           size_t count);
+
         // Show the "Open Path" context-menu item as the menu's first entry
         // (useful when the widget displays a search result rather than a plain
         // folder). `label` replaces the item's caption, e.g.
@@ -1139,6 +1160,7 @@ namespace UltraCanvas {
         std::string curatedHomePath;
         std::vector<std::string> curatedHomeFolders;
         bool hoverIconMenu = true;
+        bool folderPreviews = true;
         bool showOpenPathItem = false;
         std::string openPathItemLabel = "Open Path";
         bool showSelectionInfo = true;
@@ -1653,6 +1675,47 @@ namespace UltraCanvas {
         // Draws a snippet as a miniature page (or cell grid) inside `rect`.
         void DrawTextPreview(IRenderContext* ctx, const Rect2Di& rect,
                              const TextPreviewSnippet& snippet);
+
+        // ===== FOLDER CONTENT PREVIEWS =====
+        // A folder's icon shows the first pictures inside it. Which files
+        // those are takes a directory listing, which the paint path may not
+        // make: like the text previews the folder is queued for the
+        // background workers, which list it (one listing, no file opened,
+        // no metadata call) and keep its first few previewable files by
+        // name. The draw pass then asks the ordinary thumbnail pipeline for
+        // those files, so a picture inside a folder is decoded once and
+        // shared with the tile it gets when the folder is opened at that
+        // size. Until the listing lands the folder is drawn as the plain
+        // shape; a folder holding nothing previewable stays that way.
+        enum class FolderPeekState { Pending, Ready, Failed };
+        struct FolderPeekSlot {
+            FolderPeekState state = FolderPeekState::Pending;
+            // name / path / extension / category only - enough for
+            // ThumbSourceFor, which is what decides whether each file has a
+            // preview under the Display > Thumbnails switches in force when
+            // the folder is drawn.
+            std::vector<FilerEntry> files;
+        };
+        std::unordered_map<std::string, FolderPeekSlot> peekSlots;  // by path
+        std::deque<std::string> peekQueue;             // folders to list
+        std::vector<std::string> peekFrameWants;       // UI thread, per frame
+        std::unordered_set<std::string> peekPathsInFlight;
+
+        // Copies the folder's previewable files into `out` and returns true;
+        // returns false (draw the plain shape) after queueing a background
+        // listing, while one runs, or when the folder cannot be listed.
+        bool AcquireFolderPeek(const FilerEntry& e, std::vector<FilerEntry>& out);
+        // Swaps peekFrameWants into the worker queue, like the thumbnails.
+        void CommitFolderPeekWants();
+        // The files of a listed folder that get a preview right now - the
+        // first up to kFolderPreviewCount with a thumbnail source under the
+        // current switches - or an empty list while the listing is pending.
+        std::vector<FilerEntry> FolderPreviewFiles(const FilerEntry& e,
+                                                   const Rect2Di& rect);
+        // Draws the folder shape with `previews` peeking out of it.
+        void DrawFolderWithPreviews(IRenderContext* ctx, const Rect2Di& rect,
+                                    const Color& color,
+                                    const std::vector<FilerEntry>& previews);
 
         // ===== ASYNC FOLDER STATS =====
         // Recursive folder statistics feed the selection info bar (content

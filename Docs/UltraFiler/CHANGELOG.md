@@ -1,3 +1,17 @@
+#### 2026-09-13 *1.31.0*
+- **Folder icons show the first pictures inside the folder**, peeking out of
+  the folder the way Explorer's folder icons do, in every thumbnail view. Up
+  to two of the folder's first pictures by name stand in the open folder,
+  drawn from the same thumbnails the files themselves get, so the *Settings >
+  Display > Thumbnails* switches govern them too: a kind switched off never
+  shows inside a folder either. The well-known user folders and any folder
+  given an icon through *Extras > Set folder icon* keep their icon. The
+  context menu's *Display > Folder previews* and a checkbox at the top of
+  *Settings > Display > Thumbnails* turn it off - each shown folder costs one
+  listing in the background, which is worth avoiding on a slow network
+  volume - and the choice is saved as `display.folder.previews`. (Framework
+  side: `Docs/UltraCanvas/CHANGELOG.md` 0.8.39.)
+
 #### 2026-09-12 *1.30.0*
 - **A double-click starts the program the file type is assigned to.** On
   Windows a double-click means one thing - the file opens in the program

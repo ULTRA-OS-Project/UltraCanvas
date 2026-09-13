@@ -49,8 +49,8 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.27.0
-// Last Modified: 2026-09-12
+// Version: 1.28.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -2943,6 +2943,16 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::SetHoverIconMenuEnabled(bool enabled) {
         hoverIconMenu = enabled;
         RequestRedraw();
+    }
+
+    void UltraCanvasFilerWidget::SetFolderPreviewsEnabled(bool enabled) {
+        if (folderPreviews == enabled) return;
+        folderPreviews = enabled;
+        // The listings and the pictures they led to stay cached: switching
+        // the previews off and on again must not re-list every folder on
+        // screen. Off, the draw pass simply never asks for them.
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
     }
 
     void UltraCanvasFilerWidget::SetSelectionInfoVisible(bool visible) {
@@ -6953,6 +6963,7 @@ namespace UltraCanvas {
 
         PrefetchThumbnails(ctx, bounds);
         CommitThumbnailWants();
+        CommitFolderPeekWants();
         CommitTextPreviewWants();
 
         if (viewType == FilerViewType::Details) DrawDetailsHeader(ctx, bounds);
@@ -7476,6 +7487,92 @@ namespace UltraCanvas {
         constexpr uint8_t kUnreadableMaxAttempts = 4;
         constexpr auto kUnreadableRetryDelay = std::chrono::milliseconds(300);
 
+        // ===== FOLDER CONTENT PREVIEWS =====
+        // Below this icon edge a picture inside a folder is a smudge: the
+        // icon column of the Details / List rows keeps the plain shape, the
+        // thumbnail tiles get the previews.
+        constexpr int kFolderPreviewMinEdge = 32;
+        // Cards peeking out of one folder. Two is what reads at a small
+        // tile; more would be slivers.
+        constexpr size_t kFolderPreviewCount = 2;
+        // Previewable files a listing keeps, by name - more than are drawn,
+        // so that a kind the Display > Thumbnails switches turn off still
+        // leaves enough to fill the cards.
+        constexpr size_t kFolderPeekKeep = 8;
+        // Entries one listing reads before giving up on finding more: a
+        // folder of a hundred thousand files is listed by the folder scan
+        // when it is opened, not by its icon.
+        constexpr size_t kFolderPeekScanCap = 4096;
+        // Where the front flap of a folder drawn with previews starts, as a
+        // fraction of the icon height.
+        constexpr double kFolderFlapTop = 0.52;
+
+        // The files a folder's icon can preview: its first kFolderPeekKeep
+        // previewable files by name. One directory listing and nothing more -
+        // no file is opened and no metadata call is made, the kind comes from
+        // the name and file-or-folder from the listing itself - which is what
+        // keeps a screenful of folders on a network volume from costing a
+        // stat per file inside each of them. Returns false when the folder
+        // cannot be listed (no directory, no permission, an archive interior).
+        bool PeekFolderContents(const std::string& path,
+                                std::vector<FilerEntry>& out) {
+            std::error_code ec;
+            fs::directory_iterator it(path, ec);
+            if (ec) return false;
+            auto lessByName = [](const FilerEntry& a, const FilerEntry& b) {
+                const size_t n = std::min(a.name.size(), b.name.size());
+                for (size_t i = 0; i < n; ++i) {
+                    const int ca = std::tolower(static_cast<unsigned char>(a.name[i]));
+                    const int cb = std::tolower(static_cast<unsigned char>(b.name[i]));
+                    if (ca != cb) return ca < cb;
+                }
+                return a.name.size() < b.name.size();
+            };
+            auto trim = [&]() {
+                std::sort(out.begin(), out.end(), lessByName);
+                if (out.size() > kFolderPeekKeep) out.resize(kFolderPeekKeep);
+            };
+            size_t scanned = 0;
+            for (fs::directory_iterator end; it != end; it.increment(ec)) {
+                if (ec) break;
+                if (++scanned > kFolderPeekScanCap) break;
+                const std::string name = it->path().filename().string();
+                if (name.empty() || name[0] == '.') continue;
+                const std::string ext = LowerExtension(name);
+                if (ext.empty()) continue;
+                const FilerFileCategory category = FilerCategoryForExtension(ext);
+                switch (PreviewTypeForFile(ext, category)) {
+                    case FilerPreviewType::Bitmaps:
+                    case FilerPreviewType::VectorGraphics:
+                    case FilerPreviewType::Videos:
+                    case FilerPreviewType::PDF:
+                    case FilerPreviewType::Models3D:
+                    case FilerPreviewType::Fonts:
+                        break;
+                    // Text-shaped files preview as a page of their own
+                    // content, which a card this size cannot show.
+                    default:
+                        continue;
+                }
+                // Asked after the cheap name tests: on most systems the
+                // listing itself says file or folder, a symlink costs a
+                // stat, which is why it comes last.
+                std::error_code tec;
+                if (!it->is_regular_file(tec)) continue;
+                FilerEntry e;
+                e.name = name;
+                e.path = it->path().string();
+                e.extension = ext;
+                e.category = category;
+                out.push_back(std::move(e));
+                // Kept small on the way: a folder of ten thousand photos
+                // must not build a ten-thousand-entry vector to keep eight.
+                if (out.size() >= kFolderPeekKeep * 8) trim();
+            }
+            trim();
+            return true;
+        }
+
         // Can this file be read right now? Asked only after a decode produced
         // nothing, to tell "there is no preview in this file" (final) from
         // "the file could not be opened" (try again in a moment). An empty
@@ -7646,12 +7743,31 @@ namespace UltraCanvas {
             // Items overlapping the viewport were already requested by their
             // draw call; take only the next viewport-sized band past it.
             if (lead <= viewEnd) continue;
-            std::string src = ThumbSourceFor(entries[item.entryIndex]);
+            const FilerEntry& e = entries[item.entryIndex];
+            if (e.isDirectory) {
+                // A folder's previews: the listing first, then - once it has
+                // landed - the pictures, at the card size the draw will ask
+                // for (EntryIconRect is the folder's own box, shrunk by
+                // folderIconScale like the draw's).
+                const Rect2Di box = EntryIconRect(item);
+                const std::vector<FilerEntry> previews =
+                        FolderPreviewFiles(e, box);
+                const std::vector<Rect2Di> cards =
+                        FolderPreviewCardRects(box, previews.size());
+                for (size_t i = 0; i < previews.size() && i < cards.size(); ++i) {
+                    const std::string src = ThumbSourceFor(previews[i]);
+                    if (src.empty()) continue;
+                    AcquireThumbnail(src, cards[i].width, cards[i].height,
+                                     ImageFitMode::Cover, scale);
+                }
+                continue;
+            }
+            std::string src = ThumbSourceFor(e);
             if (src.empty()) continue;
             Rect2Di r;
             ImageFitMode fit;
             ThumbGeometryForItem(item, r, fit);
-            if (!PreviewFitsRect(entries[item.entryIndex], r)) continue;
+            if (!PreviewFitsRect(e, r)) continue;
             AcquireThumbnail(src, r.width, r.height, fit, scale);
         }
     }
@@ -7741,6 +7857,177 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== FOLDER CONTENT PREVIEWS =====
+    bool UltraCanvasFilerWidget::AcquireFolderPeek(const FilerEntry& e,
+                                                   std::vector<FilerEntry>& out) {
+        if (!e.isDirectory || e.path.empty()) return false;
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        auto it = peekSlots.find(e.path);
+        if (it != peekSlots.end()) {
+            if (it->second.state == FolderPeekState::Ready) {
+                out = it->second.files;
+                return true;
+            }
+            if (it->second.state == FolderPeekState::Failed) return false;
+            // Pending: re-record the want so the folder keeps its place when
+            // the queue is rebuilt for this frame.
+        } else {
+            peekSlots.emplace(e.path, FolderPeekSlot{});
+        }
+        peekFrameWants.push_back(e.path);
+        return false;
+    }
+
+    void UltraCanvasFilerWidget::CommitFolderPeekWants() {
+        std::lock_guard<std::mutex> lk(thumbMutex);
+        // Rebuilt from scratch each frame in want order, exactly like the
+        // image decode queue: only the folders the viewport shows are listed.
+        peekQueue.clear();
+        std::unordered_set<std::string> wanted;
+        wanted.reserve(peekFrameWants.size());
+        for (const std::string& p : peekFrameWants) {
+            if (!wanted.insert(p).second) continue;
+            peekQueue.push_back(p);
+        }
+        // Finished listings are kept for scroll-back, but a tree of tens of
+        // thousands of folders must not grow the cache without limit: past
+        // the cap everything outside the current want set goes.
+        constexpr size_t kPeekSlotCap = 4096;
+        const bool overCap = peekSlots.size() > kPeekSlotCap;
+        for (auto it = peekSlots.begin(); it != peekSlots.end();) {
+            const bool wantedNow = wanted.find(it->first) != wanted.end();
+            if (!wantedNow &&
+                (overCap || it->second.state == FolderPeekState::Pending)) {
+                it = peekSlots.erase(it);
+            } else {
+                ++it;
+            }
+        }
+        peekFrameWants.clear();
+        if (!peekQueue.empty()) {
+            StartThumbnailWorkersLocked();
+            thumbCond.notify_all();
+        }
+    }
+
+    std::vector<FilerEntry> UltraCanvasFilerWidget::FolderPreviewFiles(
+            const FilerEntry& e, const Rect2Di& rect) {
+        std::vector<FilerEntry> previews;
+        // Only where a picture would read at all, and only for a folder the
+        // shape is drawn for: a bundle is an application with an icon of its
+        // own, an archive interior is not a directory the workers can list.
+        if (!folderPreviews || !listingIsRealDirectory) return previews;
+        if (!e.isDirectory || e.isBundle || e.path.empty()) return previews;
+        if (std::min(rect.width, rect.height) < kFolderPreviewMinEdge)
+            return previews;
+        std::vector<FilerEntry> listed;
+        if (!AcquireFolderPeek(e, listed)) return previews;
+        // The listing kept every previewable kind; which of them shows a
+        // picture right now is the Display > Thumbnails switches' call, the
+        // same as for the file's own tile.
+        for (FilerEntry& f : listed) {
+            if (ThumbSourceFor(f).empty()) continue;
+            previews.push_back(std::move(f));
+            if (previews.size() >= kFolderPreviewCount) break;
+        }
+        return previews;
+    }
+
+    std::vector<Rect2Di> UltraCanvasFilerWidget::FolderPreviewCardRects(
+            const Rect2Di& rect, size_t count) {
+        // The cards stand in the folder like photos in a wallet: their upper
+        // part shows above the front flap (which starts at kFolderFlapTop of
+        // the height), their lower part is hidden behind it. With two, the
+        // front one sits a little right and lower, the one behind it a
+        // little left and higher, so both show.
+        std::vector<Rect2Di> cards;
+        count = std::min<size_t>(count, kFolderPreviewCount);
+        if (count == 0) return cards;
+        const double w = rect.width, h = rect.height;
+        const double cardW = w * 0.62, cardH = h * 0.56;
+        const double left = rect.x + (w - cardW) / 2.0;
+        const double top = rect.y + h * 0.20;
+        for (size_t i = 0; i < count; ++i) {
+            double dx = 0.0, dy = 0.0;
+            if (count > 1) {
+                dx = (i == 0 ? 1.0 : -1.0) * w * 0.07;
+                dy = (i == 0 ? 1.0 : -1.0) * h * 0.03;
+            }
+            cards.emplace_back(static_cast<int>(std::lround(left + dx)),
+                               static_cast<int>(std::lround(top + dy)),
+                               std::max(2, static_cast<int>(std::lround(cardW))),
+                               std::max(2, static_cast<int>(std::lround(cardH))));
+        }
+        return cards;
+    }
+
+    void UltraCanvasFilerWidget::DrawFolderWithPreviews(
+            IRenderContext* ctx, const Rect2Di& rect, const Color& color,
+            const std::vector<FilerEntry>& previews) {
+        // Back plate: the tab and the darker back of the folder, which is
+        // what shows behind and between the cards.
+        const double tabW = rect.width * 0.45;
+        const double tabH = std::max(2.0, rect.height * 0.18);
+        ctx->SetFillPaint(color);
+        ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y, tabW, tabH * 2), 2);
+        ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y + tabH,
+                                          rect.width, rect.height - tabH), 2);
+
+        // The cards, back to front. Each is a white sheet with the picture
+        // filling it (Cover: a landscape photo is cropped to the card rather
+        // than leaving white bands, which is what Explorer does too); while
+        // the decode is still on its way, or failed, the sheet alone stands
+        // for the file. Clipped to the back plate so a card never leaves the
+        // folder.
+        const std::vector<Rect2Di> cards =
+                FolderPreviewCardRects(rect, previews.size());
+        ctx->PushState();
+        ctx->ClipRect(Rect2Dd(rect.x, rect.y + tabH,
+                              rect.width, rect.height - tabH));
+        for (size_t n = cards.size(); n-- > 0;) {
+            const Rect2Di& card = cards[n];
+            ctx->SetFillPaint(Color(255, 255, 255, 255));
+            ctx->FillRoundedRectangle(Rect2Dd(card), 1);
+            const int frame = card.width >= 40 ? 2 : 1;
+            const Rect2Di inner(card.x + frame, card.y + frame,
+                                card.width - 2 * frame, card.height - 2 * frame);
+            if (inner.width > 0 && inner.height > 0 && n < previews.size()) {
+                const std::string src = ThumbSourceFor(previews[n]);
+                std::shared_ptr<UCPixmap> pm;
+                if (!src.empty())
+                    pm = AcquireThumbnail(src, card.width, card.height,
+                                          ImageFitMode::Cover,
+                                          ctx->GetDeviceScale());
+                if (pm) {
+                    ctx->DrawPixmap(*pm, Rect2Dd(inner), ImageFitMode::Cover);
+                } else {
+                    ctx->SetFillPaint(Color(232, 232, 236, 255));
+                    ctx->FillRectangle(Rect2Dd(inner));
+                }
+            }
+            ctx->SetStrokePaint(Color(0, 0, 0, 50));
+            ctx->SetStrokeWidth(1.0f);
+            ctx->DrawRoundedRectangle(Rect2Dd(card), 1);
+        }
+        ctx->PopState();
+
+        // Front flap: the lighter body colour of the closed shape, over the
+        // lower part of the cards, with a lighter edge along its top so it
+        // reads as the front of the folder rather than a band across it.
+        const Color body(std::min(255, color.r + 20), std::min(255, color.g + 20),
+                         std::min(255, color.b + 25), 255);
+        const double flapTop = rect.y + rect.height * kFolderFlapTop;
+        const Rect2Dd flap(rect.x, flapTop, rect.width,
+                           rect.y + rect.height - flapTop);
+        ctx->SetFillPaint(body);
+        ctx->FillRoundedRectangle(flap, 2);
+        if (rect.height >= 48) {
+            ctx->SetFillPaint(Color(255, 255, 255, 70));
+            ctx->FillRectangle(Rect2Dd(rect.x + 1, flapTop, rect.width - 2,
+                                       std::max(1.0, rect.height * 0.03)));
+        }
+    }
+
     void UltraCanvasFilerWidget::StartThumbnailWorkersLocked() {
         if (!thumbWorkers.empty() || thumbShutdown) return;
         unsigned hw = std::thread::hardware_concurrency();
@@ -7757,6 +8044,7 @@ namespace UltraCanvas {
             thumbShutdown = true;
             thumbQueue.clear();
             textQueue.clear();
+            peekQueue.clear();
         }
         thumbCond.notify_all();
         for (std::thread& t : thumbWorkers) {
@@ -7776,6 +8064,8 @@ namespace UltraCanvas {
         thumbHotBytes = 0;
         textQueue.clear();
         textSlots.clear();
+        peekQueue.clear();
+        peekSlots.clear();
     }
 
     void UltraCanvasFilerWidget::SetCompressedThumbnails(bool enabled) {
@@ -7867,6 +8157,8 @@ namespace UltraCanvas {
             ThumbRequest req;
             std::string textPath;      // set instead of req for a text preview
             uint64_t textGeneration = 0;
+            std::string peekPath;      // set instead of req for a folder listing
+            uint64_t peekGeneration = 0;
             {
                 std::unique_lock<std::mutex> lk(thumbMutex);
                 for (;;) {
@@ -7936,11 +8228,60 @@ namespace UltraCanvas {
                         break;
                     }
                     if (!textPath.empty()) break;
+                    // Nothing to decode or read: list a folder for the
+                    // pictures its icon shows. Behind the image work because
+                    // a tile waiting for its own photo is the more visible
+                    // gap, and behind the text reads because those were
+                    // asked for by files already on screen.
+                    for (auto pit = peekQueue.begin(); pit != peekQueue.end();) {
+                        auto sit = peekSlots.find(*pit);
+                        if (sit == peekSlots.end() ||
+                            sit->second.state != FolderPeekState::Pending ||
+                            peekPathsInFlight.count(*pit) != 0) {
+                            pit = peekQueue.erase(pit);
+                            continue;
+                        }
+                        peekPathsInFlight.insert(*pit);
+                        peekGeneration = thumbGeneration;
+                        peekPath = std::move(*pit);
+                        peekQueue.erase(pit);
+                        break;
+                    }
+                    if (!peekPath.empty()) break;
                     if (due != std::chrono::steady_clock::time_point{})
                         thumbCond.wait_until(lk, due);
                     else
                         thumbCond.wait(lk);
                 }
+            }
+
+            if (!peekPath.empty()) {
+                // One directory listing, outside the lock.
+                std::vector<FilerEntry> files;
+                bool listed = false;
+                RunGuarded("folder preview", peekPath, [&]() {
+                    listed = PeekFolderContents(peekPath, files);
+                });
+                bool peekReport = false;
+                {
+                    std::lock_guard<std::mutex> lk(thumbMutex);
+                    peekPathsInFlight.erase(peekPath);
+                    if (thumbShutdown) return;
+                    if (peekGeneration == thumbGeneration) {
+                        FolderPeekSlot& slot = peekSlots[peekPath];
+                        // A folder that cannot be listed stays the plain
+                        // shape until the next rescan drops the cache; there
+                        // is nothing a retry would find.
+                        slot.state = listed ? FolderPeekState::Ready
+                                            : FolderPeekState::Failed;
+                        slot.files = std::move(files);
+                        // The repaint is what asks for the pictures: it queues
+                        // their decodes, and the folder fills in as they land.
+                        peekReport = !slot.files.empty();
+                    }
+                }
+                if (peekReport) PostThumbnailRedraw();
+                continue;
             }
 
             if (!textPath.empty()) {
@@ -8260,6 +8601,15 @@ namespace UltraCanvas {
                     ctx->DrawImage(*img, Rect2Dd(rect), ImageFitMode::Contain);
                     return;
                 }
+            }
+            // Display > Folder previews: the first pictures inside the folder
+            // peeking out of it. Only once the listing has landed and found
+            // some - a folder with nothing to show, or one still being
+            // listed, is the plain shape below.
+            const std::vector<FilerEntry> previews = FolderPreviewFiles(e, rect);
+            if (!previews.empty()) {
+                DrawFolderWithPreviews(ctx, rect, color, previews);
+                return;
             }
             // Folder shape: a tab above the body.
             double tabW = rect.width * 0.45, tabH = std::max(2.0, rect.height * 0.18);
@@ -10859,6 +11209,10 @@ namespace UltraCanvas {
             displayItems.push_back(MenuItemData::Checkbox(
                     "Icon-Menu", hoverIconMenu,
                     [this](bool on) { SetHoverIconMenuEnabled(on); }));
+            // The first pictures inside a folder peeking out of its icon.
+            displayItems.push_back(MenuItemData::Checkbox(
+                    "Folder previews", folderPreviews,
+                    [this](bool on) { SetFolderPreviewsEnabled(on); }));
             displayItems.push_back(MenuItemData::Checkbox(
                     "Info-Bar", showSelectionInfo,
                     [this](bool on) { SetSelectionInfoVisible(on); }));
