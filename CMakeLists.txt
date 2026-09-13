@@ -979,6 +979,14 @@ if (BUILD_ULTRAPAINT_APP)
             ${ULTRACANVAS_LIBRARY}
     )
 
+    # The 3D model formats. Core reads STL by itself; OBJ, PLY, COLLADA, FBX,
+    # X3D, Alembic, MilkShape, .blend and STEP arrive with this plugin, and
+    # linking it is also what defines ULTRACANVAS_HAS_MODELS_PLUGIN so
+    # main.cpp registers it. Without it, Import still works — for STL only.
+    if(TARGET ${ULTRACANVAS_MODELS_PLUGIN_TARGET})
+        target_link_libraries(UltraPaint PRIVATE ${ULTRACANVAS_MODELS_PLUGIN_TARGET})
+    endif()
+
     target_compile_features(UltraPaint PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraPaint PRIVATE
@@ -996,6 +1004,29 @@ if (BUILD_ULTRAPAINT_APP)
     # Embed manifest with UTF-8 active code page (Windows only) - the editor
     # opens arbitrary paths, so narrow Win32/CRT calls must read them as UTF-8.
     ultracanvas_embed_windows_manifest(UltraPaint)
+
+    # The freedesktop shortcut. This is what registers UltraPaint with the
+    # desktop as a handler for images, drawings and 3D models — and so what
+    # makes a file dropped on its icon in a dock, a taskbar or on the desktop
+    # arrive as an argument, the same path File > Open takes. The .xml names
+    # the one type that is ours (.ucraster); everything else it opens is
+    # already in the system MIME database.
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+        # Exec=UltraPaint / TryExec=UltraPaint are resolved against PATH, so
+        # the entry is only true if the binary is installed with it.
+        install(TARGETS UltraPaint RUNTIME DESTINATION bin)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraPaint/UltraPaint.desktop
+                DESTINATION share/applications)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraPaint/UltraPaint-mimetypes.xml
+                DESTINATION share/mime/packages)
+        # Icon=UltraPaint is an icon *name*: it is resolved through the
+        # installed themes, so the files have to land in one.
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraPaint.png
+                DESTINATION share/icons/hicolor/256x256/apps)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraPaint.svg
+                DESTINATION share/icons/hicolor/scalable/apps)
+        message(STATUS "  UltraPaint desktop entry: share/applications/UltraPaint.desktop")
+    endif()
 
     message(STATUS "  UltraPaint executable: UltraPaint")
 endif()

@@ -53,12 +53,13 @@ namespace {
         return row;
     }
 
-    std::string FormatValue(float v, bool integer) {
-        char buf[32];
-        if (integer) std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(std::lround(v)));
-        else std::snprintf(buf, sizeof(buf), "%.2f", v);
-        return buf;
-    }
+}
+
+std::string FormatValue(float v, bool integer) {
+    char buf[32];
+    if (integer) std::snprintf(buf, sizeof(buf), "%d", static_cast<int>(std::lround(v)));
+    else std::snprintf(buf, sizeof(buf), "%.2f", v);
+    return buf;
 }
 
 void AddSliderRow(UltraCanvasContainer& panel, const std::string& id, const std::string& label,

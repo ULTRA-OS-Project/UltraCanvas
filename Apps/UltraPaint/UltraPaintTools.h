@@ -127,6 +127,11 @@ std::vector<std::unique_ptr<PaintTool>> CreatePaintTools();
 
 // ===== OPTION WIDGET HELPERS (shared by the tools and the window) =====
 namespace PaintOptionWidgets {
+    // How a parameter value reads beside its slider: a whole number for an
+    // integer parameter, two decimals otherwise. Shared, so the filter dialog
+    // and the tool options panel never disagree about the same value.
+    std::string FormatValue(float v, bool integer);
+
     // A "Label  [slider]  value" row; `onChange` gets the new value.
     // `labelWidth` 0 uses the column width the tool options panel shares;
     // pass a wider one for a label that does not fit in it.

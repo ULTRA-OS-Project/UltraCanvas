@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  The shared-mime-info package for the types UltraCanvas owns, so a desktop
+  can name them, draw them with UltraPaint's icon, and let UltraPaint's
+  launcher icon accept them as a drop. Installed to share/mime/packages; run
+  `update-mime-database` on the share/mime directory afterwards.
+
+  Only the formats that are ours are here. Everything else UltraPaint opens
+  (PNG, SVG, PDF, STL and the rest) is already in the system database, and
+  redefining a type that exists would be a downgrade rather than an addition.
+-->
+<mime-info xmlns="http://www.freedesktop.org/standards/shared-mime-info">
+  <mime-type type="application/x-ultracanvas-raster">
+    <comment>UltraPaint image</comment>
+    <comment xml:lang="de">UltraPaint-Bild</comment>
+    <generic-icon name="image-x-generic"/>
+    <glob pattern="*.ucraster"/>
+  </mime-type>
+</mime-info>

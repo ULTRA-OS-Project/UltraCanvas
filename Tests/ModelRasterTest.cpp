@@ -1,5 +1,6 @@
 // Tests/ModelRasterTest.cpp
-// The software mesh rasterizer, now that two callers share it.
+// The software mesh rasterizer, now that two callers share it, and the model
+// file -> raster layer path built on top of it.
 //
 // It spent its life as a private function inside UltraCanvasFilerWidget.cpp,
 // reachable only through a thumbnail worker and therefore only ever tested by
@@ -9,14 +10,28 @@
 // it honours the size and scale it is given, that it actually puts the model
 // on the canvas, and that the pose is the one the Filer has always drawn.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-11
+// The second half covers what a bitmap editor asks of a model: recognising one
+// by extension without opening it, reading what geometry it holds, and turning
+// it into a UCRasterLayer from a view the caller chose. The rules there are
+// that the requested size is delivered exactly, that the pose is what decides
+// the picture (turn the model and the pixels change; back the camera off and
+// it shrinks), that the background is composited under the model rather than
+// over it, that the colour is the caller's, and that an absurd size is refused
+// instead of allocated. The model is a binary STL the test writes itself, so
+// it asserts against geometry it knows.
+//
+// Version: 1.1.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasModelRaster.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstring>
+#include <filesystem>
+#include <fstream>
 #include <string>
 #include <vector>
 
@@ -206,11 +221,278 @@ static void TestTwoSided() {
     Check(b && Coverage(b) > 0.05, "and wound the other way it is still drawn, not culled");
 }
 
+
+// ===========================================================================
+// A MODEL FILE AS AN EDITABLE LAYER
+// ===========================================================================
+
+// ===== A BOX, WRITTEN AS A BINARY STL =====
+// 80 bytes of header, the triangle count, then 50 bytes per triangle: the
+// facet normal, three corners, and two attribute bytes. The normals are left
+// at zero on purpose - a great many real STL files have them wrong or absent,
+// and the renderer is supposed to shade from the geometry regardless.
+static void PutFloat(std::vector<uint8_t>& bytes, float value) {
+    uint32_t bits = 0;
+    std::memcpy(&bits, &value, sizeof(bits));
+    for (int i = 0; i < 4; ++i) bytes.push_back(static_cast<uint8_t>((bits >> (i * 8)) & 0xFF));
+}
+
+static void PutU32(std::vector<uint8_t>& bytes, uint32_t value) {
+    for (int i = 0; i < 4; ++i) bytes.push_back(static_cast<uint8_t>((value >> (i * 8)) & 0xFF));
+}
+
+static void PutTriangle(std::vector<uint8_t>& bytes,
+                        const Vec3& a, const Vec3& b, const Vec3& c) {
+    for (int i = 0; i < 3; ++i) PutFloat(bytes, 0.0f);   // the facet normal, left to the renderer
+    for (const Vec3& p : { a, b, c }) {
+        PutFloat(bytes, p.x);
+        PutFloat(bytes, p.y);
+        PutFloat(bytes, p.z);
+    }
+    bytes.push_back(0);
+    bytes.push_back(0);
+}
+
+// A box from (-w, -h, -d) to (+w, +h, +d) as the twelve triangles of its six
+// faces. Twice as wide as it is deep, so a quarter turn visibly narrows the
+// silhouette - which is how the pose assertions tell one view from another.
+static std::string WriteTempStl() {
+    const float w = 20.0f, h = 10.0f, d = 10.0f;
+    const Vec3 v[8] = {
+        { -w, -h, -d }, { +w, -h, -d }, { +w, +h, -d }, { -w, +h, -d },
+        { -w, -h, +d }, { +w, -h, +d }, { +w, +h, +d }, { -w, +h, +d },
+    };
+    const int faces[6][4] = {
+        { 4, 5, 6, 7 }, { 1, 0, 3, 2 }, { 5, 1, 2, 6 },
+        { 0, 4, 7, 3 }, { 3, 7, 6, 2 }, { 0, 1, 5, 4 },
+    };
+
+    std::vector<uint8_t> bytes(80, 0);
+    const char* header = "UltraCanvas ModelRasterTest box";
+    std::memcpy(bytes.data(), header, std::strlen(header));
+    PutU32(bytes, 12);
+    for (const auto& f : faces) {
+        PutTriangle(bytes, v[f[0]], v[f[1]], v[f[2]]);
+        PutTriangle(bytes, v[f[0]], v[f[2]], v[f[3]]);
+    }
+
+    const std::filesystem::path path =
+            std::filesystem::temp_directory_path() / "ultracanvas-model-raster-test.stl";
+    std::ofstream out(path, std::ios::binary);
+    out.write(reinterpret_cast<const char*>(bytes.data()),
+              static_cast<std::streamsize>(bytes.size()));
+    out.close();
+    return path.string();
+}
+
+// How much of a layer the model covers and how wide its ink is: enough for the
+// pose assertions to say "a different picture" without a reference image in
+// the repository.
+struct LayerInk {
+    size_t drawn = 0;
+    int minX = 0, maxX = -1;
+};
+
+static LayerInk InkOf(const std::shared_ptr<UCRasterLayer>& layer) {
+    LayerInk ink;
+    ink.minX = layer->GetWidth();
+    for (int y = 0; y < layer->GetHeight(); ++y) {
+        for (int x = 0; x < layer->GetWidth(); ++x) {
+            if (layer->GetPixel(x, y).a == 0) continue;
+            ++ink.drawn;
+            ink.minX = std::min(ink.minX, x);
+            ink.maxX = std::max(ink.maxX, x);
+        }
+    }
+    return ink;
+}
+
+static bool SamePixels(const std::shared_ptr<UCRasterLayer>& a,
+                       const std::shared_ptr<UCRasterLayer>& b) {
+    if (!a || !b) return false;
+    if (a->GetWidth() != b->GetWidth() || a->GetHeight() != b->GetHeight()) return false;
+    for (int y = 0; y < a->GetHeight(); ++y)
+        for (int x = 0; x < a->GetWidth(); ++x) {
+            const RasterPixel pa = a->GetPixel(x, y), pb = b->GetPixel(x, y);
+            if (pa.r != pb.r || pa.g != pb.g || pa.b != pb.b || pa.a != pb.a) return false;
+        }
+    return true;
+}
+
+static void TestWhatIsAModel() {
+    std::printf("What counts as a model\n");
+
+    const std::vector<std::string> extensions = GetModelRasterExtensions();
+    Check(std::find(extensions.begin(), extensions.end(), "stl") != extensions.end(),
+          "STL is rasterizable in every build - core reads it without a plugin");
+    Check(IsModelGraphicsPath("part.stl"), "an STL is a model");
+    Check(IsModelGraphicsPath("PART.STL"), "and the extension test ignores case");
+    Check(!IsModelGraphicsPath("notes.txt"), "a plain text file is not a model");
+    Check(!IsModelGraphicsPath("photo.png"), "a bitmap is not a model");
+    Check(!IsModelGraphicsPath("drawing.svg"), "a drawing is not a model");
+    Check(!IsModelGraphicsPath("noextension"), "and neither is a name with no extension");
+}
+
+static void TestInspection(const std::string& stlPath) {
+    std::printf("Reading what a file holds\n");
+
+    const ModelSourceInfo info = InspectModelFile(stlPath);
+    Check(info.ok, "the test STL can be read: " + info.error);
+    Check(info.triangleCount == 12,
+          "a box is twelve triangles (got " + std::to_string(info.triangleCount) + ")");
+    Check(info.vertexCount >= 3,
+          "it reports vertices too (got " + std::to_string(info.vertexCount) + ")");
+    Check(info.bounds.IsValid() &&
+          std::fabs((info.bounds.max.x - info.bounds.min.x) - 40.0f) < 0.01f &&
+          std::fabs((info.bounds.max.z - info.bounds.min.z) - 20.0f) < 0.01f,
+          "and the bounds are the file's own units, not normalised ones");
+
+    const ModelSourceInfo missing = InspectModelFile("no-such-file.stl");
+    Check(!missing.ok && !missing.error.empty(),
+          "a model that is not there is reported, not guessed at");
+
+    const ModelSourceInfo foreign = InspectModelFile("notes.txt");
+    Check(!foreign.ok && !foreign.error.empty(),
+          "and a format no reader in this build handles says so");
+}
+
+static void TestFileToLayer(const std::string& stlPath) {
+    std::printf("A model file as a raster layer\n");
+
+    std::string error;
+    ModelRasterOptions options;
+    options.width = 320;
+    options.height = 240;
+
+    auto front = RasterizeModelFile(stlPath, options, error);
+    Check(front != nullptr, "rasterizes at 320 x 240: " + error);
+    if (!front) return;
+
+    Check(front->GetWidth() == 320 && front->GetHeight() == 240,
+          "the requested size is delivered exactly (got " +
+          std::to_string(front->GetWidth()) + " x " + std::to_string(front->GetHeight()) + ")");
+    Check(front->name == "ultracanvas-model-raster-test",
+          "the layer is named after the file, so it reads in a layer list (got \"" +
+          front->name + "\")");
+
+    const LayerInk frontInk = InkOf(front);
+    Check(frontInk.drawn > 0, "the model is actually drawn");
+    Check(frontInk.drawn < static_cast<size_t>(320) * 240,
+          "and framed with margin rather than filling the raster");
+    Check(front->GetPixel(0, 0).a == 0 && front->GetPixel(319, 239).a == 0,
+          "the corners stay transparent - nothing is painted behind the model");
+
+    // ----- the pose is what decides the picture -----
+    // A quarter turn puts the box end-on: the same geometry, a much narrower
+    // silhouette. This is the promise the 3D import dialog rests on - the
+    // bitmap is the view the user framed, not a fixed one.
+    ModelRasterOptions turned = options;
+    turned.pose.yaw = options.pose.yaw + 1.5707963f;
+    auto side = RasterizeModelFile(stlPath, turned, error);
+    Check(side != nullptr, "rasterizes from a second pose: " + error);
+    if (side) {
+        Check(!SamePixels(front, side), "turning the model changes the pixels");
+        const LayerInk sideInk = InkOf(side);
+        Check(sideInk.maxX - sideInk.minX < frontInk.maxX - frontInk.minX,
+              "and a quarter turn on a box twice as wide as it is deep narrows it (" +
+              std::to_string(sideInk.maxX - sideInk.minX) + " px vs " +
+              std::to_string(frontInk.maxX - frontInk.minX) + " px)");
+    }
+
+    ModelRasterOptions further = options;
+    further.pose.distance = options.pose.distance * 2.0f;
+    auto smaller = RasterizeModelFile(stlPath, further, error);
+    Check(smaller != nullptr, "rasterizes from further away: " + error);
+    if (smaller) {
+        Check(InkOf(smaller).drawn < frontInk.drawn,
+              "and backing the camera off makes the model smaller");
+    }
+
+    auto again = RasterizeModelFile(stlPath, options, error);
+    Check(SamePixels(front, again), "the same pose gives the same pixels");
+
+    // ----- background -----
+    ModelRasterOptions onWhite = options;
+    onWhite.background = RasterPixel(255, 255, 255, 255);
+    auto white = RasterizeModelFile(stlPath, onWhite, error);
+    Check(white != nullptr, "rasterizes onto a white background: " + error);
+    if (white) {
+        const RasterPixel corner = white->GetPixel(0, 0);
+        Check(corner.r == 255 && corner.g == 255 && corner.b == 255 && corner.a == 255,
+              "the empty area becomes the background colour");
+        bool modelSurvives = false;
+        for (int y = 0; y < white->GetHeight() && !modelSurvives; ++y)
+            for (int x = 0; x < white->GetWidth(); ++x) {
+                if (front->GetPixel(x, y).a == 0) continue;
+                const RasterPixel p = white->GetPixel(x, y);
+                if (p.r != 255 || p.g != 255 || p.b != 255) { modelSurvives = true; break; }
+            }
+        Check(modelSurvives, "and the background goes under the model, not over it");
+    }
+
+    // ----- the colour is the caller's -----
+    ModelRasterOptions red = options;
+    red.modelColor = Vec3(1.0f, 0.0f, 0.0f);
+    auto reddish = RasterizeModelFile(stlPath, red, error);
+    Check(reddish != nullptr, "rasterizes in a colour of the caller's choosing: " + error);
+    if (reddish) {
+        bool sawRed = false, sawSomethingElse = false;
+        for (int y = 0; y < reddish->GetHeight() && !sawSomethingElse; ++y)
+            for (int x = 0; x < reddish->GetWidth(); ++x) {
+                const RasterPixel p = reddish->GetPixel(x, y);
+                if (p.a == 0) continue;
+                if (p.g > 8 || p.b > 8) { sawSomethingElse = true; break; }
+                if (p.r > 0) sawRed = true;
+            }
+        Check(sawRed && !sawSomethingElse,
+              "and every shaded pixel is a shade of it");
+    }
+
+    // ----- what it refuses -----
+    ModelRasterOptions huge = options;
+    huge.width = huge.height = 100000;
+    error.clear();
+    Check(RasterizeModelFile(stlPath, huge, error) == nullptr && !error.empty(),
+          "a 10-gigapixel request is refused with a reason, not attempted");
+
+    ModelRasterOptions zero = options;
+    zero.width = 0;
+    error.clear();
+    Check(RasterizeModelFile(stlPath, zero, error) == nullptr && !error.empty(),
+          "a zero-width raster is refused with a reason");
+
+    error.clear();
+    Check(RasterizeModelFile("no-such-file.stl", options, error) == nullptr && !error.empty(),
+          "an unreadable path reports an error");
+
+    error.clear();
+    Check(RasterizeModelFile("notes.txt", options, error) == nullptr && !error.empty(),
+          "and so does a format no reader in this build handles");
+
+    // ----- the mesh already in hand -----
+    // What the 3D import dialog takes: the viewer holds the mesh it loaded, so
+    // the file is not parsed a second time. It has to give the same picture.
+    error.clear();
+    auto fromMesh = RasterizeMesh(Cube(), options, error);
+    Check(fromMesh != nullptr, "a mesh already in hand rasterizes without a file: " + error);
+    if (fromMesh) Check(InkOf(fromMesh).drawn > 0, "and it draws something");
+
+    error.clear();
+    Check(RasterizeMesh(Mesh3D{}, options, error) == nullptr && !error.empty(),
+          "an empty mesh is refused rather than returned as a blank layer");
+}
+
 int main() {
     TestRefusals();
     TestGeometryOfTheOutput();
     TestShadingAndPose();
     TestTwoSided();
+
+    const std::string stlPath = WriteTempStl();
+    TestWhatIsAModel();
+    TestInspection(stlPath);
+    TestFileToLayer(stlPath);
+    std::filesystem::remove(stlPath);
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
                 failures, failures == 1 ? "" : "s");

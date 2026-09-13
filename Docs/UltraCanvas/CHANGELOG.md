@@ -1,3 +1,135 @@
+#### 2026-09-13 *0.8.44*
+- **A toolbar is as thick as the items in it.** The height a horizontal
+  `UltraCanvasToolbar` is constructed with - the width of a vertical one - is
+  now a floor rather than a fixed size, so it grows to fit its buttons instead
+  of cutting them off. Every host had to guess that number (38 in UltraPaint,
+  40 in the media viewer, 30 for a row of layer buttons) against metrics only
+  the toolbar knows: a 32 px button inside 5 px of padding and a 1 px border
+  needs 44 px, and anything less silently clipped the bottom of every icon. A
+  host that asks for a *taller* bar still gets exactly that.
+  `Tests/ToolbarThicknessTest` (CTest) pins both halves.
+- **A flex container now honours its own min/max size.** `boxConstraints` on a
+  flex container were read for its *items* and ignored for its own box, so
+  `minHeight` on anything laid out with `display:flex` did nothing at all -
+  which is why the floor above needed the engine fixed first. It is clamped
+  against the border box, on both axes, like the block path has always done
+  (CSS Sizing §4). An item's constraints are unchanged: still main-axis only.
+  Doc: [CSSLayout](../CSSLayout.md).
+
+#### 2026-09-13 *0.8.43*
+- **A 3D model can become a bitmap, from a view the user chose.**
+  `UltraCanvasModelRaster.h` grew the whole path from a model file to an
+  editable layer, the 3D counterpart of `UltraCanvasVectorRaster`:
+  `IsModelGraphicsPath` / `GetModelRasterExtensions` (a runtime answer - STL
+  from core, the rest once `RegisterModelFormatsPlugin()` has installed the
+  preview provider), `InspectModelFile` (triangles, vertices, bounds, without
+  rendering) and `RasterizeModelFile` / `RasterizeMesh` → `UCRasterLayer`, with
+  size, background, model colour and a pixel cap in `ModelRasterOptions`. Doc:
+  [UltraCanvasModelRaster](UltraCanvasModelRaster.md).
+- A drawing is missing only a size; a model is missing a **view** as well, so
+  `ModelViewPose` (yaw, pitch, camera distance in model radii) moved into
+  `UltraCanvas3DTypes.h` where both the viewer and the rasterizer can use it,
+  and `RenderMeshPixmap(mesh, w, h, pose, colour)` sits next to the fixed-pose
+  `RenderMeshPreviewPixmap` the Filer thumbnails with. The camera matches the
+  GL viewer's to the letter - unit-radius normalise, yaw then pitch, eye at
+  `(0, 0, distance)`, 45° field of view - which is what makes the saved bitmap
+  the view that was on screen rather than an approximation of it.
+- **`UltraCanvasSTLElement` orbits without GL too.** The software variant kept
+  a fixed three-quarter still; it now drags to turn and wheels to dolly like
+  the GL one, drawing through `RenderMeshPixmap` with its own pose. Both
+  variants expose `GetViewPose` / `SetViewPose`, and the colour is settable.
+- **The media viewer hands its 3D view out.** `GetModelViewPose`,
+  `SetModelViewPose` and `GetModelMesh` (all false / null unless a model is
+  shown) let a host embed the viewer as a view *picker* and then render what
+  the user framed without parsing the model a second time.
+- **New `UltraCanvasModelViewDialog`** (`ShowModelViewDialog()`): "turn this 3D
+  model into a bitmap", asking which view. The 3D pane is the media viewer with
+  its top bars off, so orbiting, zooming and every model format the build reads
+  come for free; the dialog adds the raster size (linked spinners), the
+  background, the triangle count and *Reset view*. The accept buttons are the
+  caller's (`ModelViewAction`), and `Rasterize()` renders from the mesh the
+  viewer already holds. Doc:
+  [UltraCanvasModelViewDialog](UltraCanvasModelViewDialog.md).
+- `Tests/ModelRasterTest` gained the file half: a binary STL written by the
+  test, the geometry `InspectModelFile` reports, an exactly delivered size, the
+  pose deciding the picture (a quarter turn narrows a box twice as wide as it
+  is deep, more distance shrinks it), the background composited under the
+  model, the caller's colour, and absurd or unreadable requests refused with a
+  reason. `Tests/DesktopEntryTest` now also reads the launcher this repository
+  ships, so a typo in it fails a test rather than a desktop silently refusing a
+  drop.
+
+#### 2026-09-13 *0.8.42*
+- **Dialog captions line up, and survive translation.** New
+  `UltraCanvasFormLayout.h` (`CreateFormGrid` / `AddFormRow` /
+  `AddFormWideRow` / `CreateFormCellRow`): the "caption: control" form as one
+  grid of `[auto, 1fr]` instead of a flex row per field. The caption column is
+  exactly as wide as the widest caption in the whole form, in any language, and
+  every control starts where that column ends. Doc:
+  [UltraCanvasFormLayout](UltraCanvasFormLayout.md).
+- The old shape is what a hard-coded `CreateLabel(id, 0, 0, 80, 24)` buys: a
+  caption that fits "Compress:" and cuts off "Komprimierung:", and one column
+  width per section so the fields of one section line up with nothing else.
+  The image export dialog had both.
+- **Grid: a full-width row no longer drags the `auto` column out with it.**
+  CSS Grid §12.5 - an item whose span crosses a flexible track contributes
+  nothing to the base size of the intrinsic tracks it also spans - was missing
+  from `GridLayout.cpp`, so one wide spanning row (a note, a checkbox, a
+  heading) made every `auto` column in the grid as wide as that row and pushed
+  the controls across the dialog. A grid with no `fr` track still distributes a
+  spanning item over its intrinsic tracks, as before. `CSSLayoutFormGridTest`
+  (CTest) pins both, plus the column sharing and the hidden-row behaviour.
+- **The save-image dialog was rebuilt on it.** Every captioned row - the common
+  ones and each format's own - is now a row of one grid, so the controls line up
+  from Name down to Metadata; the format options are shown a set at a time in
+  that same grid (hidden rows are `display:none` and cost no space). Sections
+  carry a heading and a rule, the chosen format explains itself in a line under
+  the picker, Save reads as the primary button, buttons size to their own text
+  with a floor, and the dialog resizes.
+- The dialog's width/height inputs kept their re-entry guard in a local captured
+  **by reference** from a function that had long returned; every keystroke tested
+  a dangling bool. It is a member now.
+- **Metadata can be read and shown.** `PixelFX::Header::HasMetadata` /
+  `ReadMetadata` / `MetadataToText` turn what a file carries (EXIF, IPTC, XMP,
+  ICC, the image's own geometry) into `{group, key, value}` entries or into one
+  string - Markdown (a heading and a table per group) or plain text. Tag names
+  lose their `exif-ifd0-` prefix, values lose the encoding libvips appends
+  (keeping its reading of a numeric tag: `65535 (Uncalibrated)`), binary blocks
+  are reported by size, and Markdown specials are escaped so
+  `VIPS_CODING_NONE` is not italicised with its underscores eaten.
+  `Header::GetFields` - declared since 1.1.0 but commented out of the
+  implementation - is implemented.
+- New `UltraCanvasMetadataDialog` (`ShowMetadataDialog()`): a read-only popup
+  around an `UltraCanvasTextArea`, Markdown or plain, with Copy. It takes text
+  rather than fields, so a document, font or audio reader can use the same
+  popup. The save dialog offers a **Show...** button and an entry count only
+  when the image actually carries metadata. Doc:
+  [UltraCanvasMetadataDialog](UltraCanvasMetadataDialog.md).
+
+#### 2026-09-12 *0.8.41*
+- **Vector artwork can become pixels.** New `UltraCanvasVectorRaster.h`
+  (`IsVectorGraphicsPath` / `GetVectorRasterExtensions` /
+  `InspectVectorFile` / `RasterizeVectorFile`): it reports what a drawing
+  asks to be drawn at and how many pages it has, then renders it into an
+  editable `UCRasterLayer` at whatever pixel size the caller wants. Doc:
+  [UltraCanvasVectorRaster](UltraCanvasVectorRaster.md).
+- The size is rendered, not scaled up: SVG goes through librsvg at the scale
+  that lands on the requested pixels, a PDF page through `pdfload` at the
+  matching dpi. One dimension alone keeps the aspect ratio, neither gives the
+  natural size, and a size past `maxPixels` (256 Mpx) is an error rather than
+  an allocation.
+- Two rasterizers behind the one call. The libvips pipeline covers SVG/SVGZ,
+  PDF/AI and (where the build has a PostScript delegate) EPS/PS; everything
+  else goes to whichever registered `IGraphicsPlugin` claims the extension as
+  a vector format - its element is rendered into an offscreen render context
+  and read back - so the Vector plugin's DXF, DWG, EMF, WMF and XAR rasterize
+  as soon as an application registers it. Both halves answer at runtime, and
+  `GetVectorRasterExtensions()` is what a file filter should list.
+- The background is composited *under* the drawing, so an SVG with no backdrop
+  keeps its alpha by default and an opaque background flattens it without
+  touching what is drawn over it.
+- Tested by `VectorRasterTest` (CTest), which skips itself on a build with no
+  SVG rasterizer rather than failing.
 #### 2026-09-13 *0.8.41*
 - **3DS, COLLADA and X3D/VRML now write as well as read.** Six of the plugin's
   formats are writable where three were: OBJ, PLY and STEP are joined by

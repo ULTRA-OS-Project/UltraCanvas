@@ -758,6 +758,47 @@ engine; these classes hold the pixels being edited and hand them to it.
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
   `onViewChanged`, `onFilesDropped`; `PaintPointerEvent` carries image
   coordinates.
+- **UltraCanvasFormLayout** (`UltraCanvasFormLayout.h`) — the "caption:
+  control" form as one `[auto, 1fr]` grid: `CreateFormGrid`, `AddFormRow`,
+  `AddFormWideRow`, `CreateFormCellRow`, `CreateFormCaption`. The caption column
+  is as wide as the widest caption in the form, so the controls line up and a
+  translated caption widens the column rather than clipping. Doc:
+  `Docs/UltraCanvas/UltraCanvasFormLayout.md`.
+- **UltraCanvasMetadataDialog** (`dialogs/UltraCanvasMetadataDialog.h`) —
+  read-only popup listing a file's metadata in an `UltraCanvasTextArea`
+  (Markdown tables or plain text) with Copy; `ShowMetadataDialog()`. The text
+  comes from `PixelFX::Header::MetadataToText` / `ReadMetadata` /
+  `HasMetadata`. Doc: `Docs/UltraCanvas/UltraCanvasMetadataDialog.md`.
+- **UltraCanvasModelRaster** (`UltraCanvasModelRaster.h`) — a 3D model as
+  pixels, and the 3D counterpart of `UltraCanvasVectorRaster`: a model needs a
+  *view* as well as a size, so `ModelViewPose` (yaw / pitch / distance, the
+  same struct `UltraCanvasSTLElement` orbits with) is part of the question.
+  `IsModelGraphicsPath`, `GetModelRasterExtensions`, `InspectModelFile`
+  (triangles, vertices, bounds), `RasterizeModelFile` / `RasterizeMesh` →
+  `UCRasterLayer`, and the pixmap level underneath: `RenderMeshPreviewPixmap`
+  (the Filer's fixed three-quarter thumbnail pose) and `RenderMeshPixmap`
+  (any pose and colour). Software throughout — no GL, no window, thread-safe —
+  which is what lets the Filer call it from decode workers and makes the still
+  identical on every build. Formats are whatever this process reads: STL from
+  core, the rest once `RegisterModelFormatsPlugin()` has installed the preview
+  provider. See `Docs/UltraCanvas/UltraCanvasModelRaster.md`.
+- **UltraCanvasModelViewDialog** (`dialogs/UltraCanvasModelViewDialog.h`) —
+  "turn this 3D model into a bitmap", asking *which view*: an
+  `UltraCanvasMediaViewer` with its top bars off does the 3D (drag to orbit,
+  wheel to zoom, every model format the build reads), plus the raster size,
+  the background and the model's triangle count. `ModelViewAction` lets the
+  caller name the accept buttons (Merge image / Open new window for a drop,
+  Open from a menu); `ModelViewResult` carries the pose, and `Rasterize()`
+  renders it from the mesh the viewer already holds. `ShowModelViewDialog()`.
+  Doc: `Docs/UltraCanvas/UltraCanvasModelViewDialog.md`.
+- **UltraCanvasVectorRaster** (`UltraCanvasVectorRaster.h`) — vector artwork
+  into an editable layer at a chosen pixel size: `IsVectorGraphicsPath`,
+  `GetVectorRasterExtensions`, `InspectVectorFile` (natural size, page count,
+  which rasterizer applies) and `RasterizeVectorFile` → `UCRasterLayer`.
+  Renders *at* the requested size through libvips (`svgload`/`pdfload`/the
+  PostScript delegate) or, for any extension a registered `IGraphicsPlugin`
+  claims as vector, through that plugin's element in an offscreen render
+  context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
 
@@ -1738,14 +1779,36 @@ widens. Children whose content changes must call `InvalidateLayout()` from their
 setters (the framework's own widgets do) — otherwise the engine keeps the cached
 measurement.
 
-> **Caveat:** a flex container honours an item's `boxConstraints` on the **main
+> **Caveat:** a flex container honours an *item's* `boxConstraints` on the **main
 > axis only** ([FlexLayout.cpp:470](../UltraCanvas/core/CSSLayout/FlexLayout.cpp#L470)).
 > For a child of a flex **row**, `minWidth` works but `minHeight` is ignored —
 > give that axis an explicit `size.height` (as above) when it does not need to grow.
+>
+> A flex container's **own** `boxConstraints` are honoured on both axes, against
+> its border box, like any other box (CSS Sizing §4). That is the way to say
+> "this bar is at least this thick, and thicker when its contents need it":
+> leave `size` auto on that axis and set the minimum.
+> `UltraCanvasToolbar` does exactly this with the thickness its host constructs
+> it with — see `Tests/ToolbarThicknessTest.cpp`.
 
 `Apps/UltraMail/ui/UltraMailAccountBar.cpp` is a worked example: an account tile
 with a provider letter, an address and a row of `UltraCanvasBadge` counters that
 widens as the counts grow.
+
+## Recipe: a form whose captions line up and still translate
+
+A dialog's "caption: control" rows belong in **one** grid of `[auto, 1fr]`, not
+in a flex row each: the `auto` column is then exactly as wide as the widest
+caption in the form — in any language — and every control starts where it ends.
+`UltraCanvasFormLayout.h` is that grid plus four helpers; see
+[UltraCanvasFormLayout](UltraCanvas/UltraCanvasFormLayout.md).
+
+An item that spans every column of such a grid (a checkbox, a heading, a note)
+does **not** drag the `auto` column out to its own width: per CSS Grid §12.5 an
+item whose span crosses a flexible track contributes nothing to the base size of
+the intrinsic tracks it also spans, and the flexible track absorbs it. A grid
+with no `fr` track still distributes a spanning item over its intrinsic tracks.
+`Tests/CSSLayoutFormGridTest.cpp` pins both.
 
 ## Troubleshooting: my widget renders nothing at all
 
@@ -22076,6 +22139,97 @@ count or a scroll range that stops short of the last row hides part of a font
 with nothing on screen to say so, and `Tests/FontViewerTest.cpp` pins them.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFormLayout.md
+==============================================================================
+
+# Forms: captions that line up and still translate
+
+`UltraCanvasFormLayout.h` is the "caption: control" form — the shape of nearly
+every dialog. It is a header of four inline helpers over one CSS grid, and it
+exists because the obvious alternative is quietly broken.
+
+```cpp
+#include "UltraCanvasFormLayout.h"
+
+auto form = CreateFormGrid("export-form");
+window->AddChild(form);
+
+AddFormRow(form, "name",   "Name:",   fileNameInput);
+AddFormRow(form, "format", "Format:", formatDropdown);
+AddFormWideRow(form, interlaceCheckbox);      // a control that is its own caption
+```
+
+## Why not a row per field
+
+A flex row per field gives every caption its own width, which leaves two bad
+options:
+
+| | What goes wrong |
+|---|---|
+| Hard-code the caption width (`CreateLabel(id, 0, 0, 80, 24)`) | The first translation longer than 80 px is cut off — "Compress:" is fine, "Komprimierung:" is not. |
+| Let each row size its own caption | Every row's control starts at a different x, and the dialog looks ragged. |
+
+Worse, sections built as separate containers each size their captions
+separately, so the fields of one section line up with each other and with
+nothing else — which is what the image export dialog used to do.
+
+One grid solves both at once. The caption column is `auto`, so it is exactly as
+wide as the widest caption **in the whole form**, in whatever language; the
+control column is `1fr`, so every control starts where that column ends and
+takes the rest of the row. Nothing measures text, nothing is placed by
+coordinate, and a longer caption widens the column instead of clipping.
+
+## The helpers
+
+| Call | What it makes |
+|---|---|
+| `CreateFormGrid(id, rowGap, columnGap)` | The grid: columns `[auto, 1fr]`, items centred vertically, stretched into its parent. Add it to the window or section. |
+| `AddFormRow(grid, id, "Caption:", control)` | A row. Returns the caption label, so a caller that hides rows can hide the caption with them. |
+| `AddFormRow(grid, caption, control)` | The same with a caption the caller built (to restyle it, or to keep a pointer). |
+| `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
+| `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
+| `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+
+Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
+so a form can swap one set of rows for another — the export dialog shows the
+current format's options that way — without leaving holes or empty tracks.
+
+## Buttons
+
+A button sized to fit "Cancel" cuts off "Abbrechen". Give it an auto width with
+a floor instead — `UltraCanvasModalDialog::SizeButtonToLabel` is the reference:
+
+```cpp
+button->size.width = CSSLayout::Dimension::Auto();
+CSSLayout::BoxConstraints limits = button->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+limits.minWidth = CSSLayout::Dimension::Px(96);
+button->boxConstraints = limits;
+button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+```
+
+## Make the window resizable
+
+The grid degrades gracefully when a caption grows — the control column gives up
+the space — but a fixed-size window has nowhere to give it back from. A dialog
+whose captions are translated should set `config_.resizable = true` with a
+sensible `minWidth`, so a user who needs more room can take it.
+
+## The engine rule underneath
+
+A grid item that spans both columns does **not** drag the `auto` column out to
+its own width: CSS Grid §12.5 says an item whose span crosses a flexible track
+contributes nothing to the base size of the intrinsic tracks it also spans, and
+`GridLayout.cpp` implements that. Without it, one wide full-width note would
+make the caption column as wide as the note and push every control across the
+dialog. `Tests/CSSLayoutFormGridTest.cpp` pins this, together with the
+column-sharing and hidden-row behaviour.
+
+## See also
+
+- [CSSLayout](../CSSLayout.md) — the layout engine and the element contract
+- [UltraCanvasUIElements](UltraCanvasUIElements.md) — which element to use for a field
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFunnelChart.md
 ==============================================================================
 
@@ -30872,6 +31026,25 @@ preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
 ```
 
+### Taking the 3D view out of it
+
+A model in the viewer is orbited with the mouse, and a host that embeds it as
+a view *picker* needs to read that view back — or set it:
+
+```cpp
+ModelViewPose pose;
+if (viewer->GetModelViewPose(pose)) { /* what the user framed */ }
+viewer->SetModelViewPose(ModelViewPose::Default());          // "Reset view"
+if (const Mesh3D* mesh = viewer->GetModelMesh()) { /* already loaded */ }
+```
+
+All three answer only while a model is shown (false / null otherwise). Handing
+the mesh out is what lets a caller render the framed view without parsing the
+file a second time — see
+[`UltraCanvasModelRaster`](UltraCanvasModelRaster.md) for the rendering and
+[`UltraCanvasModelViewDialog`](UltraCanvasModelViewDialog.md) for the dialog
+built on exactly these three calls.
+
 ### Letting go of the previewed file
 
 Most kinds are read into memory and hold no handle on the file: images are
@@ -31850,6 +32023,77 @@ UltraCanvasMenu is not thread-safe. All menu operations should be performed on t
 - Menu recording/replay for testing
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMetadataDialog.md
+==============================================================================
+
+# Showing a file's metadata
+
+Two pieces: a reader that turns a file's metadata into text, and a popup that
+shows it.
+
+## Reading it
+
+`PixelFX::Header` (`PixelFX/PixelFX.h`) reads the metadata of anything libvips
+decoded:
+
+```cpp
+PixelFX::PFXImage image = PixelFX::FileIO::Load(path);
+
+if (PixelFX::Header::HasMetadata(image)) {                       // anything to show?
+    std::string listing = PixelFX::Header::MetadataToText(image); // Markdown by default
+}
+```
+
+| Call | |
+|---|---|
+| `HasMetadata(image)` | True when the **file** carried metadata — the geometry libvips reports for every image (width, bands, interpretation, …) does not count. This is the check a UI makes before offering a "Show metadata" button. |
+| `ReadMetadata(image)` | `std::vector<MetadataEntry>` — `{group, key, value}`, grouped `Image`, `EXIF`, `IPTC`, `XMP`, `Colour`, `Other`. |
+| `MetadataToText(entries \| image, format)` | The entries as one string: `MetadataTextFormat::Markdown` (a `## Group` heading and a two-column table per group) or `MetadataTextFormat::PlainText` (aligned `Tag : value` lines under an underlined heading). |
+| `GetFields(image)` | The raw libvips field names, if you want to do your own thing. |
+
+The reader does the tidying a person would otherwise have to do in their head:
+
+- The **Image** group is written the way a person says it — `Dimensions:
+  640 x 480 px`, `Colour space: sRGB`, `Resolution: 72 dpi`, `Read by:
+  jpegload` — instead of the dozen raw fields underneath it.
+- EXIF tag names lose their `exif-ifd0-` prefix, and values lose the encoding
+  libvips appends (`UltraCanvas Cameras (UltraCanvas Cameras, ASCII, 20
+  components, 20 bytes)` → `UltraCanvas Cameras`). Where libvips' own reading of
+  a numeric tag says more than the number, it is kept: `65535 (Uncalibrated)`,
+  `2 (Inch)`.
+- Binary blocks (ICC profiles, the raw EXIF/XMP/IPTC payloads) are reported by
+  size, not dumped.
+- Markdown special characters are escaped, so `VIPS_CODING_NONE` does not come
+  out italicised with its underscores eaten.
+
+## Showing it
+
+`UltraCanvasMetadataDialog` (`dialogs/UltraCanvasMetadataDialog.h`) is a
+read-only popup around an `UltraCanvasTextArea`. In Markdown mode the text area
+renders the headings and lays the tables out, and — being a real text area — it
+scrolls, selects and copies without the dialog doing any of it.
+
+```cpp
+ShowMetadataDialog(fileName, listing, /*markdown*/ true, parentWindow);
+```
+
+It takes **text**, not fields, so anything that can describe itself can use it:
+a document reader, a font viewer or an audio tag reader produces the same two
+formats and gets the same popup. `Copy` puts the whole listing on the clipboard.
+
+## Who uses it
+
+The image export dialog (*Export with Options* in UltraPaint, the DemoApp's
+export button): its Metadata section shows a **Show…** button and an entry
+count only when the image being saved actually carries metadata — an image
+flattened in memory carries none, and then there is nothing to offer.
+
+## See also
+
+- [PixelFX](../Modules/PixelFX/README.md) — the libvips-backed image pipeline
+- [UltraCanvasTextArea](UltraCanvasTextAreaExamples.md) — the Markdown view the popup uses
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMindMapExamples.md
 ==============================================================================
 
@@ -32641,6 +32885,228 @@ FBX: more than one texture is connected to 'DiffuseColor' on material 'ship';
 - [UltraCanvasFilerWidget.md](UltraCanvasFilerWidget.md) — 3D thumbnails through the preview seam
 - [UltraCanvasMediaViewer.md](UltraCanvasMediaViewer.md) — opening a 3D file as media
 - `Docs/Research/UltraCanvas3DModelProposal.md` — why the document structure is shaped the way it is
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasModelRaster.md
+==============================================================================
+
+# 3D models → pixels
+
+`UltraCanvasModelRaster.h` turns a mesh into pixels, and a 3D model file into
+an editable [`UCRasterLayer`](UltraCanvasPaintSurface.md) — the 3D counterpart
+of [vector artwork → pixels](UltraCanvasVectorRaster.md).
+
+A drawing has no pixels but does have a natural size, so rasterizing one only
+needs a number. A model has neither: somebody has to choose a **view** as
+well. That extra question is `ModelViewPose` (`Plugins/Models/STL/UltraCanvas3DTypes.h`)
+— yaw, pitch and camera distance — and it is the same struct
+`UltraCanvasSTLElement` orbits with, so the still a caller saves is the view
+the user set on screen.
+
+Everything here is software: it transforms, projects, z-buffers and shades the
+triangles itself, with no GL dependency and no window. That is what lets the
+Filer call it from background decode workers, what makes it the STL element's
+fallback in a build without `ULTRACANVAS_ENABLE_GL`, and what makes "save this
+view as a bitmap" work identically on every build.
+
+```cpp
+#include "UltraCanvasModelRaster.h"
+
+if (IsModelGraphicsPath(path)) {
+    const ModelSourceInfo info = InspectModelFile(path);     // triangles, bounds
+    ModelRasterOptions options;
+    options.width  = 1024;
+    options.height = 768;
+    options.pose   = viewer->GetModelViewPose();             // what the user framed
+    std::string error;
+    if (auto layer = RasterizeModelFile(path, options, error)) {
+        document->AddLayer(layer);
+    } else {
+        ShowError(error);
+    }
+}
+```
+
+## Two levels
+
+| Call | Gives | For |
+|---|---|---|
+| `RenderMeshPreviewPixmap(mesh, w, h, scale)` | `UCPixmap` from the standard three-quarter pose | thumbnails and placeholders: the Filer's 3D tiles, the media viewer's non-GL still |
+| `RenderMeshPixmap(mesh, w, h, pose, colour, scale)` | `UCPixmap` from a pose and colour the caller chooses | an element drawing its own orbit without GL |
+| `RasterizeMesh(mesh, options, error)` | `UCRasterLayer` | a viewer that already holds the mesh — the model is not parsed twice |
+| `RasterizeModelFile(path, options, error)` | `UCRasterLayer` named after the file | the whole path from a file to something editable |
+
+`InspectModelFile()` answers what the file holds — triangle and vertex counts,
+the bounding box in the file's own units — without rendering anything.
+
+## Which formats
+
+`IsModelGraphicsPath()` is an **extension** test, and a runtime one: core
+reads STL by itself, and OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic,
+MilkShape, DirectX `.x`, `.blend` and STEP arrive once the application has
+called `RegisterModelFormatsPlugin()`. The seam is
+`include/UltraCanvasModelPreview.h`, so core never links the plugin.
+`GetModelRasterExtensions()` lists what *this* process can actually read,
+which is what a file filter should show.
+
+## The camera
+
+`ModelViewPose` is an orbit around the model's centre, which is the only
+camera a viewer of a single object needs:
+
+| Field | Meaning | Default |
+|---|---|---|
+| `yaw` | radians around the model's up axis | `0.6` |
+| `pitch` | radians above the horizon; ±1.5 is straight up / down | `0.4` |
+| `distance` | camera distance **in model radii** | `3.0` |
+
+The model is normalised to a unit radius first, so one pose frames any model
+whatever units the file is in, and a model saved from a viewer at a given pose
+looks the same whether it is a 4 mm screw or a 40 m building. The projection
+matches the GL viewer's to the letter — rotate by yaw then pitch, eye at
+`(0, 0, distance)`, 45° vertical field of view — which is what makes the
+bitmap the view that was on screen.
+
+`ModelViewPose::Default()` is the framing every viewer opens at, and what
+"Reset view" goes back to.
+
+## Sizing and the rest of `ModelRasterOptions`
+
+| Field | Default | Notes |
+|---|---|---|
+| `width` / `height` | 1024 × 768 | a model has no natural size, so these are always the caller's |
+| `pose` | `ModelViewPose::Default()` | the view |
+| `background` | transparent | painted *under* the model, so one dropped on an image keeps what is beneath it |
+| `modelColor` | `kModelDefaultColor` (light blue-grey) | the same colour `UltraCanvasSTLElement` uses, so a still matches the viewer it was framed in |
+| `maxPixels` | 256 Mpx | counted on the target size before anything is rendered, so a mistyped size is an error rather than a 40 GB allocation |
+
+Meshes over `kModelPreviewTriangleCap` (2 M triangles) are refused: the cost
+that guards is the *load*, not the raster.
+
+## What it is not
+
+A renderer. One head-light, flat two-sided shading, one colour, no material
+and no texture — deliberately. Two-sided because most STL in the wild has
+inconsistent winding, and a preview that culls backfaces shows such a model
+full of holes; flat shading from the triangle geometry rather than stored
+normals because STL facet normals are so often wrong or absent that trusting
+them lights the model from inside. A build with GL still uses the real viewer
+for interaction; this is what that view is *saved* through.
+
+## Consumers
+
+- `UltraCanvasFilerWidget` — 3D thumbnails, on decode workers
+- [`UltraCanvasMediaViewer`](UltraCanvasMediaViewer.md) `MediaKind::Model`, and
+  `UltraCanvasSTLElement` in a build without GL
+- [`UltraCanvasModelViewDialog`](UltraCanvasModelViewDialog.md) — the import
+  dialog that lets the user frame the model first
+- UltraPaint — File ▸ Import, a dropped model, a model on the command line
+  (which is what a drop on the application's icon becomes)
+
+## Tests
+
+`Tests/ModelRasterTest.cpp` (CTest target `ModelRasterTest`). The mesh half:
+what it refuses to draw (empty, no extent, over the cap), the size and scale
+it honours, the shading (a cube shows at least three face shades, lit from
+the pose), determinism, and that winding is not culled. The file half, against
+a binary STL the test writes itself: recognising a model by extension,
+reporting the geometry a file holds, delivering the requested size exactly,
+the pose deciding the picture (a quarter turn narrows a box twice as wide as
+it is deep; more distance shrinks it), the background composited under the
+model, the colour being the caller's, and absurd or unreadable requests
+refused with a reason.
+
+## See also
+
+- [UltraCanvasVectorRaster](UltraCanvasVectorRaster.md) — the same idea for
+  drawings, where only a size is missing
+- [UltraCanvasModelViewDialog](UltraCanvasModelViewDialog.md) — the UI that
+  asks for the view
+- [UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) — the viewer that opens
+  every model format the build has
+- [UltraCanvasPaintSurface](UltraCanvasPaintSurface.md) — `UCRasterLayer` and
+  the editing surface
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasModelViewDialog.md
+==============================================================================
+
+# Importing a 3D model as a bitmap
+
+`UltraCanvasModelViewDialog` (`dialogs/UltraCanvasModelViewDialog.h`) is the
+dialog that stands between a 3D model file and a raster layer. It exists
+because a model, unlike a drawing, cannot be rasterized from a size alone —
+somebody has to say **where the camera stands**.
+
+```cpp
+#include "UltraCanvasModelViewDialog.h"
+
+ShowModelViewDialog(
+        path,
+        { { "merge", "Merge image", false }, { "window", "Open new window", true } },
+        parentWindow,
+        [this](UltraCanvasModelViewDialog& dialog, const ModelViewResult& result) {
+            std::string error;
+            auto layer = dialog.Rasterize(error);     // the view that was on screen
+            if (layer) Place(layer, result.actionId, result.background);
+            else ShowError(error);
+        });
+```
+
+The callback is handed the dialog because `Rasterize()` lives on it and it is
+alive for exactly as long as the callback runs — the dialog closes as soon as
+that returns.
+
+## What it shows
+
+The 3D pane is the framework's own [media
+viewer](UltraCanvasMediaViewer.md) with its top bars off
+(`SetTopBarsVisible(false)`), which is the whole reason the dialog is small:
+orbiting, zooming, the GL renderer where the build has one and the software
+still where it does not, and **every model format the build can read** all
+come from there rather than being reimplemented here. Drag turns the model,
+the wheel dollies.
+
+Under it: the bitmap size (two linked spinners — changing one keeps the aspect
+ratio), the background (Transparent / White / Black), the model's own triangle
+count, and `Reset view`.
+
+## The buttons are the caller's
+
+`ModelViewAction{ id, label, primary }` — the accept buttons, in order. An
+editor that asked because a file was dropped offers *Merge image* and *Open
+new window*; one that asked from a menu offers *Open*. Cancel is always
+present, closes silently and is never reported. `onAccept` receives
+`ModelViewResult` carrying the `actionId` that was pressed, the size, the
+`ModelViewPose` and the background.
+
+## Getting the pixels
+
+`Rasterize(error)` renders what is on screen into a `UCRasterLayer`, using the
+mesh the viewer already holds, so the model is not parsed a second time. Call
+it from inside `onAccept` — the dialog is still alive there, and closes as soon
+as the callback returns. Everything it does is
+[`UltraCanvasModelRaster`](UltraCanvasModelRaster.md); a caller that has its
+own view already (a saved pose, a batch job) should call that header directly
+and skip the dialog.
+
+## Consumers
+
+UltraPaint: `File ▸ Import`, a model dropped on the canvas, a model on the
+command line — which is also what a model dropped on the UltraPaint icon in a
+dock or taskbar becomes. See `Apps/UltraPaint/UltraPaintWindow.cpp`
+(`ImportModel`).
+
+## See also
+
+- [UltraCanvasModelRaster](UltraCanvasModelRaster.md) — the rendering and the
+  pose behind this dialog
+- [UltraCanvasMediaViewer](UltraCanvasMediaViewer.md) — the viewer embedded in
+  it, and `GetModelViewPose` / `SetModelViewPose` / `GetModelMesh`
+- [UltraCanvasVectorRaster](UltraCanvasVectorRaster.md) — the same import path
+  for drawings, which need only a size
+- [UltraCanvasFormLayout](UltraCanvasFormLayout.md) — the caption grid its
+  fields are laid out in
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasNestedAreaChartExamples.md
@@ -52077,7 +52543,7 @@ from an external "Show password" checkbox. See
 | A formula inside a line of text you lay out yourself | `UltraCanvasInlineMath` (typeset, measure, draw at a baseline); `UltraCanvasTextArea`'s Markdown mode already does this for `$...$` | `UltraCanvasInlineMath.h` |
 | Every glyph in a font file, scrolling, without installing it | `UltraCanvasFontViewer` | `UltraCanvasFontViewer.h` |
 | Raw OpenGL | `UltraCanvasGLSurface` | `UltraCanvasGLSurface.h` |
-| A 3D mesh from an `.stl` file — shaded, orbited with the mouse | `UltraCanvasSTLElement` | `Models/STL/UltraCanvasSTLElement.h` |
+| A 3D mesh from an `.stl` file — shaded, orbited with the mouse (with or without GL) | `UltraCanvasSTLElement` | `Models/STL/UltraCanvasSTLElement.h` |
 
 `UltraCanvasImageElement` is the answer to "I just need to draw a picture" — it
 goes through the shared `UCImage` cache, handles scaling modes, SVG and animated
@@ -52093,7 +52559,7 @@ formats, and does not re-decode on every frame the way an ad-hoc
 | Resizable panes | `UltraCanvasSplitPane`, `UltraCanvasSplitter` | `UltraCanvasSplitPane.h` |
 | Tabs | `UltraCanvasTabbedContainer` | `UltraCanvasTabbedContainer.h` |
 | A titled frame | `UltraCanvasGroupBox` | `UltraCanvasGroupBox.h` |
-| A toolbar | `UltraCanvasToolbar` | `UltraCanvasToolbar.h` |
+| A toolbar | `UltraCanvasToolbar` — the height (width, when vertical) you construct it with is a *minimum*: it grows to fit its items rather than clipping them | `UltraCanvasToolbar.h` |
 | A rule or a gap | `UltraCanvasSeparator`, `UltraCanvasSpacer` | matching `*.h` |
 
 Positioning inside a container is the CSS layout engine's job (`layout` /
@@ -52125,6 +52591,10 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
+| Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
+| Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
+| Turn a 3D model into a bitmap, letting the user frame the view first | `UltraCanvasModelViewDialog`, `ShowModelViewDialog()` ([doc](UltraCanvasModelViewDialog.md)) | `dialogs/UltraCanvasModelViewDialog.h` |
+| A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 | Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
 
@@ -52651,7 +53121,127 @@ checks, plus the supported-format inventory). `VectorModelTest` covers the share
 
 ## See Also
 
+- [UltraCanvasVectorRaster](UltraCanvasVectorRaster.md) — the other direction
+  out of these formats: a drawing rasterized into an editable `UCRasterLayer`
+  at a chosen pixel size (what a bitmap editor does with a dropped SVG)
 - [UltraCanvasSVGExamples](UltraCanvasSVGExamples.md), [UltraCanvasXARExamples](UltraCanvasXARExamples.md), [UltraCanvasEPSExamples](UltraCanvasEPSExamples.md), [UltraCanvasCDRExamples](UltraCanvasCDRExamples.md) — the format plugins (rendering/UI elements)
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasVectorRaster.md
+==============================================================================
+
+# Vector artwork → pixels
+
+`UltraCanvasVectorRaster.h` turns a vector file into an editable
+[`UCRasterLayer`](UltraCanvasPaintSurface.md) at a size the caller chooses.
+It is the answer to "the user dropped an SVG on a bitmap editor" — and to
+anything else that needs a drawing as pixels: a thumbnail, a texture, a
+layer to paint over.
+
+A vector file has no pixels, only instructions. Deciding *how many* pixels is
+therefore part of opening one, and the point of this header is that the
+drawing is rendered **at** the size asked for rather than rendered small and
+scaled up.
+
+```cpp
+#include "UltraCanvasVectorRaster.h"
+
+if (IsVectorGraphicsPath(path)) {
+    const VectorSourceInfo info = InspectVectorFile(path);   // natural size, pages
+    VectorRasterOptions options;
+    options.width  = info.naturalWidth * 4;                  // 4x for print
+    options.height = info.naturalHeight * 4;
+    std::string error;
+    if (auto layer = RasterizeVectorFile(path, options, error)) {
+        document->AddLayer(layer);
+    } else {
+        ShowError(error);
+    }
+}
+```
+
+## The two rasterizers
+
+One call, two paths, picked per file. `InspectVectorFile()` reports which one
+applies (`VectorSourceInfo::source`) and who does the work
+(`VectorSourceInfo::provider`).
+
+| `VectorRasterSource` | Formats | How |
+|---|---|---|
+| `ImagePipeline` | `.svg`, `.svgz`, `.pdf`, `.ai`, `.eps`, `.ps` | libvips: `svgload` (librsvg), `pdfload` (poppler/pdfium), the PostScript delegate. Rendered at the resolution that produces the requested size — `PixelFX::FileIO::LoadSvg` / `LoadPdf` underneath. |
+| `GraphicsPlugin` | whatever a registered `IGraphicsPlugin` claims and `GraphicsFormatDetector` files as `Vector` — the [Vector plugin](UltraCanvasVectorConverters.md)'s DXF / DWG / EMF / WMF / XAR, the CDR and XAR viewer plugins | the plugin's element is given the target bounds and rendered into an offscreen `IRenderContext`; the premultiplied ARGB32 pixels are read back and un-premultiplied into the layer. |
+| `Unsupported` | everything else | nothing in this build reads it; `VectorSourceInfo::error` says so. |
+
+Both halves are **runtime** answers. The libvips half depends on how libvips
+was built (a build without librsvg cannot rasterize SVG), the plugin half on
+which plugins the application registered — `ULTRACANVAS_PLUGIN_VECTOR` is off
+by default, so DXF and friends appear only once a host turns it on and calls
+`RegisterVectorFormatsPlugin()`. `GetVectorRasterExtensions()` lists what this
+particular process can actually do, which is what a file filter should show.
+
+## Sizing
+
+`VectorRasterOptions::width` / `height` are pixels:
+
+| Given | Result |
+|---|---|
+| both 0 | the natural size (`VectorSourceInfo::naturalWidth/Height`) |
+| one of them | the other follows the natural aspect ratio |
+| both | exactly that, aspect ratio ignored |
+
+The natural size is what the artwork asks for: SVG user units, PDF points at
+72 dpi. A print-resolution raster is that size scaled — `width =
+naturalWidth * dpi / 72` for a PDF page, so a 595 × 842 pt A4 page at 300 dpi
+is 2480 × 3508.
+
+`maxPixels` (256 Mpx by default) is the guard that turns a mistyped size into
+an error instead of a multi-gigabyte allocation. It is counted on the target
+size, before anything is rendered.
+
+`background` is painted *under* the drawing, so an SVG with no backdrop keeps
+its transparency by default and `RasterPixel(255, 255, 255, 255)` flattens it
+onto white without touching what is drawn on top.
+
+`page` selects the page of a paged source; `VectorSourceInfo::pageCount` says
+how many there are (1 for everything but PDF).
+
+## What it is not
+
+- **Not a vector editor.** The document model, the converters between vector
+  formats and the editable `VectorDocument` are
+  [UltraCanvasVectorConverters](UltraCanvasVectorConverters.md); this header
+  throws the vector data away and hands back pixels.
+- **Not the other direction.** Pixels → SVG is the
+  [Vectorizer](../Modules/Vectorizer/README.md) plugin.
+- **Not a display path.** An element that shows a drawing on screen should
+  stay vector and re-render on zoom (`UltraCanvasVectorElement`,
+  `UCSvgDocument::RenderPixmap` for SVG with its parse-once cache). Rasterize
+  when the pixels are the point — when they are going to be edited, filtered
+  or saved as a bitmap.
+
+## Consumers
+
+UltraPaint: dropping or opening a drawing asks for the raster size and then
+comes through here (`Apps/UltraPaint/UltraPaintWindow.cpp`,
+`UltraPaintImportDialog`).
+
+## Tests
+
+`Tests/VectorRasterTest.cpp` (CTest target `VectorRasterTest`): the natural
+size is the size the artwork asks for, a requested size is delivered exactly,
+one dimension keeps the aspect ratio, the background composites under the
+drawing, and an absurd size is refused rather than allocated. It reports
+`[SKIP]` on a build with no SVG rasterizer instead of failing.
+
+## See also
+
+- [UltraCanvasVectorConverters](UltraCanvasVectorConverters.md) — the vector
+  format matrix and the `VectorDocument` model
+- [UltraCanvasPaintSurface](UltraCanvasPaintSurface.md) — `UCRasterLayer`,
+  `UCRasterDocument` and the editing surface
+- [BitmapHandlingArchitecture](BitmapHandlingArchitecture.md) — why a vector
+  source is rasterized at display size and re-rasterized when that changes
+- [PixelFX](../Modules/PixelFX/README.md) — the libvips-backed image pipeline
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVennDiagramExamples.md
@@ -57296,6 +57886,7 @@ PixelFX is UltraCanvas's comprehensive bitmap manipulation and analytics engine,
 -   **Drawing Operations** -- Shapes, lines, text, and flood fill with anti-aliasing
 -   **Colour Keying** -- `Colour::ColourToAlpha` turns a chosen colour into transparency with a tolerance, a soft ramp that keeps anti-aliased edges clean, a strength so the colour can be faded rather than only removed, and fringe removal
 -   **Statistical Analysis** -- Min/max detection, deviation, profiles, and measurements
+-   **Metadata** -- `Header::HasMetadata` / `ReadMetadata` / `MetadataToText` read what a file carries (EXIF, IPTC, XMP, ICC, the image's own geometry), tidy it for a person (tag names without their `exif-ifd0-` prefix, values without libvips' encoding suffix, binary blocks by size) and write it out as Markdown or plain text -- see [UltraCanvasMetadataDialog](../../UltraCanvas/UltraCanvasMetadataDialog.md)
 ----------------
 ### Why PixelFX?
 

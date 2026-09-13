@@ -16,6 +16,25 @@
 
 namespace UltraCanvas {
 
+// ===== WHERE THE CAMERA IS =====
+// The view a model is seen from: an orbit around the model's centre, which is
+// the only camera a viewer of a single object needs. The model is normalised
+// to a unit radius first, so one pose frames any model, however big the file
+// says it is.
+//
+// `UltraCanvasSTLElement` orbits by changing these, and
+// `RenderMeshPixmap()` (UltraCanvasModelRaster.h) takes the same three
+// numbers - which is what makes the still that is saved the view that was on
+// screen.
+    struct ModelViewPose {
+        float yaw = 0.6f;        // radians, around the model's up axis
+        float pitch = 0.4f;      // radians, above the horizon; +-1.5 is straight up/down
+        float distance = 3.0f;   // camera distance in model radii; ~3 frames it at 45 degrees
+
+        // The framing a viewer opens at: from the front left, slightly above.
+        static ModelViewPose Default() { return ModelViewPose{}; }
+    };
+
 // ===== 3-COMPONENT VECTOR =====
     struct Vec3 {
         float x = 0.0f, y = 0.0f, z = 0.0f;

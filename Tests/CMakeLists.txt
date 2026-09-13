@@ -2401,6 +2401,10 @@ if(TARGET UltraCanvas)
     target_include_directories(DesktopEntryTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
     target_compile_features(DesktopEntryTest PRIVATE cxx_std_20)
     target_link_libraries(DesktopEntryTest PRIVATE UltraCanvas)
+    # The launcher this repository ships, checked with the same reader.
+    target_compile_definitions(DesktopEntryTest PRIVATE
+        ULTRAPAINT_DESKTOP_FILE="${ULTRACANVAS_ROOT}/Apps/UltraPaint/UltraPaint.desktop"
+    )
     set_target_properties(DesktopEntryTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
@@ -2676,3 +2680,78 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  OffscreenRenderTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== VECTOR RASTERIZER TEST =====
+# UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
+# into a raster layer at a chosen pixel size (the path a bitmap editor takes
+# when an SVG is dropped on it).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building VectorRasterTest...")
+    add_executable(VectorRasterTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorRasterTest.cpp
+    )
+    target_include_directories(VectorRasterTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorRasterTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorRasterTest PRIVATE UltraCanvas)
+    set_target_properties(VectorRasterTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorRasterTest COMMAND VectorRasterTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorRasterTest")
+else()
+    message(STATUS "  VectorRasterTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== TOOLBAR THICKNESS TEST =====
+# A toolbar is as thick as the items in it: the height (width, when vertical)
+# a host constructs it with is a floor, so buttons are never clipped by a
+# number somebody guessed, and a host that wants a taller bar still gets one.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolbarThicknessTest...")
+    add_executable(ToolbarThicknessTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ToolbarThicknessTest.cpp
+    )
+    target_include_directories(ToolbarThicknessTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ToolbarThicknessTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolbarThicknessTest PRIVATE UltraCanvas)
+    set_target_properties(ToolbarThicknessTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ToolbarThicknessTest COMMAND ToolbarThicknessTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolbarThicknessTest")
+else()
+    message(STATUS "  ToolbarThicknessTest skipped (UltraCanvas target not present)")
+endif()
+
+# ===== CSS LAYOUT FORM GRID TEST =====
+# The two-column [auto, 1fr] form grid every dialog is built from: captions
+# share a column, controls line up under each other, a full-width row does not
+# drag the caption column out with it, and a hidden row leaves the grid.
+message(STATUS "  Building CSSLayoutFormGridTest...")
+add_executable(CSSLayoutFormGridTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutFormGridTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutFormGridTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutFormGridTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutFormGridTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutFormGridTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutFormGridTest
+    COMMAND CSSLayoutFormGridTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutFormGridTest")

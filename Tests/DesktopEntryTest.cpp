@@ -9,12 +9,13 @@
 // The test builds a throwaway icon theme and points XDG_DATA_HOME at it, so
 // it asserts against icons it put there rather than against whatever the
 // machine running it happens to have installed.
-// Version: 1.0.0
-// Last Modified: 2026-09-05
+// Version: 1.1.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDesktopEntry.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -202,6 +203,46 @@ int main() {
     Check(IsDesktopEntryPath("/a/b.desktop") && IsDesktopEntryPath("/a/B.DESKTOP") &&
                   !IsDesktopEntryPath("/a/b.desk") && !IsDesktopEntryPath("/a/desktop"),
           "the extension test accepts only real .desktop names");
+
+    // ===== THE ENTRY THE PROJECT SHIPS =====
+    // UltraPaint's launcher is a data file, and a typo in it is invisible
+    // until a desktop refuses a drop. Read the real one with the real reader:
+    // this is what decides whether a file dropped on the icon in a dock or
+    // taskbar arrives as an argument at all.
+#ifdef ULTRAPAINT_DESKTOP_FILE
+    std::cout << "\nThe UltraPaint launcher this repository ships\n";
+    UCDesktopEntry paint;
+    Check(ReadDesktopEntry(ULTRAPAINT_DESKTOP_FILE, paint),
+          "UltraPaint.desktop is read");
+    Check(paint.kind == UCDesktopEntry::Kind::Application, "it is an application");
+    CheckEqual(paint.name, "UltraPaint", "name");
+    Check(!paint.noDisplay && !paint.hidden && !paint.terminal,
+          "it is shown in menus and needs no terminal");
+    CheckEqual(paint.iconName, "UltraPaint", "the icon name it is drawn with");
+    Check(paint.exec.find("%F") != std::string::npos,
+          "Exec takes a list of files -> \"" + paint.exec + "\"");
+    const std::vector<std::string> paintArgv =
+            DesktopEntryCommand(paint, {"/tmp/a.png", "/tmp/b.stl"});
+    Check(paintArgv.size() == 3 && paintArgv[0] == "UltraPaint" &&
+                  paintArgv[1] == "/tmp/a.png" && paintArgv[2] == "/tmp/b.stl",
+          "so a multi-file drop reaches argv intact -> \"" + Join(paintArgv) + "\"");
+
+    auto handles = [&paint](const std::string& type) {
+        return std::find(paint.mimeTypes.begin(), paint.mimeTypes.end(), type) !=
+               paint.mimeTypes.end();
+    };
+    Check(handles("image/png") && handles("image/jpeg") && handles("image/tiff"),
+          "it claims the bitmap types it edits");
+    Check(handles("image/svg+xml") && handles("application/pdf"),
+          "and the drawings it rasterizes on import");
+    Check(handles("model/stl") && handles("model/obj"),
+          "and the 3D models it renders a view of");
+    Check(handles("application/x-ultracanvas-raster"),
+          "and its own layered project files");
+    Check(paint.mimeTypes.size() > 20,
+          "the whole list survives parsing (got " +
+                  std::to_string(paint.mimeTypes.size()) + " types)");
+#endif
 
     fs::remove_all(root, ec);
     std::cout << "\n"
