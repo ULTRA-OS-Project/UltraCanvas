@@ -34,9 +34,12 @@
   underneath for a build with `ULTRACANVAS_PLUGIN_MODELS=OFF`.
 - **`Docs/UltraCanvas/UltraCanvasModelFormats.md`** (new) documents the
   dispatch, the capability table as the converters actually report it - three
-  formats write, OBJ, PLY and STEP, and the rest are read-only - and the two
-  things that surprise people: a STEP file contains no triangles, and readers
-  never rescale geometry.
+  formats write, OBJ, PLY and STEP, and the rest are read-only - and the three
+  things that surprise people: a STEP file contains no triangles, readers never
+  rescale geometry, and writing a *mesh* to STEP yields a faceted b-rep (one
+  planar face per triangle, at the mesh's accuracy rather than a model's) while
+  a document of exact bodies is written as those bodies. Documentation only -
+  no converter is touched by this change.
 - Both new demo sources are guarded by `ULTRACANVAS_HAS_MODELS_PLUGIN` and
   compiled only when the plugin is built; neither is inside the GL guard, since
   `UltraCanvasSTLElement` draws a shaded software still without OpenGL.
