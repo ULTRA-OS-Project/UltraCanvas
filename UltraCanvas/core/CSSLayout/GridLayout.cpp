@@ -339,13 +339,30 @@ namespace UltraCanvas {
                     }
                 };
 
+                // §12.5: an item whose span crosses a flexible track does not
+                // contribute to the base size of the intrinsic tracks it also
+                // spans — the fr track is what absorbs it. Without this rule a
+                // single full-width row in a [auto, 1fr] form grid forces the
+                // caption column as wide as that row, and every caption/control
+                // pair in the grid is pushed across the dialog.
+                auto spanHasFlexible = [](const std::vector<Track>& tracks, int s, int e) {
+                    for (int i = s; i < e && i < (int)tracks.size(); ++i) {
+                        if (tracks[i].hasFr) return true;
+                    }
+                    return false;
+                };
+
                 for (const auto& p : placements) {
                     int spanC = p.colEnd - p.colStart;
                     int spanR = p.rowEnd - p.rowStart;
                     if (spanC <= 1 && spanR <= 1) continue;
                     auto [w, h] = itemMaxContent(p.el);
-                    if (spanC > 1) distribute(cols, p.colStart, p.colEnd, w);
-                    if (spanR > 1) distribute(rows, p.rowStart, p.rowEnd, h);
+                    if (spanC > 1 && !spanHasFlexible(cols, p.colStart, p.colEnd)) {
+                        distribute(cols, p.colStart, p.colEnd, w);
+                    }
+                    if (spanR > 1 && !spanHasFlexible(rows, p.rowStart, p.rowEnd)) {
+                        distribute(rows, p.rowStart, p.rowEnd, h);
+                    }
                 }
             }
 

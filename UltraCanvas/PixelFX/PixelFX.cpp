@@ -1,7 +1,7 @@
 // PixelFX/core/PixelFX.cpp
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
-// Version: 1.1.0
-// Last Modified: 2025-11-30
+// Version: 1.2.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFX.h"
@@ -9,7 +9,11 @@
 #include "../libspecific/Cairo/VipsQoiLoader.h"
 #include "../libspecific/Cairo/UltraCanvasGifEncoder.h"
 #include <algorithm>
+#include <cctype>
 #include <cmath>
+#include <iomanip>
+#include <set>
+#include <sstream>
 
 namespace PixelFX {
 
@@ -1048,7 +1052,290 @@ namespace PixelFX {
         void SetDouble(PFXImage& image, const std::string& field, double value) { image.set(field.c_str(), value); }
         void SetArrayDouble(PFXImage& image, const std::string& field, const std::vector<double>& value) { image.set(field.c_str(), value); }
         bool RemoveField(PFXImage& image, const std::string& field) { return image.remove(field.c_str()); }
-//        std::vector<std::string> GetFields(const Image& image) { return image.get_fields(); }
+        std::vector<std::string> GetFields(const PFXImage& image) {
+            std::vector<std::string> out;
+            VipsImage* im = const_cast<PFXImage&>(image).get_image();
+            if (!im) return out;
+            gchar** names = vips_image_get_fields(im);
+            if (!names) return out;
+            for (int i = 0; names[i]; ++i) out.emplace_back(names[i]);
+            g_strfreev(names);
+            return out;
+        }
+
+        namespace {
+            // The fields libvips reports for every image it has decoded. They
+            // describe the pixels in memory, not anything the file carried, so
+            // HasMetadata() does not count them - otherwise every image, even
+            // one built from a raw buffer, would look like it had metadata.
+            bool IsGeometryField(const std::string& field) {
+                static const std::set<std::string> geometry = {
+                    "width", "height", "bands", "format", "coding", "interpretation",
+                    "xres", "yres", "xoffset", "yoffset", "filename", "vips-loader",
+                    "vips-sequential", "vips-blob", "vips-concurrency", "vips-level",
+                    "vips-image-history"
+                };
+                return geometry.count(field) > 0;
+            }
+
+            std::string MetadataGroupOf(const std::string& field) {
+                if (field.rfind("exif-", 0) == 0) return "EXIF";
+                if (field.rfind("xmp", 0) == 0)   return "XMP";
+                if (field.rfind("iptc", 0) == 0)  return "IPTC";
+                if (field.rfind("icc", 0) == 0)   return "Colour";
+                if (IsGeometryField(field))       return "Image";
+                return "Other";
+            }
+
+            // "exif-ifd0-Make" -> "Make"; everything else keeps its own name.
+            std::string MetadataKeyOf(const std::string& field) {
+                if (field.rfind("exif-", 0) != 0) return field;
+                const size_t dash = field.rfind('-');
+                if (dash == std::string::npos || dash + 1 >= field.size()) return field;
+                return field.substr(dash + 1);
+            }
+
+            // libvips appends the raw EXIF encoding to a tag's value:
+            //   "UltraCanvas Cameras (UltraCanvas Cameras, ASCII, 20 components, 20 bytes)"
+            //   "65535 (Uncalibrated, Short, 1 components, 2 bytes)"
+            // The part in front is the value; the first element of the
+            // annotation is libvips' reading of it, which for a numeric tag
+            // (colour space, resolution unit, flash) is the only part a person
+            // can use. Keep the value, and add that reading when it says
+            // something the value does not.
+            std::string TrimExifAnnotation(const std::string& value) {
+                if (value.size() < 8 || value.back() != ')') return value;
+                if (value.rfind(" bytes)") != value.size() - 7) return value;
+
+                // Walk back to the parenthesis that opens the annotation,
+                // counting depth so parentheses inside the value itself
+                // ("(c) ACME") are not mistaken for it.
+                size_t open = std::string::npos;
+                int depth = 0;
+                for (size_t i = value.size(); i-- > 0;) {
+                    if (value[i] == ')') { ++depth; continue; }
+                    if (value[i] != '(') continue;
+                    if (--depth == 0) { open = i; break; }
+                }
+                if (open == std::string::npos || open == 0) return value;
+
+                std::string head = value.substr(0, open);
+                while (!head.empty() && std::isspace(static_cast<unsigned char>(head.back()))) head.pop_back();
+                if (head.empty()) return value;
+
+                // First element of the annotation, i.e. up to the comma that
+                // introduces the type.
+                const std::string annotation = value.substr(open + 1, value.size() - open - 2);
+                const size_t comma = annotation.find(", ");
+                const std::string reading = comma == std::string::npos ? annotation : annotation.substr(0, comma);
+                const bool worthAdding = !reading.empty() && reading != head && reading.size() <= 40 &&
+                                         reading.find('(') == std::string::npos;
+                return worthAdding ? head + " (" + reading + ")" : head;
+            }
+
+            std::string MetadataValueOf(VipsImage* im, const std::string& field) {
+                const GType type = vips_image_get_typeof(im, field.c_str());
+                if (type == VIPS_TYPE_BLOB || type == VIPS_TYPE_ARRAY_DOUBLE ||
+                    type == VIPS_TYPE_ARRAY_INT) {
+                    const void* data = nullptr;
+                    size_t length = 0;
+                    if (type == VIPS_TYPE_BLOB &&
+                        vips_image_get_blob(im, field.c_str(), &data, &length) == 0) {
+                        return std::to_string(length) + " bytes";
+                    }
+                }
+                char* text = nullptr;
+                if (vips_image_get_as_string(im, field.c_str(), &text) != 0 || !text) return "";
+                std::string value(text);
+                g_free(text);
+                // One-line values only: a multi-line blob dumped into a table
+                // destroys the layout, and the interesting part is the head.
+                const size_t nl = value.find('\n');
+                if (nl != std::string::npos) value = value.substr(0, nl) + " ...";
+                if (value.size() > 512) value = value.substr(0, 509) + "...";
+                return TrimExifAnnotation(value);
+            }
+
+            int MetadataGroupOrder(const std::string& group) {
+                if (group == "Image")  return 0;
+                if (group == "EXIF")   return 1;
+                if (group == "IPTC")   return 2;
+                if (group == "XMP")    return 3;
+                if (group == "Colour") return 4;
+                return 5;
+            }
+        }
+
+        namespace {
+            // "((VipsInterpretation) VIPS_INTERPRETATION_sRGB)" is how libvips
+            // prints an enum; a person wants "sRGB".
+            std::string PrettyEnum(const std::string& raw, const std::string& prefix) {
+                const size_t at = raw.rfind(prefix);
+                if (at == std::string::npos) return raw;
+                std::string tail = raw.substr(at + prefix.size());
+                while (!tail.empty() && (tail.back() == ')' || std::isspace(static_cast<unsigned char>(tail.back())))) {
+                    tail.pop_back();
+                }
+                return tail.empty() ? raw : tail;
+            }
+
+            std::string Unquote(const std::string& raw) {
+                if (raw.size() >= 2 && raw.front() == '"' && raw.back() == '"') {
+                    return raw.substr(1, raw.size() - 2);
+                }
+                return raw;
+            }
+
+            std::string TrimZeros(double value) {
+                std::ostringstream out;
+                out << std::fixed << std::setprecision(value < 10.0 ? 1 : 0) << value;
+                std::string text = out.str();
+                if (text.find('.') != std::string::npos) {
+                    while (!text.empty() && text.back() == '0') text.pop_back();
+                    if (!text.empty() && text.back() == '.') text.pop_back();
+                }
+                return text;
+            }
+
+            // The "Image" group: what the pixels are, said the way a person
+            // would say it, rather than the dozen raw fields libvips keeps.
+            void AppendImageGroup(VipsImage* im, const PFXImage& image, std::vector<MetadataEntry>& out) {
+                auto add = [&out](const std::string& key, const std::string& value) {
+                    if (!value.empty()) out.push_back(MetadataEntry{"Image", key, value});
+                };
+                add("Dimensions", std::to_string(vips_image_get_width(im)) + " x " +
+                                  std::to_string(vips_image_get_height(im)) + " px");
+                add("Channels", std::to_string(vips_image_get_bands(im)));
+                if (vips_image_get_typeof(im, "interpretation") != 0) {
+                    add("Colour space", PrettyEnum(MetadataValueOf(im, "interpretation"),
+                                                   "VIPS_INTERPRETATION_"));
+                }
+                if (vips_image_get_typeof(im, "format") != 0) {
+                    add("Sample format", PrettyEnum(MetadataValueOf(im, "format"), "VIPS_FORMAT_"));
+                }
+                // libvips keeps resolution in pixels per millimetre.
+                const double xres = vips_image_get_xres(im) * 25.4;
+                const double yres = vips_image_get_yres(im) * 25.4;
+                if (xres > 0.01) {
+                    add("Resolution", std::fabs(xres - yres) < 0.01
+                            ? TrimZeros(xres) + " dpi"
+                            : TrimZeros(xres) + " x " + TrimZeros(yres) + " dpi");
+                }
+                if (vips_image_get_typeof(im, "vips-loader") != 0) {
+                    add("Read by", MetadataValueOf(im, "vips-loader"));
+                }
+                if (vips_image_get_typeof(im, "filename") != 0) {
+                    // The name only: a full path is longer than everything
+                    // else put together, and a table column sized for it
+                    // squeezes every other column to nothing.
+                    const std::string path = Unquote(MetadataValueOf(im, "filename"));
+                    const size_t slash = path.find_last_of("/\\");
+                    add("File", slash == std::string::npos ? path : path.substr(slash + 1));
+                }
+                (void)image;
+            }
+        }
+
+        std::vector<MetadataEntry> ReadMetadata(const PFXImage& image) {
+            std::vector<MetadataEntry> entries;
+            VipsImage* im = const_cast<PFXImage&>(image).get_image();
+            if (!im) return entries;
+
+            AppendImageGroup(im, image, entries);
+            const size_t imageGroupSize = entries.size();
+
+            for (const auto& field : GetFields(image)) {
+                // The geometry fields are already said better above.
+                if (IsGeometryField(field)) continue;
+                MetadataEntry entry;
+                entry.group = MetadataGroupOf(field);
+                entry.key = MetadataKeyOf(field);
+                entry.value = MetadataValueOf(im, field);
+                if (entry.value.empty()) continue;
+                entries.push_back(std::move(entry));
+            }
+
+            // The Image group keeps the order it was written in; the file's own
+            // blocks are alphabetical within each group.
+            std::stable_sort(entries.begin() + imageGroupSize, entries.end(),
+                             [](const MetadataEntry& a, const MetadataEntry& b) {
+                                 const int ga = MetadataGroupOrder(a.group), gb = MetadataGroupOrder(b.group);
+                                 if (ga != gb) return ga < gb;
+                                 return a.key < b.key;
+                             });
+            return entries;
+        }
+
+        namespace {
+            // A Markdown table cell must not contain a bare pipe or a newline,
+            // and the characters Markdown reads as emphasis have to be escaped
+            // or a value like VIPS_CODING_NONE comes out italicised with its
+            // underscores eaten.
+            std::string EscapeTableCell(const std::string& text) {
+                static const std::string specials = "\\`*_[]()#";
+                std::string out;
+                out.reserve(text.size() + 8);
+                for (char c : text) {
+                    if (c == '|') { out += "\\|"; continue; }
+                    if (c == '\n' || c == '\r') { out += ' '; continue; }
+                    if (specials.find(c) != std::string::npos) out += '\\';
+                    out += c;
+                }
+                return out;
+            }
+        }
+
+        std::string MetadataToText(const std::vector<MetadataEntry>& entries, MetadataTextFormat format) {
+            if (entries.empty()) {
+                return format == MetadataTextFormat::Markdown
+                        ? std::string("_No metadata._\n")
+                        : std::string("No metadata.\n");
+            }
+
+            std::ostringstream out;
+            std::string group;
+            size_t keyWidth = 0;
+            for (size_t i = 0; i < entries.size(); ++i) {
+                const MetadataEntry& entry = entries[i];
+                if (entry.group != group) {
+                    group = entry.group;
+                    if (i > 0) out << "\n";
+                    if (format == MetadataTextFormat::Markdown) {
+                        out << "## " << group << "\n\n"
+                            << "| Tag | Value |\n| --- | --- |\n";
+                    } else {
+                        out << group << "\n" << std::string(group.size(), '-') << "\n";
+                        // Pad the keys of this group so the values line up in
+                        // a monospaced view.
+                        keyWidth = 0;
+                        for (size_t j = i; j < entries.size() && entries[j].group == group; ++j) {
+                            keyWidth = std::max(keyWidth, entries[j].key.size());
+                        }
+                    }
+                }
+                if (format == MetadataTextFormat::Markdown) {
+                    out << "| " << EscapeTableCell(entry.key) << " | "
+                        << EscapeTableCell(entry.value) << " |\n";
+                } else {
+                    out << "  " << entry.key
+                        << std::string(keyWidth > entry.key.size() ? keyWidth - entry.key.size() : 0, ' ')
+                        << " : " << entry.value << "\n";
+                }
+            }
+            return out.str();
+        }
+
+        std::string MetadataToText(const PFXImage& image, MetadataTextFormat format) {
+            return MetadataToText(ReadMetadata(image), format);
+        }
+
+        bool HasMetadata(const PFXImage& image) {
+            for (const auto& field : GetFields(image)) {
+                if (!IsGeometryField(field)) return true;
+            }
+            return false;
+        }
+
         std::string GetExifString(const PFXImage& image, const std::string& tag) { std::string field = "exif-ifd0-" + tag; return HasField(image, field) ? GetString(image, field) : ""; }
         int GetOrientation(const PFXImage& image) { return HasField(image, "orientation") ? GetInt(image, "orientation") : 1; }
         std::string GetFilename(const PFXImage& image) { return image.GetSourceFilename(); }

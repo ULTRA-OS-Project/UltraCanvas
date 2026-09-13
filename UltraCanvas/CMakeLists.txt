@@ -858,6 +858,7 @@ if(ULTRACANVAS_HAS_VIPS)
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFX.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasMetadataDialog.cpp
     )
 endif()
 

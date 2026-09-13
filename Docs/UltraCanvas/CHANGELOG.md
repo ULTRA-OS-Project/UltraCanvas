@@ -1,3 +1,50 @@
+#### 2026-09-13 *0.8.39*
+- **Dialog captions line up, and survive translation.** New
+  `UltraCanvasFormLayout.h` (`CreateFormGrid` / `AddFormRow` /
+  `AddFormWideRow` / `CreateFormCellRow`): the "caption: control" form as one
+  grid of `[auto, 1fr]` instead of a flex row per field. The caption column is
+  exactly as wide as the widest caption in the whole form, in any language, and
+  every control starts where that column ends. Doc:
+  [UltraCanvasFormLayout](UltraCanvasFormLayout.md).
+- The old shape is what a hard-coded `CreateLabel(id, 0, 0, 80, 24)` buys: a
+  caption that fits "Compress:" and cuts off "Komprimierung:", and one column
+  width per section so the fields of one section line up with nothing else.
+  The image export dialog had both.
+- **Grid: a full-width row no longer drags the `auto` column out with it.**
+  CSS Grid §12.5 - an item whose span crosses a flexible track contributes
+  nothing to the base size of the intrinsic tracks it also spans - was missing
+  from `GridLayout.cpp`, so one wide spanning row (a note, a checkbox, a
+  heading) made every `auto` column in the grid as wide as that row and pushed
+  the controls across the dialog. A grid with no `fr` track still distributes a
+  spanning item over its intrinsic tracks, as before. `CSSLayoutFormGridTest`
+  (CTest) pins both, plus the column sharing and the hidden-row behaviour.
+- **The save-image dialog was rebuilt on it.** Every captioned row - the common
+  ones and each format's own - is now a row of one grid, so the controls line up
+  from Name down to Metadata; the format options are shown a set at a time in
+  that same grid (hidden rows are `display:none` and cost no space). Sections
+  carry a heading and a rule, the chosen format explains itself in a line under
+  the picker, Save reads as the primary button, buttons size to their own text
+  with a floor, and the dialog resizes.
+- The dialog's width/height inputs kept their re-entry guard in a local captured
+  **by reference** from a function that had long returned; every keystroke tested
+  a dangling bool. It is a member now.
+- **Metadata can be read and shown.** `PixelFX::Header::HasMetadata` /
+  `ReadMetadata` / `MetadataToText` turn what a file carries (EXIF, IPTC, XMP,
+  ICC, the image's own geometry) into `{group, key, value}` entries or into one
+  string - Markdown (a heading and a table per group) or plain text. Tag names
+  lose their `exif-ifd0-` prefix, values lose the encoding libvips appends
+  (keeping its reading of a numeric tag: `65535 (Uncalibrated)`), binary blocks
+  are reported by size, and Markdown specials are escaped so
+  `VIPS_CODING_NONE` is not italicised with its underscores eaten.
+  `Header::GetFields` - declared since 1.1.0 but commented out of the
+  implementation - is implemented.
+- New `UltraCanvasMetadataDialog` (`ShowMetadataDialog()`): a read-only popup
+  around an `UltraCanvasTextArea`, Markdown or plain, with Copy. It takes text
+  rather than fields, so a document, font or audio reader can use the same
+  popup. The save dialog offers a **Show...** button and an entry count only
+  when the image actually carries metadata. Doc:
+  [UltraCanvasMetadataDialog](UltraCanvasMetadataDialog.md).
+
 #### 2026-09-12 *0.8.38*
 - **Vector artwork can become pixels.** New `UltraCanvasVectorRaster.h`
   (`IsVectorGraphicsPath` / `GetVectorRasterExtensions` /

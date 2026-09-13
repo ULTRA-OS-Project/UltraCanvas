@@ -4,8 +4,8 @@
 // Colour to Alpha and the import question a dropped file asks. Each is an
 // UltraCanvasWindow built out of framework elements (spinners, dropdowns,
 // text input, colour picker, buttons) and reports through callbacks.
-// Version: 1.1.0
-// Last Modified: 2026-09-12
+// Version: 1.2.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -184,9 +184,20 @@ private:
 
 // ===== SHARED BUILDING BLOCKS =====
 namespace UltraPaintDialogParts {
-    // A "Label: [widget]" row added to a flex-column window.
-    std::shared_ptr<UltraCanvasContainer> LabelledRow(const std::string& id, const std::string& label,
-                                                      std::shared_ptr<UltraCanvasUIElement> widget, float labelWidth = 110);
+    // The two-column grid every dialog puts its rows in (UltraCanvasFormLayout):
+    // captions share the first column, controls the second, so the controls
+    // line up and a longer caption in another language widens the column
+    // instead of being cut off.
+    std::shared_ptr<UltraCanvasContainer> FormGrid(const std::string& id);
+    // A "Label: [widget]" row of such a grid; returns the caption.
+    std::shared_ptr<UltraCanvasLabel> FormRow(const std::shared_ptr<UltraCanvasContainer>& grid,
+                                              const std::string& id, const std::string& label,
+                                              std::shared_ptr<UltraCanvasUIElement> widget);
+    // A control that is its own caption (a checkbox), across both columns.
+    void FormWideRow(const std::shared_ptr<UltraCanvasContainer>& grid,
+                     std::shared_ptr<UltraCanvasUIElement> element);
+    // Auto width with a minimum, so a translated button label fits.
+    void SizeButtonToText(const std::shared_ptr<UltraCanvasButton>& button);
     // OK / Cancel row; `onOk` runs before the window closes.
     std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id, UltraCanvasWindow* win,
                                                     const std::function<void()>& onOk, const std::string& okLabel = "OK");

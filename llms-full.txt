@@ -758,6 +758,17 @@ engine; these classes hold the pixels being edited and hand them to it.
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
   `onViewChanged`, `onFilesDropped`; `PaintPointerEvent` carries image
   coordinates.
+- **UltraCanvasFormLayout** (`UltraCanvasFormLayout.h`) — the "caption:
+  control" form as one `[auto, 1fr]` grid: `CreateFormGrid`, `AddFormRow`,
+  `AddFormWideRow`, `CreateFormCellRow`, `CreateFormCaption`. The caption column
+  is as wide as the widest caption in the form, so the controls line up and a
+  translated caption widens the column rather than clipping. Doc:
+  `Docs/UltraCanvas/UltraCanvasFormLayout.md`.
+- **UltraCanvasMetadataDialog** (`dialogs/UltraCanvasMetadataDialog.h`) —
+  read-only popup listing a file's metadata in an `UltraCanvasTextArea`
+  (Markdown tables or plain text) with Copy; `ShowMetadataDialog()`. The text
+  comes from `PixelFX::Header::MetadataToText` / `ReadMetadata` /
+  `HasMetadata`. Doc: `Docs/UltraCanvas/UltraCanvasMetadataDialog.md`.
 - **UltraCanvasVectorRaster** (`UltraCanvasVectorRaster.h`) — vector artwork
   into an editable layer at a chosen pixel size: `IsVectorGraphicsPath`,
   `GetVectorRasterExtensions`, `InspectVectorFile` (natural size, page count,
@@ -1754,6 +1765,21 @@ measurement.
 `Apps/UltraMail/ui/UltraMailAccountBar.cpp` is a worked example: an account tile
 with a provider letter, an address and a row of `UltraCanvasBadge` counters that
 widens as the counts grow.
+
+## Recipe: a form whose captions line up and still translate
+
+A dialog's "caption: control" rows belong in **one** grid of `[auto, 1fr]`, not
+in a flex row each: the `auto` column is then exactly as wide as the widest
+caption in the form — in any language — and every control starts where it ends.
+`UltraCanvasFormLayout.h` is that grid plus four helpers; see
+[UltraCanvasFormLayout](UltraCanvas/UltraCanvasFormLayout.md).
+
+An item that spans every column of such a grid (a checkbox, a heading, a note)
+does **not** drag the `auto` column out to its own width: per CSS Grid §12.5 an
+item whose span crosses a flexible track contributes nothing to the base size of
+the intrinsic tracks it also spans, and the flexible track absorbs it. A grid
+with no `fr` track still distributes a spanning item over its intrinsic tracks.
+`Tests/CSSLayoutFormGridTest.cpp` pins both.
 
 ## Troubleshooting: my widget renders nothing at all
 
@@ -22024,6 +22050,97 @@ count or a scroll range that stops short of the last row hides part of a font
 with nothing on screen to say so, and `Tests/FontViewerTest.cpp` pins them.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasFormLayout.md
+==============================================================================
+
+# Forms: captions that line up and still translate
+
+`UltraCanvasFormLayout.h` is the "caption: control" form — the shape of nearly
+every dialog. It is a header of four inline helpers over one CSS grid, and it
+exists because the obvious alternative is quietly broken.
+
+```cpp
+#include "UltraCanvasFormLayout.h"
+
+auto form = CreateFormGrid("export-form");
+window->AddChild(form);
+
+AddFormRow(form, "name",   "Name:",   fileNameInput);
+AddFormRow(form, "format", "Format:", formatDropdown);
+AddFormWideRow(form, interlaceCheckbox);      // a control that is its own caption
+```
+
+## Why not a row per field
+
+A flex row per field gives every caption its own width, which leaves two bad
+options:
+
+| | What goes wrong |
+|---|---|
+| Hard-code the caption width (`CreateLabel(id, 0, 0, 80, 24)`) | The first translation longer than 80 px is cut off — "Compress:" is fine, "Komprimierung:" is not. |
+| Let each row size its own caption | Every row's control starts at a different x, and the dialog looks ragged. |
+
+Worse, sections built as separate containers each size their captions
+separately, so the fields of one section line up with each other and with
+nothing else — which is what the image export dialog used to do.
+
+One grid solves both at once. The caption column is `auto`, so it is exactly as
+wide as the widest caption **in the whole form**, in whatever language; the
+control column is `1fr`, so every control starts where that column ends and
+takes the rest of the row. Nothing measures text, nothing is placed by
+coordinate, and a longer caption widens the column instead of clipping.
+
+## The helpers
+
+| Call | What it makes |
+|---|---|
+| `CreateFormGrid(id, rowGap, columnGap)` | The grid: columns `[auto, 1fr]`, items centred vertically, stretched into its parent. Add it to the window or section. |
+| `AddFormRow(grid, id, "Caption:", control)` | A row. Returns the caption label, so a caller that hides rows can hide the caption with them. |
+| `AddFormRow(grid, caption, control)` | The same with a caption the caller built (to restyle it, or to keep a pointer). |
+| `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
+| `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
+| `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+
+Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
+so a form can swap one set of rows for another — the export dialog shows the
+current format's options that way — without leaving holes or empty tracks.
+
+## Buttons
+
+A button sized to fit "Cancel" cuts off "Abbrechen". Give it an auto width with
+a floor instead — `UltraCanvasModalDialog::SizeButtonToLabel` is the reference:
+
+```cpp
+button->size.width = CSSLayout::Dimension::Auto();
+CSSLayout::BoxConstraints limits = button->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+limits.minWidth = CSSLayout::Dimension::Px(96);
+button->boxConstraints = limits;
+button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+```
+
+## Make the window resizable
+
+The grid degrades gracefully when a caption grows — the control column gives up
+the space — but a fixed-size window has nowhere to give it back from. A dialog
+whose captions are translated should set `config_.resizable = true` with a
+sensible `minWidth`, so a user who needs more room can take it.
+
+## The engine rule underneath
+
+A grid item that spans both columns does **not** drag the `auto` column out to
+its own width: CSS Grid §12.5 says an item whose span crosses a flexible track
+contributes nothing to the base size of the intrinsic tracks it also spans, and
+`GridLayout.cpp` implements that. Without it, one wide full-width note would
+make the caption column as wide as the note and push every control across the
+dialog. `Tests/CSSLayoutFormGridTest.cpp` pins this, together with the
+column-sharing and hidden-row behaviour.
+
+## See also
+
+- [CSSLayout](../CSSLayout.md) — the layout engine and the element contract
+- [UltraCanvasUIElements](UltraCanvasUIElements.md) — which element to use for a field
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFunnelChart.md
 ==============================================================================
 
@@ -31785,6 +31902,77 @@ UltraCanvasMenu is not thread-safe. All menu operations should be performed on t
 - Voice control integration
 - Custom item renderers
 - Menu recording/replay for testing
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMetadataDialog.md
+==============================================================================
+
+# Showing a file's metadata
+
+Two pieces: a reader that turns a file's metadata into text, and a popup that
+shows it.
+
+## Reading it
+
+`PixelFX::Header` (`PixelFX/PixelFX.h`) reads the metadata of anything libvips
+decoded:
+
+```cpp
+PixelFX::PFXImage image = PixelFX::FileIO::Load(path);
+
+if (PixelFX::Header::HasMetadata(image)) {                       // anything to show?
+    std::string listing = PixelFX::Header::MetadataToText(image); // Markdown by default
+}
+```
+
+| Call | |
+|---|---|
+| `HasMetadata(image)` | True when the **file** carried metadata — the geometry libvips reports for every image (width, bands, interpretation, …) does not count. This is the check a UI makes before offering a "Show metadata" button. |
+| `ReadMetadata(image)` | `std::vector<MetadataEntry>` — `{group, key, value}`, grouped `Image`, `EXIF`, `IPTC`, `XMP`, `Colour`, `Other`. |
+| `MetadataToText(entries \| image, format)` | The entries as one string: `MetadataTextFormat::Markdown` (a `## Group` heading and a two-column table per group) or `MetadataTextFormat::PlainText` (aligned `Tag : value` lines under an underlined heading). |
+| `GetFields(image)` | The raw libvips field names, if you want to do your own thing. |
+
+The reader does the tidying a person would otherwise have to do in their head:
+
+- The **Image** group is written the way a person says it — `Dimensions:
+  640 x 480 px`, `Colour space: sRGB`, `Resolution: 72 dpi`, `Read by:
+  jpegload` — instead of the dozen raw fields underneath it.
+- EXIF tag names lose their `exif-ifd0-` prefix, and values lose the encoding
+  libvips appends (`UltraCanvas Cameras (UltraCanvas Cameras, ASCII, 20
+  components, 20 bytes)` → `UltraCanvas Cameras`). Where libvips' own reading of
+  a numeric tag says more than the number, it is kept: `65535 (Uncalibrated)`,
+  `2 (Inch)`.
+- Binary blocks (ICC profiles, the raw EXIF/XMP/IPTC payloads) are reported by
+  size, not dumped.
+- Markdown special characters are escaped, so `VIPS_CODING_NONE` does not come
+  out italicised with its underscores eaten.
+
+## Showing it
+
+`UltraCanvasMetadataDialog` (`dialogs/UltraCanvasMetadataDialog.h`) is a
+read-only popup around an `UltraCanvasTextArea`. In Markdown mode the text area
+renders the headings and lays the tables out, and — being a real text area — it
+scrolls, selects and copies without the dialog doing any of it.
+
+```cpp
+ShowMetadataDialog(fileName, listing, /*markdown*/ true, parentWindow);
+```
+
+It takes **text**, not fields, so anything that can describe itself can use it:
+a document reader, a font viewer or an audio tag reader produces the same two
+formats and gets the same popup. `Copy` puts the whole listing on the clipboard.
+
+## Who uses it
+
+The image export dialog (*Export with Options* in UltraPaint, the DemoApp's
+export button): its Metadata section shows a **Show…** button and an entry
+count only when the image being saved actually carries metadata — an image
+flattened in memory carries none, and then there is nothing to offer.
+
+## See also
+
+- [PixelFX](../Modules/PixelFX/README.md) — the libvips-backed image pipeline
+- [UltraCanvasTextArea](UltraCanvasTextAreaExamples.md) — the Markdown view the popup uses
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasMindMapExamples.md
@@ -51862,6 +52050,9 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Open / save a file, prompt for a value | `UltraCanvasFileDialog`, `UltraCanvasInputDialog` | `UltraCanvasModalDialog.h` |
 | Native OS file dialog | `UltraCanvasNativeDialogs` | `UltraCanvasNativeDialogs.h` |
 | Edit an image's tone curves (per channel, over a histogram) | `UltraCanvasCurvesDialog` | `dialogs/UltraCanvasCurvesDialog.h` |
+| Save a bitmap with per-format options | `UltraCanvasImageExportDialog` | `dialogs/UltraCanvasImageExportDialog.h` |
+| Show a file's metadata (Markdown or plain text) | `UltraCanvasMetadataDialog`, `ShowMetadataDialog()` — entries from `PixelFX::Header::MetadataToText()` ([doc](UltraCanvasMetadataDialog.md)) | `dialogs/UltraCanvasMetadataDialog.h` |
+| A "caption: control" form whose captions line up and still fit a translation | `CreateFormGrid` / `AddFormRow` / `AddFormWideRow` ([doc](UltraCanvasFormLayout.md)) | `UltraCanvasFormLayout.h` |
 | Hover help | `UltraCanvasTooltipManager` (+ `TooltipContent`) | `UltraCanvasTooltipManager.h` |
 | Startup splash (logo, version, "GUI by" attribution, timeout) | `UltraCanvasSplashScreen` | `UltraCanvasSplashScreen.h` |
 
@@ -57153,6 +57344,7 @@ PixelFX is UltraCanvas's comprehensive bitmap manipulation and analytics engine,
 -   **Drawing Operations** -- Shapes, lines, text, and flood fill with anti-aliasing
 -   **Colour Keying** -- `Colour::ColourToAlpha` turns a chosen colour into transparency with a tolerance, a soft ramp that keeps anti-aliased edges clean, a strength so the colour can be faded rather than only removed, and fringe removal
 -   **Statistical Analysis** -- Min/max detection, deviation, profiles, and measurements
+-   **Metadata** -- `Header::HasMetadata` / `ReadMetadata` / `MetadataToText` read what a file carries (EXIF, IPTC, XMP, ICC, the image's own geometry), tidy it for a person (tag names without their `exif-ifd0-` prefix, values without libvips' encoding suffix, binary blocks by size) and write it out as Markdown or plain text -- see [UltraCanvasMetadataDialog](../../UltraCanvas/UltraCanvasMetadataDialog.md)
 ----------------
 ### Why PixelFX?
 

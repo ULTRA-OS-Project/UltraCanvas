@@ -2641,3 +2641,34 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  VectorRasterTest skipped (UltraCanvas target not present)")
 endif()
+
+# ===== CSS LAYOUT FORM GRID TEST =====
+# The two-column [auto, 1fr] form grid every dialog is built from: captions
+# share a column, controls line up under each other, a full-width row does not
+# drag the caption column out with it, and a hidden row leaves the grid.
+message(STATUS "  Building CSSLayoutFormGridTest...")
+add_executable(CSSLayoutFormGridTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutFormGridTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutFormGridTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutFormGridTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutFormGridTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutFormGridTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutFormGridTest
+    COMMAND CSSLayoutFormGridTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutFormGridTest")

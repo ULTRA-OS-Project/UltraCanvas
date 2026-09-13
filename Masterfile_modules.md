@@ -586,6 +586,17 @@ engine; these classes hold the pixels being edited and hand them to it.
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
   `onViewChanged`, `onFilesDropped`; `PaintPointerEvent` carries image
   coordinates.
+- **UltraCanvasFormLayout** (`UltraCanvasFormLayout.h`) — the "caption:
+  control" form as one `[auto, 1fr]` grid: `CreateFormGrid`, `AddFormRow`,
+  `AddFormWideRow`, `CreateFormCellRow`, `CreateFormCaption`. The caption column
+  is as wide as the widest caption in the form, so the controls line up and a
+  translated caption widens the column rather than clipping. Doc:
+  `Docs/UltraCanvas/UltraCanvasFormLayout.md`.
+- **UltraCanvasMetadataDialog** (`dialogs/UltraCanvasMetadataDialog.h`) —
+  read-only popup listing a file's metadata in an `UltraCanvasTextArea`
+  (Markdown tables or plain text) with Copy; `ShowMetadataDialog()`. The text
+  comes from `PixelFX::Header::MetadataToText` / `ReadMetadata` /
+  `HasMetadata`. Doc: `Docs/UltraCanvas/UltraCanvasMetadataDialog.md`.
 - **UltraCanvasVectorRaster** (`UltraCanvasVectorRaster.h`) — vector artwork
   into an editable layer at a chosen pixel size: `IsVectorGraphicsPath`,
   `GetVectorRasterExtensions`, `InspectVectorFile` (natural size, page count,

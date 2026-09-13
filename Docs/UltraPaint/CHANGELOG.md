@@ -1,3 +1,19 @@
+#### 2026-09-13 *0.2.1*
+- **Every dialog's captions now share one column.** New Image, Scale Image /
+  Canvas Size, Text, Layer Properties and the import question were a flex row
+  per field, each caption pinned to a hard-coded width - 110 px here, 90 there,
+  60 in the Text dialog. They are rows of one two-column grid now
+  (`UltraCanvasFormLayout`, UltraCanvas 0.8.39): the controls line up, and a
+  caption longer than the old width - which is to say most translations -
+  widens the column instead of being cut off. The dialogs resize, so the room
+  a longer caption takes can be given back.
+- OK / Create / Place / Open buttons size to their own text with a minimum
+  width, so "Speichern" fits where "Save" did, and the accepting button reads
+  as the primary one.
+- *Export with Options* (the framework's save dialog) got the same treatment
+  plus section headings, a line describing the chosen format, and - when the
+  image carries metadata - a **Show...** button that lists it.
+
 #### 2026-09-12 *0.2.0*
 - **Dropping an image asks what to do with it.** A file dragged onto the
   canvas no longer replaces the open image without warning: the drop opens a

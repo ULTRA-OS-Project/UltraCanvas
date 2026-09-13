@@ -269,6 +269,21 @@ measurement.
 with a provider letter, an address and a row of `UltraCanvasBadge` counters that
 widens as the counts grow.
 
+## Recipe: a form whose captions line up and still translate
+
+A dialog's "caption: control" rows belong in **one** grid of `[auto, 1fr]`, not
+in a flex row each: the `auto` column is then exactly as wide as the widest
+caption in the form — in any language — and every control starts where it ends.
+`UltraCanvasFormLayout.h` is that grid plus four helpers; see
+[UltraCanvasFormLayout](UltraCanvas/UltraCanvasFormLayout.md).
+
+An item that spans every column of such a grid (a checkbox, a heading, a note)
+does **not** drag the `auto` column out to its own width: per CSS Grid §12.5 an
+item whose span crosses a flexible track contributes nothing to the base size of
+the intrinsic tracks it also spans, and the flexible track absorbs it. A grid
+with no `fr` track still distributes a spanning item over its intrinsic tracks.
+`Tests/CSSLayoutFormGridTest.cpp` pins both.
+
 ## Troubleshooting: my widget renders nothing at all
 
 The most common contract violation fails **silently**: an auto-sized leaf widget
