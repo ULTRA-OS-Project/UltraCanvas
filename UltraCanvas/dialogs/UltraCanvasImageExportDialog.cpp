@@ -1,23 +1,22 @@
 // dialogs/UltraCanvasImageExportDialog.cpp
-// Implementation of comprehensive bitmap file save dialog
-// Version: 2.3.0
-// Last Modified: 2026-06-01
+// The bitmap save dialog: format list, the knobs each format exposes, the
+// size estimate, and the metadata the image carries.
+// Version: 3.0.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 //
-// ARCHITECTURE: Uses UltraCanvas layout system (VBox, HBox, Grid)
-// Container handles event propagation automatically - NO manual OnEvent forwarding
-//
-// CHANGES v2.1.0: Aligned controls with actual UltraCanvasImage.h export option structures
-// - JPEG: subsampling changed from dropdown to checkbox (bool in struct)
-// - GIF: Removed maxColors slider (not in GifExportOptions), interlace is bool
-// - AVIF: Removed bitDepthDropdown (use colorDepth), removed hdr references
-// - QOI: Colorspace changed from dropdown to checkbox (linearColorspace bool)
-// - Removed metadata options that are commented out in UltraCanvasImage.h
+// Every captioned row is a row of one two-column grid (see the header), so
+// the captions share a column and the controls line up under each other
+// whatever language the captions are in. Nothing is placed by coordinate.
 
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasFormLayout.h"
+#include "UltraCanvasSeparator.h"
 #include "UltraCanvasSpacer.h"
 #include "CSSLayout/CSSLayout.h"
 #include "UltraCanvasImageExportDialog.h"
+#include "UltraCanvasMetadataDialog.h"
+#include "PixelFX/PixelFX.h"
 #include <algorithm>
 #include <sstream>
 #include <iomanip>
@@ -368,12 +367,19 @@ namespace UltraCanvas {
     UltraCanvasImageExportDialog::UltraCanvasImageExportDialog()
             : UltraCanvasWindow() {
 
-        config_.width = 520;
-        config_.height = 580;
+        config_.width = 560;
+        config_.height = 560;
+        // A translated caption or a long file name has to be able to buy
+        // itself room, so the dialog resizes; the minimum keeps the two
+        // columns and the buttons on their feet.
+        config_.minWidth = 460;
+        config_.minHeight = 420;
+        config_.resizable = true;
         config_.deleteOnClose = true;
         config_.title = "Save image";
 
         SetPadding(static_cast<int>(style.padding));
+        SetBackgroundColor(style.backgroundColor);
 
         BuildLayout();
         WireCallbacks();
@@ -385,62 +391,122 @@ namespace UltraCanvas {
     }
 
 // ============================================================================
-// LAYOUT BUILDING - Using VBox, HBox, Grid layouts
-// No manual coordinate calculations!
+// FORM BUILDING
+//
+// One grid, two columns: captions in an `auto` column, controls in a `1fr`
+// one. Rows are auto-placed in child order, so adding a row is adding its two
+// children — and a hidden row (display:none) drops out of the grid entirely.
+// ============================================================================
+
+    std::shared_ptr<UltraCanvasLabel> UltraCanvasImageExportDialog::MakeFieldLabel(
+            const std::string& id, const std::string& text) {
+        // No width is given: the label reports its own text width to the
+        // layout engine, and the column is as wide as the widest of them.
+        auto label = CreateFormCaption(id, text);
+        label->SetFontSize(style.labelFontSize);
+        label->SetTextColor(style.labelColor);
+        return label;
+    }
+
+    void UltraCanvasImageExportDialog::AddFieldRow(const std::shared_ptr<UltraCanvasLabel>& label,
+                                                   const std::shared_ptr<UltraCanvasUIElement>& control) {
+        if (!formGrid || !label || !control) return;
+        AddFormRow(formGrid, label, control);
+        if (currentFormatRows) {
+            currentFormatRows->push_back(label);
+            currentFormatRows->push_back(control);
+        }
+    }
+
+    void UltraCanvasImageExportDialog::AddFieldRow(const std::string& id, const std::string& labelText,
+                                                   const std::shared_ptr<UltraCanvasUIElement>& control) {
+        AddFieldRow(MakeFieldLabel(id + "Label", labelText), control);
+    }
+
+    void UltraCanvasImageExportDialog::AddWideRow(const std::shared_ptr<UltraCanvasUIElement>& element) {
+        if (!formGrid || !element) return;
+        AddFormWideRow(formGrid, element);
+        if (currentFormatRows) currentFormatRows->push_back(element);
+    }
+
+    std::shared_ptr<UltraCanvasLabel> UltraCanvasImageExportDialog::AddSectionHeading(
+            const std::string& id, const std::string& text,
+            std::shared_ptr<UltraCanvasUIElement>* outRule) {
+        auto rule = std::make_shared<UltraCanvasSeparator>(false, 1, 0, style.borderColor);
+        rule->SetMargin(style.spacing * 0.5f, 0, 0, 0);
+        AddWideRow(rule);
+        if (outRule) *outRule = rule;
+
+        auto heading = std::make_shared<UltraCanvasLabel>(id, -1, -1, -1, -1, text);
+        heading->SetFontSize(style.labelFontSize);
+        heading->SetFontWeight(FontWeight::Bold);
+        heading->SetTextColor(style.headingColor);
+        AddWideRow(heading);
+        return heading;
+    }
+
+    void UltraCanvasImageExportDialog::BeginFormatRows(UCImageSaveFormat format) {
+        currentFormatRows = &formatRows[format];
+    }
+
+    void UltraCanvasImageExportDialog::EndFormatRows() {
+        currentFormatRows = nullptr;
+    }
+
+    std::shared_ptr<UltraCanvasContainer> UltraCanvasImageExportDialog::MakeCellRow(
+            const std::string& id, float gap) {
+        return CreateFormCellRow(id, gap, static_cast<int>(style.controlHeight));
+    }
+
+    void UltraCanvasImageExportDialog::SizeButtonToLabel(const std::shared_ptr<UltraCanvasButton>& button) {
+        if (!button) return;
+        // The same trick the modal dialog uses: the button hugs its own text
+        // (so a longer word in another language still fits) but never falls
+        // below a comfortable minimum.
+        button->size.width = CSSLayout::Dimension::Auto();
+        CSSLayout::BoxConstraints limits = button->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        limits.minWidth = CSSLayout::Dimension::Px(style.minButtonWidth);
+        button->boxConstraints = limits;
+        button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    }
+
+// ============================================================================
+// LAYOUT
 // ============================================================================
 
     void UltraCanvasImageExportDialog::BuildLayout() {
         this->layout.SetFlexColumn();
         this->layout.SetFlexGap(static_cast<int>(style.spacing));
 
-        CreateHeaderSection();
-        CreateOptionsSection();
+        formGrid = CreateFormGrid("ExportForm", style.rowGap, style.columnGap);
+        AddChild(formGrid);
+
+        CreateFileSection();
+        CreateImageSection();
         CreateFormatOptionsSection();
         CreateMetadataSection();
+
+        // The form sits at the top and the footer at the bottom; the slack in
+        // between belongs to neither.
+        AddStretchSpacer(1);
+
         CreateFooterSection();
 
-        AddChild(headerSection);
-        headerSection->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        AddChild(optionsSection);
-        optionsSection->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        AddChild(formatOptionsSection);
-        formatOptionsSection->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        AddChild(metadataSection);
-        metadataSection->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        AddChild(footerSection);
-        footerSection->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-
         UpdateFormatOptions();
+        UpdateMetadataControls();
         UpdateFileSizeEstimate();
     }
 
-    void UltraCanvasImageExportDialog::CreateHeaderSection() {
-        headerSection = std::make_shared<UltraCanvasContainer>("HeaderSection", 0, 0, 0, 70);
-
-        headerSection->layout.SetGrid();
-        CSSLayout::GridTrackSize colAuto;
-        CSSLayout::GridTrackSize colStar; colStar.kind = CSSLayout::GridTrackSizeKind::Fr; colStar.value = CSSLayout::Dimension::Fr(1);
-        headerSection->layout.SetGridColumns({colAuto, colStar});
-        headerSection->layout.SetGridRows(std::vector<CSSLayout::GridTrackSize>(2));
-        headerSection->layout.SetGridGap(static_cast<int>(style.spacing));
-
-        fileNameLabel = std::make_shared<UltraCanvasLabel>("FileNameLabel", 0, 0, 80, 24);
-        fileNameLabel->SetText("Name:");
-        fileNameLabel->SetFontSize(style.labelFontSize);
-        fileNameLabel->SetTextColor(style.labelColor);
-
-        fileNameInput = std::make_shared<UltraCanvasTextInput>("FileNameInput", 0, 0, 200, 28);
+    void UltraCanvasImageExportDialog::CreateFileSection() {
+        fileNameLabel = MakeFieldLabel("FileNameLabel", "Name:");
+        fileNameInput = std::make_shared<UltraCanvasTextInput>("FileNameInput", 0, 0, 200,
+                                                               static_cast<int>(style.controlHeight));
         fileNameInput->SetPlaceholder("Enter file name...");
+        AddFieldRow(fileNameLabel, fileNameInput);
 
-        headerSection->AddChild(fileNameLabel); fileNameLabel->layoutItem.SetGridRowColSimplified(0, 0);
-        headerSection->AddChild(fileNameInput); fileNameInput->layoutItem.SetGridRowColSimplified(0, 1);
-
-        formatLabel = std::make_shared<UltraCanvasLabel>("FormatLabel", 0, 0, 80, 24);
-        formatLabel->SetText("Format:");
-        formatLabel->SetFontSize(style.labelFontSize);
-        formatLabel->SetTextColor(style.labelColor);
-
-        formatDropdown = std::make_shared<UltraCanvasDropdown>("FormatDropdown", 0, 0, 200, 28);
+        formatLabel = MakeFieldLabel("FormatLabel", "Format:");
+        formatDropdown = std::make_shared<UltraCanvasDropdown>("FormatDropdown", 0, 0, 200,
+                                                               static_cast<int>(style.controlHeight));
 
         // Filter the format list against the installed libvips build —
         // hide entries whose saver isn't compiled in. PNG is always kept
@@ -456,91 +522,64 @@ namespace UltraCanvas {
             formatDropdown->AddItem(fmt.name + " (." + fmt.extension + ")");
         }
         formatDropdown->SetSelectedIndex(0);
+        AddFieldRow(formatLabel, formatDropdown);
 
-        headerSection->AddChild(formatLabel); formatLabel->layoutItem.SetGridRowColSimplified(1, 0);
-        headerSection->AddChild(formatDropdown); formatDropdown->layoutItem.SetGridRowColSimplified(1, 1);
-
-        AddChild(headerSection);
+        // What the chosen format is good for, in one grey line under it.
+        formatDescriptionLabel = std::make_shared<UltraCanvasLabel>("FormatDescription", -1, -1, -1, -1, "");
+        formatDescriptionLabel->SetFontSize(style.valueFontSize);
+        formatDescriptionLabel->SetTextColor(style.labelColor);
+        formatDescriptionLabel->SetWrap(TextWrap::WrapWordChar);
+        AddWideRow(formatDescriptionLabel);
     }
 
-    void UltraCanvasImageExportDialog::CreateOptionsSection() {
-        optionsSection = std::make_shared<UltraCanvasContainer>("OptionsSection", 0, 0, 0, 160);
+    void UltraCanvasImageExportDialog::CreateImageSection() {
+        AddSectionHeading("ImageHeading", "Image");
 
-        optionsSection->layout.SetGrid();
-        CSSLayout::GridTrackSize colAuto;
-        CSSLayout::GridTrackSize colStar; colStar.kind = CSSLayout::GridTrackSizeKind::Fr; colStar.value = CSSLayout::Dimension::Fr(1);
-        optionsSection->layout.SetGridColumns({colAuto, colStar});
-        optionsSection->layout.SetGridRows(std::vector<CSSLayout::GridTrackSize>(4));
-        optionsSection->layout.SetGridGap(static_cast<int>(style.spacing));
+        // ----- Size -----
+        sizeLabel = MakeFieldLabel("SizeLabel", "Size:");
 
-        int row = 0;
-
-        // ----- Row 0: Dimensions -----
-        sizeLabel = std::make_shared<UltraCanvasLabel>("SizeLabel", 0, 0, 80, 24);
-        sizeLabel->SetText("Size:");
-        sizeLabel->SetFontSize(style.labelFontSize);
-        sizeLabel->SetTextColor(style.labelColor);
-
-        auto sizeRow = std::make_shared<UltraCanvasContainer>("SizeRow", 0, 0, 280, 28);
-        sizeRow->layout.SetFlexRow();
-        sizeRow->layout.SetFlexGap(5);
-
-        widthInput = std::make_shared<UltraCanvasTextInput>("WidthInput", 0, 0, 70, 28);
+        auto sizeRow = MakeCellRow("SizeRow");
+        widthInput = std::make_shared<UltraCanvasTextInput>("WidthInput", 0, 0, 74,
+                                                            static_cast<int>(style.controlHeight));
         widthInput->SetText("1920");
+        widthInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        xLabel = std::make_shared<UltraCanvasLabel>("XLabel", 0, 0, 20, 28);
-        xLabel->SetText("×");
-        xLabel->SetAlignment(TextAlignment::Center);
+        xLabel = std::make_shared<UltraCanvasLabel>("XLabel", -1, -1, -1, -1, "x");
+        xLabel->SetTextColor(style.labelColor);
+        xLabel->SetAlignment(TextAlignment::Center, VerticalAlignment::Middle);
 
-        heightInput = std::make_shared<UltraCanvasTextInput>("HeightInput", 0, 0, 70, 28);
+        heightInput = std::make_shared<UltraCanvasTextInput>("HeightInput", 0, 0, 74,
+                                                             static_cast<int>(style.controlHeight));
         heightInput->SetText("1080");
+        heightInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        aspectRatioCheckbox = UltraCanvasCheckbox::CreateCheckbox("AspectLock", 0, 0, 100, 24, "Lock", true);
+        aspectRatioCheckbox = UltraCanvasCheckbox::CreateCheckbox("AspectLock", 0, 0, -1, -1,
+                                                                  "Keep proportions", true);
+        aspectRatioCheckbox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
         sizeRow->AddChild(widthInput);
         sizeRow->AddChild(xLabel);
         sizeRow->AddChild(heightInput);
         sizeRow->AddSpacer(10);
         sizeRow->AddChild(aspectRatioCheckbox);
+        AddFieldRow(sizeLabel, sizeRow);
 
-        optionsSection->AddChild(sizeLabel); sizeLabel->layoutItem.SetGridRowColSimplified(row, 0);
-        optionsSection->AddChild(sizeRow); sizeRow->layoutItem.SetGridRowColSimplified(row, 1);
-        row++;
+        // ----- Colour depth -----
+        colorDepthLabel = MakeFieldLabel("ColorDepthLabel", "Colour depth:");
+        colorDepthDropdown = std::make_shared<UltraCanvasDropdown>("ColorDepthDropdown", 0, 0, 200,
+                                                                   static_cast<int>(style.controlHeight));
+        AddFieldRow(colorDepthLabel, colorDepthDropdown);
 
-        // ----- Row 1: Color depth -----
-        colorDepthLabel = std::make_shared<UltraCanvasLabel>("ColorDepthLabel", 0, 0, 80, 24);
-        colorDepthLabel->SetText("Depth:");
-        colorDepthLabel->SetFontSize(style.labelFontSize);
-        colorDepthLabel->SetTextColor(style.labelColor);
+        // ----- Transparency -----
+        transparencyLabel = MakeFieldLabel("TransparencyLabel", "Transparency:");
+        transparencyCheckbox = UltraCanvasCheckbox::CreateCheckbox("TransparencyCheck", 0, 0, -1, -1,
+                                                                   "Preserve the alpha channel", true);
+        AddFieldRow(transparencyLabel, transparencyCheckbox);
 
-        colorDepthDropdown = std::make_shared<UltraCanvasDropdown>("ColorDepthDropdown", 0, 0, 200, 28);
+        // ----- Quality / compression -----
+        qualityLabel = MakeFieldLabel("QualityLabel", "Quality:");
 
-        optionsSection->AddChild(colorDepthLabel); colorDepthLabel->layoutItem.SetGridRowColSimplified(row, 0);
-        optionsSection->AddChild(colorDepthDropdown); colorDepthDropdown->layoutItem.SetGridRowColSimplified(row, 1);
-        row++;
-
-        // ----- Row 2: Transparency -----
-        transparencyLabel = std::make_shared<UltraCanvasLabel>("TransparencyLabel", 0, 0, 80, 24);
-        transparencyLabel->SetText("Alpha:");
-        transparencyLabel->SetFontSize(style.labelFontSize);
-        transparencyLabel->SetTextColor(style.labelColor);
-
-        transparencyCheckbox = UltraCanvasCheckbox::CreateCheckbox("TransparencyCheck", 0, 0, 200, 24, "Preserve transparency", true);
-
-        optionsSection->AddChild(transparencyLabel); transparencyLabel->layoutItem.SetGridRowColSimplified(row, 0);
-        optionsSection->AddChild(transparencyCheckbox); transparencyCheckbox->layoutItem.SetGridRowColSimplified(row, 1);
-        row++;
-
-        // ----- Row 3: Quality slider -----
-        qualityLabel = std::make_shared<UltraCanvasLabel>("QualityLabel", 0, 0, 80, 24);
-        qualityLabel->SetText("Quality:");
-        qualityLabel->SetFontSize(style.labelFontSize);
-        qualityLabel->SetTextColor(style.labelColor);
-
-        auto qualityRow = std::make_shared<UltraCanvasContainer>("QualityRow", 0, 0, 280, 28);
-        qualityRow->layout.SetFlexRow();
-        qualityRow->layout.SetFlexGap(10);
-
+        auto qualityRow = MakeCellRow("QualityRow", 12.0f);
         qualitySlider = std::make_shared<UltraCanvasSlider>("QualitySlider", 0, 0, 180, 24);
         qualitySlider->SetRange(0, 100);
         // Quality / compression levels are whole numbers in every format, and
@@ -548,23 +587,31 @@ namespace UltraCanvas {
         // step keeps the snapping integral there too.
         qualitySlider->SetStep(1.0f);
         qualitySlider->SetValue(85);
+        qualitySlider->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
 
-        qualityValueLabel = std::make_shared<UltraCanvasLabel>("QualityValue", 0, 0, 50, 24);
-        qualityValueLabel->SetText("85%");
+        qualityValueLabel = std::make_shared<UltraCanvasLabel>("QualityValue", 0, 0, 44, 24, "85%");
         qualityValueLabel->SetFontSize(style.valueFontSize);
+        qualityValueLabel->SetTextColor(style.textColor);
+        qualityValueLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+        qualityValueLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-        qualityRow->AddChild(qualitySlider); qualitySlider->layoutItem.SetFlexGrow(1);
+        qualityRow->AddChild(qualitySlider);
         qualityRow->AddChild(qualityValueLabel);
+        AddFieldRow(qualityLabel, qualityRow);
 
-        optionsSection->AddChild(qualityLabel); qualityLabel->layoutItem.SetGridRowColSimplified(row, 0);
-        optionsSection->AddChild(qualityRow); qualityRow->layoutItem.SetGridRowColSimplified(row, 1);
-
-        AddChild(optionsSection);
         UpdateColorDepthOptions();
     }
 
+// ============================================================================
+// FORMAT-SPECIFIC ROWS
+//
+// Each creator adds its rows to the same grid between BeginFormatRows() and
+// EndFormatRows(); UpdateFormatOptions() then shows one set at a time.
+// ============================================================================
+
     void UltraCanvasImageExportDialog::CreateFormatOptionsSection() {
-        formatOptionsSection = std::make_shared<UltraCanvasContainer>("FormatOptionsSection", 0, 0, 300, 120);
+        formatOptionsHeading = AddSectionHeading("FormatOptionsHeading", "Format options",
+                                                 &formatOptionsRule);
 
         CreatePngOptions();
         CreateJpegOptions();
@@ -573,7 +620,6 @@ namespace UltraCanvas {
         CreateGifOptions();
         CreateTiffOptions();
         CreateQoiOptions();
-        // ===== Phase 1 additions =====
         CreateTgaOptions();
         CreatePcxOptions();
         CreatePnmOptions();
@@ -582,367 +628,293 @@ namespace UltraCanvas {
         CreateCinOptions();
         CreatePsdOptions();
         CreateSgiOptions();
-
-        AddChild(formatOptionsSection);
-        HideAllFormatOptions();
     }
 
-    // PNG options - matches PngExportOptions: compressionLevel, interlace, preserveTransparency, colorDepth
+    // PNG - matches PngExportOptions: compressionLevel, interlace, preserveTransparency, colorDepth
     void UltraCanvasImageExportDialog::CreatePngOptions() {
-        pngOptionsContainer = std::make_shared<UltraCanvasContainer>("PngOptions", 0, 0, 300, 40);
-        pngOptionsContainer->layout.SetFlexColumn();
-        pngOptionsContainer->layout.SetFlexGap(8);
-
-        pngInterlaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("PngInterlace", 0, 0, 250, 24, "Interlacing", false);
-
-        pngOptionsContainer->AddChild(pngInterlaceCheckbox);
-
-        formatOptionsSection->AddChild(pngOptionsContainer);
+        BeginFormatRows(UCImageSaveFormat::PNG);
+        pngInterlaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("PngInterlace", 0, 0, -1, -1,
+                                                                   "Interlacing (progressive display)", false);
+        AddWideRow(pngInterlaceCheckbox);
+        EndFormatRows();
     }
 
-    // JPEG options - matches JpegExportOptions: quality, progressive, subsampling (bool!), optimizeHuffman
+    // JPEG - matches JpegExportOptions: quality, progressive, subsampling (bool!), optimizeHuffman
     void UltraCanvasImageExportDialog::CreateJpegOptions() {
-        jpegOptionsContainer = std::make_shared<UltraCanvasContainer>("JpegOptions", 0, 0, 0, 90);
-        jpegOptionsContainer->layout.SetFlexColumn();
-        jpegOptionsContainer->layout.SetFlexGap(8);
-
-        jpegProgressiveCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegProgressive", 0, 0, 250, 24, "Progressive encoding", false);
-        jpegOptimizeHuffmanCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegOptHuffman", 0, 0, 250, 24, "Optimize Huffman tables", true);
+        BeginFormatRows(UCImageSaveFormat::JPEG);
+        jpegProgressiveCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegProgressive", 0, 0, -1, -1,
+                                                                      "Progressive encoding", false);
+        jpegOptimizeHuffmanCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegOptHuffman", 0, 0, -1, -1,
+                                                                          "Optimize Huffman tables", true);
         // subsampling is a bool in JpegExportOptions, not ChromaSubsampling enum
-        jpegSubsamplingCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegSubsampling", 0, 0, 250, 24, "Chroma subsampling", false);
-
-        jpegOptionsContainer->AddChild(jpegProgressiveCheckbox);
-        jpegOptionsContainer->AddChild(jpegOptimizeHuffmanCheckbox);
-        jpegOptionsContainer->AddChild(jpegSubsamplingCheckbox);
-
-        formatOptionsSection->AddChild(jpegOptionsContainer);
+        jpegSubsamplingCheckbox = UltraCanvasCheckbox::CreateCheckbox("JpegSubsampling", 0, 0, -1, -1,
+                                                                      "Chroma subsampling", false);
+        AddWideRow(jpegProgressiveCheckbox);
+        AddWideRow(jpegOptimizeHuffmanCheckbox);
+        AddWideRow(jpegSubsamplingCheckbox);
+        EndFormatRows();
     }
 
-    // WebP options - matches WebpExportOptions: quality, lossless, effort, targetSize, preserveTransparency, alphaQuality
+    // WebP - matches WebpExportOptions: quality, lossless, effort, targetSize, preserveTransparency, alphaQuality
     void UltraCanvasImageExportDialog::CreateWebpOptions() {
-        webpOptionsContainer = std::make_shared<UltraCanvasContainer>("WebpOptions", 0, 0, 0, 100);
-        webpOptionsContainer->layout.SetFlexColumn();
-        webpOptionsContainer->layout.SetFlexGap(8);
-
-        webpLosslessCheckbox = UltraCanvasCheckbox::CreateCheckbox("WebpLossless", 0, 0, 250, 24, "Lossless compression", false);
-
-        // Effort row
-        auto effortRow = std::make_shared<UltraCanvasContainer>("EffortRow", 0, 0, 350, 28);
-        effortRow->layout.SetFlexRow();
-        effortRow->layout.SetFlexGap(10);
-
-        auto effortLabel = std::make_shared<UltraCanvasLabel>("EffortLabel", 0, 0, 100, 24);
-        effortLabel->SetText("Effort (0-6):");
-        effortLabel->SetFontSize(style.labelFontSize);
-        effortLabel->SetTextColor(style.labelColor);
+        BeginFormatRows(UCImageSaveFormat::WEBP);
+        webpLosslessCheckbox = UltraCanvasCheckbox::CreateCheckbox("WebpLossless", 0, 0, -1, -1,
+                                                                   "Lossless compression", false);
+        AddWideRow(webpLosslessCheckbox);
 
         webpEffortSlider = std::make_shared<UltraCanvasSlider>("WebpEffort", 0, 0, 150, 24);
         webpEffortSlider->SetRange(0, 6);
         webpEffortSlider->SetStep(1.0f);   // effort is a whole number 0..6
         webpEffortSlider->SetValue(4);
-
-        effortRow->AddChild(effortLabel);
-        effortRow->AddChild(webpEffortSlider); webpEffortSlider->layoutItem.SetFlexGrow(1);
-
-        // Alpha quality row
-        auto alphaRow = std::make_shared<UltraCanvasContainer>("AlphaRow", 0, 0, 350, 28);
-        alphaRow->layout.SetFlexRow();
-        alphaRow->layout.SetFlexGap(10);
-
-        auto alphaLabel = std::make_shared<UltraCanvasLabel>("AlphaLabel", 0, 0, 100, 24);
-        alphaLabel->SetText("Alpha quality:");
-        alphaLabel->SetFontSize(style.labelFontSize);
-        alphaLabel->SetTextColor(style.labelColor);
+        AddFieldRow("WebpEffort", "Effort (0-6):", webpEffortSlider);
 
         webpAlphaQualitySlider = std::make_shared<UltraCanvasSlider>("WebpAlphaQuality", 0, 0, 150, 24);
         webpAlphaQualitySlider->SetRange(0, 100);
         webpAlphaQualitySlider->SetStep(1.0f);
         webpAlphaQualitySlider->SetValue(100);
-
-        alphaRow->AddChild(alphaLabel);
-        alphaRow->AddChild(webpAlphaQualitySlider); webpAlphaQualitySlider->layoutItem.SetFlexGrow(1);
-
-        webpOptionsContainer->AddChild(webpLosslessCheckbox);
-        webpOptionsContainer->AddChild(effortRow);
-        webpOptionsContainer->AddChild(alphaRow);
-
-        formatOptionsSection->AddChild(webpOptionsContainer);
+        AddFieldRow("WebpAlphaQuality", "Alpha quality:", webpAlphaQualitySlider);
+        EndFormatRows();
     }
 
-    // AVIF options - matches AvifExportOptions: quality, lossless, speed, preserveTransparency, colorDepth
-    // Note: bitDepth and hdr are commented out in UltraCanvasImage.h
+    // AVIF - matches AvifExportOptions: quality, lossless, speed, preserveTransparency, colorDepth
+    // Note: bitDepth and hdr are commented out in UltraCanvasImage.h; colorDepth
+    // is handled by the common depth dropdown.
     void UltraCanvasImageExportDialog::CreateAvifOptions() {
-        avifOptionsContainer = std::make_shared<UltraCanvasContainer>("AvifOptions", 0, 0, 0, 70);
-        avifOptionsContainer->layout.SetFlexColumn();
-        avifOptionsContainer->layout.SetFlexGap(8);
-
-        avifLosslessCheckbox = UltraCanvasCheckbox::CreateCheckbox("AvifLossless", 0, 0, 250, 24, "Lossless compression", false);
-
-        // Speed row
-        auto speedRow = std::make_shared<UltraCanvasContainer>("SpeedRow", 0, 0, 350, 28);
-        speedRow->layout.SetFlexRow();
-        speedRow->layout.SetFlexGap(10);
-
-        auto speedLabel = std::make_shared<UltraCanvasLabel>("SpeedLabel", 0, 0, 100, 24);
-        speedLabel->SetText("Speed (0-10):");
-        speedLabel->SetFontSize(style.labelFontSize);
-        speedLabel->SetTextColor(style.labelColor);
+        BeginFormatRows(UCImageSaveFormat::AVIF);
+        avifLosslessCheckbox = UltraCanvasCheckbox::CreateCheckbox("AvifLossless", 0, 0, -1, -1,
+                                                                   "Lossless compression", false);
+        AddWideRow(avifLosslessCheckbox);
 
         avifSpeedSlider = std::make_shared<UltraCanvasSlider>("AvifSpeed", 0, 0, 150, 24);
         avifSpeedSlider->SetRange(0, 10);
         avifSpeedSlider->SetStep(1.0f);    // speed is a whole number 0..10
         avifSpeedSlider->SetValue(6);
-
-        speedRow->AddChild(speedLabel);
-        speedRow->AddChild(avifSpeedSlider); avifSpeedSlider->layoutItem.SetFlexGrow(1);
-
-        avifOptionsContainer->AddChild(avifLosslessCheckbox);
-        avifOptionsContainer->AddChild(speedRow);
-        // Note: colorDepth is handled via the common colorDepthDropdown
-
-        formatOptionsSection->AddChild(avifOptionsContainer);
+        AddFieldRow("AvifSpeed", "Speed (0-10):", avifSpeedSlider);
+        EndFormatRows();
     }
 
-    // GIF options - matches GifExportOptions: colorDepth, interlace, dithering
-    // Note: maxColors is NOT in the struct, preserveTransparency is commented out
+    // GIF - matches GifExportOptions: colorDepth, interlace, dithering
     void UltraCanvasImageExportDialog::CreateGifOptions() {
-        gifOptionsContainer = std::make_shared<UltraCanvasContainer>("GifOptions", 0, 0, 0, 60);
-        gifOptionsContainer->layout.SetFlexColumn();
-        gifOptionsContainer->layout.SetFlexGap(8);
-
-        gifDitheringCheckbox = UltraCanvasCheckbox::CreateCheckbox("GifDithering", 0, 0, 250, 24, "Enable dithering", true);
-        gifInterlaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("GifInterlace", 0, 0, 250, 24, "Interlaced", false);
-
-        gifOptionsContainer->AddChild(gifDitheringCheckbox);
-        gifOptionsContainer->AddChild(gifInterlaceCheckbox);
-
-        formatOptionsSection->AddChild(gifOptionsContainer);
+        BeginFormatRows(UCImageSaveFormat::GIF);
+        gifDitheringCheckbox = UltraCanvasCheckbox::CreateCheckbox("GifDithering", 0, 0, -1, -1,
+                                                                   "Enable dithering", true);
+        gifInterlaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("GifInterlace", 0, 0, -1, -1,
+                                                                   "Interlaced", false);
+        AddWideRow(gifDitheringCheckbox);
+        AddWideRow(gifInterlaceCheckbox);
+        EndFormatRows();
     }
 
-    // TIFF options - matches TiffExportOptions: compression, colorDepth, multiPage
+    // TIFF - matches TiffExportOptions: compression, colorDepth, multiPage
     void UltraCanvasImageExportDialog::CreateTiffOptions() {
-        tiffOptionsContainer = std::make_shared<UltraCanvasContainer>("TiffOptions", 0, 0, 0, 70);
-        tiffOptionsContainer->layout.SetFlexColumn();
-        tiffOptionsContainer->layout.SetFlexGap(8);
-
-        // Compression row
-        auto compressionRow = std::make_shared<UltraCanvasContainer>("CompressionRow", 0, 0, 350, 28);
-        compressionRow->layout.SetFlexRow();
-        compressionRow->layout.SetFlexGap(10);
-
-        auto compressionLabel = std::make_shared<UltraCanvasLabel>("CompressionLabel", 0, 0, 100, 24);
-        compressionLabel->SetText("Compression:");
-        compressionLabel->SetFontSize(style.labelFontSize);
-        compressionLabel->SetTextColor(style.labelColor);
-
-        tiffCompressionDropdown = std::make_shared<UltraCanvasDropdown>("TiffCompression", 0, 0, 150, 28);
-        // Match TiffCompression enum order: NoCompression, JPEGCompression, DeflateCompression, PackBitsCompression, LZWCompression, ZSTDCompression, WEBPCompression
-        tiffCompressionDropdown->AddItem("None");
-        tiffCompressionDropdown->AddItem("JPEG");
-        tiffCompressionDropdown->AddItem("Deflate/ZIP");
-        tiffCompressionDropdown->AddItem("PackBits");
-        tiffCompressionDropdown->AddItem("LZW");
-        tiffCompressionDropdown->AddItem("ZSTD");
-        tiffCompressionDropdown->AddItem("WebP");
+        BeginFormatRows(UCImageSaveFormat::TIFF);
+        tiffCompressionDropdown = std::make_shared<UltraCanvasDropdown>("TiffCompression", 0, 0, 150,
+                                                                        static_cast<int>(style.controlHeight));
+        // Match TiffCompression enum order: NoCompression, JPEGCompression, DeflateCompression,
+        // PackBitsCompression, LZWCompression, ZSTDCompression, WEBPCompression
+        for (const char* name : { "None", "JPEG", "Deflate/ZIP", "PackBits", "LZW", "ZSTD", "WebP" }) {
+            tiffCompressionDropdown->AddItem(name);
+        }
         tiffCompressionDropdown->SetSelectedIndex(4);  // Default to LZW
+        AddFieldRow("TiffCompression", "Compression:", tiffCompressionDropdown);
 
-        compressionRow->AddChild(compressionLabel);
-        compressionRow->AddChild(tiffCompressionDropdown);
-
-        tiffMultiPageCheckbox = UltraCanvasCheckbox::CreateCheckbox("TiffMultiPage", 0, 0, 250, 24, "Multi-page TIFF", false);
-
-        tiffOptionsContainer->AddChild(compressionRow);
-        tiffOptionsContainer->AddChild(tiffMultiPageCheckbox);
-
-        formatOptionsSection->AddChild(tiffOptionsContainer);
+        tiffMultiPageCheckbox = UltraCanvasCheckbox::CreateCheckbox("TiffMultiPage", 0, 0, -1, -1,
+                                                                    "Multi-page TIFF", false);
+        AddWideRow(tiffMultiPageCheckbox);
+        EndFormatRows();
     }
 
-    // QOI options - matches QoiExportOptions: hasAlpha, linearColorspace
+    // QOI - matches QoiExportOptions: hasAlpha, linearColorspace
     void UltraCanvasImageExportDialog::CreateQoiOptions() {
-        qoiOptionsContainer = std::make_shared<UltraCanvasContainer>("QoiOptions", 0, 0, 0, 100);
-        qoiOptionsContainer->layout.SetFlexColumn();
-        qoiOptionsContainer->layout.SetFlexGap(8);
-
-        qoiAlphaCheckbox = UltraCanvasCheckbox::CreateCheckbox("QoiAlpha", 0, 0, 250, 24, "Include alpha channel", true);
+        BeginFormatRows(UCImageSaveFormat::QOI);
+        qoiAlphaCheckbox = UltraCanvasCheckbox::CreateCheckbox("QoiAlpha", 0, 0, -1, -1,
+                                                               "Include alpha channel", true);
         // linearColorspace is a bool, use checkbox instead of dropdown
-        qoiLinearColorspaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("QoiLinear", 0, 0, 250, 24, "Linear colorspace (default: sRGB)", false);
+        qoiLinearColorspaceCheckbox = UltraCanvasCheckbox::CreateCheckbox("QoiLinear", 0, 0, -1, -1,
+                                                                          "Linear colorspace (default: sRGB)", false);
+        AddWideRow(qoiAlphaCheckbox);
+        AddWideRow(qoiLinearColorspaceCheckbox);
 
-        qoiInfoLabel = std::make_shared<UltraCanvasLabel>("QoiInfo", 0, 0, 350, 40);
-        qoiInfoLabel->SetText("QOI: Fast lossless compression\n20-50x faster encoding than PNG");
+        qoiInfoLabel = std::make_shared<UltraCanvasLabel>("QoiInfo", -1, -1, -1, -1,
+                                                          "Fast lossless compression - encodes 20-50x faster than PNG.");
         qoiInfoLabel->SetFontSize(style.valueFontSize);
         qoiInfoLabel->SetTextColor(style.labelColor);
-
-        qoiOptionsContainer->AddChild(qoiAlphaCheckbox);
-        qoiOptionsContainer->AddChild(qoiLinearColorspaceCheckbox);
-        qoiOptionsContainer->AddChild(qoiInfoLabel);
-
-        formatOptionsSection->AddChild(qoiOptionsContainer);
+        qoiInfoLabel->SetWrap(TextWrap::WrapWordChar);
+        AddWideRow(qoiInfoLabel);
+        EndFormatRows();
     }
 
-    // ===== Phase 1: simple checkbox-only formats =====
     void UltraCanvasImageExportDialog::CreateTgaOptions() {
-        tgaOptionsContainer = std::make_shared<UltraCanvasContainer>("TgaOptions", 0, 0, 0, 40);
-        tgaOptionsContainer->layout.SetFlexColumn();
-        tgaOptionsContainer->layout.SetFlexGap(8);
-
-        tgaRleCheckbox = UltraCanvasCheckbox::CreateCheckbox("TgaRle", 0, 0, 250, 24, "RLE compression", true);
-        tgaOptionsContainer->AddChild(tgaRleCheckbox);
-
-        formatOptionsSection->AddChild(tgaOptionsContainer);
+        BeginFormatRows(UCImageSaveFormat::TGA);
+        tgaRleCheckbox = UltraCanvasCheckbox::CreateCheckbox("TgaRle", 0, 0, -1, -1, "RLE compression", true);
+        AddWideRow(tgaRleCheckbox);
+        EndFormatRows();
     }
 
     void UltraCanvasImageExportDialog::CreatePcxOptions() {
-        pcxOptionsContainer = std::make_shared<UltraCanvasContainer>("PcxOptions", 0, 0, 0, 40);
-        pcxOptionsContainer->layout.SetFlexColumn();
-        pcxOptionsContainer->layout.SetFlexGap(8);
-
-        pcxRleCheckbox = UltraCanvasCheckbox::CreateCheckbox("PcxRle", 0, 0, 250, 24, "RLE compression", true);
-        pcxOptionsContainer->AddChild(pcxRleCheckbox);
-
-        formatOptionsSection->AddChild(pcxOptionsContainer);
+        BeginFormatRows(UCImageSaveFormat::PCX);
+        pcxRleCheckbox = UltraCanvasCheckbox::CreateCheckbox("PcxRle", 0, 0, -1, -1, "RLE compression", true);
+        AddWideRow(pcxRleCheckbox);
+        EndFormatRows();
     }
 
     void UltraCanvasImageExportDialog::CreatePnmOptions() {
-        pnmOptionsContainer = std::make_shared<UltraCanvasContainer>("PnmOptions", 0, 0, 0, 40);
-        pnmOptionsContainer->layout.SetFlexColumn();
-        pnmOptionsContainer->layout.SetFlexGap(8);
-
-        pnmBinaryCheckbox = UltraCanvasCheckbox::CreateCheckbox("PnmBinary", 0, 0, 280, 24, "Binary encoding (uncheck for ASCII)", true);
-        pnmOptionsContainer->AddChild(pnmBinaryCheckbox);
-
-        formatOptionsSection->AddChild(pnmOptionsContainer);
+        // PPM / PGM / PBM / PFM all land on this row set.
+        BeginFormatRows(UCImageSaveFormat::PPM);
+        pnmBinaryCheckbox = UltraCanvasCheckbox::CreateCheckbox("PnmBinary", 0, 0, -1, -1,
+                                                                "Binary encoding (uncheck for ASCII)", true);
+        AddWideRow(pnmBinaryCheckbox);
+        EndFormatRows();
     }
 
     void UltraCanvasImageExportDialog::CreateExrOptions() {
-        exrOptionsContainer = std::make_shared<UltraCanvasContainer>("ExrOptions", 0, 0, 0, 40);
-        exrOptionsContainer->layout.SetFlexRow();
-        exrOptionsContainer->layout.SetFlexGap(10);
-
-        auto label = std::make_shared<UltraCanvasLabel>("ExrCompLabel", 0, 0, 110, 24);
-        label->SetText("Compression:");
-        label->SetFontSize(style.labelFontSize);
-        label->SetTextColor(style.labelColor);
-
-        exrCompressionDropdown = std::make_shared<UltraCanvasDropdown>("ExrCompression", 0, 0, 150, 28);
-        exrCompressionDropdown->AddItem("None");
-        exrCompressionDropdown->AddItem("RLE");
-        exrCompressionDropdown->AddItem("ZIP");
-        exrCompressionDropdown->AddItem("PIZ");
-        exrCompressionDropdown->AddItem("PXR24");
-        exrCompressionDropdown->AddItem("B44");
+        BeginFormatRows(UCImageSaveFormat::EXR);
+        exrCompressionDropdown = std::make_shared<UltraCanvasDropdown>("ExrCompression", 0, 0, 150,
+                                                                       static_cast<int>(style.controlHeight));
+        for (const char* name : { "None", "RLE", "ZIP", "PIZ", "PXR24", "B44" }) {
+            exrCompressionDropdown->AddItem(name);
+        }
         exrCompressionDropdown->SetSelectedIndex(2);  // ZIP default
-
-        exrOptionsContainer->AddChild(label);
-        exrOptionsContainer->AddChild(exrCompressionDropdown);
-
-        formatOptionsSection->AddChild(exrOptionsContainer);
+        AddFieldRow("ExrCompression", "Compression:", exrCompressionDropdown);
+        EndFormatRows();
     }
 
     void UltraCanvasImageExportDialog::CreateDpxOptions() {
-        dpxOptionsContainer = std::make_shared<UltraCanvasContainer>("DpxOptions", 0, 0, 0, 40);
-        dpxOptionsContainer->layout.SetFlexRow();
-        dpxOptionsContainer->layout.SetFlexGap(10);
-
-        auto label = std::make_shared<UltraCanvasLabel>("DpxDepthLabel", 0, 0, 110, 24);
-        label->SetText("Bit depth:");
-        label->SetFontSize(style.labelFontSize);
-        label->SetTextColor(style.labelColor);
-
-        dpxBitDepthDropdown = std::make_shared<UltraCanvasDropdown>("DpxBitDepth", 0, 0, 100, 28);
-        dpxBitDepthDropdown->AddItem("8");
-        dpxBitDepthDropdown->AddItem("10");
-        dpxBitDepthDropdown->AddItem("12");
-        dpxBitDepthDropdown->AddItem("16");
+        BeginFormatRows(UCImageSaveFormat::DPX);
+        dpxBitDepthDropdown = std::make_shared<UltraCanvasDropdown>("DpxBitDepth", 0, 0, 110,
+                                                                    static_cast<int>(style.controlHeight));
+        for (const char* name : { "8", "10", "12", "16" }) dpxBitDepthDropdown->AddItem(name);
         dpxBitDepthDropdown->SetSelectedIndex(1);  // 10-bit default
-
-        dpxOptionsContainer->AddChild(label);
-        dpxOptionsContainer->AddChild(dpxBitDepthDropdown);
-
-        formatOptionsSection->AddChild(dpxOptionsContainer);
+        AddFieldRow("DpxBitDepth", "Bit depth:", dpxBitDepthDropdown);
+        EndFormatRows();
     }
 
     void UltraCanvasImageExportDialog::CreateCinOptions() {
-        cinOptionsContainer = std::make_shared<UltraCanvasContainer>("CinOptions", 0, 0, 0, 40);
-        cinOptionsContainer->layout.SetFlexRow();
-        cinOptionsContainer->layout.SetFlexGap(10);
-
-        auto label = std::make_shared<UltraCanvasLabel>("CinDepthLabel", 0, 0, 110, 24);
-        label->SetText("Bit depth:");
-        label->SetFontSize(style.labelFontSize);
-        label->SetTextColor(style.labelColor);
-
-        cinBitDepthDropdown = std::make_shared<UltraCanvasDropdown>("CinBitDepth", 0, 0, 100, 28);
-        cinBitDepthDropdown->AddItem("8");
-        cinBitDepthDropdown->AddItem("10");
-        cinBitDepthDropdown->AddItem("12");
-        cinBitDepthDropdown->AddItem("16");
+        BeginFormatRows(UCImageSaveFormat::CIN);
+        cinBitDepthDropdown = std::make_shared<UltraCanvasDropdown>("CinBitDepth", 0, 0, 110,
+                                                                    static_cast<int>(style.controlHeight));
+        for (const char* name : { "8", "10", "12", "16" }) cinBitDepthDropdown->AddItem(name);
         cinBitDepthDropdown->SetSelectedIndex(1);
-
-        cinOptionsContainer->AddChild(label);
-        cinOptionsContainer->AddChild(cinBitDepthDropdown);
-
-        formatOptionsSection->AddChild(cinOptionsContainer);
+        AddFieldRow("CinBitDepth", "Bit depth:", cinBitDepthDropdown);
+        EndFormatRows();
     }
 
     void UltraCanvasImageExportDialog::CreatePsdOptions() {
-        psdOptionsContainer = std::make_shared<UltraCanvasContainer>("PsdOptions", 0, 0, 0, 40);
-        psdOptionsContainer->layout.SetFlexColumn();
-        psdOptionsContainer->layout.SetFlexGap(8);
-
-        psdCompressedCheckbox = UltraCanvasCheckbox::CreateCheckbox("PsdCompressed", 0, 0, 250, 24, "RLE compression", true);
-        psdOptionsContainer->AddChild(psdCompressedCheckbox);
-
-        formatOptionsSection->AddChild(psdOptionsContainer);
+        BeginFormatRows(UCImageSaveFormat::PSD);
+        psdCompressedCheckbox = UltraCanvasCheckbox::CreateCheckbox("PsdCompressed", 0, 0, -1, -1,
+                                                                    "RLE compression", true);
+        AddWideRow(psdCompressedCheckbox);
+        EndFormatRows();
     }
 
     void UltraCanvasImageExportDialog::CreateSgiOptions() {
-        sgiOptionsContainer = std::make_shared<UltraCanvasContainer>("SgiOptions", 0, 0, 0, 40);
-        sgiOptionsContainer->layout.SetFlexColumn();
-        sgiOptionsContainer->layout.SetFlexGap(8);
-
-        sgiRleCheckbox = UltraCanvasCheckbox::CreateCheckbox("SgiRle", 0, 0, 250, 24, "RLE compression", false);
-        sgiOptionsContainer->AddChild(sgiRleCheckbox);
-
-        formatOptionsSection->AddChild(sgiOptionsContainer);
+        BeginFormatRows(UCImageSaveFormat::SGI);
+        sgiRleCheckbox = UltraCanvasCheckbox::CreateCheckbox("SgiRle", 0, 0, -1, -1, "RLE compression", false);
+        AddWideRow(sgiRleCheckbox);
+        EndFormatRows();
     }
 
+// ============================================================================
+// METADATA AND FOOTER
+// ============================================================================
+
     void UltraCanvasImageExportDialog::CreateMetadataSection() {
-        metadataSection = std::make_shared<UltraCanvasContainer>("MetadataSection", 0, 0, 0, 35);
-        metadataSection->layout.SetFlexRow();
-        metadataSection->layout.SetFlexGap(20);
+        AddSectionHeading("MetadataHeading", "Metadata");
 
-        // Note: Most format-specific metadata options (preserveExif, embedICCProfile) are commented out
-        // in UltraCanvasImage.h, so we only keep the general preserveMetadata option
-        preserveMetadataCheckbox = UltraCanvasCheckbox::CreateCheckbox("PreserveMetadata", 0, 0, 180, 24, "Preserve metadata", true);
+        // No caption of its own: the section heading above already says
+        // "Metadata", and the row reads like the format checkboxes under
+        // theirs.
+        auto metadataRow = MakeCellRow("MetadataRow", 12.0f);
+        preserveMetadataCheckbox = UltraCanvasCheckbox::CreateCheckbox("PreserveMetadata", 0, 0, -1, -1,
+                                                                       "Preserve metadata", true);
+        preserveMetadataCheckbox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        metadataRow->AddChild(preserveMetadataCheckbox);
 
-        metadataSection->AddChild(preserveMetadataCheckbox);
+        // Only worth a button when there is something behind it — see
+        // UpdateMetadataControls().
+        showMetadataButton = std::make_shared<UltraCanvasButton>("ShowMetadata", 0, 0, 110,
+                                                                 static_cast<int>(style.controlHeight));
+        showMetadataButton->SetText("Show...");
+        showMetadataButton->SetTooltip("List the metadata this image carries");
+        showMetadataButton->onClick = [this]() { ShowMetadataPopup(); };
+        SizeButtonToLabel(showMetadataButton);
+        metadataRow->AddChild(showMetadataButton);
 
-        AddChild(metadataSection);
+        metadataSummaryLabel = std::make_shared<UltraCanvasLabel>("MetadataSummary", -1, -1, -1, -1, "");
+        metadataSummaryLabel->SetFontSize(style.valueFontSize);
+        metadataSummaryLabel->SetTextColor(style.labelColor);
+        metadataSummaryLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        metadataRow->AddChild(metadataSummaryLabel);
+
+        AddWideRow(metadataRow);
     }
 
     void UltraCanvasImageExportDialog::CreateFooterSection() {
-        footerSection = std::make_shared<UltraCanvasContainer>("FooterSection", 0, 0, 0, 45);
-        footerSection->layout.SetFlexRow();
-        footerSection->layout.SetFlexGap(10);
+        footerSection = std::make_shared<UltraCanvasContainer>("FooterSection", 0, 0, 0, 38);
+        footerSection->layout.SetFlexRow().SetFlexGap(10).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        footerSection->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-        fileSizeEstimateLabel = std::make_shared<UltraCanvasLabel>("FileSizeEstimate", 0, 0, 180, 24);
-        fileSizeEstimateLabel->SetText("Estimated: ~2.5 MB");
+        fileSizeEstimateLabel = std::make_shared<UltraCanvasLabel>("FileSizeEstimate", -1, -1, -1, -1, "");
         fileSizeEstimateLabel->SetFontSize(style.valueFontSize);
         fileSizeEstimateLabel->SetTextColor(style.labelColor);
-
-        cancelButton = std::make_shared<UltraCanvasButton>("CancelButton", 0, 0, 90, 32);
-        cancelButton->SetText("Cancel");
-
-        saveButton = std::make_shared<UltraCanvasButton>("SaveButton", 0, 0, 90, 32);
-        saveButton->SetText("Save");
-
         footerSection->AddChild(fileSizeEstimateLabel);
         footerSection->AddStretchSpacer(1);
+
+        cancelButton = std::make_shared<UltraCanvasButton>("CancelButton", 0, 0, 96, 32);
+        cancelButton->SetText("Cancel");
+        SizeButtonToLabel(cancelButton);
         footerSection->AddChild(cancelButton);
+
+        saveButton = std::make_shared<UltraCanvasButton>("SaveButton", 0, 0, 96, 32);
+        saveButton->SetText("Save");
+        // The one action the dialog exists for, so it reads as the default.
+        saveButton->SetStyle(ButtonStyles::PrimaryStyle());
+        SizeButtonToLabel(saveButton);
         footerSection->AddChild(saveButton);
 
         AddChild(footerSection);
     }
+
+// ============================================================================
+// METADATA
+// ============================================================================
+
+    void UltraCanvasImageExportDialog::UpdateMetadataControls() {
+        size_t count = 0;
+        bool present = false;
+        if (sourceImage.get_image()) {
+            PixelFX::PFXImage image(sourceImage);
+            present = PixelFX::Header::HasMetadata(image);
+            if (present) count = PixelFX::Header::ReadMetadata(image).size();
+        }
+
+        // Nothing to show, nothing to offer: the button and the summary only
+        // exist when the image actually carries metadata.
+        if (showMetadataButton) showMetadataButton->SetVisible(present);
+        if (metadataSummaryLabel) {
+            metadataSummaryLabel->SetVisible(present);
+            if (present) {
+                metadataSummaryLabel->SetText(std::to_string(count) +
+                                              (count == 1 ? " entry" : " entries"));
+            }
+        }
+        if (preserveMetadataCheckbox) {
+            preserveMetadataCheckbox->SetTooltip(present
+                    ? "Copy the image's metadata into the saved file"
+                    : "This image carries no metadata to copy");
+        }
+    }
+
+    void UltraCanvasImageExportDialog::ShowMetadataPopup() {
+        if (!sourceImage.get_image()) return;
+        PixelFX::PFXImage image(sourceImage);
+        // Markdown: the popup's text area renders the per-group tables, so
+        // neither dialog has to lay anything out itself.
+        const std::string listing =
+                PixelFX::Header::MetadataToText(image, PixelFX::Header::MetadataTextFormat::Markdown);
+        ShowMetadataDialog(GetFileName(), listing, true, this);
+    }
+
 
 // ============================================================================
 // CALLBACK WIRING
@@ -983,10 +955,12 @@ namespace UltraCanvas {
         };
 
         // ----- Width/Height inputs with aspect ratio lock -----
-        bool widthInputCallbackRinning = false;
-        widthInput->onTextChanged = [this, &widthInputCallbackRinning](const std::string& text) {
-            if (widthInputCallbackRinning) return;
-            widthInputCallbackRinning = true;
+        // The guard is a member: it has to outlive WireCallbacks(), and while
+        // it was a local captured by reference each keystroke re-entered
+        // through a dangling one.
+        widthInput->onTextChanged = [this](const std::string& text) {
+            if (syncingSize) return;
+            syncingSize = true;
             try {
                 int w = std::stoi(text);
                 options.targetWidth = w;
@@ -997,13 +971,12 @@ namespace UltraCanvas {
                 }
                 UpdateFileSizeEstimate();
             } catch (...) {}
-            widthInputCallbackRinning = false;
+            syncingSize = false;
         };
 
-        bool heightInputCallbackRinning = false;
-        heightInput->onTextChanged = [this, &heightInputCallbackRinning](const std::string& text) {
-            if (heightInputCallbackRinning) return;
-            heightInputCallbackRinning = true;
+        heightInput->onTextChanged = [this](const std::string& text) {
+            if (syncingSize) return;
+            syncingSize = true;
             try {
                 int h = std::stoi(text);
                 options.targetHeight = h;
@@ -1014,7 +987,7 @@ namespace UltraCanvas {
                 }
                 UpdateFileSizeEstimate();
             } catch (...) {}
-            heightInputCallbackRinning = false;
+            syncingSize = false;
         };
 
         aspectRatioCheckbox->onStateChanged = [this](CheckedState, CheckedState newState) {
@@ -1157,28 +1130,32 @@ namespace UltraCanvas {
 // FORMAT OPTIONS MANAGEMENT
 // ============================================================================
 
+    UCImageSaveFormat UltraCanvasImageExportDialog::FormatRowsKeyFor(UCImageSaveFormat format) {
+        switch (format) {
+            // One row set serves the whole PNM family.
+            case UCImageSaveFormat::PGM:
+            case UCImageSaveFormat::PBM:
+            case UCImageSaveFormat::PFM:
+                return UCImageSaveFormat::PPM;
+            default:
+                return format;
+        }
+    }
+
     void UltraCanvasImageExportDialog::HideAllFormatOptions() {
-        if (pngOptionsContainer) pngOptionsContainer->SetVisible(false);
-        if (jpegOptionsContainer) jpegOptionsContainer->SetVisible(false);
-        if (webpOptionsContainer) webpOptionsContainer->SetVisible(false);
-        if (avifOptionsContainer) avifOptionsContainer->SetVisible(false);
-        if (gifOptionsContainer) gifOptionsContainer->SetVisible(false);
-        if (tiffOptionsContainer) tiffOptionsContainer->SetVisible(false);
-        if (qoiOptionsContainer) qoiOptionsContainer->SetVisible(false);
-        if (tgaOptionsContainer) tgaOptionsContainer->SetVisible(false);
-        if (pcxOptionsContainer) pcxOptionsContainer->SetVisible(false);
-        if (pnmOptionsContainer) pnmOptionsContainer->SetVisible(false);
-        if (exrOptionsContainer) exrOptionsContainer->SetVisible(false);
-        if (dpxOptionsContainer) dpxOptionsContainer->SetVisible(false);
-        if (cinOptionsContainer) cinOptionsContainer->SetVisible(false);
-        if (psdOptionsContainer) psdOptionsContainer->SetVisible(false);
-        if (sgiOptionsContainer) sgiOptionsContainer->SetVisible(false);
+        for (auto& entry : formatRows) {
+            for (auto& element : entry.second) {
+                if (element) element->SetVisible(false);
+            }
+        }
     }
 
     void UltraCanvasImageExportDialog::UpdateFormatOptions() {
         HideAllFormatOptions();
 
         auto info = ImageFormatInfo::GetInfo(currentFormat);
+
+        if (formatDescriptionLabel) formatDescriptionLabel->SetText(info.description);
 
         // Update transparency visibility
         bool supportsAlpha = info.supportsTransparency;
@@ -1220,60 +1197,20 @@ namespace UltraCanvas {
             UpdateColorDepthOptions();
         }
 
-        // Show format-specific options
-        switch (currentFormat) {
-            case UCImageSaveFormat::PNG:
-                if (pngOptionsContainer) pngOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::JPEG:
-                if (jpegOptionsContainer) jpegOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::WEBP:
-                if (webpOptionsContainer) webpOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::AVIF:
-                if (avifOptionsContainer) avifOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::GIF:
-                if (gifOptionsContainer) gifOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::TIFF:
-                if (tiffOptionsContainer) tiffOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::QOI:
-                if (qoiOptionsContainer) qoiOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::TGA:
-                if (tgaOptionsContainer) tgaOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::PCX:
-                if (pcxOptionsContainer) pcxOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::PPM:
-            case UCImageSaveFormat::PGM:
-            case UCImageSaveFormat::PBM:
-            case UCImageSaveFormat::PFM:
-                if (pnmOptionsContainer) pnmOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::EXR:
-                if (exrOptionsContainer) exrOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::DPX:
-                if (dpxOptionsContainer) dpxOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::CIN:
-                if (cinOptionsContainer) cinOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::PSD:
-                if (psdOptionsContainer) psdOptionsContainer->SetVisible(true);
-                break;
-            case UCImageSaveFormat::SGI:
-                if (sgiOptionsContainer) sgiOptionsContainer->SetVisible(true);
-                break;
-            // HDR, FITS, FARBFELD, BMP, ICO have no per-format knobs
-            default:
-                break;
+        // Show this format's own rows, and the heading only when there are
+        // any: an empty "Format options" caption is worse than none.
+        const auto rows = formatRows.find(FormatRowsKeyFor(currentFormat));
+        const bool hasRows = rows != formatRows.end() && !rows->second.empty();
+        if (hasRows) {
+            for (auto& element : rows->second) {
+                if (element) element->SetVisible(true);
+            }
         }
+        if (formatOptionsHeading) {
+            formatOptionsHeading->SetText(info.name + " options");
+            formatOptionsHeading->SetVisible(hasRows);
+        }
+        if (formatOptionsRule) formatOptionsRule->SetVisible(hasRows);
     }
 
     void UltraCanvasImageExportDialog::UpdateQualityRange() {
@@ -1506,6 +1443,9 @@ namespace UltraCanvas {
         if (widthInput) widthInput->SetText(std::to_string(sourceWidth));
         if (heightInput) heightInput->SetText(std::to_string(sourceHeight));
 
+        // A new image may or may not carry metadata; the controls that offer
+        // to show it follow.
+        UpdateMetadataControls();
         UpdateFileSizeEstimate();
     }
 

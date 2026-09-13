@@ -1,3 +1,99 @@
+#### 2026-09-13 *0.2.3*
+- **The Adjust and Filter dialogs are visible again.** Every dialog the editor
+  opens is now created as the window's own - transient for it and centred on
+  it - instead of as a top-level window of its own. Without that the desktop
+  placed them like separate applications: behind the editor, in a screen
+  corner, or, on a window manager that maximises plain windows, over the whole
+  image. That is what made most of the *Adjust* menu look as though it did
+  nothing; the adjustments were being applied to a preview nobody could see.
+  The entries with no dialog (Invert, Desaturate, Sepia, Equalize) always
+  worked, which is what made the rest look broken rather than missing.
+- **The filter parameter dialog was rebuilt on the form grid.** "Brightness"
+  came out as "Brightn..." because the caption column was hard-coded to the
+  width the tool options panel uses; captions now share one `[auto, 1fr]` grid
+  column that is as wide as the longest parameter name in any language, the
+  sliders line up under each other, OK reads as the primary button, and the
+  window resizes. *Reset* puts the sliders back rather than rebuilding them
+  from a catalogue lookup that matched filters by their title text.
+- **The toolbar no longer clips its icons.** The buttons were cut off along
+  their bottom edge because the bar was 38 px tall and its contents need 44;
+  toolbars size themselves now (UltraCanvas 0.8.44), which also gives the
+  layer-button row in the Layers panel its missing pixels.
+- **Auto Contrast does something.** It stretched between the absolute darkest
+  and lightest pixel, which is a no-op on any photograph containing one true
+  black and one true white pixel - most of them. It now clips 0.2% off each end
+  of each channel's own histogram and stretches what is left, the way the
+  adjustment is normally meant.
+
+#### 2026-09-13 *0.2.2*
+- **3D models can be imported as images.** Opening, dropping or importing an
+  STL - or an OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape, `.x`,
+  `.blend` or STEP, which UltraPaint now links the Models plugin for - opens a
+  3D import dialog: the model in a viewer (drag to orbit, wheel to zoom), the
+  bitmap size and the background. The layer that comes back is exactly the view
+  shown there. A model dropped on the canvas offers the same *Merge image* /
+  *Open new window* as a bitmap does, and the model extensions are in the Open
+  dialog's filter. Framework side:
+  [UltraCanvasModelRaster](../UltraCanvas/UltraCanvasModelRaster.md),
+  [UltraCanvasModelViewDialog](../UltraCanvas/UltraCanvasModelViewDialog.md).
+- **Files can be dropped on the UltraPaint icon.** `UltraPaint.desktop` is the
+  shortcut that makes a dock, a taskbar or the desktop offer the drop at all -
+  `Exec=UltraPaint %F` with a `MimeType=` list covering the images, drawings,
+  models and `.ucraster` projects UltraPaint reads - and `make install` now
+  puts it, the `.ucraster` MIME type, the application icon and the binary where
+  a desktop looks for them. Dropping on the icon takes the same path as the
+  command line, so a drawing or a model still gets its import dialog.
+- A command line - or a drop - of several files opens **one window per file**
+  instead of only the first. Right-clicking the launcher icon offers *New
+  Window*.
+
+#### 2026-09-13 *0.2.1*
+- **Every dialog's captions now share one column.** New Image, Scale Image /
+  Canvas Size, Text, Layer Properties and the import question were a flex row
+  per field, each caption pinned to a hard-coded width - 110 px here, 90 there,
+  60 in the Text dialog. They are rows of one two-column grid now
+  (`UltraCanvasFormLayout`, UltraCanvas 0.8.42): the controls line up, and a
+  caption longer than the old width - which is to say most translations -
+  widens the column instead of being cut off. The dialogs resize, so the room
+  a longer caption takes can be given back.
+- OK / Create / Place / Open buttons size to their own text with a minimum
+  width, so "Speichern" fits where "Save" did, and the accepting button reads
+  as the primary one.
+- *Export with Options* (the framework's save dialog) got the same treatment
+  plus section headings, a line describing the chosen format, and - when the
+  image carries metadata - a **Show...** button that lists it.
+
+#### 2026-09-12 *0.2.0*
+- **Dropping an image asks what to do with it.** A file dragged onto the
+  canvas no longer replaces the open image without warning: the drop opens a
+  small dialog naming the file and its size with **Merge image** and **Open
+  new window** (and Cancel). Merge lands it as a new layer, centred, with the
+  Move tool selected so it can be dragged into place; Open new window gives it
+  an editor of its own and leaves the current image alone.
+- **UltraPaint is multi-window.** *File > New Window* (`Ctrl+Alt+N`), a window
+  per "Open new window" drop, and the application exits with the last window
+  rather than the first. *Quit* now counts the unsaved images across every
+  window instead of asking about the one in front.
+- **A bitmap bigger than the canvas offers to fit.** Merging a 4000 px photo
+  into an 800 px canvas used to be possible only by cropping it invisibly;
+  the drop dialog offers *Scale to fit the canvas when merging*, ticked when
+  the image does not fit, and resamples through PixelFX.
+- **Vector drawings open as bitmaps.** Dropping or opening an SVG, PDF, EPS
+  or - where the application has the Vector plugin - a DXF / DWG / EMF / WMF /
+  XAR asks for the raster size first, starting at the drawing's natural size,
+  with a page picker for a multi-page PDF. It is rendered at that size rather
+  than scaled up from a thumbnail, keeps no file path (so *Save* asks where to
+  put it instead of overwriting the drawing with pixels), and merges into the
+  open image at whatever size fits the canvas. Backed by the new
+  `UltraCanvasVectorRaster` (UltraCanvas 0.8.41).
+- **File > Import Image...** does the same as a drop from the file dialog:
+  merge into this image, or open it in a new window.
+- Dropping several files at once asks once and applies the answer to all of
+  them; files UltraPaint cannot read are ignored rather than reported one by
+  one. The Open dialog's filter now lists the vector formats too, and a
+  loader's error is trimmed to its reason instead of showing libvips' whole
+  log.
+
 #### 2026-09-12 *0.1.1*
 - **Adjust > Colour to Alpha...** - pick a colour and make it transparent.
   The dialog carries the framework colour picker (whose eyedropper samples the

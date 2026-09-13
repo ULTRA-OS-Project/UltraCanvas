@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasSTLExamples.cpp
 // STL (stereolithography) 3D model demo - the Models/STL plugin's self-contained
 // mesh reader, in the 3D Graphics section beside the OpenGL showcase.
-// Every .stl file in media/vector/STL is parsed by UltraCanvasSTLLoader (ASCII and
+// Every .stl file in media/3D/STL is parsed by UltraCanvasSTLLoader (ASCII and
 // binary, auto-detected) and displayed in an UltraCanvasSTLElement: a shaded,
 // mouse-orbited 3D view on GL builds, a mesh info placeholder otherwise. The stats
 // panel reports what the parser found - triangles, vertices, bounds, encoding and
@@ -47,7 +47,7 @@ namespace {
         std::string error;
     };
 
-    // Every .stl file in media/vector/STL, sorted by name, so a newly dropped-in
+    // Every .stl file in media/3D/STL, sorted by name, so a newly dropped-in
     // sample shows up without touching this file.
     std::vector<std::string> CollectSTLFiles(const std::string& dir) {
         std::vector<std::string> paths;
@@ -273,7 +273,7 @@ namespace {
 
         auto description = std::make_shared<UltraCanvasLabel>("STLDescription", 10, 45, 900, 40);
         description->SetText("Self-contained stereolithography reader and writer - ASCII and binary, auto-detected,\n"
-                             "no external dependencies. Samples come from media/vector/STL.");
+                             "no external dependencies. Samples come from media/3D/STL.");
         description->SetFontSize(12);
         description->SetTextColor(Color(80, 80, 80, 255));
         container->AddChild(description);
@@ -284,7 +284,7 @@ namespace {
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
         container->AddChild(statusLabel);
 
-        const std::string sampleDir = NormalizePath(GetResourcesDir() + "media/vector/STL");
+        const std::string sampleDir = NormalizePath(GetResourcesDir() + "media/3D/STL");
         const std::vector<std::string> files = CollectSTLFiles(sampleDir);
 
         // ===== STATS PANEL =====

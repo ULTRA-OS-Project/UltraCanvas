@@ -1,6 +1,6 @@
 // Tests/ModelOBJTest.cpp
 // The OBJ/MTL reader and writer against the real E-45 aircraft in
-// media/models/OBJ, plus two checks nothing else in the suite can make:
+// media/3D/OBJ, plus two checks nothing else in the suite can make:
 //
 //   * a round trip — OBJ -> ModelDocument -> OBJ -> ModelDocument — which is
 //     only possible because OBJ is the first format with both a reader and a

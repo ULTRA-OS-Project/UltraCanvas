@@ -1,7 +1,7 @@
 // include/UltraCanvasToolbar.cpp
 // Implementation of comprehensive toolbar component
-// Version: 1.3.0
-// Last Modified: 2026-06-01
+// Version: 1.4.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasToolbar.h"
@@ -39,6 +39,40 @@ namespace UltraCanvas {
         }
         layout.SetFlexGap(toolbarAppearance.itemSpacing);
         layout.SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        AdoptThicknessAsMinimum();
+    }
+
+    void UltraCanvasToolbar::AdoptThicknessAsMinimum() {
+        // A toolbar's thickness is decided by what is in it - the button box,
+        // the icon inside it, this class's own padding and border - and none of
+        // that is knowable to the host that picks a number in a constructor
+        // call. A number that is too small does not scroll or wrap: the
+        // buttons are simply cut off at the bottom edge, which is how
+        // UltraPaint's 38 px toolbar clipped 32 px buttons that sit in 5 px of
+        // padding inside a 1 px border.
+        //
+        // So the constructed thickness is kept as a floor and the size itself
+        // goes back to auto: a host still gets at least the bar it asked for
+        // (a 48 px toolbar stays 48 px even when its items are small), and the
+        // items are never clipped by it.
+        CSSLayout::BoxConstraints limits = boxConstraints.value_or(CSSLayout::BoxConstraints{});
+        if (toolbarOrientation == ToolbarOrientation::Vertical) {
+            if (!size.width.isAuto()) {
+                limits.minWidth = size.width;
+                size.width = CSSLayout::Dimension::Auto();
+            }
+            // An orientation flip must not leave the other axis pinned by the
+            // floor set for the shape this toolbar no longer has.
+            limits.minHeight = CSSLayout::Dimension::Auto();
+        } else {
+            if (!size.height.isAuto()) {
+                limits.minHeight = size.height;
+                size.height = CSSLayout::Dimension::Auto();
+            }
+            limits.minWidth = CSSLayout::Dimension::Auto();
+        }
+        boxConstraints = limits;
+        InvalidateLayout();
     }
 
     void UltraCanvasToolbar::SetOrientation(ToolbarOrientation orient) {

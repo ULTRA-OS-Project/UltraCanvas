@@ -19,6 +19,7 @@ PixelFX is UltraCanvas's comprehensive bitmap manipulation and analytics engine,
 -   **Drawing Operations** -- Shapes, lines, text, and flood fill with anti-aliasing
 -   **Colour Keying** -- `Colour::ColourToAlpha` turns a chosen colour into transparency with a tolerance, a soft ramp that keeps anti-aliased edges clean, a strength so the colour can be faded rather than only removed, and fringe removal
 -   **Statistical Analysis** -- Min/max detection, deviation, profiles, and measurements
+-   **Metadata** -- `Header::HasMetadata` / `ReadMetadata` / `MetadataToText` read what a file carries (EXIF, IPTC, XMP, ICC, the image's own geometry), tidy it for a person (tag names without their `exif-ifd0-` prefix, values without libvips' encoding suffix, binary blocks by size) and write it out as Markdown or plain text -- see [UltraCanvasMetadataDialog](../../UltraCanvas/UltraCanvasMetadataDialog.md)
 ----------------
 ### Why PixelFX?
 

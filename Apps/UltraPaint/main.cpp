@@ -3,8 +3,8 @@
 // selections, brushes and shapes on the framework's raster-editing layer
 // (UCRasterDocument / UltraCanvasPaintSurface), adjustments and filters
 // through PixelFX (libvips).
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.1.0
+// Last Modified: 2026-09-12
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -19,6 +19,13 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasDebug.h"
 #include "UltraPaintWindow.h"
+
+// The 3D formats. Registering the plugin is what turns "UltraPaint reads STL"
+// into "UltraPaint reads every model format this build has a reader for" —
+// the importer asks the registry, not a hard-coded list.
+#ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
+#include "Models/UltraCanvasModelFormatsPlugin.h"
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -52,7 +59,7 @@ static void SignalHandler(int signal) {
 static void PrintUsage(const char* programName) {
     debugOutput << "UltraPaint - Bitmap Editor powered by UltraCanvas Framework" << std::endl;
     debugOutput << std::endl;
-    debugOutput << "Usage: " << programName << " [options] [image]" << std::endl;
+    debugOutput << "Usage: " << programName << " [options] [image...]" << std::endl;
     debugOutput << std::endl;
     debugOutput << "Options:" << std::endl;
     debugOutput << "  -h, --help        Show this help message" << std::endl;
@@ -62,6 +69,10 @@ static void PrintUsage(const char* programName) {
     debugOutput << "  " << programName << "                 # blank canvas" << std::endl;
     debugOutput << "  " << programName << " photo.jpg       # open an image" << std::endl;
     debugOutput << "  " << programName << " work.ucraster   # open a layered project" << std::endl;
+    debugOutput << "  " << programName << " logo.svg        # a drawing: asks for the raster size" << std::endl;
+    debugOutput << "  " << programName << " part.stl        # a 3D model: asks for the view and the size" << std::endl;
+    debugOutput << "  " << programName << " a.png b.png     # one window each - what a drop on the" << std::endl;
+    debugOutput << "                                   # application icon expands to" << std::endl;
 }
 
 int main(int argc, char* argv[]) {
@@ -104,13 +115,18 @@ int main(int argc, char* argv[]) {
         }
         app.SetDefaultWindowIcon(NormalizePath(GetResourcesDir() + "media/appicon/UltraPaint.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
+#ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
+        RegisterModelFormatsPlugin();
+#endif
 
-        UltraPaintWindow mainWindow;
-        if (!mainWindow.Initialize(pathsToOpen)) {
+        // The editor is multi-window: UltraPaintWindow keeps every open window
+        // alive itself (File > New Window, and "Open new window" on a dropped
+        // image add to that list), and the application exits with the last of
+        // them.
+        if (!UltraPaintWindow::OpenWindow(pathsToOpen)) {
             HandleFatalError("Failed to create main window");
             return EXIT_FAILURE;
         }
-        mainWindow.Show();
 
         debugOutput << "=== UltraPaint Ready ===" << std::endl;
         app.Run();

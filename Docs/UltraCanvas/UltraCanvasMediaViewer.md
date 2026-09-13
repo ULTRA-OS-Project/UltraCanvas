@@ -209,6 +209,25 @@ preview->SetTransparentBackground(TransparentImageBackground::Checkered);
 preview->SetPDFThumbnailWidth(56);      // a fixed-width PDF page inventory
 ```
 
+### Taking the 3D view out of it
+
+A model in the viewer is orbited with the mouse, and a host that embeds it as
+a view *picker* needs to read that view back — or set it:
+
+```cpp
+ModelViewPose pose;
+if (viewer->GetModelViewPose(pose)) { /* what the user framed */ }
+viewer->SetModelViewPose(ModelViewPose::Default());          // "Reset view"
+if (const Mesh3D* mesh = viewer->GetModelMesh()) { /* already loaded */ }
+```
+
+All three answer only while a model is shown (false / null otherwise). Handing
+the mesh out is what lets a caller render the framed view without parsing the
+file a second time — see
+[`UltraCanvasModelRaster`](UltraCanvasModelRaster.md) for the rendering and
+[`UltraCanvasModelViewDialog`](UltraCanvasModelViewDialog.md) for the dialog
+built on exactly these three calls.
+
 ### Letting go of the previewed file
 
 Most kinds are read into memory and hold no handle on the file: images are

@@ -6,11 +6,15 @@
 // Author: UltraCanvas Framework
 
 #include "UltraPaintFilters.h"
-#include "UltraPaintTools.h"   // PaintOptionWidgets
+#include "UltraPaintTools.h"    // PaintOptionWidgets::FormatValue
+#include "UltraPaintDialogs.h"  // UltraPaintDialogParts::SizeButtonToText
+#include "UltraCanvasFormLayout.h"
 
 #include "UltraCanvasLabel.h"
 
 #include <algorithm>
+#include <array>
+#include <cstdint>
 #include <cmath>
 #include <random>
 
@@ -55,6 +59,52 @@ std::vector<uint8_t> MakeLut(const std::function<double(double)>& f) {
     for (int i = 0; i < 256; ++i)
         lut[static_cast<size_t>(i)] = static_cast<uint8_t>(std::clamp(std::lround(f(i / 255.0) * 255.0), 0L, 255L));
     return lut;
+}
+
+// Auto contrast as a photo editor means it: per channel, the darkest and
+// lightest fraction of the pixels are allowed off the end of the scale and
+// what is left is stretched to fill it.
+//
+// Stretching between the absolute minimum and maximum instead - which is what
+// this used to do - is a no-op on any photograph that contains one fully black
+// and one fully white pixel, which is most photographs. That is why the menu
+// entry appeared to do nothing at all.
+constexpr double kAutoContrastClip = 0.002;   // 0.2% off each end, per channel
+
+FX::PFXImage AutoContrast(const FX::PFXImage& rgba) {
+    return PaintFilterOnRGB(rgba, [](const FX::PFXImage& rgb) {
+        const int bands = rgb.Bands();
+        if (bands < 1) return rgb;
+        const std::vector<uint8_t> bytes = FX::Conversion::ToMemory(FX::Conversion::CastUchar(rgb));
+        const size_t pixels = bytes.size() / static_cast<size_t>(bands);
+        if (pixels == 0) return rgb;
+
+        // One histogram per channel, straight off the pixels: a 256-bin count
+        // is cheaper than any second pass through the pipeline, and it is the
+        // only thing a percentile needs.
+        std::vector<std::array<uint64_t, 256>> histogram(static_cast<size_t>(bands));
+        for (auto& h : histogram) h.fill(0);
+        for (size_t i = 0; i + static_cast<size_t>(bands) <= bytes.size(); i += static_cast<size_t>(bands))
+            for (int b = 0; b < bands; ++b)
+                ++histogram[static_cast<size_t>(b)][bytes[i + static_cast<size_t>(b)]];
+
+        const uint64_t clip = static_cast<uint64_t>(static_cast<double>(pixels) * kAutoContrastClip);
+        std::vector<std::vector<uint8_t>> tables;
+        tables.reserve(static_cast<size_t>(bands));
+        for (int b = 0; b < bands; ++b) {
+            const auto& h = histogram[static_cast<size_t>(b)];
+            int low = 0, high = 255;
+            uint64_t seen = 0;
+            while (low < 255 && seen + h[static_cast<size_t>(low)] <= clip) { seen += h[static_cast<size_t>(low)]; ++low; }
+            seen = 0;
+            while (high > low && seen + h[static_cast<size_t>(high)] <= clip) { seen += h[static_cast<size_t>(high)]; --high; }
+            // A flat channel (one value everywhere) has nothing to stretch;
+            // leave it rather than dividing by its own width.
+            const double lo = low, hi = std::max<double>(high, low + 1);
+            tables.push_back(MakeLut([lo, hi](double v) { return (v * 255.0 - lo) / (hi - lo); }));
+        }
+        return FX::Colour::MapLut(rgb, tables);
+    });
 }
 
 FX::PFXImage Kernel3(const FX::PFXImage& rgba, const std::vector<double>& k, double scale = 1.0, double offset = 0.0) {
@@ -191,13 +241,7 @@ const std::vector<PaintFilter>& PaintFilterCatalogue() {
             });
         add({ "auto-contrast", "Auto Contrast", "Adjust", {}
 #ifdef HAS_LIBVIPS
-              , [](const FX::PFXImage& img, const std::vector<float>&) {
-                  return PaintFilterOnRGB(img, [](const FX::PFXImage& rgb) {
-                      const FX::Arithmetic::Stats st = FX::Arithmetic::GetStats(rgb);
-                      const double lo = st.min, hi = std::max(st.max, st.min + 1.0);
-                      return FX::PFXImage(rgb.linear(255.0 / (hi - lo), -lo * 255.0 / (hi - lo)));
-                  });
-              }
+              , [](const FX::PFXImage& img, const std::vector<float>&) { return AutoContrast(img); }
 #endif
             });
 
@@ -384,76 +428,116 @@ std::vector<std::string> PaintFilterCategories() {
 // ===========================================================================
 
 UltraPaintFilterDialog::UltraPaintFilterDialog(const PaintFilter& filter) : UltraCanvasWindow() {
-    for (const auto& p : filter.params) { values.push_back(p.value); defaults.push_back(p.value); }
+    for (const auto& p : filter.params) {
+        values.push_back(p.value);
+        defaults.push_back(p.value);
+        integerParam.push_back(p.integer);
+    }
     config_.title = filter.name.substr(0, filter.name.find("..."));
-    config_.width = 380;
-    config_.height = static_cast<int>(120 + 30 * filter.params.size());
-    config_.minWidth = 300;
+    config_.width = 420;
+    config_.height = static_cast<int>(96 + 30 * filter.params.size());
+    config_.minWidth = 320;
     config_.minHeight = 120;
     config_.deleteOnClose = true;
-    config_.resizable = false;
+    // Resizable: the caption column is as wide as the longest parameter name,
+    // and a translation that needs more room than this window opened with has
+    // to be able to get it.
+    config_.resizable = true;
     SetPadding(12);
     BuildLayout(filter);
     onWindowClosed = [this]() { if (!accepted && onCancel) onCancel(); };
 }
 
 void UltraPaintFilterDialog::BuildLayout(const PaintFilter& filter) {
-    layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    layout.SetFlexColumn().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
-    body = std::make_shared<UltraCanvasContainer>("upf-body", 0, 0, 0, static_cast<float>(30 * filter.params.size()));
-    body->layout.SetFlexColumn().SetFlexGap(4).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    body->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    for (size_t i = 0; i < filter.params.size(); ++i) {
-        const auto& p = filter.params[i];
-        PaintOptionWidgets::AddSliderRow(*body, "upf-p" + std::to_string(i), p.name, p.minValue, p.maxValue, p.value,
-                                         p.step, p.integer, [this, i](float v) { values[i] = v; EmitPreview(); });
-    }
+    // One grid for every parameter, so the sliders all start where the longest
+    // parameter name ends instead of behind a caption column hard-coded to a
+    // width that fits "Gamma" and cuts "Brightness" in half.
+    body = CreateFormGrid("upf-form", 6.0f, 10.0f);
     AddChild(body);
 
-    auto row = std::make_shared<UltraCanvasContainer>("upf-buttons", 0, 0, 0, 32);
+    sliders.clear();
+    valueLabels.clear();
+    for (size_t i = 0; i < filter.params.size(); ++i) {
+        const auto& p = filter.params[i];
+        auto cell = CreateFormCellRow("upf-p" + std::to_string(i) + "-row", 8.0f);
+
+        auto slider = CreateHorizontalSlider("upf-p" + std::to_string(i) + "-slider",
+                                             0, 0, 120, 24, p.minValue, p.maxValue);
+        slider->SetStep(p.step);
+        slider->SetValue(p.value);
+        slider->SetValueDisplay(SliderValueDisplay::NoDisplay);
+        slider->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+        cell->AddChild(slider);
+
+        // The number the slider stands at, in a column of its own: fixed width
+        // so the sliders all end at the same x whatever the values read.
+        auto value = std::make_shared<UltraCanvasLabel>("upf-p" + std::to_string(i) + "-value",
+                                                        0, 0, 52, 24, PaintOptionWidgets::FormatValue(p.value, p.integer));
+        value->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+        value->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        cell->AddChild(value);
+
+        auto* valuePtr = value.get();
+        const bool integer = p.integer;
+        slider->onValueChanging = [valuePtr, integer](float v) { valuePtr->SetText(PaintOptionWidgets::FormatValue(v, integer)); };
+        slider->onValueChanged = [this, i, valuePtr, integer](float v) {
+            valuePtr->SetText(PaintOptionWidgets::FormatValue(v, integer));
+            values[i] = integer ? std::round(v) : v;
+            EmitPreview();
+        };
+
+        AddFormRow(body, "upf-p" + std::to_string(i), p.name, cell);
+        sliders.push_back(slider);
+        valueLabels.push_back(value);
+    }
+
+    auto row = std::make_shared<UltraCanvasContainer>("upf-buttons", 0, 0, 0, 34);
     row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    previewBox = std::make_shared<UltraCanvasCheckbox>("upf-preview", 0, 0, 90, 24, "Preview");
+    previewBox = std::make_shared<UltraCanvasCheckbox>("upf-preview", 0, 0, 0, 24, "Preview");
     previewBox->SetChecked(true);
     previewBox->onStateChanged = [this](CheckedState, CheckedState n) {
         previewEnabled = n == CheckedState::Checked;
         if (onPreview) onPreview(previewEnabled ? values : std::vector<float>{});
     };
-    previewBox->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
+    previewBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     row->AddChild(previewBox);
+    row->AddStretchSpacer(1);
 
-    resetButton = std::make_shared<UltraCanvasButton>("upf-reset", 0, 0, 70, 28, "Reset");
-    resetButton->onClick = [this]() {
-        values = defaults;
-        // rebuild the sliders with the defaults
-        body->ClearChildren();
-        const PaintFilter* f = nullptr;
-        for (const auto& c : PaintFilterCatalogue()) if (c.params.size() == values.size() && c.name.substr(0, c.name.find("...")) == config_.title) { f = &c; break; }
-        if (f) for (size_t i = 0; i < f->params.size(); ++i) {
-            const auto& p = f->params[i];
-            PaintOptionWidgets::AddSliderRow(*body, "upf-p" + std::to_string(i), p.name, p.minValue, p.maxValue, p.value,
-                                             p.step, p.integer, [this, i](float v) { values[i] = v; EmitPreview(); });
-        }
-        EmitPreview();
-    };
-    resetButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    resetButton = std::make_shared<UltraCanvasButton>("upf-reset", 0, 0, 80, 30, "Reset");
+    resetButton->onClick = [this]() { ResetValues(); };
+    UltraPaintDialogParts::SizeButtonToText(resetButton);
     row->AddChild(resetButton);
 
-    cancelButton = std::make_shared<UltraCanvasButton>("upf-cancel", 0, 0, 80, 28, "Cancel");
+    cancelButton = std::make_shared<UltraCanvasButton>("upf-cancel", 0, 0, 80, 30, "Cancel");
     cancelButton->onClick = [this]() { Close(); };
-    cancelButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    UltraPaintDialogParts::SizeButtonToText(cancelButton);
     row->AddChild(cancelButton);
 
-    okButton = std::make_shared<UltraCanvasButton>("upf-ok", 0, 0, 80, 28, "OK");
+    okButton = std::make_shared<UltraCanvasButton>("upf-ok", 0, 0, 80, 30, "OK");
+    okButton->SetStyle(ButtonStyles::PrimaryStyle());
     okButton->onClick = [this]() {
         accepted = true;
         if (onAccept) onAccept(values);
         Close();
     };
-    okButton->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    UltraPaintDialogParts::SizeButtonToText(okButton);
     row->AddChild(okButton);
     AddChild(row);
+}
+
+void UltraPaintFilterDialog::ResetValues() {
+    values = defaults;
+    for (size_t i = 0; i < sliders.size(); ++i) {
+        if (sliders[i]) sliders[i]->SetValue(defaults[i]);
+        if (valueLabels[i])
+            valueLabels[i]->SetText(PaintOptionWidgets::FormatValue(defaults[i],
+                                                i < integerParam.size() && integerParam[i]));
+    }
+    EmitPreview();
 }
 
 void UltraPaintFilterDialog::EmitPreview() {

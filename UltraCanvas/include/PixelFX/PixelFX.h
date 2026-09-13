@@ -1,7 +1,7 @@
 // PixelFX/include/PixelFX.h
 // Comprehensive bitmap processing module for UltraCanvas powered by libvips
-// Version: 1.1.0
-// Last Modified: 2025-11-30
+// Version: 1.2.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -639,6 +639,46 @@ namespace PixelFX {
 
         bool RemoveField(PFXImage& image, const std::string& field);
         std::vector<std::string> GetFields(const PFXImage& image);
+
+        // ===== READABLE METADATA =====
+        // One metadata item of an image as a person would read it: which block
+        // of the file it came from, the tag name as that block spells it, and
+        // the value as text. Binary blocks (ICC profiles, raw EXIF/XMP/IPTC
+        // payloads) are reported by size rather than dumped.
+        struct MetadataEntry {
+            std::string group;   // "Image", "EXIF", "XMP", "IPTC", "Colour", "Other"
+            std::string key;
+            std::string value;
+        };
+
+        // Every field of `image`, grouped and formatted for display. The order
+        // is Image first, then the file's own blocks, each alphabetical.
+        std::vector<MetadataEntry> ReadMetadata(const PFXImage& image);
+
+        // How MetadataToText() writes the entries out.
+        enum class MetadataTextFormat {
+            // Aligned "Tag: value" lines under a heading per group. Reads
+            // correctly in any monospaced view, a log or a console.
+            PlainText,
+            // A "## Group" heading and a two-column table per group — what an
+            // UltraCanvasTextArea in MarkdownHybrid mode renders as a laid-out
+            // table, which is the cheapest way to show metadata in a window.
+            Markdown
+        };
+
+        // The entries as one string. This is the whole "show me the metadata"
+        // path: read, format, hand to a text area (or a clipboard, or a file).
+        std::string MetadataToText(const std::vector<MetadataEntry>& entries,
+                                   MetadataTextFormat format = MetadataTextFormat::Markdown);
+        // Read and format in one call.
+        std::string MetadataToText(const PFXImage& image,
+                                   MetadataTextFormat format = MetadataTextFormat::Markdown);
+
+        // True when the file carried metadata of its own — that is, when
+        // ReadMetadata() returns anything beyond the geometry libvips reports
+        // for every image. This is the check a UI makes before offering to
+        // show it.
+        bool HasMetadata(const PFXImage& image);
 
         std::string GetExifString(const PFXImage& image, const std::string& tag);
         int GetOrientation(const PFXImage& image);

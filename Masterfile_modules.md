@@ -586,6 +586,47 @@ engine; these classes hold the pixels being edited and hand them to it.
   `onToolPress/Drag/Release/Hover/DoubleClick/Key`, `onDrawOverlay`,
   `onViewChanged`, `onFilesDropped`; `PaintPointerEvent` carries image
   coordinates.
+- **UltraCanvasFormLayout** (`UltraCanvasFormLayout.h`) — the "caption:
+  control" form as one `[auto, 1fr]` grid: `CreateFormGrid`, `AddFormRow`,
+  `AddFormWideRow`, `CreateFormCellRow`, `CreateFormCaption`. The caption column
+  is as wide as the widest caption in the form, so the controls line up and a
+  translated caption widens the column rather than clipping. Doc:
+  `Docs/UltraCanvas/UltraCanvasFormLayout.md`.
+- **UltraCanvasMetadataDialog** (`dialogs/UltraCanvasMetadataDialog.h`) —
+  read-only popup listing a file's metadata in an `UltraCanvasTextArea`
+  (Markdown tables or plain text) with Copy; `ShowMetadataDialog()`. The text
+  comes from `PixelFX::Header::MetadataToText` / `ReadMetadata` /
+  `HasMetadata`. Doc: `Docs/UltraCanvas/UltraCanvasMetadataDialog.md`.
+- **UltraCanvasModelRaster** (`UltraCanvasModelRaster.h`) — a 3D model as
+  pixels, and the 3D counterpart of `UltraCanvasVectorRaster`: a model needs a
+  *view* as well as a size, so `ModelViewPose` (yaw / pitch / distance, the
+  same struct `UltraCanvasSTLElement` orbits with) is part of the question.
+  `IsModelGraphicsPath`, `GetModelRasterExtensions`, `InspectModelFile`
+  (triangles, vertices, bounds), `RasterizeModelFile` / `RasterizeMesh` →
+  `UCRasterLayer`, and the pixmap level underneath: `RenderMeshPreviewPixmap`
+  (the Filer's fixed three-quarter thumbnail pose) and `RenderMeshPixmap`
+  (any pose and colour). Software throughout — no GL, no window, thread-safe —
+  which is what lets the Filer call it from decode workers and makes the still
+  identical on every build. Formats are whatever this process reads: STL from
+  core, the rest once `RegisterModelFormatsPlugin()` has installed the preview
+  provider. See `Docs/UltraCanvas/UltraCanvasModelRaster.md`.
+- **UltraCanvasModelViewDialog** (`dialogs/UltraCanvasModelViewDialog.h`) —
+  "turn this 3D model into a bitmap", asking *which view*: an
+  `UltraCanvasMediaViewer` with its top bars off does the 3D (drag to orbit,
+  wheel to zoom, every model format the build reads), plus the raster size,
+  the background and the model's triangle count. `ModelViewAction` lets the
+  caller name the accept buttons (Merge image / Open new window for a drop,
+  Open from a menu); `ModelViewResult` carries the pose, and `Rasterize()`
+  renders it from the mesh the viewer already holds. `ShowModelViewDialog()`.
+  Doc: `Docs/UltraCanvas/UltraCanvasModelViewDialog.md`.
+- **UltraCanvasVectorRaster** (`UltraCanvasVectorRaster.h`) — vector artwork
+  into an editable layer at a chosen pixel size: `IsVectorGraphicsPath`,
+  `GetVectorRasterExtensions`, `InspectVectorFile` (natural size, page count,
+  which rasterizer applies) and `RasterizeVectorFile` → `UCRasterLayer`.
+  Renders *at* the requested size through libvips (`svgload`/`pdfload`/the
+  PostScript delegate) or, for any extension a registered `IGraphicsPlugin`
+  claims as vector, through that plugin's element in an offscreen render
+  context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
 

@@ -1,10 +1,12 @@
 // Plugins/Models/STL/UltraCanvasSTLElement.h
-// UI element that displays a loaded STL mesh.
+// UI element that displays a loaded 3D mesh.
 // When built with ULTRACANVAS_ENABLE_GL it renders a shaded 3D model on a
-// UltraCanvasGLSurface with mouse-orbit; otherwise it falls back to a 2D
-// info placeholder so the plugin still builds and loads data everywhere.
-// Version: 1.0.0
-// Last Modified: 2026-06-21
+// UltraCanvasGLSurface; otherwise it draws the same view with the software
+// rasterizer (UltraCanvasModelRaster.h). Either way it orbits with the mouse
+// and reports the view as a ModelViewPose, which is what lets a caller turn
+// the framing the user chose into a bitmap.
+// Version: 1.1.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -12,6 +14,7 @@
 #define ULTRACANVAS_STL_ELEMENT_H
 
 #include "UltraCanvas3DTypes.h"
+#include "UltraCanvasModelRaster.h"   // ModelViewPose, kModelDefaultColor, the software still
 #include "UltraCanvasSmoothScroll.h"
 #include "UltraCanvasSTLLoader.h"
 #include <string>
@@ -47,7 +50,18 @@ namespace UltraCanvas {
 
         // Appearance / interaction.
         void SetModelColor(const Vec3& rgb) { modelColor_ = rgb; RequestRender(); }
+        const Vec3& GetModelColor() const { return modelColor_; }
         void SetAutoRotate(bool enable);
+
+        // ----- the view the user has orbited to -----
+        // The three numbers that define what is on screen. Hand them to
+        // RenderMeshPixmap() (UltraCanvasModelRaster.h) and the still that
+        // comes back is this view - which is how "turn this model into a
+        // bitmap" keeps the framing the user chose.
+        ModelViewPose GetViewPose() const { return ModelViewPose{yaw_, pitch_, distance_}; }
+        void SetViewPose(const ModelViewPose& pose);
+        // Back to the framing the viewer opened at.
+        void ResetView() { ResetCameraToFit(); RequestRender(); }
 
         // Notifications.
         std::function<void(const std::string&)> onLoadError;
@@ -123,24 +137,45 @@ namespace UltraCanvas {
                         STLFormat format = STLFormat::Auto,
                         std::string* outError = nullptr) const;
 
-        void SetModelColor(const Vec3&) {}
+        void SetModelColor(const Vec3& rgb) { modelColor_ = rgb; InvalidateRender(); RequestRedraw(); }
+        const Vec3& GetModelColor() const { return modelColor_; }
+        // Auto-rotation needs a frame clock this element does not have; the
+        // orbit is still there, it just has to be driven by hand.
         void SetAutoRotate(bool) {}
+
+        // ----- the view the user has orbited to -----
+        // The same three numbers the GL viewer keeps, so a caller reads the
+        // view the same way on either build - and so the still
+        // RenderMeshPixmap() returns is exactly what is on screen here,
+        // because this element draws itself with that very call.
+        ModelViewPose GetViewPose() const { return pose_; }
+        void SetViewPose(const ModelViewPose& pose);
+        void ResetView() { SetViewPose(ModelViewPose::Default()); }
 
         std::function<void(const std::string&)> onLoadError;
         std::function<void()> onLoadComplete;
 
+        bool OnEvent(const UCEvent& event) override;
+        bool AcceptsFocus() const override { return true; }
         void Render(IRenderContext* ctx, const Rect2Df& dirtyRect) override;
 
     private:
-        // The rasterized still, kept until the mesh or the element's size
-        // changes. Re-rendering per frame would be wasteful and pointless:
-        // nothing about this view moves, so the same pixels would come back.
+        // The rasterized still, kept until the mesh, the pose or the
+        // element's size changes: re-rendering a view that has not moved
+        // would return the same pixels.
         void InvalidateRender();
 
         Mesh3D mesh_;
+        Vec3 modelColor_ = kModelDefaultColor;
+        ModelViewPose pose_;
         std::shared_ptr<UCPixmap> rendered_;
         int renderedWidth_ = 0;
         int renderedHeight_ = 0;
+
+        // Mouse drag state, as in the GL build: drag orbits, wheel dollies.
+        bool dragging_ = false;
+        int lastMouseX_ = 0;
+        int lastMouseY_ = 0;
     };
 
 #endif // ULTRACANVAS_ENABLE_GL

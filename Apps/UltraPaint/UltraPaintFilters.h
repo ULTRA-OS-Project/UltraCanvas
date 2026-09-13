@@ -13,6 +13,8 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasButton.h"
+#include "UltraCanvasSlider.h"
+#include "UltraCanvasLabel.h"
 
 #include <functional>
 #include <memory>
@@ -83,12 +85,19 @@ public:
 private:
     void BuildLayout(const PaintFilter& filter);
     void EmitPreview();
+    // Puts every slider back to the value the filter opened with. The sliders
+    // are kept rather than rebuilt, so Reset does not have to find its own
+    // filter in the catalogue again to know what the defaults were.
+    void ResetValues();
 
     std::vector<float> values;
     std::vector<float> defaults;
+    std::vector<bool> integerParam;
     bool previewEnabled = true;
     bool accepted = false;
     std::shared_ptr<UltraCanvasContainer> body;
+    std::vector<std::shared_ptr<UltraCanvasSlider>> sliders;
+    std::vector<std::shared_ptr<UltraCanvasLabel>> valueLabels;
     std::shared_ptr<UltraCanvasCheckbox> previewBox;
     std::shared_ptr<UltraCanvasButton> okButton, cancelButton, resetButton;
 };

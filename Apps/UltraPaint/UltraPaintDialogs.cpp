@@ -1,32 +1,52 @@
 // Apps/UltraPaint/UltraPaintDialogs.cpp
-// New Image, Scale Image / Canvas Size, Text, Layer Properties and
+// New Image, Scale Image / Canvas Size, Text, Layer Properties, Import and
 // Colour to Alpha windows.
-// Version: 1.0.0
-// Last Modified: 2026-09-06
+// Version: 1.2.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraPaintDialogs.h"
 #include "UltraPaintTools.h"   // PaintOptionWidgets
 #include "UltraCanvasRasterLayer.h"
+#include "UltraCanvasFormLayout.h"
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 
 namespace UltraCanvas {
 
 namespace UltraPaintDialogParts {
 
-std::shared_ptr<UltraCanvasContainer> LabelledRow(const std::string& id, const std::string& label,
-                                                  std::shared_ptr<UltraCanvasUIElement> widget, float labelWidth) {
-    auto row = std::make_shared<UltraCanvasContainer>(id, 0, 0, 0, 28);
-    row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    auto lbl = CreateLabel(id + "-label", 0, 0, labelWidth, 24, label);
-    lbl->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-    row->AddChild(lbl);
+std::shared_ptr<UltraCanvasContainer> FormGrid(const std::string& id) {
+    // The framework's two-column form: captions hug their text in the first
+    // column, controls take the rest of the second. One grid per dialog is
+    // what lines the controls up and lets a longer translation widen the
+    // caption column instead of being cut off.
+    return CreateFormGrid(id, 8.0f, 10.0f);
+}
+
+std::shared_ptr<UltraCanvasLabel> FormRow(const std::shared_ptr<UltraCanvasContainer>& grid,
+                                          const std::string& id, const std::string& label,
+                                          std::shared_ptr<UltraCanvasUIElement> widget) {
     widget->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
-    row->AddChild(widget);
-    return row;
+    return AddFormRow(grid, id, label, widget);
+}
+
+void FormWideRow(const std::shared_ptr<UltraCanvasContainer>& grid,
+                 std::shared_ptr<UltraCanvasUIElement> element) {
+    AddFormWideRow(grid, element);
+}
+
+void SizeButtonToText(const std::shared_ptr<UltraCanvasButton>& button) {
+    // Auto width plus a floor: "Speichern" has to fit, "OK" must not shrink to
+    // a stub. Same idiom as UltraCanvasModalDialog::SizeButtonToLabel.
+    if (!button) return;
+    button->size.width = CSSLayout::Dimension::Auto();
+    CSSLayout::BoxConstraints limits = button->boxConstraints.value_or(CSSLayout::BoxConstraints{});
+    limits.minWidth = CSSLayout::Dimension::Px(88.0f);
+    button->boxConstraints = limits;
+    button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 }
 
 std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id, UltraCanvasWindow* win,
@@ -37,11 +57,13 @@ std::shared_ptr<UltraCanvasContainer> ButtonRow(const std::string& id, UltraCanv
     row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     auto cancel = std::make_shared<UltraCanvasButton>(id + "-cancel", 0, 0, 84, 28, "Cancel");
     cancel->onClick = [win]() { win->Close(); };
-    cancel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    SizeButtonToText(cancel);
     row->AddChild(cancel);
     auto ok = std::make_shared<UltraCanvasButton>(id + "-ok", 0, 0, 84, 28, okLabel);
     ok->onClick = [win, onOk]() { if (onOk) onOk(); win->Close(); };
-    ok->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    // The action the dialog exists for reads as the default.
+    ok->SetStyle(ButtonStyles::PrimaryStyle());
+    SizeButtonToText(ok);
     row->AddChild(ok);
     return row;
 }
@@ -58,6 +80,11 @@ namespace {
         { "3840 x 2160 (4K)", 3840, 2160 }, { "A4 300 dpi", 2480, 3508 }, { "Instagram square", 1080, 1080 },
         { "Icon 512", 512, 512 }, { "Icon 256", 256, 256 }
     };
+
+    std::string FileNameOnly(const std::string& path) {
+        if (path.empty()) return "Untitled";
+        return std::filesystem::path(path).filename().string();
+    }
 }
 
 // ===========================================================================
@@ -68,27 +95,32 @@ UltraPaintNewImageDialog::UltraPaintNewImageDialog(const UltraPaintNewImageResul
     config_.title = "New Image";
     config_.width = 360; config_.height = 230;
     config_.minWidth = 320; config_.minHeight = 200;
-    config_.resizable = false;
+    // Resizable: a longer caption in another language widens the caption
+    // column, and the user can give the controls their room back.
+    config_.resizable = true;
     config_.deleteOnClose = true;
     SetPadding(12);
     layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
+    auto form = FormGrid("upn-form");
+    AddChild(form);
+
     presetDrop = CreateDropdown("upn-preset", 0, 0, 200, 24);
     for (const auto& p : kPresets) presetDrop->AddItem(p.name);
     presetDrop->SetSelectedIndex(0, false);
-    AddChild(LabelledRow("upn-preset-row", "Preset:", presetDrop));
+    FormRow(form, "upn-preset-row", "Preset:", presetDrop);
 
     widthSpin = CreateIntSpinner("upn-w", 0, 0, 120, 24, 1, 20000, initial.width, 1);
     widthSpin->SetSuffix(" px");
-    AddChild(LabelledRow("upn-w-row", "Width:", widthSpin));
+    FormRow(form, "upn-w-row", "Width:", widthSpin);
     heightSpin = CreateIntSpinner("upn-h", 0, 0, 120, 24, 1, 20000, initial.height, 1);
     heightSpin->SetSuffix(" px");
-    AddChild(LabelledRow("upn-h-row", "Height:", heightSpin));
+    FormRow(form, "upn-h-row", "Height:", heightSpin);
 
     backgroundDrop = CreateDropdown("upn-bg", 0, 0, 200, 24);
     for (const char* n : { "White", "Black", "Transparent", "Foreground colour", "Background colour" }) backgroundDrop->AddItem(n);
     backgroundDrop->SetSelectedIndex(std::clamp(initial.background, 0, 4), false);
-    AddChild(LabelledRow("upn-bg-row", "Background:", backgroundDrop));
+    FormRow(form, "upn-bg-row", "Background:", backgroundDrop);
 
     presetDrop->onSelectionChanged = [this](int i, const DropdownItem&) {
         if (i <= 0 || i >= static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0]))) return;
@@ -114,7 +146,9 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode)
     config_.title = canvas ? "Canvas Size" : "Scale Image";
     config_.width = 360; config_.height = canvas ? 240 : 240;
     config_.minWidth = 320; config_.minHeight = 200;
-    config_.resizable = false;
+    // Resizable: a longer caption in another language widens the caption
+    // column, and the user can give the controls their room back.
+    config_.resizable = true;
     config_.deleteOnClose = true;
     SetPadding(12);
     layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
@@ -123,14 +157,17 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode)
     info->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     AddChild(info);
 
+    auto form = FormGrid("upr-form");
+    AddChild(form);
+
     widthSpin = CreateIntSpinner("upr-w", 0, 0, 120, 24, 1, 20000, origW, 1);
     widthSpin->SetSuffix(" px");
     widthSpin->onValueChanged = [this](double) { SyncFromWidth(); };
-    AddChild(LabelledRow("upr-w-row", "Width:", widthSpin));
+    FormRow(form, "upr-w-row", "Width:", widthSpin);
     heightSpin = CreateIntSpinner("upr-h", 0, 0, 120, 24, 1, 20000, origH, 1);
     heightSpin->SetSuffix(" px");
     heightSpin->onValueChanged = [this](double) { SyncFromHeight(); };
-    AddChild(LabelledRow("upr-h-row", "Height:", heightSpin));
+    FormRow(form, "upr-h-row", "Height:", heightSpin);
 
     if (!canvas) {
         percentSpin = CreateDecimalSpinner("upr-pct", 0, 0, 120, 24, 1.0, 1000.0, 100.0, 1.0, 1);
@@ -142,20 +179,19 @@ UltraPaintResizeDialog::UltraPaintResizeDialog(int w, int h, bool canvasMode)
             heightSpin->SetValue(std::max(1.0, std::round(origH * v / 100.0)));
             syncing = false;
         };
-        AddChild(LabelledRow("upr-pct-row", "Scale:", percentSpin));
+        FormRow(form, "upr-pct-row", "Scale:", percentSpin);
     }
 
     keepAspect = std::make_shared<UltraCanvasCheckbox>("upr-aspect", 0, 0, 0, 24, "Keep aspect ratio");
     keepAspect->SetChecked(!canvas);
-    keepAspect->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    AddChild(keepAspect);
+    FormWideRow(form, keepAspect);
 
     if (canvas) {
         anchorDrop = CreateDropdown("upr-anchor", 0, 0, 200, 24);
         for (const char* n : { "Top left", "Top", "Top right", "Left", "Centre", "Right", "Bottom left", "Bottom", "Bottom right" })
             anchorDrop->AddItem(n);
         anchorDrop->SetSelectedIndex(4, false);
-        AddChild(LabelledRow("upr-anchor-row", "Anchor:", anchorDrop));
+        FormRow(form, "upr-anchor-row", "Anchor:", anchorDrop);
     }
 
     AddChild(ButtonRow("upr-buttons", this, [this]() {
@@ -197,23 +233,25 @@ UltraPaintTextDialog::UltraPaintTextDialog(const UltraPaintTextResult& initial) 
     SetPadding(12);
     layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
+    auto form = FormGrid("upt-form");
+    AddChild(form);
+
     textInput = CreateTextInput("upt-text", 0, 0, 0, 26);
     textInput->SetText(initial.text);
-    AddChild(LabelledRow("upt-text-row", "Text:", textInput, 60));
+    FormRow(form, "upt-text-row", "Text:", textInput);
 
     fontDrop = CreateDropdown("upt-font", 0, 0, 160, 24);
     for (const char* n : { "Sans", "Serif", "Monospace" }) fontDrop->AddItem(n);
     fontDrop->SetSelectedIndex(initial.font == "Serif" ? 1 : initial.font == "Monospace" ? 2 : 0, false);
-    AddChild(LabelledRow("upt-font-row", "Font:", fontDrop, 60));
+    FormRow(form, "upt-font-row", "Font:", fontDrop);
 
     sizeSpin = CreateIntSpinner("upt-size", 0, 0, 120, 24, 4, 500, initial.size, 1);
     sizeSpin->SetSuffix(" px");
-    AddChild(LabelledRow("upt-size-row", "Size:", sizeSpin, 60));
+    FormRow(form, "upt-size-row", "Size:", sizeSpin);
 
     boldBox = std::make_shared<UltraCanvasCheckbox>("upt-bold", 0, 0, 0, 24, "Bold");
     boldBox->SetChecked(initial.bold);
-    boldBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    AddChild(boldBox);
+    FormWideRow(form, boldBox);
 
     AddChild(ButtonRow("upt-buttons", this, [this]() {
         UltraPaintTextResult r;
@@ -247,27 +285,28 @@ UltraPaintLayerDialog::UltraPaintLayerDialog(const UltraPaintLayerProps& initial
     SetPadding(12);
     layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
 
+    auto form = FormGrid("upl-form");
+    AddChild(form);
+
     nameInput = CreateTextInput("upl-name", 0, 0, 0, 26);
     nameInput->SetText(initial.name);
-    AddChild(LabelledRow("upl-name-row", "Name:", nameInput, 90));
+    FormRow(form, "upl-name-row", "Name:", nameInput);
 
     opacitySpin = CreateIntSpinner("upl-opacity", 0, 0, 120, 24, 0, 100, static_cast<int>(std::lround(initial.opacity * 100.0f)), 1);
     opacitySpin->SetSuffix(" %");
-    AddChild(LabelledRow("upl-opacity-row", "Opacity:", opacitySpin, 90));
+    FormRow(form, "upl-opacity-row", "Opacity:", opacitySpin);
 
     blendDrop = CreateDropdown("upl-blend", 0, 0, 160, 24);
     for (RasterBlendMode m : AllRasterBlendModes()) blendDrop->AddItem(RasterBlendModeName(m));
     blendDrop->SetSelectedIndex(initial.blendIndex, false);
-    AddChild(LabelledRow("upl-blend-row", "Blend mode:", blendDrop, 90));
+    FormRow(form, "upl-blend-row", "Blend mode:", blendDrop);
 
     visibleBox = std::make_shared<UltraCanvasCheckbox>("upl-visible", 0, 0, 0, 24, "Visible");
     visibleBox->SetChecked(initial.visible);
-    visibleBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    AddChild(visibleBox);
+    FormWideRow(form, visibleBox);
     lockedBox = std::make_shared<UltraCanvasCheckbox>("upl-locked", 0, 0, 0, 24, "Locked (no painting)");
     lockedBox->SetChecked(initial.locked);
-    lockedBox->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    AddChild(lockedBox);
+    FormWideRow(form, lockedBox);
 
     AddChild(ButtonRow("upl-buttons", this, [this]() {
         UltraPaintLayerProps r;
@@ -281,6 +320,159 @@ UltraPaintLayerDialog::UltraPaintLayerDialog(const UltraPaintLayerProps& initial
 }
 
 // ===========================================================================
+// IMPORT
+// ===========================================================================
+
+UltraPaintImportDialog::UltraPaintImportDialog(const UltraPaintImportRequest& request)
+    : UltraCanvasWindow(), req(request) {
+    // The size controls belong to one drawing; a multi-file drop takes each
+    // file at its own natural size instead.
+    const bool showSize = req.vector && req.extraFiles == 0;
+    const bool paged = showSize && req.pageCount > 1;
+    config_.title = req.offerMerge ? "Open or Merge" : "Open Drawing";
+    config_.width = 470;
+    config_.height = 128 + (req.vector && !req.provider.empty() ? 20 : 0) +
+                     (showSize ? 64 : 0) + (paged ? 28 : 0) + (req.offerMerge ? 28 : 0);
+    config_.minWidth = 420;
+    config_.minHeight = 140;
+    // Resizable: a longer caption in another language widens the caption
+    // column, and the user can give the controls their room back.
+    config_.resizable = true;
+    config_.deleteOnClose = true;
+    SetPadding(12);
+    layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    std::string heading = FileNameOnly(req.path);
+    if (req.extraFiles == 1) heading += " and 1 more file";
+    else if (req.extraFiles > 1) heading += " and " + std::to_string(req.extraFiles) + " more files";
+    auto name = CreateLabel("upi-name", 0, 0, 0, 22, heading);
+    name->SetFontWeight(FontWeight::Bold);
+    name->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AddChild(name);
+
+    auto addSubtitle = [this](const std::string& id, const std::string& text) {
+        if (text.empty()) return;
+        auto sub = CreateLabel(id, 0, 0, 0, 18, text);
+        sub->SetFontSize(11);
+        sub->SetTextColor(Color(90, 90, 100, 255));
+        sub->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        AddChild(sub);
+    };
+    const std::string size = (req.naturalWidth > 0 && req.naturalHeight > 0)
+            ? std::to_string(req.naturalWidth) + " x " + std::to_string(req.naturalHeight) + " px"
+            : std::string();
+    if (req.vector) {
+        addSubtitle("upi-sub", size.empty() ? "Vector drawing" : "Vector drawing, " + size + " at its natural size");
+        if (!req.provider.empty()) addSubtitle("upi-provider", "Rendered by " + req.provider);
+    } else {
+        addSubtitle("upi-sub", size);
+    }
+
+    auto form = FormGrid("upi-form");
+    AddChild(form);
+
+    if (showSize) {
+        // A vector drawing has no pixels until one asks for them, so the size
+        // is the question: it defaults to the natural size, or to whatever
+        // fits the open canvas when the drawing is going to be merged into it.
+        int startW = std::max(1, req.naturalWidth);
+        int startH = std::max(1, req.naturalHeight);
+        if (req.offerMerge && req.canvasWidth > 0 && req.canvasHeight > 0 &&
+            (startW > req.canvasWidth || startH > req.canvasHeight)) {
+            const double k = std::min(static_cast<double>(req.canvasWidth) / startW,
+                                      static_cast<double>(req.canvasHeight) / startH);
+            startW = std::max(1, static_cast<int>(std::lround(startW * k)));
+            startH = std::max(1, static_cast<int>(std::lround(startH * k)));
+        }
+        widthSpin = CreateIntSpinner("upi-w", 0, 0, 120, 24, 1, 20000, startW, 1);
+        widthSpin->SetSuffix(" px");
+        widthSpin->onValueChanged = [this](double) { SyncFromWidth(); };
+        FormRow(form, "upi-w-row", "Raster width:", widthSpin);
+        heightSpin = CreateIntSpinner("upi-h", 0, 0, 120, 24, 1, 20000, startH, 1);
+        heightSpin->SetSuffix(" px");
+        heightSpin->onValueChanged = [this](double) { SyncFromHeight(); };
+        FormRow(form, "upi-h-row", "Raster height:", heightSpin);
+
+        if (paged) {
+            pageSpin = CreateIntSpinner("upi-page", 0, 0, 120, 24, 1, req.pageCount, 1, 1);
+            pageSpin->SetSuffix(" of " + std::to_string(req.pageCount));
+            FormRow(form, "upi-page-row", "Page:", pageSpin);
+        }
+    }
+
+    // Merging a bitmap larger than the canvas would silently crop it, so the
+    // fit is offered (and taken by default) exactly when it would.
+    if (req.offerMerge && !req.vector && req.canvasWidth > 0 && req.canvasHeight > 0 &&
+        (req.naturalWidth > req.canvasWidth || req.naturalHeight > req.canvasHeight)) {
+        fitBox = std::make_shared<UltraCanvasCheckbox>("upi-fit", 0, 0, 0, 24,
+                                                       "Scale to fit the canvas when merging");
+        fitBox->SetChecked(true);
+        FormWideRow(form, fitBox);
+    }
+
+    // ----- buttons -----
+    auto row = std::make_shared<UltraCanvasContainer>("upi-buttons", 0, 0, 0, 34);
+    row->layout.SetFlexRow().SetFlexGap(8).SetFlexAlignItems(CSSLayout::AlignItems::Center)
+               .SetFlexJustifyContent(CSSLayout::JustifyContent::FlexEnd);
+    row->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    auto addButton = [&](const std::string& id, const std::string& text, int width,
+                         UltraPaintImportResult::Action action) {
+        auto b = std::make_shared<UltraCanvasButton>(id, 0, 0, width, 28, text);
+        b->onClick = [this, action]() { Finish(action); };
+        if (action == UltraPaintImportResult::Action::Open ||
+            action == UltraPaintImportResult::Action::NewWindow) {
+            b->SetStyle(ButtonStyles::PrimaryStyle());
+        }
+        SizeButtonToText(b);
+        row->AddChild(b);
+        return b;
+    };
+    addButton("upi-cancel", "Cancel", 88, UltraPaintImportResult::Action::Cancel);
+    if (req.offerMerge) {
+        addButton("upi-merge", "Merge image", 136, UltraPaintImportResult::Action::Merge);
+        addButton("upi-window", "Open new window", 176, UltraPaintImportResult::Action::NewWindow);
+    } else {
+        addButton("upi-open", "Open", 96, UltraPaintImportResult::Action::Open);
+    }
+    AddChild(row);
+}
+
+void UltraPaintImportDialog::SyncFromWidth() {
+    if (syncing || !widthSpin || !heightSpin) return;
+    if (req.naturalWidth <= 0 || req.naturalHeight <= 0) return;
+    syncing = true;
+    const double w = widthSpin->GetValue();
+    heightSpin->SetValue(std::max(1.0, std::round(w * req.naturalHeight / req.naturalWidth)));
+    syncing = false;
+}
+
+void UltraPaintImportDialog::SyncFromHeight() {
+    if (syncing || !widthSpin || !heightSpin) return;
+    if (req.naturalWidth <= 0 || req.naturalHeight <= 0) return;
+    syncing = true;
+    const double h = heightSpin->GetValue();
+    widthSpin->SetValue(std::max(1.0, std::round(h * req.naturalWidth / req.naturalHeight)));
+    syncing = false;
+}
+
+UltraPaintImportResult UltraPaintImportDialog::Collect(UltraPaintImportResult::Action action) const {
+    UltraPaintImportResult r;
+    r.action = action;
+    r.width = widthSpin ? static_cast<int>(widthSpin->GetValue()) : req.naturalWidth;
+    r.height = heightSpin ? static_cast<int>(heightSpin->GetValue()) : req.naturalHeight;
+    r.page = pageSpin ? std::max(0, static_cast<int>(pageSpin->GetValue()) - 1) : 0;
+    r.scaleToFit = fitBox && fitBox->IsChecked();
+    return r;
+}
+
+void UltraPaintImportDialog::Finish(UltraPaintImportResult::Action action) {
+    // Same order as UltraPaintDialogParts::ButtonRow: the callback runs while
+    // the dialog is still alive, then the window closes itself.
+    if (onAccept) onAccept(Collect(action));
+    Close();
+}
+
+// ===========================================================================
 // COLOUR TO ALPHA
 // ===========================================================================
 
@@ -289,7 +481,9 @@ UltraPaintColourToAlphaDialog::UltraPaintColourToAlphaDialog(const UltraPaintCol
     config_.title = "Colour to Alpha";
     config_.width = 380; config_.height = 560;
     config_.minWidth = 340; config_.minHeight = 500;
-    config_.resizable = false;
+    // Resizable: a longer caption in another language widens the caption
+    // column, and the user can give the controls their room back.
+    config_.resizable = true;
     config_.deleteOnClose = true;
     SetPadding(12);
     layout.SetFlexColumn().SetFlexGap(6).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);

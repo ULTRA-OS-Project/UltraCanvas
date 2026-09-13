@@ -1,17 +1,20 @@
 // dialogs/UltraCanvasImageExportDialog.h
-// Comprehensive bitmap file save dialog with dynamic format-specific options
-// Version: 2.2.0
-// Last Modified: 2026-05-11
+// Bitmap file save dialog: name, format, size, depth, transparency, the
+// format's own knobs, and what to do with the metadata.
+// Version: 3.0.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 //
-// ARCHITECTURE: Uses UltraCanvas layout system for automatic positioning
-// and event propagation. No manual coordinate calculations or event forwarding.
-// - VBoxLayout for vertical sections
-// - HBoxLayout for horizontal rows
-// - GridLayout for label+control pairs
-// Container handles all child event propagation automatically.
+// LAYOUT: every captioned row of the dialog - the common ones and the
+// format-specific ones alike - is a row of ONE two-column grid whose first
+// column is `auto` and whose second is `1fr`. That is what keeps the controls
+// on a single line down the whole dialog: the column is as wide as the widest
+// caption in it, so a translated caption widens the column instead of being
+// cut off or leaving the fields ragged. Nothing here measures text or places
+// anything by coordinate.
 //
-// CHANGES v2.1.0: Aligned controls with actual UltraCanvasImage.h export option structures
+// Format-specific rows live in that same grid and are shown a set at a time
+// (formatRows); hidden rows are display:none, so they cost no space.
 
 #pragma once
 
@@ -29,11 +32,12 @@
 #include "../include/UltraCanvasContainer.h"
 #include "../include/UltraCanvasImageElement.h"
 
+#include <cstdint>
 #include <functional>
+#include <map>
+#include <memory>
 #include <string>
 #include <vector>
-#include <memory>
-#include <cstdint>
 
 namespace UltraCanvas {
 
@@ -63,16 +67,26 @@ namespace UltraCanvas {
 // ============================================================================
 
     struct ImageExportDialogStyle {
-        Color backgroundColor = Color(250, 250, 250, 255);
-        Color borderColor = Color(200, 200, 200, 255);
+        Color backgroundColor = Color(250, 250, 252, 255);
+        Color panelColor = Color(255, 255, 255, 255);
+        Color borderColor = Color(222, 222, 228, 255);
         Color accentColor = Color(0, 120, 212, 255);
-        Color textColor = Color(30, 30, 30, 255);
-        Color labelColor = Color(100, 100, 100, 255);
+        Color textColor = Color(30, 30, 35, 255);
+        Color labelColor = Color(100, 100, 110, 255);
+        Color headingColor = Color(70, 70, 80, 255);
 
-        float padding = 16.0f;
+        float padding = 18.0f;
         float spacing = 12.0f;
+        // Grid gaps: rows breathe a little less than columns so a caption
+        // never looks detached from the control it belongs to.
+        float rowGap = 9.0f;
+        float columnGap = 14.0f;
+        float controlHeight = 28.0f;
         float labelFontSize = 12.0f;
         float valueFontSize = 11.0f;
+        // Buttons size to their own text (so "Speichern" fits) but never
+        // shrink below this.
+        float minButtonWidth = 96.0f;
 
         static ImageExportDialogStyle Default() { return ImageExportDialogStyle(); }
         static ImageExportDialogStyle Dark();
@@ -93,18 +107,19 @@ namespace UltraCanvas {
         int sourceHeight = 0;
         int sourceChannels = 4;
 
-        // ===== SECTION CONTAINERS =====
-        std::shared_ptr<UltraCanvasContainer> headerSection;
-        std::shared_ptr<UltraCanvasContainer> optionsSection;
-        std::shared_ptr<UltraCanvasContainer> formatOptionsSection;
-        std::shared_ptr<UltraCanvasContainer> metadataSection;
+        // ===== SECTIONS =====
+        // One grid holds every captioned row; the footer is the only other
+        // block. See the layout note at the top of this file.
+        std::shared_ptr<UltraCanvasContainer> formGrid;
         std::shared_ptr<UltraCanvasContainer> footerSection;
 
-        // ===== HEADER COMPONENTS =====
+        // ===== FILE =====
         std::shared_ptr<UltraCanvasLabel> fileNameLabel;
         std::shared_ptr<UltraCanvasTextInput> fileNameInput;
         std::shared_ptr<UltraCanvasLabel> formatLabel;
         std::shared_ptr<UltraCanvasDropdown> formatDropdown;
+        // One grey line under the format picker saying what the format is for.
+        std::shared_ptr<UltraCanvasLabel> formatDescriptionLabel;
 
         // ===== OPTIONS COMPONENTS =====
         std::shared_ptr<UltraCanvasLabel> sizeLabel;
@@ -123,23 +138,19 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasSlider> qualitySlider;
         std::shared_ptr<UltraCanvasLabel> qualityValueLabel;
 
-        // ===== FORMAT-SPECIFIC CONTAINERS =====
-        std::shared_ptr<UltraCanvasContainer> pngOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> jpegOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> webpOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> avifOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> gifOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> tiffOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> qoiOptionsContainer;
-        // ===== Phase 1 additions: per-format containers =====
-        std::shared_ptr<UltraCanvasContainer> tgaOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> pcxOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> pnmOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> exrOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> dpxOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> cinOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> psdOptionsContainer;
-        std::shared_ptr<UltraCanvasContainer> sgiOptionsContainer;
+        // ===== FORMAT-SPECIFIC ROWS =====
+        // The rows each format contributes to the shared grid, so a format
+        // change hides one set and shows another. Labels and controls are
+        // both listed: hiding a row means hiding its caption too.
+        std::map<UCImageSaveFormat, std::vector<std::shared_ptr<UltraCanvasUIElement>>> formatRows;
+        // Formats whose options are the same controls (PPM/PGM/PBM/PFM share
+        // the PNM row) map onto the format that owns them.
+        static UCImageSaveFormat FormatRowsKeyFor(UCImageSaveFormat format);
+        // Set while a CreateXxxOptions() runs; every row added lands here.
+        std::vector<std::shared_ptr<UltraCanvasUIElement>>* currentFormatRows = nullptr;
+        // The "<FORMAT> options" caption above whichever set is showing.
+        std::shared_ptr<UltraCanvasLabel> formatOptionsHeading;
+        std::shared_ptr<UltraCanvasUIElement> formatOptionsRule;
 
         // PNG - matches PngExportOptions: compressionLevel, interlace, preserveTransparency, colorDepth
         std::shared_ptr<UltraCanvasCheckbox> pngInterlaceCheckbox;
@@ -191,11 +202,14 @@ namespace UltraCanvas {
         // SGI - rleCompression
         std::shared_ptr<UltraCanvasCheckbox> sgiRleCheckbox;
 
-        // ===== METADATA COMPONENTS =====
-        // Note: Many format-specific metadata options are commented out in UltraCanvasImage.h
+        // ===== METADATA =====
         std::shared_ptr<UltraCanvasCheckbox> preserveMetadataCheckbox;
+        // Shown only when the source image actually carries metadata: there is
+        // nothing to open otherwise.
+        std::shared_ptr<UltraCanvasButton> showMetadataButton;
+        std::shared_ptr<UltraCanvasLabel> metadataSummaryLabel;
 
-        // ===== FOOTER COMPONENTS =====
+        // ===== FOOTER =====
         std::shared_ptr<UltraCanvasLabel> fileSizeEstimateLabel;
         std::shared_ptr<UltraCanvasButton> cancelButton;
         std::shared_ptr<UltraCanvasButton> saveButton;
@@ -207,10 +221,38 @@ namespace UltraCanvas {
         // selection index maps directly into this vector.
         std::vector<ImageFormatInfo> availableFormats;
 
+        // Guards against the width/height inputs echoing each other while the
+        // aspect ratio is locked.
+        bool syncingSize = false;
+
+        // ===== FORM BUILDING =====
+        // Every row of the dialog goes through these, which is what keeps the
+        // captions in one column and the controls in another.
+        std::shared_ptr<UltraCanvasLabel> MakeFieldLabel(const std::string& id, const std::string& text);
+        // "caption:  [control]" — caption in the auto column, control in the
+        // 1fr one. Both are registered when a format's rows are being built.
+        void AddFieldRow(const std::shared_ptr<UltraCanvasLabel>& label,
+                         const std::shared_ptr<UltraCanvasUIElement>& control);
+        void AddFieldRow(const std::string& id, const std::string& labelText,
+                         const std::shared_ptr<UltraCanvasUIElement>& control);
+        // A control that is its own caption (a checkbox, a note), across both
+        // columns.
+        void AddWideRow(const std::shared_ptr<UltraCanvasUIElement>& element);
+        // A small bold caption with a rule above it, grouping what follows.
+        std::shared_ptr<UltraCanvasLabel> AddSectionHeading(const std::string& id, const std::string& text,
+                                                            std::shared_ptr<UltraCanvasUIElement>* outRule = nullptr);
+        // Rows created until EndFormatRows() belong to `format`.
+        void BeginFormatRows(UCImageSaveFormat format);
+        void EndFormatRows();
+        // A row container for controls that share one cell (w × h, slider +
+        // value, checkbox + button).
+        std::shared_ptr<UltraCanvasContainer> MakeCellRow(const std::string& id, float gap = 8.0f);
+        void SizeButtonToLabel(const std::shared_ptr<UltraCanvasButton>& button);
+
         // ===== INTERNAL METHODS =====
         void BuildLayout();
-        void CreateHeaderSection();
-        void CreateOptionsSection();
+        void CreateFileSection();
+        void CreateImageSection();
         void CreateFormatOptionsSection();
         void CreateMetadataSection();
         void CreateFooterSection();
@@ -234,6 +276,10 @@ namespace UltraCanvas {
 
         void WireCallbacks();
         void UpdateFormatOptions();
+        // Shows the metadata controls when the source image has metadata to
+        // show, and reports how much.
+        void UpdateMetadataControls();
+        void ShowMetadataPopup();
         void UpdateColorDepthOptions();
         void UpdateQualityRange();
         void UpdateFileSizeEstimate();
