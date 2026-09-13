@@ -260,10 +260,17 @@ widens. Children whose content changes must call `InvalidateLayout()` from their
 setters (the framework's own widgets do) — otherwise the engine keeps the cached
 measurement.
 
-> **Caveat:** a flex container honours an item's `boxConstraints` on the **main
+> **Caveat:** a flex container honours an *item's* `boxConstraints` on the **main
 > axis only** ([FlexLayout.cpp:470](../UltraCanvas/core/CSSLayout/FlexLayout.cpp#L470)).
 > For a child of a flex **row**, `minWidth` works but `minHeight` is ignored —
 > give that axis an explicit `size.height` (as above) when it does not need to grow.
+>
+> A flex container's **own** `boxConstraints` are honoured on both axes, against
+> its border box, like any other box (CSS Sizing §4). That is the way to say
+> "this bar is at least this thick, and thicker when its contents need it":
+> leave `size` auto on that axis and set the minimum.
+> `UltraCanvasToolbar` does exactly this with the thickness its host constructs
+> it with — see `Tests/ToolbarThicknessTest.cpp`.
 
 `Apps/UltraMail/ui/UltraMailAccountBar.cpp` is a worked example: an account tile
 with a provider letter, an address and a row of `UltraCanvasBadge` counters that

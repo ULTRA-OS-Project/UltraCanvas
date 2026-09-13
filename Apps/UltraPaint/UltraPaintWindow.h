@@ -109,6 +109,13 @@ private:
     void MergeDocument(const std::shared_ptr<UCRasterDocument>& incoming,
                        const std::string& path, bool scaleToFit);
     bool SaveToPath(const std::string& path);
+    // Opens a dialog as this window's own: created, marked transient for the
+    // editor and centred on it. A dialog that skips this is a top-level window
+    // as far as the desktop is concerned, and gets placed like one — behind
+    // the editor, in a screen corner, or (on a window manager that maximises
+    // plain windows) over the whole image. The adjustment dialogs did skip it,
+    // which is what made the Adjust menu look as though it did nothing.
+    void ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog);
     void ConfirmDiscard(const std::string& question, const std::function<void()>& proceed);
     void UpdateTitle();
     void UpdateStatus();

@@ -2646,6 +2646,28 @@ else()
     message(STATUS "  VectorRasterTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TOOLBAR THICKNESS TEST =====
+# A toolbar is as thick as the items in it: the height (width, when vertical)
+# a host constructs it with is a floor, so buttons are never clipped by a
+# number somebody guessed, and a host that wants a taller bar still gets one.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ToolbarThicknessTest...")
+    add_executable(ToolbarThicknessTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ToolbarThicknessTest.cpp
+    )
+    target_include_directories(ToolbarThicknessTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ToolbarThicknessTest PRIVATE cxx_std_20)
+    target_link_libraries(ToolbarThicknessTest PRIVATE UltraCanvas)
+    set_target_properties(ToolbarThicknessTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ToolbarThicknessTest COMMAND ToolbarThicknessTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ToolbarThicknessTest")
+else()
+    message(STATUS "  ToolbarThicknessTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CSS LAYOUT FORM GRID TEST =====
 # The two-column [auto, 1fr] form grid every dialog is built from: captions
 # share a column, controls line up under each other, a full-width row does not

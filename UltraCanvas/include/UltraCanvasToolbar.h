@@ -1,7 +1,13 @@
 // include/UltraCanvasToolbar.h
 // Comprehensive cross-platform toolbar component with advanced features
-// Version: 1.3.0
-// Last Modified: 2026-06-01
+//
+// A toolbar is as thick as the items in it: the height passed to a horizontal
+// toolbar (the width of a vertical one) is treated as a minimum, and the
+// toolbar grows past it when its buttons need the room. Hosts therefore
+// cannot clip their own icons by guessing a number that was right before the
+// button metrics changed.
+// Version: 1.4.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -310,6 +316,12 @@ namespace UltraCanvas {
     private:
         // Internal helpers
         void CreateLayout();
+        // The height a horizontal toolbar was constructed with (the width of a
+        // vertical one) becomes a FLOOR rather than a fixed size, so a host
+        // that guesses low gets a toolbar that still fits its buttons instead
+        // of clipping them. See the .cpp for why a toolbar knows this better
+        // than its host does.
+        void AdoptThicknessAsMinimum();
         // Add `w` as a child and, if `id` is non-empty, register it for lookup.
         std::shared_ptr<UltraCanvasUIElement> RegisterWidget(
                 const std::string& id, std::shared_ptr<UltraCanvasUIElement> w);

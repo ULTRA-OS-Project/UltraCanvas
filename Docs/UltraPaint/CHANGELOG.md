@@ -1,3 +1,30 @@
+#### 2026-09-13 *0.2.3*
+- **The Adjust and Filter dialogs are visible again.** Every dialog the editor
+  opens is now created as the window's own - transient for it and centred on
+  it - instead of as a top-level window of its own. Without that the desktop
+  placed them like separate applications: behind the editor, in a screen
+  corner, or, on a window manager that maximises plain windows, over the whole
+  image. That is what made most of the *Adjust* menu look as though it did
+  nothing; the adjustments were being applied to a preview nobody could see.
+  The entries with no dialog (Invert, Desaturate, Sepia, Equalize) always
+  worked, which is what made the rest look broken rather than missing.
+- **The filter parameter dialog was rebuilt on the form grid.** "Brightness"
+  came out as "Brightn..." because the caption column was hard-coded to the
+  width the tool options panel uses; captions now share one `[auto, 1fr]` grid
+  column that is as wide as the longest parameter name in any language, the
+  sliders line up under each other, OK reads as the primary button, and the
+  window resizes. *Reset* puts the sliders back rather than rebuilding them
+  from a catalogue lookup that matched filters by their title text.
+- **The toolbar no longer clips its icons.** The buttons were cut off along
+  their bottom edge because the bar was 38 px tall and its contents need 44;
+  toolbars size themselves now (UltraCanvas 0.8.41), which also gives the
+  layer-button row in the Layers panel its missing pixels.
+- **Auto Contrast does something.** It stretched between the absolute darkest
+  and lightest pixel, which is a no-op on any photograph containing one true
+  black and one true white pixel - most of them. It now clips 0.2% off each end
+  of each channel's own histogram and stretches what is left, the way the
+  adjustment is normally meant.
+
 #### 2026-09-13 *0.2.2*
 - **3D models can be imported as images.** Opening, dropping or importing an
   STL - or an OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape, `.x`,

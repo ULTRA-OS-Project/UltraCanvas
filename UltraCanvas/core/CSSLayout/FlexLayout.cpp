@@ -610,6 +610,33 @@ namespace UltraCanvas {
                 }
             }
 
+            // min/max-width and -height apply to a flex CONTAINER's own box as
+            // much as to any other box (CSS Sizing §4). Without this a
+            // container that sizes to its content ignores a floor entirely -
+            // which is how a toolbar told "be at least this thick" came back
+            // the height of its tallest item and nothing more. The block path
+            // (MeasureBlock) has always clamped here; this is the same clamp,
+            // on the content box, for the same reason.
+            if (e.boxConstraints.has_value()) {
+                std::optional<float> parentInline =
+                    (c.horizontal.mode == ConstraintMode::Unbounded)
+                        ? std::nullopt
+                        : std::optional<float>{c.horizontal.available};
+                std::optional<float> parentBlock =
+                    (c.vertical.mode == ConstraintMode::Unbounded)
+                        ? std::nullopt
+                        : std::optional<float>{c.vertical.available};
+                // The constraint is written the way an author writes it - about
+                // the box - so it is compared against the border box and the
+                // padding and border come back off afterwards.
+                float borderBoxW = clampToConstraints(contentW + padH + bordH,
+                                                      e.boxConstraints, true, parentInline, ctx);
+                float borderBoxH = clampToConstraints(contentH + padV + bordV,
+                                                      e.boxConstraints, false, parentBlock, ctx);
+                contentW = borderBoxToContent(borderBoxW, padH, bordH);
+                contentH = borderBoxToContent(borderBoxH, padV, bordV);
+            }
+
             e.measured.measuredWidth  = contentW + padH + bordH;
             e.measured.measuredHeight = contentH + padV + bordV;
         }

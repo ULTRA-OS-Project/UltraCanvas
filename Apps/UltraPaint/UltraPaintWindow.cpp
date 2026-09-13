@@ -239,8 +239,7 @@ bool UltraPaintWindow::Initialize(const std::vector<std::string>& paths) {
             toolOptions.textFont = r.font; toolOptions.textSize = r.size; toolOptions.textBold = r.bold;
             PlaceText(x, y, r);
         };
-        dlg->Create();
-        dlg->Show();
+        ShowDialog(dlg);
     };
     toolContext.refreshOptions = [this]() { RebuildToolOptions(); };
 
@@ -872,12 +871,9 @@ void UltraPaintWindow::ImportFile(const std::string& path, bool fromDrop,
         forTheRest.page = 0;
         for (const auto& more : alsoFiles) ApplyImport(more, forTheRest);
     };
-    dialog->Create();
     // A drop answers a gesture made on this window, so the question belongs
     // over it rather than wherever the window manager would drop it.
-    dialog->SetTransientParent(window.get());
-    dialog->CenterOnParent(window.get());
-    dialog->Show();
+    ShowDialog(dialog);
 }
 
 void UltraPaintWindow::ApplyImport(const std::string& path, const UltraPaintImportResult& result,
@@ -994,6 +990,21 @@ void UltraPaintWindow::MergeDocument(const std::shared_ptr<UCRasterDocument>& in
         statusHint->SetText("Merged " + FileNameOf(path) + " as a new layer" +
                             (cropped ? " (cropped to the canvas)" : ""));
     }
+}
+
+void UltraPaintWindow::ShowDialog(const std::shared_ptr<UltraCanvasWindow>& dialog) {
+    if (!dialog) return;
+    dialog->Create();
+    if (window) {
+        // Transient: the desktop then knows this window belongs to the editor,
+        // keeps it above it, and moves it with it. Without that a dialog is
+        // just another application window — the window manager is free to put
+        // it behind the editor or to maximise it over the image, and either
+        // way the user sees nothing happen.
+        dialog->SetTransientParent(window.get());
+        dialog->CenterOnParent(window.get());
+    }
+    dialog->Show();
 }
 
 bool UltraPaintWindow::SaveToPath(const std::string& path) {
@@ -1173,8 +1184,7 @@ void UltraPaintWindow::CmdNew() {
         if (document && document->IsModified()) ConfirmDiscard("Discard the unsaved changes and start a new image?", go);
         else go();
     };
-    dlg->Create();
-    dlg->Show();
+    ShowDialog(dlg);
 }
 
 void UltraPaintWindow::CmdNewWindow() {
@@ -1285,8 +1295,7 @@ void UltraPaintWindow::CmdExport() {
                     UltraCanvasDialogManager::ShowError("Could not export " + path + "\n" + error, "Export", nullptr, window.get());
                 else if (statusHint) statusHint->SetText("Exported " + FileNameOf(path));
             };
-            dlg->Create();
-            dlg->Show();
+            ShowDialog(dlg);
         } catch (const std::exception& e) {
             UltraCanvasDialogManager::ShowError(std::string("Export failed: ") + e.what(), "Export", nullptr, window.get());
         }
@@ -1411,8 +1420,7 @@ void UltraPaintWindow::CmdScaleImage() {
     if (!document) return;
     auto dlg = std::make_shared<UltraPaintResizeDialog>(document->GetWidth(), document->GetHeight(), false);
     dlg->onAccept = [this](const UltraPaintResizeResult& r) { document->ScaleImage(r.width, r.height); surface->ZoomToFit(); };
-    dlg->Create();
-    dlg->Show();
+    ShowDialog(dlg);
 }
 
 void UltraPaintWindow::CmdCanvasSize() {
@@ -1425,8 +1433,7 @@ void UltraPaintWindow::CmdCanvasSize() {
         document->ResizeCanvas(r.width, r.height, dx, dy);
         surface->ZoomToFit();
     };
-    dlg->Create();
-    dlg->Show();
+    ShowDialog(dlg);
 }
 
 void UltraPaintWindow::CmdCropToSelection() {
@@ -1474,8 +1481,7 @@ void UltraPaintWindow::CmdLayerProperties() {
         document->SetLayerVisible(i, r.visible);
         document->SetLayerLocked(i, r.locked);
     };
-    dlg->Create();
-    dlg->Show();
+    ShowDialog(dlg);
 }
 
 // ===========================================================================
@@ -1608,8 +1614,7 @@ void UltraPaintWindow::CmdFilter(const PaintFilter& filter) {
         EndPreview(true, label, [apply, values](const PixelFX::PFXImage& img) { return apply(img, values); });
     };
     dlg->onCancel = [this, label]() { EndPreview(false, label, nullptr); };
-    dlg->Create();
-    dlg->Show();
+    ShowDialog(dlg);
     // initial preview with the defaults
     ShowPreview([apply, v = dlg->GetValues()](const PixelFX::PFXImage& img) { return apply(img, v); });
 #else
@@ -1656,8 +1661,7 @@ void UltraPaintWindow::CmdCurves() {
     dlg->onCurvesChanged = [this, opFor](const ToneCurveSet& set) { ShowPreview(opFor(set)); };
     dlg->onAccept = [this, opFor](const ToneCurveSet& set) { EndPreview(!set.IsIdentity(), "Curves", opFor(set)); };
     dlg->onCancel = [this]() { EndPreview(false, "Curves", nullptr); };
-    dlg->Create();
-    dlg->Show();
+    ShowDialog(dlg);
 #else
     UltraCanvasDialogManager::ShowError("Curves needs a build with libvips.", "Curves", nullptr, window.get());
 #endif
@@ -1693,8 +1697,7 @@ void UltraPaintWindow::CmdColourToAlpha() {
         EndPreview(p.transparency > 0, "Colour to Alpha", opFor(p));
     };
     dlg->onCancel = [this]() { EndPreview(false, "Colour to Alpha", nullptr); };
-    dlg->Create();
-    dlg->Show();
+    ShowDialog(dlg);
     ShowPreview(opFor(initial));
 #else
     UltraCanvasDialogManager::ShowError("Colour to Alpha needs a build with libvips.", "Colour to Alpha", nullptr, window.get());

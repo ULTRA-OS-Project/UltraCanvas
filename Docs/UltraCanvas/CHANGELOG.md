@@ -1,3 +1,21 @@
+#### 2026-09-13 *0.8.41*
+- **A toolbar is as thick as the items in it.** The height a horizontal
+  `UltraCanvasToolbar` is constructed with - the width of a vertical one - is
+  now a floor rather than a fixed size, so it grows to fit its buttons instead
+  of cutting them off. Every host had to guess that number (38 in UltraPaint,
+  40 in the media viewer, 30 for a row of layer buttons) against metrics only
+  the toolbar knows: a 32 px button inside 5 px of padding and a 1 px border
+  needs 44 px, and anything less silently clipped the bottom of every icon. A
+  host that asks for a *taller* bar still gets exactly that.
+  `Tests/ToolbarThicknessTest` (CTest) pins both halves.
+- **A flex container now honours its own min/max size.** `boxConstraints` on a
+  flex container were read for its *items* and ignored for its own box, so
+  `minHeight` on anything laid out with `display:flex` did nothing at all -
+  which is why the floor above needed the engine fixed first. It is clamped
+  against the border box, on both axes, like the block path has always done
+  (CSS Sizing §4). An item's constraints are unchanged: still main-axis only.
+  Doc: [CSSLayout](../CSSLayout.md).
+
 #### 2026-09-13 *0.8.40*
 - **A 3D model can become a bitmap, from a view the user chose.**
   `UltraCanvasModelRaster.h` grew the whole path from a model file to an
