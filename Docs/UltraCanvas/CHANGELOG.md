@@ -1,4 +1,4 @@
-#### 2026-09-13 *0.8.41*
+#### 2026-09-13 *0.8.43*
 - **A toolbar is as thick as the items in it.** The height a horizontal
   `UltraCanvasToolbar` is constructed with - the width of a vertical one - is
   now a floor rather than a fixed size, so it grows to fit its buttons instead
@@ -16,7 +16,7 @@
   (CSS Sizing §4). An item's constraints are unchanged: still main-axis only.
   Doc: [CSSLayout](../CSSLayout.md).
 
-#### 2026-09-13 *0.8.40*
+#### 2026-09-13 *0.8.42*
 - **A 3D model can become a bitmap, from a view the user chose.**
   `UltraCanvasModelRaster.h` grew the whole path from a model file to an
   editable layer, the 3D counterpart of `UltraCanvasVectorRaster`:
@@ -59,7 +59,7 @@
   ships, so a typo in it fails a test rather than a desktop silently refusing a
   drop.
 
-#### 2026-09-13 *0.8.39*
+#### 2026-09-13 *0.8.41*
 - **Dialog captions line up, and survive translation.** New
   `UltraCanvasFormLayout.h` (`CreateFormGrid` / `AddFormRow` /
   `AddFormWideRow` / `CreateFormCellRow`): the "caption: control" form as one
@@ -106,7 +106,7 @@
   when the image actually carries metadata. Doc:
   [UltraCanvasMetadataDialog](UltraCanvasMetadataDialog.md).
 
-#### 2026-09-12 *0.8.38*
+#### 2026-09-12 *0.8.40*
 - **Vector artwork can become pixels.** New `UltraCanvasVectorRaster.h`
   (`IsVectorGraphicsPath` / `GetVectorRasterExtensions` /
   `InspectVectorFile` / `RasterizeVectorFile`): it reports what a drawing
@@ -130,6 +130,59 @@
   touching what is drawn over it.
 - Tested by `VectorRasterTest` (CTest), which skips itself on a build with no
   SVG rasterizer rather than failing.
+
+#### 2026-09-13 *0.8.39*
+- **A cut and paste now tells the host about both ends of the move.**
+  `onFolderModified` named the folder the entries landed in and nothing else,
+  so the folder they were taken *out* of was never reported - and a host that
+  keeps a folder tree (UltraFiler) had no way to learn that a folder had left
+  it. Cutting a folder with `Ctrl+X` and pasting it elsewhere left its row, and
+  its whole subtree, sitting under the folder it had moved away from until the
+  application was restarted.
+- The paste machinery now remembers the parent folder of every source a move
+  really renamed away (`PendingPaste::vacatedFolders`) and reports each of them
+  once, after the destination has been dealt with. A cut pasted back into the
+  folder it came from is still a no-op and reports nothing, and a copy reports
+  only the destination, as before.
+- A drop onto a subfolder no longer reports the folder the files came from by
+  hand - the same mechanism names it. It names it by path rather than as "the
+  folder I show", so it is now reported in a file-list display too, where an
+  unnamed folder is dropped.
+
+#### 2026-09-12 *0.8.38*
+- **LaTeX: the module is actually shipped in the Windows and macOS packages,
+  and is found there.** The demo's "LaTeX Documents" page in the Windows
+  package (`UCDemo-Windows-*`) reported "LaTeX module (UltraCanvasLaTeX.dll)
+  not found ... LoadLibrary failed (code 126)" for every candidate: the
+  module is a dlopen()ed CMake MODULE, which CMake emits to `build/lib`
+  rather than the build root, so `package-win.sh`'s `cp ./build/*.dll` never
+  picked it up - and a MinGW build named it `libUltraCanvasLaTeX.dll`, a
+  name the loader never asked for. `package-macos.sh` did not bundle it
+  either. So none of the LaTeX work was visible in a packaged demo.
+  - `UltraCanvas/CMakeLists.txt`: the module gets `PREFIX ""` on Windows,
+    matching the loader's `UltraCanvasLaTeX.dll` (as the chart element
+    modules already do), and `SUFFIX ".dylib"` on macOS - CMake's default
+    for a MODULE there is `.so`, so the file had never carried the name the
+    loader and the bundle script look for.
+  - `package-win.sh` ships the module as `lib/UltraCanvasLaTeX.dll`, runs it
+    through the PE header check, and warns loudly when the build has none;
+    the transitive DLL pass already walks subdirectories.
+  - `package-macos.sh` bundles it as `Contents/PlugIns/libUltraCanvasLaTeX.dylib`,
+    collects and rewrites its Homebrew dependencies like the executable's,
+    and signs it with the frameworks.
+  - `core/UltraCanvasLaTeXModuleLoader.cpp`: probes both DLL names on
+    Windows, both `.dylib` and `.so` names plus `<exe>/../PlugIns/` on macOS; opens absolute paths with
+    `LOAD_WITH_ALTERED_SEARCH_PATH` so a module in `lib/` resolves the core
+    DLL beside the executable; spells out codes 126 and 193 in the error.
+  - Demo: the LaTeX Documents menu entry no longer credits MicroTeX, and the
+    page no longer has a reference-image path. A pre-rendered `.png` / `.gif`
+    beside a `.tex` demonstrated nothing of the framework; every file now
+    goes through a live path - the LaTeX view for a formula-only document,
+    the document reader for everything else, which reports what it cannot
+    typeset (a TikZ picture, an unknown package) as a diagnostic in the
+    header while the rest of the document still renders. `media/LaTex`
+    holds `.tex` sources only.
+  - `Docs/UltraCanvas/UltraCanvasLaTeXView.md`: search order updated.
 
 #### 2026-09-12 *0.8.37*
 - **A double-click that opens nothing now says so on macOS too.** The default

@@ -66,6 +66,25 @@ done
 cp ./build/*.dll "$DIST_DIR/" 2>/dev/null || true
 echo "Copied EXE"
 
+# The LaTeX math module is a dlopen()ed CMake MODULE, so CMake emits it to
+# build/lib (LIBRARY_OUTPUT_DIRECTORY) rather than next to the executables,
+# and the glob above never sees it. Ship it in lib/, which the core's loader
+# probes as <exe>/lib/; its own DLL dependencies are the core DLL and the
+# runtime already sitting beside the .exe (plus whatever the transitive pass
+# below adds). Without it CreateLaTeXView() returns nullptr and the demo's
+# LaTeX page reports "LaTeX module (UltraCanvasLaTeX.dll) not found".
+LATEX_DLL=""
+for cand in ./build/lib/UltraCanvasLaTeX.dll ./build/lib/libUltraCanvasLaTeX.dll; do
+    if [ -f "$cand" ]; then LATEX_DLL="$cand"; break; fi
+done
+if [ -n "$LATEX_DLL" ]; then
+    mkdir -p "$DIST_DIR/lib"
+    cp "$LATEX_DLL" "$DIST_DIR/lib/UltraCanvasLaTeX.dll"
+    echo "Copied LaTeX module: $(basename "$LATEX_DLL") -> lib/UltraCanvasLaTeX.dll"
+else
+    echo "Warning: LaTeX module not found in build/lib - this package will not render LaTeX" >&2
+fi
+
 # Refuse to package a binary Windows would refuse to run. The x86_64 and
 # arm64 packages are built from the same sources with the same file list, so
 # only the PE header says which is which - and a wrong-architecture, truncated
@@ -76,7 +95,9 @@ echo "Copied EXE"
 VERIFY_ARCH="${MSYSTEM_CARCH:-x86_64}"
 echo ""
 echo "Verifying PE headers ($VERIFY_ARCH)..."
-if ! "$SCRIPT_DIR/scripts/verify-pe.sh" "$VERIFY_ARCH" "$DIST_DIR"/*.exe "$DIST_DIR"/*.dll; then
+VERIFY_FILES=("$DIST_DIR"/*.exe "$DIST_DIR"/*.dll)
+[ -f "$DIST_DIR/lib/UltraCanvasLaTeX.dll" ] && VERIFY_FILES+=("$DIST_DIR/lib/UltraCanvasLaTeX.dll")
+if ! "$SCRIPT_DIR/scripts/verify-pe.sh" "$VERIFY_ARCH" "${VERIFY_FILES[@]}"; then
     echo "Error: a packaged executable or DLL is not a valid $VERIFY_ARCH Windows binary (see above)" >&2
     exit 1
 fi

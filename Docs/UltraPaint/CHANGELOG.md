@@ -17,7 +17,7 @@
   from a catalogue lookup that matched filters by their title text.
 - **The toolbar no longer clips its icons.** The buttons were cut off along
   their bottom edge because the bar was 38 px tall and its contents need 44;
-  toolbars size themselves now (UltraCanvas 0.8.41), which also gives the
+  toolbars size themselves now (UltraCanvas 0.8.43), which also gives the
   layer-button row in the Layers panel its missing pixels.
 - **Auto Contrast does something.** It stretched between the absolute darkest
   and lightest pixel, which is a no-op on any photograph containing one true
@@ -52,7 +52,7 @@
   Canvas Size, Text, Layer Properties and the import question were a flex row
   per field, each caption pinned to a hard-coded width - 110 px here, 90 there,
   60 in the Text dialog. They are rows of one two-column grid now
-  (`UltraCanvasFormLayout`, UltraCanvas 0.8.39): the controls line up, and a
+  (`UltraCanvasFormLayout`, UltraCanvas 0.8.41): the controls line up, and a
   caption longer than the old width - which is to say most translations -
   widens the column instead of being cut off. The dialogs resize, so the room
   a longer caption takes can be given back.
@@ -85,7 +85,7 @@
   than scaled up from a thumbnail, keeps no file path (so *Save* asks where to
   put it instead of overwriting the drawing with pixels), and merges into the
   open image at whatever size fits the canvas. Backed by the new
-  `UltraCanvasVectorRaster` (UltraCanvas 0.8.38).
+  `UltraCanvasVectorRaster` (UltraCanvas 0.8.40).
 - **File > Import Image...** does the same as a drop from the file dialog:
   merge into this image, or open it in a new window.
 - Dropping several files at once asks once and applies the answer to all of

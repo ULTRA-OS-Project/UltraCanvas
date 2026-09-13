@@ -1709,8 +1709,8 @@ namespace UltraCanvas {
                 .AddVariant("ebook", "Plain Text");
 
         textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents",
-                               "LaTeX formula documents typeset live from source by MicroTeX — "
-                               "rendered output and source per document",
+                               "LaTeX documents typeset live from source by the UltraCanvas math "
+                               "engine — rendered output and source per document",
                                ImplementationStatus::PartiallyImplemented,
                                [this]() { return CreateLaTeXExamples(); },
                                "DemoApp/UltraCanvasLaTeXExamples.cpp");
