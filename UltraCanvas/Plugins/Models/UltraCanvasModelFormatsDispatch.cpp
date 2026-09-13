@@ -135,7 +135,23 @@ std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedLoadExtensions(
 }
 
 std::vector<std::string> UltraCanvasModelFormatsPlugin::SupportedSaveExtensions() {
-    return {"obj", "step", "stp", "ply"};
+    // Every entry here must be an extension whose converter answers true to
+    // CanExport(); ModelWriterTest asserts the two agree in both directions,
+    // because a list that drifts from the converters is how a caller ends up
+    // told a format is writable when nothing writes it.
+    std::vector<std::string> extensions = {"3ds", "obj", "step", "stp", "p21", "ply"};
+#ifdef ULTRACANVAS_HAS_COLLADA_CONVERTER
+    extensions.push_back("dae");
+#endif
+#ifdef ULTRACANVAS_HAS_X3D_CONVERTER
+    // Both text encodings: .x3d writes XML and .x3dv/.wrl/.vrml write Classic
+    // VRML. The writer picks from the extension, so all four are writable.
+    extensions.push_back("x3d");
+    extensions.push_back("x3dv");
+    extensions.push_back("wrl");
+    extensions.push_back("vrml");
+#endif
+    return extensions;
 }
 
 std::vector<ModelFormat> UltraCanvasModelFormatsPlugin::AvailableFormats() {

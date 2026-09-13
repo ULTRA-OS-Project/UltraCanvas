@@ -16,7 +16,7 @@
 // ModelDocumentToMesh3D pair the plugin installs — turns each sample into
 // triangles a preview can draw.
 //
-// argv[1] is media/models. Without it only the contract cases run.
+// argv[1] is media/3D. Without it only the contract cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-11
@@ -260,7 +260,7 @@ int main(int argc, char** argv) {
     TestDxfStaysADrawing();
     TestRealProviderClaimsWhatItReads();
     if (argc > 1) TestSamples(argv[1]);
-    else std::printf("Samples: skipped (pass the media/models path to run them)\n");
+    else std::printf("Samples: skipped (pass the media/3D path to run them)\n");
 
     // Leave no provider behind: a suite that runs in the same process as
     // another must not decide what that one sees.

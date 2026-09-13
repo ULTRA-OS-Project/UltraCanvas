@@ -1,7 +1,7 @@
 // Tests/ModelDXFTest.cpp
 // DXF read as 3D geometry into ModelDocument.
 //
-// The interesting cases here are the two kinds of DXF. media/models/DXF holds
+// The interesting cases here are the two kinds of DXF. media/3D/DXF holds
 // an exported model — 8110 3DFACE quads, which must arrive as 8110 quads with
 // the Z the 2D reader discards. media/vector/DXF holds drawings — splines and
 // polylines, no 3D at all — which must be refused with an explanation rather

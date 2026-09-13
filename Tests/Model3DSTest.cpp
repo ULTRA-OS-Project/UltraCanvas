@@ -1,5 +1,5 @@
 // Tests/Model3DSTest.cpp
-// The 3DS reader against the real E-45 aircraft sample in media/models/3DS.
+// The 3DS reader against the real E-45 aircraft sample in media/3D/3DS.
 //
 // 3DS is the first scene format UltraCanvas reads into ModelDocument, so this
 // is also the first end-to-end check that the structure holds one: several
@@ -65,7 +65,9 @@ static void TestCapabilities() {
     std::printf("Capabilities\n");
     ThreeDSConverter conv;
     const FormatCapabilities caps = conv.GetCapabilities();
-    Check(conv.CanImport() && !conv.CanExport(), "3DS is read-only");
+    // 3DS gained a writer; the round trips live in ModelWriterTest, and this
+    // is the declaration they rest on.
+    Check(conv.CanImport() && conv.CanExport(), "3DS reads and writes");
     Check(caps.Meshes && caps.Materials && caps.Textures && caps.TextureCoordinates,
           "claims meshes, materials, textures and UVs");
     // The capability report must describe the implementation, not the ambition.

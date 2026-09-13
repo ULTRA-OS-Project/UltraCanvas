@@ -614,7 +614,7 @@ worth explaining:
 - **`WeldVertices` is attribute-aware.** Two corners at the same position with
   different normals do *not* merge, because merging them would destroy the
   faceting the file specified. Measured on the 510 671-triangle STL sample in
-  `media/vector/STL`: attribute-aware welding merges **3.4 %** of the 1 532 013
+  `media/3D/STL`: attribute-aware welding merges **3.4 %** of the 1 532 013
   vertices (the genuinely coplanar neighbours), while ignoring normals merges
   **82.9 %** (1 532 013 → 261 504). Both numbers are correct answers to
   different questions; a caller wanting topology for simplification clears the
@@ -756,7 +756,7 @@ the same shape: a count is never trusted over the bytes present, whether it is a
 escapes, comments between any two tokens, `$` and `*`, out-of-order ids, a
 truncated file, and the complex instance that a rational NURBS can only be
 written as. The entity layer runs against three **hand-authored** samples in
-`media/models/STEP`, hand-authored precisely because a reader tested only
+`media/3D/STEP`, hand-authored precisely because a reader tested only
 against files its own writer produced proves nothing:
 
 - `Box.step` — a 10×20×30 mm block whose left face states its loop backwards
@@ -787,7 +787,7 @@ Each step is independently mergeable and comes with a test and a demo page.
 
 0. **3DS — done.** `Plugins/Models/3DS/UltraCanvas3DSConverter.cpp` reads the
    chunked binary format into `ModelDocument`, validated against the E-45
-   aircraft sample in `media/models/3DS`
+   aircraft sample in `media/3D/3DS`
    (`Tests/Model3DSTest.cpp`, 25 assertions). It landed first because it was
    the sample to hand and because it exercises far more of the structure than
    STL does: two named meshes, per-object matrices, two materials with four

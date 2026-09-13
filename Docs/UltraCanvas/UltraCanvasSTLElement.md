@@ -13,7 +13,7 @@ directions.
 
 **Demo:** *3D Graphics → STL 3D Models*
 (`Apps/DemoApp/UltraCanvasSTLExamples.cpp`), which reads every `.stl` file in
-`media/vector/STL`.
+`media/3D/STL`.
 
 ## What is supported
 
