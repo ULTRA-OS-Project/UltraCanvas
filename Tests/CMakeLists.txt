@@ -327,6 +327,28 @@ else()
     message(STATUS "  TextAreaSpellCheckTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== CARET STACKING ORDER TEST =====
+# Where the shared caret lands in the window's compositing order: under a menu
+# opened over it, back on top once the menu closes. Needs the real framework -
+# it reads the composited window pixels back. Skips itself without a DISPLAY.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building CaretStackingTest...")
+    add_executable(CaretStackingTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/CaretStackingTest.cpp
+    )
+    target_include_directories(CaretStackingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(CaretStackingTest PRIVATE cxx_std_20)
+    target_link_libraries(CaretStackingTest PRIVATE UltraCanvas)
+    set_target_properties(CaretStackingTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME CaretStackingTest COMMAND CaretStackingTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: CaretStackingTest")
+else()
+    message(STATUS "  CaretStackingTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== ULTRATEXTER MARKDOWN SPELL RANGE TEST =====
 # The scanner that keeps fenced code, link targets and math out of UltraTexter's
 # spell check has no framework or editor dependency, so the test builds from

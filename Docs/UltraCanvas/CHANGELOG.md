@@ -1,3 +1,37 @@
+#### 2026-09-13 *0.8.45*
+- **Fixed the text caret blinking through an open menu.** A menu (or any
+  popup) opened over the text cursor - Texter's *Edit* menu over the editing
+  position is the case this was found in - had the caret blinking on top of
+  the menu's items, because window composition drew popups first and the
+  shared caret last, above everything.
+  - The caret now belongs to the layer of the widget that owns it:
+    `UltraCanvasCaret::GetPopupLayer()` reports the popup its owner lives in
+    (nullptr for the window's own content), and
+    `UltraCanvasWindowBase::UpdateAndRender` composites the caret directly
+    above that layer. A caret in the window content goes under every popup; a
+    caret inside a popup - an editable dropdown, the autocomplete field -
+    still sits above that popup and under any popup opened on top of it, and
+    tooltips stay above all of it.
+  - The blink-only fast path (restore the pixels under the caret, re-blend the
+    caret, render nothing) used to be abandoned whenever *any* popup was
+    visible. It is now given up only when an overlay stacked above the caret's
+    layer actually touches the caret rectangle, so typing next to an open
+    menu or a dropdown elsewhere in the window no longer re-composites the
+    whole window twice a second. When the caret lives in a popup, those
+    pixels are restored from the popup's own surface instead of the window
+    content, which is what makes that path safe there at all.
+  - New `UltraCanvasUIElement::IsPopupElement()` exposes the existing
+    `isPopup` flag that the compositor needs to resolve the stacking.
+  - `UltraCanvasCaret::Hide()` now asks for a full composition rather than a
+    caret-area one. The shortcut restores the caret's pixels from the layer it
+    belongs to, and Hide is the moment the caret stops having one - so its own
+    erase could not go through it. Nothing showed a stale caret today because
+    every caller repaints its widget as well; the caret no longer depends on
+    that.
+  - `Tests/CaretStackingTest` is the regression test: it opens a real window
+    under Xvfb, puts a menu over the caret and reads the composited pixels
+    back. It skips itself where there is no display.
+
 #### 2026-09-13 *0.8.43*
 - **A folder display can say what it is holding back.** A file display that
   drops entries without a word is how a user comes to believe a folder is
