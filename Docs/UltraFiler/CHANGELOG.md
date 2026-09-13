@@ -1,4 +1,4 @@
-#### 2026-09-12 *1.31.0*
+#### 2026-09-13 *1.31.0*
 - **The folder tree now follows what happens to folders in the file display.**
   Cutting a folder with `Ctrl+X` and pasting it into another folder moved it on
   disk and in the file display, but the tree kept showing it - with everything
@@ -24,7 +24,7 @@
 - A pin pointing at a folder that has been moved away or deleted leaves the
   tree's Pinned section, exactly as it does when the folder is deleted through
   the tree's context menu. (Framework side:
-  `Docs/UltraCanvas/CHANGELOG.md` 0.8.38.)
+  `Docs/UltraCanvas/CHANGELOG.md` 0.8.39.)
 
 #### 2026-09-12 *1.30.0*
 - **A double-click starts the program the file type is assigned to.** On
