@@ -136,4 +136,4 @@ if (!eps->LoadFromFile("media/vector/EPS/demo.eps")) {
 window->AddChild(eps);
 ```
 
-The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the shipped samples from `media/vector/EPS/` with a fullscreen viewer and zoom controls.
+The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows both shipped samples from `media/vector/EPS/` — `demo.eps` and `gears.eps` — with a fullscreen viewer and zoom controls.

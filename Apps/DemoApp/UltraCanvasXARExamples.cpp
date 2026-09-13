@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasXARExamples.cpp
 // Xara (.xar) vector graphics demo examples for UltraCanvas Framework
-// Version: 1.1.0
-// Last Modified: 2026-08-26
+// Version: 1.2.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -210,21 +210,22 @@ namespace UltraCanvas {
             container->AddChild(tile);
         };
 
-        makeTile("XARContainer1", 20, 100, "demo.xar");
-        makeTile("XARContainer2", 340, 100, "backside.xar");
+        makeTile("XARContainer1", 20, 95, "Midget.xar");
+        makeTile("XARContainer2", 340, 95, "Apple5.xar");
+        makeTile("XARContainer3", 660, 95, "Backside.xar");
 
         // ===== INFO PANEL =====
-        auto infoContainer = std::make_shared<UltraCanvasContainer>("InfoPanel", 660, 100, 300, 280);
+        auto infoContainer = std::make_shared<UltraCanvasContainer>("InfoPanel", 20, 390, 470, 290);
         infoContainer->SetBackgroundColor(Color(240, 248, 255, 255));
         infoContainer->SetBorders(2, Color(100, 149, 237, 255));
 
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 10, 10, 280, 25);
+        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 10, 10, 450, 25);
         infoTitle->SetText("XAR Plugin Features");
         infoTitle->SetFontWeight(FontWeight::Bold);
         infoTitle->SetFontSize(13);
         infoContainer->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 40, 280, 200);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 10, 40, 450, 240);
         infoText->SetText(
                 "✓ Xara .xar drawings (compressed too)\n"
                 "✓ Paths, QuickShapes, groups, layers\n"
@@ -240,6 +241,39 @@ namespace UltraCanvas {
         infoContainer->AddChild(infoText);
 
         container->AddChild(infoContainer);
+
+        // ===== HOW IT WORKS =====
+        auto howContainer = std::make_shared<UltraCanvasContainer>("HowPanel", 510, 390, 470, 290);
+        howContainer->SetBackgroundColor(Color(255, 250, 240, 255));
+        howContainer->SetBorders(2, Color(222, 184, 135, 255));
+
+        auto howTitle = std::make_shared<UltraCanvasLabel>("HowTitle", 10, 10, 450, 25);
+        howTitle->SetText("The bundled drawings");
+        howTitle->SetFontWeight(FontWeight::Bold);
+        howTitle->SetFontSize(13);
+        howContainer->AddChild(howTitle);
+
+        auto howText = std::make_shared<UltraCanvasLabel>("HowText", 10, 40, 450, 240);
+        howText->SetText(
+                "Midget.xar - 842 x 595 px, 5,380 records, 577 nodes:\n"
+                "524 paths over multi-stage linear and elliptical fills,\n"
+                "7 text stories, 5 groups.\n\n"
+                "Apple5.xar - 612 x 846 px, 7,175 records, 699 nodes:\n"
+                "691 filled-and-stroked paths in 3 groups - flat fills and\n"
+                "multi-stage gradients, no text and no bitmaps.\n\n"
+                "Backside.xar - 842 x 1191 px, 3,898 records, 642 nodes:\n"
+                "259 paths, 175 QuickShape polygons, 46 soft shadows and\n"
+                "26 text stories across 44 groups - the widest feature mix.\n\n"
+                "Every .xar in media/vector/XAR is read by UltraCanvasXARPlugin\n"
+                "directly - no external tools and no conversion step.\n"
+                "Tests/XARProbeTest prints these counts, the unhandled record\n"
+                "tags and the parse warnings for each of them."
+        );
+        howText->SetFontSize(11);
+        howText->SetTextColor(Color(50, 50, 50, 255));
+        howContainer->AddChild(howText);
+
+        container->AddChild(howContainer);
 
         return container;
     }

@@ -170,6 +170,7 @@ namespace UltraCanvas {
             container->AddChild(tile);
         };
 
+        // Every .eps file shipped under media/vector/EPS.
         makeTile("EPSContainer1", 20, 100, "demo.eps");
         makeTile("EPSContainer2", 340, 100, "gears.eps");
 

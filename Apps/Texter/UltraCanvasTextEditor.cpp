@@ -3765,7 +3765,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // Logo image
         auto logo = std::make_shared<UltraCanvasImageElement>("AboutLogo", 74, 74);
-        logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/Logo_Texter.png"));
+        logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/docs/Logo_Texter.png"));
         logo->SetFitMode(ImageFitMode::Contain);
         logo->SetMargin(0, 0, 8, 0);
         aboutDialog->AddChild(logo);

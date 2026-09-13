@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasSVGExamples.cpp
 // Demo examples implementation for UltraCanvas Framework components
-// Version: 1.3.1
-// Last Modified: 2026-05-01
+// Version: 1.4.0
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -109,231 +109,86 @@ namespace UltraCanvas {
 
         // Description
         auto description = std::make_shared<UltraCanvasLabel>("Description", 10, 45, 600, 40);
-        description->SetText("Click on the SVG image below to open it in fullscreen mode.\nPress ESC to close the fullscreen view.");
+        description->SetText("Every .svg sample shipped under media/vector/SVG. Click a drawing to open it in fullscreen mode.\nPress ESC to close the fullscreen view.");
         description->SetFontSize(12);
         description->SetTextColor(Color(80, 80, 80, 255));
         container->AddChild(description);
 
-        // SVG Container with border
-        auto svgContainer = std::make_shared<UltraCanvasContainer>("SVGContainer", 20, 100, 240, 240);
-        svgContainer->SetBackgroundColor(Color(250, 250, 250, 255));
-        svgContainer->SetBorders(2, Color(180, 180, 180, 255));
+        // Status label for feedback
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("SVGStatus", 10, 700, 980, 60);
+        statusLabel->SetText("Ready. Click on an SVG file to view it fullscreen.");
+        statusLabel->SetFontSize(11);
+        statusLabel->SetTextColor(Color(60, 60, 60, 255));
+        statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
+        container->AddChild(statusLabel);
 
+        // One tile per sample drawing in media/vector/SVG/.
+        auto makeTile = [&](const std::string& id, int x, int y,
+                            const std::string& fileName) {
+            auto tile = std::make_shared<UltraCanvasContainer>(id, x, y, 240, 240);
+            tile->SetBackgroundColor(Color(250, 250, 250, 255));
+            tile->SetBorders(2, Color(180, 180, 180, 255));
 
-        // Create SVG Element (200x200 inside the container with padding)
-        auto svgElement = std::make_shared<UltraCanvasImageElement>(
-                "DemoSVG",
-                20, 20,  // 20px padding inside container
-                200, 200
-        );
-
-        // Path to SVG file (adjust this path to your actual SVG file location)
-        std::string svgFilePath = NormalizePath(GetResourcesDir() + "media/vector/SVG/demo.svg");
-
-        // Try to load from file, fallback to inline SVG if file not found
-        if (!svgElement->LoadFromFile(svgFilePath)) {
-            // Create a sample inline SVG as fallback
-            std::string sampleSVG = R"("
-            "<?xml version="1.0" encoding="UTF-8"?>"
-            <svg width="200" height="200" xmlns="http://www.w3.org/2000/svg">
-                <!-- Background -->
-                <rect x="0" y="0" width="200" height="200" fill="#f0f8ff"/>
-
-                <!-- UltraCanvas Logo Placeholder -->
-                <g transform=\"translate(100, 100)\">
-                                    <!-- Outer circle -->
-                                               <circle r="80" fill="none" stroke="#4169e1" stroke-width="4"/>
-
-                                                                                                        <!-- Inner circles -->
-                                                                                                                   <circle r="60" fill="none" stroke="#6495ed" stroke-width="3"/>
-                                                                                                                                                                            <circle r="40" fill="none" stroke="#87ceeb" stroke-width="2"/>
-
-                                                                                                                                                                                                                                     <!-- Center star -->
-                                                                                                                                                                                                                                                 <path d="M 0,-30 L 8.8,9.5 L -28.5,-9.3 L 28.5,-9.3 L -8.8,9.5 Z"
-            fill="#4169e1" stroke="#2e5fc7" stroke-width="2"/>
-
-                                                         <!-- Text -->
-                                                         <text y="50" text-anchor="middle" font-family="Arial, sans-serif"
-            font-size="16" font-weight="bold" fill="#2e5fc7">UltraCanvas</text>
-                                                   </g>
-
-                                                     <!-- Corner decorations -->
-                                                                 <circle cx="20" cy="20" r="5" fill="#6495ed"/>
-                                                                                                    <circle cx="180" cy="20" r="5" fill="#6495ed"/>
-                                                                                                                                        <circle cx="20" cy="180" r="5" fill="#6495ed"/>
-                                                                                                                                                                            <circle cx="180" cy="180" r="5" fill="#6495ed"/>
-                                                                                                                                             </svg>
-            )";
-
-            //svgElement->LoadFromString(sampleSVG);
-            svgFilePath = ""; // Clear file path since we're using inline SVG
-        }
-
-        // Create demo handler for click interaction
-        auto demoHandler = std::make_shared<SVGDemoHandler>(svgFilePath);
-
-        // Set click handler on the SVG element
-        svgElement->SetEventCallback([demoHandler, svgContainer](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler->OnSVGClick();
-                    return true;
-                case UCEventType::MouseEnter: {
-                    svgContainer->SetBordersColor(Color(100, 149, 237, 255));
-                    return true;
-                }
-                case UCEventType::MouseLeave: {
-                    svgContainer->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                }
-                default:
-                    return false;
+            auto element = std::make_shared<UltraCanvasImageElement>(id + "El", 20, 15, 200, 175);
+            std::string path = NormalizePath(GetResourcesDir() + "media/vector/SVG/" + fileName);
+            if (!element->LoadFromFile(path)) {
+                statusLabel->SetText("Failed to load " + path);
             }
-        });
 
-        auto svgContainer2 = std::make_shared<UltraCanvasContainer>("SVGContainer", 280, 100, 240, 240);
-        svgContainer2->SetBackgroundColor(Color(250, 250, 250, 255));
-        svgContainer2->SetBorders(2, Color(180, 180, 180, 255));
+            auto label = std::make_shared<UltraCanvasLabel>(id + "Label", 10, 198, 220, 24);
+            label->SetText(fileName);
+            label->SetAlignment(TextAlignment::Center);
+            label->SetFontSize(11);
+            tile->AddChild(label);
 
-        // Create SVG Element (200x200 inside the container with padding)
-        auto svgElement2 = std::make_shared<UltraCanvasImageElement>(
-                "DemoSVG2",
-                20, 20,  // 20px padding inside container
-                200, 200
-        );
-
-        // Try to load from file, fallback to inline SVG if file not found
-        svgElement2->LoadFromFile(NormalizePath(GetResourcesDir() + "media/vector/SVG/robot.svg"));
-        // Create demo handler for click interaction
-        auto demoHandler2 = std::make_shared<SVGDemoHandler>(NormalizePath(GetResourcesDir() + "media/vector/SVG/robot.svg"));
-
-        // Set click handler on the SVG element
-        svgElement2->SetEventCallback([demoHandler2, svgContainer2](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler2->OnSVGClick();
-                    return true;
-                case UCEventType::MouseEnter: {
-                    svgContainer2->SetBordersColor(Color(100, 149, 237, 255));
-                    return true;
+            auto handler = std::make_shared<SVGDemoHandler>(path);
+            element->SetEventCallback([handler, tile, statusLabel, path](const UCEvent& event) {
+                switch (event.type) {
+                    case UCEventType::MouseUp:
+                        handler->OnSVGClick();
+                        statusLabel->SetText("Opened fullscreen: " + path);
+                        return true;
+                    case UCEventType::MouseEnter:
+                        tile->SetBordersColor(Color(100, 149, 237, 255));
+                        return true;
+                    case UCEventType::MouseLeave:
+                        tile->SetBordersColor(Color(180, 180, 180, 255));
+                        return true;
+                    default:
+                        return false;
                 }
-                case UCEventType::MouseLeave: {
-                    svgContainer2->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                }
-                default:
-                    return false;
-            }
-        });
+            });
 
-        auto svgContainer3 = std::make_shared<UltraCanvasContainer>("SVGContainer", 540, 100, 240, 240);
-        svgContainer3->SetBackgroundColor(Color(250, 250, 250, 255));
-        svgContainer3->SetBorders(2, Color(180, 180, 180, 255));
+            tile->AddChild(element);
+            container->AddChild(tile);
+        };
 
-        // Create SVG Element (200x200 inside the container with padding)
-        auto svgElement3 = std::make_shared<UltraCanvasImageElement>(
-                "DemoSVG2",
-                18, 18,  // 20px padding inside container
-                200, 200
-        );
-
-        // Try to load from file, fallback to inline SVG if file not found
-        svgElement3->LoadFromFile(NormalizePath(GetResourcesDir() + "media/vector/SVG/astronaut.svg"));
-        // Create demo handler for click interaction
-        auto demoHandler3 = std::make_shared<SVGDemoHandler>(NormalizePath(GetResourcesDir() + "media/vector/SVG/astronaut.svg"));
-
-        // Set click handler on the SVG element
-        svgElement3->SetEventCallback([demoHandler3, svgContainer3](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler3->OnSVGClick();
-                    return true;
-                case UCEventType::MouseEnter: {
-                    svgContainer3->SetBordersColor(Color(100, 149, 237, 255));
-                    return true;
-                }
-                case UCEventType::MouseLeave: {
-                    svgContainer3->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                }
-                default:
-                    return false;
-            }
-        });
-
-        auto svgContainer4 = std::make_shared<UltraCanvasContainer>("SVGContainer", 20, 360, 240, 240);
-        svgContainer4->SetBackgroundColor(Color(250, 250, 250, 255));
-        svgContainer4->SetBorders(2, Color(180, 180, 180, 255));
-
-        // Create SVG Element (200x200 inside the container with padding)
-        auto svgElement4 = std::make_shared<UltraCanvasImageElement>(
-                "DemoSVG2",
-                20, 20,  // 20px padding inside container
-                200, 200
-        );
-
-        // Try to load from file, fallback to inline SVG if file not found
-        svgElement4->LoadFromFile(NormalizePath(GetResourcesDir() + "media/vector/SVG/photo-camera.svg"));
-        // Create demo handler for click interaction
-        auto demoHandler4 = std::make_shared<SVGDemoHandler>(NormalizePath(GetResourcesDir() + "media/vector/SVG/photo-camera.svg"));
-
-        // Set click handler on the SVG element
-        svgElement4->SetEventCallback([demoHandler4, svgContainer4](const UCEvent& event) {
-            switch (event.type) {
-                case UCEventType::MouseUp:
-                    demoHandler4->OnSVGClick();
-                    return true;
-                case UCEventType::MouseEnter: {
-                    svgContainer4->SetBordersColor(Color(100, 149, 237, 255));
-                    return true;
-                }
-                case UCEventType::MouseLeave: {
-                    svgContainer4->SetBordersColor(Color(180, 180, 180, 255));
-                    return true;
-                }
-                default:
-                    return false;
-            }
-        });
-
-        // Set hover cursor
-        //svgElement->SetCursor(CursorType::Hand);
-
-        // Add SVG to container
-        svgContainer->AddChild(svgElement);
-        svgContainer2->AddChild(svgElement2);
-        svgContainer3->AddChild(svgElement3);
-        svgContainer4->AddChild(svgElement4);
-        container->AddChild(svgContainer);
-        container->AddChild(svgContainer2);
-        container->AddChild(svgContainer3);
-        container->AddChild(svgContainer4);
+        // Every .svg file shipped under media/vector/SVG, four to a row.
+        makeTile("SVGTile1", 20, 100, "demo.svg");
+        makeTile("SVGTile2", 270, 100, "demo1.svg");
+        makeTile("SVGTile3", 520, 100, "demo2.svg");
+        makeTile("SVGTile4", 770, 100, "svg-test.svg");
+        makeTile("SVGTile5", 20, 350, "robot.svg");
+        makeTile("SVGTile6", 270, 350, "astronaut.svg");
+        makeTile("SVGTile7", 520, 350, "photo-camera.svg");
+        makeTile("SVGTile8", 770, 350, "Logo_Texter.svg");
 
         // Information panel
-        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 540, 360, 320, 320);
+        auto infoPanel = std::make_shared<UltraCanvasContainer>("InfoPanel", 20, 600, 960, 92);
         infoPanel->SetBackgroundColor(Color(245, 245, 245, 255));
-        infoPanel->SetPadding(10,15,10,15);
         infoPanel->SetBorders(1, Color(200, 200, 200, 255));
 
-        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 15, 10, 0, 25);
+        auto infoTitle = std::make_shared<UltraCanvasLabel>("InfoTitle", 12, 6, 930, 22);
         infoTitle->SetText("SVG Features:");
         infoTitle->SetFontSize(14);
         infoTitle->SetFontWeight(FontWeight::Bold);
         infoPanel->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 15, 45, 0, 0);
+        auto infoText = std::make_shared<UltraCanvasLabel>("InfoText", 12, 30, 930, 58);
         infoText->SetText(
-                "• Scalable Vector Graphics support\n"
-                "• Load from file or string\n"
-                "• Auto-resize capability\n"
-                "• ViewBox transformation\n"
-                "• Basic shape rendering\n"
-                "• Path and curve support\n"
-                "• Text rendering\n"
-                "• Group hierarchies\n"
-                "• Style attributes\n"
-                "• Click for fullscreen view\n"
-                "• ESC to close fullscreen"
+                "• Load from file or string   • ViewBox transformation   • Auto-resize   • Basic shapes, paths and curves\n"
+                "• Text rendering   • Group hierarchies   • Style attributes\n"
+                "• Click any drawing for the fullscreen view, ESC to close"
         );
         infoText->SetFontSize(12);
         infoText->SetTextColor(Color(60, 60, 60, 255));

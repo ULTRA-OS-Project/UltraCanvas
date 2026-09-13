@@ -355,7 +355,7 @@ namespace UltraCanvas {
 ////        auto container = std::make_shared<UltraCanvasContainer>("MarkdownExamples", 0, 0, 1020, 780);
 //
 //        auto text = std::make_shared<UltraCanvasMarkdownDisplay>("MarkDownText", 0, 0, 1026, 785);
-//        text->SetMarkdownText(LoadFile(NormalizePath(GetResourcesDir() + "media/MarkdownExample.md")));
+//        text->SetMarkdownText(LoadFile(NormalizePath(GetResourcesDir() + "media/docs/MarkdownExample.md")));
 //        MarkdownStyle style = MarkdownStyle::Default();
 //        style.fontSize = 12;
 //        text->SetStyle(style);

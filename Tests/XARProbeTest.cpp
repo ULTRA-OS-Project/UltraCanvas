@@ -228,8 +228,9 @@ int main(int argc, char** argv) {
     }
     if (files.empty()) {
 #ifdef XAR_SAMPLES_DIR
-        files.push_back(std::string(XAR_SAMPLES_DIR) + "/demo.xar");
-        files.push_back(std::string(XAR_SAMPLES_DIR) + "/backside.xar");
+        files.push_back(std::string(XAR_SAMPLES_DIR) + "/Midget.xar");
+        files.push_back(std::string(XAR_SAMPLES_DIR) + "/Apple5.xar");
+        files.push_back(std::string(XAR_SAMPLES_DIR) + "/Backside.xar");
 #else
         std::printf("usage: XARProbeTest file.xar [file.xar ...]\n");
         return 2;

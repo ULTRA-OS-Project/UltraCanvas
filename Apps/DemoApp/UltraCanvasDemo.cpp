@@ -978,6 +978,13 @@ namespace UltraCanvas {
                               "DemoApp/UltraCanvasDWGExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasVectorConverters.md");
 #endif
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        vectorBuilder.AddItem("aiartwork", "AI Artwork", "Adobe Illustrator .ai artwork - PDF-based files read through the PDF engine, written by the Vector plugin's AIConverter",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateAIVectorExamples(); },
+                              "DemoApp/UltraCanvasAIExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasAIExamples.md");
+#endif
 
         // ===== CHARTS =====
         auto chartBuilder = DemoCategoryBuilder(this, DemoCategory::Charts);
@@ -1695,7 +1702,7 @@ namespace UltraCanvas {
 
         textDocBuilder.AddItem("markdown", "Markdown", "Markdown document rendering",
                                ImplementationStatus::FullyImplemented,
-                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"media/MarkdownExample.md")); });
+                               [this]() { return CreateMarkdownDocScreen(NormalizePath(GetResourcesDir()+"media/docs/MarkdownExample.md")); });
 
 //        textDocBuilder.AddItem("codeeditor", "Code Editor", "Syntax highlighting text editor",
 //                               ImplementationStatus::PartiallyImplemented,

@@ -1,3 +1,82 @@
+#### 2026-09-13 *0.8.42*
+- **`media/` root tidied: a stray file deleted, two sample assets filed
+  under `media/docs/`.**
+  - `media/audio` is gone. It was a 1-byte regular file containing a single
+    newline, unrelated to the `media/audios/` directory beside it, and
+    nothing read it.
+  - `media/Logo_Texter.png` and `media/MarkdownExample.md` move into
+    `media/docs/`, beside the `document.odt` and `spreadsheet.ods` samples.
+    All four live references follow them: the demo's Markdown page
+    (`UltraCanvasDemo.cpp`) and its commented-out sibling in
+    `UltraCanvasDemoExamples.cpp`, Texter's splash logo
+    (`UltraCanvasTextEditor.cpp`), `Tests/FontFileTest`'s "a PNG is not a
+    font" fixture, and the `\includegraphics` path in
+    `media/LaTex/article-quadratic-note.tex`. The packaging scripts copy
+    `media/` whole, so nothing changes for a packaged build.
+
+#### 2026-09-13 *0.8.41*
+- **`media/vector/EPS/Apple5.eps` and `Midget.eps` are deleted.** Neither
+  was ever an EPS: both are RISC OS TopDraw documents (`Top!` / `TopDraw`
+  magic, no `%!PS` header and no PostScript body), which is why the EPS page
+  never tiled them and `Tests/EPSProbeTest` reported them as load failures.
+  With the files gone the notes explaining their absence go too, from
+  `UltraCanvasEPSExamples.cpp` and `UltraCanvasEPSExamples.md`; the page
+  still shows `demo.eps` and `gears.eps`, which is now every `.eps` in the
+  folder. The same two drawings remain available in Xara form as
+  `media/vector/XAR/Apple5.xar` and `Midget.xar`.
+
+#### 2026-09-13 *0.8.40*
+- **Demo: the SVG and CDR pages show every sample in their folder, and the
+  CDR folder loses its placeholders.**
+  - `media/vector/CDR/`: `demo.cdr`, `demo1.cdr`, `logo.cdr` and the
+    `demo.jpg` reference render are gone. Three of the page's five
+    hand-written tiles pointed at them, so the page is rebuilt around one
+    tile helper over the three drawings that remain - `detailed.cdr`,
+    `door-panel.cdr`, `dubai-atlantis.cdr` - each with page navigation,
+    zoom / fit and "Save as...". A second panel gives each drawing's real
+    shape, read out of the parsed `CDRDocument`: 67 draw calls but 10
+    gradients and 6 embedded bitmaps (detailed), 400 flat-filled draw calls
+    (door-panel), 725 (dubai-atlantis); all three are single-page.
+  - SVG: the page showed 4 of the 8 shipped drawings through four
+    copy-pasted blocks that also handed three elements the same id
+    (`SVGContainer`, `DemoSVG2`). Replaced by one tile helper over all eight
+    - `demo`, `demo1`, `demo2`, `svg-test`, `robot`, `astronaut`,
+    `photo-camera`, `Logo_Texter` - four to a row, each with its file name,
+    a shared status line and unique ids. All eight verified to decode.
+  - EPS: `Apple5.eps` and `Midget.eps` stay off the page on purpose. Despite
+    the extension neither is PostScript - both are RISC OS TopDraw documents
+    (`Top!` / `TopDraw` magic, no `%!PS` header, no PostScript body) - so
+    `Tests/EPSProbeTest` reports them as load failures and tiles for them
+    would render nothing. Said so in the source and in
+    `UltraCanvasEPSExamples.md` rather than leaving it to be rediscovered.
+
+#### 2026-09-13 *0.8.39*
+- **Demo: the vector pages cover every sample the repo actually ships.**
+  - `media/vector/XAR/`: `demo.xar` and the lower-case `backside.xar` are
+    gone; the three Xara Designer Pro X19 drawings that remain -
+    `Midget.xar`, `Apple5.xar` and `Backside.xar` - are what the demo shows.
+    The XAR page now has a tile per drawing (it showed two) and a second
+    panel describing what each one exercises: 524 paths over multi-stage
+    linear and elliptical fills plus 7 text stories (Midget), 691
+    filled-and-stroked paths in 3 groups (Apple5), and 259 paths, 175
+    QuickShape polygons, 46 soft shadows and 26 text stories (Backside).
+    Counts are `Tests/XARProbeTest`'s, which now defaults to those three
+    files rather than the two that were deleted.
+  - New **AI Artwork** page (`DemoApp/UltraCanvasAIExamples.cpp`, Vector
+    Elements) for `media/vector/AI/`, the one vector folder with no demo.
+    Since Illustrator 9 an `.ai` file *is* a PDF - both samples are
+    `%PDF-1.5`, one page, with Illustrator's `AIPrivateData` stream attached -
+    so the page reads them with the MuPDF-backed `UltraCanvasPDFView`:
+    a sample dropdown, page navigation, zoom / fit-page / fit-width, a live
+    zoom read-out and a panel spelling out that reading is the PDF engine's
+    job and writing is the Vector plugin's export-only `AIConverter`.
+    `UltraCanvasPDFView::LoadFromPath()` names the format
+    (`"application/pdf"`) rather than guessing it from the extension, and
+    MuPDF's own detection reads the `%PDF-` header, so neither load path
+    needs an `.ai` special case. Documented in
+    `Docs/UltraCanvas/UltraCanvasAIExamples.md`.
+  - The stray `info.txt` placeholders under `media/` (seven of them, six
+    empty) are deleted; no code or doc referenced them.
 #### 2026-09-13 *0.8.44*
 - **A toolbar is as thick as the items in it.** The height a horizontal
   `UltraCanvasToolbar` is constructed with - the width of a vertical one - is
