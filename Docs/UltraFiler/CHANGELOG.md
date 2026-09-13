@@ -1,3 +1,31 @@
+#### 2026-09-13 *1.31.0*
+- **The folder tree now follows what happens to folders in the file display.**
+  Cutting a folder with `Ctrl+X` and pasting it into another folder moved it on
+  disk and in the file display, but the tree kept showing it - with everything
+  under it - where it used to be, and the folder it moved into never grew a row
+  for it. Deleting a folder left its row behind in the same way, and a new
+  folder never appeared in the tree at all. Only restarting UltraFiler put the
+  tree right.
+- Every change the user makes to a folder's content now re-syncs that folder's
+  rows with the disk: rows whose folder is gone leave together with their
+  subtrees, rows that appeared are inserted in name order, and a folder row
+  gains or loses its expand button accordingly. A folder the tree has not
+  scanned yet is not scanned for this - only the expand button it would be
+  drawn with is put right - so the tree stays as lazy as it was.
+- It covers every place such a change can come from: the file display of any
+  tab, the folder preview pane, the History and Favorites lists, the tree's own
+  Paste item and a drop onto a tree row. Creating, renaming and duplicating a
+  folder reach the tree through the same path as moving and deleting one.
+- **A tab showing the folder something was cut out of now re-lists it**, and so
+  does the folder preview pane. Cutting a folder in one tab and pasting it in
+  another left the first tab listing a folder that was no longer there; every
+  display of a folder whose content changed is now re-listed, wherever the
+  change was made. The display that made the change is not scanned twice.
+- A pin pointing at a folder that has been moved away or deleted leaves the
+  tree's Pinned section, exactly as it does when the folder is deleted through
+  the tree's context menu. (Framework side:
+  `Docs/UltraCanvas/CHANGELOG.md` 0.8.39.)
+
 #### 2026-09-12 *1.30.0*
 - **A double-click starts the program the file type is assigned to.** On
   Windows a double-click means one thing - the file opens in the program

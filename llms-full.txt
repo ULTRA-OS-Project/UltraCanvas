@@ -20119,6 +20119,14 @@ or the individual parent folders when a file list spanning several folders is
 deleted from. In a file-list display, changes whose folder cannot be named are
 not reported at all, since the displayed folder is not where they landed.
 
+A **move reports both ends**: the folder the entries were pasted or dropped
+into, and every folder they were taken out of. The second one matters for a
+cut and paste across folders (`Ctrl+X` here, `Ctrl+V` there) — the folder that
+lost the entry is not the one the paste names, and without it a host's folder
+tree kept showing a folder that had moved away. A move that is a no-op (a cut
+pasted back into the folder it came from) reports nothing, and each folder is
+reported once however many entries came out of it.
+
 ```cpp
 // "Recently worked in" — folders the user actually did something in.
 filer->onFolderModified = [this](const std::string& folder) {
