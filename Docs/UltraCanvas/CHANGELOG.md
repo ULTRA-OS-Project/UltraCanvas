@@ -1,3 +1,14 @@
+#### 2026-09-13 *0.8.41*
+- **`media/vector/EPS/Apple5.eps` and `Midget.eps` are deleted.** Neither
+  was ever an EPS: both are RISC OS TopDraw documents (`Top!` / `TopDraw`
+  magic, no `%!PS` header and no PostScript body), which is why the EPS page
+  never tiled them and `Tests/EPSProbeTest` reported them as load failures.
+  With the files gone the notes explaining their absence go too, from
+  `UltraCanvasEPSExamples.cpp` and `UltraCanvasEPSExamples.md`; the page
+  still shows `demo.eps` and `gears.eps`, which is now every `.eps` in the
+  folder. The same two drawings remain available in Xara form as
+  `media/vector/XAR/Apple5.xar` and `Midget.xar`.
+
 #### 2026-09-13 *0.8.40*
 - **Demo: the SVG and CDR pages show every sample in their folder, and the
   CDR folder loses its placeholders.**

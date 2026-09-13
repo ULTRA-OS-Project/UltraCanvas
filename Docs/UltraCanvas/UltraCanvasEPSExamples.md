@@ -136,4 +136,4 @@ if (!eps->LoadFromFile("media/vector/EPS/demo.eps")) {
 window->AddChild(eps);
 ```
 
-The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows the PostScript samples from `media/vector/EPS/` — `demo.eps` and `gears.eps` — with a fullscreen viewer and zoom controls. `Apple5.eps` and `Midget.eps` sit in the same folder but are not EPS at all: they are RISC OS TopDraw documents (`Top!` / `TopDraw` magic, no `%!PS` header and no PostScript body), so the interpreter has nothing to run and `Tests/EPSProbeTest` reports them as load failures. They are excluded from the page deliberately.
+The demo application's **EPS Images** page (`Apps/DemoApp/UltraCanvasEPSExamples.cpp`) shows both shipped samples from `media/vector/EPS/` — `demo.eps` and `gears.eps` — with a fullscreen viewer and zoom controls.
