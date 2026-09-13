@@ -860,6 +860,43 @@ OneDrive), the fixed home subfolders on macOS, `xdg-user-dirs` on Linux
 (localized names; entries pointing at `$HOME` are disabled per the spec) — for
 building an Explorer/Finder-style curated "Home" section.
 
+## Hidden-items notice
+
+A display that drops entries without saying so is how a user comes to believe a
+folder is empty, deletes it and loses what was in it. Where a host asks for it,
+the display says so instead:
+
+```cpp
+filer->SetHiddenItemsNoticeEnabled(true);   // off by default
+int held = filer->GetHiddenItemCount();     // what the last scan left out
+```
+
+While something IS held back, a strip across the foot of the display reads
+*"3 items are hidden here"* and carries a **Show hidden files** button that
+does exactly what the `Display > Hidden files` context-menu entry does — for
+this display, leaving `SetShowHiddenFiles` elsewhere alone. The strip
+disappears as soon as nothing is held back (including the moment its own
+button is pressed).
+
+`GetHiddenItemCount()` counts what the current listing leaves out: the hidden
+entries, plus the subfolders a curated home folder (below) keeps back. It is
+`0` whenever hidden files are shown, since then nothing is held back. The
+count is taken while the listing is built — after it, the dropped entries are
+gone.
+
+The strip takes its height out of the file area, exactly as the selection info
+bar does (it sits directly above it), so no entry is ever drawn under it, and
+it is left out of the whole-area views (`GourceTree`, `View3D`) and of a pane
+too short to hold both files and strip. Its colours come from the same
+`FilerStyle` fields as the info bar (`infoBarBackground`, `gridLineColor`,
+`secondaryTextColor`).
+
+Hosts switch it on for the folders where the display holds back something the
+user never asked to hide. The UltraFiler enables it for the home folder — the
+one folder where both filters bite at once, the profile's hidden files and the
+curation below — and nowhere else: elsewhere, only what the system calls hidden
+is missing, which needs no announcement.
+
 ## Curated home folder
 
 `SetCuratedHomeFolder(homePath, mainFolders)` curates one folder's display —
@@ -872,7 +909,9 @@ themselves behave like any other entry — navigation, context menu, drag & drop
 
 Display > Hidden files suspends the curation: that toggle means "show me
 everything", so it reveals the untouched physical listing (hidden entries
-included). An empty `homePath` turns curation off.
+included). An empty `homePath` turns curation off. What the curation keeps back
+is counted into `GetHiddenItemCount()`, so the hidden-items notice above
+offers it the same way it offers hidden entries.
 
 The UltraFiler sets this on its tab filers and its folder-preview pane, with
 the same main-folder set its folder tree shows for Home
@@ -881,7 +920,8 @@ Music / Pictures / Videos), so the tree and the display agree on what Home
 contains. Note the caveat that follows from the design: a non-main folder
 created or pasted into the home folder exists but is not displayed until
 Hidden files is switched on — curation is a view over the folder, not a
-constraint on it.
+constraint on it — which is why the home folder is exactly where UltraFiler
+turns the hidden-items notice on.
 
 `UltraCanvas::GetCloudStorageFolders()` (`UltraCanvasCloudStorage.h`) is its
 counterpart for a

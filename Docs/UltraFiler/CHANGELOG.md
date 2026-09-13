@@ -1,3 +1,31 @@
+#### 2026-09-13 *1.32.0*
+- **The Home folder now says when it is hiding something, and hidden files
+  have a setting.** The home folder is the one folder UltraFiler holds two
+  things back in: what the system calls hidden (`NTUSER.DAT`, the profile
+  junctions, every dot name), and - with *Display > Home folder* on its
+  Windows default - every subfolder that is not one of the main user folders.
+  Nothing said so, so a home folder could look emptier than it is. While its
+  display is leaving anything out it now carries a strip across its foot:
+  "7 items are hidden here", and a **Show hidden files** button that reveals
+  them for that display. It appears in the Home folder only - everywhere else
+  just the platform's hidden entries are missing, which is what every file
+  manager does and needs no announcement - and it goes away the moment
+  nothing is held back.
+- **Settings > Display > Files > Show hidden files** makes that choice
+  permanent: off by default, as it ships, and when on every folder display
+  starts out showing hidden entries (which also shows the Home folder whole,
+  whatever *Display > Home folder* says - the switch means "show me
+  everything"). It is a starting point, not a clamp: a single display can
+  still be switched by its own *Display > Hidden files* context-menu entry or
+  by the Home folder's button, and changing an unrelated setting no longer
+  pulls that display back. The folder tree leaves hidden folders out either
+  way. Stored as `display.files.show.hidden` in the config file.
+- **The settings pages showed their explanations half-cut.** The line under
+  each page title and the notes block at its foot were drawn one line tall with
+  the text clipped through them. The cause was in the layout engine, not in the
+  settings window - see the framework changelog for 0.8.43 (wrapped text in a
+  flex column) - and every page is legible with that fix.
+
 #### 2026-09-13 *1.31.0*
 - **Folder icons show the first pictures inside the folder**, peeking out of
   the folder the way Explorer's folder icons do, in every thumbnail view. Up

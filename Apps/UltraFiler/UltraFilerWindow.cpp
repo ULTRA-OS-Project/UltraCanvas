@@ -1083,6 +1083,18 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetDropConfirmation(settings.dropConfirmation);
         folderPreview->SetShowLockState(settings.showLockState);
     }
+    // Display > Files: only when the setting itself moved. Re-applying it on
+    // every unrelated change would undo a display the user revealed by hand
+    // (its Display > Hidden files entry, or the Home folder's button) the
+    // next time any other setting is touched.
+    if (hiddenFilesApplied != settings.showHiddenFiles) {
+        hiddenFilesApplied = settings.showHiddenFiles;
+        for (auto& state : tabStates)
+            if (state->filer)
+                state->filer->SetShowHiddenFiles(settings.showHiddenFiles);
+        if (folderPreview)
+            folderPreview->SetShowHiddenFiles(settings.showHiddenFiles);
+    }
     // Display > Home folder: curate the home folder's display - every tab and
     // the folder preview - or show it whole, and keep the tree's Home entry in
     // step. The widget ignores a SetCuratedHomeFolder that changes nothing, so
@@ -3068,6 +3080,10 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     state->filer->SetDropConfirmation(settings.dropConfirmation);
     // Display > Files in use: mark files another program is holding.
     state->filer->SetShowLockState(settings.showLockState);
+    // Display > Files: what this display starts with. Its own Display >
+    // Hidden files entry - and the Home folder's "Show hidden files" button -
+    // still switch this one display without touching the setting.
+    state->filer->SetShowHiddenFiles(settings.showHiddenFiles);
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
@@ -4183,6 +4199,13 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     }
     tab->searchQuery.clear();
     tab->filer->SetOpenPathMenuItemVisible(false);
+
+    // The hidden-items strip: the home folder is where the display holds
+    // things back the user never asked to hide - the profile's hidden files,
+    // and whatever Display > Home folder curates away - so that is where it
+    // says so, with the button that shows them. Every other folder hides only
+    // what the system calls hidden, which needs no announcement.
+    tab->filer->SetHiddenItemsNoticeEnabled(IsUserHomeDir(path));
 
     // Put back how this folder was last looked at. Done for every tab, not
     // only the active one, so a background tab is already right when it is

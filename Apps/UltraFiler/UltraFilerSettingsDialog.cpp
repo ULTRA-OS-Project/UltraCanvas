@@ -6,7 +6,8 @@
 // Pages: Display > Treeview (the folder tree's drive-row
 // background and selected-folder highlight, each shown as a colour box that
 // opens the colour picker in a popup window), Display > Home folder (what the
-// Home folder shows), Display > File extensions (whether a displayed name
+// Home folder shows), Display > Files (whether hidden files are listed),
+// Display > File extensions (whether a displayed name
 // still ends in its extension, and whether a thumbnail tile carries that
 // extension as a bar or a small tag), Display > Files in use (whether held
 // files are marked), Display > PDF Inventory (the width of the page
@@ -97,6 +98,7 @@ namespace {
     constexpr const char* kPageDisplay = "display";
     constexpr const char* kPageTreeview = "display/treeview";
     constexpr const char* kPageHomeFolder = "display/home";
+    constexpr const char* kPageFiles = "display/files";
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageThumbnails = "display/thumbnails";
     constexpr const char* kPageFileExtensions = "display/file-extensions";
@@ -150,6 +152,8 @@ namespace {
         // Display > Thumbnails: the "pictures inside a folder on its icon"
         // checkbox above the kind list.
         std::shared_ptr<UltraCanvasCheckbox> folderPreviewsBox;
+        // Display > Files: the "show hidden files" checkbox.
+        std::shared_ptr<UltraCanvasCheckbox> hiddenFilesBox;
         std::vector<std::pair<FilerExtensionBadge,
                               std::shared_ptr<UltraCanvasRadio>>> badgeRadios;
         UltraCanvasRadioGroup                extensionBadgeGroup;
@@ -1142,6 +1146,40 @@ namespace {
         return parts.page;
     }
 
+    // ===== DISPLAY > FILES =====
+    std::shared_ptr<UltraCanvasContainer> BuildFilesPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-files", "Files",
+                "Which files the file display lists:");
+
+        d->hiddenFilesBox = MakeCheckbox("ufl-set-files-hidden",
+                "Show hidden files", kTextWidth,
+                d->settings->showHiddenFiles, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->showHiddenFiles = on;
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->hiddenFilesBox);
+
+        AddNote(parts, "ufl-set-files-note1",
+                "Hidden is what the system calls hidden: a name starting with "
+                "a dot everywhere, plus the hidden attribute on Windows (which "
+                "is what keeps NTUSER.DAT and the profile junctions out of "
+                "sight) and the hidden flag on macOS.");
+        AddNote(parts, "ufl-set-files-note2",
+                "Showing them also shows the Home folder whole, whatever "
+                "Display > Home folder says - the switch means \"show me "
+                "everything\".");
+        AddNote(parts, "ufl-set-files-note3",
+                "This is what every folder display starts with. A single "
+                "display can still be switched on its own - its Display > "
+                "Hidden files menu entry, or the \"Show hidden files\" button "
+                "of the strip the Home folder shows while it is holding "
+                "something back - without changing the setting here.");
+        AddNote(parts, "ufl-set-files-note4",
+                "The folder tree leaves hidden folders out either way.");
+        return parts.page;
+    }
+
     // ===== DISPLAY > HOME FOLDER =====
     std::shared_ptr<UltraCanvasContainer> BuildHomeFolderPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-home", "Home folder",
@@ -1171,8 +1209,10 @@ namespace {
                 "Pictures, Videos - resolved through the platform, so a "
                 "redirected or localized folder counts.");
         AddNote(parts, "ufl-set-home-note2",
-                "Display > Hidden files in the file display always reveals "
-                "everything.");
+                "Display > Files > Show hidden files - and the file display's "
+                "own Display > Hidden files entry - always reveal everything. "
+                "While the Home folder is holding something back, it says so "
+                "along its foot, with a button that shows it.");
         return parts.page;
     }
 
@@ -1528,9 +1568,9 @@ namespace {
 
         AddNote(parts, "ufl-set-start-note1",
                 "Display - what the folder tree, the file display and the "
-                "preview beside it show: colours, the Home folder, file "
-                "extensions, files in use, and which file kinds get a "
-                "thumbnail or a preview.");
+                "preview beside it show: colours, the Home folder, hidden "
+                "files, file extensions, files in use, and which file kinds "
+                "get a thumbnail or a preview.");
         AddNote(parts, "ufl-set-start-note2",
                 "Handling - what an action does: dropping dragged files onto "
                 "a folder, and what the \"+\" of the tab strip opens.");
@@ -1667,6 +1707,7 @@ namespace {
         AddTreeNode(d, "settings", kPageDisplay, "Display");
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, "Home folder");
+        AddTreeNode(d, kPageDisplay, kPageFiles, "Files");
         AddTreeNode(d, kPageDisplay, kPageFileExtensions, "File extensions");
         AddTreeNode(d, kPageDisplay, kPageFilesInUse, "Files in use");
         AddTreeNode(d, kPageDisplay, kPagePdfInventory, "PDF Inventory");
@@ -1698,6 +1739,7 @@ namespace {
         // ----- pages -----
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
         AddPage(d, kPageHomeFolder, BuildHomeFolderPage(d));
+        AddPage(d, kPageFiles, BuildFilesPage(d));
         AddPage(d, kPageFileExtensions, BuildFileExtensionsPage(d));
         AddPage(d, kPageFilesInUse, BuildFilesInUsePage(d));
         AddPage(d, kPagePdfInventory, BuildPdfInventoryPage(d));
