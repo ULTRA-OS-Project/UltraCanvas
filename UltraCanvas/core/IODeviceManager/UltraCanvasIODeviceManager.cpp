@@ -129,6 +129,10 @@ IODeviceResult IODeviceManager::Initialize() {
 }
 
 void IODeviceManager::Shutdown() {
+    // Before the lock: StopMonitoring() joins the watcher thread, and that
+    // thread takes registryMutex.
+    StopMonitoring();
+
     std::vector<IODevicePtr> toRelease;
 
     {
@@ -478,6 +482,85 @@ size_t IODeviceManager::GetDeviceCount(IODeviceCategory category) const {
 void IODeviceManager::SetDeviceChangeCallback(IODeviceChangeCallback callback) {
     std::lock_guard<std::mutex> lock(registryMutex);
     changeCallback = std::move(callback);
+}
+
+// ============================================================================
+// HOT-PLUG MONITORING
+// ============================================================================
+
+IODeviceResult IODeviceManager::SetDeviceWatcher(IDeviceWatcherPtr replacement) {
+    std::lock_guard<std::mutex> lock(watcherMutex);
+    if (monitoring) {
+        return IODeviceResult::Error(IODeviceResultCode::InvalidState,
+                                     "Stop monitoring before changing the device "
+                                     "watcher");
+    }
+    watcher = std::move(replacement);
+    return IODeviceResult::Ok();
+}
+
+IODeviceResult IODeviceManager::StartMonitoring() {
+    IDeviceWatcherPtr toStart;
+    {
+        std::lock_guard<std::mutex> lock(watcherMutex);
+        if (monitoring) {
+            return IODeviceResult::Ok();
+        }
+
+        toStart = watcher ? watcher : Internal::CreateDeviceWatcher();
+        if (!toStart) {
+            return IODeviceResult::Error(
+                IODeviceResultCode::BackendUnavailable,
+                "This build has no hot-plug watcher for the current platform");
+        }
+        activeWatcher = toStart;
+        monitoring = true;
+    }
+
+    // Started outside the lock: a watcher may call back during Start() as it
+    // reports the state it found, and that callback re-enumerates.
+    IODeviceResult started = toStart->Start(
+        [this](IODeviceCategory category) { OnCategoryChanged(category); });
+
+    if (!started.success) {
+        std::lock_guard<std::mutex> lock(watcherMutex);
+        activeWatcher = nullptr;
+        monitoring = false;
+    }
+    return started;
+}
+
+void IODeviceManager::StopMonitoring() {
+    IDeviceWatcherPtr toStop;
+    {
+        std::lock_guard<std::mutex> lock(watcherMutex);
+        if (!monitoring) {
+            return;
+        }
+        toStop = activeWatcher;
+        activeWatcher = nullptr;
+        monitoring = false;
+    }
+
+    // Joined outside the lock, and outside registryMutex: the watcher's
+    // thread is very likely inside OnCategoryChanged() holding neither, and
+    // waiting for it while holding either is how this deadlocks.
+    if (toStop) {
+        toStop->Stop();
+    }
+}
+
+bool IODeviceManager::IsMonitoring() const {
+    std::lock_guard<std::mutex> lock(watcherMutex);
+    return monitoring;
+}
+
+void IODeviceManager::OnCategoryChanged(IODeviceCategory category) {
+    // Runs on the watcher's thread. EnumerateDevices() does the rest: it
+    // merges what the backends now report against the registry and fires the
+    // change callback for whatever actually appeared or disappeared. The
+    // watcher never has to identify a device, only a category.
+    EnumerateDevices(category);
 }
 
 void IODeviceManager::Notify(const std::vector<PendingChange>& changes) {

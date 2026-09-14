@@ -545,6 +545,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCamera.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceWatcherFallback.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
@@ -938,6 +939,24 @@ else()
     set(ULTRACANVAS_HAS_SANE FALSE)
 endif()
 
+# ===== IODEVICEMANAGER: UDEV HOT-PLUG WATCHER (optional, Linux) =====
+# Without udev the module still builds; StartMonitoring() then reports
+# BackendUnavailable and a caller rescans on its own schedule. The watcher
+# file and the fallback that returns null are guarded on the inverse of each
+# other, so exactly one definition of CreateDeviceWatcher() exists in any
+# build.
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    pkg_check_modules(ULTRACANVAS_UDEV QUIET libudev)
+endif()
+
+if(ULTRACANVAS_UDEV_FOUND)
+    message(STATUS "  udev: ${ULTRACANVAS_UDEV_VERSION} - hot-plug watching ENABLED")
+    set(ULTRACANVAS_HAS_UDEV TRUE)
+else()
+    message(STATUS "  [-] udev - not found (no hot-plug watching on this build)")
+    set(ULTRACANVAS_HAS_UDEV FALSE)
+endif()
+
 # ===== SPELL CHECKING (all dependencies optional) =====
 # With none of these present the module still compiles and simply reports zero
 # dictionaries, so a missing optional dependency never breaks the build.
@@ -1295,6 +1314,13 @@ endif()
 # runtime and finally to a no-op that reports zero dictionaries.
 find_package(Threads REQUIRED)
 target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Threads::Threads)
+
+if(ULTRACANVAS_HAS_UDEV)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_UDEV)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_UDEV_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_UDEV_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_UDEV_LIBRARIES})
+endif()
 
 if(ULTRACANVAS_HAS_SANE)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_SANE)

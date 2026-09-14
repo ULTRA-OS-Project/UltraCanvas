@@ -2830,12 +2830,17 @@ add_executable(IODeviceManagerTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScanner.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+    # The test defines no ULTRACANVAS_HAS_UDEV, so this supplies the null
+    # watcher and the test substitutes its own through SetDeviceWatcher().
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceWatcherFallback.cpp
 )
 target_include_directories(IODeviceManagerTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
     ${ULTRACANVAS_CORE_DIR}
 )
 target_compile_features(IODeviceManagerTest PRIVATE cxx_std_20)
+find_package(Threads REQUIRED)
+target_link_libraries(IODeviceManagerTest PRIVATE Threads::Threads)
 set_target_properties(IODeviceManagerTest PROPERTIES
     OUTPUT_NAME "IODeviceManagerTest"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin

@@ -25,6 +25,12 @@ namespace Internal {
 // in RegisterCompiledBackends().
 void RegisterCompiledBackends(IODeviceManager& manager);
 
+// The hot-plug watcher for this platform, or null where none is compiled in.
+// Defined once per platform; the fallback returns null so a platform without
+// one still builds and simply reports BackendUnavailable from
+// StartMonitoring().
+IDeviceWatcherPtr CreateDeviceWatcher();
+
 // ===== BACKEND ENTRY POINTS =====
 // Each is defined in exactly one translation unit, behind the same guard the
 // call in RegisterCompiledBackends() uses.

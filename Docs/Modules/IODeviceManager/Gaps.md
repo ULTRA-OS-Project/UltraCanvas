@@ -9,7 +9,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-14 (after the scanner slice).
+Last reviewed: 2026-09-14 (after the hot-plug slice).
 
 ---
 
@@ -33,7 +33,9 @@ Last reviewed: 2026-09-14 (after the scanner slice).
 | `IODeviceManager` registry, enumerator merge | ✅ | |
 | `IODeviceResult`, device-generic types | ✅ | |
 | Foundation tests against a fake backend | ✅ | `Tests/IODeviceManagerTest` |
-| **Hot-plug watchers** | ❌ | `SetDeviceChangeCallback` exists, but only enumeration fires it. Nothing watches udev (Linux), `WM_DEVICECHANGE` (Windows) or IOKit notifications (macOS), so a device plugged in after a scan goes unnoticed until something rescans. |
+| Hot-plug watching (`IDeviceWatcher`, `StartMonitoring`) | ✅ | |
+| udev watcher (Linux) | ✅ | filtered in-kernel, `add`/`remove` only, 250 ms coalescing |
+| **Hot-plug watchers for Windows and macOS** | ❌ | `WM_DEVICECHANGE` and IOKit notifications. Without one, `StartMonitoring()` reports `BackendUnavailable` there and a caller rescans on its own schedule. |
 | **Permission model** | ❌ | macOS gates camera and microphone behind TCC, Windows behind capability prompts, Linux behind udev rules and group membership. `IODeviceResultCode::AccessDenied` exists; nothing requests permission or reports why it was refused. `UltraCanvasAudioDevices` already has `MicrophonePermission` + `RequestMicrophonePermission` — generalise that, do not reinvent it. |
 
 ---

@@ -57431,10 +57431,11 @@ compiling, tested and wired into CI before the next starts:
 | 4 | GutenPrint renderer — blocked on the licence decision above. With slices 2 and 3 in, this is one class and no other change on any platform. |
 | 5 ✅ | `CameraDevice` + V4L2 (Linux) |
 | 6 ✅ | `ScannerDevice` + SANE (Linux) |
-| 7 | Windows GDI/XPS renderer, so `Native` works there too |
-| 8 | Windows and macOS backends for camera and scanner |
-| 9 | IPP / eSCL driverless, network cameras |
-| 10 | Hot-plug watchers and the permission model |
+| 7 ✅ | Hot-plug watching + the udev watcher (Linux) |
+| 8 | Windows GDI/XPS renderer, so `Native` works there too |
+| 9 | Windows and macOS backends for camera and scanner |
+| 10 | Hot-plug watchers for Windows and macOS; the permission model |
+| 11 | IPP / eSCL driverless, network cameras |
 
 Slices 2 and 3 ship the switch and both transports. Adding GutenPrint is then
 a renderer class and nothing else: no change to `PrinterDevice`, and no change
@@ -57559,6 +57560,78 @@ process-global and not reference-counted by the library, so the count is kept
 in the backend: a second scanner opening must not re-init, and the first one
 closing must not tear the library out from under the others.
 
+---
+
+## Hot-plug watching
+
+A watcher reports **which category changed, not which device**:
+
+```cpp
+class IDeviceWatcher {
+    virtual IODeviceResult Start(CategoryChangedCallback onCategoryChanged) = 0;
+    virtual void Stop() = 0;
+};
+```
+
+The manager re-enumerates that category, and the merge `EnumerateDevices()`
+already performs works out what appeared or disappeared and fires the change
+callback. Nothing else was needed to make hot-plug work — the diffing was
+already there for rescans.
+
+That split is what keeps each platform's watcher small. udev, the Windows
+device broadcast and IOKit all report kernel-level arrivals in their own
+vocabulary, and none of them knows what a `ScannerDevice` is. Translating "a
+video4linux node appeared" into "some camera changed" is all they have to do.
+
+```cpp
+manager.SetDeviceChangeCallback([](IODeviceChange change, const IODeviceInfo& info) {
+    // now fires for real plug and unplug, not only after an explicit rescan
+});
+manager.StartMonitoring();
+```
+
+`SetDeviceWatcher()` substitutes one — for a test, or for an application whose
+devices arrive through its own mechanism.
+
+### The locking, which is the whole difficulty
+
+`StopMonitoring()` joins the watcher's thread, and that thread is calling
+`EnumerateDevices()`, which takes `registryMutex`. Holding either lock across
+the join deadlocks. So monitoring state lives under its own `watcherMutex`,
+and both `Stop()` and the join happen with **no lock held**. `Shutdown()`
+stops monitoring before it touches the registry for the same reason. The
+manager test drives this deliberately — its fake watcher reports from another
+thread, because the deadlock only appears when the callback arrives from
+somewhere other than the caller's — and the suite is clean under
+ThreadSanitizer.
+
+### udev watcher (Linux)
+
+Filters `video4linux`, `usb` and `sound` **in the kernel**: without a filter
+every uevent on the machine wakes the thread to be discarded. Only `add` and
+`remove` count — a `change` action means a device reported a property, not
+that it appeared, and re-enumerating on those makes a busy machine rescan
+constantly.
+
+Events are **coalesced over a 250 ms quiet period**. Plugging in one webcam
+produces a burst — two or more video4linux nodes plus USB interfaces, each its
+own uevent — and re-enumerating per event would rescan the hardware several
+times for one physical act.
+
+A `usb` arrival maps to Scanner, Printer *and* Camera, because the kernel says
+a USB device appeared, not what it is: at that level a scanner and a printer
+look alike, and only SANE or CUPS can say. Re-enumerating all three is cheap
+next to guessing wrong, and the merge turns "nothing actually changed" into no
+notification.
+
+The poll waits on the udev fd **and an eventfd**, so `Stop()` wakes it
+immediately instead of after a timeout — a verified stop takes as long as the
+work, not as long as the poll interval.
+
+Where no watcher is compiled in, `CreateDeviceWatcher()` returns null and
+`StartMonitoring()` reports `BackendUnavailable`, so a caller can tell "this
+platform cannot watch" from "nothing has been plugged in yet".
+
 ==============================================================================
 FILE: Docs/Modules/IODeviceManager/Gaps.md
 ==============================================================================
@@ -57574,7 +57647,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-14 (after the scanner slice).
+Last reviewed: 2026-09-14 (after the hot-plug slice).
 
 ---
 
@@ -57598,7 +57671,9 @@ Last reviewed: 2026-09-14 (after the scanner slice).
 | `IODeviceManager` registry, enumerator merge | ✅ | |
 | `IODeviceResult`, device-generic types | ✅ | |
 | Foundation tests against a fake backend | ✅ | `Tests/IODeviceManagerTest` |
-| **Hot-plug watchers** | ❌ | `SetDeviceChangeCallback` exists, but only enumeration fires it. Nothing watches udev (Linux), `WM_DEVICECHANGE` (Windows) or IOKit notifications (macOS), so a device plugged in after a scan goes unnoticed until something rescans. |
+| Hot-plug watching (`IDeviceWatcher`, `StartMonitoring`) | ✅ | |
+| udev watcher (Linux) | ✅ | filtered in-kernel, `add`/`remove` only, 250 ms coalescing |
+| **Hot-plug watchers for Windows and macOS** | ❌ | `WM_DEVICECHANGE` and IOKit notifications. Without one, `StartMonitoring()` reports `BackendUnavailable` there and a caller rescans on its own schedule. |
 | **Permission model** | ❌ | macOS gates camera and microphone behind TCC, Windows behind capability prompts, Linux behind udev rules and group membership. `IODeviceResultCode::AccessDenied` exists; nothing requests permission or reports why it was refused. `UltraCanvasAudioDevices` already has `MicrophonePermission` + `RequestMicrophonePermission` — generalise that, do not reinvent it. |
 
 ---

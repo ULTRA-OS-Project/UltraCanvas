@@ -1,3 +1,40 @@
+#### 2026-09-14 *0.8.52*
+- **IODeviceManager: hot-plug watching.** `SetDeviceChangeCallback` existed but
+  only enumeration ever fired it, so a device plugged in after a scan went
+  unnoticed until something rescanned. `StartMonitoring()` closes that for all
+  three categories at once.
+- **A watcher reports which category changed, not which device.** The manager
+  re-enumerates that category and the merge `EnumerateDevices()` already
+  performs works out what appeared or disappeared - the diffing was there
+  for rescans, so nothing else was needed. It also keeps each platform's
+  watcher small: udev, the Windows device broadcast and IOKit report
+  kernel-level arrivals in their own vocabulary and none of them knows what a
+  `ScannerDevice` is, so translating "a video4linux node appeared" into "some
+  camera changed" is all they do.
+- **The locking is the difficulty, and it is the part under test.**
+  `StopMonitoring()` joins the watcher's thread while that thread is calling
+  `EnumerateDevices()`, which takes the registry lock; holding either lock
+  across the join deadlocks. Monitoring state therefore lives under its own
+  mutex and both the stop and the join happen with no lock held, and
+  `Shutdown()` stops monitoring before touching the registry. The test's fake
+  watcher reports from another thread on purpose, because the deadlock only
+  appears when the callback arrives from somewhere other than the caller's,
+  and the suite is clean under ThreadSanitizer.
+- The udev watcher filters `video4linux`, `usb` and `sound` in the kernel -
+  unfiltered, every uevent on the machine wakes the thread to be discarded -
+  and counts only `add` and `remove`, since a `change` action means a device
+  reported a property rather than appeared, and re-enumerating on those makes
+  a busy machine rescan constantly. Events are coalesced over a 250 ms quiet
+  period, because plugging in one webcam produces a burst of them. A `usb`
+  arrival maps to Scanner, Printer and Camera together: the kernel says a USB
+  device appeared, not what it is, and re-enumerating three categories is
+  cheap next to guessing wrong. The poll waits on an eventfd alongside the
+  udev descriptor, so a stop takes as long as the work rather than as long as
+  the poll interval.
+- Where no watcher is compiled in, `StartMonitoring()` reports
+  `BackendUnavailable`, so a caller can tell "this platform cannot watch" from
+  "nothing has been plugged in yet".
+
 #### 2026-09-14 *0.8.51*
 - **IODeviceManager: scanners, and the SANE backend.** `ScannerDevice`
   completes the three categories the module's README advertises as production

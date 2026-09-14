@@ -18,9 +18,13 @@
 
 #include "IODeviceManager/UltraCanvasIODeviceManager.h"
 
+#include <atomic>
+#include <chrono>
 #include <iostream>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 using namespace UltraCanvas;
@@ -84,6 +88,58 @@ std::shared_ptr<FakeDevice> MakeFake(const std::string& id,
                                      const std::string& backend) {
     return std::make_shared<FakeDevice>(id, category, backend);
 }
+
+// ===== FAKE WATCHER =====
+
+// Stands in for udev. A real watcher reports from its own thread, so this one
+// does too: the deadlock this design has to avoid only appears when the
+// callback arrives from somewhere other than the caller's thread.
+class FakeWatcher : public IDeviceWatcher {
+public:
+    ~FakeWatcher() override { Stop(); }
+
+    std::string GetName() const override { return "Fake"; }
+
+    IODeviceResult Start(CategoryChangedCallback onCategoryChanged) override {
+        if (failToStart) {
+            return IODeviceResult::Error(IODeviceResultCode::BackendUnavailable,
+                                         "the fake watcher refused to start");
+        }
+        callback = std::move(onCategoryChanged);
+        running = true;
+        ++startCalls;
+        return IODeviceResult::Ok();
+    }
+
+    void Stop() override {
+        running = false;
+        if (reporter.joinable()) {
+            reporter.join();
+        }
+        ++stopCalls;
+    }
+
+    // Reports a change from another thread, as a real watcher does.
+    void ReportFromAnotherThread(IODeviceCategory category) {
+        if (reporter.joinable()) {
+            reporter.join();
+        }
+        reporter = std::thread([this, category] {
+            if (running && callback) {
+                callback(category);
+            }
+        });
+    }
+
+    bool failToStart = false;
+    std::atomic<int> startCalls{0};
+    std::atomic<int> stopCalls{0};
+
+private:
+    std::atomic<bool> running{false};
+    CategoryChangedCallback callback;
+    std::thread reporter;
+};
 
 // ===== TESTS =====
 
@@ -288,6 +344,122 @@ void TestBrokenBackendIsContained() {
     manager.Shutdown();
 }
 
+void TestHotPlugMonitoring() {
+    std::cout << "\nHot-plug monitoring\n";
+
+    IODeviceManager& manager = IODeviceManager::GetInstance();
+    manager.Shutdown();
+
+    // A backend whose device list the test changes, as a hot-plug would.
+    static std::vector<std::string> present;
+    present = {"cam-1"};
+    manager.RegisterEnumerator(IODeviceCategory::Camera, "FakeHotplug", [] {
+        std::vector<IODevicePtr> found;
+        for (const auto& id : present) {
+            found.push_back(MakeFake(id, IODeviceCategory::Camera, "FakeHotplug"));
+        }
+        return found;
+    });
+
+    auto watcher = std::make_shared<FakeWatcher>();
+    Check(static_cast<bool>(manager.SetDeviceWatcher(watcher)),
+          "a watcher can be substituted");
+
+    std::vector<std::pair<IODeviceChange, std::string>> seen;
+    std::mutex seenMutex;
+    manager.SetDeviceChangeCallback(
+        [&](IODeviceChange change, const IODeviceInfo& info) {
+            std::lock_guard<std::mutex> lock(seenMutex);
+            seen.emplace_back(change, info.deviceId);
+        });
+
+    Check(static_cast<bool>(manager.StartMonitoring()), "monitoring starts");
+    Check(manager.IsMonitoring(), "and the manager reports it");
+    Check(watcher->startCalls == 1, "the watcher was started once");
+    Check(static_cast<bool>(manager.StartMonitoring()),
+          "starting twice succeeds");
+    Check(watcher->startCalls == 1, "without starting the watcher again");
+
+    // The point of the whole feature: a device appears and the change
+    // callback fires without anyone calling EnumerateDevices().
+    manager.EnumerateDevices(IODeviceCategory::Camera);
+    {
+        std::lock_guard<std::mutex> lock(seenMutex);
+        seen.clear();
+    }
+
+    present = {"cam-1", "cam-2"};
+    watcher->ReportFromAnotherThread(IODeviceCategory::Camera);
+
+    bool sawAdd = false;
+    for (int i = 0; i < 200 && !sawAdd; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::lock_guard<std::mutex> lock(seenMutex);
+        for (const auto& event : seen) {
+            if (event.first == IODeviceChange::Added && event.second == "cam-2") {
+                sawAdd = true;
+            }
+        }
+    }
+    Check(sawAdd, "a device arriving fires Added WITHOUT an explicit rescan");
+    Check(manager.GetDeviceCount(IODeviceCategory::Camera) == 2,
+          "and the registry holds it");
+
+    // Removal travels the same path.
+    present = {"cam-1"};
+    watcher->ReportFromAnotherThread(IODeviceCategory::Camera);
+    bool sawRemove = false;
+    for (int i = 0; i < 200 && !sawRemove; ++i) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        std::lock_guard<std::mutex> lock(seenMutex);
+        for (const auto& event : seen) {
+            if (event.first == IODeviceChange::Removed && event.second == "cam-2") {
+                sawRemove = true;
+            }
+        }
+    }
+    Check(sawRemove, "a device leaving fires Removed the same way");
+
+    // StopMonitoring() joins a thread that is calling back into the manager.
+    // If it held either lock while joining, this would hang rather than fail.
+    manager.StopMonitoring();
+    Check(!manager.IsMonitoring(), "monitoring stops");
+    Check(watcher->stopCalls >= 1, "and the watcher was stopped");
+    manager.StopMonitoring();
+    Check(true, "stopping twice is harmless");
+
+    manager.Shutdown();
+}
+
+void TestMonitoringEdgeCases() {
+    std::cout << "\nMonitoring edge cases\n";
+
+    IODeviceManager& manager = IODeviceManager::GetInstance();
+    manager.Shutdown();
+
+    // A watcher that cannot start must leave monitoring off, not half on.
+    auto broken = std::make_shared<FakeWatcher>();
+    broken->failToStart = true;
+    manager.SetDeviceWatcher(broken);
+    Check(!static_cast<bool>(manager.StartMonitoring()),
+          "a watcher that fails to start reports the failure");
+    Check(!manager.IsMonitoring(), "and monitoring is left off");
+
+    // The watcher cannot be swapped underneath a running one.
+    auto working = std::make_shared<FakeWatcher>();
+    manager.SetDeviceWatcher(working);
+    manager.StartMonitoring();
+    IODeviceResult refused = manager.SetDeviceWatcher(std::make_shared<FakeWatcher>());
+    Check(!static_cast<bool>(refused), "the watcher cannot be replaced while running");
+    Check(refused.code == IODeviceResultCode::InvalidState, "with InvalidState");
+
+    // Shutdown() has to stop monitoring, or the watcher thread outlives the
+    // registry it reports into.
+    manager.Shutdown();
+    Check(!manager.IsMonitoring(), "Shutdown() stops monitoring");
+    Check(working->stopCalls >= 1, "and stops the watcher");
+}
+
 void TestShutdownDisconnects() {
     std::cout << "\nShutdown releases devices\n";
 
@@ -322,6 +494,8 @@ int main() {
     TestTwoBackendsOneCategory();
     TestEnumerationMerge();
     TestBrokenBackendIsContained();
+    TestHotPlugMonitoring();
+    TestMonitoringEdgeCases();
     TestShutdownDisconnects();
 
     std::cout << "\n";
