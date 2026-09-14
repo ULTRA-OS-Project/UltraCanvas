@@ -1,7 +1,7 @@
 # IODeviceManager — Architecture
 
-Module status: **foundation, printers (CUPS + Windows) and cameras (V4L2)
-landed; more backends in progress.**
+Module status: **foundation, printers (CUPS + Windows), cameras (V4L2) and
+scanners (SANE) landed; more backends in progress.**
 See [README.md](README.md) for what the module is for. This file is the
 API contract and the design rationale behind it.
 
@@ -312,8 +312,8 @@ compiling, tested and wired into CI before the next starts:
 | 3 ✅ | Windows spooler backend: enumeration, capabilities, status, job queue, RAW transport |
 | 4 | GutenPrint renderer — blocked on the licence decision above. With slices 2 and 3 in, this is one class and no other change on any platform. |
 | 5 ✅ | `CameraDevice` + V4L2 (Linux) |
-| 6 | Windows GDI/XPS renderer, so `Native` works there too |
-| 7 | `ScannerDevice` + SANE (Linux) |
+| 6 ✅ | `ScannerDevice` + SANE (Linux) |
+| 7 | Windows GDI/XPS renderer, so `Native` works there too |
 | 8 | Windows and macOS backends for camera and scanner |
 | 9 | IPP / eSCL driverless, network cameras |
 | 10 | Hot-plug watchers and the permission model |
@@ -396,3 +396,47 @@ non-blocking with `poll()` supplying the timeout, so a stalled camera cannot
 wedge the caller, and every ioctl retries on `EINTR` — a signal is not a
 device error. Frames carry the driver's own timestamp rather than a clock read
 in the callback, which has already drifted from when the sensor was exposed.
+
+---
+
+## Scanners
+
+The page loop is where a scanner API earns or loses its keep. A feeder run
+ends when the tray empties, and a backend signals that the only way it can —
+by not producing a page — which is also how it signals a failure. Conflating
+the two throws away every page already scanned, so `DoScanPage()` returns
+`DeviceNotFound` for an empty feeder specifically, and `ScanPages()` treats
+that as a normal end once at least one page has come through.
+
+A run ends in five ways, all covered by `Tests/IODeviceScannerTest`: the tray
+empties, the caller's callback returns false, `maxPages` is reached,
+`CancelScan()` is called, or the source is a flatbed, which has one page by
+definition. The page count rides back in `IODeviceResult::backendCode` even
+on a cancelled or failed run, so a caller knows what it got.
+
+`CancelScan()` deliberately takes no lock. The scanning thread holds
+`deviceMutex` for the whole run, so a cancel that waited for it could never
+arrive in time to cancel anything.
+
+### Configuration
+
+Colour mode and paper source are enumerations — a scanner either has them or
+does not — so an unsupported one is refused. Resolution is a number on a
+scale, and scanners expose arbitrary values, so it is **snapped** to the
+nearest offered rather than refused: turning down 301 dpi on a device that
+does 300 helps nobody. `NearestResolution()` prefers the closest value at or
+*below* the request, because scanning higher costs time and memory
+quadratically and is not a substitution to make silently.
+
+### SANE backend
+
+Enumerates with `local_only` false so networked backends (`net`, `escl`,
+`airscan`) are included — a driverless network scanner is the common case now.
+Options are walked by name rather than index, because backends order them
+freely, and sources are matched by substring since "ADF Duplex", "Duplex ADF"
+and "Automatic Document Feeder" all mean the same thing. Geometry crosses from
+SANE's fixed-point millimetres to this module's hundredths of a millimetre in
+one place rather than at every call site. `sane_init`/`sane_exit` are
+process-global and not reference-counted by the library, so the count is kept
+in the backend: a second scanner opening must not re-init, and the first one
+closing must not tear the library out from under the others.

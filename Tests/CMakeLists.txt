@@ -2797,6 +2797,12 @@ add_executable(IODeviceManagerTest
     ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceCamera.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCamera.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
+    # The SANE backend is guarded on ULTRACANVAS_HAS_SANE as well as the
+    # platform, and this test does not define it, so the file compiles to
+    # nothing here and no scanner backend is registered.
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
 )
 target_include_directories(IODeviceManagerTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -2870,3 +2876,30 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: IODeviceCameraTest")
+
+# ===== IODEVICEMANAGER SCANNER TEST =====
+# Configuration resolution and the page loop, driven by a fake scanner so it
+# runs with no scanner attached. The page loop is the point: an empty feeder
+# ends a run normally rather than discarding the pages already scanned.
+message(STATUS "  Building IODeviceScannerTest...")
+add_executable(IODeviceScannerTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceScannerTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+)
+target_include_directories(IODeviceScannerTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODeviceScannerTest PRIVATE cxx_std_20)
+set_target_properties(IODeviceScannerTest PROPERTIES
+    OUTPUT_NAME "IODeviceScannerTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME IODeviceScannerTest
+    COMMAND IODeviceScannerTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: IODeviceScannerTest")

@@ -44,5 +44,10 @@ void RegisterWindowsPrinterBackend(IODeviceManager& manager);
 void RegisterV4L2CameraBackend(IODeviceManager& manager);
 #endif
 
+#if defined(__linux__) && defined(ULTRACANVAS_HAS_SANE)
+// OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp
+void RegisterSaneScannerBackend(IODeviceManager& manager);
+#endif
+
 } // namespace Internal
 } // namespace UltraCanvas

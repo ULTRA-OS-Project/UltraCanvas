@@ -9,7 +9,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-14 (after the camera slice).
+Last reviewed: 2026-09-14 (after the scanner slice).
 
 ---
 
@@ -44,24 +44,26 @@ Last reviewed: 2026-09-14 (after the camera slice).
 |---|---|
 | `PrinterDevice` | ✅ |
 | `CameraDevice` | ✅ |
-| `ScannerDevice` | ❌ |
+| `ScannerDevice` | ✅ |
 
 ---
 
-## Scanner — the largest hole
+## Scanner
 
-Advertised as finished across five protocols. **No scanner source has ever
-existed in this repository.**
+Previously the largest hole: advertised as finished across five protocols with
+no scanner source in the repository at all. `ScannerDevice` and the SANE
+backend now exist; the other four protocols do not.
 
 | Item | State |
 |---|---|
-| `ScannerDevice` + scanner types (resolution, colour mode, scan area, ADF, duplex) | ❌ |
-| SANE (Linux) | ❌ |
+| `ScannerDevice` + scanner types (resolution, colour mode, scan area, ADF, duplex) | ✅ |
+| SANE (Linux) | ✅ enumeration, option walk, page loop, cancellation |
 | WIA (Windows) | ❌ |
 | TWAIN (Windows) | ❌ |
 | ICA (macOS) | ❌ |
 | eSCL / AirScan driverless network scanning | ❌ |
-| Multi-page ADF, preview mode, capability detection | ❌ |
+| Multi-page ADF, capability detection | ✅ |
+| Preview mode | ❌ detected but not exposed |
 
 ---
 

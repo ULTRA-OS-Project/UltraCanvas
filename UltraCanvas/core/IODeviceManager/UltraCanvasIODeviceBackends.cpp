@@ -23,6 +23,10 @@ void RegisterCompiledBackends(IODeviceManager& manager) {
     RegisterV4L2CameraBackend(manager);
 #endif
 
+#if defined(__linux__) && defined(ULTRACANVAS_HAS_SANE)
+    RegisterSaneScannerBackend(manager);
+#endif
+
     // Still to come, each adding a guarded call here:
     //
     //   #if defined(ULTRACANVAS_HAS_GPHOTO2)

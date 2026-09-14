@@ -543,6 +543,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinter.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCamera.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScanner.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
@@ -908,6 +910,34 @@ else()
     set(ULTRACANVAS_HAS_CUPS FALSE)
 endif()
 
+# ===== IODEVICEMANAGER: SANE SCANNER BACKEND (optional, Linux) =====
+# Without SANE the module still builds and simply registers no scanner
+# backend. The backend file is guarded on both the platform and this flag, so
+# it is an empty translation unit when either is absent.
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    pkg_check_modules(ULTRACANVAS_SANE QUIET sane-backends)
+    if(NOT ULTRACANVAS_SANE_FOUND)
+        # sane-backends ships no .pc file on some distributions; fall back to
+        # looking for the header and library directly.
+        find_path(SANE_INCLUDE_DIR sane/sane.h)
+        find_library(SANE_LIBRARY NAMES sane)
+        if(SANE_INCLUDE_DIR AND SANE_LIBRARY)
+            set(ULTRACANVAS_SANE_FOUND TRUE)
+            set(ULTRACANVAS_SANE_VERSION "found directly")
+            set(ULTRACANVAS_SANE_INCLUDE_DIRS ${SANE_INCLUDE_DIR})
+            set(ULTRACANVAS_SANE_LIBRARIES ${SANE_LIBRARY})
+        endif()
+    endif()
+endif()
+
+if(ULTRACANVAS_SANE_FOUND)
+    message(STATUS "  SANE: ${ULTRACANVAS_SANE_VERSION} - scanner backend ENABLED")
+    set(ULTRACANVAS_HAS_SANE TRUE)
+else()
+    message(STATUS "  [-] SANE - not found (no scanner backend on this build)")
+    set(ULTRACANVAS_HAS_SANE FALSE)
+endif()
+
 # ===== SPELL CHECKING (all dependencies optional) =====
 # With none of these present the module still compiles and simply reports zero
 # dictionaries, so a missing optional dependency never breaks the build.
@@ -1265,6 +1295,13 @@ endif()
 # runtime and finally to a no-op that reports zero dictionaries.
 find_package(Threads REQUIRED)
 target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Threads::Threads)
+
+if(ULTRACANVAS_HAS_SANE)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_SANE)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_SANE_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_SANE_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_SANE_LIBRARIES})
+endif()
 
 if(ULTRACANVAS_HAS_CUPS)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_CUPS)

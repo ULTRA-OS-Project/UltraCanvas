@@ -1,3 +1,43 @@
+#### 2026-09-14 *0.8.50*
+- **IODeviceManager: scanners, and the SANE backend.** `ScannerDevice`
+  completes the three categories the module's README advertises as production
+  ready. Scanner support was previously described as finished across five
+  protocols with no scanner source in the repository at all.
+- **An empty feeder ends a run; it does not fail it.** A backend signals a
+  spent tray the only way it can - by not producing a page - which is also how
+  it signals a failure, and conflating the two discards every page already
+  scanned. `DoScanPage()` returns `DeviceNotFound` for an empty feeder
+  specifically, and `ScanPages()` treats that as a normal end once a page has
+  come through. The page count rides back in `backendCode` even on a cancelled
+  or failed run, so a caller always knows what it got.
+- Colour mode and paper source are refused when unsupported, because a scanner
+  either has them or does not. Resolution is **snapped** to the nearest
+  offered instead, since scanners expose arbitrary values and refusing 301 dpi
+  on a device that does 300 helps nobody. The nearest is chosen at or *below*
+  the request: scanning higher costs time and memory quadratically, which is
+  not a substitution to make silently.
+- `CancelScan()` takes no lock by design - the scanning thread holds
+  `deviceMutex` for the whole run, so a cancel that waited for it could never
+  arrive in time to cancel anything.
+- The SANE backend enumerates with `local_only` false so `net`, `escl` and
+  `airscan` are included, since a driverless network scanner is now the common
+  case. Options are walked by name rather than index because backends order
+  them freely, and sources are matched by substring - "ADF Duplex", "Duplex
+  ADF" and "Automatic Document Feeder" all mean the same thing. `sane_init`
+  and `sane_exit` are process-global and not reference-counted by the library,
+  so the count is kept in the backend: a second scanner opening must not
+  re-init, and the first closing must not tear the library out from under the
+  others.
+- Writing the test found two defects worth naming. `ScannedImage::channels`
+  defaulted to 1, so "the backend did not say" and "genuinely one channel"
+  were the same value - the mistake `IOSupport` exists to avoid elsewhere in
+  this module; it now defaults to 0 and `ScannerDevice` fills it from the
+  colour mode. And the page height was being derived inside the SANE backend,
+  where every future backend would have had to repeat it; a scanner often
+  cannot say how long a page is until the sheet has fed through, so the height
+  falls out of how much data arrived and that arithmetic now lives once in
+  `ScannerDevice`.
+
 #### 2026-09-14 *0.8.49*
 - **IODeviceManager: cameras, and the V4L2 backend.** `CameraDevice` joins
   `PrinterDevice` as a category class, with the V4L2 webcam backend behind it -
