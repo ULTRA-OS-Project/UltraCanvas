@@ -1,3 +1,6 @@
+#### 2026-09-14 *0.8.47*
+- Fixes in HTML rendering
+
 #### 2026-09-14 *0.8.46*
 - **A folder display can leave out names that are not hidden at all.**
   `UltraCanvasFilerWidget::SetIgnoredNamePatterns(patterns, onlyInFolder)`
