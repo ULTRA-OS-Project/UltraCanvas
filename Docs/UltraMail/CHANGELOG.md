@@ -1,4 +1,4 @@
-#### 2026-09-14 *0.9.3*
+#### 2026-09-14 *0.9.4*
 - **One icon for UltraMail, everywhere it is shown.** `media/appicon/UltraMail.png`
   — the coloured ring around an `@` — replaces the envelope placeholder
   (`UltraMail.svg`, now removed) as the app's single mark, and every place that
@@ -20,6 +20,9 @@
   The desktop entry deliberately declares no `MimeType=` and no `%U`:
   UltraMail's `main()` takes no arguments yet, so claiming the `mailto:`
   association would route mail links to a program that drops them.
+
+#### 2026-09-14 *0.9.3*
+- Implemented OAuth for Google. Fixes in layout and HTML renderer.
 
 #### 2026-09-11 *0.9.2*
 - **Type scale matched to UltraFiler.** UltraMail's text was far larger than

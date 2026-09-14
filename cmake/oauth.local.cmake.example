@@ -1,0 +1,26 @@
+# cmake/oauth.local.cmake.example
+#
+# Bake the OAuth client UltraMail signs in as into the build, so end users get
+# working Gmail / Outlook browser sign-in with no oauth.ini and no env vars.
+#
+# HOW TO USE
+#   1. Copy this file to cmake/oauth.local.cmake (that name is gitignored).
+#   2. Fill in the ids/secret from your provider registrations
+#      (see Docs/UltraMail/AccountSetup.md, "For people building or packaging
+#      UltraMail").
+#   3. Reconfigure the build (cmake ...). Apps/UltraMail/CMakeLists.txt includes
+#      this file automatically when present and generates the baked-in header.
+#
+# The values are XOR-obfuscated in the binary by default (anti-scraping only,
+# not confidentiality — a desktop OAuth client secret is non-confidential by
+# design). Set ULTRAMAIL_OAUTH_OBFUSCATE=OFF to store them verbatim.
+#
+# These override nothing at runtime: OAuthApps::Set(), the ULTRAMAIL_*_CLIENT_ID
+# environment variables and oauth.ini all still take priority, so a user or
+# admin can point the build at a different client without a rebuild.
+
+set(ULTRAMAIL_GOOGLE_CLIENT_ID     "xxx.apps.googleusercontent.com" CACHE STRING "" FORCE)
+set(ULTRAMAIL_GOOGLE_CLIENT_SECRET "GOCSPX-xxx-xxxx"           CACHE STRING "" FORCE)
+
+# Microsoft is a public client — client id only, no secret.
+#set(ULTRAMAIL_MICROSOFT_CLIENT_ID  "00000000-1111-2222-3333-444444444444"      CACHE STRING "" FORCE)

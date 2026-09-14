@@ -11,9 +11,13 @@
 //     provider id ("google", "microsoft");
 //   * the OAuth *app* UltraMail signs in as (client id, optional secret,
 //     loopback redirect URI). That registration belongs to whoever ships the
-//     app, so it is configuration, never a literal here: SetOAuthApp(), or
-//     ULTRAMAIL_<PROVIDER>_CLIENT_ID / _CLIENT_SECRET / _REDIRECT_URI in the
-//     environment, or an INI file in the data folder (OAuthApps::LoadFile).
+//     app. A shipped build bakes it in (compiled as a build-time default — see
+//     Apps/UltraMail/CMakeLists.txt and UltraMailOAuthDefaults.h.in) so end
+//     users need no config. It can still be overridden at runtime, in
+//     decreasing priority: OAuthApps::Set(), then ULTRAMAIL_<PROVIDER>_CLIENT_ID
+//     / _CLIENT_SECRET / _REDIRECT_URI in the environment, then an INI file in
+//     the data folder (OAuthApps::LoadFile) — all of which win over the
+//     baked-in default, which is the escape hatch for rotation.
 // Version: 0.2.0 - Microsoft (Outlook / Microsoft 365) beside Google; login hint
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -45,8 +49,9 @@ struct OAuthApp {
 
 // Registry of app registrations. Lookup order: Set() > environment
 // (ULTRAMAIL_GOOGLE_CLIENT_ID, ULTRAMAIL_MICROSOFT_CLIENT_ID, ...) > entries
-// loaded from the INI file. Get() fills an empty redirectUri with the
-// provider's default.
+// loaded from the INI file > the client baked into this build (empty unless the
+// build was configured with credentials). Get() fills an empty redirectUri with
+// the provider's default.
 class OAuthApps {
 public:
     static void     Set(const std::string& providerId, const OAuthApp& app);

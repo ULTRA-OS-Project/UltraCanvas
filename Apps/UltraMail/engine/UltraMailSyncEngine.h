@@ -68,6 +68,11 @@ public:
     std::string BodyPath(const std::string& accountId, const std::string& folder,
                          int64_t uid) const;
 
+    // Write a raw message body to its cache path; returns the path (empty on
+    // failure or empty input). Shared by FetchBody and the batched body sync.
+    std::string WriteBody(const std::string& accountId, const std::string& folder,
+                          int64_t uid, const std::string& raw) const;
+
     // Set/clear a flag on the server (UID STORE) and in the local index.
     SyncOutcome SetFlag(const std::string& accountId, const std::string& folder,
                         int64_t uid, uint32_t ultramailFlag, bool set,

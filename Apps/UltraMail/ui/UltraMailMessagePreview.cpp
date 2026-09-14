@@ -1,7 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
-// Version: 0.4.2 - taller header so From/To are not clipped; the HTML body fills
-//                  the pane width (reflows) and gets a horizontal scrollbar when
-//                  content cannot reflow, instead of being clipped.
+// Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
+//                  fills the pane width (reflows) and gets a horizontal scrollbar
+//                  when content cannot reflow, instead of being clipped.
 // Last Modified: 2026-09-13
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
@@ -35,9 +35,9 @@ constexpr float kSubjectFont  = 13.0f;
 constexpr float kHeaderLine   = 16.0f;   // line box for the 9pt / 8.5pt header text
 constexpr float kAvatarSide   = 26.0f;
 constexpr float kDateWidth    = 110.0f;
-// The header row holds two stacked text lines (from / to), so it must be tall
-// enough for both plus the 1px gap — otherwise the second line is clipped.
-constexpr float kHeaderHeight = 2.0f * kHeaderLine + 6.0f;
+// The header row holds two stacked auto-height text lines (from / to) plus the
+// 1px gap, and must be tall enough for both so neither is cropped.
+constexpr float kHeaderHeight = 44.0f;
 
 // Very small HTML-to-text reduction (for the quoted reply body): drop tags and
 // decode a few entities.
@@ -131,9 +131,11 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     who->layout.SetFlexColumn()
                .SetFlexGap(1)
                .SetFlexJustifyContent(CSSLayout::JustifyContent::Center);
-    from_ = Theme::MakeLine("prevFrom", "", kHeaderLine, Theme::kSizeBody,
+    // Auto-height labels so each sizes to its own glyph line — a fixed-height
+    // box cropped the second line regardless of the row height.
+    from_ = Theme::MakeText("prevFrom", "", Theme::kSizeBody,
                             Theme::kTextPrimary, FontWeight::Bold);
-    to_   = Theme::MakeLine("prevTo", "", kHeaderLine, Theme::kSizeSecondary,
+    to_   = Theme::MakeText("prevTo", "", Theme::kSizeSecondary,
                             Theme::kTextSecondary);
     who->AddChild(from_);
     who->AddChild(to_);
@@ -164,7 +166,7 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     header->AddChild(replyBtn);
     replyBtn->layoutItem.SetFlexShrink(0);
     root_->AddChild(header);
-    header->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    header->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     rule_ = Theme::MakeDivider("prevRule");
     root_->AddChild(rule_);

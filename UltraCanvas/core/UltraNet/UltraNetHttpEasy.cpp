@@ -16,6 +16,8 @@
 
 #ifndef _WIN32
 #include <sys/stat.h>
+#else
+#include <windows.h>
 #endif
 
 namespace ultranet_internal {
@@ -28,6 +30,28 @@ namespace {
         std::fclose(f);
         return true;
     }
+
+#ifdef _WIN32
+    // Directory of the running executable, UTF-8, with a trailing backslash, or
+    // "" on failure. Self-contained (Win32 only) so the CA resolver has no
+    // dependency on the UltraCanvas core path helpers.
+    std::string WindowsExeDir() {
+        wchar_t buf[MAX_PATH * 4];
+        const DWORD n = GetModuleFileNameW(nullptr, buf,
+                                           static_cast<DWORD>(sizeof(buf) / sizeof(buf[0])));
+        if (n == 0 || n >= sizeof(buf) / sizeof(buf[0])) return {};
+        std::wstring w(buf, n);
+        const std::size_t slash = w.find_last_of(L"\\/");
+        if (slash == std::wstring::npos) return {};
+        w.resize(slash + 1);
+        const int len = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1,
+                                            nullptr, 0, nullptr, nullptr);
+        if (len <= 1) return {};
+        std::string out(static_cast<std::size_t>(len - 1), '\0');
+        WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, &out[0], len, nullptr, nullptr);
+        return out;
+    }
+#endif
 
     // CA trust anchors used when UltraNetConfig::caBundlePath is empty.
     // libcurl bakes the CA bundle location of the *build* machine into the
@@ -55,6 +79,28 @@ namespace {
                     return t;
                 }
             }
+
+#ifdef _WIN32
+            // A cacert.pem shipped beside the app. The Windows system libcurl's
+            // baked-in CA path points into the build machine's tree and does not
+            // exist on an end user's box, so ship our own and find it relative to
+            // the executable. Takes priority over that (broken) build default.
+            {
+                const std::string exeDir = WindowsExeDir();
+                if (!exeDir.empty()) {
+                    const std::string candidates[] = {
+                        exeDir + "cacert.pem",
+                        exeDir + "Resources\\certs\\cacert.pem",
+                    };
+                    for (const std::string& c : candidates) {
+                        if (FileReadable(c.c_str())) {
+                            t.bundle = c;
+                            return t;
+                        }
+                    }
+                }
+            }
+#endif
 
 #if LIBCURL_VERSION_NUM >= 0x075400 /* 7.84.0: cainfo in version info */
             // If the build-time default actually exists on this machine,
@@ -269,6 +315,7 @@ UltraNetResultCode MapCurlError(CURLcode rc, long httpStatus) {
         case CURLE_RECV_ERROR:              return UltraNetResultCode::ReceiveFailed;
         case CURLE_SSL_CONNECT_ERROR:       return UltraNetResultCode::TlsHandshakeFailed;
         case CURLE_PEER_FAILED_VERIFICATION:return UltraNetResultCode::TlsCertificateInvalid;
+        case CURLE_SSL_CACERT_BADFILE:      return UltraNetResultCode::TlsCertificateInvalid;
         case CURLE_LOGIN_DENIED:            return UltraNetResultCode::AuthenticationFailed;
         case CURLE_ABORTED_BY_CALLBACK:     return UltraNetResultCode::Cancelled;
         case CURLE_OUT_OF_MEMORY:           return UltraNetResultCode::InsufficientMemory;
@@ -345,6 +392,12 @@ curl_slist* ConfigureEasyHandle(CURL* easy,
             curl_easy_setopt(easy, CURLOPT_CAPATH, trust.dir.c_str());
         }
     }
+#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
+    // Additionally trust the Windows system certificate store (auto-updated
+    // roots), on top of any bundle above — so verification still works if no
+    // cacert.pem was shipped and covers roots newer than a shipped bundle.
+    curl_easy_setopt(easy, CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
+#endif
 
     const UltraNetProxyConfig& proxy =
         opt.proxy.IsEnabled() ? opt.proxy : cfg.proxy;
@@ -495,3 +548,9 @@ UltraNetTransferStats ReadTransferStats(CURL* easy) {
 }
 
 } // namespace ultranet_internal
+
+// Public: the CA bundle both the HTTP client and the IMAP/SMTP plug-ins trust
+// (declared in UltraNet/UltraNetCore.h). Resolved once by DiscoverCaTrust.
+std::string UltraNet_ResolveCaBundlePath() {
+    return ultranet_internal::DiscoverCaTrust().bundle;
+}

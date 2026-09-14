@@ -66,6 +66,50 @@ done
 cp ./build/*.dll "$DIST_DIR/" 2>/dev/null || true
 echo "Copied EXE"
 
+# UltraNet protocol plug-ins (ultranet_imap/smtp/...). These are dlopen'd at
+# runtime; UltraMail probes <exe>/Plugins/UltraNet first, so without them mail
+# fetch/send report "the IMAP plug-in was not found". Copy before the transitive
+# DLL closure below so the plug-ins' own dependencies (libcurl, ...) get pulled in.
+if [ -d ./build/Plugins/UltraNet ]; then
+    mkdir -p "$DIST_DIR/Plugins/UltraNet"
+    cp ./build/Plugins/UltraNet/*.dll "$DIST_DIR/Plugins/UltraNet/" 2>/dev/null || true
+    echo "Copied UltraNet plugins"
+fi
+# Chart/Element runtime modules (MODULE DSOs on a shared-core build), if present.
+if [ -d ./build/Plugins/Elements ]; then
+    mkdir -p "$DIST_DIR/Plugins/Elements"
+    cp ./build/Plugins/Elements/*.dll "$DIST_DIR/Plugins/Elements/" 2>/dev/null || true
+    echo "Copied Elements plugins"
+fi
+
+# TLS CA bundle. The MSYS2 libcurl we ship uses the OpenSSL backend, which needs
+# an external PEM bundle; its baked-in path points into the build tree and does
+# not exist on an end user's machine (every https:// then fails with "Problem
+# with the SSL CA cert"). Ship cacert.pem next to the exe -
+# UltraNet_ResolveCaBundlePath() probes exactly there.
+CACERT_DST="$DIST_DIR/cacert.pem"
+CACERT_SRC=""
+for cand in \
+    "$MSYS_PREFIX/etc/ssl/certs/ca-bundle.crt" \
+    "$MSYS_PREFIX/etc/ssl/cert.pem" \
+    "$MSYS_PREFIX/ssl/certs/ca-bundle.crt" \
+    "/etc/ssl/certs/ca-certificates.crt"; do
+    [ -f "$cand" ] && { CACERT_SRC="$cand"; break; }
+done
+if [ -z "$CACERT_SRC" ] && command -v curl-config >/dev/null 2>&1; then
+    c="$(curl-config --ca 2>/dev/null || true)"
+    [ -n "$c" ] && [ -f "$c" ] && CACERT_SRC="$c"
+fi
+if [ -n "$CACERT_SRC" ]; then
+    cp "$CACERT_SRC" "$CACERT_DST"
+    echo "Copied CA bundle: $CACERT_SRC -> cacert.pem"
+elif command -v curl >/dev/null 2>&1 && curl -fsS -o "$CACERT_DST" https://curl.se/ca/cacert.pem; then
+    echo "Downloaded CA bundle from curl.se -> cacert.pem"
+else
+    echo "ERROR: no TLS CA bundle found and download failed; Gmail/Outlook sign-in and IMAP/SMTP would fail on end-user machines" >&2
+    exit 1
+fi
+
 # The LaTeX math module is a dlopen()ed CMake MODULE, so CMake emits it to
 # build/lib (LIBRARY_OUTPUT_DIRECTORY) rather than next to the executables,
 # and the glob above never sees it. Ship it in lib/, which the core's loader

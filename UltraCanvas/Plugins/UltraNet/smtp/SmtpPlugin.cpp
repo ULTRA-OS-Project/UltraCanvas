@@ -109,6 +109,7 @@ UltraNetResultCode MapCurlError(CURLcode rc) {
         case CURLE_LOGIN_DENIED:            return UltraNetResultCode::AuthenticationFailed;
         case CURLE_SSL_CONNECT_ERROR:       return UltraNetResultCode::TlsHandshakeFailed;
         case CURLE_PEER_FAILED_VERIFICATION:return UltraNetResultCode::TlsCertificateInvalid;
+        case CURLE_SSL_CACERT_BADFILE:      return UltraNetResultCode::TlsCertificateInvalid;
         default:                            return UltraNetResultCode::Unknown;
     }
 }
@@ -167,6 +168,17 @@ public:
         if (options.useTls && !options.implicitTls) {
             // STARTTLS upgrade (smtp://host:587)
             curl_easy_setopt(h.get(), CURLOPT_USE_SSL, CURLUSESSL_ALL);
+        }
+        if (options.useTls || options.implicitTls) {
+            // Trust the same CA anchors as the HTTP client. Matters on Windows,
+            // where the system libcurl's baked-in CA path does not exist on an
+            // end user's machine; empty leaves libcurl's own default in place.
+            const std::string caBundle = UltraNet_ResolveCaBundlePath();
+            if (!caBundle.empty())
+                curl_easy_setopt(h.get(), CURLOPT_CAINFO, caBundle.c_str());
+#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
+            curl_easy_setopt(h.get(), CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
+#endif
         }
 
         const std::string fromAngle = AngleAddr(message.from);
