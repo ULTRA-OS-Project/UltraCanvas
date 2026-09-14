@@ -2229,6 +2229,32 @@ else()
     message(STATUS "  XARProbeTest skipped (UltraCanvasXARPlugin target not present)")
 endif()
 
+# ===== XAR COLOUR TEST =====
+# Checks that TAG_DEFINECOMPLEXCOLOUR records resolve to the screen colours the
+# repo's XAR samples actually carry - Shade colours over HSV and CMYK parents
+# in particular, which a colour-model recomputation drives to black and which
+# no structural check catches.
+if(TARGET UltraCanvasXARPlugin)
+    message(STATUS "  Building XARColourTest...")
+    add_executable(XARColourTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/XARColourTest.cpp
+    )
+    target_include_directories(XARColourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(XARColourTest PRIVATE cxx_std_20)
+    target_link_libraries(XARColourTest PRIVATE UltraCanvasXARPlugin UltraCanvas)
+    target_compile_definitions(XARColourTest PRIVATE
+        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/XAR"
+    )
+    set_target_properties(XARColourTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME XARColourTest COMMAND XARColourTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: XARColourTest")
+else()
+    message(STATUS "  XARColourTest skipped (UltraCanvasXARPlugin target not present)")
+endif()
+
 # Round-trips a VectorDocument through the Vector plugin's XAR writer and the
 # XAR plugin's spec-verified reader: page size, node counts, millipoint
 # placement (Y flip), colour references, text spans. Needs both plugins.

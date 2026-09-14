@@ -16,6 +16,7 @@
 #include <iostream>
 #include <mutex>
 #include <stack>
+#include <cmath>
 
 namespace UltraCanvas {
     class ITextLayout;
@@ -273,6 +274,22 @@ namespace UltraCanvas {
         virtual std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(double cx1, double cy1, double r1,
                                                                            double cx2, double cy2, double r2,
                                                                            const std::vector<GradientStop>& stops) = 0;
+        // Radial gradient whose iso-colour lines are ellipses rather than
+        // circles: the stops run from `centre` outwards, reaching position 1
+        // at centre+major along one axis and at centre+minor along the other.
+        // The two axis vectors need not be perpendicular or equal in length -
+        // any affine image of a circle can be expressed - which is what vector
+        // formats (XAR elliptical fills, SVG gradientTransform) need. The base
+        // implementation degrades to a circular gradient of the major axis's
+        // length, so backends without pattern matrices stay valid.
+        virtual std::shared_ptr<IPaintPattern> CreateEllipticalGradientPattern(double cx, double cy,
+                                                                               double majorX, double majorY,
+                                                                               double minorX, double minorY,
+                                                                               const std::vector<GradientStop>& stops) {
+            (void)minorX; (void)minorY;
+            const double r = std::sqrt(majorX * majorX + majorY * majorY);
+            return CreateRadialGradientPattern(cx, cy, 0.0, cx, cy, r, stops);
+        }
         // Image-backed paint: the image is fitted to anchorRect (Cover crops,
         // Fill stretches, Contain letterboxes) and, when repeat is set, tiles
         // outward from it. Use as fill/stroke paint to flood any path with a

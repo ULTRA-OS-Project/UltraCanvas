@@ -545,8 +545,12 @@ namespace UltraCanvas {
         // Resolved at parse time from bitmapRef; owned by the XARDocument's
         // bitmap table, which outlives every node snapshot.
         XARBitmapDefinition* bitmapDef = nullptr;
-        double profileBias = 0.5;
-        double profileGain = 0.5;
+        // Fill profile, Xara's scale: 0 is the neutral linear ramp, the
+        // usable range is (-1, 1). Records that carry no profile keep these
+        // defaults, so they must be the neutral value, not the midpoint of
+        // some other scale.
+        double profileBias = 0.0;
+        double profileGain = 0.0;
         XARFillRepeat repeat = XARFillRepeat::NonRepeating;
         XARFillEffect effect = XARFillEffect::Fade;
         // Fractal/noise extras
@@ -595,8 +599,12 @@ namespace UltraCanvas {
         std::vector<XARTransparencyStop> stops;
         int32_t bitmapRef = -1;
         XARTransparencyMix mix = XARTransparencyMix::Mix;
-        double profileBias = 0.5;
-        double profileGain = 0.5;
+        // Fill profile, Xara's scale: 0 is the neutral linear ramp, the
+        // usable range is (-1, 1). Records that carry no profile keep these
+        // defaults, so they must be the neutral value, not the midpoint of
+        // some other scale.
+        double profileBias = 0.0;
+        double profileGain = 0.0;
         XARFillRepeat repeat = XARFillRepeat::NonRepeating;
     };
 
