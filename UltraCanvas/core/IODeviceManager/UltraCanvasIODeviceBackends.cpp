@@ -19,11 +19,12 @@ void RegisterCompiledBackends(IODeviceManager& manager) {
     RegisterWindowsPrinterBackend(manager);
 #endif
 
+#if defined(__linux__)
+    RegisterV4L2CameraBackend(manager);
+#endif
+
     // Still to come, each adding a guarded call here:
     //
-    //   #if defined(ULTRACANVAS_HAS_V4L2)
-    //       RegisterV4L2CameraBackend(manager);      // OS/Linux
-    //   #endif
     //   #if defined(ULTRACANVAS_HAS_GPHOTO2)
     //       RegisterGPhoto2CameraBackend(manager);   // OS/Linux
     //   #endif

@@ -9,7 +9,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-14 (after the Windows printer slice).
+Last reviewed: 2026-09-14 (after the camera slice).
 
 ---
 
@@ -43,7 +43,7 @@ Last reviewed: 2026-09-14 (after the Windows printer slice).
 | Class | State |
 |---|---|
 | `PrinterDevice` | ✅ |
-| `CameraDevice` | ⚠️ a version exists outside the tree, but it declares nine `override`s for methods its own base never had and leaves three pure virtuals unimplemented, so every concrete camera stays abstract. Rewrite. |
+| `CameraDevice` | ✅ |
 | `ScannerDevice` | ❌ |
 
 ---
@@ -69,8 +69,8 @@ existed in this repository.**
 
 | Item | State |
 |---|---|
-| **V4L2 webcam backend (Linux)** | ❌ — never written, and it is the most-used camera backend of all |
-| `CameraDevice` implementation | ❌ |
+| **V4L2 webcam backend (Linux)** | ✅ enumeration, capability walk, mmap streaming capture, UVC controls |
+| `CameraDevice` implementation | ✅ |
 | DSLR: gphoto2 / WIA / ImageCapture | ⚠️ rewrite — see the device-class note above |
 | Webcam: MediaFoundation / AVFoundation | ⚠️ rewrite |
 | Network camera (RTSP) | ⚠️ rewrite, and it calls libav\* and raw sockets directly; it should go through `libspecific/Video/IVideoBackend.h` and UltraNet |

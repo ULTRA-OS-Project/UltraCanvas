@@ -1,7 +1,7 @@
 # IODeviceManager — Architecture
 
-Module status: **foundation and the printer renderer model landed; backends
-in progress.**
+Module status: **foundation, printers (CUPS + Windows) and cameras (V4L2)
+landed; more backends in progress.**
 See [README.md](README.md) for what the module is for. This file is the
 API contract and the design rationale behind it.
 
@@ -311,11 +311,12 @@ compiling, tested and wired into CI before the next starts:
 | 2 ✅ | `PrinterDevice`, renderer/transport seam, option resolver, CUPS backend (Linux + macOS), tests |
 | 3 ✅ | Windows spooler backend: enumeration, capabilities, status, job queue, RAW transport |
 | 4 | GutenPrint renderer — blocked on the licence decision above. With slices 2 and 3 in, this is one class and no other change on any platform. |
-| 5 | Windows GDI/XPS renderer, so `Native` works there too |
-| 6 | `CameraDevice` + V4L2 (Linux) + a DemoApp example |
+| 5 ✅ | `CameraDevice` + V4L2 (Linux) |
+| 6 | Windows GDI/XPS renderer, so `Native` works there too |
 | 7 | `ScannerDevice` + SANE (Linux) |
 | 8 | Windows and macOS backends for camera and scanner |
 | 9 | IPP / eSCL driverless, network cameras |
+| 10 | Hot-plug watchers and the permission model |
 
 Slices 2 and 3 ship the switch and both transports. Adding GutenPrint is then
 a renderer class and nothing else: no change to `PrinterDevice`, and no change
@@ -325,3 +326,73 @@ already submit raw jobs. That is the whole point of having split the two.
 Contributions of earlier prototype code should be re-landed through these
 slices rather than dropped in whole: a large drop that does not compile
 against the current tree costs more to review than it saves.
+
+---
+
+## Cameras
+
+`CameraDevice` follows the same non-virtual-public / virtual-protected shape
+as the lifecycle: callers use `StartStream()`/`StopStream()`, backends
+implement `DoStartStream()`/`DoStopStream()` and call `DeliverFrame()` from
+their capture thread.
+
+Two rules carry the weight, and both are asserted in
+`Tests/IODeviceCameraTest`:
+
+- **No frame reaches a callback after `StopStream()` returns.** `StopStream()`
+  clears the streaming flag first, so a capture loop testing
+  `ShouldKeepStreaming()` winds down, then `DoStopStream()` joins the thread.
+  By the time it returns, whatever the callback captured is safe to destroy.
+- **A backend stops its own thread in its own destructor.** `~CameraDevice()`
+  calls no virtuals, for the same reason `~IODevice()` does not: the derived
+  object is already gone, so a thread still calling `DeliverFrame()` would be
+  reading freed memory.
+
+`DeliverFrame()` deliberately does not take `deviceMutex` — `StopStream()`
+holds it while joining the capture thread, so locking there would deadlock.
+The two fields it touches are atomic, and the callback is cleared only after
+the join.
+
+### Controls
+
+Controls are enumerated, not declared as a struct of booleans:
+
+```cpp
+CameraControlRange range = camera->GetControlRange(CameraControl::Exposure);
+if (range.supported) {
+    camera->SetControl(CameraControl::Exposure, sliderPosition);  // clamped and stepped
+}
+```
+
+Which controls exist is a property of the device. A struct with one field per
+control has to guess the union of every camera in advance and still cannot say
+whether a given camera has one — `CameraCapabilities::controls` lists only
+what this camera actually reports, so iterating it enumerates them.
+`SetControl()` clamps to the range and snaps to the step, so a caller can pass
+a raw slider position; `V4L2_CID_EXPOSURE_ABSOLUTE` with minimum 3 and step 4
+accepts 3, 7, 11 — not 0, 4, 8.
+
+### Configuration
+
+`SetConfiguration()` refuses a format/resolution pair the camera does not
+offer rather than accepting it and capturing something else, which a caller
+would discover only by inspecting frames. `ResolveConfiguration()` fills in
+what was left unset — preferring an uncompressed format so pixels are readable
+without a decoder, and the largest resolution that format offers — and reports
+what it chose, the same contract `ResolvePrintOptions()` has.
+
+An empty resolution list means the driver did not enumerate them (some report
+a continuous range instead), so it reads as "did not say" rather than
+"supports none" — the same rule the printer capabilities follow.
+
+### V4L2 backend
+
+Enumerates `/dev/video*`, skipping nodes without `V4L2_CAP_VIDEO_CAPTURE`:
+modern kernels give one camera several nodes, and the metadata ones would
+otherwise appear as cameras that never yield a frame. Capability walk is
+`VIDIOC_ENUM_FMT` → `ENUM_FRAMESIZES` → `ENUM_FRAMEINTERVALS`, controls via
+`VIDIOC_QUERYCTRL`, capture via mmap'd buffers. The device is opened
+non-blocking with `poll()` supplying the timeout, so a stalled camera cannot
+wedge the caller, and every ioctl retries on `EINTR` — a signal is not a
+device error. Frames carry the driver's own timestamp rather than a clock read
+in the callback, which has already drifted from when the sensor was exposed.

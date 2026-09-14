@@ -1,3 +1,44 @@
+#### 2026-09-14 *0.8.49*
+- **IODeviceManager: cameras, and the V4L2 backend.** `CameraDevice` joins
+  `PrinterDevice` as a category class, with the V4L2 webcam backend behind it -
+  the backend the module's documentation has described as finished for some
+  time and which had never been written.
+- **Streaming has two rules, and both are asserted rather than assumed.** No
+  frame may reach a callback after `StopStream()` returns, because by then the
+  caller has usually destroyed whatever the callback writes into: `StopStream()`
+  clears the streaming flag first so a capture loop winds down, then joins the
+  thread. And a backend stops its own thread in its own destructor, because
+  `~CameraDevice()` calls no virtuals - the derived object is already gone, so
+  a thread still calling `DeliverFrame()` would be reading freed memory.
+  `DeliverFrame()` takes no lock by design: `StopStream()` holds `deviceMutex`
+  while joining, so locking there would deadlock.
+- **Camera controls are enumerated, not a struct of booleans.**
+  `CameraCapabilities::controls` lists only the controls a camera actually
+  reports, so iterating it enumerates them; a field per control has to guess
+  the union of every camera in advance and still cannot say whether a given one
+  has it. `SetControl` clamps to the control's range and snaps to its step, so
+  a caller can pass a slider position - `V4L2_CID_EXPOSURE_ABSOLUTE` with
+  minimum 3 and step 4 takes 3, 7, 11, not 0, 4, 8.
+- `SetConfiguration` refuses a format and resolution the camera does not offer
+  instead of capturing something else, which a caller would notice only by
+  inspecting frames; `ResolveConfiguration` fills in what was left unset,
+  preferring an uncompressed format so pixels are readable without a decoder,
+  and says what it chose.
+- The V4L2 backend skips `/dev/video*` nodes without `V4L2_CAP_VIDEO_CAPTURE`:
+  modern kernels give one camera several nodes, and the metadata ones would
+  otherwise be offered as cameras that never yield a frame. It opens
+  non-blocking with `poll()` for the timeout so a stalled camera cannot wedge
+  the caller, retries every ioctl on `EINTR` because a signal is not a device
+  error, and copies `bytesused` rather than the buffer length - for MJPEG those
+  differ by however much the frame compressed, and the difference would be
+  appended to every frame as garbage.
+- `IOSupport` moved from the printer vocabulary to the device-generic types:
+  cameras need the same "not reported is not the same as not supported"
+  distinction.
+- `Tests/IODeviceCameraTest` drives all of it through a fake camera, so it runs
+  with no `/dev/video*` present. It is clean under ThreadSanitizer, which is
+  the check that means something for a threaded capture path.
+
 #### 2026-09-14 *0.8.48*
 - **IODeviceManager: the Windows printer backend, and with it GutenPrint on
   all three platforms.** Spooler enumeration, capabilities from

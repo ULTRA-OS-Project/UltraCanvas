@@ -2791,6 +2791,12 @@ add_executable(IODeviceManagerTest
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceManager.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceBackends.cpp
+    # Backends.cpp names every backend this build compiles in, so anything
+    # linking it needs them too. The camera backend is __linux__-guarded and
+    # so is an empty translation unit on the other platforms.
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
 )
 target_include_directories(IODeviceManagerTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
@@ -2835,3 +2841,32 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: IODevicePrinterTest")
+
+# ===== IODEVICEMANAGER CAMERA TEST =====
+# Configuration validation, the streaming state machine and control clamping,
+# driven by a fake camera so it needs no /dev/video*. The streaming assertions
+# are the point: no frame may reach a callback after StopStream() returns.
+message(STATUS "  Building IODeviceCameraTest...")
+add_executable(IODeviceCameraTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceCameraTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
+)
+target_include_directories(IODeviceCameraTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODeviceCameraTest PRIVATE cxx_std_20)
+find_package(Threads REQUIRED)
+target_link_libraries(IODeviceCameraTest PRIVATE Threads::Threads)
+set_target_properties(IODeviceCameraTest PROPERTIES
+    OUTPUT_NAME "IODeviceCameraTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME IODeviceCameraTest
+    COMMAND IODeviceCameraTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: IODeviceCameraTest")

@@ -541,6 +541,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceBackends.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCamera.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp

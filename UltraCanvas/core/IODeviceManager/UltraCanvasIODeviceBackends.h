@@ -39,5 +39,10 @@ void RegisterCupsPrinterBackend(IODeviceManager& manager);
 void RegisterWindowsPrinterBackend(IODeviceManager& manager);
 #endif
 
+#if defined(__linux__)
+// OS/Linux/UltraCanvasLinuxIODeviceCamera.cpp
+void RegisterV4L2CameraBackend(IODeviceManager& manager);
+#endif
+
 } // namespace Internal
 } // namespace UltraCanvas

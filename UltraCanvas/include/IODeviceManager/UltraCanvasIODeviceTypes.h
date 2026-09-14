@@ -175,6 +175,28 @@ struct IODeviceResult {
 };
 
 // ============================================================================
+// CAPABILITY SUPPORT
+// ============================================================================
+
+// Three-valued on purpose. A plain bool cannot tell "this printer has no
+// duplex unit" from "we could not read this printer's capabilities", and
+// conflating them silently strips options from a printer that would have
+// accepted them. Only `No` constrains anything; `Unknown` leaves the caller's
+// choice alone, which is the same rule the lists below follow by being empty.
+enum class IOSupport {
+    Unknown,
+    No,
+    Yes
+};
+
+// True only when the printer actually said no.
+inline bool Denies(IOSupport support) { return support == IOSupport::No; }
+
+inline IOSupport IOSupportFrom(bool value) {
+    return value ? IOSupport::Yes : IOSupport::No;
+}
+
+// ============================================================================
 // DEVICE DESCRIPTION
 // ============================================================================
 
