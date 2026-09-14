@@ -1,4 +1,4 @@
-#### 2026-09-14 *0.8.48*
+#### 2026-09-14 *0.8.49*
 - **A WYSIWYG editing element: `UltraCanvasRichTextEdit`.** The caret sits in
   rendered text and bold is a state of the selection, not two asterisks in a
   buffer. It edits a `UCRichDocument` - the same block/run model the ODT, DOCX,
