@@ -27664,11 +27664,12 @@ the markup, and the rendered form has no way back to it.
 | `abstract` | Bold centred "Abstract" line, then paragraphs |
 | `tabular` and friends (`tabular*`, `tabularx`, `longtable`), `\hline`/booktabs rules, `\multicolumn` (`columnSpan`), `\multirow` (`rowSpan`) | `Table`; the first row is the header |
 | `figure`, `table`, `wrapfigure`, `\caption` | Centred bold "Figure n:" / "Table n:" paragraph |
+| `\captionof{table}` / `\captionof{figure}` | The same, with the counter named rather than taken from the enclosing float — how a `longtable` or a `tabular` in a `minipage` is captioned |
 | `\includegraphics[width=…,height=…,scale=…]{file}` | `Image` block with the file embedded as media (`width=0.5\textwidth` uses the article text width of 345 pt); a missing file keeps a placeholder and a diagnostic |
 | `verbatim`, `lstlisting[language=…]`, `minted{lang}`, `\verb` | `CodeBlock` with `codeLanguage`; inline code run |
 | `$…$`, `\(…\)`, `\ensuremath` | Inline `math` run |
 | `\[…\]`, `$$…$$`, `equation`, `align`, `gather`, `multline`, `eqnarray`, `flalign`, `alignat` and starred forms | `MathBlock` (alignment environments keep their `\begin…\end` wrapper for the engine) |
-| `\newcommand`, `\renewcommand`, `\providecommand`, `\def`, `\let`, `\newenvironment`, `\DeclareMathOperator` | Expanded in text; the definitions a formula uses are prepended to its source so the engine expands them too |
+| `\newcommand`, `\renewcommand`, `\providecommand`, `\def`, `\let`, `\newenvironment`, `\DeclareMathOperator` | Expanded in text; the definitions a formula uses are prepended to its source so the engine expands them too. A `\newenvironment` may wrap another environment (`{\begin{quote}\itshape}{\end{quote}}`): its `\end` runs the end body first, so the inner environment closes before the user one |
 | `\label`, `\ref`, `\eqref`, `\autoref`, `\cref` | Section, caption, item and equation numbers resolved after the whole source is read; an undefined label prints `??` with a diagnostic |
 | `\cite` family, `thebibliography`, `\bibitem` | `[n]` by bibliography order (the key when unknown); a "References" heading and an ordered list |
 | `\footnote`, `\thanks`, `\footnotemark`/`\footnotetext` | Superscript number in the text; the notes follow a rule at the end of the document |
@@ -27706,6 +27707,29 @@ A `.tex` file with an embedded `\includegraphics` yields `document.media`
 entries; pass `RichDocumentMarkdownOptions::imageDirectory` so the
 serializer writes them where the renderer can load them (the Media Viewer
 and the demo use a per-load temp directory, as the ODT demo does).
+
+## Sample documents
+
+`media/LaTex/` is the corpus the demo's "LaTeX Documents" page lists and the
+test parses; every file in it must import with **no** diagnostics, which is
+what keeps the samples honest. The `article-*.tex` files exercise the
+document subset, one cluster each:
+
+| File | What it shows |
+|---|---|
+| `article-quadratic-note.tex` | The mixture: sections, lists, a table, a figure, theorems, footnotes, references |
+| `article-code-listings.tex` | `verbatim`, `lstlisting[language=…]`, `minted`, `\verb`, `\lstinline` |
+| `article-data-tables.tex` | booktabs rules, `\multicolumn` / `\multirow`, `tabularx`, `longtable` with `\captionof` |
+| `article-figures-images.tex` | `\graphicspath`, the three `\includegraphics` sizings, floats, `wrapfigure`, an image outside a float |
+| `article-structure-refs.tex` | Sectioning and numbering, `\tableofcontents`, labels and `\ref`/`\eqref`, footnotes, citations, an appendix, `\input` |
+| `article-text-styles.tex` | Emphasis, colours and sizes, accents, ligatures, punctuation conventions, links, list and alignment blocks |
+| `article-theorems-macros.tex` | `\newcommand` (with an optional argument), `\def`, `\newenvironment`, `\DeclareMathOperator`, `\newtheorem` and `proof` |
+
+The `math-*.tex` and `microtex-*.tex` files are single formulas, which take
+the other path: the demo hands them straight to
+[`UltraCanvasLaTeXView`](UltraCanvasLaTeXView.md). Fragments meant to be
+`\input` live in `media/LaTex/parts/`, out of the way of the demo's file
+scan, which does not descend into subdirectories.
 
 ## Limits
 

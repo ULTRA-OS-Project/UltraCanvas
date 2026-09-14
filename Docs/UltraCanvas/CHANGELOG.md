@@ -1,3 +1,33 @@
+#### 2026-09-14 *0.8.49*
+- **The demo's LaTeX page showed the math engine and almost nothing else.**
+  Of the 24 documents it listed, 23 were single formulas, so the document
+  reader — sections, tables, figures, code, macros, theorems, references —
+  was represented by one file. Six more `article-*.tex` documents now stand
+  beside it in `media/LaTex`, one cluster of the subset each: code listings,
+  data tables, figures and images, structure and cross-references, text and
+  characters, macros and theorems. They are listed in
+  `Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md`, appear in the page
+  automatically (it scans the folder), and every one of them imports with no
+  diagnostics — the corpus test requires it. Fragments for `\input` live in
+  `media/LaTex/parts/`, which the scan does not descend into.
+- Three reader fixes the new samples turned up, each with its own test in
+  `Tests/LaTeXDocumentTest.cpp`:
+  - **`\captionof{table}` numbered its caption with the figures.** The kind
+    argument was read and thrown away, so the one construction that exists to
+    caption a table outside a float — a `longtable`, a `tabular` in a
+    `minipage` — got "Figure n", and every `\ref` to it followed.
+  - **A `\newenvironment` that wraps another environment did not close.**
+    `\newenvironment{aside}{\begin{quote}\itshape}{\end{quote}}` is the
+    idiomatic form; its `\end{aside}` met the inner `quote` on the stack and
+    reported both a mismatch and an unclosed environment. The end body now
+    runs first, closing the inner environment, and the user frame closes
+    behind it, as in TeX.
+  - **A spliced body ending in a control word glued onto the next letter.**
+    A begin body ending `\itshape` in front of `Set aside.` re-scanned as
+    `\itshapeSet`, an unknown command that swallowed the word. TeX never
+    merges the two, since the body was tokenised when it was defined; the
+    terminating space its scanner would have consumed is added back.
+
 #### 2026-09-14 *0.8.48*
 - **The top of a tall formula was cropped away on the demo's LaTeX Documents
   page**, with the pane's vertical scrollbar already at the top and no way to

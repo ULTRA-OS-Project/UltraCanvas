@@ -1,0 +1,94 @@
+\documentclass[11pt]{article}
+% Structure and the things that point at it: sectioning with automatic
+% numbers, a table of contents, labels resolved after the whole source is
+% read (\ref, \eqref, \autoref, \cref), footnotes collected at the end,
+% citations against a thebibliography list, an appendix, and a section
+% spliced in from another file with \input.
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{cleveref}
+\newcommand{\SI}[2]{$#1\,\mathrm{#2}$}
+\title{Structure, References and Citations}
+\author{The UltraCanvas Team\thanks{Written to be read by
+  \texttt{UltraCanvasLaTeXDocumentReader}, not by \TeX.}}
+\date{September 2026}
+\begin{document}
+\maketitle
+\tableofcontents
+
+\begin{abstract}
+A reference is a forward reference as often as not, so the importer reads
+the whole source first, collecting every \texttt{\textbackslash label} with
+the number of the thing it was attached to, and resolves the references
+afterwards. An undefined label prints \texttt{??} and is reported as a
+diagnostic rather than silently swallowed.
+\end{abstract}
+
+\section{Sectioning}\label{sec:sectioning}
+Unstarred sectioning commands are numbered the way the \texttt{article}
+class numbers them, and the numbers are part of the heading text.
+
+\subsection{Depth}\label{sec:depth}
+\texttt{\textbackslash section}, \texttt{\textbackslash subsection} and
+\texttt{\textbackslash subsubsection} are headings 2, 3 and 4;
+\texttt{\textbackslash part} and \texttt{\textbackslash chapter} are 1 above
+them, and \texttt{\textbackslash paragraph} and
+\texttt{\textbackslash subparagraph} are 5 and 6.
+
+\subsubsection{Three levels down}
+This heading carries the number \texttt{1.1.1}, and nothing but the counter
+state produces it.
+
+\paragraph{A run-in heading.} The paragraph command gives a heading that a
+typesetter would set run-in with the text; here it is simply the deepest
+heading level.
+
+\section*{An unnumbered section}
+A starred section takes no number and does not advance the counter, which is
+why the next section is number~2.
+
+\input{parts/units-note}
+
+\section{Pointing at things}\label{sec:refs}
+Section~\ref{sec:sectioning} is a plain \texttt{\textbackslash ref}. The
+cleveref and hyperref spellings resolve to the same number and nothing more:
+\autoref{sec:depth}, \Cref{sec:units} and \cref{eq:gauss} each give the
+bare counter, so the word in front of it is the writer's, as in
+Section~\ref{sec:depth}. Brackets around an equation number come from
+\texttt{\textbackslash eqref}: \eqref{eq:gauss}.
+
+\begin{equation}\label{eq:gauss}
+  \int_{-\infty}^{\infty} e^{-x^2}\,dx = \sqrt{\pi}
+\end{equation}
+
+Numbers come from the counters the reader keeps as it goes: sections from
+the sectioning commands, equations from the numbered math environments,
+figures and tables from their captions, and items from the enumerate they
+sit in.
+
+\section{Notes and sources}
+A footnote is a superscript number where it stands and an entry in a list
+after a rule at the end of the document.\footnote{Like this one. Footnotes
+keep their \emph{formatting}, and a footnote may hold a formula such as
+$e^{i\pi} + 1 = 0$.} A second one\footnote{The numbering is the order in
+which the notes are met, across included files as well.} follows here.
+
+Citations are resolved against the bibliography below:
+\cite{knuth84} is a single key, \cite{lamport94,mittelbach04} a list, and
+\citep{knuth84} one of the natbib spellings. A key with no
+\texttt{\textbackslash bibitem} keeps the key itself, so the source of the
+gap is visible.
+
+\appendix
+\section{An appendix}\label{sec:appendix}
+After \texttt{\textbackslash appendix} the section counter restarts and
+counts in letters, so this is Appendix~\ref{sec:appendix}.
+
+\begin{thebibliography}{9}
+\bibitem{knuth84} D. E. Knuth, \emph{The \TeX book}, Addison-Wesley, 1984.
+\bibitem{lamport94} L. Lamport, \emph{\LaTeX: A Document Preparation
+  System}, 2nd ed., Addison-Wesley, 1994.
+\bibitem{mittelbach04} F. Mittelbach and M. Goossens, \emph{The \LaTeX{}
+  Companion}, 2nd ed., Addison-Wesley, 2004.
+\end{thebibliography}
+\end{document}
