@@ -1,3 +1,33 @@
+#### 2026-09-14 *1.33.0*
+- **Sti_Trace.log, and clutter like it, can finally be got rid of.** The file
+  is the Windows Still Image service's trace log: any program that talks to a
+  scanner or camera has it written into the profile, and because it carries no
+  hidden attribute and no leading dot, neither *Display > Files > Show hidden
+  files* nor the Home folder curation could touch it - it sat in the Home
+  folder with no setting anywhere that would remove it.
+  **Settings > Display > Ignored files** is that setting. It ships with a
+  built-in list - `Sti_Trace.log`, `desktop.ini`, `Thumbs.db`, `ehthumbs.db`,
+  `ntuser.dat*`, `ntuser.ini`, `.DS_Store`, `._*`, `.Trash-*`, `.directory` -
+  on by default and each pattern switchable on its own, plus a field for the
+  user's own patterns (globs: `*` for any run of characters, `?` for one,
+  matched ignoring case, so `*.bak` covers every backup file). The list is one
+  list for every platform on purpose: a Windows share browsed from Linux or
+  macOS carries `Thumbs.db` and `desktop.ini` with no hidden attribute to
+  filter on. *Apply them* chooses between **Only in the Home folder** (the
+  default, where the clutter collects) and **In every folder**. Stored as
+  `display.ignored.builtin`, `display.ignored.builtin.off`,
+  `display.ignored.patterns` and `display.ignored.scope`; the built-in list is
+  persisted as what is switched OFF, so a pattern a later release adds starts
+  on rather than absent. "Restore the built-in list" re-ticks the built-ins and
+  leaves the patterns the user typed alone.
+- **Nothing disappears silently.** An ignored file is only left out of the
+  display - it is not moved or deleted, a search still finds it, a path typed
+  into the address bar still opens it, and *Show hidden files* brings it back.
+  While a folder is holding an ignored name back it says so on the strip along
+  its foot, in *every* folder rather than only the Home folder; a folder that
+  merely leaves out its dot names stays quiet, the way every file manager does.
+  (Framework side: `Docs/UltraCanvas/CHANGELOG.md` 0.8.46.)
+
 #### 2026-09-13 *1.32.0*
 - **The Home folder now says when it is hiding something, and hidden files
   have a setting.** The home folder is the one folder UltraFiler holds two

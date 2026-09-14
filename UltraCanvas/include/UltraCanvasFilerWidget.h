@@ -314,6 +314,28 @@ namespace UltraCanvas {
         AlwaysConfirm
     };
 
+    // ===== THE HIDDEN-ITEMS NOTICE =====
+    // When the strip along the foot of the display says what the listing is
+    // leaving out. A display that drops entries without a word is how a user
+    // comes to believe a folder is empty - but announcing the platform's
+    // hidden files in every folder that holds a dot name is noise, which is
+    // what the middle case is for.
+    //   NoNotice      - no strip (the default).
+    //   WhenIgnored   - only while the ignored-name patterns
+    //                   (SetIgnoredNamePatterns) dropped something: the
+    //                   display is holding back what a *setting* hid, which
+    //                   the user has no other way of noticing.
+    //   WhenAnyHidden - whenever the listing leaves anything out at all,
+    //                   hidden entries and a curated home folder's subfolders
+    //                   included.
+    // (The plain words "None" and "Always" are X11 macros, which is why the
+    // enumerators are spelled out - see FilerExtensionBadge::NoneBadge.)
+    enum class FilerHiddenNotice {
+        NoNotice,
+        WhenIgnored,
+        WhenAnyHidden
+    };
+
     // ===== ONE ENTRY OF THE DISPLAYED FOLDER =====
     struct FilerEntry {
         std::string name;            // file / folder name (no path)
@@ -577,15 +599,41 @@ namespace UltraCanvas {
         // a "Show hidden files" button that switches this display to showing
         // everything. It only appears while something IS left out, and takes
         // its height out of the file area, so no entry is drawn under it.
-        // Off by default: hosts switch it on for the folders where the
-        // display holds something back the user never asked to hide
-        // (UltraFiler does for the home folder).
-        void SetHiddenItemsNoticeEnabled(bool enabled);
-        bool IsHiddenItemsNoticeEnabled() const { return hiddenNoticeEnabled; }
-        // How many entries the current listing leaves out - hidden entries
-        // and, in a curated home folder, the subfolders the curation drops.
-        // 0 while hidden files are shown, since then nothing is held back.
+        // NoNotice by default: hosts choose the folders where the display holds
+        // something back the user never asked to hide (UltraFiler: WhenAnyHidden
+        // in the home folder, WhenIgnored everywhere else).
+        void SetHiddenItemsNotice(FilerHiddenNotice mode);
+        FilerHiddenNotice GetHiddenItemsNotice() const { return hiddenNotice; }
+        // How many entries the current listing leaves out - hidden entries,
+        // the names the ignore patterns drop, and in a curated home folder
+        // the subfolders the curation drops - and how many of those the
+        // ignore patterns accounted for. 0 while hidden files are shown,
+        // since then nothing is held back.
         int GetHiddenItemCount() const { return hiddenItemCount; }
+        int GetIgnoredItemCount() const { return ignoredItemCount; }
+
+        // ===== IGNORED NAMES =====
+        // Names the display never lists: glob patterns ('*' any run of
+        // characters, '?' exactly one) matched against the entry's name,
+        // case-insensitively, folders included. This is the answer to the
+        // clutter a system leaves in a folder under a perfectly ordinary,
+        // unhidden name - Sti_Trace.log, Thumbs.db, desktop.ini - which no
+        // hidden-file filter can reach; on a Windows share seen from Linux
+        // or macOS the hidden attribute is invisible too, so the name is all
+        // there is to go on. `onlyInFolder` confines the patterns to one
+        // folder (UltraFiler points it at the home folder by default); empty
+        // means every folder. Nothing is moved or deleted - the entries are
+        // only left out of the display, they still exist, a path still
+        // navigates to them, and the file-list display (a search) lists them,
+        // since a search is a question the user asked. Show-hidden-files
+        // reveals them like any hidden entry, and they count into
+        // GetHiddenItemCount() / GetIgnoredItemCount(), so the notice above
+        // offers them.
+        void SetIgnoredNamePatterns(std::vector<std::string> patterns,
+                                    const std::string& onlyInFolder = std::string());
+        const std::vector<std::string>& GetIgnoredNamePatterns() const {
+            return ignoredNamePatterns;
+        }
 
         // "In use" marking: whether the display says that another program is
         // holding a file - the reason an overwrite, a rename or a delete of it
@@ -1170,13 +1218,18 @@ namespace UltraCanvas {
         std::function<void()> onFilterEmptyAction;
         std::shared_ptr<UltraCanvasButton> filterEmptyButton;
         bool showHiddenFiles = false;
-        // Hidden-items notice (SetHiddenItemsNoticeEnabled): whether the host
+        // Hidden-items notice (SetHiddenItemsNotice): when the host
         // wants the strip at all, how many entries the last scan left out,
         // and the "Show hidden files" button of the strip - another real
         // UltraCanvasButton child this self-rendered view draws itself.
-        bool hiddenNoticeEnabled = false;
+        FilerHiddenNotice hiddenNotice = FilerHiddenNotice::NoNotice;
         int  hiddenItemCount = 0;
+        int  ignoredItemCount = 0;
         std::shared_ptr<UltraCanvasButton> hiddenNoticeButton;
+        // Ignored names (SetIgnoredNamePatterns): the glob patterns, and the
+        // one folder they are confined to (empty = every folder).
+        std::vector<std::string> ignoredNamePatterns;
+        std::string ignoredPatternsFolder;
         bool showLockState = true;
         // Whether the shown entries are files on disk (a real folder, or the
         // file-list display's found paths) rather than the interior of an

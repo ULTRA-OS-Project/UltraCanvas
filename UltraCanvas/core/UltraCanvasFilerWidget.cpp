@@ -98,6 +98,7 @@
 #include "Plugins/Documents/UltraCanvasPDF.h"
 #endif
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -2169,9 +2170,21 @@ namespace UltraCanvas {
     // so along its foot instead - how many entries it is holding back, and a
     // button that shows them.
 
-    void UltraCanvasFilerWidget::SetHiddenItemsNoticeEnabled(bool enabled) {
-        if (hiddenNoticeEnabled == enabled) return;
-        hiddenNoticeEnabled = enabled;
+    void UltraCanvasFilerWidget::SetIgnoredNamePatterns(
+            std::vector<std::string> patterns, const std::string& onlyInFolder) {
+        if (ignoredNamePatterns == patterns &&
+            ignoredPatternsFolder == onlyInFolder)
+            return;
+        ignoredNamePatterns = std::move(patterns);
+        ignoredPatternsFolder = onlyInFolder;
+        // What the display lists changes, so the folder is read again - the
+        // dropped entries are not kept anywhere to be put back.
+        Refresh();
+    }
+
+    void UltraCanvasFilerWidget::SetHiddenItemsNotice(FilerHiddenNotice mode) {
+        if (hiddenNotice == mode) return;
+        hiddenNotice = mode;
         // The strip takes its height out of the file area, so the view has to
         // reflow around it - appearing and disappearing alike.
         InvalidateFilerLayout();
@@ -2184,7 +2197,12 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasFilerWidget::HiddenNoticeVisible() const {
-        if (!hiddenNoticeEnabled || hiddenItemCount <= 0 || showHiddenFiles)
+        if (hiddenNotice == FilerHiddenNotice::NoNotice || hiddenItemCount <= 0 ||
+            showHiddenFiles)
+            return false;
+        // WhenIgnored speaks up only for what a setting hid; the platform's
+        // own hidden files are what every file manager leaves out silently.
+        if (hiddenNotice == FilerHiddenNotice::WhenIgnored && ignoredItemCount <= 0)
             return false;
         // The whole-area views paint every pixel they are given and have no
         // foot to put a strip on.
@@ -2741,6 +2759,37 @@ namespace UltraCanvas {
         }
     }
 
+    namespace {
+        // One name against one glob pattern, case-insensitively: '*' matches
+        // any run of characters (the empty run included), '?' exactly one.
+        // Iterative with a single backtrack point rather than recursive, so a
+        // pattern of nothing but stars cannot blow the stack on a long name.
+        bool GlobMatchesName(const std::string& name, const std::string& pattern) {
+            auto lower = [](char c) {
+                return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+            };
+            size_t n = 0, p = 0;
+            size_t starP = std::string::npos, starN = 0;
+            while (n < name.size()) {
+                if (p < pattern.size() &&
+                    (pattern[p] == '?' || lower(pattern[p]) == lower(name[n]))) {
+                    ++n; ++p;
+                } else if (p < pattern.size() && pattern[p] == '*') {
+                    starP = p++;      // remember where to resume on a mismatch
+                    starN = n;
+                } else if (starP != std::string::npos) {
+                    // Backtrack: let the last '*' swallow one more character.
+                    p = starP + 1;
+                    n = ++starN;
+                } else {
+                    return false;
+                }
+            }
+            while (p < pattern.size() && pattern[p] == '*') ++p;
+            return p == pattern.size();
+        }
+    }
+
     void UltraCanvasFilerWidget::ScanFolder(bool usePrefetched) {
         // `selection` indexes `entries`, which is rebuilt below — remember what
         // is selected by path so a rescan (Refresh after a file operation, a
@@ -2905,10 +2954,37 @@ namespace UltraCanvas {
             }
         }
 
+        // Ignored names (SetIgnoredNamePatterns): the clutter a system leaves
+        // under an ordinary, unhidden name. Left out of the display only -
+        // the entries are still there, and a file-list display (a search) is
+        // exempt, since a search is a question the user asked. Show-hidden-
+        // files suspends this too: it means "show me everything".
+        int ignored = 0;
+        if (!fileListMode && !showHiddenFiles && !ignoredNamePatterns.empty() &&
+            (ignoredPatternsFolder.empty() ||
+             CuratedIdentityKey(currentPath) ==
+                     CuratedIdentityKey(ignoredPatternsFolder))) {
+            std::vector<FilerEntry> kept;
+            kept.reserve(entries.size());
+            for (FilerEntry& e : entries) {
+                bool drop = false;
+                for (const std::string& pattern : ignoredNamePatterns) {
+                    if (!GlobMatchesName(e.name, pattern)) continue;
+                    drop = true;
+                    break;
+                }
+                if (drop) { ++ignored; continue; }
+                kept.push_back(std::move(e));
+            }
+            entries = std::move(kept);
+            heldBack += ignored;
+        }
+
         // Showing everything holds nothing back, whatever the scan counted
         // (a prefetched listing carries the hidden entries, and the curation
         // is suspended) - so the notice has nothing to offer either.
         hiddenItemCount = showHiddenFiles ? 0 : heldBack;
+        ignoredItemCount = showHiddenFiles ? 0 : ignored;
 
         for (FilerEntry& e : entries) DecorateEntry(e);
 
