@@ -1,3 +1,25 @@
+#### 2026-09-14 *0.8.48*
+- **The macOS build is unbroken: CSS numbers parse without `std::from_chars`.**
+  0.8.47 moved the HTMLReader's CSS number parsing from `strtof` to
+  `std::from_chars` to make it locale-independent — a comma-decimal locale had
+  been turning `rgba()` alpha and every fractional length into 0. But libc++
+  implements only the *integral* `from_chars` overloads, so on Apple Clang the
+  float call bound the deleted `from_chars(const char*, const char*, bool)` and
+  `build (macos-15-intel, Release)` failed to compile `CSSStyleSheet.cpp` —
+  every branch, not just the one that introduced it.
+  `CSSStyleSheet.cpp` now parses through a file-local `ParseFloatC()`, which
+  keeps `strtof`'s universal float support and its backtracking to the longest
+  valid prefix (what makes `0.5em` read as `0.5` + `em` rather than choking on
+  the `e`), and restores locale independence by swapping in the active
+  `LC_NUMERIC`'s decimal point when it is not `.`. `CssLength::Parse` takes the
+  unit from the returned end pointer with a two-iterator `std::string`, instead
+  of a single-pointer one that re-scanned the tail.
+  `HTMLReaderTest` gains `TestCssNumbersIgnoreLocale`, which parses fractional
+  lengths, a negative percentage, an exponent and an `rgba()` alpha under a
+  comma-decimal locale — skipped, not failed, where the C library has no such
+  locale installed. It fails on a plain-`strtof` regression and on the
+  `from_chars` version alike.
+
 #### 2026-09-14 *0.8.47*
 - Fixes in HTML rendering
 

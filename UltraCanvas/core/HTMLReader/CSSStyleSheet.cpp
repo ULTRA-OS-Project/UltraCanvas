@@ -1,8 +1,9 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
-// Version: 1.1.0 - locale-independent number parsing (strtof honors LC_NUMERIC,
-//                  so a comma-decimal locale turned rgba() alpha / lengths to 0)
-// Last Modified: 2026-09-13
+// Version: 1.1.1 - locale-independent number parsing, without std::from_chars:
+//                  libc++ ships only its integral overloads, so the float call
+//                  bound the deleted bool one and the macOS build failed
+// Last Modified: 2026-09-14
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
@@ -10,7 +11,7 @@
 
 #include <algorithm>
 #include <cctype>
-#include <charconv>
+#include <clocale>
 #include <cstdlib>
 #include <unordered_map>
 
@@ -20,6 +21,38 @@ namespace HTML {
 // ============================================================================
 // STRING HELPERS
 // ============================================================================
+
+// Parses a float in the C locale from [first,last). Returns the position after
+// what was consumed, or `first` when nothing numeric is there - the same shape
+// as std::from_chars_result::ptr, which is what the callers below want.
+//
+// Deliberately not std::from_chars: libc++ implements only its *integral*
+// overloads (the floating-point ones are unimplemented in the Apple Clang
+// toolchains CI builds on), so `from_chars(p, p + n, float&)` finds no viable
+// candidate and binds the deleted `from_chars(const char*, const char*, bool)`.
+// strtof does parse floats everywhere, but reads the decimal point of the
+// active LC_NUMERIC - which is the bug from_chars was adopted here to fix, a
+// comma-decimal locale turning rgba() alpha and every length into 0. So the
+// separator is swapped in when the locale's differs from CSS's '.'.
+//
+// strtof also backtracks to the longest valid prefix, which is what makes
+// "0.5em" parse as 0.5 with "em" left over rather than failing on the "e".
+static const char* ParseFloatC(const char* first, const char* last, float& out) {
+    std::string buf(first, last);
+    const char* decimalPoint = std::localeconv()->decimal_point;
+    if (decimalPoint && *decimalPoint && *decimalPoint != '.') {
+        for (char& c : buf) {
+            if (c == '.') c = *decimalPoint;
+        }
+    }
+
+    const char* base = buf.c_str();
+    char* end = nullptr;
+    const float value = std::strtof(base, &end);
+    if (end == base) return first;   // nothing numeric here
+    out = value;
+    return first + (end - base);
+}
 
 std::string TrimLower(const std::string& text) {
     std::string result = Trim(text);
@@ -166,8 +199,8 @@ std::optional<CssColor> CssColor::Parse(const std::string& text) {
             if (!part.empty()) {
                 bool percent = part.back() == '%';
                 if (percent) part.pop_back();
-                float v = 0.f;   // from_chars is locale-independent (unlike strtof)
-                std::from_chars(part.data(), part.data() + part.size(), v);
+                float v = 0.f;   // locale-independent, see ParseFloatC
+                ParseFloatC(part.data(), part.data() + part.size(), v);
                 if (percent) v = v * 255.f / 100.f;
                 if (count == 3) v = v * 255.f;   // alpha given as 0..1
                 components[count] = v;
@@ -213,11 +246,11 @@ std::optional<CssLength> CssLength::Parse(const std::string& text) {
 
     const char* begin = value.c_str();
     const char* bufEnd = begin + value.size();
-    float number = 0.f;   // from_chars is locale-independent (unlike strtof)
-    auto conv = std::from_chars(begin, bufEnd, number);
-    if (conv.ptr == begin) return std::nullopt;
+    float number = 0.f;   // locale-independent, see ParseFloatC
+    const char* unitStart = ParseFloatC(begin, bufEnd, number);
+    if (unitStart == begin) return std::nullopt;
 
-    std::string unit = Trim(std::string(conv.ptr));
+    std::string unit = Trim(std::string(unitStart, bufEnd));
     if (unit.empty()) return CssLength{number, CssUnit::Number};
     if (unit == "px") return CssLength{number, CssUnit::Px};
     if (unit == "em") return CssLength{number, CssUnit::Em};
