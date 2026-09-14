@@ -1,7 +1,8 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0 - locale-independent number parsing (strtof honors LC_NUMERIC,
+//                  so a comma-decimal locale turned rgba() alpha / lengths to 0)
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
@@ -9,6 +10,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <charconv>
 #include <cstdlib>
 #include <unordered_map>
 
@@ -164,7 +166,8 @@ std::optional<CssColor> CssColor::Parse(const std::string& text) {
             if (!part.empty()) {
                 bool percent = part.back() == '%';
                 if (percent) part.pop_back();
-                float v = std::strtof(part.c_str(), nullptr);
+                float v = 0.f;   // from_chars is locale-independent (unlike strtof)
+                std::from_chars(part.data(), part.data() + part.size(), v);
                 if (percent) v = v * 255.f / 100.f;
                 if (count == 3) v = v * 255.f;   // alpha given as 0..1
                 components[count] = v;
@@ -209,11 +212,12 @@ std::optional<CssLength> CssLength::Parse(const std::string& text) {
     }
 
     const char* begin = value.c_str();
-    char* end = nullptr;
-    float number = std::strtof(begin, &end);
-    if (end == begin) return std::nullopt;
+    const char* bufEnd = begin + value.size();
+    float number = 0.f;   // from_chars is locale-independent (unlike strtof)
+    auto conv = std::from_chars(begin, bufEnd, number);
+    if (conv.ptr == begin) return std::nullopt;
 
-    std::string unit = Trim(std::string(end));
+    std::string unit = Trim(std::string(conv.ptr));
     if (unit.empty()) return CssLength{number, CssUnit::Number};
     if (unit == "px") return CssLength{number, CssUnit::Px};
     if (unit == "em") return CssLength{number, CssUnit::Em};
