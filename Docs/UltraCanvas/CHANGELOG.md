@@ -1,3 +1,14 @@
+#### 2026-09-14 *0.8.47*
+- **The demo's XAR page now says where the format comes from.** A third panel
+  under the feature and sample panels explains that Xara is the successor of
+  ArtWorks, the vector graphics editor for RISC OS - the first OS that ran on
+  ARM CPUs - known for its ultra-fast CPU-based vector rendering and its
+  user-friendly interface, and ported to Windows as Xara. The two Wikipedia
+  references are clickable labels that hand the URL to the system browser
+  through `OpenURL`, the same way the PDF page links MuPDF. The page grew
+  from 780 to 1080 points tall to hold it, so the status line moved down with
+  it. `Docs/UltraCanvas/UltraCanvasXARExamples.md` carries the same note.
+
 #### 2026-09-14 *0.8.46*
 - **A folder display can leave out names that are not hidden at all.**
   `UltraCanvasFilerWidget::SetIgnoredNamePatterns(patterns, onlyInFolder)`

@@ -55650,6 +55650,20 @@ XAR support is **partially implemented**. Parsing of the document structure and 
 **Namespace:** `UltraCanvas`  
 **Base Class:** `UltraCanvasUIElement` (the plugin class derives from `IGraphicsPlugin`)
 
+## Where the format comes from
+
+The Xara file format is the successor of the ArtWorks vector graphics file
+format. ArtWorks is a powerful vector graphics editor for RISC OS, the
+operating system of the 32-bit ARM machines — RISC OS was the first OS that
+ran on ARM CPUs. Two things set ArtWorks apart: its ultra-fast CPU-based
+vector graphics rendering, and its user-friendly user interface. It was later
+ported to Windows, where it got the name Xara.
+
+- [ArtWorks](https://en.wikipedia.org/wiki/ArtWorks) (Wikipedia)
+- [Xara Designer Pro+](https://en.wikipedia.org/wiki/Xara_Designer_Pro%2B) (Wikipedia)
+
+The demo's XAR page carries the same note, with both links clickable.
+
 ## Class Hierarchy
 
 ```
