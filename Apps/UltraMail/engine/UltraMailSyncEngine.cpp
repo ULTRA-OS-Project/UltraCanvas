@@ -151,6 +151,7 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
     if (!r) return SyncOutcome::Fail(r.message);
 
     SyncOutcome out;
+    std::vector<uint32_t> bodyUids;
     for (const auto& e : envelopes) {
         MessageEnvelope m;
         m.accountId = accountId;
@@ -173,13 +174,35 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
         m.automated = false;
 
         if (store_.UpsertMessage(m)) out.stats.messages++;
+        if (fetchBodies) bodyUids.push_back(e.uid);
+    }
 
-        if (fetchBodies) {
-            std::string p = FetchBody(accountId, folder, m.uid, serverUrl, options);
-            if (!p.empty()) out.stats.bodies++;
-        }
+    // Fetch all new bodies over ONE reused connection (see
+    // IMailboxProtocolPlugin::FetchMessageBodies) instead of reconnecting per
+    // message — the difference between seconds and minutes on Gmail.
+    if (fetchBodies && !bodyUids.empty()) {
+        mailbox_.FetchMessageBodies(
+            serverUrl, folder, bodyUids,
+            [&](uint32_t uid, const std::string& raw) {
+                if (!WriteBody(accountId, folder, static_cast<int64_t>(uid), raw).empty())
+                    out.stats.bodies++;
+            },
+            options);
     }
     return out;
+}
+
+std::string SyncEngine::WriteBody(const std::string& accountId, const std::string& folder,
+                                  int64_t uid, const std::string& raw) const {
+    if (raw.empty()) return std::string();
+    const std::string path = BodyPath(accountId, folder, uid);
+    std::error_code ec;
+    fs::create_directories(fs::path(path).parent_path(), ec);
+    std::ofstream os(path, std::ios::binary | std::ios::trunc);
+    if (!os) return std::string();
+    os.write(raw.data(), static_cast<std::streamsize>(raw.size()));
+    if (!os) return std::string();
+    return path;
 }
 
 std::string SyncEngine::FetchBody(const std::string& accountId, const std::string& folder,
@@ -189,15 +212,7 @@ std::string SyncEngine::FetchBody(const std::string& accountId, const std::strin
     UltraNetResult r = mailbox_.FetchMessage(serverUrl, folder,
                                              static_cast<uint32_t>(uid), raw, options);
     if (!r || raw.empty()) return std::string();
-
-    const std::string path = BodyPath(accountId, folder, uid);
-    std::error_code ec;
-    fs::create_directories(fs::path(path).parent_path(), ec);
-    std::ofstream os(path, std::ios::binary | std::ios::trunc);
-    if (!os) return std::string();
-    os.write(raw.data(), static_cast<std::streamsize>(raw.size()));
-    if (!os) return std::string();
-    return path;
+    return WriteBody(accountId, folder, uid, raw);
 }
 
 SyncOutcome SyncEngine::SetFlag(const std::string& accountId, const std::string& folder,

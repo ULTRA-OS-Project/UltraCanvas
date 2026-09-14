@@ -1,7 +1,8 @@
 // core/HTMLReader/HTMLElementBuilder.cpp
 // DOM + computed styles → native UltraCanvas element tree on CSSLayout.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.2.0 - table cells honor explicit widths; translucent (rgba) text
+//                  colors are flattened to opaque so body text is not invisible.
+// Last Modified: 2026-09-13
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLElementBuilder.h"
@@ -20,6 +21,18 @@ namespace {
 
 Color ToColor(const CssColor& c) { return Color(c.r, c.g, c.b, c.a); }
 
+// Composite a (possibly translucent) color over white and return it opaque.
+// Text with alpha < 255 otherwise renders transparent (invisible); real clients
+// show e.g. rgba(0,0,0,0.87) as near-black over the white page background.
+CssColor FlattenOverWhite(const CssColor& c) {
+    if (c.a >= 255) return CssColor{c.r, c.g, c.b, 255};
+    const float a = c.a / 255.f;
+    auto over = [&](uint8_t ch) {
+        return static_cast<uint8_t>(ch * a + 255.f * (1.f - a) + 0.5f);
+    };
+    return CssColor{over(c.r), over(c.g), over(c.b), 255};
+}
+
 std::string EscapeMarkup(const std::string& text) {
     std::string out;
     out.reserve(text.size());
@@ -35,8 +48,9 @@ std::string EscapeMarkup(const std::string& text) {
 }
 
 std::string ColorHex(const CssColor& c) {
+    const CssColor o = FlattenOverWhite(c);   // Pango has no alpha; flatten it
     char buffer[8];
-    std::snprintf(buffer, sizeof(buffer), "#%02X%02X%02X", c.r, c.g, c.b);
+    std::snprintf(buffer, sizeof(buffer), "#%02X%02X%02X", o.r, o.g, o.b);
     return buffer;
 }
 
@@ -558,8 +572,22 @@ std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) 
                 ++elementCount;
                 ApplyBoxStyle(*cellBox, cellStyle);
                 ConfigureBlockLayout(*cellBox);
-                cellBox->layoutItem.SetFlexGrow(1.f).SetFlexShrink(1.f)
-                       .SetFlexBasis(CSSLayout::Dimension::Px(0));
+                // Honor an explicit cell width: a fixed-px cell (e.g. an 8px
+                // spacer gutter, the ubiquitous email layout idiom) keeps its
+                // width and does not grow; a percentage cell takes that share;
+                // a cell with no width grows to fill what is left. Sharing the
+                // width equally (the old behavior) crushed content columns that
+                // sit between fixed spacer cells.
+                if (cellStyle.widthPx) {
+                    cellBox->layoutItem.SetFlexGrow(0.f).SetFlexShrink(0.f)
+                           .SetFlexBasis(CSSLayout::Dimension::Px(*cellStyle.widthPx));
+                } else if (cellStyle.widthPercent) {
+                    cellBox->layoutItem.SetFlexGrow(0.f).SetFlexShrink(1.f)
+                           .SetFlexBasis(CSSLayout::Dimension::Pct(*cellStyle.widthPercent));
+                } else {
+                    cellBox->layoutItem.SetFlexGrow(1.f).SetFlexShrink(1.f)
+                           .SetFlexBasis(CSSLayout::Dimension::Px(0));
+                }
                 BuildChildrenInto(*cellBox, cell);
                 row->AddChild(cellBox);
             }
@@ -616,7 +644,7 @@ void ElementBuilder::ConfigureLabel(UltraCanvasLabel& label, const ComputedStyle
     labelStyle.fontStyle.fontSize = style.fontSizePx;
     labelStyle.fontStyle.fontWeight = style.bold ? FontWeight::Bold : FontWeight::Normal;
     labelStyle.fontStyle.fontSlant = style.italic ? FontSlant::Italic : FontSlant::Normal;
-    labelStyle.textColor = ToColor(style.color);
+    labelStyle.textColor = ToColor(FlattenOverWhite(style.color));
     labelStyle.wrap = style.preserveWhitespace ? TextWrap::WrapWordChar : TextWrap::WrapWord;
 
     switch (style.textAlign) {

@@ -58,9 +58,10 @@ Google rejects the normal account password in mail programs.
 
 - **Browser sign-in:** leave the password field empty. UltraMail opens
   Google's consent page in your browser with your address preselected; allow
-  UltraMail to read and send your mail. This needs a Google OAuth client
-  configured on the machine — see [section 3](#3-oauth-clients-for-the-browser-sign-in).
-  Until one is configured the wizard asks for an app password instead.
+  UltraMail to read and send your mail. Released builds ship with a Google
+  OAuth client already configured, so there is nothing to set up. (If your build
+  was packaged without one, the wizard asks for an app password instead — see
+  [section 3](#3-oauth-clients-for-the-browser-sign-in) for packagers.)
 - **App password:** in your Google Account open *Security → 2-Step
   Verification* (it must be on), then *App passwords*
   (`myaccount.google.com/apppasswords`). Create one for "Mail", copy the
@@ -77,8 +78,9 @@ Google rejects the normal account password in mail programs.
 Microsoft has retired password sign-in ("basic authentication") for IMAP and
 SMTP on personal Outlook.com accounts and in Microsoft 365, and app passwords
 are gone with it. Leave the password field empty; UltraMail opens Microsoft's
-sign-in page in your browser. This needs a Microsoft OAuth client configured
-on the machine — see [section 3](#3-oauth-clients-for-the-browser-sign-in).
+sign-in page in your browser. Released builds ship with a Microsoft OAuth client
+already configured, so there is nothing to set up (packagers: see
+[section 3](#3-oauth-clients-for-the-browser-sign-in)).
 
 For a **Microsoft 365 work or school** mailbox the tenant administrator must
 leave **IMAP** and **Authenticated SMTP** enabled for the mailbox (Exchange
@@ -164,12 +166,54 @@ The normal password works. Posteo's optional two-factor authentication
 protects the webmail sign-in only; mail programs keep using the account
 password.
 
-## 3. OAuth clients for the browser sign-in
+## 3. OAuth clients for the browser sign-in — for people building or packaging UltraMail
+
+**If you are just using UltraMail, skip this section.** Released builds ship with
+a Google and a Microsoft OAuth client already baked in, so the browser sign-in
+works with nothing to configure. This section is for whoever builds or packages
+UltraMail.
 
 The browser sign-in for Gmail and Outlook runs as an OAuth *client* that the
-provider must know. Register one per provider once — on whatever machine or
-deployment ships UltraMail — and give it to UltraMail in `oauth.ini` in the
-data folder:
+provider must know. Register one per provider once (below), then bake it into the
+build so end users never touch a config file.
+
+A desktop OAuth client's credentials are **not confidential** — Google itself
+treats a desktop client's secret as non-secret, and Microsoft's desktop client
+has no secret at all. The sign-in's safety comes from PKCE + the loopback
+redirect + the user's own consent, not from hiding the id/secret. So baking them
+into the binary is the norm (Thunderbird, Evolution, K-9 all do it).
+
+### Baking the client into the build
+
+Register the clients (below), then supply them at **configure time** one of two
+ways:
+
+- **Local file (easiest).** Copy [`cmake/oauth.local.cmake.example`](../../cmake/oauth.local.cmake.example)
+  to `cmake/oauth.local.cmake` (that name is gitignored), fill in the ids/secret,
+  and reconfigure. `Apps/UltraMail/CMakeLists.txt` picks it up automatically.
+- **CMake `-D` (for CI).** Pass them on the configure line from your CI secrets:
+
+  ```sh
+  cmake -S . -B build \
+      -DULTRAMAIL_GOOGLE_CLIENT_ID="1234567890-abc.apps.googleusercontent.com" \
+      -DULTRAMAIL_GOOGLE_CLIENT_SECRET="GOCSPX-…" \
+      -DULTRAMAIL_MICROSOFT_CLIENT_ID="00000000-1111-2222-3333-444444444444"
+  ```
+
+The values are XOR-obfuscated in the binary by default (so a plain `strings`
+does not surface them; `-DULTRAMAIL_OAUTH_OBFUSCATE=OFF` stores them verbatim).
+A build configured with none of these bakes in nothing and behaves as before.
+Obfuscation uses a small Python helper (`scripts/generate_oauth_defaults.py`) at
+configure time; a build with no credentials, or with obfuscation off, needs no
+Python.
+
+### Overriding a baked-in client at runtime
+
+The baked-in client is the **lowest-priority** source, so a user or admin can
+point an existing build at a different client without a rebuild — useful for
+rotation or a private registration. In decreasing priority: `OAuthApps::Set()`
+(in code) > the environment > `oauth.ini` in the data folder > the baked-in
+client. Drop an `oauth.ini` in:
 
 | Platform | Data folder |
 |---|---|
@@ -187,8 +231,22 @@ client_id     = 00000000-1111-2222-3333-444444444444
 
 The environment works too: `ULTRAMAIL_GOOGLE_CLIENT_ID`,
 `ULTRAMAIL_GOOGLE_CLIENT_SECRET`, `ULTRAMAIL_MICROSOFT_CLIENT_ID` (an
-optional `…_REDIRECT_URI` overrides the provider's default). Until a client
-is configured the wizard says so.
+optional `…_REDIRECT_URI` overrides the provider's default). When no client is
+configured by any of these, the wizard says so.
+
+### ⚠️ Google verification is required before Gmail works for the public
+
+Registering and baking in a Google client is **not enough** to let arbitrary
+users sign in to Gmail. The `https://mail.google.com/` scope is a Google
+*restricted* scope. While your OAuth consent screen is in **Testing** it serves
+only the addresses you add under *Test users* (max 100), and Google revokes
+those users' refresh tokens after **7 days** (the "*The sign-in has expired*"
+row in [section 6](#6-when-it-does-not-work)). To lift both limits you must
+**publish** the consent screen and pass Google's **security assessment (CASA)** —
+an annual, paid review through a Google-approved assessor. Until then, Gmail
+browser sign-in is usable for testing only; the app-password path (section 2)
+has no such limit. Microsoft has no equivalent restricted-scope review —
+publisher verification only removes the "unverified app" banner.
 
 ### Google
 
@@ -299,7 +357,7 @@ Gmail and Outlook.
 | UltraMail says | What to do |
 |---|---|
 | *New mail could not be fetched … authentication failed* | Gmail / Yahoo / iCloud: you typed the account password; use an app password (section 2). Outlook: passwords are not accepted; add the account again with the password empty. |
-| *No OAuth client is configured for Google / Microsoft* | Register a client and put it into `oauth.ini` (section 3), or — Gmail only — use an app password. |
+| *No OAuth client is configured for Google / Microsoft* | This build was packaged without a baked-in OAuth client. Rebuild with one (section 3), drop an `oauth.ini` in the data folder, or — Gmail only — use an app password. |
 | *The IMAP plug-in was not found* | Build the UltraNet IMAP plug-in and keep it in `Plugins/UltraNet` next to the executable, or set `ULTRAMAIL_PLUGIN_DIR`. |
 | *Looking up server settings* takes long, or finds nothing | The domain publishes no autoconfig document; Cancel opens the manual page, or wait for it to open by itself. Enter the servers from the provider's help page (section 5). |
 | *Server settings for …* opens on Reload | The account has no known servers (added before they were stored, or for a domain outside the table). Enter them once; they are kept. |

@@ -8,6 +8,7 @@
   through `OpenURL`, the same way the PDF page links MuPDF. The page grew
   from 780 to 1080 points tall to hold it, so the status line moved down with
   it. `Docs/UltraCanvas/UltraCanvasXARExamples.md` carries the same note.
+- Fixes in HTML rendering
 
 #### 2026-09-14 *0.8.46*
 - **A folder display can leave out names that are not hidden at all.**
