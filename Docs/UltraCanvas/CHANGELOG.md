@@ -1,3 +1,33 @@
+#### 2026-09-14 *0.8.46*
+- **A folder display can leave out names that are not hidden at all.**
+  `UltraCanvasFilerWidget::SetIgnoredNamePatterns(patterns, onlyInFolder)`
+  takes glob patterns - `*` any run, `?` one character - matched against each
+  entry's name, case-insensitively, folders included; `onlyInFolder` confines
+  them to a single folder, empty applies them everywhere. It reaches what no
+  hidden-file filter can: clutter a system drops into a folder under a
+  perfectly ordinary, unhidden name. `Sti_Trace.log` is the case that prompted
+  it - the Windows Still Image (WIA) subsystem writes its trace log into the
+  working directory of whatever process last talked to a scanner or camera,
+  which for a desktop app is the user's profile, and it carries no hidden
+  attribute for anything to catch. The cross-platform case is the same in
+  reverse: a Windows share browsed from Linux or macOS shows `Thumbs.db` and
+  `desktop.ini` with their hidden attribute invisible, so the name is all
+  there is to filter on. Nothing is moved or deleted - the entries are only
+  left out of the display, a path still navigates to them, and a file-list
+  display (a search) is exempt, since a search is a question the user asked.
+  Show-hidden-files suspends the patterns like every other filter, and what
+  they drop counts into `GetHiddenItemCount()` and the new
+  `GetIgnoredItemCount()`.
+- **The hidden-items notice grew a middle setting**, because "announce
+  everything the listing leaves out" is right for a profile folder and noise
+  in every folder that holds a dot name.
+  `SetHiddenItemsNoticeEnabled(bool)` is now
+  `SetHiddenItemsNotice(FilerHiddenNotice)`: `NoNotice` (the default),
+  `WhenIgnored` - only while the ignore patterns dropped something, i.e. while
+  a *setting* is holding something back - and `WhenAnyHidden`, the old `true`.
+  The enumerators are spelled out because `None` and `Always` are X11 macros,
+  the same reason `FilerExtensionBadge::NoneBadge` is.
+
 #### 2026-09-13 *0.8.45*
 - **Fixed the text caret blinking through an open menu.** A menu (or any
   popup) opened over the text cursor - Texter's *Edit* menu over the editing

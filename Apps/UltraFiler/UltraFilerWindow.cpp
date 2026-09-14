@@ -1111,6 +1111,20 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (curatedHomeActive.exchange(curatedHome) != curatedHome)
         RefreshHomeTreeChildren();
+    // Display > Ignored files: the clutter no display lists - the built-in
+    // patterns still ticked plus the user's own, confined to the home folder
+    // or loose in every folder. The widget ignores a call that changes
+    // nothing, so re-applying on every unrelated settings change costs no
+    // rescans.
+    const std::vector<std::string> ignorePatterns =
+            settings.EffectiveIgnorePatterns();
+    const std::string ignoreScope =
+            settings.ignoreOnlyInHomeFolder ? home : std::string();
+    for (auto& state : tabStates)
+        if (state->filer)
+            state->filer->SetIgnoredNamePatterns(ignorePatterns, ignoreScope);
+    if (folderPreview)
+        folderPreview->SetIgnoredNamePatterns(ignorePatterns, ignoreScope);
     // Display > Thumbnails / Display > Detail view: which files are worth a
     // thumbnail and which ones the detail pane opens for. Every file display
     // of the window carries the same switches, so the setting holds wherever
@@ -3084,6 +3098,10 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     // Hidden files entry - and the Home folder's "Show hidden files" button -
     // still switch this one display without touching the setting.
     state->filer->SetShowHiddenFiles(settings.showHiddenFiles);
+    // Display > Ignored files: the names no display of this window lists.
+    state->filer->SetIgnoredNamePatterns(settings.EffectiveIgnorePatterns(),
+                                         settings.ignoreOnlyInHomeFolder
+                                                 ? UserHomeDir() : std::string());
     state->filer->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
@@ -4204,8 +4222,12 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     // things back the user never asked to hide - the profile's hidden files,
     // and whatever Display > Home folder curates away - so that is where it
     // says so, with the button that shows them. Every other folder hides only
-    // what the system calls hidden, which needs no announcement.
-    tab->filer->SetHiddenItemsNoticeEnabled(IsUserHomeDir(path));
+    // what the system calls hidden, which needs no announcement - unless
+    // Display > Ignored files dropped something there, which is a setting's
+    // doing and does.
+    tab->filer->SetHiddenItemsNotice(IsUserHomeDir(path)
+            ? FilerHiddenNotice::WhenAnyHidden
+            : FilerHiddenNotice::WhenIgnored);
 
     // Put back how this folder was last looked at. Done for every tab, not
     // only the active one, so a background tab is already right when it is

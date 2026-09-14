@@ -114,6 +114,52 @@ public:
     // "show me everything".
     bool showHiddenFiles = false;
 
+    // Display > Ignored files: names the file display never lists, as glob
+    // patterns. This is the answer to what no hidden-file filter can reach -
+    // the clutter a system drops into a folder under a perfectly ordinary,
+    // unhidden name: Sti_Trace.log (the Windows Still Image / WIA subsystem's
+    // trace log, written into the profile by whatever program last talked to
+    // a scanner or camera), Thumbs.db, desktop.ini. The built-in list ships
+    // on and is persisted as what is switched OFF, so a pattern a later
+    // release adds starts on rather than absent; `ignoredNamePatterns` is
+    // whatever the user added on top. Confined to the home folder by default,
+    // which is where the clutter collects - "In every folder" widens it.
+    bool ignoreClutterFiles = true;
+    std::vector<std::string> disabledClutterPatterns;
+    std::vector<std::string> ignoredNamePatterns;
+    bool ignoreOnlyInHomeFolder = true;
+
+    // The patterns the built-in list offers. One list for every platform on
+    // purpose: a Windows share seen from Linux or macOS carries Thumbs.db and
+    // desktop.ini with no hidden attribute to filter on - the name is all
+    // there is - and a name that never turns up costs one comparison.
+    static const std::vector<std::string>& BuiltInClutterPatterns() {
+        static const std::vector<std::string> kPatterns = {
+            "Sti_Trace.log", "desktop.ini", "Thumbs.db", "ehthumbs.db",
+            "ntuser.dat*", "ntuser.ini", ".DS_Store", "._*", ".Trash-*",
+            ".directory"
+        };
+        return kPatterns;
+    }
+
+    // What the file displays are actually given: the built-in patterns still
+    // ticked, plus the user's own.
+    std::vector<std::string> EffectiveIgnorePatterns() const {
+        std::vector<std::string> patterns;
+        if (ignoreClutterFiles) {
+            for (const std::string& p : BuiltInClutterPatterns()) {
+                if (std::find(disabledClutterPatterns.begin(),
+                              disabledClutterPatterns.end(), p) !=
+                    disabledClutterPatterns.end())
+                    continue;
+                patterns.push_back(p);
+            }
+        }
+        patterns.insert(patterns.end(), ignoredNamePatterns.begin(),
+                        ignoredNamePatterns.end());
+        return patterns;
+    }
+
     // Display > Files in use: whether the file display marks files another
     // program is holding - the reason an overwrite, a rename or a delete of
     // one fails. Each shown file is probed in the background; on a slow or
@@ -249,6 +295,16 @@ public:
         if (it != kv.end())
             showHiddenFiles =
                     (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("display.ignored.builtin");
+        if (it != kv.end())
+            ignoreClutterFiles =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("display.ignored.builtin.off");
+        if (it != kv.end()) disabledClutterPatterns = ParseList(it->second);
+        it = kv.find("display.ignored.patterns");
+        if (it != kv.end()) ignoredNamePatterns = ParseList(it->second);
+        it = kv.find("display.ignored.scope");
+        if (it != kv.end()) ignoreOnlyInHomeFolder = (it->second != "all");
         it = kv.find("display.inuse.marking");
         if (it != kv.end())
             showLockState =
@@ -309,6 +365,14 @@ public:
              << FormatExtensionBadge(extensionBadge) << "\n";
         file << "display.files.show.hidden = "
              << (showHiddenFiles ? "true" : "false") << "\n";
+        file << "display.ignored.builtin = "
+             << (ignoreClutterFiles ? "true" : "false") << "\n";
+        file << "display.ignored.builtin.off = "
+             << FormatList(disabledClutterPatterns) << "\n";
+        file << "display.ignored.patterns = "
+             << FormatList(ignoredNamePatterns) << "\n";
+        file << "display.ignored.scope = "
+             << (ignoreOnlyInHomeFolder ? "home" : "all") << "\n";
         file << "display.inuse.marking = "
              << (showLockState ? "true" : "false") << "\n";
         file << "display.folder.previews = "

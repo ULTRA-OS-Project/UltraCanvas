@@ -867,9 +867,19 @@ folder is empty, deletes it and loses what was in it. Where a host asks for it,
 the display says so instead:
 
 ```cpp
-filer->SetHiddenItemsNoticeEnabled(true);   // off by default
-int held = filer->GetHiddenItemCount();     // what the last scan left out
+filer->SetHiddenItemsNotice(FilerHiddenNotice::WhenAnyHidden);  // NoNotice by default
+int held    = filer->GetHiddenItemCount();    // what the last scan left out
+int ignored = filer->GetIgnoredItemCount();   // how much of that a pattern dropped
 ```
+
+The mode decides *when* it speaks up. `NoNotice` is the default;
+`WhenAnyHidden` announces anything the listing leaves out; `WhenIgnored`
+announces only what the ignored-name patterns (below) dropped — what a
+**setting** hid, which the user has no other way of noticing — and stays quiet
+about the platform's own hidden files, which every file manager leaves out
+silently. (`None` and `Always` are X11 macros, hence the spelled-out
+enumerators — the same reason `FilerExtensionBadge::NoneBadge` is spelled that
+way.)
 
 While something IS held back, a strip across the foot of the display reads
 *"3 items are hidden here"* and carries a **Show hidden files** button that
@@ -879,10 +889,11 @@ disappears as soon as nothing is held back (including the moment its own
 button is pressed).
 
 `GetHiddenItemCount()` counts what the current listing leaves out: the hidden
-entries, plus the subfolders a curated home folder (below) keeps back. It is
-`0` whenever hidden files are shown, since then nothing is held back. The
-count is taken while the listing is built — after it, the dropped entries are
-gone.
+entries, the names the ignore patterns drop, and the subfolders a curated home
+folder (below) keeps back; `GetIgnoredItemCount()` is the patterns' share of
+that, which is what `WhenIgnored` keys on. Both are `0` whenever hidden files
+are shown, since then nothing is held back. The count is taken while the
+listing is built — after it, the dropped entries are gone.
 
 The strip takes its height out of the file area, exactly as the selection info
 bar does (it sits directly above it), so no entry is ever drawn under it, and
@@ -891,11 +902,46 @@ too short to hold both files and strip. Its colours come from the same
 `FilerStyle` fields as the info bar (`infoBarBackground`, `gridLineColor`,
 `secondaryTextColor`).
 
-Hosts switch it on for the folders where the display holds back something the
-user never asked to hide. The UltraFiler enables it for the home folder — the
-one folder where both filters bite at once, the profile's hidden files and the
-curation below — and nowhere else: elsewhere, only what the system calls hidden
-is missing, which needs no announcement.
+Hosts pick the mode per folder. The UltraFiler uses `WhenAnyHidden` in the home
+folder — the one folder where every filter bites at once: the profile's hidden
+files, the curation below, and the ignore patterns — and `WhenIgnored`
+everywhere else, so an ordinary folder stays quiet about its dot names but says
+so when a setting dropped something from it.
+
+## Ignored names
+
+`SetIgnoredNamePatterns(patterns, onlyInFolder)` is the answer to clutter a
+system leaves in a folder under a perfectly ordinary, **unhidden** name — no
+dot, no attribute, nothing for a hidden-file filter to catch:
+
+```cpp
+filer->SetIgnoredNamePatterns({"Sti_Trace.log", "Thumbs.db", "*.bak"},
+                              UserHomeDir());   // empty = every folder
+```
+
+Patterns are globs matched against the entry's name, case-insensitively, with
+`*` for any run of characters and `?` for exactly one; folders are matched the
+same way. `onlyInFolder` confines them to a single folder — the UltraFiler
+points it at the home folder by default, since that is where the clutter
+collects — and an empty string applies them everywhere.
+
+The canonical case is `Sti_Trace.log`: the Windows Still Image (WIA) subsystem
+writes it into whatever directory the process that touched a scanner or camera
+was started in, which for a desktop app is the user's profile. It carries no
+hidden attribute, so no hidden-file setting can reach it. The same holds in
+reverse across platforms: a Windows share browsed from Linux or macOS shows
+`Thumbs.db` and `desktop.ini` with their hidden attribute invisible, so the
+name is the only thing left to filter on — which is why a single pattern list
+serves every platform rather than one list per OS.
+
+What it does **not** do matters as much: nothing is moved or deleted, the
+entries still exist, a path still navigates to them, and a **file-list display
+(a search) is exempt** — a search is a question the user asked, and hiding its
+answers would be a bug, not a tidy-up. `SetShowHiddenFiles(true)` suspends the
+patterns like every other filter ("show me everything"), and what they drop
+counts into `GetHiddenItemCount()` / `GetIgnoredItemCount()`, so the notice
+above offers it. Changing the patterns re-reads the folder, since the dropped
+entries are not kept anywhere to be put back.
 
 ## Curated home folder
 
