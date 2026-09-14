@@ -1,3 +1,6 @@
+#### 2026-09-14 *0.9.3*
+- Implemented OAuth for Google. Fixes in layout and HTML renderer.
+
 #### 2026-09-11 *0.9.2*
 - **Type scale matched to UltraFiler.** UltraMail's text was far larger than
   the rest of the desktop (13pt body, 15pt headings, 18pt titles next to

@@ -1,4 +1,4 @@
-#### 2026-09-14 *0.8.52*
+#### 2026-09-14 *0.8.53*
 - **IODeviceManager: hot-plug watching.** `SetDeviceChangeCallback` existed but
   only enumeration ever fired it, so a device plugged in after a scan went
   unnoticed until something rescanned. `StartMonitoring()` closes that for all
@@ -35,7 +35,7 @@
   `BackendUnavailable`, so a caller can tell "this platform cannot watch" from
   "nothing has been plugged in yet".
 
-#### 2026-09-14 *0.8.51*
+#### 2026-09-14 *0.8.52*
 - **IODeviceManager: scanners, and the SANE backend.** `ScannerDevice`
   completes the three categories the module's README advertises as production
   ready. Scanner support was previously described as finished across five
@@ -75,7 +75,7 @@
   falls out of how much data arrived and that arithmetic now lives once in
   `ScannerDevice`.
 
-#### 2026-09-14 *0.8.50*
+#### 2026-09-14 *0.8.51*
 - **IODeviceManager: cameras, and the V4L2 backend.** `CameraDevice` joins
   `PrinterDevice` as a category class, with the V4L2 webcam backend behind it -
   the backend the module's documentation has described as finished for some
@@ -116,7 +116,7 @@
   with no `/dev/video*` present. It is clean under ThreadSanitizer, which is
   the check that means something for a threaded capture path.
 
-#### 2026-09-14 *0.8.49*
+#### 2026-09-14 *0.8.50*
 - **IODeviceManager: the Windows printer backend, and with it GutenPrint on
   all three platforms.** Spooler enumeration, capabilities from
   `DeviceCapabilitiesW`, printer and job status, job cancellation, and the
@@ -148,7 +148,7 @@
   spooler has no supply-level API at all, only a `PRINTER_STATUS_NO_TONER`
   status bit. Reading real levels there needs SNMP or a vendor SDK.
 
-#### 2026-09-14 *0.8.48*
+#### 2026-09-14 *0.8.49*
 - **IODeviceManager: printers, and the switch between GutenPrint and the
   platform driver.** `PrinterDevice` lands with the renderer/transport split
   that makes that switch possible on Windows as well as Linux and macOS, plus
@@ -202,7 +202,7 @@
     carries the trade-off. Adding the renderer once that is settled is a
     renderer class and nothing else.
 
-#### 2026-09-14 *0.8.47*
+#### 2026-09-14 *0.8.48*
 - **IODeviceManager: the foundation layer.** The module had documentation but
   no code; this lands the base every device category will derive from, so the
   scanner, camera and printer work has something to build against.
@@ -246,6 +246,9 @@
     earlier prototype Linux/macOS-only. The GPL-vs-MIT question that decides
     whether it is linked or run as a subprocess is written up there, unanswered
     - it is a product decision.
+
+#### 2026-09-14 *0.8.47*
+- Fixes in HTML rendering
 
 #### 2026-09-14 *0.8.46*
 - **A folder display can leave out names that are not hidden at all.**
