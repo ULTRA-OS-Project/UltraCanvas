@@ -1,8 +1,8 @@
 // Tests/HTMLReaderTest.cpp
 // Unit tests for the HTMLReader module (parser, CSS subset, style resolver).
 // Framework-independent: builds against the HTMLReader sources only.
-// Version: 1.0.0
-// Last Modified: 2026-07-02
+// Version: 1.1.0 - CSS number shapes (exponents, leading dot, sign)
+// Last Modified: 2026-09-14
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/HTMLParser.h"
@@ -217,6 +217,25 @@ static void TestCssLength() {
     CHECK(l5 && l5->unit == CssUnit::Auto);
 
     CHECK(!CssLength::Parse("garbage"));
+
+    // Number shapes the two ParseNumber paths in CSSStyleSheet.cpp must agree
+    // on - the fallback one delimits the number itself, and an 'e' that turns
+    // out to be a unit rather than an exponent is where that goes wrong.
+    auto l6 = CssLength::Parse(".5em");
+    CHECK(l6 && l6->unit == CssUnit::Em && Near(l6->value, 0.5f));
+
+    auto l7 = CssLength::Parse("1.5e2px");
+    CHECK(l7 && l7->unit == CssUnit::Px && Near(l7->value, 150));
+
+    auto l8 = CssLength::Parse("-3px");
+    CHECK(l8 && l8->unit == CssUnit::Px && Near(l8->value, -3));
+
+    auto l9 = CssLength::Parse("1em");
+    CHECK(l9 && l9->unit == CssUnit::Em && Near(l9->value, 1));
+
+    CHECK(!CssLength::Parse("1e"));        // exponent without digits
+    CHECK(!CssLength::Parse("1e999px"));   // out of range for a float
+    CHECK(!CssLength::Parse("px"));
 }
 
 // ============================================================================

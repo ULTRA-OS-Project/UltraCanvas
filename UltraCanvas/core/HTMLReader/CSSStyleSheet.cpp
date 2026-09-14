@@ -1,8 +1,9 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
-// Version: 1.1.0 - locale-independent number parsing (strtof honors LC_NUMERIC,
-//                  so a comma-decimal locale turned rgba() alpha / lengths to 0)
-// Last Modified: 2026-09-13
+// Version: 1.2.0 - ParseNumber(): the locale-independent number parsing of
+//                  1.1.0 now builds where std::from_chars has no
+//                  floating-point overload (Apple libc++)
+// Last Modified: 2026-09-14
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
@@ -13,6 +14,10 @@
 #include <charconv>
 #include <cstdlib>
 #include <unordered_map>
+#if !defined(__cpp_lib_to_chars) || __cpp_lib_to_chars < 201611L
+    #include <locale>
+    #include <sstream>
+#endif
 
 namespace UltraCanvas {
 namespace HTML {
@@ -29,6 +34,75 @@ std::string TrimLower(const std::string& text) {
 }
 
 namespace {
+
+// Parse a float out of [first, last) without consulting the locale - a
+// comma-decimal LC_NUMERIC must not turn "0.5" into 0. Returns the end of the
+// number, or `first` when nothing parsed.
+//
+// std::from_chars is the tool for that, but its floating-point overloads are
+// the last part of <charconv> to arrive: Apple's libc++ (Xcode 16.4, the
+// macos-15-intel CI runner) still ships the integral ones only, where
+// from_chars(..., float&) resolves to the deleted bool overload and the file
+// does not compile. __cpp_lib_to_chars is defined only once the
+// floating-point overloads are there, so it picks the path.
+#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
+const char* ParseNumber(const char* first, const char* last, float& out) {
+    float value = 0.f;
+    auto conv = std::from_chars(first, last, value);
+    if (conv.ec != std::errc()) return first;
+    out = value;
+    return conv.ptr;
+}
+#else
+// End of the longest CSS number starting at `first`, or `first` when there is
+// none. A stream cannot be handed the raw text instead: "1.5em" makes it read
+// "1.5e", find no exponent digits and fail the whole parse, where from_chars
+// backs off the incomplete exponent and returns 1.5. So the number is
+// delimited here first, and only then converted.
+const char* ScanNumber(const char* first, const char* last) {
+    auto IsDigit = [](char c) {
+        return std::isdigit(static_cast<unsigned char>(c)) != 0;
+    };
+    const char* p = first;
+    // '-' only: std::from_chars rejects a leading '+' (so CSS's valid "+2px"
+    // is dropped on the other path too), and the two must agree.
+    if (p != last && *p == '-') ++p;
+
+    const char* mantissa = p;
+    while (p != last && IsDigit(*p)) ++p;
+    if (p != last && *p == '.') {
+        ++p;
+        while (p != last && IsDigit(*p)) ++p;
+    }
+    if (p == mantissa || (p == mantissa + 1 && *mantissa == '.')) {
+        return first;   // no digits: "", "-", ".", "px"
+    }
+
+    if (p != last && (*p == 'e' || *p == 'E')) {
+        const char* exponent = p + 1;
+        if (exponent != last && (*exponent == '+' || *exponent == '-')) ++exponent;
+        const char* exponentDigits = exponent;
+        while (exponent != last && IsDigit(*exponent)) ++exponent;
+        if (exponent != exponentDigits) p = exponent;   // complete exponent only
+    }
+    return p;
+}
+
+const char* ParseNumber(const char* first, const char* last, float& out) {
+    const char* numberEnd = ScanNumber(first, last);
+    if (numberEnd == first) return first;
+
+    // The classic locale is what keeps this independent of LC_NUMERIC.
+    std::istringstream stream(std::string(first, numberEnd));
+    stream.imbue(std::locale::classic());
+    float value = 0.f;
+    stream >> value;
+    if (stream.fail()) return first;   // out of range for a float
+
+    out = value;
+    return numberEnd;
+}
+#endif
 
 std::string StripComments(const std::string& css) {
     std::string out;
@@ -166,8 +240,8 @@ std::optional<CssColor> CssColor::Parse(const std::string& text) {
             if (!part.empty()) {
                 bool percent = part.back() == '%';
                 if (percent) part.pop_back();
-                float v = 0.f;   // from_chars is locale-independent (unlike strtof)
-                std::from_chars(part.data(), part.data() + part.size(), v);
+                float v = 0.f;   // locale-independent, unlike strtof
+                ParseNumber(part.data(), part.data() + part.size(), v);
                 if (percent) v = v * 255.f / 100.f;
                 if (count == 3) v = v * 255.f;   // alpha given as 0..1
                 components[count] = v;
@@ -213,11 +287,11 @@ std::optional<CssLength> CssLength::Parse(const std::string& text) {
 
     const char* begin = value.c_str();
     const char* bufEnd = begin + value.size();
-    float number = 0.f;   // from_chars is locale-independent (unlike strtof)
-    auto conv = std::from_chars(begin, bufEnd, number);
-    if (conv.ptr == begin) return std::nullopt;
+    float number = 0.f;   // locale-independent, unlike strtof
+    const char* numberEnd = ParseNumber(begin, bufEnd, number);
+    if (numberEnd == begin) return std::nullopt;
 
-    std::string unit = Trim(std::string(conv.ptr));
+    std::string unit = Trim(std::string(numberEnd));
     if (unit.empty()) return CssLength{number, CssUnit::Number};
     if (unit == "px") return CssLength{number, CssUnit::Px};
     if (unit == "em") return CssLength{number, CssUnit::Em};

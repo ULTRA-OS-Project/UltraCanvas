@@ -8,6 +8,27 @@
   through `OpenURL`, the same way the PDF page links MuPDF. The page grew
   from 780 to 1080 points tall to hold it, so the status line moved down with
   it. `Docs/UltraCanvas/UltraCanvasXARExamples.md` carries the same note.
+- **The macOS Intel build is green again.** `core/HTMLReader/CSSStyleSheet.cpp`
+  parsed CSS numbers through `std::from_chars` - locale-independent, which is
+  what 1.1.0 was about, since `strtof` honours `LC_NUMERIC` and a
+  comma-decimal locale turned every `rgba()` alpha and length into 0. But the
+  floating-point `from_chars` overloads are the last part of `<charconv>` to
+  arrive, and Apple's libc++ (Xcode 16.4, the `macos-15-intel` runner) still
+  ships the integral ones only: there `from_chars(..., float&)` resolves to
+  the deleted `bool` overload and the file does not compile, which had every
+  PR red on that runner.
+  - One `ParseNumber()` now hides the difference. Where `__cpp_lib_to_chars`
+    says the overloads exist it is `from_chars`; where it does not, the number
+    is delimited by hand and converted through a stream imbued with the
+    classic locale - equally independent of `LC_NUMERIC`, and no `strtof`.
+  - Delimiting it by hand is the part that matters: handing `"1.5em"` straight
+    to a stream makes it read `"1.5e"`, find no exponent digits and fail the
+    whole parse, where `from_chars` backs off the incomplete exponent and
+    returns 1.5. The scanner takes an exponent only when it is complete, and
+    rejects a leading `+` because `from_chars` does, so both paths agree on
+    every input - a document must not render differently on one runner.
+  - `Tests/HTMLReaderTest.cpp` grew the number shapes that separate the two:
+    `.5em`, `1.5e2px`, `-3px`, `1em`, `1e`, `1e999px`.
 - Fixes in HTML rendering
 
 #### 2026-09-14 *0.8.46*
