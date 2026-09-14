@@ -739,9 +739,16 @@ set(ULTRACANVAS_CORE_SOURCES
 
         # Reusable ZIP package layer (ODF/OPC containers)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasZipPackage.cpp
-        # Word-processing document module: UCRichDocument + ODT/DOCX readers
-        # and writers (used by FileLoader::OpenTextDocument and Texter)
-        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasRichDocument.cpp
+        # UCRichDocument: the block/run document model + its Markdown/HTML/plain
+        # serializers. Lives in core (not the Word plugin) because framework
+        # elements edit it - see UltraCanvasRichTextEdit / UCRichDocumentEditor.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocument.cpp
+        # Editing core over UCRichDocument (UI-free: positions, commands, undo)
+        # and the element that renders and edits it.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichDocumentEditor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasRichTextEdit.cpp
+        # Word-processing formats: ODT/DOCX/DOC readers and writers
+        # (used by FileLoader::OpenTextDocument and Texter)
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp

@@ -1,9 +1,11 @@
 # A WYSIWYG Editing Element — Investigation
 
-Status: **Investigation.** No code change is proposed here; this is the
-"own design round" that
-[`ODT-DOCX-Support-Proposal.md`](ODT-DOCX-Support-Proposal.md) defers Phase 5
-to ("the Phase-5 interactive styled-run editor … needs its own design round").
+Status: **Investigation — now partly implemented.** This was the "own design
+round" that [`ODT-DOCX-Support-Proposal.md`](ODT-DOCX-Support-Proposal.md)
+defers Phase 5 to ("the Phase-5 interactive styled-run editor … needs its own
+design round"). The analysis below is preserved as written; what has since been
+built against it is recorded in §11, and the element's own documentation is
+[`UltraCanvasRichTextEdit.md`](UltraCanvasRichTextEdit.md).
 
 The question asked was: *what would it take to implement a WYSIWYG UltraCanvas
 element?* The answer has three parts:
@@ -405,6 +407,32 @@ pre-edit display (§4.8), RTF import.
   writers, the Markdown surface, the HTML view and the new editor. A second
   "editor-only" model is how fidelity bugs start.
 
+## 11. What has been implemented
+
+Phases 0–3 of §7 plus the process-local half of Phase 5 have landed; the
+recommendation in §6 was followed as written, including the layering fix.
+
+| Piece | Where | State |
+|---|---|---|
+| `UCRichDocument` moved into core | `include/UltraCanvasRichDocument.h`, `core/UltraCanvasRichDocument.cpp` | Done — the format readers/writers stay in `Plugins/Documents/Word/` and now depend downward |
+| Editing core (positions, commands, formatting, undo), UI-free | `include/UltraCanvasRichDocumentEditor.h`, `core/UltraCanvasRichDocumentEditor.cpp` | Done |
+| The element (block layouts, rendering, input, caret, scrolling, clipboard) | `include/UltraCanvasRichTextEdit.h`, `core/UltraCanvasRichTextEdit.cpp` | Done |
+| Model-level tests, no display needed | `Tests/RichTextEditorTest.cpp` | Done |
+| Element tests against a real render context (Xvfb) | `Tests/RichTextEditElementTest.cpp` | Done |
+
+`RichDocPosition` is `{blockIndex, byteOffset}` as designed; undo is the
+block-span step of §6 with typing coalescing; layouts are built only for blocks
+near the viewport, with the rest carrying an estimated height until they scroll
+in. Every `RichTextRun` field maps onto the attribute named in §3.2's table.
+
+Still open from §4 and §7, and stated as limits in the element's documentation
+rather than hidden: in-place table cell editing and interactive image resizing
+(Phase 4), the clipboard MIME flavours and the HTML→`UCRichDocument` importer
+that cross-application rich paste needs (Phase 5 proper — copy/paste *inside*
+the application does keep formatting, through a process-local buffer), typeset
+math runs, spell checking, and the pre-edit/composition event (§4.8), which no
+text widget in the framework has yet.
+
 ## 10. References
 
 - [`ODT-DOCX-Support-Proposal.md`](ODT-DOCX-Support-Proposal.md) — the format
@@ -414,6 +442,8 @@ pre-edit display (§4.8), RTF import.
   `TextAttributeFactory`, `ITextLayout`
 - `UltraCanvas/include/UltraCanvasTextArea.h` — the current editing surface
 - `UltraCanvas/include/UltraCanvasCaret.h` — the caret protocol
+- [`UltraCanvasRichTextEdit.md`](UltraCanvasRichTextEdit.md) — the element this
+  investigation led to
 - [`UltraCanvasUIElements.md`](UltraCanvasUIElements.md) — the element catalogue
 - [`UltraCanvasLaTeXDocumentReader.md`](UltraCanvasLaTeXDocumentReader.md),
   [`UltraCanvasTextAreaExamples.md`](UltraCanvasTextAreaExamples.md)

@@ -9,7 +9,7 @@
 // Word module sources (see Tests/CMakeLists.txt).
 // Usage: LaTeXDocumentTest [output-dir] [media/LaTex dir]
 #include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
-#include "Plugins/Documents/Word/UltraCanvasRichDocument.h"
+#include "UltraCanvasRichDocument.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 
 #include <cstdio>

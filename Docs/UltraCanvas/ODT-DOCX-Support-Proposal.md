@@ -63,10 +63,14 @@ Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 > this is now a wiring job), `ConvertFile` once the universal FileLoader API
 > exists, and the Phase-5 interactive styled-run editor (a standalone UI
 > project: cursor/selection model over styled runs, IME, rendering — needs its
-> own design round). **That design round is now written up in
-> [`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md)**, which
-> surveys what the tree already provides and proposes
-> `UltraCanvasRichTextEdit` over `UCRichDocument`.
+> own design round). **That design round is written up in
+> [`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md), and its
+> first phases are implemented**: `UltraCanvasRichTextEdit` edits a
+> `UCRichDocument` directly through `UCRichDocumentEditor`, so Texter no longer
+> has to reduce a document to Markdown to make it editable. See
+> [`UltraCanvasRichTextEdit.md`](UltraCanvasRichTextEdit.md). `UCRichDocument`
+> itself moved to `core/` (from `Plugins/Documents/Word/`) so a framework
+> element can depend on it; the format readers and writers did not move.
 
 ---
 
