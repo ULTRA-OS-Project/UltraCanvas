@@ -2,6 +2,8 @@ CMakeFiles/
 .claude/
 .idea/
 .vscode/
+# A build machine's real UltraMail OAuth credentials (see oauth.local.cmake.example)
+/cmake/oauth.local.cmake
 /cmake-build-debug/
 /cmake-build-release/
 /build/

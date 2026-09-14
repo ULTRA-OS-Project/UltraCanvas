@@ -1,0 +1,32 @@
+// Apps/UltraMail/engine/UltraMailOAuthDefaults.h.in
+// GENERATED at configure time into the build tree as UltraMailOAuthDefaults.h.
+// Do NOT edit the generated copy and do NOT commit it (it lives under the build
+// tree). Edit this .in template instead.
+//
+// The OAuth client UltraMail signs in as, baked into the build as the
+// lowest-priority fallback (Set() / environment / oauth.ini all override it —
+// see OAuthApps::Get). Every constant is an empty string in a build that was
+// configured without credentials, so such a build behaves exactly as one with
+// no baked-in client at all. When credentials ARE configured they are, by
+// default, XOR-obfuscated against kXorKey so a plain `strings` on the binary
+// does not surface them — anti-scraping friction only, NOT confidentiality:
+// anyone with the binary can recover them, and for a desktop OAuth client the
+// secret is non-confidential by design.
+#pragma once
+
+namespace UltraMail {
+namespace defaults {
+
+// Client id / secret per provider. Microsoft is a public client, so it carries
+// no secret. Empty => this build has no baked-in client for that provider.
+inline constexpr const char* kGoogleClientId     = @UM_GOOGLE_ID_C@;
+inline constexpr const char* kGoogleClientSecret = @UM_GOOGLE_SECRET_C@;
+inline constexpr const char* kMicrosoftClientId  = @UM_MICROSOFT_ID_C@;
+
+// 1 => the strings above are XOR-obfuscated against kXorKey and must be passed
+// through Deobf() before use; 0 => they are verbatim.
+inline constexpr int           kObfuscated = @UM_OBFUSCATED@;
+inline constexpr unsigned char kXorKey     = @UM_XOR_KEY@;
+
+} // namespace defaults
+} // namespace UltraMail

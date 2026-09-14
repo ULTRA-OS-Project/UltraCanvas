@@ -3,6 +3,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailOAuth.h"
 
+#include "UltraMailOAuthDefaults.h"   // generated at configure time (build tree)
+
 #include <cctype>
 #include <cstdlib>
 #include <ctime>
@@ -45,6 +47,32 @@ std::string Lower(std::string s) {
     return s;
 }
 
+// Reverse the build-time obfuscation of a baked-in credential (see
+// UltraMailOAuthDefaults.h.in): verbatim when the build stored the values in the
+// clear, else XOR each byte back with the key. The high-bit key means an
+// obfuscated ASCII credential never contains a NUL, so the length is intact.
+std::string Deobf(const char* s) {
+    std::string out(s);
+    if (defaults::kObfuscated)
+        for (char& c : out)
+            c = static_cast<char>(static_cast<unsigned char>(c) ^ defaults::kXorKey);
+    return out;
+}
+
+// The OAuth client baked into this build for `providerId`, if any. Unconfigured
+// (clientId empty) when the build carried no credentials for it — the common
+// case for a dev/CI/test build.
+OAuthApp BuiltInApp(const std::string& providerId) {
+    OAuthApp app;
+    if (providerId == "google") {
+        app.clientId     = Deobf(defaults::kGoogleClientId);
+        app.clientSecret = Deobf(defaults::kGoogleClientSecret);
+    } else if (providerId == "microsoft") {
+        app.clientId     = Deobf(defaults::kMicrosoftClientId);  // public client, no secret
+    }
+    return app;
+}
+
 } // namespace
 
 // ===== OAuthApps ==============================================================
@@ -75,9 +103,17 @@ OAuthApp OAuthApps::Get(const std::string& providerId) {
     app.redirectUri  = Env(EnvName(providerId, "_REDIRECT_URI"));
     if (app.IsConfigured()) return withDefault(app);
 
-    std::lock_guard<std::mutex> lock(AppsMutex());
-    auto it = FileApps().find(providerId);
-    if (it != FileApps().end() && it->second.IsConfigured()) return withDefault(it->second);
+    {
+        std::lock_guard<std::mutex> lock(AppsMutex());
+        auto it = FileApps().find(providerId);
+        if (it != FileApps().end() && it->second.IsConfigured()) return withDefault(it->second);
+    }
+    // Lowest priority: the client baked into this build. Reads only compile-time
+    // constants (no shared map), so it runs outside the mutex like the env tier.
+    // Empty in a build configured without credentials, so this changes nothing
+    // there.
+    OAuthApp builtIn = BuiltInApp(providerId);
+    if (builtIn.IsConfigured()) return withDefault(builtIn);
     return OAuthApp{};
 }
 
