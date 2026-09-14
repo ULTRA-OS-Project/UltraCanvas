@@ -2229,6 +2229,33 @@ else()
     message(STATUS "  XARProbeTest skipped (UltraCanvasXARPlugin target not present)")
 endif()
 
+# ===== XAR FIDELITY TEST =====
+# Checks that the XAR samples' attributes resolve to what Xara itself draws:
+# complex colours (Shade colours over HSV and CMYK parents in particular),
+# winding rules and text kerns. These are the defects no structural check
+# catches - the file parses, every node is present, the geometry is in the
+# right place, and the picture is still wrong.
+if(TARGET UltraCanvasXARPlugin)
+    message(STATUS "  Building XARFidelityTest...")
+    add_executable(XARFidelityTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/XARFidelityTest.cpp
+    )
+    target_include_directories(XARFidelityTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(XARFidelityTest PRIVATE cxx_std_20)
+    target_link_libraries(XARFidelityTest PRIVATE UltraCanvasXARPlugin UltraCanvas)
+    target_compile_definitions(XARFidelityTest PRIVATE
+        XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/XAR"
+    )
+    set_target_properties(XARFidelityTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME XARFidelityTest COMMAND XARFidelityTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: XARFidelityTest")
+else()
+    message(STATUS "  XARFidelityTest skipped (UltraCanvasXARPlugin target not present)")
+endif()
+
 # Round-trips a VectorDocument through the Vector plugin's XAR writer and the
 # XAR plugin's spec-verified reader: page size, node counts, millipoint
 # placement (Y flip), colour references, text spans. Needs both plugins.

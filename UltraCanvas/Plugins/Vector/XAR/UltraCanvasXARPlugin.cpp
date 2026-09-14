@@ -30,13 +30,47 @@ namespace UltraCanvas {
     };
     static const SilhouettePaint* g_silhouettePaint = nullptr;
 
-    static Color BlendColors(const Color& a, const Color& b, float t) {
-        t = std::max(0.0f, std::min(1.0f, t));
-        return Color(
-            static_cast<uint8_t>(a.r * (1 - t) + b.r * t),
-            static_cast<uint8_t>(a.g * (1 - t) + b.g * t),
-            static_cast<uint8_t>(a.b * (1 - t) + b.b * t),
-            static_cast<uint8_t>(a.a * (1 - t) + b.a * t));
+    // Xara's fill profile: two sliders in [-1, 1] that reshape how fast the
+    // ramp runs, both 0 for the plain linear ramp every fill gets by default.
+    // They are Perlin's bias and gain expressed on a symmetric scale, so
+    // rebase to (0, 1) and apply the classic pair - bias pulls the whole ramp
+    // towards one end, gain steepens or flattens it around the middle.
+    static double ApplyFillProfile(double t, double bias, double gain) {
+        t = std::max(0.0, std::min(1.0, t));
+        const double b = std::max(0.001, std::min(0.999, (bias + 1.0) * 0.5));
+        const double g = std::max(0.001, std::min(0.999, (gain + 1.0) * 0.5));
+        auto perlinBias = [](double x, double p) {
+            if (x <= 0.0) return 0.0;
+            return std::pow(x, std::log(p) / std::log(0.5));
+        };
+        double v = perlinBias(t, b);
+        v = (v < 0.5) ? perlinBias(2.0 * v, 1.0 - g) * 0.5
+                      : 1.0 - perlinBias(2.0 - 2.0 * v, 1.0 - g) * 0.5;
+        return std::max(0.0, std::min(1.0, v));
+    }
+
+    static bool HasFillProfile(const XARFillAttribute& f) {
+        return std::fabs(f.profileBias) > 1e-6 || std::fabs(f.profileGain) > 1e-6;
+    }
+
+    // Colour of a stop list at ramp position t (stops sorted, 0..1).
+    static Color SampleGradientStops(const std::vector<GradientStop>& stops, double t) {
+        if (stops.empty()) return Color(0, 0, 0, 255);
+        if (t <= stops.front().position) return stops.front().color;
+        if (t >= stops.back().position) return stops.back().color;
+        for (size_t i = 1; i < stops.size(); ++i) {
+            if (t > stops[i].position) continue;
+            const double span = stops[i].position - stops[i - 1].position;
+            const double k = (span > 1e-9) ? (t - stops[i - 1].position) / span : 0.0;
+            const Color& a = stops[i - 1].color;
+            const Color& b = stops[i].color;
+            return Color(
+                static_cast<uint8_t>(a.r + (b.r - a.r) * k),
+                static_cast<uint8_t>(a.g + (b.g - a.g) * k),
+                static_cast<uint8_t>(a.b + (b.b - a.b) * k),
+                static_cast<uint8_t>(a.a + (b.a - a.a) * k));
+        }
+        return stops.back().color;
     }
 
     static std::vector<GradientStop> BuildGradientStops(const XARFillAttribute& f) {
@@ -49,6 +83,22 @@ namespace UltraCanvas {
         } else {
             stops.push_back(GradientStop(0.0f, f.startColor));
             stops.push_back(GradientStop(1.0f, f.endColor));
+        }
+        if (HasFillProfile(f)) {
+            // The backends only interpolate linearly between stops, so bake a
+            // non-linear profile into a resampled ramp. Untouched when the
+            // profile is neutral, which is what every fill in the bundled
+            // samples carries.
+            constexpr int kProfileSamples = 64;
+            std::vector<GradientStop> profiled;
+            profiled.reserve(kProfileSamples + 1);
+            for (int i = 0; i <= kProfileSamples; ++i) {
+                const double t = static_cast<double>(i) / kProfileSamples;
+                profiled.push_back(GradientStop(
+                    static_cast<float>(t),
+                    SampleGradientStops(stops, ApplyFillProfile(t, f.profileBias, f.profileGain))));
+            }
+            stops.swap(profiled);
         }
         if (f.effect == XARFillEffect::Rainbow || f.effect == XARFillEffect::AltRainbow) {
             // Best-effort: keep endpoints, insert intermediate hues for visual cue
@@ -119,13 +169,27 @@ namespace UltraCanvas {
                 if (pat) ctx->SetFillPaint(pat); else ctx->SetFillPaint(f.startColor);
                 break;
             }
-            case XARFillType::CircularGradient:
-            case XARFillType::EllipticalGradient: {
+            case XARFillType::CircularGradient: {
                 Point2Dd c = MillipointsToPixels(f.startPoint, scale);
                 Point2Dd ed = MillipointsToPixels(f.endPoint, scale);
                 float r = std::sqrt((ed.x - c.x) * (ed.x - c.x) + (ed.y - c.y) * (ed.y - c.y));
                 auto stops = BuildGradientStops(f);
                 auto pat = ctx->CreateRadialGradientPattern(c.x, c.y, 0, c.x, c.y, r, stops);
+                if (pat) ctx->SetFillPaint(pat); else ctx->SetFillPaint(f.startColor);
+                break;
+            }
+            case XARFillType::EllipticalGradient: {
+                // An elliptical fill carries both axes: endPoint is the end of
+                // the major axis and endPoint2 the end of the minor one, and
+                // the two are independent in length and direction. Collapsing
+                // them to a circle of the major axis's length - which this did
+                // until now - rounds off every squashed or sheared highlight.
+                Point2Dd c  = MillipointsToPixels(f.startPoint, scale);
+                Point2Dd ma = MillipointsToPixels(f.endPoint, scale);
+                Point2Dd mi = MillipointsToPixels(f.endPoint2, scale);
+                auto stops = BuildGradientStops(f);
+                auto pat = ctx->CreateEllipticalGradientPattern(
+                        c.x, c.y, ma.x - c.x, ma.y - c.y, mi.x - c.x, mi.y - c.y, stops);
                 if (pat) ctx->SetFillPaint(pat); else ctx->SetFillPaint(f.startColor);
                 break;
             }
@@ -177,6 +241,27 @@ namespace UltraCanvas {
                 break;
             }
         }
+    }
+
+    // Every fill attribute record fully describes its own fill, but two of its
+    // parts are optional on the wire: the multistage stop list and the
+    // bias/gain profile. currentContext.fill persists across records, so those
+    // have to be reset per record - otherwise a plain two-colour fill that
+    // follows a multistage one inherits its stop list and paints the wrong
+    // ramp entirely.
+    static void BeginFillRecord(XARFillAttribute& fill, XARFillType type) {
+        fill.stops.clear();
+        fill.profileBias = 0.0;
+        fill.profileGain = 0.0;
+        fill.type = type;
+    }
+
+    // Xara stores the winding rule as an attribute on the object; without it
+    // every self-intersecting path and every subpath-punched hole fills by the
+    // non-zero rule, which silently fills holes that should be open.
+    static void ApplyWindingRuleToContext(IRenderContext* ctx, XARWindingRule rule) {
+        ctx->SetFillRule(rule == XARWindingRule::EvenOdd ? FillRule::EvenOdd
+                                                         : FillRule::NonZero);
     }
 
     static void ApplyLineToContext(IRenderContext* ctx, const XARLineAttribute& l, float scale) {
@@ -311,6 +396,7 @@ namespace UltraCanvas {
         if (commands.empty()) { XARNode::Render(ctx, scale); return; }
         ctx->PushState();
         if (hasTransform) transform.ApplyToContext(ctx);
+        ApplyWindingRuleToContext(ctx, windingRule);
 
         if (g_silhouettePaint) {
             // Shadow pass: the node's own geometry in the silhouette paint.
@@ -510,6 +596,7 @@ namespace UltraCanvas {
 
     void XARPolygonNode::Render(IRenderContext* ctx, float scale) {
         ctx->PushState();
+        ApplyWindingRuleToContext(ctx, windingRule);
         // GeneratePolygonPoints already applies the node transform.
         auto pts = GeneratePolygonPoints(scale);
         if (!pts.empty()) {
@@ -640,7 +727,7 @@ namespace UltraCanvas {
         for (const auto& c : children) {
             if (c->type == XARNodeType::TextKern) {
                 auto k = std::static_pointer_cast<XARTextKernNode>(c);
-                total += k->offset.x * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+                total += k->kernMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
                 continue;
             }
             if (c->type != XARNodeType::TextString) continue;
@@ -686,7 +773,7 @@ namespace UltraCanvas {
             }
         }
 
-        double x = hangingIndent ? hangIndent : markerIndent, y = 0;
+        double x = hangingIndent ? hangIndent : markerIndent;
         switch (textAttr.justification) {
             case XARTextAttribute::Justification::Centre: x = -anchorWidth / 2.0; break;
             case XARTextAttribute::Justification::Right:  x = -anchorWidth; break;
@@ -710,14 +797,13 @@ namespace UltraCanvas {
                     x = std::max(x + 0.5 * fontEm, hangIndent);
                 }
                 ctx->PushState();
-                ctx->Translate(x, y);
+                ctx->Translate(x, 0);
                 c->Render(ctx, scale);
                 ctx->PopState();
                 x += widths[wi++];
             } else if (c->type == XARNodeType::TextKern) {
                 auto k = std::static_pointer_cast<XARTextKernNode>(c);
-                x += k->offset.x * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
-                y += k->offset.y * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+                x += k->kernMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
             } else {
                 c->Render(ctx, scale);
             }
@@ -2239,7 +2325,22 @@ namespace UltraCanvas {
         const uint8_t* d = record.data.data();
         size_t off = 0;
         auto kern = std::make_shared<XARTextKernNode>();
-        kern->offset = ReadCoord(d, off);
+        // The record's two INT32s are NOT a coordinate pair, and reading them
+        // as one put a vertical step in the middle of a line: it lifted
+        // "AB Designs - February 1992" 4pt off the baseline it shares with
+        // "Produced by" in Midget.xar, a line Xara's own rendering of that
+        // file keeps flat.
+        //
+        // Only the first field is the kern, in millipoints. Taking it puts
+        // that line's word gaps and both its ends within a pixel of Xara's
+        // rendering; taking the second widens the gap it sits in by two
+        // thirds. The second field tracks the first at a fixed ratio of 72
+        // across every kern record in the file - four text stories, font
+        // sizes from 0.4pt to 15pt - so it is the same kern under some other
+        // measure, but nothing in the drawing depends on it and it is read
+        // past rather than guessed at.
+        kern->kernMP = ReadInt32(d, off);
+        ReadInt32(d, off);
         AttachNode(kern);
     }
 
@@ -2377,12 +2478,12 @@ namespace UltraCanvas {
 
     void XARDocument::ParseComplexColorRecord(const XARRecord& record) {
         // Wire layout per XAR spec (XARFormatDocument.pdf p.123):
-        //   <Simple RGBColour>     3 BYTE  (R, G, B) — fallback for screen rendering
+        //   <Simple RGBColour>     3 BYTE  (R, G, B) — Xara's screen colour
         //   <ColourModel>          BYTE    (2=RGB, 3=CMYK, 4=HSV, 5=Greyscale)
         //   <ColourType>           BYTE    (0=Normal, 1=Spot, 2=Tint, 3=Linked, 4=Shade)
         //   <EntryIndex>           UINT32
         //   <ParentColour>         INT32 COLOURREF
-        //   <ColourDescription>    4 × UINT32 fixed24 (1.0 == 0x01000000)
+        //   <ColourDescription>    4 × INT32 fixed24 (1.0 == 0x01000000, signed)
         //   <ColourName>           UTF-16LE, terminated by 0x00 0x00
 
         XARColorDefinition cd;
@@ -2392,8 +2493,8 @@ namespace UltraCanvas {
         const size_t total = record.data.size();
         size_t off = 0;
 
-        // 1) Simple RGB fallback. Always populate cd.color from this so screen
-        //    rendering is correct even if we can't decode the rest.
+        // 1) Simple RGB — the screen colour (see step 6). Read first so a
+        //    record truncated anywhere later still renders correctly.
         if (off + 3 > total) { colors[currentSequenceNumber] = std::move(cd); return; }
         uint8_t r = ReadByte(d, off);
         uint8_t g = ReadByte(d, off);
@@ -2427,17 +2528,21 @@ namespace UltraCanvas {
         cd.entryIndex = ReadUInt32(d, off);
         cd.parentRef  = ReadInt32(d, off);
 
-        // 4) Four UINT32 fixed24 components (binary point between bits 23 and 24,
-        //    so 1.0 == 0x01000000). 0xF8000000 in a Linked component means
-        //    "inherit from parent" — leave as 0 here, current renderer doesn't
-        //    consume it.
-        bool componentsOk = true;
+        // 4) Four fixed24 components (binary point between bits 23 and 24, so
+        //    1.0 == 0x01000000). They are SIGNED: a Shade or Tint colour
+        //    stores parameters relative to its parent, and those are routinely
+        //    negative (Apple5.xar record 113 carries 0xFFE73FFE = -0.0967).
+        //    Reading them unsigned turned every negative parameter into ~256.0.
+        //    0xF8000000 means "inherit this component from the parent".
         for (int i = 0; i < 4; ++i) {
-            if (off + 4 > total) { componentsOk = false; break; }
-            uint32_t v = ReadUInt32(d, off);
-            if (v == 0xF8000000u) { cd.components[i] = 0.0f; continue; }
-            cd.components[i] = std::min(1.0f,
-                static_cast<float>(v) / static_cast<float>(0x01000000));
+            if (off + 4 > total) break;
+            int32_t v = ReadInt32(d, off);
+            if (static_cast<uint32_t>(v) == 0xF8000000u) { cd.components[i] = 0.0f; continue; }
+            cd.components[i] = static_cast<float>(v) / static_cast<float>(0x01000000);
+        }
+        if (cd.colorType == XARColorDefinition::Type::Tint ||
+            cd.colorType == XARColorDefinition::Type::Shaded) {
+            cd.tintValue = cd.components[0];
         }
 
         // 5) ColourName — last field.
@@ -2445,68 +2550,29 @@ namespace UltraCanvas {
             cd.name = ReadUTF16String(d, off, total - off);
         }
 
-        // 6) Resolve cd.color from the full definition where possible. If the
-        //    components weren't fully present, keep cd.color = simpleRGB fallback.
-        if (componentsOk) {
-            switch (cd.model) {
-                case XARColorDefinition::Model::RGB:
-                    cd.color = Color(
-                        static_cast<uint8_t>(cd.components[0] * 255),
-                        static_cast<uint8_t>(cd.components[1] * 255),
-                        static_cast<uint8_t>(cd.components[2] * 255), 255);
-                    break;
-                case XARColorDefinition::Model::Greyscale: {
-                    uint8_t gv = static_cast<uint8_t>(cd.components[0] * 255);
-                    cd.color = Color(gv, gv, gv, 255);
-                    break;
-                }
-                case XARColorDefinition::Model::HSV: {
-                    float h = cd.components[0] * 360.0f;
-                    float s = cd.components[1];
-                    float v = cd.components[2];
-                    float c = v * s;
-                    float hh = h / 60.0f;
-                    float x = c * (1.0f - std::fabs(std::fmod(hh, 2.0f) - 1.0f));
-                    float r1 = 0, g1 = 0, b1 = 0;
-                    if (hh < 1) { r1 = c; g1 = x; }
-                    else if (hh < 2) { r1 = x; g1 = c; }
-                    else if (hh < 3) { g1 = c; b1 = x; }
-                    else if (hh < 4) { g1 = x; b1 = c; }
-                    else if (hh < 5) { r1 = x; b1 = c; }
-                    else { r1 = c; b1 = x; }
-                    float mm = v - c;
-                    cd.color = Color(
-                        static_cast<uint8_t>((r1 + mm) * 255),
-                        static_cast<uint8_t>((g1 + mm) * 255),
-                        static_cast<uint8_t>((b1 + mm) * 255), 255);
-                    break;
-                }
-                case XARColorDefinition::Model::CMYK: {
-                    float cc = cd.components[0], mm = cd.components[1];
-                    float yy = cd.components[2], kk = cd.components[3];
-                    float rr = (1 - cc) * (1 - kk);
-                    float gg = (1 - mm) * (1 - kk);
-                    float bb = (1 - yy) * (1 - kk);
-                    cd.color = Color(
-                        static_cast<uint8_t>(rr * 255),
-                        static_cast<uint8_t>(gg * 255),
-                        static_cast<uint8_t>(bb * 255), 255);
-                    break;
-                }
-            }
-        }
-
-        if (cd.colorType == XARColorDefinition::Type::Linked) {
-            if (auto* parent = GetColor(cd.parentRef)) cd.color = parent->color;
-        } else if (cd.colorType == XARColorDefinition::Type::Tint ||
-                   cd.colorType == XARColorDefinition::Type::Shaded) {
-            cd.tintValue = cd.components[0];
-            if (auto* parent = GetColor(cd.parentRef)) {
-                Color target = (cd.colorType == XARColorDefinition::Type::Tint)
-                    ? Color(255, 255, 255, 255) : Color(0, 0, 0, 255);
-                cd.color = BlendColors(parent->color, target, 1.0f - cd.tintValue);
-            }
-        }
+        // 6) Screen colour. The three leading bytes ARE the colour Xara puts
+        //    on screen for this record: its own colour-managed RGB, already
+        //    resolved through the colour model and, for Tint/Shade/Linked
+        //    colours, through the whole parent chain. So they stay
+        //    authoritative and cd.color keeps the value assigned in step 1.
+        //
+        //    Earlier versions recomputed cd.color from <ColourDescription>,
+        //    treating those four components as absolute colour coordinates for
+        //    every colour type. For a Shade they are not: they are two signed
+        //    saturation/value offsets against the parent, so the recomputation
+        //    drove the colour to black. Apple5.xar is 53% Shade colours and
+        //    Midget.xar 68%, which is what turned their soft gradients into
+        //    hard dark bands.
+        //
+        //    Recomputing is not worth restoring even for the absolute models:
+        //    RGB, HSV and greyscale only ever reproduce the stored RGB (max
+        //    error 1/255 over every colour in the bundled samples), and CMYK
+        //    cannot be reproduced at all — Xara's separation tables put the
+        //    naive (1-ink)(1-K) conversion up to 38/255 off.
+        //
+        //    The parsed model, type, parent reference and components are kept
+        //    as the file's colour definition for callers that edit or re-write
+        //    colours rather than paint them.
         colors[currentSequenceNumber] = std::move(cd);
     }
 
@@ -2517,7 +2583,7 @@ namespace UltraCanvas {
         const uint8_t* d = record.data.data();
         size_t off = 0;
         int32_t ref = ReadInt32(d, off);
-        currentContext.fill.type = XARFillType::Flat;
+        BeginFillRecord(currentContext.fill, XARFillType::Flat);
         currentContext.fill.startColor = ResolveColorRef(ref);
         currentContext.hasFill = true;
     }
@@ -2527,7 +2593,7 @@ namespace UltraCanvas {
         size_t off = 0;
         size_t total = record.data.size();
         if (total < 16) return;
-        currentContext.fill.type = XARFillType::LinearGradient;
+        BeginFillRecord(currentContext.fill, XARFillType::LinearGradient);
         currentContext.fill.startPoint = ReadCoord(d, off);
         currentContext.fill.endPoint = ReadCoord(d, off);
         if (threePoint && off + 8 <= total) currentContext.fill.endPoint2 = ReadCoord(d, off);
@@ -2559,7 +2625,7 @@ namespace UltraCanvas {
         const uint8_t* d = record.data.data();
         size_t off = 0;
         size_t total = record.data.size();
-        currentContext.fill.type = ft;
+        BeginFillRecord(currentContext.fill, ft);
         if (off + 16 > total) return;
         currentContext.fill.startPoint = ReadCoord(d, off);
         currentContext.fill.endPoint = ReadCoord(d, off);
@@ -2594,7 +2660,8 @@ namespace UltraCanvas {
         const uint8_t* d = record.data.data();
         size_t off = 0;
         size_t total = record.data.size();
-        currentContext.fill.type = contoned ? XARFillType::ContoneBitmap : XARFillType::Bitmap;
+        BeginFillRecord(currentContext.fill,
+                        contoned ? XARFillType::ContoneBitmap : XARFillType::Bitmap);
         if (off + 24 > total) return;
         currentContext.fill.startPoint = ReadCoord(d, off);    // bottom-left
         currentContext.fill.endPoint = ReadCoord(d, off);      // bottom-right
@@ -2620,7 +2687,8 @@ namespace UltraCanvas {
         const uint8_t* d = record.data.data();
         size_t off = 0;
         size_t total = record.data.size();
-        currentContext.fill.type = noise ? XARFillType::Noise : XARFillType::Fractal;
+        BeginFillRecord(currentContext.fill,
+                        noise ? XARFillType::Noise : XARFillType::Fractal);
         if (off + 24 > total) return;
         currentContext.fill.startPoint = ReadCoord(d, off);
         currentContext.fill.endPoint = ReadCoord(d, off);
@@ -2635,7 +2703,7 @@ namespace UltraCanvas {
         const uint8_t* d = record.data.data();
         size_t off = 0;
         size_t total = record.data.size();
-        currentContext.fill.type = XARFillType::Diamond;
+        BeginFillRecord(currentContext.fill, XARFillType::Diamond);
         if (off + 24 > total) return;
         currentContext.fill.startPoint = ReadCoord(d, off);
         currentContext.fill.endPoint = ReadCoord(d, off);
@@ -2649,7 +2717,8 @@ namespace UltraCanvas {
         const uint8_t* d = record.data.data();
         size_t off = 0;
         size_t total = record.data.size();
-        currentContext.fill.type = four ? XARFillType::FourColour : XARFillType::ThreeColour;
+        BeginFillRecord(currentContext.fill,
+                        four ? XARFillType::FourColour : XARFillType::ThreeColour);
         if (off + 24 > total) return;
         currentContext.fill.startPoint = ReadCoord(d, off);
         currentContext.fill.endPoint = ReadCoord(d, off);
@@ -2885,8 +2954,13 @@ namespace UltraCanvas {
 
     void XARDocument::ParseWindingRuleRecord(const XARRecord& record) {
         if (record.data.empty()) return;
-        currentContext.windingRule = (record.data[0] == 2) ? XARWindingRule::EvenOdd
-                                                            : XARWindingRule::NonZero;
+        // Byte 0 is the even-odd (alternate) rule — the value every
+        // winding-rule record in the repo's samples carries, and the one the
+        // files need: the letter outlines on Midget.xar's number plate wind
+        // all their subpaths the same way, so non-zero fills the counters of
+        // "B" and "9" solid instead of punching them out.
+        currentContext.windingRule = (record.data[0] == 0) ? XARWindingRule::EvenOdd
+                                                           : XARWindingRule::NonZero;
     }
 
 // ===== MISC =====

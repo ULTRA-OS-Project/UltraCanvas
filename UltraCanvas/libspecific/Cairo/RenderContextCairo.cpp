@@ -1439,6 +1439,41 @@ namespace UltraCanvas {
         }
     }
 
+    std::shared_ptr<IPaintPattern> RenderContextCairo::CreateEllipticalGradientPattern(double cx, double cy,
+                                                                                       double majorX, double majorY,
+                                                                                       double minorX, double minorY,
+                                                                                       const std::vector<GradientStop>& stops) {
+        // Built as the unit circle gradient and mapped onto the ellipse by the
+        // pattern matrix, which cairo applies on top of the CTM in force when
+        // the pattern is painted. That keeps the caller's path construction
+        // untouched, unlike transforming the context around the fill.
+        cairo_matrix_t m;
+        cairo_matrix_init(&m, majorX, majorY, minorX, minorY, cx, cy);
+        // cairo_pattern_set_matrix takes user space -> pattern space, the
+        // inverse of the mapping above. A degenerate pair of axes has no
+        // inverse; fall back to a circle of the major axis's length rather
+        // than hand cairo a matrix that would error the whole pattern.
+        if (cairo_matrix_invert(&m) != CAIRO_STATUS_SUCCESS) {
+            const double r = std::sqrt(majorX * majorX + majorY * majorY);
+            return CreateRadialGradientPattern(cx, cy, 0.0, cx, cy, r, stops);
+        }
+
+        cairo_pattern_t* pattern = cairo_pattern_create_radial(0, 0, 0, 0, 0, 1);
+        for (const auto& stop : stops) {
+            cairo_pattern_add_color_stop_rgba(pattern, stop.position,
+                stop.color.r / 255.0, stop.color.g / 255.0,
+                stop.color.b / 255.0, stop.color.a / 255.0);
+        }
+        cairo_pattern_set_matrix(pattern, &m);
+        cairo_pattern_set_extend(pattern, CAIRO_EXTEND_PAD);
+
+        if (cairo_pattern_status(pattern) == CAIRO_STATUS_SUCCESS) {
+            return std::make_shared<PaintPatternCairo>(pattern);
+        } else {
+            return std::make_shared<PaintPatternCairo>(nullptr);
+        }
+    }
+
     std::shared_ptr<IPaintPattern> RenderContextCairo::CreateImagePattern(const std::string& imagePath,
                                                                           const Rect2Dd& anchorRect,
                                                                           ImageFitMode fitMode,
