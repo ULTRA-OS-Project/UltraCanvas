@@ -25,5 +25,14 @@ namespace Internal {
 // in RegisterCompiledBackends().
 void RegisterCompiledBackends(IODeviceManager& manager);
 
+// ===== BACKEND ENTRY POINTS =====
+// Each is defined in exactly one translation unit, behind the same guard the
+// call in RegisterCompiledBackends() uses.
+
+#if defined(ULTRACANVAS_HAS_CUPS) && (defined(__linux__) || defined(__APPLE__))
+// core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp
+void RegisterCupsPrinterBackend(IODeviceManager& manager);
+#endif
+
 } // namespace Internal
 } // namespace UltraCanvas

@@ -9,7 +9,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-14.
+Last reviewed: 2026-09-14 (after the printer renderer slice).
 
 ---
 
@@ -42,7 +42,7 @@ Last reviewed: 2026-09-14.
 
 | Class | State |
 |---|---|
-| `PrinterDevice` | 🔨 in progress |
+| `PrinterDevice` | ✅ |
 | `CameraDevice` | ⚠️ a version exists outside the tree, but it declares nine `override`s for methods its own base never had and leaves three pure virtuals unimplemented, so every concrete camera stays abstract. Rewrite. |
 | `ScannerDevice` | ❌ |
 
@@ -88,14 +88,16 @@ absent.
 
 | Item | State |
 |---|---|
-| Printer type vocabulary (paper, media, quality, duplex, GutenPrint params) | 🔨 being folded in |
-| `PrinterDevice` + renderer selection | 🔨 in progress |
-| CUPS native renderer (Linux/macOS) | 🔨 in progress |
-| **GutenPrint renderer** | ❌ type system only; no renderer, no raw-transport shims |
+| Printer type vocabulary (paper, media, quality, duplex, GutenPrint params) | ✅ |
+| `PrinterDevice` + renderer selection | ✅ |
+| CUPS backend: enumeration, capabilities, status, supplies, jobs (Linux/macOS) | ✅ |
+| CUPS transport, driver documents and raw streams | ✅ |
+| Option resolver in GutenPrint priority order | ✅ replaces the `FIXME` that returned its input unchanged |
+| **GutenPrint renderer** | ❌ the seam it plugs into is in place and tested; the renderer itself is blocked on the licence decision below |
+| Windows raw transport (`StartDocPrinter`, datatype `RAW`) | ❌ needed before GutenPrint works on Windows |
 | **Windows printing** | ❌ enumeration only — no print path, no status, no maintenance |
 | **macOS printing** | ❌ functions were written but under names nothing calls, so effectively zero |
-| PPD → `IOPaperSize` mapping | ❌ the prior stub returned A4 for every size a printer reported |
-| GutenPrint parameter-priority conflict resolver | ❌ was `// FIXME`, returned its input unchanged |
+| Paper size recognition | ✅ by dimensions from the CUPS dest-info API, replacing the prior stub that returned A4 for every size a printer reported |
 | Page rendering (document/image → page raster) | ❌ |
 | IPP: real mDNS/DNS-SD discovery | ❌ the prior version piggybacked on CUPS and only found what CUPS already knew |
 | IPP: full `Get-Printer-Attributes` parsing | ❌ |

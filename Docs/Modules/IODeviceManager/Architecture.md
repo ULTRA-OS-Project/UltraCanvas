@@ -1,6 +1,7 @@
 # IODeviceManager — Architecture
 
-Module status: **foundation landed, categories in progress.**
+Module status: **foundation and the printer renderer model landed; backends
+in progress.**
 See [README.md](README.md) for what the module is for. This file is the
 API contract and the design rationale behind it.
 
@@ -174,16 +175,41 @@ IODeviceResult               SetRenderer(IOPrintRenderer);
 IOPrintRenderer              GetRenderer() const;
 ```
 
-`GetAvailableRenderers()` answers per device, not per platform: GutenPrint is
-only offered when the build has it **and** it recognises that printer model.
-`Auto` prefers GutenPrint where both hold, because its parameter set is the
-richer one.
+`GetAvailableRenderers()` answers per device, not per platform. A renderer is
+offered only when all four hold: it is compiled in, its library or tool is
+present (`IsAvailable()`), it recognises this printer (`SupportsPrinter()`),
+and — for one that emits a device-native stream (`ProducesRawStream()`) — the
+platform transport can carry a raw job. `Auto` prefers GutenPrint where all
+four hold, because its parameter set is the richer one.
 
-The GutenPrint parameter model — media type → resolution → cartridge →
-inkset → duplex, in that priority order — applies when the renderer is
-`GutenPrint`. Under `Native`, the subset with PPD or DEVMODE equivalents is
-mapped across and the rest reports `NotSupported` rather than silently
-succeeding.
+`SetRenderer()` **refuses** a renderer that is not available rather than
+accepting it and falling back at print time: a caller that asked for
+GutenPrint needs to know it is not getting it.
+
+### Option resolution
+
+The GutenPrint parameter model — media type → resolution → cartridge → inkset
+→ duplex, in that priority order — is implemented in `ResolvePrintOptions()`
+and applies whichever renderer is chosen: the parameters are a property of how
+printing works, not of one driver.
+
+The order matters because the parameters are not independent. Media outranks
+resolution, so asking for 2880 dpi on plain paper yields High, not a silent
+substitution discovered in the output tray; photo black ink on plain paper
+becomes matte black; a colour inkset is dropped for monochrome output.
+
+Every substitution is reported through the `changes` out-parameter in words
+meant for a user — *"A3 is not supported, using A4"* — so a print dialog can
+say what it had to alter. `PrinterDevice::ResolveOptions()` exposes the same
+answer before a job is sent.
+
+**An unreported capability is not a refusal.** An empty capability list means
+the backend did not say, not that nothing is supported, and the three-valued
+`IOSupport` (`Unknown`/`No`/`Yes`) carries the same distinction for the
+booleans. Only an explicit `No` constrains anything. A plain `bool` cannot
+tell "this printer has no duplex unit" from "we could not read this printer's
+capabilities", and conflating them strips options from a printer that would
+have accepted them.
 
 ### Open decision: linked or subprocess
 
@@ -267,12 +293,18 @@ compiling, tested and wired into CI before the next starts:
 | Slice | Contents |
 |---|---|
 | 1 ✅ | `IODevice`, `IODeviceManager`, device-generic types, tests |
-| 2 | `CameraDevice` + V4L2 (Linux) + a DemoApp example |
-| 3 | `ScannerDevice` + SANE (Linux) |
-| 4 | `PrinterDevice` + CUPS native renderer (Linux) |
-| 5 | GutenPrint renderer + raw transport, all three platforms |
-| 6 | Windows and macOS backends for slices 2–4 |
-| 7 | IPP / eSCL driverless, network cameras |
+| 2 ✅ | `PrinterDevice`, renderer/transport seam, option resolver, CUPS backend (Linux + macOS), tests |
+| 3 | GutenPrint renderer — blocked on the licence decision above |
+| 4 | Windows printer backend: spooler enumeration + `StartDocPrinter` transport, raw and driver datatypes |
+| 5 | `CameraDevice` + V4L2 (Linux) + a DemoApp example |
+| 6 | `ScannerDevice` + SANE (Linux) |
+| 7 | Windows and macOS backends for camera and scanner |
+| 8 | IPP / eSCL driverless, network cameras |
+
+Slice 2 ships the switch itself with one renderer behind it. Adding
+GutenPrint is then a renderer class and nothing else: no change to
+`PrinterDevice`, and on Linux and macOS no change to the transport either,
+since `CupsPrintTransport` already submits raw jobs.
 
 Contributions of earlier prototype code should be re-landed through these
 slices rather than dropped in whole: a large drop that does not compile

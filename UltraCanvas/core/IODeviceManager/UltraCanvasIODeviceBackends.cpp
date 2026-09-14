@@ -11,8 +11,11 @@ namespace Internal {
 void RegisterCompiledBackends(IODeviceManager& manager) {
     (void)manager;
 
-    // No backends yet: this is the foundation slice. Categories land one at
-    // a time, each adding a guarded call here. Planned shape:
+#if defined(ULTRACANVAS_HAS_CUPS) && (defined(__linux__) || defined(__APPLE__))
+    RegisterCupsPrinterBackend(manager);
+#endif
+
+    // Still to come, each adding a guarded call here:
     //
     //   #if defined(ULTRACANVAS_HAS_V4L2)
     //       RegisterV4L2CameraBackend(manager);      // OS/Linux

@@ -539,6 +539,8 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevice.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceManager.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceBackends.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinter.cpp
 
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
@@ -871,6 +873,37 @@ if(ULTRACANVAS_HAS_VIPS)
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
     )
+endif()
+
+# ===== IODEVICEMANAGER: CUPS PRINTER BACKEND (optional) =====
+# CUPS is the printing system on both Linux and macOS, with the same library
+# and the same API, so the backend is one file in core/ rather than a copy
+# under each platform directory that would drift apart. Without CUPS the
+# module still builds and simply registers no printer backend.
+if(UNIX)
+    pkg_check_modules(ULTRACANVAS_CUPS QUIET cups)
+    if(NOT ULTRACANVAS_CUPS_FOUND)
+        # Older CUPS installs ship cups-config instead of a .pc file.
+        find_program(CUPS_CONFIG_EXECUTABLE cups-config)
+        if(CUPS_CONFIG_EXECUTABLE)
+            execute_process(COMMAND ${CUPS_CONFIG_EXECUTABLE} --libs
+                            OUTPUT_VARIABLE ULTRACANVAS_CUPS_LDFLAGS
+                            OUTPUT_STRIP_TRAILING_WHITESPACE)
+            separate_arguments(ULTRACANVAS_CUPS_LDFLAGS)
+            set(ULTRACANVAS_CUPS_FOUND TRUE)
+            set(ULTRACANVAS_CUPS_VERSION "via cups-config")
+        endif()
+    endif()
+endif()
+
+if(ULTRACANVAS_CUPS_FOUND)
+    message(STATUS "  CUPS: ${ULTRACANVAS_CUPS_VERSION} - printer backend ENABLED")
+    set(ULTRACANVAS_HAS_CUPS TRUE)
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp)
+else()
+    message(STATUS "  [-] CUPS - not found (no printer backend on this build)")
+    set(ULTRACANVAS_HAS_CUPS FALSE)
 endif()
 
 # ===== SPELL CHECKING (all dependencies optional) =====
@@ -1230,6 +1263,17 @@ endif()
 # runtime and finally to a no-op that reports zero dictionaries.
 find_package(Threads REQUIRED)
 target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Threads::Threads)
+
+if(ULTRACANVAS_HAS_CUPS)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_CUPS)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_CUPS_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_CUPS_LIBRARY_DIRS})
+    if(ULTRACANVAS_CUPS_LIBRARIES)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_CUPS_LIBRARIES})
+    else()
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_CUPS_LDFLAGS})
+    endif()
+endif()
 
 if(HUNSPELL_FOUND)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_HUNSPELL)

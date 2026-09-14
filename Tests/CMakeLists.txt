@@ -2807,3 +2807,31 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: IODeviceManagerTest")
+
+# ===== IODEVICEMANAGER PRINTER TEST =====
+# Renderer selection and the option resolver, driven by a fake transport and a
+# fake raw-emitting renderer. That fake stands in for GutenPrint, so the seam
+# the renderer/transport split turns on is asserted here without libgutenprint
+# or a printer being present. Links the platform-neutral printer sources only.
+message(STATUS "  Building IODevicePrinterTest...")
+add_executable(IODevicePrinterTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODevicePrinterTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinter.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
+)
+target_include_directories(IODevicePrinterTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODevicePrinterTest PRIVATE cxx_std_20)
+set_target_properties(IODevicePrinterTest PROPERTIES
+    OUTPUT_NAME "IODevicePrinterTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME IODevicePrinterTest
+    COMMAND IODevicePrinterTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: IODevicePrinterTest")

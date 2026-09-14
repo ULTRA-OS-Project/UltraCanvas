@@ -1,3 +1,57 @@
+#### 2026-09-14 *0.8.47*
+- **IODeviceManager: printers, and the switch between GutenPrint and the
+  platform driver.** `PrinterDevice` lands with the renderer/transport split
+  that makes that switch possible on Windows as well as Linux and macOS, plus
+  a CUPS backend behind it.
+  - The split is the point. GutenPrint is two things: `libgutenprint`, which
+    is portable C that turns a page into the printer's own command stream, and
+    `rastertogutenprint`, a CUPS filter. Only the second is Unix-only. Treating
+    them as one thing is what confines a printing layer to Linux and macOS, so
+    here the **renderer** (`Native`, `GutenPrint`, `IPP`) is the application's
+    choice and the **transport** that carries its output is the platform's: a
+    CUPS raw job under Unix, `StartDocPrinter` with datatype `RAW` under
+    Windows. One rendering path, a short transport shim per platform.
+  - `PrinterDevice::GetAvailableRenderers()` answers per printer, not per
+    platform: a renderer is offered only when it is compiled in, its library is
+    present, it recognises that model, and — for one emitting a device-native
+    stream — the transport can carry a raw job. `SetRenderer()` refuses a
+    renderer that is not available instead of accepting it and falling back at
+    print time.
+  - `ResolvePrintOptions()` folds a requested option set down to what the
+    printer will accept, in GutenPrint's priority order - media, then
+    resolution, cartridge, inkset, duplex - because the parameters constrain
+    each other: 2880 dpi on plain paper yields High, photo black ink on plain
+    paper becomes matte black, a colour inkset is dropped for monochrome. Every
+    substitution comes back in words a print dialog can show ("A3 is not
+    supported, using A4") rather than being applied silently.
+  - An unreported capability is not a refusal. An empty capability list means
+    the backend did not say, and the three-valued `IOSupport`
+    (`Unknown`/`No`/`Yes`) carries the same distinction for the flags, because
+    a plain bool cannot tell "this printer has no duplex unit" from "we could
+    not read this printer's capabilities" - and conflating them strips options
+    from a printer that would have accepted them.
+  - The CUPS backend covers enumeration, capabilities, status, supply levels
+    and the job queue, and its transport carries both driver documents and raw
+    streams, so GutenPrint needs no further transport work on Unix. It reads
+    capabilities through the dest-info API rather than PPD files, so paper
+    sizes are recognised by their dimensions - CUPS reports hundredths of a
+    millimetre, as `IOPaperDimensions` does - instead of by the name a printer
+    gives them. Supply levels keep CUPS's -1 for "the printer did not say",
+    which is not the same as empty. It is one file in `core/` rather than a
+    copy under each platform directory, because CUPS is the same library with
+    the same API on Linux and macOS and two copies only drift.
+  - `Tests/IODevicePrinterTest` drives renderer selection and the resolver
+    through a fake transport and a fake raw-emitting renderer, so the seam
+    GutenPrint will plug into is asserted without libgutenprint or a printer
+    being present. It found a real defect while being written: capability
+    booleans could not express "not reported", which is what prompted
+    `IOSupport`.
+  - Whether GutenPrint is linked or run as a subprocess is still open, and is
+    a licensing question rather than a technical one - libgutenprint is GPL-2.0
+    or later, UltraCanvas is MIT. `Docs/Modules/IODeviceManager/Architecture.md`
+    carries the trade-off. Adding the renderer once that is settled is a
+    renderer class and nothing else.
+
 #### 2026-09-14 *0.8.46*
 - **IODeviceManager: the foundation layer.** The module had documentation but
   no code; this lands the base every device category will derive from, so the
