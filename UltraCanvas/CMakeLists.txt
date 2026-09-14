@@ -530,6 +530,16 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfoPanel.cpp
 
+        # IODeviceManager: peripherals the application *operates* (scanners,
+        # cameras, printers), as opposed to UltraCanvasHardwareInfo above,
+        # which only describes the host. Platform backends live in
+        # OS/<Platform>/UltraCanvas*IODevice*.cpp and are picked up by the
+        # platform glob below; they attach themselves to the manager through
+        # core/IODeviceManager/UltraCanvasIODeviceBackends.cpp.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevice.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceBackends.cpp
+
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp

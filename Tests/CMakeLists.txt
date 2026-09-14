@@ -2777,3 +2777,33 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: CSSLayoutFormGridTest")
+
+# ===== IODEVICEMANAGER FOUNDATION TEST =====
+# The device lifecycle and the registry's merge semantics, driven by a fake
+# backend so the test needs no scanner, camera or printer attached. Links the
+# IODeviceManager core sources directly rather than the UltraCanvas library:
+# the foundation layer depends on nothing but the standard library, so this
+# test builds and runs on a machine with none of the rendering dependencies
+# installed.
+message(STATUS "  Building IODeviceManagerTest...")
+add_executable(IODeviceManagerTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceManagerTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceManager.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceBackends.cpp
+)
+target_include_directories(IODeviceManagerTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODeviceManagerTest PRIVATE cxx_std_20)
+set_target_properties(IODeviceManagerTest PROPERTIES
+    OUTPUT_NAME "IODeviceManagerTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME IODeviceManagerTest
+    COMMAND IODeviceManagerTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: IODeviceManagerTest")

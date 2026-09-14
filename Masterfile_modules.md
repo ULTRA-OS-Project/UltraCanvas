@@ -506,6 +506,39 @@ the backing implementation can be replaced without affecting callers.
     `onSnapshotChanged`, and the `CreateHardwareInfoPanel` factory.
   See `Docs/UltraCanvas/UltraCanvasHardwareInfo.md`.
 
+- **IODeviceManager** (`IODeviceManager/UltraCanvasIODeviceManager.h`) —
+  discovers and operates peripherals: scanners, cameras and printers today,
+  audio/storage/GPIO planned. The counterpart to **UltraCanvasHardwareInfo**,
+  which only *describes* the host: this module opens sessions and does work.
+  Headers in `include/IODeviceManager/`, platform-neutral implementation in
+  `core/IODeviceManager/`, backends as flat files under `OS/<Platform>/`.
+  - `IODeviceManager::GetInstance()` — `Initialize` / `Shutdown`,
+    `EnumerateDevices(category)` / `EnumerateAllDevices`, `RegisterDevice`,
+    `UnregisterDevice`, `GetDevices` / `GetDeviceInfos` / `GetDeviceById` /
+    `GetDevice(category, index)` / `GetDeviceCount`,
+    `SetDeviceChangeCallback` for hot-plug.
+  - `IODevice` — the base every category derives from (`ScannerDevice`,
+    `CameraDevice`, `PrinterDevice`): identity, `Connect` / `Disconnect` /
+    `IsConnected` / `GetState`, `GetLastError`. Lifecycle is non-virtual
+    public, virtual protected: backends implement `DoConnect` / `DoDisconnect`
+    and the base owns the state machine, the error slot and the locking.
+  - Backends attach as **enumerators**, one per (category, backend) pair, not
+    as one manager method per category — a category is routinely served by two
+    backends on one platform (V4L2 webcams *and* gphoto2 DSLRs are both
+    cameras), and a method-per-category forces them to collide at link time.
+    `EnumerateDevices` merges every enumerator's results, keeps the existing
+    object for a device that is still present so an open session survives a
+    rescan, and contains a throwing backend instead of losing the others.
+  - `IODeviceResult` — `Ok` / `Error(code, msg)`, `explicit operator bool`,
+    typed `IODeviceResultCode`, plus `backendCode` carrying the backend's own
+    status verbatim for the log. Same shape as `UltraNetResult`/`UltraDbResult`.
+  - Printer backends separate the **renderer** (who turns the page into
+    printer bytes: `Native`, `GutenPrint`, `IPP`) from the **transport** (how
+    those bytes reach the device: a CUPS raw job, or `StartDocPrinter` with
+    datatype `RAW`), which is what lets GutenPrint be selectable on Windows as
+    well as Linux and macOS — libgutenprint is portable C and needs no CUPS.
+  See `Docs/Modules/IODeviceManager/Architecture.md`.
+
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
   spell checking. A singleton service owning one backend, the user dictionary,
   a session ignore list and a worker thread, so checking never runs on the

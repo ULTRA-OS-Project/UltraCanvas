@@ -1,3 +1,48 @@
+#### 2026-09-14 *0.8.46*
+- **IODeviceManager: the foundation layer.** The module had documentation but
+  no code; this lands the base every device category will derive from, so the
+  scanner, camera and printer work has something to build against.
+  - `IODevice` (`include/IODeviceManager/UltraCanvasIODevice.h`) owns the
+    device lifecycle. Callers use `Connect()`/`Disconnect()`; backends
+    implement `DoConnect()`/`DoDisconnect()` and the base keeps the state
+    machine, the error slot and the locking in one place. The base destructor
+    calls no virtuals - by the time it runs the derived object is gone, so a
+    virtual call from there dispatches into a dead object - and
+    `Disconnect()` always reaches the backend, even after a `Connect()` that
+    failed halfway and may still hold handles.
+  - `IODeviceManager` (`UltraCanvasIODeviceManager.h`) is the registry.
+    Backends attach as **enumerators**, one per (category, backend) pair,
+    rather than as one `EnumerateCameras()`-style method per category: a
+    category is routinely served by two backends on one platform - V4L2
+    webcams and gphoto2 DSLRs are both cameras - and a method per category
+    forces those two to define the same symbol, so they collide at link time
+    and only one ever runs. `EnumerateDevices` merges every enumerator's
+    results, keeps the existing object for a device that is still present so
+    an open session survives a rescan, drops the ones that went away, and
+    contains a throwing backend instead of losing the devices the others
+    found.
+  - `IODeviceResult` carries `Ok`/`Error(code, msg)` factories, an explicit
+    `operator bool`, a typed `IODeviceResultCode` and the backend's own status
+    in `backendCode` for the log - the shape `UltraNetResult` and
+    `UltraDbResult` already use.
+  - Backends register through `Internal::RegisterCompiledBackends()` rather
+    than from static initialisers, because a static-library build drops the
+    static initialisers of object files nothing else references, which would
+    silently leave a platform with no devices at all.
+  - `Tests/IODeviceManagerTest` drives all of it through a fake backend, so it
+    runs on a CI machine with no hardware attached. The foundation depends on
+    nothing but the standard library, so the test also builds where the
+    rendering dependencies are absent.
+  - `Docs/Modules/IODeviceManager/Architecture.md` is the API contract, and
+    carries the printer design: renderer (`Native`/`GutenPrint`/`IPP`)
+    separated from transport (CUPS raw job, or `StartDocPrinter` with datatype
+    `RAW`), which is what makes GutenPrint selectable on Windows as well as
+    Linux and macOS. libgutenprint is portable C and needs no CUPS; only its
+    *CUPS driver* is Unix-only, and conflating the two is what made the
+    earlier prototype Linux/macOS-only. The GPL-vs-MIT question that decides
+    whether it is linked or run as a subprocess is written up there, unanswered
+    - it is a product decision.
+
 #### 2026-09-13 *0.8.45*
 - **Fixed the text caret blinking through an open menu.** A menu (or any
   popup) opened over the text cursor - Texter's *Edit* menu over the editing
