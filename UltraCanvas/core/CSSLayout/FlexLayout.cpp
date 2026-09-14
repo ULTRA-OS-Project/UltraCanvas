@@ -2,6 +2,11 @@
 // CSS Flexbox layout: https://www.w3.org/TR/css-flexbox-1/#layout-algorithm
 // Implemented: row/column/reverse, wrap, grow, shrink, basis, gap,
 // justify-content, align-items, align-self, align-content (no Baseline).
+// Version: 1.3.6 - align-items / align-self are SAFE: an item that does not fit
+//                 its line aligns to the line's start instead of being placed at
+//                 a negative offset, so the leading part of oversized content
+//                 (which a clipping/scrolling container can never reach) stays
+//                 visible and the overflow falls where the scrollbar reaches it.
 // Version: 1.3.5 - position:fixed children go through ArrangeFixedChild so their
 //                 finalBounds stay parent-relative (no double ancestor offset).
 // Version: 1.3.4 - NoWrap lines are clamped to the container's definite cross
@@ -14,7 +19,7 @@
 //                 its content extent from the constraint rather than its own
 //                 explicit size, so a grown/stretched flex container lays out
 //                 its children against its USED size, not its flex-basis.
-// Last Modified: 2026-07-13
+// Last Modified: 2026-09-14
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -225,11 +230,23 @@ namespace UltraCanvas {
 
             // ---- Cross-axis position from align-items / align-self -------------
 
+            // Alignment is SAFE (CSS Box Alignment "safe" fallback): an item
+            // that does not fit its line aligns to the START of it instead of
+            // to the centre or the end. Unsafe centring would give the item a
+            // negative offset, and everything placed before a container's
+            // content origin is unreachable — containers clip to the content box
+            // and scrolling starts there, so that part of the item can never be
+            // brought into view (a tall formula centred in a scrolling pane lost
+            // its top half, with the scrollbar already at the top). Overflow now
+            // goes to the end of the line, where the scrollbar reaches it.
+            // The main axis is already safe: ArrangeFlex clamps its free space
+            // to zero before distributing it per justify-content.
             float alignCross(float lineCrossSize, float itemCrossSize,
                              AlignSelf as) {
+                const float free = std::max(0.f, lineCrossSize - itemCrossSize);
                 switch (as) {
-                    case AlignSelf::End:    return lineCrossSize - itemCrossSize;
-                    case AlignSelf::Center: return (lineCrossSize - itemCrossSize) * 0.5f;
+                    case AlignSelf::End:    return free;
+                    case AlignSelf::Center: return free * 0.5f;
                     case AlignSelf::Start:
                     case AlignSelf::Stretch:
                     case AlignSelf::Baseline:  // TODO baseline alignment

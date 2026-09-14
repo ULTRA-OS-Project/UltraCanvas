@@ -1,3 +1,29 @@
+#### 2026-09-14 *0.8.48*
+- **The top of a tall formula was cropped away on the demo's LaTeX Documents
+  page**, with the pane's vertical scrollbar already at the top and no way to
+  bring it back. The rendered-output pane centres its content, and centring an
+  item that does not fit gave it a *negative* offset: half the overflow landed
+  above the pane's content origin. A container clips its children to its
+  content box and its scrollbar travels from that edge, so everything above it
+  was unreachable — and the scrollbar's range covered only the other half of
+  the overflow, which is why scrolling to the bottom did not reveal the
+  missing lines either.
+- **Flex alignment is now safe** (CSS Box Alignment's `safe` fallback):
+  `align-items` / `align-self` place an item that does not fit its line at the
+  **start** of it instead of at a negative offset, so the overflow falls at the
+  end, where the scrollbar reaches it. Anything that does fit is centred (or
+  end-aligned) exactly as before, and `justify-content` was already safe — it
+  distributes only non-negative free space. The grid engine needs no such
+  fallback: `ArrangeGrid` sizes a non-stretch item to `min(track, natural)`, so
+  a grid item is never larger than the area it is aligned in.
+  - Where this changes an existing layout, it changes one that was already
+    losing content: an oversized item is now cut only at its end rather than at
+    both ends, which is what a clipping container can actually show.
+  - `Tests/CSSLayoutSafeAlignTest.cpp` pins it on the LaTeX page's own shape —
+    a growing centred pane inside a flex column — and checks the scroll range
+    `UltraCanvasContainer::UpdateScrollability` derives from the result, so the
+    whole overflow is reachable. Documented in `Docs/CSSLayout.md`.
+
 #### 2026-09-14 *0.8.47*
 - Fixes in HTML rendering
 
