@@ -1,4 +1,4 @@
-#### 2026-09-14 *0.8.50*
+#### 2026-09-14 *0.8.51*
 - **IODeviceManager: scanners, and the SANE backend.** `ScannerDevice`
   completes the three categories the module's README advertises as production
   ready. Scanner support was previously described as finished across five
@@ -38,7 +38,7 @@
   falls out of how much data arrived and that arithmetic now lives once in
   `ScannerDevice`.
 
-#### 2026-09-14 *0.8.49*
+#### 2026-09-14 *0.8.50*
 - **IODeviceManager: cameras, and the V4L2 backend.** `CameraDevice` joins
   `PrinterDevice` as a category class, with the V4L2 webcam backend behind it -
   the backend the module's documentation has described as finished for some
@@ -79,7 +79,7 @@
   with no `/dev/video*` present. It is clean under ThreadSanitizer, which is
   the check that means something for a threaded capture path.
 
-#### 2026-09-14 *0.8.48*
+#### 2026-09-14 *0.8.49*
 - **IODeviceManager: the Windows printer backend, and with it GutenPrint on
   all three platforms.** Spooler enumeration, capabilities from
   `DeviceCapabilitiesW`, printer and job status, job cancellation, and the
@@ -111,7 +111,7 @@
   spooler has no supply-level API at all, only a `PRINTER_STATUS_NO_TONER`
   status bit. Reading real levels there needs SNMP or a vendor SDK.
 
-#### 2026-09-14 *0.8.47*
+#### 2026-09-14 *0.8.48*
 - **IODeviceManager: printers, and the switch between GutenPrint and the
   platform driver.** `PrinterDevice` lands with the renderer/transport split
   that makes that switch possible on Windows as well as Linux and macOS, plus
@@ -165,7 +165,7 @@
     carries the trade-off. Adding the renderer once that is settled is a
     renderer class and nothing else.
 
-#### 2026-09-14 *0.8.46*
+#### 2026-09-14 *0.8.47*
 - **IODeviceManager: the foundation layer.** The module had documentation but
   no code; this lands the base every device category will derive from, so the
   scanner, camera and printer work has something to build against.
@@ -209,6 +209,36 @@
     earlier prototype Linux/macOS-only. The GPL-vs-MIT question that decides
     whether it is linked or run as a subprocess is written up there, unanswered
     - it is a product decision.
+
+#### 2026-09-14 *0.8.46*
+- **A folder display can leave out names that are not hidden at all.**
+  `UltraCanvasFilerWidget::SetIgnoredNamePatterns(patterns, onlyInFolder)`
+  takes glob patterns - `*` any run, `?` one character - matched against each
+  entry's name, case-insensitively, folders included; `onlyInFolder` confines
+  them to a single folder, empty applies them everywhere. It reaches what no
+  hidden-file filter can: clutter a system drops into a folder under a
+  perfectly ordinary, unhidden name. `Sti_Trace.log` is the case that prompted
+  it - the Windows Still Image (WIA) subsystem writes its trace log into the
+  working directory of whatever process last talked to a scanner or camera,
+  which for a desktop app is the user's profile, and it carries no hidden
+  attribute for anything to catch. The cross-platform case is the same in
+  reverse: a Windows share browsed from Linux or macOS shows `Thumbs.db` and
+  `desktop.ini` with their hidden attribute invisible, so the name is all
+  there is to filter on. Nothing is moved or deleted - the entries are only
+  left out of the display, a path still navigates to them, and a file-list
+  display (a search) is exempt, since a search is a question the user asked.
+  Show-hidden-files suspends the patterns like every other filter, and what
+  they drop counts into `GetHiddenItemCount()` and the new
+  `GetIgnoredItemCount()`.
+- **The hidden-items notice grew a middle setting**, because "announce
+  everything the listing leaves out" is right for a profile folder and noise
+  in every folder that holds a dot name.
+  `SetHiddenItemsNoticeEnabled(bool)` is now
+  `SetHiddenItemsNotice(FilerHiddenNotice)`: `NoNotice` (the default),
+  `WhenIgnored` - only while the ignore patterns dropped something, i.e. while
+  a *setting* is holding something back - and `WhenAnyHidden`, the old `true`.
+  The enumerators are spelled out because `None` and `Always` are X11 macros,
+  the same reason `FilerExtensionBadge::NoneBadge` is.
 
 #### 2026-09-13 *0.8.45*
 - **Fixed the text caret blinking through an open menu.** A menu (or any

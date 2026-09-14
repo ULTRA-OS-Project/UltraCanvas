@@ -545,8 +545,12 @@ namespace UltraCanvas {
         // Resolved at parse time from bitmapRef; owned by the XARDocument's
         // bitmap table, which outlives every node snapshot.
         XARBitmapDefinition* bitmapDef = nullptr;
-        double profileBias = 0.5;
-        double profileGain = 0.5;
+        // Fill profile, Xara's scale: 0 is the neutral linear ramp, the
+        // usable range is (-1, 1). Records that carry no profile keep these
+        // defaults, so they must be the neutral value, not the midpoint of
+        // some other scale.
+        double profileBias = 0.0;
+        double profileGain = 0.0;
         XARFillRepeat repeat = XARFillRepeat::NonRepeating;
         XARFillEffect effect = XARFillEffect::Fade;
         // Fractal/noise extras
@@ -595,8 +599,12 @@ namespace UltraCanvas {
         std::vector<XARTransparencyStop> stops;
         int32_t bitmapRef = -1;
         XARTransparencyMix mix = XARTransparencyMix::Mix;
-        double profileBias = 0.5;
-        double profileGain = 0.5;
+        // Fill profile, Xara's scale: 0 is the neutral linear ramp, the
+        // usable range is (-1, 1). Records that carry no profile keep these
+        // defaults, so they must be the neutral value, not the midpoint of
+        // some other scale.
+        double profileBias = 0.0;
+        double profileGain = 0.0;
         XARFillRepeat repeat = XARFillRepeat::NonRepeating;
     };
 
@@ -620,7 +628,10 @@ namespace UltraCanvas {
         }
     };
 
-    enum class XARWindingRule { NonZero = 0, EvenOdd = 2 };
+    // How a path's subpaths combine. Xara fills by the even-odd (alternate)
+    // rule, so that is the default here — a path that never carries a
+    // TAG_WINDINGRULE record still fills the way Xara draws it.
+    enum class XARWindingRule { EvenOdd, NonZero };
 
 // ===== TEXT ATTRIBUTES =====
 
@@ -649,7 +660,7 @@ namespace UltraCanvas {
         XARFillAttribute fill;
         XARTransparencyAttribute transparency;
         XARLineAttribute line;
-        XARWindingRule windingRule = XARWindingRule::NonZero;
+        XARWindingRule windingRule = XARWindingRule::EvenOdd;
         XARTextAttribute text;
         bool hasFill = false;
         bool hasLine = false;
@@ -690,7 +701,7 @@ namespace UltraCanvas {
         XARFillAttribute fill;
         XARTransparencyAttribute transparency;
         XARLineAttribute line;
-        XARWindingRule windingRule = XARWindingRule::NonZero;
+        XARWindingRule windingRule = XARWindingRule::EvenOdd;
         XARTextAttribute textAttr;
         bool hasFill = false;
         bool hasLine = false;
@@ -823,7 +834,9 @@ namespace UltraCanvas {
     // millipoints in Y-up document space.
     class XARTextKernNode : public XARNode {
     public:
-        Point2Di offset;
+        // Horizontal adjustment to the caret, in millipoints. TAG_TEXT_KERN
+        // has no vertical component — see ParseTextKernRecord.
+        int32_t kernMP = 0;
         XARTextKernNode() { type = XARNodeType::TextKern; }
     };
 

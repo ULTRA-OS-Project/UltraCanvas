@@ -19714,9 +19714,19 @@ folder is empty, deletes it and loses what was in it. Where a host asks for it,
 the display says so instead:
 
 ```cpp
-filer->SetHiddenItemsNoticeEnabled(true);   // off by default
-int held = filer->GetHiddenItemCount();     // what the last scan left out
+filer->SetHiddenItemsNotice(FilerHiddenNotice::WhenAnyHidden);  // NoNotice by default
+int held    = filer->GetHiddenItemCount();    // what the last scan left out
+int ignored = filer->GetIgnoredItemCount();   // how much of that a pattern dropped
 ```
+
+The mode decides *when* it speaks up. `NoNotice` is the default;
+`WhenAnyHidden` announces anything the listing leaves out; `WhenIgnored`
+announces only what the ignored-name patterns (below) dropped — what a
+**setting** hid, which the user has no other way of noticing — and stays quiet
+about the platform's own hidden files, which every file manager leaves out
+silently. (`None` and `Always` are X11 macros, hence the spelled-out
+enumerators — the same reason `FilerExtensionBadge::NoneBadge` is spelled that
+way.)
 
 While something IS held back, a strip across the foot of the display reads
 *"3 items are hidden here"* and carries a **Show hidden files** button that
@@ -19726,10 +19736,11 @@ disappears as soon as nothing is held back (including the moment its own
 button is pressed).
 
 `GetHiddenItemCount()` counts what the current listing leaves out: the hidden
-entries, plus the subfolders a curated home folder (below) keeps back. It is
-`0` whenever hidden files are shown, since then nothing is held back. The
-count is taken while the listing is built — after it, the dropped entries are
-gone.
+entries, the names the ignore patterns drop, and the subfolders a curated home
+folder (below) keeps back; `GetIgnoredItemCount()` is the patterns' share of
+that, which is what `WhenIgnored` keys on. Both are `0` whenever hidden files
+are shown, since then nothing is held back. The count is taken while the
+listing is built — after it, the dropped entries are gone.
 
 The strip takes its height out of the file area, exactly as the selection info
 bar does (it sits directly above it), so no entry is ever drawn under it, and
@@ -19738,11 +19749,46 @@ too short to hold both files and strip. Its colours come from the same
 `FilerStyle` fields as the info bar (`infoBarBackground`, `gridLineColor`,
 `secondaryTextColor`).
 
-Hosts switch it on for the folders where the display holds back something the
-user never asked to hide. The UltraFiler enables it for the home folder — the
-one folder where both filters bite at once, the profile's hidden files and the
-curation below — and nowhere else: elsewhere, only what the system calls hidden
-is missing, which needs no announcement.
+Hosts pick the mode per folder. The UltraFiler uses `WhenAnyHidden` in the home
+folder — the one folder where every filter bites at once: the profile's hidden
+files, the curation below, and the ignore patterns — and `WhenIgnored`
+everywhere else, so an ordinary folder stays quiet about its dot names but says
+so when a setting dropped something from it.
+
+## Ignored names
+
+`SetIgnoredNamePatterns(patterns, onlyInFolder)` is the answer to clutter a
+system leaves in a folder under a perfectly ordinary, **unhidden** name — no
+dot, no attribute, nothing for a hidden-file filter to catch:
+
+```cpp
+filer->SetIgnoredNamePatterns({"Sti_Trace.log", "Thumbs.db", "*.bak"},
+                              UserHomeDir());   // empty = every folder
+```
+
+Patterns are globs matched against the entry's name, case-insensitively, with
+`*` for any run of characters and `?` for exactly one; folders are matched the
+same way. `onlyInFolder` confines them to a single folder — the UltraFiler
+points it at the home folder by default, since that is where the clutter
+collects — and an empty string applies them everywhere.
+
+The canonical case is `Sti_Trace.log`: the Windows Still Image (WIA) subsystem
+writes it into whatever directory the process that touched a scanner or camera
+was started in, which for a desktop app is the user's profile. It carries no
+hidden attribute, so no hidden-file setting can reach it. The same holds in
+reverse across platforms: a Windows share browsed from Linux or macOS shows
+`Thumbs.db` and `desktop.ini` with their hidden attribute invisible, so the
+name is the only thing left to filter on — which is why a single pattern list
+serves every platform rather than one list per OS.
+
+What it does **not** do matters as much: nothing is moved or deleted, the
+entries still exist, a path still navigates to them, and a **file-list display
+(a search) is exempt** — a search is a question the user asked, and hiding its
+answers would be a bug, not a tidy-up. `SetShowHiddenFiles(true)` suspends the
+patterns like every other filter ("show me everything"), and what they drop
+counts into `GetHiddenItemCount()` / `GetIgnoredItemCount()`, so the notice
+above offers it. Changing the patterns re-reads the folder, since the dropped
+entries are not kept anywhere to be put back.
 
 ## Curated home folder
 
@@ -55824,7 +55870,45 @@ tree by type, the unhandled tags and the warnings for the repo's `media/vector/X
 samples or for any `.xar` files passed as arguments — the first thing to run
 on a file that renders wrong.
 
-Known renderer gaps (parse succeeds, display is approximate): fractal /
+`Tests/XARFidelityTest` covers the other half of "parses fine, looks wrong":
+it checks that the samples' colours, winding rules and text kerns resolve to
+what Xara itself draws.
+
+### How colours resolve
+
+A `TAG_DEFINECOMPLEXCOLOUR` record opens with the RGB triple Xara itself puts
+on screen for that colour — already run through the colour model and, for
+Tint / Shade / Linked colours, through the whole parent chain — and that
+triple is what the renderer paints. The record's colour model, type, parent
+reference and four `<ColourDescription>` components are parsed alongside it as
+the file's colour definition, for callers that edit or re-write colours rather
+than paint them.
+
+Do not repaint from those components. They are absolute coordinates only for
+Normal colours; for a Shade they are two *signed* parameters relative to the
+parent, so treating them as absolute drives the colour towards black. And even
+for Normal colours they only ever reproduce the stored triple (RGB, HSV and
+greyscale) or fail to (CMYK, whose screen appearance comes from Xara's
+separation tables — the naive `(1-ink)(1-K)` conversion is up to 38/255 off on
+the bundled samples).
+
+### Two attributes that are easy to read wrong
+
+**Winding rule.** Xara fills paths by the **even-odd** rule, and that is the
+default here — a path with no `TAG_WINDINGRULE` record in scope still fills
+the way Xara draws it. Do not assume non-zero: Xara writes each subpath of a
+glyph outline in the same direction, so under non-zero a letter's counters
+fill solid instead of punching through (the "B" and "9" on `Midget.xar`'s
+number plate). Byte 0 on the record, the value both samples use throughout,
+is the even-odd rule.
+
+**Text kerns.** `TAG_TEXT_KERN`'s eight bytes are *not* a `Coord`. Only the
+first INT32 is the kern, in millipoints, and it is horizontal; applying the
+second as a Y offset puts a visible step in the middle of a line of text.
+
+Known renderer gaps (parse succeeds, display is approximate): conical
+gradients fall back to a linear ramp and diamond fills to a radial one (cairo
+has neither primitive), fractal /
 noise fills fall back to simplified paints, transparency tiling modes are
 treated as flat, brush strokes render as plain lines, and some text layout remains
 approximate (explicit tab stops and ruler indents are not applied; lines,

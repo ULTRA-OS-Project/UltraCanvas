@@ -158,6 +158,10 @@ namespace UltraCanvas {
         std::shared_ptr<IPaintPattern> CreateRadialGradientPattern(double cx1, double cy1, double r1,
                                                                    double cx2, double cy2, double r2,
                                                                    const std::vector<GradientStop>& stops) override;
+        std::shared_ptr<IPaintPattern> CreateEllipticalGradientPattern(double cx, double cy,
+                                                                       double majorX, double majorY,
+                                                                       double minorX, double minorY,
+                                                                       const std::vector<GradientStop>& stops) override;
         std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(double x1, double y1, double x2, double y2,
                                                                    const std::vector<GradientStop>& stops) override;
         std::shared_ptr<IPaintPattern> CreateImagePattern(const std::string& imagePath,

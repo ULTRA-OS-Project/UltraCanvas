@@ -45,6 +45,7 @@
 #include "UltraCanvasAlert.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasCheckbox.h"
+#include "UltraCanvasChip.h"   // UltraCanvasTagInput
 #include "UltraCanvasColorPicker.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasContainer.h"
@@ -99,6 +100,7 @@ namespace {
     constexpr const char* kPageTreeview = "display/treeview";
     constexpr const char* kPageHomeFolder = "display/home";
     constexpr const char* kPageFiles = "display/files";
+    constexpr const char* kPageIgnoredFiles = "display/ignored-files";
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageThumbnails = "display/thumbnails";
     constexpr const char* kPageFileExtensions = "display/file-extensions";
@@ -154,6 +156,17 @@ namespace {
         std::shared_ptr<UltraCanvasCheckbox> folderPreviewsBox;
         // Display > Files: the "show hidden files" checkbox.
         std::shared_ptr<UltraCanvasCheckbox> hiddenFilesBox;
+        // Display > Ignored files: the master switch, one checkbox per
+        // built-in pattern (kept so "Restore the built-in list" can re-tick
+        // them), the field the user's own patterns are typed into, and where
+        // they apply.
+        std::shared_ptr<UltraCanvasCheckbox> clutterBox;
+        std::vector<std::pair<std::string,
+                              std::shared_ptr<UltraCanvasCheckbox>>> clutterRows;
+        std::shared_ptr<UltraCanvasTagInput> ignorePatternsInput;
+        std::shared_ptr<UltraCanvasRadio>    ignoreHomeRadio;
+        std::shared_ptr<UltraCanvasRadio>    ignoreEverywhereRadio;
+        UltraCanvasRadioGroup                ignoreScopeGroup;
         std::vector<std::pair<FilerExtensionBadge,
                               std::shared_ptr<UltraCanvasRadio>>> badgeRadios;
         UltraCanvasRadioGroup                extensionBadgeGroup;
@@ -1177,6 +1190,138 @@ namespace {
                 "something back - without changing the setting here.");
         AddNote(parts, "ufl-set-files-note4",
                 "The folder tree leaves hidden folders out either way.");
+        AddNote(parts, "ufl-set-files-note5",
+                "A file the system does not call hidden - Sti_Trace.log, "
+                "Thumbs.db, desktop.ini - is not covered by this switch. "
+                "Display > Ignored files is what leaves those out.");
+        return parts.page;
+    }
+
+    // ===== DISPLAY > IGNORED FILES =====
+    // Keeps the built-in pattern rows in step with the master switch: off,
+    // they are all disabled rather than hidden, so the list still says what
+    // the switch covers.
+    void SyncClutterRows(DialogState* d) {
+        if (!d->settings) return;
+        const bool on = d->settings->ignoreClutterFiles;
+        for (auto& [pattern, box] : d->clutterRows) {
+            if (!box) continue;
+            box->SetDisabled(!on);
+            box->RequestRedraw();
+        }
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildIgnoredFilesPage(DialogState* d) {
+        // A scrolling page: the built-in list plus the two blocks under it
+        // are taller than the window, and that also puts the notes under the
+        // caption, where they are read before the list rather than after it.
+        PageParts parts = MakePage("ufl-set-page-ignored", "Ignored files",
+                "Names the file display never lists:", true);
+
+        // ----- the built-in list -----
+        d->clutterBox = MakeCheckbox("ufl-set-ign-builtin",
+                "Hide known clutter files", kTextWidth,
+                d->settings->ignoreClutterFiles, [d](bool on) {
+            if (!d->settings) return;
+            d->settings->ignoreClutterFiles = on;
+            SyncClutterRows(d);
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(d->clutterBox);
+
+        d->clutterRows.clear();
+        int index = 0;
+        for (const std::string& pattern :
+             UltraFilerSettings::BuiltInClutterPatterns()) {
+            auto& off = d->settings->disabledClutterPatterns;
+            const bool ticked =
+                    std::find(off.begin(), off.end(), pattern) == off.end();
+            auto box = MakeCheckbox("ufl-set-ign-p" + std::to_string(index++),
+                    pattern, kTextWidth - 20, ticked, [d, pattern](bool on) {
+                if (!d->settings) return;
+                // Persisted as what is switched OFF, so a pattern a later
+                // release adds to the list starts on rather than absent.
+                auto& list = d->settings->disabledClutterPatterns;
+                auto at = std::find(list.begin(), list.end(), pattern);
+                if (on && at != list.end()) list.erase(at);
+                else if (!on && at == list.end()) list.push_back(pattern);
+                ApplyAndSave(d);
+            });
+            box->SetMargin(0, 0, 0, 20);   // indented under the switch above
+            d->clutterRows.emplace_back(pattern, box);
+            parts.body->AddChild(box);
+        }
+        SyncClutterRows(d);
+
+        // ----- the user's own patterns -----
+        AddBodyCaption(parts, "ufl-set-ign-own-caption",
+                "Own patterns - type one and press Enter:");
+        d->ignorePatternsInput = CreateTagInput("ufl-set-ign-own", -1, -1,
+                                                static_cast<float>(kTextWidth));
+        d->ignorePatternsInput->SetPlaceholder("e.g. *.bak");
+        d->ignorePatternsInput->SetTags(d->settings->ignoredNamePatterns);
+        d->ignorePatternsInput->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        d->ignorePatternsInput->size.width = CSSLayout::Dimension::Px(kTextWidth);
+        d->ignorePatternsInput->onTagsChanged =
+                [d](const std::vector<std::string>& patterns) {
+            if (!d->settings) return;
+            d->settings->ignoredNamePatterns = patterns;
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->ignorePatternsInput);
+
+        // ----- where they apply -----
+        AddBodyCaption(parts, "ufl-set-ign-scope-caption", "Apply them:");
+        const bool homeOnly = d->settings->ignoreOnlyInHomeFolder;
+        d->ignoreHomeRadio = MakeChoice("ufl-set-ign-home",
+                "Only in the Home folder", homeOnly);
+        d->ignoreEverywhereRadio = MakeChoice("ufl-set-ign-all",
+                "In every folder", !homeOnly);
+        d->ignoreScopeGroup.AddRadioButton(d->ignoreHomeRadio);
+        d->ignoreScopeGroup.AddRadioButton(d->ignoreEverywhereRadio);
+        d->ignoreScopeGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            d->settings->ignoreOnlyInHomeFolder = (selected == d->ignoreHomeRadio);
+            ApplyAndSave(d);
+        };
+        parts.body->AddChild(d->ignoreHomeRadio);
+        parts.body->AddChild(d->ignoreEverywhereRadio);
+
+        d->resets[kPageIgnoredFiles] = PageReset{"Restore the built-in list", 180,
+                [d]() {
+            if (!d->settings) return;
+            // The built-in list only - the patterns the user typed are theirs
+            // to remove.
+            d->settings->ignoreClutterFiles = true;
+            d->settings->disabledClutterPatterns.clear();
+            if (d->clutterBox) d->clutterBox->SetChecked(true);
+            for (auto& [pattern, box] : d->clutterRows)
+                if (box) box->SetChecked(true);
+            SyncClutterRows(d);
+            ApplyAndSave(d);
+        }};
+
+        AddNote(parts, "ufl-set-ign-note1",
+                "A pattern is matched against the name, ignoring case; \"*\" "
+                "stands for any run of characters and \"?\" for one, so "
+                "\"*.bak\" hides every backup file. Folders are matched the "
+                "same way.");
+        AddNote(parts, "ufl-set-ign-note2",
+                "Sti_Trace.log is the trace file the Windows Still Image "
+                "service writes into the profile whenever a program talks to "
+                "a scanner or camera. It carries no hidden attribute, so "
+                "Display > Files cannot reach it - this is where it goes.");
+        AddNote(parts, "ufl-set-ign-note3",
+                "Nothing is moved or deleted: an ignored file is only left "
+                "out of the display. Display > Files > Show hidden files - and "
+                "the \"Show hidden files\" button on the strip - bring it "
+                "back, a search still finds it, and a path typed into the "
+                "address bar still opens it.");
+        AddNote(parts, "ufl-set-ign-note4",
+                "While anything is ignored, the display says so along its "
+                "foot, so nothing disappears silently - in every folder, not "
+                "just the Home folder.");
         return parts.page;
     }
 
@@ -1708,6 +1853,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageTreeview, "Treeview");
         AddTreeNode(d, kPageDisplay, kPageHomeFolder, "Home folder");
         AddTreeNode(d, kPageDisplay, kPageFiles, "Files");
+        AddTreeNode(d, kPageDisplay, kPageIgnoredFiles, "Ignored files");
         AddTreeNode(d, kPageDisplay, kPageFileExtensions, "File extensions");
         AddTreeNode(d, kPageDisplay, kPageFilesInUse, "Files in use");
         AddTreeNode(d, kPageDisplay, kPagePdfInventory, "PDF Inventory");
@@ -1740,6 +1886,7 @@ namespace {
         AddPage(d, kPageTreeview, BuildTreeviewPage(d));
         AddPage(d, kPageHomeFolder, BuildHomeFolderPage(d));
         AddPage(d, kPageFiles, BuildFilesPage(d));
+        AddPage(d, kPageIgnoredFiles, BuildIgnoredFilesPage(d));
         AddPage(d, kPageFileExtensions, BuildFileExtensionsPage(d));
         AddPage(d, kPageFilesInUse, BuildFilesInUsePage(d));
         AddPage(d, kPagePdfInventory, BuildPdfInventoryPage(d));
