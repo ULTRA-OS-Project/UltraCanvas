@@ -20,6 +20,7 @@
 #include <winspool.h>
 
 #include <cstdio>
+#include <cstdlib>
 #include <memory>
 #include <string>
 #include <vector>
