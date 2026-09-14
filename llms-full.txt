@@ -55791,8 +55791,9 @@ tree by type, the unhandled tags and the warnings for the repo's `media/vector/X
 samples or for any `.xar` files passed as arguments — the first thing to run
 on a file that renders wrong.
 
-`Tests/XARColourTest` covers the other half of "parses fine, looks wrong":
-it checks that the samples' colours resolve to the right screen values.
+`Tests/XARFidelityTest` covers the other half of "parses fine, looks wrong":
+it checks that the samples' colours, winding rules and text kerns resolve to
+what Xara itself draws.
 
 ### How colours resolve
 
@@ -55811,6 +55812,20 @@ for Normal colours they only ever reproduce the stored triple (RGB, HSV and
 greyscale) or fail to (CMYK, whose screen appearance comes from Xara's
 separation tables — the naive `(1-ink)(1-K)` conversion is up to 38/255 off on
 the bundled samples).
+
+### Two attributes that are easy to read wrong
+
+**Winding rule.** Xara fills paths by the **even-odd** rule, and that is the
+default here — a path with no `TAG_WINDINGRULE` record in scope still fills
+the way Xara draws it. Do not assume non-zero: Xara writes each subpath of a
+glyph outline in the same direction, so under non-zero a letter's counters
+fill solid instead of punching through (the "B" and "9" on `Midget.xar`'s
+number plate). Byte 0 on the record, the value both samples use throughout,
+is the even-odd rule.
+
+**Text kerns.** `TAG_TEXT_KERN`'s eight bytes are *not* a `Coord`. Only the
+first INT32 is the kern, in millipoints, and it is horizontal; applying the
+second as a Y offset puts a visible step in the middle of a line of text.
 
 Known renderer gaps (parse succeeds, display is approximate): conical
 gradients fall back to a linear ramp and diamond fills to a radial one (cairo

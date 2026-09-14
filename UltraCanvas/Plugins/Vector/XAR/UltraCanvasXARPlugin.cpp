@@ -727,7 +727,7 @@ namespace UltraCanvas {
         for (const auto& c : children) {
             if (c->type == XARNodeType::TextKern) {
                 auto k = std::static_pointer_cast<XARTextKernNode>(c);
-                total += k->offset.x * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+                total += k->kernMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
                 continue;
             }
             if (c->type != XARNodeType::TextString) continue;
@@ -773,7 +773,7 @@ namespace UltraCanvas {
             }
         }
 
-        double x = hangingIndent ? hangIndent : markerIndent, y = 0;
+        double x = hangingIndent ? hangIndent : markerIndent;
         switch (textAttr.justification) {
             case XARTextAttribute::Justification::Centre: x = -anchorWidth / 2.0; break;
             case XARTextAttribute::Justification::Right:  x = -anchorWidth; break;
@@ -797,14 +797,13 @@ namespace UltraCanvas {
                     x = std::max(x + 0.5 * fontEm, hangIndent);
                 }
                 ctx->PushState();
-                ctx->Translate(x, y);
+                ctx->Translate(x, 0);
                 c->Render(ctx, scale);
                 ctx->PopState();
                 x += widths[wi++];
             } else if (c->type == XARNodeType::TextKern) {
                 auto k = std::static_pointer_cast<XARTextKernNode>(c);
-                x += k->offset.x * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
-                y += k->offset.y * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
+                x += k->kernMP * XARConstants::MILLIPOINTS_TO_PIXELS * scale;
             } else {
                 c->Render(ctx, scale);
             }
@@ -2326,7 +2325,22 @@ namespace UltraCanvas {
         const uint8_t* d = record.data.data();
         size_t off = 0;
         auto kern = std::make_shared<XARTextKernNode>();
-        kern->offset = ReadCoord(d, off);
+        // The record's two INT32s are NOT a coordinate pair, and reading them
+        // as one put a vertical step in the middle of a line: it lifted
+        // "AB Designs - February 1992" 4pt off the baseline it shares with
+        // "Produced by" in Midget.xar, a line Xara's own rendering of that
+        // file keeps flat.
+        //
+        // Only the first field is the kern, in millipoints. Taking it puts
+        // that line's word gaps and both its ends within a pixel of Xara's
+        // rendering; taking the second widens the gap it sits in by two
+        // thirds. The second field tracks the first at a fixed ratio of 72
+        // across every kern record in the file - four text stories, font
+        // sizes from 0.4pt to 15pt - so it is the same kern under some other
+        // measure, but nothing in the drawing depends on it and it is read
+        // past rather than guessed at.
+        kern->kernMP = ReadInt32(d, off);
+        ReadInt32(d, off);
         AttachNode(kern);
     }
 
@@ -2940,8 +2954,13 @@ namespace UltraCanvas {
 
     void XARDocument::ParseWindingRuleRecord(const XARRecord& record) {
         if (record.data.empty()) return;
-        currentContext.windingRule = (record.data[0] == 2) ? XARWindingRule::EvenOdd
-                                                            : XARWindingRule::NonZero;
+        // Byte 0 is the even-odd (alternate) rule — the value every
+        // winding-rule record in the repo's samples carries, and the one the
+        // files need: the letter outlines on Midget.xar's number plate wind
+        // all their subpaths the same way, so non-zero fills the counters of
+        // "B" and "9" solid instead of punching them out.
+        currentContext.windingRule = (record.data[0] == 0) ? XARWindingRule::EvenOdd
+                                                           : XARWindingRule::NonZero;
     }
 
 // ===== MISC =====

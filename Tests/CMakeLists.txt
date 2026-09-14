@@ -2229,30 +2229,31 @@ else()
     message(STATUS "  XARProbeTest skipped (UltraCanvasXARPlugin target not present)")
 endif()
 
-# ===== XAR COLOUR TEST =====
-# Checks that TAG_DEFINECOMPLEXCOLOUR records resolve to the screen colours the
-# repo's XAR samples actually carry - Shade colours over HSV and CMYK parents
-# in particular, which a colour-model recomputation drives to black and which
-# no structural check catches.
+# ===== XAR FIDELITY TEST =====
+# Checks that the XAR samples' attributes resolve to what Xara itself draws:
+# complex colours (Shade colours over HSV and CMYK parents in particular),
+# winding rules and text kerns. These are the defects no structural check
+# catches - the file parses, every node is present, the geometry is in the
+# right place, and the picture is still wrong.
 if(TARGET UltraCanvasXARPlugin)
-    message(STATUS "  Building XARColourTest...")
-    add_executable(XARColourTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/XARColourTest.cpp
+    message(STATUS "  Building XARFidelityTest...")
+    add_executable(XARFidelityTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/XARFidelityTest.cpp
     )
-    target_include_directories(XARColourTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(XARColourTest PRIVATE cxx_std_20)
-    target_link_libraries(XARColourTest PRIVATE UltraCanvasXARPlugin UltraCanvas)
-    target_compile_definitions(XARColourTest PRIVATE
+    target_include_directories(XARFidelityTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(XARFidelityTest PRIVATE cxx_std_20)
+    target_link_libraries(XARFidelityTest PRIVATE UltraCanvasXARPlugin UltraCanvas)
+    target_compile_definitions(XARFidelityTest PRIVATE
         XAR_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/XAR"
     )
-    set_target_properties(XARColourTest PROPERTIES
+    set_target_properties(XARFidelityTest PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
-    add_test(NAME XARColourTest COMMAND XARColourTest
+    add_test(NAME XARFidelityTest COMMAND XARFidelityTest
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: XARColourTest")
+    message(STATUS "    Test registered: XARFidelityTest")
 else()
-    message(STATUS "  XARColourTest skipped (UltraCanvasXARPlugin target not present)")
+    message(STATUS "  XARFidelityTest skipped (UltraCanvasXARPlugin target not present)")
 endif()
 
 # Round-trips a VectorDocument through the Vector plugin's XAR writer and the
