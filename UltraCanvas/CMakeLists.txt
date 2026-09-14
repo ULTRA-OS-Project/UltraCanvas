@@ -1543,6 +1543,9 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             imm32
             dwmapi
             ws2_32  # Winsock select() for host fd-watches (e.g. Ladybird IPC sockets)
+            winspool  # Print spooler (OS/MSWindows/UltraCanvasWindowsIODevicePrinter.cpp):
+                      # EnumPrintersW, StartDocPrinterW/WritePrinter for RAW jobs,
+                      # DeviceCapabilitiesW, EnumJobsW.
             # Hardware probe (OS/MSWindows/UltraCanvasWindowsHardwareInfo.cpp):
             # network adapters, Wi-Fi association, USB enumeration and the
             # Bluetooth radios. powrprof is loaded at run time instead, so the

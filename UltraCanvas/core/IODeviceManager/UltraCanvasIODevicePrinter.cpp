@@ -46,6 +46,23 @@ IODeviceResult NativePrintRenderer::Render(const IOPrintJob& job,
 
 PrinterDevice::PrinterDevice(const IODeviceInfo& info) : IODevice(info) {}
 
+// A renderer is usable only when what it emits is something the platform
+// transport can actually carry. The two checks are symmetric: a device-native
+// stream needs a transport that takes raw jobs, and a document needs one whose
+// driver will process it.
+bool PrinterDevice::RendererIsUsable(const IPrintRendererPtr& renderer,
+                                     const IODeviceInfo& info,
+                                     const IPrintTransportPtr& transport) const {
+    if (!renderer || !renderer->IsAvailable() || !renderer->SupportsPrinter(info)) {
+        return false;
+    }
+    if (!transport) {
+        return false;
+    }
+    return renderer->ProducesRawStream() ? transport->SupportsRaw()
+                                         : transport->SupportsDocument();
+}
+
 // ===== CAPABILITIES =====
 
 const IOPrinterCapabilities& PrinterDevice::GetCapabilities() {
@@ -94,19 +111,12 @@ std::vector<IOPrintRenderer> PrinterDevice::GetAvailableRenderers() {
 
     const IODeviceInfo info = GetDeviceInfo();
     IPrintTransportPtr transport = GetTransport();
-    const bool rawOk = transport && transport->SupportsRaw();
 
     std::vector<IOPrintRenderer> available;
     for (const auto& renderer : renderers) {
-        if (!renderer->IsAvailable() || !renderer->SupportsPrinter(info)) {
-            continue;
+        if (RendererIsUsable(renderer, info, transport)) {
+            available.push_back(renderer->GetKind());
         }
-        // A renderer emitting a device-native stream is useless where the
-        // transport cannot carry one, so it is not offered there.
-        if (renderer->ProducesRawStream() && !rawOk) {
-            continue;
-        }
-        available.push_back(renderer->GetKind());
     }
     return available;
 }
@@ -145,12 +155,9 @@ IOPrintRenderer PrinterDevice::GetRenderer() {
 IPrintRendererPtr PrinterDevice::SelectRendererLocked(IOPrintRenderer wanted) {
     const IODeviceInfo info = GetDeviceInfo();
     IPrintTransportPtr transport = GetTransport();
-    const bool rawOk = transport && transport->SupportsRaw();
 
     auto usable = [&](const IPrintRendererPtr& renderer) {
-        return renderer && renderer->IsAvailable() &&
-               renderer->SupportsPrinter(info) &&
-               (!renderer->ProducesRawStream() || rawOk);
+        return RendererIsUsable(renderer, info, transport);
     };
 
     if (wanted != IOPrintRenderer::Auto) {

@@ -127,7 +127,7 @@ void TestFailedConnect() {
           "the failure keeps the backend's result code");
     Check(!device->IsConnected(), "a failed Connect() leaves the device closed");
     Check(device->GetState() == IODeviceState::Error, "the device is in Error");
-    Check(device->GetLastError().code == IODeviceResultCode::ConnectionFailed,
+    Check(device->GetLastDeviceError().code == IODeviceResultCode::ConnectionFailed,
           "the failure is recorded as the last error");
 
     // A half-open session still has handles to release, so teardown must run

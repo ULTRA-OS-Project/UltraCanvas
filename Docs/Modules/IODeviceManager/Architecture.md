@@ -160,9 +160,24 @@ enum class IOPrintRenderer {
 
 | Renderer | Linux transport | macOS transport | Windows transport |
 |---|---|---|---|
-| `Native` | CUPS job | CUPS job | `StartDocPrinter` (driver datatype) |
-| `GutenPrint` | CUPS **raw** job (`application/vnd.cups-raw`) | CUPS **raw** job | `StartDocPrinter` with `pDatatype = "RAW"` |
+| `Native` | CUPS job ✅ | CUPS job ✅ | needs the GDI renderer — see below |
+| `GutenPrint` | CUPS **raw** job (`application/vnd.cups-raw`) ✅ | CUPS **raw** job ✅ | `StartDocPrinter`, `pDatatype = "RAW"` ✅ |
 | `IPP` | IPP over HTTP | IPP over HTTP | IPP over HTTP |
+
+A transport declares what it can carry, and a renderer declares what it
+emits; `PrinterDevice` only offers the pairings that match. The two checks are
+symmetric — `IPrintTransport::SupportsRaw()` against
+`IPrintRenderer::ProducesRawStream()`, and `SupportsDocument()` against
+everything else.
+
+That second one matters on Windows. CUPS has a filter chain, so a PDF can be
+handed over as-is and the native renderer is a pass-through. **The Windows
+spooler has no equivalent**: it takes device-ready data, or EMF/XPS produced
+by drawing to a printer DC. So `WindowsPrintTransport::SupportsDocument()` is
+`false` until that renderer is written, and the Native renderer is not offered
+on Windows — a caller learns this from `GetAvailableRenderers()` instead of
+from a job that disappears. The raw path is complete, which is what
+GutenPrint needs.
 
 The GutenPrint renderer is therefore genuinely cross-platform: one rendering
 path, three raw-transport shims of a few dozen lines each. Proposed surface
@@ -294,17 +309,18 @@ compiling, tested and wired into CI before the next starts:
 |---|---|
 | 1 ✅ | `IODevice`, `IODeviceManager`, device-generic types, tests |
 | 2 ✅ | `PrinterDevice`, renderer/transport seam, option resolver, CUPS backend (Linux + macOS), tests |
-| 3 | GutenPrint renderer — blocked on the licence decision above |
-| 4 | Windows printer backend: spooler enumeration + `StartDocPrinter` transport, raw and driver datatypes |
-| 5 | `CameraDevice` + V4L2 (Linux) + a DemoApp example |
-| 6 | `ScannerDevice` + SANE (Linux) |
-| 7 | Windows and macOS backends for camera and scanner |
-| 8 | IPP / eSCL driverless, network cameras |
+| 3 ✅ | Windows spooler backend: enumeration, capabilities, status, job queue, RAW transport |
+| 4 | GutenPrint renderer — blocked on the licence decision above. With slices 2 and 3 in, this is one class and no other change on any platform. |
+| 5 | Windows GDI/XPS renderer, so `Native` works there too |
+| 6 | `CameraDevice` + V4L2 (Linux) + a DemoApp example |
+| 7 | `ScannerDevice` + SANE (Linux) |
+| 8 | Windows and macOS backends for camera and scanner |
+| 9 | IPP / eSCL driverless, network cameras |
 
-Slice 2 ships the switch itself with one renderer behind it. Adding
-GutenPrint is then a renderer class and nothing else: no change to
-`PrinterDevice`, and on Linux and macOS no change to the transport either,
-since `CupsPrintTransport` already submits raw jobs.
+Slices 2 and 3 ship the switch and both transports. Adding GutenPrint is then
+a renderer class and nothing else: no change to `PrinterDevice`, and no change
+to any transport, since `CupsPrintTransport` and `WindowsPrintTransport` both
+already submit raw jobs. That is the whole point of having split the two.
 
 Contributions of earlier prototype code should be re-landed through these
 slices rather than dropped in whole: a large drop that does not compile

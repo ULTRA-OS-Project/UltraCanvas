@@ -66,7 +66,13 @@ public:
 
     // The last failure recorded by this device. Cleared by a successful
     // Connect(); backends may clear it at the start of their operations.
-    IODeviceResult GetLastError() const;
+    //
+    // Named GetLastDeviceError rather than GetLastError because Win32 has a
+    // global GetLastError(), and a member of that name shadows it inside
+    // every device deriving from this class - so each Windows backend would
+    // have to remember to write ::GetLastError() for the API it meant, and
+    // would compile either way.
+    IODeviceResult GetLastDeviceError() const;
     void ClearLastError();
 
 protected:

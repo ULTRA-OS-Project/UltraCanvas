@@ -96,7 +96,7 @@ enum class IODeviceState {
     Ready,          // idle and accepting operations
     Busy,           // mid-operation
     Paused,
-    Error,          // see IODevice::GetLastError()
+    Error,          // see IODevice::GetLastDeviceError()
     Offline         // enumerated previously, not reachable now
 };
 

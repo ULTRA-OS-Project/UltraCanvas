@@ -50,10 +50,12 @@ bool Mentions(const std::vector<std::string>& changes, const std::string& needle
 
 class FakeTransport : public IPrintTransport {
 public:
-    explicit FakeTransport(bool raw) : rawSupported(raw) {}
+    explicit FakeTransport(bool raw, bool document = true)
+        : rawSupported(raw), documentSupported(document) {}
 
     std::string GetName() const override { return "Fake"; }
     bool SupportsRaw() const override { return rawSupported; }
+    bool SupportsDocument() const override { return documentSupported; }
 
     IODeviceResult Submit(const IODeviceInfo& printer, const IOPrintPayload& payload,
                           const IOPrintOptions& options, int& outJobId) override {
@@ -67,6 +69,7 @@ public:
     }
 
     bool rawSupported = true;
+    bool documentSupported = true;
     bool lastPayloadWasRaw = false;
     std::string lastContentType;
     IOPrintOptions lastOptions;
@@ -184,6 +187,43 @@ void TestRendererAvailability() {
     without->AddRenderer(absent);
     Check(!without->IsRendererAvailable(IOPrintRenderer::GutenPrint),
           "GutenPrint is withheld when it is not installed");
+}
+
+// The Windows spooler's shape: it takes a device-native stream as a RAW job,
+// but will not take a PDF and work out what to do with it the way CUPS's
+// filter chain does. A document needs drawing to a printer DC first, so until
+// that renderer exists the Native renderer must not be offered there - and the
+// caller must learn that from GetAvailableRenderers() rather than from a job
+// that disappears.
+void TestTransportThatCannotTakeDocuments() {
+    std::cout << "\nA transport that takes raw jobs but not documents\n";
+
+    auto spooler = std::make_shared<FakeTransport>(/*raw=*/true, /*document=*/false);
+    auto printer = std::make_shared<FakePrinter>(MakePrinterInfo(), spooler);
+    auto guten = std::make_shared<FakeRawRenderer>();
+    printer->AddRenderer(guten);
+
+    Check(!printer->IsRendererAvailable(IOPrintRenderer::Native),
+          "Native is withheld when the transport cannot process a document");
+    Check(printer->IsRendererAvailable(IOPrintRenderer::GutenPrint),
+          "GutenPrint is still offered, because it emits a raw stream");
+    Check(printer->GetRenderer() == IOPrintRenderer::GutenPrint,
+          "and Auto resolves to it");
+
+    printer->Connect();
+    IODeviceResult result = printer->PrintFile("/tmp/page.pdf");
+    Check(static_cast<bool>(result), "printing through GutenPrint works there");
+    Check(spooler->lastPayloadWasRaw, "and what reached the spooler was raw");
+
+    // With no raw renderer at all, such a transport can print nothing, and
+    // must say so rather than silently dropping the job.
+    auto stranded = std::make_shared<FakePrinter>(MakePrinterInfo(), spooler);
+    stranded->Connect();
+    Check(stranded->GetAvailableRenderers().empty(),
+          "a printer with only a document renderer has none available there");
+    IODeviceResult refused = stranded->PrintFile("/tmp/page.pdf");
+    Check(!static_cast<bool>(refused), "and printing fails rather than silently dropping");
+    Check(refused.code == IODeviceResultCode::NotSupported, "with NotSupported");
 }
 
 void TestRendererSelection() {
@@ -416,6 +456,7 @@ int main() {
     std::cout << "=============================\n";
 
     TestRendererAvailability();
+    TestTransportThatCannotTakeDocuments();
     TestRendererSelection();
     TestPrintingRoutesThroughTheChosenRenderer();
     TestOptionResolution();

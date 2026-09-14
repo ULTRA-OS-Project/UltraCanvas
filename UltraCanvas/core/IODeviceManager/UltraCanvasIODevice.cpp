@@ -115,7 +115,7 @@ IODeviceState IODevice::GetState() const {
 
 // ===== ERRORS =====
 
-IODeviceResult IODevice::GetLastError() const {
+IODeviceResult IODevice::GetLastDeviceError() const {
     std::lock_guard<std::recursive_mutex> lock(deviceMutex);
     return lastError;
 }

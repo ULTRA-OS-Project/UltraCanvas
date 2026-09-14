@@ -86,6 +86,15 @@ public:
     // rules out the GutenPrint renderer on that platform.
     virtual bool SupportsRaw() const = 0;
 
+    // False when the platform cannot take a document and let its own driver
+    // process it. CUPS can: it has a filter chain, so a PDF can be handed
+    // over as-is. The Windows spooler cannot — it takes device-ready data or
+    // spooled EMF/XPS, so a document has to be drawn to a printer DC first,
+    // and until that renderer exists the Native renderer is not offered
+    // there. Stating it here keeps the gap visible in the API instead of
+    // surfacing as a failed job.
+    virtual bool SupportsDocument() const { return true; }
+
     virtual IODeviceResult Submit(const IODeviceInfo& printer,
                                   const IOPrintPayload& payload,
                                   const IOPrintOptions& options,
@@ -192,6 +201,11 @@ private:
     // Resolves Auto, or verifies an explicit choice. Caller must hold
     // deviceMutex.
     IPrintRendererPtr SelectRendererLocked(IOPrintRenderer wanted);
+
+    // Whether what this renderer emits is something the transport can carry.
+    bool RendererIsUsable(const IPrintRendererPtr& renderer,
+                          const IODeviceInfo& info,
+                          const IPrintTransportPtr& transport) const;
 
     std::vector<IPrintRendererPtr> renderers;
     IOPrintOptions options;

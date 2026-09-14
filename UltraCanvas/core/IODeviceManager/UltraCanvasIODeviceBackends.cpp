@@ -15,6 +15,10 @@ void RegisterCompiledBackends(IODeviceManager& manager) {
     RegisterCupsPrinterBackend(manager);
 #endif
 
+#if defined(_WIN32)
+    RegisterWindowsPrinterBackend(manager);
+#endif
+
     // Still to come, each adding a guarded call here:
     //
     //   #if defined(ULTRACANVAS_HAS_V4L2)

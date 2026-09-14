@@ -34,5 +34,10 @@ void RegisterCompiledBackends(IODeviceManager& manager);
 void RegisterCupsPrinterBackend(IODeviceManager& manager);
 #endif
 
+#if defined(_WIN32)
+// OS/MSWindows/UltraCanvasWindowsIODevicePrinter.cpp
+void RegisterWindowsPrinterBackend(IODeviceManager& manager);
+#endif
+
 } // namespace Internal
 } // namespace UltraCanvas

@@ -1,3 +1,35 @@
+#### 2026-09-14 *0.8.48*
+- **IODeviceManager: the Windows printer backend, and with it GutenPrint on
+  all three platforms.** Spooler enumeration, capabilities from
+  `DeviceCapabilitiesW`, printer and job status, job cancellation, and the
+  transport that hands a device-native stream to `StartDocPrinter` with
+  datatype `RAW` - the path a GutenPrint-rendered page takes. With the CUPS
+  transport already carrying raw jobs, the renderer can now be added as one
+  class with no change to any platform's transport, which is what separating
+  renderer from transport was for.
+- **A transport now declares what it can carry, not just whether it takes raw
+  jobs.** CUPS has a filter chain, so a PDF can be handed over as-is and the
+  native renderer is a pass-through. The Windows spooler has no equivalent: it
+  takes device-ready data, or EMF/XPS produced by drawing to a printer DC. So
+  `IPrintTransport::SupportsDocument()` joins `SupportsRaw()`, and
+  `PrinterDevice` offers only the renderer/transport pairings that match. On
+  Windows that means the `Native` renderer is withheld until the GDI renderer
+  exists, and a caller reads that from `GetAvailableRenderers()` instead of
+  from a job that disappears.
+- **Renamed `IODevice::GetLastError()` to `GetLastDeviceError()`.** Win32 has a
+  global `GetLastError()`, and a member of that name shadows it inside every
+  device class deriving from `IODevice` - so each Windows backend would have
+  had to remember to write `::GetLastError()` for the API it meant, and would
+  have compiled either way. Found by cross-compiling the new backend rather
+  than by reading it.
+- Paper sizes on Windows are recognised the same way as under CUPS: by
+  measurement rather than by the name a driver gives them. `DC_PAPERSIZE`
+  reports tenths of a millimetre against `IOPaperDimensions`' hundredths, so
+  each measure is scaled rather than renamed.
+- Supply levels report nothing on Windows rather than inventing a number: the
+  spooler has no supply-level API at all, only a `PRINTER_STATUS_NO_TONER`
+  status bit. Reading real levels there needs SNMP or a vendor SDK.
+
 #### 2026-09-14 *0.8.47*
 - **IODeviceManager: printers, and the switch between GutenPrint and the
   platform driver.** `PrinterDevice` lands with the renderer/transport split

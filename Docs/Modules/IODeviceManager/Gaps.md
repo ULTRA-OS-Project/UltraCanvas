@@ -9,7 +9,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-14 (after the printer renderer slice).
+Last reviewed: 2026-09-14 (after the Windows printer slice).
 
 ---
 
@@ -93,9 +93,11 @@ absent.
 | CUPS backend: enumeration, capabilities, status, supplies, jobs (Linux/macOS) | ✅ |
 | CUPS transport, driver documents and raw streams | ✅ |
 | Option resolver in GutenPrint priority order | ✅ replaces the `FIXME` that returned its input unchanged |
-| **GutenPrint renderer** | ❌ the seam it plugs into is in place and tested; the renderer itself is blocked on the licence decision below |
-| Windows raw transport (`StartDocPrinter`, datatype `RAW`) | ❌ needed before GutenPrint works on Windows |
-| **Windows printing** | ❌ enumeration only — no print path, no status, no maintenance |
+| **GutenPrint renderer** | ❌ the seam it plugs into is complete and tested on both transports; the renderer itself is blocked on the licence decision below |
+| Windows spooler backend: enumeration, capabilities, status, job queue | ✅ |
+| Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
+| **Windows GDI/XPS renderer** | ❌ the spooler cannot process a document on its own, so `Native` is not offered on Windows until this exists. The transport says so through `SupportsDocument()`, so it shows up in `GetAvailableRenderers()` rather than as a failed job. |
+| Windows printer maintenance | ❌ |
 | **macOS printing** | ❌ functions were written but under names nothing calls, so effectively zero |
 | Paper size recognition | ✅ by dimensions from the CUPS dest-info API, replacing the prior stub that returned A4 for every size a printer reported |
 | Page rendering (document/image → page raster) | ❌ |
