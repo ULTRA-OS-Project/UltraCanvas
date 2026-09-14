@@ -10,6 +10,15 @@
   automatically (it scans the folder), and every one of them imports with no
   diagnostics — the corpus test requires it. Fragments for `\input` live in
   `media/LaTex/parts/`, which the scan does not descend into.
+- **The MicroTeX oracle now compares the corpus's formulas, not its
+  articles.** `MathEngineTest` typeset every `.tex` in `media/LaTex` as one
+  formula in both engines and compared the boxes, which held while the folder
+  held only formulas; an article is prose, so the comparison measured the two
+  engines' *text* fallbacks against each other and the mean height deviation
+  went from around 7% to 19%. It now takes only the single-formula documents,
+  by the same rule the demo uses to choose a file's rendering path, and says
+  how many articles it skipped. The tolerances are untouched: the corpus
+  compares at 5.9% / 7.2% over 63 formulas.
 - Three reader fixes the new samples turned up, each with its own test in
   `Tests/LaTeXDocumentTest.cpp`:
   - **`\captionof{table}` numbered its caption with the figures.** The kind
