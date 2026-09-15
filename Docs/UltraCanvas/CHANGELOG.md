@@ -18,6 +18,362 @@
   The code itself reached `main` ahead of this note, ported into the 0.8.49
   release to unblock the branches the red leg was holding up; this entry is
   the release record it went in without.
+#### 2026-09-15 *0.8.60*
+- **The OS print dialog now prints what the user chose.** It has shipped for a
+  while and Texter and UltraFiler both call it, but every platform printed by
+  itself and discarded the answers. Linux built a real GTK print dialog, read
+  `GtkPrintSettings` and `GtkPageSetup` out of it, used **neither**, and ran
+  `lpr -P "<printer>"` through `system()`. Windows showed no print dialog at
+  all — it wrote a temp file and invoked the shell's `print` verb, so the
+  dialog the user saw was Notepad's, its settings never came back, and the
+  file was left behind on purpose. macOS wrote the text to a fixed path in the
+  temp directory, the same path on every call, handed it to `NSWorkspace` and
+  returned `true` without waiting for anything. So on all three the user
+  picked a printer, copies, collation, paper size, orientation, duplex and a
+  page range, and all of it was dropped.
+- **The fix is less printing code, not more.** `PrinterDevice` already honours
+  every one of those settings, so the dialog's job is narrowed to *asking*:
+  `RequestPrintSettings()` returns a `NativePrintResult`, and the job goes
+  through `PrinterDevice::Print()` once, for every platform. `ShowPrintDialog()`
+  keeps its signature, so both applications keep compiling and start honouring
+  the dialog. `PrintTextWithDialog()` is the same thing with a real result, so
+  a caller can tell "the user changed their mind" from "the printer was not
+  there" — which a `bool` cannot.
+- **A settings struct that is not a second vocabulary.** `NativePrintResult`
+  is the printer's name plus an `IOPrintOptions` and a page range. A print
+  dialog exists to produce a print job and `IOPrintOptions` is what `Print()`
+  takes, so any other shape would be a type to convert rather than a type to
+  use.
+- **Page ranges reach the queue.** `IOPrintJob::pageRange` had been declared
+  since this module was written and was read by nothing: the payload had
+  nowhere to carry it, and a transport only ever sees the payload. It now
+  reaches `IOPrintPayload`, and from there the IPP `page-ranges` attribute
+  under CUPS and the page loop on the GDI path — applied after pagination,
+  because that is the first moment "pages 2-4" can be checked against a
+  document that has pages.
+- **One rule for what a sheet of paper is.** GTK quotes paper in millimetres,
+  Win32 in tenths through a `DEVMODE`, AppKit in points; all three now convert
+  to hundredths and go to the same `IOPaperSizeFromDimensions()` the CUPS
+  backend already used, promoted out of that file. On Windows the `DMPAPER_*`
+  code is looked up in the driver's own table through `DeviceCapabilities`
+  rather than mapped by hand, because the codes do not all line up —
+  `DMPAPER_B4` is JIS B4 at 257x364 mm while ISO B4 is 250x353. A size with no
+  name in the table is carried by its measurements rather than substituted for
+  A4.
+- **macOS printing is wired up rather than absent**, through `NSPrintPanel`
+  and the CUPS backend that was already built for it. Duplex is left at its
+  default: it is not on `NSPrintInfo` at all, it lives in the `PMPrintSettings`
+  underneath, and claiming a value would be inventing one.
+- **"Print to File" is refused by name, not silently ignored.** It comes back
+  in the result, and printing to a queue the user did not choose is the worse
+  of the two wrong answers.
+- `Tests/IODevicePrinterTest`: 157 assertions, up from 117. Matching a
+  dialog's printer name to a device and building a job from a dialog answer
+  are ordinary functions over data, so they live in a translation unit that
+  names no dialog and are covered on every arm of the matrix.
+
+#### 2026-09-15 *0.8.59*
+- **Native printing now works on Windows.** `Native` was the one renderer
+  `GetAvailableRenderers()` would not offer there: the spooler takes
+  device-ready data and nothing else, so a PDF or a PNG had nowhere to go, and
+  a Windows caller had no native print path at all. It does now, by the route
+  Windows actually provides — `CreateDC` on the printer, `StartDoc`, and per
+  page `StartPage`, GDI calls, `EndPage`, with the driver turning those calls
+  into the device's own commands.
+- **A print payload gained a third shape, because GDI is not a byte stream.**
+  It was either the printer's own command language (GutenPrint) or a document
+  for the platform's driver (CUPS hands a PDF to its filter chain). A GDI job
+  is neither: it is a drawing session, and there is no intermediate buffer to
+  put anywhere. Forcing it into `data` would have meant inventing a multi-page
+  EMF container that exists only to be unwrapped three calls later. Instead
+  `IOPrintPayload` carries an optional `IPrintPageSource`, and the renderer
+  and transport declare that shape the same way they already declare the other
+  two — `ProducesPageSource()` against `SupportsPageSource()`, symmetric with
+  `ProducesRawStream()`/`SupportsRaw()`. `WindowsPrintTransport::SupportsDocument()`
+  stays `false`, and that is no longer a gap: it is what Windows is.
+- **Pagination happens against the device, not before it.** `IPrintPageSource`
+  is prepared with the real target before its page count is asked for, because
+  the same document is a different number of pages on A4 at 600 dpi than on
+  Letter at 300. A source that answered earlier would be guessing.
+- **The layout is platform-neutral, so it is tested everywhere.** Fitting,
+  wrapping and pagination live in `core/` and reach the device only through
+  the abstract `IPrintPageTarget`, so `Tests/IODevicePrinterTest` drives them
+  against a fake target with a synthetic font — 117 assertions, up from 62,
+  running on every arm of the matrix rather than only the one that needs them.
+  Left in `OS/MSWindows` is what genuinely needs Win32: the DC, the `DEVMODE`,
+  the font handles and `StretchDIBits`.
+- Line breaking reuses `TextWrapping::WrapGreedy` rather than a second
+  implementation of it. It already takes a measure callable for exactly this
+  reason, and already handles UTF-8 boundaries and over-long words; what the
+  printer adds is paragraphs, and settings that suit page flow instead of a
+  truncated caption.
+- Options reach the driver through a `DEVMODE` built from its own current
+  defaults and handed back for validation, so paper size, orientation, copies,
+  collation, colour mode, duplex and quality are applied — and a request the
+  hardware cannot meet is dropped by the driver rather than silently producing
+  output the caller believes is duplex.
+- Images are composited onto white rather than alpha-blended: paper is opaque,
+  and blending against an uninitialised page is undefined in practice.
+- What it does not do yet, refused by name rather than half-printed: PDF and
+  other paginated documents (`NotSupported`, needs the PDF plugin), and images
+  supplied as bytes rather than a path. `Docs/Modules/IODeviceManager/Gaps.md`
+  tracks both.
+- The page target's method is `DrawTextLine`, not `DrawText`, because
+  `<windows.h>` defines `DrawText` as a macro: a virtual by that name is
+  renamed by the preprocessor wherever windows.h is included, so the override
+  stops overriding and the class turns abstract — with the compiler blaming
+  the override rather than the macro. Found by cross-compiling, as
+  `GetLastError()` was before it.
+
+#### 2026-09-14 *0.8.58*
+- **IODeviceManager: hot-plug watching.** `SetDeviceChangeCallback` existed but
+  only enumeration ever fired it, so a device plugged in after a scan went
+  unnoticed until something rescanned. `StartMonitoring()` closes that for all
+  three categories at once.
+- **A watcher reports which category changed, not which device.** The manager
+  re-enumerates that category and the merge `EnumerateDevices()` already
+  performs works out what appeared or disappeared - the diffing was there
+  for rescans, so nothing else was needed. It also keeps each platform's
+  watcher small: udev, the Windows device broadcast and IOKit report
+  kernel-level arrivals in their own vocabulary and none of them knows what a
+  `ScannerDevice` is, so translating "a video4linux node appeared" into "some
+  camera changed" is all they do.
+- **The locking is the difficulty, and it is the part under test.**
+  `StopMonitoring()` joins the watcher's thread while that thread is calling
+  `EnumerateDevices()`, which takes the registry lock; holding either lock
+  across the join deadlocks. Monitoring state therefore lives under its own
+  mutex and both the stop and the join happen with no lock held, and
+  `Shutdown()` stops monitoring before touching the registry. The test's fake
+  watcher reports from another thread on purpose, because the deadlock only
+  appears when the callback arrives from somewhere other than the caller's,
+  and the suite is clean under ThreadSanitizer.
+- The udev watcher filters `video4linux`, `usb` and `sound` in the kernel -
+  unfiltered, every uevent on the machine wakes the thread to be discarded -
+  and counts only `add` and `remove`, since a `change` action means a device
+  reported a property rather than appeared, and re-enumerating on those makes
+  a busy machine rescan constantly. Events are coalesced over a 250 ms quiet
+  period, because plugging in one webcam produces a burst of them. A `usb`
+  arrival maps to Scanner, Printer and Camera together: the kernel says a USB
+  device appeared, not what it is, and re-enumerating three categories is
+  cheap next to guessing wrong. The poll waits on an eventfd alongside the
+  udev descriptor, so a stop takes as long as the work rather than as long as
+  the poll interval.
+- Where no watcher is compiled in, `StartMonitoring()` reports
+  `BackendUnavailable`, so a caller can tell "this platform cannot watch" from
+  "nothing has been plugged in yet".
+
+#### 2026-09-14 *0.8.57*
+- **IODeviceManager: scanners, and the SANE backend.** `ScannerDevice`
+  completes the three categories the module's README advertises as production
+  ready. Scanner support was previously described as finished across five
+  protocols with no scanner source in the repository at all.
+- **An empty feeder ends a run; it does not fail it.** A backend signals a
+  spent tray the only way it can - by not producing a page - which is also how
+  it signals a failure, and conflating the two discards every page already
+  scanned. `DoScanPage()` returns `DeviceNotFound` for an empty feeder
+  specifically, and `ScanPages()` treats that as a normal end once a page has
+  come through. The page count rides back in `backendCode` even on a cancelled
+  or failed run, so a caller always knows what it got.
+- Colour mode and paper source are refused when unsupported, because a scanner
+  either has them or does not. Resolution is **snapped** to the nearest
+  offered instead, since scanners expose arbitrary values and refusing 301 dpi
+  on a device that does 300 helps nobody. The nearest is chosen at or *below*
+  the request: scanning higher costs time and memory quadratically, which is
+  not a substitution to make silently.
+- `CancelScan()` takes no lock by design - the scanning thread holds
+  `deviceMutex` for the whole run, so a cancel that waited for it could never
+  arrive in time to cancel anything.
+- The SANE backend enumerates with `local_only` false so `net`, `escl` and
+  `airscan` are included, since a driverless network scanner is now the common
+  case. Options are walked by name rather than index because backends order
+  them freely, and sources are matched by substring - "ADF Duplex", "Duplex
+  ADF" and "Automatic Document Feeder" all mean the same thing. `sane_init`
+  and `sane_exit` are process-global and not reference-counted by the library,
+  so the count is kept in the backend: a second scanner opening must not
+  re-init, and the first closing must not tear the library out from under the
+  others.
+- Writing the test found two defects worth naming. `ScannedImage::channels`
+  defaulted to 1, so "the backend did not say" and "genuinely one channel"
+  were the same value - the mistake `IOSupport` exists to avoid elsewhere in
+  this module; it now defaults to 0 and `ScannerDevice` fills it from the
+  colour mode. And the page height was being derived inside the SANE backend,
+  where every future backend would have had to repeat it; a scanner often
+  cannot say how long a page is until the sheet has fed through, so the height
+  falls out of how much data arrived and that arithmetic now lives once in
+  `ScannerDevice`.
+
+#### 2026-09-14 *0.8.56*
+- **IODeviceManager: cameras, and the V4L2 backend.** `CameraDevice` joins
+  `PrinterDevice` as a category class, with the V4L2 webcam backend behind it -
+  the backend the module's documentation has described as finished for some
+  time and which had never been written.
+- **Streaming has two rules, and both are asserted rather than assumed.** No
+  frame may reach a callback after `StopStream()` returns, because by then the
+  caller has usually destroyed whatever the callback writes into: `StopStream()`
+  clears the streaming flag first so a capture loop winds down, then joins the
+  thread. And a backend stops its own thread in its own destructor, because
+  `~CameraDevice()` calls no virtuals - the derived object is already gone, so
+  a thread still calling `DeliverFrame()` would be reading freed memory.
+  `DeliverFrame()` takes no lock by design: `StopStream()` holds `deviceMutex`
+  while joining, so locking there would deadlock.
+- **Camera controls are enumerated, not a struct of booleans.**
+  `CameraCapabilities::controls` lists only the controls a camera actually
+  reports, so iterating it enumerates them; a field per control has to guess
+  the union of every camera in advance and still cannot say whether a given one
+  has it. `SetControl` clamps to the control's range and snaps to its step, so
+  a caller can pass a slider position - `V4L2_CID_EXPOSURE_ABSOLUTE` with
+  minimum 3 and step 4 takes 3, 7, 11, not 0, 4, 8.
+- `SetConfiguration` refuses a format and resolution the camera does not offer
+  instead of capturing something else, which a caller would notice only by
+  inspecting frames; `ResolveConfiguration` fills in what was left unset,
+  preferring an uncompressed format so pixels are readable without a decoder,
+  and says what it chose.
+- The V4L2 backend skips `/dev/video*` nodes without `V4L2_CAP_VIDEO_CAPTURE`:
+  modern kernels give one camera several nodes, and the metadata ones would
+  otherwise be offered as cameras that never yield a frame. It opens
+  non-blocking with `poll()` for the timeout so a stalled camera cannot wedge
+  the caller, retries every ioctl on `EINTR` because a signal is not a device
+  error, and copies `bytesused` rather than the buffer length - for MJPEG those
+  differ by however much the frame compressed, and the difference would be
+  appended to every frame as garbage.
+- `IOSupport` moved from the printer vocabulary to the device-generic types:
+  cameras need the same "not reported is not the same as not supported"
+  distinction.
+- `Tests/IODeviceCameraTest` drives all of it through a fake camera, so it runs
+  with no `/dev/video*` present. It is clean under ThreadSanitizer, which is
+  the check that means something for a threaded capture path.
+
+#### 2026-09-14 *0.8.55*
+- **IODeviceManager: the Windows printer backend, and with it GutenPrint on
+  all three platforms.** Spooler enumeration, capabilities from
+  `DeviceCapabilitiesW`, printer and job status, job cancellation, and the
+  transport that hands a device-native stream to `StartDocPrinter` with
+  datatype `RAW` - the path a GutenPrint-rendered page takes. With the CUPS
+  transport already carrying raw jobs, the renderer can now be added as one
+  class with no change to any platform's transport, which is what separating
+  renderer from transport was for.
+- **A transport now declares what it can carry, not just whether it takes raw
+  jobs.** CUPS has a filter chain, so a PDF can be handed over as-is and the
+  native renderer is a pass-through. The Windows spooler has no equivalent: it
+  takes device-ready data, or EMF/XPS produced by drawing to a printer DC. So
+  `IPrintTransport::SupportsDocument()` joins `SupportsRaw()`, and
+  `PrinterDevice` offers only the renderer/transport pairings that match. On
+  Windows that means the `Native` renderer is withheld until the GDI renderer
+  exists, and a caller reads that from `GetAvailableRenderers()` instead of
+  from a job that disappears.
+- **Renamed `IODevice::GetLastError()` to `GetLastDeviceError()`.** Win32 has a
+  global `GetLastError()`, and a member of that name shadows it inside every
+  device class deriving from `IODevice` - so each Windows backend would have
+  had to remember to write `::GetLastError()` for the API it meant, and would
+  have compiled either way. Found by cross-compiling the new backend rather
+  than by reading it.
+- Paper sizes on Windows are recognised the same way as under CUPS: by
+  measurement rather than by the name a driver gives them. `DC_PAPERSIZE`
+  reports tenths of a millimetre against `IOPaperDimensions`' hundredths, so
+  each measure is scaled rather than renamed.
+- Supply levels report nothing on Windows rather than inventing a number: the
+  spooler has no supply-level API at all, only a `PRINTER_STATUS_NO_TONER`
+  status bit. Reading real levels there needs SNMP or a vendor SDK.
+
+#### 2026-09-14 *0.8.54*
+- **IODeviceManager: printers, and the switch between GutenPrint and the
+  platform driver.** `PrinterDevice` lands with the renderer/transport split
+  that makes that switch possible on Windows as well as Linux and macOS, plus
+  a CUPS backend behind it.
+  - The split is the point. GutenPrint is two things: `libgutenprint`, which
+    is portable C that turns a page into the printer's own command stream, and
+    `rastertogutenprint`, a CUPS filter. Only the second is Unix-only. Treating
+    them as one thing is what confines a printing layer to Linux and macOS, so
+    here the **renderer** (`Native`, `GutenPrint`, `IPP`) is the application's
+    choice and the **transport** that carries its output is the platform's: a
+    CUPS raw job under Unix, `StartDocPrinter` with datatype `RAW` under
+    Windows. One rendering path, a short transport shim per platform.
+  - `PrinterDevice::GetAvailableRenderers()` answers per printer, not per
+    platform: a renderer is offered only when it is compiled in, its library is
+    present, it recognises that model, and — for one emitting a device-native
+    stream — the transport can carry a raw job. `SetRenderer()` refuses a
+    renderer that is not available instead of accepting it and falling back at
+    print time.
+  - `ResolvePrintOptions()` folds a requested option set down to what the
+    printer will accept, in GutenPrint's priority order - media, then
+    resolution, cartridge, inkset, duplex - because the parameters constrain
+    each other: 2880 dpi on plain paper yields High, photo black ink on plain
+    paper becomes matte black, a colour inkset is dropped for monochrome. Every
+    substitution comes back in words a print dialog can show ("A3 is not
+    supported, using A4") rather than being applied silently.
+  - An unreported capability is not a refusal. An empty capability list means
+    the backend did not say, and the three-valued `IOSupport`
+    (`Unknown`/`No`/`Yes`) carries the same distinction for the flags, because
+    a plain bool cannot tell "this printer has no duplex unit" from "we could
+    not read this printer's capabilities" - and conflating them strips options
+    from a printer that would have accepted them.
+  - The CUPS backend covers enumeration, capabilities, status, supply levels
+    and the job queue, and its transport carries both driver documents and raw
+    streams, so GutenPrint needs no further transport work on Unix. It reads
+    capabilities through the dest-info API rather than PPD files, so paper
+    sizes are recognised by their dimensions - CUPS reports hundredths of a
+    millimetre, as `IOPaperDimensions` does - instead of by the name a printer
+    gives them. Supply levels keep CUPS's -1 for "the printer did not say",
+    which is not the same as empty. It is one file in `core/` rather than a
+    copy under each platform directory, because CUPS is the same library with
+    the same API on Linux and macOS and two copies only drift.
+  - `Tests/IODevicePrinterTest` drives renderer selection and the resolver
+    through a fake transport and a fake raw-emitting renderer, so the seam
+    GutenPrint will plug into is asserted without libgutenprint or a printer
+    being present. It found a real defect while being written: capability
+    booleans could not express "not reported", which is what prompted
+    `IOSupport`.
+  - Whether GutenPrint is linked or run as a subprocess is still open, and is
+    a licensing question rather than a technical one - libgutenprint is GPL-2.0
+    or later, UltraCanvas is MIT. `Docs/Modules/IODeviceManager/Architecture.md`
+    carries the trade-off. Adding the renderer once that is settled is a
+    renderer class and nothing else.
+
+#### 2026-09-14 *0.8.53*
+- **IODeviceManager: the foundation layer.** The module had documentation but
+  no code; this lands the base every device category will derive from, so the
+  scanner, camera and printer work has something to build against.
+  - `IODevice` (`include/IODeviceManager/UltraCanvasIODevice.h`) owns the
+    device lifecycle. Callers use `Connect()`/`Disconnect()`; backends
+    implement `DoConnect()`/`DoDisconnect()` and the base keeps the state
+    machine, the error slot and the locking in one place. The base destructor
+    calls no virtuals - by the time it runs the derived object is gone, so a
+    virtual call from there dispatches into a dead object - and
+    `Disconnect()` always reaches the backend, even after a `Connect()` that
+    failed halfway and may still hold handles.
+  - `IODeviceManager` (`UltraCanvasIODeviceManager.h`) is the registry.
+    Backends attach as **enumerators**, one per (category, backend) pair,
+    rather than as one `EnumerateCameras()`-style method per category: a
+    category is routinely served by two backends on one platform - V4L2
+    webcams and gphoto2 DSLRs are both cameras - and a method per category
+    forces those two to define the same symbol, so they collide at link time
+    and only one ever runs. `EnumerateDevices` merges every enumerator's
+    results, keeps the existing object for a device that is still present so
+    an open session survives a rescan, drops the ones that went away, and
+    contains a throwing backend instead of losing the devices the others
+    found.
+  - `IODeviceResult` carries `Ok`/`Error(code, msg)` factories, an explicit
+    `operator bool`, a typed `IODeviceResultCode` and the backend's own status
+    in `backendCode` for the log - the shape `UltraNetResult` and
+    `UltraDbResult` already use.
+  - Backends register through `Internal::RegisterCompiledBackends()` rather
+    than from static initialisers, because a static-library build drops the
+    static initialisers of object files nothing else references, which would
+    silently leave a platform with no devices at all.
+  - `Tests/IODeviceManagerTest` drives all of it through a fake backend, so it
+    runs on a CI machine with no hardware attached. The foundation depends on
+    nothing but the standard library, so the test also builds where the
+    rendering dependencies are absent.
+  - `Docs/Modules/IODeviceManager/Architecture.md` is the API contract, and
+    carries the printer design: renderer (`Native`/`GutenPrint`/`IPP`)
+    separated from transport (CUPS raw job, or `StartDocPrinter` with datatype
+    `RAW`), which is what makes GutenPrint selectable on Windows as well as
+    Linux and macOS. libgutenprint is portable C and needs no CUPS; only its
+    *CUPS driver* is Unix-only, and conflating the two is what made the
+    earlier prototype Linux/macOS-only. The GPL-vs-MIT question that decides
+    whether it is linked or run as a subprocess is written up there, unanswered
+    - it is a product decision.
+
 #### 2026-09-15 *0.8.52*
 - **`UltraCanvasPaintSurface::SetPanMode` never turned permanent panning
   on.** The parameter was named after the member it was meant to set, so

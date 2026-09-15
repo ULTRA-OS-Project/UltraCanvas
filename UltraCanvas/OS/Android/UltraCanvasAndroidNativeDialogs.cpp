@@ -404,6 +404,16 @@ namespace UltraCanvas {
 
     // ===== PRINTING =====
 
+    NativePrintResult UltraCanvasNativeDialogs::RequestPrintSettings(
+            const std::string& documentName, UltraCanvasWindowBase*) {
+        // Android prints through the platform's own print framework, which is
+        // a Java-side PrintManager job and not a settings dialog that hands
+        // choices back. Cancelled is the honest answer until that is bridged;
+        // an OK with default settings would claim the user chose them.
+        StubDialog("RequestPrintSettings", documentName);
+        return NativePrintResult();
+    }
+
     bool UltraCanvasNativeDialogs::ShowPrintDialog(
             const std::string& documentName, const std::string&,
             UltraCanvasWindowBase*) {
