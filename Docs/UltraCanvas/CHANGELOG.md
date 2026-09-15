@@ -1,4 +1,4 @@
-#### 2026-09-14 *0.8.55*
+#### 2026-09-14 *0.8.56*
 - **IODeviceManager: hot-plug watching.** `SetDeviceChangeCallback` existed but
   only enumeration ever fired it, so a device plugged in after a scan went
   unnoticed until something rescanned. `StartMonitoring()` closes that for all
@@ -35,7 +35,7 @@
   `BackendUnavailable`, so a caller can tell "this platform cannot watch" from
   "nothing has been plugged in yet".
 
-#### 2026-09-14 *0.8.54*
+#### 2026-09-14 *0.8.55*
 - **IODeviceManager: scanners, and the SANE backend.** `ScannerDevice`
   completes the three categories the module's README advertises as production
   ready. Scanner support was previously described as finished across five
@@ -75,7 +75,7 @@
   falls out of how much data arrived and that arithmetic now lives once in
   `ScannerDevice`.
 
-#### 2026-09-14 *0.8.53*
+#### 2026-09-14 *0.8.54*
 - **IODeviceManager: cameras, and the V4L2 backend.** `CameraDevice` joins
   `PrinterDevice` as a category class, with the V4L2 webcam backend behind it -
   the backend the module's documentation has described as finished for some
@@ -116,7 +116,7 @@
   with no `/dev/video*` present. It is clean under ThreadSanitizer, which is
   the check that means something for a threaded capture path.
 
-#### 2026-09-14 *0.8.52*
+#### 2026-09-14 *0.8.53*
 - **IODeviceManager: the Windows printer backend, and with it GutenPrint on
   all three platforms.** Spooler enumeration, capabilities from
   `DeviceCapabilitiesW`, printer and job status, job cancellation, and the
@@ -148,7 +148,7 @@
   spooler has no supply-level API at all, only a `PRINTER_STATUS_NO_TONER`
   status bit. Reading real levels there needs SNMP or a vendor SDK.
 
-#### 2026-09-14 *0.8.51*
+#### 2026-09-14 *0.8.52*
 - **IODeviceManager: printers, and the switch between GutenPrint and the
   platform driver.** `PrinterDevice` lands with the renderer/transport split
   that makes that switch possible on Windows as well as Linux and macOS, plus
@@ -202,7 +202,7 @@
     carries the trade-off. Adding the renderer once that is settled is a
     renderer class and nothing else.
 
-#### 2026-09-14 *0.8.50*
+#### 2026-09-14 *0.8.51*
 - **IODeviceManager: the foundation layer.** The module had documentation but
   no code; this lands the base every device category will derive from, so the
   scanner, camera and printer work has something to build against.
@@ -246,6 +246,61 @@
     earlier prototype Linux/macOS-only. The GPL-vs-MIT question that decides
     whether it is linked or run as a subprocess is written up there, unanswered
     - it is a product decision.
+
+#### 2026-09-15 *0.8.50*
+- **A WYSIWYG editing element: `UltraCanvasRichTextEdit`.** The caret sits in
+  rendered text and bold is a state of the selection, not two asterisks in a
+  buffer. It edits a `UCRichDocument` - the same block/run model the ODT, DOCX,
+  legacy `.doc` and LaTeX readers and writers already produce - so a 14 pt
+  Georgia run in red survives a round trip through `.odt`, which is exactly
+  what the Markdown detour could never carry. This closes the "Phase 5
+  interactive styled-run editor" that `ODT-DOCX-Support-Proposal.md` had
+  deferred for its own design round; that round is
+  `Docs/UltraCanvas/WYSIWYGElementInvestigation.md` and the element's
+  documentation is `Docs/UltraCanvas/UltraCanvasRichTextEdit.md`.
+  - Three layers, each testable on its own: `UCRichDocument` (model),
+    `UCRichDocumentEditor` (positions, editing commands, formatting, undo -
+    UI-free, no framework headers) and the element (block layouts, rendering,
+    input, caret, scrolling, clipboard).
+  - Positions are `{blockIndex, byteOffset}` into a block's concatenated run
+    text, never `{run, offset}`: applying a format splits and merges runs
+    constantly and the caret must not move when the run structure changes
+    underneath it. That same string is what the element hands to `ITextLayout`,
+    so hit testing and caret geometry need no translation layer.
+  - Every `RichTextRun` attribute maps onto an existing `TextAttributeFactory`
+    call, so the whole editor is cross-platform through the one Cairo/Pango
+    `ITextLayout` implementation.
+  - Undo records the blocks an edit replaced rather than the document, so its
+    cost is the edit and the embedded media is never copied; consecutive
+    keystrokes coalesce into one step.
+  - Character formatting (bold/italic/underline/strike/code/sub/superscript,
+    font, size, colour, link), paragraph formatting (headings, alignment,
+    bullet and numbered lists with nesting, quotes, code blocks), rules, page
+    breaks and image insertion; `GetFormatState()` reports each attribute as
+    on, off or *mixed* so a toolbar can show a mixed selection honestly.
+    Pressing Bold at a collapsed caret arms the format for what is typed next.
+  - Block layouts are built only for blocks near the viewport; the rest carry
+    an estimated height until they scroll in.
+  - Toolbars are not drawn by the element - build them from
+    `UltraCanvasToolbar`, `UltraCanvasDropdown`, `UltraCanvasButton` and
+    `UltraCanvasColorPicker`, per the framework's UI-reuse rule.
+  - Known limits, documented rather than hidden: tables render but are not
+    edited in place, images are not resized interactively, math runs render as
+    their LaTeX source, there is no spell checking yet, and rich paste between
+    applications still needs the clipboard MIME flavours
+    `UltraCanvasClipboardBackend` does not carry (copy/paste *inside* an
+    application does keep formatting).
+- **`UCRichDocument` moved from `Plugins/Documents/Word/` into `core/`**
+  (`include/UltraCanvasRichDocument.h`, `core/UltraCanvasRichDocument.cpp`). A
+  framework element cannot depend upward on a plugin; the model was already
+  framework-free and compiled unconditionally, and the ODT/DOCX/DOC readers and
+  writers stay where they are and now depend downward. Only include paths
+  changed.
+- Tests: `Tests/RichTextEditorTest.cpp` covers the editing rules without a
+  display (positions, run splitting and coalescing, formatting, structure,
+  clipboard ranges, undo/redo); `Tests/RichTextEditElementTest.cpp` covers
+  layout geometry, hit testing and typed input against a real render context,
+  skipping itself when there is no display.
 
 #### 2026-09-14 *0.8.49*
 - **The demo's LaTeX page showed the math engine and almost nothing else.**
@@ -313,6 +368,30 @@
     whole overflow is reachable. Documented in `Docs/CSSLayout.md`.
 
 #### 2026-09-14 *0.8.47*
+- **The demo's XAR page now says where the format comes from.** A third panel
+  under the feature and sample panels explains that Xara is the successor of
+  ArtWorks, the vector graphics editor for RISC OS - the first OS that ran on
+  ARM CPUs - known for its ultra-fast CPU-based vector rendering and its
+  user-friendly interface, and ported to Windows as Xara. The two Wikipedia
+  references are clickable labels that hand the URL to the system browser
+  through `OpenURL`, the same way the PDF page links MuPDF. The page grew
+  from 780 to 1080 points tall to hold it, so the status line moved down with
+  it. `Docs/UltraCanvas/UltraCanvasXARExamples.md` carries the same note.
+- **The macOS Intel build is green again**, through `main`'s own
+  `ParseFloatClassic()` in `core/HTMLReader/CSSStyleSheet.cpp` (the #440 port).
+  This branch carried a second fix for the same break - Apple's libc++ has the
+  integral `std::from_chars` overloads only, so `from_chars(..., float&)`
+  resolved to the deleted `bool` overload and the file did not compile, which
+  had every PR red on the `macos-15-intel` runner - and that version is gone in
+  favour of `main`'s, which is the same scan-then-convert approach without a
+  `__cpp_lib_to_chars` branch.
+  - What is kept is the test coverage: `Tests/HTMLReaderTest.cpp` now pins the
+    number shapes such a hand-written scanner has to get right, because they
+    are where it drifts from `from_chars`. `"1.5em"` is the one that matters -
+    an `e` that turns out to be a unit rather than an exponent, which a stream
+    handed the whole string consumes before failing outright; then `.5em`,
+    `1.5e2px`, `-3px`, `1em`, a bare `1e`, and `1e999px`, which is consumed but
+    leaves the value alone, exactly as the out-of-range `from_chars` did.
 - Fixes in HTML rendering
 
 #### 2026-09-14 *0.8.46*

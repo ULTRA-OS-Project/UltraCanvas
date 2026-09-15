@@ -1,4 +1,4 @@
-// include/Plugins/Documents/Word/UltraCanvasRichDocument.h
+// include/UltraCanvasRichDocument.h
 // UCRichDocument — shared intermediate model for word-processing documents.
 // Format readers (ODT, DOCX) produce it; format writers and the
 // Markdown/HTML/plain-text serializers consume it, so no format is ever
