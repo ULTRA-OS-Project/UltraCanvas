@@ -1,3 +1,28 @@
+#### 2026-09-15 *0.8.63*
+- **Every image export is written the safe way now, not just a paint
+  document's save.** 0.8.62 gave `UCRasterDocument::SaveToFile` a staged
+  write - encode beside the target, move it into place once it is whole - but
+  the framework's own export path still handed each libvips saver the caller's
+  file. Every one of them opens truncating, so an export that failed after
+  that point destroyed the picture that was already there. Measured: exporting
+  an image wider than JPEG can represent (libjpeg stops at 65500 pixels) over
+  an existing file leaves it 0 bytes long, because the encoder opens and
+  empties the destination before it checks the dimensions. That reached users
+  through `UCImageRaster::Save` and the image export dialog.
+  `WriteFileAtomically()` in `UltraCanvasFileError.h` now holds the one copy of
+  that logic - staged path in the target's own folder, the target's
+  permissions carried across, a symlink written through rather than replaced,
+  the staged file removed on every failure path including an exception, and
+  the staged name replaced by the caller's own in whatever an encoder says
+  went wrong. `ExportVImage` wraps its encoding half in it, so every caller of
+  the export path gets the guarantee; `SaveToFile` uses it for the one write
+  that does not go that way and hands `ExportVImage` the real path, so a save
+  is staged once rather than twice. `RasterEditingTest` covers both paths with
+  a failure that happens *inside* the encoder, with the destination already
+  open - which is the case that actually destroys a file, and which passes
+  whether or not the write is staged if the test only uses a format nothing
+  can encode.
+
 #### 2026-09-15 *0.8.62*
 - **An image saves over the file it was opened from again, and a save that
   fails no longer costs the user the file that was there.** Reported from

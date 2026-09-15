@@ -22,12 +22,9 @@
 #endif
 
 #include <algorithm>
-#include <atomic>
 #include <cctype>
-#include <chrono>
 #include <cmath>
 #include <cstring>
-#include <filesystem>
 
 namespace UltraCanvas {
 
@@ -40,30 +37,6 @@ namespace {
         std::transform(e.begin(), e.end(), e.begin(), [](unsigned char c) { return std::tolower(c); });
         return e;
     }
-
-#ifdef HAS_LIBVIPS
-    // Where a save is encoded before it is put in place. The folder is the
-    // target's own, so the rename that follows never crosses a volume and is
-    // therefore atomic; the extension is the target's, because libvips picks
-    // the encoder from it; and the name itself is short and starts with a
-    // dot, so it stays hidden on POSIX while it exists and cannot push a
-    // deep path over Windows' MAX_PATH.
-    std::filesystem::path TempSavePath(const std::filesystem::path& target) {
-        namespace fs = std::filesystem;
-        static std::atomic<unsigned> counter{0};
-        const fs::path dir = target.has_parent_path() ? target.parent_path() : fs::path(".");
-        const auto stamp = static_cast<unsigned long long>(
-                std::chrono::steady_clock::now().time_since_epoch().count()) & 0xffffffu;
-        for (unsigned attempt = 0; attempt < 1000; ++attempt) {
-            const fs::path candidate = dir / (".ucsave-" + std::to_string(stamp) + "-" +
-                                              std::to_string(counter.fetch_add(1)) +
-                                              target.extension().string());
-            std::error_code ec;
-            if (!fs::exists(candidate, ec)) return candidate;
-        }
-        return dir / (".ucsave" + target.extension().string());
-    }
-#endif
 
     Rect2Di UnionRect(const Rect2Di& a, const Rect2Di& b) {
         if (a.width <= 0 || a.height <= 0) return b;
@@ -834,74 +807,27 @@ bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
         // is what makes saving over it fail. See LoadFromFile().
         PixelFX::ReleaseCachedFiles();
 
-        // Encode beside the target and move the result into place only once
-        // it is whole. Writing straight to the target truncates it before the
-        // first byte is encoded, so a save that then fails - no space left, a
-        // codec error, a destination another program holds - leaves the user
-        // with the remains of the failed write instead of the file they had.
-        namespace fs = std::filesystem;
-        std::error_code ec;
-        fs::path target(path);
-        // A link is written through rather than replaced: renaming over the
-        // link itself would leave the user with a plain file where their link
-        // was, and the file it pointed at untouched.
-        if (fs::is_symlink(target, ec)) {
-            std::error_code resolveEc;
-            const fs::path resolved = fs::weakly_canonical(target, resolveEc);
-            if (!resolveEc && !resolved.empty()) target = resolved;
-        }
-        ec.clear();
-        const fs::path temp = TempSavePath(target);
-        const std::string tempName = temp.string();
-        auto discardTemp = [&temp]() { std::error_code rm; std::filesystem::remove(temp, rm); };
-        // An encoder names the file it was given, which is ours and not the
-        // one the caller asked for: put the real name back before anybody
-        // reads the message.
-        auto retarget = [&tempName, &path](std::string message) {
-            for (size_t at = message.find(tempName); at != std::string::npos;
-                 at = message.find(tempName, at + path.size())) {
-                message.replace(at, tempName.size(), path);
-            }
-            return message;
-        };
-        try {
-            if (options) {
-                const std::string err = ExportVImage(img, tempName, *options);
-                if (!err.empty()) { discardTemp(); error = retarget(err); return false; }
-            } else if (!PixelFX::FileIO::Save(img, tempName)) {
-                discardTemp();
-                error = retarget(PixelFX::GetLastError());
-                if (error.empty()) error = "Could not write " + path;
-                return false;
-            }
-        } catch (const std::exception& e) {
-            discardTemp();
-            error = retarget(e.what());
-            return false;
-        } catch (...) {
-            discardTemp();
-            throw;
-        }
-
-        // Replacing a file gives it the temporary file's permissions, which
-        // would quietly widen a private image to the default mode: carry the
-        // target's own across first.
-        if (fs::exists(target, ec)) {
-            const fs::perms mode = fs::status(target, ec).permissions();
-            if (!ec) fs::permissions(temp, mode, ec);
-            ec.clear();
-        }
-        fs::rename(temp, target, ec);
-        if (ec) {
-            // The image encoded fine and the destination is what refused it -
-            // it is open in another program, or on a volume that will not
-            // take the replacement. Say which, and keep nothing behind.
-            const std::string why = DescribeFileWriteError(path);
-            discardTemp();
-            error = !why.empty() ? why
-                                 : ("Could not put the saved image in place: " + path +
-                                    " (" + ec.message() + ")");
-            return false;
+        // The export path stages its own write (ExportVImage), so it is
+        // handed the caller's file and does the staging once. A plain save
+        // goes straight to libvips' write_to_file, which truncates what it
+        // opens, so it is staged here: a failure after that point - no space
+        // left, a codec error, a destination another program holds - would
+        // otherwise leave the user with the remains of the write instead of
+        // the image they had.
+        if (options) {
+            const std::string err = ExportVImage(img, path, *options);
+            if (!err.empty()) { error = err; return false; }
+        } else {
+            error = WriteFileAtomically(path, [&img](const std::string& staged) -> std::string {
+                try {
+                    if (PixelFX::FileIO::Save(img, staged)) return std::string();
+                } catch (const std::exception& e) {
+                    return e.what();
+                }
+                const std::string vipsError = PixelFX::GetLastError();
+                return vipsError.empty() ? std::string("The image could not be encoded.") : vipsError;
+            });
+            if (!error.empty()) return false;
         }
         filePath = path;
         SetModified(false);
