@@ -23,38 +23,6 @@ namespace HTML {
 // STRING HELPERS
 // ============================================================================
 
-// Parses a float in the C locale from [first,last). Returns the position after
-// what was consumed, or `first` when nothing numeric is there - the same shape
-// as std::from_chars_result::ptr, which is what the callers below want.
-//
-// Deliberately not std::from_chars: libc++ implements only its *integral*
-// overloads (the floating-point ones are unimplemented in the Apple Clang
-// toolchains CI builds on), so `from_chars(p, p + n, float&)` finds no viable
-// candidate and binds the deleted `from_chars(const char*, const char*, bool)`.
-// strtof does parse floats everywhere, but reads the decimal point of the
-// active LC_NUMERIC - which is the bug from_chars was adopted here to fix, a
-// comma-decimal locale turning rgba() alpha and every length into 0. So the
-// separator is swapped in when the locale's differs from CSS's '.'.
-//
-// strtof also backtracks to the longest valid prefix, which is what makes
-// "0.5em" parse as 0.5 with "em" left over rather than failing on the "e".
-static const char* ParseFloatC(const char* first, const char* last, float& out) {
-    std::string buf(first, last);
-    const char* decimalPoint = std::localeconv()->decimal_point;
-    if (decimalPoint && *decimalPoint && *decimalPoint != '.') {
-        for (char& c : buf) {
-            if (c == '.') c = *decimalPoint;
-        }
-    }
-
-    const char* base = buf.c_str();
-    char* end = nullptr;
-    const float value = std::strtof(base, &end);
-    if (end == base) return first;   // nothing numeric here
-    out = value;
-    return first + (end - base);
-}
-
 std::string TrimLower(const std::string& text) {
     std::string result = Trim(text);
     std::transform(result.begin(), result.end(), result.begin(),

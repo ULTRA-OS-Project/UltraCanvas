@@ -1,4 +1,4 @@
-#### 2026-09-14 *0.8.49*
+#### 2026-09-15 *0.8.50*
 - **A WYSIWYG editing element: `UltraCanvasRichTextEdit`.** The caret sits in
   rendered text and bold is a state of the selection, not two asterisks in a
   buffer. It edits a `UCRichDocument` - the same block/run model the ODT, DOCX,
@@ -52,6 +52,8 @@
   clipboard ranges, undo/redo); `Tests/RichTextEditElementTest.cpp` covers
   layout geometry, hit testing and typed input against a real render context,
   skipping itself when there is no display.
+
+#### 2026-09-14 *0.8.49*
 - **The demo's LaTeX page showed the math engine and almost nothing else.**
   Of the 24 documents it listed, 23 were single formulas, so the document
   reader — sections, tables, figures, code, macros, theorems, references —
