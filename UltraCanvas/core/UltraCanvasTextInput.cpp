@@ -1,7 +1,13 @@
 // UltraCanvasTextInput.cpp
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.4.0
-// Last Modified: 2026-08-31
+// Version: 1.5.0
+// Last Modified: 2026-09-15
+// V1.5.0: Every byte offset the field keeps is now a character boundary. Caret
+//   movement, Backspace and Delete step a whole character, hit testing snaps to
+//   one, the password mask draws one '*' per character, the length limit counts
+//   characters, and text arriving from outside is repaired to valid UTF-8 -
+//   typing "Fröhling" used to leave half an "ö" in the buffer, which the text
+//   renderer rejects as invalid UTF-8.
 // V1.4.0: Password fields gained an optional in-field reveal ("eye") button that
 //   flips the mask off, plus SetPasswordRevealed() so an external
 //   "Show password" control can drive the same state.
@@ -64,16 +70,50 @@ namespace UltraCanvas {
         if (onTextChanged) onTextChanged(text);
     }
 
+    std::string UltraCanvasTextInput::GetRenderText() const {
+        // One '*' per character, not per byte: a passphrase with an umlaut in
+        // it used to show more stars than the user had typed, and lose one
+        // star per keystroke of Backspace out of step with the text.
+        if (passwordMode && !passwordRevealed)
+            return std::string(static_cast<size_t>(utf8_length(displayText)), '*');
+        return displayText;
+    }
+
+    bool UltraCanvasTextInput::IsMasked() const {
+        return passwordMode && !passwordRevealed;
+    }
+
+    size_t UltraCanvasTextInput::ToRenderOffset(size_t textOffset) const {
+        const size_t clamped = utf8_align_boundary(displayText,
+                                                   std::min(textOffset, displayText.length()));
+        // Masked: one star per character, so a byte offset into the text is a
+        // character index into the painted stars.
+        if (IsMasked()) return static_cast<size_t>(utf8_byte_to_cp(displayText, clamped));
+        return clamped;
+    }
+
+    size_t UltraCanvasTextInput::FromRenderOffset(size_t renderOffset) const {
+        if (IsMasked()) {
+            const int stars = utf8_length(displayText);
+            const int index = static_cast<int>(std::min(renderOffset, static_cast<size_t>(stars)));
+            return utf8_cp_to_byte(displayText, index);
+        }
+        return utf8_align_boundary(displayText, std::min(renderOffset, displayText.length()));
+    }
+
     void UltraCanvasTextInput::SetText(const std::string &newText) {
         if (readOnly) return;
 
         SaveState();  // For undo
 
-        text = newText;
+        // Whatever the caller had (a file, a database column, a network
+        // header) may not be UTF-8; one malformed byte would make the whole
+        // field unrenderable, so repair it on the way in.
+        text = utf8_make_valid(newText);
         displayText = formatter.formatFunction ? formatter.formatFunction(text) : text;
 
-        // Clamp caret position
-        caretPosition = std::min(caretPosition, text.length());
+        // Clamp caret position, onto a character boundary
+        caretPosition = utf8_align_boundary(text, std::min(caretPosition, text.length()));
 
         // Clear selection if it's now invalid
         if (selectionEnd > text.length()) {
@@ -133,8 +173,10 @@ namespace UltraCanvas {
 
     void UltraCanvasTextInput::SetMaxLength(int length) {
         maxLength = length;
-        if (maxLength > 0 && static_cast<int>(text.length()) > maxLength) {
-            SetText(text.substr(0, maxLength));
+        // Counted in characters, not bytes: "Fröhling" is eight characters in
+        // nine bytes, and truncating to a byte count can cut one in half.
+        if (maxLength > 0 && utf8_length(text) > maxLength) {
+            SetText(text.substr(0, utf8_bytes_for_chars(text, maxLength)));
         }
     }
 
@@ -181,8 +223,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::SetSelection(size_t start, size_t end) {
-        selectionStart = std::min(start, text.length());
-        selectionEnd = std::min(end, text.length());
+        // Both ends snap to a character start, so the selected span - which is
+        // measured, copied and cut as a string - is always whole characters.
+        selectionStart = utf8_align_boundary(text, std::min(start, text.length()));
+        selectionEnd = utf8_align_boundary(text, std::min(end, text.length()));
 
         if (selectionStart > selectionEnd) {
             std::swap(selectionStart, selectionEnd);
@@ -238,7 +282,8 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasTextInput::SetCaretPosition(size_t position) {
-        caretPosition = std::min(position, text.length());
+        // A byte offset from a caller need not land on a character start.
+        caretPosition = utf8_align_boundary(text, std::min(position, text.length()));
         ClearSelection();
         UpdateScrollOffset();
         // The render pass reports the new caret rect to UltraCanvasCaret
@@ -559,6 +604,9 @@ namespace UltraCanvas {
 
         // Normalize so a backward selection (Shift+Left / Shift+Home) measures correctly.
         auto [selBegin, selEnd] = GetSelectionRange();
+        // ...then express both ends in the painted string's own offsets.
+        selBegin = ToRenderOffset(selBegin);
+        selEnd   = ToRenderOffset(selEnd);
 
         // Get text segments for accurate measurement
         std::string textBeforeSelection = displayText.substr(0, selBegin);
@@ -599,8 +647,7 @@ namespace UltraCanvas {
         } else {
             // Calculate width of text up to caret position
             std::string displayText = GetRenderText();
-            std::string textUpToCaret =
-                displayText.substr(0, std::min(caretPosition, displayText.length()));
+            std::string textUpToCaret = displayText.substr(0, ToRenderOffset(caretPosition));
 
             // Set text style for accurate measurement
             ctx->SetFontStyle(style.fontStyle);
@@ -777,13 +824,15 @@ namespace UltraCanvas {
         // Set text style for measurement
         ctx->SetFontStyle(style.fontStyle);
 
-        // Binary search for position
-        size_t left = 0, right = displayText.length();
+        // Binary search over character boundaries, never raw bytes: a caret can
+        // only sit between characters, and a prefix cut inside a multi-byte one
+        // is not UTF-8 for the measurement call either.
+        const std::vector<size_t> boundaries = utf8_boundaries(displayText);
 
+        size_t left = 0, right = boundaries.size() - 1;
         while (left < right) {
             size_t mid = (left + right) / 2;
-            std::string textToMid = displayText.substr(0, mid);
-            float widthToMid = ctx->GetTextLineWidth(textToMid);
+            float widthToMid = ctx->GetTextLineWidth(displayText.substr(0, boundaries[mid]));
 
             if (widthToMid < relativeX) {
                 left = mid + 1;
@@ -792,7 +841,15 @@ namespace UltraCanvas {
             }
         }
 
-        return std::min(left, displayText.length());
+        // Land on whichever side of the clicked character is nearer, the way a
+        // click in the left half of a wide glyph expects.
+        if (left > 0) {
+            float after  = ctx->GetTextLineWidth(displayText.substr(0, boundaries[left]));
+            float before = ctx->GetTextLineWidth(displayText.substr(0, boundaries[left - 1]));
+            if (relativeX - before < after - relativeX) --left;
+        }
+
+        return FromRenderOffset(boundaries[left]);
     }
 
     bool UltraCanvasTextInput::HandleMouseDown(const UCEvent &event) {
@@ -899,10 +956,13 @@ namespace UltraCanvas {
         // read-only inputs (only text mutation is blocked for read-only). =====
         switch (event.virtualKey) {
             case UCKeys::Left: {
-                // Ctrl jumps by word (UTF-8 aware); otherwise step one character.
+                // Ctrl jumps by word; otherwise step one whole character. Both
+                // are UTF-8 aware: stepping by a byte would leave the caret
+                // inside a multi-byte character, and every prefix measured from
+                // there (caret x, selection width) would be invalid UTF-8.
                 size_t newPos = event.ctrl
                         ? FindPrevWordBoundary(caretPosition)
-                        : (caretPosition > 0 ? caretPosition - 1 : caretPosition);
+                        : utf8_prev_boundary(text, caretPosition);
                 if (event.shift) {
                     if (!hasSelection) selectionStart = caretPosition;
                     caretPosition = newPos;
@@ -917,10 +977,10 @@ namespace UltraCanvas {
             }
 
             case UCKeys::Right: {
-                // Ctrl jumps by word (UTF-8 aware); otherwise step one character.
+                // Ctrl jumps by word; otherwise step one whole character (see Left).
                 size_t newPos = event.ctrl
                         ? FindNextWordBoundary(caretPosition)
-                        : (caretPosition < text.length() ? caretPosition + 1 : caretPosition);
+                        : utf8_next_boundary(text, caretPosition);
                 if (event.shift) {
                     if (!hasSelection) selectionStart = caretPosition;
                     caretPosition = newPos;
@@ -1029,10 +1089,13 @@ namespace UltraCanvas {
                     DeleteSelection();
                 } else if (caretPosition > 0) {
                     SaveState();
-                    text.erase(caretPosition - 1, 1);
-                    caretPosition--;
+                    // Erase the whole character before the caret, not its last
+                    // byte: "Fröhling" backspaced a byte at a time leaves a
+                    // half "ö" behind, which is no longer UTF-8.
+                    const size_t from = utf8_prev_boundary(text, caretPosition);
+                    text.erase(from, caretPosition - from);
+                    caretPosition = from;
                     UpdateDisplayText();
-
                 }
                 UpdateScrollOffset();
                 TextChanged();
@@ -1049,7 +1112,9 @@ namespace UltraCanvas {
                     DeleteSelection();
                 } else if (caretPosition < text.length()) {
                     SaveState();
-                    text.erase(caretPosition, 1);
+                    // The whole character after the caret (see Backspace).
+                    const size_t to = utf8_next_boundary(text, caretPosition);
+                    text.erase(caretPosition, to - caretPosition);
                     UpdateDisplayText();
                 }
                 UpdateScrollOffset();
@@ -1154,13 +1219,19 @@ namespace UltraCanvas {
         return true;
     }
 
-    void UltraCanvasTextInput::InsertText(const std::string &insertText) {
+    void UltraCanvasTextInput::InsertText(const std::string &rawInsertText) {
         if (readOnly) return;
 
         SaveState();
 
-        // Check max length
-        if (maxLength > 0 && static_cast<int>(text.length() + insertText.length()) > maxLength) {
+        // Typed characters arrive as UTF-8 from every backend's input method,
+        // but a paste - or a keyboard backend falling back to a byte lookup -
+        // can carry bytes that are not: repair them rather than storing text
+        // the renderer will refuse.
+        const std::string insertText = utf8_make_valid(rawInsertText);
+
+        // Check max length (in characters - see SetMaxLength)
+        if (maxLength > 0 && utf8_length(text) + utf8_length(insertText) > maxLength) {
             return;
         }
 
@@ -1269,8 +1340,10 @@ namespace UltraCanvas {
 
         std::string displayText = GetRenderText();
 
-        // Measure text up to caret.
-        std::string textUpToCaret = displayText.substr(0, std::min(caretPosition, displayText.length()));
+        // Measure text up to caret (a whole number of characters - measuring a
+        // prefix that ends inside a multi-byte character hands the renderer a
+        // string that is not UTF-8).
+        std::string textUpToCaret = displayText.substr(0, ToRenderOffset(caretPosition));
 
         // Set text style for measurement
         ctx->SetFontStyle(style.fontStyle);
@@ -1297,8 +1370,9 @@ namespace UltraCanvas {
     ValidationRule ValidationRule::MinLength(int minLen, const std::string &message) {
         std::string msg = message.empty() ?
                           "Must be at least " + std::to_string(minLen) + " characters" : message;
+        // The message says characters, so count characters.
         return ValidationRule("MinLength", msg, [minLen](const std::string& value) {
-            return value.length() >= static_cast<size_t>(minLen);
+            return utf8_length(value) >= minLen;
         });
     }
 
@@ -1306,7 +1380,7 @@ namespace UltraCanvas {
         std::string msg = message.empty() ?
                           "Must be no more than " + std::to_string(maxLen) + " characters" : message;
         return ValidationRule("MaxLength", msg, [maxLen](const std::string& value) {
-            return value.length() <= static_cast<size_t>(maxLen);
+            return utf8_length(value) <= maxLen;
         });
     }
 

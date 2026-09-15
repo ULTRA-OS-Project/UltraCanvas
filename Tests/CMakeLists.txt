@@ -350,6 +350,29 @@ else()
     message(STATUS "  RichTextEditElementTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== TEXT INPUT UTF-8 TEST =====
+# Caret movement, Backspace/Delete, hit testing, masking and the length limit of
+# UltraCanvasTextInput all address the buffer by byte offset; this proves every
+# one of those offsets lands on a character boundary, so a name like "Fröhling"
+# never becomes invalid UTF-8. Drives the widget headless - no display needed.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building TextInputUtf8Test...")
+    add_executable(TextInputUtf8Test
+        ${CMAKE_CURRENT_SOURCE_DIR}/TextInputUtf8Test.cpp
+    )
+    target_include_directories(TextInputUtf8Test PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(TextInputUtf8Test PRIVATE cxx_std_20)
+    target_link_libraries(TextInputUtf8Test PRIVATE UltraCanvas)
+    set_target_properties(TextInputUtf8Test PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME TextInputUtf8Test COMMAND TextInputUtf8Test
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: TextInputUtf8Test")
+else()
+    message(STATUS "  TextInputUtf8Test skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CARET STACKING ORDER TEST =====
 # Where the shared caret lands in the window's compositing order: under a menu
 # opened over it, back on top once the menu closes. Needs the real framework -

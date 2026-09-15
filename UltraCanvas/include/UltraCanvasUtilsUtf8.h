@@ -1,13 +1,19 @@
-// include/UltraCanvasUtils.h
-// Utils
-// Version: 1.0.0
-// Last Modified: 2025-09-14
+// include/UltraCanvasUtilsUtf8.h
+// UTF-8 string utilities: codepoint indexing, byte-offset character
+// boundaries, search, split and repair.
+// Version: 1.1.0
+// Last Modified: 2026-09-15
+// V1.1.0: byte-offset boundary helpers (utf8_align_boundary /
+//   utf8_prev_boundary / utf8_next_boundary / utf8_boundaries /
+//   utf8_bytes_for_chars) plus utf8_make_valid, for buffers that address text
+//   by byte offset and must not split a character in half.
 // Author: UltraCanvas Framework
 
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
 #include <string>
+#include <vector>
 #include <glib.h>
 
 namespace UltraCanvas {
@@ -35,6 +41,80 @@ namespace UltraCanvas {
         return g_utf8_get_char(g_utf8_offset_to_pointer(s.c_str(), idx));
     }
 
+    // ===== Byte-offset character boundaries =====
+    // For buffers that address text by byte offset (a caret position, a
+    // selection end, a hit-test result). Walking such an offset by one byte
+    // splits every multi-byte character, and the half sequence that is left
+    // is not UTF-8 any more: Pango rejects it, so the field stops drawing and
+    // the debug log fills with encoding complaints. These move by whole
+    // characters instead.
+    //
+    // They scan for lead bytes rather than decoding, so text that arrived
+    // malformed still advances one byte at a time instead of tripping an
+    // assertion inside GLib.
+    inline bool utf8_is_continuation_byte(unsigned char b) {
+        return (b & 0xC0) == 0x80;
+    }
+
+    // Start of the character containing `bytePos` (`bytePos` itself when it
+    // already sits on a boundary).
+    inline size_t utf8_align_boundary(const std::string& s, size_t bytePos) {
+        if (bytePos >= s.size()) return s.size();
+        while (bytePos > 0 &&
+               utf8_is_continuation_byte(static_cast<unsigned char>(s[bytePos]))) {
+            --bytePos;
+        }
+        return bytePos;
+    }
+
+    // Start of the character before `bytePos` (0 when there is none).
+    inline size_t utf8_prev_boundary(const std::string& s, size_t bytePos) {
+        if (bytePos == 0 || s.empty()) return 0;
+        if (bytePos > s.size()) bytePos = s.size();
+        --bytePos;
+        while (bytePos > 0 &&
+               utf8_is_continuation_byte(static_cast<unsigned char>(s[bytePos]))) {
+            --bytePos;
+        }
+        return bytePos;
+    }
+
+    // Start of the character after `bytePos` (end of string when there is none).
+    inline size_t utf8_next_boundary(const std::string& s, size_t bytePos) {
+        if (bytePos >= s.size()) return s.size();
+        ++bytePos;
+        while (bytePos < s.size() &&
+               utf8_is_continuation_byte(static_cast<unsigned char>(s[bytePos]))) {
+            ++bytePos;
+        }
+        return bytePos;
+    }
+
+    // Byte offsets of every character start, plus one past the last character.
+    // A field that measures prefixes of its text (caret x, hit test, selection
+    // highlight) steps through these so no prefix ever ends mid-character.
+    inline std::vector<size_t> utf8_boundaries(const std::string& s) {
+        std::vector<size_t> offsets;
+        offsets.push_back(0);
+        for (size_t i = utf8_next_boundary(s, 0); i < s.size();
+             i = utf8_next_boundary(s, i)) {
+            offsets.push_back(i);
+        }
+        if (!s.empty()) offsets.push_back(s.size());
+        return offsets;
+    }
+
+    // Byte length of the first `maxChars` characters - what to truncate to when
+    // a limit is expressed in characters, as a user-facing one always is.
+    inline size_t utf8_bytes_for_chars(const std::string& s, int maxChars) {
+        if (maxChars <= 0) return 0;
+        size_t pos = 0;
+        for (int i = 0; i < maxChars && pos < s.size(); ++i) {
+            pos = utf8_next_boundary(s, pos);
+        }
+        return pos;
+    }
+
     // Substring by codepoint position/count (-1 count = to end)
     std::string utf8_substr(const std::string& s, int pos, int count = -1);
 
@@ -56,6 +136,13 @@ namespace UltraCanvas {
 
     // Encode a codepoint to UTF-8
     std::string utf8_encode(gunichar cp);
+
+    // Return `s` with every byte that is not part of a well-formed UTF-8
+    // sequence replaced by U+FFFD. Text entering a widget from outside - the
+    // clipboard, a keyboard backend without an input method, a file - is not
+    // guaranteed to be UTF-8, and one stray byte is enough to make the whole
+    // string unrenderable. Valid input is returned unchanged.
+    std::string utf8_make_valid(const std::string& s);
 
     // Forward find. Returns codepoint position, or -1 if not found.
     // Case-insensitive mode uses g_utf8_strdown (preserves codepoint count).
