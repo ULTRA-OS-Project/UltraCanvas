@@ -19,6 +19,7 @@
 #include <chrono>
 #include <iostream>
 #include <mutex>
+#include <unordered_map>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
@@ -119,26 +120,56 @@ namespace UltraCanvas {
 //            return payload->GetWidth() * payload->GetHeight() * 4 + sizeof(UCPixmapCairoCacheEntry);
 //        }
 //    };
+//
+// GetEntrySize() is asked ONCE, when the entry is stored, and the answer is
+// what the cache holds against the budget and gives back when the entry goes.
+// It is never asked again, because for several payloads it does not stay the
+// same: an image's size counts a lazily decoded animation, an SVG document's
+// counts pages it rasterizes on demand. Re-asking at eviction time returned
+// MORE than was ever added, and `currentCacheSize` is unsigned - so the total
+// wrapped to an enormous number, every later insert found itself over budget,
+// and the loop below emptied the whole cache to make room for one entry. The
+// cache then held one item for the rest of the session: every image was
+// decoded again on every use, which is what "the thumbnails stopped showing"
+// looked like from the outside. An entry whose payload grows is therefore
+// under-counted rather than over-counted, which costs some memory and keeps
+// the cache working; a caller that needs the new size re-adds the entry, and
+// the overwrite path below accounts for that correctly.
 
     template <class ET, class CACHEENTRY> class UCCache {
     private:
+        // The entry as the caller defined it, plus the size it was charged
+        // for. Keeping the two together is what makes add and remove exact
+        // inverses of each other.
+        struct Slot {
+            CACHEENTRY entry;
+            size_t bytes = 0;
+        };
 
-        std::unordered_map<std::string, CACHEENTRY> cache;
+        std::unordered_map<std::string, Slot> cache;
         std::mutex cacheMutex;
         size_t maxCacheSize = 50 * 1024 * 1024;
         size_t currentCacheSize = 0;
+
+        // Give back exactly what `it` was charged. std::min because a counter
+        // that cannot go below zero is worth more than one that is arithmetically
+        // pure: an underflow here is not a small error, it is a cache that
+        // believes it is permanently full.
+        void ReleaseSlot(typename std::unordered_map<std::string, Slot>::iterator it) {
+            currentCacheSize -= std::min(currentCacheSize, it->second.bytes);
+        }
 
         void RemoveOldestCacheEntry() {
             // Find oldest entry (no lock needed, called from locked context)
             auto oldest = cache.begin();
             for (auto it = cache.begin(); it != cache.end(); ++it) {
-                if (it->second.lastAccess < oldest->second.lastAccess) {
+                if (it->second.entry.lastAccess < oldest->second.entry.lastAccess) {
                     oldest = it;
                 }
             }
 
             if (oldest != cache.end()) {
-                currentCacheSize -= oldest->second.GetEntrySize();
+                ReleaseSlot(oldest);
                 cache.erase(oldest);
             }
         }
@@ -150,18 +181,30 @@ namespace UltraCanvas {
 
             std::lock_guard<std::mutex> lock(cacheMutex);
 
-            CACHEENTRY entry;
-            entry.lastAccess = std::chrono::steady_clock::now();
-            entry.payload = p;
+            Slot slot;
+            slot.entry.lastAccess = std::chrono::steady_clock::now();
+            slot.entry.payload = p;
+            slot.bytes = slot.entry.GetEntrySize();
 
-            size_t dataSize = entry.GetEntrySize();
+            const size_t dataSize = slot.bytes;
+
+            // Replacing an entry returns the old one's bytes first: the key
+            // holds one payload, not two. Two threads that miss on the same
+            // key and both decode it - four thumbnail workers on one picture -
+            // arrive here one after the other, and without this the second
+            // would charge for a payload the first one's is replacing.
+            auto existing = cache.find(key);
+            if (existing != cache.end()) {
+                ReleaseSlot(existing);
+                cache.erase(existing);
+            }
 
             // Check if we need to make room
             while (currentCacheSize + dataSize > maxCacheSize && !cache.empty()) {
                 RemoveOldestCacheEntry();
             }
 
-            cache[key] = std::move(entry);
+            cache[key] = std::move(slot);
             currentCacheSize += dataSize;
         }
 
@@ -170,8 +213,8 @@ namespace UltraCanvas {
 
             auto it = cache.find(key);
             if (it != cache.end()) {
-                it->second.lastAccess = std::chrono::steady_clock::now();
-                return it->second.payload;
+                it->second.entry.lastAccess = std::chrono::steady_clock::now();
+                return it->second.entry.payload;
             }
 
             return nullptr;
@@ -188,7 +231,7 @@ namespace UltraCanvas {
             std::lock_guard<std::mutex> lock(cacheMutex);
             auto it = cache.find(key);
             if (it == cache.end()) return false;
-            currentCacheSize -= it->second.GetEntrySize();
+            ReleaseSlot(it);
             cache.erase(it);
             return true;
         }
@@ -201,7 +244,7 @@ namespace UltraCanvas {
             size_t removed = 0;
             for (auto it = cache.begin(); it != cache.end();) {
                 if (it->first.compare(0, prefix.size(), prefix) == 0) {
-                    currentCacheSize -= it->second.GetEntrySize();
+                    ReleaseSlot(it);
                     it = cache.erase(it);
                     ++removed;
                 } else {
@@ -212,6 +255,19 @@ namespace UltraCanvas {
         }
 
         void SetMaxCacheSize(size_t size) { maxCacheSize = size; }
+
+        // What the cache believes it is holding, and how many entries that is.
+        // Public so a test can assert the two stay in step with what was put
+        // in - the drift these two numbers used to develop was invisible from
+        // the outside until the cache had emptied itself.
+        size_t GetCurrentCacheSize() {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            return currentCacheSize;
+        }
+        size_t GetEntryCount() {
+            std::lock_guard<std::mutex> lock(cacheMutex);
+            return cache.size();
+        }
     };
 
 }
