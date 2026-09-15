@@ -2,6 +2,9 @@
 
 ## Unify Every Device Behind a Single API
 
+> **API contract and current build status: [Architecture.md](Architecture.md).**
+> This page is the overview; that one is what the code actually does today.
+
 **IODeviceManager** is a comprehensive, cross-platform hardware abstraction layer that eliminates the complexity of working with diverse input/output devices. Whether you're building scanning workflows, imaging applications, document processing systems, or full-featured operating system services, IODeviceManager provides a single, unified API to discover, configure, and operate hardware across dozens of protocols and platforms.
 
 ---
@@ -33,7 +36,7 @@ manager.EnumerateDevices(IODeviceCategory::Printer);
 Acquire images from any scanner — flatbed, ADF, network — without writing protocol-specific code. Perfect for document workflows, archival, and capture pipelines:
 
 ```cpp
-auto scanner = manager.GetDeviceByProtocol(ScannerProtocol::Auto, 0);
+auto scanner = manager.GetDevice(IODeviceCategory::Scanner, 0);
 scanner->Connect();
 
 ScanConfiguration config;
@@ -49,7 +52,7 @@ Stream video, capture stills, and control PTZ from webcams, DSLRs, and network c
 
 ```cpp
 // Webcams, DSLRs, IP cameras — all the same API
-auto camera = manager.GetDeviceByCategory(IODeviceCategory::Camera, 0);
+auto camera = manager.GetDevice(IODeviceCategory::Camera, 0);
 camera->StartStream();
 camera->CapturePhoto("snapshot.jpg");
 camera->SetPTZ(pan, tilt, zoom);  // Network cameras
@@ -84,7 +87,7 @@ manager.RegisterDevice(customDevice);
 | **Scanner** | Document and image scanners | Flatbed, ADF, film, network scanners | ✅ Production |
 | **Camera** | Still and video imaging devices | Webcams, DSLRs, IP cameras | ✅ Production |
 | **NetworkCamera** | IP-based cameras with PTZ | ONVIF, RTSP, HTTP cameras | ✅ Production |
-| **Printer** | Local and network printers | Inkjet, laser, label, 3D printers | 🚧 In Progress |
+| **Printer** | Local and network printers, GutenPrint or native driver | Inkjet, laser, label, 3D printers | 🚧 In Progress |
 | **GPIO** | General purpose I/O pins | Raspberry Pi, Arduino, embedded boards | 🚧 In Progress |
 | **Microphone** | Audio input devices | USB mics, headset mics, XLR interfaces | 📋 Planned |
 | **Speaker** | Audio output devices | Speakers, headphones, monitors | 📋 Planned |
@@ -111,7 +114,7 @@ manager.RegisterDevice(customDevice);
 | **Camera (Webcam)** | V4L2 | MediaFoundation | AVFoundation | — |
 | **Camera (DSLR)** | libgphoto2 | WIA | ImageCapture | — |
 | **Network Camera** | RTSP, ONVIF | RTSP, ONVIF | RTSP, ONVIF | RTSP, ONVIF, mDNS, UPnP |
-| **Printer** | CUPS | Windows Print API, GDI | CUPS | IPP, SNMP, Bonjour |
+| **Printer** | CUPS, GutenPrint | Windows Print API, GutenPrint | CUPS, GutenPrint | IPP, SNMP, Bonjour |
 | **Microphone** | ALSA, PulseAudio | WASAPI | CoreAudio | — |
 | **Speaker** | ALSA, PulseAudio | WASAPI | CoreAudio | — |
 | **Storage** | udev | Windows Storage API | DiskArbitration | — |
@@ -180,7 +183,7 @@ manager.Initialize();
 manager.EnumerateDevices(IODeviceCategory::Scanner);
 
 // Use any compatible device
-auto device = manager.GetDeviceByProtocol(ScannerProtocol::Auto, 0);
+auto device = manager.GetDevice(IODeviceCategory::Scanner, 0);
 if (device && device->Connect()) {
     // Operate device through unified API
     device->Disconnect();
