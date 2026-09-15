@@ -6,6 +6,7 @@
 
 #include "Plugins/SVG/UltraCanvasSVGPlugin.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat
 #include "UltraCanvasFileError.h"
 #include <cmath>
 #include <algorithm>
@@ -17,16 +18,14 @@ namespace UltraCanvas {
     //UltraCanvasSVGPlugin* UltraCanvasSVGPlugin::instance = nullptr;
 
 // Helper functions
+    // TryParseFloat, not std::stof: SVG numbers are dot-decimal by
+    // specification, and std::stof reads them through LC_NUMERIC, which the
+    // Linux backend sets from the environment for XIM. See UltraCanvasTextUtils.h.
     static float ParseFloatAttribute(const tinyxml2::XMLElement* elem, const char* name, float defaultValue = 0.0f) {
         const char* attr = elem->Attribute(name);
-        if (attr) {
-            try {
-                return std::stof(attr);
-            } catch (...) {
-                return defaultValue;
-            }
-        }
-        return defaultValue;
+        float value = defaultValue;
+        if (attr) TryParseFloat(attr, value);
+        return value;
     }
 
     static std::string GetAttribute(const tinyxml2::XMLElement* elem, const char* name, const std::string& defaultValue = "") {
@@ -168,9 +167,9 @@ namespace UltraCanvas {
 //                        strokeColor.a = 255;
 //                    }
                 } else if (key == "stroke-width") {
-                    strokeWidth = std::stof(value);
+                    TryParseFloat(value, strokeWidth);
                 } else if (key == "opacity") {
-                    opacity = std::stof(value);
+                    TryParseFloat(value, opacity);
                 }
             }
         }
@@ -664,11 +663,11 @@ namespace UltraCanvas {
 
             if (pos > startPos) {
                 std::string numStr = str.substr(startPos, pos - startPos);
-                try {
-                    numbers.push_back(std::stof(numStr));
-                } catch (...) {
-                    // Invalid number, skip
+                float number = 0.0f;
+                if (TryParseFloat(numStr, number)) {
+                    numbers.push_back(number);
                 }
+                // else: not a number after all (a lone '-', '.', or 'e') - skip it
             }
 
             // Skip comma if present
@@ -1383,7 +1382,8 @@ namespace UltraCanvas {
 
         // Simple length parser - handles px and %
         if (lengthStr.back() == '%') {
-            float percentage = std::stof(lengthStr.substr(0, lengthStr.length() - 1));
+            float percentage = 0.0f;
+            TryParseFloat(lengthStr.substr(0, lengthStr.length() - 1), percentage);
             return percentage * reference / 100.0f;
         }
 
@@ -1393,7 +1393,9 @@ namespace UltraCanvas {
             numStr = numStr.substr(0, numStr.find("px"));
         }
 
-        return std::stof(numStr);
+        float length = 0.0f;
+        TryParseFloat(numStr, length);
+        return length;
     }
 
     Rect2Dd SVGElementRenderer::GetElementBounds(tinyxml2::XMLElement* elem) {
