@@ -6,6 +6,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasUtils.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include "UCTextLayout.h"
 #include "../libspecific/Cairo/RenderContextCairo.h"
 #include <cstring>
@@ -828,7 +829,10 @@ namespace UltraCanvas {
                 return -1;
             }
 
-            pango_layout_set_text(layout, text.c_str(), -1);
+            // Same repair as UCTextLayout::SetText: Pango takes UTF-8 only,
+            // and complains into the debug log about anything else.
+            const std::string safe = utf8_make_valid(text);
+            pango_layout_set_text(layout, safe.c_str(), -1);
 
             if (!pango_layout_xy_to_index(layout, x * PANGO_SCALE, y * PANGO_SCALE, &index, &trailing)) {
                 index = -1;

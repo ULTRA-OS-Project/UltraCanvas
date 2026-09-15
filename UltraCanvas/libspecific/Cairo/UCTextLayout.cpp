@@ -1,13 +1,17 @@
 // libspecific/Cairo/UCTextLayout.cpp
 // Pango text layout wrapper for UltraCanvas Framework
-// Version: 1.1.3
-// Last Modified: 2026-08-22
+// Version: 1.1.4
+// Last Modified: 2026-09-15
+// V1.1.4: text that is not valid UTF-8 is repaired before it reaches Pango,
+//   which would otherwise log "Invalid UTF-8 string passed to
+//   pango_layout_set_text()" and drop the string.
 // Author: UltraCanvas Framework
 
 #include "UCTextLayout.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasRenderContext.h"
+#include "UltraCanvasUtilsUtf8.h"
 #include "fmt/os.h"
 
 
@@ -450,7 +454,13 @@ namespace UltraCanvas {
 
     void UCTextLayout::SetText(const std::string& text) {
         extentsDirty = true;
-        pango_layout_set_text(layout, text.c_str(), static_cast<int>(text.length()));
+        // Pango takes UTF-8 and nothing else: given anything else it logs
+        // "Invalid UTF-8 string passed to pango_layout_set_text()" and lays out
+        // nothing, so the text silently disappears from the screen. Widgets are
+        // expected to hold valid UTF-8, but a single malformed byte anywhere
+        // upstream must not cost the whole string - repair it here.
+        const std::string safe = utf8_make_valid(text);
+        pango_layout_set_text(layout, safe.c_str(), static_cast<int>(safe.length()));
     }
 
     std::string UCTextLayout::GetText() const {
@@ -475,7 +485,8 @@ namespace UltraCanvas {
             return;
         }
         if (error) g_error_free(error);
-        pango_layout_set_text(layout, markup.c_str(), static_cast<int>(markup.length()));
+        const std::string safe = utf8_make_valid(markup);
+        pango_layout_set_text(layout, safe.c_str(), static_cast<int>(safe.length()));
     }
 
     // ===== FONT =====

@@ -22,7 +22,7 @@
 
 #### 2026-09-15 *1.34.1*
 - **Thumbnails come back, and they come back fast.** Two framework changes
-  carry to UltraFiler here (see framework 0.8.61); nothing changed in the
+  carry to UltraFiler here (see framework 0.8.62); nothing changed in the
   application itself.
 
   The first is the reason thumbnails could stop appearing altogether. The
