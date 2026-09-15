@@ -13,8 +13,8 @@
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorConverter.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorStorage.h"
+#include "UltraCanvasVectorConverter.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasImage.h"
 
 #include <cmath>

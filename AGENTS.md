@@ -72,6 +72,16 @@ before adding cross-module code.
   blocking ops return `UltraNetResult`/`UltraDbResult`; connection/handle
   ops return `UltraNetHandle`/`UltraDbHandle`; SQL uses parameter binding
   only. Follow existing naming patterns when adding protocols/drivers.
+- **Numbers in file formats are dot-decimal, never locale-decimal.** Parse
+  them with `TryParseFloat` / `ParseFloatClassic` (`UltraCanvasTextUtils.h`),
+  never `std::stof` / `std::stod` / `atof` / `strtod`, and format them through
+  a `std::locale::classic()`-imbued stream, never `snprintf("%f")` or
+  `std::to_string(double)`. Those all honour `LC_NUMERIC`, and the Linux
+  backend calls `setlocale(LC_ALL, "")` for XIM — so on a comma-decimal
+  desktop an SVG `opacity="0.25"` read as 0 and the shape vanished, and the
+  SVG writer emitted `M 1,5`, which reads back as the point (1, 5). This has
+  now been fixed twice, in CSS and in SVG; the remaining ~110 call sites
+  elsewhere in the tree are the same defect waiting to be reported.
 - **Third-party code** is vendored under `UltraCanvas/third_party/` and
   `3rdparty/` — do not modify it, and record licenses in
   `THIRD_PARTY_LICENSES.md`.
@@ -161,6 +171,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 |---|---|
 | `Docs/UltraCanvas/CHANGELOG.md` | UltraCanvas core, the modules, the build system, DemoApp |
 | `Docs/AnchorPoint/CHANGELOG.md` | AnchorPoint |
+| `Docs/ArtCreator/CHANGELOG.md` | ArtCreator |
 | `Docs/EmailCleaner/CHANGELOG.md` | EmailCleaner |
 | `Docs/Ladybird/CHANGELOG.md` | The Ladybird browser port (built from its own tree, outside this repository) |
 | `Docs/Modules/UltraWin/CHANGELOG.md` | UltraWin — the Windows tier, UltraWinManager and UltraWinSetup |
@@ -170,6 +181,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
+| `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
 

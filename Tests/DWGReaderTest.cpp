@@ -17,8 +17,8 @@
 
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasCADConverters.h"
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasDWGDecoder.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorConverter.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorStorage.h"
+#include "UltraCanvasVectorConverter.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 
 #include <cmath>
 #include <cstdio>

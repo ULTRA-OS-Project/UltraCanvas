@@ -201,4 +201,35 @@ if(TARGET fmt::fmt)
     target_link_libraries(UltraMail PRIVATE fmt::fmt)
 endif()
 target_compile_features(UltraMail PRIVATE cxx_std_20)
+
+# The app icon, in one place for every consumer of it. main.cpp asks for this
+# same file by name; UCAPP_ICON_PATH is the fallback the core applies when an
+# app sets no icon of its own (UltraCanvasApplicationBase::Initialize), so the
+# two agreeing is what keeps a window from ever coming up unbranded.
+target_compile_definitions(UltraMail PRIVATE
+        UCAPP_ICON_PATH="media/appicon/UltraMail.png")
+
+# Embed the app icon in the .exe (Windows only). This is the icon Explorer and
+# the Windows taskbar read off the binary itself — neither of them looks at
+# _NET_WM_ICON or at a desktop entry — so without it the window wears the
+# UltraMail mark while its button on the taskbar wears the generic one.
+ultracanvas_embed_app_icon(UltraMail
+        "${CMAKE_SOURCE_DIR}/media/appicon/UltraMail.png")
+
+# The freedesktop shortcut and the icon it names. `Icon=UltraMail` in the
+# .desktop is resolved through the installed icon themes, so the PNG has to
+# land in one: this is what lets UltraFiler (and the application menu, and a
+# taskbar that matches windows to desktop entries) show UltraMail's own icon
+# for the app rather than a generic executable glyph.
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    # Exec=UltraMail / TryExec=UltraMail are resolved against PATH, so the
+    # entry is only true if the binary is installed with it.
+    install(TARGETS UltraMail RUNTIME DESTINATION bin)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/UltraMail.desktop
+            DESTINATION share/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraMail.png
+            DESTINATION share/icons/hicolor/256x256/apps)
+    message(STATUS "  UltraMail desktop entry: share/applications/UltraMail.desktop")
+endif()
+
 message(STATUS "  [✓] UltraMail GUI app - ENABLED (target: UltraMail)")

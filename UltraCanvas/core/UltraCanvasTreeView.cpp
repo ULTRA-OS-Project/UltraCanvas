@@ -801,6 +801,16 @@ namespace UltraCanvas {
         Rect2Di contentRect = GetLocalContentRect();
         const int headerHeight = GetHeaderHeight();
         if (rootNode) {
+            // Clip the rows to their viewport: below the header band and left of the
+            // scrollbar. Without this the rows are only kept out of the header and the
+            // scrollbar column by opaque overdraw, so a scrolled row's top edge leaks
+            // above the header and cell content sits against/under the scrollbar.
+            const int sbWidth = GetVerticalScrollbarWidth();   // 0 when hidden
+            ctx->PushState();
+            ctx->ClipRect(Rect2Di(contentRect.x,
+                                  contentRect.y + headerHeight,
+                                  contentRect.width  - sbWidth,
+                                  contentRect.height - headerHeight));
             // Rows start below the (optional) fixed header band and scroll beneath it.
             int currentY = contentRect.y + headerHeight - scrollOffsetY;
             // One flag per drawn level, the top level included (pipes[0]) - see the
@@ -813,6 +823,7 @@ namespace UltraCanvas {
                 // Hidden root: its children are the top level, at depth 0.
                 RenderChildNodes(ctx, rootNode.get(), currentY, -1, contentRect, pipes);
             }
+            ctx->PopState();
         }
 
         // Draw the fixed header band last so rows scrolled up are covered by it.
@@ -1023,8 +1034,11 @@ namespace UltraCanvas {
         currentY += rowHeight;
 
         // Rows scrolled out of the viewport cost nothing but their height; their
-        // children still have to be walked so the ones below land correctly.
-        const bool offscreen = (nodeY + rowHeight < contentRect.y || nodeY > contentRect.Bottom());
+        // children still have to be walked so the ones below land correctly. The top
+        // edge is the header bottom, not contentRect.y, so rows fully behind the fixed
+        // header band are culled rather than drawn and clipped away.
+        const bool offscreen = (nodeY + rowHeight < contentRect.y + GetHeaderHeight()
+                                || nodeY > contentRect.Bottom());
 
         if (!offscreen) {
             const int nodeX = GetRowOriginX(contentRect, level);

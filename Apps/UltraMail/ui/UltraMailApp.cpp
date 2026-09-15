@@ -25,6 +25,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasMediaViewer.h"
+#include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"
@@ -863,10 +864,12 @@ void UltraMailApp::SeedDemoContacts() {
 }
 
 void UltraMailApp::OpenAttachment(const Attachment& attachment) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+
     AttachmentCache cache(cacheDir_);
     const std::string path = cache.Write(attachment);
     if (path.empty()) {
-        AlertError(window_ ? window_.get() : nullptr,
+        AlertError(parent,
                    "The attachment could not be opened.",
                    "\"" + (attachment.filename.empty() ? std::string("(unnamed)")
                                                        : attachment.filename)
@@ -875,20 +878,26 @@ void UltraMailApp::OpenAttachment(const Attachment& attachment) {
         return;
     }
 
-    WindowConfig cfg;
-    cfg.title  = attachment.filename.empty() ? "Attachment" : attachment.filename;
-    cfg.width  = 900;
-    cfg.height = 680;
-    auto win = CreateWindow(cfg);
+    // Hand the file to the operating system's default application — the same
+    // behaviour as double-clicking it in a file manager. When nothing is
+    // associated with the type, offer to save it instead.
+    if (UltraCanvas::FileAssociations::HasDefaultApplication(path)) {
+        std::string err;
+        if (!UltraCanvas::FileAssociations::OpenWithDefaultApplication({path}, err)) {
+            AlertError(parent, "The attachment could not be opened.",
+                       err.empty() ? ("The system could not open " + path + ".") : err);
+        }
+        return;
+    }
 
-    auto viewer = CreateMediaViewer("attachmentViewer", 0, 0,
-                                    static_cast<float>(cfg.width),
-                                    static_cast<float>(cfg.height));
-    win->AddChild(viewer);
-    viewer->OpenFile(path);
-    win->Show();
-
-    viewerWindows_.push_back(win);   // keep the window alive
+    const std::string name = attachment.filename.empty() ? std::string("this attachment")
+                                                         : "\"" + attachment.filename + "\"";
+    UltraCanvasAlert::Confirm(
+        "There is no application associated with " + name + ".\n\n"
+        "Would you like to save it instead?",
+        "Open attachment",
+        [this, attachment](bool save) { if (save) SaveAttachment(attachment); },
+        parent);
 }
 
 void UltraMailApp::SaveAttachment(const Attachment& attachment) {

@@ -1,3 +1,37 @@
+#### 2026-09-15 *0.9.5*
+- **"Add email account" accepts a name like `Fröhling`.** Typing one into the
+  wizard's Your name field (or a passphrase with an umlaut into Password) used
+  to leave invalid UTF-8 in the field the moment the caret moved over the
+  character, backspaced across it or a click landed on it — the text stopped
+  drawing and the debug log filled with Pango's `Invalid UTF-8 string passed to
+  pango_layout_set_text()`. The fault was in the framework's text field, not in
+  UltraMail: see framework 0.8.61 for what changed. That entry also covers the
+  other half of the same name's journey — the display name now goes out as an
+  RFC 2047 encoded-word in `From:` instead of as a raw 8-bit header byte.
+
+#### 2026-09-14 *0.9.4*
+- **One icon for UltraMail, everywhere it is shown.** `media/appicon/UltraMail.png`
+  — the coloured ring around an `@` — replaces the envelope placeholder
+  (`UltraMail.svg`, now removed) as the app's single mark, and every place that
+  shows one now reads that one file:
+  - the **window icon**, published as `_NET_WM_ICON` from `main.cpp`, which is
+    also where a Linux / ULTRA OS **taskbar** takes the button's image from;
+  - the **taskbar and Explorer icon on Windows**, which read the binary rather
+    than the window: `ultracanvas_embed_app_icon(UltraMail …)` converts the PNG
+    to a multi-resolution `.ico` and links it into `UltraMail.exe`;
+  - the **filer's app icon**, via a new `Apps/UltraMail/UltraMail.desktop`
+    (`Icon=UltraMail`) installed to `share/applications` with the PNG installed
+    to `share/icons/hicolor/256x256/apps` — UltraFiler resolves an application's
+    icon by reading its desktop entry and looking the name up in the installed
+    themes (`UltraCanvasNativeFileIcons.cpp`), so the entry is what it needs to
+    find anything but a generic executable glyph;
+  - the **start-page logo** (`UltraMailStartPage`);
+  - and `UCAPP_ICON_PATH`, the core's build-time fallback, so a window cannot
+    come up unbranded even if an icon is never set explicitly.
+  The desktop entry deliberately declares no `MimeType=` and no `%U`:
+  UltraMail's `main()` takes no arguments yet, so claiming the `mailto:`
+  association would route mail links to a program that drops them.
+
 #### 2026-09-14 *0.9.3*
 - Implemented OAuth for Google. Fixes in layout and HTML renderer.
 

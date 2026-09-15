@@ -189,6 +189,13 @@ namespace UltraCanvas {
         intrinsic.maxContentHeight = maxH + padV;
         intrinsic.minContentWidth  = minW + padH;
         intrinsic.minContentHeight = minH + padV;
+
+        // The max-content probe above left the shared text layout at wrap width
+        // -1 (no wrap). Force the next Render() to re-sync the real box width via
+        // UpdateInternalLayout(); otherwise a paint that follows this measure
+        // pass would draw the text unwrapped. (See MeasureOwnContent — same
+        // shared-state hazard; this is what made wrapping intermittent.)
+        internalLayoutValid = false;
     }
 
     Size2Df UltraCanvasLabel::MeasureOwnContent(std::optional<float> definiteContentWidth,
@@ -198,6 +205,12 @@ namespace UltraCanvas {
             // sizes from size.*/constraints (matching the old base fallback).
             return Size2Df(0.f, 0.f);
         }
+
+        // Both branches below set the shared text layout's explicit width as a
+        // measurement side effect. Force the next Render() to re-sync the
+        // arranged box width via UpdateInternalLayout(); otherwise a stray
+        // max-content measure pass could leave the label painting unwrapped.
+        internalLayoutValid = false;
 
         if (definiteContentWidth.has_value()) {
             // Height at the resolved content width (reflects any wrapping).
@@ -261,8 +274,8 @@ namespace UltraCanvas {
                     }
                     if (onClick) {
                         onClick();
+                        return true;
                     }
-                    return true;
                 }
                 break;
 

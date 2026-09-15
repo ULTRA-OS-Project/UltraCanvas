@@ -322,6 +322,17 @@ namespace UltraCanvas {
 
 // ===== PRINTING =====
 
+    NativePrintResult UltraCanvasNativeDialogs::RequestPrintSettings(
+            const std::string&, UltraCanvasWindowBase*) {
+        // The browser's print UI is the dialog, and it neither reports what
+        // the user chose nor lets a page choose for them - by design, since a
+        // web page must not be able to pick a printer. There is also no
+        // IODeviceManager printer backend to send a job to here. So this
+        // reports a cancellation, and ShowPrintDialog() below keeps doing the
+        // thing that does work: handing the text to the browser to print.
+        return NativePrintResult();
+    }
+
     bool UltraCanvasNativeDialogs::ShowPrintDialog(
             const std::string& documentName, const std::string& textContent,
             UltraCanvasWindowBase* /*parent*/) {

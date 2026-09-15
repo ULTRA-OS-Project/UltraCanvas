@@ -80,7 +80,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 
 ```
 UltraCanvas/
-├── Apps/                 # Applications (DemoApp, Texter, UltraFiler, UltraViewer, UltraPaint, UltraMail, …)
+├── Apps/                 # Applications (DemoApp, Texter, UltraFiler, UltraViewer, UltraPaint, ArtCreator, UltraMail, …)
 ├── Docs/                 # Component documentation
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
@@ -206,6 +206,93 @@ the backing implementation can be replaced without affecting callers.
     `JSONSerializeOptions`; output is always strictly valid JSON.
   - `JSON::EscapeString` and framework-type helpers
     `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
+
+- **UltraCanvasVectorStorage** (`DataFormats/UltraCanvasVectorStorage.h`) — the
+  framework's universal 2D vector document structure,
+  `VectorStorage::VectorDocument`: the in-memory drawing every vector file
+  format reads into and writes out of (SVG, XAR, EMF, WMF, DXF, DWG read;
+  those plus PDF, AI, EPS, CDR written — the converters are the Vector
+  plugin, `Plugins/Vector/`, documented in
+  `Docs/UltraCanvas/UltraCanvasVectorConverters.md`). Core rather than
+  plugin-owned so that elements, tests and applications can hold and draw a
+  drawing whether or not the converter plugin is built. Implementation in
+  `core/DataFormats/UltraCanvasVectorStorage.cpp`. Public surface:
+  - `VectorDocument` — `Size` (points), `ViewBox`, `BackgroundColor`,
+    `Layers`, `Definitions`, `SourceUnit` / `PointsPerSourceUnit`,
+    `AddLayer` / `RemoveLayer` / `FindElementById` / `GetBoundingBox` /
+    `FitToContent` / `Clone`.
+  - `VectorLayer : VectorGroup` (`Name`, `Visible`, `Locked`, `Opacity`, CAD
+    layer-table fields) → `VectorGroup` → elements: `VectorRect`,
+    `VectorCircle`, `VectorEllipse`, `VectorLine`, `VectorPolyline`,
+    `VectorPolygon`, `VectorPath` (`MoveTo/LineTo/CurveTo/QuadraticTo/ArcTo/
+    ClosePath`, `GetLength`, `GetPointAtLength`, `Flatten`), `VectorText`
+    (spans), `VectorImage`, `VectorSymbol` / `VectorUse`; every element has
+    `Id`, `Style` (`FillData` variant of colour / gradient / pattern,
+    `StrokeData`, opacities, blend, clip, mask), an optional double-precision
+    `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
+    `Clone()`.
+  - `ParsePathString` / `SerializePathData`, `ParseColorString`,
+    `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
+    `PointsPerUnit`, `LengthUnitSymbol`.
+  - `DataFormats/UltraCanvasVectorRenderer.h` — `VectorRenderer` draws a
+    document, layer or element into any `IRenderContext`
+    (`VectorRenderOptions`, `VectorRenderStats`); `HitTestElement` /
+    `HitTestDocument` (bounding boxes, carried through ancestor transforms).
+  - `DataFormats/UltraCanvasVectorPathOps.h` — `PathOps::NormalizePath` and
+    friends: any command mix down to absolute move / line / cubic segments
+    (SVG arcs via endpoint-to-centre conversion), rect / rounded-rect /
+    ellipse segment builders; what every writer and hit test walks.
+  - `UltraCanvasVectorElement` (`UltraCanvasVectorElement.h`) — the viewer
+    element: `SetDocument`, zoom ladder with cursor-anchored smooth wheel
+    zoom, drag pan, `ScreenToDocument` / `DocumentToScreen`, layer
+    visibility, bounding-box `Select` interaction mode. View only.
+
+- **UltraCanvasVectorEdit** (`DataFormats/UltraCanvasVectorEdit.h`,
+  namespace `VectorEdit`) — the editing layer over `VectorDocument`, no UI
+  in it; doc `Docs/UltraCanvas/UltraCanvasVectorCanvas.md`. Tree helpers
+  `EnsureIds` / `GenerateId` / `ParentOf` / `IndexInParent` / `LayerOf` /
+  `TopLevelOf` / `ParentToDocument` / `DocumentBounds` / `AllElements` /
+  `Detach`. `VectorSelection` (ordered elements, `Bounds`, listeners,
+  `Rebind` by Id after an undo). `VectorHistory` (`BeginEdit` / `EndEdit`
+  with coalescing / `CancelEdit` / `Record` / `Undo` / `Redo`, labels, a
+  memory budget; whole-document snapshots restored into the live document
+  object). `VectorHitTester` (`HitTest` on fill and stroke with a
+  tolerance through every ancestor transform, `ElementsIn`; a geometry-only
+  render context, no window). Operations: `TransformElements` /
+  `TranslateElements` / `ScaleElements` / `RotateElements` /
+  `SkewElements` about a document-space pivot, `BakeTransform`,
+  `ReorderElements` (`ZOrderMove`), `GroupElements` / `UngroupElements` /
+  `ReparentElement` (placement preserved), `DeleteElements`,
+  `DuplicateElements`, `AlignElements` / `DistributeElements`,
+  `ConvertToPath` / `OutlineOf`.
+- **UltraCanvasBezierPath** (`UltraCanvasBezierPath.h`) — the editing model
+  of a path: `BezierNode` (anchor, two handles, `BezierNodeType` Corner /
+  Smooth / Symmetric), `UltraCanvasBezierSubpath` (`InsertNodeAt` by de
+  Casteljau, `RemoveNode`, `SetNodeType`, `MoveAnchor`, `MoveHandle` under
+  the type rules, `DragSegment`, `Reverse`, `HitTestOutline`,
+  `ContainsPoint`, `Flatten`, `Bounds`, `BuildPath`) and
+  `UltraCanvasBezierPath` (`FromPathData` / `ToPathData` - every command
+  kind in, absolute M / L / C / Z out - `FromSVGPathData` /
+  `ToSVGPathData`, `FromPolyline` with Douglas-Peucker simplification and
+  Catmull-Rom tangents, `HitTestNode`, `Transform`). `SimplifyPolyline`.
+- **UltraCanvasVectorCanvas** (`UltraCanvasVectorCanvas.h`) — the editing
+  element, the vector twin of `UltraCanvasPaintSurface`: pasteboard, page
+  with shadow, grid (`VectorGridSpec`), rulers in any unit, guides pulled
+  from the rulers (`VectorGuide`), snapping to guides / page / objects /
+  grid (`VectorSnapOptions`, `Snap` → `VectorSnapResult`), the selection's
+  handles in scale or rotate mode (`VectorHandle`, `HitTestHandle`,
+  `SetRotationCenter`), `HitTest` / `ElementsIn`, zoom / pan (`SetZoomAt`,
+  `ZoomToPage` / `ZoomToDrawing` / `ZoomToSelection`, `DocToView` /
+  `ViewToDoc` / `PixelsToDoc`), and the tool hooks `onToolPress / Drag /
+  Release / Hover / DoubleClick / Key`, `onDrawOverlay`, `onViewChanged`,
+  `onGuidesChanged`, `onFilesDropped`; `VectorPointerEvent` carries the raw
+  and snapped document point. Edits nothing itself.
+- **UltraCanvasGradientEditor** (`UltraCanvasGradientEditor.h`) — the stops
+  of a gradient on a strip: select / drag / add / remove, `SetStops` /
+  `GetStops` / `AddStopAt` / `RemoveStop` / `SetStopColor` /
+  `SetStopPosition` / `ColorAt` / `Reverse`, `onStopsChanged` /
+  `onStopsChanging` / `onSelectionChanged`. Doc:
+  `Docs/UltraCanvas/UltraCanvasGradientEditor.md`.
 
 - **UltraCanvasModelStorage** (`DataFormats/UltraCanvasModelStorage.h`) — the
   framework's universal 3D scene structure, `ModelStorage::ModelDocument`: the
@@ -678,6 +765,39 @@ the backing implementation can be replaced without affecting callers.
     `onSnapshotChanged`, and the `CreateHardwareInfoPanel` factory.
   See `Docs/UltraCanvas/UltraCanvasHardwareInfo.md`.
 
+- **IODeviceManager** (`IODeviceManager/UltraCanvasIODeviceManager.h`) —
+  discovers and operates peripherals: scanners, cameras and printers today,
+  audio/storage/GPIO planned. The counterpart to **UltraCanvasHardwareInfo**,
+  which only *describes* the host: this module opens sessions and does work.
+  Headers in `include/IODeviceManager/`, platform-neutral implementation in
+  `core/IODeviceManager/`, backends as flat files under `OS/<Platform>/`.
+  - `IODeviceManager::GetInstance()` — `Initialize` / `Shutdown`,
+    `EnumerateDevices(category)` / `EnumerateAllDevices`, `RegisterDevice`,
+    `UnregisterDevice`, `GetDevices` / `GetDeviceInfos` / `GetDeviceById` /
+    `GetDevice(category, index)` / `GetDeviceCount`,
+    `SetDeviceChangeCallback` for hot-plug.
+  - `IODevice` — the base every category derives from (`ScannerDevice`,
+    `CameraDevice`, `PrinterDevice`): identity, `Connect` / `Disconnect` /
+    `IsConnected` / `GetState`, `GetLastError`. Lifecycle is non-virtual
+    public, virtual protected: backends implement `DoConnect` / `DoDisconnect`
+    and the base owns the state machine, the error slot and the locking.
+  - Backends attach as **enumerators**, one per (category, backend) pair, not
+    as one manager method per category — a category is routinely served by two
+    backends on one platform (V4L2 webcams *and* gphoto2 DSLRs are both
+    cameras), and a method-per-category forces them to collide at link time.
+    `EnumerateDevices` merges every enumerator's results, keeps the existing
+    object for a device that is still present so an open session survives a
+    rescan, and contains a throwing backend instead of losing the others.
+  - `IODeviceResult` — `Ok` / `Error(code, msg)`, `explicit operator bool`,
+    typed `IODeviceResultCode`, plus `backendCode` carrying the backend's own
+    status verbatim for the log. Same shape as `UltraNetResult`/`UltraDbResult`.
+  - Printer backends separate the **renderer** (who turns the page into
+    printer bytes: `Native`, `GutenPrint`, `IPP`) from the **transport** (how
+    those bytes reach the device: a CUPS raw job, or `StartDocPrinter` with
+    datatype `RAW`), which is what lets GutenPrint be selectable on Windows as
+    well as Linux and macOS — libgutenprint is portable C and needs no CUPS.
+  See `Docs/Modules/IODeviceManager/Architecture.md`.
+
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform
   spell checking. A singleton service owning one backend, the user dictionary,
   a session ignore list and a worker thread, so checking never runs on the
@@ -801,6 +921,18 @@ engine; these classes hold the pixels being edited and hand them to it.
   context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
+- **IRenderContext compositing and geometry** (`UltraCanvasRenderContext.h`,
+  doc `Docs/UltraCanvas/UltraCanvasRenderContext.md`) — `SetBlendMode` /
+  `GetBlendMode` (the 16 PDF / CSS modes), groups `BeginGroup` /
+  `EndGroup(opacity)` / `EndGroupAsPattern` / `EndGroupMasked` /
+  `PaintPattern`, hit testing `IsPointInFill` / `IsPointInStroke` /
+  `GetStrokeExtents`, transform readback `GetTransform` / `UserToDevice` /
+  `DeviceToUser` / `DeviceToUserDistance`, paint sources
+  `CreateConicGradientPattern` / `CreateMeshGradientPattern` /
+  `CreatePixmapPattern`, `IPaintPattern::SetMatrix` / `SetExtend`,
+  `SetAntialias`, and text outlines `AppendTextPath` /
+  `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
+  the Cairo backend implements all of it. Tested by `RenderContextTest`.
 
 ### **2. UltraAI**
 
@@ -25222,6 +25354,84 @@ The Gource tree renders in this order:
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasGradientEditor.md
+==============================================================================
+
+# UltraCanvasGradientEditor
+
+A gradient ramp editor: the stops of a gradient on a horizontal strip.
+Click a stop to select it, drag it along the strip to move it, double-click
+the strip to add a stop with the ramp's colour there, drag a stop away
+from the strip (or press Delete) to remove it, and nudge the selected stop
+with the arrow keys. The stops are the render context's `GradientStop`, so
+what the editor holds feeds `CreateLinearGradientPattern` and the other
+pattern factories and `VectorStorage`'s gradient data without conversion.
+
+**Header:** `UltraCanvasGradientEditor.h` · **Source:** `core/UltraCanvasGradientEditor.cpp`
+**Version**: 1.0.0 · **Last Modified**: 2026-09-15 · **Author**: UltraCanvas Framework
+
+The tone curve editor ([UltraCanvasCurveEditor](UltraCanvasCurveEditor.md))
+is the precedent for dragging control points on a strip; this is its
+colour-ramp sibling. It edits the stops only — where a linear gradient
+starts and ends on an object is the fill tool's business, drawn on the
+canvas.
+
+## Usage
+
+```cpp
+#include "UltraCanvasGradientEditor.h"
+#include "UltraCanvasColorPicker.h"
+
+auto ramp = CreateGradientEditor("ramp", 10, 10, 260, 44);
+ramp->SetStops({{0.0, Color(255, 0, 0)}, {0.5, Color(255, 255, 0)}, {1.0, Color(0, 0, 255)}});
+
+// The selected stop's colour comes from a colour picker.
+ramp->onSelectionChanged = [&](int index) {
+    if (index >= 0) picker->SetColor(ramp->GetSelectedColor());
+};
+picker->onColorChanged = [&](const Color& c) {
+    ramp->SetStopColor(ramp->GetSelectedStop(), c);
+};
+
+// Every edit: rebuild the fill.
+ramp->onStopsChanged = [&] {
+    fill.Stops = ramp->GetStops();
+    canvas->Refresh();
+};
+ramp->onStopsChanging = ramp->onStopsChanged;   // live while a stop is dragged
+```
+
+## API
+
+| Method | What it does |
+|---|---|
+| `SetStops(stops)` / `GetStops()` | The ramp. Stops are kept sorted by position; an empty list becomes black → white |
+| `AddStop(position, color)` / `AddStopAt(position)` | Insert a stop, the second with the ramp's colour there; returns the index, selects it |
+| `RemoveStop(index)` | Removes a stop; refuses below `SetMinimumStops` (default 2) |
+| `SetStopColor(index, color)` / `SetStopPosition(index, position)` | Edit one stop (positions re-sort; the selection follows the stop) |
+| `ColorAt(position)` | The ramp's interpolated colour |
+| `SelectStop(index)` / `GetSelectedStop()` / `GetSelectedColor()` | Selection; `-1` for none |
+| `Reverse()` | Flip the ramp end for end |
+| `SetShowAlphaChecker(bool)` | Checkerboard behind the ramp so alpha shows (default on) |
+| `onStopsChanged` | Any edit, including the end of a drag |
+| `onStopsChanging` | While a stop is dragged |
+| `onSelectionChanged(int)` | The selected index changed |
+
+## Behaviour
+
+- The first and last stops can be moved but not removed while the count is
+  at the minimum; a middle stop dragged well away from the strip is removed
+  on release.
+- Left / Right nudge the selected stop by 1 % (Shift: 10 %); Delete removes it.
+- The strip is drawn with the context's own linear gradient pattern, so it
+  shows exactly what a fill with these stops looks like.
+
+## Tests
+
+`Tests/VectorEditTest.cpp` exercises sorting, insertion, colour
+interpolation, removal limits, reversal and notifications without a window.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasGroupBoxExamples.md
 ==============================================================================
 
@@ -39954,6 +40164,215 @@ std::function<void(float)> onHoverChanged;    // live hover value (-1 when the c
 - `GetPreferredWidth()` returns `maxRating * symbolSize + (maxRating-1) * spacing`.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasRenderContext.md
+==============================================================================
+
+# UltraCanvasRenderContext — compositing, hit testing and paint sources
+
+`IRenderContext` (`UltraCanvasRenderContext.h`) is the drawing interface every
+element renders through. Its everyday surface — paths, fills, strokes, text
+layouts, pixmaps, state and transforms — is used throughout the element
+docs. This page documents the part added for vector editing in 0.8.51:
+blend modes, groups and masks, geometric hit testing, transform readback,
+conic / mesh / pixmap paint sources, pattern placement, antialias control
+and text outlines. One backend implements all of it (Cairo, on every
+platform); every method has a base-class default so a backend that lacks a
+feature still compiles and degrades predictably.
+
+Coordinates are user space (the element's local space inside `Render()`),
+angles are radians, and nothing here changes the coordinate contract in
+[UltraCanvasCoordinateSystemGuide](UltraCanvasCoordinateSystemGuide.md).
+
+## Blend modes
+
+```cpp
+enum class BlendMode { Normal, Multiply, Screen, Overlay, Darken, Lighten, ColorDodge,
+                       ColorBurn, HardLight, SoftLight, Difference, Exclusion,
+                       Hue, Saturation, Color, Luminosity };
+void      SetBlendMode(BlendMode mode);   // until PopState() or the next call
+BlendMode GetBlendMode() const;
+```
+
+The PDF / CSS / SVG set. It applies to every fill, stroke, text, image and
+group paint that follows, and `PushState()` / `PopState()` save and restore
+it with the rest of the state.
+
+```cpp
+ctx->SetFillPaint(Color(255, 255, 0));   ctx->FillRectangle(a);
+ctx->SetBlendMode(BlendMode::Multiply);
+ctx->SetFillPaint(Color(0, 255, 255));   ctx->FillRectangle(b);   // overlap is green
+```
+
+Xara's transparency mixes map directly: *Stained glass* is `Multiply`,
+*Bleach* is `Screen`, the rest keep their names.
+
+## Groups and masks
+
+```cpp
+void BeginGroup();
+void EndGroup(double opacity = 1.0);
+std::shared_ptr<IPaintPattern> EndGroupAsPattern();
+void EndGroupMasked(std::shared_ptr<IPaintPattern> mask);
+void PaintPattern(std::shared_ptr<IPaintPattern> pattern, double opacity = 1.0);
+```
+
+Everything drawn between `BeginGroup()` and the matching `End…` call goes
+to an intermediate surface and is composited **as one**:
+
+- `EndGroup(opacity)` paints it with a uniform alpha, so two overlapping
+  children at 50 % do not stack to 75 % — the correct semantics for a
+  layer's or a group's opacity — under the blend mode in force at
+  `BeginGroup()`.
+- `EndGroupAsPattern()` returns the rendered group as a paint source
+  instead of painting it: a mask, a pattern fill made of other content, or
+  the input of a cached effect.
+- `EndGroupMasked(mask)` paints the group through the alpha of `mask`,
+  which is usually a pattern from `EndGroupAsPattern()`.
+- `PaintPattern(pattern, opacity)` paints any pattern over the current
+  clip — the way to draw a captured group again.
+
+Groups nest, and each is a `PushState()` / `PopState()` pair from the
+caller's side. A backend without groups draws straight through: `EndGroup`
+and `EndGroupMasked` paint nothing extra and `EndGroupAsPattern` returns
+`nullptr`.
+
+```cpp
+// Layer at 40 %: children composite normally inside, the result fades once.
+ctx->BeginGroup();
+for (auto& child : layer.Children) child->Render(ctx, dirty);
+ctx->EndGroup(0.4);
+
+// A soft-edged clip: whatever is opaque in the mask shows.
+ctx->BeginGroup();
+ctx->SetFillPaint(maskGradient); ctx->FillRectangle(bounds);
+auto mask = ctx->EndGroupAsPattern();
+ctx->BeginGroup();
+DrawContent(ctx);
+ctx->EndGroupMasked(mask);
+```
+
+## Geometric hit testing
+
+```cpp
+bool    IsPointInFill(double x, double y);     // inside the current path's fill
+bool    IsPointInStroke(double x, double y);   // under its stroke
+Rect2Dd GetStrokeExtents();                    // path extents grown by the stroke
+```
+
+All three consult the **current path** with the current fill rule, stroke
+width, caps, joins and dashes, so a selector tool builds the shape's path
+exactly as the renderer does and asks. `GetPathExtents()` remains the
+outline's box without the stroke. The base answers `false` and the path
+extents.
+
+```cpp
+ctx->Rect(10, 10, 20, 20);
+ctx->SetStrokeWidth(6);
+bool inside = ctx->IsPointInFill(15, 15);    // true
+bool onEdge = ctx->IsPointInStroke(8, 20);   // true: within 3 of the edge
+ctx->ClearPath();
+```
+
+## Transform readback
+
+```cpp
+void     GetTransform(double& a, double& b, double& c, double& d, double& e, double& f) const;
+Point2Dd UserToDevice(const Point2Dd& p) const;
+Point2Dd DeviceToUser(const Point2Dd& p) const;
+double   DeviceToUserDistance(double devicePixels) const;
+```
+
+The current transformation matrix in the layout `SetTransform` takes
+(`x' = a·x + c·y + e`, `y' = b·x + d·y + f`). `DeviceToUserDistance(1)` is
+the length of one device pixel in user units — what a hairline stroke or a
+handle sized in pixels needs under a zoomed view — averaged over the two
+axes when the scale is not uniform. The base returns the identity.
+
+## Paint sources
+
+```cpp
+std::shared_ptr<IPaintPattern> CreateConicGradientPattern(double cx, double cy,
+        double startAngle, double endAngle, const std::vector<GradientStop>& stops);
+std::shared_ptr<IPaintPattern> CreateMeshGradientPattern(const std::vector<MeshGradientPatch>& patches);
+std::shared_ptr<IPaintPattern> CreatePixmapPattern(UCPixmap& pixmap, const Rect2Dd& anchorRect,
+        PatternExtend extend = PatternExtend::Pad);
+```
+
+joining the existing linear, radial, elliptical and file-backed image
+patterns.
+
+- **Conic** — the stops run round the centre from `startAngle` to
+  `endAngle` (a full turn when they are equal). Cairo has no conic
+  primitive; the backend builds a fan of mesh patches, one per 15° and
+  one per stop boundary, so hard stops stay hard. The pattern is
+  transparent beyond a very large radius rather than infinite.
+- **Mesh** — any number of Coons patches. `MeshGradientPatch` holds four
+  corners in order round the patch (repeat one for a triangle), two
+  control points per side in the same order (used when `hasControls` is
+  set, straight sides otherwise) and a colour per corner. Xara's diamond,
+  three- and four-colour fills and SVG 2 mesh gradients are made of these.
+- **Pixmap** — an image already in memory (a decoded picture, a rendered
+  group read back, a raster layer) stretched to `anchorRect`, extending
+  outside it by `extend`; it follows `SetImageSmoothing` for its filter.
+
+### Placing a pattern
+
+```cpp
+// No enumerator may be named None: X11's Xlib.h defines None as a macro
+    // and this header is reachable from platform code that includes X11.
+    enum class PatternExtend { Pad, Repeat, Reflect, NoExtend };
+void IPaintPattern::SetMatrix(double a, double b, double c, double d, double e, double f);
+void IPaintPattern::SetExtend(PatternExtend extend);
+```
+
+`SetMatrix` maps pattern space (the coordinates the pattern was created
+in) into user space — SVG's `gradientTransform` / `patternTransform` — on
+top of the CTM in force when the pattern is painted. `SetExtend` chooses
+what shows beyond the pattern's own extent: the edge colour, tiles,
+mirrored tiles, or nothing. Both are no-ops on a backend without pattern
+matrices.
+
+## Antialiasing
+
+```cpp
+enum class AntialiasMode { DefaultQuality, NoAntialias, Gray, Subpixel, Fast, Good, Best };
+void SetAntialias(AntialiasMode mode);
+```
+
+Geometry antialiasing for the fills and strokes that follow (text keeps
+its own hinting settings). `NoAntialias` is what a pixel-exact tool wants.
+
+## Text outlines
+
+```cpp
+void AppendTextPath(const std::string& text, const Point2Dd& pos);
+void AppendTextLayoutPath(ITextLayout& layout, const Point2Dd& pos);
+```
+
+Appends the glyph outlines of `text` in the current font — or of a
+prepared layout — to the current path, with the layout origin at `pos`
+exactly as `DrawText` / `DrawTextLayout` would place it. The text is then
+geometry: fill it with a gradient or a pixmap pattern, stroke it, clip to
+it, hit-test it, or read the path back to convert text to curves.
+
+```cpp
+ctx->SetFontFace("Sans", FontWeight::Bold, FontSlant::Normal);
+ctx->SetFontSize(48);
+ctx->AppendTextPath("Vector", Point2Dd(20, 20));
+ctx->SetFillPaint(ctx->CreateLinearGradientPattern(20, 0, 220, 0, stops));
+ctx->FillPathPreserve();
+ctx->SetStrokePaint(Colors::Black); ctx->SetStrokeWidth(1);
+ctx->StrokePathPreserve();
+ctx->ClearPath();
+```
+
+## Tests
+
+`Tests/RenderContextTest.cpp` (CTest `RenderContextTest`) exercises every
+method above on an offscreen surface and samples the pixels back, so it
+runs without a display.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasRequirementDiagramExamples.md
 ==============================================================================
 
@@ -49305,8 +49724,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 
 **UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options.
 
-**Version:** 1.2.0  
-**Last Modified:** 2026-08-31  
+**Version:** 1.3.0  
+**Last Modified:** 2026-09-15  
 **Author:** UltraCanvas Framework
 
 ## Key Features
@@ -49320,6 +49739,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 - **Auto-completion**: Configurable auto-complete modes for different input types
 - **Placeholder Text**: Contextual hints when field is empty
 - **Read-only Mode**: Disable editing while maintaining visual presentation
+- **UTF-8 Text**: Every position the field keeps is a character boundary, so accented, umlauted and non-Latin text edits like any other (see [Text and UTF-8](#text-and-utf-8))
 
 ### Visual Features
 - **Caret Animation**: Blinking cursor with customizable rate
@@ -49422,12 +49842,37 @@ void SetReadOnly(bool readonly)
 // Check if read-only
 bool IsReadOnly() const
 
-// Set maximum text length
+// Set maximum text length, counted in characters
 void SetMaxLength(int length)
 
 // Get maximum length
 int GetMaxLength() const
 ```
+
+### Text and UTF-8
+
+Text is UTF-8 throughout, and a character is not a byte: `ö` is two bytes, `€`
+three, an emoji four. The field addresses its buffer by byte offset — that is
+what `GetCaretPosition()`, `SetCaretPosition()` and `SetSelection()` take and
+return — but it only ever *keeps* an offset that starts a character:
+
+- Backspace and Delete erase a whole character; the arrow keys step over one.
+- `SetCaretPosition()` and `SetSelection()` snap an offset that lands inside a
+  character back to that character's start, so a selection is always a whole
+  number of characters.
+- Clicking snaps to the nearer boundary of the character under the pointer.
+- `SetMaxLength()` and the `MinLength` / `MaxLength` validation rules count
+  characters, the unit their message speaks in — `"Fröhling"` is eight
+  characters in nine bytes.
+- Text handed in from outside (`SetText()`, a paste, a keyboard backend with no
+  input method) is repaired with U+FFFD if it is not valid UTF-8, because a
+  single stray byte would otherwise make the whole string unrenderable.
+- A password field masks one `*` per character, so the row of stars matches what
+  was typed rather than how many bytes it took.
+
+Walking a byte offset by hand is the one way back into trouble: use
+`utf8_prev_boundary()` / `utf8_next_boundary()` from `UltraCanvasUtilsUtf8.h`
+rather than `pos - 1` / `pos + 1`.
 
 ## Validation System
 
@@ -53079,6 +53524,7 @@ from an external "Show password" checkbox. See
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
 | A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
+| The stops of a gradient (a colour ramp) | `UltraCanvasGradientEditor` | `UltraCanvasGradientEditor.h` |
 | A score out of N | `UltraCanvasRating` | `UltraCanvasRating.h` |
 | Step through a sequence | `UltraCanvasStepper` | `UltraCanvasStepper.h` |
 
@@ -53091,6 +53537,8 @@ from an external "Show password" checkbox. See
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
+| Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG, EMF, WMF via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
+| **Edit** a vector drawing: page, rulers, guides, grid, snapping, selection handles, tool hooks in document coordinates (the model is `VectorStorage::VectorDocument`, the editing layer `DataFormats/UltraCanvasVectorEdit.h`, the node model `UltraCanvasBezierPath.h`) | `UltraCanvasVectorCanvas` | `UltraCanvasVectorCanvas.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
@@ -53576,6 +54024,253 @@ std::printf("%s", UMLTextExport::ToPlantUML(model).c_str());
   orthogonal router the element will use
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasVectorCanvas.md
+==============================================================================
+
+# UltraCanvas Vector Editing: VectorCanvas, VectorEdit, BezierPath
+
+## Overview
+
+The **vector-editing layer** is what a vector drawing editor needs on top of
+the vector document model: a selection, undo / redo, geometric hit testing,
+the operations an editor's commands are made of, a node model for editing
+paths, and an element that displays the document with rulers, guides, grid,
+snapping and selection handles and hands pointer events to the active tool.
+It is the vector twin of the raster-editing layer in
+[UltraCanvasPaintSurface](UltraCanvasPaintSurface.md) and follows the same
+split: the model and its editing companions know nothing about windows,
+one element shows them, and an application owns the tools. The
+investigation behind it is
+[`Docs/Research/ArtCreatorVectorCanvasProposal.md`](../Research/ArtCreatorVectorCanvasProposal.md).
+
+| Class | What it is | Files |
+|---|---|---|
+| `VectorStorage::VectorDocument` | The drawing: layers → groups → elements with styles, transforms and paths; read and written by every vector format (see [UltraCanvasVectorConverters](UltraCanvasVectorConverters.md)) | `include/DataFormats/UltraCanvasVectorStorage.h` |
+| `VectorRenderer` | Draws a document, layer or element into any `IRenderContext`; `BuildVectorElementOutline` puts one element's outline on a context | `include/DataFormats/UltraCanvasVectorRenderer.h` |
+| `VectorEdit::VectorSelection` | Ordered selected elements, their document-space bounds, listeners, re-binding by Id after an undo | `include/DataFormats/UltraCanvasVectorEdit.h`, `core/DataFormats/UltraCanvasVectorEdit.cpp` |
+| `VectorEdit::VectorHistory` | Labelled undo / redo by document snapshots, coalescing, a memory budget | same |
+| `VectorEdit::VectorHitTester` | Geometric fill / stroke hit testing with a tolerance, through every ancestor transform; rectangle queries | same |
+| `VectorEdit` operations | Transform about a pivot, bake a transform, z-order, group / ungroup / reparent, delete, duplicate, align, distribute, convert to path | same |
+| `UltraCanvasBezierPath` | Anchors that own their handles: the editing model of a path, with split / node types / hit tests / polyline fitting and a lossless round trip to `PathData` | `include/UltraCanvasBezierPath.h`, `core/UltraCanvasBezierPath.cpp` |
+| `UltraCanvasVectorCanvas` | The element: pasteboard, page, grid, rulers, guides, snapping, selection handles, tool hooks in document coordinates | `include/UltraCanvasVectorCanvas.h`, `core/UltraCanvasVectorCanvas.cpp` |
+| `UltraCanvasGradientEditor` | The stops of a gradient on a strip | [UltraCanvasGradientEditor](UltraCanvasGradientEditor.md) |
+
+**Version**: 1.0.0
+**Last Modified**: 2026-09-15
+**Author**: UltraCanvas Framework
+
+Everything here is in the core library. The Vector plugin
+(`ULTRACANVAS_PLUGIN_VECTOR`) adds the file formats; without it a document
+can still be created, edited, drawn and rasterized.
+
+## The document and its Ids
+
+Coordinates are points. An element's `Transform` maps its own space into
+its parent's; `GetGlobalTransform()` composes every ancestor. Selection and
+history find elements again **by Id** after an undo (the objects are
+replaced), so an editor gives every element an Id:
+
+```cpp
+#include "DataFormats/UltraCanvasVectorEdit.h"
+using namespace UltraCanvas;
+using namespace UltraCanvas::VectorEdit;
+
+auto doc = std::make_shared<VectorStorage::VectorDocument>();
+doc->Size = {595, 842};                         // A4 in points
+auto layer = doc->AddLayer("Layer 1");
+auto rect = std::make_shared<VectorStorage::VectorRect>();
+rect->Bounds = {100, 100, 200, 120};
+rect->Style.Fill = Color(220, 60, 40, 255);
+rect->Id = GenerateId();                        // or EnsureIds(*doc) after loading a file
+layer->AddChild(rect);
+```
+
+Tree helpers: `ParentOf`, `IndexInParent`, `LayerOf`, `TopLevelOf` (the
+layer's child that contains an element — what a click selects unless the
+user goes "inside" a group), `ParentToDocument` (the matrix from an
+element's parent space to the document), `DocumentBounds` (an element's
+box in document space), `AllElements`, `Detach`.
+
+## Selection
+
+```cpp
+VectorSelection selection;
+selection.Set(rect);                // or Set({a, b}), Add, Remove, Toggle, Clear
+selection.Bounds();                 // union of DocumentBounds, document units
+selection.AddListener([&] { canvas->Refresh(); });
+```
+
+`Rebind(doc)` re-resolves the selected Ids against the document — the
+history's `onChanged` is the place to call it.
+
+## History
+
+`VectorHistory` snapshots the whole document on `BeginEdit(label)` and again
+on `EndEdit()`, keeps the pair, and restores a snapshot into the *live*
+document object on `Undo()` / `Redo()` — the `shared_ptr` the canvas holds
+stays valid, the elements inside are new. It is the simple, always-correct
+choice; a per-subtree scheme can replace it behind the same API when
+documents grow large enough to need one.
+
+```cpp
+VectorHistory history(doc);
+history.onChanged = [&] { selection.Rebind(*doc); canvas->Refresh(); };
+
+history.Record("Move", [&] { TranslateElements(selection.Elements(), 10, 0); });
+
+// A drag: one entry from press to release.
+history.BeginEdit("Scale");
+... ScaleElements(...) on every drag event ...
+history.EndEdit();
+
+// Repeated nudges collapse into one step.
+history.Record("Nudge", [&] { TranslateElements(selection.Elements(), 1, 0); }, /*coalesce*/ true);
+
+history.Undo();  history.Redo();  history.UndoLabel();
+history.SetMemoryLimit(256 * 1024 * 1024);
+```
+
+`CancelEdit()` restores the state at `BeginEdit` (Escape during a drag).
+
+## Hit testing
+
+```cpp
+VectorHitTester tester;
+auto hit = tester.HitTest(*doc, docPoint, /*tolerance in doc units*/ 2.0);
+if (hit) { hit->element; hit->topLevel; hit->layer; hit->onFill; hit->onStroke; }
+auto inside = tester.ElementsIn(*doc, marqueeRect, /*fullyInside*/ true);
+```
+
+Fills are tested with the element's fill rule, strokes with the element's
+width grown by the tolerance (so a hairline is still clickable), text and
+images by their boxes; locked and hidden layers are skipped. The tester
+keeps a small geometry-only render context, so it works with no window,
+and the canvas wraps it with the tolerance given in screen pixels.
+
+## Operations
+
+All edit the model in place; wrap them in the history.
+
+```cpp
+TranslateElements(els, dx, dy);
+ScaleElements(els, sx, sy, pivot);            // pivot in document units
+RotateElements(els, radians, pivot);
+SkewElements(els, radX, radY, pivot);
+TransformElements(els, Matrix3x3);            // any document-space matrix
+BakeTransform(el);                            // write the transform into the geometry
+
+ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
+auto group = GroupElements(els);              // into the topmost member's parent
+auto freed = UngroupElements({group});        // placement preserved both ways
+ReparentElement(el, otherGroup, index);
+
+DeleteElements(els);
+auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids
+AlignElements(els, AlignMode::Left);          // to the selection, or a reference rect (the page)
+DistributeElements(els, DistributeMode::HorizontalCenters);
+auto path = ConvertToPath(el);                // rect / circle / ellipse / line / polygon → path, in place
+```
+
+A document-space matrix `M` lands on an element as `T' = P⁻¹·M·P·T`, `P`
+being its parent-to-document map, so children of transformed groups move
+where the user expects.
+
+## The Bézier node model
+
+`VectorStorage::PathData` is a command stream (relative forms, H / V,
+smooth shorthands, arcs) — right for files, wrong to edit. A shape editor
+converts a path to `UltraCanvasBezierPath` on entry and back on every edit:
+
+```cpp
+#include "UltraCanvasBezierPath.h"
+
+auto bezier = UltraCanvasBezierPath::FromPathData(path->Path);   // all command kinds accepted
+auto& sp = bezier.subpaths[0];
+int n = sp.InsertNodeAt(/*segment*/ 1, /*t*/ 0.5);   // de Casteljau: the shape is unchanged
+sp.SetNodeType(n, BezierNodeType::Symmetric);        // Corner / Smooth / Symmetric rules
+sp.MoveHandle(n, /*outgoing*/ true, p);              // the other handle follows the rule
+sp.DragSegment(1, 0.3, delta);                       // "drag the line" gesture
+auto hit = bezier.HitTestOutline(p, tolerance);      // subpath, segment, t, distance
+auto node = bezier.HitTestNode(p, tolerance);
+path->Path = bezier.ToPathData();                    // absolute M / L / C / Z
+path->Path.InvalidateCache();
+```
+
+Every segment is a line or a cubic. `FromPolyline(points, closed,
+tolerance)` turns a freehand stroke into a smooth path (Douglas-Peucker
+simplification, Catmull-Rom tangents); `BuildPath(ctx)` emits the geometry
+for a preview; `FromSVGPathData` / `ToSVGPathData` are the string forms.
+The design is the one in
+[UltraCanvasBezierEditorProposal](UltraCanvasBezierEditorProposal.md).
+
+## The canvas element
+
+```cpp
+#include "UltraCanvasVectorCanvas.h"
+
+auto canvas = CreateVectorCanvas("canvas");
+canvas->SetDocument(doc);
+canvas->SetSelection(selectionPtr);            // shared with the tools and panels
+canvas->SetShowRulers(true);
+canvas->SetRulerUnit(72.0 / 25.4, "mm");
+VectorGridSpec grid; grid.visible = true; grid.spacing = 10; grid.subdivisions = 2;
+canvas->SetGrid(grid);
+VectorSnapOptions snap; snap.toGrid = true; snap.toGuides = true; snap.toObjects = true;
+canvas->SetSnapOptions(snap);
+
+canvas->onToolPress   = [&](const VectorPointerEvent& e) { tool->OnPress(e); };
+canvas->onToolDrag    = [&](const VectorPointerEvent& e) { tool->OnDrag(e); };
+canvas->onToolRelease = [&](const VectorPointerEvent& e) { tool->OnRelease(e); };
+canvas->onToolKey     = [&](const UCEvent& k) { return tool->OnKey(k); };
+canvas->onDrawOverlay = [&](IRenderContext* ctx, const VectorViewTransform& v) { tool->DrawOverlay(ctx, v); };
+canvas->onViewChanged = [&] { statusBar->SetZoom(canvas->GetZoom()); };
+```
+
+What the element does by itself:
+
+- **View.** Wheel zooms about the cursor (shift + wheel pans), space or the
+  middle button pans, `+` / `-`, Ctrl+0 (page), Ctrl+1 (100 %).
+  `SetZoom` / `SetZoomAt` / `ZoomStep` / `ZoomToPage` / `ZoomToDrawing` /
+  `ZoomToSelection` / `ZoomToRect` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
+  `PixelsToDoc`; `VisibleDocRect`, `CanvasArea`.
+- **Page** on a pasteboard with a shadow; **grid** with subdivisions that
+  hide when too dense; **rulers** in any unit with the pointer marked;
+  **guides** pulled out of the rulers, alt-dragged to move, dropped back
+  on a ruler to delete (`SetGuidesDraggable`, `AddGuide`, `SetGuides`,
+  `onGuidesChanged`).
+- **Snapping** — `Snap(docPoint, &result)` to guides, page edges and
+  centre, other objects' box edges and centres, and the grid, within
+  `radiusPixels`; guides beat the page, the page beats objects, objects
+  beat the grid at equal distance. Every pointer event carries both the
+  raw and the snapped point.
+- **Selection handles** — eight scale handles, or in `Rotate` mode round
+  rotate handles at the corners, skew diamonds at the edges and a movable
+  rotation centre (`SetHandleMode`, `SetRotationCenter`); `HitTestHandle`
+  tells a selector tool which one is under the pointer, `Body` when the
+  pointer is inside the bounds, `NoHandle` otherwise.
+- **Hit testing** — `HitTest(docPoint, tolerancePixels)` and
+  `ElementsIn(rect, fullyInside)` over the document.
+- **Tool hooks** — `onToolPress / Drag / Release / Hover / DoubleClick`
+  with a `VectorPointerEvent` (`doc`, `snapped`, `snap`, `view`, button,
+  modifiers, pressure, `insidePage`), `onToolKey`, `onDrawOverlay` in view
+  coordinates after the handles and before the rulers, `onViewChanged`,
+  `onFilesDropped`; `SetToolCursor`, `SetPanMode`.
+- **Invalidation** — `InvalidateDoc(rect)` after an edit, or `Refresh()`.
+
+The element never edits the document and owns no tool: a selector, a pen,
+a shape tool are application classes that receive these events and call
+`VectorEdit` inside a `VectorHistory` edit. It is registered in the element
+catalogue ([UltraCanvasUIElements](UltraCanvasUIElements.md)) alongside
+`UltraCanvasPaintSurface`.
+
+## Tests
+
+`Tests/VectorEditTest.cpp` (CTest `VectorEditTest`) covers the node model,
+selection, history, hit testing, every operation, the canvas's view maths,
+snapping and handles, and the gradient editor — all without a window.
+`Tests/VectorModelTest.cpp` covers the model and the renderer.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVectorConverters.md
 ==============================================================================
 
@@ -53600,13 +54295,13 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), at physical size when `$INSUNITS` declares a unit and the result is a usable page, otherwise scaled to a sensible point size, since drawing units are arbitrary; the unit and scale are recorded on the document, and layer-table properties (colour, lineweight, linetype, frozen/locked/plot flags) land on the `VectorLayer`s. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
 | DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). |
 
-All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `UltraCanvasVectorPathOps.h`.
+All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `DataFormats/UltraCanvasVectorPathOps.h`.
 
 Unsupported features never change meaning silently: each converter reports its fallbacks (gradient flattening, opacity flattening, skipped element types, encoding limits) through `ConversionOptions::WarningCallback`.
 
 ## The document model
 
-`VectorStorage::VectorDocument` (`UltraCanvasVectorStorage.h`) is the hub every converter meets: `Layers` → groups → elements, each element with an optional `Fill`/`Stroke` style, an optional `Matrix3x3` transform (double precision, row-major — `FromValues(a, b, c, d, e, f)` means x' = a·x + b·y + e, so SVG/PostScript `matrix()` values pass as `FromValues(a, c, b, d, e, f)`) and `GetBoundingBox()` in its parent's space. Group and document boxes are the union of their children with empty boxes skipped, then transformed; `HitTestDocument` carries the point through each ancestor's inverse transform so children of a transformed group (a block insert, a mirrored entity) are found where they are drawn.
+`VectorStorage::VectorDocument` (`DataFormats/UltraCanvasVectorStorage.h`, in the core library — with `DataFormats/UltraCanvasVectorRenderer.h`, `DataFormats/UltraCanvasVectorPathOps.h` and the `UltraCanvasVectorElement` viewer, so a drawing can be held and drawn without this plugin) is the hub every converter meets: `Layers` → groups → elements, each element with an optional `Fill`/`Stroke` style, an optional `Matrix3x3` transform (double precision, row-major — `FromValues(a, b, c, d, e, f)` means x' = a·x + b·y + e, so SVG/PostScript `matrix()` values pass as `FromValues(a, c, b, d, e, f)`) and `GetBoundingBox()` in its parent's space. Group and document boxes are the union of their children with empty boxes skipped, then transformed; `HitTestDocument` carries the point through each ancestor's inverse transform so children of a transformed group (a block insert, a mirrored entity) are found where they are drawn.
 
 **Units.** Coordinates and `Size` are always points (1/72 in). Readers of formats that carry a unit record it in `SourceUnit` (`LengthUnit`: `Point`, `Pixel`, `Inch`, `Foot`, `Yard`, `Mile`, `Mil`, `Millimeter`, `Centimeter`, `Decimeter`, `Meter`, `Kilometer`, `Micrometer`, `Nanometer`, or `Unspecified`) with the scale they applied in `PointsPerSourceUnit`, so `source = points / PointsPerSourceUnit` recovers the file's measurements; `PointsPerUnit()` and `LengthUnitSymbol()` are the helpers. The DXF reader sets them from `$INSUNITS`, using the physical scale when it is declared and yields a usable page (200–20 000 pt), and the DXF writer emits `$INSUNITS` and writes coordinates in the source unit when the document has one.
 
@@ -57904,12 +58599,838 @@ The main benefit of FileLoader is that applications don't need to be updated to 
 Because format availability depends on the libraries and plugins a build was compiled with, FileLoader also exposes a runtime inventory — `UltraCanvasFileLoader::GetSupportedFormats()` / `UltraCanvasSupportedFormats::GetAll()` — that reports exactly which formats the current build can load and save, and which library or plugin provides each. Loading and saving stay simple and predictable across formats.
 
 ==============================================================================
+FILE: Docs/Modules/IODeviceManager/Architecture.md
+==============================================================================
+
+# IODeviceManager — Architecture
+
+Module status: **foundation, printers (CUPS + Windows), cameras (V4L2) and
+scanners (SANE) landed; more backends in progress.**
+See [README.md](README.md) for what the module is for. This file is the
+API contract and the design rationale behind it.
+
+---
+
+## Where the code lives
+
+Same shape as UltraNet and UltraDatabase:
+
+```
+UltraCanvas/include/IODeviceManager/   Public headers
+    UltraCanvasIODeviceTypes.h           Device-generic vocabulary
+    UltraCanvasIODevice.h                IODevice base class
+    UltraCanvasIODeviceManager.h         Registry and discovery
+UltraCanvas/core/IODeviceManager/      Platform-neutral implementation
+    UltraCanvasIODevice.cpp
+    UltraCanvasIODeviceManager.cpp
+    UltraCanvasIODeviceBackends.{h,cpp}  Internal: backend attachment point
+UltraCanvas/OS/<Platform>/             Platform backends, flat, picked up by
+                                       the existing OS/<Platform>/*.cpp glob
+```
+
+Everything is in `namespace UltraCanvas`. Platform directories are
+`Linux`, `MSWindows`, `MacOS`, `Android`, `WASM`, `BSD` — the names the rest
+of the tree already uses.
+
+The foundation layer depends on nothing but the standard library, so
+`Tests/IODeviceManagerTest` builds and runs on a machine with none of the
+rendering dependencies installed.
+
+---
+
+## The three layers
+
+```
+Application
+    │
+    ▼
+IODeviceManager          registry + discovery, knows no platform API
+    │  runs enumerators
+    ▼
+IODevice  (ScannerDevice / CameraDevice / PrinterDevice)
+    │  virtual dispatch
+    ▼
+Backend           SANE · V4L2 · gphoto2 · CUPS · WIA · TWAIN · ICA ·
+                  AVFoundation · MediaFoundation · IPP · GutenPrint
+```
+
+### Results and state
+
+Every blocking operation returns `IODeviceResult` — `Ok()` / `Error(code, msg)`
+factories, an `explicit operator bool()`, a typed `IODeviceResultCode`, and a
+`backendCode` slot carrying the backend's own status verbatim for the log.
+This mirrors `UltraNetResult` and `UltraDbResult` so the three modules read
+alike.
+
+`IODevice` owns the lifecycle state machine. Backends implement
+`DoConnect()` / `DoDisconnect()`; callers use `Connect()` / `Disconnect()`.
+Two consequences of that split are load-bearing:
+
+- **The base destructor calls no virtuals.** By the time `~IODevice()` runs
+  the derived object is gone, so a virtual call from there dispatches into a
+  dead object — and for a pure virtual, terminates. Each backend releases its
+  own handles in its own destructor.
+- **`Disconnect()` always reaches the backend**, even when `Connect()` never
+  succeeded, because a `DoConnect()` that failed halfway may still hold
+  handles.
+
+`deviceMutex` is recursive: backend hooks are called with it held, and a
+backend legitimately calls `SetState()` / `Fail()` both from inside those
+hooks and from its own worker threads, where it is not.
+
+---
+
+## Backends register enumerators, not methods
+
+An enumerator discovers the devices of **one category** through **one
+backend** and returns them constructed but not connected:
+
+```cpp
+using IODeviceEnumerator = std::function<std::vector<IODevicePtr>()>;
+
+manager.RegisterEnumerator(IODeviceCategory::Camera, "V4L2",    EnumerateV4L2Cameras);
+manager.RegisterEnumerator(IODeviceCategory::Camera, "gphoto2", EnumerateGPhoto2Cameras);
+```
+
+`EnumerateDevices(category)` runs every enumerator registered for that
+category and merges the results.
+
+This is deliberately **not** a set of `EnumerateScanners()` /
+`EnumerateCameras()` methods on the manager. With one method per category,
+every platform backend has to define the same symbol — so a webcam backend
+and a DSLR backend on one platform collide at link time, and whichever the
+linker picks is the only one that ever runs. Two backends serving one
+category is the normal case, not the exception:
+
+| Category | Linux | Windows | macOS |
+|---|---|---|---|
+| Camera | V4L2 *and* gphoto2 *and* RTSP | MediaFoundation *and* WIA *and* RTSP | AVFoundation *and* ImageCapture *and* RTSP |
+| Scanner | SANE *and* eSCL | WIA *and* TWAIN *and* eSCL | ICA *and* eSCL |
+| Printer | CUPS *and* IPP *and* GutenPrint | Spooler *and* IPP *and* GutenPrint | CUPS *and* IPP *and* GutenPrint |
+
+Backends attach through `Internal::RegisterCompiledBackends()` in
+`core/IODeviceManager/UltraCanvasIODeviceBackends.cpp`, called once from
+`Initialize()`. They do **not** self-register from a static initialiser:
+UltraCanvas also builds as a static library, where the linker drops the
+static initialisers of object files nothing else references — which would
+silently leave a platform with no devices at all.
+
+### Merge semantics
+
+- A device still present keeps its **existing object**, so an open session
+  survives a rescan and a caller's `IODevicePtr` never goes stale.
+- A device that disappeared is disconnected and dropped, and the change
+  callback fires `Removed`.
+- The first backend to claim a device id wins, so a device reachable through
+  two backends is registered once.
+- One backend throwing does not hide the devices the others found; the
+  result names the backend that failed.
+- Change callbacks fire with the registry lock **released**, so a callback
+  may re-enter the manager.
+
+---
+
+## Printer: switching between GutenPrint and the native driver
+
+The requirement is that an application can choose GutenPrint or the OS's own
+driver **on Linux, Windows and macOS alike**. Getting there needs one
+distinction the earlier draft of this module missed.
+
+### GutenPrint is two separate things
+
+| | What it is | Where it runs |
+|---|---|---|
+| **libgutenprint** | Portable C library. Turns a raster page + a model name + a parameter set into the printer's **native command stream** (ESC/P2, PCL, BJL, dye-sub). | Anywhere it compiles — Linux, macOS, Windows |
+| **The CUPS driver** (`rastertogutenprint` + PPDs) | A CUPS filter that wraps the library | Linux and macOS only |
+
+Defining "the GutenPrint backend" as *CUPS with a GutenPrint PPD* — which is
+what the earlier draft did — makes it structurally impossible on Windows,
+because Windows has no CUPS. The library underneath has no such limitation.
+
+### So: separate the renderer from the transport
+
+**Renderer** — who turns the page into bytes the printer understands.
+**Transport** — how those bytes reach the device. The transport is a property
+of the platform; the renderer is the user's choice.
+
+```cpp
+enum class IOPrintRenderer {
+    Auto,         // GutenPrint when it supports this model, else Native
+    Native,       // the OS driver: CUPS PPD filter chain, or the Windows driver
+    GutenPrint,   // libgutenprint in-process, output sent as a raw job
+    IPP           // driverless — the printer itself renders PWG Raster / PDF
+};
+```
+
+| Renderer | Linux transport | macOS transport | Windows transport |
+|---|---|---|---|
+| `Native` | CUPS job ✅ | CUPS job ✅ | GDI drawing session ✅ |
+| `GutenPrint` | CUPS **raw** job (`application/vnd.cups-raw`) ✅ | CUPS **raw** job ✅ | `StartDocPrinter`, `pDatatype = "RAW"` ✅ |
+| `IPP` | IPP over HTTP | IPP over HTTP | IPP over HTTP |
+
+A transport declares what it can carry, and a renderer declares what it
+emits; `PrinterDevice` only offers the pairings that match. The checks are
+symmetric, one per shape a payload can take:
+
+| Renderer says | Transport must say | Payload carries |
+|---|---|---|
+| `ProducesRawStream()` | `SupportsRaw()` | the device's own command stream |
+| `ProducesPageSource()` | `SupportsPageSource()` | pages to be **drawn** |
+| neither | `SupportsDocument()` | a document for the platform's driver |
+
+### The third shape: pages, not bytes
+
+The first two rows were enough until Windows. CUPS has a filter chain, so a
+PDF is handed over as-is and the native renderer is a pass-through. **The
+Windows spooler has no equivalent**: it takes device-ready data, and that is
+all. A document reaches a Windows printer only by being *drawn* — `CreateDC`,
+`StartDoc`, then per page `StartPage`, GDI calls, `EndPage`, and the driver
+turns those calls into the device's own commands.
+
+That is not a byte stream at any point, so it does not fit a payload of
+`filePath` or `data`. Forcing it to would mean inventing a container — a
+multi-page EMF wrapper — that exists only to be unwrapped again three
+function calls later. Instead the payload gained a third member,
+`IPrintPageSourcePtr pages`, and the transport drives it.
+
+So `WindowsPrintTransport::SupportsDocument()` is still `false`, and that is
+not a gap any more — it is what Windows is. `SupportsPageSource()` is `true`,
+and that is what makes `Native` available there.
+
+Two consequences worth stating, because both are load-bearing:
+
+**Pagination happens against the device, not before it.** `IPrintPageSource`
+has a `Prepare(IPrintPageTarget&)` that runs once with the real target before
+the page count is known, because the same text is a different number of pages
+on A4 at 600 dpi than on Letter at 300. A source cannot honestly answer
+"how many pages?" until it has met the printer.
+
+**The layout is platform-neutral on purpose.** Fitting, wrapping and
+pagination live in `core/` and reach the device only through the abstract
+`IPrintPageTarget`, so they are exercised by `Tests/IODevicePrinterTest`
+against a fake target with a synthetic font — on every platform in the
+matrix, not only the one that needs them. What is left in `OS/MSWindows` is
+the part that genuinely needs Win32: the DC, the `DEVMODE`, the font handles
+and `StretchDIBits`.
+
+> One trap, recorded so it is not reintroduced: the target's method is
+> `DrawTextLine`, not `DrawText`, because `<windows.h>` defines `DrawText` as
+> a macro. A virtual named `DrawText` is silently renamed by the preprocessor
+> in any translation unit that includes windows.h, so the override stops
+> overriding and the class turns abstract — and the compiler blames the
+> override, not the macro. `GetLastError()` cost this module the same lesson.
+
+The GutenPrint renderer is therefore genuinely cross-platform: one rendering
+path, three raw-transport shims of a few dozen lines each. Proposed surface
+on `PrinterDevice`:
+
+```cpp
+std::vector<IOPrintRenderer> GetAvailableRenderers() const;
+bool                         IsRendererAvailable(IOPrintRenderer) const;
+IODeviceResult               SetRenderer(IOPrintRenderer);
+IOPrintRenderer              GetRenderer() const;
+```
+
+`GetAvailableRenderers()` answers per device, not per platform. A renderer is
+offered only when all four hold: it is compiled in, its library or tool is
+present (`IsAvailable()`), it recognises this printer (`SupportsPrinter()`),
+and — for one that emits a device-native stream (`ProducesRawStream()`) — the
+platform transport can carry a raw job. `Auto` prefers GutenPrint where all
+four hold, because its parameter set is the richer one.
+
+`SetRenderer()` **refuses** a renderer that is not available rather than
+accepting it and falling back at print time: a caller that asked for
+GutenPrint needs to know it is not getting it.
+
+### Option resolution
+
+The GutenPrint parameter model — media type → resolution → cartridge → inkset
+→ duplex, in that priority order — is implemented in `ResolvePrintOptions()`
+and applies whichever renderer is chosen: the parameters are a property of how
+printing works, not of one driver.
+
+The order matters because the parameters are not independent. Media outranks
+resolution, so asking for 2880 dpi on plain paper yields High, not a silent
+substitution discovered in the output tray; photo black ink on plain paper
+becomes matte black; a colour inkset is dropped for monochrome output.
+
+Every substitution is reported through the `changes` out-parameter in words
+meant for a user — *"A3 is not supported, using A4"* — so a print dialog can
+say what it had to alter. `PrinterDevice::ResolveOptions()` exposes the same
+answer before a job is sent.
+
+**An unreported capability is not a refusal.** An empty capability list means
+the backend did not say, not that nothing is supported, and the three-valued
+`IOSupport` (`Unknown`/`No`/`Yes`) carries the same distinction for the
+booleans. Only an explicit `No` constrains anything. A plain `bool` cannot
+tell "this printer has no duplex unit" from "we could not read this printer's
+capabilities", and conflating them strips options from a printer that would
+have accepted them.
+
+### The print dialog asks; PrinterDevice prints
+
+`UltraCanvasNativeDialogs::ShowPrintDialog()` shipped long before this module
+did, and Texter and UltraFiler both call it. Each platform printed by itself:
+
+- **Linux** built a real GTK print dialog, read `GtkPrintSettings` and
+  `GtkPageSetup` out of it, used **neither**, and ran
+  `lpr -P "<printer>" "<tempfile>"` through `system()`.
+- **Windows** showed no print dialog at all. It wrote a temp file and invoked
+  the shell's `print` verb, so the dialog the user saw was Notepad's and its
+  settings never came back. The temp file was left behind deliberately.
+- **macOS** wrote the text to a fixed path in the temp directory — the same
+  path on every call, so two documents printed in quick succession raced for
+  it — handed it to `NSWorkspace`, and returned `true` without waiting for
+  anything.
+
+So on every platform the user chose copies, collation, paper size,
+orientation, duplex and a page range, and every one of those was discarded.
+
+`PrinterDevice` already honours all of them. The fix is therefore not more
+printing code but **less**: the dialog's job is narrowed to *asking*.
+
+```cpp
+NativePrintResult chosen =
+    UltraCanvasNativeDialogs::RequestPrintSettings("report.txt", window);
+
+if (chosen.IsOK()) {
+    IODeviceResult printed =
+        PrintTextWithSettings(chosen, "report.txt", text);
+}
+```
+
+`NativePrintResult` is `IOPrintDialogChoice` — the printer's name plus an
+`IOPrintOptions` and a page range. It is **not** a new vocabulary of
+copies/paper/duplex enums: a print dialog exists to produce a print job, and
+`IOPrintOptions` is what `PrinterDevice::Print()` takes, so anything else
+would be a type to convert rather than a type to use. It is defined in the
+printer types rather than beside the other dialog results because the dialog
+header reaches the whole widget stack through `UltraCanvasModalDialog.h`, and
+IODeviceManager depends on no UI.
+
+Three things follow from doing it this way:
+
+**One rule for what a sheet of paper is.** GTK quotes paper in millimetres,
+Win32 in tenths of a millimetre through a `DEVMODE`, AppKit in points. All
+three convert to hundredths of a millimetre and go to the same
+`IOPaperSizeFromDimensions()` the CUPS backend already used — a size is
+recognised by its measurements, not by the name the printer, driver or
+desktop gave it. On Windows the `DMPAPER_*` code is not mapped by hand but
+looked up in the *driver's own* table through `DeviceCapabilities`, because
+the codes do not all line up: `DMPAPER_B4` is JIS B4 at 257×364 mm while ISO
+B4 is 250×353. A size with no name in the table is carried by its
+measurements as `Custom` rather than substituted for A4.
+
+**The page range finally goes somewhere.** `IOPrintJob::pageRange` had existed
+since the module was written and was read by nothing — the payload had
+nowhere to carry it, and a transport only ever sees the payload. It now
+reaches `IOPrintPayload`, and from there the IPP `page-ranges` attribute under
+CUPS and the page loop on the GDI path, where it is applied *after*
+pagination because that is the first moment "pages 2–4" can be checked
+against a document that has pages.
+
+**What is testable is separated from what needs a dialog.** Matching the name
+a dialog returns to a device, and turning a dialog answer into a job, are
+ordinary functions over data; they live in
+`UltraCanvasIODevicePrintDialog.cpp` and are covered by the printer tests. The
+half that names `RequestPrintSettings()` is a separate translation unit, so a
+reference to a platform dialog never enters the test's link line.
+
+Two things are reported rather than acted on. **"Print to File"** comes back
+as `printToFile` and is refused by name, because silently spooling to a queue
+the user did not choose is the worse of the two wrong answers. **Duplex on
+macOS** is left at its default: it is not on `NSPrintInfo` at all — it lives
+in the `PMPrintSettings` underneath — and claiming a value would be inventing
+one.
+
+### Open decision: linked or subprocess
+
+**libgutenprint is GPL-2.0-or-later. UltraCanvas is MIT.** Linking it means
+the distributed binary is GPL. That is a product decision, not a technical
+one, and it must be made before the GutenPrint renderer is written.
+
+| | Linked (`libgutenprint`) | Subprocess (GutenPrint's own tools) |
+|---|---|---|
+| Quality / control | Full: every parameter, in-process | Good: whatever the CLI exposes |
+| Licence effect | Distributed binary becomes GPL | None — matches this repo's existing "runtime, not linked" pattern (QEMU, Wine in `Docs/Dependencies.md`) |
+| Windows | Needs an MSYS2/MinGW build of the library | Needs the GutenPrint binaries shipped alongside |
+| Failure mode | Link error if absent | Clean: renderer simply not offered |
+
+**Recommendation:** subprocess, gated on `ULTRACANVAS_HAS_GUTENPRINT`, with
+`Native` as the fallback whenever GutenPrint is absent. It keeps the
+framework MIT and matches how this repository already handles GPL tools. If
+ULTRA OS ships under GPL anyway, linking is the better technical answer and
+nothing else in this design changes — only the renderer's internals.
+
+Either way `libgutenprint`/GutenPrint must be added to `Docs/Dependencies.md`,
+`master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md` before the renderer
+lands.
+
+### Enumeration double-counting
+
+CUPS already exposes IPP Everywhere queues, so a driverless printer is
+reachable through both the CUPS and the IPP enumerator. The registry's
+first-backend-wins rule collapses those only when both report the same device
+id, which they do not by default. The printer backends must therefore derive
+their device ids from something stable and shared — the device URI, or the
+printer's UUID from its IPP attributes — rather than from the queue name.
+
+---
+
+## Usage
+
+```cpp
+#include "IODeviceManager/UltraCanvasIODeviceManager.h"
+
+auto& manager = UltraCanvas::IODeviceManager::GetInstance();
+manager.Initialize();
+
+manager.EnumerateDevices(UltraCanvas::IODeviceCategory::Scanner);
+
+for (const auto& info : manager.GetDeviceInfos(UltraCanvas::IODeviceCategory::Scanner)) {
+    std::cout << info.name << " via " << info.backend << "\n";
+}
+
+if (auto device = manager.GetDevice(UltraCanvas::IODeviceCategory::Scanner, 0)) {
+    if (auto result = device->Connect()) {
+        // ... category-specific work through the derived class ...
+        device->Disconnect();
+    } else {
+        std::cerr << result.message << "\n";
+    }
+}
+
+manager.Shutdown();
+```
+
+Hot-plug:
+
+```cpp
+manager.SetDeviceChangeCallback(
+    [](UltraCanvas::IODeviceChange change, const UltraCanvas::IODeviceInfo& info) {
+        // Runs on the thread that caused the change — do not block here.
+    });
+```
+
+Adding a device the manager did not enumerate — a test double, or hardware
+behind an application's own backend — is `RegisterDevice(std::shared_ptr)`.
+
+---
+
+## What is not built yet
+
+The foundation is in. Categories land one slice at a time, each one
+compiling, tested and wired into CI before the next starts:
+
+| Slice | Contents |
+|---|---|
+| 1 ✅ | `IODevice`, `IODeviceManager`, device-generic types, tests |
+| 2 ✅ | `PrinterDevice`, renderer/transport seam, option resolver, CUPS backend (Linux + macOS), tests |
+| 3 ✅ | Windows spooler backend: enumeration, capabilities, status, job queue, RAW transport |
+| 4 | GutenPrint renderer — blocked on the licence decision above. With slices 2 and 3 in, this is one class and no other change on any platform. |
+| 5 ✅ | `CameraDevice` + V4L2 (Linux) |
+| 6 ✅ | `ScannerDevice` + SANE (Linux) |
+| 7 ✅ | Hot-plug watching + the udev watcher (Linux) |
+| 8 ✅ | Windows GDI renderer, so `Native` works there too — images and plain text; PDF pagination and XPS still open |
+| 8a ✅ | The OS print dialog wired to `PrinterDevice` on Linux, Windows and macOS, so the settings it collects reach the queue; page ranges carried end to end |
+| 9 | Windows and macOS backends for camera and scanner |
+| 10 | Hot-plug watchers for Windows and macOS; the permission model |
+| 11 | IPP / eSCL driverless, network cameras |
+
+Slices 2 and 3 ship the switch and both transports. Adding GutenPrint is then
+a renderer class and nothing else: no change to `PrinterDevice`, and no change
+to any transport, since `CupsPrintTransport` and `WindowsPrintTransport` both
+already submit raw jobs. That is the whole point of having split the two.
+
+Contributions of earlier prototype code should be re-landed through these
+slices rather than dropped in whole: a large drop that does not compile
+against the current tree costs more to review than it saves.
+
+---
+
+## Cameras
+
+`CameraDevice` follows the same non-virtual-public / virtual-protected shape
+as the lifecycle: callers use `StartStream()`/`StopStream()`, backends
+implement `DoStartStream()`/`DoStopStream()` and call `DeliverFrame()` from
+their capture thread.
+
+Two rules carry the weight, and both are asserted in
+`Tests/IODeviceCameraTest`:
+
+- **No frame reaches a callback after `StopStream()` returns.** `StopStream()`
+  clears the streaming flag first, so a capture loop testing
+  `ShouldKeepStreaming()` winds down, then `DoStopStream()` joins the thread.
+  By the time it returns, whatever the callback captured is safe to destroy.
+- **A backend stops its own thread in its own destructor.** `~CameraDevice()`
+  calls no virtuals, for the same reason `~IODevice()` does not: the derived
+  object is already gone, so a thread still calling `DeliverFrame()` would be
+  reading freed memory.
+
+`DeliverFrame()` deliberately does not take `deviceMutex` — `StopStream()`
+holds it while joining the capture thread, so locking there would deadlock.
+The two fields it touches are atomic, and the callback is cleared only after
+the join.
+
+### Controls
+
+Controls are enumerated, not declared as a struct of booleans:
+
+```cpp
+CameraControlRange range = camera->GetControlRange(CameraControl::Exposure);
+if (range.supported) {
+    camera->SetControl(CameraControl::Exposure, sliderPosition);  // clamped and stepped
+}
+```
+
+Which controls exist is a property of the device. A struct with one field per
+control has to guess the union of every camera in advance and still cannot say
+whether a given camera has one — `CameraCapabilities::controls` lists only
+what this camera actually reports, so iterating it enumerates them.
+`SetControl()` clamps to the range and snaps to the step, so a caller can pass
+a raw slider position; `V4L2_CID_EXPOSURE_ABSOLUTE` with minimum 3 and step 4
+accepts 3, 7, 11 — not 0, 4, 8.
+
+### Configuration
+
+`SetConfiguration()` refuses a format/resolution pair the camera does not
+offer rather than accepting it and capturing something else, which a caller
+would discover only by inspecting frames. `ResolveConfiguration()` fills in
+what was left unset — preferring an uncompressed format so pixels are readable
+without a decoder, and the largest resolution that format offers — and reports
+what it chose, the same contract `ResolvePrintOptions()` has.
+
+An empty resolution list means the driver did not enumerate them (some report
+a continuous range instead), so it reads as "did not say" rather than
+"supports none" — the same rule the printer capabilities follow.
+
+### V4L2 backend
+
+Enumerates `/dev/video*`, skipping nodes without `V4L2_CAP_VIDEO_CAPTURE`:
+modern kernels give one camera several nodes, and the metadata ones would
+otherwise appear as cameras that never yield a frame. Capability walk is
+`VIDIOC_ENUM_FMT` → `ENUM_FRAMESIZES` → `ENUM_FRAMEINTERVALS`, controls via
+`VIDIOC_QUERYCTRL`, capture via mmap'd buffers. The device is opened
+non-blocking with `poll()` supplying the timeout, so a stalled camera cannot
+wedge the caller, and every ioctl retries on `EINTR` — a signal is not a
+device error. Frames carry the driver's own timestamp rather than a clock read
+in the callback, which has already drifted from when the sensor was exposed.
+
+---
+
+## Scanners
+
+The page loop is where a scanner API earns or loses its keep. A feeder run
+ends when the tray empties, and a backend signals that the only way it can —
+by not producing a page — which is also how it signals a failure. Conflating
+the two throws away every page already scanned, so `DoScanPage()` returns
+`DeviceNotFound` for an empty feeder specifically, and `ScanPages()` treats
+that as a normal end once at least one page has come through.
+
+A run ends in five ways, all covered by `Tests/IODeviceScannerTest`: the tray
+empties, the caller's callback returns false, `maxPages` is reached,
+`CancelScan()` is called, or the source is a flatbed, which has one page by
+definition. The page count rides back in `IODeviceResult::backendCode` even
+on a cancelled or failed run, so a caller knows what it got.
+
+`CancelScan()` deliberately takes no lock. The scanning thread holds
+`deviceMutex` for the whole run, so a cancel that waited for it could never
+arrive in time to cancel anything.
+
+### Configuration
+
+Colour mode and paper source are enumerations — a scanner either has them or
+does not — so an unsupported one is refused. Resolution is a number on a
+scale, and scanners expose arbitrary values, so it is **snapped** to the
+nearest offered rather than refused: turning down 301 dpi on a device that
+does 300 helps nobody. `NearestResolution()` prefers the closest value at or
+*below* the request, because scanning higher costs time and memory
+quadratically and is not a substitution to make silently.
+
+### SANE backend
+
+Enumerates with `local_only` false so networked backends (`net`, `escl`,
+`airscan`) are included — a driverless network scanner is the common case now.
+Options are walked by name rather than index, because backends order them
+freely, and sources are matched by substring since "ADF Duplex", "Duplex ADF"
+and "Automatic Document Feeder" all mean the same thing. Geometry crosses from
+SANE's fixed-point millimetres to this module's hundredths of a millimetre in
+one place rather than at every call site. `sane_init`/`sane_exit` are
+process-global and not reference-counted by the library, so the count is kept
+in the backend: a second scanner opening must not re-init, and the first one
+closing must not tear the library out from under the others.
+
+---
+
+## Hot-plug watching
+
+A watcher reports **which category changed, not which device**:
+
+```cpp
+class IDeviceWatcher {
+    virtual IODeviceResult Start(CategoryChangedCallback onCategoryChanged) = 0;
+    virtual void Stop() = 0;
+};
+```
+
+The manager re-enumerates that category, and the merge `EnumerateDevices()`
+already performs works out what appeared or disappeared and fires the change
+callback. Nothing else was needed to make hot-plug work — the diffing was
+already there for rescans.
+
+That split is what keeps each platform's watcher small. udev, the Windows
+device broadcast and IOKit all report kernel-level arrivals in their own
+vocabulary, and none of them knows what a `ScannerDevice` is. Translating "a
+video4linux node appeared" into "some camera changed" is all they have to do.
+
+```cpp
+manager.SetDeviceChangeCallback([](IODeviceChange change, const IODeviceInfo& info) {
+    // now fires for real plug and unplug, not only after an explicit rescan
+});
+manager.StartMonitoring();
+```
+
+`SetDeviceWatcher()` substitutes one — for a test, or for an application whose
+devices arrive through its own mechanism.
+
+### The locking, which is the whole difficulty
+
+`StopMonitoring()` joins the watcher's thread, and that thread is calling
+`EnumerateDevices()`, which takes `registryMutex`. Holding either lock across
+the join deadlocks. So monitoring state lives under its own `watcherMutex`,
+and both `Stop()` and the join happen with **no lock held**. `Shutdown()`
+stops monitoring before it touches the registry for the same reason. The
+manager test drives this deliberately — its fake watcher reports from another
+thread, because the deadlock only appears when the callback arrives from
+somewhere other than the caller's — and the suite is clean under
+ThreadSanitizer.
+
+### udev watcher (Linux)
+
+Filters `video4linux`, `usb` and `sound` **in the kernel**: without a filter
+every uevent on the machine wakes the thread to be discarded. Only `add` and
+`remove` count — a `change` action means a device reported a property, not
+that it appeared, and re-enumerating on those makes a busy machine rescan
+constantly.
+
+Events are **coalesced over a 250 ms quiet period**. Plugging in one webcam
+produces a burst — two or more video4linux nodes plus USB interfaces, each its
+own uevent — and re-enumerating per event would rescan the hardware several
+times for one physical act.
+
+A `usb` arrival maps to Scanner, Printer *and* Camera, because the kernel says
+a USB device appeared, not what it is: at that level a scanner and a printer
+look alike, and only SANE or CUPS can say. Re-enumerating all three is cheap
+next to guessing wrong, and the merge turns "nothing actually changed" into no
+notification.
+
+The poll waits on the udev fd **and an eventfd**, so `Stop()` wakes it
+immediately instead of after a timeout — a verified stop takes as long as the
+work, not as long as the poll interval.
+
+Where no watcher is compiled in, `CreateDeviceWatcher()` returns null and
+`StartMonitoring()` reports `BackendUnavailable`, so a caller can tell "this
+platform cannot watch" from "nothing has been plugged in yet".
+
+==============================================================================
+FILE: Docs/Modules/IODeviceManager/Gaps.md
+==============================================================================
+
+# IODeviceManager — what is not built yet
+
+Companion to [Architecture.md](Architecture.md), which describes the design.
+This file tracks the distance between that design, the claims in
+[README.md](README.md), and the code actually in the tree.
+
+It exists because the module's documentation ran well ahead of its code: the
+overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
+production-ready, ~11,525 lines" for a module that had no source at all. Read
+a ✅ below as "in the tree, compiled and tested", and nothing else.
+
+Last reviewed: 2026-09-15 (after wiring the OS print dialog to PrinterDevice).
+
+---
+
+## Legend
+
+| Mark | Means |
+|---|---|
+| ✅ | In the tree, compiles, covered by a test |
+| 🔨 | Started, incomplete — details in the row |
+| ❌ | Not written |
+| ⚠️ | Written elsewhere but not usable as-is — a rewrite, not a port |
+| ❓ | Blocked on a decision, not on work |
+
+---
+
+## Foundation
+
+| Item | State | Notes |
+|---|---|---|
+| `IODevice` base, lifecycle, error slot | ✅ | |
+| `IODeviceManager` registry, enumerator merge | ✅ | |
+| `IODeviceResult`, device-generic types | ✅ | |
+| Foundation tests against a fake backend | ✅ | `Tests/IODeviceManagerTest` |
+| Hot-plug watching (`IDeviceWatcher`, `StartMonitoring`) | ✅ | |
+| udev watcher (Linux) | ✅ | filtered in-kernel, `add`/`remove` only, 250 ms coalescing |
+| **Hot-plug watchers for Windows and macOS** | ❌ | `WM_DEVICECHANGE` and IOKit notifications. Without one, `StartMonitoring()` reports `BackendUnavailable` there and a caller rescans on its own schedule. |
+| **Permission model** | ❌ | macOS gates camera and microphone behind TCC, Windows behind capability prompts, Linux behind udev rules and group membership. `IODeviceResultCode::AccessDenied` exists; nothing requests permission or reports why it was refused. `UltraCanvasAudioDevices` already has `MicrophonePermission` + `RequestMicrophonePermission` — generalise that, do not reinvent it. |
+
+---
+
+## Device classes
+
+| Class | State |
+|---|---|
+| `PrinterDevice` | ✅ |
+| `CameraDevice` | ✅ |
+| `ScannerDevice` | ✅ |
+
+---
+
+## Scanner
+
+Previously the largest hole: advertised as finished across five protocols with
+no scanner source in the repository at all. `ScannerDevice` and the SANE
+backend now exist; the other four protocols do not.
+
+| Item | State |
+|---|---|
+| `ScannerDevice` + scanner types (resolution, colour mode, scan area, ADF, duplex) | ✅ |
+| SANE (Linux) | ✅ enumeration, option walk, page loop, cancellation |
+| WIA (Windows) | ❌ |
+| TWAIN (Windows) | ❌ |
+| ICA (macOS) | ❌ |
+| eSCL / AirScan driverless network scanning | ❌ |
+| Multi-page ADF, capability detection | ✅ |
+| Preview mode | ❌ detected but not exposed |
+
+---
+
+## Camera
+
+| Item | State |
+|---|---|
+| **V4L2 webcam backend (Linux)** | ✅ enumeration, capability walk, mmap streaming capture, UVC controls |
+| `CameraDevice` implementation | ✅ |
+| DSLR: gphoto2 / WIA / ImageCapture | ⚠️ rewrite — see the device-class note above |
+| Webcam: MediaFoundation / AVFoundation | ⚠️ rewrite |
+| Network camera (RTSP) | ⚠️ rewrite, and it calls libav\* and raw sockets directly; it should go through `libspecific/Video/IVideoBackend.h` and UltraNet |
+| ONVIF discovery | ❌ described as "framework ready", which meant not implemented |
+| PTZ control, preset positions | ❌ same |
+| Video recording / encoding | ❌ |
+
+---
+
+## Printer
+
+The type vocabulary that exists for this category is genuinely good — the
+GutenPrint parameter model in particular. The behaviour behind it is mostly
+absent.
+
+| Item | State |
+|---|---|
+| Printer type vocabulary (paper, media, quality, duplex, GutenPrint params) | ✅ |
+| `PrinterDevice` + renderer selection | ✅ |
+| CUPS backend: enumeration, capabilities, status, supplies, jobs (Linux/macOS) | ✅ |
+| CUPS transport, driver documents and raw streams | ✅ |
+| Option resolver in GutenPrint priority order | ✅ replaces the `FIXME` that returned its input unchanged |
+| **GutenPrint renderer** | ❌ the seam it plugs into is complete and tested on both transports; the renderer itself is blocked on the licence decision below |
+| Windows spooler backend: enumeration, capabilities, status, job queue | ✅ |
+| Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
+| **Windows GDI renderer** | ✅ `Native` now works on Windows. Prints raster images and plain text by drawing onto a printer DC; honours paper size, orientation, copies, collation, colour mode, duplex and quality through a driver-validated `DEVMODE`. |
+| Windows GDI renderer: PDF and other documents | ❌ refused by name with `NotSupported`, not half-printed. Needs the PDF plugin to paginate; the seam it would plug into is done. |
+| Windows GDI renderer: images from memory | ❌ the document loader is path-based, so a job carrying image bytes rather than a path is refused rather than spooled through a temp file behind the caller's back. |
+| XPS print path | ❌ GDI covers every driver Windows will show; XPS would matter for an XPS-only device or for higher-fidelity transparency. |
+| Windows printer maintenance | ❌ |
+| **macOS printing** | 🔨 printing itself works through the CUPS backend, which is built for macOS as well as Linux, and the print panel is wired up (`NSPrintPanel` → `NSPrintInfo` → `IOPrintOptions`). What is missing is duplex, which is not on `NSPrintInfo` at all — it lives in the `PMPrintSettings` underneath — so it is left at its default rather than guessed. Untested on real hardware. |
+| Paper size recognition | ✅ by dimensions from the CUPS dest-info API, replacing the prior stub that returned A4 for every size a printer reported |
+| Page rendering (document/image → page raster) | ❌ |
+| Page ranges | ✅ `IOPrintJob::pageRange` had been declared since the module was written and read by nothing, so a range chosen in a print dialog was dropped between the dialog and the queue. It now reaches the payload, and from there the IPP `page-ranges` attribute under CUPS and the page loop on the GDI path. |
+| IPP: real mDNS/DNS-SD discovery | ❌ the prior version piggybacked on CUPS and only found what CUPS already knew |
+| IPP: full `Get-Printer-Attributes` parsing | ❌ |
+| SNMP supply/component monitoring | ⚠️ exists outside the tree; needs net-snmp declared, and should be reconsidered against UltraNet |
+| Maintenance (cleaning, alignment, nozzle check) | ⚠️ two competing architectures were written; pick one. Both shell out to `escputil` with the device path interpolated unquoted into `popen` — fix before landing. |
+| Cloud printing | ❌ architecture only |
+| **Integration with `UltraCanvasNativeDialogs::ShowPrintDialog()`** | ✅ the dialog now asks (`RequestPrintSettings()` → `NativePrintResult`) and the job goes through `PrinterDevice`, so the printer, copies, collation, paper size, orientation, duplex, quality and page range the user picked are the ones the queue receives. Texter and UltraFiler keep the `bool` signature they already call. |
+| Print dialog: "Print to File" destination | ❌ reported in the result (`printToFile`, `outputFilePath`) and refused by name, rather than silently spooled to a queue the user did not choose. Needs a renderer that writes a document rather than submitting one. |
+| Print dialog: printing anything but plain text | ❌ `PrintTextWithDialog()` is the only bridge; an image or a PDF from a dialog needs the same treatment, and for PDF the renderer gap two rows up. |
+| Print dialog on Android | ❌ `RequestPrintSettings()` reports cancelled. Android prints through a Java-side `PrintManager` job, not a settings dialog that hands choices back; bridging it is a JNI slice. |
+| Print dialog on WASM | ❌ and will stay so: the browser's print UI neither reports what the user chose nor lets a page choose for them, by design. `ShowPrintDialog()` there still hands the text to the browser to print. |
+
+**Types referenced by the prior printer code but defined nowhere:**
+`IOPrinterCapabilities`, `IOPrintJobStatus`, `IOPrintJobInfo`,
+`IOPaperTrayStatus`, `IOImageData`, `IOColorMode`.
+
+---
+
+## Categories not started
+
+`README.md` advertises 19. Beyond scanner, camera and printer:
+
+Storage · NetworkAdapter · Display · HID/Gamepad · GPIO · Serial ·
+Bluetooth · Barcode · RFID · Biometric · Keyboard · Mouse · Touchscreen ·
+Stylus
+
+### ❓ Microphone and Speaker — a decision, not work
+
+`UltraCanvasAudioDevices` already ships `ListInputDevices` /
+`ListOutputDevices`, `GetDefaultInputDevice` / `GetDefaultOutputDevice`,
+microphone permission and backend reflection, and
+`UltraCanvasAudioRecorder` / `UltraCanvasAudioPlayer` are built on it.
+
+Either IODeviceManager wraps that API for its Microphone and Speaker
+categories, or those categories come out of the README. Two separate answers
+to "list my microphones" is the worst of the three options.
+
+---
+
+## Cross-cutting
+
+| Item | State |
+|---|---|
+| CMake feature detection (libsane, libgphoto2, libcups, v4l2, net-snmp, gutenprint) and the matching `ULTRACANVAS_HAS_*` flags | 🔨 added per backend as each lands |
+| **Dependency records** for libgphoto2, net-snmp, GutenPrint | ❌ absent from `Docs/Dependencies.md`, `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`. SANE, V4L2, WIA, TWAIN, ICA, CUPS and FFmpeg are already recorded. |
+| Per-category documentation | 🔨 |
+| DemoApp examples | ❌ repo pattern is `Apps/DemoApp/UltraCanvas<Thing>Examples.cpp`; the prototypes were standalone `main()` programs |
+| Per-category tests against fakes | 🔨 foundation done, categories follow |
+| **Device-picker UI** | ❌ no scanner/camera/printer chooser exists. When one is built it must be assembled from the element catalogue — see the prohibition in `AGENTS.md`. |
+
+---
+
+## ❓ Open decisions
+
+1. **GutenPrint: linked or subprocess.** libgutenprint is GPL-2.0-or-later;
+   UltraCanvas is MIT, so linking makes the distributed binary GPL. This
+   repository's existing pattern for GPL tools is "runtime, not linked"
+   (QEMU, Wine). Recommendation and full trade-off in
+   [Architecture.md](Architecture.md#open-decision-linked-or-subprocess).
+   Blocks the GutenPrint renderer.
+2. **Audio categories** — wrap `UltraCanvasAudioDevices`, or drop Microphone
+   and Speaker from the README. See above.
+3. **SNMP transport** — net-snmp as a new dependency, or build the Printer-MIB
+   walk on UltraNet's existing UDP sockets.
+
+---
+
+## Re-landing the prototype code
+
+A large body of printer, camera and SNMP code was written against an earlier,
+incompatible shape of this module. It is being folded back in one slice at a
+time rather than dropped in whole: the type vocabularies and the protocol call
+sequences are worth keeping, the routing and glue are not. A drop that does
+not compile against the tree costs more to review than it saves.
+
+==============================================================================
 FILE: Docs/Modules/IODeviceManager/README.md
 ==============================================================================
 
 # IODeviceManager - Universal Hardware Device Management for Modern Applications
 
 ## Unify Every Device Behind a Single API
+
+> **API contract and current build status: [Architecture.md](Architecture.md).**
+> This page is the overview; that one is what the code actually does today.
 
 **IODeviceManager** is a comprehensive, cross-platform hardware abstraction layer that eliminates the complexity of working with diverse input/output devices. Whether you're building scanning workflows, imaging applications, document processing systems, or full-featured operating system services, IODeviceManager provides a single, unified API to discover, configure, and operate hardware across dozens of protocols and platforms.
 
@@ -57942,7 +59463,7 @@ manager.EnumerateDevices(IODeviceCategory::Printer);
 Acquire images from any scanner — flatbed, ADF, network — without writing protocol-specific code. Perfect for document workflows, archival, and capture pipelines:
 
 ```cpp
-auto scanner = manager.GetDeviceByProtocol(ScannerProtocol::Auto, 0);
+auto scanner = manager.GetDevice(IODeviceCategory::Scanner, 0);
 scanner->Connect();
 
 ScanConfiguration config;
@@ -57958,7 +59479,7 @@ Stream video, capture stills, and control PTZ from webcams, DSLRs, and network c
 
 ```cpp
 // Webcams, DSLRs, IP cameras — all the same API
-auto camera = manager.GetDeviceByCategory(IODeviceCategory::Camera, 0);
+auto camera = manager.GetDevice(IODeviceCategory::Camera, 0);
 camera->StartStream();
 camera->CapturePhoto("snapshot.jpg");
 camera->SetPTZ(pan, tilt, zoom);  // Network cameras
@@ -57993,7 +59514,7 @@ manager.RegisterDevice(customDevice);
 | **Scanner** | Document and image scanners | Flatbed, ADF, film, network scanners | ✅ Production |
 | **Camera** | Still and video imaging devices | Webcams, DSLRs, IP cameras | ✅ Production |
 | **NetworkCamera** | IP-based cameras with PTZ | ONVIF, RTSP, HTTP cameras | ✅ Production |
-| **Printer** | Local and network printers | Inkjet, laser, label, 3D printers | 🚧 In Progress |
+| **Printer** | Local and network printers, GutenPrint or native driver | Inkjet, laser, label, 3D printers | 🚧 In Progress |
 | **GPIO** | General purpose I/O pins | Raspberry Pi, Arduino, embedded boards | 🚧 In Progress |
 | **Microphone** | Audio input devices | USB mics, headset mics, XLR interfaces | 📋 Planned |
 | **Speaker** | Audio output devices | Speakers, headphones, monitors | 📋 Planned |
@@ -58020,7 +59541,7 @@ manager.RegisterDevice(customDevice);
 | **Camera (Webcam)** | V4L2 | MediaFoundation | AVFoundation | — |
 | **Camera (DSLR)** | libgphoto2 | WIA | ImageCapture | — |
 | **Network Camera** | RTSP, ONVIF | RTSP, ONVIF | RTSP, ONVIF | RTSP, ONVIF, mDNS, UPnP |
-| **Printer** | CUPS | Windows Print API, GDI | CUPS | IPP, SNMP, Bonjour |
+| **Printer** | CUPS, GutenPrint | Windows Print API, GutenPrint | CUPS, GutenPrint | IPP, SNMP, Bonjour |
 | **Microphone** | ALSA, PulseAudio | WASAPI | CoreAudio | — |
 | **Speaker** | ALSA, PulseAudio | WASAPI | CoreAudio | — |
 | **Storage** | udev | Windows Storage API | DiskArbitration | — |
@@ -58089,7 +59610,7 @@ manager.Initialize();
 manager.EnumerateDevices(IODeviceCategory::Scanner);
 
 // Use any compatible device
-auto device = manager.GetDeviceByProtocol(ScannerProtocol::Auto, 0);
+auto device = manager.GetDevice(IODeviceCategory::Scanner, 0);
 if (device && device->Connect()) {
     // Operate device through unified API
     device->Disconnect();

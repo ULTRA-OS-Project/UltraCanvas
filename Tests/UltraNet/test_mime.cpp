@@ -153,6 +153,66 @@ TEST(mime_parse_quoted_printable_body) {
     REQUIRE_EQ(body, std::string("Café time"));
 }
 
+// ---- address headers -------------------------------------------------------
+
+TEST(mime_encode_address_display_name_only) {
+    // ASCII is left exactly as it was.
+    REQUIRE_EQ(UltraNet_MimeEncodeAddress("Erika <erika@example.com>"),
+               std::string("Erika <erika@example.com>"));
+
+    // The display name becomes an encoded-word; the angle-addr must not,
+    // or the message is undeliverable.
+    std::string enc = UltraNet_MimeEncodeAddress("Erika Fröhling <erika@example.com>");
+    CHECK(enc.find("=?UTF-8?") == 0);
+    CHECK(enc.find("<erika@example.com>") != std::string::npos);
+    CHECK(enc.find("Fröhling") == std::string::npos);
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader(enc),
+               std::string("Erika Fröhling <erika@example.com>"));
+
+    // A quoted display name loses the quotes it cannot keep inside an
+    // encoded-word.
+    std::string quoted = UltraNet_MimeEncodeAddress("\"Fröhling\" <e@x.com>");
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader(quoted), std::string("Fröhling <e@x.com>"));
+
+    // A bare non-ASCII address has no display name to encode: left alone for
+    // the server to accept or reject.
+    REQUIRE_EQ(UltraNet_MimeEncodeAddress("frö@example.com"),
+               std::string("frö@example.com"));
+
+    // A comma inside the name must not survive as a literal - it would split
+    // the address list it sits in.
+    std::string comma = UltraNet_MimeEncodeAddress("Fröhling, Erika <e@x.com>");
+    CHECK(comma.find(',') == std::string::npos);
+    REQUIRE_EQ(UltraNet_MimeDecodeHeader(comma),
+               std::string("Fröhling, Erika <e@x.com>"));
+}
+
+TEST(mime_build_encodes_address_headers) {
+    UltraNetMimeBuildInput in;
+    in.from = "Erika Fröhling <erika@example.com>";
+    in.to = {"Jörg <joerg@y.com>", "plain@y.com"};
+    in.cc = {"Süd <sued@y.com>"};
+    in.subject = "hallo";
+    in.body = "body";
+    in.date = "Tue, 01 Jan 2026 00:00:00 +0000"; in.messageId = "<id@x>";
+
+    std::string raw = UltraNet_MimeBuild(in);
+    // No raw 8-bit byte may appear in the header block - that is the whole
+    // point of an encoded-word.
+    const std::size_t headerEnd = raw.find("\r\n\r\n");
+    REQUIRE(headerEnd != std::string::npos);
+    for (unsigned char c : raw.substr(0, headerEnd)) CHECK(c < 0x80);
+
+    UltraNetMimeMessage msg;
+    REQUIRE(UltraNet_MimeParse(raw, msg));
+    REQUIRE_EQ(msg.from, std::string("Erika Fröhling <erika@example.com>"));
+    REQUIRE_EQ(msg.to.size(), (size_t)2);
+    REQUIRE_EQ(msg.to[0], std::string("Jörg <joerg@y.com>"));
+    REQUIRE_EQ(msg.to[1], std::string("plain@y.com"));
+    REQUIRE_EQ(msg.cc.size(), (size_t)1);
+    REQUIRE_EQ(msg.cc[0], std::string("Süd <sued@y.com>"));
+}
+
 // ---- build + round-trip ----------------------------------------------------
 
 TEST(mime_build_flat_roundtrip) {
