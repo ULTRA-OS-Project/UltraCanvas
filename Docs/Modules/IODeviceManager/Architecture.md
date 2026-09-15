@@ -160,24 +160,61 @@ enum class IOPrintRenderer {
 
 | Renderer | Linux transport | macOS transport | Windows transport |
 |---|---|---|---|
-| `Native` | CUPS job ✅ | CUPS job ✅ | needs the GDI renderer — see below |
+| `Native` | CUPS job ✅ | CUPS job ✅ | GDI drawing session ✅ |
 | `GutenPrint` | CUPS **raw** job (`application/vnd.cups-raw`) ✅ | CUPS **raw** job ✅ | `StartDocPrinter`, `pDatatype = "RAW"` ✅ |
 | `IPP` | IPP over HTTP | IPP over HTTP | IPP over HTTP |
 
 A transport declares what it can carry, and a renderer declares what it
-emits; `PrinterDevice` only offers the pairings that match. The two checks are
-symmetric — `IPrintTransport::SupportsRaw()` against
-`IPrintRenderer::ProducesRawStream()`, and `SupportsDocument()` against
-everything else.
+emits; `PrinterDevice` only offers the pairings that match. The checks are
+symmetric, one per shape a payload can take:
 
-That second one matters on Windows. CUPS has a filter chain, so a PDF can be
-handed over as-is and the native renderer is a pass-through. **The Windows
-spooler has no equivalent**: it takes device-ready data, or EMF/XPS produced
-by drawing to a printer DC. So `WindowsPrintTransport::SupportsDocument()` is
-`false` until that renderer is written, and the Native renderer is not offered
-on Windows — a caller learns this from `GetAvailableRenderers()` instead of
-from a job that disappears. The raw path is complete, which is what
-GutenPrint needs.
+| Renderer says | Transport must say | Payload carries |
+|---|---|---|
+| `ProducesRawStream()` | `SupportsRaw()` | the device's own command stream |
+| `ProducesPageSource()` | `SupportsPageSource()` | pages to be **drawn** |
+| neither | `SupportsDocument()` | a document for the platform's driver |
+
+### The third shape: pages, not bytes
+
+The first two rows were enough until Windows. CUPS has a filter chain, so a
+PDF is handed over as-is and the native renderer is a pass-through. **The
+Windows spooler has no equivalent**: it takes device-ready data, and that is
+all. A document reaches a Windows printer only by being *drawn* — `CreateDC`,
+`StartDoc`, then per page `StartPage`, GDI calls, `EndPage`, and the driver
+turns those calls into the device's own commands.
+
+That is not a byte stream at any point, so it does not fit a payload of
+`filePath` or `data`. Forcing it to would mean inventing a container — a
+multi-page EMF wrapper — that exists only to be unwrapped again three
+function calls later. Instead the payload gained a third member,
+`IPrintPageSourcePtr pages`, and the transport drives it.
+
+So `WindowsPrintTransport::SupportsDocument()` is still `false`, and that is
+not a gap any more — it is what Windows is. `SupportsPageSource()` is `true`,
+and that is what makes `Native` available there.
+
+Two consequences worth stating, because both are load-bearing:
+
+**Pagination happens against the device, not before it.** `IPrintPageSource`
+has a `Prepare(IPrintPageTarget&)` that runs once with the real target before
+the page count is known, because the same text is a different number of pages
+on A4 at 600 dpi than on Letter at 300. A source cannot honestly answer
+"how many pages?" until it has met the printer.
+
+**The layout is platform-neutral on purpose.** Fitting, wrapping and
+pagination live in `core/` and reach the device only through the abstract
+`IPrintPageTarget`, so they are exercised by `Tests/IODevicePrinterTest`
+against a fake target with a synthetic font — on every platform in the
+matrix, not only the one that needs them. What is left in `OS/MSWindows` is
+the part that genuinely needs Win32: the DC, the `DEVMODE`, the font handles
+and `StretchDIBits`.
+
+> One trap, recorded so it is not reintroduced: the target's method is
+> `DrawTextLine`, not `DrawText`, because `<windows.h>` defines `DrawText` as
+> a macro. A virtual named `DrawText` is silently renamed by the preprocessor
+> in any translation unit that includes windows.h, so the override stops
+> overriding and the class turns abstract — and the compiler blames the
+> override, not the macro. `GetLastError()` cost this module the same lesson.
 
 The GutenPrint renderer is therefore genuinely cross-platform: one rendering
 path, three raw-transport shims of a few dozen lines each. Proposed surface
@@ -314,7 +351,7 @@ compiling, tested and wired into CI before the next starts:
 | 5 ✅ | `CameraDevice` + V4L2 (Linux) |
 | 6 ✅ | `ScannerDevice` + SANE (Linux) |
 | 7 ✅ | Hot-plug watching + the udev watcher (Linux) |
-| 8 | Windows GDI/XPS renderer, so `Native` works there too |
+| 8 ✅ | Windows GDI renderer, so `Native` works there too — images and plain text; PDF pagination and XPS still open |
 | 9 | Windows and macOS backends for camera and scanner |
 | 10 | Hot-plug watchers for Windows and macOS; the permission model |
 | 11 | IPP / eSCL driverless, network cameras |

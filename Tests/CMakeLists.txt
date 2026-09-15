@@ -2939,6 +2939,11 @@ add_executable(IODevicePrinterTest
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinter.cpp
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
+    # Page layout for the drawing-session path (the Windows GDI renderer).
+    # Platform-neutral by construction - the device is reached only through
+    # IPrintPageTarget - so the fitting, wrapping and pagination assertions
+    # run on every platform in the matrix, not just the one that needs them.
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterPage.cpp
 )
 target_include_directories(IODevicePrinterTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}

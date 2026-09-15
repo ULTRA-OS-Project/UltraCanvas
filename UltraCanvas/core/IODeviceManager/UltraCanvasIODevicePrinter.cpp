@@ -47,8 +47,9 @@ IODeviceResult NativePrintRenderer::Render(const IOPrintJob& job,
 PrinterDevice::PrinterDevice(const IODeviceInfo& info) : IODevice(info) {}
 
 // A renderer is usable only when what it emits is something the platform
-// transport can actually carry. The two checks are symmetric: a device-native
-// stream needs a transport that takes raw jobs, and a document needs one whose
+// transport can actually carry. The three checks are symmetric: a
+// device-native stream needs a transport that takes raw jobs, a page source
+// needs one that can drive a drawing session, and a document needs one whose
 // driver will process it.
 bool PrinterDevice::RendererIsUsable(const IPrintRendererPtr& renderer,
                                      const IODeviceInfo& info,
@@ -59,8 +60,13 @@ bool PrinterDevice::RendererIsUsable(const IPrintRendererPtr& renderer,
     if (!transport) {
         return false;
     }
-    return renderer->ProducesRawStream() ? transport->SupportsRaw()
-                                         : transport->SupportsDocument();
+    if (renderer->ProducesRawStream()) {
+        return transport->SupportsRaw();
+    }
+    if (renderer->ProducesPageSource()) {
+        return transport->SupportsPageSource();
+    }
+    return transport->SupportsDocument();
 }
 
 // ===== CAPABILITIES =====
@@ -244,6 +250,9 @@ IODeviceResult PrinterDevice::Print(const IOPrintJob& job) {
     }
 
     IOPrintPayload payload;
+    // Set before rendering so a renderer may override it, and after the name
+    // has been defaulted above so it is never empty.
+    payload.jobName = resolvedJob.jobName;
     IODeviceResult rendered = renderer->Render(resolvedJob, capabilities, payload);
     if (!rendered.success) {
         SetLastError(rendered);

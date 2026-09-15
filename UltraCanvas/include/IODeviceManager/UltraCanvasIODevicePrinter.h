@@ -6,6 +6,7 @@
 #pragma once
 
 #include "UltraCanvasIODevice.h"
+#include "UltraCanvasIODevicePrinterPage.h"
 #include "UltraCanvasIODevicePrinterTypes.h"
 
 #include <memory>
@@ -28,13 +29,34 @@ struct IOPrintPayload {
     // MIME type of the above, or empty for a raw stream.
     std::string contentType;
 
+    // What the queue should call this job. Filled in by PrinterDevice::Print
+    // from the job, so no renderer has to remember to, and every transport
+    // gets it. Before this existed the CUPS transport titled every job after
+    // the *printer*, so a queue of six documents read as six copies of the
+    // printer's own name.
+    std::string jobName;
+
     // True when `data` is the printer's own command stream (ESC/P2, PCL,
     // BJL) and must reach the device untouched. Transports submit these as
     // a raw job: application/vnd.cups-raw under CUPS, datatype "RAW" through
     // the Windows spooler.
     bool isRaw = false;
 
-    bool IsEmpty() const { return filePath.empty() && data.empty(); }
+    // The third shape, and the one neither of the above can express: pages
+    // to be *drawn* rather than bytes to be sent.
+    //
+    // A Windows printer device context is a drawing session - StartDoc,
+    // StartPage, GDI calls, EndPage, EndDoc - and the driver turns those
+    // calls into device commands itself. There is no intermediate buffer to
+    // put anywhere, so a renderer on that path fills this instead of
+    // filePath or data, and the transport drives it. Set only by renderers
+    // whose ProducesPageSource() is true, and usable only by transports
+    // whose SupportsPageSource() is true.
+    IPrintPageSourcePtr pages;
+
+    bool IsEmpty() const {
+        return filePath.empty() && data.empty() && !pages;
+    }
 };
 
 // ============================================================================
@@ -62,6 +84,13 @@ public:
     // where the platform transport can carry a raw job.
     virtual bool ProducesRawStream() const { return false; }
 
+    // True when Render() fills payload.pages instead of producing bytes -
+    // the GDI path, where printing is a drawing session against the device.
+    // Only usable where the transport can drive one, so it pairs with
+    // IPrintTransport::SupportsPageSource() exactly as the two above pair.
+    // A renderer answers yes to at most one of these.
+    virtual bool ProducesPageSource() const { return false; }
+
     virtual IODeviceResult Render(const IOPrintJob& job,
                                   const IOPrinterCapabilities& capabilities,
                                   IOPrintPayload& payload) = 0;
@@ -88,12 +117,18 @@ public:
 
     // False when the platform cannot take a document and let its own driver
     // process it. CUPS can: it has a filter chain, so a PDF can be handed
-    // over as-is. The Windows spooler cannot — it takes device-ready data or
-    // spooled EMF/XPS, so a document has to be drawn to a printer DC first,
-    // and until that renderer exists the Native renderer is not offered
-    // there. Stating it here keeps the gap visible in the API instead of
-    // surfacing as a failed job.
+    // over as-is. The Windows spooler cannot — it takes device-ready data,
+    // and a document has to be drawn to a printer DC instead, which is what
+    // SupportsPageSource() below is for. Stating it here keeps the gap
+    // visible in the API instead of surfacing as a failed job.
     virtual bool SupportsDocument() const { return true; }
+
+    // True when the transport can drive an IPrintPageSource: open the
+    // device, begin a page, let the source draw, end the page. Windows can
+    // and does — that is how Native printing works there — while CUPS has no
+    // use for it, because handing the document straight to the filter chain
+    // is both simpler and better than rasterising it ourselves.
+    virtual bool SupportsPageSource() const { return false; }
 
     virtual IODeviceResult Submit(const IODeviceInfo& printer,
                                   const IOPrintPayload& payload,

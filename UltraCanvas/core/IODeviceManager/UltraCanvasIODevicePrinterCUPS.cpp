@@ -244,7 +244,11 @@ public:
         }
 
         CupsOptions cupsOptions(options);
-        const std::string title = printer.name.empty() ? "UltraCanvas" : printer.name;
+        // The job's own name, not the printer's: a queue is read by what
+        // the documents are called.
+        const std::string title =
+            payload.jobName.empty() ? std::string("UltraCanvas document")
+                                    : payload.jobName;
 
         int jobId = 0;
         ipp_status_t status = cupsCreateDestJob(CUPS_HTTP_DEFAULT, dest, info, &jobId,
