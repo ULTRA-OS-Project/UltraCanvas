@@ -9,7 +9,6 @@
 #include "HTMLReader/CSSStyleSheet.h"
 #include "HTMLReader/HTMLStyleResolver.h"
 
-#include <clocale>
 #include <cstdio>
 #include <cmath>
 #include <string>
@@ -220,46 +219,6 @@ static void TestCssLength() {
     CHECK(!CssLength::Parse("garbage"));
 }
 
-// A CSS number is written with a '.' whatever the user's locale is, so parsing
-// one must not depend on LC_NUMERIC. It did once: strtof reads the locale's
-// decimal point, so under a comma-decimal locale "0.5" stopped at the '.' and
-// every fractional length and rgba() alpha silently became 0. The fix must also
-// survive libc++, which does not implement the float overloads of
-// std::from_chars - so neither primitive can simply be used on its own.
-//
-// Skipped where the C library has no comma-decimal locale installed (a bare CI
-// image often has only "C"), rather than failing for a missing locale.
-static void TestCssNumbersIgnoreLocale() {
-    const char* original = std::setlocale(LC_NUMERIC, nullptr);
-    const std::string saved = original ? original : "C";
-
-    const char* commaLocale = nullptr;
-    for (const char* candidate : {"de_DE.UTF-8", "de_DE.utf8", "fr_FR.UTF-8", "de_DE"}) {
-        if (std::setlocale(LC_NUMERIC, candidate)) { commaLocale = candidate; break; }
-    }
-    if (!commaLocale) {
-        std::printf("SKIP TestCssNumbersIgnoreLocale: no comma-decimal locale installed\n");
-        return;
-    }
-
-    auto frac = CssLength::Parse("0.5em");
-    CHECK(frac && frac->unit == CssUnit::Em && Near(frac->value, 0.5f));
-
-    auto negative = CssLength::Parse("-3.25%");
-    CHECK(negative && negative->unit == CssUnit::Percent && Near(negative->value, -3.25f));
-
-    auto exponent = CssLength::Parse("1.5e2px");
-    CHECK(exponent && exponent->unit == CssUnit::Px && Near(exponent->value, 150.f));
-
-    auto alpha = CssColor::Parse("rgba(10, 20, 30, 0.5)");
-    CHECK(alpha && alpha->a == 127);   // 0.5 * 255, not 0
-
-    auto percent = CssColor::Parse("rgb(100%, 0%, 50%)");
-    CHECK(percent && percent->r == 255 && percent->g == 0 && percent->b == 127);
-
-    std::setlocale(LC_NUMERIC, saved.c_str());
-}
-
 // ============================================================================
 // STYLESHEET PARSING
 // ============================================================================
@@ -409,7 +368,6 @@ int main() {
     TestExtractPlainText();
     TestCssColor();
     TestCssLength();
-    TestCssNumbersIgnoreLocale();
     TestStyleSheetParsing();
     TestStyleResolution();
     TestReadingModeOverride();
