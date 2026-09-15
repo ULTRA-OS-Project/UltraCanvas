@@ -1,40 +1,23 @@
-#### 2026-09-15 *0.8.62*
-- **`UltraCanvasRichTextEdit` can search and spell check.** Both were named as
-  limits when the element landed in 0.8.50; they were also the two things a
-  word-processing tab in UltraTexter lost by moving off the Markdown detour, so
-  they come first.
-  - Search lives in `UCRichDocumentEditor`, so it is UI-free and testable
-    without a display: `Find` (forwards or backwards, wrapping), `FindAll`, and
-    `ReplaceAll`. Matches are found in block text and never span a block, which
-    is what makes each one safe to replace independently. Case folding is
-    ASCII, as `UltraCanvasTextArea`'s search already was.
-  - `ReplaceAll` is **one undo step** for the whole replace, not one per match:
-    it runs every replacement inside a single `EditScope` over the document.
-  - Replaced text **keeps the formatting of the text it replaced**. Deleting a
-    range leaves the caret at the end of whatever preceded it, so a plain insert
-    would silently adopt that run's formatting and replacing a bold word would
-    leave plain text behind; the format is now sampled from inside the match
-    before it is deleted and reapplied afterwards. `ReplaceRange` gained the
-    same behaviour, since it is the same question.
-  - The element adds `FindNext`/`FindPrevious`/`ReplaceCurrent`/`ReplaceAll`
-    and `CountMatches` over that, selecting each match and scrolling it into
-    view. `ReplaceCurrent` only replaces when the selection *is* a match, so
-    pressing Replace before Find finds rather than overwrites.
-  - Spell checking uses the shared `UltraCanvasSpellChecker` worker exactly as
-    the text area does, over one string for the document with blocks joined by
-    `\n` — one job per document rather than one per block — and maps the
-    result's byte offsets back onto `{blockIndex, byteOffset}`. Squiggles are
-    drawn per visual line through the existing `SpellCheckRendering` helpers,
-    only for blocks the viewport has laid out.
-  - The element gained `onContextMenu`, fired before its own suggestion popup,
-    so a host can put the suggestions inside its own menu instead of a
-    competing one — the same contract `UltraCanvasTextArea` offers.
-  - `RichDocRange::Contains` and a shared `ReplaceRangeInternal` /
-    `ApplyCharFormatToRangeInternal` split so that a caller already inside an
-    `EditScope` does not commit a second undo step.
-  - Covered by 50 new checks in `Tests/RichTextEditorTest.cpp` (189 total) and
-    27 new ones in `Tests/RichTextEditElementTest.cpp` (53 total).
-
+#### 2026-09-15 *0.8.51*
+- **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
+  parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
+  away from `strtof` - that one honours `LC_NUMERIC`, so a comma-decimal
+  locale read every `rgba()` alpha and every length as `0`. Apple's libc++
+  implements only the *integral* `from_chars` overloads, and the `bool` one it
+  does declare is `= delete`, so on the Xcode 16.4 SDK the float call resolved
+  to the deleted overload and the file did not compile at all -
+  `build (macos-15-intel, Release)` failed on every push, `main` included,
+  while the Linux and Windows legs were fine.
+  The number is now scanned by hand and converted through
+  `std::locale::classic()`, which keeps the locale independence without
+  `<charconv>`. Scanning first also matters on its own account: converting the
+  whole string in one go reads the `e` of `1.5em` as the start of an exponent
+  and then fails outright, losing the commonest unit in CSS. Checked against
+  `std::from_chars` over 25 inputs - value and end position agree on each -
+  and `HTMLReaderTest` passes under a comma-decimal locale as well as under C.
+  The code itself reached `main` ahead of this note, ported into the 0.8.49
+  release to unblock the branches the red leg was holding up; this entry is
+  the release record it went in without.
 #### 2026-09-15 *0.8.61*
 - **A text field is UTF-8 all the way through now.** Typing the name
   `Fröhling` into a field — UltraMail's "Add email account" wizard is where it
