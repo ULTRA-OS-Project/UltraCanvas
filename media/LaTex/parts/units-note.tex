@@ -1,0 +1,16 @@
+% A fragment, not a document: no preamble and no \begin{document}. It is
+% spliced into article-structure-refs.tex by \input{parts/units-note}, which
+% resolves against the including file's directory. Fragments live in this
+% subfolder so the demo's file scan, which does not descend into
+% directories, lists only whole documents as tabs.
+\subsection{A section from another file}\label{sec:units}
+This subsection is written in \texttt{parts/units-note.tex} and spliced in
+where the \texttt{\textbackslash input} stands, before anything else is
+read. Numbering, labels and footnotes continue across the
+splice\footnote{This footnote is defined in the included fragment and lands
+in the same footnote list as the others.} --- the fragment cannot tell that
+it is not part of the main file, which is the point of the mechanism.
+
+The macro \verb|\SI| defined in the main preamble works here too:
+\SI{299792458}{m/s} is the speed of light, and \SI{9.81}{m/s^2} the
+standard gravity.
