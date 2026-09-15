@@ -1,3 +1,40 @@
+#### 2026-09-15 *0.8.62*
+- **`UltraCanvasListView` shows the tooltips its model has always held.**
+  `ListItem::tooltip` and `MultiColumnListItem::tooltip` fed `ToolTipRole`,
+  and nothing ever read it: the view never called
+  `UltraCanvasTooltipManager`, so every list in the framework — the DemoApp
+  ListView page included, whose descriptions promise them — silently dropped
+  its tooltips. The view now tracks the hovered *cell* and shows that cell's
+  `ToolTipRole` text, refreshing it when the pointer moves sideways across a
+  row and hiding it when the cell has none, when the pointer leaves, or when
+  the wheel scrolls rows out from under it. `SetShowItemTooltips(false)` opts
+  out; `tooltipProvider(row, column)` supplies computed text; and
+  `GetTooltipTextAt()` returns what would be shown.
+- **Column headers and single cells can carry their own tooltip.**
+  `ListColumnDef::tooltip` (a 4th constructor argument) is shown when the
+  pointer rests on that column's header cell, and
+  `MultiColumnListItem::SetCellTooltip(column, text)` gives one column of one
+  row its own text, with `MultiColumnListItem::tooltip` as the row-wide
+  fallback. `GetHeaderColumnAt(x, y)` exposes the header hit test the tooltip
+  uses.
+- **A scrolled list no longer reports a row for a point inside its header.**
+  `GetRowAtY` added the scroll offset before testing against the rows
+  viewport, so with the list scrolled down, header hits mapped to whichever
+  row the offset landed on — a wrong hover row, and a header click that
+  selected.
+- **DemoApp `--component <id>` lands on the component it names.** It called
+  `DisplayDemoItem`, which only swaps the page: the tree kept its startup
+  selection and the header kept naming it, so `--component listview` showed
+  the ListView page under the title "Various menu types and styles" with
+  Menus highlighted in the sidebar. `SelectDemoItem` now takes the same path
+  a click on the tree takes — display, selection, header and status line
+  together — and an unknown id says so instead of silently doing nothing.
+- **The DemoApp ListView page demonstrates all three.** Its four lists now
+  carry tooltips (fruit descriptions, colour hex values, language
+  descriptions, per-column file details), the file table's headers explain
+  their columns, and clicking a cell reports which column it was and the
+  tooltip behind it.
+
 #### 2026-09-15 *0.8.51*
 - **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
   parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
