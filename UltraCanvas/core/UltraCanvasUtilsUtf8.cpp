@@ -1,7 +1,7 @@
-// core/UltraCanvasUtils.h
-// Utils
-// Version: 1.0.0
-// Last Modified: 2025-09-14
+// core/UltraCanvasUtilsUtf8.cpp
+// UTF-8 string utilities - out-of-line half of UltraCanvasUtilsUtf8.h.
+// Version: 1.1.0
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasUtilsUtf8.h"
@@ -35,6 +35,16 @@ namespace UltraCanvas {
         char buf[6];
         int len = g_unichar_to_utf8(cp, buf);
         return std::string(buf, static_cast<size_t>(len));
+    }
+
+    // Replace malformed bytes with U+FFFD (see the header for why).
+    std::string utf8_make_valid(const std::string& s) {
+        if (s.empty()) return s;
+        if (g_utf8_validate(s.c_str(), static_cast<gssize>(s.size()), nullptr)) return s;
+        gchar* fixed = g_utf8_make_valid(s.c_str(), static_cast<gssize>(s.size()));
+        std::string result = fixed ? fixed : std::string();
+        g_free(fixed);
+        return result;
     }
 
     // Forward find. Returns codepoint position, or -1 if not found.

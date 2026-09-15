@@ -512,6 +512,52 @@ std::string UltraNet_MimeEncodeHeader(const std::string& utf8Value, bool useBase
     return "=?UTF-8?Q?" + q + "?=";
 }
 
+namespace {
+// RFC 2047 §5(3): an encoded-word standing in a phrase - which is what a
+// display name is - may only carry letters, digits and "!*+-/" besides the
+// "=?", "?" and "_" of its own syntax. The subject encoder is looser (it
+// passes every printable through), and a comma or a quote left literal there
+// would split or unbalance the address list it sits in.
+std::string EncodeWordInPhrase(const std::string& utf8Value) {
+    static const char* H = "0123456789ABCDEF";
+    std::string q;
+    for (unsigned char c : utf8Value) {
+        const bool safe = (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') ||
+                          (c >= 'a' && c <= 'z') ||
+                          c == '!' || c == '*' || c == '+' || c == '-' || c == '/';
+        if (c == ' ')   q.push_back('_');
+        else if (safe)  q.push_back(static_cast<char>(c));
+        else { q.push_back('='); q.push_back(H[c >> 4]); q.push_back(H[c & 0xF]); }
+    }
+    return "=?UTF-8?Q?" + q + "?=";
+}
+} // namespace
+
+std::string UltraNet_MimeEncodeAddress(const std::string& utf8Address, bool useBase64) {
+    bool ascii = true;
+    for (unsigned char c : utf8Address) if (c >= 0x80) { ascii = false; break; }
+    if (ascii) return utf8Address;
+
+    // "Display Name <local@domain>": only the name may be encoded - an
+    // encoded-word inside the angle-addr is not an address any more. An address
+    // with no display name has nothing encodable, so it is passed through and
+    // left for the server to reject or accept (IDN/SMTPUTF8 territory).
+    const std::size_t lt = utf8Address.rfind('<');
+    if (lt == std::string::npos || utf8Address.find('>', lt) == std::string::npos)
+        return utf8Address;
+
+    std::string name = UltraCanvas::Trim(utf8Address.substr(0, lt));
+    if (name.size() >= 2 && name.front() == '"' && name.back() == '"')
+        name = name.substr(1, name.size() - 2);
+    if (name.empty()) return utf8Address;
+
+    // Base64 needs no phrase-specific escaping: its alphabet is already inside
+    // what a phrase allows.
+    const std::string encodedName = useBase64 ? UltraNet_MimeEncodeHeader(name, true)
+                                              : EncodeWordInPhrase(name);
+    return encodedName + " " + utf8Address.substr(lt);
+}
+
 bool UltraNet_MimeParse(const std::string& rawMessage, UltraNetMimeMessage& out) {
     if (rawMessage.empty()) return false;
     out = UltraNetMimeMessage{};
@@ -566,9 +612,20 @@ std::string UltraNet_MimeBuild(const UltraNetMimeBuildInput& in) {
     if (bodyCt.rfind("text/", 0) == 0 && !in.bodyCharset.empty())
         bodyCt += "; charset=" + in.bodyCharset;
 
-    os << "From: " << in.from << "\r\n";
-    if (!in.to.empty()) os << "To: " << CommaJoin(in.to) << "\r\n";
-    if (!in.cc.empty()) os << "Cc: " << CommaJoin(in.cc) << "\r\n";
+    // Address headers carry a display name the user typed, so they go through
+    // the same encoded-word treatment as the subject - a raw "Fröhling" byte in
+    // a header is not a legal message and is what an 8-bit-clean server is
+    // free to mangle.
+    auto encodeAll = [&](const std::vector<std::string>& v) {
+        std::vector<std::string> out;
+        out.reserve(v.size());
+        for (const auto& a : v) out.push_back(UltraNet_MimeEncodeAddress(a));
+        return out;
+    };
+
+    os << "From: " << UltraNet_MimeEncodeAddress(in.from) << "\r\n";
+    if (!in.to.empty()) os << "To: " << CommaJoin(encodeAll(in.to)) << "\r\n";
+    if (!in.cc.empty()) os << "Cc: " << CommaJoin(encodeAll(in.cc)) << "\r\n";
     os << "Subject: " << UltraNet_MimeEncodeHeader(in.subject) << "\r\n"
        << "Date: " << date << "\r\n"
        << "Message-ID: " << msgId << "\r\n"
