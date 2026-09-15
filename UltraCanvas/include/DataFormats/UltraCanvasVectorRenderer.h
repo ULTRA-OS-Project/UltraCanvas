@@ -17,7 +17,25 @@
 
 namespace UltraCanvas {
 
-    using namespace VectorStorage;
+    // Named imports rather than a using-directive: a directive at this
+    // scope makes VectorStorage::BlendMode and ::FillRule ambiguous with
+    // the IRenderContext enums of the same name in every later header.
+    using VectorStorage::VectorDocument;
+    using VectorStorage::VectorElement;
+    using VectorStorage::VectorLayer;
+    using VectorStorage::VectorGroup;
+    using VectorStorage::VectorUse;
+    using VectorStorage::VectorLine;
+    using VectorStorage::VectorText;
+    using VectorStorage::VectorImage;
+    using VectorStorage::VectorStyle;
+    using VectorStorage::FillData;
+    using VectorStorage::StrokeData;
+    using VectorStorage::GradientData;
+    using VectorStorage::LinearGradientData;
+    using VectorStorage::RadialGradientData;
+    using VectorStorage::PathData;
+    using VectorStorage::Matrix3x3;
 
 // ===== RENDER OPTIONS =====
 
