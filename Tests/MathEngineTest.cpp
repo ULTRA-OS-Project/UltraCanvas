@@ -8,15 +8,20 @@
 //    its advance and bounding box, a fraction rule sits on the axis, scripts
 //    obey the MATH constants, inter-atom spacing is TeX's table, display
 //    operators grow, delimiters reach their target.
-// 3. Oracle: the vendored MicroTeX typesets the same corpus (the shipped
-//    media/LaTex documents plus a list of formulas) and the two engines'
-//    widths and heights must agree within a tolerance - not because MicroTeX
-//    is the truth, but because a large drift is a regression in one of them.
+// 3. Oracle: the vendored MicroTeX typesets the same corpus - the formula
+//    documents of media/LaTex plus a list of formulas; the article documents
+//    in that folder belong to the document reader, not to a math engine - and
+//    the two engines' widths and heights must agree within a tolerance, not
+//    because MicroTeX is the truth, but because a large drift is a regression
+//    in one of them.
 //    MicroTeX is driven with a stub platform (no drawing, text runs
 //    estimated), so formulas that lean on \text are compared loosely.
 //
+// Version: 1.0.1 - the oracle compares the corpus's formula documents only;
+//                 an article is prose, and feeding one to both engines
+//                 compares their text fallbacks rather than their mathematics.
 // Version: 1.0.0
-// Last Modified: 2026-09-09
+// Last Modified: 2026-09-14
 // Author: UltraCanvas Framework
 
 #include "Plugins/LaTeX/UltraCanvasMathEngine.h"
@@ -38,6 +43,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -402,7 +408,17 @@ public:
     }
 };
 
-std::string ExtractBody(std::string s) {
+// The formula of a single-formula document, or nothing.
+//
+// media/LaTex holds two kinds of file: a document that is one display formula
+// (math-*, microtex-*), and an article for the document reader (article-*),
+// which is prose with formulas in it. Only the first kind belongs in an oracle
+// comparison — handing a whole article to a math engine measures two text
+// fallbacks against each other, not mathematics, and the disagreement between
+// them swamps the deviation the tolerances are there to watch. The rule is the
+// demo's (Apps/DemoApp/UltraCanvasLaTeXExamples.cpp): a body that consists of
+// exactly one formula goes to the math engine, anything else to the reader.
+std::optional<std::string> ExtractFormula(std::string s) {
     size_t b = s.find("\\begin{document}");
     if (b != std::string::npos) { s = s.substr(b + 16); size_t e = s.find("\\end{document}"); if (e != std::string::npos) s = s.substr(0, e); }
     std::string o; bool comment = false;
@@ -412,12 +428,39 @@ std::string ExtractBody(std::string s) {
         if (s[i] == '\n') comment = false;
         if (!comment) o += s[i];
     }
-    auto strip = [&](const std::string& a, const std::string& z) {
-        size_t p = o.find(a);
-        if (p != std::string::npos) { size_t q = o.rfind(z); if (q != std::string::npos && q > p) o = o.substr(p + a.size(), q - p - a.size()); }
+    auto trim = [](const std::string& t) {
+        size_t f = t.find_first_not_of(" \t\r\n"), l = t.find_last_not_of(" \t\r\n");
+        return f == std::string::npos ? std::string() : t.substr(f, l - f + 1);
     };
-    strip("\\[", "\\]"); strip("$$", "$$");
-    return o;
+    const std::string body = trim(o);
+    const std::pair<std::string, std::string> delims[] = {
+        {"\\[", "\\]"}, {"$$", "$$"}, {"\\(", "\\)"}, {"$", "$"},
+        {"\\begin{equation*}", "\\end{equation*}"}, {"\\begin{equation}", "\\end{equation}"},
+        {"\\begin{displaymath}", "\\end{displaymath}"},
+    };
+    for (const auto& d : delims) {
+        if (body.size() >= d.first.size() + d.second.size() &&
+            body.compare(0, d.first.size(), d.first) == 0 &&
+            body.compare(body.size() - d.second.size(), d.second.size(), d.second) == 0) {
+            const std::string inner = trim(body.substr(d.first.size(),
+                                                       body.size() - d.first.size() - d.second.size()));
+            // A second opener inside means prose between two formulas.
+            if (d.first != "$" && inner.find(d.first) != std::string::npos) return std::nullopt;
+            return inner;
+        }
+    }
+    // An alignment environment standing alone is a formula too.
+    for (const char* env : {"align", "align*", "gather", "gather*", "multline", "multline*",
+                            "eqnarray", "eqnarray*", "flalign", "flalign*"}) {
+        const std::string open = std::string("\\begin{") + env + "}";
+        const std::string close = std::string("\\end{") + env + "}";
+        if (body.size() >= open.size() + close.size() &&
+            body.compare(0, open.size(), open) == 0 &&
+            body.compare(body.size() - close.size(), close.size(), close) == 0) {
+            return body;
+        }
+    }
+    return std::nullopt;
 }
 
 const char* kOracleFormulas[] = {
@@ -453,12 +496,19 @@ void TestOracle(const UltraCanvasMathEngine& engine, const fs::path& clm, const 
         std::vector<fs::path> files;
         for (const auto& e : fs::directory_iterator(dir)) if (e.path().extension() == ".tex") files.push_back(e.path());
         std::sort(files.begin(), files.end());
+        int documents = 0;
         for (const auto& p : files) {
             std::ifstream in(p); std::stringstream ss; ss << in.rdbuf();
-            const std::string body = ExtractBody(ss.str());
+            const std::optional<std::string> formula = ExtractFormula(ss.str());
+            if (!formula) { ++documents; continue; }   // an article, not a formula
+            const std::string& body = *formula;
             const bool textHeavy = body.find("\\text") != std::string::npos || body.find("\\mbox") != std::string::npos ||
                                    body.find("\\rotatebox") != std::string::npos || body.find("\\longdiv") != std::string::npos;
             cases.push_back({p.filename().string(), body, textHeavy});
+        }
+        if (documents > 0) {
+            std::cout << "         (" << documents << " article documents in the corpus are for the document "
+                                                      "reader, not the math engine - skipped)\n";
         }
     }
 
