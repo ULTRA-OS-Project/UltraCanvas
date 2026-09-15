@@ -1,3 +1,68 @@
+#### 2026-09-14 *0.8.49*
+- **The demo's LaTeX page showed the math engine and almost nothing else.**
+  Of the 24 documents it listed, 23 were single formulas, so the document
+  reader — sections, tables, figures, code, macros, theorems, references —
+  was represented by one file. Six more `article-*.tex` documents now stand
+  beside it in `media/LaTex`, one cluster of the subset each: code listings,
+  data tables, figures and images, structure and cross-references, text and
+  characters, macros and theorems. They are listed in
+  `Docs/UltraCanvas/UltraCanvasLaTeXDocumentReader.md`, appear in the page
+  automatically (it scans the folder), and every one of them imports with no
+  diagnostics — the corpus test requires it. Fragments for `\input` live in
+  `media/LaTex/parts/`, which the scan does not descend into.
+- **The MicroTeX oracle now compares the corpus's formulas, not its
+  articles.** `MathEngineTest` typeset every `.tex` in `media/LaTex` as one
+  formula in both engines and compared the boxes, which held while the folder
+  held only formulas; an article is prose, so the comparison measured the two
+  engines' *text* fallbacks against each other and the mean height deviation
+  went from around 7% to 19%. It now takes only the single-formula documents,
+  by the same rule the demo uses to choose a file's rendering path, and says
+  how many articles it skipped. The tolerances are untouched: the corpus
+  compares at 5.9% / 7.2% over 63 formulas.
+- Three reader fixes the new samples turned up, each with its own test in
+  `Tests/LaTeXDocumentTest.cpp`:
+  - **`\captionof{table}` numbered its caption with the figures.** The kind
+    argument was read and thrown away, so the one construction that exists to
+    caption a table outside a float — a `longtable`, a `tabular` in a
+    `minipage` — got "Figure n", and every `\ref` to it followed.
+  - **A `\newenvironment` that wraps another environment did not close.**
+    `\newenvironment{aside}{\begin{quote}\itshape}{\end{quote}}` is the
+    idiomatic form; its `\end{aside}` met the inner `quote` on the stack and
+    reported both a mismatch and an unclosed environment. The end body now
+    runs first, closing the inner environment, and the user frame closes
+    behind it, as in TeX.
+  - **A spliced body ending in a control word glued onto the next letter.**
+    A begin body ending `\itshape` in front of `Set aside.` re-scanned as
+    `\itshapeSet`, an unknown command that swallowed the word. TeX never
+    merges the two, since the body was tokenised when it was defined; the
+    terminating space its scanner would have consumed is added back.
+
+#### 2026-09-14 *0.8.48*
+- **The top of a tall formula was cropped away on the demo's LaTeX Documents
+  page**, with the pane's vertical scrollbar already at the top and no way to
+  bring it back. The rendered-output pane centres its content, and centring an
+  item that does not fit gave it a *negative* offset: half the overflow landed
+  above the pane's content origin. A container clips its children to its
+  content box and its scrollbar travels from that edge, so everything above it
+  was unreachable — and the scrollbar's range covered only the other half of
+  the overflow, which is why scrolling to the bottom did not reveal the
+  missing lines either.
+- **Flex alignment is now safe** (CSS Box Alignment's `safe` fallback):
+  `align-items` / `align-self` place an item that does not fit its line at the
+  **start** of it instead of at a negative offset, so the overflow falls at the
+  end, where the scrollbar reaches it. Anything that does fit is centred (or
+  end-aligned) exactly as before, and `justify-content` was already safe — it
+  distributes only non-negative free space. The grid engine needs no such
+  fallback: `ArrangeGrid` sizes a non-stretch item to `min(track, natural)`, so
+  a grid item is never larger than the area it is aligned in.
+  - Where this changes an existing layout, it changes one that was already
+    losing content: an oversized item is now cut only at its end rather than at
+    both ends, which is what a clipping container can actually show.
+  - `Tests/CSSLayoutSafeAlignTest.cpp` pins it on the LaTeX page's own shape —
+    a growing centred pane inside a flex column — and checks the scroll range
+    `UltraCanvasContainer::UpdateScrollability` derives from the result, so the
+    whole overflow is reachable. Documented in `Docs/CSSLayout.md`.
+
 #### 2026-09-14 *0.8.47*
 - **The demo's XAR page now says where the format comes from.** A third panel
   under the feature and sample panels explains that Xara is the successor of
@@ -8,27 +73,21 @@
   through `OpenURL`, the same way the PDF page links MuPDF. The page grew
   from 780 to 1080 points tall to hold it, so the status line moved down with
   it. `Docs/UltraCanvas/UltraCanvasXARExamples.md` carries the same note.
-- **The macOS Intel build is green again.** `core/HTMLReader/CSSStyleSheet.cpp`
-  parsed CSS numbers through `std::from_chars` - locale-independent, which is
-  what 1.1.0 was about, since `strtof` honours `LC_NUMERIC` and a
-  comma-decimal locale turned every `rgba()` alpha and length into 0. But the
-  floating-point `from_chars` overloads are the last part of `<charconv>` to
-  arrive, and Apple's libc++ (Xcode 16.4, the `macos-15-intel` runner) still
-  ships the integral ones only: there `from_chars(..., float&)` resolves to
-  the deleted `bool` overload and the file does not compile, which had every
-  PR red on that runner.
-  - One `ParseNumber()` now hides the difference. Where `__cpp_lib_to_chars`
-    says the overloads exist it is `from_chars`; where it does not, the number
-    is delimited by hand and converted through a stream imbued with the
-    classic locale - equally independent of `LC_NUMERIC`, and no `strtof`.
-  - Delimiting it by hand is the part that matters: handing `"1.5em"` straight
-    to a stream makes it read `"1.5e"`, find no exponent digits and fail the
-    whole parse, where `from_chars` backs off the incomplete exponent and
-    returns 1.5. The scanner takes an exponent only when it is complete, and
-    rejects a leading `+` because `from_chars` does, so both paths agree on
-    every input - a document must not render differently on one runner.
-  - `Tests/HTMLReaderTest.cpp` grew the number shapes that separate the two:
-    `.5em`, `1.5e2px`, `-3px`, `1em`, `1e`, `1e999px`.
+- **The macOS Intel build is green again**, through `main`'s own
+  `ParseFloatClassic()` in `core/HTMLReader/CSSStyleSheet.cpp` (the #440 port).
+  This branch carried a second fix for the same break - Apple's libc++ has the
+  integral `std::from_chars` overloads only, so `from_chars(..., float&)`
+  resolved to the deleted `bool` overload and the file did not compile, which
+  had every PR red on the `macos-15-intel` runner - and that version is gone in
+  favour of `main`'s, which is the same scan-then-convert approach without a
+  `__cpp_lib_to_chars` branch.
+  - What is kept is the test coverage: `Tests/HTMLReaderTest.cpp` now pins the
+    number shapes such a hand-written scanner has to get right, because they
+    are where it drifts from `from_chars`. `"1.5em"` is the one that matters -
+    an `e` that turns out to be a unit rather than an exponent, which a stream
+    handed the whole string consumes before failing outright; then `.5em`,
+    `1.5e2px`, `-3px`, `1em`, a bare `1e`, and `1e999px`, which is consumed but
+    leaves the value alone, exactly as the out-of-range `from_chars` did.
 - Fixes in HTML rendering
 
 #### 2026-09-14 *0.8.46*

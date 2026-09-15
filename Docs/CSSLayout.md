@@ -306,6 +306,33 @@ as tall as its lines rather than one line tall.
 So: a widget whose height depends on its width reports that dependency through
 `MeasureOwnContent()` — the definite-width branch — and nothing else is required of it.
 
+## Alignment is safe: overflowing content is never pushed off the leading edge
+
+`align-items` / `align-self` (and `justify-content`, which distributes only
+non-negative free space) **align to the start when the content does not fit**. This is
+CSS Box Alignment's `safe` fallback, and in this framework it is the only correct
+behaviour rather than an option: a container clips its children to its content box and
+its scrollbar starts at that edge, so anything placed at a negative offset — above the
+content origin, or left of it — cannot be scrolled to and is simply lost.
+
+```cpp
+// A pane that centres what fits and scrolls to what does not.
+pane->layout.SetFlexRow()
+            .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+            .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+pane->AddChild(view);   // taller than the pane ⇒ starts at its top, overflows below
+```
+
+An item shorter than the line is still centred. An item taller than it starts at the
+line's top and overflows at the bottom, where the container's scrollbar reaches it —
+which is what the demo's LaTeX page needs: its tall formulas used to be centred into a
+negative offset and lost their top half, with the vertical scrollbar already at the top
+and no way to bring it back. `Tests/CSSLayoutSafeAlignTest.cpp` pins this, including the
+scroll-range arithmetic `UltraCanvasContainer::UpdateScrollability` performs.
+
+The grid engine needs no such fallback: `ArrangeGrid` sizes a non-stretch item to
+`min(track, natural)`, so a grid item can never be larger than the area it is aligned in.
+
 ## Troubleshooting: my widget renders nothing at all
 
 The most common contract violation fails **silently**: an auto-sized leaf widget

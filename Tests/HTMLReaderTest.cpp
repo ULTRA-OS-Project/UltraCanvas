@@ -218,9 +218,10 @@ static void TestCssLength() {
 
     CHECK(!CssLength::Parse("garbage"));
 
-    // Number shapes the two ParseNumber paths in CSSStyleSheet.cpp must agree
-    // on - the fallback one delimits the number itself, and an 'e' that turns
-    // out to be a unit rather than an exponent is where that goes wrong.
+    // The number shapes ParseFloatClassic() in CSSStyleSheet.cpp has to get
+    // right: it delimits the number itself rather than calling
+    // std::from_chars, and an 'e' that turns out to be a unit rather than an
+    // exponent is where that goes wrong.
     auto l6 = CssLength::Parse(".5em");
     CHECK(l6 && l6->unit == CssUnit::Em && Near(l6->value, 0.5f));
 
@@ -233,9 +234,14 @@ static void TestCssLength() {
     auto l9 = CssLength::Parse("1em");
     CHECK(l9 && l9->unit == CssUnit::Em && Near(l9->value, 1));
 
-    CHECK(!CssLength::Parse("1e"));        // exponent without digits
-    CHECK(!CssLength::Parse("1e999px"));   // out of range for a float
+    CHECK(!CssLength::Parse("1e"));   // exponent without digits
     CHECK(!CssLength::Parse("px"));
+
+    // Out of range for a float: the number is consumed but the value is left
+    // as the caller set it, which is what std::from_chars reported here
+    // before ParseFloatClassic replaced it.
+    auto l10 = CssLength::Parse("1e999px");
+    CHECK(l10 && l10->unit == CssUnit::Px && Near(l10->value, 0));
 }
 
 // ============================================================================

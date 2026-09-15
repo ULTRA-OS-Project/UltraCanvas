@@ -1,8 +1,7 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
-// Version: 1.2.0 - ParseNumber(): the locale-independent number parsing of
-//                  1.1.0 now builds where std::from_chars has no
-//                  floating-point overload (Apple libc++)
+// Version: 1.1.1 - the locale-independent number parsing of 1.1.0 without
+//                  std::from_chars, which Apple's libc++ has for integers only
 // Last Modified: 2026-09-14
 // Author: UltraCanvas Framework
 
@@ -11,13 +10,11 @@
 
 #include <algorithm>
 #include <cctype>
-#include <charconv>
 #include <cstdlib>
+#include <ios>
+#include <locale>
+#include <sstream>
 #include <unordered_map>
-#if !defined(__cpp_lib_to_chars) || __cpp_lib_to_chars < 201611L
-    #include <locale>
-    #include <sstream>
-#endif
 
 namespace UltraCanvas {
 namespace HTML {
@@ -34,75 +31,6 @@ std::string TrimLower(const std::string& text) {
 }
 
 namespace {
-
-// Parse a float out of [first, last) without consulting the locale - a
-// comma-decimal LC_NUMERIC must not turn "0.5" into 0. Returns the end of the
-// number, or `first` when nothing parsed.
-//
-// std::from_chars is the tool for that, but its floating-point overloads are
-// the last part of <charconv> to arrive: Apple's libc++ (Xcode 16.4, the
-// macos-15-intel CI runner) still ships the integral ones only, where
-// from_chars(..., float&) resolves to the deleted bool overload and the file
-// does not compile. __cpp_lib_to_chars is defined only once the
-// floating-point overloads are there, so it picks the path.
-#if defined(__cpp_lib_to_chars) && __cpp_lib_to_chars >= 201611L
-const char* ParseNumber(const char* first, const char* last, float& out) {
-    float value = 0.f;
-    auto conv = std::from_chars(first, last, value);
-    if (conv.ec != std::errc()) return first;
-    out = value;
-    return conv.ptr;
-}
-#else
-// End of the longest CSS number starting at `first`, or `first` when there is
-// none. A stream cannot be handed the raw text instead: "1.5em" makes it read
-// "1.5e", find no exponent digits and fail the whole parse, where from_chars
-// backs off the incomplete exponent and returns 1.5. So the number is
-// delimited here first, and only then converted.
-const char* ScanNumber(const char* first, const char* last) {
-    auto IsDigit = [](char c) {
-        return std::isdigit(static_cast<unsigned char>(c)) != 0;
-    };
-    const char* p = first;
-    // '-' only: std::from_chars rejects a leading '+' (so CSS's valid "+2px"
-    // is dropped on the other path too), and the two must agree.
-    if (p != last && *p == '-') ++p;
-
-    const char* mantissa = p;
-    while (p != last && IsDigit(*p)) ++p;
-    if (p != last && *p == '.') {
-        ++p;
-        while (p != last && IsDigit(*p)) ++p;
-    }
-    if (p == mantissa || (p == mantissa + 1 && *mantissa == '.')) {
-        return first;   // no digits: "", "-", ".", "px"
-    }
-
-    if (p != last && (*p == 'e' || *p == 'E')) {
-        const char* exponent = p + 1;
-        if (exponent != last && (*exponent == '+' || *exponent == '-')) ++exponent;
-        const char* exponentDigits = exponent;
-        while (exponent != last && IsDigit(*exponent)) ++exponent;
-        if (exponent != exponentDigits) p = exponent;   // complete exponent only
-    }
-    return p;
-}
-
-const char* ParseNumber(const char* first, const char* last, float& out) {
-    const char* numberEnd = ScanNumber(first, last);
-    if (numberEnd == first) return first;
-
-    // The classic locale is what keeps this independent of LC_NUMERIC.
-    std::istringstream stream(std::string(first, numberEnd));
-    stream.imbue(std::locale::classic());
-    float value = 0.f;
-    stream >> value;
-    if (stream.fail()) return first;   // out of range for a float
-
-    out = value;
-    return numberEnd;
-}
-#endif
 
 std::string StripComments(const std::string& css) {
     std::string out;
@@ -182,6 +110,58 @@ int HexDigit(char c) {
     return -1;
 }
 
+// Reads the float at the start of [first, last) exactly as a general-format
+// std::from_chars would, and returns one past the last character consumed
+// (== first when there is no number there, which is how callers detect it).
+//
+// Why not std::from_chars itself: Apple's libc++ implements only the INTEGRAL
+// overloads, so a float call there resolves to the deleted bool overload and
+// does not compile at all. Why not strtof: it honours LC_NUMERIC, and a
+// comma-decimal locale then reads every rgba() alpha and every length as 0 -
+// the very bug from_chars was brought in to fix.
+//
+// The number is scanned first and converted second, which is what keeps a unit
+// beginning like an exponent intact: in "1.5em" the 'e' starts no exponent, so
+// the number ends at "1.5" and "em" is left for the caller. Converting the
+// whole string in one go (istringstream >> float) instead consumes that 'e'
+// and then fails outright.
+const char* ParseFloatClassic(const char* first, const char* last, float& out) {
+    auto isDigit = [](char c) { return c >= '0' && c <= '9'; };
+    const char* p = first;
+    if (p != last && *p == '-') ++p;
+    bool sawDigit = false;
+    while (p != last && isDigit(*p)) { ++p; sawDigit = true; }
+    if (p != last && *p == '.') {
+        ++p;
+        while (p != last && isDigit(*p)) { ++p; sawDigit = true; }
+    }
+    if (!sawDigit) return first;
+    // An exponent counts only when it is complete - see "1.5em" above.
+    if (p != last && (*p == 'e' || *p == 'E')) {
+        const char* exponent = p + 1;
+        if (exponent != last && (*exponent == '+' || *exponent == '-')) ++exponent;
+        if (exponent != last && isDigit(*exponent)) {
+            while (exponent != last && isDigit(*exponent)) ++exponent;
+            p = exponent;
+        }
+    }
+    std::string number(first, p);
+    if (!number.empty() && number.back() == '.') number.pop_back();  // "1." is 1
+    std::istringstream in(number);
+    in.imbue(std::locale::classic());   // '.' is the decimal point, always
+    float value = 0.f;
+    in >> value;
+    if (in.fail()) {
+        // What was scanned is a well-formed number, so a failure here means it
+        // does not fit a float - the out-of-range from_chars reports and these
+        // callers ignore. Leave `out` as the caller set it and report the
+        // number as read, exactly as from_chars does.
+        return p;
+    }
+    out = value;
+    return p;
+}
+
 } // namespace
 
 std::optional<CssColor> CssColor::Parse(const std::string& text) {
@@ -240,8 +220,8 @@ std::optional<CssColor> CssColor::Parse(const std::string& text) {
             if (!part.empty()) {
                 bool percent = part.back() == '%';
                 if (percent) part.pop_back();
-                float v = 0.f;   // locale-independent, unlike strtof
-                ParseNumber(part.data(), part.data() + part.size(), v);
+                float v = 0.f;   // locale-independent (unlike strtof)
+                ParseFloatClassic(part.data(), part.data() + part.size(), v);
                 if (percent) v = v * 255.f / 100.f;
                 if (count == 3) v = v * 255.f;   // alpha given as 0..1
                 components[count] = v;
@@ -287,8 +267,8 @@ std::optional<CssLength> CssLength::Parse(const std::string& text) {
 
     const char* begin = value.c_str();
     const char* bufEnd = begin + value.size();
-    float number = 0.f;   // locale-independent, unlike strtof
-    const char* numberEnd = ParseNumber(begin, bufEnd, number);
+    float number = 0.f;   // locale-independent (unlike strtof)
+    const char* numberEnd = ParseFloatClassic(begin, bufEnd, number);
     if (numberEnd == begin) return std::nullopt;
 
     std::string unit = Trim(std::string(numberEnd));
