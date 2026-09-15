@@ -453,7 +453,7 @@ namespace UltraCanvas {
     }
 
 
-    UltraCanvasUIElement* UltraCanvasContainer::FindElementAtPoint(const Point2Df &pos) {
+    UltraCanvasUIElement* UltraCanvasContainer::FindElementAtPoint(const Point2Df &pos, bool interactiveElementOnly) {
         if (!GetBounds().Contains(pos)) {
             return nullptr;
         }
@@ -490,7 +490,7 @@ namespace UltraCanvas {
         const auto& src = Children();
         for (auto it = src.rbegin(); it != src.rend(); ++it) {
             UltraCanvasUIElement* child = asUI(*it);
-            if (!child || !child->IsVisible()) continue;
+            if (!child || !child->IsVisible() || (interactiveElementOnly && !child->IsInteractive())) continue;
 
             Rect2Di childBounds = child->GetBounds();
 
@@ -504,7 +504,7 @@ namespace UltraCanvas {
                 }
 
                 if (auto* childContainer = dynamic_cast<UltraCanvasContainer*>(child)) {
-                    UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentPoint);
+                    UltraCanvasUIElement* hitElement = childContainer->FindElementAtPoint(contentPoint, interactiveElementOnly);
                     if (hitElement) {
                         return hitElement;
                     }
@@ -513,6 +513,9 @@ namespace UltraCanvas {
             }
         }
 
+        if (interactiveElementOnly && !IsInteractive()) {
+            return nullptr;
+        }
         return this;
     }
 

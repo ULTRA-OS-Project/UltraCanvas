@@ -18,7 +18,7 @@
 // Author: UltraCanvas Framework
 
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasCDRConverter.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include "../UltraCanvas/Plugins/Vector/CDR/UltraCanvasCDRPlugin.h"
 
 #ifdef CDRWRITER_HAVE_CAIRO

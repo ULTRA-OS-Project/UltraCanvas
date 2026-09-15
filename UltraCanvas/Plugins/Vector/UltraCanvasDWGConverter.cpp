@@ -20,7 +20,7 @@
 
 #include "UltraCanvasCADConverters.h"
 #include "UltraCanvasDWGDecoder.h"
-#include "UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 
 #include <cstdio>
 #include <cstdlib>

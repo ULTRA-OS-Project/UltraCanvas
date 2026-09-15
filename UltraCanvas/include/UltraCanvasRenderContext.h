@@ -13,6 +13,7 @@
 #include <thread>
 #include <unordered_map>
 #include <memory>
+#include <array>
 #include <iostream>
 #include <mutex>
 #include <stack>
@@ -76,11 +77,52 @@ namespace UltraCanvas {
         EvenOdd
     };
 
-    // pattern interface mainly to automatically destory patters
+    // ===== COMPOSITING =====
+    // The PDF / CSS / SVG blend modes. How a drawing operation combines with
+    // what is already on the surface; Normal is source-over.
+    enum class BlendMode {
+        Normal, Multiply, Screen, Overlay, Darken, Lighten, ColorDodge, ColorBurn,
+        HardLight, SoftLight, Difference, Exclusion, Hue, Saturation, Color, Luminosity
+    };
+
+    // What a pattern paints outside its own extent (an image outside its
+    // tile, a gradient beyond its last stop): the edge colour, tiles,
+    // mirrored tiles, or nothing.
+    // No enumerator may be named None: X11's Xlib.h defines None as a macro
+    // and this header is reachable from platform code that includes X11.
+    enum class PatternExtend { Pad, Repeat, Reflect, NoExtend };
+
+    // Geometry antialiasing. None is what a pixel-exact tool wants; the
+    // rest are quality hints a backend may treat alike.
+    enum class AntialiasMode { DefaultQuality, NoAntialias, Gray, Subpixel, Fast, Good, Best };
+
+    // One Coons patch of a mesh gradient: four corners in order round the
+    // patch (repeat a corner for a triangle), two control points per side
+    // in the same order (side 0 is corners 0->1, its controls are 0 and 1,
+    // and so on), and a colour at each corner. With `hasControls` false
+    // the sides are straight and the controls are ignored.
+    struct MeshGradientPatch {
+        std::array<Point2Dd, 4> corners;
+        std::array<Point2Dd, 8> controls;
+        std::array<Color, 4> colors;
+        bool hasControls = false;
+    };
+
+    // A paint source: solid colours never need one, gradients, images and
+    // captured groups do. The pattern owns its backend handle.
     class IPaintPattern {
     public:
         virtual ~IPaintPattern() = default;
         virtual void* GetHandle() = 0;
+        // Places the pattern: the matrix maps pattern space (the coordinates
+        // the pattern was created in) into user space, so it is the SVG
+        // gradientTransform / patternTransform, applied on top of the CTM in
+        // force when the pattern is painted. Backends without pattern
+        // matrices ignore it.
+        virtual void SetMatrix(double a, double b, double c, double d, double e, double f) {
+            (void)a; (void)b; (void)c; (void)d; (void)e; (void)f;
+        }
+        virtual void SetExtend(PatternExtend extend) { (void)extend; }
     };
 
     enum class TextWrap {
@@ -137,6 +179,7 @@ namespace UltraCanvas {
 //        double rotation = 0.0f;
 //        Point2Dd scale = Point2Dd(1.0f, 1.0f);
         double globalAlpha = 1.0f;
+        BlendMode blendMode = BlendMode::Normal;
 
         std::shared_ptr<IPaintPattern> fillSourcePattern = nullptr;
         std::shared_ptr<IPaintPattern> strokeSourcePattern = nullptr;
@@ -202,6 +245,48 @@ namespace UltraCanvas {
         virtual void SetTransform(double a, double b, double c, double d, double e, double f) = 0; // set matrix to
         virtual void Transform(double a, double b, double c, double d, double e, double f) = 0; // adjust current matrix by this one
         virtual void ResetTransform() = 0;
+        // The current transformation matrix in the same (a, b, c, d, e, f)
+        // layout SetTransform takes: x' = a*x + c*y + e, y' = b*x + d*y + f.
+        // The base returns the identity so backends without readback stay
+        // valid; with it an editor can size handles and hairlines in device
+        // pixels without tracking the view matrix by hand.
+        virtual void GetTransform(double& a, double& b, double& c, double& d, double& e, double& f) const {
+            a = 1; b = 0; c = 0; d = 1; e = 0; f = 0;
+        }
+        virtual Point2Dd UserToDevice(const Point2Dd& p) const { return p; }
+        virtual Point2Dd DeviceToUser(const Point2Dd& p) const { return p; }
+        // How long `devicePixels` is in user units under the current
+        // transform (the mean of the two axes when the scale is not uniform).
+        virtual double DeviceToUserDistance(double devicePixels) const { return devicePixels; }
+
+        // ===== COMPOSITING =====
+        // Blend mode for every following fill, stroke, text, image and
+        // group paint until PopState() or another SetBlendMode(). Backends
+        // without blend modes keep painting source-over.
+        virtual void SetBlendMode(BlendMode mode) { (void)mode; }
+        virtual BlendMode GetBlendMode() const { return BlendMode::Normal; }
+        virtual void SetAntialias(AntialiasMode mode) { (void)mode; }
+
+        // Groups. Everything drawn between BeginGroup() and the matching End*
+        // call is rendered to an intermediate surface and then composited
+        // as one: EndGroup(opacity) paints it with a uniform alpha (so
+        // overlapping children do not double up), under the blend mode in
+        // force at BeginGroup(); EndGroupAsPattern() hands it back as a paint
+        // source instead (a mask, a pattern fill, a cached effect input);
+        // EndGroupMasked(mask) paints it through `mask`'s alpha. Groups
+        // nest and save/restore the state like PushState()/PopState().
+        // Backends without groups draw straight through: EndGroup() and
+        // EndGroupMasked() then paint nothing extra and EndGroupAsPattern()
+        // returns nullptr.
+        virtual void BeginGroup() {}
+        virtual void EndGroup(double opacity = 1.0) { (void)opacity; }
+        virtual std::shared_ptr<IPaintPattern> EndGroupAsPattern() { return nullptr; }
+        virtual void EndGroupMasked(std::shared_ptr<IPaintPattern> mask) { (void)mask; EndGroup(1.0); }
+        // Paints a pattern over the whole clip (a captured group, a tiled
+        // image) with the given alpha.
+        virtual void PaintPattern(std::shared_ptr<IPaintPattern> pattern, double opacity = 1.0) {
+            (void)pattern; (void)opacity;
+        }
 
         // ===== CLIPPING =====
         virtual void ClearClipRect() = 0;
@@ -268,6 +353,24 @@ namespace UltraCanvas {
         // implementation ignores the call so existing backends stay valid.
         virtual void SetFillRule(FillRule rule) { (void)rule; }
 
+        // Geometric hit testing against the current path: inside its fill
+        // (under the fill rule) or under its stroke (with the current width,
+        // caps, joins and dashes). Coordinates are user space. The stroke
+        // extents are the path's extents grown by the stroke. Backends
+        // without hit testing answer false and the path extents.
+        virtual bool IsPointInFill(double x, double y) { (void)x; (void)y; return false; }
+        virtual bool IsPointInStroke(double x, double y) { (void)x; (void)y; return false; }
+        virtual Rect2Dd GetStrokeExtents() { return GetPathExtents(); }
+
+        // Appends the outline of `text`, set in the current font, to the
+        // current path with its layout origin at `pos` - the text as
+        // geometry, to fill with a gradient or image, to clip to, to stroke,
+        // or to convert to editable curves. AppendTextLayoutPath does the
+        // same for a prepared layout. Backends without glyph outlines
+        // append nothing.
+        virtual void AppendTextPath(const std::string& text, const Point2Dd& pos) { (void)text; (void)pos; }
+        virtual void AppendTextLayoutPath(ITextLayout& layout, const Point2Dd& pos) { (void)layout; (void)pos; }
+
         // === Gradient Methods ===
         virtual std::shared_ptr<IPaintPattern> CreateLinearGradientPattern(double x1, double y1, double x2, double y2,
                                                                            const std::vector<GradientStop>& stops) = 0;
@@ -299,6 +402,32 @@ namespace UltraCanvas {
                                                                   const Rect2Dd& anchorRect,
                                                                   ImageFitMode fitMode = ImageFitMode::Cover,
                                                                   bool repeat = false) {
+            return nullptr;
+        }
+        // A conic (angular) gradient: the stops run round `centre` from
+        // `startAngle` to `endAngle` (radians, clockwise on screen). The
+        // base returns nullptr; callers fall back to a flat fill.
+        virtual std::shared_ptr<IPaintPattern> CreateConicGradientPattern(double cx, double cy,
+                                                                          double startAngle, double endAngle,
+                                                                          const std::vector<GradientStop>& stops) {
+            (void)cx; (void)cy; (void)startAngle; (void)endAngle; (void)stops;
+            return nullptr;
+        }
+        // A mesh gradient: any number of Coons patches, each with its own
+        // corner colours; the pattern is transparent outside the patches.
+        // What Xara's diamond, three- and four-colour fills and SVG 2 mesh
+        // gradients are made of. The base returns nullptr.
+        virtual std::shared_ptr<IPaintPattern> CreateMeshGradientPattern(const std::vector<MeshGradientPatch>& patches) {
+            (void)patches;
+            return nullptr;
+        }
+        // Image-backed paint from a pixmap already in memory (a decoded
+        // image, a rendered group read back, a raster layer): the pixmap
+        // is stretched to `anchorRect` and extends per `extend` outside it.
+        // Use the pattern's SetMatrix for any other placement.
+        virtual std::shared_ptr<IPaintPattern> CreatePixmapPattern(UCPixmap& pixmap, const Rect2Dd& anchorRect,
+                                                                   PatternExtend extend = PatternExtend::Pad) {
+            (void)pixmap; (void)anchorRect; (void)extend;
             return nullptr;
         }
         virtual void SetFillPaint(std::shared_ptr<IPaintPattern> pattern) = 0;

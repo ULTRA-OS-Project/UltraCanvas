@@ -1,7 +1,7 @@
 // libspecific/Cairo/RenderContextCairo.h
 // Cairo support implementation for UltraCanvas Framework
-// Version: 1.0.5 - Rect-based DrawPixmap/DrawMask
-// Last Modified: 2026-04-11
+// Version: 1.1.0 - blend modes, groups, masks, hit testing, conic / mesh / pixmap patterns, text outlines
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 //
 
@@ -34,9 +34,14 @@ namespace UltraCanvas {
     private:
         cairo_pattern_t *pattern = nullptr;
     public:
+        // The placement the pattern was created with (a pixmap fitted to its
+        // anchor, a gradient's geometry); SetMatrix composes on top of it.
+        cairo_matrix_t baseMatrix;
         PaintPatternCairo() = delete;
         explicit PaintPatternCairo(cairo_pattern_t *pat) {
             pattern = pat;
+            cairo_matrix_init_identity(&baseMatrix);
+            if (pattern) cairo_pattern_get_matrix(pattern, &baseMatrix);
         };
         ~PaintPatternCairo() override {
             if (pattern) {
@@ -44,6 +49,8 @@ namespace UltraCanvas {
             }
         };
         void* GetHandle() override { return pattern; };
+        void SetMatrix(double a, double b, double c, double d, double e, double f) override;
+        void SetExtend(PatternExtend extend) override;
     };
 
     class RenderContextCairo : public IRenderContext {
@@ -128,6 +135,29 @@ namespace UltraCanvas {
                 double borderBottomRightRadius, double borderBottomLeftRadius) override;
         void ClipPath() override;
 
+        // Transform readback
+        void GetTransform(double& a, double& b, double& c, double& d, double& e, double& f) const override;
+        Point2Dd UserToDevice(const Point2Dd& p) const override;
+        Point2Dd DeviceToUser(const Point2Dd& p) const override;
+        double DeviceToUserDistance(double devicePixels) const override;
+
+        // Compositing
+        void SetBlendMode(BlendMode mode) override;
+        BlendMode GetBlendMode() const override { return currentState.blendMode; }
+        void SetAntialias(AntialiasMode mode) override;
+        void BeginGroup() override;
+        void EndGroup(double opacity) override;
+        std::shared_ptr<IPaintPattern> EndGroupAsPattern() override;
+        void EndGroupMasked(std::shared_ptr<IPaintPattern> mask) override;
+        void PaintPattern(std::shared_ptr<IPaintPattern> pattern, double opacity) override;
+
+        // Hit testing and text outlines
+        bool IsPointInFill(double x, double y) override;
+        bool IsPointInStroke(double x, double y) override;
+        Rect2Dd GetStrokeExtents() override;
+        void AppendTextPath(const std::string& text, const Point2Dd& pos) override;
+        void AppendTextLayoutPath(ITextLayout& layout, const Point2Dd& pos) override;
+
         // Style management
         //void SetDrawingStyle(const DrawingStyle &style) override;
         void SetTextStyle(const TextStyle &style) override;
@@ -168,6 +198,12 @@ namespace UltraCanvas {
                                                           const Rect2Dd& anchorRect,
                                                           ImageFitMode fitMode,
                                                           bool repeat) override;
+        std::shared_ptr<IPaintPattern> CreateConicGradientPattern(double cx, double cy,
+                                                                  double startAngle, double endAngle,
+                                                                  const std::vector<GradientStop>& stops) override;
+        std::shared_ptr<IPaintPattern> CreateMeshGradientPattern(const std::vector<MeshGradientPatch>& patches) override;
+        std::shared_ptr<IPaintPattern> CreatePixmapPattern(UCPixmap& pixmap, const Rect2Dd& anchorRect,
+                                                           PatternExtend extend) override;
         void SetFillPaint(std::shared_ptr<IPaintPattern> pattern) override;
         void SetFillPaint(const Color& color) override;
         void SetStrokePaint(std::shared_ptr<IPaintPattern> pattern) override;

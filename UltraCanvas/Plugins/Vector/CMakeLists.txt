@@ -1,5 +1,5 @@
-# UltraCanvas/Plugins/Vector/CDR/CMakeLists.txt
-# CorelDRAW CDR Plugin - Builds as separate static library
+# UltraCanvas/Plugins/Vector/CMakeLists.txt
+# Vector format converters - Builds as separate static library
 # Version: 1.0.0
 # Last Modified: 2026-07-14
 # Author: UltraCanvas Framework
@@ -20,9 +20,6 @@ pkg_check_modules(LIBTINYXML2 REQUIRED tinyxml2)
 
 # ===== SOURCE FILES =====
 set(VECTOR_PLUGIN_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorElement.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorRenderer.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorStorage.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasXARConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasEPSConverter.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasCDRConverter.cpp
@@ -40,8 +37,13 @@ set(VECTOR_PLUGIN_SOURCES
     ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorFormatsPlugin.cpp
 )
 
+# The document model (VectorStorage), its renderer, PathOps and the
+# UltraCanvasVectorElement viewer live in the core library
+# (include/DataFormats, include/, core/) so that elements and tests can use
+# them without this plugin; this plugin is the format converters only.
 set(VECTOR_PLUGIN_HEADERS
-    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorElement.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorConverter.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvasVectorFormatsPlugin.h
 )
 
 # ===== BUILD STATIC LIBRARY =====

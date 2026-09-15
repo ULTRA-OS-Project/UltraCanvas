@@ -131,7 +131,8 @@ private:
     static std::string SlugFromEmail(const std::string& email);
     static std::string LocalPart(const std::string& email);
 
-    // Materialise an attachment to the cache and open it in a MediaViewer window.
+    // Materialise an attachment to the cache and hand it to the OS default
+    // application; when no application is associated, offer to save it instead.
     void OpenAttachment(const Attachment& attachment);
     // Save an attachment to a location the user picks, through the framework's
     // file dialog (UltraCanvasFileLoader::SaveFileDialog).

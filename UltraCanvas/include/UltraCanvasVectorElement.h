@@ -7,8 +7,8 @@
 
 #include "UltraCanvasUIElement.h"
 #include "UltraCanvasSmoothScroll.h"
-#include "UltraCanvasVectorStorage.h"
-#include "UltraCanvasVectorRenderer.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorRenderer.h"
 #include <memory>
 #include <string>
 #include <functional>
