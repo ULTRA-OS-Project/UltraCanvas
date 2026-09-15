@@ -1,3 +1,57 @@
+#### 2026-09-15 *0.8.60*
+- **The OS print dialog now prints what the user chose.** It has shipped for a
+  while and Texter and UltraFiler both call it, but every platform printed by
+  itself and discarded the answers. Linux built a real GTK print dialog, read
+  `GtkPrintSettings` and `GtkPageSetup` out of it, used **neither**, and ran
+  `lpr -P "<printer>"` through `system()`. Windows showed no print dialog at
+  all — it wrote a temp file and invoked the shell's `print` verb, so the
+  dialog the user saw was Notepad's, its settings never came back, and the
+  file was left behind on purpose. macOS wrote the text to a fixed path in the
+  temp directory, the same path on every call, handed it to `NSWorkspace` and
+  returned `true` without waiting for anything. So on all three the user
+  picked a printer, copies, collation, paper size, orientation, duplex and a
+  page range, and all of it was dropped.
+- **The fix is less printing code, not more.** `PrinterDevice` already honours
+  every one of those settings, so the dialog's job is narrowed to *asking*:
+  `RequestPrintSettings()` returns a `NativePrintResult`, and the job goes
+  through `PrinterDevice::Print()` once, for every platform. `ShowPrintDialog()`
+  keeps its signature, so both applications keep compiling and start honouring
+  the dialog. `PrintTextWithDialog()` is the same thing with a real result, so
+  a caller can tell "the user changed their mind" from "the printer was not
+  there" — which a `bool` cannot.
+- **A settings struct that is not a second vocabulary.** `NativePrintResult`
+  is the printer's name plus an `IOPrintOptions` and a page range. A print
+  dialog exists to produce a print job and `IOPrintOptions` is what `Print()`
+  takes, so any other shape would be a type to convert rather than a type to
+  use.
+- **Page ranges reach the queue.** `IOPrintJob::pageRange` had been declared
+  since this module was written and was read by nothing: the payload had
+  nowhere to carry it, and a transport only ever sees the payload. It now
+  reaches `IOPrintPayload`, and from there the IPP `page-ranges` attribute
+  under CUPS and the page loop on the GDI path — applied after pagination,
+  because that is the first moment "pages 2-4" can be checked against a
+  document that has pages.
+- **One rule for what a sheet of paper is.** GTK quotes paper in millimetres,
+  Win32 in tenths through a `DEVMODE`, AppKit in points; all three now convert
+  to hundredths and go to the same `IOPaperSizeFromDimensions()` the CUPS
+  backend already used, promoted out of that file. On Windows the `DMPAPER_*`
+  code is looked up in the driver's own table through `DeviceCapabilities`
+  rather than mapped by hand, because the codes do not all line up —
+  `DMPAPER_B4` is JIS B4 at 257x364 mm while ISO B4 is 250x353. A size with no
+  name in the table is carried by its measurements rather than substituted for
+  A4.
+- **macOS printing is wired up rather than absent**, through `NSPrintPanel`
+  and the CUPS backend that was already built for it. Duplex is left at its
+  default: it is not on `NSPrintInfo` at all, it lives in the `PMPrintSettings`
+  underneath, and claiming a value would be inventing one.
+- **"Print to File" is refused by name, not silently ignored.** It comes back
+  in the result, and printing to a queue the user did not choose is the worse
+  of the two wrong answers.
+- `Tests/IODevicePrinterTest`: 157 assertions, up from 117. Matching a
+  dialog's printer name to a device and building a job from a dialog answer
+  are ordinary functions over data, so they live in a translation unit that
+  names no dialog and are covered on every arm of the matrix.
+
 #### 2026-09-15 *0.8.59*
 - **Native printing now works on Windows.** `Native` was the one renderer
   `GetAvailableRenderers()` would not offer there: the spooler takes

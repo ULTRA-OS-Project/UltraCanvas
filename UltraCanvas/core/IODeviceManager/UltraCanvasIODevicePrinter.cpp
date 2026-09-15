@@ -253,6 +253,7 @@ IODeviceResult PrinterDevice::Print(const IOPrintJob& job) {
     // Set before rendering so a renderer may override it, and after the name
     // has been defaulted above so it is never empty.
     payload.jobName = resolvedJob.jobName;
+    payload.pageRange = resolvedJob.pageRange;
     IODeviceResult rendered = renderer->Render(resolvedJob, capabilities, payload);
     if (!rendered.success) {
         SetLastError(rendered);

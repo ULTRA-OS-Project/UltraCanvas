@@ -22,6 +22,7 @@
 // Author: UltraCanvas Framework
 
 #include "IODeviceManager/UltraCanvasIODevicePrinter.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 
 #include <iostream>
 #include <memory>
@@ -125,6 +126,7 @@ public:
         lastPayloadWasRaw = payload.isRaw;
         lastContentType = payload.contentType;
         lastJobName = payload.jobName;
+        lastPageRange = payload.pageRange;
         lastOptions = options;
         ++submissions;
         outJobId = 4242;
@@ -154,6 +156,7 @@ public:
     bool lastPayloadWasRaw = false;
     std::string lastContentType;
     std::string lastJobName;
+    std::vector<int> lastPageRange;
     IOPrintOptions lastOptions;
     int submissions = 0;
 };
@@ -764,6 +767,202 @@ void TestJobNameReachesTheTransport() {
           "and falls back to the file, not to the printer");
 }
 
+// ===== WHAT A PRINT DIALOG CHOSE =====
+
+// A print dialog is the one place a user states every one of these settings
+// at once, and until this slice each platform collected them and then printed
+// by itself without them: Linux read the GTK page setup and the settings,
+// used neither, and shelled out to `lpr`; Windows and macOS never showed a
+// print dialog at all. The tests below cover the path those answers now take.
+
+void TestPaperSizeRecognition() {
+    std::cout << "\n-- Paper recognised by its measurements --\n";
+
+    Check(IOPaperSizeFromDimensions(21000, 29700) == IOPaperSize::A4,
+          "210 x 297 mm is A4");
+    Check(IOPaperSizeFromDimensions(21590, 27940) == IOPaperSize::Letter,
+          "8.5 x 11 in is Letter");
+
+    // A driver quoting its own rounded figures still has to land on the same
+    // sheet: this is why the recogniser has a tolerance at all.
+    Check(IOPaperSizeFromDimensions(21050, 29650) == IOPaperSize::A4,
+          "half a millimetre off is still A4");
+
+    // ISO B4 is 250 x 353; the DMPAPER_B4 that Windows drivers report is JIS
+    // B4 at 257 x 364. Eleven millimetres apart, and not the same paper.
+    Check(IOPaperSizeFromDimensions(25700, 36400) != IOPaperSize::B4,
+          "JIS B4 is not reported as ISO B4");
+    Check(IOPaperSizeFromDimensions(25000, 35300) == IOPaperSize::B4,
+          "ISO B4 is");
+
+    Check(IOPaperSizeFromDimensions(0, 0) == IOPaperSize::Unknown,
+          "a size with no measurements is Unknown, not a guess");
+    Check(IOPaperSizeFromDimensions(12345, 67890) == IOPaperSize::Unknown,
+          "and so is a sheet nothing in the table matches");
+}
+
+void TestPageRangeFormatting() {
+    std::cout << "\n-- Page ranges --\n";
+
+    Check(IOFormatPageRanges({}).empty(),
+          "no range formats as nothing, which every consumer reads as 'all'");
+    Check(IOFormatPageRanges({4}) == "4", "a single page is itself");
+    Check(IOFormatPageRanges({1, 2, 3}) == "1-3", "a run becomes a range");
+    Check(IOFormatPageRanges({1, 3, 5}) == "1,3,5", "gaps stay separate");
+    Check(IOFormatPageRanges({1, 2, 3, 7, 8}) == "1-3,7-8",
+          "runs and gaps together");
+
+    // The list comes from a dialog, so it arrives in whatever order the user
+    // typed, and a page named twice is one page.
+    Check(IOFormatPageRanges({3, 1, 2, 2}) == "1-3",
+          "out of order and duplicated still formats as one run");
+    Check(IOFormatPageRanges({0, -4, 2}) == "2",
+          "a page number below 1 is dropped, not clamped onto page 1");
+}
+
+void TestPageSelection() {
+    std::cout << "\n-- Selecting pages from a paginated document --\n";
+
+    Check(IOSelectPages({}, 3) == std::vector<int>({0, 1, 2}),
+          "no range selects every page");
+    Check(IOSelectPages({2, 3}, 5) == std::vector<int>({1, 2}),
+          "a range selects those pages, 0-based");
+    Check(IOSelectPages({3, 1}, 5) == std::vector<int>({0, 2}),
+          "and comes back in order whatever order it went in");
+
+    // A dialog cannot know how long the document is - it has not been
+    // paginated yet - so a range wider than the document is ordinary.
+    Check(IOSelectPages({1, 2, 99}, 2) == std::vector<int>({0, 1}),
+          "pages past the end are dropped rather than refused");
+    Check(IOSelectPages({7, 8}, 3).empty(),
+          "a range that selects nothing comes back empty");
+    Check(IOSelectPages({}, 0).empty(), "an empty document selects nothing");
+}
+
+void TestMatchingADialogsPrinterName() {
+    std::cout << "\n-- Matching the dialog's printer to a device --\n";
+
+    auto transport = std::make_shared<FakeTransport>(/*raw=*/true);
+
+    auto make = [&](const std::string& id, const std::string& name,
+                    const std::string& queue) {
+        IODeviceInfo info;
+        info.deviceId = id;
+        info.name = name;
+        info.connectionPath = queue;
+        info.category = IODeviceCategory::Printer;
+        return std::make_shared<FakePrinter>(info, transport);
+    };
+
+    // The display name of one printer is the queue name of another. A dialog
+    // returns queue names, so the queue must win - otherwise picking "Office"
+    // in the dialog prints on the machine down the hall.
+    auto byName = make("a", "Office", "HP_LaserJet_4000");
+    auto byQueue = make("b", "HP LaserJet 4000 (Reception)", "Office");
+
+    std::vector<IODevicePtr> devices = {byName, byQueue};
+
+    Check(MatchPrinterByName(devices, "Office") == byQueue,
+          "the queue name wins over another device's display name");
+    Check(MatchPrinterByName(devices, "HP_LaserJet_4000") == byName,
+          "and a queue name finds its own device");
+    Check(MatchPrinterByName(devices, "HP LaserJet 4000 (Reception)") == byQueue,
+          "a display name matches when no queue name does");
+
+    // Windows printer names are not case-sensitive.
+    Check(MatchPrinterByName(devices, "hp_laserjet_4000") == byName,
+          "case is a last resort, but it is one");
+
+    Check(MatchPrinterByName(devices, "Nothing Like This") == nullptr,
+          "an unknown name matches nothing rather than the first printer");
+    Check(MatchPrinterByName(devices, "") == nullptr,
+          "and neither does an empty one");
+
+    // The registry holds every category, so this has to be safe to hand the
+    // whole list.
+    IODeviceInfo cameraInfo;
+    cameraInfo.deviceId = "c";
+    cameraInfo.name = "Office";
+    cameraInfo.category = IODeviceCategory::Camera;
+    Check(MatchPrinterByName({std::make_shared<FakePrinter>(cameraInfo, transport)},
+                             "Office") == nullptr,
+          "a device that is not a printer is not matched");
+}
+
+void TestBuildingAJobFromADialogAnswer() {
+    std::cout << "\n-- Building the job the dialog described --\n";
+
+    IOPrintDialogChoice chosen;
+    chosen.accepted = true;
+    chosen.printerName = "Office";
+    chosen.options.copies = 3;
+    chosen.options.collate = false;
+    chosen.options.duplex = IODuplexMode::LongEdge;
+    chosen.options.page.paperSize = IOPaperSize::Legal;
+    chosen.options.page.orientation = IOPrintOrientation::Landscape;
+    chosen.pageRange = {2, 3};
+
+    const IOPrintJob job = MakeTextPrintJob(chosen, "notes.txt", "hello");
+
+    Check(job.jobName == "notes.txt", "the document's name titles the job");
+    Check(std::string(job.data.begin(), job.data.end()) == "hello",
+          "the text is the job's data");
+
+    // Both renderers that can take this job read the MIME type first and the
+    // file extension second, and an in-memory document has no extension to
+    // read - so saying nothing here is how it gets refused.
+    Check(job.mimeType == "text/plain",
+          "the type is stated, because there is no file name to infer it from");
+
+    Check(job.options.copies == 3 && !job.options.collate,
+          "copies and collation are the user's, not defaults");
+    Check(job.options.duplex == IODuplexMode::LongEdge, "so is duplex");
+    Check(job.options.page.paperSize == IOPaperSize::Legal &&
+              job.options.page.orientation == IOPrintOrientation::Landscape,
+          "and so are the paper size and orientation");
+    Check(job.pageRange == std::vector<int>({2, 3}), "and the page range");
+
+    const IOPrintJob unnamed = MakeTextPrintJob(chosen, "", "hello");
+    Check(!unnamed.jobName.empty(),
+          "a document with no name still reaches the queue with one");
+}
+
+void TestPageRangeReachesTheTransport() {
+    std::cout << "\n-- The page range reaches the transport --\n";
+
+    IODeviceInfo info;
+    info.deviceId = "printer:1";
+    info.name = "Office";
+    info.category = IODeviceCategory::Printer;
+
+    auto transport = std::make_shared<FakeTransport>(/*raw=*/true);
+    auto printer = std::make_shared<FakePrinter>(info, transport);
+    Check(printer->Connect().success, "the printer connects");
+
+    IOPrintJob job;
+    job.jobName = "report.txt";
+    job.data = {'h', 'i'};
+    job.mimeType = "text/plain";
+    job.pageRange = {2, 4};
+
+    Check(printer->Print(job).success, "a job with a page range prints");
+
+    // IOPrintJob has carried a pageRange since this module was written, and
+    // nothing read it: the payload had nowhere to put it, and a transport only
+    // ever sees the payload. So a range the user picked in a print dialog was
+    // dropped between the dialog and the queue.
+    Check(transport->lastPageRange == std::vector<int>({2, 4}),
+          "and the range arrives with it rather than being dropped");
+
+    IOPrintJob everything;
+    everything.jobName = "report.txt";
+    everything.data = {'h', 'i'};
+    everything.mimeType = "text/plain";
+    Check(printer->Print(everything).success, "a job with no range prints");
+    Check(transport->lastPageRange.empty(),
+          "and carries no range, which means every page");
+}
+
 }  // namespace
 
 int main() {
@@ -785,6 +984,12 @@ int main() {
     TestTextDrawsEveryLineOnItsPage();
     TestPrintingDrivesThePageSource();
     TestJobNameReachesTheTransport();
+    TestPaperSizeRecognition();
+    TestPageRangeFormatting();
+    TestPageSelection();
+    TestMatchingADialogsPrinterName();
+    TestBuildingAJobFromADialogAnswer();
+    TestPageRangeReachesTheTransport();
 
     std::cout << "\n";
     if (g_failures == 0) {

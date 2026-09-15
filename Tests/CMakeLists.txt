@@ -2984,6 +2984,10 @@ add_executable(IODevicePrinterTest
     # IPrintPageTarget - so the fitting, wrapping and pagination assertions
     # run on every platform in the matrix, not just the one that needs them.
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterPage.cpp
+    # Matching a dialog's printer name to a device, and turning a dialog
+    # answer into a job. Its submitting half lives in a separate file so this
+    # one names no dialog and no registry, and links here without either.
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrintDialog.cpp
 )
 target_include_directories(IODevicePrinterTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}

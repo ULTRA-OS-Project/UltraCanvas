@@ -44,32 +44,6 @@ std::string OptionValue(cups_dest_t* dest, const char* name) {
     return value ? std::string(value) : std::string();
 }
 
-// CUPS reports media in hundredths of a millimetre, the same unit
-// IOPaperDimensions uses, so a size matches by number rather than by the
-// name the printer happens to give it. 1 mm of slack absorbs the rounding
-// between a printer's own table and the nominal ISO/ANSI figure.
-IOPaperSize PaperSizeFromDimensions(int widthHundredthsMM, int lengthHundredthsMM) {
-    constexpr int kToleranceHundredthsMM = 100;
-
-    static const IOPaperSize kCandidates[] = {
-        IOPaperSize::A3, IOPaperSize::A4, IOPaperSize::A5, IOPaperSize::A6,
-        IOPaperSize::B4, IOPaperSize::B5,
-        IOPaperSize::Letter, IOPaperSize::Legal, IOPaperSize::Tabloid,
-        IOPaperSize::Executive,
-        IOPaperSize::Photo4x6, IOPaperSize::Photo5x7, IOPaperSize::Photo8x10,
-        IOPaperSize::Envelope10, IOPaperSize::EnvelopeDL, IOPaperSize::EnvelopeC5,
-    };
-
-    for (IOPaperSize candidate : kCandidates) {
-        const IOPaperDimensions nominal = IOPaperSizeDimensions(candidate);
-        if (std::abs(nominal.widthHundredthsMM - widthHundredthsMM) <= kToleranceHundredthsMM &&
-            std::abs(nominal.heightHundredthsMM - lengthHundredthsMM) <= kToleranceHundredthsMM) {
-            return candidate;
-        }
-    }
-    return IOPaperSize::Unknown;
-}
-
 IOSupplyType SupplyTypeFromMarker(const std::string& markerType) {
     if (markerType.find("toner") != std::string::npos)       return IOSupplyType::Toner;
     if (markerType.find("ink") != std::string::npos)         return IOSupplyType::Ink;
@@ -128,9 +102,17 @@ std::vector<std::string> SplitList(const std::string& text) {
 
 class CupsOptions {
 public:
-    explicit CupsOptions(const IOPrintOptions& options) {
+    CupsOptions(const IOPrintOptions& options, const std::vector<int>& pageRange) {
         Add(CUPS_COPIES, std::to_string(options.copies));
         Add("collate", options.collate ? "true" : "false");
+
+        // Omitted entirely when empty: CUPS reads a missing page-ranges as
+        // the whole document, and sending an empty string instead would be
+        // a malformed attribute rather than a wider selection.
+        const std::string ranges = IOFormatPageRanges(pageRange);
+        if (!ranges.empty()) {
+            Add("page-ranges", ranges);
+        }
 
         const std::string media = IOPaperSizeToPwgName(options.page.paperSize);
         if (!media.empty()) {
@@ -243,7 +225,7 @@ public:
                                                 cupsLastError(), printer.deviceId);
         }
 
-        CupsOptions cupsOptions(options);
+        CupsOptions cupsOptions(options, payload.pageRange);
         // The job's own name, not the printer's: a queue is read by what
         // the documents are called.
         const std::string title =
@@ -405,7 +387,7 @@ protected:
             if (!cupsGetDestMediaByIndex(CUPS_HTTP_DEFAULT, dest, destInfo, i, 0, &size)) {
                 continue;
             }
-            const IOPaperSize paper = PaperSizeFromDimensions(size.width, size.length);
+            const IOPaperSize paper = IOPaperSizeFromDimensions(size.width, size.length);
             if (paper != IOPaperSize::Unknown) {
                 bool known = false;
                 for (IOPaperSize existing : capabilities.paperSizes) {

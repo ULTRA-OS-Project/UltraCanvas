@@ -137,7 +137,8 @@ public:
         // GDI half rather than opening a spooler handle here.
         if (payload.pages) {
             return Internal::PrintPageSourceThroughGdi(
-                printer, payload.pages, options, payload.jobName, outJobId);
+                printer, payload.pages, options, payload.jobName,
+                payload.pageRange, outJobId);
         }
 
         (void)options;

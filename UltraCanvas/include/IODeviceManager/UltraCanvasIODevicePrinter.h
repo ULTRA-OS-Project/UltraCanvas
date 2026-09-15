@@ -36,6 +36,14 @@ struct IOPrintPayload {
     // printer's own name.
     std::string jobName;
 
+    // Which pages to print, 1-based; empty means all of them. Filled in by
+    // PrinterDevice::Print from the job, for the same reason jobName is:
+    // IOPrintJob has carried a pageRange since this module was written and
+    // nothing read it, because the payload had nowhere to put it and the
+    // transports only ever see the payload. A range the user picked in a
+    // print dialog was therefore dropped between the dialog and the queue.
+    std::vector<int> pageRange;
+
     // True when `data` is the printer's own command stream (ESC/P2, PCL,
     // BJL) and must reach the device untouched. Transports submit these as
     // a raw job: application/vnd.cups-raw under CUPS, datatype "RAW" through

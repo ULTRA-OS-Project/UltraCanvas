@@ -58810,6 +58810,82 @@ tell "this printer has no duplex unit" from "we could not read this printer's
 capabilities", and conflating them strips options from a printer that would
 have accepted them.
 
+### The print dialog asks; PrinterDevice prints
+
+`UltraCanvasNativeDialogs::ShowPrintDialog()` shipped long before this module
+did, and Texter and UltraFiler both call it. Each platform printed by itself:
+
+- **Linux** built a real GTK print dialog, read `GtkPrintSettings` and
+  `GtkPageSetup` out of it, used **neither**, and ran
+  `lpr -P "<printer>" "<tempfile>"` through `system()`.
+- **Windows** showed no print dialog at all. It wrote a temp file and invoked
+  the shell's `print` verb, so the dialog the user saw was Notepad's and its
+  settings never came back. The temp file was left behind deliberately.
+- **macOS** wrote the text to a fixed path in the temp directory — the same
+  path on every call, so two documents printed in quick succession raced for
+  it — handed it to `NSWorkspace`, and returned `true` without waiting for
+  anything.
+
+So on every platform the user chose copies, collation, paper size,
+orientation, duplex and a page range, and every one of those was discarded.
+
+`PrinterDevice` already honours all of them. The fix is therefore not more
+printing code but **less**: the dialog's job is narrowed to *asking*.
+
+```cpp
+NativePrintResult chosen =
+    UltraCanvasNativeDialogs::RequestPrintSettings("report.txt", window);
+
+if (chosen.IsOK()) {
+    IODeviceResult printed =
+        PrintTextWithSettings(chosen, "report.txt", text);
+}
+```
+
+`NativePrintResult` is `IOPrintDialogChoice` — the printer's name plus an
+`IOPrintOptions` and a page range. It is **not** a new vocabulary of
+copies/paper/duplex enums: a print dialog exists to produce a print job, and
+`IOPrintOptions` is what `PrinterDevice::Print()` takes, so anything else
+would be a type to convert rather than a type to use. It is defined in the
+printer types rather than beside the other dialog results because the dialog
+header reaches the whole widget stack through `UltraCanvasModalDialog.h`, and
+IODeviceManager depends on no UI.
+
+Three things follow from doing it this way:
+
+**One rule for what a sheet of paper is.** GTK quotes paper in millimetres,
+Win32 in tenths of a millimetre through a `DEVMODE`, AppKit in points. All
+three convert to hundredths of a millimetre and go to the same
+`IOPaperSizeFromDimensions()` the CUPS backend already used — a size is
+recognised by its measurements, not by the name the printer, driver or
+desktop gave it. On Windows the `DMPAPER_*` code is not mapped by hand but
+looked up in the *driver's own* table through `DeviceCapabilities`, because
+the codes do not all line up: `DMPAPER_B4` is JIS B4 at 257×364 mm while ISO
+B4 is 250×353. A size with no name in the table is carried by its
+measurements as `Custom` rather than substituted for A4.
+
+**The page range finally goes somewhere.** `IOPrintJob::pageRange` had existed
+since the module was written and was read by nothing — the payload had
+nowhere to carry it, and a transport only ever sees the payload. It now
+reaches `IOPrintPayload`, and from there the IPP `page-ranges` attribute under
+CUPS and the page loop on the GDI path, where it is applied *after*
+pagination because that is the first moment "pages 2–4" can be checked
+against a document that has pages.
+
+**What is testable is separated from what needs a dialog.** Matching the name
+a dialog returns to a device, and turning a dialog answer into a job, are
+ordinary functions over data; they live in
+`UltraCanvasIODevicePrintDialog.cpp` and are covered by the printer tests. The
+half that names `RequestPrintSettings()` is a separate translation unit, so a
+reference to a platform dialog never enters the test's link line.
+
+Two things are reported rather than acted on. **"Print to File"** comes back
+as `printToFile` and is refused by name, because silently spooling to a queue
+the user did not choose is the worse of the two wrong answers. **Duplex on
+macOS** is left at its default: it is not on `NSPrintInfo` at all — it lives
+in the `PMPrintSettings` underneath — and claiming a value would be inventing
+one.
+
 ### Open decision: linked or subprocess
 
 **libgutenprint is GPL-2.0-or-later. UltraCanvas is MIT.** Linking it means
@@ -58899,6 +58975,7 @@ compiling, tested and wired into CI before the next starts:
 | 6 ✅ | `ScannerDevice` + SANE (Linux) |
 | 7 ✅ | Hot-plug watching + the udev watcher (Linux) |
 | 8 ✅ | Windows GDI renderer, so `Native` works there too — images and plain text; PDF pagination and XPS still open |
+| 8a ✅ | The OS print dialog wired to `PrinterDevice` on Linux, Windows and macOS, so the settings it collects reach the queue; page ranges carried end to end |
 | 9 | Windows and macOS backends for camera and scanner |
 | 10 | Hot-plug watchers for Windows and macOS; the permission model |
 | 11 | IPP / eSCL driverless, network cameras |
@@ -59113,7 +59190,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-15 (after the Windows GDI renderer).
+Last reviewed: 2026-09-15 (after wiring the OS print dialog to PrinterDevice).
 
 ---
 
@@ -59209,15 +59286,20 @@ absent.
 | Windows GDI renderer: images from memory | ❌ the document loader is path-based, so a job carrying image bytes rather than a path is refused rather than spooled through a temp file behind the caller's back. |
 | XPS print path | ❌ GDI covers every driver Windows will show; XPS would matter for an XPS-only device or for higher-fidelity transparency. |
 | Windows printer maintenance | ❌ |
-| **macOS printing** | ❌ functions were written but under names nothing calls, so effectively zero |
+| **macOS printing** | 🔨 printing itself works through the CUPS backend, which is built for macOS as well as Linux, and the print panel is wired up (`NSPrintPanel` → `NSPrintInfo` → `IOPrintOptions`). What is missing is duplex, which is not on `NSPrintInfo` at all — it lives in the `PMPrintSettings` underneath — so it is left at its default rather than guessed. Untested on real hardware. |
 | Paper size recognition | ✅ by dimensions from the CUPS dest-info API, replacing the prior stub that returned A4 for every size a printer reported |
 | Page rendering (document/image → page raster) | ❌ |
+| Page ranges | ✅ `IOPrintJob::pageRange` had been declared since the module was written and read by nothing, so a range chosen in a print dialog was dropped between the dialog and the queue. It now reaches the payload, and from there the IPP `page-ranges` attribute under CUPS and the page loop on the GDI path. |
 | IPP: real mDNS/DNS-SD discovery | ❌ the prior version piggybacked on CUPS and only found what CUPS already knew |
 | IPP: full `Get-Printer-Attributes` parsing | ❌ |
 | SNMP supply/component monitoring | ⚠️ exists outside the tree; needs net-snmp declared, and should be reconsidered against UltraNet |
 | Maintenance (cleaning, alignment, nozzle check) | ⚠️ two competing architectures were written; pick one. Both shell out to `escputil` with the device path interpolated unquoted into `popen` — fix before landing. |
 | Cloud printing | ❌ architecture only |
-| Integration with `UltraCanvasNativeDialogs::ShowPrintDialog()` | ❌ that dialog already ships and is used by Texter and UltraFiler |
+| **Integration with `UltraCanvasNativeDialogs::ShowPrintDialog()`** | ✅ the dialog now asks (`RequestPrintSettings()` → `NativePrintResult`) and the job goes through `PrinterDevice`, so the printer, copies, collation, paper size, orientation, duplex, quality and page range the user picked are the ones the queue receives. Texter and UltraFiler keep the `bool` signature they already call. |
+| Print dialog: "Print to File" destination | ❌ reported in the result (`printToFile`, `outputFilePath`) and refused by name, rather than silently spooled to a queue the user did not choose. Needs a renderer that writes a document rather than submitting one. |
+| Print dialog: printing anything but plain text | ❌ `PrintTextWithDialog()` is the only bridge; an image or a PDF from a dialog needs the same treatment, and for PDF the renderer gap two rows up. |
+| Print dialog on Android | ❌ `RequestPrintSettings()` reports cancelled. Android prints through a Java-side `PrintManager` job, not a settings dialog that hands choices back; bridging it is a JNI slice. |
+| Print dialog on WASM | ❌ and will stay so: the browser's print UI neither reports what the user chose nor lets a page choose for them, by design. `ShowPrintDialog()` there still hands the text to the browser to print. |
 
 **Types referenced by the prior printer code but defined nowhere:**
 `IOPrinterCapabilities`, `IOPrintJobStatus`, `IOPrintJobInfo`,

@@ -70,6 +70,22 @@ const char* IOPaperSizeToString(IOPaperSize size);
 // Unknown and Custom.
 std::string IOPaperSizeToPwgName(IOPaperSize size);
 
+// The standard size whose nominal portrait dimensions match, or Unknown.
+//
+// A size is recognised by its measurements rather than by the name it comes
+// with, because the name is whatever the printer, the driver or the desktop
+// chose to call it - "A4", "iso_a4", "A4 210x297mm" and a localised string
+// are all the same sheet. The tolerance absorbs the rounding between a
+// printer's own table and the nominal ISO/ANSI figure; a millimetre is wide
+// enough for that and far narrower than the gap to the next size.
+//
+// Portrait only: every caller here learns the orientation separately, from a
+// field that states it, so guessing it from a swapped pair would override
+// something already known.
+IOPaperSize IOPaperSizeFromDimensions(int widthHundredthsMM,
+                                      int heightHundredthsMM,
+                                      int toleranceHundredthsMM = 100);
+
 enum class IOPrintOrientation {
     Portrait,
     Landscape,
@@ -288,6 +304,29 @@ IOPrintOptions ResolvePrintOptions(const IOPrintOptions& requested,
 // JOBS
 // ============================================================================
 
+// "1-3,5,8-9" from a list of 1-based page numbers: consecutive runs become
+// ranges, the list is sorted and duplicates collapse. This is the form IPP's
+// page-ranges attribute takes and the form every print dialog shows, so it is
+// also what a caller would have to build by hand otherwise. Empty list gives
+// an empty string, which every consumer reads as "all pages".
+//
+// Pages below 1 are dropped rather than clamped: a 0 or a negative in a page
+// list is a bug in the caller, and clamping it to page 1 would print a page
+// nobody asked for.
+std::string IOFormatPageRanges(const std::vector<int>& pages);
+
+// The 0-based page indices of a `pageCount`-page document that a 1-based
+// `pageRange` selects, in order and without duplicates. An empty range
+// selects every page, which is what every layer here means by "no range".
+//
+// Pages past the end of the document are dropped rather than refused: a
+// dialog showing "1-9999" for a range the user typed before the document was
+// paginated is ordinary, and failing the job over it would be worse than
+// printing the pages that do exist. A range that selects *nothing* comes back
+// empty, which callers do treat as an error - it means the user asked for
+// pages this document does not have at all.
+std::vector<int> IOSelectPages(const std::vector<int>& pageRange, int pageCount);
+
 struct IOPrintJob {
     std::string jobName;
 
@@ -301,6 +340,50 @@ struct IOPrintJob {
     std::vector<int> pageRange;     // empty = every page
 
     bool IsValid() const { return !filePath.empty() || !data.empty(); }
+};
+
+// ============================================================================
+// WHAT A PRINT DIALOG CHOSE
+// ============================================================================
+
+// The settings a user picked in the OS print dialog.
+//
+// It lives here, in the printer vocabulary, rather than beside the other
+// dialog result types, for a plain reason: a print dialog exists to produce a
+// print job, so its answer is already IOPrintOptions plus the queue to send
+// it to, and any other shape would be a second vocabulary to translate. The
+// dialog header names this NativePrintResult, alongside NativeInputResult and
+// the rest, and that name is an alias for this type.
+//
+// Keeping the definition on this side is also what lets the printing stack
+// use it at all: the dialog header reaches the whole widget and window stack
+// through UltraCanvasModalDialog.h, and IODeviceManager depends on no UI.
+struct IOPrintDialogChoice {
+    // The user confirmed the dialog. A plain bool rather than the dialog
+    // system's DialogResult, which carries Yes/No/Retry answers a print
+    // dialog never gives - and whose header pulls in every widget.
+    bool accepted = false;
+
+    // The queue as the platform names it - a CUPS destination name, a Windows
+    // printer name. This is IODeviceInfo::connectionPath for both the CUPS and
+    // Windows spooler backends, which is how a chosen name finds its device
+    // again. Empty when the dialog was cancelled.
+    std::string printerName;
+
+    IOPrintOptions options;
+
+    // 1-based pages the user asked for; empty means the whole document.
+    std::vector<int> pageRange;
+
+    // The user chose the desktop's "Print to File" destination rather than a
+    // queue. Reported instead of quietly ignored: a caller acting on
+    // printerName alone would otherwise spool to a device nobody picked.
+    bool printToFile = false;
+    std::string outputFilePath;
+
+    bool IsOK() const { return accepted; }
+    bool IsCancelled() const { return !accepted; }
+    explicit operator bool() const { return accepted; }
 };
 
 enum class IOPrintJobState {

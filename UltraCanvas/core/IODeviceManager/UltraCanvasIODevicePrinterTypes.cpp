@@ -7,6 +7,7 @@
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinterTypes.h"
 
 #include <algorithm>
+#include <cstdlib>
 
 namespace UltraCanvas {
 
@@ -78,6 +79,74 @@ std::string IOPaperSizeToPwgName(IOPaperSize size) {
         return entry->pwgName;
     }
     return std::string();
+}
+
+IOPaperSize IOPaperSizeFromDimensions(int widthHundredthsMM,
+                                      int heightHundredthsMM,
+                                      int toleranceHundredthsMM) {
+    if (widthHundredthsMM <= 0 || heightHundredthsMM <= 0) {
+        return IOPaperSize::Unknown;
+    }
+    for (const auto& entry : kPaperTable) {
+        if (std::abs(entry.widthHundredthsMM - widthHundredthsMM) <= toleranceHundredthsMM &&
+            std::abs(entry.heightHundredthsMM - heightHundredthsMM) <= toleranceHundredthsMM) {
+            return entry.size;
+        }
+    }
+    return IOPaperSize::Unknown;
+}
+
+std::string IOFormatPageRanges(const std::vector<int>& pages) {
+    std::vector<int> sorted;
+    sorted.reserve(pages.size());
+    for (int page : pages) {
+        if (page >= 1) {
+            sorted.push_back(page);
+        }
+    }
+    std::sort(sorted.begin(), sorted.end());
+    sorted.erase(std::unique(sorted.begin(), sorted.end()), sorted.end());
+
+    std::string formatted;
+    for (size_t i = 0; i < sorted.size();) {
+        size_t run = i;
+        while (run + 1 < sorted.size() && sorted[run + 1] == sorted[run] + 1) {
+            ++run;
+        }
+        if (!formatted.empty()) {
+            formatted += ',';
+        }
+        formatted += std::to_string(sorted[i]);
+        if (run != i) {
+            formatted += '-';
+            formatted += std::to_string(sorted[run]);
+        }
+        i = run + 1;
+    }
+    return formatted;
+}
+
+std::vector<int> IOSelectPages(const std::vector<int>& pageRange, int pageCount) {
+    std::vector<int> selected;
+    if (pageCount <= 0) {
+        return selected;
+    }
+    if (pageRange.empty()) {
+        selected.reserve(static_cast<size_t>(pageCount));
+        for (int page = 0; page < pageCount; ++page) {
+            selected.push_back(page);
+        }
+        return selected;
+    }
+
+    for (int page : pageRange) {
+        if (page >= 1 && page <= pageCount) {
+            selected.push_back(page - 1);
+        }
+    }
+    std::sort(selected.begin(), selected.end());
+    selected.erase(std::unique(selected.begin(), selected.end()), selected.end());
+    return selected;
 }
 
 IOPaperDimensions IOPageSetup::GetDimensions() const {

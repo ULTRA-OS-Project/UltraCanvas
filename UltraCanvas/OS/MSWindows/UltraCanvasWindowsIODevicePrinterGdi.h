@@ -29,6 +29,7 @@ IODeviceResult PrintPageSourceThroughGdi(const IODeviceInfo& printer,
                                          const IPrintPageSourcePtr& pages,
                                          const IOPrintOptions& options,
                                          const std::string& jobName,
+                                         const std::vector<int>& pageRange,
                                          int& outJobId);
 
 }  // namespace Internal

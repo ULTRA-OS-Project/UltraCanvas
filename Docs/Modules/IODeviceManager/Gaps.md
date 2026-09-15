@@ -9,7 +9,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-15 (after the Windows GDI renderer).
+Last reviewed: 2026-09-15 (after wiring the OS print dialog to PrinterDevice).
 
 ---
 
@@ -105,15 +105,20 @@ absent.
 | Windows GDI renderer: images from memory | ❌ the document loader is path-based, so a job carrying image bytes rather than a path is refused rather than spooled through a temp file behind the caller's back. |
 | XPS print path | ❌ GDI covers every driver Windows will show; XPS would matter for an XPS-only device or for higher-fidelity transparency. |
 | Windows printer maintenance | ❌ |
-| **macOS printing** | ❌ functions were written but under names nothing calls, so effectively zero |
+| **macOS printing** | 🔨 printing itself works through the CUPS backend, which is built for macOS as well as Linux, and the print panel is wired up (`NSPrintPanel` → `NSPrintInfo` → `IOPrintOptions`). What is missing is duplex, which is not on `NSPrintInfo` at all — it lives in the `PMPrintSettings` underneath — so it is left at its default rather than guessed. Untested on real hardware. |
 | Paper size recognition | ✅ by dimensions from the CUPS dest-info API, replacing the prior stub that returned A4 for every size a printer reported |
 | Page rendering (document/image → page raster) | ❌ |
+| Page ranges | ✅ `IOPrintJob::pageRange` had been declared since the module was written and read by nothing, so a range chosen in a print dialog was dropped between the dialog and the queue. It now reaches the payload, and from there the IPP `page-ranges` attribute under CUPS and the page loop on the GDI path. |
 | IPP: real mDNS/DNS-SD discovery | ❌ the prior version piggybacked on CUPS and only found what CUPS already knew |
 | IPP: full `Get-Printer-Attributes` parsing | ❌ |
 | SNMP supply/component monitoring | ⚠️ exists outside the tree; needs net-snmp declared, and should be reconsidered against UltraNet |
 | Maintenance (cleaning, alignment, nozzle check) | ⚠️ two competing architectures were written; pick one. Both shell out to `escputil` with the device path interpolated unquoted into `popen` — fix before landing. |
 | Cloud printing | ❌ architecture only |
-| Integration with `UltraCanvasNativeDialogs::ShowPrintDialog()` | ❌ that dialog already ships and is used by Texter and UltraFiler |
+| **Integration with `UltraCanvasNativeDialogs::ShowPrintDialog()`** | ✅ the dialog now asks (`RequestPrintSettings()` → `NativePrintResult`) and the job goes through `PrinterDevice`, so the printer, copies, collation, paper size, orientation, duplex, quality and page range the user picked are the ones the queue receives. Texter and UltraFiler keep the `bool` signature they already call. |
+| Print dialog: "Print to File" destination | ❌ reported in the result (`printToFile`, `outputFilePath`) and refused by name, rather than silently spooled to a queue the user did not choose. Needs a renderer that writes a document rather than submitting one. |
+| Print dialog: printing anything but plain text | ❌ `PrintTextWithDialog()` is the only bridge; an image or a PDF from a dialog needs the same treatment, and for PDF the renderer gap two rows up. |
+| Print dialog on Android | ❌ `RequestPrintSettings()` reports cancelled. Android prints through a Java-side `PrintManager` job, not a settings dialog that hands choices back; bridging it is a JNI slice. |
+| Print dialog on WASM | ❌ and will stay so: the browser's print UI neither reports what the user chose nor lets a page choose for them, by design. `ShowPrintDialog()` there still hands the text to the browser to print. |
 
 **Types referenced by the prior printer code but defined nowhere:**
 `IOPrinterCapabilities`, `IOPrintJobStatus`, `IOPrintJobInfo`,

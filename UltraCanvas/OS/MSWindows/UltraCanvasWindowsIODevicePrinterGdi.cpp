@@ -568,6 +568,7 @@ IODeviceResult PrintPageSourceThroughGdi(const IODeviceInfo& printer,
                                          const IPrintPageSourcePtr& pages,
                                          const IOPrintOptions& options,
                                          const std::string& jobName,
+                                         const std::vector<int>& pageRange,
                                          int& outJobId) {
     if (!pages) {
         return IODeviceResult::Error(IODeviceResultCode::InvalidArgument,
@@ -616,10 +617,23 @@ IODeviceResult PrintPageSourceThroughGdi(const IODeviceInfo& printer,
         result = pages->Prepare(target);
         if (result.success) {
             const int pageCount = pages->GetPageCount();
+
+            // Narrowed here rather than in the source: pagination has only
+            // just happened, so this is the first point at which "pages 2-4"
+            // can be checked against a document that has pages.
+            const std::vector<int> selected = IOSelectPages(pageRange, pageCount);
+
             if (pageCount <= 0) {
                 result = IODeviceResult::Error(
                     IODeviceResultCode::InvalidArgument,
                     "The document has no pages to print", printer.deviceId);
+            } else if (selected.empty()) {
+                result = IODeviceResult::Error(
+                    IODeviceResultCode::InvalidArgument,
+                    "The selected pages are not in this document, which has " +
+                        std::to_string(pageCount) + " page" +
+                        (pageCount == 1 ? "" : "s"),
+                    printer.deviceId);
             } else {
                 const std::wstring wideJobName = Utf8ToWide(
                     jobName.empty() ? std::string("UltraCanvas document")
@@ -637,7 +651,7 @@ IODeviceResult PrintPageSourceThroughGdi(const IODeviceInfo& printer,
                         "The spooler refused the job: " + GdiErrorText(error),
                         static_cast<int>(error), printer.deviceId);
                 } else {
-                    for (int page = 0; page < pageCount; ++page) {
+                    for (int page : selected) {
                         if (StartPage(dc) <= 0) {
                             const DWORD error = GetLastError();
                             result = IODeviceResult::BackendError(
