@@ -1,4 +1,4 @@
-#### 2026-09-15 *0.8.50*
+#### 2026-09-15 *0.8.51*
 - **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
   parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
   away from `strtof` - that one honours `LC_NUMERIC`, so a comma-decimal
@@ -18,6 +18,8 @@
   The code itself reached `main` ahead of this note, ported into the 0.8.49
   release to unblock the branches the red leg was holding up; this entry is
   the release record it went in without.
+
+#### 2026-09-15 *0.8.50*
 - **A WYSIWYG editing element: `UltraCanvasRichTextEdit`.** The caret sits in
   rendered text and bold is a state of the selection, not two asterisks in a
   buffer. It edits a `UCRichDocument` - the same block/run model the ODT, DOCX,
