@@ -2021,6 +2021,337 @@ namespace UltraCanvas {
     }
 
 
+    // ===== PATTERN PLACEMENT =====
+    void PaintPatternCairo::SetMatrix(double a, double b, double c, double d, double e, double f) {
+        if (!pattern) return;
+        // The caller gives pattern -> user; cairo wants user -> pattern, and
+        // the pattern's own placement (baseMatrix, user -> pattern at
+        // creation) still applies underneath: P' = M^-1 then base.
+        cairo_matrix_t m;
+        cairo_matrix_init(&m, a, b, c, d, e, f);
+        if (cairo_matrix_invert(&m) != CAIRO_STATUS_SUCCESS) return;
+        cairo_matrix_t composed;
+        cairo_matrix_multiply(&composed, &m, &baseMatrix);
+        cairo_pattern_set_matrix(pattern, &composed);
+    }
+
+    void PaintPatternCairo::SetExtend(PatternExtend extend) {
+        if (!pattern) return;
+        cairo_extend_t e = CAIRO_EXTEND_PAD;
+        switch (extend) {
+            case PatternExtend::Pad: e = CAIRO_EXTEND_PAD; break;
+            case PatternExtend::Repeat: e = CAIRO_EXTEND_REPEAT; break;
+            case PatternExtend::Reflect: e = CAIRO_EXTEND_REFLECT; break;
+            case PatternExtend::NoExtend: e = CAIRO_EXTEND_NONE; break;
+        }
+        cairo_pattern_set_extend(pattern, e);
+    }
+
+    // ===== TRANSFORM READBACK =====
+    void RenderContextCairo::GetTransform(double& a, double& b, double& c, double& d, double& e, double& f) const {
+        cairo_matrix_t m;
+        cairo_get_matrix(cairo, &m);
+        a = m.xx; b = m.yx; c = m.xy; d = m.yy; e = m.x0; f = m.y0;
+    }
+
+    Point2Dd RenderContextCairo::UserToDevice(const Point2Dd& p) const {
+        double x = p.x, y = p.y;
+        cairo_user_to_device(cairo, &x, &y);
+        return Point2Dd(x, y);
+    }
+
+    Point2Dd RenderContextCairo::DeviceToUser(const Point2Dd& p) const {
+        double x = p.x, y = p.y;
+        cairo_device_to_user(cairo, &x, &y);
+        return Point2Dd(x, y);
+    }
+
+    double RenderContextCairo::DeviceToUserDistance(double devicePixels) const {
+        double ax = devicePixels, ay = 0, bx = 0, by = devicePixels;
+        cairo_device_to_user_distance(cairo, &ax, &ay);
+        cairo_device_to_user_distance(cairo, &bx, &by);
+        return (std::sqrt(ax * ax + ay * ay) + std::sqrt(bx * bx + by * by)) / 2.0;
+    }
+
+    // ===== COMPOSITING =====
+    namespace {
+        cairo_operator_t ToCairoOperator(BlendMode mode) {
+            switch (mode) {
+                case BlendMode::Normal: return CAIRO_OPERATOR_OVER;
+                case BlendMode::Multiply: return CAIRO_OPERATOR_MULTIPLY;
+                case BlendMode::Screen: return CAIRO_OPERATOR_SCREEN;
+                case BlendMode::Overlay: return CAIRO_OPERATOR_OVERLAY;
+                case BlendMode::Darken: return CAIRO_OPERATOR_DARKEN;
+                case BlendMode::Lighten: return CAIRO_OPERATOR_LIGHTEN;
+                case BlendMode::ColorDodge: return CAIRO_OPERATOR_COLOR_DODGE;
+                case BlendMode::ColorBurn: return CAIRO_OPERATOR_COLOR_BURN;
+                case BlendMode::HardLight: return CAIRO_OPERATOR_HARD_LIGHT;
+                case BlendMode::SoftLight: return CAIRO_OPERATOR_SOFT_LIGHT;
+                case BlendMode::Difference: return CAIRO_OPERATOR_DIFFERENCE;
+                case BlendMode::Exclusion: return CAIRO_OPERATOR_EXCLUSION;
+                case BlendMode::Hue: return CAIRO_OPERATOR_HSL_HUE;
+                case BlendMode::Saturation: return CAIRO_OPERATOR_HSL_SATURATION;
+                case BlendMode::Color: return CAIRO_OPERATOR_HSL_COLOR;
+                case BlendMode::Luminosity: return CAIRO_OPERATOR_HSL_LUMINOSITY;
+            }
+            return CAIRO_OPERATOR_OVER;
+        }
+
+        cairo_antialias_t ToCairoAntialias(AntialiasMode mode) {
+            switch (mode) {
+                case AntialiasMode::DefaultQuality: return CAIRO_ANTIALIAS_DEFAULT;
+                case AntialiasMode::NoAntialias: return CAIRO_ANTIALIAS_NONE;
+                case AntialiasMode::Gray: return CAIRO_ANTIALIAS_GRAY;
+                case AntialiasMode::Subpixel: return CAIRO_ANTIALIAS_SUBPIXEL;
+                case AntialiasMode::Fast: return CAIRO_ANTIALIAS_FAST;
+                case AntialiasMode::Good: return CAIRO_ANTIALIAS_GOOD;
+                case AntialiasMode::Best: return CAIRO_ANTIALIAS_BEST;
+            }
+            return CAIRO_ANTIALIAS_DEFAULT;
+        }
+
+        void AddStops(cairo_pattern_t* pattern, const std::vector<GradientStop>& stops) {
+            for (const auto& stop : stops) {
+                cairo_pattern_add_color_stop_rgba(pattern, stop.position,
+                    stop.color.r / 255.0, stop.color.g / 255.0,
+                    stop.color.b / 255.0, stop.color.a / 255.0);
+            }
+        }
+
+        // Colour of a stop list at position t (0..1), padded at both ends.
+        Color ColorAt(const std::vector<GradientStop>& stops, double t) {
+            if (stops.empty()) return Colors::Black;
+            if (t <= stops.front().position) return stops.front().color;
+            if (t >= stops.back().position) return stops.back().color;
+            for (size_t i = 1; i < stops.size(); ++i) {
+                if (t <= stops[i].position) {
+                    const GradientStop& a = stops[i - 1];
+                    const GradientStop& b = stops[i];
+                    const double span = b.position - a.position;
+                    const double k = span > 0 ? (t - a.position) / span : 0.0;
+                    auto mix = [k](uint8_t x, uint8_t y) {
+                        return static_cast<uint8_t>(std::lround(x + (y - x) * k));
+                    };
+                    return Color(mix(a.color.r, b.color.r), mix(a.color.g, b.color.g),
+                                 mix(a.color.b, b.color.b), mix(a.color.a, b.color.a));
+                }
+            }
+            return stops.back().color;
+        }
+
+        void SetCorner(cairo_pattern_t* mesh, unsigned corner, const Color& c) {
+            cairo_mesh_pattern_set_corner_color_rgba(mesh, corner,
+                c.r / 255.0, c.g / 255.0, c.b / 255.0, c.a / 255.0);
+        }
+    }
+
+    void RenderContextCairo::SetBlendMode(BlendMode mode) {
+        currentState.blendMode = mode;
+        cairo_set_operator(cairo, ToCairoOperator(mode));
+    }
+
+    void RenderContextCairo::SetAntialias(AntialiasMode mode) {
+        cairo_set_antialias(cairo, ToCairoAntialias(mode));
+    }
+
+    // cairo_push_group saves the cairo state and cairo_pop_group restores
+    // it; the paint/font state on this side is pushed and popped alongside
+    // so a group is a PushState/PopState pair from the caller's view. The
+    // operator in force at BeginGroup() is what the group composites with,
+    // since pop_group restores it before the paint.
+    void RenderContextCairo::BeginGroup() {
+        stateStack.push_back(currentState);
+        cairo_push_group(cairo);
+    }
+
+    void RenderContextCairo::EndGroup(double opacity) {
+        cairo_pop_group_to_source(cairo);
+        if (opacity >= 1.0) cairo_paint(cairo);
+        else if (opacity > 0.0) cairo_paint_with_alpha(cairo, opacity);
+        if (!stateStack.empty()) {
+            currentState = stateStack.back();
+            stateStack.pop_back();
+        }
+    }
+
+    std::shared_ptr<IPaintPattern> RenderContextCairo::EndGroupAsPattern() {
+        cairo_pattern_t* group = cairo_pop_group(cairo);
+        if (!stateStack.empty()) {
+            currentState = stateStack.back();
+            stateStack.pop_back();
+        }
+        if (!group || cairo_pattern_status(group) != CAIRO_STATUS_SUCCESS) {
+            if (group) cairo_pattern_destroy(group);
+            return nullptr;
+        }
+        return std::make_shared<PaintPatternCairo>(group);
+    }
+
+    void RenderContextCairo::EndGroupMasked(std::shared_ptr<IPaintPattern> mask) {
+        cairo_pattern_t* group = cairo_pop_group(cairo);
+        if (!stateStack.empty()) {
+            currentState = stateStack.back();
+            stateStack.pop_back();
+        }
+        if (!group) return;
+        cairo_set_source(cairo, group);
+        auto* maskPattern = mask ? static_cast<cairo_pattern_t*>(mask->GetHandle()) : nullptr;
+        if (maskPattern) cairo_mask(cairo, maskPattern);
+        else cairo_paint(cairo);
+        cairo_pattern_destroy(group);
+    }
+
+    void RenderContextCairo::PaintPattern(std::shared_ptr<IPaintPattern> pattern, double opacity) {
+        auto* p = pattern ? static_cast<cairo_pattern_t*>(pattern->GetHandle()) : nullptr;
+        if (!p || opacity <= 0.0) return;
+        cairo_save(cairo);
+        cairo_set_source(cairo, p);
+        if (opacity >= 1.0) cairo_paint(cairo);
+        else cairo_paint_with_alpha(cairo, opacity);
+        cairo_restore(cairo);
+    }
+
+    // ===== HIT TESTING =====
+    bool RenderContextCairo::IsPointInFill(double x, double y) {
+        return cairo_in_fill(cairo, x, y) != 0;
+    }
+
+    bool RenderContextCairo::IsPointInStroke(double x, double y) {
+        return cairo_in_stroke(cairo, x, y) != 0;
+    }
+
+    Rect2Dd RenderContextCairo::GetStrokeExtents() {
+        double x1, y1, x2, y2;
+        cairo_stroke_extents(cairo, &x1, &y1, &x2, &y2);
+        return Rect2Dd(x1, y1, x2 - x1, y2 - y1);
+    }
+
+    // ===== TEXT OUTLINES =====
+    void RenderContextCairo::AppendTextPath(const std::string& text, const Point2Dd& pos) {
+        if (text.empty()) return;
+        auto layout = GetOrCreateTextLayout(text, {0, 0}, false);
+        if (layout) AppendTextLayoutPath(*layout, pos);
+    }
+
+    void RenderContextCairo::AppendTextLayoutPath(ITextLayout& layout, const Point2Dd& pos) {
+        auto* pangoLayout = static_cast<PangoLayout*>(layout.GetHandle());
+        if (!pangoLayout) return;
+        cairo_move_to(cairo, pos.x, pos.y + layout.GetLayoutVerticalOffset());
+        pango_cairo_layout_path(cairo, pangoLayout);
+    }
+
+    // ===== CONIC / MESH / PIXMAP PATTERNS =====
+    // Cairo has no conic gradient; a fan of mesh patches round the centre,
+    // each spanning at most 15 degrees so that the bilinear colour across
+    // the patch is indistinguishable from the true angular ramp, is one.
+    // The fan reaches far enough (a fixed radius in pattern space) to cover
+    // any shape it is painted into; the pattern is transparent beyond it.
+    std::shared_ptr<IPaintPattern> RenderContextCairo::CreateConicGradientPattern(double cx, double cy,
+                                                                                  double startAngle, double endAngle,
+                                                                                  const std::vector<GradientStop>& stops) {
+        if (stops.empty()) return nullptr;
+        const double twoPi = 2.0 * M_PI;
+        double sweep = endAngle - startAngle;
+        if (std::fabs(sweep) < 1e-9) sweep = twoPi;
+        const double R = 1.0e5;
+        const int minSlices = static_cast<int>(std::ceil(std::fabs(sweep) / (M_PI / 12.0)));
+        // Break at every stop as well so a hard stop stays hard.
+        std::vector<double> ts;
+        ts.push_back(0.0);
+        for (const auto& s : stops) if (s.position > 0.0 && s.position < 1.0) ts.push_back(s.position);
+        ts.push_back(1.0);
+        std::sort(ts.begin(), ts.end());
+        ts.erase(std::unique(ts.begin(), ts.end()), ts.end());
+
+        cairo_pattern_t* mesh = cairo_pattern_create_mesh();
+        for (size_t i = 1; i < ts.size(); ++i) {
+            const double t0 = ts[i - 1], t1 = ts[i];
+            const int n = std::max(1, static_cast<int>(std::ceil((t1 - t0) * minSlices)));
+            for (int k = 0; k < n; ++k) {
+                const double ta = t0 + (t1 - t0) * k / n;
+                const double tb = t0 + (t1 - t0) * (k + 1) / n;
+                const double a0 = startAngle + sweep * ta;
+                const double a1 = startAngle + sweep * tb;
+                const Color c0 = ColorAt(stops, ta);
+                const Color c1 = ColorAt(stops, tb);
+                const Point2Dd p0(cx + R * std::cos(a0), cy + R * std::sin(a0));
+                const Point2Dd p1(cx + R * std::cos(a1), cy + R * std::sin(a1));
+                // Arc between p0 and p1 as one cubic (the slice is < 90 deg).
+                const double d = a1 - a0;
+                const double kk = 4.0 / 3.0 * std::tan(d / 4.0);
+                const Point2Dd h0(p0.x - kk * R * std::sin(a0), p0.y + kk * R * std::cos(a0));
+                const Point2Dd h1(p1.x + kk * R * std::sin(a1), p1.y - kk * R * std::cos(a1));
+                cairo_mesh_pattern_begin_patch(mesh);
+                cairo_mesh_pattern_move_to(mesh, cx, cy);
+                cairo_mesh_pattern_line_to(mesh, p0.x, p0.y);
+                cairo_mesh_pattern_curve_to(mesh, h0.x, h0.y, h1.x, h1.y, p1.x, p1.y);
+                // Three sides: cairo closes the triangle back to the centre.
+                SetCorner(mesh, 0, c0);
+                SetCorner(mesh, 1, c0);
+                SetCorner(mesh, 2, c1);
+                SetCorner(mesh, 3, c1);
+                cairo_mesh_pattern_end_patch(mesh);
+            }
+        }
+        if (cairo_pattern_status(mesh) != CAIRO_STATUS_SUCCESS) {
+            cairo_pattern_destroy(mesh);
+            return nullptr;
+        }
+        return std::make_shared<PaintPatternCairo>(mesh);
+    }
+
+    std::shared_ptr<IPaintPattern> RenderContextCairo::CreateMeshGradientPattern(const std::vector<MeshGradientPatch>& patches) {
+        if (patches.empty()) return nullptr;
+        cairo_pattern_t* mesh = cairo_pattern_create_mesh();
+        for (const auto& patch : patches) {
+            cairo_mesh_pattern_begin_patch(mesh);
+            cairo_mesh_pattern_move_to(mesh, patch.corners[0].x, patch.corners[0].y);
+            for (int side = 0; side < 4; ++side) {
+                const Point2Dd& to = patch.corners[(side + 1) % 4];
+                if (patch.hasControls) {
+                    const Point2Dd& c1 = patch.controls[2 * side];
+                    const Point2Dd& c2 = patch.controls[2 * side + 1];
+                    cairo_mesh_pattern_curve_to(mesh, c1.x, c1.y, c2.x, c2.y, to.x, to.y);
+                } else {
+                    cairo_mesh_pattern_line_to(mesh, to.x, to.y);
+                }
+            }
+            for (unsigned i = 0; i < 4; ++i) SetCorner(mesh, i, patch.colors[i]);
+            cairo_mesh_pattern_end_patch(mesh);
+        }
+        if (cairo_pattern_status(mesh) != CAIRO_STATUS_SUCCESS) {
+            cairo_pattern_destroy(mesh);
+            return nullptr;
+        }
+        return std::make_shared<PaintPatternCairo>(mesh);
+    }
+
+    std::shared_ptr<IPaintPattern> RenderContextCairo::CreatePixmapPattern(UCPixmap& pixmap, const Rect2Dd& anchorRect,
+                                                                           PatternExtend extend) {
+        if (!pixmap.GetSurface() || anchorRect.width <= 0.0 || anchorRect.height <= 0.0) return nullptr;
+        const double pw = static_cast<double>(pixmap.GetWidth());
+        const double ph = static_cast<double>(pixmap.GetHeight());
+        if (pw <= 0.0 || ph <= 0.0) return nullptr;
+        cairo_surface_flush(pixmap.GetSurface());
+        cairo_pattern_t* pattern = cairo_pattern_create_for_surface(pixmap.GetSurface());
+        cairo_matrix_t matrix;
+        cairo_matrix_init_translate(&matrix, anchorRect.x, anchorRect.y);
+        cairo_matrix_scale(&matrix, anchorRect.width / pw, anchorRect.height / ph);
+        if (cairo_matrix_invert(&matrix) != CAIRO_STATUS_SUCCESS) {
+            cairo_pattern_destroy(pattern);
+            return nullptr;
+        }
+        cairo_pattern_set_matrix(pattern, &matrix);
+        cairo_pattern_set_filter(pattern, imageSmoothing ? CAIRO_FILTER_GOOD : CAIRO_FILTER_NEAREST);
+        if (cairo_pattern_status(pattern) != CAIRO_STATUS_SUCCESS) {
+            cairo_pattern_destroy(pattern);
+            return nullptr;
+        }
+        auto result = std::make_shared<PaintPatternCairo>(pattern);
+        result->SetExtend(extend);
+        return result;
+    }
+
     // factory
     std::unique_ptr<IRenderContext> CreateRenderContext(const Size2Di& sz, NativeSurfacePtr similarToSurface) {
         auto ctx = std::make_unique<RenderContextCairo>();

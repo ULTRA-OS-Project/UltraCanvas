@@ -1,3 +1,109 @@
+#### 2026-09-15 *0.8.50*
+- **The vector document model is part of the core library now.**
+  `VectorStorage::VectorDocument`, its `IRenderContext` renderer, the path
+  normalisation in `PathOps` and the `UltraCanvasVectorElement` viewer moved
+  from the Vector plugin to `include/DataFormats/` (+ `include/`) and
+  `core/DataFormats/` (+ `core/`), where `ModelStorage` already lives for
+  3D. The plugin (`ULTRACANVAS_PLUGIN_VECTOR`, still off by default) is the
+  format converters only. Reason: the model is what a vector *editor* edits,
+  and an editing element in core cannot depend on a plugin that CI does not
+  build — see `Docs/Research/ArtCreatorVectorCanvasProposal.md`, the
+  investigation for the ArtCreator application and a public
+  `UltraCanvasVectorCanvas` element. Includes are
+  `DataFormats/UltraCanvasVectorStorage.h` (was
+  `UltraCanvasVectorStorage.h` from the plugin's directory); nothing in
+  the API changed.
+- **The vector renderer draws what the model holds.** Paths go through
+  `PathOps::NormalizePath`, so SVG arcs are curves (they were drawn as a
+  straight chord to the end point), smooth quadratics are drawn (they were
+  dropped), and relative / H / V forms all agree with the writers.
+  Object-bounding-box gradients resolve against the shape's own outline
+  (they resolved against a fixed 100 x 100 box, so a gradient on any other
+  shape was mostly one end colour). Fill-opacity and stroke-opacity are
+  folded into the paint's alpha (they were ignored). Text spans are set in
+  their own font and advanced by their measured width, and the text anchor
+  is honoured. A `ClipPath` reference on a style clips to the definition's
+  outlines. A conical gradient paints the average of its stops until the
+  render context has a conic pattern. `VectorModelTest` renders offscreen
+  and samples pixels for the arc, the gradient bounds, the opacity and the
+  clip.
+- **The render context can composite, hit-test and outline text.** What a
+  vector editor needs and nothing surfaced, although Cairo had it all:
+  `SetBlendMode` (the 16 PDF / CSS blend modes; Xara's transparency mixes
+  map onto them); groups — `BeginGroup` / `EndGroup(opacity)` composite
+  everything between them once, so overlapping children of a 50 % layer
+  no longer stack, `EndGroupAsPattern` hands the group back as a paint
+  source, `EndGroupMasked` paints it through a mask, `PaintPattern` paints
+  any pattern; `IsPointInFill` / `IsPointInStroke` / `GetStrokeExtents`
+  against the current path with the current stroke; `GetTransform` /
+  `UserToDevice` / `DeviceToUser` / `DeviceToUserDistance`, so a handle or
+  hairline can be sized in device pixels without a parallel view matrix;
+  `CreateConicGradientPattern` (a fan of mesh patches - Cairo has no
+  conic), `CreateMeshGradientPattern` (Coons patches: Xara's diamond and
+  three / four-colour fills, SVG 2 meshes), `CreatePixmapPattern` (an image
+  already in memory as paint); `IPaintPattern::SetMatrix` / `SetExtend`
+  (SVG's gradientTransform and spread, pattern tiling); `SetAntialias`;
+  and `AppendTextPath` / `AppendTextLayoutPath`, text as geometry to fill,
+  stroke, clip to or convert to curves. Every method has a base default so
+  other backends stay valid. New doc
+  `Docs/UltraCanvas/UltraCanvasRenderContext.md`; new CTest
+  `RenderContextTest` samples every feature back from an offscreen
+  surface.
+- **A vector drawing can be edited now: the editing layer and
+  `UltraCanvasVectorCanvas`.** Phase 2 of the ArtCreator proposal, all in
+  the core library and all without a window:
+  - `DataFormats/UltraCanvasVectorEdit.h` — `VectorSelection` (ordered
+    elements, document-space bounds, listeners, re-binding by Id after an
+    undo), `VectorHistory` (labelled undo / redo by document snapshots
+    restored into the live document object, coalescing for nudges and
+    drags, `CancelEdit`, a memory budget), `VectorHitTester` (fill and
+    stroke hit testing with a tolerance through every ancestor transform,
+    locked layers skipped, rectangle queries), and the operations an
+    editor's commands are made of: transform / scale / rotate / skew about
+    a pivot with the result composed into the element's own transform
+    (`T' = P⁻¹·M·P·T`), bake a transform into geometry, z-order,
+    group / ungroup / reparent with placement preserved, delete,
+    duplicate, align, distribute, convert to path.
+  - `UltraCanvasBezierPath.h` — the node model of the Bézier editor
+    proposal, built on `VectorStorage::PathData` now that the model is in
+    core: anchors owning two handles, Corner / Smooth / Symmetric rules,
+    de Casteljau splitting, outline and node hit tests, a lossless round
+    trip to `PathData` (every command kind in, M / L / C / Z out), and
+    `FromPolyline` (Douglas-Peucker + Catmull-Rom) for a freehand tool.
+  - `UltraCanvasVectorCanvas` — the element: pasteboard, page, grid,
+    rulers in any unit, guides pulled out of the rulers, snapping to
+    guides / page / objects / grid, the selection's scale or rotate / skew
+    handles with a movable centre, and the same tool-hook shape as
+    `UltraCanvasPaintSurface` with pointer events in document coordinates
+    (raw and snapped). It never edits the document.
+  - `UltraCanvasGradientEditor` — the stops of a gradient on a strip, the
+    colour-ramp sibling of `UltraCanvasCurveEditor`.
+  - `VectorGroup`, `VectorLayer` and `VectorSymbol` clones re-parent their
+    cloned children; they pointed at the original group, so
+    `GetGlobalTransform` on a copy walked the wrong tree - which every
+    history snapshot would have hit.
+  - Docs `UltraCanvasVectorCanvas.md` and `UltraCanvasGradientEditor.md`,
+    catalogue rows, `Masterfile_modules.md` entries; new CTest
+    `VectorEditTest`.
+- **`FormatCapabilities` tell the truth.** `SVGConverter` no longer claims
+  clipping; `XARConverter` no longer claims text on a path, embedded fonts,
+  conical fills, patterns, variable-width strokes, blend modes, filters,
+  clipping, masking, drop shadows, symbols, pages or live effects - the
+  live reader and writer implement none of them - and reports
+  `MaxGradientStops = 2`. `VectorFormatsPluginTest` pins the flags.
+- `VectorModelTest` builds against the core library alone and so runs in
+  CI, which never enabled the plugin; its DXF round-trip section runs when
+  the plugin is present and says so when it is not.
+- `UltraCanvas/CMakeLists.txt` declared `option(ULTRACANVAS_PLUGIN_VECTOR,
+  ...)` — the comma was part of the option's name. Fixed; the top-level
+  declaration had been masking it.
+- New: `Docs/Research/ArtCreatorVectorCanvasProposal.md` — what a Xara
+  Designer-class editor needs, what the framework has, and the proposed
+  core model / history / canvas-element / application split, with the
+  render-context and model additions each phase needs.
+- `Masterfile_modules.md` gains the `UltraCanvasVectorStorage` entry; the
+  element catalogue lists `UltraCanvasVectorElement`.
+
 #### 2026-09-14 *0.8.49*
 - **The demo's LaTeX page showed the math engine and almost nothing else.**
   Of the 24 documents it listed, 23 were single formulas, so the document

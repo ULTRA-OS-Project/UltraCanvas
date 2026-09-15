@@ -5,8 +5,8 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARConverter.h"
-#include "UltraCanvasVectorStorage.h"
-#include "UltraCanvasVectorPathOps.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorPathOps.h"
 #include <fstream>
 #include <sstream>
 #include <cstring>
@@ -179,10 +179,17 @@ namespace UltraCanvas {
         XARConverter::XARConverter() : impl(std::make_unique<Impl>()) {}
         XARConverter::~XARConverter() = default;
 
+        // What the live reader (XarReader) and writer implement - not what
+        // the Xara format can hold. Multi-stage fills, conical / bitmap /
+        // fractal fills, non-flat transparency, feather, shadow, bevel,
+        // contour, blend, mould, ClipView, live effects, brushes, variable
+        // width strokes and pages are all read-and-dropped or not written,
+        // and a caller choosing a target format by capability must know it.
         FormatCapabilities XARConverter::GetCapabilities() const {
             FormatCapabilities caps;
 
-            // Basic shapes
+            // Basic shapes: rectangles and ellipses natively when axis-
+            // aligned, everything else as a path.
             caps.SupportsRectangle = true;
             caps.SupportsCircle = true;
             caps.SupportsEllipse = true;
@@ -191,44 +198,48 @@ namespace UltraCanvas {
             caps.SupportsPolygon = true;
             caps.SupportsPath = true;
 
-            // Path features
+            // Path features: PathOps normalises quadratics and arcs to
+            // cubics on the way out, so they survive as geometry.
             caps.SupportsCubicBezier = true;
             caps.SupportsQuadraticBezier = true;
             caps.SupportsArc = true;
             caps.SupportsCompoundPaths = true;
 
-            // Text
+            // Text: stories with styled string chunks; no text on a path,
+            // no embedded fonts.
             caps.SupportsText = true;
-            caps.SupportsTextPath = true;
+            caps.SupportsTextPath = false;
             caps.SupportsRichText = true;
-            caps.SupportsEmbeddedFonts = true;
+            caps.SupportsEmbeddedFonts = false;
 
-            // Fills & Strokes
+            // Fills & strokes: flat colour and two-stop linear / radial
+            // gradients; patterns flatten, conical fills are not written,
+            // stroke width is constant.
             caps.SupportsSolidFill = true;
             caps.SupportsLinearGradient = true;
             caps.SupportsRadialGradient = true;
-            caps.SupportsConicalGradient = true;   // XAR specialty
-            caps.SupportsMeshGradient = false;      // Not directly, but has 3/4 colour fills
-            caps.SupportsPattern = true;
+            caps.SupportsConicalGradient = false;
+            caps.SupportsMeshGradient = false;
+            caps.SupportsPattern = false;
             caps.SupportsDashing = true;
-            caps.SupportsVariableStrokeWidth = true;
+            caps.SupportsVariableStrokeWidth = false;
+            caps.MaxGradientStops = 2;
 
-            // Effects
+            // Effects: flat transparency only.
             caps.SupportsOpacity = true;
-            caps.SupportsBlendModes = true;
-            caps.SupportsFilters = true;
-            caps.SupportsClipping = true;
-            caps.SupportsMasking = true;
-            caps.SupportsDropShadow = true;
+            caps.SupportsBlendModes = false;
+            caps.SupportsFilters = false;
+            caps.SupportsClipping = false;
+            caps.SupportsMasking = false;
+            caps.SupportsDropShadow = false;
 
-            // Structure
+            // Structure: layers and groups; symbols flatten; one page.
             caps.SupportsGroups = true;
             caps.SupportsLayers = true;
-            caps.SupportsSymbols = true;
-            caps.SupportsPages = true;
+            caps.SupportsSymbols = false;
+            caps.SupportsPages = false;
 
-            // Advanced XAR features
-            caps.SupportsNonDestructiveEffects = true;
+            caps.SupportsNonDestructiveEffects = false;
 
             return caps;
         }

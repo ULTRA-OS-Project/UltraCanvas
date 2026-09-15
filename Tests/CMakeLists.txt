@@ -2152,24 +2152,64 @@ endif()
 # ===== VECTOR MODEL TEST =====
 # The shared vector document model: Matrix3x3 at double precision, group
 # and document bounds through nested transforms, and hit-testing that
-# carries the point through ancestor transforms.
+# carries the point through ancestor transforms. The model is in the core
+# library, so this test builds - and CI runs it - without the Vector
+# format-converter plugin; the DXF round trip inside it runs only when the
+# plugin is present.
+message(STATUS "  Building VectorModelTest...")
+add_executable(VectorModelTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/VectorModelTest.cpp
+)
+target_include_directories(VectorModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(VectorModelTest PRIVATE cxx_std_20)
+target_link_libraries(VectorModelTest PRIVATE UltraCanvas)
 if(TARGET UltraCanvasVectorPlugin)
-    message(STATUS "  Building VectorModelTest...")
-    add_executable(VectorModelTest
-        ${CMAKE_CURRENT_SOURCE_DIR}/VectorModelTest.cpp
-    )
-    target_include_directories(VectorModelTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-    target_compile_features(VectorModelTest PRIVATE cxx_std_20)
-    target_link_libraries(VectorModelTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
-    set_target_properties(VectorModelTest PROPERTIES
-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-    )
-    add_test(NAME VectorModelTest COMMAND VectorModelTest
-             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-    message(STATUS "    Test registered: VectorModelTest")
-else()
-    message(STATUS "  VectorModelTest skipped (UltraCanvasVectorPlugin target not present)")
+    target_link_libraries(VectorModelTest PRIVATE UltraCanvasVectorPlugin)
 endif()
+set_target_properties(VectorModelTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VectorModelTest COMMAND VectorModelTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VectorModelTest")
+
+# ===== VECTOR EDIT TEST =====
+# The vector editing layer: the Bezier node model (storage round trip,
+# split, node types, hit test, polyline fitting), selection bounds and
+# rebinding, history undo / redo / coalescing, geometric hit testing and
+# the transform / z-order / group / align / distribute / convert operations.
+message(STATUS "  Building VectorEditTest...")
+add_executable(VectorEditTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/VectorEditTest.cpp
+)
+target_include_directories(VectorEditTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(VectorEditTest PRIVATE cxx_std_20)
+target_link_libraries(VectorEditTest PRIVATE UltraCanvas)
+set_target_properties(VectorEditTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME VectorEditTest COMMAND VectorEditTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: VectorEditTest")
+
+# ===== RENDER CONTEXT TEST =====
+# The compositing and geometry API of IRenderContext on an offscreen
+# surface: blend modes, groups, masks, hit testing, transform readback,
+# conic / mesh / pixmap patterns, text outlines. Pixels are sampled back,
+# so it needs no display.
+message(STATUS "  Building RenderContextTest...")
+add_executable(RenderContextTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/RenderContextTest.cpp
+)
+target_include_directories(RenderContextTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(RenderContextTest PRIVATE cxx_std_20)
+target_link_libraries(RenderContextTest PRIVATE UltraCanvas)
+set_target_properties(RenderContextTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME RenderContextTest COMMAND RenderContextTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: RenderContextTest")
 
 # ===== VECTOR FORMATS PLUGIN TEST =====
 # The whole converter matrix through the graphics plugin registry: saving

@@ -1,7 +1,7 @@
 // UltraCanvasVectorRenderer.h
 // Vector Graphics Rendering for UltraCanvas
-// Version: 2.0.0
-// Last Modified: 2025-01-20
+// Version: 2.1.0
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 //
 // REFACTORED: Removed IVectorRenderer, IVectorVisitor, SoftwareVectorRenderer,
@@ -9,7 +9,7 @@
 // Single VectorRenderer class using IRenderContext.
 #pragma once
 
-#include "UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasRenderContext.h"
 #include <stack>
 #include <memory>
@@ -46,6 +46,7 @@ namespace UltraCanvas {
 // ===== VECTOR RENDERER =====
 
     class VectorRenderer {
+        friend bool BuildVectorElementOutline(IRenderContext* ctx, const VectorElement& element);
     public:
         VectorRenderer();
         ~VectorRenderer();
@@ -67,26 +68,30 @@ namespace UltraCanvas {
         float currentOpacity = 1.0f;
         const VectorDocument* currentDocument = nullptr;
 
-        void RenderRect(const VectorRect& rect);
-        void RenderCircle(const VectorCircle& circle);
-        void RenderEllipse(const VectorEllipse& ellipse);
+        // Puts the element's outline on the context (rect, rounded rect,
+        // circle, ellipse, line, polyline, polygon, path); false for kinds
+        // without one. Shared by drawing, clipping and - later - hit testing.
+        bool BuildElementPath(const VectorElement& element);
+        void RenderShape(const VectorElement& element);
+        void FillAndStroke(const VectorStyle& style);
         void RenderLine(const VectorLine& line);
-        void RenderPolyline(const VectorPolyline& polyline);
-        void RenderPolygon(const VectorPolygon& polygon);
-        void RenderPath(const VectorPath& path);
         void RenderText(const VectorText& text);
         void RenderImage(const VectorImage& image);
         void RenderGroup(const VectorGroup& group);
         void RenderUse(const VectorUse& use);
 
         void ApplyStyle(const VectorStyle& style);
-        void ApplyFill(const FillData& fill);
-        void ApplyStroke(const StrokeData& stroke);
+        void ApplyClip(const std::string& clipId);
+        // `bounds` is the outline's extents in the element's own space - what
+        // an objectBoundingBox gradient resolves against; `opacity` is the
+        // fill-opacity / stroke-opacity folded into the paint's alpha.
+        void ApplyFill(const FillData& fill, const Rect2Dd& bounds, float opacity);
+        void ApplyStroke(const StrokeData& stroke, const Rect2Dd& bounds, float opacity);
         void ApplyTransform(const Matrix3x3& transform);
 
-        void SetupGradient(const GradientData& gradient, const Rect2Dd& bounds);
-        void SetupLinearGradient(const LinearGradientData& grad, const Rect2Dd& bounds);
-        void SetupRadialGradient(const RadialGradientData& grad, const Rect2Dd& bounds);
+        void SetupGradient(const GradientData& gradient, const Rect2Dd& bounds, float opacity, bool forStroke);
+        std::shared_ptr<IPaintPattern> MakeLinearGradient(const LinearGradientData& grad, const Rect2Dd& bounds, float opacity);
+        std::shared_ptr<IPaintPattern> MakeRadialGradient(const RadialGradientData& grad, const Rect2Dd& bounds, float opacity);
 
         void BuildPath(const PathData& pathData);
         bool IsVisible(const VectorElement& element) const;
@@ -95,6 +100,11 @@ namespace UltraCanvas {
     };
 
 // Utility functions
+    // Puts the element's outline on the context in the element's own space
+    // (rect, rounded rect, circle, ellipse, line, polyline, polygon, path);
+    // false for kinds without one. What the renderer fills, the hit tester
+    // asks IsPointInFill / IsPointInStroke about, and a clip is built from.
+    bool BuildVectorElementOutline(IRenderContext* ctx, const VectorElement& element);
     bool HitTestElement(const VectorElement& element, const Point2Dd& point);
     std::vector<const VectorElement*> HitTestDocument(const VectorDocument& document, const Point2Dd& point);
     Rect2Dd CalculateDocumentBounds(const VectorDocument& document);

@@ -4,7 +4,7 @@
 // Last Modified: 2025-01-20
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include <cmath>
 #include <algorithm>
 #include <sstream>
@@ -759,10 +759,14 @@ std::shared_ptr<VectorElement> VectorGroup::Clone() const {
     auto clone = std::make_shared<VectorGroup>(*this);
     clone->Parent.reset();
     
-    // Deep clone children
+    // Deep clone children, re-parented to the clone (a child cloned by
+    // copy would otherwise keep pointing at the original group, and
+    // GetGlobalTransform on the copy would walk the wrong tree).
     clone->Children.clear();
     for (const auto& child : Children) {
+        if (!child) continue;
         auto childClone = child->Clone();
+        childClone->Parent = clone;
         clone->Children.push_back(childClone);
     }
     
@@ -812,10 +816,12 @@ std::shared_ptr<VectorElement> VectorSymbol::Clone() const {
     auto clone = std::make_shared<VectorSymbol>(*this);
     clone->Parent.reset();
     
-    // Deep clone children
+    // Deep clone children, re-parented to the clone (see VectorGroup::Clone).
     clone->Children.clear();
     for (const auto& child : Children) {
+        if (!child) continue;
         auto childClone = child->Clone();
+        childClone->Parent = clone;
         clone->Children.push_back(childClone);
     }
     
@@ -958,10 +964,12 @@ std::shared_ptr<VectorElement> VectorLayer::Clone() const {
     auto clone = std::make_shared<VectorLayer>(*this);
     clone->Parent.reset();
     
-    // Deep clone children
+    // Deep clone children, re-parented to the clone (see VectorGroup::Clone).
     clone->Children.clear();
     for (const auto& child : Children) {
+        if (!child) continue;
         auto childClone = child->Clone();
+        childClone->Parent = clone;
         clone->Children.push_back(childClone);
     }
     

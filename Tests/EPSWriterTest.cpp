@@ -15,7 +15,7 @@
 // Author: UltraCanvas Framework
 
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasEPSConverter.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include "../UltraCanvas/Plugins/Vector/EPS/UltraCanvasEPSPlugin.h"
 
 #ifdef EPSWRITER_HAVE_CAIRO

@@ -139,7 +139,8 @@ The converter matrix is the strongest asset here: an editor that speaks
 
 ### 3.1 The model — `VectorStorage::VectorDocument`
 
-`UltraCanvas/Plugins/Vector/UltraCanvasVectorStorage.h` (715 lines).
+`UltraCanvas/include/DataFormats/UltraCanvasVectorStorage.h` (715 lines; in
+`Plugins/Vector/` until 0.8.50, when phase 0 of §6 moved it into core).
 `VectorDocument{Size, ViewBox, BackgroundColor, Layers, Definitions,
 SourceUnit, PointsPerSourceUnit, …}`; `VectorLayer : VectorGroup`;
 `VectorElement{Id, Classes, Style, optional<Matrix3x3> Transform,
@@ -171,12 +172,12 @@ Verified limits, in addition to §2.5–2.6 of the model survey:
   non-flat transparency on the way in (`XarReader`, header comment at
   `UltraCanvasXARConverter.cpp:367-379`), and its `GetCapabilities()` still
   claims several of them.
-- **Renderer parity is pending** (model survey step 3): `ArcTo` draws a
-  straight line (`UltraCanvasVectorRenderer.cpp:443-450`),
-  `SmoothQuadraticTo` is dropped, object-bounding-box gradients resolve
-  against a hard-coded `{0,0,100,100}` (`:305, :309, :315`), and fill /
-  stroke opacity, patterns, clip, mask, filters and blend modes are not
-  drawn.
+- **Renderer parity** (model survey step 3) landed with 0.8.50: arcs and
+  smooth quadratics through `PathOps`, object-bounding-box gradients
+  against the shape's own extents, fill / stroke opacity, per-span fonts
+  and text anchors, clip paths. Still not drawn: patterns, masks, filters,
+  blend modes and true group opacity — all waiting on the render-context
+  additions of §5.1.
 - **It is a plugin that is OFF by default.** `ULTRACANVAS_PLUGIN_VECTOR`
   defaults `OFF` (`CMakeLists.txt:117`), needs vips + zlib + tinyxml2, and
   the CI workflow does not switch it on, so `VectorModelTest`,
@@ -205,7 +206,7 @@ gradient modes, `WarningCallback`, `ProgressCallback`) and
 
 ### 3.3 The viewers
 
-- **`UltraCanvasVectorElement`** (`Plugins/Vector/UltraCanvasVectorElement.h`,
+- **`UltraCanvasVectorElement`** (`include/UltraCanvasVectorElement.h`, in core since 0.8.50,
   160 + 368 lines): `SetDocument`, zoom ladder with cursor-anchored smooth
   wheel zoom, drag pan, `ScreenToDocument` / `DocumentToScreen`, layer
   visibility, `VectorInteractionMode::Select` that stores a single element
