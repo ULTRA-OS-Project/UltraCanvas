@@ -1,19 +1,17 @@
 // core/HTMLReader/CSSStyleSheet.cpp
 // CSS-subset parser: values, selectors, rules.
-// Version: 1.1.1 - the locale-independent number parsing of 1.1.0 without
-//                  std::from_chars, which Apple's libc++ has for integers only
-// Last Modified: 2026-09-14
+// Version: 1.1.2 - ParseFloatClassic moved to UltraCanvasTextUtils, so the SVG
+//                  reader and the other format parsers share one copy of it
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 
 #include "HTMLReader/CSSStyleSheet.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic - see there for why not std::stof/from_chars
 #include "UltraCanvasUtils.h"
 
 #include <algorithm>
 #include <cctype>
 #include <cstdlib>
-#include <ios>
-#include <locale>
-#include <sstream>
 #include <unordered_map>
 
 namespace UltraCanvas {
@@ -108,58 +106,6 @@ int HexDigit(char c) {
     if (c >= 'a' && c <= 'f') return c - 'a' + 10;
     if (c >= 'A' && c <= 'F') return c - 'A' + 10;
     return -1;
-}
-
-// Reads the float at the start of [first, last) exactly as a general-format
-// std::from_chars would, and returns one past the last character consumed
-// (== first when there is no number there, which is how callers detect it).
-//
-// Why not std::from_chars itself: Apple's libc++ implements only the INTEGRAL
-// overloads, so a float call there resolves to the deleted bool overload and
-// does not compile at all. Why not strtof: it honours LC_NUMERIC, and a
-// comma-decimal locale then reads every rgba() alpha and every length as 0 -
-// the very bug from_chars was brought in to fix.
-//
-// The number is scanned first and converted second, which is what keeps a unit
-// beginning like an exponent intact: in "1.5em" the 'e' starts no exponent, so
-// the number ends at "1.5" and "em" is left for the caller. Converting the
-// whole string in one go (istringstream >> float) instead consumes that 'e'
-// and then fails outright.
-const char* ParseFloatClassic(const char* first, const char* last, float& out) {
-    auto isDigit = [](char c) { return c >= '0' && c <= '9'; };
-    const char* p = first;
-    if (p != last && *p == '-') ++p;
-    bool sawDigit = false;
-    while (p != last && isDigit(*p)) { ++p; sawDigit = true; }
-    if (p != last && *p == '.') {
-        ++p;
-        while (p != last && isDigit(*p)) { ++p; sawDigit = true; }
-    }
-    if (!sawDigit) return first;
-    // An exponent counts only when it is complete - see "1.5em" above.
-    if (p != last && (*p == 'e' || *p == 'E')) {
-        const char* exponent = p + 1;
-        if (exponent != last && (*exponent == '+' || *exponent == '-')) ++exponent;
-        if (exponent != last && isDigit(*exponent)) {
-            while (exponent != last && isDigit(*exponent)) ++exponent;
-            p = exponent;
-        }
-    }
-    std::string number(first, p);
-    if (!number.empty() && number.back() == '.') number.pop_back();  // "1." is 1
-    std::istringstream in(number);
-    in.imbue(std::locale::classic());   // '.' is the decimal point, always
-    float value = 0.f;
-    in >> value;
-    if (in.fail()) {
-        // What was scanned is a well-formed number, so a failure here means it
-        // does not fit a float - the out-of-range from_chars reports and these
-        // callers ignore. Leave `out` as the caller set it and report the
-        // number as read, exactly as from_chars does.
-        return p;
-    }
-    out = value;
-    return p;
 }
 
 } // namespace
