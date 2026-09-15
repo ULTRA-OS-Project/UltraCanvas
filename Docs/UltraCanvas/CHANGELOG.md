@@ -1,3 +1,13 @@
+#### 2026-09-15 *0.8.52*
+- **`UltraCanvasPaintSurface::SetPanMode` never turned permanent panning
+  on.** The parameter was named after the member it was meant to set, so
+  the body assigned the parameter to itself and `alwaysPan` stayed false;
+  only Space+drag and the middle button ever panned, and the Hand cursor
+  the call set was the one visible sign anything had happened. The
+  parameter is `enabled` now and the member is written, so a Pan tool's
+  every drag scrolls the view as `Docs/UltraCanvas/UltraCanvasPaintSurface.md`
+  has always said. `SetToolCursor` already deferred to the member.
+
 #### 2026-09-15 *0.8.51*
 - **The vector document model is part of the core library now.**
   `VectorStorage::VectorDocument`, its `IRenderContext` renderer, the path

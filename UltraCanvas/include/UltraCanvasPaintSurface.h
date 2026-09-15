@@ -91,7 +91,7 @@ public:
     void SetCursorSquare(bool square) { cursorSquare = square; }
     // Space-bar / middle-button panning is built in; a tool that wants the
     // drag itself (the Pan tool) can turn it on permanently.
-    void SetPanMode(bool alwaysPan) { alwaysPan = alwaysPan; SetMouseCursor(alwaysPan ? UCMouseCursor::Hand : toolCursor); }
+    void SetPanMode(bool enabled) { alwaysPan = enabled; SetMouseCursor(alwaysPan ? UCMouseCursor::Hand : toolCursor); }
     void SetToolCursor(UCMouseCursor cursor) { toolCursor = cursor; if (!alwaysPan) SetMouseCursor(cursor); }
 
     // ===== TOOL CALLBACKS (image coordinates) =====
