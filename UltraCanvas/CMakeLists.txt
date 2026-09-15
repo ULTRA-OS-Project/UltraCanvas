@@ -540,6 +540,26 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHardwareInfoPanel.cpp
 
+        # IODeviceManager: peripherals the application *operates* (scanners,
+        # cameras, printers), as opposed to UltraCanvasHardwareInfo above,
+        # which only describes the host. Platform backends live in
+        # OS/<Platform>/UltraCanvas*IODevice*.cpp and are picked up by the
+        # platform glob below; they attach themselves to the manager through
+        # core/IODeviceManager/UltraCanvasIODeviceBackends.cpp.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevice.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceManager.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceBackends.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinter.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterPage.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrintDialog.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrintDialogSubmit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCamera.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceWatcherFallback.cpp
+
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudio.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioDevices.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAudioPlayer.cpp
@@ -890,6 +910,83 @@ if(ULTRACANVAS_HAS_VIPS)
         ${CMAKE_CURRENT_SOURCE_DIR}/PixelFX/PixelFXImageInfo.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/dialogs/UltraCanvasImageExportDialog.cpp
     )
+endif()
+
+# ===== IODEVICEMANAGER: CUPS PRINTER BACKEND (optional) =====
+# CUPS is the printing system on both Linux and macOS, with the same library
+# and the same API, so the backend is one file in core/ rather than a copy
+# under each platform directory that would drift apart. Without CUPS the
+# module still builds and simply registers no printer backend.
+if(UNIX)
+    pkg_check_modules(ULTRACANVAS_CUPS QUIET cups)
+    if(NOT ULTRACANVAS_CUPS_FOUND)
+        # Older CUPS installs ship cups-config instead of a .pc file.
+        find_program(CUPS_CONFIG_EXECUTABLE cups-config)
+        if(CUPS_CONFIG_EXECUTABLE)
+            execute_process(COMMAND ${CUPS_CONFIG_EXECUTABLE} --libs
+                            OUTPUT_VARIABLE ULTRACANVAS_CUPS_LDFLAGS
+                            OUTPUT_STRIP_TRAILING_WHITESPACE)
+            separate_arguments(ULTRACANVAS_CUPS_LDFLAGS)
+            set(ULTRACANVAS_CUPS_FOUND TRUE)
+            set(ULTRACANVAS_CUPS_VERSION "via cups-config")
+        endif()
+    endif()
+endif()
+
+if(ULTRACANVAS_CUPS_FOUND)
+    message(STATUS "  CUPS: ${ULTRACANVAS_CUPS_VERSION} - printer backend ENABLED")
+    set(ULTRACANVAS_HAS_CUPS TRUE)
+    list(APPEND ULTRACANVAS_CORE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp)
+else()
+    message(STATUS "  [-] CUPS - not found (no printer backend on this build)")
+    set(ULTRACANVAS_HAS_CUPS FALSE)
+endif()
+
+# ===== IODEVICEMANAGER: SANE SCANNER BACKEND (optional, Linux) =====
+# Without SANE the module still builds and simply registers no scanner
+# backend. The backend file is guarded on both the platform and this flag, so
+# it is an empty translation unit when either is absent.
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    pkg_check_modules(ULTRACANVAS_SANE QUIET sane-backends)
+    if(NOT ULTRACANVAS_SANE_FOUND)
+        # sane-backends ships no .pc file on some distributions; fall back to
+        # looking for the header and library directly.
+        find_path(SANE_INCLUDE_DIR sane/sane.h)
+        find_library(SANE_LIBRARY NAMES sane)
+        if(SANE_INCLUDE_DIR AND SANE_LIBRARY)
+            set(ULTRACANVAS_SANE_FOUND TRUE)
+            set(ULTRACANVAS_SANE_VERSION "found directly")
+            set(ULTRACANVAS_SANE_INCLUDE_DIRS ${SANE_INCLUDE_DIR})
+            set(ULTRACANVAS_SANE_LIBRARIES ${SANE_LIBRARY})
+        endif()
+    endif()
+endif()
+
+if(ULTRACANVAS_SANE_FOUND)
+    message(STATUS "  SANE: ${ULTRACANVAS_SANE_VERSION} - scanner backend ENABLED")
+    set(ULTRACANVAS_HAS_SANE TRUE)
+else()
+    message(STATUS "  [-] SANE - not found (no scanner backend on this build)")
+    set(ULTRACANVAS_HAS_SANE FALSE)
+endif()
+
+# ===== IODEVICEMANAGER: UDEV HOT-PLUG WATCHER (optional, Linux) =====
+# Without udev the module still builds; StartMonitoring() then reports
+# BackendUnavailable and a caller rescans on its own schedule. The watcher
+# file and the fallback that returns null are guarded on the inverse of each
+# other, so exactly one definition of CreateDeviceWatcher() exists in any
+# build.
+if(ULTRACANVAS_PLATFORM STREQUAL "Linux")
+    pkg_check_modules(ULTRACANVAS_UDEV QUIET libudev)
+endif()
+
+if(ULTRACANVAS_UDEV_FOUND)
+    message(STATUS "  udev: ${ULTRACANVAS_UDEV_VERSION} - hot-plug watching ENABLED")
+    set(ULTRACANVAS_HAS_UDEV TRUE)
+else()
+    message(STATUS "  [-] udev - not found (no hot-plug watching on this build)")
+    set(ULTRACANVAS_HAS_UDEV FALSE)
 endif()
 
 # ===== SPELL CHECKING (all dependencies optional) =====
@@ -1250,6 +1347,31 @@ endif()
 find_package(Threads REQUIRED)
 target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE Threads::Threads)
 
+if(ULTRACANVAS_HAS_UDEV)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_UDEV)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_UDEV_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_UDEV_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_UDEV_LIBRARIES})
+endif()
+
+if(ULTRACANVAS_HAS_SANE)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_SANE)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_SANE_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_SANE_LIBRARY_DIRS})
+    target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_SANE_LIBRARIES})
+endif()
+
+if(ULTRACANVAS_HAS_CUPS)
+    target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_CUPS)
+    target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_CUPS_INCLUDE_DIRS})
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_CUPS_LIBRARY_DIRS})
+    if(ULTRACANVAS_CUPS_LIBRARIES)
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_CUPS_LIBRARIES})
+    else()
+        target_link_libraries(${ULTRACANVAS_LIB_NAME} PRIVATE ${ULTRACANVAS_CUPS_LDFLAGS})
+    endif()
+endif()
+
 if(HUNSPELL_FOUND)
     target_compile_definitions(${ULTRACANVAS_LIB_NAME} PRIVATE ULTRACANVAS_HAS_HUNSPELL)
     target_include_directories(${ULTRACANVAS_LIB_NAME} PRIVATE ${HUNSPELL_INCLUDE_DIRS})
@@ -1518,6 +1640,9 @@ elseif(ULTRACANVAS_PLATFORM STREQUAL "Windows")
             imm32
             dwmapi
             ws2_32  # Winsock select() for host fd-watches (e.g. Ladybird IPC sockets)
+            winspool  # Print spooler (OS/MSWindows/UltraCanvasWindowsIODevicePrinter.cpp):
+                      # EnumPrintersW, StartDocPrinterW/WritePrinter for RAW jobs,
+                      # DeviceCapabilitiesW, EnumJobsW.
             # Hardware probe (OS/MSWindows/UltraCanvasWindowsHardwareInfo.cpp):
             # network adapters, Wi-Fi association, USB enumeration and the
             # Bluetooth radios. powrprof is loaded at run time instead, so the

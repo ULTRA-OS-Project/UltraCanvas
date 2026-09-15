@@ -10,6 +10,7 @@
 
 #include "UltraCanvasModalDialog.h"  // For DialogType, DialogButtons, DialogResult, FileFilter, InputType
 #include "UltraCanvasFileLoader.h"   // For FileDialogOptions
+#include "IODeviceManager/UltraCanvasIODevicePrinterTypes.h"  // For NativePrintResult
 #include <string>
 #include <vector>
 #include <functional>
@@ -42,6 +43,18 @@ namespace UltraCanvas {
         bool IsCancelled() const { return result == DialogResult::Cancel; }
         operator bool() const { return IsOK(); }
     };
+
+// ===== NATIVE PRINT RESULT =====
+// What the user chose in the OS print dialog.
+//
+// Defined as IOPrintDialogChoice in IODeviceManager/UltraCanvasIODevicePrinterTypes.h
+// and named here, because the printing stack has to be able to use it and this
+// header reaches the whole widget stack through UltraCanvasModalDialog.h. The
+// settings are IODeviceManager's own IOPrintOptions rather than a second
+// vocabulary of copies/paper/duplex enums that would then need translating: a
+// print dialog exists to produce a print job, and IOPrintOptions is what
+// PrinterDevice::Print() takes.
+    using NativePrintResult = IOPrintDialogChoice;
 
 // ===== NATIVE DIALOGS CLASS =====
 // Platform-independent interface - implementations in OS-specific files
@@ -189,11 +202,31 @@ namespace UltraCanvas {
                 const std::string& title = "Password",
                 UltraCanvasWindowBase*  parent = nullptr);
 
-        // Show the OS native print dialog for the given text content.
+        // Show the OS native print dialog and return what the user chose.
+        //
+        // Asks; it does not print. The job is then submitted through
+        // IODeviceManager (see IODeviceManager/UltraCanvasIODevicePrintDialog.h),
+        // which is what makes the choices in the returned struct take effect -
+        // the settings a print dialog collects are exactly the ones
+        // PrinterDevice::Print() already knows how to honour.
+        //
+        // documentName — displayed in the dialog and in the printer queue
+        // parent       — native parent window for modal behaviour
+        static NativePrintResult RequestPrintSettings(
+                const std::string& documentName,
+                UltraCanvasWindowBase*  parent = nullptr);
+
+        // Show the OS native print dialog and print the given plain text with
+        // the settings the user picked.
+        //
         // documentName  — displayed in the printer queue (e.g. the filename)
         // textContent   — UTF-8 plain text to be sent to the printer on OK
         // parent        — native parent window handle for modal behaviour
-        // Returns true if the user confirmed printing, false if cancelled.
+        // Returns true if the document was submitted, false if the user
+        // cancelled or the job could not be sent. PrintTextWithDialog() in
+        // IODeviceManager/UltraCanvasIODevicePrintDialog.h does the same and
+        // says *why* it failed, which is what a caller reporting to the user
+        // wants; this keeps the plain bool for existing callers.
         static bool ShowPrintDialog(
                 const std::string& documentName,
                 const std::string& textContent,
