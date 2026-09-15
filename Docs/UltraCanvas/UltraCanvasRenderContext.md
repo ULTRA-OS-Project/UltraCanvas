@@ -3,7 +3,7 @@
 `IRenderContext` (`UltraCanvasRenderContext.h`) is the drawing interface every
 element renders through. Its everyday surface — paths, fills, strokes, text
 layouts, pixmaps, state and transforms — is used throughout the element
-docs. This page documents the part added for vector editing in 0.8.50:
+docs. This page documents the part added for vector editing in 0.8.51:
 blend modes, groups and masks, geometric hit testing, transform readback,
 conic / mesh / pixmap paint sources, pattern placement, antialias control
 and text outlines. One backend implements all of it (Cairo, on every

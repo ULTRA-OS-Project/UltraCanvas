@@ -45,8 +45,12 @@ int main() {
                      "initialised (no display?).\n");
         return EXIT_FAILURE;
     }
+    // The application's own mark, and the one image UltraMail is recognized by:
+    // the window icon, the taskbar/dock entry the window manager takes from it,
+    // and the start-page logo below all read this same file. Keep them together
+    // — an app wearing two icons is an app the user has to learn twice.
     app.SetDefaultWindowIcon(
-        UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/UltraMail.svg"));
+        UltraCanvas::NormalizePath(UltraCanvas::GetResourcesDir() + "media/appicon/UltraMail.png"));
 
     UltraMail::UltraMailApp mail;
     std::string storeError;

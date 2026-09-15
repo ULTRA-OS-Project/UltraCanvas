@@ -1,3 +1,16 @@
+#### 2026-09-14 *1.34.0*
+- **The folder the detail pane is showing can be moved into the folder
+  display with one click.** Clicking a folder shows what is in it in the
+  detail pane on the right, which answers "what is in there?" without leaving
+  the folder you are in - but the pane is a narrow strip, and the way on from
+  it was to go back and double-click the folder after all. A round button now
+  floats over the middle of the pane's left edge, pointing at the display it
+  moves the folder to: click it and the folder display opens that folder full
+  width, and the pane - with nothing left to preview - folds away. It takes
+  whatever the pane shows at that moment, so a subfolder entered inside the
+  pane is moved across just as the clicked folder is. It appears only while
+  the pane holds a folder; a previewed file never shows it.
+
 #### 2026-09-14 *1.33.0*
 - **Sti_Trace.log, and clutter like it, can finally be got rid of.** The file
   is the Windows Still Image service's trace log: any program that talks to a

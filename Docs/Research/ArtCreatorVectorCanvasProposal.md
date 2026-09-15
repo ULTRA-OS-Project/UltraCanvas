@@ -1,6 +1,6 @@
 # ArtCreator and a public `UltraCanvasVectorCanvas` — Investigation and Proposal
 
-**Status:** phases 0–3 implemented (framework 0.8.50, ArtCreator 0.1.0); phases 4–5 open
+**Status:** phases 0–3 implemented (framework 0.8.51, ArtCreator 0.1.0); phases 4–5 open
 **Date:** 2026-09-15
 **Scope:** a new application, `Apps/ArtCreator`, a vector graphics editor of
 the Xara Designer / ArtWorks class, and the question of whether the editing
@@ -140,7 +140,7 @@ The converter matrix is the strongest asset here: an editor that speaks
 ### 3.1 The model — `VectorStorage::VectorDocument`
 
 `UltraCanvas/include/DataFormats/UltraCanvasVectorStorage.h` (715 lines; in
-`Plugins/Vector/` until 0.8.50, when phase 0 of §6 moved it into core).
+`Plugins/Vector/` until 0.8.51, when phase 0 of §6 moved it into core).
 `VectorDocument{Size, ViewBox, BackgroundColor, Layers, Definitions,
 SourceUnit, PointsPerSourceUnit, …}`; `VectorLayer : VectorGroup`;
 `VectorElement{Id, Classes, Style, optional<Matrix3x3> Transform,
@@ -172,7 +172,7 @@ Verified limits, in addition to §2.5–2.6 of the model survey:
   non-flat transparency on the way in (`XarReader`, header comment at
   `UltraCanvasXARConverter.cpp:367-379`), and its `GetCapabilities()` still
   claims several of them.
-- **Renderer parity** (model survey step 3) landed with 0.8.50: arcs and
+- **Renderer parity** (model survey step 3) landed with 0.8.51: arcs and
   smooth quadratics through `PathOps`, object-bounding-box gradients
   against the shape's own extents, fill / stroke opacity, per-span fonts
   and text anchors, clip paths. Still not drawn: patterns, masks, filters,
@@ -206,7 +206,7 @@ gradient modes, `WarningCallback`, `ProgressCallback`) and
 
 ### 3.3 The viewers
 
-- **`UltraCanvasVectorElement`** (`include/UltraCanvasVectorElement.h`, in core since 0.8.50,
+- **`UltraCanvasVectorElement`** (`include/UltraCanvasVectorElement.h`, in core since 0.8.51,
   160 + 368 lines): `SetDocument`, zoom ladder with cursor-anchored smooth
   wheel zoom, drag pan, `ScreenToDocument` / `DocumentToScreen`, layer
   visibility, `VectorInteractionMode::Select` that stores a single element

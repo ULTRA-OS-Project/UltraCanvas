@@ -89,7 +89,7 @@ is a settings option: *Start on: Toolbox / Last account*).
 
 Implementation: the start page (`UltraMailStartPage`) is a flex-column
 `UltraCanvasContainer` centring an `UltraCanvasImageElement` (the app
-icon, `media/appicon/UltraMail.svg`), an `UltraCanvasLabel` and a
+icon, `media/appicon/UltraMail.png`), an `UltraCanvasLabel` and a
 primary-style `UltraCanvasButton`; the app shows it while the account
 list is empty and the account view otherwise. The Toolbox is a plain
 `UltraCanvasContainer` with a grid of `CreateIconButton(...)` tiles (or

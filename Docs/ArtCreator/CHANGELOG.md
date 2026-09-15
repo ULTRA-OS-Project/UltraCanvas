@@ -3,7 +3,7 @@
   Designer / ArtWorks class on the UltraCanvas framework's vector editing
   layer** (`VectorStorage::VectorDocument`, `VectorEdit`,
   `UltraCanvasVectorCanvas`, `UltraCanvasBezierPath`,
-  `UltraCanvasGradientEditor` - framework 0.8.50 - and the Vector plugin's
+  `UltraCanvasGradientEditor` - framework 0.8.51 - and the Vector plugin's
   converters for the file formats). The investigation behind it is
   `Docs/Research/ArtCreatorVectorCanvasProposal.md`; the application is
   the tools, panels, dialogs and commands over that layer.
