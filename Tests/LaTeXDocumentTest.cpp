@@ -336,6 +336,30 @@ See Table~\ref{tab:c}, Figure~\ref{fig:p} and Section~\ref{S}.
     const RichDocBlock* refs = FindBlock(doc, RichBlockType::Paragraph, "See Table");
     CHECK(refs && Text(*refs) == "See Table\xC2\xA0" "1, Figure\xC2\xA0" "1 and Section\xC2\xA0??.");
     CHECK(diags.size() == 2);   // missing image + undefined label
+
+    // \captionof names its own counter, which is how a table that is not in a
+    // float (a longtable, a tabular in a minipage) is captioned; without the
+    // kind argument such a caption would be numbered with the figures.
+    const std::string outside = R"(\begin{document}
+\captionof{table}{Velocities}\label{tab:v}
+\begin{longtable}{lr}
+Body & Speed \\
+Earth & 11.2 \\
+\end{longtable}
+\captionof{figure}{A sketch}\label{fig:s}
+See Table~\ref{tab:v} and Figure~\ref{fig:s}.
+\end{document}
+)";
+    std::vector<LaTeXDocumentDiagnostic> outsideDiags;
+    UCRichDocument outsideDoc = ParseSource(outside, &outsideDiags);
+    const RichDocBlock* lcap = FindBlock(outsideDoc, RichBlockType::Paragraph, "Velocities");
+    CHECK(lcap && Text(*lcap) == "Table 1: Velocities");
+    const RichDocBlock* scap = FindBlock(outsideDoc, RichBlockType::Paragraph, "A sketch");
+    CHECK(scap && Text(*scap) == "Figure 1: A sketch");
+    const RichDocBlock* outsideRefs = FindBlock(outsideDoc, RichBlockType::Paragraph, "See Table");
+    CHECK(outsideRefs && Text(*outsideRefs) == "See Table\xC2\xA0" "1 and Figure\xC2\xA0" "1.");
+    CHECK(Count(outsideDoc, RichBlockType::Table) == 1);
+    CHECK_MSG(outsideDiags.empty(), UltraCanvasLaTeXDocumentReader::FormatDiagnostics(outsideDiags));
 }
 
 // ===== 5. Footnotes, citations, bibliography, verbatim, theorems =====
@@ -437,6 +461,31 @@ static void TestMacrosAndDiagnostics() {
     CHECK(diags.size() == 4);
     // Line numbers point into the source.
     CHECK(!diags.empty() && diags[0].line == 8);
+
+    // A \newenvironment whose begin body opens another environment: its \end
+    // has that inner environment on the stack, so the end body has to run
+    // before the user frame is closed — the idiomatic wrapper form.
+    const std::string wrapper = R"(\newenvironment{aside}{\begin{quote}\itshape}{\end{quote}}
+\newenvironment{note}[1]{\begin{quote}\textbf{#1:} }{\end{quote}}
+\begin{document}
+\begin{aside}Set aside.\end{aside}
+\begin{note}{Warning}Mind the gap.\end{note}
+After.
+\end{document}
+)";
+    std::vector<LaTeXDocumentDiagnostic> wrapperDiags;
+    UCRichDocument wrapped = ParseSource(wrapper, &wrapperDiags);
+    const RichDocBlock* aside = FindBlock(wrapped, RichBlockType::BlockQuote, "Set aside");
+    CHECK(aside && Text(*aside) == "Set aside.");
+    bool asideItalic = aside && !aside->runs.empty() && aside->runs[0].italic;
+    CHECK(asideItalic);
+    const RichDocBlock* note = FindBlock(wrapped, RichBlockType::BlockQuote, "Mind the gap");
+    CHECK(note && Text(*note) == "Warning: Mind the gap.");
+    CHECK(note && !note->runs.empty() && note->runs[0].bold);
+    // The text after the wrapper is back in normal flow, not in the quote.
+    const RichDocBlock* after = FindBlock(wrapped, RichBlockType::Paragraph, "After");
+    CHECK(after && !after->runs.empty() && !after->runs[0].italic);
+    CHECK_MSG(wrapperDiags.empty(), UltraCanvasLaTeXDocumentReader::FormatDiagnostics(wrapperDiags));
 
     // Empty input is no document; a fragment without \begin{document} is.
     UCRichDocument empty;

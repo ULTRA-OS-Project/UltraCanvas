@@ -1,0 +1,98 @@
+\documentclass[11pt]{article}
+% Text: the character-level half of the importer. Accents and ligatures
+% become precomposed Unicode, the punctuation conventions (--- ``…'' ~) the
+% characters they stand for, and the style commands become run flags,
+% colours and sizes on the rich-document runs. What a Markdown view cannot
+% show — a colour, a point size — is still carried in the model and lands in
+% the ODT and DOCX exports.
+\usepackage[T1]{fontenc}
+\usepackage{xcolor}
+\usepackage{ulem}
+\usepackage{hyperref}
+\definecolor{ultrablue}{RGB}{50,50,150}
+\definecolor{warm}{HTML}{B4541E}
+\colorlet{cool}{ultrablue}
+\title{Text, Characters and Links}
+\author{The UltraCanvas Team}
+\date{September 2026}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Nothing in this document is a picture of text: every mark below is a
+character the reader produced from its LaTeX spelling, which is what makes
+the imported document searchable, selectable and translatable.
+\end{abstract}
+
+\section{Emphasis and style}
+\textbf{Bold}, \textit{italic}, \underline{underlined}, \sout{struck out},
+\textsc{Small Caps}, \textsf{sans serif} and \texttt{monospace}. The
+declarations do the same for the rest of their group:
+{\bfseries bold until the brace closes}, {\itshape italic until the brace
+closes}.
+
+\emph{Emphasis toggles rather than sets: inside an emphasised phrase,
+\emph{a nested one goes back upright}, which is what \texttt{emph} means
+and why it is not a synonym for \texttt{textit}.}
+
+Sizes run from \tiny tiny\normalsize\ through \large large\normalsize\ to
+\Huge huge\normalsize\ --- carried as a point size on the run.
+Colours are named or mixed: \textcolor{ultrablue}{a defined RGB colour},
+\textcolor{warm}{an HTML one}, \textcolor{cool}{a \texttt{colorlet} alias}
+and \textcolor{red}{one of the dvips names}.
+
+Subscripts and superscripts outside mathematics:
+H\textsubscript{2}O, the 1\textsuperscript{st} of the month, and
+E = mc\textsuperscript{2} written in text rather than as a formula.
+
+\section{Characters}
+\subsection{Accents}
+Caf\'e, na\"{\i}ve, \^etre, Stra\ss e, se\~nor, \v{S}koda, Erd\H{o}s,
+fa\c{c}ade, \k{a}\.z, \r{a}ngstr\"om, \u{g}\"unl\"uk --- each one a single
+precomposed character where Unicode has it.
+
+\subsection{Ligatures and symbols}
+\ae sthetic, \oe uvre, \AA ngstr\"om, \O resund, \l od\'z, \DH, \TH, and the
+text symbols \%, \$, \&, \_, \#, \{, \}.
+
+\subsection{Punctuation}
+A hyphen-like dash, an en dash 1914--1918, an em dash --- like this one ---
+and an ellipsis\ldots{} ``Double quotes'' and `single quotes' curl the right
+way round. A tie~binds two words, and \LaTeX{} and \TeX{} set their own
+names.
+
+\section{Links}
+A labelled link to \href{https://ultra-os.org}{the project site}, a bare one
+\url{https://code.claude.com/docs}, and \nolinkurl{example.com/not-a-link}
+which is set as a URL without becoming one. A link keeps its target on the
+run, so it is still a link after an export to Markdown, HTML, ODT or DOCX.
+
+\section{Blocks of text}
+\begin{itemize}
+  \item An unordered item.
+  \begin{enumerate}
+    \item Ordered, nested one level.
+    \item[(b)] An item with its own label.
+  \end{enumerate}
+  \item Back at the outer level.
+\end{itemize}
+
+\begin{quote}
+A quotation is a block of its own, and it may hold \emph{any} run styling.
+\end{quote}
+
+\begin{center}
+Centred text, as \texttt{center} and \texttt{\textbackslash centering} both
+set it.
+\end{center}
+
+\begin{flushright}
+Right-aligned text.
+\end{flushright}
+
+\hrule
+\medskip
+\noindent A horizontal rule above separates this closing paragraph, which is
+set with \texttt{\textbackslash noindent} --- an instruction to a typesetter
+that a rich document has no use for, and drops without a word.
+\end{document}
