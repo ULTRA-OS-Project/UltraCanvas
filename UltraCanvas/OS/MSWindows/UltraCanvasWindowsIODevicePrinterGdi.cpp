@@ -27,6 +27,12 @@
 #include "../../include/UltraCanvasUtils.h"
 
 #include <windows.h>
+// OpenPrinterW, ClosePrinter and DocumentPropertiesW live here, not in
+// windows.h: the build defines WIN32_LEAN_AND_MEAN, which is exactly the
+// switch that stops windows.h pulling the spooler header in. Without the
+// define a cross-compile finds them anyway, so this has to be explicit or it
+// only fails on the real build.
+#include <winspool.h>
 
 #include <algorithm>
 #include <cstdio>
