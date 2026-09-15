@@ -16,7 +16,7 @@
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasUtils.h"    // NormalizePath
-#include "Plugins/Documents/Word/UltraCanvasRichDocument.h"
+#include "UltraCanvasRichDocument.h"
 
 #include <filesystem>
 #include <memory>

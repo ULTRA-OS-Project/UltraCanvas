@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasXARExamples.cpp
 // Xara (.xar) vector graphics demo examples for UltraCanvas Framework
-// Version: 1.2.0
-// Last Modified: 2026-09-13
+// Version: 1.3.0
+// Last Modified: 2026-09-14
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -9,6 +9,7 @@
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasWindow.h"
+#include "UltraCanvasUtils.h"   // OpenURL — open the reference links in the system browser
 #include "../Plugins/Vector/XAR/UltraCanvasXARPlugin.h"
 #include <memory>
 #include <string>
@@ -142,7 +143,7 @@ namespace UltraCanvas {
 
 // ===== XAR VECTOR EXAMPLES IMPLEMENTATION =====
     std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateXARVectorExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("XARExamples", 0, 0, 1000, 780);
+        auto container = std::make_shared<UltraCanvasContainer>("XARExamples", 0, 0, 1000, 1080);
         container->SetBackgroundColor(Color(245, 245, 245, 255));
 
         // Title
@@ -160,7 +161,7 @@ namespace UltraCanvas {
         container->AddChild(description);
 
         // Status label for feedback
-        auto statusLabel = std::make_shared<UltraCanvasLabel>("XARStatus", 10, 700, 980, 60);
+        auto statusLabel = std::make_shared<UltraCanvasLabel>("XARStatus", 10, 1005, 980, 60);
         statusLabel->SetText("Ready. Click on a XAR file to view.");
         statusLabel->SetFontSize(11);
         statusLabel->SetTextColor(Color(60, 60, 60, 255));
@@ -274,6 +275,44 @@ namespace UltraCanvas {
         howContainer->AddChild(howText);
 
         container->AddChild(howContainer);
+
+        // ===== WHERE THE FORMAT COMES FROM =====
+        auto historyContainer = std::make_shared<UltraCanvasContainer>("HistoryPanel", 20, 690, 960, 300);
+        historyContainer->SetBackgroundColor(Color(245, 245, 250, 255));
+        historyContainer->SetBorders(2, Color(150, 150, 170, 255));
+
+        auto historyTitle = std::make_shared<UltraCanvasLabel>("HistoryTitle", 10, 10, 940, 25);
+        historyTitle->SetText("Where the format comes from");
+        historyTitle->SetFontWeight(FontWeight::Bold);
+        historyTitle->SetFontSize(13);
+        historyContainer->AddChild(historyTitle);
+
+        auto historyText = std::make_shared<UltraCanvasLabel>("HistoryText", 10, 40, 940, 160);
+        historyText->SetText(
+                "The Xara file format is the successor of the ArtWorks vector graphics file format.\n"
+                "ArtWorks is a powerful vector graphics editor for RISC OS, the operating system of\n"
+                "the 32-bit ARM machines - RISC OS was the first OS that ran on ARM CPUs.\n\n"
+                "Two things set ArtWorks apart: its ultra-fast CPU-based vector graphics rendering,\n"
+                "and its user-friendly user interface. It was later ported to Windows, where it got\n"
+                "the name Xara."
+        );
+        historyText->SetFontSize(11);
+        historyText->SetTextColor(Color(50, 50, 50, 255));
+        historyContainer->AddChild(historyText);
+
+        // Reference links - a click hands them to the system browser.
+        auto makeLink = [&](const std::string& id, int y, const std::string& url) {
+            auto link = std::make_shared<UltraCanvasLabel>(id, 10, y, 600, 18);
+            link->SetTextIsMarkup(true);
+            link->SetText("<span color=\"blue\" underline=\"single\">" + url + "</span>");
+            link->SetFontSize(11);
+            link->onClick = [url]() { OpenURL(url); };   // hand cursor comes with onClick
+            historyContainer->AddChild(link);
+        };
+        makeLink("HistoryLinkArtWorks", 215, "https://en.wikipedia.org/wiki/ArtWorks");
+        makeLink("HistoryLinkXara", 240, "https://en.wikipedia.org/wiki/Xara_Designer_Pro%2B");
+
+        container->AddChild(historyContainer);
 
         return container;
     }

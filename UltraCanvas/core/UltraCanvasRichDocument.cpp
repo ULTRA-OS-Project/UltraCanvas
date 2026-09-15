@@ -1,4 +1,4 @@
-// Plugins/Documents/Word/UltraCanvasRichDocument.cpp
+// core/UltraCanvasRichDocument.cpp
 // UCRichDocument serializers: Markdown (editable round-trip), HTML
 // (read-only rich view), plain text — plus media helpers shared by the
 // ODT/DOCX readers and writers.
@@ -6,7 +6,7 @@
 // Last Modified: 2026-09-09
 // Author: UltraCanvas Framework
 
-#include "Plugins/Documents/Word/UltraCanvasRichDocument.h"
+#include "UltraCanvasRichDocument.h"
 
 #include <algorithm>
 #include <cctype>

@@ -30,10 +30,21 @@ doc file name. For the prose on a given element, use
 |---|---|---|
 | Single-line text | `UltraCanvasTextInput` | `UltraCanvasTextInput.h` |
 | Multi-line text or code | `UltraCanvasTextArea` | `UltraCanvasTextArea.h` |
+| A **formatted document** edited as it looks — fonts, sizes, colours, headings, lists, tables, images ([doc](UltraCanvasRichTextEdit.md)) | `UltraCanvasRichTextEdit` | `UltraCanvasRichTextEdit.h` |
 | Text with a suggestion list | `UltraCanvasAutoComplete` | `UltraCanvasAutoComplete.h` |
 | Tokens / tags typed into a field | `UltraCanvasTagInput` | `UltraCanvasChip.h` |
 | A number with up/down steppers | `UltraCanvasSpinner` | `UltraCanvasSpinner.h` |
 | Password quality feedback | `UltraCanvasPasswordStrengthMeter`, `UltraCanvasPasswordRuleLegend` | matching `*.h` |
+
+Which of the two multi-line surfaces you want depends on what the document
+*is*. `UltraCanvasTextArea` edits **text** — plain, syntax-highlighted, or
+Markdown rendered live with the caret line showing its source; formatting is a
+function of the characters in the buffer, so what Markdown cannot spell cannot
+be typed. `UltraCanvasRichTextEdit` edits a **`UCRichDocument`** — the model the
+ODT/DOCX/DOC readers and writers already produce — so bold is a state of the
+selection, and fonts, sizes, colours and alignment survive a round trip through
+`.odt` or `.docx`. Source files, logs and Markdown belong in the TextArea; word
+-processing documents belong in the RichTextEdit.
 
 `UltraCanvasTextInput` covers what a text field is expected to do: caret,
 click-to-position, drag selection, Home/End/arrows, Delete, cut/copy/paste,
