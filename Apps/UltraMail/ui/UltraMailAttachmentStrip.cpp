@@ -51,6 +51,8 @@ AttachmentChip::AttachmentChip(const std::string& id, float x, float y, float w,
     : UltraCanvasContainer(id, x, y, w, h),
       onOpen_(std::move(onOpen)), onSaveAs_(std::move(onSaveAs)) {
     // A small white card with the type glyph, the name and the size.
+    SetShowVerticalScrollbar(false);
+    SetShowHorizontalScrollbar(false);
     SetBackgroundColor(Theme::kCardBackground);
     SetBorders(1.0f, Theme::kCardBorder, 8.0f);
     auto glyph = CreateLabel(id + ".glyph", 8, 6, 26, 32, GlyphFor(att.mediaType));
