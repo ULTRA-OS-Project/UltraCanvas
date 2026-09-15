@@ -1482,7 +1482,7 @@ PathData PolygonToPath(const std::vector<Point2Dd>& points, bool closed) {
     // MoveTo first point
     PathCommand moveCmd;
     moveCmd.Type = PathCommandType::MoveTo;
-    moveCmd.Parameters = {points[0].x, points[0].y};
+    moveCmd.Parameters = {static_cast<float>(points[0].x), static_cast<float>(points[0].y)};
     moveCmd.Relative = false;
     result.commands.push_back(moveCmd);
     
@@ -1490,7 +1490,7 @@ PathData PolygonToPath(const std::vector<Point2Dd>& points, bool closed) {
     for (size_t i = 1; i < points.size(); i++) {
         PathCommand lineCmd;
         lineCmd.Type = PathCommandType::LineTo;
-        lineCmd.Parameters = {points[i].x, points[i].y};
+        lineCmd.Parameters = {static_cast<float>(points[i].x), static_cast<float>(points[i].y)};
         lineCmd.Relative = false;
         result.commands.push_back(lineCmd);
     }
