@@ -10,7 +10,7 @@
 #include <cctype>
 #include <string>
 
-#include "Plugins/Documents/Word/UltraCanvasRichDocument.h"
+#include "UltraCanvasRichDocument.h"
 
 namespace UltraCanvas {
 namespace WordFormatInternal {

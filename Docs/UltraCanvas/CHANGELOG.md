@@ -1,3 +1,58 @@
+#### 2026-09-15 *0.8.50*
+- **A WYSIWYG editing element: `UltraCanvasRichTextEdit`.** The caret sits in
+  rendered text and bold is a state of the selection, not two asterisks in a
+  buffer. It edits a `UCRichDocument` - the same block/run model the ODT, DOCX,
+  legacy `.doc` and LaTeX readers and writers already produce - so a 14 pt
+  Georgia run in red survives a round trip through `.odt`, which is exactly
+  what the Markdown detour could never carry. This closes the "Phase 5
+  interactive styled-run editor" that `ODT-DOCX-Support-Proposal.md` had
+  deferred for its own design round; that round is
+  `Docs/UltraCanvas/WYSIWYGElementInvestigation.md` and the element's
+  documentation is `Docs/UltraCanvas/UltraCanvasRichTextEdit.md`.
+  - Three layers, each testable on its own: `UCRichDocument` (model),
+    `UCRichDocumentEditor` (positions, editing commands, formatting, undo -
+    UI-free, no framework headers) and the element (block layouts, rendering,
+    input, caret, scrolling, clipboard).
+  - Positions are `{blockIndex, byteOffset}` into a block's concatenated run
+    text, never `{run, offset}`: applying a format splits and merges runs
+    constantly and the caret must not move when the run structure changes
+    underneath it. That same string is what the element hands to `ITextLayout`,
+    so hit testing and caret geometry need no translation layer.
+  - Every `RichTextRun` attribute maps onto an existing `TextAttributeFactory`
+    call, so the whole editor is cross-platform through the one Cairo/Pango
+    `ITextLayout` implementation.
+  - Undo records the blocks an edit replaced rather than the document, so its
+    cost is the edit and the embedded media is never copied; consecutive
+    keystrokes coalesce into one step.
+  - Character formatting (bold/italic/underline/strike/code/sub/superscript,
+    font, size, colour, link), paragraph formatting (headings, alignment,
+    bullet and numbered lists with nesting, quotes, code blocks), rules, page
+    breaks and image insertion; `GetFormatState()` reports each attribute as
+    on, off or *mixed* so a toolbar can show a mixed selection honestly.
+    Pressing Bold at a collapsed caret arms the format for what is typed next.
+  - Block layouts are built only for blocks near the viewport; the rest carry
+    an estimated height until they scroll in.
+  - Toolbars are not drawn by the element - build them from
+    `UltraCanvasToolbar`, `UltraCanvasDropdown`, `UltraCanvasButton` and
+    `UltraCanvasColorPicker`, per the framework's UI-reuse rule.
+  - Known limits, documented rather than hidden: tables render but are not
+    edited in place, images are not resized interactively, math runs render as
+    their LaTeX source, there is no spell checking yet, and rich paste between
+    applications still needs the clipboard MIME flavours
+    `UltraCanvasClipboardBackend` does not carry (copy/paste *inside* an
+    application does keep formatting).
+- **`UCRichDocument` moved from `Plugins/Documents/Word/` into `core/`**
+  (`include/UltraCanvasRichDocument.h`, `core/UltraCanvasRichDocument.cpp`). A
+  framework element cannot depend upward on a plugin; the model was already
+  framework-free and compiled unconditionally, and the ODT/DOCX/DOC readers and
+  writers stay where they are and now depend downward. Only include paths
+  changed.
+- Tests: `Tests/RichTextEditorTest.cpp` covers the editing rules without a
+  display (positions, run splitting and coalescing, formatting, structure,
+  clipboard ranges, undo/redo); `Tests/RichTextEditElementTest.cpp` covers
+  layout geometry, hit testing and typed input against a real render context,
+  skipping itself when there is no display.
+
 #### 2026-09-14 *0.8.49*
 - **The demo's LaTeX page showed the math engine and almost nothing else.**
   Of the 24 documents it listed, 23 were single formulas, so the document

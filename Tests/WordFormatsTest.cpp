@@ -6,7 +6,7 @@
 // Builds without the UI stack: only the Word module sources, miniz and
 // tinyxml2 (see Tests/CMakeLists.txt).
 // Usage: WordFormatsTest [output-dir]   (default: current directory)
-#include "Plugins/Documents/Word/UltraCanvasRichDocument.h"
+#include "UltraCanvasRichDocument.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #include "UltraCanvasZipPackage.h"
 

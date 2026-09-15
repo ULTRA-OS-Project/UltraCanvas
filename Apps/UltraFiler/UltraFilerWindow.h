@@ -512,6 +512,16 @@ private:
     // runs.
     void ArmFolderPreviewTimer(const std::string& folderPath);
     void CancelFolderPreviewTimer();
+    // The folder preview and the round button floating over the pane's left
+    // edge go into the detail pane, and come out of it, together: the button
+    // moves the previewed folder into the folder display, so it means nothing
+    // while the pane holds a file.
+    void AttachFolderPreview();
+    void DetachFolderPreview();
+    // That button's action: the folder display is pointed at whatever the
+    // detail pane currently shows, and the pane - having nothing left to
+    // preview - folds away.
+    void PromoteFolderPreview();
     // Mirrors the preview toggle into every tab's filer: while the preview is
     // on, deleting the previewed file hands the selection to the neighbouring
     // entry, so the pane shows that file instead of folding away.
@@ -598,6 +608,9 @@ private:
     // pane, the way `preview` shows a selected file. The two share the pane;
     // UpdatePreviewPane swaps whichever the selection calls for into it.
     std::shared_ptr<UltraCanvasFilerWidget>     folderPreview;
+    // Floats over the middle of the detail pane's left edge while the pane
+    // shows a folder: it moves that folder into the folder display.
+    std::shared_ptr<UltraCanvasButton>          folderPreviewPromoteButton;
     std::shared_ptr<UltraCanvasSplitPane>       split;
     std::shared_ptr<UltraCanvasContainer>       contentBox;    // holds the split OR the History view
     std::shared_ptr<UltraCanvasContainer>       historyPane;   // History view root

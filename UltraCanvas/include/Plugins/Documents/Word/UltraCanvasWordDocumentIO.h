@@ -13,7 +13,7 @@
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "Plugins/Documents/Word/UltraCanvasRichDocument.h"
+#include "UltraCanvasRichDocument.h"
 
 #include <string>
 
