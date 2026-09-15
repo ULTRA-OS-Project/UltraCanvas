@@ -694,6 +694,30 @@ add_test(
 )
 message(STATUS "    Test registered: SpreadsheetColumnSizingTest")
 
+# ===== LISTVIEW TOOLTIP TEST =====
+# The tooltip text a ListView reads on hover: per-cell tooltips over the
+# row-wide fallback, the header tooltip on ListColumnDef, and the ToolTipRole
+# reads/writes behind both. Exercises the real list models with no UI stack.
+message(STATUS "  Building ListViewTooltipTest...")
+add_executable(ListViewTooltipTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ListViewTooltipTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasListModel.cpp
+)
+target_include_directories(ListViewTooltipTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ListViewTooltipTest PRIVATE cxx_std_20)
+set_target_properties(ListViewTooltipTest PROPERTIES
+    OUTPUT_NAME "ListViewTooltipTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ListViewTooltipTest
+    COMMAND ListViewTooltipTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ListViewTooltipTest")
+
 # ===== CONTOUR GEOMETRY TEST =====
 # Marching-squares isolines (including saddle disambiguation), isoband cell
 # clipping, level generation, NaN holes, point gridding and polyline

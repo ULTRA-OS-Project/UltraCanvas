@@ -830,14 +830,16 @@ namespace UltraCanvas {
                 .AddVariant("spreadsheet", "Sample Data")
                 .AddVariant("spreadsheet", "Open ODS / CSV");
 
-        extendedBuilder.AddItem("listview", "List View", "Item lists with custom rendering",
+        extendedBuilder.AddItem("listview", "List View",
+                                "Model-view-delegate lists: columns, styling, icons, hover tooltips",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateListViewExamples(); },
                                 "DemoApp/UltraCanvasListViewExamples.cpp",
                                 "Docs/UltraCanvas/UltraCanvasListViewExamples.md")
                 .AddVariant("listview", "Simple List")
-                .AddVariant("listview", "Icon List")
-                .AddVariant("listview", "Detail View");
+                .AddVariant("listview", "Detail View (columns + header)")
+                .AddVariant("listview", "Styled List")
+                .AddVariant("listview", "Icon List");
 
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
@@ -2204,6 +2206,28 @@ namespace UltraCanvas {
             headerContainer->SetDemoTitle("Category: " + node->data.text);
             headerContainer->SetSourceFile("");
             headerContainer->SetDocFile("");        }
+    }
+
+    bool UltraCanvasDemoApplication::SelectDemoItem(const std::string& itemId) {
+        if (demoItems.find(itemId) == demoItems.end()) return false;
+
+        // DisplayDemoItem alone only swaps the page: the tree would keep the
+        // startup selection and the header would still name it, so
+        // `--component listview` opened the ListView page under the title
+        // "Various menu types and styles". Take the same path a click takes.
+        TreeNode* node = categoryTreeView ? categoryTreeView->FindNode(itemId) : nullptr;
+        if (node) {
+            for (TreeNode* ancestor = node->parent; ancestor; ancestor = ancestor->parent) {
+                categoryTreeView->ExpandNode(ancestor);
+            }
+            categoryTreeView->SelectNode(node);
+            OnTreeNodeSelected(node);
+        } else {
+            DisplayDemoItem(itemId);
+            UpdateStatusDisplay(itemId);
+            UpdateHeaderDisplay(itemId);
+        }
+        return true;
     }
 
     void UltraCanvasDemoApplication::DisplayDemoItem(const std::string& itemId) {

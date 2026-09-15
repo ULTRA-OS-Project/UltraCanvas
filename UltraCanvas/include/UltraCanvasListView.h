@@ -60,6 +60,13 @@ namespace UltraCanvas {
         std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
         std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
 
+        // Optional tooltip source, consulted before the model's ToolTipRole.
+        // Called with the hovered cell; row == -1 means the pointer is over the
+        // header cell of `column`. Returning an empty string falls back to the
+        // model tooltip (ToolTipRole) or, for the header, to
+        // ListColumnDef::tooltip.
+        std::function<std::string(int row, int column)> tooltipProvider;
+
         // Constructor
         UltraCanvasListView(const std::string& identifier,
                             float x, float y, float w, float h);
@@ -109,6 +116,13 @@ namespace UltraCanvas {
         void SetShowHeader(bool show);
         bool GetShowHeader() const;
 
+        // Hover tooltips. On by default: resting the pointer on a row shows the
+        // cell's ToolTipRole text (per-cell, falling back to the row tooltip),
+        // and resting it on a column header shows that column's
+        // ListColumnDef::tooltip. `tooltipProvider` overrides both.
+        void SetShowItemTooltips(bool enable);
+        bool GetShowItemTooltips() const;
+
         // === Scrolling ===
         void ScrollToRow(int row);
         void EnsureRowVisible(int row);
@@ -117,6 +131,15 @@ namespace UltraCanvas {
         // Column under an element-local x coordinate (-1 if outside the rows
         // viewport). columnStartX receives the column's element-local left edge.
         int GetColumnAt(int x, int* columnStartX = nullptr) const;
+
+        // Header column under an element-local point (-1 when the header is
+        // hidden or the point is outside it). columnStartX receives the
+        // column's element-local left edge.
+        int GetHeaderColumnAt(int x, int y, int* columnStartX = nullptr) const;
+
+        // Tooltip text for a cell (row >= 0) or a column header (row == -1),
+        // as the hover tooltip would show it. Empty when there is none.
+        std::string GetTooltipTextAt(int row, int column) const;
 
         // === Core overrides ===
         // ListView is externally sized (explicit size or parent stretch); the base
@@ -157,7 +180,10 @@ namespace UltraCanvas {
 
         // Interaction state
         int hoveredRow = -1;
+        int hoveredColumn = -1;
+        int hoveredHeaderColumn = -1;
         int focusedRow = -1;
+        bool showItemTooltips = true;
 
         // Internal methods
         void CreateScrollbar();
@@ -182,6 +208,10 @@ namespace UltraCanvas {
         // Rendering
         void RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect);
         void RenderRows(IRenderContext* ctx, const Rect2Di& contentRect);
+
+        // Tooltips
+        void UpdateHoverTooltip(const UCEvent& event, int row, int column, int headerColumn);
+        void HideHoverTooltip();
 
         // Event handlers
         bool HandleMouseDown(const UCEvent& event);

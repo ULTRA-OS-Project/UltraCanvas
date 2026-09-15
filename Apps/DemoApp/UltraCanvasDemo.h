@@ -188,6 +188,10 @@ namespace UltraCanvas {
         // ===== DEMO ITEM MANAGEMENT =====
         void RegisterDemoItem(std::unique_ptr<DemoItem> item);
         void DisplayDemoItem(const std::string& itemId);
+        // Show an item the way a click on the tree would: the display, the tree
+        // selection, the header title and the status line all move together.
+        // Returns false for an unknown item id.
+        bool SelectDemoItem(const std::string& itemId);
         void ClearDisplay();
         void UpdateStatusDisplay(const std::string& itemId);
         void UpdateHeaderDisplay(const std::string& itemId);

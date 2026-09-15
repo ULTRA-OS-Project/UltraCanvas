@@ -118,7 +118,8 @@ namespace UltraCanvas {
                 return std::string{};
 
             case ListDataRole::ToolTipRole:
-                return item.tooltip;
+                // Per-cell tooltip when the column has one, row tooltip otherwise
+                return item.GetCellTooltip(index.column);
 
             default:
                 return std::monostate{};
@@ -149,7 +150,9 @@ namespace UltraCanvas {
                 break;
 
             case ListDataRole::ToolTipRole:
-                item.tooltip = *str;
+                // Writes the tooltip of that one cell; the row-wide fallback
+                // is set through MultiColumnListItem::tooltip.
+                item.SetCellTooltip(index.column, *str);
                 break;
 
             default:
