@@ -1342,6 +1342,37 @@ add_test(
 )
 message(STATUS "    Test registered: CSSLayoutAutoExpandTest")
 
+# ===== CSS LAYOUT SAFE ALIGNMENT TEST =====
+# Content that does not fit its flex line aligns to the START of it rather than
+# to a negative offset, so a scrolling pane can reach all of it - the demo's
+# LaTeX page, whose centred tall formulas lost their top half. Pure geometry.
+message(STATUS "  Building CSSLayoutSafeAlignTest...")
+add_executable(CSSLayoutSafeAlignTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/CSSLayoutSafeAlignTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Element.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/FlexLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/GridLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/AbsoluteLayout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Dimension.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/Layout.cpp
+    ${ULTRACANVAS_CORE_DIR}/CSSLayout/LayoutUtils.cpp
+)
+target_include_directories(CSSLayoutSafeAlignTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(CSSLayoutSafeAlignTest PRIVATE cxx_std_20)
+set_target_properties(CSSLayoutSafeAlignTest PROPERTIES
+    OUTPUT_NAME "CSSLayoutSafeAlignTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME CSSLayoutSafeAlignTest
+    COMMAND CSSLayoutSafeAlignTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: CSSLayoutSafeAlignTest")
+
 # ===== DIALOG ICON LAYOUT TEST =====
 # The modal dialog's content row with and without the severity icon: hiding it
 # must drop its column and the flex gap after it, so an element centred in the

@@ -228,6 +228,30 @@ public:
         std::string& outRaw,
         const UltraNetMailOptions& options) = 0;
 
+    // Fetch the raw bodies of many messages, streaming each to `onMessage` as it
+    // arrives (uid, raw). The point is connection reuse: a plug-in should fetch
+    // all UIDs over ONE authenticated connection instead of reconnecting per
+    // message — the difference between a few seconds and several minutes on a
+    // provider (e.g. Gmail) that makes per-connection XOAUTH2 auth slow. The
+    // default keeps the old behaviour (one FetchMessage per UID) so plug-ins that
+    // do not override it, and test fakes, are unaffected. `onMessage` is not
+    // called for a UID whose fetch fails or returns empty.
+    virtual UltraNetResult FetchMessageBodies(
+        const std::string& serverUrl,
+        const std::string& folder,
+        const std::vector<uint32_t>& uids,
+        const std::function<void(uint32_t uid, const std::string& raw)>& onMessage,
+        const UltraNetMailOptions& options) {
+        // Bodies are best-effort: skip a message whose fetch fails rather than
+        // abandoning the rest (matches the historical per-message behaviour).
+        for (uint32_t uid : uids) {
+            std::string raw;
+            if (FetchMessage(serverUrl, folder, uid, raw, options) && !raw.empty())
+                onMessage(uid, raw);
+        }
+        return UltraNetResult::Ok();
+    }
+
     // Set (or clear) flag bits on a message (UID STORE +/-FLAGS).
     virtual UltraNetResult StoreFlags(
         const std::string& serverUrl,

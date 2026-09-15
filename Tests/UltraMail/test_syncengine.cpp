@@ -74,13 +74,29 @@ public:
                 if (e.uid > sinceUid) out.push_back(e);
         return UltraNetResult::Ok();
     }
+    int fetchMessageCalls = 0;          // per-message fetches (slow path)
+    int fetchBodiesCalls  = 0;          // batched fetches (fast path)
+    std::vector<uint32_t> lastBodyUids; // UIDs the batch was asked for
+
     UltraNetResult FetchMessage(const std::string&, const std::string& folder, uint32_t uid,
                                 std::string& outRaw, const UltraNetMailOptions&) override {
+        ++fetchMessageCalls;
         auto it = bodies.find(folder + "/" + std::to_string(uid));
         if (it == bodies.end())
             return UltraNetResult::Error(UltraNetResultCode::NotFound, "no body");
         outRaw = it->second;
         return UltraNetResult::Ok();
+    }
+    // Record the batch entry point, then delegate to the base default so the
+    // bodies still stream through (the real IMAP plug-in reuses one connection).
+    UltraNetResult FetchMessageBodies(
+        const std::string& serverUrl, const std::string& folder,
+        const std::vector<uint32_t>& uids,
+        const std::function<void(uint32_t, const std::string&)>& onMessage,
+        const UltraNetMailOptions& options) override {
+        ++fetchBodiesCalls;
+        lastBodyUids = uids;
+        return IMailboxProtocolPlugin::FetchMessageBodies(serverUrl, folder, uids, onMessage, options);
     }
     UltraNetResult StoreFlags(const std::string&, const std::string& folder, uint32_t uid,
                               UltraNetMailFlags flags, bool set, const UltraNetMailOptions&) override {
@@ -235,6 +251,12 @@ TEST(fetch_bodies_writes_parseable_eml) {
     SyncOutcome r = engine.SyncMessages("erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/true);
     REQUIRE(r.ok);
     REQUIRE_EQ(r.stats.bodies, 3);
+
+    // The engine must fetch all bodies through the ONE batched entry point (which
+    // the IMAP plug-in serves over a single reused connection), not reconnect per
+    // message. One call, carrying every UID.
+    REQUIRE_EQ(fx.fake.fetchBodiesCalls, 1);
+    REQUIRE_EQ(fx.fake.lastBodyUids.size(), static_cast<std::size_t>(3));
 
     const std::string path = engine.BodyPath("erika", "INBOX", 1);
     REQUIRE(fs::exists(path));

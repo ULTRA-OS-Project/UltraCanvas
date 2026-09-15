@@ -1,0 +1,79 @@
+\documentclass[11pt]{article}
+% Code in a document: verbatim, lstlisting with a language, minted, and the
+% inline forms \verb and \lstinline. Each becomes a code block (or an inline
+% code run) in the imported document, with the language kept as the fence
+% hint, so the renderer can highlight it.
+\usepackage{listings}
+\usepackage{minted}
+\usepackage{xcolor}
+\title{Code in Documents}
+\author{The UltraCanvas Team}
+\date{September 2026}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Verbatim material is the one place where a reader must stop reading LaTeX:
+inside it, a backslash is a backslash. The importer switches the scanner off
+for the whole body of these environments, keeps the lines exactly as they
+stand, and records the language so the fence says
+\texttt{```cpp} rather than \texttt{```}.
+\end{abstract}
+
+\section{Environments}
+\begin{description}
+  \item[verbatim] The plain one: no options, no language, every character
+        kept.
+  \item[lstlisting] Takes options; \texttt{language=} becomes the block's
+        language hint.
+  \item[minted] Takes the language as its argument:
+        \texttt{\textbackslash begin\{minted\}\{python\}}.
+\end{description}
+
+\subsection{verbatim}
+\begin{verbatim}
+mkdir build && cd build
+cmake .. -DULTRACANVAS_LATEX_ENGINE=native
+make -j$(nproc)
+\end{verbatim}
+
+\subsection{lstlisting with a language}
+\begin{lstlisting}[language=C++]
+auto formula = CreateLaTeXView("eq1", 20, 20, 0, 0);
+if (formula) {                       // null only if the module can't be loaded
+    formula->SetTextSize(28.0f);
+    formula->SetTextColor(Colors::Black);
+    formula->SetLaTeX("\\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}");
+    window->AddChild(formula);
+}
+\end{lstlisting}
+
+\subsection{minted with a language}
+\begin{minted}{python}
+def escape_velocity(mass, radius, G=6.674e-11):
+    """Escape velocity in m/s, from the mass and radius of a body."""
+    return (2 * G * mass / radius) ** 0.5
+
+print(f"{escape_velocity(5.972e24, 6.371e6):.0f} m/s")
+\end{minted}
+
+\section{Code inside a sentence}
+\texttt{\textbackslash verb} takes its delimiter from the character that
+follows it, so
+\verb|a_b^c| and \verb+x | y+ both come through untouched. The listings
+package spells the same thing \lstinline{SetLaTeX}, and
+\texttt{\textbackslash texttt} gives \texttt{monospaced text} that is not
+code: the first two become code runs in the model, the third a plain run in
+a monospaced family.
+
+A code run survives every export: \lstinline{UCRichDocument} is a backtick
+span in Markdown, a \texttt{<code>} element in HTML, and a character style
+in ODT and DOCX.
+
+\section{What is not kept}
+Syntax highlighting is the renderer's business, not the importer's: colours
+chosen by \texttt{\textbackslash lstset} or by a minted style are dropped,
+and the language hint is passed on instead. Line numbers, frames and captions
+attached to a listing go the same way --- the model stores code, and the
+view decides how to show it.
+\end{document}

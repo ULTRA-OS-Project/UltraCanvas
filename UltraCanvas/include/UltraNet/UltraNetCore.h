@@ -234,6 +234,17 @@ void           UltraNet_SetConfig(const UltraNetConfig& config);
 std::string    UltraNet_GetVersion();
 std::string    UltraNet_GetBackendInfo();
 
+// The CA-certificate bundle file UltraNet should trust for TLS when no explicit
+// UltraNetConfig::caBundlePath is set. Resolved once, in priority order:
+// CURL_CA_BUNDLE / SSL_CERT_FILE in the environment; a cacert.pem shipped next to
+// the executable (Windows: exe dir, then Resources\certs\); well-known system
+// locations; libcurl's own build-time default if it exists here. Empty means
+// "rely on the platform default / native cert store". Both the HTTP client and
+// the IMAP/SMTP plug-ins use this so they trust the same anchors — important on
+// Windows, where the system libcurl's baked-in path does not exist on an end
+// user's machine.
+std::string    UltraNet_ResolveCaBundlePath();
+
 // True if the linked libcurl was built with HTTP/3 (QUIC) support
 // (CURL_VERSION_HTTP3). Apps can probe this before setting
 // UltraNetConfig::enableHttp3 / http3Only to give end-users a clearer

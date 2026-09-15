@@ -65,6 +65,7 @@ UltraNetResultCode MapCurlError(CURLcode rc) {
         case CURLE_LOGIN_DENIED:             return UltraNetResultCode::AuthenticationFailed;
         case CURLE_SSL_CONNECT_ERROR:        return UltraNetResultCode::TlsHandshakeFailed;
         case CURLE_PEER_FAILED_VERIFICATION: return UltraNetResultCode::TlsCertificateInvalid;
+        case CURLE_SSL_CACERT_BADFILE:       return UltraNetResultCode::TlsCertificateInvalid;
         default:                             return UltraNetResultCode::Unknown;
     }
 }
@@ -105,29 +106,51 @@ void ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTl
     if (opt.useTls || implicitTls) {
         curl_easy_setopt(h, CURLOPT_USE_SSL,
                          implicitTls ? CURLUSESSL_ALL : CURLUSESSL_TRY);
+        // Trust the same CA anchors as the HTTP client. Matters on Windows,
+        // where the system libcurl's baked-in CA path does not exist on an end
+        // user's machine; empty leaves libcurl's own default in place.
+        const std::string caBundle = UltraNet_ResolveCaBundlePath();
+        if (!caBundle.empty())
+            curl_easy_setopt(h, CURLOPT_CAINFO, caBundle.c_str());
+#if defined(_WIN32) && defined(CURLSSLOPT_NATIVE_CA)
+        curl_easy_setopt(h, CURLOPT_SSL_OPTIONS, static_cast<long>(CURLSSLOPT_NATIVE_CA));
+#endif
     }
     curl_easy_setopt(h, CURLOPT_CONNECTTIMEOUT_MS, static_cast<long>(opt.connectTimeoutMs));
     curl_easy_setopt(h, CURLOPT_TIMEOUT_MS,        static_cast<long>(opt.operationTimeoutMs));
     curl_easy_setopt(h, CURLOPT_NOSIGNAL, 1L);
 }
 
-// Run a custom IMAP command against `url`, capturing the untagged response.
+// One IMAP transfer on an EXISTING, already-configured handle (ApplyCommonOptions
+// done once by the caller). This is what makes connection reuse possible: repeated
+// calls on the same handle keep curl's authenticated connection alive instead of
+// reconnecting (TCP + TLS + XOAUTH2) per message. `customReq` empty = a GET-style
+// body/section fetch; otherwise a UID command (SEARCH / FETCH / STORE / ...).
+UltraNetResult PerformOn(CURL* h, const std::string& url,
+                         const std::string& customReq, std::string& outBody) {
+    outBody.clear();
+    curl_easy_setopt(h, CURLOPT_URL, url.c_str());
+    // Reset the custom request each call: a leftover CUSTOMREQUEST would turn a
+    // plain body fetch into the previous command.
+    curl_easy_setopt(h, CURLOPT_CUSTOMREQUEST, customReq.empty() ? nullptr : customReq.c_str());
+    curl_easy_setopt(h, CURLOPT_WRITEFUNCTION, &WriteToString);
+    curl_easy_setopt(h, CURLOPT_WRITEDATA, &outBody);
+    CURLcode rc = curl_easy_perform(h);
+    if (rc != CURLE_OK)
+        return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
+    return UltraNetResult::Ok();
+}
+
+// Run a custom IMAP command against `url`, capturing the untagged response. One
+// standalone connection — for the one-off operations (LIST, STATUS, STORE, MOVE).
 UltraNetResult RunCommand(const std::string& url, const std::string& customReq,
                           const UltraNetMailOptions& opt, bool implicitTls,
                           std::string& outBody) {
     CurlHandle h = NewHandle();
     if (!h)
         return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
-    curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
-    if (!customReq.empty())
-        curl_easy_setopt(h.get(), CURLOPT_CUSTOMREQUEST, customReq.c_str());
-    curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
-    curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &outBody);
     ApplyCommonOptions(h.get(), opt, implicitTls);
-    CURLcode rc = curl_easy_perform(h.get());
-    if (rc != CURLE_OK)
-        return UltraNetResult::Error(MapCurlError(rc), curl_easy_strerror(rc));
-    return UltraNetResult::Ok();
+    return PerformOn(h.get(), url, customReq, outBody);
 }
 
 // Parse a full RFC 822 message into UltraNetMailMessage (for bulk FetchMessages).
@@ -239,11 +262,18 @@ public:
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
         const std::string mbUrl = base + folder;
 
+        // One handle for the whole pass: the SEARCH and every per-UID header/flags
+        // fetch reuse the same authenticated connection instead of reconnecting.
+        CurlHandle h = NewHandle();
+        if (!h)
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+        ApplyCommonOptions(h.get(), options, tls);
+
         std::ostringstream search;
         if (sinceUid > 0) search << "UID SEARCH UID " << (sinceUid + 1) << ":*";
         else              search << "UID SEARCH ALL";
         std::string searchBody;
-        UltraNetResult sr = RunCommand(mbUrl, search.str(), options, tls, searchBody);
+        UltraNetResult sr = PerformOn(h.get(), mbUrl, search.str(), searchBody);
         if (!sr) return sr;
         std::vector<uint32_t> uids = ParseSearchUids(searchBody);
         // Newest first, bounded by maxMessages.
@@ -260,13 +290,13 @@ public:
             std::string headerRaw;
             std::ostringstream hurl;
             hurl << base << folder << "/;UID=" << uid << ";SECTION=HEADER";
-            if (RunFetch(hurl.str(), options, tls, headerRaw))
+            if (PerformOn(h.get(), hurl.str(), std::string(), headerRaw))
                 ParseEnvelopeHeaders(headerRaw, env);
 
             // Flags.
             std::string flagsBody;
             std::ostringstream fcmd; fcmd << "UID FETCH " << uid << " (FLAGS)";
-            if (RunCommand(mbUrl, fcmd.str(), options, tls, flagsBody))
+            if (PerformOn(h.get(), mbUrl, fcmd.str(), flagsBody))
                 env.flags = ParseFetchFlags(flagsBody);
 
             outEnvelopes.push_back(std::move(env));
@@ -286,6 +316,35 @@ public:
         std::ostringstream u; u << base << folder << "/;UID=" << uid;
         if (!RunFetch(u.str(), options, tls, outRaw))
             return UltraNetResult::Error(UltraNetResultCode::Unknown, "fetch failed");
+        return UltraNetResult::Ok();
+    }
+
+    // Fetch many bodies over ONE authenticated connection: the whole point of the
+    // performance fix. Without this, the sync engine calls FetchMessage per
+    // message and reconnects (TCP + TLS + XOAUTH2) each time — minutes for a
+    // mailbox that should take seconds. Bodies are best-effort: a UID whose fetch
+    // fails is skipped, not fatal (matches the previous per-message behaviour).
+    UltraNetResult FetchMessageBodies(
+        const std::string& serverUrl, const std::string& folder,
+        const std::vector<uint32_t>& uids,
+        const std::function<void(uint32_t uid, const std::string& raw)>& onMessage,
+        const UltraNetMailOptions& options) override {
+        if (uids.empty()) return UltraNetResult::Ok();
+        std::string base; bool tls = false;
+        if (!ParseServerBase(serverUrl, base, tls))
+            return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
+
+        CurlHandle h = NewHandle();
+        if (!h)
+            return UltraNetResult::Error(UltraNetResultCode::InsufficientMemory, "curl_easy_init failed");
+        ApplyCommonOptions(h.get(), options, tls);   // authenticate once; reuse below
+
+        for (uint32_t uid : uids) {
+            std::ostringstream u; u << base << folder << "/;UID=" << uid;
+            std::string raw;
+            if (PerformOn(h.get(), u.str(), std::string(), raw) && !raw.empty())
+                onMessage(uid, raw);
+        }
         return UltraNetResult::Ok();
     }
 
@@ -375,16 +434,15 @@ private:
         return true;
     }
 
-    // GET-style fetch (no custom request) capturing the message body.
+    // GET-style fetch (no custom request) capturing the message body, on its own
+    // one-off connection. FetchEnvelopes / FetchMessageBodies use PerformOn on a
+    // shared handle instead, to avoid a reconnect per message.
     bool RunFetch(const std::string& url, const UltraNetMailOptions& opt,
                   bool tls, std::string& out) {
         CurlHandle h = NewHandle();
         if (!h) return false;
-        curl_easy_setopt(h.get(), CURLOPT_URL, url.c_str());
-        curl_easy_setopt(h.get(), CURLOPT_WRITEFUNCTION, &WriteToString);
-        curl_easy_setopt(h.get(), CURLOPT_WRITEDATA, &out);
         ApplyCommonOptions(h.get(), opt, tls);
-        return curl_easy_perform(h.get()) == CURLE_OK;
+        return static_cast<bool>(PerformOn(h.get(), url, std::string(), out));
     }
 };
 
