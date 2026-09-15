@@ -2154,6 +2154,30 @@ else()
     message(STATUS "  SVGConverterTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# Pins that the SVG reader and writer treat numbers as dot-decimal, which is
+# what the format specifies, rather than reading them through LC_NUMERIC - the
+# defect that made `opacity="0.25"` render as 0 (invisible) on a comma-decimal
+# desktop. Runs its checks under "C" and again under whichever comma-decimal
+# locale the machine has; it reports a skip rather than failing where none is
+# installed, so it is safe on a bare runner.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building SVGLocaleTest...")
+    add_executable(SVGLocaleTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SVGLocaleTest.cpp
+    )
+    target_include_directories(SVGLocaleTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SVGLocaleTest PRIVATE cxx_std_20)
+    target_link_libraries(SVGLocaleTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(SVGLocaleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SVGLocaleTest COMMAND SVGLocaleTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SVGLocaleTest")
+else()
+    message(STATUS "  SVGLocaleTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # Validates the Vector plugin's PDF writer: structural checks (an xref table
 # whose offsets really point at their objects, resources, operators) plus a
 # ghostscript rasterization with pixel checks when gs is installed.
@@ -2943,3 +2967,143 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: CSSLayoutFormGridTest")
+
+# ===== IODEVICEMANAGER FOUNDATION TEST =====
+# The device lifecycle and the registry's merge semantics, driven by a fake
+# backend so the test needs no scanner, camera or printer attached. Links the
+# IODeviceManager core sources directly rather than the UltraCanvas library:
+# the foundation layer depends on nothing but the standard library, so this
+# test builds and runs on a machine with none of the rendering dependencies
+# installed.
+message(STATUS "  Building IODeviceManagerTest...")
+add_executable(IODeviceManagerTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceManagerTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceManager.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceBackends.cpp
+    # Backends.cpp names every backend this build compiles in, so anything
+    # linking it needs them too. The camera backend is __linux__-guarded and
+    # so is an empty translation unit on the other platforms.
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
+    # The SANE backend is guarded on ULTRACANVAS_HAS_SANE as well as the
+    # platform, and this test does not define it, so the file compiles to
+    # nothing here and no scanner backend is registered.
+    ${ULTRACANVAS_ROOT}/UltraCanvas/OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+    # The test defines no ULTRACANVAS_HAS_UDEV, so this supplies the null
+    # watcher and the test substitutes its own through SetDeviceWatcher().
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceWatcherFallback.cpp
+)
+target_include_directories(IODeviceManagerTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODeviceManagerTest PRIVATE cxx_std_20)
+find_package(Threads REQUIRED)
+target_link_libraries(IODeviceManagerTest PRIVATE Threads::Threads)
+set_target_properties(IODeviceManagerTest PROPERTIES
+    OUTPUT_NAME "IODeviceManagerTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME IODeviceManagerTest
+    COMMAND IODeviceManagerTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: IODeviceManagerTest")
+
+# ===== IODEVICEMANAGER PRINTER TEST =====
+# Renderer selection and the option resolver, driven by a fake transport and a
+# fake raw-emitting renderer. That fake stands in for GutenPrint, so the seam
+# the renderer/transport split turns on is asserted here without libgutenprint
+# or a printer being present. Links the platform-neutral printer sources only.
+message(STATUS "  Building IODevicePrinterTest...")
+add_executable(IODevicePrinterTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODevicePrinterTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinter.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterTypes.cpp
+    # Page layout for the drawing-session path (the Windows GDI renderer).
+    # Platform-neutral by construction - the device is reached only through
+    # IPrintPageTarget - so the fitting, wrapping and pagination assertions
+    # run on every platform in the matrix, not just the one that needs them.
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterPage.cpp
+    # Matching a dialog's printer name to a device, and turning a dialog
+    # answer into a job. Its submitting half lives in a separate file so this
+    # one names no dialog and no registry, and links here without either.
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrintDialog.cpp
+)
+target_include_directories(IODevicePrinterTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODevicePrinterTest PRIVATE cxx_std_20)
+set_target_properties(IODevicePrinterTest PROPERTIES
+    OUTPUT_NAME "IODevicePrinterTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME IODevicePrinterTest
+    COMMAND IODevicePrinterTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: IODevicePrinterTest")
+
+# ===== IODEVICEMANAGER CAMERA TEST =====
+# Configuration validation, the streaming state machine and control clamping,
+# driven by a fake camera so it needs no /dev/video*. The streaming assertions
+# are the point: no frame may reach a callback after StopStream() returns.
+message(STATUS "  Building IODeviceCameraTest...")
+add_executable(IODeviceCameraTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceCameraTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCamera.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
+)
+target_include_directories(IODeviceCameraTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODeviceCameraTest PRIVATE cxx_std_20)
+find_package(Threads REQUIRED)
+target_link_libraries(IODeviceCameraTest PRIVATE Threads::Threads)
+set_target_properties(IODeviceCameraTest PROPERTIES
+    OUTPUT_NAME "IODeviceCameraTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME IODeviceCameraTest
+    COMMAND IODeviceCameraTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: IODeviceCameraTest")
+
+# ===== IODEVICEMANAGER SCANNER TEST =====
+# Configuration resolution and the page loop, driven by a fake scanner so it
+# runs with no scanner attached. The page loop is the point: an empty feeder
+# ends a run normally rather than discarding the pages already scanned.
+message(STATUS "  Building IODeviceScannerTest...")
+add_executable(IODeviceScannerTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceScannerTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevice.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScanner.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+)
+target_include_directories(IODeviceScannerTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+)
+target_compile_features(IODeviceScannerTest PRIVATE cxx_std_20)
+set_target_properties(IODeviceScannerTest PROPERTIES
+    OUTPUT_NAME "IODeviceScannerTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME IODeviceScannerTest
+    COMMAND IODeviceScannerTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: IODeviceScannerTest")

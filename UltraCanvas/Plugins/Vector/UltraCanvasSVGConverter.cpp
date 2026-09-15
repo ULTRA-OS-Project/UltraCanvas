@@ -14,15 +14,19 @@
 
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic
 
 #include <tinyxml2.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <fstream>
 #include <functional>
+#include <iomanip>
+#include <locale>
 #include <map>
 #include <sstream>
 #include <variant>
@@ -36,10 +40,18 @@ namespace {
 
 // ===== SHARED SMALL HELPERS =====
 
+// The write side of the same locale problem the parsers below avoid, and the
+// worse half: snprintf("%.6g") renders through LC_NUMERIC, so on a
+// comma-decimal desktop this wrote `stroke-width="1,5"` - and inside path data
+// a comma is the coordinate separator, so `M 1,5` silently became "move to
+// (1, 5)" rather than "move to 1.5". A different picture, not a broken file.
+// An imbued stream formats the same as "%.6g" (six significant digits,
+// defaultfloat) with the decimal point pinned to '.'.
 std::string Num(double v) {
-    char buf[48];
-    std::snprintf(buf, sizeof(buf), "%.6g", v);
-    return buf;
+    std::ostringstream out;
+    out.imbue(std::locale::classic());
+    out << std::setprecision(6) << v;
+    return out.str();
 }
 
 std::string HexColor(const Color& c) {
@@ -664,11 +676,20 @@ private:
         return colon ? colon + 1 : name;
     }
 
+    // ParseFloatClassic, not strtod: SVG lengths are dot-decimal by
+    // specification, and strtod reads them through LC_NUMERIC, which the Linux
+    // backend sets from the environment for XIM. See UltraCanvasTextUtils.h.
     static double ParseLength(const char* s, double fallback) {
         if (!s || !*s) return fallback;
-        char* end = nullptr;
-        double v = std::strtod(s, &end);
-        if (end == s) return fallback;
+        // strtod skipped leading whitespace and a leading '+'; tinyxml2 hands
+        // attribute values over untrimmed and the SVG number grammar allows the
+        // sign, so keep both here - ParseFloatClassic takes neither, by design.
+        const char* begin = s;
+        while (*begin && std::isspace(static_cast<unsigned char>(*begin))) ++begin;
+        if (*begin == '+') ++begin;
+        double v = fallback;
+        const char* end = ParseFloatClassic(begin, begin + std::strlen(begin), v);
+        if (end == begin) return fallback;
         // Unit handling: user units and px are the native unit; the absolute
         // units convert at CSS's 96 dpi.
         if (std::strncmp(end, "pt", 2) == 0) v *= 96.0 / 72.0;
@@ -734,15 +755,17 @@ private:
             GradientStop gs;
             std::string off = Prop(st, "offset");
             if (!off.empty()) {
-                gs.position = std::strtod(off.c_str(), nullptr);
+                TryParseFloat(off, gs.position);
                 if (off.back() == '%') gs.position /= 100.0;
             }
             std::string sc = Prop(st, "stop-color");
             gs.color = sc.empty() ? Color(0, 0, 0, 255) : ParseColorString(sc);
             std::string so = Prop(st, "stop-opacity");
             if (!so.empty()) {
+                double alpha = 1.0;
+                TryParseFloat(so, alpha);
                 gs.color.a = static_cast<uint8_t>(
-                        std::max(0.0, std::min(1.0, std::strtod(so.c_str(), nullptr))) * 255);
+                        std::max(0.0, std::min(1.0, alpha)) * 255);
             }
             stops.push_back(gs);
         }
@@ -816,8 +839,9 @@ private:
 
     static float ParseOpacity(const std::string& v, float fallback) {
         if (v.empty()) return fallback;
-        double d = std::strtod(v.c_str(), nullptr);
-        if (!v.empty() && v.back() == '%') d /= 100.0;
+        double d = fallback;
+        TryParseFloat(v, d);
+        if (v.back() == '%') d /= 100.0;
         return static_cast<float>(std::max(0.0, std::min(1.0, d)));
     }
 
@@ -848,7 +872,7 @@ private:
             if (join == "round") st.LineJoin = StrokeLineJoin::Round;
             else if (join == "bevel") st.LineJoin = StrokeLineJoin::Bevel;
             std::string ml = Prop(e, "stroke-miterlimit");
-            if (!ml.empty()) st.MiterLimit = static_cast<float>(std::strtod(ml.c_str(), nullptr));
+            if (!ml.empty()) TryParseFloat(ml, st.MiterLimit);
             std::string dash = Prop(e, "stroke-dasharray");
             if (!dash.empty() && dash != "none") {
                 for (char& ch : dash) if (ch == ',') ch = ' ';
@@ -857,7 +881,7 @@ private:
                 while (iss >> d) st.DashArray.push_back(d);
             }
             std::string doff = Prop(e, "stroke-dashoffset");
-            if (!doff.empty()) st.DashOffset = std::strtod(doff.c_str(), nullptr);
+            if (!doff.empty()) TryParseFloat(doff, st.DashOffset);
             st.Opacity = ParseOpacity(Prop(e, "stroke-opacity"), 1.0f);
             s.Stroke = st;
         } else if (strokeVal == "none") {

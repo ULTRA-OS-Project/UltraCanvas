@@ -7,6 +7,7 @@
 
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasWindowsApplication.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 
 #ifndef WIN32_LEAN_AND_MEAN
 #define WIN32_LEAN_AND_MEAN
@@ -16,11 +17,18 @@
 #endif
 #include <windows.h>
 #include <commdlg.h>
+// DeviceCapabilitiesW lives here, not in windows.h: the build defines
+// WIN32_LEAN_AND_MEAN, which is the switch that stops windows.h pulling the
+// spooler header in. Without the include a cross-compile finds it anyway, so
+// this has to be explicit or it only fails on the real build.
+#include <winspool.h>
 #include <shlobj.h>
 #include <shobjidl.h>
+#include <algorithm>
 #include <filesystem>
 #include <iostream>
 #include <fstream>
+#include <vector>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
@@ -725,43 +733,238 @@ namespace UltraCanvas {
             return result.IsOK() ? result.value : "";
         }
 
+    namespace {
+
+// ===== DEVMODE → IOPrintOptions =====
+// The print dialog hands back a DEVMODE, which is the driver's own settings
+// block. Everything below reads it; nothing below prints.
+
+        // DEVMODE quotes paper in tenths of a millimetre, the printer
+        // vocabulary in hundredths.
+        int TenthsToHundredths(int tenths) { return tenths * 10; }
+
+        // The paper the DEVMODE selects, in hundredths of a millimetre, or an
+        // invalid pair when the driver will not say.
+        //
+        // dmPaperSize is a DMPAPER_* code, and the codes do not all line up
+        // with the sizes named here - DMPAPER_B4 is JIS B4 at 257x364 mm
+        // while ISO B4 is 250x353, seven and eleven millimetres apart. So the
+        // code is not mapped by hand; it is looked up in the *driver's* own
+        // table through DeviceCapabilities, and the measurements that come
+        // back go to the same recogniser CUPS and GTK use. One rule for what
+        // a sheet is, in all three places, and a driver that offers a size we
+        // have no name for still gets its exact dimensions carried through.
+        IOPaperDimensions PaperDimensionsFromDevMode(const std::wstring& printerName,
+                                                     const DEVMODEW& devMode) {
+            if ((devMode.dmFields & DM_PAPERSIZE) &&
+                devMode.dmPaperSize != DMPAPER_USER && !printerName.empty()) {
+
+                const int count = DeviceCapabilitiesW(printerName.c_str(), nullptr,
+                                                      DC_PAPERS, nullptr, nullptr);
+                if (count > 0) {
+                    std::vector<WORD> codes(static_cast<size_t>(count));
+                    std::vector<POINT> sizes(static_cast<size_t>(count));
+
+                    const int gotCodes = DeviceCapabilitiesW(
+                        printerName.c_str(), nullptr, DC_PAPERS,
+                        reinterpret_cast<LPWSTR>(codes.data()), nullptr);
+                    const int gotSizes = DeviceCapabilitiesW(
+                        printerName.c_str(), nullptr, DC_PAPERSIZE,
+                        reinterpret_cast<LPWSTR>(sizes.data()), nullptr);
+
+                    if (gotCodes == count && gotSizes == count) {
+                        for (int i = 0; i < count; ++i) {
+                            if (codes[static_cast<size_t>(i)] == devMode.dmPaperSize) {
+                                // DC_PAPERSIZE is in tenths of a millimetre.
+                                return IOPaperDimensions{
+                                    TenthsToHundredths(static_cast<int>(sizes[static_cast<size_t>(i)].x)),
+                                    TenthsToHundredths(static_cast<int>(sizes[static_cast<size_t>(i)].y))};
+                            }
+                        }
+                    }
+                }
+            }
+
+            if ((devMode.dmFields & DM_PAPERWIDTH) && (devMode.dmFields & DM_PAPERLENGTH)) {
+                return IOPaperDimensions{
+                    TenthsToHundredths(static_cast<int>(devMode.dmPaperWidth)),
+                    TenthsToHundredths(static_cast<int>(devMode.dmPaperLength))};
+            }
+
+            return IOPaperDimensions{};
+        }
+
+        void ReadDevMode(const std::wstring& printerName, const DEVMODEW& devMode,
+                         IOPrintOptions& options) {
+            if (devMode.dmFields & DM_COPIES) {
+                options.copies = std::max<short>(1, devMode.dmCopies);
+            }
+            if (devMode.dmFields & DM_COLLATE) {
+                options.collate = devMode.dmCollate == DMCOLLATE_TRUE;
+            }
+            if (devMode.dmFields & DM_ORIENTATION) {
+                options.page.orientation = devMode.dmOrientation == DMORIENT_LANDSCAPE
+                                               ? IOPrintOrientation::Landscape
+                                               : IOPrintOrientation::Portrait;
+            }
+            if (devMode.dmFields & DM_DUPLEX) {
+                switch (devMode.dmDuplex) {
+                    case DMDUP_VERTICAL:   options.duplex = IODuplexMode::LongEdge; break;
+                    case DMDUP_HORIZONTAL: options.duplex = IODuplexMode::ShortEdge; break;
+                    case DMDUP_SIMPLEX:
+                    default:               options.duplex = IODuplexMode::None; break;
+                }
+            }
+            if (devMode.dmFields & DM_COLOR) {
+                // Passed on as the user set it. PrinterDevice resolves it
+                // against the printer afterwards and reports a substitution,
+                // which is a better place to meet a mono printer than here.
+                options.colorMode = devMode.dmColor == DMCOLOR_COLOR
+                                        ? IOPrinterColorMode::Color
+                                        : IOPrinterColorMode::Grayscale;
+            }
+
+            // dmPrintQuality is overloaded: positive values are a dpi, and the
+            // four negative DMRES_* constants are named qualities. A dpi is
+            // the more specific answer, so it wins.
+            if (devMode.dmFields & DM_PRINTQUALITY) {
+                const short quality = devMode.dmPrintQuality;
+                if (quality > 0) {
+                    const int dpiY = (devMode.dmFields & DM_YRESOLUTION)
+                                         ? static_cast<int>(devMode.dmYResolution)
+                                         : quality;
+                    options.resolutionMode = IOResolutionMode::Custom;
+                    options.customResolution = IOResolution{quality, dpiY};
+                } else {
+                    switch (quality) {
+                        case DMRES_DRAFT:  options.quality = IOPrintQuality::Draft; break;
+                        case DMRES_LOW:    options.quality = IOPrintQuality::Draft; break;
+                        case DMRES_HIGH:   options.quality = IOPrintQuality::High; break;
+                        case DMRES_MEDIUM:
+                        default:           options.quality = IOPrintQuality::Normal; break;
+                    }
+                }
+            }
+
+            const IOPaperDimensions paper = PaperDimensionsFromDevMode(printerName, devMode);
+            if (paper.IsValid()) {
+                options.page.paperSize =
+                    IOPaperSizeFromDimensions(paper.widthHundredthsMM,
+                                              paper.heightHundredthsMM);
+                if (options.page.paperSize == IOPaperSize::Unknown) {
+                    // A size the driver offered but this vocabulary has no
+                    // name for is carried by its measurements rather than
+                    // substituted for the A4 default.
+                    options.page.paperSize = IOPaperSize::Custom;
+                    options.page.customSize = paper;
+                }
+            }
+        }
+
+        // The selected printer's name out of a DEVNAMES block, which stores
+        // its three strings as offsets in WCHARs from the head of the block.
+        std::wstring PrinterNameFromDevNames(const DEVNAMES* devNames) {
+            if (!devNames) return std::wstring();
+            const wchar_t* base = reinterpret_cast<const wchar_t*>(devNames);
+            return std::wstring(base + devNames->wDeviceOffset);
+        }
+
+    }  // namespace
+
+    NativePrintResult UltraCanvasNativeDialogs::RequestPrintSettings(
+            const std::string& documentName,
+            UltraCanvasWindowBase* parent) {
+
+        (void)documentName;   // Win32's print dialog shows no document name
+
+        NativePrintResult chosen;
+
+        PRINTDLGW dialog = {};
+        dialog.lStructSize = sizeof(dialog);
+        dialog.hwndOwner = ToHWND(parent);
+
+        // PD_USEDEVMODECOPIESANDCOLLATE puts copies and collation in the
+        // DEVMODE, where the driver sees them, instead of in nCopies, where
+        // only the caller would - and where a driver that does its own
+        // collation would then do it twice.
+        //
+        // No PD_RETURNDC: this asks what the user wants and nothing more. The
+        // device context for the job is created later, by the GDI transport,
+        // from the options below.
+        dialog.Flags = PD_ALLPAGES | PD_USEDEVMODECOPIESANDCOLLATE | PD_NOSELECTION;
+        dialog.nMinPage = 1;
+        dialog.nMaxPage = 0xFFFF;
+        dialog.nFromPage = 1;
+        dialog.nToPage = 0xFFFF;
+
+        if (!PrintDlgW(&dialog)) {
+            // Cancel and failure are the same return; CommDlgExtendedError()
+            // tells them apart, and neither is a printable answer, so both
+            // leave the result cancelled.
+            if (dialog.hDevMode)  GlobalFree(dialog.hDevMode);
+            if (dialog.hDevNames) GlobalFree(dialog.hDevNames);
+            return chosen;
+        }
+
+        std::wstring printerName;
+        if (dialog.hDevNames) {
+            if (const DEVNAMES* devNames =
+                    static_cast<const DEVNAMES*>(GlobalLock(dialog.hDevNames))) {
+                printerName = PrinterNameFromDevNames(devNames);
+                GlobalUnlock(dialog.hDevNames);
+            }
+        }
+
+        if (dialog.hDevMode) {
+            if (const DEVMODEW* devMode =
+                    static_cast<const DEVMODEW*>(GlobalLock(dialog.hDevMode))) {
+                ReadDevMode(printerName, *devMode, chosen.options);
+                GlobalUnlock(dialog.hDevMode);
+            }
+        }
+
+        // PrintDlg hands ownership of both blocks to the caller, whether it
+        // succeeded or not.
+        if (dialog.hDevMode)  GlobalFree(dialog.hDevMode);
+        if (dialog.hDevNames) GlobalFree(dialog.hDevNames);
+
+        chosen.printerName = UltraCanvasWindowsApplication::Utf16ToUtf8(printerName);
+        chosen.printToFile = (dialog.Flags & PD_PRINTTOFILE) != 0;
+
+        if (dialog.Flags & PD_PAGENUMS) {
+            // The dialog does not know the document's length, so the upper
+            // bound is whatever the user typed. Capped so a slip of the
+            // keyboard cannot turn into an enormous vector; pages past the end
+            // are dropped when the range meets the paginated document anyway.
+            constexpr int kMaxPages = 100000;
+            const int first = std::max<int>(1, dialog.nFromPage);
+            const int last = static_cast<int>(dialog.nToPage);
+            for (int page = first;
+                 page <= last && static_cast<int>(chosen.pageRange.size()) < kMaxPages;
+                 ++page) {
+                chosen.pageRange.push_back(page);
+            }
+        }
+
+        // A confirmed dialog that named no printer is not a choice we can act
+        // on, so it is reported as a cancellation rather than as an OK with an
+        // empty name that fails one layer later.
+        chosen.accepted = !chosen.printerName.empty();
+        return chosen;
+    }
+
     bool UltraCanvasNativeDialogs::ShowPrintDialog(
             const std::string& documentName,
             const std::string& textContent,
-            UltraCanvasWindowBase*  parent) {
+            UltraCanvasWindowBase* parent) {
 
-        HWND hwndParent = ToHWND(parent);
-
-        // Write content to a temp file. Wide APIs throughout: the temp path
-        // contains the user profile directory, whose name may not be
-        // representable in the ANSI code page.
-        wchar_t tmpPath[MAX_PATH];
-        GetTempPathW(MAX_PATH, tmpPath);
-        std::wstring tmpFile = std::wstring(tmpPath) + L"ultratexter_print.txt";
-        {
-            std::ofstream f(std::filesystem::path(tmpFile), std::ios::binary);
-            if (!f.is_open()) return false;
-            f << textContent;
-        }
-
-        // Use ShellExecute "print" verb — triggers the OS print dialog
-        // for .txt files via Notepad or the registered text handler
-        HINSTANCE result = ShellExecuteW(
-                hwndParent,
-                L"print",
-                tmpFile.c_str(),
-                nullptr,
-                nullptr,
-                SW_HIDE
-        );
-
-        // ShellExecute returns >32 on success
-        bool launched = (reinterpret_cast<INT_PTR>(result) > 32);
-
-        // Delete temp file after a short delay (printing is async)
-        // In a production implementation this would use a cleanup timer
-        // For now we leave it in the temp folder (OS cleans on reboot)
-
-        return launched;
+        // Prints through PrinterDevice, which draws the text onto the
+        // printer's device context with the settings the user just chose.
+        // The version this replaces showed no print dialog at all: it wrote a
+        // temp file, handed it to ShellExecute's "print" verb - so the dialog
+        // was Notepad's and its settings never came back here - and left the
+        // file behind for the OS to clean up.
+        return PrintTextWithDialog(documentName, textContent, parent).success;
     }
+
 } // namespace UltraCanvas
