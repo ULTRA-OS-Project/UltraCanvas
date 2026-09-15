@@ -1,0 +1,95 @@
+\documentclass[11pt]{article}
+% Macros and theorem environments: \newcommand with arguments and an
+% optional default, \def, \newenvironment, \DeclareMathOperator, and the
+% \newtheorem family with proofs. A macro a formula uses is prepended to
+% that formula's source, so the math engine expands it exactly as the text
+% does — the definition is written once and holds in both modes.
+\usepackage{amsmath}
+\usepackage{amsthm}
+\usepackage{amssymb}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert}
+\newcommand{\inner}[2]{\langle #1, #2 \rangle}
+\newcommand{\greet}[2][Dear]{#1 #2,}
+\def\framework{UltraCanvas}
+\DeclareMathOperator{\tr}{tr}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\newenvironment{aside}{\begin{quote}\itshape}{\end{quote}}
+\newtheorem{theorem}{Theorem}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}{Definition}
+\title{Macros, Operators and Theorems}
+\author{The \framework{} Team}
+\date{September 2026}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Every definition in the preamble above is expanded by the importer, in text
+and in mathematics alike. \framework{} is a \verb|\def|; \texttt{Dear
+reader,} below is a \verb|\newcommand| with an optional argument; and
+\texttt{tr} and \texttt{arg\,min} are operators declared with
+\verb|\DeclareMathOperator|, which the math engine sets upright and spaces
+as operators rather than as a product of letters.
+\end{abstract}
+
+\section{Text macros}
+\greet{reader} a macro with an optional argument uses its default unless one
+is given: \greet[Hello]{reader} shows the other branch. A macro may be used
+inside another, and a \verb|\def| such as \verb|\framework| takes no
+arguments at all --- this paragraph mentions \framework{} twice.
+
+\begin{aside}
+\texttt{aside} is a \verb|\newenvironment| whose body is wrapped in a quote
+and set in italics. The importer expands the begin and end texts around the
+body, so the environment needs no support of its own.
+\end{aside}
+
+\section{Macros in mathematics}\label{sec:math}
+The same \verb|\norm| and \verb|\inner| macros are used in the formulas
+below; nothing declares them a second time.
+\begin{equation}\label{eq:cauchy}
+  \left| \inner{u}{v} \right| \le \norm{u} \, \norm{v},
+  \qquad u, v \in \R^n
+\end{equation}
+Equation~\eqref{eq:cauchy} is the Cauchy--Schwarz inequality. Operators
+declared in the preamble keep their spacing in display style,
+\[
+  \tr(AB) = \tr(BA), \qquad
+  \hat{\theta} = \argmin_{\theta \in \R^p} \norm{y - X\theta}^2 ,
+\]
+and the starred \verb|\DeclareMathOperator*| is what puts the subscript
+under \texttt{arg\,min} rather than beside it.
+
+\section{Theorems}
+\texttt{\textbackslash newtheorem} declares an environment, its printed
+name and --- optionally --- the counter it shares. Here \texttt{lemma}
+shares the theorem counter while \texttt{definition} counts on its own.
+
+\begin{definition}[Norm]\label{def:norm}
+A norm on $\R^n$ is a map $\norm{\cdot} : \R^n \to \R$ that is positive
+definite, absolutely homogeneous and subadditive.
+\end{definition}
+
+\begin{theorem}[Cauchy--Schwarz]\label{thm:cs}
+For all $u, v \in \R^n$, $\left| \inner{u}{v} \right| \le \norm{u} \norm{v}$,
+with equality exactly when $u$ and $v$ are linearly dependent.
+\end{theorem}
+
+\begin{proof}
+For $t \in \R$ expand $0 \le \norm{u - t v}^2 = \norm{u}^2 - 2t \inner{u}{v}
++ t^2 \norm{v}^2$. The right-hand side is a quadratic in $t$ that is never
+negative, so its discriminant is not positive:
+$4 \inner{u}{v}^2 - 4 \norm{u}^2 \norm{v}^2 \le 0$.
+\end{proof}
+
+\begin{lemma}\label{lem:triangle}
+The triangle inequality $\norm{u + v} \le \norm{u} + \norm{v}$ follows from
+Theorem~\ref{thm:cs}, and this lemma is numbered~\ref{lem:triangle} because
+it shares the theorem counter.
+\end{lemma}
+
+Definition~\ref{def:norm} counts separately, which is why it is number~1
+while the theorem above it is also number~1.
+\end{document}

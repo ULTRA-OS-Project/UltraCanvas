@@ -1825,6 +1825,33 @@ as tall as its lines rather than one line tall.
 So: a widget whose height depends on its width reports that dependency through
 `MeasureOwnContent()` — the definite-width branch — and nothing else is required of it.
 
+## Alignment is safe: overflowing content is never pushed off the leading edge
+
+`align-items` / `align-self` (and `justify-content`, which distributes only
+non-negative free space) **align to the start when the content does not fit**. This is
+CSS Box Alignment's `safe` fallback, and in this framework it is the only correct
+behaviour rather than an option: a container clips its children to its content box and
+its scrollbar starts at that edge, so anything placed at a negative offset — above the
+content origin, or left of it — cannot be scrolled to and is simply lost.
+
+```cpp
+// A pane that centres what fits and scrolls to what does not.
+pane->layout.SetFlexRow()
+            .SetFlexJustifyContent(CSSLayout::JustifyContent::Center)
+            .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+pane->AddChild(view);   // taller than the pane ⇒ starts at its top, overflows below
+```
+
+An item shorter than the line is still centred. An item taller than it starts at the
+line's top and overflows at the bottom, where the container's scrollbar reaches it —
+which is what the demo's LaTeX page needs: its tall formulas used to be centred into a
+negative offset and lost their top half, with the vertical scrollbar already at the top
+and no way to bring it back. `Tests/CSSLayoutSafeAlignTest.cpp` pins this, including the
+scroll-range arithmetic `UltraCanvasContainer::UpdateScrollability` performs.
+
+The grid engine needs no such fallback: `ArrangeGrid` sizes a non-stretch item to
+`min(track, natural)`, so a grid item can never be larger than the area it is aligned in.
+
 ## Troubleshooting: my widget renders nothing at all
 
 The most common contract violation fails **silently**: an auto-sized leaf widget
@@ -27637,11 +27664,12 @@ the markup, and the rendered form has no way back to it.
 | `abstract` | Bold centred "Abstract" line, then paragraphs |
 | `tabular` and friends (`tabular*`, `tabularx`, `longtable`), `\hline`/booktabs rules, `\multicolumn` (`columnSpan`), `\multirow` (`rowSpan`) | `Table`; the first row is the header |
 | `figure`, `table`, `wrapfigure`, `\caption` | Centred bold "Figure n:" / "Table n:" paragraph |
+| `\captionof{table}` / `\captionof{figure}` | The same, with the counter named rather than taken from the enclosing float — how a `longtable` or a `tabular` in a `minipage` is captioned |
 | `\includegraphics[width=…,height=…,scale=…]{file}` | `Image` block with the file embedded as media (`width=0.5\textwidth` uses the article text width of 345 pt); a missing file keeps a placeholder and a diagnostic |
 | `verbatim`, `lstlisting[language=…]`, `minted{lang}`, `\verb` | `CodeBlock` with `codeLanguage`; inline code run |
 | `$…$`, `\(…\)`, `\ensuremath` | Inline `math` run |
 | `\[…\]`, `$$…$$`, `equation`, `align`, `gather`, `multline`, `eqnarray`, `flalign`, `alignat` and starred forms | `MathBlock` (alignment environments keep their `\begin…\end` wrapper for the engine) |
-| `\newcommand`, `\renewcommand`, `\providecommand`, `\def`, `\let`, `\newenvironment`, `\DeclareMathOperator` | Expanded in text; the definitions a formula uses are prepended to its source so the engine expands them too |
+| `\newcommand`, `\renewcommand`, `\providecommand`, `\def`, `\let`, `\newenvironment`, `\DeclareMathOperator` | Expanded in text; the definitions a formula uses are prepended to its source so the engine expands them too. A `\newenvironment` may wrap another environment (`{\begin{quote}\itshape}{\end{quote}}`): its `\end` runs the end body first, so the inner environment closes before the user one |
 | `\label`, `\ref`, `\eqref`, `\autoref`, `\cref` | Section, caption, item and equation numbers resolved after the whole source is read; an undefined label prints `??` with a diagnostic |
 | `\cite` family, `thebibliography`, `\bibitem` | `[n]` by bibliography order (the key when unknown); a "References" heading and an ordered list |
 | `\footnote`, `\thanks`, `\footnotemark`/`\footnotetext` | Superscript number in the text; the notes follow a rule at the end of the document |
@@ -27679,6 +27707,29 @@ A `.tex` file with an embedded `\includegraphics` yields `document.media`
 entries; pass `RichDocumentMarkdownOptions::imageDirectory` so the
 serializer writes them where the renderer can load them (the Media Viewer
 and the demo use a per-load temp directory, as the ODT demo does).
+
+## Sample documents
+
+`media/LaTex/` is the corpus the demo's "LaTeX Documents" page lists and the
+test parses; every file in it must import with **no** diagnostics, which is
+what keeps the samples honest. The `article-*.tex` files exercise the
+document subset, one cluster each:
+
+| File | What it shows |
+|---|---|
+| `article-quadratic-note.tex` | The mixture: sections, lists, a table, a figure, theorems, footnotes, references |
+| `article-code-listings.tex` | `verbatim`, `lstlisting[language=…]`, `minted`, `\verb`, `\lstinline` |
+| `article-data-tables.tex` | booktabs rules, `\multicolumn` / `\multirow`, `tabularx`, `longtable` with `\captionof` |
+| `article-figures-images.tex` | `\graphicspath`, the three `\includegraphics` sizings, floats, `wrapfigure`, an image outside a float |
+| `article-structure-refs.tex` | Sectioning and numbering, `\tableofcontents`, labels and `\ref`/`\eqref`, footnotes, citations, an appendix, `\input` |
+| `article-text-styles.tex` | Emphasis, colours and sizes, accents, ligatures, punctuation conventions, links, list and alignment blocks |
+| `article-theorems-macros.tex` | `\newcommand` (with an optional argument), `\def`, `\newenvironment`, `\DeclareMathOperator`, `\newtheorem` and `proof` |
+
+The `math-*.tex` and `microtex-*.tex` files are single formulas, which take
+the other path: the demo hands them straight to
+[`UltraCanvasLaTeXView`](UltraCanvasLaTeXView.md). Fragments meant to be
+`\input` live in `media/LaTex/parts/`, out of the way of the demo's file
+scan, which does not descend into subdirectories.
 
 ## Limits
 

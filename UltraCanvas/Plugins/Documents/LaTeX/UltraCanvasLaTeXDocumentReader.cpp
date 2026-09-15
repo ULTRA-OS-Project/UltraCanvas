@@ -4,8 +4,12 @@
 // environments of the article subset are mapped onto blocks and runs, user
 // macros are expanded in place, math is kept as LaTeX source for the engine.
 // See the header for the scope statement.
+// Version: 1.0.1 - \captionof takes its counter from its kind argument; a
+//                 \newenvironment whose begin body opens another environment
+//                 closes correctly; a spliced body ending in a control word
+//                 no longer glues onto the letter that follows it.
 // Version: 1.0.0
-// Last Modified: 2026-09-09
+// Last Modified: 2026-09-14
 // Author: UltraCanvas Framework
 
 #include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
@@ -505,7 +509,21 @@ private:
     // lines of the original source. Positions are kept in order; a later
     // splice before an earlier one moves the earlier entries along.
     std::vector<std::pair<size_t, int>> spliceLines_;
-    void Splice(const std::string& text) {
+    void Splice(const std::string& spliced) {
+        std::string text = spliced;
+        // A body that ends in a control word must not glue onto the letter
+        // that follows it in the source: a \newenvironment beginning
+        // "\begin{quote}\itshape" spliced in front of "Set aside." would
+        // otherwise scan as \itshapeSet. TeX never merges the two — the body
+        // was tokenised when it was defined — so the terminating space its
+        // scanner would have swallowed is added back here.
+        if (!text.empty() && IsLetter(text.back()) && pos_ < src_.size() && IsLetter(src_[pos_])) {
+            size_t i = text.size();
+            while (i > 0 && IsLetter(text[i - 1])) --i;
+            size_t slashes = 0;
+            while (i > slashes && text[i - slashes - 1] == '\\') ++slashes;
+            if (slashes % 2 == 1) text += ' ';
+        }
         const int newlines = static_cast<int>(std::count(text.begin(), text.end(), '\n'));
         if (newlines > 0) {
             for (auto& e : spliceLines_) if (e.first >= pos_) e.first += text.size();
@@ -549,7 +567,7 @@ private:
     void ParseInlineMath(const std::string& closer);
     void ParseDisplayMath(const std::string& closer);
     void ParseSection(const std::string& name, int level, bool starred);
-    void ParseCaption();
+    void ParseCaption(const std::string& kindOverride = std::string());
     void ParseIncludeGraphics();
     void ParseFootnote();
     void ParseItem();
@@ -1395,6 +1413,19 @@ bool Reader::HandleEnvironmentEnd(const std::string& name, Stop stop, StopReason
         return true;
     }
     if (top.name != name) {
+        // A \newenvironment whose begin body opens another environment — the
+        // idiomatic \newenvironment{aside}{\begin{quote}\itshape}{\end{quote}}
+        // — has that inner environment on top when its own \end is reached.
+        // Splicing the end body closes the inner one first, exactly as TeX
+        // does; the \end appended behind it then closes the user frame, whose
+        // end body is cleared so it runs once.
+        for (auto it = envs_.rbegin(); it != envs_.rend(); ++it) {
+            if (it->kind != EnvKind::UserDefined || it->name != name) continue;
+            std::string body = it->endBody;
+            it->endBody.clear();
+            Splice(body + "\\end{" + name + "}");
+            return true;
+        }
         Diag("\\end{" + name + "} closes \\begin{" + top.name + "}");
     }
     switch (top.kind) {
@@ -1776,12 +1807,22 @@ void Reader::ParseSection(const std::string& name, int level, bool starred) {
     }
 }
 
-void Reader::ParseCaption() {
+void Reader::ParseCaption(const std::string& kindOverride) {
     std::string shortCaption;
     ReadOptional(shortCaption);
+    // \captionof{table}{…} names its own kind, which is how a table that is
+    // not in a float — a longtable, or a tabular in a minipage — is captioned;
+    // without it such a caption would be numbered with the figures.
     std::string kind = "Figure";
-    for (auto it = envs_.rbegin(); it != envs_.rend(); ++it) {
-        if (it->kind == EnvKind::Float) { kind = it->floatKind; break; }
+    if (!kindOverride.empty()) {
+        const std::string k = LowerCopy(TrimCopy(kindOverride));
+        kind = k.rfind("tab", 0) == 0 ? "Table"
+             : k.rfind("fig", 0) == 0 ? "Figure"
+             : std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(k[0])))) + k.substr(1);
+    } else {
+        for (auto it = envs_.rbegin(); it != envs_.rend(); ++it) {
+            if (it->kind == EnvKind::Float) { kind = it->floatKind; break; }
+        }
     }
     int number = kind == "Table" ? ++tableCounter_ : ++figureCounter_;
     std::string numberText = (hasChapters_ && counters_[0] > 0 ? std::to_string(counters_[0]) + "." : "") +
@@ -2425,8 +2466,9 @@ bool Reader::HandleCommand(const std::string& name, Stop stop, StopReason& reaso
     if (name == "item") { ParseItem(); return true; }
     if (name == "caption" || name == "captionof" || name == "subcaption") {
         ReadStar();
-        if (name == "captionof") { std::string kind; ReadGroup(kind); }
-        ParseCaption();
+        std::string kind;
+        if (name == "captionof") { ReadGroup(kind); }
+        ParseCaption(kind);
         return true;
     }
     if (name == "includegraphics" || name == "includesvg" || name == "includepdf") {

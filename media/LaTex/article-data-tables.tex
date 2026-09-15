@@ -1,0 +1,112 @@
+\documentclass[11pt]{article}
+% Tables, as the UltraCanvas LaTeX document reader maps them: a booktabs
+% table, spans in both directions (\multicolumn, \multirow), a tabularx
+% whose X column takes the leftover width, and a longtable with a repeated
+% head. Every cell is rich text, so formulas inside cells are typeset too.
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{longtable}
+\usepackage{multirow}
+\title{Tables of the Solar System}
+\author{The UltraCanvas Team}
+\date{September 2026}
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Four tables, each written the way a paper writes it. The reader turns every
+one of them into the same rich-document table the ODT and DOCX readers
+produce, so they render, export and re-import identically.
+\end{abstract}
+
+\section{Rules instead of lines}
+The \texttt{booktabs} rules --- \texttt{\textbackslash toprule},
+\texttt{\textbackslash midrule}, \texttt{\textbackslash bottomrule} --- mark
+the header row; the first row of every imported table is the header.
+
+\begin{table}[h]
+  \centering
+  \caption{The four inner planets}\label{tab:inner}
+  \begin{tabular}{lrrr}
+    \toprule
+    Planet & Radius (km) & Mass ($10^{24}$ kg) & Moons \\
+    \midrule
+    Mercury & 2\,440 & 0.330 & 0 \\
+    Venus   & 6\,052 & 4.87  & 0 \\
+    Earth   & 6\,371 & 5.97  & 1 \\
+    Mars    & 3\,390 & 0.642 & 2 \\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
+Table~\ref{tab:inner} needs no vertical rules. The classic form with
+\texttt{|} column separators and \texttt{\textbackslash hline} is read just
+as happily, as Table~\ref{tab:spans} shows.
+
+\section{Spans in both directions}
+\texttt{\textbackslash multicolumn} sets a cell's \emph{columnSpan} and
+\texttt{\textbackslash multirow} its \emph{rowSpan}; a reader that ignored
+either would shift every later cell one column to the left.
+
+\begin{table}[h]
+  \centering
+  \caption{Orbits, grouped}\label{tab:spans}
+  \begin{tabular}{|l|c|c|c|}
+    \hline
+    \multirow{2}{*}{Planet} & \multicolumn{2}{c|}{Orbit} & Day \\ \cline{2-3}
+     & Period (a) & $e$ & (h) \\ \hline
+    Jupiter & 11.86 & 0.049 & 9.9 \\ \hline
+    Saturn  & 29.45 & 0.052 & 10.7 \\ \hline
+    Uranus  & 84.02 & 0.047 & 17.2 \\ \hline
+  \end{tabular}
+\end{table}
+
+\section{A column that takes the rest of the line}
+In a \texttt{tabularx} the \texttt{X} column absorbs the width the fixed
+columns leave over, which is how a notes column is written.
+
+\begin{table}[h]
+  \centering
+  \caption{Named after}\label{tab:names}
+  \begin{tabularx}{\textwidth}{lX}
+    \toprule
+    Planet & Note \\
+    \midrule
+    Mercury & The messenger of the Roman gods, for the speed with which the
+              planet moves against the fixed stars. \\
+    Neptune & Predicted from the perturbations of Uranus before it was ever
+              observed, and found within a degree of the prediction. \\
+    \bottomrule
+  \end{tabularx}
+\end{table}
+
+\section{A table longer than a page}
+\texttt{longtable} spreads over page breaks and repeats its head; the
+importer keeps the head row and drops the pagination machinery, since a
+rich document has no pages until it is printed. A long table is not a
+float, so its caption is written with \texttt{\textbackslash captionof},
+which names the counter to use.
+
+\captionof{table}{Escape velocities}\label{tab:escape}
+\begin{longtable}{lrr}
+  \toprule
+  Body & $v_{\text{esc}}$ (km/s) & $g$ (m/s$^2$) \\
+  \midrule
+  \endhead
+  Sun     & 617.5 & 274.0 \\
+  Jupiter & 59.5  & 24.8 \\
+  Earth   & 11.2  & 9.81 \\
+  Mars    & 5.0   & 3.72 \\
+  Moon    & 2.4   & 1.62 \\
+  Pluto   & 1.2   & 0.62 \\
+  \bottomrule
+\end{longtable}
+
+The escape velocity in Table~\ref{tab:escape} is
+\begin{equation}\label{eq:escape}
+  v_{\text{esc}} = \sqrt{\frac{2GM}{r}},
+\end{equation}
+and \eqref{eq:escape} is why the value falls as a body's radius grows at
+constant density.
+\end{document}
