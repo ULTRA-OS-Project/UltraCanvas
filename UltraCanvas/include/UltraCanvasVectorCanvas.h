@@ -123,6 +123,8 @@ public:
     void ZoomToDrawing();
     void ZoomToSelection();
     void ZoomToActual() { SetZoom(1.0); }
+    // Fits a document rectangle into the canvas area with a margin in pixels.
+    void ZoomToRect(const Rect2Dd& docRect, double marginPixels = 24.0);
     void CenterOn(const Point2Dd& docPoint);
     void PanBy(double dx, double dy);                        // view pixels
     Point2Dd ViewToDoc(const Point2Di& p) const { return view.ViewToDoc(Point2Dd(p.x, p.y)); }
@@ -209,7 +211,6 @@ public:
 private:
     VectorPointerEvent MakePointerEvent(const UCEvent& e) const;
     void ClampView();
-    void FitDocRect(const Rect2Dd& docRect, double margin);
     void HookSelection();
     void UnhookSelection();
     void DrawPage(IRenderContext* ctx);

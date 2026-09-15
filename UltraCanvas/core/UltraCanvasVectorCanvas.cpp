@@ -147,7 +147,7 @@ void UltraCanvasVectorCanvas::ZoomStep(int direction) {
     else SetZoom(next);
 }
 
-void UltraCanvasVectorCanvas::FitDocRect(const Rect2Dd& docRect, double margin) {
+void UltraCanvasVectorCanvas::ZoomToRect(const Rect2Dd& docRect, double margin) {
     const Rect2Dd area = CanvasArea();
     if (EmptyBox(docRect) || docRect.width <= 0 || docRect.height <= 0 || area.width <= 0 || area.height <= 0) return;
     const double zx = (area.width - 2 * margin) / docRect.width;
@@ -162,20 +162,20 @@ void UltraCanvasVectorCanvas::FitDocRect(const Rect2Dd& docRect, double margin) 
 
 void UltraCanvasVectorCanvas::ZoomToPage() {
     if (!document) return;
-    FitDocRect(Rect2Dd(0, 0, document->Size.width, document->Size.height), 24.0);
+    ZoomToRect(Rect2Dd(0, 0, document->Size.width, document->Size.height), 24.0);
 }
 
 void UltraCanvasVectorCanvas::ZoomToDrawing() {
     if (!document) return;
     Rect2Dd b = document->GetBoundingBox();
     if (EmptyBox(b) || b.width <= 0 || b.height <= 0) { ZoomToPage(); return; }
-    FitDocRect(b, 24.0);
+    ZoomToRect(b, 24.0);
 }
 
 void UltraCanvasVectorCanvas::ZoomToSelection() {
     const Rect2Dd b = SelectionBounds();
     if (EmptyBox(b) || b.width <= 0 || b.height <= 0) return;
-    FitDocRect(b, 40.0);
+    ZoomToRect(b, 40.0);
 }
 
 void UltraCanvasVectorCanvas::CenterOn(const Point2Dd& docPoint) {

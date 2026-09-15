@@ -80,7 +80,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 
 ```
 UltraCanvas/
-├── Apps/                 # Applications (DemoApp, Texter, UltraFiler, UltraViewer, UltraPaint, UltraMail, …)
+├── Apps/                 # Applications (DemoApp, Texter, UltraFiler, UltraViewer, UltraPaint, ArtCreator, UltraMail, …)
 ├── Docs/                 # Component documentation
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
@@ -53890,7 +53890,7 @@ What the element does by itself:
 - **View.** Wheel zooms about the cursor (shift + wheel pans), space or the
   middle button pans, `+` / `-`, Ctrl+0 (page), Ctrl+1 (100 %).
   `SetZoom` / `SetZoomAt` / `ZoomStep` / `ZoomToPage` / `ZoomToDrawing` /
-  `ZoomToSelection` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
+  `ZoomToSelection` / `ZoomToRect` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
   `PixelsToDoc`; `VisibleDocRect`, `CanvasArea`.
 - **Page** on a pasteboard with a shadow; **grid** with subdivisions that
   hide when too dense; **rulers** in any unit with the pointer marked;

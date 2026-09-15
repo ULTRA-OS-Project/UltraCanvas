@@ -85,6 +85,14 @@
   - Docs `UltraCanvasVectorCanvas.md` and `UltraCanvasGradientEditor.md`,
     catalogue rows, `Masterfile_modules.md` entries; new CTest
     `VectorEditTest`.
+  - Demo: a **Vector Editing** page (`UltraCanvasVectorCanvasExamples.cpp`)
+    with a selector, rectangle, ellipse and freehand tool, undo / redo,
+    grouping and a gradient ramp bound to the selected shape - about 250
+    lines of tool code over the layer, the reference for what an
+    application adds.
+  - The first application on the layer is **ArtCreator**
+    (`Apps/ArtCreator`, its own `Docs/ArtCreator/CHANGELOG.md`); phase 3
+    of the proposal.
 - **`FormatCapabilities` tell the truth.** `SVGConverter` no longer claims
   clipping; `XARConverter` no longer claims text on a path, embedded fonts,
   conical fills, patterns, variable-width strokes, blend modes, filters,

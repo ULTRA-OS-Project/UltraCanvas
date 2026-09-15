@@ -1,6 +1,6 @@
 # ArtCreator and a public `UltraCanvasVectorCanvas` — Investigation and Proposal
 
-**Status:** proposal — nothing implemented yet
+**Status:** phases 0–3 implemented (framework 0.8.50, ArtCreator 0.1.0); phases 4–5 open
 **Date:** 2026-09-15
 **Scope:** a new application, `Apps/ArtCreator`, a vector graphics editor of
 the Xara Designer / ArtWorks class, and the question of whether the editing
