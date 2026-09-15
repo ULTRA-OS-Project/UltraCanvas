@@ -1,4 +1,4 @@
-// UltraCanvas/Plugins/Vector/UltraCanvasVectorPathOps.h
+// UltraCanvas/include/DataFormats/UltraCanvasVectorPathOps.h
 // Shared path normalisation for the vector format writers: reduces a
 // VectorStorage::PathData (any command mix — H/V lines, quadratics, smooth
 // variants, SVG arcs) and the basic shapes to absolute move/line/cubic
@@ -9,7 +9,7 @@
 // Author: UltraCanvas Framework
 #pragma once
 
-#include "UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include <cmath>
 #include <vector>
 

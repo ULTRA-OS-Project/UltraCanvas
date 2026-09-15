@@ -68,6 +68,7 @@ from an external "Show password" checkbox. See
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
 | A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
+| The stops of a gradient (a colour ramp) | `UltraCanvasGradientEditor` | `UltraCanvasGradientEditor.h` |
 | A score out of N | `UltraCanvasRating` | `UltraCanvasRating.h` |
 | Step through a sequence | `UltraCanvasStepper` | `UltraCanvasStepper.h` |
 
@@ -80,6 +81,8 @@ from an external "Show password" checkbox. See
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
+| Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG, EMF, WMF via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
+| **Edit** a vector drawing: page, rulers, guides, grid, snapping, selection handles, tool hooks in document coordinates (the model is `VectorStorage::VectorDocument`, the editing layer `DataFormats/UltraCanvasVectorEdit.h`, the node model `UltraCanvasBezierPath.h`) | `UltraCanvasVectorCanvas` | `UltraCanvasVectorCanvas.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |

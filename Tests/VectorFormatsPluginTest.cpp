@@ -12,9 +12,9 @@
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorFormatsPlugin.h"
+#include "UltraCanvasVectorFormatsPlugin.h"
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasCADConverters.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasSupportedFormats.h"
 #include "UltraCanvasImage.h"
 
@@ -154,6 +154,30 @@ int main(int argc, char** argv) {
     }
     Check(CanSaveGraphicsFile("x.dxf"), "CanSaveGraphicsFile(dxf)");
     Check(!CanSaveGraphicsFile("x.docx"), "CanSaveGraphicsFile rejects docx");
+
+    // ===== Capability flags say what the writers implement =====
+    {
+        auto svg = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension("svg");
+        auto xar = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension("xar");
+        Check(svg && xar, "svg and xar converters exist");
+        if (svg) {
+            auto c = svg->GetCapabilities();
+            Check(c.SupportsLinearGradient && c.SupportsRadialGradient && c.SupportsPattern,
+                  "svg: gradients and patterns are written");
+            Check(!c.SupportsClipping && !c.SupportsMasking,
+                  "svg: clipping and masking are not claimed until implemented");
+        }
+        if (xar) {
+            auto c = xar->GetCapabilities();
+            Check(c.SupportsLayers && c.SupportsGroups && c.SupportsText,
+                  "xar: layers, groups and text are written");
+            Check(c.MaxGradientStops == 2, "xar: gradients keep two stops");
+            Check(!c.SupportsBlendModes && !c.SupportsFilters && !c.SupportsMasking &&
+                  !c.SupportsClipping && !c.SupportsDropShadow && !c.SupportsPages &&
+                  !c.SupportsConicalGradient && !c.SupportsVariableStrokeWidth,
+                  "xar: effects, pages and conical fills are not claimed");
+        }
+    }
 
     // ===== Supported-format inventory =====
     {

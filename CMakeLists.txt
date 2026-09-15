@@ -65,6 +65,7 @@ if(ANDROID)
     set(BUILD_ULTRAFILER_APP OFF CACHE BOOL "Build the UltraFiler file manager application")
     set(BUILD_ULTRAVIEWER_APP OFF CACHE BOOL "Build the UltraViewer universal media viewer application")
     set(BUILD_ULTRAPAINT_APP OFF CACHE BOOL "Build the UltraPaint bitmap editor application")
+    set(BUILD_ARTCREATOR_APP OFF CACHE BOOL "Build the ArtCreator vector drawing editor application")
     set(BUILD_DEMO_APP OFF CACHE BOOL "Build the demo application")
     set(BUILD_ULTRAAI_APP OFF CACHE BOOL "Build the UltraAI dashboard demo application")
     set(BUILD_ULTRAMAIL OFF CACHE BOOL "Build the UltraMail application")
@@ -103,6 +104,7 @@ option(BUILD_TEXTER_APP "Build the texter application" ON)
 option(BUILD_ULTRAFILER_APP "Build the UltraFiler file manager application" ON)
 option(BUILD_ULTRAVIEWER_APP "Build the UltraViewer universal media viewer application" ON)
 option(BUILD_ULTRAPAINT_APP "Build the UltraPaint bitmap editor application" ON)
+option(BUILD_ARTCREATOR_APP "Build the ArtCreator vector drawing editor application" ON)
 option(BUILD_FILEMANAGER_APP "Build the file manager application" OFF) # OFF: source files not yet committed
 option(BUILD_DEMO_APP "Build the demo application" ON)
 option(BUILD_ULTRAAI_APP "Build the UltraAI dashboard demo application" ON)
@@ -298,6 +300,7 @@ if(BUILD_DEMO_APP)
             Apps/DemoApp/UltraCanvasLabelExamples.cpp
             Apps/DemoApp/UltraCanvasMenuExamples.cpp
             Apps/DemoApp/UltraCanvasMenuConfigExamples.cpp
+            Apps/DemoApp/UltraCanvasVectorCanvasExamples.cpp
             Apps/DemoApp/UltraCanvasSliderExamples.cpp
             Apps/DemoApp/UltraCanvasSpinnerExamples.cpp
             Apps/DemoApp/UltraCanvasTimePickerExamples.cpp
@@ -1032,6 +1035,70 @@ if (BUILD_ULTRAPAINT_APP)
     message(STATUS "  UltraPaint executable: UltraPaint")
 endif()
 
+# ===== ARTCREATOR APPLICATION =====
+# Vector drawing editor on the framework's vector editing layer
+# (VectorStorage::VectorDocument, VectorEdit, UltraCanvasVectorCanvas) with
+# the Vector plugin's converters for the file formats.
+if (BUILD_ARTCREATOR_APP)
+    message(STATUS "")
+    message(STATUS "── Building ArtCreator Application ──")
+
+    add_executable(ArtCreator
+            Apps/ArtCreator/main.cpp
+            Apps/ArtCreator/ArtCreatorWindow.cpp
+            Apps/ArtCreator/ArtCreatorTools.cpp
+            Apps/ArtCreator/ArtCreatorDialogs.cpp
+    )
+    set_target_properties(ArtCreator PROPERTIES ENABLE_EXPORTS ON)
+
+    target_include_directories(ArtCreator PRIVATE
+            ${ULTRACANVAS_INCLUDE_DIRS}
+            ${CMAKE_CURRENT_SOURCE_DIR}/Apps/ArtCreator
+    )
+
+    target_link_libraries(ArtCreator PRIVATE
+            ${ULTRACANVAS_LIBRARY}
+    )
+
+    # The file formats. Linking the Vector plugin is also what defines
+    # ULTRACANVAS_HAS_VECTOR_PLUGIN, so main.cpp registers it and the window
+    # gets Open / Save; without it (the plugin is off by default) the editor
+    # draws and says so on Open and Save.
+    if(TARGET UltraCanvasVectorPlugin)
+        target_link_libraries(ArtCreator PRIVATE UltraCanvasVectorPlugin)
+        message(STATUS "  ArtCreator: Vector plugin linked (file formats available)")
+    else()
+        message(STATUS "  ArtCreator: no Vector plugin - build with -DULTRACANVAS_PLUGIN_VECTOR=ON for file formats")
+    endif()
+
+    target_compile_features(ArtCreator PRIVATE cxx_std_20)
+
+    target_compile_definitions(ArtCreator PRIVATE
+            # ArtCreator versions itself: Docs/ArtCreator/CHANGELOG.md is the
+            # single source of this number (cmake/UltraCanvasVersion.cmake).
+            ARTCREATOR_VERSION="${ARTCREATOR_VERSION}"
+            UCAPP_ICON_PATH="media/appicon/ArtCreator.png"
+            $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
+    )
+
+    ultracanvas_embed_app_icon(ArtCreator
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/ArtCreator.png")
+    ultracanvas_embed_windows_manifest(ArtCreator)
+
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+        install(TARGETS ArtCreator RUNTIME DESTINATION bin)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Apps/ArtCreator/ArtCreator.desktop
+                DESTINATION share/applications)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/ArtCreator.png
+                DESTINATION share/icons/hicolor/256x256/apps)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/ArtCreator.svg
+                DESTINATION share/icons/hicolor/scalable/apps)
+        message(STATUS "  ArtCreator desktop entry: share/applications/ArtCreator.desktop")
+    endif()
+
+    message(STATUS "  ArtCreator executable: ArtCreator")
+endif()
+
 # ===== ULTRAAI APPLICATION =====
 # Dashboard demo for the UltraAI module: grid of icon-buttons, modal
 # dialog per capability, backed by the in-process mock adapters.
@@ -1475,6 +1542,12 @@ if(WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Release")
     if(BUILD_ULTRAVIEWER_APP)
         set_target_properties(UltraViewer PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
+    if(BUILD_ULTRAPAINT_APP)
+        set_target_properties(UltraPaint PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
+    if(BUILD_ARTCREATOR_APP)
+        set_target_properties(ArtCreator PROPERTIES WIN32_EXECUTABLE TRUE)
+    endif()
     if(BUILD_FILEMANAGER_APP)
         set_target_properties(UCFileManager PROPERTIES WIN32_EXECUTABLE TRUE)
     endif()
@@ -1499,6 +1572,12 @@ if(BUILD_ULTRAFILER_APP)
 endif()
 if(BUILD_ULTRAVIEWER_APP)
     add_dependencies(UltraViewer copy_assets)
+endif()
+if(BUILD_ULTRAPAINT_APP)
+    add_dependencies(UltraPaint copy_assets)
+endif()
+if(BUILD_ARTCREATOR_APP)
+    add_dependencies(ArtCreator copy_assets)
 endif()
 
 # The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so

@@ -1,0 +1,28 @@
+[Desktop Entry]
+# The freedesktop shortcut for ArtCreator: the application menu entry, the
+# "Open with" handler for vector drawings, and what makes a file dropped on
+# the ArtCreator icon arrive as an argument - the shell starts Exec with the
+# dropped paths in place of %F, and every one opens in a window of its own.
+#
+# MimeType= lists what ArtCreator reads through the Vector plugin's
+# converters (SVG, Xara, EMF, WMF, DXF, DWG). Installed to share/applications
+# by the project's install rules; run `update-desktop-database` afterwards.
+Type=Application
+Version=1.5
+Name=ArtCreator
+GenericName=Vector Drawing Editor
+Comment=Draw and edit vector artwork: shapes, paths, text, gradients, layers
+Exec=ArtCreator %F
+TryExec=ArtCreator
+Icon=ArtCreator
+Terminal=false
+StartupNotify=true
+StartupWMClass=ArtCreator
+Categories=Graphics;2DGraphics;VectorGraphics;
+Actions=NewWindow;
+Keywords=vector;drawing;illustration;svg;xara;path;bezier;
+MimeType=image/svg+xml;image/svg+xml-compressed;application/x-xara;image/x-emf;image/x-wmf;image/vnd.dxf;image/vnd.dwg;
+
+[Desktop Action NewWindow]
+Name=New Window
+Exec=ArtCreator

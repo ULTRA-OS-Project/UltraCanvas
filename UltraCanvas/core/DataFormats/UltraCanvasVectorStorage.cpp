@@ -4,7 +4,7 @@
 // Last Modified: 2025-01-20
 // Author: UltraCanvas Framework
 
-#include "UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include <cmath>
 #include <algorithm>
 #include <sstream>
@@ -759,10 +759,14 @@ std::shared_ptr<VectorElement> VectorGroup::Clone() const {
     auto clone = std::make_shared<VectorGroup>(*this);
     clone->Parent.reset();
     
-    // Deep clone children
+    // Deep clone children, re-parented to the clone (a child cloned by
+    // copy would otherwise keep pointing at the original group, and
+    // GetGlobalTransform on the copy would walk the wrong tree).
     clone->Children.clear();
     for (const auto& child : Children) {
+        if (!child) continue;
         auto childClone = child->Clone();
+        childClone->Parent = clone;
         clone->Children.push_back(childClone);
     }
     
@@ -812,10 +816,12 @@ std::shared_ptr<VectorElement> VectorSymbol::Clone() const {
     auto clone = std::make_shared<VectorSymbol>(*this);
     clone->Parent.reset();
     
-    // Deep clone children
+    // Deep clone children, re-parented to the clone (see VectorGroup::Clone).
     clone->Children.clear();
     for (const auto& child : Children) {
+        if (!child) continue;
         auto childClone = child->Clone();
+        childClone->Parent = clone;
         clone->Children.push_back(childClone);
     }
     
@@ -958,10 +964,12 @@ std::shared_ptr<VectorElement> VectorLayer::Clone() const {
     auto clone = std::make_shared<VectorLayer>(*this);
     clone->Parent.reset();
     
-    // Deep clone children
+    // Deep clone children, re-parented to the clone (see VectorGroup::Clone).
     clone->Children.clear();
     for (const auto& child : Children) {
+        if (!child) continue;
         auto childClone = child->Clone();
+        childClone->Parent = clone;
         clone->Children.push_back(childClone);
     }
     
@@ -1474,7 +1482,7 @@ PathData PolygonToPath(const std::vector<Point2Dd>& points, bool closed) {
     // MoveTo first point
     PathCommand moveCmd;
     moveCmd.Type = PathCommandType::MoveTo;
-    moveCmd.Parameters = {points[0].x, points[0].y};
+    moveCmd.Parameters = {static_cast<float>(points[0].x), static_cast<float>(points[0].y)};
     moveCmd.Relative = false;
     result.commands.push_back(moveCmd);
     
@@ -1482,7 +1490,7 @@ PathData PolygonToPath(const std::vector<Point2Dd>& points, bool closed) {
     for (size_t i = 1; i < points.size(); i++) {
         PathCommand lineCmd;
         lineCmd.Type = PathCommandType::LineTo;
-        lineCmd.Parameters = {points[i].x, points[i].y};
+        lineCmd.Parameters = {static_cast<float>(points[i].x), static_cast<float>(points[i].y)};
         lineCmd.Relative = false;
         result.commands.push_back(lineCmd);
     }
