@@ -64,6 +64,7 @@
 #include "UltraCanvasFontFile.h"        // IsFontFileExtension, for the double-click rule
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasSupportedFormats.h"  // its image formats
+#include "UltraCanvasTooltipManager.h"  // the promote button's tooltip outlives it
 #include "UltraCanvasUtils.h"
 #include "UltraFilerPropertiesDialogs.h"
 #include "UltraFilerSettingsDialog.h"
@@ -146,6 +147,14 @@ namespace {
     // rename-click delay, this must exceed the platform double-click
     // interval.
     constexpr unsigned int kFolderPreviewClickDelayMs = 500;
+
+    // The round button that floats over the left edge of the detail pane
+    // while that pane shows a folder, and moves the folder into the folder
+    // display. Its diameter, and how far its left edge sits from the pane's
+    // own - close enough to read as sitting on that edge, clear enough that
+    // the entry underneath is still recognisable.
+    constexpr int kPromoteButtonSize      = 32;
+    constexpr int kPromoteButtonLeftInset = 8;
 
     // ===== COMPUTER PAGE =====
     // The folder tiles row: one row of medium thumbnails (the tile edge, the
@@ -513,6 +522,28 @@ namespace {
         return b;
     }
 
+    // A round icon button that floats over the edge of a pane rather than
+    // sitting in a row: no label, a full circle, and a light border so it
+    // stays legible over whatever it overlays.
+    std::shared_ptr<UltraCanvasButton> MakeFloatingRoundButton(
+            const std::string& id, const std::string& iconFile, int diameter,
+            const std::string& tooltip, std::function<void()> onClick) {
+        auto b = std::make_shared<UltraCanvasButton>(
+                id, 0, 0, static_cast<float>(diameter),
+                static_cast<float>(diameter), "");
+        b->SetCornerRadius(diameter / 2.0f);
+        b->SetColors(Color(255, 255, 255, 255), Color(219, 233, 250, 255));
+        b->SetBorder(1.0f, Color(0, 0, 0, 70));
+        b->SetIcon(IconPath(iconFile));
+        b->SetIconSize(diameter / 2, diameter / 2);
+        b->SetIconSpacing(0);
+        b->SetUseIconAsMask(true);
+        b->SetIconMaskColor(Color(55, 55, 60, 255));
+        b->SetTooltip(tooltip);
+        if (onClick) b->SetOnClick(std::move(onClick));
+        return b;
+    }
+
     // Mark / unmark a toggle-style tool button (the Preview switch).
     void StyleToggleButton(UltraCanvasButton* b, bool active) {
         if (!b) return;
@@ -785,6 +816,29 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     };
     WireDisplayFormatCallbacks(folderPreview.get());
     WireFolderIconProvider(folderPreview.get());
+
+    // The pane is narrow, so it carries the one way out of it: a round button
+    // floating over the middle of its left edge that moves the folder it
+    // shows into the folder display, where the whole width is available. It
+    // belongs to the folder preview and travels with it - AttachFolderPreview
+    // / DetachFolderPreview put the two into the detail pane and take them
+    // out together, so a previewed FILE never shows it.
+    folderPreviewPromoteButton = MakeFloatingRoundButton(
+            "ufl-folder-preview-promote", "angle-left.svg", kPromoteButtonSize,
+            "Show this folder in the folder display",
+            [this]() { PromoteFolderPreview(); });
+    // Out of the pane's flow and over its left edge: top and bottom pinned
+    // with the height fixed and the margins left auto, which is what centres
+    // it vertically however tall the pane is.
+    folderPreviewPromoteButton->layoutItem
+            .SetPositionType(CSSLayout::PositionType::Absolute)
+            .SetPositionInsets(CSSLayout::Position{
+                    CSSLayout::Dimension::Px(0),                          // top
+                    CSSLayout::Dimension::Auto(),                         // right
+                    CSSLayout::Dimension::Px(0),                          // bottom
+                    CSSLayout::Dimension::Px(kPromoteButtonLeftInset)});  // left
+    // It overlays the folder preview rather than hiding behind it.
+    folderPreviewPromoteButton->SetZIndex(OverlayZOrder::Overlays);
 
     // Persisted settings (transparent-image backdrop of the preview, ...) and
     // the recently used files / folders / applications behind the clock button.
@@ -4426,6 +4480,45 @@ void UltraFilerWindow::CancelFolderPreviewTimer() {
     folderPreviewDelayTimer = InvalidTimerId;
 }
 
+void UltraFilerWindow::AttachFolderPreview() {
+    if (!previewPane || !folderPreview) return;
+    previewPane->AddChild(folderPreview);
+    // Added after it, so it is the later sibling and (with its z-index) both
+    // renders over the preview and is hit before it.
+    if (folderPreviewPromoteButton)
+        previewPane->AddChild(folderPreviewPromoteButton);
+}
+
+void UltraFilerWindow::DetachFolderPreview() {
+    if (!previewPane || !folderPreview) return;
+    if (folderPreviewPromoteButton)
+        previewPane->RemoveChild(folderPreviewPromoteButton);
+    previewPane->RemoveChild(folderPreview);
+}
+
+void UltraFilerWindow::PromoteFolderPreview() {
+    if (!folderPreview) return;
+    // Whatever the pane shows NOW - the folder that was clicked, or the
+    // subfolder entered inside the pane since.
+    const std::string path = folderPreview->GetPath();
+    if (path.empty()) return;
+    // The click takes the button off the screen with it, so nothing is left
+    // to send the tooltip a mouse-leave: it would hang over the folder
+    // display until the pointer moved again.
+    UltraCanvasTooltipManager::HideTooltipImmediately();
+    NavigateTo(path);
+    // Entering the folder clears the file display's selection, so the pane
+    // folds away by itself (HandlePathChanged -> UpdatePreviewPane). It does
+    // not when the display already stood in that folder, which NavigateTo
+    // answers with nothing - fold it away here so the button always does
+    // something visible.
+    if (previewShown && filer && filer->GetPath() == path) {
+        folderPreviewReadyPath.clear();
+        if (!filer->GetSelectionIndices().empty()) filer->ClearSelection();
+        UpdatePreviewPane();
+    }
+}
+
 void UltraFilerWindow::UpdatePreviewPane() {
     if (!split || !preview || !folderPreview) return;
     // What the selection calls for: a single media file fills the pane with
@@ -4476,7 +4569,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
             split->SetPaneMinSize(split->PaneCount() - 1, kPreviewMinWidth);
             previewPane->layout.SetFlexColumn()
                                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-            if (wantFolder) previewPane->AddChild(folderPreview);
+            if (wantFolder) AttachFolderPreview();
             else            previewPane->AddChild(preview);
 
             if (treeW > 0 && filerW > 0) {
@@ -4503,9 +4596,9 @@ void UltraFilerWindow::UpdatePreviewPane() {
             if (wantFolder) {
                 preview->CloseFile();
                 previewPane->RemoveChild(preview);
-                previewPane->AddChild(folderPreview);
+                AttachFolderPreview();
             } else {
-                previewPane->RemoveChild(folderPreview);
+                DetachFolderPreview();
                 previewPane->AddChild(preview);
             }
             previewShowsFolder = wantFolder;
@@ -4526,7 +4619,7 @@ void UltraFilerWindow::UpdatePreviewPane() {
         const int prevW  = static_cast<int>(previewPane->GetWidth());
         if (prevW > 0) previewPaneWidth = prevW;   // restored on reopen
         if (previewShowsFolder) {
-            previewPane->RemoveChild(folderPreview);
+            DetachFolderPreview();
             previewShowsFolder = false;
         } else {
             // Let go of the file, not just of the playback: a document engine
