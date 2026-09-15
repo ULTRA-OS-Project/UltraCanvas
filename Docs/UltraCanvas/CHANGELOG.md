@@ -1,3 +1,49 @@
+#### 2026-09-15 *0.8.51*
+- **SVG was read and written through the user's locale, so on a German,
+  French, Russian or Brazilian desktop `opacity="0.25"` meant invisible.**
+  The Linux backend calls `setlocale(LC_ALL, "")` before opening the display,
+  because XIM needs `LC_CTYPE` to accept UTF-8 input — and that also sets
+  `LC_NUMERIC`. Every `std::stof` / `strtod` in the SVG importer
+  (`Plugins/Vector/UltraCanvasSVGConverter.cpp`) then stopped at the `.`: an
+  opacity of `0.25` became 0 and the shape vanished, a
+  `stroke-width` of `1.5` drew at 1, `stop-opacity="0.8"` made a gradient stop
+  fully transparent, and `x="10.5"` put the shape half a pixel-column to the
+  left. SVG numbers are dot-decimal by specification; they are not a property
+  of whoever is running the program.
+  - The writer had the mirror defect, and the worse half of it:
+    `snprintf("%.6g")` renders through `LC_NUMERIC` too, so the exporter wrote
+    `stroke-width="1,5"` — and because a comma separates coordinates in path
+    data, `M 1,5` read back as "move to (1, 5)" rather than "move to 1.5". A
+    different picture, not a file another tool would reject.
+  - `ParseFloatClassic()` — written for `core/HTMLReader/CSSStyleSheet.cpp` in
+    0.8.47, where the same bug turned every `rgba()` alpha to 0 — moves to
+    `UltraCanvasTextUtils` so there is one copy rather than one per format, and
+    gains a `double` overload and `TryParseFloat()`, the drop-in for a
+    `std::stof` call: it skips leading whitespace, accepts the leading `+` that
+    SVG path data writes, ignores a trailing unit, and neither throws nor
+    consults the locale. `CSSStyleSheet.cpp` now calls the shared one.
+  - `Tests/SVGLocaleTest.cpp` runs the reader, the writer and a save-and-reopen
+    round trip twice — under `C` and under whichever comma-decimal locale the
+    machine has — and requires the two runs to agree. Where no such locale is
+    installed it says so and skips that half rather than reporting coverage it
+    did not get; `sudo localedef -i de_DE -f UTF-8 de_DE.UTF-8` supplies one.
+  - `Plugins/SVG/UltraCanvasSVGPlugin.cpp` carried the same defect in its own
+    `ParseFloatAttribute`, `ParseFromStyle`, `ParseNumbers` and `ParseLength`,
+    and is fixed to match — but it is dead code: its entry in
+    `UltraCanvas/CMakeLists.txt` is commented out, so no target compiles it and
+    nothing here changes at runtime. It is fixed rather than left alone so that
+    re-enabling the file does not reintroduce the bug; whether it should be
+    revived or deleted is a separate question, and its header is still included
+    by `Apps/DemoApp/UltraCanvasSVGExamples.cpp`. Its `stroke-width` and
+    `opacity` parses inside `style="..."` were also unguarded `std::stof`
+    calls, so `style="opacity:inherit"` would have thrown
+    `std::invalid_argument` out of the style parser; `TryParseFloat` not
+    throwing closes that too.
+  - Not fixed here, and the reason the test names the locale it ran under:
+    around 110 further `atof` / `std::stod` / `strtod` calls elsewhere in the
+    tree have the same defect — chart CSV data, OBJ vertices, XLSX font sizes,
+    the CDR plugin. `UltraCanvasTextUtils.h` is where their fix goes.
+
 #### 2026-09-15 *0.8.50*
 - **A WYSIWYG editing element: `UltraCanvasRichTextEdit`.** The caret sits in
   rendered text and bold is a state of the selection, not two asterisks in a

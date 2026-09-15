@@ -70,6 +70,57 @@ inline std::string TrimWhitespace(std::string s) {
 }
 
 // ---------------------------------------------------------------------------
+// Numbers in machine-readable formats
+// ---------------------------------------------------------------------------
+// SVG, CSS, OBJ, JSON, DXF and every other format the framework reads write
+// their numbers with a '.', always — that is the specification, not a property
+// of whoever is running the program. std::stof / strtof / atof do not: they
+// honour LC_NUMERIC, and the Linux backend calls setlocale(LC_ALL, "") before
+// opening the display (XIM needs LC_CTYPE for UTF-8 input), so on a
+// comma-decimal desktop — de_DE, fr_FR, ru_RU, pt_BR and the rest — every one
+// of them stops dead at the '.'. An SVG `opacity="0.25"` then reads as 0 and
+// the element renders invisible; a `stroke-width="1.5"` becomes 1.
+//
+// Use these instead of std::stof/strtof/atof wherever the text comes from a
+// file format rather than from something the user typed in their own locale.
+//
+// Why not std::from_chars, which would be the obvious answer: Apple's libc++
+// implements the INTEGRAL overloads only, so a float call there resolves to
+// the deleted bool overload and does not compile at all.
+
+// Reads the float at the start of [first, last) exactly as a general-format
+// std::from_chars would, and returns one past the last character consumed
+// (== first when there is no number there, which is how callers detect it).
+// `out` is left as the caller set it unless a value was read.
+//
+// The number is scanned first and converted second, which is what keeps a unit
+// beginning like an exponent intact: in "1.5em" the 'e' starts no exponent, so
+// the number ends at "1.5" and "em" is left for the caller. Converting the
+// whole string in one go (istringstream >> float) instead consumes that 'e'
+// and then fails outright.
+//
+// from_chars parity means no leading '+' and no leading whitespace. Callers
+// parsing a format that allows either — SVG path data writes "M+10+20" — want
+// TryParseFloat below.
+const char* ParseFloatClassic(const char* first, const char* last, float& out);
+const char* ParseFloatClassic(const char* first, const char* last, double& out);
+
+// Whole-string front end to the above, and the drop-in replacement for a
+// std::stof call: it skips leading whitespace, accepts a leading '+', reads
+// the number at the front and ignores any trailing text ("10px" is 10), the
+// three things std::stof does that ParseFloatClassic deliberately does not.
+// Unlike std::stof it neither throws nor consults the locale — it returns
+// false and leaves `out` untouched when the string does not start with a
+// number, so a malformed attribute keeps the caller's default instead of
+// unwinding out of a parser. A number too large for a float likewise leaves
+// `out` alone, but returns true: one was there, it just did not fit.
+//
+// The overload is picked by the type of `out`, so a caller holding a double
+// keeps double precision rather than rounding through a float on the way.
+bool TryParseFloat(const std::string& text, float& out);
+bool TryParseFloat(const std::string& text, double& out);
+
+// ---------------------------------------------------------------------------
 // Base64 (RFC 4648 §4)
 // ---------------------------------------------------------------------------
 // Lenient decoder: whitespace and characters outside the alphabet are skipped,

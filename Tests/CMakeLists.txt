@@ -2131,6 +2131,30 @@ else()
     message(STATUS "  SVGConverterTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# Pins that the SVG reader and writer treat numbers as dot-decimal, which is
+# what the format specifies, rather than reading them through LC_NUMERIC - the
+# defect that made `opacity="0.25"` render as 0 (invisible) on a comma-decimal
+# desktop. Runs its checks under "C" and again under whichever comma-decimal
+# locale the machine has; it reports a skip rather than failing where none is
+# installed, so it is safe on a bare runner.
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building SVGLocaleTest...")
+    add_executable(SVGLocaleTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/SVGLocaleTest.cpp
+    )
+    target_include_directories(SVGLocaleTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(SVGLocaleTest PRIVATE cxx_std_20)
+    target_link_libraries(SVGLocaleTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(SVGLocaleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME SVGLocaleTest COMMAND SVGLocaleTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: SVGLocaleTest")
+else()
+    message(STATUS "  SVGLocaleTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # Validates the Vector plugin's PDF writer: structural checks (an xref table
 # whose offsets really point at their objects, resources, operators) plus a
 # ghostscript rasterization with pixel checks when gs is installed.
