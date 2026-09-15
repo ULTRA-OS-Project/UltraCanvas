@@ -18,6 +18,61 @@
   The code itself reached `main` ahead of this note, ported into the 0.8.49
   release to unblock the branches the red leg was holding up; this entry is
   the release record it went in without.
+#### 2026-09-15 *0.8.61*
+- **A text field is UTF-8 all the way through now.** Typing the name
+  `Fröhling` into a field — UltraMail's "Add email account" wizard is where it
+  was reported — put invalid UTF-8 into the buffer, and the debug log filled
+  with Pango's `Invalid UTF-8 string passed to pango_layout_set_text()` while
+  the text stopped drawing. `UltraCanvasTextInput` addresses its buffer by byte
+  offset, and five places moved that offset by a *byte*, which cuts every
+  multi-byte character in half:
+  - Backspace and Delete erased one byte, so backspacing over `ö` left the lead
+    byte `C3` behind;
+  - the Left and Right arrows stepped one byte, parking the caret inside a
+    character — and every prefix measured from there (caret x, selection width)
+    was invalid UTF-8 even when the buffer was fine;
+  - the click/drag hit test binary-searched the raw bytes, so it both measured
+    half characters and returned an offset in the middle of one;
+  - `SetCaretPosition()` / `SetSelection()` stored whatever offset a caller
+    passed;
+  - `SetMaxLength()` truncated at a byte count.
+  All of them move by whole characters now (`utf8_prev_boundary` /
+  `utf8_next_boundary` / `utf8_align_boundary` / `utf8_boundaries` /
+  `utf8_bytes_for_chars`, new in `UltraCanvasUtilsUtf8.h`), a click snaps to the
+  nearer boundary of the character under the pointer, and the length limit —
+  like the `MinLength` / `MaxLength` validation rules, whose messages say
+  "characters" — counts characters: `Fröhling` is eight of them in nine bytes.
+  Covered by `Tests/TextInputUtf8Test.cpp`, which runs headless.
+- **A password field masks one `*` per character, not per byte.** A passphrase
+  with an umlaut in it drew more stars than the user had typed and lost two per
+  Backspace. The mask and the text are different lengths now, so every
+  measurement crosses between them through `ToRenderOffset()` /
+  `FromRenderOffset()`.
+- **Text entering a widget from outside is repaired rather than trusted.**
+  `SetText()` and `InsertText()` (so: a paste too) pass through the new
+  `utf8_make_valid()`, which replaces malformed bytes with U+FFFD — a clipboard,
+  a database column or a file is not guaranteed to hold UTF-8, and a single
+  stray byte made the whole string unrenderable.
+- **X11 key events that came from `XLookupString` are re-encoded.** The
+  fallback path, used when a window has no input context, answers in Latin-1,
+  as the X11 API specifies — so an `ö` arrived as the single byte `F6` and
+  every widget that received it was handed something that was not UTF-8. It is
+  converted at the backend now (`UltraCanvasLinuxApplication.cpp`), where the
+  encoding is known.
+- **Pango is never handed invalid UTF-8.** `UCTextLayout::SetText()` (and the
+  literal-text fallback in `SetMarkup()`) repair the string first: Pango
+  otherwise logs a warning and lays out *nothing*, which turns one bad byte
+  anywhere upstream into a blank field. The widget-level fixes above mean it
+  should never fire; it is there so that the failure mode is a visible U+FFFD
+  rather than silently missing text.
+- **`From:`, `To:` and `Cc:` carry a non-ASCII display name legally.**
+  `UltraNet_MimeBuild` encoded the `Subject:` as an RFC 2047 encoded-word but
+  wrote address headers raw, so a message from `Fröhling <erika@example.com>`
+  went out with a raw 8-bit byte in a header field. The new
+  `UltraNet_MimeEncodeAddress()` encodes the display name and leaves the
+  angle-addr alone — encoding that would make the address undeliverable — and
+  the builder runs all three headers through it.
+
 #### 2026-09-15 *0.8.53*
 - **SVG was read and written through the user's locale, so on a German,
   French, Russian or Brazilian desktop `opacity="0.25"` meant invisible.**
@@ -418,6 +473,7 @@
     earlier prototype Linux/macOS-only. The GPL-vs-MIT question that decides
     whether it is linked or run as a subprocess is written up there, unanswered
     - it is a product decision.
+
 
 #### 2026-09-15 *0.8.52*
 - **`UltraCanvasPaintSurface::SetPanMode` never turned permanent panning

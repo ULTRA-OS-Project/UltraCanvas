@@ -49716,8 +49716,8 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 
 **UltraCanvasTextInput** is an advanced text input component within the UltraCanvas Framework that provides comprehensive text editing capabilities with validation, formatting, and feedback systems. It supports multiple input types, real-time validation, custom formatting, undo/redo functionality, and extensive customization options.
 
-**Version:** 1.2.0  
-**Last Modified:** 2026-08-31  
+**Version:** 1.3.0  
+**Last Modified:** 2026-09-15  
 **Author:** UltraCanvas Framework
 
 ## Key Features
@@ -49731,6 +49731,7 @@ FILE: Docs/UltraCanvas/UltraCanvasTextInputExamples.md
 - **Auto-completion**: Configurable auto-complete modes for different input types
 - **Placeholder Text**: Contextual hints when field is empty
 - **Read-only Mode**: Disable editing while maintaining visual presentation
+- **UTF-8 Text**: Every position the field keeps is a character boundary, so accented, umlauted and non-Latin text edits like any other (see [Text and UTF-8](#text-and-utf-8))
 
 ### Visual Features
 - **Caret Animation**: Blinking cursor with customizable rate
@@ -49833,12 +49834,37 @@ void SetReadOnly(bool readonly)
 // Check if read-only
 bool IsReadOnly() const
 
-// Set maximum text length
+// Set maximum text length, counted in characters
 void SetMaxLength(int length)
 
 // Get maximum length
 int GetMaxLength() const
 ```
+
+### Text and UTF-8
+
+Text is UTF-8 throughout, and a character is not a byte: `ö` is two bytes, `€`
+three, an emoji four. The field addresses its buffer by byte offset — that is
+what `GetCaretPosition()`, `SetCaretPosition()` and `SetSelection()` take and
+return — but it only ever *keeps* an offset that starts a character:
+
+- Backspace and Delete erase a whole character; the arrow keys step over one.
+- `SetCaretPosition()` and `SetSelection()` snap an offset that lands inside a
+  character back to that character's start, so a selection is always a whole
+  number of characters.
+- Clicking snaps to the nearer boundary of the character under the pointer.
+- `SetMaxLength()` and the `MinLength` / `MaxLength` validation rules count
+  characters, the unit their message speaks in — `"Fröhling"` is eight
+  characters in nine bytes.
+- Text handed in from outside (`SetText()`, a paste, a keyboard backend with no
+  input method) is repaired with U+FFFD if it is not valid UTF-8, because a
+  single stray byte would otherwise make the whole string unrenderable.
+- A password field masks one `*` per character, so the row of stars matches what
+  was typed rather than how many bytes it took.
+
+Walking a byte offset by hand is the one way back into trouble: use
+`utf8_prev_boundary()` / `utf8_next_boundary()` from `UltraCanvasUtilsUtf8.h`
+rather than `pos - 1` / `pos + 1`.
 
 ## Validation System
 

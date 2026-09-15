@@ -47,6 +47,14 @@ std::string UltraNet_MimeDecodeHeader(const std::string& raw);
 std::string UltraNet_MimeEncodeHeader(const std::string& utf8Value,
                                       bool useBase64 = false);
 
+// Encode one address for a From/To/Cc header. A header field may only carry
+// ASCII, so a display name like "Erika Fröhling <erika@example.com>" has its
+// name part encoded as an encoded-word while the angle-addr is left alone
+// (encoding it would make the address undeliverable). Returns the address
+// unchanged when it is already ASCII.
+std::string UltraNet_MimeEncodeAddress(const std::string& utf8Address,
+                                       bool useBase64 = false);
+
 // ============================================================================
 // Message parsing
 // ============================================================================
