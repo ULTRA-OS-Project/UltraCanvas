@@ -856,13 +856,13 @@ namespace {
                 .SetAppearance(ToolbarAppearance::Flat())
                 .SetDimensions(0, 0, markdownToolbarWidth, 400)
                 .AddButton("md-bold", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-bold.svg"),
-                    [this]() { InsertMarkdownSnippet("**", "**", "bold text"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::Bold); })
                 .AddButton("md-italic", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-italic.svg"),
-                    [this]() { InsertMarkdownSnippet("*", "*", "emphasized text"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::Italic); })
                 .AddButton("md-superscript", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-superscript.svg"),
-                    [this]() { InsertMarkdownSnippet("^", "^", "sup"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::Superscript); })
                 .AddButton("md-subscript", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-subscript.svg"),
-                    [this]() { InsertMarkdownSnippet("~", "~", "sub"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::Subscript); })
                 .AddSeparator()
                 .AddButton("md-heading", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-heading.svg"),
                     [this]() {
@@ -893,27 +893,23 @@ namespace {
                     })
                 .AddSeparator()
                 .AddButton("md-ul", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-list-unordered.svg"),
-                    [this]() { InsertMarkdownLinePrefix("- ", "list item"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::BulletList); })
                 .AddButton("md-ol", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-list-ordered.svg"),
-                    [this]() { InsertMarkdownLinePrefix("1. ", "list item"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::NumberedList); })
                 .AddButton("md-checklist", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-list-check.svg"),
-                    [this]() { InsertMarkdownLinePrefix("- [ ] ", "list item"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::Checklist); })
                 .AddSeparator()
                 .AddButton("md-quote", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-quote.svg"),
-                    [this]() { InsertMarkdownLinePrefix("> ", "quote"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::Quote); })
                 .AddButton("md-code", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-code.svg"),
-                    [this]() { InsertMarkdownSnippet("```\n", "\n```", "code"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::CodeBlock); })
                 .AddButton("md-table", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-table.svg"),
-                    [this]() {
-                        InsertMarkdownSnippet(
-                            "| ", " | Column 2 |\n|----------|----------|\n|          |          |",
-                            "Column 1");
-                    })
+                    [this]() { ApplyFormatCommand(FormatCommand::Table); })
                 .AddSeparator()
                 .AddButton("md-link", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-link.svg"),
-                    [this]() { InsertMarkdownSnippet("[", "](http://example.com/)", "Link title"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::Link); })
                 .AddButton("md-image", "", NormalizePath(GetResourcesDir() + "media/icons/texter/md-image.svg"),
-                    [this]() { InsertMarkdownSnippet("![", "](image path)", "Image title"); })
+                    [this]() { ApplyFormatCommand(FormatCommand::Image); })
                 .Build();
 
         for (auto& entry : mdTooltips) {
@@ -929,11 +925,11 @@ namespace {
             .SetOrientation(ToolbarOrientation::Horizontal)
             .SetAppearance(ToolbarAppearance::Flat())
             .SetDimensions(0, 0, 200, 36)
-            .AddButton("md-h1", "H1", "", [this]() { InsertMarkdownLinePrefix("# ", "Heading"); headingSubToolbar->SetVisible(false); })
-            .AddButton("md-h2", "H2", "", [this]() { InsertMarkdownLinePrefix("## ", "Heading"); headingSubToolbar->SetVisible(false); })
-            .AddButton("md-h3", "H3", "", [this]() { InsertMarkdownLinePrefix("### ", "Heading"); headingSubToolbar->SetVisible(false); })
-            .AddButton("md-h4", "H4", "", [this]() { InsertMarkdownLinePrefix("#### ", "Heading"); headingSubToolbar->SetVisible(false); })
-            .AddButton("md-h5", "H5", "", [this]() { InsertMarkdownLinePrefix("##### ", "Heading"); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h1", "H1", "", [this]() { ApplyFormatCommand(FormatCommand::Heading1); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h2", "H2", "", [this]() { ApplyFormatCommand(FormatCommand::Heading2); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h3", "H3", "", [this]() { ApplyFormatCommand(FormatCommand::Heading3); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h4", "H4", "", [this]() { ApplyFormatCommand(FormatCommand::Heading4); headingSubToolbar->SetVisible(false); })
+            .AddButton("md-h5", "H5", "", [this]() { ApplyFormatCommand(FormatCommand::Heading5); headingSubToolbar->SetVisible(false); })
             .Build();
 
         // Style buttons with decreasing font sizes to reflect heading hierarchy.
@@ -1819,11 +1815,6 @@ namespace {
                     if (!doc->autosaveBackupPath.empty()) {
                         autosaveManager.DeleteBackup(doc->autosaveBackupPath);
                     }
-                    // Remove extracted word-document images
-                    if (!doc->wordMediaDirectory.empty()) {
-                        std::error_code ec;
-                        std::filesystem::remove_all(doc->wordMediaDirectory, ec);
-                    }
 
                     // Remove from documents list
                     documents.erase(documents.begin() + index);
@@ -1854,11 +1845,6 @@ namespace {
             // No unsaved changes - close directly
             if (!doc->autosaveBackupPath.empty()) {
                 autosaveManager.DeleteBackup(doc->autosaveBackupPath);
-            }
-            // Remove extracted word-document images
-            if (!doc->wordMediaDirectory.empty()) {
-                std::error_code ec;
-                std::filesystem::remove_all(doc->wordMediaDirectory, ec);
             }
 
             documents.erase(documents.begin() + index);
@@ -1971,6 +1957,21 @@ namespace {
         }
 
         auto doc = GetActiveDocument();
+        if (doc && doc->IsRichDocument() && doc->richEdit) {
+            // The text area of a word-processing tab is detached; focusing it
+            // would take the caret out of the document the user can see.
+            doc->richEdit->SetFocus(true);
+            AttachSharedBarsToActiveTab();
+            UpdateStatusBar();
+            UpdateEncodingDropdown();
+            UpdateEOLDropdown();
+            UpdateLanguageDropdown();
+            UpdateMarkdownToolbarVisibility();
+            UpdateMarkdownToolbarState();
+            UpdateMenuStates();
+            UpdateTitle();
+            return;
+        }
         bool doSetFocus = true;
         if (doc && doc->textArea && doc->textArea->IsMarkdownHybridMode()) {
             auto cursorPos = doc->textArea->GetCursorPosition();
@@ -2028,8 +2029,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
     }
 
+    UltraCanvasRichTextEdit* UltraCanvasTextEditor::GetActiveRichEdit() const {
+        const DocumentTab* doc = GetActiveDocument();
+        if (!doc || !doc->IsRichDocument()) return nullptr;
+        return doc->richEdit.get();
+    }
+
     void UltraCanvasTextEditor::CaptureSavedContentBaseline(DocumentTab* doc) {
         if (!doc) return;
+        // A rich document carries its own dirty flag (the element sets it on
+        // every edit), so there is no text to hash.
+        if (doc->IsRichDocument()) {
+            if (doc->richEdit) doc->richEdit->SetModified(false);
+            return;
+        }
         const std::string content = doc->textArea ? doc->textArea->GetText() : std::string();
         doc->savedContentHash = std::hash<std::string>{}(content);
     }
@@ -2116,6 +2129,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // which marker colour to show.
         if (doc->IsPdf() && doc->pdfView && doc->pdfView->GetDocument()) {
             doc->isModified = doc->pdfView->GetDocument()->IsDirty();
+        } else if (doc->IsRichDocument() && doc->richEdit) {
+            doc->isModified = doc->richEdit->IsModified();
         }
         bool showMarker = true;
         if (doc->isModified) {
@@ -2341,9 +2356,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         try {
             auto doc = documents[docIndex];
 
-            UCRichDocument rich;
+            // The element shares ownership of the document, so the tab can
+            // hand the very same blocks back to the writer on save.
+            auto document = std::make_shared<UCRichDocument>();
             std::string loadError;
-            if (!UCWordDocumentIO::Load(filePath, rich, loadError)) {
+            if (!UCWordDocumentIO::Load(filePath, *document, loadError)) {
                 if (DetectWordDocumentFormat(filePath) == WordDocumentFormat::LegacyDoc) {
                     UltraCanvasDialogManager::ShowError(loadError, "Unsupported Format",
                                                         nullptr, this);
@@ -2362,33 +2379,45 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             doc->textArea->SetDocumentFilePath(filePath);
             doc->isNewFile = false;
             doc->isModified = false;
+            doc->isSaved = true;
             doc->lastSaveTime = std::chrono::steady_clock::now();
 
-            // Extract embedded images into a per-document temp directory so
-            // the markdown renderer can display them.
-            RichDocumentMarkdownOptions mdOptions;
-            if (!rich.media.empty()) {
-                auto uniqueSuffix = std::to_string(
-                    std::chrono::steady_clock::now().time_since_epoch().count());
-                auto mediaDir = std::filesystem::temp_directory_path()
-                    / ("UltraTexter-media-" + std::to_string(doc->documentId)
-                       + "-" + uniqueSuffix);
-                mdOptions.imageDirectory = mediaDir.string();
-                doc->wordMediaDirectory = mediaDir.string();
-            }
-            std::string markdown = rich.ToMarkdown(mdOptions);
+            // Build the WYSIWYG editor at the textArea's logical size; the
+            // container resizes it on the next layout pass.
+            auto view = UltraCanvas::CreateRichTextEdit(
+                "RichEdit_" + std::to_string(doc->documentId),
+                0, 0,
+                doc->textArea ? doc->textArea->GetWidth()  : GetWidth(),
+                doc->textArea ? doc->textArea->GetHeight() : GetHeight());
+            view->SetDocument(std::move(document));
+            view->SetModified(false);
 
             doc->encoding = "UTF-8";
             doc->hasBOM = false;
             doc->originalRawBytes.clear();
             doc->isWordDocument = true;
+            doc->kind = DocumentKind::RichDocument;
+            // Whatever currently fills the editor slot leaves it: the text area
+            // on first load, an earlier rich editor when the tab is reloaded.
+            std::shared_ptr<UltraCanvasUIElement> previousContent = doc->richEdit
+                ? std::static_pointer_cast<UltraCanvasUIElement>(doc->richEdit)
+                : std::static_pointer_cast<UltraCanvasUIElement>(doc->textArea);
+            doc->richEdit = view;
+            doc->language = "Rich Text";
 
-            doc->textArea->SetText(markdown, false);
-            doc->eolType = doc->textArea->GetLineEnding();
-            doc->textArea->SetEditingMode(TextAreaEditingMode::MarkdownHybrid);
-            doc->language = doc->textArea->GetCurrentProgrammingLanguage();
-
-            CaptureSavedContentBaseline(doc.get());
+            // Swap the editor slot inside the tab rather than the whole tab
+            // content: editorArea is the flex row that also holds the
+            // formatting toolbar, and contentBox above it holds the search bar,
+            // so both keep working. textArea stays allocated (and referenced by
+            // doc->textArea) so the editor's null-checked textArea accesses
+            // elsewhere keep working, but it leaves the tab's child tree.
+            if (doc->editorArea) {
+                if (previousContent) doc->editorArea->RemoveChild(previousContent);
+                view->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetFlexOrder(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+                doc->editorArea->AddChild(view);
+            }
+            SetupRichDocumentCallbacks(docIndex);
 
             UpdateTabTitle(docIndex);
             UpdateTabBadge(docIndex);
@@ -2400,7 +2429,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             lastOpenedDirectory = p.parent_path().string();
             AddToRecentFiles(filePath);
 
-            doc->textArea->SetCursorPosition(LineColumnIndex::INVALID);
+            if (docIndex == activeDocumentIndex) {
+                view->SetFocus(true);
+                UpdateMarkdownToolbarState();
+            }
             return true;
 
         } catch (const std::exception& e) {
@@ -2500,6 +2532,60 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         return SaveDocumentAs(docIndex, doc->filePath);
     }
 
+    bool UltraCanvasTextEditor::SaveRichDocumentAs(int docIndex,
+                                                   const std::string& filePath,
+                                                   const std::string& targetExtension) {
+        auto doc = documents[docIndex];
+        const auto& document = doc->richEdit->GetDocument();
+        if (!document) return false;
+
+        if (targetExtension == "doc") {
+            UltraCanvasDialogManager::ShowError(
+                "Saving to the legacy Word 97-2003 (.doc) format is not "
+                "supported. Save as .docx instead.",
+                "Unsupported Format", nullptr, this);
+            return false;
+        }
+
+        if (targetExtension == "odt" || targetExtension == "docx") {
+            if (document->metadata.title.empty()) {
+                document->metadata.title =
+                    std::filesystem::path(filePath).stem().string();
+            }
+            std::string saveError;
+            if (!UCWordDocumentIO::Save(filePath, *document, saveError)) {
+                debugOutput << "Failed to save document: " << saveError << std::endl;
+                UltraCanvasDialogManager::ShowError(saveError, "Save Failed",
+                                                    nullptr, this);
+                return false;
+            }
+            return true;
+        }
+
+        // Saving a word-processing document to a text target: serialise it.
+        // Markdown and HTML keep the structure they can express; anything else
+        // gets the plain text, which is the honest result for a .txt target.
+        std::string text;
+        if (targetExtension == "md" || targetExtension == "markdown") {
+            RichDocumentMarkdownOptions options;
+            options.imageDirectory =
+                std::filesystem::path(filePath).parent_path().string();
+            text = document->ToMarkdown(options);
+        } else if (targetExtension == "html" || targetExtension == "htm") {
+            text = document->ToHTML();
+        } else {
+            text = document->ToPlainText();
+        }
+
+        std::ofstream file(filePath, std::ios::binary);
+        if (!file.is_open()) {
+            debugOutput << "Failed to save file: " << filePath << std::endl;
+            return false;
+        }
+        file.write(text.data(), static_cast<std::streamsize>(text.size()));
+        return file.good();
+    }
+
     bool UltraCanvasTextEditor::SaveDocumentAs(int docIndex, const std::string& filePath) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return false;
@@ -2528,12 +2614,43 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
                 return true;
             }
 
-            // Word-processing targets (.odt/.docx) are written as document
-            // packages: the editor's markdown converts back through
-            // UCRichDocument. Hex-mode tabs skip this and save raw bytes.
             std::string targetExt = std::filesystem::path(filePath).extension().string();
             if (!targetExt.empty() && targetExt[0] == '.') targetExt = targetExt.substr(1);
             std::transform(targetExt.begin(), targetExt.end(), targetExt.begin(), ::tolower);
+
+            // A word-processing tab saves the document it is editing, with no
+            // conversion in either direction — the runs the reader produced are
+            // the runs the writer receives.
+            if (doc->IsRichDocument() && doc->richEdit) {
+                if (!SaveRichDocumentAs(docIndex, filePath, targetExt)) {
+                    return false;
+                }
+                doc->filePath = filePath;
+                std::filesystem::path p(filePath);
+                doc->fileName = p.filename().string();
+                doc->isNewFile = false;
+                doc->isSaved = true;
+                doc->isModified = false;
+                doc->lastSaveTime = std::chrono::steady_clock::now();
+                doc->richEdit->SetModified(false);
+                if (!doc->autosaveBackupPath.empty()) {
+                    autosaveManager.DeleteBackup(doc->autosaveBackupPath);
+                    doc->autosaveBackupPath = "";
+                }
+                SetDocumentModified(docIndex, false);
+                UpdateTabTitle(docIndex);
+                UpdateTitle();
+                UpdateStatusBar();
+                AddToRecentFiles(filePath);
+                if (onFileSaved) {
+                    onFileSaved(filePath, docIndex);
+                }
+                return true;
+            }
+
+            // Word-processing targets (.odt/.docx) reached from a text tab are
+            // written as document packages: the editor's markdown converts back
+            // through UCRichDocument. Hex-mode tabs skip this and save raw bytes.
             bool isWordTarget = (targetExt == "odt" || targetExt == "docx" || targetExt == "doc")
                                 && !doc->textArea->IsHexMode();
 
@@ -2714,6 +2831,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         auto doc = documents[docIndex];
+
+        // A backup is a text file that recovery reopens as a text tab, so a PDF
+        // or word-processing tab has nothing it could usefully write there —
+        // its content does not live in the text area at all.
+        if (doc->IsPdf() || doc->IsRichDocument()) {
+            return;
+        }
 
         // Create backup path if not exists
         if (doc->autosaveBackupPath.empty()) {
@@ -2937,8 +3061,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::UpdateMarkdownToolbarVisibility() {
         if (!markdownToolbar) return;
-        bool show = IsMarkdownMode() && config.showMarkdownToolbar;
+        // A word-processing tab gets the same bar: the buttons mean the format
+        // rather than the markup, which ApplyFormatCommand sorts out.
+        const bool isRich = GetActiveRichEdit() != nullptr;
+        bool show = (IsMarkdownMode() || isRich) && config.showMarkdownToolbar;
         markdownToolbar->SetVisible(show);
+
+        // Two buttons have no rich-document counterpart yet: a checkbox list
+        // item is not part of UCRichDocument, and tables render but are not
+        // edited in place. Disabling beats a button that quietly does nothing.
+        for (const char* id : {"md-checklist", "md-table"}) {
+            if (auto btn = markdownToolbar->GetWidget(id)) {
+                btn->SetDisabled(isRich);
+            }
+        }
         markdownToolbar->layout.display =
                 show ? CSSLayout::DisplayType::Block : CSSLayout::DisplayType::NoDisplay;
         if (!show && headingSubToolbar) {
@@ -2948,6 +3084,125 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // naturally sits left of the text area (and collapses out when display:NoDisplay).
         InvalidateLayout();
         RequestRedraw();
+    }
+
+    void UltraCanvasTextEditor::ApplyFormatCommand(FormatCommand command) {
+        UltraCanvasRichTextEdit* rich = GetActiveRichEdit();
+
+        // In a Markdown tab the button writes markup; in a word-processing tab
+        // it applies the format to the document itself. Everything else about
+        // the button — icon, tooltip, pressed state — is the same.
+        switch (command) {
+            case FormatCommand::Bold:
+                if (rich) rich->ToggleBold();
+                else InsertMarkdownSnippet("**", "**", "bold text");
+                break;
+            case FormatCommand::Italic:
+                if (rich) rich->ToggleItalic();
+                else InsertMarkdownSnippet("*", "*", "emphasized text");
+                break;
+            case FormatCommand::Superscript:
+                if (rich) rich->ToggleSuperscript();
+                else InsertMarkdownSnippet("^", "^", "sup");
+                break;
+            case FormatCommand::Subscript:
+                if (rich) rich->ToggleSubscript();
+                else InsertMarkdownSnippet("~", "~", "sub");
+                break;
+            case FormatCommand::BulletList:
+                if (rich) rich->ToggleBulletList();
+                else InsertMarkdownLinePrefix("- ", "list item");
+                break;
+            case FormatCommand::NumberedList:
+                if (rich) rich->ToggleNumberedList();
+                else InsertMarkdownLinePrefix("1. ", "list item");
+                break;
+            case FormatCommand::Checklist:
+                // UCRichDocument has no checkbox list item, so the nearest
+                // thing a word-processing document can hold is a bullet.
+                if (rich) rich->ToggleBulletList();
+                else InsertMarkdownLinePrefix("- [ ] ", "list item");
+                break;
+            case FormatCommand::Quote:
+                if (rich) rich->ToggleBlockQuote();
+                else InsertMarkdownLinePrefix("> ", "quote");
+                break;
+            case FormatCommand::CodeBlock:
+                if (rich) rich->ToggleCodeBlock();
+                else InsertMarkdownSnippet("```\n", "\n```", "code");
+                break;
+            case FormatCommand::Table:
+                // Tables render in the rich editor but are not edited in place
+                // yet, so the button is disabled there rather than inserting
+                // something the user could not then fill in.
+                if (!rich) {
+                    InsertMarkdownSnippet(
+                        "| ", " | Column 2 |\n|----------|----------|\n|          |          |",
+                        "Column 1");
+                }
+                break;
+            case FormatCommand::Link:
+                if (rich) {
+                    UltraCanvasDialogManager::ShowInputDialog(
+                        "Link address:", "Insert Hyperlink", "https://",
+                        InputType::URL,
+                        [this](DialogResult result, const std::string& target) {
+                            if (result != DialogResult::OK || target.empty()) return;
+                            if (auto* edit = GetActiveRichEdit()) edit->SetLink(target);
+                        },
+                        GetWindow());
+                } else {
+                    InsertMarkdownSnippet("[", "](http://example.com/)", "Link title");
+                }
+                break;
+            case FormatCommand::Image:
+                if (rich) {
+                    FileDialogOptions opts;
+                    opts.title = "Insert Image";
+                    opts.initialDirectory = lastOpenedDirectory;
+                    opts.parentWindow = GetWindow();
+                    opts.filters = {
+                        FileFilter("Images", std::vector<std::string>{
+                            "png", "jpg", "jpeg", "gif", "bmp", "svg"}),
+                        FileFilter("All Files", "*"),
+                    };
+                    UltraCanvasFileLoader::OpenFileDialog(
+                        opts,
+                        [this](DialogResult result, const std::string& path) {
+                            if (result != DialogResult::OK || path.empty()) return;
+                            auto* edit = GetActiveRichEdit();
+                            // The bytes are copied into the document's media
+                            // store, so the picture survives the save.
+                            if (edit && !edit->InsertImageFromFile(path)) {
+                                UltraCanvasDialogManager::ShowError(
+                                    "Could not read the image file.",
+                                    "Insert Image", nullptr, this);
+                            }
+                        });
+                } else {
+                    InsertMarkdownSnippet("![", "](image path)", "Image title");
+                }
+                break;
+            case FormatCommand::Heading1:
+            case FormatCommand::Heading2:
+            case FormatCommand::Heading3:
+            case FormatCommand::Heading4:
+            case FormatCommand::Heading5: {
+                int level = 1 + static_cast<int>(command)
+                              - static_cast<int>(FormatCommand::Heading1);
+                if (rich) {
+                    // Clicking the level a paragraph already has turns it back
+                    // into body text, which is what the pressed state promises.
+                    rich->SetHeadingLevel(
+                        rich->GetCurrentHeadingLevel() == level ? 0 : level);
+                } else {
+                    InsertMarkdownLinePrefix(std::string(level, '#') + " ", "Heading");
+                }
+                break;
+            }
+        }
+
+        UpdateMarkdownToolbarState();
     }
 
     void UltraCanvasTextEditor::InsertMarkdownSnippet(
@@ -3459,6 +3714,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::OnEditUndo() {
+        if (auto* rich = GetActiveRichEdit()) {
+            rich->Undo();
+            UpdateMenuStates();
+            return;
+        }
         auto doc = GetActiveDocument();
         if (doc && doc->textArea) {
             doc->textArea->Undo();
@@ -3467,6 +3727,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::OnEditRedo() {
+        if (auto* rich = GetActiveRichEdit()) {
+            rich->Redo();
+            UpdateMenuStates();
+            return;
+        }
         auto doc = GetActiveDocument();
         if (doc && doc->textArea) {
             doc->textArea->Redo();
@@ -3475,6 +3740,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::OnEditCut() {
+        if (auto* rich = GetActiveRichEdit()) {
+            rich->Cut();
+            UpdateMenuStates();
+            return;
+        }
         auto doc = GetActiveDocument();
         if (doc && doc->textArea) {
             doc->textArea->CutSelection();
@@ -3483,6 +3753,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::OnEditCopy() {
+        if (auto* rich = GetActiveRichEdit()) {
+            rich->Copy();
+            return;
+        }
         auto doc = GetActiveDocument();
         if (doc && doc->textArea) {
             doc->textArea->CopySelection();
@@ -3490,6 +3764,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::OnEditPaste() {
+        if (auto* rich = GetActiveRichEdit()) {
+            rich->Paste();
+            UpdateMenuStates();
+            return;
+        }
         auto doc = GetActiveDocument();
         if (doc && doc->textArea) {
             doc->textArea->PasteClipboard();
@@ -3498,6 +3777,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     void UltraCanvasTextEditor::OnEditSelectAll() {
+        if (auto* rich = GetActiveRichEdit()) {
+            rich->SelectAll();
+            return;
+        }
         auto doc = GetActiveDocument();
         if (doc && doc->textArea) {
             doc->textArea->SelectAll();
@@ -3506,7 +3789,10 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::OnEditSearch() {
         auto doc = GetActiveDocument();
-        if (!doc || !doc->textArea) return;
+        // The search bar drives the text area, which is empty in a
+        // word-processing tab — UltraCanvasRichTextEdit has no find surface yet,
+        // so opening the bar would search nothing and report no matches.
+        if (!doc || !doc->textArea || doc->IsRichDocument()) return;
         ShowSearchBar(SearchBarMode::Find);
     }
 
@@ -3562,7 +3848,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::OnEditReplace() {
         auto doc = GetActiveDocument();
-        if (!doc || !doc->textArea) return;
+        if (!doc || !doc->textArea || doc->IsRichDocument()) return;
         ShowSearchBar(SearchBarMode::Replace);
     }
 
@@ -3641,7 +3927,8 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::OnEditGoToLine() {
         auto doc = GetActiveDocument();
-        if (!doc || !doc->textArea) return;
+        // A rich document has blocks, not lines, to go to.
+        if (!doc || !doc->textArea || doc->IsRichDocument()) return;
 
         // Create go to line dialog
         goToLineDialog = CreateGoToLineDialog();
@@ -3856,6 +4143,20 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         if (!statusLabel) return;
 
         auto doc = GetActiveDocument();
+        if (doc && doc->IsRichDocument() && doc->richEdit) {
+            // A rich document has no lines and columns: the caret lives at a
+            // byte offset inside a block, so that is what gets reported.
+            const RichDocPosition caret = doc->richEdit->GetEditor().GetCaret();
+            std::stringstream richStatus;
+            richStatus << "Block: " << (caret.blockIndex + 1)
+                       << " of " << doc->richEdit->GetEditor().GetBlockCount()
+                       << ", Offset: " << caret.byteOffset;
+            if (doc->isModified) {
+                richStatus << " | Modified";
+            }
+            statusLabel->SetText(richStatus.str());
+            return;
+        }
         if (!doc || !doc->textArea) {
             statusLabel->SetText("Ready");
             return;
@@ -4292,6 +4593,42 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         return -1;
     }
 
+    void UltraCanvasTextEditor::SetupRichDocumentCallbacks(int docIndex) {
+        if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
+            return;
+        }
+        auto doc = documents[docIndex];
+        if (!doc->richEdit) return;
+
+        // Capture the stable documentId rather than the index: indices shift
+        // when an earlier tab closes.
+        int docId = doc->documentId;
+
+        doc->richEdit->onDocumentChanged = [this, docId]() {
+            int currentIndex = FindDocumentIndexById(docId);
+            if (currentIndex >= 0) {
+                auto& tab = documents[currentIndex];
+                // The element owns the dirty flag here; unlike a text tab there
+                // is no content hash to compare against, so undoing back to the
+                // saved state leaves the document marked modified.
+                SetDocumentModified(currentIndex,
+                                    tab->richEdit && tab->richEdit->IsModified());
+            }
+            UpdateStatusBar();
+        };
+
+        doc->richEdit->onSelectionChanged = [this]() {
+            UpdateStatusBar();
+            UpdateMarkdownToolbarState();
+        };
+
+        doc->richEdit->onLinkClicked = [](const std::string& target) {
+            if (target.empty()) return false;
+            OpenURL(target);
+            return true;
+        };
+    }
+
     void UltraCanvasTextEditor::SetupDocumentCallbacks(int docIndex) {
         if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) {
             return;
@@ -4712,11 +5049,13 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
     bool UltraCanvasTextEditor::CanUndo() const {
+        if (auto* rich = GetActiveRichEdit()) return rich->CanUndo();
         auto doc = GetActiveDocument();
         return doc && doc->textArea ? doc->textArea->CanUndo() : false;
     }
 
     bool UltraCanvasTextEditor::CanRedo() const {
+        if (auto* rich = GetActiveRichEdit()) return rich->CanRedo();
         auto doc = GetActiveDocument();
         return doc && doc->textArea ? doc->textArea->CanRedo() : false;
     }
@@ -5400,6 +5739,49 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::UpdateMarkdownToolbarState() {
         if (!markdownToolbar || !markdownToolbar->IsVisible()) return;
+
+        auto setChecked = [&](const std::string& id, bool checked) {
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(markdownToolbar->GetWidget(id));
+            if (btn) btn->SetPressed(checked);
+        };
+        auto setHeadingChecked = [&](const std::string& id, bool checked) {
+            if (!headingSubToolbar) return;
+            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(headingSubToolbar->GetWidget(id));
+            if (btn) btn->SetPressed(checked);
+        };
+
+        // A word-processing tab reads its state off the document instead of
+        // re-detecting markup, and reports Mixed as not-pressed: a selection
+        // spanning bold and plain text is neither.
+        if (auto* rich = GetActiveRichEdit()) {
+            const RichCharFormatState format = rich->GetFormatState();
+            setChecked("md-bold", RichCharFormatState::IsOn(format.bold));
+            setChecked("md-italic", RichCharFormatState::IsOn(format.italic));
+            setChecked("md-superscript", RichCharFormatState::IsOn(format.superscript));
+            setChecked("md-subscript", RichCharFormatState::IsOn(format.subscript));
+
+            const RichBlockType blockType = rich->GetCurrentBlockType();
+            const RichDocPosition caret = rich->GetEditor().GetCaret();
+            bool ordered = false;
+            if (blockType == RichBlockType::ListItem
+                && caret.blockIndex >= 0
+                && caret.blockIndex < rich->GetEditor().GetBlockCount()) {
+                ordered = rich->GetEditor().GetBlock(caret.blockIndex).orderedList;
+            }
+            setChecked("md-ul", blockType == RichBlockType::ListItem && !ordered);
+            setChecked("md-ol", blockType == RichBlockType::ListItem && ordered);
+            setChecked("md-checklist", false);
+            setChecked("md-quote", blockType == RichBlockType::BlockQuote);
+
+            const int level = rich->GetCurrentHeadingLevel();
+            setHeadingChecked("md-h1", level == 1);
+            setHeadingChecked("md-h2", level == 2);
+            setHeadingChecked("md-h3", level == 3);
+            setHeadingChecked("md-h4", level == 4);
+            setHeadingChecked("md-h5", level == 5);
+            return;
+        }
+
         auto doc = GetActiveDocument();
         if (!doc || !doc->textArea) return;
 
@@ -5529,11 +5911,6 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         }
 
         // Update toolbar button states
-        auto setChecked = [&](const std::string& id, bool checked) {
-            auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(markdownToolbar->GetWidget(id));
-            if (btn) btn->SetPressed(checked);
-        };
-
         setChecked("md-bold", isBold);
         setChecked("md-italic", isItalic);
         setChecked("md-superscript", isSuperscript);
@@ -5543,17 +5920,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         setChecked("md-checklist", isChecklist);
         setChecked("md-quote", isBlockquote);
 
-        // Update heading sub-toolbar if visible
-        if (headingSubToolbar) {
-            auto setHeadingChecked = [&](const std::string& id, bool checked) {
-                auto btn = std::dynamic_pointer_cast<UltraCanvasButton>(headingSubToolbar->GetWidget(id));
-                if (btn) btn->SetPressed(checked);
-            };
-            setHeadingChecked("md-h1", isH1);
-            setHeadingChecked("md-h2", isH2);
-            setHeadingChecked("md-h3", isH3);
-            setHeadingChecked("md-h4", isH4);
-            setHeadingChecked("md-h5", isH5);
-        }
+        // Update heading sub-toolbar
+        setHeadingChecked("md-h1", isH1);
+        setHeadingChecked("md-h2", isH2);
+        setHeadingChecked("md-h3", isH3);
+        setHeadingChecked("md-h4", isH4);
+        setHeadingChecked("md-h5", isH5);
     }
 } // namespace UltraCanvas

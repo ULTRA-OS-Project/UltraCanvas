@@ -134,13 +134,14 @@ bool UltraCanvasTextEditor::EnsureSpellServiceReady() {
 // PER-DOCUMENT WIRING
 // ===================================================================
 
-// Hex view has no words and a PDF tab has no text area, so neither is checked.
-// Everything else is, including source files: the check already skips
-// identifiers, ALL-CAPS words, camelCase and anything with a digit or an
+// Hex view has no words; a PDF tab and a word-processing tab do not put their
+// text in the text area at all (UltraCanvasRichTextEdit has no spell wiring
+// yet). Everything else is checked, including source files: the check already
+// skips identifiers, ALL-CAPS words, camelCase and anything with a digit or an
 // underscore, so what is left to flag in code is mostly comments and strings.
 bool UltraCanvasTextEditor::DocumentWantsSpellCheck(const DocumentTab* doc) const {
     if (!doc || !doc->textArea) return false;
-    if (doc->IsPdf()) return false;
+    if (doc->IsPdf() || doc->IsRichDocument()) return false;
     return doc->textArea->GetEditingMode() != TextAreaEditingMode::Hex;
 }
 

@@ -82,6 +82,14 @@ Because the element shares ownership of the document (`std::shared_ptr`), an
 application can keep holding it — to save it, to inspect blocks the user never
 touched, or to hand the same document to a read-only view.
 
+UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
+the reader produced, hands it to the element, and hands the same object back to
+`UCWordDocumentIO::Save` — no conversion in either direction. See
+`Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
+`SaveRichDocumentAs`) for a worked integration, including how the element is
+swapped into an existing tab layout and how a shared formatting toolbar drives
+either this element or a Markdown text area.
+
 ## Building the toolbar
 
 The element draws **no chrome**. Build the toolbar from real elements (framework
