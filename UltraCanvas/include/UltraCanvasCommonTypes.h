@@ -6,6 +6,7 @@
 #pragma once
 
 #include <cstdint>
+#include <type_traits>
 #include <cmath>
 #include <vector>
 #include <string>
@@ -25,7 +26,7 @@ struct Point2D {
 
     Point2D(T px = 0, T py = 0) : x(px), y(py) {}
 
-    template <typename U>
+    template <typename U, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
     Point2D(U px = 0, U py = 0) : x(static_cast<T>(px)), y(static_cast<T>(py)) {}
 
     // Cross-type converting constructor (e.g. Point2Dd from Point2Di)
@@ -89,7 +90,7 @@ struct Size2D {
 
     Size2D(T w = 0, T h = 0) : width(w), height(h) {}
 
-    template <typename U>
+    template <typename U, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
     Size2D(U w = 0, U h = 0) : width(static_cast<T>(w)), height(static_cast<T>(h)) {}
 
     // Cross-type converting constructor (e.g. Size2Dd from Size2Di)
@@ -133,7 +134,7 @@ struct Rect2D {
     Rect2D(T px = 0, T py = 0, T w = 0, T h = 0)
         : x(px), y(py), width(w), height(h) {}
 
-    template <typename U>
+    template <typename U, std::enable_if_t<std::is_arithmetic_v<U>, int> = 0>
     Rect2D(U px = 0, U py = 0, U w = 0, U h = 0)
             : x(static_cast<T>(px)), y(static_cast<T>(py)), width(static_cast<T>(w)), height(static_cast<T>(h)) {}
 

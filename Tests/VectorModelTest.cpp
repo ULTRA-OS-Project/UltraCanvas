@@ -8,13 +8,17 @@
 //
 // Usage: VectorModelTest
 // Exit code is the number of failed checks.
-// Version: 1.0.0
-// Last Modified: 2026-09-08
+// Version: 1.1.0
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorStorage.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorRenderer.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasCADConverters.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorRenderer.h"
+#include "UltraCanvasImage.h"
+#include "UltraCanvasRenderContext.h"
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+#include "UltraCanvasCADConverters.h"
+#endif
 
 #include <cmath>
 #include <cstdio>
@@ -48,6 +52,30 @@ std::shared_ptr<VectorRect> MakeRect(double x, double y, double w, double h) {
     r->Bounds = Rect2Dd{x, y, w, h};
     r->Style.Fill = Color(0, 0, 0, 255);
     return r;
+}
+
+// Renders a document into an offscreen context of the given size and
+// returns the un-premultiplied RGBA of one pixel. Needs no display.
+struct Rgba { int r, g, b, a; };
+Rgba RenderAndSample(const VectorDocument& doc, int w, int h, int px, int py) {
+    UCPixmap pixmap;
+    if (!pixmap.Init(w, h)) return {-1, -1, -1, -1};
+    std::unique_ptr<IRenderContext> ctx = CreateRenderContext(Size2Di(w, h), nullptr);
+    if (!ctx) return {-1, -1, -1, -1};
+    ctx->Clear(Color(0, 0, 0, 0));
+    VectorRenderer renderer;
+    renderer.RenderDocument(ctx.get(), doc);
+    ctx->FlushToSurface(pixmap.GetSurface(), Point2Dd(0, 0));
+    pixmap.MarkDirty();
+    pixmap.Flush();
+    const uint32_t p = pixmap.GetPixel(px, py);
+    int a = (p >> 24) & 0xFF, r = (p >> 16) & 0xFF, g = (p >> 8) & 0xFF, b = p & 0xFF;
+    if (a != 0 && a != 255) {
+        r = std::min(255, (r * 255 + a / 2) / a);
+        g = std::min(255, (g * 255 + a / 2) / a);
+        b = std::min(255, (b * 255 + a / 2) / a);
+    }
+    return {r, g, b, a};
 }
 
 } // namespace
@@ -194,6 +222,79 @@ int main() {
               "a new document is unitless in points");
     }
 
+
+    // ===== Renderer: arcs, gradient bounds, fill opacity, clip =====
+    {
+        UCImage::InitializeImageSubsysterm("VectorModelTest");
+
+        // A half-disc drawn with one SVG arc, filled red. Before 0.8.50 the
+        // renderer drew the arc as a straight chord, so the bulge was empty.
+        VectorDocument doc;
+        doc.Size = Size2Dd{100, 100};
+        doc.ViewBox = Rect2Dd{0, 0, 100, 100};
+        auto layer = doc.AddLayer("main");
+        auto arc = std::make_shared<VectorPath>();
+        arc->MoveTo(10, 50);
+        arc->ArcTo(40, 40, 0, false, true, 90, 50, false);   // upper half of a circle at (50,50)
+        arc->ClosePath();
+        arc->Style.Fill = Color(255, 0, 0, 255);
+        layer->AddChild(arc);
+        Rgba bulge = RenderAndSample(doc, 100, 100, 50, 20);
+        Check(bulge.a > 200 && bulge.r > 200 && bulge.g < 50, "an SVG arc is filled as a curve, not a chord");
+        Rgba below = RenderAndSample(doc, 100, 100, 50, 80);
+        Check(below.a == 0, "the sweep flag picks the upper half");
+
+        // An objectBoundingBox gradient resolves against the shape it fills:
+        // red at the shape's left edge, blue at its right - wherever the
+        // shape is. Before 0.8.50 it resolved against {0,0,100,100}.
+        VectorDocument gdoc;
+        gdoc.Size = Size2Dd{400, 200};
+        gdoc.ViewBox = Rect2Dd{0, 0, 400, 200};
+        auto glayer = gdoc.AddLayer("main");
+        auto rect = MakeRect(300, 100, 100, 100);
+        LinearGradientData lg;
+        lg.Start = {0, 0};
+        lg.End = {1, 0};
+        lg.Stops = {{0.0, Color(255, 0, 0, 255)}, {1.0, Color(0, 0, 255, 255)}};
+        rect->Style.Fill = GradientData{lg};
+        glayer->AddChild(rect);
+        Rgba left = RenderAndSample(gdoc, 400, 200, 302, 150);
+        Rgba right = RenderAndSample(gdoc, 400, 200, 397, 150);
+        Check(left.r > 200 && left.b < 60, "gradient starts red at the shape's own left edge");
+        Check(right.b > 200 && right.r < 60, "gradient ends blue at the shape's own right edge");
+
+        // fill-opacity halves the paint's alpha.
+        VectorDocument odoc;
+        odoc.Size = Size2Dd{100, 100};
+        odoc.ViewBox = Rect2Dd{0, 0, 100, 100};
+        auto olayer = odoc.AddLayer("main");
+        auto half = MakeRect(0, 0, 100, 100);
+        half->Style.Fill = Color(0, 255, 0, 255);
+        half->Style.FillOpacity = 0.5f;
+        olayer->AddChild(half);
+        Rgba faded = RenderAndSample(odoc, 100, 100, 50, 50);
+        Check(faded.a > 110 && faded.a < 145, "fill-opacity 0.5 renders at half alpha");
+
+        // A clip-path definition confines the fill to the clip's outline.
+        VectorDocument cdoc;
+        cdoc.Size = Size2Dd{100, 100};
+        cdoc.ViewBox = Rect2Dd{0, 0, 100, 100};
+        auto clayer = cdoc.AddLayer("main");
+        auto clip = std::make_shared<VectorClipPath>();
+        clip->Id = "leftHalf";
+        clip->Data.Elements.push_back(MakeRect(0, 0, 50, 100));
+        cdoc.Definitions["leftHalf"] = clip;
+        auto full = MakeRect(0, 0, 100, 100);
+        full->Style.Fill = Color(0, 0, 255, 255);
+        full->Style.ClipPath = std::string("leftHalf");
+        clayer->AddChild(full);
+        Rgba inside = RenderAndSample(cdoc, 100, 100, 25, 50);
+        Rgba outside = RenderAndSample(cdoc, 100, 100, 75, 50);
+        Check(inside.a == 255 && inside.b == 255, "clip-path keeps the fill inside the clip");
+        Check(outside.a == 0, "clip-path removes the fill outside the clip");
+    }
+
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
     // ===== DXF carries units and layer properties =====
     {
         // A 297 x 210 mm plan: the model holds it in points.
@@ -254,6 +355,9 @@ int main() {
             }
         }
     }
+#else
+    std::printf("  (DXF round trip skipped: Vector plugin not built)\n");
+#endif
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
     return failures;

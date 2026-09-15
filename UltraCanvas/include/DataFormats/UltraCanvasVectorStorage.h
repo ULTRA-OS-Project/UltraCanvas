@@ -405,7 +405,7 @@ namespace UltraCanvas {
 
             VectorRect() { Type = VectorElementType::Rectangle; }
 
-            Rect2Dd GetBoundingBox() const;
+            Rect2Dd GetBoundingBox() const override;
 
             std::shared_ptr<VectorElement> Clone() const override;
         };
@@ -419,7 +419,7 @@ namespace UltraCanvas {
 
             Rect2Dd GetBoundingBox() const override;
 
-            std::shared_ptr<VectorElement> Clone() const;
+            std::shared_ptr<VectorElement> Clone() const override;
         };
 
         class VectorEllipse : public VectorElement {
@@ -442,7 +442,7 @@ namespace UltraCanvas {
 
             Rect2Dd GetBoundingBox() const override;
 
-            std::shared_ptr<VectorElement> Clone() const;
+            std::shared_ptr<VectorElement> Clone() const override;
         };
 
         class VectorPolyline : public VectorElement {
@@ -451,7 +451,7 @@ namespace UltraCanvas {
 
             VectorPolyline() { Type = VectorElementType::Polyline; }
 
-            Rect2Dd GetBoundingBox() const;
+            Rect2Dd GetBoundingBox() const override;
             std::shared_ptr<VectorElement> Clone() const override;
         };
 
@@ -472,7 +472,7 @@ namespace UltraCanvas {
 
             VectorPath() { Type = VectorElementType::Path; }
 
-            Rect2Dd GetBoundingBox() const;
+            Rect2Dd GetBoundingBox() const override;
             void AddCommand(const PathCommand& cmd);
 
             std::shared_ptr<VectorElement> Clone() const override;
@@ -503,7 +503,7 @@ namespace UltraCanvas {
 
             Rect2Dd GetBoundingBox() const override;
 
-            std::shared_ptr<VectorElement> Clone() const;
+            std::shared_ptr<VectorElement> Clone() const override;
 
             void SetText(const std::string &t);
             void AddSpan(const TextSpanData& span);
@@ -530,7 +530,7 @@ namespace UltraCanvas {
 
             Rect2Dd GetBoundingBox() const override;
 
-            std::shared_ptr<VectorElement> Clone() const;
+            std::shared_ptr<VectorElement> Clone() const override;
 
             void AddChild(std::shared_ptr<VectorElement> c);
 

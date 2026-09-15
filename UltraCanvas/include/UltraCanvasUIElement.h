@@ -73,9 +73,11 @@ namespace UltraCanvas {
         bool isPressed = false;
         bool isDisabled = false;
         bool isSelected = false;
+        bool isInteractive = true;
 
         void Reset() {
             isDisabled = isHovered = isPressed = isSelected = false;
+            isInteractive  = true;
         }
     };
 
@@ -478,10 +480,13 @@ namespace UltraCanvas {
         bool IsPressed() const { return stateFlags.isPressed; }
         void SetPressed(bool pressed) { stateFlags.isPressed = pressed; RequestRedraw(); }
 
+        bool IsInteractive() const { return stateFlags.isInteractive; }
+        void SetInteractive(bool interactive) { stateFlags.isInteractive = interactive; RequestRedraw(); }
+
         bool IsFocused() const;
         virtual bool SetFocus(bool focus);
         virtual bool AcceptsFocus() const { return false; }
-        bool CanReceiveFocus() const { return IsVisible() && !IsDisabled() && AcceptsFocus(); }
+        bool CanReceiveFocus() const { return IsVisible() && !IsDisabled() && IsInteractive() && AcceptsFocus(); }
 
         bool IsSelected() const { return stateFlags.isSelected; }
         void SetSelected(bool selected) { stateFlags.isSelected = selected; RequestRedraw(); }

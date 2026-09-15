@@ -1,0 +1,35 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraMail. It is what puts the mail client in
+# the application menu, and — the reason it matters beyond that — what gives
+# every desktop-aware program a name for UltraMail's icon: `Icon=UltraMail` is
+# an icon *name*, resolved through the installed icon themes, and the project's
+# install rules put `media/appicon/UltraMail.png` into
+# share/icons/hicolor/256x256/apps so the lookup lands on it.
+#
+# That is the path UltraFiler takes for an application: a desktop entry names
+# its icon, the filer resolves the name through the themes
+# (UltraCanvasNativeFileIcons.cpp -> FindDesktopIconFile) and draws the image
+# that comes back. The window and taskbar icon come from the same PNG by a
+# different route — main.cpp hands it to SetDefaultWindowIcon, which publishes
+# it as _NET_WM_ICON on the window.
+#
+# No MimeType= and no %U in Exec: UltraMail's main() takes no arguments, so it
+# cannot open a mailto: link or a message file handed to it by the desktop.
+# Claiming the association here would make the desktop route mail links to a
+# program that drops them. Add both together when argv handling lands.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=UltraMail
+GenericName=Mail Client
+Comment=Read, write and send email from every account in one place
+Exec=UltraMail
+TryExec=UltraMail
+Icon=UltraMail
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraMail
+Categories=Network;Email;
+Keywords=mail;email;e-mail;imap;smtp;inbox;message;contacts;compose;

@@ -80,7 +80,7 @@ UltraCanvas is a modular framework designed to simplify the development of rich 
 
 ```
 UltraCanvas/
-├── Apps/                 # Applications (DemoApp, Texter, UltraFiler, UltraViewer, UltraPaint, UltraMail, …)
+├── Apps/                 # Applications (DemoApp, Texter, UltraFiler, UltraViewer, UltraPaint, ArtCreator, UltraMail, …)
 ├── Docs/                 # Component documentation
 ├── UltraCanvas/
 │   ├── include/          # Public header declarations
@@ -206,6 +206,93 @@ the backing implementation can be replaced without affecting callers.
     `JSONSerializeOptions`; output is always strictly valid JSON.
   - `JSON::EscapeString` and framework-type helpers
     `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
+
+- **UltraCanvasVectorStorage** (`DataFormats/UltraCanvasVectorStorage.h`) — the
+  framework's universal 2D vector document structure,
+  `VectorStorage::VectorDocument`: the in-memory drawing every vector file
+  format reads into and writes out of (SVG, XAR, EMF, WMF, DXF, DWG read;
+  those plus PDF, AI, EPS, CDR written — the converters are the Vector
+  plugin, `Plugins/Vector/`, documented in
+  `Docs/UltraCanvas/UltraCanvasVectorConverters.md`). Core rather than
+  plugin-owned so that elements, tests and applications can hold and draw a
+  drawing whether or not the converter plugin is built. Implementation in
+  `core/DataFormats/UltraCanvasVectorStorage.cpp`. Public surface:
+  - `VectorDocument` — `Size` (points), `ViewBox`, `BackgroundColor`,
+    `Layers`, `Definitions`, `SourceUnit` / `PointsPerSourceUnit`,
+    `AddLayer` / `RemoveLayer` / `FindElementById` / `GetBoundingBox` /
+    `FitToContent` / `Clone`.
+  - `VectorLayer : VectorGroup` (`Name`, `Visible`, `Locked`, `Opacity`, CAD
+    layer-table fields) → `VectorGroup` → elements: `VectorRect`,
+    `VectorCircle`, `VectorEllipse`, `VectorLine`, `VectorPolyline`,
+    `VectorPolygon`, `VectorPath` (`MoveTo/LineTo/CurveTo/QuadraticTo/ArcTo/
+    ClosePath`, `GetLength`, `GetPointAtLength`, `Flatten`), `VectorText`
+    (spans), `VectorImage`, `VectorSymbol` / `VectorUse`; every element has
+    `Id`, `Style` (`FillData` variant of colour / gradient / pattern,
+    `StrokeData`, opacities, blend, clip, mask), an optional double-precision
+    `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
+    `Clone()`.
+  - `ParsePathString` / `SerializePathData`, `ParseColorString`,
+    `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
+    `PointsPerUnit`, `LengthUnitSymbol`.
+  - `DataFormats/UltraCanvasVectorRenderer.h` — `VectorRenderer` draws a
+    document, layer or element into any `IRenderContext`
+    (`VectorRenderOptions`, `VectorRenderStats`); `HitTestElement` /
+    `HitTestDocument` (bounding boxes, carried through ancestor transforms).
+  - `DataFormats/UltraCanvasVectorPathOps.h` — `PathOps::NormalizePath` and
+    friends: any command mix down to absolute move / line / cubic segments
+    (SVG arcs via endpoint-to-centre conversion), rect / rounded-rect /
+    ellipse segment builders; what every writer and hit test walks.
+  - `UltraCanvasVectorElement` (`UltraCanvasVectorElement.h`) — the viewer
+    element: `SetDocument`, zoom ladder with cursor-anchored smooth wheel
+    zoom, drag pan, `ScreenToDocument` / `DocumentToScreen`, layer
+    visibility, bounding-box `Select` interaction mode. View only.
+
+- **UltraCanvasVectorEdit** (`DataFormats/UltraCanvasVectorEdit.h`,
+  namespace `VectorEdit`) — the editing layer over `VectorDocument`, no UI
+  in it; doc `Docs/UltraCanvas/UltraCanvasVectorCanvas.md`. Tree helpers
+  `EnsureIds` / `GenerateId` / `ParentOf` / `IndexInParent` / `LayerOf` /
+  `TopLevelOf` / `ParentToDocument` / `DocumentBounds` / `AllElements` /
+  `Detach`. `VectorSelection` (ordered elements, `Bounds`, listeners,
+  `Rebind` by Id after an undo). `VectorHistory` (`BeginEdit` / `EndEdit`
+  with coalescing / `CancelEdit` / `Record` / `Undo` / `Redo`, labels, a
+  memory budget; whole-document snapshots restored into the live document
+  object). `VectorHitTester` (`HitTest` on fill and stroke with a
+  tolerance through every ancestor transform, `ElementsIn`; a geometry-only
+  render context, no window). Operations: `TransformElements` /
+  `TranslateElements` / `ScaleElements` / `RotateElements` /
+  `SkewElements` about a document-space pivot, `BakeTransform`,
+  `ReorderElements` (`ZOrderMove`), `GroupElements` / `UngroupElements` /
+  `ReparentElement` (placement preserved), `DeleteElements`,
+  `DuplicateElements`, `AlignElements` / `DistributeElements`,
+  `ConvertToPath` / `OutlineOf`.
+- **UltraCanvasBezierPath** (`UltraCanvasBezierPath.h`) — the editing model
+  of a path: `BezierNode` (anchor, two handles, `BezierNodeType` Corner /
+  Smooth / Symmetric), `UltraCanvasBezierSubpath` (`InsertNodeAt` by de
+  Casteljau, `RemoveNode`, `SetNodeType`, `MoveAnchor`, `MoveHandle` under
+  the type rules, `DragSegment`, `Reverse`, `HitTestOutline`,
+  `ContainsPoint`, `Flatten`, `Bounds`, `BuildPath`) and
+  `UltraCanvasBezierPath` (`FromPathData` / `ToPathData` - every command
+  kind in, absolute M / L / C / Z out - `FromSVGPathData` /
+  `ToSVGPathData`, `FromPolyline` with Douglas-Peucker simplification and
+  Catmull-Rom tangents, `HitTestNode`, `Transform`). `SimplifyPolyline`.
+- **UltraCanvasVectorCanvas** (`UltraCanvasVectorCanvas.h`) — the editing
+  element, the vector twin of `UltraCanvasPaintSurface`: pasteboard, page
+  with shadow, grid (`VectorGridSpec`), rulers in any unit, guides pulled
+  from the rulers (`VectorGuide`), snapping to guides / page / objects /
+  grid (`VectorSnapOptions`, `Snap` → `VectorSnapResult`), the selection's
+  handles in scale or rotate mode (`VectorHandle`, `HitTestHandle`,
+  `SetRotationCenter`), `HitTest` / `ElementsIn`, zoom / pan (`SetZoomAt`,
+  `ZoomToPage` / `ZoomToDrawing` / `ZoomToSelection`, `DocToView` /
+  `ViewToDoc` / `PixelsToDoc`), and the tool hooks `onToolPress / Drag /
+  Release / Hover / DoubleClick / Key`, `onDrawOverlay`, `onViewChanged`,
+  `onGuidesChanged`, `onFilesDropped`; `VectorPointerEvent` carries the raw
+  and snapped document point. Edits nothing itself.
+- **UltraCanvasGradientEditor** (`UltraCanvasGradientEditor.h`) — the stops
+  of a gradient on a strip: select / drag / add / remove, `SetStops` /
+  `GetStops` / `AddStopAt` / `RemoveStop` / `SetStopColor` /
+  `SetStopPosition` / `ColorAt` / `Reverse`, `onStopsChanged` /
+  `onStopsChanging` / `onSelectionChanged`. Doc:
+  `Docs/UltraCanvas/UltraCanvasGradientEditor.md`.
 
 - **UltraCanvasModelStorage** (`DataFormats/UltraCanvasModelStorage.h`) — the
   framework's universal 3D scene structure, `ModelStorage::ModelDocument`: the
@@ -834,6 +921,18 @@ engine; these classes hold the pixels being edited and hand them to it.
   context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
+- **IRenderContext compositing and geometry** (`UltraCanvasRenderContext.h`,
+  doc `Docs/UltraCanvas/UltraCanvasRenderContext.md`) — `SetBlendMode` /
+  `GetBlendMode` (the 16 PDF / CSS modes), groups `BeginGroup` /
+  `EndGroup(opacity)` / `EndGroupAsPattern` / `EndGroupMasked` /
+  `PaintPattern`, hit testing `IsPointInFill` / `IsPointInStroke` /
+  `GetStrokeExtents`, transform readback `GetTransform` / `UserToDevice` /
+  `DeviceToUser` / `DeviceToUserDistance`, paint sources
+  `CreateConicGradientPattern` / `CreateMeshGradientPattern` /
+  `CreatePixmapPattern`, `IPaintPattern::SetMatrix` / `SetExtend`,
+  `SetAntialias`, and text outlines `AppendTextPath` /
+  `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
+  the Cairo backend implements all of it. Tested by `RenderContextTest`.
 
 ### **2. UltraAI**
 
@@ -25255,6 +25354,84 @@ The Gource tree renders in this order:
 - [UltraCanvasUIElement](UltraCanvasUIElement.md) — base element class
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasGradientEditor.md
+==============================================================================
+
+# UltraCanvasGradientEditor
+
+A gradient ramp editor: the stops of a gradient on a horizontal strip.
+Click a stop to select it, drag it along the strip to move it, double-click
+the strip to add a stop with the ramp's colour there, drag a stop away
+from the strip (or press Delete) to remove it, and nudge the selected stop
+with the arrow keys. The stops are the render context's `GradientStop`, so
+what the editor holds feeds `CreateLinearGradientPattern` and the other
+pattern factories and `VectorStorage`'s gradient data without conversion.
+
+**Header:** `UltraCanvasGradientEditor.h` · **Source:** `core/UltraCanvasGradientEditor.cpp`
+**Version**: 1.0.0 · **Last Modified**: 2026-09-15 · **Author**: UltraCanvas Framework
+
+The tone curve editor ([UltraCanvasCurveEditor](UltraCanvasCurveEditor.md))
+is the precedent for dragging control points on a strip; this is its
+colour-ramp sibling. It edits the stops only — where a linear gradient
+starts and ends on an object is the fill tool's business, drawn on the
+canvas.
+
+## Usage
+
+```cpp
+#include "UltraCanvasGradientEditor.h"
+#include "UltraCanvasColorPicker.h"
+
+auto ramp = CreateGradientEditor("ramp", 10, 10, 260, 44);
+ramp->SetStops({{0.0, Color(255, 0, 0)}, {0.5, Color(255, 255, 0)}, {1.0, Color(0, 0, 255)}});
+
+// The selected stop's colour comes from a colour picker.
+ramp->onSelectionChanged = [&](int index) {
+    if (index >= 0) picker->SetColor(ramp->GetSelectedColor());
+};
+picker->onColorChanged = [&](const Color& c) {
+    ramp->SetStopColor(ramp->GetSelectedStop(), c);
+};
+
+// Every edit: rebuild the fill.
+ramp->onStopsChanged = [&] {
+    fill.Stops = ramp->GetStops();
+    canvas->Refresh();
+};
+ramp->onStopsChanging = ramp->onStopsChanged;   // live while a stop is dragged
+```
+
+## API
+
+| Method | What it does |
+|---|---|
+| `SetStops(stops)` / `GetStops()` | The ramp. Stops are kept sorted by position; an empty list becomes black → white |
+| `AddStop(position, color)` / `AddStopAt(position)` | Insert a stop, the second with the ramp's colour there; returns the index, selects it |
+| `RemoveStop(index)` | Removes a stop; refuses below `SetMinimumStops` (default 2) |
+| `SetStopColor(index, color)` / `SetStopPosition(index, position)` | Edit one stop (positions re-sort; the selection follows the stop) |
+| `ColorAt(position)` | The ramp's interpolated colour |
+| `SelectStop(index)` / `GetSelectedStop()` / `GetSelectedColor()` | Selection; `-1` for none |
+| `Reverse()` | Flip the ramp end for end |
+| `SetShowAlphaChecker(bool)` | Checkerboard behind the ramp so alpha shows (default on) |
+| `onStopsChanged` | Any edit, including the end of a drag |
+| `onStopsChanging` | While a stop is dragged |
+| `onSelectionChanged(int)` | The selected index changed |
+
+## Behaviour
+
+- The first and last stops can be moved but not removed while the count is
+  at the minimum; a middle stop dragged well away from the strip is removed
+  on release.
+- Left / Right nudge the selected stop by 1 % (Shift: 10 %); Delete removes it.
+- The strip is drawn with the context's own linear gradient pattern, so it
+  shows exactly what a fill with these stops looks like.
+
+## Tests
+
+`Tests/VectorEditTest.cpp` exercises sorting, insertion, colour
+interpolation, removal limits, reversal and notifications without a window.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasGroupBoxExamples.md
 ==============================================================================
 
@@ -39987,6 +40164,215 @@ std::function<void(float)> onHoverChanged;    // live hover value (-1 when the c
 - `GetPreferredWidth()` returns `maxRating * symbolSize + (maxRating-1) * spacing`.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasRenderContext.md
+==============================================================================
+
+# UltraCanvasRenderContext — compositing, hit testing and paint sources
+
+`IRenderContext` (`UltraCanvasRenderContext.h`) is the drawing interface every
+element renders through. Its everyday surface — paths, fills, strokes, text
+layouts, pixmaps, state and transforms — is used throughout the element
+docs. This page documents the part added for vector editing in 0.8.51:
+blend modes, groups and masks, geometric hit testing, transform readback,
+conic / mesh / pixmap paint sources, pattern placement, antialias control
+and text outlines. One backend implements all of it (Cairo, on every
+platform); every method has a base-class default so a backend that lacks a
+feature still compiles and degrades predictably.
+
+Coordinates are user space (the element's local space inside `Render()`),
+angles are radians, and nothing here changes the coordinate contract in
+[UltraCanvasCoordinateSystemGuide](UltraCanvasCoordinateSystemGuide.md).
+
+## Blend modes
+
+```cpp
+enum class BlendMode { Normal, Multiply, Screen, Overlay, Darken, Lighten, ColorDodge,
+                       ColorBurn, HardLight, SoftLight, Difference, Exclusion,
+                       Hue, Saturation, Color, Luminosity };
+void      SetBlendMode(BlendMode mode);   // until PopState() or the next call
+BlendMode GetBlendMode() const;
+```
+
+The PDF / CSS / SVG set. It applies to every fill, stroke, text, image and
+group paint that follows, and `PushState()` / `PopState()` save and restore
+it with the rest of the state.
+
+```cpp
+ctx->SetFillPaint(Color(255, 255, 0));   ctx->FillRectangle(a);
+ctx->SetBlendMode(BlendMode::Multiply);
+ctx->SetFillPaint(Color(0, 255, 255));   ctx->FillRectangle(b);   // overlap is green
+```
+
+Xara's transparency mixes map directly: *Stained glass* is `Multiply`,
+*Bleach* is `Screen`, the rest keep their names.
+
+## Groups and masks
+
+```cpp
+void BeginGroup();
+void EndGroup(double opacity = 1.0);
+std::shared_ptr<IPaintPattern> EndGroupAsPattern();
+void EndGroupMasked(std::shared_ptr<IPaintPattern> mask);
+void PaintPattern(std::shared_ptr<IPaintPattern> pattern, double opacity = 1.0);
+```
+
+Everything drawn between `BeginGroup()` and the matching `End…` call goes
+to an intermediate surface and is composited **as one**:
+
+- `EndGroup(opacity)` paints it with a uniform alpha, so two overlapping
+  children at 50 % do not stack to 75 % — the correct semantics for a
+  layer's or a group's opacity — under the blend mode in force at
+  `BeginGroup()`.
+- `EndGroupAsPattern()` returns the rendered group as a paint source
+  instead of painting it: a mask, a pattern fill made of other content, or
+  the input of a cached effect.
+- `EndGroupMasked(mask)` paints the group through the alpha of `mask`,
+  which is usually a pattern from `EndGroupAsPattern()`.
+- `PaintPattern(pattern, opacity)` paints any pattern over the current
+  clip — the way to draw a captured group again.
+
+Groups nest, and each is a `PushState()` / `PopState()` pair from the
+caller's side. A backend without groups draws straight through: `EndGroup`
+and `EndGroupMasked` paint nothing extra and `EndGroupAsPattern` returns
+`nullptr`.
+
+```cpp
+// Layer at 40 %: children composite normally inside, the result fades once.
+ctx->BeginGroup();
+for (auto& child : layer.Children) child->Render(ctx, dirty);
+ctx->EndGroup(0.4);
+
+// A soft-edged clip: whatever is opaque in the mask shows.
+ctx->BeginGroup();
+ctx->SetFillPaint(maskGradient); ctx->FillRectangle(bounds);
+auto mask = ctx->EndGroupAsPattern();
+ctx->BeginGroup();
+DrawContent(ctx);
+ctx->EndGroupMasked(mask);
+```
+
+## Geometric hit testing
+
+```cpp
+bool    IsPointInFill(double x, double y);     // inside the current path's fill
+bool    IsPointInStroke(double x, double y);   // under its stroke
+Rect2Dd GetStrokeExtents();                    // path extents grown by the stroke
+```
+
+All three consult the **current path** with the current fill rule, stroke
+width, caps, joins and dashes, so a selector tool builds the shape's path
+exactly as the renderer does and asks. `GetPathExtents()` remains the
+outline's box without the stroke. The base answers `false` and the path
+extents.
+
+```cpp
+ctx->Rect(10, 10, 20, 20);
+ctx->SetStrokeWidth(6);
+bool inside = ctx->IsPointInFill(15, 15);    // true
+bool onEdge = ctx->IsPointInStroke(8, 20);   // true: within 3 of the edge
+ctx->ClearPath();
+```
+
+## Transform readback
+
+```cpp
+void     GetTransform(double& a, double& b, double& c, double& d, double& e, double& f) const;
+Point2Dd UserToDevice(const Point2Dd& p) const;
+Point2Dd DeviceToUser(const Point2Dd& p) const;
+double   DeviceToUserDistance(double devicePixels) const;
+```
+
+The current transformation matrix in the layout `SetTransform` takes
+(`x' = a·x + c·y + e`, `y' = b·x + d·y + f`). `DeviceToUserDistance(1)` is
+the length of one device pixel in user units — what a hairline stroke or a
+handle sized in pixels needs under a zoomed view — averaged over the two
+axes when the scale is not uniform. The base returns the identity.
+
+## Paint sources
+
+```cpp
+std::shared_ptr<IPaintPattern> CreateConicGradientPattern(double cx, double cy,
+        double startAngle, double endAngle, const std::vector<GradientStop>& stops);
+std::shared_ptr<IPaintPattern> CreateMeshGradientPattern(const std::vector<MeshGradientPatch>& patches);
+std::shared_ptr<IPaintPattern> CreatePixmapPattern(UCPixmap& pixmap, const Rect2Dd& anchorRect,
+        PatternExtend extend = PatternExtend::Pad);
+```
+
+joining the existing linear, radial, elliptical and file-backed image
+patterns.
+
+- **Conic** — the stops run round the centre from `startAngle` to
+  `endAngle` (a full turn when they are equal). Cairo has no conic
+  primitive; the backend builds a fan of mesh patches, one per 15° and
+  one per stop boundary, so hard stops stay hard. The pattern is
+  transparent beyond a very large radius rather than infinite.
+- **Mesh** — any number of Coons patches. `MeshGradientPatch` holds four
+  corners in order round the patch (repeat one for a triangle), two
+  control points per side in the same order (used when `hasControls` is
+  set, straight sides otherwise) and a colour per corner. Xara's diamond,
+  three- and four-colour fills and SVG 2 mesh gradients are made of these.
+- **Pixmap** — an image already in memory (a decoded picture, a rendered
+  group read back, a raster layer) stretched to `anchorRect`, extending
+  outside it by `extend`; it follows `SetImageSmoothing` for its filter.
+
+### Placing a pattern
+
+```cpp
+// No enumerator may be named None: X11's Xlib.h defines None as a macro
+    // and this header is reachable from platform code that includes X11.
+    enum class PatternExtend { Pad, Repeat, Reflect, NoExtend };
+void IPaintPattern::SetMatrix(double a, double b, double c, double d, double e, double f);
+void IPaintPattern::SetExtend(PatternExtend extend);
+```
+
+`SetMatrix` maps pattern space (the coordinates the pattern was created
+in) into user space — SVG's `gradientTransform` / `patternTransform` — on
+top of the CTM in force when the pattern is painted. `SetExtend` chooses
+what shows beyond the pattern's own extent: the edge colour, tiles,
+mirrored tiles, or nothing. Both are no-ops on a backend without pattern
+matrices.
+
+## Antialiasing
+
+```cpp
+enum class AntialiasMode { DefaultQuality, NoAntialias, Gray, Subpixel, Fast, Good, Best };
+void SetAntialias(AntialiasMode mode);
+```
+
+Geometry antialiasing for the fills and strokes that follow (text keeps
+its own hinting settings). `NoAntialias` is what a pixel-exact tool wants.
+
+## Text outlines
+
+```cpp
+void AppendTextPath(const std::string& text, const Point2Dd& pos);
+void AppendTextLayoutPath(ITextLayout& layout, const Point2Dd& pos);
+```
+
+Appends the glyph outlines of `text` in the current font — or of a
+prepared layout — to the current path, with the layout origin at `pos`
+exactly as `DrawText` / `DrawTextLayout` would place it. The text is then
+geometry: fill it with a gradient or a pixmap pattern, stroke it, clip to
+it, hit-test it, or read the path back to convert text to curves.
+
+```cpp
+ctx->SetFontFace("Sans", FontWeight::Bold, FontSlant::Normal);
+ctx->SetFontSize(48);
+ctx->AppendTextPath("Vector", Point2Dd(20, 20));
+ctx->SetFillPaint(ctx->CreateLinearGradientPattern(20, 0, 220, 0, stops));
+ctx->FillPathPreserve();
+ctx->SetStrokePaint(Colors::Black); ctx->SetStrokeWidth(1);
+ctx->StrokePathPreserve();
+ctx->ClearPath();
+```
+
+## Tests
+
+`Tests/RenderContextTest.cpp` (CTest `RenderContextTest`) exercises every
+method above on an offscreen surface and samples the pixels back, so it
+runs without a display.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasRequirementDiagramExamples.md
 ==============================================================================
 
@@ -53104,6 +53490,7 @@ from an external "Show password" checkbox. See
 | Pick one of a few, shown side by side | `UltraCanvasSegmentedControl` | `UltraCanvasSegmentedControl.h` |
 | A value on a range | `UltraCanvasSlider` | `UltraCanvasSlider.h` |
 | A tone / mapping curve (Curves) | `UltraCanvasCurveEditor` | `UltraCanvasCurveEditor.h` |
+| The stops of a gradient (a colour ramp) | `UltraCanvasGradientEditor` | `UltraCanvasGradientEditor.h` |
 | A score out of N | `UltraCanvasRating` | `UltraCanvasRating.h` |
 | Step through a sequence | `UltraCanvasStepper` | `UltraCanvasStepper.h` |
 
@@ -53116,6 +53503,8 @@ from an external "Show password" checkbox. See
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
+| Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG, EMF, WMF via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
+| **Edit** a vector drawing: page, rulers, guides, grid, snapping, selection handles, tool hooks in document coordinates (the model is `VectorStorage::VectorDocument`, the editing layer `DataFormats/UltraCanvasVectorEdit.h`, the node model `UltraCanvasBezierPath.h`) | `UltraCanvasVectorCanvas` | `UltraCanvasVectorCanvas.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
 | Video / audio capture | `UltraCanvasVideoRecorderElement`, `UltraCanvasAudioRecorderElement` | matching `*.h` |
@@ -53601,6 +53990,253 @@ std::printf("%s", UMLTextExport::ToPlantUML(model).c_str());
   orthogonal router the element will use
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasVectorCanvas.md
+==============================================================================
+
+# UltraCanvas Vector Editing: VectorCanvas, VectorEdit, BezierPath
+
+## Overview
+
+The **vector-editing layer** is what a vector drawing editor needs on top of
+the vector document model: a selection, undo / redo, geometric hit testing,
+the operations an editor's commands are made of, a node model for editing
+paths, and an element that displays the document with rulers, guides, grid,
+snapping and selection handles and hands pointer events to the active tool.
+It is the vector twin of the raster-editing layer in
+[UltraCanvasPaintSurface](UltraCanvasPaintSurface.md) and follows the same
+split: the model and its editing companions know nothing about windows,
+one element shows them, and an application owns the tools. The
+investigation behind it is
+[`Docs/Research/ArtCreatorVectorCanvasProposal.md`](../Research/ArtCreatorVectorCanvasProposal.md).
+
+| Class | What it is | Files |
+|---|---|---|
+| `VectorStorage::VectorDocument` | The drawing: layers → groups → elements with styles, transforms and paths; read and written by every vector format (see [UltraCanvasVectorConverters](UltraCanvasVectorConverters.md)) | `include/DataFormats/UltraCanvasVectorStorage.h` |
+| `VectorRenderer` | Draws a document, layer or element into any `IRenderContext`; `BuildVectorElementOutline` puts one element's outline on a context | `include/DataFormats/UltraCanvasVectorRenderer.h` |
+| `VectorEdit::VectorSelection` | Ordered selected elements, their document-space bounds, listeners, re-binding by Id after an undo | `include/DataFormats/UltraCanvasVectorEdit.h`, `core/DataFormats/UltraCanvasVectorEdit.cpp` |
+| `VectorEdit::VectorHistory` | Labelled undo / redo by document snapshots, coalescing, a memory budget | same |
+| `VectorEdit::VectorHitTester` | Geometric fill / stroke hit testing with a tolerance, through every ancestor transform; rectangle queries | same |
+| `VectorEdit` operations | Transform about a pivot, bake a transform, z-order, group / ungroup / reparent, delete, duplicate, align, distribute, convert to path | same |
+| `UltraCanvasBezierPath` | Anchors that own their handles: the editing model of a path, with split / node types / hit tests / polyline fitting and a lossless round trip to `PathData` | `include/UltraCanvasBezierPath.h`, `core/UltraCanvasBezierPath.cpp` |
+| `UltraCanvasVectorCanvas` | The element: pasteboard, page, grid, rulers, guides, snapping, selection handles, tool hooks in document coordinates | `include/UltraCanvasVectorCanvas.h`, `core/UltraCanvasVectorCanvas.cpp` |
+| `UltraCanvasGradientEditor` | The stops of a gradient on a strip | [UltraCanvasGradientEditor](UltraCanvasGradientEditor.md) |
+
+**Version**: 1.0.0
+**Last Modified**: 2026-09-15
+**Author**: UltraCanvas Framework
+
+Everything here is in the core library. The Vector plugin
+(`ULTRACANVAS_PLUGIN_VECTOR`) adds the file formats; without it a document
+can still be created, edited, drawn and rasterized.
+
+## The document and its Ids
+
+Coordinates are points. An element's `Transform` maps its own space into
+its parent's; `GetGlobalTransform()` composes every ancestor. Selection and
+history find elements again **by Id** after an undo (the objects are
+replaced), so an editor gives every element an Id:
+
+```cpp
+#include "DataFormats/UltraCanvasVectorEdit.h"
+using namespace UltraCanvas;
+using namespace UltraCanvas::VectorEdit;
+
+auto doc = std::make_shared<VectorStorage::VectorDocument>();
+doc->Size = {595, 842};                         // A4 in points
+auto layer = doc->AddLayer("Layer 1");
+auto rect = std::make_shared<VectorStorage::VectorRect>();
+rect->Bounds = {100, 100, 200, 120};
+rect->Style.Fill = Color(220, 60, 40, 255);
+rect->Id = GenerateId();                        // or EnsureIds(*doc) after loading a file
+layer->AddChild(rect);
+```
+
+Tree helpers: `ParentOf`, `IndexInParent`, `LayerOf`, `TopLevelOf` (the
+layer's child that contains an element — what a click selects unless the
+user goes "inside" a group), `ParentToDocument` (the matrix from an
+element's parent space to the document), `DocumentBounds` (an element's
+box in document space), `AllElements`, `Detach`.
+
+## Selection
+
+```cpp
+VectorSelection selection;
+selection.Set(rect);                // or Set({a, b}), Add, Remove, Toggle, Clear
+selection.Bounds();                 // union of DocumentBounds, document units
+selection.AddListener([&] { canvas->Refresh(); });
+```
+
+`Rebind(doc)` re-resolves the selected Ids against the document — the
+history's `onChanged` is the place to call it.
+
+## History
+
+`VectorHistory` snapshots the whole document on `BeginEdit(label)` and again
+on `EndEdit()`, keeps the pair, and restores a snapshot into the *live*
+document object on `Undo()` / `Redo()` — the `shared_ptr` the canvas holds
+stays valid, the elements inside are new. It is the simple, always-correct
+choice; a per-subtree scheme can replace it behind the same API when
+documents grow large enough to need one.
+
+```cpp
+VectorHistory history(doc);
+history.onChanged = [&] { selection.Rebind(*doc); canvas->Refresh(); };
+
+history.Record("Move", [&] { TranslateElements(selection.Elements(), 10, 0); });
+
+// A drag: one entry from press to release.
+history.BeginEdit("Scale");
+... ScaleElements(...) on every drag event ...
+history.EndEdit();
+
+// Repeated nudges collapse into one step.
+history.Record("Nudge", [&] { TranslateElements(selection.Elements(), 1, 0); }, /*coalesce*/ true);
+
+history.Undo();  history.Redo();  history.UndoLabel();
+history.SetMemoryLimit(256 * 1024 * 1024);
+```
+
+`CancelEdit()` restores the state at `BeginEdit` (Escape during a drag).
+
+## Hit testing
+
+```cpp
+VectorHitTester tester;
+auto hit = tester.HitTest(*doc, docPoint, /*tolerance in doc units*/ 2.0);
+if (hit) { hit->element; hit->topLevel; hit->layer; hit->onFill; hit->onStroke; }
+auto inside = tester.ElementsIn(*doc, marqueeRect, /*fullyInside*/ true);
+```
+
+Fills are tested with the element's fill rule, strokes with the element's
+width grown by the tolerance (so a hairline is still clickable), text and
+images by their boxes; locked and hidden layers are skipped. The tester
+keeps a small geometry-only render context, so it works with no window,
+and the canvas wraps it with the tolerance given in screen pixels.
+
+## Operations
+
+All edit the model in place; wrap them in the history.
+
+```cpp
+TranslateElements(els, dx, dy);
+ScaleElements(els, sx, sy, pivot);            // pivot in document units
+RotateElements(els, radians, pivot);
+SkewElements(els, radX, radY, pivot);
+TransformElements(els, Matrix3x3);            // any document-space matrix
+BakeTransform(el);                            // write the transform into the geometry
+
+ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
+auto group = GroupElements(els);              // into the topmost member's parent
+auto freed = UngroupElements({group});        // placement preserved both ways
+ReparentElement(el, otherGroup, index);
+
+DeleteElements(els);
+auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids
+AlignElements(els, AlignMode::Left);          // to the selection, or a reference rect (the page)
+DistributeElements(els, DistributeMode::HorizontalCenters);
+auto path = ConvertToPath(el);                // rect / circle / ellipse / line / polygon → path, in place
+```
+
+A document-space matrix `M` lands on an element as `T' = P⁻¹·M·P·T`, `P`
+being its parent-to-document map, so children of transformed groups move
+where the user expects.
+
+## The Bézier node model
+
+`VectorStorage::PathData` is a command stream (relative forms, H / V,
+smooth shorthands, arcs) — right for files, wrong to edit. A shape editor
+converts a path to `UltraCanvasBezierPath` on entry and back on every edit:
+
+```cpp
+#include "UltraCanvasBezierPath.h"
+
+auto bezier = UltraCanvasBezierPath::FromPathData(path->Path);   // all command kinds accepted
+auto& sp = bezier.subpaths[0];
+int n = sp.InsertNodeAt(/*segment*/ 1, /*t*/ 0.5);   // de Casteljau: the shape is unchanged
+sp.SetNodeType(n, BezierNodeType::Symmetric);        // Corner / Smooth / Symmetric rules
+sp.MoveHandle(n, /*outgoing*/ true, p);              // the other handle follows the rule
+sp.DragSegment(1, 0.3, delta);                       // "drag the line" gesture
+auto hit = bezier.HitTestOutline(p, tolerance);      // subpath, segment, t, distance
+auto node = bezier.HitTestNode(p, tolerance);
+path->Path = bezier.ToPathData();                    // absolute M / L / C / Z
+path->Path.InvalidateCache();
+```
+
+Every segment is a line or a cubic. `FromPolyline(points, closed,
+tolerance)` turns a freehand stroke into a smooth path (Douglas-Peucker
+simplification, Catmull-Rom tangents); `BuildPath(ctx)` emits the geometry
+for a preview; `FromSVGPathData` / `ToSVGPathData` are the string forms.
+The design is the one in
+[UltraCanvasBezierEditorProposal](UltraCanvasBezierEditorProposal.md).
+
+## The canvas element
+
+```cpp
+#include "UltraCanvasVectorCanvas.h"
+
+auto canvas = CreateVectorCanvas("canvas");
+canvas->SetDocument(doc);
+canvas->SetSelection(selectionPtr);            // shared with the tools and panels
+canvas->SetShowRulers(true);
+canvas->SetRulerUnit(72.0 / 25.4, "mm");
+VectorGridSpec grid; grid.visible = true; grid.spacing = 10; grid.subdivisions = 2;
+canvas->SetGrid(grid);
+VectorSnapOptions snap; snap.toGrid = true; snap.toGuides = true; snap.toObjects = true;
+canvas->SetSnapOptions(snap);
+
+canvas->onToolPress   = [&](const VectorPointerEvent& e) { tool->OnPress(e); };
+canvas->onToolDrag    = [&](const VectorPointerEvent& e) { tool->OnDrag(e); };
+canvas->onToolRelease = [&](const VectorPointerEvent& e) { tool->OnRelease(e); };
+canvas->onToolKey     = [&](const UCEvent& k) { return tool->OnKey(k); };
+canvas->onDrawOverlay = [&](IRenderContext* ctx, const VectorViewTransform& v) { tool->DrawOverlay(ctx, v); };
+canvas->onViewChanged = [&] { statusBar->SetZoom(canvas->GetZoom()); };
+```
+
+What the element does by itself:
+
+- **View.** Wheel zooms about the cursor (shift + wheel pans), space or the
+  middle button pans, `+` / `-`, Ctrl+0 (page), Ctrl+1 (100 %).
+  `SetZoom` / `SetZoomAt` / `ZoomStep` / `ZoomToPage` / `ZoomToDrawing` /
+  `ZoomToSelection` / `ZoomToRect` / `CenterOn` / `PanBy`; `DocToView` / `ViewToDoc` /
+  `PixelsToDoc`; `VisibleDocRect`, `CanvasArea`.
+- **Page** on a pasteboard with a shadow; **grid** with subdivisions that
+  hide when too dense; **rulers** in any unit with the pointer marked;
+  **guides** pulled out of the rulers, alt-dragged to move, dropped back
+  on a ruler to delete (`SetGuidesDraggable`, `AddGuide`, `SetGuides`,
+  `onGuidesChanged`).
+- **Snapping** — `Snap(docPoint, &result)` to guides, page edges and
+  centre, other objects' box edges and centres, and the grid, within
+  `radiusPixels`; guides beat the page, the page beats objects, objects
+  beat the grid at equal distance. Every pointer event carries both the
+  raw and the snapped point.
+- **Selection handles** — eight scale handles, or in `Rotate` mode round
+  rotate handles at the corners, skew diamonds at the edges and a movable
+  rotation centre (`SetHandleMode`, `SetRotationCenter`); `HitTestHandle`
+  tells a selector tool which one is under the pointer, `Body` when the
+  pointer is inside the bounds, `NoHandle` otherwise.
+- **Hit testing** — `HitTest(docPoint, tolerancePixels)` and
+  `ElementsIn(rect, fullyInside)` over the document.
+- **Tool hooks** — `onToolPress / Drag / Release / Hover / DoubleClick`
+  with a `VectorPointerEvent` (`doc`, `snapped`, `snap`, `view`, button,
+  modifiers, pressure, `insidePage`), `onToolKey`, `onDrawOverlay` in view
+  coordinates after the handles and before the rulers, `onViewChanged`,
+  `onFilesDropped`; `SetToolCursor`, `SetPanMode`.
+- **Invalidation** — `InvalidateDoc(rect)` after an edit, or `Refresh()`.
+
+The element never edits the document and owns no tool: a selector, a pen,
+a shape tool are application classes that receive these events and call
+`VectorEdit` inside a `VectorHistory` edit. It is registered in the element
+catalogue ([UltraCanvasUIElements](UltraCanvasUIElements.md)) alongside
+`UltraCanvasPaintSurface`.
+
+## Tests
+
+`Tests/VectorEditTest.cpp` (CTest `VectorEditTest`) covers the node model,
+selection, history, hit testing, every operation, the canvas's view maths,
+snapping and handles, and the gradient editor — all without a window.
+`Tests/VectorModelTest.cpp` covers the model and the renderer.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasVectorConverters.md
 ==============================================================================
 
@@ -53625,13 +54261,13 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), at physical size when `$INSUNITS` declares a unit and the result is a usable page, otherwise scaled to a sensible point size, since drawing units are arbitrary; the unit and scale are recorded on the document, and layer-table properties (colour, lineweight, linetype, frozen/locked/plot flags) land on the `VectorLayer`s. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
 | DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). |
 
-All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `UltraCanvasVectorPathOps.h`.
+All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `DataFormats/UltraCanvasVectorPathOps.h`.
 
 Unsupported features never change meaning silently: each converter reports its fallbacks (gradient flattening, opacity flattening, skipped element types, encoding limits) through `ConversionOptions::WarningCallback`.
 
 ## The document model
 
-`VectorStorage::VectorDocument` (`UltraCanvasVectorStorage.h`) is the hub every converter meets: `Layers` → groups → elements, each element with an optional `Fill`/`Stroke` style, an optional `Matrix3x3` transform (double precision, row-major — `FromValues(a, b, c, d, e, f)` means x' = a·x + b·y + e, so SVG/PostScript `matrix()` values pass as `FromValues(a, c, b, d, e, f)`) and `GetBoundingBox()` in its parent's space. Group and document boxes are the union of their children with empty boxes skipped, then transformed; `HitTestDocument` carries the point through each ancestor's inverse transform so children of a transformed group (a block insert, a mirrored entity) are found where they are drawn.
+`VectorStorage::VectorDocument` (`DataFormats/UltraCanvasVectorStorage.h`, in the core library — with `DataFormats/UltraCanvasVectorRenderer.h`, `DataFormats/UltraCanvasVectorPathOps.h` and the `UltraCanvasVectorElement` viewer, so a drawing can be held and drawn without this plugin) is the hub every converter meets: `Layers` → groups → elements, each element with an optional `Fill`/`Stroke` style, an optional `Matrix3x3` transform (double precision, row-major — `FromValues(a, b, c, d, e, f)` means x' = a·x + b·y + e, so SVG/PostScript `matrix()` values pass as `FromValues(a, c, b, d, e, f)`) and `GetBoundingBox()` in its parent's space. Group and document boxes are the union of their children with empty boxes skipped, then transformed; `HitTestDocument` carries the point through each ancestor's inverse transform so children of a transformed group (a block insert, a mirrored entity) are found where they are drawn.
 
 **Units.** Coordinates and `Size` are always points (1/72 in). Readers of formats that carry a unit record it in `SourceUnit` (`LengthUnit`: `Point`, `Pixel`, `Inch`, `Foot`, `Yard`, `Mile`, `Mil`, `Millimeter`, `Centimeter`, `Decimeter`, `Meter`, `Kilometer`, `Micrometer`, `Nanometer`, or `Unspecified`) with the scale they applied in `PointsPerSourceUnit`, so `source = points / PointsPerSourceUnit` recovers the file's measurements; `PointsPerUnit()` and `LengthUnitSymbol()` are the helpers. The DXF reader sets them from `$INSUNITS`, using the physical scale when it is declared and yields a usable page (200–20 000 pt), and the DXF writer emits `$INSUNITS` and writes coordinates in the source unit when the document has one.
 

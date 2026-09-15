@@ -188,6 +188,49 @@ ULTRANET_PROBE(kArea, UltraNet_MimeParse) {
                    "quoted-printable and base64 part bodies decoded in place");
 }
 
+ULTRANET_PROBE(kArea, UltraNet_MimeParse_Rfc2231Filenames) {
+    // RFC 2231 continuation: charset + percent-encoding, split across three
+    // folded lines, carried on the Content-Type "name" parameter.
+    const char* const kContinuation =
+        "Content-Type: application/pdf;\r\n"
+        "\tname*0*=utf-8''%D0%9C%D0%B0%D1%80%D1%82%D0%B8%D0%BD%D1%8E%D0%BA%20%D0%BF;\r\n"
+        "\tname*1*=%D0%BE%D0%BD%D0%BE%D0%B2%D0%BB%D0%B5%D0%BD%D0%BE%20%D0%92%D0%9F;\r\n"
+        "\tname*2*=%D0%9E%20%D0%94%D1%96%D1%8F.pdf\r\n"
+        "Content-Disposition: attachment\r\n"
+        "\r\n"
+        "body\r\n";
+    UltraNetMimeMessage cont;
+    PROBE_EXPECT(UltraNet_MimeParse(kContinuation, cont));
+    const std::string& fn = cont.root.filename;
+    PROBE_EXPECT_MSG(fn.rfind("Мартинюк", 0) == 0,
+                     "RFC 2231 continuation decoded as \"" + fn + "\"");
+    PROBE_EXPECT(fn.find("поновлено") != std::string::npos);   // spans sections 0->1
+    PROBE_EXPECT(fn.find("Дія") != std::string::npos);         // section 2 decoded
+    PROBE_EXPECT(fn.size() >= 4 && fn.compare(fn.size() - 4, 4, ".pdf") == 0);
+    PROBE_EXPECT_MSG(fn.find('%') == std::string::npos, "percent escapes left in \"" + fn + "\"");
+    PROBE_EXPECT(fn.find("utf-8") == std::string::npos);       // charset prefix stripped
+
+    // Single extended value: filename*=charset''pct-encoded.
+    UltraNetMimeMessage ext;
+    PROBE_EXPECT(UltraNet_MimeParse(
+        "Content-Type: text/plain\r\n"
+        "Content-Disposition: attachment; filename*=UTF-8''%E2%82%AC.txt\r\n"
+        "\r\nx\r\n", ext));
+    PROBE_EXPECT_MSG(ext.root.filename == "€.txt",
+                     "single extended value decoded as \"" + ext.root.filename + "\"");
+
+    // A plain quoted filename must still work unchanged.
+    UltraNetMimeMessage plain;
+    PROBE_EXPECT(UltraNet_MimeParse(
+        "Content-Type: application/pdf\r\n"
+        "Content-Disposition: attachment; filename=\"plain report.pdf\"\r\n"
+        "\r\nx\r\n", plain));
+    PROBE_EXPECT(plain.root.filename == "plain report.pdf");
+
+    return Working("RFC 2231 split/percent-encoded and single-extended parameter "
+                   "values decoded to UTF-8; plain filenames untouched");
+}
+
 ULTRANET_PROBE(kArea, UltraNet_MimeGetDisplayBody) {
     UltraNetMimeMessage msg;
     PROBE_EXPECT(UltraNet_MimeParse(kSampleMessage, msg));

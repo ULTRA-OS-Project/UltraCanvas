@@ -220,6 +220,17 @@ void StyleResolver::ApplyUserAgentDefaults(const std::string& tag, ComputedStyle
         }
         s.underline = true;
     }
+    else if (tag == "input" || tag == "textarea" || tag == "select" ||
+             tag == "button") {
+        // Display-only form controls render as their own block box (emails
+        // wrap them in a <div>); the builder shows the value/label inside.
+        s.display = DisplayMode::Block;
+    }
+    else if (tag == "option" || tag == "optgroup" || tag == "datalist") {
+        // A <select> reads its option text directly; keep raw option text from
+        // leaking into surrounding content.
+        s.display = DisplayMode::Hidden;
+    }
     else if (tag == "img") { s.display = DisplayMode::InlineBlock; }
     else if (tag == "br" || tag == "span" || tag == "q" || tag == "abbr" ||
              tag == "mark" || tag == "font" || tag == "wbr") {

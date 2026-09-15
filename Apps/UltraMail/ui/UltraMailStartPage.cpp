@@ -34,9 +34,11 @@ std::shared_ptr<UltraCanvasContainer> StartPage::Build() {
                  .SetFlexAlignItems(CSSLayout::AlignItems::Center)
                  .SetFlexGap(kGap);
 
-    // Logo — the app icon, rendered from its vector source.
+    // Logo — the app icon itself (media/appicon/UltraMail.png), the same file
+    // main.cpp gives the window and the desktop entry names, so the start page
+    // shows what the taskbar and the filer show.
     auto logo = CreateImageElement("startLogo", kLogoSize, kLogoSize);
-    logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/appicon/UltraMail.svg"));
+    logo->LoadFromFile(NormalizePath(GetResourcesDir() + "media/appicon/UltraMail.png"));
     logo->SetFitMode(ImageFitMode::Contain);
     page_->AddChild(logo);
 

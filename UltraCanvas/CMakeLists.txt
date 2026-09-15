@@ -40,7 +40,7 @@ else()
     option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
 endif ()
 option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
-option(ULTRACANVAS_PLUGIN_VECTOR, "Build Vector plugin" OFF)
+option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_EPS "Build EPS (PostScript) plugin" ON)
 option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
@@ -406,6 +406,16 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBrushEngine.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasPaintSurface.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorRaster.cpp
+        # The vector drawing viewer (VectorStorage::VectorDocument on screen,
+        # zoom / pan / bounding-box selection). The model it shows is in
+        # core/DataFormats below.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorElement.cpp
+        # The editing canvas: page, rulers, guides, grid, snapping, selection
+        # handles and tool hooks over a VectorDocument (the vector twin of
+        # UltraCanvasPaintSurface).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorCanvas.cpp
+        # The gradient ramp editor (stops on a strip).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasGradientEditor.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColumnsTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListModel.cpp
@@ -750,6 +760,18 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasPolygonTriangulation.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasBrepStorage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasModelStorage.cpp
+        # The framework's universal 2D vector document structure
+        # (VectorStorage::VectorDocument) and its IRenderContext renderer.
+        # Core rather than plugin-owned so that UI elements, tests and
+        # applications can hold and draw a drawing whether or not the
+        # Vector format-converter plugin (Plugins/Vector) is built.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasVectorStorage.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasVectorRenderer.cpp
+        # The editing layer over it (selection, history, hit testing, the
+        # transform / arrange / group / align operations) and the Bezier node
+        # model a shape editor edits paths through.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasVectorEdit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasBezierPath.cpp
 
         # DataFormats section: the AutoCAD Color Index palette, shared by the
         # 2D vector converters and the 3D model converters.

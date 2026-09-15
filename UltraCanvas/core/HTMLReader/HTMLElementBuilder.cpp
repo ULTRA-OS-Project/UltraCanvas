@@ -95,6 +95,45 @@ std::string CollapseWhitespace(const std::string& text, const std::string& rende
     return out;
 }
 
+// Trim leading/trailing ASCII whitespace (form values often carry stray
+// indentation from the source markup).
+std::string TrimAscii(const std::string& s) {
+    size_t b = s.find_first_not_of(" \t\r\n\f\v");
+    if (b == std::string::npos) return "";
+    size_t e = s.find_last_not_of(" \t\r\n\f\v");
+    return s.substr(b, e - b + 1);
+}
+
+// The visible text of a display-only form control. Inputs surface their value
+// (or placeholder); textareas and buttons their content; a select its chosen
+// option (falling back to the first). Password values are shown literally —
+// these renders are read-only, not interactive fields.
+std::string FormControlText(const Node& e) {
+    if (e.tag == "input") {
+        std::string v = e.GetAttribute("value");
+        if (v.empty()) v = e.GetAttribute("placeholder");
+        return TrimAscii(v);
+    }
+    if (e.tag == "textarea") {
+        return e.TextContent();          // keep newlines for multi-line intent
+    }
+    if (e.tag == "button") {
+        std::string t = TrimAscii(e.TextContent());
+        if (t.empty()) t = TrimAscii(e.GetAttribute("value"));
+        return t;
+    }
+    if (e.tag == "select") {
+        Node* first = nullptr;
+        for (const auto& c : e.children) {
+            if (!c->IsElement("option")) continue;
+            if (!first) first = c.get();
+            if (c->HasAttribute("selected")) return TrimAscii(c->TextContent());
+        }
+        return first ? TrimAscii(first->TextContent()) : std::string();
+    }
+    return std::string();
+}
+
 bool MarkupHasVisibleText(const std::string& markup) {
     bool inTag = false;
     for (char c : markup) {
@@ -324,6 +363,17 @@ void ElementBuilder::BuildChildrenInto(UltraCanvasContainer& parent, Node& eleme
             }
             continue;
         }
+        // Form controls route to BuildFormControl by tag (not display): a void
+        // <input> would otherwise fall through to BuildBlock, which recurses
+        // into children and emits nothing since the value lives in an attribute.
+        if (child.tag == "input" || child.tag == "textarea" ||
+            child.tag == "button" || child.tag == "select") {
+            flushRun();
+            if (auto control = BuildFormControl(child)) {
+                addFlowChild(control, childStyle.marginTop, childStyle.marginBottom);
+            }
+            continue;
+        }
 
         if (childStyle.display == DisplayMode::ListItem) {
             flushRun();
@@ -535,6 +585,36 @@ std::shared_ptr<UltraCanvasUIElement> ElementBuilder::BuildRule(Node& element) {
                                        : Color(160, 160, 160, 255);
     rule->SetBackgroundColor(line);
     return rule;
+}
+
+std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildFormControl(Node& element) {
+    // Hidden inputs render nothing.
+    if (element.tag == "input" && element.GetAttribute("type") == "hidden") {
+        return nullptr;
+    }
+
+    auto box = MakeContainer(element.tag);
+    RegisterAnchors(element, box);
+
+    const ComputedStyle& style = resolver.StyleOf(&element);
+    ApplyBoxStyle(*box, style);          // background / padding / border / width:100%
+    ConfigureBlockLayout(*box);
+
+    // Show the control's value/label as a single wrapped line of literal text
+    // inside the styled box — how a disabled field looks in a real browser.
+    std::string value = FormControlText(element);
+
+    auto label = std::make_shared<UltraCanvasLabel>(MakeId("field"));
+    ConfigureLabel(*label, style);
+    label->box.boxSizing = CSSLayout::BoxSizing::BorderBox;
+    label->size.width = CSSLayout::Dimension::Pct(100.f);
+    label->SetTextIsMarkup(false);       // value is literal text, not Pango markup
+    // A space keeps an empty control's box laid out (email spacing preserved).
+    label->SetText(value.empty() ? std::string(" ") : value);
+    box->AddChild(label);
+    ++elementCount;
+
+    return box;
 }
 
 std::shared_ptr<UltraCanvasContainer> ElementBuilder::BuildTable(Node& element) {

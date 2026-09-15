@@ -104,7 +104,7 @@ namespace UltraCanvas {
         size_t GetChildCount() const { return Children().size(); }
 
         UltraCanvasUIElement *FindChildById(const std::string &id);
-        UltraCanvasUIElement *FindElementAtPoint(const Point2Df &pos);
+        UltraCanvasUIElement *FindElementAtPoint(const Point2Df &pos, bool interactiveElementOnly = false);
 
         // ===== SPACERS (replace old AddSpacing / AddStretch) =====
         // Fixed-size spacer (use as inline gap between specific children).

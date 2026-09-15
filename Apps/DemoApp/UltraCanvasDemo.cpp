@@ -950,6 +950,11 @@ namespace UltraCanvas {
                 .AddVariant("svg", "SVG File Display")
                 .AddVariant("svg", "Interactive SVG")
                 .AddVariant("svg", "SVG Animations");
+        vectorBuilder.AddItem("vectorcanvas", "Vector Editing", "Edit a vector drawing on an UltraCanvasVectorCanvas: select, move, scale, rotate, draw, undo, group, gradients",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateVectorCanvasExamples(); },
+                              "DemoApp/UltraCanvasVectorCanvasExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasVectorCanvas.md");
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         vectorBuilder.AddItem("cdrimages", "CDR Images", "CDR (CorelDraw) images display and manipulation",
                               ImplementationStatus::FullyImplemented,

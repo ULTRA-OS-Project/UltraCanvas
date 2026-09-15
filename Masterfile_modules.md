@@ -35,6 +35,93 @@ the backing implementation can be replaced without affecting callers.
   - `JSON::EscapeString` and framework-type helpers
     `FromColor/ToColor`, `FromPoint/ToPoint`, `FromRect/ToRect`.
 
+- **UltraCanvasVectorStorage** (`DataFormats/UltraCanvasVectorStorage.h`) — the
+  framework's universal 2D vector document structure,
+  `VectorStorage::VectorDocument`: the in-memory drawing every vector file
+  format reads into and writes out of (SVG, XAR, EMF, WMF, DXF, DWG read;
+  those plus PDF, AI, EPS, CDR written — the converters are the Vector
+  plugin, `Plugins/Vector/`, documented in
+  `Docs/UltraCanvas/UltraCanvasVectorConverters.md`). Core rather than
+  plugin-owned so that elements, tests and applications can hold and draw a
+  drawing whether or not the converter plugin is built. Implementation in
+  `core/DataFormats/UltraCanvasVectorStorage.cpp`. Public surface:
+  - `VectorDocument` — `Size` (points), `ViewBox`, `BackgroundColor`,
+    `Layers`, `Definitions`, `SourceUnit` / `PointsPerSourceUnit`,
+    `AddLayer` / `RemoveLayer` / `FindElementById` / `GetBoundingBox` /
+    `FitToContent` / `Clone`.
+  - `VectorLayer : VectorGroup` (`Name`, `Visible`, `Locked`, `Opacity`, CAD
+    layer-table fields) → `VectorGroup` → elements: `VectorRect`,
+    `VectorCircle`, `VectorEllipse`, `VectorLine`, `VectorPolyline`,
+    `VectorPolygon`, `VectorPath` (`MoveTo/LineTo/CurveTo/QuadraticTo/ArcTo/
+    ClosePath`, `GetLength`, `GetPointAtLength`, `Flatten`), `VectorText`
+    (spans), `VectorImage`, `VectorSymbol` / `VectorUse`; every element has
+    `Id`, `Style` (`FillData` variant of colour / gradient / pattern,
+    `StrokeData`, opacities, blend, clip, mask), an optional double-precision
+    `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
+    `Clone()`.
+  - `ParsePathString` / `SerializePathData`, `ParseColorString`,
+    `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
+    `PointsPerUnit`, `LengthUnitSymbol`.
+  - `DataFormats/UltraCanvasVectorRenderer.h` — `VectorRenderer` draws a
+    document, layer or element into any `IRenderContext`
+    (`VectorRenderOptions`, `VectorRenderStats`); `HitTestElement` /
+    `HitTestDocument` (bounding boxes, carried through ancestor transforms).
+  - `DataFormats/UltraCanvasVectorPathOps.h` — `PathOps::NormalizePath` and
+    friends: any command mix down to absolute move / line / cubic segments
+    (SVG arcs via endpoint-to-centre conversion), rect / rounded-rect /
+    ellipse segment builders; what every writer and hit test walks.
+  - `UltraCanvasVectorElement` (`UltraCanvasVectorElement.h`) — the viewer
+    element: `SetDocument`, zoom ladder with cursor-anchored smooth wheel
+    zoom, drag pan, `ScreenToDocument` / `DocumentToScreen`, layer
+    visibility, bounding-box `Select` interaction mode. View only.
+
+- **UltraCanvasVectorEdit** (`DataFormats/UltraCanvasVectorEdit.h`,
+  namespace `VectorEdit`) — the editing layer over `VectorDocument`, no UI
+  in it; doc `Docs/UltraCanvas/UltraCanvasVectorCanvas.md`. Tree helpers
+  `EnsureIds` / `GenerateId` / `ParentOf` / `IndexInParent` / `LayerOf` /
+  `TopLevelOf` / `ParentToDocument` / `DocumentBounds` / `AllElements` /
+  `Detach`. `VectorSelection` (ordered elements, `Bounds`, listeners,
+  `Rebind` by Id after an undo). `VectorHistory` (`BeginEdit` / `EndEdit`
+  with coalescing / `CancelEdit` / `Record` / `Undo` / `Redo`, labels, a
+  memory budget; whole-document snapshots restored into the live document
+  object). `VectorHitTester` (`HitTest` on fill and stroke with a
+  tolerance through every ancestor transform, `ElementsIn`; a geometry-only
+  render context, no window). Operations: `TransformElements` /
+  `TranslateElements` / `ScaleElements` / `RotateElements` /
+  `SkewElements` about a document-space pivot, `BakeTransform`,
+  `ReorderElements` (`ZOrderMove`), `GroupElements` / `UngroupElements` /
+  `ReparentElement` (placement preserved), `DeleteElements`,
+  `DuplicateElements`, `AlignElements` / `DistributeElements`,
+  `ConvertToPath` / `OutlineOf`.
+- **UltraCanvasBezierPath** (`UltraCanvasBezierPath.h`) — the editing model
+  of a path: `BezierNode` (anchor, two handles, `BezierNodeType` Corner /
+  Smooth / Symmetric), `UltraCanvasBezierSubpath` (`InsertNodeAt` by de
+  Casteljau, `RemoveNode`, `SetNodeType`, `MoveAnchor`, `MoveHandle` under
+  the type rules, `DragSegment`, `Reverse`, `HitTestOutline`,
+  `ContainsPoint`, `Flatten`, `Bounds`, `BuildPath`) and
+  `UltraCanvasBezierPath` (`FromPathData` / `ToPathData` - every command
+  kind in, absolute M / L / C / Z out - `FromSVGPathData` /
+  `ToSVGPathData`, `FromPolyline` with Douglas-Peucker simplification and
+  Catmull-Rom tangents, `HitTestNode`, `Transform`). `SimplifyPolyline`.
+- **UltraCanvasVectorCanvas** (`UltraCanvasVectorCanvas.h`) — the editing
+  element, the vector twin of `UltraCanvasPaintSurface`: pasteboard, page
+  with shadow, grid (`VectorGridSpec`), rulers in any unit, guides pulled
+  from the rulers (`VectorGuide`), snapping to guides / page / objects /
+  grid (`VectorSnapOptions`, `Snap` → `VectorSnapResult`), the selection's
+  handles in scale or rotate mode (`VectorHandle`, `HitTestHandle`,
+  `SetRotationCenter`), `HitTest` / `ElementsIn`, zoom / pan (`SetZoomAt`,
+  `ZoomToPage` / `ZoomToDrawing` / `ZoomToSelection`, `DocToView` /
+  `ViewToDoc` / `PixelsToDoc`), and the tool hooks `onToolPress / Drag /
+  Release / Hover / DoubleClick / Key`, `onDrawOverlay`, `onViewChanged`,
+  `onGuidesChanged`, `onFilesDropped`; `VectorPointerEvent` carries the raw
+  and snapped document point. Edits nothing itself.
+- **UltraCanvasGradientEditor** (`UltraCanvasGradientEditor.h`) — the stops
+  of a gradient on a strip: select / drag / add / remove, `SetStops` /
+  `GetStops` / `AddStopAt` / `RemoveStop` / `SetStopColor` /
+  `SetStopPosition` / `ColorAt` / `Reverse`, `onStopsChanged` /
+  `onStopsChanging` / `onSelectionChanged`. Doc:
+  `Docs/UltraCanvas/UltraCanvasGradientEditor.md`.
+
 - **UltraCanvasModelStorage** (`DataFormats/UltraCanvasModelStorage.h`) — the
   framework's universal 3D scene structure, `ModelStorage::ModelDocument`: the
   in-memory model every 3D file format reads into and writes out of, as
@@ -662,6 +749,18 @@ engine; these classes hold the pixels being edited and hand them to it.
   context. See `Docs/UltraCanvas/UltraCanvasVectorRaster.md`.
 - **IRenderContext::SetImageSmoothing(bool)** — nearest-neighbour pixmap
   drawing for zoomed pixel display (Cairo backend implemented).
+- **IRenderContext compositing and geometry** (`UltraCanvasRenderContext.h`,
+  doc `Docs/UltraCanvas/UltraCanvasRenderContext.md`) — `SetBlendMode` /
+  `GetBlendMode` (the 16 PDF / CSS modes), groups `BeginGroup` /
+  `EndGroup(opacity)` / `EndGroupAsPattern` / `EndGroupMasked` /
+  `PaintPattern`, hit testing `IsPointInFill` / `IsPointInStroke` /
+  `GetStrokeExtents`, transform readback `GetTransform` / `UserToDevice` /
+  `DeviceToUser` / `DeviceToUserDistance`, paint sources
+  `CreateConicGradientPattern` / `CreateMeshGradientPattern` /
+  `CreatePixmapPattern`, `IPaintPattern::SetMatrix` / `SetExtend`,
+  `SetAntialias`, and text outlines `AppendTextPath` /
+  `AppendTextLayoutPath`. Base-class defaults keep other backends valid;
+  the Cairo backend implements all of it. Tested by `RenderContextTest`.
 
 ### **2. UltraAI**
 

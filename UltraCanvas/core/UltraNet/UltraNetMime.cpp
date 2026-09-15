@@ -240,6 +240,76 @@ void ParseValueWithParams(const std::string& header, std::string& value,
     }
 }
 
+// ---- RFC 2231 parameter values ---------------------------------------------
+// Reassembles split / percent-encoded parameters such as
+//   name*0*=utf-8''%D0%9C...; name*1*=...; name*2*=....pdf   (continuations)
+//   filename*=utf-8''%e2%82%ac.txt                          (single extended)
+//   filename="notes.txt"                                     (plain / RFC 2047)
+
+// Percent-decode "%XX" sequences. RFC 2231 does NOT treat '+' as a space.
+std::string PercentDecode(const std::string& s) {
+    std::string out; out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        if (s[i] == '%' && i + 2 < s.size()) {
+            int hi = HexVal(s[i+1]), lo = HexVal(s[i+2]);
+            if (hi >= 0 && lo >= 0) { out.push_back(static_cast<char>((hi << 4) | lo)); i += 2; continue; }
+        }
+        out.push_back(s[i]);
+    }
+    return out;
+}
+
+// Split an extended value "charset'lang'pct-encoded" into its charset and the
+// percent-decoded bytes. The charset'lang' prefix is optional (only present on
+// section 0 of a continuation, or on a single extended value).
+void SplitExtendedValue(const std::string& v, std::string& charset, std::string& bytes) {
+    std::size_t a = v.find('\'');
+    std::size_t b = (a == std::string::npos) ? std::string::npos : v.find('\'', a + 1);
+    if (a != std::string::npos && b != std::string::npos) {
+        charset = v.substr(0, a);
+        bytes   = PercentDecode(v.substr(b + 1));
+    } else {
+        charset.clear();
+        bytes = PercentDecode(v);
+    }
+}
+
+// Reassemble the parameter named `base` from a params map, decoding to UTF-8.
+// Returns "" when the parameter is absent.
+std::string ReconstructParam(const std::map<std::string, std::string>& params,
+                             const std::string& base) {
+    // 1. Continuations: base*0[*], base*1[*], ...
+    if (params.count(base + "*0") || params.count(base + "*0*")) {
+        std::string charset, assembled;
+        for (int n = 0; ; ++n) {
+            const std::string k = base + "*" + std::to_string(n);
+            auto enc = params.find(k + "*");   // extended (percent-encoded) section
+            auto lit = params.find(k);          // literal section
+            if (enc != params.end()) {
+                std::string cs, bytes;
+                SplitExtendedValue(enc->second, cs, bytes);  // prefix only on section 0
+                if (n == 0) charset = cs;
+                assembled += bytes;
+            } else if (lit != params.end()) {
+                assembled += lit->second;
+            } else {
+                break;
+            }
+        }
+        return CharsetToUtf8(assembled, charset);
+    }
+    // 2. Single extended: base*
+    if (auto it = params.find(base + "*"); it != params.end()) {
+        std::string cs, bytes;
+        SplitExtendedValue(it->second, cs, bytes);
+        return CharsetToUtf8(bytes, cs);
+    }
+    // 3. Plain value (possibly an RFC 2047 encoded-word).
+    if (auto it = params.find(base); it != params.end())
+        return DecodeHeaderImpl(it->second);
+    return "";
+}
+
 std::vector<std::string> SplitMultipart(const std::string& body, const std::string& boundary) {
     std::vector<std::string> parts;
     const std::string d = "--" + boundary;
@@ -283,11 +353,11 @@ void ParsePart(const std::string& raw, UltraNetMimePart& part) {
     ParseValueWithParams(cd, disp, cdParams);
     part.disposition = disp;
 
-    std::string filename;
-    if (cdParams.count("filename*"))     filename = cdParams["filename*"];
-    else if (cdParams.count("filename")) filename = cdParams["filename"];
-    else if (ctParams.count("name"))     filename = ctParams["name"];
-    part.filename = DecodeHeaderImpl(filename);
+    // Content-Disposition filename takes priority over Content-Type name; both
+    // may be RFC 2231 split / percent-encoded or RFC 2047 encoded-words.
+    std::string filename = ReconstructParam(cdParams, "filename");
+    if (filename.empty()) filename = ReconstructParam(ctParams, "name");
+    part.filename = filename;   // already fully decoded to UTF-8
 
     std::string cid = UltraCanvas::Trim(GetHeader(hs, "content-id"));
     if (!cid.empty() && cid.front() == '<' && cid.back() == '>') cid = cid.substr(1, cid.size() - 2);

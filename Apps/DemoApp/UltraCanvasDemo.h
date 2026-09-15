@@ -370,6 +370,9 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreatePDFExamples();
 #endif
         std::shared_ptr<UltraCanvasUIElement> CreateSVGVectorExamples();
+        // Editing a VectorDocument on an UltraCanvasVectorCanvas with the
+        // VectorEdit layer, the Bezier node model and the gradient editor.
+        std::shared_ptr<UltraCanvasUIElement> CreateVectorCanvasExamples();
 
         // FileLoader module page: Overview / Details / Examples tabs, the last one
         // an interactive Open / Save playground across the supported file families.
