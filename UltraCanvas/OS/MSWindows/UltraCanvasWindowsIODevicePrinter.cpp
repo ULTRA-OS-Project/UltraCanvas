@@ -12,6 +12,8 @@
 
 #ifdef _WIN32
 
+#include "UltraCanvasWindowsIODevicePrinterGdi.h"
+
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinter.h"
 #include "../../include/IODeviceManager/UltraCanvasIODeviceManager.h"
 #include "../../include/UltraCanvasUtils.h"
@@ -117,25 +119,34 @@ public:
     bool SupportsRaw() const override { return true; }
 
     // But the spooler will not take a PDF or a PNG and work out what to do
-    // with it the way CUPS's filter chain does: it wants device-ready data,
-    // or EMF/XPS produced by drawing to a printer DC. Until that renderer
-    // exists, the Native renderer is not offered on Windows, and saying so
-    // here means a caller finds out from GetAvailableRenderers() rather than
-    // from a job that vanishes.
+    // with it the way CUPS's filter chain does: it wants device-ready data.
+    // This stays false, and it is not a gap - it is what Windows is.
     bool SupportsDocument() const override { return false; }
+
+    // The way a document does reach a Windows printer is by being drawn onto
+    // a device context, which the GDI renderer produces pages for. That is
+    // what makes the Native renderer available here.
+    bool SupportsPageSource() const override { return true; }
 
     IODeviceResult Submit(const IODeviceInfo& printer,
                           const IOPrintPayload& payload,
                           const IOPrintOptions& options,
                           int& outJobId) override {
+        // A page source is not submitted as bytes at all: the driver builds
+        // the job from the drawing calls, so this hands straight over to the
+        // GDI half rather than opening a spooler handle here.
+        if (payload.pages) {
+            return Internal::PrintPageSourceThroughGdi(
+                printer, payload.pages, options, payload.jobName, outJobId);
+        }
+
         (void)options;
 
         if (!payload.isRaw) {
             return IODeviceResult::Error(
-                IODeviceResultCode::NotImplemented,
-                "Printing a document through the Windows driver needs the GDI "
-                "renderer, which is not built yet; a device-native stream "
-                "(GutenPrint) prints today",
+                IODeviceResultCode::NotSupported,
+                "The Windows spooler takes device-ready data; a document has "
+                "to come from a renderer that produces pages to draw",
                 printer.deviceId);
         }
 
@@ -151,8 +162,8 @@ public:
         }
 
         std::wstring jobName = Utf8ToWide(
-            payload.filePath.empty() ? std::string("UltraCanvas document")
-                                     : payload.filePath);
+            payload.jobName.empty() ? std::string("UltraCanvas document")
+                                    : payload.jobName);
         std::wstring dataType = L"RAW";
 
         DOC_INFO_1W docInfo = {};
@@ -257,10 +268,12 @@ IPrintTransportPtr SharedWindowsTransport() {
 class WindowsPrinterDevice : public PrinterDevice {
 public:
     explicit WindowsPrinterDevice(const IODeviceInfo& info) : PrinterDevice(info) {
-        // Deliberately no NativePrintRenderer: the spooler cannot process a
-        // document on its own, and the transport says so through
-        // SupportsDocument(). Adding one here would have it filtered out
-        // anyway - leaving it out keeps the reason in one place.
+        // Not the pass-through NativePrintRenderer that CUPS uses: the
+        // spooler cannot process a document on its own, so Native on Windows
+        // means drawing onto a printer DC. Same IOPrintRenderer::Native to
+        // the caller, different implementation underneath - which is the
+        // point of choosing a renderer by kind rather than by class.
+        AddRenderer(Internal::CreateWindowsGdiRenderer());
     }
 
 protected:

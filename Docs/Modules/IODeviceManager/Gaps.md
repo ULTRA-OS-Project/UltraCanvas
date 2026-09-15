@@ -9,7 +9,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-14 (after the hot-plug slice).
+Last reviewed: 2026-09-15 (after the Windows GDI renderer).
 
 ---
 
@@ -100,7 +100,10 @@ absent.
 | **GutenPrint renderer** | ❌ the seam it plugs into is complete and tested on both transports; the renderer itself is blocked on the licence decision below |
 | Windows spooler backend: enumeration, capabilities, status, job queue | ✅ |
 | Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
-| **Windows GDI/XPS renderer** | ❌ the spooler cannot process a document on its own, so `Native` is not offered on Windows until this exists. The transport says so through `SupportsDocument()`, so it shows up in `GetAvailableRenderers()` rather than as a failed job. |
+| **Windows GDI renderer** | ✅ `Native` now works on Windows. Prints raster images and plain text by drawing onto a printer DC; honours paper size, orientation, copies, collation, colour mode, duplex and quality through a driver-validated `DEVMODE`. |
+| Windows GDI renderer: PDF and other documents | ❌ refused by name with `NotSupported`, not half-printed. Needs the PDF plugin to paginate; the seam it would plug into is done. |
+| Windows GDI renderer: images from memory | ❌ the document loader is path-based, so a job carrying image bytes rather than a path is refused rather than spooled through a temp file behind the caller's back. |
+| XPS print path | ❌ GDI covers every driver Windows will show; XPS would matter for an XPS-only device or for higher-fidelity transparency. |
 | Windows printer maintenance | ❌ |
 | **macOS printing** | ❌ functions were written but under names nothing calls, so effectively zero |
 | Paper size recognition | ✅ by dimensions from the CUPS dest-info API, replacing the prior stub that returned A4 for every size a printer reported |

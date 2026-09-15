@@ -48,30 +48,112 @@ bool Mentions(const std::vector<std::string>& changes, const std::string& needle
 
 // ===== FAKES =====
 
+// A page target with a synthetic font: every code point is `advance` dots
+// wide and the line box is a fixed amount taller than the text, so wrapping
+// and pagination become arithmetic a test can predict exactly. The real
+// targets measure through GDI or Pango; the layout code under test cannot
+// tell the difference, which is the point of the interface.
+class FakePageTarget : public IPrintPageTarget {
+public:
+    struct DrawnImage {
+        int width = 0;
+        int height = 0;
+        IOPrintRect dest;
+    };
+
+    FakePageTarget(int width, int height, int dpi = 600, int advance = 10)
+        : metrics{width, height, dpi, dpi, 0, 0}, advance(advance) {}
+
+    IOPrintPageMetrics GetMetrics() const override { return metrics; }
+
+    bool DrawImage(const uint8_t* pixels, int width, int height,
+                   const IOPrintRect& dest) override {
+        (void)pixels;
+        images.push_back(DrawnImage{width, height, dest});
+        return true;
+    }
+
+    bool DrawTextLine(const std::string& utf8, int x, int baselineY,
+                      int pixelHeight) override {
+        (void)x;
+        (void)pixelHeight;
+        drawn.push_back(utf8);
+        baselines.push_back(baselineY);
+        return true;
+    }
+
+    int MeasureTextWidth(const std::string& utf8, int pixelHeight) const override {
+        (void)pixelHeight;
+        return CodePoints(utf8) * advance;
+    }
+
+    int GetLineHeight(int pixelHeight) const override { return pixelHeight + 4; }
+    int GetAscent(int pixelHeight) const override { return (pixelHeight * 4) / 5; }
+
+    // Counting code points rather than bytes keeps the synthetic font honest
+    // about UTF-8: a wrapper that split a multi-byte sequence would measure
+    // the halves as wider than the whole and the test would notice.
+    static int CodePoints(const std::string& text) {
+        int count = 0;
+        for (unsigned char c : text) {
+            if ((c & 0xC0) != 0x80) ++count;
+        }
+        return count;
+    }
+
+    IOPrintPageMetrics metrics;
+    int advance = 10;
+    std::vector<DrawnImage> images;
+    std::vector<std::string> drawn;
+    std::vector<int> baselines;
+};
+
 class FakeTransport : public IPrintTransport {
 public:
-    explicit FakeTransport(bool raw, bool document = true)
-        : rawSupported(raw), documentSupported(document) {}
+    explicit FakeTransport(bool raw, bool document = true, bool pageSource = false)
+        : rawSupported(raw), documentSupported(document),
+          pageSourceSupported(pageSource) {}
 
     std::string GetName() const override { return "Fake"; }
     bool SupportsRaw() const override { return rawSupported; }
     bool SupportsDocument() const override { return documentSupported; }
+    bool SupportsPageSource() const override { return pageSourceSupported; }
 
     IODeviceResult Submit(const IODeviceInfo& printer, const IOPrintPayload& payload,
                           const IOPrintOptions& options, int& outJobId) override {
         (void)printer;
         lastPayloadWasRaw = payload.isRaw;
         lastContentType = payload.contentType;
+        lastJobName = payload.jobName;
         lastOptions = options;
         ++submissions;
         outJobId = 4242;
+
+        // Stands in for what the Windows transport does with a page source:
+        // prepare it against the device, then draw every page. Doing it here
+        // rather than just counting the payload means the test exercises the
+        // same order of calls the real one makes.
+        if (payload.pages) {
+            IODeviceResult prepared = payload.pages->Prepare(page);
+            if (!prepared.success) return prepared;
+            pagesPrinted = payload.pages->GetPageCount();
+            for (int i = 0; i < pagesPrinted; ++i) {
+                IODeviceResult drawn = payload.pages->DrawPage(i, page);
+                if (!drawn.success) return drawn;
+            }
+        }
         return IODeviceResult::Ok();
     }
 
+    FakePageTarget page{4960, 7016};   // A4 at 600 dpi, near enough
+
     bool rawSupported = true;
     bool documentSupported = true;
+    bool pageSourceSupported = false;
+    int pagesPrinted = 0;
     bool lastPayloadWasRaw = false;
     std::string lastContentType;
+    std::string lastJobName;
     IOPrintOptions lastOptions;
     int submissions = 0;
 };
@@ -100,6 +182,35 @@ public:
 
     bool available = true;
     bool knowsModel = true;
+    int renders = 0;
+};
+
+// Stands in for the Windows GDI renderer: Native by kind, but it produces
+// pages to be drawn rather than bytes to be sent, so it needs a transport
+// that can drive a drawing session.
+class FakePageRenderer : public IPrintRenderer {
+public:
+    IOPrintRenderer GetKind() const override { return IOPrintRenderer::Native; }
+    bool IsAvailable() const override { return true; }
+    bool ProducesPageSource() const override { return true; }
+    bool SupportsPrinter(const IODeviceInfo& printer) const override {
+        (void)printer;
+        return true;
+    }
+
+    IODeviceResult Render(const IOPrintJob& job,
+                          const IOPrinterCapabilities& capabilities,
+                          IOPrintPayload& payload) override {
+        (void)job;
+        (void)capabilities;
+        payload.pages = std::make_shared<TextPageSource>(text, pixelHeight);
+        payload.contentType = "text/plain";
+        ++renders;
+        return IODeviceResult::Ok();
+    }
+
+    std::string text = "hello world";
+    int pixelHeight = 40;
     int renders = 0;
 };
 
@@ -449,6 +560,210 @@ void TestPaperTable() {
           "landscape swaps the page dimensions");
 }
 
+
+// ===== PAGE DRAWING =====
+
+void TestPageSourceRendererMatching() {
+    std::cout << "\nPage-source renderer matching\n";
+
+    // Windows: the spooler takes raw jobs and can drive a drawing session,
+    // but it will not process a document. That is the exact shape.
+    auto windowsLike = std::make_shared<FakeTransport>(
+        /*raw=*/true, /*document=*/false, /*pageSource=*/true);
+    auto printer = std::make_shared<FakePrinter>(MakePrinterInfo(), windowsLike);
+    printer->AddRenderer(std::make_shared<FakePageRenderer>());
+
+    Check(printer->IsRendererAvailable(IOPrintRenderer::Native),
+          "Native is offered when the transport can drive a page source");
+
+    // The same renderer against CUPS-like capabilities, which have no use for
+    // a page source, must not be offered: CUPS hands the document to its
+    // filter chain instead.
+    auto cupsLike = std::make_shared<FakeTransport>(
+        /*raw=*/true, /*document=*/true, /*pageSource=*/false);
+    auto other = std::make_shared<FakePrinter>(MakePrinterInfo(), cupsLike);
+    other->AddRenderer(std::make_shared<FakePageRenderer>());
+    Check(!other->IsRendererAvailable(IOPrintRenderer::Native),
+          "a page-source renderer is withheld where nothing can drive it");
+
+    // And the pass-through Native renderer is still the right one there,
+    // which is what AddRenderer replacing by kind is for.
+    auto passThrough = std::make_shared<FakePrinter>(MakePrinterInfo(), cupsLike);
+    Check(passThrough->IsRendererAvailable(IOPrintRenderer::Native),
+          "the pass-through Native renderer still serves a document transport");
+}
+
+void TestFitPreservingAspect() {
+    std::cout << "\nImage fitting\n";
+
+    const IOPrintRect page{0, 0, 1000, 2000};
+
+    // Wider than the page's aspect: width-limited, centred vertically.
+    IOPrintRect wide = FitPreservingAspect(200, 100, page);
+    Check(wide.width == 1000 && wide.height == 500, "a wide image fills the width");
+    Check(wide.x == 0 && wide.y == 750, "and is centred down the page");
+
+    // Taller: height-limited, centred horizontally.
+    IOPrintRect tall = FitPreservingAspect(100, 400, page);
+    Check(tall.height == 2000 && tall.width == 500, "a tall image fills the height");
+    Check(tall.y == 0 && tall.x == 250, "and is centred across the page");
+
+    // Small sources scale *up*. A screenshot must not print stamp-sized just
+    // because its pixel count is small - print scales to paper, not to pixels.
+    IOPrintRect small = FitPreservingAspect(10, 20, page);
+    Check(small.width == 1000 && small.height == 2000,
+          "a small image is scaled up to the page, not left tiny");
+
+    Check(FitPreservingAspect(0, 100, page).IsEmpty(), "a zero-width source fits nothing");
+    Check(FitPreservingAspect(100, 100, IOPrintRect{0, 0, 0, 500}).IsEmpty(),
+          "a zero-width page fits nothing");
+}
+
+void TestImagePageSourcePlacement() {
+    std::cout << "\nImage page source\n";
+
+    FakePageTarget target(1000, 2000);
+    std::vector<uint8_t> pixels(4 * 4 * 4, 0xFF);   // 4x4 opaque white
+
+    ImagePageSource source(pixels.data(), 4, 4);
+    Check(source.Prepare(target).success, "a square image prepares against the page");
+    Check(source.GetPageCount() == 1, "an image is one page");
+
+    const IOPrintRect placement = source.GetPlacement();
+    Check(placement.width == 1000 && placement.height == 1000,
+          "a square image is width-limited on a tall page");
+    Check(placement.y == 500, "and centred vertically");
+
+    Check(source.DrawPage(0, target).success, "page 0 draws");
+    Check(target.images.size() == 1, "exactly one image reached the device");
+    Check(target.images[0].width == 4 && target.images[0].height == 4,
+          "at its own pixel dimensions, scaled by the device");
+    Check(!source.DrawPage(1, target).success, "there is no page 1");
+
+    // A source that has not met a device yet cannot know where anything goes.
+    ImagePageSource unprepared(pixels.data(), 4, 4);
+    IODeviceResult early = unprepared.DrawPage(0, target);
+    Check(!early.success && early.code == IODeviceResultCode::InvalidState,
+          "drawing before Prepare() is refused, not guessed at");
+}
+
+void TestTextPagination() {
+    std::cout << "\nText pagination\n";
+
+    // 10 dots per code point, 40-dot text in a 44-dot line box. A 200-dot
+    // wide page holds 20 characters; a 440-dot tall page holds 10 lines.
+    FakePageTarget target(200, 440);
+
+    TextPageSource source("aaaa bbbb cccc dddd eeee ffff", 40);
+    Check(source.Prepare(target).success, "the text prepares against the page");
+    Check(source.GetLinesPerPage() == 10, "ten line boxes fit the page height");
+
+    const std::vector<std::string>& lines = source.GetLines();
+    Check(!lines.empty(), "the text wrapped into lines");
+    for (const std::string& line : lines) {
+        Check(FakePageTarget::CodePoints(line) * 10 <= 200,
+              "every line fits the printable width: '" + line + "'");
+    }
+
+    // Blank lines survive: they are paragraph separation, not noise.
+    TextPageSource paragraphs("one\n\ntwo", 40);
+    Check(paragraphs.Prepare(target).success, "paragraphs prepare");
+    Check(paragraphs.GetLines().size() == 3, "a blank line is kept as a line");
+    Check(paragraphs.GetLines()[1].empty(), "and it is the empty one");
+
+    // The same document is a different number of pages on a different device
+    // - which is why pagination cannot happen before the printer is known.
+    std::string many;
+    for (int i = 0; i < 25; ++i) many += "line\n";
+    TextPageSource tall(many, 40);
+    Check(tall.Prepare(target).success, "a long document prepares");
+    const int onTallPage = tall.GetPageCount();
+
+    FakePageTarget shortPage(200, 132);   // three line boxes
+    TextPageSource same(many, 40);
+    Check(same.Prepare(shortPage).success, "and prepares against a shorter page");
+    Check(same.GetPageCount() > onTallPage,
+          "a shorter page needs more pages for the same text");
+
+    // Empty in, nothing out - rather than one blank sheet.
+    TextPageSource empty("", 40);
+    Check(empty.Prepare(target).success, "empty text prepares");
+    Check(empty.GetPageCount() == 0, "empty text is zero pages, not one blank one");
+}
+
+void TestTextDrawsEveryLineOnItsPage() {
+    std::cout << "\nText drawing\n";
+
+    FakePageTarget target(200, 132);   // three line boxes of 44 dots
+    TextPageSource source("aa\nbb\ncc\ndd", 40);
+    Check(source.Prepare(target).success, "four short lines prepare");
+    Check(source.GetLinesPerPage() == 3, "three fit a page");
+    Check(source.GetPageCount() == 2, "so four lines need two pages");
+
+    Check(source.DrawPage(0, target).success, "page 0 draws");
+    Check(target.drawn.size() == 3, "three lines land on the first page");
+    Check(target.drawn[0] == "aa" && target.drawn[2] == "cc", "in order");
+    Check(target.baselines[0] == 32, "the first baseline is one ascent down");
+    Check(target.baselines[1] == 32 + 44, "and each next is one line box lower");
+
+    target.drawn.clear();
+    target.baselines.clear();
+    Check(source.DrawPage(1, target).success, "page 1 draws");
+    Check(target.drawn.size() == 1 && target.drawn[0] == "dd",
+          "the remainder lands on the second page");
+    Check(target.baselines[0] == 32,
+          "and starts at the top of it, not where the last page left off");
+}
+
+void TestPrintingDrivesThePageSource() {
+    std::cout << "\nPrinting through a page source\n";
+
+    auto transport = std::make_shared<FakeTransport>(
+        /*raw=*/true, /*document=*/false, /*pageSource=*/true);
+    auto printer = std::make_shared<FakePrinter>(MakePrinterInfo(), transport);
+    auto renderer = std::make_shared<FakePageRenderer>();
+    renderer->text = "one\ntwo\nthree";
+    printer->AddRenderer(renderer);
+    Check(printer->Connect().success, "the printer connects");
+
+    IOPrintJob job;
+    job.data = {'x'};              // the fake renderer ignores it
+    job.jobName = "pages";
+    IODeviceResult printed = printer->Print(job);
+
+    Check(printed.success, "the job prints");
+    Check(renderer->renders == 1, "the page renderer ran once");
+    Check(transport->submissions == 1, "and the transport took it once");
+    Check(transport->pagesPrinted >= 1, "at least one page was drawn");
+    Check(!transport->page.drawn.empty(), "text actually reached the device");
+    Check(transport->page.drawn[0] == "one", "starting with the first line");
+}
+
+
+void TestJobNameReachesTheTransport() {
+    std::cout << "\nJob naming\n";
+
+    auto transport = std::make_shared<FakeTransport>(/*raw=*/true);
+    auto printer = std::make_shared<FakePrinter>(MakePrinterInfo(), transport);
+    Check(printer->Connect().success, "the printer connects");
+
+    IOPrintJob job;
+    job.filePath = "/tmp/quarterly-report.pdf";
+    job.jobName = "Quarterly report";
+    Check(printer->Print(job).success, "a named job prints");
+    Check(transport->lastJobName == "Quarterly report",
+          "the queue is told what the caller called it");
+
+    // An unnamed job still gets something a queue can display, and it is the
+    // file rather than the printer's own name - a queue of six documents
+    // titled after the printer tells the user nothing.
+    IOPrintJob unnamed;
+    unnamed.filePath = "/tmp/invoice.pdf";
+    Check(printer->Print(unnamed).success, "an unnamed job prints");
+    Check(transport->lastJobName == "/tmp/invoice.pdf",
+          "and falls back to the file, not to the printer");
+}
+
 }  // namespace
 
 int main() {
@@ -463,6 +778,13 @@ int main() {
     TestMediaConstrainsResolution();
     TestUnreportedCapabilitiesAreNotRefusals();
     TestPaperTable();
+    TestPageSourceRendererMatching();
+    TestFitPreservingAspect();
+    TestImagePageSourcePlacement();
+    TestTextPagination();
+    TestTextDrawsEveryLineOnItsPage();
+    TestPrintingDrivesThePageSource();
+    TestJobNameReachesTheTransport();
 
     std::cout << "\n";
     if (g_failures == 0) {

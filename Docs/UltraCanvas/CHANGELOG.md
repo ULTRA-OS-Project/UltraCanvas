@@ -1,3 +1,56 @@
+#### 2026-09-15 *0.8.57*
+- **Native printing now works on Windows.** `Native` was the one renderer
+  `GetAvailableRenderers()` would not offer there: the spooler takes
+  device-ready data and nothing else, so a PDF or a PNG had nowhere to go, and
+  a Windows caller had no native print path at all. It does now, by the route
+  Windows actually provides — `CreateDC` on the printer, `StartDoc`, and per
+  page `StartPage`, GDI calls, `EndPage`, with the driver turning those calls
+  into the device's own commands.
+- **A print payload gained a third shape, because GDI is not a byte stream.**
+  It was either the printer's own command language (GutenPrint) or a document
+  for the platform's driver (CUPS hands a PDF to its filter chain). A GDI job
+  is neither: it is a drawing session, and there is no intermediate buffer to
+  put anywhere. Forcing it into `data` would have meant inventing a multi-page
+  EMF container that exists only to be unwrapped three calls later. Instead
+  `IOPrintPayload` carries an optional `IPrintPageSource`, and the renderer
+  and transport declare that shape the same way they already declare the other
+  two — `ProducesPageSource()` against `SupportsPageSource()`, symmetric with
+  `ProducesRawStream()`/`SupportsRaw()`. `WindowsPrintTransport::SupportsDocument()`
+  stays `false`, and that is no longer a gap: it is what Windows is.
+- **Pagination happens against the device, not before it.** `IPrintPageSource`
+  is prepared with the real target before its page count is asked for, because
+  the same document is a different number of pages on A4 at 600 dpi than on
+  Letter at 300. A source that answered earlier would be guessing.
+- **The layout is platform-neutral, so it is tested everywhere.** Fitting,
+  wrapping and pagination live in `core/` and reach the device only through
+  the abstract `IPrintPageTarget`, so `Tests/IODevicePrinterTest` drives them
+  against a fake target with a synthetic font — 117 assertions, up from 62,
+  running on every arm of the matrix rather than only the one that needs them.
+  Left in `OS/MSWindows` is what genuinely needs Win32: the DC, the `DEVMODE`,
+  the font handles and `StretchDIBits`.
+- Line breaking reuses `TextWrapping::WrapGreedy` rather than a second
+  implementation of it. It already takes a measure callable for exactly this
+  reason, and already handles UTF-8 boundaries and over-long words; what the
+  printer adds is paragraphs, and settings that suit page flow instead of a
+  truncated caption.
+- Options reach the driver through a `DEVMODE` built from its own current
+  defaults and handed back for validation, so paper size, orientation, copies,
+  collation, colour mode, duplex and quality are applied — and a request the
+  hardware cannot meet is dropped by the driver rather than silently producing
+  output the caller believes is duplex.
+- Images are composited onto white rather than alpha-blended: paper is opaque,
+  and blending against an uninitialised page is undefined in practice.
+- What it does not do yet, refused by name rather than half-printed: PDF and
+  other paginated documents (`NotSupported`, needs the PDF plugin), and images
+  supplied as bytes rather than a path. `Docs/Modules/IODeviceManager/Gaps.md`
+  tracks both.
+- The page target's method is `DrawTextLine`, not `DrawText`, because
+  `<windows.h>` defines `DrawText` as a macro: a virtual by that name is
+  renamed by the preprocessor wherever windows.h is included, so the override
+  stops overriding and the class turns abstract — with the compiler blaming
+  the override rather than the macro. Found by cross-compiling, as
+  `GetLastError()` was before it.
+
 #### 2026-09-14 *0.8.56*
 - **IODeviceManager: hot-plug watching.** `SetDeviceChangeCallback` existed but
   only enumeration ever fired it, so a device plugged in after a scan went
