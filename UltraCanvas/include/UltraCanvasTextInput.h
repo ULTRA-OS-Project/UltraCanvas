@@ -1,7 +1,10 @@
 // include/UltraCanvasTextInput.h
 // Advanced text input component with validation, formatting, and feedback systems
-// Version: 1.4.0
-// Last Modified: 2026-08-31
+// Version: 1.5.0
+// Last Modified: 2026-09-15
+// V1.5.0: Caret movement, Backspace/Delete, hit testing, masking and the length
+//   limit all count characters instead of bytes, so a name like "Fröhling"
+//   edits normally instead of being split into invalid UTF-8.
 // V1.4.0: Password fields can show an in-field reveal ("eye") button and/or be
 //   toggled programmatically between masked and plain text.
 // Author: UltraCanvas Framework
@@ -366,12 +369,12 @@ public:
     const std::string& GetText() const { return text; }
     const std::string& GetDisplayText() const { return displayText; }
 
-    // The text exactly as painted: masked with '*' in password mode, otherwise the
-    // formatted display text. ALL width/caret/hit-test/scroll geometry must measure
-    // this (never GetDisplayText) so the computed positions match what the user sees.
-    std::string GetRenderText() const {
-        return (passwordMode && !passwordRevealed) ? std::string(displayText.length(), '*') : displayText;
-    }
+    // The text exactly as painted: masked with one '*' per character in password
+    // mode, otherwise the formatted display text. ALL width/caret/hit-test/scroll
+    // geometry must measure this (never GetDisplayText) so the computed positions
+    // match what the user sees - and must convert its offsets with
+    // ToRenderOffset()/FromRenderOffset(), which a mask shifts.
+    std::string GetRenderText() const;
     
     void SetPlaceholder(const std::string& placeholder) {
         placeholderText = placeholder;
@@ -576,6 +579,18 @@ private:
     void RenderPasswordToggle(IRenderContext* ctx);
 
     size_t GetTextPositionFromPoint(const Point2Di& point);
+
+    // Is the text painted as a row of stars right now?
+    bool IsMasked() const;
+
+    // Byte offsets into the field's text and byte offsets into the string that
+    // is actually painted (GetRenderText()) are not the same thing once a mask
+    // replaces each character - of any byte length - with a single '*'. Every
+    // measurement crosses between the two through these, and both snap to a
+    // character boundary, so no prefix handed to the renderer ends inside a
+    // multi-byte character.
+    size_t ToRenderOffset(size_t textOffset) const;
+    size_t FromRenderOffset(size_t renderOffset) const;
     
     bool HandleMouseDown(const UCEvent& event);
     bool HandleMouseMove(const UCEvent& event);
@@ -584,6 +599,9 @@ private:
     bool HandleFocusGained(const UCEvent& event);
     bool HandleFocusLost(const UCEvent& event);
 
+    // Inserted text is repaired to valid UTF-8 first (utf8_make_valid): a paste,
+    // or a keyboard backend without an input method, can deliver bytes that are
+    // not, and a field must never come to hold text it cannot draw.
     void InsertText(const std::string& insertText);
 
     void DeleteSelection();

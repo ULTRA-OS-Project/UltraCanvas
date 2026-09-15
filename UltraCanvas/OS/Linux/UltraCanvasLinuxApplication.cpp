@@ -462,27 +462,49 @@ namespace UltraCanvas {
                     // XLookupChars or XLookupBoth - we have characters
                 }
 
-                // Fallback to XLookupString if XIM is not available or for KeyRelease
+                // Fallback to XLookupString if XIM is not available or for KeyRelease.
+                // It answers in Latin-1, not UTF-8 (that is what the X11 API
+                // specifies), so anything above ASCII has to be re-encoded
+                // below - handing those bytes on as they are would put half a
+                // character into every widget that received them.
+                bool latin1 = false;
                 if (len == 0 && xEvent.type == KeyPress) {
                     len = XLookupString(const_cast<XKeyEvent*>(&xEvent.xkey), 
                                        buffer, sizeof(buffer) - 1, 
                                        &keysym, nullptr);
+                    latin1 = (len > 0);
                 }
 
                 if (len > 0) {
                     buffer[len] = '\0';  // Ensure null termination
-                    
+
+                    std::string typed(buffer, len);
+                    if (latin1) {
+                        // Latin-1 -> UTF-8: each byte is its own codepoint.
+                        std::string utf8;
+                        utf8.reserve(typed.size() * 2);
+                        for (unsigned char c : typed) {
+                            if (c < 0x80) {
+                                utf8.push_back(static_cast<char>(c));
+                            } else {
+                                utf8.push_back(static_cast<char>(0xC0 | (c >> 6)));
+                                utf8.push_back(static_cast<char>(0x80 | (c & 0x3F)));
+                            }
+                        }
+                        typed.swap(utf8);
+                    }
+
                     // For single-byte ASCII, set character field
-                    if (len == 1 && (unsigned char)buffer[0] < 128) {
-                        event.character = buffer[0];
+                    if (typed.size() == 1 && (unsigned char)typed[0] < 128) {
+                        event.character = typed[0];
                     } else {
                         // For multi-byte UTF-8, character field is less meaningful
                         // but we can set it to the first byte or 0
                         event.character = 0;  // Indicate multi-byte sequence
                     }
-                    
+
                     // Always set the full UTF-8 text
-                    event.text = std::string(buffer, len);
+                    event.text = std::move(typed);
                 } else {
                     event.character = 0;
                     event.text.clear();
