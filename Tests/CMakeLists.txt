@@ -327,6 +327,29 @@ else()
     message(STATUS "  TextAreaSpellCheckTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== RICH TEXT EDIT ELEMENT TEST =====
+# UltraCanvasRichTextEdit against a real render context: block layout geometry,
+# click-to-caret hit testing, drag selection, visual-line motion and typed
+# input through real events. Needs the framework and a display; skips itself
+# without one (runs headless under Xvfb).
+if(TARGET UltraCanvas)
+    message(STATUS "  Building RichTextEditElementTest...")
+    add_executable(RichTextEditElementTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/RichTextEditElementTest.cpp
+    )
+    target_include_directories(RichTextEditElementTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(RichTextEditElementTest PRIVATE cxx_std_20)
+    target_link_libraries(RichTextEditElementTest PRIVATE UltraCanvas)
+    set_target_properties(RichTextEditElementTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME RichTextEditElementTest COMMAND RichTextEditElementTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: RichTextEditElementTest")
+else()
+    message(STATUS "  RichTextEditElementTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== CARET STACKING ORDER TEST =====
 # Where the shared caret lands in the window's compositing order: under a menu
 # opened over it, back on top once the menu closes. Needs the real framework -
@@ -462,7 +485,7 @@ if(TINYXML2_TEST_FOUND)
     add_executable(WordFormatsTest
         ${CMAKE_CURRENT_SOURCE_DIR}/WordFormatsTest.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasZipPackage.cpp
-        ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasRichDocument.cpp
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasRichDocument.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
@@ -498,6 +521,28 @@ else()
     message(STATUS "  tinyxml2 not found - WordFormatsTest disabled")
 endif()
 
+# ===== RICH TEXT EDITOR TEST =====
+# UCRichDocumentEditor — the editing core behind UltraCanvasRichTextEdit:
+# positions, text editing, run splitting/coalescing, character and paragraph
+# formatting, structure, clipboard ranges and undo/redo. The editing core is
+# UI-free by design, so this needs neither a display nor the UI stack.
+message(STATUS "  Building RichTextEditorTest...")
+add_executable(RichTextEditorTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/RichTextEditorTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocumentEditor.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocument.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasTextUtils.cpp
+)
+target_include_directories(RichTextEditorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(RichTextEditorTest PRIVATE cxx_std_20)
+set_target_properties(RichTextEditorTest PROPERTIES
+    OUTPUT_NAME "RichTextEditorTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME RichTextEditorTest COMMAND RichTextEditorTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: RichTextEditorTest")
+
 # ===== MIND MAP IO TEST =====
 # ===== LATEX DOCUMENT TEST =====
 # The LaTeX document-subset importer (UltraCanvasLaTeXDocumentReader →
@@ -511,7 +556,7 @@ if(TINYXML2_TEST_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/LaTeXDocumentTest.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasZipPackage.cpp
-        ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasRichDocument.cpp
+        ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasRichDocument.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_ROOT}/UltraCanvas/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
