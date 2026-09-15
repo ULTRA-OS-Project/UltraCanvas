@@ -1,3 +1,14 @@
+#### 2026-09-15 *0.9.5*
+- **"Add email account" accepts a name like `Fröhling`.** Typing one into the
+  wizard's Your name field (or a passphrase with an umlaut into Password) used
+  to leave invalid UTF-8 in the field the moment the caret moved over the
+  character, backspaced across it or a click landed on it — the text stopped
+  drawing and the debug log filled with Pango's `Invalid UTF-8 string passed to
+  pango_layout_set_text()`. The fault was in the framework's text field, not in
+  UltraMail: see framework 0.8.53 for what changed. That entry also covers the
+  other half of the same name's journey — the display name now goes out as an
+  RFC 2047 encoded-word in `From:` instead of as a raw 8-bit header byte.
+
 #### 2026-09-14 *0.9.4*
 - **One icon for UltraMail, everywhere it is shown.** `media/appicon/UltraMail.png`
   — the coloured ring around an `@` — replaces the envelope placeholder
