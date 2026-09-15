@@ -1,3 +1,25 @@
+#### 2026-09-15 *1.35.0*
+- **Settings > Extras > Cache: what UltraFiler is holding, and whether it
+  should.** A page beside *Open prompt* and *History & Favorites* with two
+  switches and four figures.
+
+  The switches are **Keep thumbnails on disk between runs** (on) and
+  **Compress thumbnails held in memory** (off - roughly a quarter the size,
+  at the cost of unpacking each tile as it comes on screen). Both apply to
+  every open tab straight away and are saved, like every other setting here.
+
+  The figures are what is held against what may be held: what is on disk, the
+  previews in memory and their ceiling, the application icons and *their*
+  ceiling - they have their own so that a folder of photos cannot push the
+  programs' icons out - and, with compression on, the tiles unpacked for
+  drawing. The ceilings are the framework's own numbers, asked for rather than
+  written down here, so this page cannot fall out of step with them. The path
+  the files are kept at is shown under the figures.
+
+  **Empty cache** deletes them all and frees the memory; **Refresh** re-reads
+  the figures, which is worth a press after emptying, because whatever is on
+  screen is decoded again immediately and goes straight back into the cache.
+
 #### 2026-09-15 *1.34.1*
 - **Thumbnails come back, and they come back fast.** Two framework changes
   carry to UltraFiler here (see framework 0.8.61); nothing changed in the

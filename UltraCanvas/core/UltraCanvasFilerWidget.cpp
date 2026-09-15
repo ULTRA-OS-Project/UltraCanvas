@@ -7766,6 +7766,12 @@ namespace UltraCanvas {
         // showing" looked like.
         constexpr size_t kThumbBudgetBytes = 96 * 1024 * 1024;
         constexpr size_t kNativeIconBudgetBytes = 16 * 1024 * 1024;
+        // And the third: the decompressed tiles kept hot for drawing when
+        // compressed thumbnails are on. Beside the other two rather than
+        // inside the function that evicts against it, because
+        // GetThumbnailCacheStats reports all three and a settings page shows
+        // them - one definition each, no copies.
+        constexpr size_t kHotThumbBudgetBytes = 32 * 1024 * 1024;
         // Tries an application icon gets from the shell before the tile
         // settles on its type glyph.
         constexpr uint8_t kNativeIconMaxAttempts = 3;
@@ -7991,8 +7997,7 @@ namespace UltraCanvas {
             he.tick = ++thumbHotTick;
             // Evict least-recently-drawn tiles beyond the hot budget — it
             // only needs to cover the visible + prefetch bands.
-            constexpr size_t kHotBudgetBytes = 32 * 1024 * 1024;
-            while (thumbHotBytes > kHotBudgetBytes && thumbHot.size() > 1) {
+            while (thumbHotBytes > kHotThumbBudgetBytes && thumbHot.size() > 1) {
                 auto oldest = thumbHot.end();
                 for (auto hit = thumbHot.begin(); hit != thumbHot.end(); ++hit) {
                     if (hit->first == key) continue;
@@ -8424,16 +8429,30 @@ namespace UltraCanvas {
     UltraCanvasFilerWidget::ThumbCacheStats
     UltraCanvasFilerWidget::GetThumbnailCacheStats() const {
         ThumbCacheStats st;
+        // The ceilings, from the one place they are defined - a settings page
+        // showing "x of y" must not carry its own copy of y.
+        st.contentBudget = kThumbBudgetBytes;
+        st.iconBudget = kNativeIconBudgetBytes;
+        st.hotBudget = kHotThumbBudgetBytes;
         std::lock_guard<std::mutex> lk(thumbMutex);
         for (const auto& kv : thumbSlots) {
             if (kv.second.state != ThumbState::Ready) continue;
             ++st.entries;
             st.storedBytes += kv.second.bytes;
             st.rawBytes += kv.second.rawBytes;
+            if (kv.second.nativeIcon) {
+                ++st.iconEntries;
+                st.iconBytes += kv.second.bytes;
+            }
         }
         st.hotEntries = thumbHot.size();
         st.hotBytes = thumbHotBytes;
         return st;
+    }
+
+    void UltraCanvasFilerWidget::ClearThumbnailMemoryCache() {
+        DropThumbnailCache();
+        RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::ThumbnailWorkerMain() {

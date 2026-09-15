@@ -750,8 +750,21 @@ namespace UltraCanvas {
             size_t rawBytes = 0;      // raw ARGB32 size of those thumbnails
             size_t hotEntries = 0;    // decompressed tiles in the hot cache
             size_t hotBytes = 0;
+            // The ceilings those three are measured against, reported rather
+            // than published as constants so a settings page can show "x of y"
+            // without keeping its own copy of the numbers to fall out of date.
+            size_t contentBudget = 0; // ceiling for content previews
+            size_t iconBudget = 0;    // ceiling for application icons
+            size_t hotBudget = 0;     // ceiling for the decompressed tiles
+            size_t iconEntries = 0;   // how many of `entries` are icons
+            size_t iconBytes = 0;     // and what they occupy
         };
         ThumbCacheStats GetThumbnailCacheStats() const;
+
+        // Throw the retained thumbnails away now, freeing the memory the
+        // stats above report; the tiles on screen re-decode on the next
+        // frame. What a settings page's "Empty cache" button calls.
+        void ClearThumbnailMemoryCache();
 
         // The small icon menu (Copy / Cut / Rename / Delete) shown at the top
         // right of the hovered item. Also toggled by the Display > Icon-Menu

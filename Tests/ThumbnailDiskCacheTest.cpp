@@ -307,6 +307,14 @@ void TestDisabledCacheIsInert() {
           "nothing is written");
     Check(ThumbnailDiskCache::Load(request).empty(), "and nothing is read");
 
+    // Switched off is a choice, not a broken system: the location and what is
+    // in it are still true, and a settings page that showed "nowhere to write"
+    // here would be telling the user their machine cannot do something it can.
+    Check(!ThumbnailDiskCache::Directory().empty(),
+          "the location is still reported while it is off");
+    Check(ThumbnailDiskCache::GetUsage().files > 0,
+          "and so is what is still sitting in it, waiting to expire");
+
     ThumbnailDiskCache::SetEnabled(true);
     Check(ThumbnailDiskCache::Load(request) == Blob(64, 0x77),
           "what was on disk is untouched, so switching back on costs nothing");

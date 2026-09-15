@@ -19644,9 +19644,19 @@ two different rules.
 | Call | Does |
 |---|---|
 | `SetThumbnailDiskCacheEnabled(bool)` | On by default. Off stops reading and writing; what is on disk is left to expire on its own, so switching back on costs nothing |
-| `GetThumbnailDiskCacheDirectory()` | Where the files are (empty when the platform offered nowhere writable) |
+| `GetThumbnailDiskCacheDirectory()` | Where the files are — whether or not the cache is switched on, since switching it off does not move them. Empty only when the platform offered nowhere writable |
 | `GetThumbnailDiskCacheUsage()` | Files and bytes currently held |
 | `ClearThumbnailDiskCache()` | Throws it all away now; returns how many files went |
+| `ClearThumbnailMemoryCache()` | Drops the retained pictures; the tiles on screen re-decode on the next frame |
+
+`GetThumbnailCacheStats()` reports the three ceilings above beside what is
+used, and counts application icons apart from previews, so a settings page can
+show "x of y" without keeping its own copy of y. UltraFiler's
+*Settings > Extras > Cache* is built entirely from these calls: two switches,
+the four figures, and an Empty cache button. Note that one figure — the
+decompressed tiles — holds only what is being painted at that moment, so it
+reads as empty whenever the display is not being drawn; say so wherever it is
+shown, or it looks like a fault.
 
 A disk cache is an optimisation and never a requirement: a full disk, a
 read-only cache directory or a platform with nowhere to write costs a

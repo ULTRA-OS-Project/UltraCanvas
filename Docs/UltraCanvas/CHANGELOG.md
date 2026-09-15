@@ -34,6 +34,19 @@
   picture shows the edit. `UltraCanvasThumbnailDiskCache.h`;
   `SetThumbnailDiskCacheEnabled()`, `GetThumbnailDiskCacheUsage()` and
   `ClearThumbnailDiskCache()` on the widget switch, measure and empty it.
+- **The thumbnail cache can now be shown and emptied from an application.**
+  `GetThumbnailCacheStats()` reports the three memory ceilings beside what is
+  used, and counts the application icons separately from the previews - a
+  settings page showing "x of y" should not carry its own copy of y, which is
+  how such a page comes to claim a budget the widget stopped using.
+  `ClearThumbnailMemoryCache()` drops the retained pictures on demand, and
+  `SetThumbnailDiskCacheEnabled()`, `GetThumbnailDiskCacheDirectory()`,
+  `GetThumbnailDiskCacheUsage()` and `ClearThumbnailDiskCache()` do the same
+  for the disk half. `GetThumbnailDiskCacheDirectory()` answers whether or not
+  the cache is switched on: switching it off does not move the files, and a
+  page that reported "nowhere to write" for a cache the user had simply turned
+  off would be describing a machine that does not exist. UltraFiler 1.35.0 is
+  the first caller.
 - **Used files are touched, unused ones are deleted after two weeks.** A cache
   keyed by where its content came from is orphaned by every move, rename,
   upgrade and delete the user makes, and nothing tells it — so without an

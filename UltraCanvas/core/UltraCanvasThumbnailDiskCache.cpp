@@ -204,7 +204,10 @@ bool IsEnabled() { return g_enabled.load(); }
 void SetEnabled(bool enabled) { g_enabled.store(enabled); }
 
 std::string Directory() {
-    if (!g_enabled.load()) return {};
+    // Deliberately not gated on the switch: where the cache lives does not
+    // stop being true because it is switched off, and a settings page showing
+    // the location - with the files still in it, waiting to expire - needs the
+    // path either way. Empty means the platform offered nowhere writable.
     return ResolveDirectory();
 }
 

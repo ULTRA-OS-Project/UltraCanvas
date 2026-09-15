@@ -73,8 +73,10 @@ namespace UltraCanvas {
         void SetEnabled(bool enabled);
         bool IsEnabled();
 
-        // Where the files live. Empty when unavailable. For a settings page
-        // that wants to show the location, and for the tests.
+        // Where the files live, whether or not the cache is switched on -
+        // switching it off does not move them, and a settings page shows the
+        // location either way. Empty only when the platform offered nowhere
+        // writable.
         std::string Directory();
 
         // Point the cache at another directory — for tests, which must not
