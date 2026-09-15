@@ -1,7 +1,7 @@
 // include/UltraCanvasSpellChecker.h
 // Cross-platform spell checking service with runtime language switching and menu integration
-// Version: 1.0.1
-// Last Modified: 2026-08-24
+// Version: 1.1.0
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -149,9 +149,15 @@ public:
     std::string GetLanguage() const;
     SpellLanguageInfo GetLanguageInfo(const std::string& languageCode) const;
 
-    // Picks a sensible startup language from LANG / LC_ALL / user settings,
-    // falling back to the first available dictionary.
+    // Picks a sensible startup language from LANG / LC_ALL, then from what the
+    // backend says the platform is set to, falling back to the first available
+    // dictionary.
     std::string DetectPreferredLanguage() const;
+
+    // Maps a language code onto the way the active backend spells it, so a code
+    // out of a settings file ("en_US") still selects the enumerated dictionary
+    // ("en-US"). Returns the input unchanged when nothing in the list matches.
+    std::string ResolveAvailableLanguageCode(const std::string& requested) const;
 
     // ===== MODE =====
     void SetMode(SpellCheckMode mode);
@@ -233,7 +239,14 @@ public:
     // Language entries only, for applications that build their own layout.
     // Emitted as radio items in one shared group, so the menu enforces
     // exclusivity and shows which dictionary is active.
-    static std::vector<MenuItemData> BuildLanguageMenuItems(bool useNativeNames = true);
+    //
+    // onSelect receives the code of the entry the user picked. Applications
+    // that have to do more than switch dictionary - UltraTexter turns checking
+    // on when the user picks one while it is off - pass one and call
+    // SetLanguage() themselves; the default simply switches the dictionary.
+    static std::vector<MenuItemData> BuildLanguageMenuItems(
+        bool useNativeNames = true,
+        std::function<void(const std::string&)> onSelect = nullptr);
 
     // Suggestion items for a right-click context menu on a misspelled word.
     // onApply receives the replacement text chosen by the user.
