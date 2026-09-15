@@ -11,6 +11,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCanvasTextUtils.h"
 
+#include <locale>
 #include <sstream>
 
 namespace UltraCanvas {
@@ -45,6 +46,81 @@ std::vector<std::string> Split(const std::string& str, char delimiter) {
     }
     return result;
 }
+
+// ===========================================================================
+// Numbers in machine-readable formats
+// ===========================================================================
+// See the header for why these exist rather than std::stof / strtof / atof.
+
+namespace {
+
+// One scanner for both widths. The scan is pure text - it decides where the
+// number ends without ever converting - so only the final istringstream
+// extraction differs between float and double.
+template <typename T>
+const char* ScanClassic(const char* first, const char* last, T& out) {
+    auto isDigit = [](char c) { return c >= '0' && c <= '9'; };
+    const char* p = first;
+    if (p != last && *p == '-') ++p;
+    bool sawDigit = false;
+    while (p != last && isDigit(*p)) { ++p; sawDigit = true; }
+    if (p != last && *p == '.') {
+        ++p;
+        while (p != last && isDigit(*p)) { ++p; sawDigit = true; }
+    }
+    if (!sawDigit) return first;
+    // An exponent counts only when it is complete - see "1.5em" in the header.
+    if (p != last && (*p == 'e' || *p == 'E')) {
+        const char* exponent = p + 1;
+        if (exponent != last && (*exponent == '+' || *exponent == '-')) ++exponent;
+        if (exponent != last && isDigit(*exponent)) {
+            while (exponent != last && isDigit(*exponent)) ++exponent;
+            p = exponent;
+        }
+    }
+    std::string number(first, p);
+    if (!number.empty() && number.back() == '.') number.pop_back();  // "1." is 1
+    std::istringstream in(number);
+    in.imbue(std::locale::classic());   // '.' is the decimal point, always
+    T value = T(0);
+    in >> value;
+    if (in.fail()) {
+        // What was scanned is a well-formed number, so a failure here means it
+        // does not fit the type - the out-of-range from_chars reports and these
+        // callers ignore. Leave `out` as the caller set it and report the
+        // number as read, exactly as from_chars does.
+        return p;
+    }
+    out = value;
+    return p;
+}
+
+template <typename T>
+bool TryParseClassic(const std::string& text, T& out) {
+    const char* first = text.data();
+    const char* last = first + text.size();
+    while (first != last && std::isspace(static_cast<unsigned char>(*first))) ++first;
+    if (first != last && *first == '+') ++first;   // from_chars refuses it; stof took it
+    // Seeded with the caller's value so that a number too large for the type
+    // leaves `out` alone, exactly as ParseFloatClassic does on that path.
+    T value = out;
+    if (ScanClassic(first, last, value) == first) return false;
+    out = value;
+    return true;
+}
+
+} // namespace
+
+const char* ParseFloatClassic(const char* first, const char* last, float& out) {
+    return ScanClassic(first, last, out);
+}
+
+const char* ParseFloatClassic(const char* first, const char* last, double& out) {
+    return ScanClassic(first, last, out);
+}
+
+bool TryParseFloat(const std::string& text, float& out)  { return TryParseClassic(text, out); }
+bool TryParseFloat(const std::string& text, double& out) { return TryParseClassic(text, out); }
 
 namespace {
 
