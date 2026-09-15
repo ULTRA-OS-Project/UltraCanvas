@@ -7,14 +7,17 @@
 
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasApplication.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 
 #ifdef __linux__
 
 #include <gtk-3.0/gtk/gtk.h>
 #include <gtk/gtkunixprint.h>
 #include <gdk/gdkx.h>   // gdk_x11_window_foreign_new_for_display — parent dialogs to X11 windows
+#include <algorithm>
 #include <iostream>
 #include <cstring>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -745,17 +748,174 @@ namespace UltraCanvas {
         return result.IsOK() ? result.value : "";
     }
 
-    bool UltraCanvasNativeDialogs::ShowPrintDialog(
+    namespace {
+
+// ===== GTK PRINT SETTINGS → IOPrintOptions =====
+// GTK and IODeviceManager describe the same dialog in different units and
+// enums. Everything below is that translation and nothing else; what the
+// settings then *do* is PrinterDevice's business, which is why none of this
+// prints anything.
+
+        // GTK quotes paper in millimetres as a double; the printer vocabulary
+        // uses hundredths of a millimetre as an integer, so a page is exact
+        // arithmetic at 1200 dpi rather than a float that nearly adds up.
+        int MmToHundredths(double mm) {
+            return static_cast<int>(mm * 100.0 + 0.5);
+        }
+
+        IOPrintOrientation OrientationFromGtk(GtkPageOrientation orientation) {
+            switch (orientation) {
+                case GTK_PAGE_ORIENTATION_LANDSCAPE:
+                    return IOPrintOrientation::Landscape;
+                case GTK_PAGE_ORIENTATION_REVERSE_PORTRAIT:
+                    return IOPrintOrientation::ReversePortrait;
+                case GTK_PAGE_ORIENTATION_REVERSE_LANDSCAPE:
+                    return IOPrintOrientation::ReverseLandscape;
+                case GTK_PAGE_ORIENTATION_PORTRAIT:
+                default:
+                    return IOPrintOrientation::Portrait;
+            }
+        }
+
+        IOPrintQuality QualityFromGtk(GtkPrintQuality quality) {
+            switch (quality) {
+                case GTK_PRINT_QUALITY_DRAFT: return IOPrintQuality::Draft;
+                case GTK_PRINT_QUALITY_LOW:   return IOPrintQuality::Draft;
+                case GTK_PRINT_QUALITY_HIGH:  return IOPrintQuality::High;
+                case GTK_PRINT_QUALITY_NORMAL:
+                default:                      return IOPrintQuality::Normal;
+            }
+        }
+
+        // GTK's own CUPS backend maps HORIZONTAL to two-sided-long-edge and
+        // VERTICAL to two-sided-short-edge. The names read backwards - the
+        // axis is the one the sheet is flipped about, not the bound edge - so
+        // it is worth following GTK rather than the intuition.
+        IODuplexMode DuplexFromGtk(GtkPrintDuplex duplex) {
+            switch (duplex) {
+                case GTK_PRINT_DUPLEX_HORIZONTAL: return IODuplexMode::LongEdge;
+                case GTK_PRINT_DUPLEX_VERTICAL:   return IODuplexMode::ShortEdge;
+                case GTK_PRINT_DUPLEX_SIMPLEX:
+                default:                          return IODuplexMode::None;
+            }
+        }
+
+        void ReadPageSetup(GtkPageSetup* setup, IOPageSetup& page) {
+            if (!setup) return;
+
+            page.orientation = OrientationFromGtk(gtk_page_setup_get_orientation(setup));
+
+            GtkPaperSize* paper = gtk_page_setup_get_paper_size(setup);
+            if (!paper) return;
+
+            // The paper size's own width and height, which are always
+            // portrait; the orientation above is what turns the sheet, and
+            // taking it from the page setup's rotated measurements as well
+            // would apply it twice.
+            const IOPaperDimensions dimensions{
+                MmToHundredths(gtk_paper_size_get_width(paper, GTK_UNIT_MM)),
+                MmToHundredths(gtk_paper_size_get_height(paper, GTK_UNIT_MM))};
+
+            page.paperSize = IOPaperSizeFromDimensions(dimensions.widthHundredthsMM,
+                                                       dimensions.heightHundredthsMM);
+            if (page.paperSize == IOPaperSize::Unknown) {
+                // A size with no name in our table is still a size the
+                // printer offered, so it is carried by its measurements
+                // rather than substituted for A4.
+                page.paperSize = IOPaperSize::Custom;
+                page.customSize = dimensions;
+            }
+
+            page.margins.leftHundredthsMM =
+                MmToHundredths(gtk_page_setup_get_left_margin(setup, GTK_UNIT_MM));
+            page.margins.rightHundredthsMM =
+                MmToHundredths(gtk_page_setup_get_right_margin(setup, GTK_UNIT_MM));
+            page.margins.topHundredthsMM =
+                MmToHundredths(gtk_page_setup_get_top_margin(setup, GTK_UNIT_MM));
+            page.margins.bottomHundredthsMM =
+                MmToHundredths(gtk_page_setup_get_bottom_margin(setup, GTK_UNIT_MM));
+        }
+
+        std::vector<int> ReadPageRanges(GtkPrintSettings* settings) {
+            std::vector<int> pages;
+            if (gtk_print_settings_get_print_pages(settings) != GTK_PRINT_PAGES_RANGES) {
+                return pages;   // ALL, CURRENT or SELECTION: no explicit list
+            }
+
+            gint count = 0;
+            GtkPageRange* ranges = gtk_print_settings_get_page_ranges(settings, &count);
+            if (!ranges) return pages;
+
+            // GTK page ranges are 0-based and inclusive, and the dialog does
+            // not know the document's length, so nothing stops a user typing
+            // a range wider than any document. The cap keeps a slip of the
+            // keyboard from turning into a multi-gigabyte vector; pages past
+            // the end are dropped when the range meets the paginated
+            // document anyway.
+            constexpr int kMaxPages = 100000;
+
+            for (gint i = 0; i < count && static_cast<int>(pages.size()) < kMaxPages; ++i) {
+                const int first = ranges[i].start + 1;
+                const int last = ranges[i].end + 1;
+                for (int page = std::max(first, 1);
+                     page <= last && static_cast<int>(pages.size()) < kMaxPages;
+                     ++page) {
+                    pages.push_back(page);
+                }
+            }
+
+            g_free(ranges);
+            return pages;
+        }
+
+        void ReadSettings(GtkPrintSettings* settings, NativePrintResult& chosen) {
+            if (!settings) return;
+
+            chosen.options.copies = std::max(1, gtk_print_settings_get_n_copies(settings));
+            chosen.options.collate = gtk_print_settings_get_collate(settings) != FALSE;
+            chosen.options.quality = QualityFromGtk(gtk_print_settings_get_quality(settings));
+            chosen.options.duplex = DuplexFromGtk(gtk_print_settings_get_duplex(settings));
+
+            // The dialog's colour choice is passed on as the user made it.
+            // PrinterDevice resolves it against the printer afterwards and
+            // says so when it substitutes, which is a better place to discover
+            // a mono printer than here.
+            chosen.options.colorMode = gtk_print_settings_get_use_color(settings)
+                                           ? IOPrinterColorMode::Color
+                                           : IOPrinterColorMode::Grayscale;
+
+            const int dpi = gtk_print_settings_get_resolution(settings);
+            if (dpi > 0) {
+                chosen.options.resolutionMode = IOResolutionMode::Custom;
+                chosen.options.customResolution = IOResolution{dpi, dpi};
+            }
+
+            chosen.pageRange = ReadPageRanges(settings);
+
+            // GTK sets an output URI when the user picks the "Print to File"
+            // destination. Reported rather than acted on here; the caller
+            // decides, and PrintTextWithSettings() refuses it by name instead
+            // of spooling to a printer the user did not choose.
+            if (const char* uri = gtk_print_settings_get(settings,
+                                                        GTK_PRINT_SETTINGS_OUTPUT_URI)) {
+                chosen.printToFile = true;
+                chosen.outputFilePath = uri;
+            }
+        }
+
+    }  // namespace
+
+    NativePrintResult UltraCanvasNativeDialogs::RequestPrintSettings(
             const std::string& documentName,
-            const std::string& textContent,
             UltraCanvasWindowBase* parent) {
 
-        if (!EnsureGtkInitialized()) return false;
+        NativePrintResult chosen;
+
+        if (!EnsureGtkInitialized()) return chosen;
 
         // GTK-level parent stays null; the real X11 parent is applied below.
         GtkWindow* parentWindow = nullptr;
 
-        // Build a GtkPrintUnixDialog — the standard GTK print dialog
         GtkWidget* dialog = gtk_print_unix_dialog_new(
                 documentName.empty() ? "Print" : documentName.c_str(),
                 parentWindow
@@ -764,46 +924,65 @@ namespace UltraCanvas {
         // Parent + make modal to the owning window (keep-above fallback if none).
         ParentDialogToWindow(dialog, parent);
 
-        // Configure: show all pages tab, hide page range (plain text only)
-        GtkPrintCapabilities capabilities = (GtkPrintCapabilities) (GTK_PRINT_CAPABILITY_COPIES |
-                                            GTK_PRINT_CAPABILITY_COLLATE |
-                                            GTK_PRINT_CAPABILITY_REVERSE);
+        // Which capabilities this caller handles itself rather than leaving
+        // to the backend. Unchanged, and deliberately short: everything here
+        // is passed on to the printer through IOPrintOptions, so there is
+        // nothing to claim. Page ranges need no flag - GtkPrintCapabilities
+        // has none - the dialog always offers them, and until this slice
+        // nothing read the answer back.
+        GtkPrintCapabilities capabilities = (GtkPrintCapabilities) (
+                GTK_PRINT_CAPABILITY_COPIES |
+                GTK_PRINT_CAPABILITY_COLLATE |
+                GTK_PRINT_CAPABILITY_REVERSE);
 
         gtk_print_unix_dialog_set_manual_capabilities(GTK_PRINT_UNIX_DIALOG(dialog), capabilities);
 
-        bool printed = false;
-
         if (gtk_dialog_run(GTK_DIALOG(dialog)) == GTK_RESPONSE_OK) {
-            GtkPrinter*     printer  = gtk_print_unix_dialog_get_selected_printer(GTK_PRINT_UNIX_DIALOG(dialog));
-            GtkPrintSettings* settings = gtk_print_unix_dialog_get_settings(GTK_PRINT_UNIX_DIALOG(dialog));
-            GtkPageSetup*   pageSetup = gtk_print_unix_dialog_get_page_setup(GTK_PRINT_UNIX_DIALOG(dialog));
+            GtkPrintUnixDialog* printDialog = GTK_PRINT_UNIX_DIALOG(dialog);
 
-            if (printer && settings) {
-                // Write text content to a temp file and hand it to lpr
-                char tmpPath[] = "/tmp/ultratexter_print_XXXXXX";
-                int fd = mkstemp(tmpPath);
-                if (fd >= 0) {
-                    write(fd, textContent.c_str(), textContent.size());
-                    close(fd);
+            GtkPrinter* printer = gtk_print_unix_dialog_get_selected_printer(printDialog);
+            GtkPrintSettings* settings = gtk_print_unix_dialog_get_settings(printDialog);
 
-                    // Retrieve chosen printer name for lpr -P
-                    const gchar* printerName = gtk_printer_get_name(printer);
-                    std::string cmd = std::string("lpr -P \"") + printerName + "\" \"" + tmpPath + "\"";
-                    int ret = system(cmd.c_str());
-                    printed = (ret == 0);
+            // Owned by the dialog - not unreffed here, unlike the settings.
+            GtkPageSetup* pageSetup = gtk_print_unix_dialog_get_page_setup(printDialog);
 
-                    unlink(tmpPath);  // Remove temp file after submission
+            if (printer) {
+                if (const gchar* name = gtk_printer_get_name(printer)) {
+                    chosen.printerName = name;
                 }
             }
 
-            if (settings)  g_object_unref(settings);
+            ReadSettings(settings, chosen);
+            ReadPageSetup(pageSetup, chosen.options.page);
+
+            if (settings) g_object_unref(settings);
+
+            // A confirmed dialog that named no printer is not a choice we can
+            // act on, so it is reported as a cancellation rather than as an
+            // OK with an empty name that fails one layer later.
+            chosen.accepted = !chosen.printerName.empty();
         }
 
         gtk_widget_destroy(dialog);
         FinishNativeDialog();
 
-        return printed;
+        return chosen;
     }
+
+    bool UltraCanvasNativeDialogs::ShowPrintDialog(
+            const std::string& documentName,
+            const std::string& textContent,
+            UltraCanvasWindowBase* parent) {
+
+        // The job goes through PrinterDevice, so the copies, collation, paper
+        // size, orientation, duplex and page range the user just chose are
+        // the ones the queue receives. The version this replaces read the
+        // same settings out of the dialog, used none of them, and ran
+        // `lpr -P <name>` through system() with the printer's name inside the
+        // command line.
+        return PrintTextWithDialog(documentName, textContent, parent).success;
+    }
+
 } // namespace UltraCanvas
 
 #endif // __linux__

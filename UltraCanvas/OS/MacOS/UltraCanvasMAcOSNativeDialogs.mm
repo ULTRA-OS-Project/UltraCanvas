@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasNativeDialogs.h"
+#include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
 
 #if defined(__APPLE__) && defined(__MACH__)
 #include <TargetConditionals.h>
@@ -13,6 +14,7 @@
 
 #import <Cocoa/Cocoa.h>
 #import <AppKit/AppKit.h>
+#include <algorithm>
 #include <string>
 #include <vector>
 
@@ -545,31 +547,163 @@ std::string UltraCanvasNativeDialogs::GetPassword(
     return result.IsOK() ? result.value : "";
 }
 
+namespace {
+
+// ===== NSPrintInfo → IOPrintOptions =====
+
+// AppKit measures paper in points, 1/72 inch; the printer vocabulary uses
+// hundredths of a millimetre. 25.4/72 mm per point, so 2540/72 hundredths.
+int PointsToHundredthsMM(CGFloat points) {
+    return static_cast<int>((points * 2540.0) / 72.0 + 0.5);
+}
+
+int IntFromPrintInfo(NSPrintInfo* printInfo, NSString* key, int fallback) {
+    NSNumber* value = [[printInfo dictionary] objectForKey:key];
+    return value ? [value intValue] : fallback;
+}
+
+bool BoolFromPrintInfo(NSPrintInfo* printInfo, NSString* key, bool fallback) {
+    NSNumber* value = [[printInfo dictionary] objectForKey:key];
+    return value ? [value boolValue] : fallback;
+}
+
+void ReadPrintInfo(NSPrintInfo* printInfo, NativePrintResult& chosen) {
+    if (!printInfo) return;
+
+    if (NSPrinter* printer = [printInfo printer]) {
+        // The NSPrinter name is the CUPS destination name on macOS, which is
+        // what the CUPS backend puts in IODeviceInfo::connectionPath.
+        chosen.printerName = FromNSString([printer name]);
+    }
+
+    chosen.options.copies = std::max(1, IntFromPrintInfo(printInfo, NSPrintCopies, 1));
+    chosen.options.collate = BoolFromPrintInfo(printInfo, NSPrintMustCollate, true);
+
+    chosen.options.page.orientation =
+        ([printInfo orientation] == NSPaperOrientationLandscape)
+            ? IOPrintOrientation::Landscape
+            : IOPrintOrientation::Portrait;
+
+    // paperSize follows the orientation, so a landscape sheet comes back
+    // already turned. The recogniser wants portrait measurements and the
+    // orientation is carried separately above, so it is turned back rather
+    // than applied twice.
+    NSSize paper = [printInfo paperSize];
+    CGFloat widthPoints = paper.width;
+    CGFloat heightPoints = paper.height;
+    if ([printInfo orientation] == NSPaperOrientationLandscape) {
+        std::swap(widthPoints, heightPoints);
+    }
+
+    const IOPaperDimensions dimensions{PointsToHundredthsMM(widthPoints),
+                                       PointsToHundredthsMM(heightPoints)};
+    if (dimensions.IsValid()) {
+        chosen.options.page.paperSize =
+            IOPaperSizeFromDimensions(dimensions.widthHundredthsMM,
+                                      dimensions.heightHundredthsMM);
+        if (chosen.options.page.paperSize == IOPaperSize::Unknown) {
+            chosen.options.page.paperSize = IOPaperSize::Custom;
+            chosen.options.page.customSize = dimensions;
+        }
+    }
+
+    chosen.options.page.margins.leftHundredthsMM =
+        PointsToHundredthsMM([printInfo leftMargin]);
+    chosen.options.page.margins.rightHundredthsMM =
+        PointsToHundredthsMM([printInfo rightMargin]);
+    chosen.options.page.margins.topHundredthsMM =
+        PointsToHundredthsMM([printInfo topMargin]);
+    chosen.options.page.margins.bottomHundredthsMM =
+        PointsToHundredthsMM([printInfo bottomMargin]);
+
+    // Duplex is not on NSPrintInfo at all - it lives in the PMPrintSettings
+    // underneath - so it is left at its default rather than guessed. The
+    // panel still applies the user's choice to the job it would run itself;
+    // what is missing is a way to read it back out, and claiming a value here
+    // would be inventing one.
+
+    if (!BoolFromPrintInfo(printInfo, NSPrintAllPages, true)) {
+        const int first = std::max(1, IntFromPrintInfo(printInfo, NSPrintFirstPage, 1));
+        const int last = IntFromPrintInfo(printInfo, NSPrintLastPage, first);
+
+        // The panel does not know the document's length, so the upper bound
+        // is whatever the user typed. Capped so a slip of the keyboard cannot
+        // turn into an enormous vector; pages past the end are dropped when
+        // the range meets the paginated document anyway.
+        constexpr int kMaxPages = 100000;
+        for (int page = first;
+             page <= last && static_cast<int>(chosen.pageRange.size()) < kMaxPages;
+             ++page) {
+            chosen.pageRange.push_back(page);
+        }
+    }
+
+    if ([[printInfo jobDisposition] isEqualToString:NSPrintSaveJob]) {
+        chosen.printToFile = true;
+        if (NSURL* url = [[printInfo dictionary] objectForKey:NSPrintJobSavingURL]) {
+            chosen.outputFilePath = FromNSString([url path]);
+        }
+    }
+}
+
+}  // namespace
+
+    NativePrintResult UltraCanvasNativeDialogs::RequestPrintSettings(
+            const std::string& documentName,
+            UltraCanvasWindowBase* parent) {
+        (void)parent;         // run application-modal, as the other panels here do
+        (void)documentName;   // the panel shows no document name; the job
+                              // carries its own through IOPrintJob::jobName
+
+        NativePrintResult chosen;
+
+        @autoreleasepool {
+            // A copy, not the shared instance: the panel writes the user's
+            // choices into whatever it is given, and editing the process-wide
+            // NSPrintInfo would change the defaults for every later job. The
+            // copy is owned by ARC, which this directory's .mm files are
+            // compiled with.
+            NSPrintInfo* printInfo = [[NSPrintInfo sharedPrintInfo] copy];
+
+            NSPrintPanel* panel = [NSPrintPanel printPanel];
+
+            // Cast back to the option type: NS_OPTIONS is an enum with a fixed
+            // underlying type, so in Objective-C++ `a | b` yields NSUInteger,
+            // and C++ will not convert that back to the enum implicitly the
+            // way C would.
+            [panel setOptions:static_cast<NSPrintPanelOptions>(
+                                  [panel options] | NSPrintPanelShowsCopies |
+                                  NSPrintPanelShowsPageRange |
+                                  NSPrintPanelShowsPaperSize |
+                                  NSPrintPanelShowsOrientation)];
+
+            if ([panel runModalWithPrintInfo:printInfo] == NSModalResponseOK) {
+                ReadPrintInfo(printInfo, chosen);
+
+                // A confirmed panel that named no printer is not a choice we
+                // can act on, so it is reported as a cancellation rather than
+                // as an OK with an empty name that fails one layer later.
+                chosen.accepted = !chosen.printerName.empty();
+            }
+        }
+
+        return chosen;
+    }
+
     bool UltraCanvasNativeDialogs::ShowPrintDialog(
             const std::string& documentName,
             const std::string& textContent,
-            UltraCanvasWindowBase*  parent) {
-        @autoreleasepool {
-            // Write content to a temp file
-            NSString* tmpPath = [NSTemporaryDirectory()
-                    stringByAppendingPathComponent:@"ultratexter_print.txt"];
-            NSData* data = [NSData dataWithBytes:textContent.c_str()
-                                          length:textContent.size()];
-            [data writeToFile:tmpPath atomically:YES];
+            UltraCanvasWindowBase* parent) {
 
-            // Open the file with NSWorkspace "print" operation — shows OS print dialog
-            NSURL* fileURL = [NSURL fileURLWithPath:tmpPath];
-            NSWorkspaceOpenConfiguration* config = [NSWorkspaceOpenConfiguration configuration];
-            config.activates = YES;
-
-            [[NSWorkspace sharedWorkspace]
-                    openURLs:@[fileURL]
-            withApplicationAtURL:nil
-                   configuration:config
-               completionHandler:nil];
-
-            return true;
-        }
+        // Prints through PrinterDevice and the CUPS transport, with the
+        // settings the user chose in the panel.
+        //
+        // The version this replaces showed no print panel: it wrote the text
+        // to a fixed path in the temp directory - the same path on every
+        // call, so two documents printed in quick succession raced for it -
+        // asked NSWorkspace to open it, and returned true without waiting,
+        // whether or not anything was ever printed.
+        return PrintTextWithDialog(documentName, textContent, parent).success;
     }
 
 } // namespace UltraCanvas

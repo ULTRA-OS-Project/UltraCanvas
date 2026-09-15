@@ -1,0 +1,59 @@
+// core/IODeviceManager/UltraCanvasIODeviceBackends.h
+// Internal: the single place where compiled-in device backends are attached
+// to the manager. Not part of the public IODeviceManager surface.
+// Version: 0.1.0
+// Author: UltraCanvas Framework / ULTRA OS
+#pragma once
+
+#include "../../include/IODeviceManager/UltraCanvasIODeviceManager.h"
+
+namespace UltraCanvas {
+namespace Internal {
+
+// Called once from IODeviceManager::Initialize(). Each backend exposes a
+// RegisterXxxBackend(IODeviceManager&) entry point, declared below and
+// defined in exactly one translation unit; this function calls the ones the
+// build enabled.
+//
+// Backends register explicitly rather than from a static initialiser because
+// UltraCanvas also builds as a static library, where the linker drops the
+// static initialisers of object files nothing else references — which would
+// silently leave a platform with no devices at all.
+//
+// Adding a backend is: declare its entry point here, define it in its own
+// file under core/IODeviceManager/ or OS/<Platform>/, and add a guarded call
+// in RegisterCompiledBackends().
+void RegisterCompiledBackends(IODeviceManager& manager);
+
+// The hot-plug watcher for this platform, or null where none is compiled in.
+// Defined once per platform; the fallback returns null so a platform without
+// one still builds and simply reports BackendUnavailable from
+// StartMonitoring().
+IDeviceWatcherPtr CreateDeviceWatcher();
+
+// ===== BACKEND ENTRY POINTS =====
+// Each is defined in exactly one translation unit, behind the same guard the
+// call in RegisterCompiledBackends() uses.
+
+#if defined(ULTRACANVAS_HAS_CUPS) && (defined(__linux__) || defined(__APPLE__))
+// core/IODeviceManager/UltraCanvasIODevicePrinterCUPS.cpp
+void RegisterCupsPrinterBackend(IODeviceManager& manager);
+#endif
+
+#if defined(_WIN32)
+// OS/MSWindows/UltraCanvasWindowsIODevicePrinter.cpp
+void RegisterWindowsPrinterBackend(IODeviceManager& manager);
+#endif
+
+#if defined(__linux__)
+// OS/Linux/UltraCanvasLinuxIODeviceCamera.cpp
+void RegisterV4L2CameraBackend(IODeviceManager& manager);
+#endif
+
+#if defined(__linux__) && defined(ULTRACANVAS_HAS_SANE)
+// OS/Linux/UltraCanvasLinuxIODeviceScanner.cpp
+void RegisterSaneScannerBackend(IODeviceManager& manager);
+#endif
+
+} // namespace Internal
+} // namespace UltraCanvas
