@@ -1,24 +1,17 @@
-#### 2026-09-14 *0.8.48*
-- **The macOS build is unbroken: CSS numbers parse without `std::from_chars`.**
-  0.8.47 moved the HTMLReader's CSS number parsing from `strtof` to
-  `std::from_chars` to make it locale-independent — a comma-decimal locale had
-  been turning `rgba()` alpha and every fractional length into 0. But libc++
-  implements only the *integral* `from_chars` overloads, so on Apple Clang the
-  float call bound the deleted `from_chars(const char*, const char*, bool)` and
-  `build (macos-15-intel, Release)` failed to compile `CSSStyleSheet.cpp` —
-  every branch, not just the one that introduced it.
-  `CSSStyleSheet.cpp` now parses through a file-local `ParseFloatC()`, which
-  keeps `strtof`'s universal float support and its backtracking to the longest
-  valid prefix (what makes `0.5em` read as `0.5` + `em` rather than choking on
-  the `e`), and restores locale independence by swapping in the active
-  `LC_NUMERIC`'s decimal point when it is not `.`. `CssLength::Parse` takes the
-  unit from the returned end pointer with a two-iterator `std::string`, instead
-  of a single-pointer one that re-scanned the tail.
-  `HTMLReaderTest` gains `TestCssNumbersIgnoreLocale`, which parses fractional
-  lengths, a negative percentage, an exponent and an `rgba()` alpha under a
-  comma-decimal locale — skipped, not failed, where the C library has no such
-  locale installed. It fails on a plain-`strtof` regression and on the
-  `from_chars` version alike.
+#### 2026-09-15 *0.8.50*
+- **A regression test for the CSS parser's locale independence.** 0.8.47 moved
+  the HTMLReader's CSS numbers off `strtof` because it honours `LC_NUMERIC`, so
+  a comma-decimal locale read every `rgba()` alpha and every fractional length
+  as 0; the `std::from_chars` that replaced it then would not compile on Apple's
+  libc++, which has only the integral overloads, and `ParseFloatClassic` is the
+  third parser to hold that ground. Nothing tested the property any of them
+  exist for. `HTMLReaderTest` gains `TestCssNumbersIgnoreLocale`: fractional
+  lengths, a negative percentage, an exponent and an `rgba()` alpha, all parsed
+  under a comma-decimal locale. It skips rather than fails where the C library
+  has no such locale installed, so a bare CI image does not go red over a
+  missing locale — and it fails, 4 checks, against a plain-`strtof` parser,
+  which is the regression it exists to stop.
+
 #### 2026-09-14 *0.8.49*
 - **The demo's LaTeX page showed the math engine and almost nothing else.**
   Of the 24 documents it listed, 23 were single formulas, so the document
