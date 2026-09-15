@@ -43,6 +43,13 @@
     operations - the stack of contradictory lines in the dialog. They clear
     the buffer first now, as `UCImageRaster::Save` and `ExportVImage` already
     did.
+  Letting go of the cached loader also fixes a second symptom of the same
+  cause: libvips keys a cached load on the file *name*, and nothing in it
+  notices that the file has since been rewritten, so re-opening an image that
+  was saved earlier in the session handed back the image from before the save.
+  Measured: a black JPEG overwritten with a white one still reads back as
+  black until the cache lets go, and reads white afterwards. That is what the
+  new test catches on Linux, where the truncate itself is allowed.
   `RasterEditingTest` covers the round trip over the file the document was
   opened from, that the temporary file leaves no trace, and that a save which
   cannot be encoded leaves the existing file byte-for-byte intact.
