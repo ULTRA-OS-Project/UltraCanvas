@@ -1,4 +1,4 @@
-#### 2026-09-14 *0.8.48*
+#### 2026-09-15 *0.8.50*
 - **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
   parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
   away from `strtof` - that one honours `LC_NUMERIC`, so a comma-decimal
@@ -15,6 +15,10 @@
   and then fails outright, losing the commonest unit in CSS. Checked against
   `std::from_chars` over 25 inputs - value and end position agree on each -
   and `HTMLReaderTest` passes under a comma-decimal locale as well as under C.
+  The code itself reached `main` ahead of this note, ported into the 0.8.49
+  release to unblock the branches the red leg was holding up; this entry is
+  the release record it went in without.
+
 #### 2026-09-14 *0.8.49*
 - **The demo's LaTeX page showed the math engine and almost nothing else.**
   Of the 24 documents it listed, 23 were single formulas, so the document
