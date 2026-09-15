@@ -59,10 +59,18 @@ Microsoft Word (`.docx`, legacy `.doc`) support to UltraCanvas.
 > [`UltraCanvasLaTeXDocumentReader.md`](UltraCanvasLaTeXDocumentReader.md).
 >
 > Remaining from the plan: read-only rich view via `ToHTML()`+HTMLConverter
-> (blocked on the eBook/HTML subsystem not yet being part of the build),
-> `ConvertFile` once the universal FileLoader API exists, and the Phase-5
-> interactive styled-run editor (a standalone UI project: cursor/selection
-> model over styled runs, IME, rendering — needs its own design round).
+> (the HTMLReader and eBook subsystems are part of the build as of 0.8.x, so
+> this is now a wiring job), `ConvertFile` once the universal FileLoader API
+> exists, and the Phase-5 interactive styled-run editor (a standalone UI
+> project: cursor/selection model over styled runs, IME, rendering — needs its
+> own design round). **That design round is written up in
+> [`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md), and its
+> first phases are implemented**: `UltraCanvasRichTextEdit` edits a
+> `UCRichDocument` directly through `UCRichDocumentEditor`, so Texter no longer
+> has to reduce a document to Markdown to make it editable. See
+> [`UltraCanvasRichTextEdit.md`](UltraCanvasRichTextEdit.md). `UCRichDocument`
+> itself moved to `core/` (from `Plugins/Documents/Word/`) so a framework
+> element can depend on it; the format readers and writers did not move.
 
 ---
 

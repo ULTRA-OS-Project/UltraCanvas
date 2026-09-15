@@ -29,7 +29,7 @@
 #include "UltraCanvasUtils.h"    // NormalizePath, LoadFile, Trim
 #include "Plugins/LaTeX/UltraCanvasLaTeXView.h"  // CreateLaTeXView (on-demand)
 #include "Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.h"
-#include "Plugins/Documents/Word/UltraCanvasRichDocument.h"
+#include "UltraCanvasRichDocument.h"
 
 #include <algorithm>
 #include <cctype>
