@@ -23,8 +23,8 @@
 // Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorConverter.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorStorage.h"
+#include "UltraCanvasVectorConverter.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasTextUtils.h"
 
 #include <clocale>

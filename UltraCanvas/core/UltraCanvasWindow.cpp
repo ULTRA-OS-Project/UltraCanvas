@@ -48,6 +48,10 @@ namespace UltraCanvas {
             return;
         }
 
+        if (element && !element->IsInteractive()) {
+            debugOutput << "Warning: Attempt to focus non-interactive element" << std::endl;
+        }
+
         // Validate element belongs to this window
         if (element && element->GetWindow() != this) {
             debugOutput << "Warning: Trying to focus element from different window" << std::endl;

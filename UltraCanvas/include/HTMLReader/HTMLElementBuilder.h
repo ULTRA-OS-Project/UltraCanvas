@@ -98,6 +98,9 @@ private:
     std::shared_ptr<UltraCanvasUIElement> BuildImage(Node& element);
     std::shared_ptr<UltraCanvasUIElement> BuildRule(Node& element);
     std::shared_ptr<UltraCanvasContainer> BuildTable(Node& element);
+    // Display-only render of a form control (input/textarea/button/select):
+    // a styled box showing its value/label. Returns null for hidden inputs.
+    std::shared_ptr<UltraCanvasContainer> BuildFormControl(Node& element);
 
     void AppendInlineMarkup(const Node& node, const ComputedStyle& runStyle,
                             bool preserveWhitespace, std::string& out);

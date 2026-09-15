@@ -15,8 +15,8 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMetafileConverters.h"
-#include "UltraCanvasVectorStorage.h"
-#include "UltraCanvasVectorPathOps.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorPathOps.h"
 
 #include <cmath>
 #include <fstream>

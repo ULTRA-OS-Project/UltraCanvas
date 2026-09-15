@@ -51,21 +51,31 @@ AttachmentChip::AttachmentChip(const std::string& id, float x, float y, float w,
     : UltraCanvasContainer(id, x, y, w, h),
       onOpen_(std::move(onOpen)), onSaveAs_(std::move(onSaveAs)) {
     // A small white card with the type glyph, the name and the size.
+    SetShowVerticalScrollbar(false);
+    SetShowHorizontalScrollbar(false);
     SetBackgroundColor(Theme::kCardBackground);
     SetBorders(1.0f, Theme::kCardBorder, 8.0f);
+
+    // The chip handles clicks itself; its labels are purely presentational.
+    // Marking them non-interactive keeps hit-testing from returning a label,
+    // so every pointer event over the chip reaches AttachmentChip::OnEvent.
+    std::string name = att.filename.empty() ? "attachment" : att.filename;
+    SetTooltip(name);
+
     auto glyph = CreateLabel(id + ".glyph", 8, 6, 26, 32, GlyphFor(att.mediaType));
     glyph->SetFontSize(12.0f);
+    glyph->SetInteractive(false);
     AddChild(glyph);
 
-    std::string name = att.filename.empty() ? "attachment" : att.filename;
     auto nameLabel = CreateLabel(id + ".name", 32, 3, w - 38, 14, name);
     nameLabel->SetFontSize(Theme::kSizeBody);
     nameLabel->SetTextColor(Theme::kTextPrimary);
-    nameLabel->SetTooltip(name);
+    nameLabel->SetInteractive(false);
     AddChild(nameLabel);
     auto sizeLabel = CreateLabel(id + ".size", 32, 17, w - 38, 13, HumanSize(att.Size()));
     sizeLabel->SetFontSize(Theme::kSizeSmall);
     sizeLabel->SetTextColor(Theme::kTextMuted);
+    sizeLabel->SetInteractive(false);
     AddChild(sizeLabel);
 }
 

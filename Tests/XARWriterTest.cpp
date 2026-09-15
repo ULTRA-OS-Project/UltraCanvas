@@ -17,7 +17,7 @@
 // Author: UltraCanvas Framework
 
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasXARConverter.h"
-#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include "../UltraCanvas/Plugins/Vector/XAR/UltraCanvasXARPlugin.h"
 
 #include <cmath>

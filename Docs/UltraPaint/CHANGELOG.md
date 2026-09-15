@@ -1,3 +1,10 @@
+#### 2026-09-15 *0.2.5*
+- **The Pan tool pans.** Selecting it (H) showed the Hand cursor, but a
+  drag still went nowhere: the framework's `SetPanMode` (fixed in
+  UltraCanvas 0.8.52) never recorded the request, so only Space+drag and
+  the middle button scrolled the view. Every drag with the Pan tool active
+  scrolls now; Space+drag with any other tool is unchanged.
+
 #### 2026-09-13 *0.2.4*
 - **UltraPaint has a new icon.** The three overlapping brush strokes replace
   the blue palette everywhere the editor is drawn: the window and the taskbar

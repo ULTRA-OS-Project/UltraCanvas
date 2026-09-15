@@ -13,7 +13,7 @@
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
-#include "UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic
 
 #include <tinyxml2.h>
@@ -1158,7 +1158,10 @@ FormatCapabilities SVGConverter::GetCapabilities() const {
     caps.SupportsGroups = true;
     caps.SupportsLayers = true;
     caps.SupportsSymbols = true;
-    caps.SupportsClipping = true;
+    // <clipPath> and <mask> are neither read nor written yet: a document
+    // that relies on them exports without them, so say so.
+    caps.SupportsClipping = false;
+    caps.SupportsMasking = false;
     return caps;
 }
 

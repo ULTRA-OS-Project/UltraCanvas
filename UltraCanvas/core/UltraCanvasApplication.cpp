@@ -1208,7 +1208,7 @@ namespace UltraCanvas {
 //            };
 
             if (event.IsMouseEvent() || event.IsDragEvent()) { // change mouse cursor first
-                elementUnderPointer = targetWindow->FindElementAtPoint(event.pointerWindow);
+                elementUnderPointer = targetWindow->FindElementAtPoint(event.pointerWindow, true);
   //              originalElementUnderPointer = elementUnderPointer;
                 // set pointerElem to popup element if it points outside
                 if (popupElement) {
@@ -1304,7 +1304,7 @@ namespace UltraCanvas {
             // keep every existing widget working through the mouse path.
             if (event.IsTouchEvent()) {
                 UltraCanvasUIElement* touched =
-                        targetWindow->FindElementAtPoint(event.pointerWindow);
+                        targetWindow->FindElementAtPoint(event.pointerWindow, true);
                 if (touched) {
                     HandleEventWithBubbling(touched, event);
                 } else {
@@ -1565,7 +1565,7 @@ namespace UltraCanvas {
         gesture.rotation = static_cast<float>(rotation);
 
         auto* target = static_cast<UltraCanvasWindow*>(window.get());
-        if (UltraCanvasUIElement* under = target->FindElementAtPoint(gesture.pointerWindow)) {
+        if (UltraCanvasUIElement* under = target->FindElementAtPoint(gesture.pointerWindow, true)) {
             HandleEventWithBubbling(under, gesture);
         } else {
             DispatchEventToElement(target, gesture);
