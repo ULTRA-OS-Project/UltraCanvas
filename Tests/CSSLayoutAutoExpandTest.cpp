@@ -242,8 +242,15 @@ int main() {
         CheckNear(card.root->finalBounds.width, kSide, "card width pinned to the explicit size");
         CHECK(card.counters->finalBounds.width > kSide - inset,
               "counter row is wider than the frame's content area");
-        CHECK(card.counters->finalBounds.x < 12.0f,
-              "counter row spills into the frame (clipped at render time)");
+        // Centring is safe: a row that does not fit starts at the content
+        // origin and overflows at the end (clipped there at render time),
+        // rather than being centred into a negative offset where the leading
+        // part would be cut off with no way to scroll to it.
+        CheckNear(card.counters->finalBounds.x, inset / 2,
+                  "overflowing row starts at the frame's content origin");
+        CHECK(card.counters->finalBounds.x + card.counters->finalBounds.width
+                  > kSide - inset / 2,
+              "counter row overflows at the end of the frame");
     }
 
     std::printf("\n%s (%d failure%s)\n", g_failures == 0 ? "PASSED" : "FAILED",
