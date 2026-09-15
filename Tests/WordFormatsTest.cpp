@@ -8,6 +8,7 @@
 // Usage: WordFormatsTest [output-dir]   (default: current directory)
 #include "UltraCanvasRichDocument.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasZipPackage.h"
 
 #include <cassert>
@@ -726,6 +727,80 @@ int main(int argc, char** argv) {
             CHECK_MSG(cellText.find("bullet two") != std::string::npos, cellText);
         }
         CHECK(foundTable);
+    }
+
+    // ===== EDIT THEN SAVE =====
+    // The seam an application sits on (UltraTexter opens .odt/.docx in
+    // UltraCanvasRichTextEdit and saves the same document back): a document
+    // that has been edited through UCRichDocumentEditor must still write out
+    // with the formatting the reader recovered, plus the edit.
+    {
+        std::cout << "\n--- Edit then save ---\n";
+
+        auto document = std::make_shared<UCRichDocument>(BuildSampleDocument());
+        const size_t blocksBefore = document->blocks.size();
+        const size_t mediaBefore = document->media.size();
+
+        UCRichDocumentEditor editor;
+        editor.SetDocument(document);
+
+        // Type into the first paragraph and bold what was typed, the way a
+        // user would through the element.
+        int paragraph = -1;
+        for (int i = 0; i < editor.GetBlockCount(); i++) {
+            if (editor.GetBlock(i).type == RichBlockType::Paragraph
+                && editor.BlockTextLength(i) > 0) {
+                paragraph = i;
+                break;
+            }
+        }
+        CHECK(paragraph >= 0);
+        editor.SetCaret({paragraph, 0});
+        editor.InsertText("EDITED ");
+        editor.SetSelection({paragraph, 0}, {paragraph, 6});
+        editor.ToggleBold();
+        editor.SetFontFamily("Georgia");
+        editor.SetFontSize(14.0f);
+        editor.SetTextColor("#CC0000");
+
+        CHECK(editor.GetDocument() == document);
+        CHECK(editor.GetBlockCount() == static_cast<int>(blocksBefore));
+        CHECK_MSG(document->media.size() == mediaBefore, "editing must not touch the media store");
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("edited.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *document, err), err);
+
+            UCRichDocument reloaded;
+            CHECK_MSG(UCWordDocumentIO::Load(path, reloaded, err), err);
+
+            // The edit survived...
+            const std::string plain = reloaded.ToPlainText();
+            CHECK_MSG(plain.find("EDITED ") != std::string::npos, ext);
+
+            // ...as a bold 14 pt Georgia run in red, not as plain text.
+            bool styled = false;
+            for (const auto& b : reloaded.blocks) {
+                for (const auto& r : b.runs) {
+                    if (r.text.find("EDITED") == std::string::npos) continue;
+                    if (r.bold && r.fontFamily == "Georgia"
+                        && r.fontSizePt > 13.0f && r.fontSizePt < 15.0f) {
+                        styled = true;
+                    }
+                }
+            }
+            CHECK_MSG(styled, ext);
+
+            // ...and everything the reader had recovered is still there.
+            CheckModelShape(reloaded, ext);
+        }
+
+        // Undo puts the document back where it started, media included.
+        while (editor.CanUndo()) editor.Undo();
+        CHECK(editor.GetBlockCount() == static_cast<int>(blocksBefore));
+        CHECK(document->media.size() == mediaBefore);
+        CHECK(document->ToPlainText().find("EDITED") == std::string::npos);
     }
 
     if (failures == 0) {

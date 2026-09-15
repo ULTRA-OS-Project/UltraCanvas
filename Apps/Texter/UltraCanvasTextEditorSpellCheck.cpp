@@ -134,13 +134,16 @@ bool UltraCanvasTextEditor::EnsureSpellServiceReady() {
 // PER-DOCUMENT WIRING
 // ===================================================================
 
-// Hex view has no words and a PDF tab has no text area, so neither is checked.
-// Everything else is, including source files: the check already skips
-// identifiers, ALL-CAPS words, camelCase and anything with a digit or an
+// Hex view has no words and a PDF tab has no text to check, so neither is
+// checked. Everything else is, including word-processing tabs (which check
+// their own document, not the text area) and source files: the check already
+// skips identifiers, ALL-CAPS words, camelCase and anything with a digit or an
 // underscore, so what is left to flag in code is mostly comments and strings.
 bool UltraCanvasTextEditor::DocumentWantsSpellCheck(const DocumentTab* doc) const {
-    if (!doc || !doc->textArea) return false;
+    if (!doc) return false;
     if (doc->IsPdf()) return false;
+    if (doc->IsRichDocument()) return doc->richEdit != nullptr;
+    if (!doc->textArea) return false;
     return doc->textArea->GetEditingMode() != TextAreaEditingMode::Hex;
 }
 
@@ -148,9 +151,23 @@ void UltraCanvasTextEditor::ApplySpellCheckToDocument(int docIndex) {
     if (docIndex < 0 || docIndex >= static_cast<int>(documents.size())) return;
 
     auto doc = documents[docIndex];
-    if (!doc->textArea) return;
 
     const bool enabled = config.spellCheckEnabled && DocumentWantsSpellCheck(doc.get());
+
+    // A word-processing tab checks the document in its editor. There is no
+    // markup to skip there — the formatting is structure, not text — so it
+    // needs no prepare hook.
+    if (doc->IsRichDocument()) {
+        if (!doc->richEdit) return;
+        const bool wasChecking = doc->richEdit->IsSpellCheckEnabled();
+        doc->richEdit->SetSpellCheckEnabled(enabled);
+        if (enabled && wasChecking) {
+            doc->richEdit->RunSpellCheck();
+        }
+        return;
+    }
+
+    if (!doc->textArea) return;
     const bool wasEnabled = doc->textArea->IsSpellCheckEnabled();
 
     // Markdown documents get a skip hook so fenced code, link targets and math
@@ -188,6 +205,12 @@ void UltraCanvasTextEditor::ApplySpellCheckToAllDocuments() {
 
 void UltraCanvasTextEditor::RecheckAllDocuments() {
     for (auto& doc : documents) {
+        if (doc->IsRichDocument()) {
+            if (doc->richEdit && doc->richEdit->IsSpellCheckEnabled()) {
+                doc->richEdit->RunSpellCheck();
+            }
+            continue;
+        }
         if (doc->textArea && doc->textArea->IsSpellCheckEnabled()) {
             doc->textArea->RunSpellCheck();
         }
@@ -293,42 +316,60 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
 
     std::vector<MenuItemData> items;
     auto textArea = doc->textArea;
+    // A word-processing tab answers all of this from its own editor; the text
+    // area behind it is detached and empty.
+    auto richEdit = doc->IsRichDocument() ? doc->richEdit : nullptr;
 
     // Suggestions first, so the reason the user right-clicked a squiggle is the
-    // first thing under the pointer.
-    if (const SpellError* hit = textArea->GetSpellErrorAtPosition(event.pointer.x,
-                                                                  event.pointer.y)) {
-        // The menu outlives this call and applying a suggestion rebuilds the
-        // error list `hit` points into, so the error is copied out.
+    // first thing under the pointer. The error is copied out in both branches:
+    // the menu outlives this call, and applying a suggestion rebuilds the error
+    // list the pointer refers into.
+    const SpellError* hit =
+        richEdit ? richEdit->GetSpellErrorAtPosition(event.pointer.x, event.pointer.y)
+                 : textArea->GetSpellErrorAtPosition(event.pointer.x, event.pointer.y);
+    if (hit) {
         const SpellError error = *hit;
-        std::weak_ptr<UltraCanvasTextArea> weakArea = textArea;
+        std::function<void(const std::string&)> apply;
+        std::function<void()> recheck;
+
+        if (richEdit) {
+            std::weak_ptr<UltraCanvasRichTextEdit> weakEdit = richEdit;
+            apply = [weakEdit, error](const std::string& replacement) {
+                if (auto edit = weakEdit.lock()) edit->ApplySpellSuggestion(error, replacement);
+            };
+            recheck = [weakEdit]() {
+                if (auto edit = weakEdit.lock()) edit->RunSpellCheck();
+            };
+        } else {
+            std::weak_ptr<UltraCanvasTextArea> weakArea = textArea;
+            apply = [weakArea, error](const std::string& replacement) {
+                if (auto area = weakArea.lock()) area->ApplySpellSuggestion(error, replacement);
+            };
+            recheck = [weakArea]() {
+                if (auto area = weakArea.lock()) area->RunSpellCheck();
+            };
+        }
 
         for (MenuItemData& item : UltraCanvasSpellChecker::BuildSuggestionMenuItems(
-                 error,
-                 [weakArea, error](const std::string& replacement) {
-                     if (auto area = weakArea.lock()) {
-                         area->ApplySpellSuggestion(error, replacement);
-                     }
-                 },
-                 [weakArea]() {
-                     if (auto area = weakArea.lock()) area->RunSpellCheck();
-                 })) {
+                 error, std::move(apply), std::move(recheck))) {
             items.push_back(std::move(item));
         }
         items.push_back(MenuItemData::Separator());
     }
 
-    const bool hasSelection = textArea->HasSelection();
-    const bool editable = !textArea->IsReadOnly();
+    const bool hasSelection = richEdit ? richEdit->HasSelection() : textArea->HasSelection();
+    const bool editable = richEdit ? !richEdit->IsReadOnly() : !textArea->IsReadOnly();
+    const bool canUndo = richEdit ? richEdit->CanUndo() : textArea->CanUndo();
+    const bool canRedo = richEdit ? richEdit->CanRedo() : textArea->CanRedo();
 
     MenuItemData undo = MenuItemData::ActionWithShortcut("Undo", "Ctrl+Z",
         [this]() { OnEditUndo(); });
-    undo.enabled = editable && textArea->CanUndo();
+    undo.enabled = editable && canUndo;
     items.push_back(std::move(undo));
 
     MenuItemData redo = MenuItemData::ActionWithShortcut("Redo", "Ctrl+Y",
         [this]() { OnEditRedo(); });
-    redo.enabled = editable && textArea->CanRedo();
+    redo.enabled = editable && canRedo;
     items.push_back(std::move(redo));
 
     items.push_back(MenuItemData::Separator());

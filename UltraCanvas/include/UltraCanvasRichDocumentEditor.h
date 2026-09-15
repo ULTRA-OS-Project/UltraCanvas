@@ -62,6 +62,7 @@ struct RichDocRange {
     }
     bool IsEmpty() const { return start == end; }
     bool SingleBlock() const { return start.blockIndex == end.blockIndex; }
+    bool Contains(const RichDocPosition& pos) const { return start <= pos && pos <= end; }
 };
 
 // ===== CHARACTER FORMATTING =====
@@ -115,6 +116,17 @@ struct RichCharFormatState {
     bool linkMixed = false;
 
     static bool IsOn(Tri t) { return t == Tri::On; }
+};
+
+// ===== SEARCH OPTIONS =====
+// Case folding is ASCII, matching UltraCanvasTextArea's search: a
+// case-insensitive search finds "Report" for "report" but not "STRASSE" for
+// "Straße". Full Unicode case folding would need a folding table the framework
+// does not carry yet.
+struct RichFindOptions {
+    bool caseSensitive = false;
+    bool wholeWord = false;
+    bool wrapAround = true;
 };
 
 // ===== THE EDITOR =====
@@ -245,6 +257,27 @@ public:
     // that followed the caret, which is what makes pasting mid-sentence work.
     void InsertBlocks(const std::vector<RichDocBlock>& blocks);
 
+    // ===== SEARCH =====
+    // Matches are found in block text, so a match never spans a block boundary
+    // — which is also what makes every match safe to replace independently.
+    // Blocks holding no editable inline text (images, rules, page breaks and,
+    // for now, tables) are skipped: they are exactly the blocks BlockText()
+    // returns empty for.
+    //
+    // Searches from `from` and returns the first match at or after it
+    // (at or before it, searching backwards). With wrapAround the search
+    // continues from the other end of the document, so it always terminates.
+    bool Find(const std::string& needle, const RichDocPosition& from,
+              bool backwards, const RichFindOptions& options,
+              RichDocRange& outMatch) const;
+    // Every match in the document, in document order.
+    std::vector<RichDocRange> FindAll(const std::string& needle,
+                                      const RichFindOptions& options) const;
+    // Replaces every match in ONE undo step, so Ctrl+Z takes back the whole
+    // replace rather than one word per press. Returns how many were replaced.
+    int ReplaceAll(const std::string& needle, const std::string& replacement,
+                   const RichFindOptions& options);
+
     // ===== UNDO / REDO =====
     bool CanUndo() const { return !undoStack.empty(); }
     bool CanRedo() const { return !redoStack.empty(); }
@@ -312,6 +345,9 @@ private:
     // deletes and then inserts still undoes as a single step.
     void DeleteRangeInternal(const RichDocRange& range);
     void InsertTextInternal(const std::string& utf8);
+    void ReplaceRangeInternal(const RichDocRange& range, const std::string& utf8);
+    void ApplyCharFormatToRangeInternal(const RichDocRange& range,
+                                        const RichCharFormatDelta& delta);
     void SplitBlockInternal();
     void InsertStructuralBlock(RichBlockType type);
 

@@ -20,6 +20,7 @@
 #include "UltraCanvasTextEditorConfig.h"
 #include "UltraCanvasEncoding.h"
 #include "UltraCanvasSearchBar.h"
+#include "UltraCanvasRichTextEdit.h"
 #include "Plugins/Documents/UltraCanvasPDFView.h"
 #include <memory>
 #include <string>
@@ -111,8 +112,24 @@ namespace UltraCanvas {
  * @brief Data structure for each open file/document
  */
     enum class DocumentKind {
-        Text,   // Backed by textArea (normal editor flow)
-        Pdf,    // Backed by pdfView (read-only display + page ops + save)
+        Text,         // Backed by textArea (normal editor flow)
+        Pdf,          // Backed by pdfView (read-only display + page ops + save)
+        RichDocument, // Backed by richEdit (WYSIWYG word processing: .odt/.docx/.doc)
+    };
+
+/**
+ * @brief A formatting action a toolbar button asks for.
+ *
+ * The same button means two different things depending on the tab it acts on:
+ * in a Markdown tab it inserts markup into the text, in a word-processing tab
+ * it applies the format to the rich document. UltraCanvasTextEditor::ApplyFormatCommand
+ * is the one place that decides which.
+ */
+    enum class FormatCommand {
+        Bold, Italic, Superscript, Subscript,
+        BulletList, NumberedList, Checklist,
+        Quote, CodeBlock, Table, Link, Image,
+        Heading1, Heading2, Heading3, Heading4, Heading5,
     };
 
     struct DocumentTab {
@@ -130,6 +147,13 @@ namespace UltraCanvas {
         // detached from the tab so the rest of the editor's null-checked
         // textArea accesses still work without changes.
         std::shared_ptr<UltraCanvas::UltraCanvasPDFView> pdfView;
+        // Word-processing documents (.odt/.docx/.doc) swap in this element the
+        // same way, and are edited as themselves rather than as Markdown: the
+        // UCRichDocument the reader produced is handed straight to the editor
+        // and handed straight back to the writer on save, so a run's font,
+        // size and colour survive a round trip instead of being flattened to
+        // whatever Markdown can spell.
+        std::shared_ptr<UltraCanvasRichTextEdit> richEdit;
         DocumentKind kind = DocumentKind::Text;
         std::string language;              // Syntax highlighting language
         bool isSaved;                      // Has unsaved changes
@@ -143,13 +167,11 @@ namespace UltraCanvas {
         std::vector<uint8_t> originalRawBytes; // Raw file bytes for re-encoding on manual change
         bool hasBOM;                           // Whether the file had a BOM
 
-        // Word-processing documents (.odt/.docx) are edited as Markdown in
-        // MarkdownHybrid mode and converted back to their package format on
-        // save. Embedded images are extracted to wordMediaDirectory (a
-        // per-document temp dir, removed when the tab closes) so the
-        // markdown renderer can display them.
+        // Set when the tab's content is written out as a word-processing
+        // package. A tab opened from .odt/.docx/.doc is a RichDocument tab and
+        // saves losslessly; a Markdown tab saved to one of those extensions
+        // keeps its text and converts on every save.
         bool isWordDocument = false;
-        std::string wordMediaDirectory;
         LineEndingType eolType = UltraCanvasTextArea::GetSystemDefaultLineEnding(); // Line ending type
 
         // Hash of the in-memory content (UltraCanvasTextArea::GetText) at the last
@@ -170,6 +192,7 @@ namespace UltraCanvas {
         {}
 
         bool IsPdf() const { return kind == DocumentKind::Pdf; }
+        bool IsRichDocument() const { return kind == DocumentKind::RichDocument; }
     };
 
 /**
@@ -345,6 +368,9 @@ namespace UltraCanvas {
         void InsertMarkdownLinePrefix(const std::string& prefix,
                                       const std::string& sampleText);
         bool IsMarkdownMode() const;
+        // Routes a toolbar button to the markdown text of a Markdown tab or to
+        // the rich document of a word-processing tab.
+        void ApplyFormatCommand(FormatCommand command);
 
         // ===== DOCUMENT MANAGEMENT =====
         int CreateNewDocument(const std::string& fileName = "");
@@ -354,6 +380,13 @@ namespace UltraCanvas {
         void SwitchToDocument(int index);
         DocumentTab* GetActiveDocument();
         const DocumentTab* GetActiveDocument() const;
+        // The WYSIWYG editor of the active tab, or null when the active tab is
+        // not a word-processing document.
+        UltraCanvasRichTextEdit* GetActiveRichEdit() const;
+        // The active tab's rich editor with the search bar's case/whole-word
+        // options applied, or null when the tab is not a word-processing one.
+        UltraCanvasRichTextEdit* RichSearchTarget(bool caseSensitive, bool wholeWord);
+        void UpdateRichMatchCount(UltraCanvasRichTextEdit* rich, const std::string& text);
         int FindDocumentIndexById(int documentId) const;
         void SetDocumentModified(int index, bool modified);
         // Record the current content as the clean baseline (call after load/save).
@@ -365,6 +398,10 @@ namespace UltraCanvas {
         void UpdateTabBadge(int index);
 
         // ===== FILE OPERATIONS =====
+        // Writes the active rich document to filePath. Word-processing targets
+        // save the document itself; text targets serialise it first.
+        bool SaveRichDocumentAs(int docIndex, const std::string& filePath,
+                                const std::string& targetExtension);
         bool LoadFileIntoDocument(int docIndex, const std::string& filePath);
         // Convert the tab at docIndex into a PDF tab and load the file.
         // Swaps in a UltraCanvasPDFView via tabContainer->SetTabContent.
@@ -467,6 +504,9 @@ namespace UltraCanvas {
 
         // ===== CALLBACKS =====
         void SetupDocumentCallbacks(int docIndex);
+        // Modified tracking, caret reporting and link handling for a tab whose
+        // content is a UltraCanvasRichTextEdit.
+        void SetupRichDocumentCallbacks(int docIndex);
         void ConfirmSaveChanges(int docIndex, std::function<void(bool)> onComplete);
         void ConfirmCloseWithUnsavedChanges(std::function<void(bool)> onComplete);
 

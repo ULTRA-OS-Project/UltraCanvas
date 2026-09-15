@@ -604,16 +604,245 @@ bool UCRichDocumentEditor::DeleteSelection() {
     return true;
 }
 
+namespace {
+// Every attribute of `run` as a delta, so replaced text can be given the
+// formatting of the text it replaced.
+RichCharFormatDelta DeltaFromRun(const RichTextRun& run) {
+    RichCharFormatDelta delta;
+    delta.setBold = true;          delta.bold = run.bold;
+    delta.setItalic = true;        delta.italic = run.italic;
+    delta.setUnderline = true;     delta.underline = run.underline;
+    delta.setStrikethrough = true; delta.strikethrough = run.strikethrough;
+    delta.setCode = true;          delta.code = run.code;
+    delta.setSubscript = true;     delta.subscript = run.subscript;
+    delta.setSuperscript = true;   delta.superscript = run.superscript;
+    delta.setFontFamily = true;    delta.fontFamily = run.fontFamily;
+    delta.setFontSize = true;      delta.fontSizePt = run.fontSizePt;
+    delta.setColor = true;         delta.color = run.color;
+    delta.setLink = true;          delta.linkTarget = run.linkTarget;
+    return delta;
+}
+} // namespace
+
 void UCRichDocumentEditor::ReplaceRange(const RichDocRange& range, const std::string& utf8) {
     int first = range.start.blockIndex;
     int count = range.end.blockIndex - first + 1;
     {
         EditScope scope(*this, first, count);
-        DeleteRangeInternal(range);
-        InsertTextInternal(utf8);
+        ReplaceRangeInternal(range, utf8);
     }
     NotifyChanged();
     NotifySelectionChanged();
+}
+
+// Replaces `range` with `utf8`, which keeps the formatting of the text it
+// replaced: deleting the range leaves the caret at the end of whatever preceded
+// it, so a plain insert would silently adopt that run's formatting instead —
+// replacing a bold word would leave plain text behind. No undo step of its own,
+// so ReplaceAll can put a whole replace into one.
+void UCRichDocumentEditor::ReplaceRangeInternal(const RichDocRange& range,
+                                                const std::string& utf8) {
+    // Sample from inside the match, before it is gone. A single-block range is
+    // all Find produces, and a multi-block one takes its start block's format.
+    RichCharFormatDelta format;
+    bool haveFormat = false;
+    if (range.start.blockIndex == range.end.blockIndex
+        && range.end.byteOffset > range.start.byteOffset) {
+        const int middle = range.start.byteOffset
+                         + (range.end.byteOffset - range.start.byteOffset) / 2;
+        format = DeltaFromRun(FormatAt(RichDocPosition(range.start.blockIndex, middle)));
+        haveFormat = true;
+    }
+
+    caret = range.start;
+    anchor = range.start;
+    DeleteRangeInternal(range);
+    caret = range.start;
+    anchor = range.start;
+    if (utf8.empty()) return;
+
+    InsertTextInternal(utf8);
+    if (haveFormat) {
+        ApplyCharFormatToRangeInternal(
+            RichDocRange(range.start,
+                         RichDocPosition(range.start.blockIndex,
+                                         range.start.byteOffset
+                                             + static_cast<int>(utf8.size()))),
+            format);
+    }
+}
+
+// ===== SEARCH =====
+
+namespace {
+
+// ASCII case folding, as UltraCanvasTextArea's search uses. See the comment on
+// RichFindOptions for what that does and does not cover.
+inline char FoldAscii(char c) {
+    return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+}
+
+// A byte that can be part of a word for the whole-word test. Every byte of a
+// multi-byte UTF-8 sequence counts, so "Straße" is one word rather than two
+// either side of the ß.
+inline bool IsWordByte(char c) {
+    unsigned char u = static_cast<unsigned char>(c);
+    return u >= 0x80 || std::isalnum(u) != 0 || u == '_';
+}
+
+bool MatchesAt(const std::string& haystack, const std::string& needle,
+               size_t at, bool caseSensitive) {
+    if (at + needle.size() > haystack.size()) return false;
+    if (caseSensitive) {
+        return haystack.compare(at, needle.size(), needle) == 0;
+    }
+    for (size_t i = 0; i < needle.size(); i++) {
+        if (FoldAscii(haystack[at + i]) != FoldAscii(needle[i])) return false;
+    }
+    return true;
+}
+
+bool IsWholeWordAt(const std::string& haystack, size_t at, size_t length) {
+    if (at > 0 && IsWordByte(haystack[at - 1])) return false;
+    const size_t after = at + length;
+    if (after < haystack.size() && IsWordByte(haystack[after])) return false;
+    return true;
+}
+
+// First match at or after `fromByte` (at or before it, searching backwards),
+// or std::string::npos. Byte-wise scanning is safe for UTF-8: a match can only
+// start on a lead byte, because a needle that starts mid-sequence cannot equal
+// a well-formed needle's bytes.
+size_t FindInText(const std::string& haystack, const std::string& needle,
+                  size_t fromByte, bool backwards,
+                  bool caseSensitive, bool wholeWord) {
+    if (needle.empty() || needle.size() > haystack.size()) return std::string::npos;
+    const size_t last = haystack.size() - needle.size();
+
+    if (!backwards) {
+        for (size_t at = std::min(fromByte, last + 1); at <= last; at++) {
+            if (!MatchesAt(haystack, needle, at, caseSensitive)) continue;
+            if (wholeWord && !IsWholeWordAt(haystack, at, needle.size())) continue;
+            return at;
+        }
+        return std::string::npos;
+    }
+
+    // Backwards: the match must END at or before fromByte, so that repeatedly
+    // searching back from a match's start walks through matches one at a time.
+    if (fromByte < needle.size()) return std::string::npos;
+    for (size_t at = std::min(fromByte - needle.size(), last) + 1; at-- > 0; ) {
+        if (!MatchesAt(haystack, needle, at, caseSensitive)) continue;
+        if (wholeWord && !IsWholeWordAt(haystack, at, needle.size())) continue;
+        return at;
+    }
+    return std::string::npos;
+}
+
+} // namespace
+
+bool UCRichDocumentEditor::Find(const std::string& needle,
+                                const RichDocPosition& from,
+                                bool backwards,
+                                const RichFindOptions& options,
+                                RichDocRange& outMatch) const {
+    if (needle.empty() || doc->blocks.empty()) return false;
+
+    const int blockCount = static_cast<int>(doc->blocks.size());
+    const RichDocPosition start = ClampPosition(from);
+
+    // One sweep from `start` to the end of the document (or its beginning),
+    // then — with wrapAround — a second sweep over the part not yet seen. The
+    // block holding `start` is visited twice on a wrap, which is what lets a
+    // single match be found again from the far side of it.
+    auto sweep = [&](int firstBlock, int lastBlock, size_t firstOffset,
+                     bool useFirstOffset) -> bool {
+        const int step = backwards ? -1 : 1;
+        for (int b = firstBlock; ; b += step) {
+            if (backwards ? b < lastBlock : b > lastBlock) break;
+            if (b < 0 || b >= blockCount) break;
+
+            const std::string text = BlockText(b);
+            if (!text.empty()) {
+                size_t origin;
+                if (useFirstOffset && b == firstBlock) {
+                    origin = std::min(firstOffset, text.size());
+                } else {
+                    origin = backwards ? text.size() : 0;
+                }
+                const size_t at = FindInText(text, needle, origin, backwards,
+                                             options.caseSensitive, options.wholeWord);
+                if (at != std::string::npos) {
+                    outMatch = RichDocRange(
+                        RichDocPosition(b, static_cast<int>(at)),
+                        RichDocPosition(b, static_cast<int>(at + needle.size())));
+                    return true;
+                }
+            }
+            if (b == lastBlock) break;
+        }
+        return false;
+    };
+
+    if (!backwards) {
+        if (sweep(start.blockIndex, blockCount - 1,
+                  static_cast<size_t>(start.byteOffset), true)) {
+            return true;
+        }
+        if (!options.wrapAround) return false;
+        return sweep(0, start.blockIndex, 0, false);
+    }
+
+    if (sweep(start.blockIndex, 0, static_cast<size_t>(start.byteOffset), true)) {
+        return true;
+    }
+    if (!options.wrapAround) return false;
+    return sweep(blockCount - 1, start.blockIndex, 0, false);
+}
+
+std::vector<RichDocRange> UCRichDocumentEditor::FindAll(
+        const std::string& needle, const RichFindOptions& options) const {
+    std::vector<RichDocRange> matches;
+    if (needle.empty()) return matches;
+
+    for (int b = 0; b < static_cast<int>(doc->blocks.size()); b++) {
+        const std::string text = BlockText(b);
+        if (text.empty()) continue;
+        size_t at = 0;
+        while ((at = FindInText(text, needle, at, /*backwards*/ false,
+                                options.caseSensitive, options.wholeWord))
+               != std::string::npos) {
+            matches.emplace_back(RichDocPosition(b, static_cast<int>(at)),
+                                 RichDocPosition(b, static_cast<int>(at + needle.size())));
+            // Matches do not overlap: carry on past this one.
+            at += needle.size();
+            if (at > text.size()) break;
+        }
+    }
+    return matches;
+}
+
+int UCRichDocumentEditor::ReplaceAll(const std::string& needle,
+                                     const std::string& replacement,
+                                     const RichFindOptions& options) {
+    const std::vector<RichDocRange> matches = FindAll(needle, options);
+    if (matches.empty()) return 0;
+
+    {
+        // One scope over the whole document, so the whole replace is one undo
+        // step. Applied back to front: every match lies inside a single block,
+        // so replacing a later one never moves an earlier one's offsets.
+        EditScope scope(*this, 0, static_cast<int>(doc->blocks.size()));
+        // Back to front: every match lies inside a single block, so replacing a
+        // later one never moves an earlier one's offsets.
+        for (auto it = matches.rbegin(); it != matches.rend(); ++it) {
+            ReplaceRangeInternal(*it, replacement);
+        }
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return static_cast<int>(matches.size());
 }
 
 void UCRichDocumentEditor::InsertTextInternal(const std::string& utf8) {
@@ -826,6 +1055,32 @@ bool UCRichDocumentEditor::DeleteForward() {
 
 // ===== CHARACTER FORMATTING =====
 
+// The formatting itself, with no undo step of its own, so a caller already
+// inside an EditScope (ReplaceAll) does not commit a second one.
+void UCRichDocumentEditor::ApplyCharFormatToRangeInternal(const RichDocRange& range,
+                                                          const RichCharFormatDelta& delta) {
+    if (delta.IsEmpty() || range.IsEmpty()) return;
+    for (int b = range.start.blockIndex; b <= range.end.blockIndex && b < GetBlockCount(); b++) {
+        RichDocBlock& block = doc->blocks[b];
+        if (!IsTextBlockType(block.type)) continue;
+
+        int textLength = static_cast<int>(RunsText(block.runs).size());
+        int from = (b == range.start.blockIndex) ? range.start.byteOffset : 0;
+        int to   = (b == range.end.blockIndex)   ? range.end.byteOffset   : textLength;
+        from = std::max(0, std::min(from, textLength));
+        to   = std::max(from, std::min(to, textLength));
+        if (from == to) continue;
+
+        // Start boundary first — see EraseRunRange for why the order matters.
+        int startIdx = SplitRunAt(block.runs, from);
+        int endIdx = SplitRunAt(block.runs, to);
+        for (int i = startIdx; i < endIdx && i < static_cast<int>(block.runs.size()); i++) {
+            delta.ApplyTo(block.runs[i]);
+        }
+        CoalesceRuns(block.runs);
+    }
+}
+
 void UCRichDocumentEditor::ApplyCharFormatToRange(const RichDocRange& range,
                                                    const RichCharFormatDelta& delta) {
     if (delta.IsEmpty() || range.IsEmpty()) return;
@@ -833,25 +1088,7 @@ void UCRichDocumentEditor::ApplyCharFormatToRange(const RichDocRange& range,
     int count = range.end.blockIndex - first + 1;
     {
         EditScope scope(*this, first, count);
-        for (int b = range.start.blockIndex; b <= range.end.blockIndex && b < GetBlockCount(); b++) {
-            RichDocBlock& block = doc->blocks[b];
-            if (!IsTextBlockType(block.type)) continue;
-
-            int textLength = static_cast<int>(RunsText(block.runs).size());
-            int from = (b == range.start.blockIndex) ? range.start.byteOffset : 0;
-            int to   = (b == range.end.blockIndex)   ? range.end.byteOffset   : textLength;
-            from = std::max(0, std::min(from, textLength));
-            to   = std::max(from, std::min(to, textLength));
-            if (from == to) continue;
-
-            // Start boundary first — see EraseRunRange for why the order matters.
-            int startIdx = SplitRunAt(block.runs, from);
-            int endIdx = SplitRunAt(block.runs, to);
-            for (int i = startIdx; i < endIdx && i < static_cast<int>(block.runs.size()); i++) {
-                delta.ApplyTo(block.runs[i]);
-            }
-            CoalesceRuns(block.runs);
-        }
+        ApplyCharFormatToRangeInternal(range, delta);
     }
     NotifyChanged();
 }

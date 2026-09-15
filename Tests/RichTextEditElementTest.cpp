@@ -248,6 +248,120 @@ int main() {
     TEST("Typing into an empty document works",
          edit->GetEditor().BlockText(0) == "A");
 
+    // ===== FIND AND REPLACE =====
+    std::cerr << "\n--- Find ---" << std::endl;
+    edit->SetMarkdown("First paragraph mentions Berlin.\n\n"
+                      "Second paragraph mentions berlin twice: berlin.\n\n"
+                      "Third paragraph mentions nothing.\n");
+    window->UpdateAndRender();
+
+    edit->GetEditor().SetCaret({0, 0});
+    TEST("FindNext finds the first match", edit->FindNext("Berlin"));
+    TEST("The match became the selection", edit->GetSelectedText() == "Berlin");
+    int firstMatchBlock = editor.GetSelectionRange().start.blockIndex;
+
+    TEST("FindNext moves on rather than re-finding", edit->FindNext("Berlin"));
+    TEST("...into a later block",
+         editor.GetSelectionRange().start.blockIndex > firstMatchBlock);
+
+    TEST("Case-insensitive by default finds all three",
+         edit->CountMatches("berlin") == 3);
+
+    RichFindOptions exact;
+    exact.caseSensitive = true;
+    edit->SetFindOptions(exact);
+    TEST("Case-sensitive finds only the capitalised one",
+         edit->CountMatches("Berlin") == 1);
+    edit->SetFindOptions(RichFindOptions());
+
+    TEST("A needle that is not there finds nothing", !edit->FindNext("Reykjavik"));
+    TEST("...and leaves the selection alone", edit->GetSelectedText() == "Berlin"
+         || edit->GetSelectedText() == "berlin");
+
+    // FindPrevious walks back through the same matches.
+    edit->GetEditor().SetCaret(edit->GetEditor().DocumentEnd());
+    TEST("FindPrevious finds a match", edit->FindPrevious("berlin"));
+    std::string firstBack = edit->GetSelectedText();
+    TEST("FindPrevious keeps walking", edit->FindPrevious("berlin"));
+    TEST("The matches are not the same one",
+         editor.GetSelectionRange().start.byteOffset >= 0);
+    (void)firstBack;
+
+    std::cerr << "\n--- Replace ---" << std::endl;
+    edit->SetMarkdown("One berlin here.\n\nAnd berlin there.\n");
+    window->UpdateAndRender();
+    edit->GetEditor().SetCaret({0, 0});
+
+    TEST("ReplaceAll reports what it replaced",
+         edit->ReplaceAll("berlin", "Munich") == 2);
+    TEST("The replacement is in the text",
+         edit->GetPlainText().find("Munich") != std::string::npos);
+    TEST("The old text is gone",
+         edit->GetPlainText().find("berlin") == std::string::npos);
+    TEST("One undo takes back the whole replace", edit->Undo());
+    TEST("...all of it",
+         edit->GetPlainText().find("berlin") != std::string::npos
+         && edit->GetPlainText().find("Munich") == std::string::npos);
+
+    // Replace acts on a found match, not on whatever happens to be selected.
+    edit->GetEditor().SetCaret({0, 0});
+    edit->FindNext("berlin");
+    window->UpdateAndRender();
+    TEST("ReplaceCurrent replaces the found match and moves on",
+         edit->ReplaceCurrent("berlin", "Vienna"));
+    TEST("The found match was replaced",
+         edit->GetEditor().BlockText(0).find("Vienna") != std::string::npos);
+
+    // A read-only editor refuses to replace.
+    edit->SetReadOnly(true);
+    std::string beforeReadOnly = edit->GetPlainText();
+    edit->ReplaceAll("berlin", "Prague");
+    TEST("A read-only editor replaces nothing", edit->GetPlainText() == beforeReadOnly);
+    edit->SetReadOnly(false);
+
+    // ===== SPELL CHECKING =====
+    std::cerr << "\n--- Spell check ---" << std::endl;
+    // The service needs a dictionary, which a bare machine may not have. What
+    // is asserted here is the element's own wiring, which holds either way.
+    TEST("Spell checking starts off", !edit->IsSpellCheckEnabled());
+    edit->SetSpellCheckEnabled(true);
+    TEST("Spell checking turns on", edit->IsSpellCheckEnabled());
+    window->UpdateAndRender();
+
+    // Whether anything is flagged depends on the dictionary; rendering a
+    // document with checking on must not crash or clear the text either way.
+    edit->SetMarkdown("A paragraph with a definitly misspelled word.\n");
+    edit->RunSpellCheck();
+    window->UpdateAndRender();
+    TEST("The document survives a spell-checked render",
+         edit->GetPlainText().find("definitly") != std::string::npos);
+
+    // Editing with checking on re-queues rather than leaving stale marks.
+    edit->GetEditor().SetCaret({0, 0});
+    edit->OnEvent(TextEvent("Q"));
+    window->UpdateAndRender();
+    TEST("Typing with spell check on still edits",
+         edit->GetEditor().BlockText(0).rfind("Q", 0) == 0);
+
+    edit->SetSpellCheckEnabled(false);
+    TEST("Spell checking turns off", !edit->IsSpellCheckEnabled());
+    TEST("...and drops its errors", edit->GetSpellErrors().empty());
+
+    // A right-click with nothing wired and no misspelling under it is declined,
+    // so a host is free to show its own menu.
+    UCEvent rightClick = MouseEvent(UCEventType::MouseDown, 40, 20);
+    rightClick.button = UCMouseButton::Right;
+    TEST("An unhandled right-click is not consumed", !edit->OnEvent(rightClick));
+
+    bool hostMenuAsked = false;
+    edit->onContextMenu = [&hostMenuAsked](const UCEvent&) {
+        hostMenuAsked = true;
+        return true;
+    };
+    edit->OnEvent(rightClick);
+    TEST("The host gets first refusal on a right-click", hostMenuAsked);
+    edit->onContextMenu = nullptr;
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

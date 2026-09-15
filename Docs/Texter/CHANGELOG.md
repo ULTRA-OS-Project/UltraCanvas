@@ -1,3 +1,45 @@
+#### 2026-09-15 *1.43*
+- **Find, Replace and spell checking work in word-processing documents.** Both
+  were unavailable when `.odt`/`.docx`/`.doc` files moved into the WYSIWYG
+  editor in 1.42; this is the other half of that change.
+- Ctrl+F and Ctrl+H drive the document itself. Case-sensitive and whole-word
+  both apply, the match counter reads "3 of 12", and **Replace All takes one
+  Ctrl+Z to undo**, not one per match. Replaced text keeps the formatting of
+  what it replaced, so replacing a word inside a bold heading leaves it bold.
+- Misspelled words get the same red squiggle they do in a text document, and
+  right-clicking one offers the suggestions, **Add to Dictionary** and
+  **Ignore** — inside the editor's own context menu, which now also carries
+  Undo, Redo, Cut, Copy, Paste and Select All in these tabs.
+- **Go to line** is still not offered for these documents: a word-processing
+  document is made of paragraphs, not lines, and the status bar reports the
+  block the caret is in.
+- Find does not reach inside table cells yet, for the same reason table cells
+  are not editable in place yet.
+
+#### 2026-09-15 *1.42*
+- **Word-processing documents open as themselves.** A `.odt`, `.docx` or `.doc`
+  file now opens in the WYSIWYG editor (`UltraCanvasRichTextEdit`) instead of
+  being converted to Markdown first. Fonts, sizes, colours, alignment and
+  embedded images are what you see and what you edit, and saving writes the same
+  document back out — so a 14 pt Georgia run in red survives a round trip
+  instead of being flattened to whatever Markdown could spell. Bold is a state
+  of the selection, not two asterisks in the text.
+- The formatting toolbar works in these tabs too: the same buttons apply the
+  format to the document rather than inserting markup, and they light up from
+  the caret's real formatting. **Checklist** and **Insert Table** are greyed out
+  there, because a word-processing document has no checkbox list item and tables
+  are not yet edited in place.
+- **Insert Hyperlink** asks for the address, and **Image** picks a file and
+  embeds it in the document, so the picture is still there after a save.
+- Undo, Redo, Cut, Copy, Paste and Select All (menu and keyboard) act on the
+  document. Copy and paste keep their formatting within UltraTexter.
+- **Find**, **Replace** and **Go to line** are not available in a
+  word-processing tab yet, and neither is spell checking — the status bar shows
+  the block the caret is in instead of a line and column.
+- **Save As** from a word-processing tab to `.md`, `.html` or `.txt` converts on
+  the way out; saving to the legacy `.doc` format is still refused with a note
+  to use `.docx`.
+
 #### 2026-08-28 *1.41*
 - **Spell checking.** *Edit → Spelling → Check Spelling* turns it on; misspelled words get a red squiggle as you type. *Dictionary* lists every language installed on the machine, and *Recheck Document* re-runs the check after you have taught it new words. Both the on/off state and the chosen dictionary are remembered between sessions. Nothing is loaded until you first switch it on, so start-up is unchanged if you never use it.
 - **A context menu in the editor.** Right-clicking the text now opens Undo, Redo, Cut, Copy, Paste and Select All — greyed out when they would do nothing — with the Spelling submenu at the bottom. Right-clicking a misspelled word puts the suggestions, **Add to Dictionary** and **Ignore** at the top of that same menu. The caret follows the right-click unless you clicked inside a selection, so Paste lands where you clicked and Cut/Copy still act on what is highlighted.
