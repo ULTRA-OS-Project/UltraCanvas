@@ -64,6 +64,30 @@
     whole overflow is reachable. Documented in `Docs/CSSLayout.md`.
 
 #### 2026-09-14 *0.8.47*
+- **The demo's XAR page now says where the format comes from.** A third panel
+  under the feature and sample panels explains that Xara is the successor of
+  ArtWorks, the vector graphics editor for RISC OS - the first OS that ran on
+  ARM CPUs - known for its ultra-fast CPU-based vector rendering and its
+  user-friendly interface, and ported to Windows as Xara. The two Wikipedia
+  references are clickable labels that hand the URL to the system browser
+  through `OpenURL`, the same way the PDF page links MuPDF. The page grew
+  from 780 to 1080 points tall to hold it, so the status line moved down with
+  it. `Docs/UltraCanvas/UltraCanvasXARExamples.md` carries the same note.
+- **The macOS Intel build is green again**, through `main`'s own
+  `ParseFloatClassic()` in `core/HTMLReader/CSSStyleSheet.cpp` (the #440 port).
+  This branch carried a second fix for the same break - Apple's libc++ has the
+  integral `std::from_chars` overloads only, so `from_chars(..., float&)`
+  resolved to the deleted `bool` overload and the file did not compile, which
+  had every PR red on the `macos-15-intel` runner - and that version is gone in
+  favour of `main`'s, which is the same scan-then-convert approach without a
+  `__cpp_lib_to_chars` branch.
+  - What is kept is the test coverage: `Tests/HTMLReaderTest.cpp` now pins the
+    number shapes such a hand-written scanner has to get right, because they
+    are where it drifts from `from_chars`. `"1.5em"` is the one that matters -
+    an `e` that turns out to be a unit rather than an exponent, which a stream
+    handed the whole string consumes before failing outright; then `.5em`,
+    `1.5e2px`, `-3px`, `1em`, a bare `1e`, and `1e999px`, which is consumed but
+    leaves the value alone, exactly as the out-of-range `from_chars` did.
 - Fixes in HTML rendering
 
 #### 2026-09-14 *0.8.46*
