@@ -274,8 +274,8 @@ namespace UltraCanvas {
                     }
                     if (onClick) {
                         onClick();
+                        return true;
                     }
-                    return true;
                 }
                 break;
 
