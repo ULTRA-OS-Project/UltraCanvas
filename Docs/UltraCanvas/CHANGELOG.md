@@ -1,3 +1,52 @@
+#### 2026-09-15 *0.8.62*
+- **An image saves over the file it was opened from again, and a save that
+  fails no longer costs the user the file that was there.** Reported from
+  UltraPaint on Windows: opening a JPEG, editing it and pressing Save put up
+  `unable to open for write / system error: Invalid argument`, followed by a
+  write error, `VipsJpeg: unable to write to target` and two
+  `wbuffer_write: write failed` lines - none of which named a cause a user
+  could act on, and all of which were about the user's own file, in their own
+  Downloads folder, which nothing else was holding.
+  Three separate defects, one symptom:
+  - **The editor never let go of the file it had read.** libvips keeps
+    finished operations in a cache, so the loader of an image read minutes ago
+    is still alive - and for a JPEG it keeps the source file *memory-mapped*
+    (measured: the mapping is still in `/proc/self/maps` after the document has
+    copied every pixel into its own buffer and dropped the image; PNG and TIFF
+    do not map). Windows will not truncate a file that has a mapping open in
+    the process: the open fails with `ERROR_USER_MAPPED_FILE`, which the C
+    runtime reports as `EINVAL` - the "Invalid argument" in the dialog. Linux
+    allows the same truncate, which is why this never showed up here.
+    `PixelFX::ReleaseCachedFiles()` now drops those cached operations, and
+    `UCRasterDocument` calls it as soon as a load has been materialised and
+    again before every save. It trims the cache to nothing and lets it grow
+    again rather than calling `vips_cache_drop_all()`, which reads like the
+    call for this and instead frees the cache table, so that the next libvips
+    operation dereferences freed memory and crashes (reproduced on 8.15).
+  - **The save truncated the target before the first byte was encoded.**
+    `write_to_file` opens with `O_TRUNC`, so any failure after that point -
+    no space, a codec error, a destination that is refusing the write - left
+    the user with the remains of the write instead of the image they had.
+    (Writing an image over a file libvips is still reading does it in one
+    step: on Linux the same case truncates the source under the mapping and
+    the process takes a `SIGBUS` mid-encode.) `UCRasterDocument::SaveToFile`
+    now encodes into a temporary file in the target's own folder and renames
+    it over the target - same volume, so the replacement is atomic - carrying
+    the target's permissions across so a private image does not quietly widen
+    to the default mode, removing the temporary file on every failure path,
+    and putting the caller's own file name back into any message an encoder
+    wrote about the temporary one.
+  - **The reason was reported as a transcript.** libvips appends to a
+    process-wide error buffer and returns the whole of it, so
+    `PixelFX::FileIO::Save` / `SaveWithOptions` and `PFXImage::FromFile`
+    reported this failure together with everything left over from earlier
+    operations - the stack of contradictory lines in the dialog. They clear
+    the buffer first now, as `UCImageRaster::Save` and `ExportVImage` already
+    did.
+  `RasterEditingTest` covers the round trip over the file the document was
+  opened from, that the temporary file leaves no trace, and that a save which
+  cannot be encoded leaves the existing file byte-for-byte intact.
+
 #### 2026-09-15 *0.8.51*
 - **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
   parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get

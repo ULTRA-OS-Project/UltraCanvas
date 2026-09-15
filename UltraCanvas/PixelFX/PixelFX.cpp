@@ -84,6 +84,7 @@ namespace PixelFX {
 
 // Static factory methods
     PFXImage PFXImage::FromFile(const std::string& filename, AccessMode access) {
+        ClearError();   // see FileIO::Save(): keep the reported cause scoped to this load
         try {
             PFXImage img(vips::VImage::new_from_file(filename.c_str(),
                                                      vips::VImage::option()->set("access", (int)access)));
@@ -223,6 +224,12 @@ namespace PixelFX {
         }
 
         bool Save(const PFXImage& image, const std::string& filename) {
+            // libvips appends to a process-wide error buffer and VError::what()
+            // returns the whole of it, so without this a failure here is
+            // reported together with every message left over from earlier
+            // operations - the save dialog then shows a stack of unrelated
+            // causes and the real one is anybody's guess.
+            ClearError();
             try { image.write_to_file(filename.c_str()); return true; }
             catch (const vips::VError& e) {
                 std::string w = UltraCanvas::DescribeFileWriteError(filename);
@@ -232,6 +239,7 @@ namespace PixelFX {
         }
 
         bool SaveWithOptions(const PFXImage& image, const std::string& filename, vips::VOption* options) {
+            ClearError();   // see Save(): keep the reported cause scoped to this write
             try { image.write_to_file(filename.c_str(), options); return true; }
             catch (const vips::VError& e) {
                 std::string w = UltraCanvas::DescribeFileWriteError(filename);
@@ -1419,6 +1427,18 @@ namespace PixelFX {
     void SetCacheMax(size_t bytes) { vips_cache_set_max_mem(bytes); }
     void SetCacheMaxFiles(int files) { vips_cache_set_max_files(files); }
     void SetCacheMaxMem(size_t bytes) { vips_cache_set_max_mem(bytes); }
+
+    void ReleaseCachedFiles() {
+        // Trimming the cache to nothing and letting it grow again is what
+        // drops the finished operations, and with them the files they still
+        // hold. vips_cache_drop_all() reads like the call for this and is
+        // not: it frees the cache table itself rather than emptying it, and
+        // the next libvips operation dereferences the freed table and
+        // crashes. (Reproduced on libvips 8.15.)
+        const int max = vips_cache_get_max();
+        vips_cache_set_max(0);
+        vips_cache_set_max(max);
+    }
     void SetConcurrency(int threads) { vips_concurrency_set(threads); }
     int GetConcurrency() { return vips_concurrency_get(); }
 

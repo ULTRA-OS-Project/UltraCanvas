@@ -333,6 +333,56 @@ static void TestPixelFXAndFiles() {
     std::filesystem::remove_all(dir);
 }
 
+// Saving back over the file the document was opened from - the commonest
+// save UltraPaint makes, and the one that used to fail. libvips keeps a
+// finished loader in its operation cache, which for a JPEG leaves the source
+// file memory-mapped; Windows refuses to truncate a file that has a mapping
+// open in the process, so the save has to let go of the source first. The new
+// bytes go through a temporary file next to the target, which must leave no
+// trace behind it and must leave the old file alone when a save fails.
+static void TestSaveOverTheOpenFile() {
+    const std::filesystem::path dir =
+            std::filesystem::temp_directory_path() / "ultracanvas-raster-resave";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::string jpg = (dir / "photo.jpg").string();
+    std::string err;
+
+    UCRasterDocument original(16, 16, RasterPixel(10, 120, 200, 255));
+    CHECK(original.SaveToFile(jpg, err));
+
+    UCRasterDocument doc;
+    CHECK(doc.LoadFromFile(jpg, err));
+    doc.GetLayer(0)->SetPixel(4, 4, RasterPixel(250, 250, 250, 255));
+    CHECK(doc.SaveToFile(jpg, err));
+
+    UCRasterDocument reopened;
+    CHECK(reopened.LoadFromFile(jpg, err));
+    CHECK(reopened.GetWidth() == 16 && reopened.GetHeight() == 16);
+    CHECK(reopened.GetLayer(0)->GetPixel(4, 4).r > reopened.GetLayer(0)->GetPixel(12, 12).r);
+
+    auto strays = [&dir]() {
+        int n = 0;
+        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+            if (entry.path().filename().string().rfind(".ucsave", 0) == 0) ++n;
+        }
+        return n;
+    };
+    CHECK(strays() == 0);
+
+    // A save that cannot be encoded must not cost the user the file that was
+    // already there, and must not leave its half-written attempt behind.
+    const std::string keep = (dir / "keep.zzz").string();
+    { std::FILE* f = std::fopen(keep.c_str(), "wb"); CHECK(f != nullptr); if (f) { std::fputs("not an image", f); std::fclose(f); } }
+    UCRasterDocument unsupported(8, 8, RasterPixel(1, 2, 3, 255));
+    CHECK(!unsupported.SaveToFile(keep, err));
+    CHECK(err.find(".ucsave") == std::string::npos);   // the message names the file the caller asked for
+    CHECK(std::filesystem::file_size(keep) == 12);
+    CHECK(strays() == 0);
+
+    std::filesystem::remove_all(dir);
+}
+
 // PixelFX::Colour::ColourToAlpha - turning a colour into transparency, the
 // engine behind UltraPaint's Adjust > Colour to Alpha.
 static void TestColourToAlpha() {
@@ -426,6 +476,7 @@ int main() {
     TestDocument();
 #ifdef HAS_LIBVIPS
     TestPixelFXAndFiles();
+    TestSaveOverTheOpenFile();
     TestColourToAlpha();
 #endif
     std::printf("RasterEditingTest: %d checks, %d failures\n", checks, failures);
