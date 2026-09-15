@@ -1,3 +1,60 @@
+#### 2026-09-15 *0.8.53*
+- **The shared image cache could wedge itself permanently full, and then
+  nothing was cached at all.** `UCCache` (`UltraCanvasUtils.h`) keeps a running
+  total of the bytes it holds and asked each entry for its size *again* when it
+  evicted one. For several payloads that answer grows after the entry is
+  stored — `UCImageRaster::GetDataSize()` counts an animation decoded lazily,
+  `UCSvgDocument::GetMemoryBytes()` counts pages rasterized on demand — so an
+  eviction gave back more than was ever charged. The total is a `size_t`: it
+  wrapped. Every insert after that found itself over budget, and the loop that
+  makes room emptied the entire cache to fit one entry, for the rest of the
+  session. The four caches built on it (pixmaps, images, SVG documents, text
+  layouts) then held a single item each, so every picture was decoded again on
+  every use — which is what "the thumbnails stopped showing" looked like in
+  UltraFiler, on a folder that had merely been browsed for long enough. The
+  size is now asked **once, when the entry is stored**, and exactly that is
+  returned on every path out of it; storing the same key twice (four thumbnail
+  workers missing on one picture at the same moment) returns the old entry's
+  bytes before charging the new one, and the subtraction is floored so no
+  future accounting slip can wrap the counter again. `Tests/ImageCacheAccountingTest`
+  covers both, and fails twelve ways against the old code.
+- **Thumbnails now survive the process that made them.** The Filer's thumbnail
+  cache was memory only, so a folder of photos, videos or documents was decoded
+  again on every launch — and again after any browsing wide enough to push it
+  out of the 96 MB budget. Finished **content previews** are now also written
+  to a per-user cache directory (`%LOCALAPPDATA%\UltraCanvas\thumbnails`,
+  `~/Library/Caches/UltraCanvas/thumbnails`, `$XDG_CACHE_HOME/UltraCanvas/thumbnails`)
+  as QOI blobs — the same compression the in-memory "compressed thumbnails"
+  option uses, so the blob is made once and serves both — and asked for before
+  any decode is queued. Application icons are deliberately not stored: the
+  shell extracts one faster than this could read a file, and an upgraded
+  program must not show yesterday's icon. Staleness is the source file's to
+  decide, not a timer's: each entry records the size and modification time it
+  was made from, and a mismatch deletes the entry and re-decodes, so editing a
+  picture shows the edit. `UltraCanvasThumbnailDiskCache.h`;
+  `SetThumbnailDiskCacheEnabled()`, `GetThumbnailDiskCacheUsage()` and
+  `ClearThumbnailDiskCache()` on the widget switch, measure and empty it.
+- **Used files are touched, unused ones are deleted after two weeks.** A cache
+  keyed by where its content came from is orphaned by every move, rename,
+  upgrade and delete the user makes, and nothing tells it — so without an
+  expiry it grows for the life of the account. Serving an entry stamps it with
+  the day (at most one write per file per day, so scrolling a folder of a
+  thousand pictures costs no disk writes after the first) and entries not
+  served for two weeks are swept by the first thumbnail worker to start —
+  off the UI thread, because it walks a directory. A folder the user keeps
+  visiting keeps its thumbnails indefinitely.
+- **That retention policy now has one implementation, not two.**
+  `UltraCanvasDiskCache` (`core/UltraCanvasDiskCache.cpp`) holds the per-user
+  cache root, the throttled `Touch()` and the `Sweep()`, and both on-disk
+  caches use it: `FileAssociationsBackend::StampIconCacheFile` /
+  `SweepIconCache` are now three-line wrappers over it and `kIconCacheMaxAge`
+  is the shared default. The icon cache grew this policy first (0.3.98); a
+  second hand-written copy for thumbnails is how two caches orphaned by the
+  same events end up expiring on two different rules.
+  `Tests/ThumbnailDiskCacheTest` covers storing and serving, an edited source,
+  a missing source, the stamp and its throttle, the sweep, a clock that was set
+  back, and that nothing outside the cache's own extensions is ever deleted.
+
 #### 2026-09-15 *0.8.52*
 - **`UltraCanvasPaintSurface::SetPanMode` never turned permanent panning
   on.** The parameter was named after the member it was meant to set, so

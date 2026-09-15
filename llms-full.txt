@@ -19568,6 +19568,57 @@ the uncompressed size those bytes stand for — they differ under
 the decompressed tiles being drawn). Rescanning the folder or changing the
 view drops everything.
 
+### Thumbnails between runs
+
+The budgets above are memory, and memory ends with the process. What a folder
+of photos, videos or documents *cost* does not: it is minutes of decoding, and
+paying it again on every launch — and again after any browsing wide enough to
+push the folder out of the budget — is the difference between a file manager
+that opens a folder and one that thinks about it.
+
+So a finished **content preview** is also written to a per-user cache
+directory, and asked for before any decode is queued:
+
+| Platform | Location |
+|---|---|
+| Windows | `%LOCALAPPDATA%\UltraCanvas\thumbnails` |
+| macOS | `~/Library/Caches/UltraCanvas/thumbnails` |
+| Linux / ULTRA OS | `$XDG_CACHE_HOME/UltraCanvas/thumbnails`, else `~/.cache/UltraCanvas/thumbnails` |
+
+Entries are QOI blobs — the same compression `SetCompressedThumbnails()` holds
+in memory, so a cached thumbnail is written once and, with compression on,
+served to the tile without being touched at all.
+
+**Application icons are never stored.** The shell extracts one faster than
+this could read a file, and an icon that changed because the program was
+upgraded must not come from yesterday.
+
+**What makes an entry stale is the file it was made from**, not a timer: every
+entry records its source's size and modification time, and a mismatch is a
+miss — the entry is deleted and the tile decodes the file as it now is. So
+editing a picture shows the edit.
+
+**Retention is two weeks since the entry was last served.** Serving one stamps
+it with the day (at most one write per file per day, so scrolling a folder of
+a thousand pictures costs no disk writes after the first), and entries not
+served for two weeks are swept by the first thumbnail worker to start. A
+folder the user keeps visiting keeps its thumbnails indefinitely; one they
+opened once pays for itself and then goes away. This is the same policy, and
+the same code (`UltraCanvasDiskCache.h`), that expires the "Open with" handler
+icons — two caches orphaned by the same kinds of event should not expire on
+two different rules.
+
+| Call | Does |
+|---|---|
+| `SetThumbnailDiskCacheEnabled(bool)` | On by default. Off stops reading and writing; what is on disk is left to expire on its own, so switching back on costs nothing |
+| `GetThumbnailDiskCacheDirectory()` | Where the files are (empty when the platform offered nowhere writable) |
+| `GetThumbnailDiskCacheUsage()` | Files and bytes currently held |
+| `ClearThumbnailDiskCache()` | Throws it all away now; returns how many files went |
+
+A disk cache is an optimisation and never a requirement: a full disk, a
+read-only cache directory or a platform with nowhere to write costs a
+re-decode, never a missing thumbnail.
+
 ## Shortcuts
 
 A shortcut is drawn with **the icon of what it points at**, and reads as the

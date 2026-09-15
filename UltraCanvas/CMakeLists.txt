@@ -485,6 +485,13 @@ set(ULTRACANVAS_CORE_SOURCES
         # ... and the glyph browser built on it: the detail view for a font.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFontViewer.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileAssociations.cpp
+        # Retention for everything UltraCanvas caches as files: stamp
+        # what is served, sweep what has not been. Shared by the
+        # "Open with" icon cache and the Filer thumbnail cache.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasDiskCache.cpp
+        # Thumbnails that survive the process that made them, so a
+        # folder costs its decode once rather than once per launch.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasThumbnailDiskCache.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModalDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasProgressDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFolderWatcher.cpp
