@@ -3789,10 +3789,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::OnEditSearch() {
         auto doc = GetActiveDocument();
-        // The search bar drives the text area, which is empty in a
-        // word-processing tab — UltraCanvasRichTextEdit has no find surface yet,
-        // so opening the bar would search nothing and report no matches.
-        if (!doc || !doc->textArea || doc->IsRichDocument()) return;
+        if (!doc || !doc->textArea) return;
         ShowSearchBar(SearchBarMode::Find);
     }
 
@@ -3848,7 +3845,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
     void UltraCanvasTextEditor::OnEditReplace() {
         auto doc = GetActiveDocument();
-        if (!doc || !doc->textArea || doc->IsRichDocument()) return;
+        if (!doc || !doc->textArea) return;
         ShowSearchBar(SearchBarMode::Replace);
     }
 
@@ -4622,6 +4619,14 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             UpdateMarkdownToolbarState();
         };
 
+        // Right-click gets the editor's own menu, with the spell suggestions
+        // inside it rather than in a competing popup.
+        doc->richEdit->onContextMenu = [this, docId](const UCEvent& event) -> bool {
+            int currentIndex = FindDocumentIndexById(docId);
+            if (currentIndex < 0) return false;
+            return ShowEditorContextMenu(currentIndex, event);
+        };
+
         doc->richEdit->onLinkClicked = [](const std::string& target) {
             if (target.empty()) return false;
             OpenURL(target);
@@ -5160,6 +5165,44 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
     }
 
 
+    // The search bar speaks (text, caseSensitive, wholeWord); a word-processing
+    // tab keeps those on the element, which owns its own search state.
+    UltraCanvasRichTextEdit* UltraCanvasTextEditor::RichSearchTarget(bool caseSensitive,
+                                                                     bool wholeWord) {
+        UltraCanvasRichTextEdit* rich = GetActiveRichEdit();
+        if (!rich) return nullptr;
+        RichFindOptions options = rich->GetFindOptions();
+        options.caseSensitive = caseSensitive;
+        options.wholeWord = wholeWord;
+        rich->SetFindOptions(options);
+        return rich;
+    }
+
+    // "3 of 12" for a word-processing tab. The document is already in memory as
+    // blocks, so this is a scan rather than the background job the text area
+    // needs for a large flat buffer.
+    void UltraCanvasTextEditor::UpdateRichMatchCount(UltraCanvasRichTextEdit* rich,
+                                                     const std::string& text) {
+        if (!searchBar || !rich) return;
+        if (text.empty()) {
+            searchBar->UpdateMatchCount(0, 0);
+            return;
+        }
+        const std::vector<RichDocRange> matches =
+            rich->GetEditor().FindAll(text, rich->GetFindOptions());
+        int current = 0;
+        if (rich->HasSelection()) {
+            const RichDocRange selection = rich->GetEditor().GetSelectionRange();
+            for (size_t i = 0; i < matches.size(); i++) {
+                if (matches[i].start == selection.start) {
+                    current = static_cast<int>(i) + 1;
+                    break;
+                }
+            }
+        }
+        searchBar->UpdateMatchCount(current, static_cast<int>(matches.size()));
+    }
+
     void UltraCanvasTextEditor::SetupSearchBar() {
         searchBar = std::make_shared<UltraCanvasSearchBar>(
                 "SearchBar"
@@ -5168,6 +5211,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // ── Find Next ──
         searchBar->onFindNext = [this](const std::string& text, bool cs, bool ww) {
+            if (auto* rich = RichSearchTarget(cs, ww)) {
+                rich->FindNext(text);
+                UpdateRichMatchCount(rich, text);
+                return;
+            }
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
@@ -5180,6 +5228,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // ── Find First ──
         searchBar->onFindFirst = [this](const std::string& text, bool cs, bool ww) {
+            if (auto* rich = RichSearchTarget(cs, ww)) {
+                rich->GetEditor().SetCaret(rich->GetEditor().DocumentStart());
+                                rich->FindNext(text);
+                UpdateRichMatchCount(rich, text);
+                return;
+            }
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
@@ -5192,6 +5246,15 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // ── Incremental (live) find: first match at/after the caret anchor, no advance ──
         searchBar->onIncrementalFind = [this](const std::string& text, bool cs, bool ww) {
+            if (auto* rich = RichSearchTarget(cs, ww)) {
+                // Live search must not advance past the match the user is looking
+                                // at, so it restarts from the block the caret sits in.
+                                rich->GetEditor().SetCaret(
+                                    RichDocPosition(rich->GetEditor().GetCaret().blockIndex, 0));
+                                rich->FindNext(text);
+                UpdateRichMatchCount(rich, text);
+                return;
+            }
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->HighlightMatches(text);
@@ -5209,6 +5272,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // ── Find Previous ──
         searchBar->onFindPrevious = [this](const std::string& text, bool cs, bool ww) {
+            if (auto* rich = RichSearchTarget(cs, ww)) {
+                rich->FindPrevious(text);
+                UpdateRichMatchCount(rich, text);
+                return;
+            }
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(text, cs);
@@ -5221,6 +5289,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // ── Replace ──
         searchBar->onReplace = [this](const std::string& find, const std::string& replace, bool cs, bool ww) {
+            if (auto* rich = RichSearchTarget(cs, ww)) {
+                rich->ReplaceCurrent(find, replace);
+                UpdateRichMatchCount(rich, find);
+                return;
+            }
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
@@ -5233,6 +5306,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
 
         // ── Replace All ──
         searchBar->onReplaceAll = [this](const std::string& find, const std::string& replace, bool cs, bool ww) {
+            if (auto* rich = RichSearchTarget(cs, ww)) {
+                rich->ReplaceAll(find, replace);
+                UpdateRichMatchCount(rich, find);
+                return;
+            }
             auto doc = GetActiveDocument();
             if (!doc || !doc->textArea) return;
             doc->textArea->SetTextToFind(find, cs);
@@ -5246,7 +5324,7 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
             if (text.empty()) {
                 CancelAsyncMatchCount();
                 auto doc = GetActiveDocument();
-                if (doc && doc->textArea) {
+                if (doc && !doc->IsRichDocument() && doc->textArea) {
                     doc->textArea->ClearHighlights();
                 }
                 searchBar->UpdateMatchCount(0, 0);
@@ -5300,7 +5378,12 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         // Capture the caret as the incremental-search anchor (before the pre-fill
         // SetSearchText triggers a live search), then pre-fill with selected text.
         auto doc = GetActiveDocument();
-        if (doc && doc->textArea) {
+        if (doc && doc->IsRichDocument() && doc->richEdit) {
+            const std::string sel = doc->richEdit->GetSelectedText();
+            if (!sel.empty() && sel.find('\n') == std::string::npos) {
+                searchBar->SetSearchText(sel);
+            }
+        } else if (doc && doc->textArea) {
             doc->textArea->BeginIncrementalSearch();
             if (doc->textArea->HasSelection()) {
                 std::string sel = doc->textArea->GetSelectedText();
@@ -5323,9 +5406,11 @@ void UltraCanvasTextEditor::SetDocumentModified(int index, bool modified) {
         searchBar->SetVisible(false);
         searchBar->layout.display = CSSLayout::DisplayType::NoDisplay;
 
-        // Return focus to active text area
+        // Return focus to the tab's editor
         auto doc = GetActiveDocument();
-        if (doc && doc->textArea) {
+        if (doc && doc->IsRichDocument() && doc->richEdit) {
+            doc->richEdit->SetFocus(true);
+        } else if (doc && doc->textArea) {
             doc->textArea->SetFocus(true);
             // Clear search highlights
             doc->textArea->ClearHighlights();

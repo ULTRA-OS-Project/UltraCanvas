@@ -188,6 +188,62 @@ self-contained and saves to `.odt`/`.docx` with the picture inside it.
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+click on a link | `onLinkClicked` (a plain click just places the caret, so links stay editable) |
 
+## Find and replace
+
+```cpp
+RichFindOptions options;
+options.caseSensitive = false;
+options.wholeWord = true;
+editor->SetFindOptions(options);
+
+editor->FindNext("Berlin");        // selects the match and scrolls to it
+editor->FindPrevious("Berlin");
+editor->ReplaceCurrent("Berlin", "Munich");   // only if the selection IS a match
+int replaced = editor->ReplaceAll("Berlin", "Munich");
+int total = editor->CountMatches("Berlin");   // for a "3 of 12" readout
+```
+
+Two things worth knowing:
+
+- **`ReplaceAll` is one undo step**, not one per match, so Ctrl+Z takes the
+  whole replace back.
+- **Replaced text keeps the formatting of the text it replaced.** Replacing a
+  word inside a bold heading leaves it bold — the format is sampled from inside
+  the match before it is deleted, because deleting it would otherwise leave the
+  caret in the preceding run and the insert would adopt *that* formatting.
+
+Search lives in `UCRichDocumentEditor` (`Find`, `FindAll`, `ReplaceAll`), so it
+is testable without a display. Matches never span a block boundary, which is
+what makes each one independently replaceable. Case folding is ASCII, the same
+as `UltraCanvasTextArea`'s search: `report` finds `Report`, but `strasse` does
+not find `STRASSE`.
+
+## Spell checking
+
+```cpp
+editor->SetSpellCheckEnabled(true);
+editor->RunSpellCheck();                     // after changing dictionary
+```
+
+Checking runs on the shared `UltraCanvasSpellChecker` worker thread, over the
+document as one string with blocks joined by `\n` — one job per document rather
+than one per block, so a long document does not flood the queue. Results are
+drained while rendering and their byte offsets map back onto
+`{blockIndex, byteOffset}`; squiggles are drawn only for blocks the viewport has
+laid out.
+
+Right-click offers the suggestions. A host that has its own context menu takes
+the click first and puts them inside it:
+
+```cpp
+editor->onContextMenu = [this](const UCEvent& event) {
+    return ShowMyOwnMenu(event);   // true = consumed, no built-in popup
+};
+```
+
+This is the same contract `UltraCanvasTextArea` offers, and UltraTexter uses it
+so a right-click in a `.docx` tab gives one menu rather than two.
+
 ## Undo
 
 Undo is command-based, not snapshot-based: a step records the blocks an edit
@@ -243,13 +299,13 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Tables render but are not edited in place.** A table block draws with its
   cells laid out; the caret treats it as one indivisible block. Editing inside
-  cells is the next phase.
+  cells is the next phase — and until it lands, **find and replace do not reach
+  inside table cells** either, for the same reason: a cell has no position in
+  the `{blockIndex, byteOffset}` model.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
   TextArea's Markdown mode and is the intended path.
-- **No spell checking yet** — `UltraCanvasSpellChecker` integrates the same way
-  it does in the TextArea.
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).

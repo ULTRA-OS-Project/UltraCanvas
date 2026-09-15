@@ -383,6 +383,10 @@ namespace UltraCanvas {
         // The WYSIWYG editor of the active tab, or null when the active tab is
         // not a word-processing document.
         UltraCanvasRichTextEdit* GetActiveRichEdit() const;
+        // The active tab's rich editor with the search bar's case/whole-word
+        // options applied, or null when the tab is not a word-processing one.
+        UltraCanvasRichTextEdit* RichSearchTarget(bool caseSensitive, bool wholeWord);
+        void UpdateRichMatchCount(UltraCanvasRichTextEdit* rich, const std::string& text);
         int FindDocumentIndexById(int documentId) const;
         void SetDocumentModified(int index, bool modified);
         // Record the current content as the clean baseline (call after load/save).

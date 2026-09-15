@@ -1,3 +1,21 @@
+#### 2026-09-15 *1.43*
+- **Find, Replace and spell checking work in word-processing documents.** Both
+  were unavailable when `.odt`/`.docx`/`.doc` files moved into the WYSIWYG
+  editor in 1.42; this is the other half of that change.
+- Ctrl+F and Ctrl+H drive the document itself. Case-sensitive and whole-word
+  both apply, the match counter reads "3 of 12", and **Replace All takes one
+  Ctrl+Z to undo**, not one per match. Replaced text keeps the formatting of
+  what it replaced, so replacing a word inside a bold heading leaves it bold.
+- Misspelled words get the same red squiggle they do in a text document, and
+  right-clicking one offers the suggestions, **Add to Dictionary** and
+  **Ignore** — inside the editor's own context menu, which now also carries
+  Undo, Redo, Cut, Copy, Paste and Select All in these tabs.
+- **Go to line** is still not offered for these documents: a word-processing
+  document is made of paragraphs, not lines, and the status bar reports the
+  block the caret is in.
+- Find does not reach inside table cells yet, for the same reason table cells
+  are not editable in place yet.
+
 #### 2026-09-15 *1.42*
 - **Word-processing documents open as themselves.** A `.odt`, `.docx` or `.doc`
   file now opens in the WYSIWYG editor (`UltraCanvasRichTextEdit`) instead of

@@ -41503,6 +41503,62 @@ self-contained and saves to `.odt`/`.docx` with the picture inside it.
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+click on a link | `onLinkClicked` (a plain click just places the caret, so links stay editable) |
 
+## Find and replace
+
+```cpp
+RichFindOptions options;
+options.caseSensitive = false;
+options.wholeWord = true;
+editor->SetFindOptions(options);
+
+editor->FindNext("Berlin");        // selects the match and scrolls to it
+editor->FindPrevious("Berlin");
+editor->ReplaceCurrent("Berlin", "Munich");   // only if the selection IS a match
+int replaced = editor->ReplaceAll("Berlin", "Munich");
+int total = editor->CountMatches("Berlin");   // for a "3 of 12" readout
+```
+
+Two things worth knowing:
+
+- **`ReplaceAll` is one undo step**, not one per match, so Ctrl+Z takes the
+  whole replace back.
+- **Replaced text keeps the formatting of the text it replaced.** Replacing a
+  word inside a bold heading leaves it bold — the format is sampled from inside
+  the match before it is deleted, because deleting it would otherwise leave the
+  caret in the preceding run and the insert would adopt *that* formatting.
+
+Search lives in `UCRichDocumentEditor` (`Find`, `FindAll`, `ReplaceAll`), so it
+is testable without a display. Matches never span a block boundary, which is
+what makes each one independently replaceable. Case folding is ASCII, the same
+as `UltraCanvasTextArea`'s search: `report` finds `Report`, but `strasse` does
+not find `STRASSE`.
+
+## Spell checking
+
+```cpp
+editor->SetSpellCheckEnabled(true);
+editor->RunSpellCheck();                     // after changing dictionary
+```
+
+Checking runs on the shared `UltraCanvasSpellChecker` worker thread, over the
+document as one string with blocks joined by `\n` — one job per document rather
+than one per block, so a long document does not flood the queue. Results are
+drained while rendering and their byte offsets map back onto
+`{blockIndex, byteOffset}`; squiggles are drawn only for blocks the viewport has
+laid out.
+
+Right-click offers the suggestions. A host that has its own context menu takes
+the click first and puts them inside it:
+
+```cpp
+editor->onContextMenu = [this](const UCEvent& event) {
+    return ShowMyOwnMenu(event);   // true = consumed, no built-in popup
+};
+```
+
+This is the same contract `UltraCanvasTextArea` offers, and UltraTexter uses it
+so a right-click in a `.docx` tab gives one menu rather than two.
+
 ## Undo
 
 Undo is command-based, not snapshot-based: a step records the blocks an edit
@@ -41558,13 +41614,13 @@ Honest limits of this first version — none of them silently misbehave:
 
 - **Tables render but are not edited in place.** A table block draws with its
   cells laid out; the caret treats it as one indivisible block. Editing inside
-  cells is the next phase.
+  cells is the next phase — and until it lands, **find and replace do not reach
+  inside table cells** either, for the same reason: a cell has no position in
+  the `{blockIndex, byteOffset}` model.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
   TextArea's Markdown mode and is the intended path.
-- **No spell checking yet** — `UltraCanvasSpellChecker` integrates the same way
-  it does in the TextArea.
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).
@@ -58005,6 +58061,8 @@ recommendation in §6 was followed as written, including the layering fix.
 | Model-level tests, no display needed | `Tests/RichTextEditorTest.cpp` | Done |
 | Element tests against a real render context (Xvfb) | `Tests/RichTextEditElementTest.cpp` | Done |
 | First application: UltraTexter opens `.odt`/`.docx`/`.doc` in the element | `Apps/Texter/UltraCanvasTextEditor.cpp` | Done — see below |
+| Find / replace, in the editing core so it needs no display | `core/UltraCanvasRichDocumentEditor.cpp` | Done |
+| Spell checking, on the shared worker | `core/UltraCanvasRichTextEdit.cpp` | Done |
 
 `RichDocPosition` is `{blockIndex, byteOffset}` as designed; undo is the
 block-span step of §6 with typing coalescing; layouts are built only for blocks
@@ -58027,19 +58085,26 @@ Markdown tab a button inserts markup, in a word-processing tab it calls the
 element's formatting API, and its pressed state comes from `GetFormatState()`
 with `Mixed` shown as not-pressed.
 
-What the host does not have yet follows the element's own limits: find/replace
-and go-to-line (the element has no search surface), spell checking, and
-autosave backups (a backup is a text file that recovery reopens as a text tab,
-so there is nothing useful to write). Each is skipped explicitly rather than
-silently operating on the detached, empty text area.
+Find, replace and spell checking followed immediately, because they were the
+two things a word-processing tab *lost* by moving off the Markdown detour — the
+only items on the list that were a step backwards rather than a gap that was
+always there. The shared search bar and the editor context menu now drive
+whichever editor the active tab holds.
+
+What the host still does not have follows the element's own limits: go-to-line
+(a word-processing document has paragraphs, not lines — the status bar reports
+the caret's block instead), search inside table cells, and autosave backups (a
+backup is a text file that recovery reopens as a text tab, so there is nothing
+useful to write). Each is skipped explicitly rather than silently operating on
+the detached, empty text area.
 
 Still open from §4 and §7, and stated as limits in the element's documentation
 rather than hidden: in-place table cell editing and interactive image resizing
 (Phase 4), the clipboard MIME flavours and the HTML→`UCRichDocument` importer
 that cross-application rich paste needs (Phase 5 proper — copy/paste *inside*
 the application does keep formatting, through a process-local buffer), typeset
-math runs, spell checking, and the pre-edit/composition event (§4.8), which no
-text widget in the framework has yet.
+math runs, and the pre-edit/composition event (§4.8), which no text widget in
+the framework has yet.
 
 ## 10. References
 
