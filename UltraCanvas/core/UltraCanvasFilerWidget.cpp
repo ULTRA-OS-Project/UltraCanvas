@@ -92,6 +92,7 @@
 #include "UltraCanvasZipPackage.h"
 #include "Models/STL/UltraCanvasSTLLoader.h"
 #include "UltraCanvasModelPreview.h"
+#include "UltraCanvasVectorPreview.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -108,6 +109,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <set>
 #include <sys/stat.h>
 #if defined(_WIN32) || defined(_WIN64)
@@ -662,7 +664,15 @@ namespace UltraCanvas {
                 case FilerPreviewType::Bitmaps:
                     return ImagePipelineLoadsExtension(ext);
                 case FilerPreviewType::VectorGraphics:
+                    // Three ways to a picture, in the order the worker tries
+                    // them: the image pipeline rasterizes it, a registered
+                    // Vector plugin reads it into a document this draws
+                    // itself, or the file carries a preview bitmap. Only the
+                    // first and last used to count, so dxf/dwg/emf/wmf were
+                    // greyed on the settings page of a build whose Vector
+                    // plugin read them perfectly well.
                     return ImagePipelineLoadsExtension(ext) ||
+                           CanPreviewVectorExtension(ext) ||
                            FormatCarriesEmbeddedPreview(ext);
                 case FilerPreviewType::Models3D:
                     return CanPreviewModelExtension(ext);
@@ -774,6 +784,27 @@ namespace UltraCanvas {
             auto img = UCImage::LoadFromMemory(bytes);
             if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
             return img->GetPixmap(w, h, fit, scale);
+        }
+
+        // ===== VECTOR DRAWING PREVIEW =====
+        // The drawing itself, for the formats a registered Vector plugin
+        // reads (UltraCanvasVectorPreview.h): DXF, DWG and the rest, which
+        // rasterize through neither libvips nor an embedded preview bitmap
+        // and so used to keep the plain type glyph.
+        //
+        // Serialized, unlike every other producer here. The rest of them own
+        // everything they touch - a PDF document with its own engine context,
+        // a FreeType library per specimen, a mesh rasterizer that is pure
+        // arithmetic - which is what makes running several at once safe.
+        // Drawing a document does not: it goes through a render context, and
+        // the text in it through the process-wide font machinery. One at a
+        // time costs nothing worth having (a folder of drawings is not a
+        // folder of photos) and keeps that promise unbroken.
+        std::shared_ptr<UCPixmap> RenderVectorDrawingPixmap(const std::string& path,
+                                                            int w, int h, float scale) {
+            static std::mutex renderMutex;
+            std::lock_guard<std::mutex> lock(renderMutex);
+            return RenderVectorPreviewPixmap(path, w, h, scale);
         }
 
         // ===== 3D MODEL PREVIEW =====
@@ -7649,6 +7680,7 @@ namespace UltraCanvas {
                 // the DWG family (dwg/dwt/dws/sv$), an EPS written without a
                 // preview - keeps the type glyph.
                 return (ImagePipelineLoadsExtension(e.extension) ||
+                        CanPreviewVectorExtension(e.path) ||
                         FormatCarriesEmbeddedPreview(e.extension))
                                ? e.path : std::string{};
             // Videos thumbnail as their poster frame (the first frame of the
@@ -8731,6 +8763,14 @@ namespace UltraCanvas {
                         auto img = UCImage::Get(req.path);
                         if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
                             pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+                    }
+                    // The drawing itself, where a registered Vector plugin
+                    // reads the format: rendered from the document at the
+                    // tile's size rather than scaled from whatever bitmap
+                    // the authoring program happened to store.
+                    if (!pm && CanPreviewVectorExtension(req.path)) {
+                        pm = RenderVectorDrawingPixmap(req.path, req.w, req.h,
+                                                       req.scale);
                     }
                     if (!pm && FormatCarriesEmbeddedPreview(ext)) {
                         pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,

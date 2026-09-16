@@ -1,3 +1,30 @@
+#### 2026-09-16 *1.36.0*
+- **UltraFiler registered no format plugins at all.** A plugin reads nothing
+  until an application links and registers it, and this one linked only the
+  core library - so the entire Vector matrix (DXF, DWG and the rest) and every
+  3D format but STL previewed as a plain type glyph, greyed themselves out on
+  the Display > Thumbnails and Display > Detail view settings pages, and
+  produced no detail pane when selected. The readers were compiled into the
+  build and sitting idle. Reported as "selecting a DWG file doesn't produce a
+  detailed window section", which is exactly what it was.
+- The Vector and Models plugins are now linked and registered at startup,
+  before the main window, since the settings pages read what the build can
+  show when they are first built. Each is an optional CMake target
+  (`ULTRACANVAS_PLUGIN_VECTOR`, `ULTRACANVAS_PLUGIN_MODELS`), so each is
+  picked up only where it was built and `main.cpp` registers it behind the
+  matching define - a build without them behaves exactly as before.
+- With both registered, 23 formats change from greyed to live on those two
+  pages: dxf, dwg, dwt, dws, sv$, emf, wmf, and sixteen 3D formats (3ds, obj,
+  ply, dae, fbx, x, ms3d, blend, abc, step/stp/p21, x3d/x3dv, wrl/vrml). What
+  stays greyed now stays greyed for a reason this build can name: no PDF
+  plugin, no video or audio backend, no reader for glTF/GLB/3MF, and no
+  picture inside an audio file or a Corel .ccx/.cmx to show.
+- Needs framework 0.8.72, which is where the drawings become showable at all:
+  the vector preview seam, the media viewer's vector view and the Filer's
+  vector thumbnails. The lighter greyed-out colour on the settings pages -
+  the disabled switches used to be drawn darker than the live ones - is from
+  the same release.
+
 #### 2026-09-15 *1.35.0*
 - **Settings > Extras > Cache: what UltraFiler is holding, and whether it
   should.** A page beside *Open prompt* and *History & Favorites* with two

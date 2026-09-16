@@ -11,6 +11,7 @@
 #include "UltraCanvasEPSConverter.h"
 #include "UltraCanvasMetafileConverters.h"
 #include "UltraCanvasXARConverter.h"
+#include "UltraCanvasVectorPreview.h"
 
 #include <algorithm>
 #include <fstream>
@@ -142,6 +143,32 @@ GraphicsFileInfo UltraCanvasVectorFormatsPlugin::GetFileInfo(const std::string& 
 bool UltraCanvasVectorFormatsPlugin::ValidateFile(const std::string& filePath) {
     auto converter = CreateConverterForExtension(filePath);
     return converter && converter->ValidateFile(filePath);
+}
+
+void RegisterVectorFormatsPlugin() {
+    UltraCanvasGraphicsPluginRegistry::RegisterPlugin(
+            std::make_shared<UltraCanvasVectorFormatsPlugin>());
+
+    // The core-side seam. The graphics registry hands back a UI element, which
+    // is the wrong shape for a preview: the media viewer and the Filer want
+    // the document, so they can draw it at whatever size the pane or the tile
+    // happens to be. Core owns the document model and the renderer but not one
+    // reader, so this is where the readers are handed over.
+    VectorPreviewProvider provider;
+    provider.Extensions = []() {
+        return UltraCanvasVectorFormatsPlugin().GetSupportedExtensions();
+    };
+    provider.Load = [](const std::string& path)
+            -> std::shared_ptr<VectorStorage::VectorDocument> {
+        return UltraCanvasVectorFormatsPlugin::LoadVectorDocument(path);
+    };
+    // The formats whose suffix settles nothing: a .bak is a drawing only when
+    // its header says so (UltraCanvasCADConverters.h).
+    provider.ClaimsFile = [](const std::string& path) {
+        auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
+        return converter && converter->CanImport();
+    };
+    SetVectorPreviewProvider(std::move(provider));
 }
 
 bool UltraCanvasVectorFormatsPlugin::SaveGraphics(

@@ -867,6 +867,26 @@ if (BUILD_ULTRAFILER_APP)
     )
     target_link_libraries(UltraFiler PRIVATE fmt::fmt)
 
+    # The format plugins, where this build has them. A file manager shows what
+    # the framework can read, and a plugin reads nothing until an application
+    # links and registers it: without these, the whole Vector matrix (DXF, DWG
+    # and the rest) and every 3D format but STL previewed as a type glyph and
+    # greyed themselves out on the Display > Thumbnails and Display > Detail
+    # view settings pages. Both plugins are optional targets
+    # (ULTRACANVAS_PLUGIN_VECTOR / ULTRACANVAS_PLUGIN_MODELS), so each is
+    # picked up only when it was built; main.cpp registers them behind the
+    # matching define.
+    if(TARGET UltraCanvasVectorPlugin)
+        target_link_libraries(UltraFiler PRIVATE UltraCanvasVectorPlugin)
+        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_VECTOR_PLUGIN=1)
+        message(STATUS "  UltraFiler: vector formats enabled (Vector plugin)")
+    endif()
+    if(TARGET UltraCanvasModelsPlugin)
+        target_link_libraries(UltraFiler PRIVATE UltraCanvasModelsPlugin)
+        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_MODELS_PLUGIN=1)
+        message(STATUS "  UltraFiler: 3D formats enabled (Models plugin)")
+    endif()
+
     target_compile_features(UltraFiler PRIVATE cxx_std_20)
 
     target_compile_definitions(UltraFiler PRIVATE

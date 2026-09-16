@@ -37,9 +37,11 @@ namespace UltraCanvas {
                         indicatorRect.y + indicatorRect.height / 2.0f);
         float radius = indicatorRect.width / 2.0f;
 
+        // The ring greys with the face - see UltraCanvasCheckbox::DrawIndicator.
         ctx->DrawFilledCircle(center, radius,
                               GetCurrentOuterColor(),
-                              visualStyle.outerBorderColor,
+                              IsDisabled() ? visualStyle.outerBorderDisabledColor
+                                           : visualStyle.outerBorderColor,
                               visualStyle.borderWidth);
 
         if (checkState == CheckedState::Checked) {

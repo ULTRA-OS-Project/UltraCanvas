@@ -16,6 +16,7 @@
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasCADConverters.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasVectorPreview.h"
 #include "UltraCanvasImage.h"
 
 #include <algorithm>
@@ -222,6 +223,21 @@ int main(int argc, char** argv) {
         std::remove(notBak.c_str());
     }
 
+    // ===== The core-side preview seam =====
+    // Registering the plugin must also lend core its readers, or the media
+    // viewer's preview pane and the Filer's thumbnails stay blind to every
+    // format core cannot read itself - which is every one of them.
+    {
+        for (const char* ext : {"dxf", "dwg", "dwt", "dws", "sv$", "xar", "emf", "wmf"}) {
+            Check(CanPreviewVectorExtension(ext),
+                  std::string("preview seam reads ") + ext);
+        }
+        Check(!CanPreviewVectorExtension("png"), "preview seam declines png");
+        auto seamExts = PreviewableVectorExtensions();
+        Check(std::find(seamExts.begin(), seamExts.end(), "dwg") != seamExts.end(),
+              "preview seam lists dwg");
+    }
+
     // ===== Supported-format inventory =====
     {
         auto dxf = UltraCanvasSupportedFormats::FindByExtension("dxf");
@@ -258,6 +274,20 @@ int main(int argc, char** argv) {
                 UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(ext);
         Check(converter && converter->ValidateFile(path),
               std::string("saved ") + ext + " passes format validation");
+    }
+
+    // ===== The preview seam on a real drawing =====
+    // The DXF the writer just produced, read back through the seam and drawn:
+    // the whole path the media viewer's preview pane and the Filer's
+    // thumbnails take for a format core has no reader for.
+    {
+        auto drawing = LoadVectorPreviewDocument(base + ".dxf");
+        Check(drawing != nullptr, "preview seam reads a drawing into a document");
+        if (drawing) {
+            auto pm = RenderVectorDocumentPixmap(*drawing, 160, 120);
+            Check(pm && pm->GetWidth() == 160 && pm->GetHeight() == 120,
+                  "a document renders to a pixmap of the asked-for size");
+        }
     }
 
     // ===== Load back through the registry (formats with readers) =====

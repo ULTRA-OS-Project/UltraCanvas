@@ -90,10 +90,12 @@ namespace UltraCanvas {
     };
 
 // Call once at startup to make the vector formats available to
-// FileLoader / LoadGraphicsFile / SaveGraphicsFile.
-    inline void RegisterVectorFormatsPlugin() {
-        UltraCanvasGraphicsPluginRegistry::RegisterPlugin(
-                std::make_shared<UltraCanvasVectorFormatsPlugin>());
-    }
+// FileLoader / LoadGraphicsFile / SaveGraphicsFile - and to the media
+// viewer's preview pane and the Filer's thumbnails, which reach the readers
+// through the core-side seam this also installs
+// (UltraCanvasVectorPreview.h). Without the call, core has no vector reader
+// at all and a DXF or a DWG shows nothing, which is what every application
+// that registers no plugins used to get.
+    void RegisterVectorFormatsPlugin();
 
 } // namespace UltraCanvas

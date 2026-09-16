@@ -2,8 +2,8 @@
 // UltraFiler - file manager application built on the UltraCanvas framework:
 // folder tree (UltraCanvasTreeView) + folder content (UltraCanvasFilerWidget)
 // + media preview (UltraCanvasMediaViewer) in a Windows Explorer style window.
-// Version: 0.8.0
-// Last Modified: 2026-08-21
+// Version: 0.9.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -17,6 +17,20 @@
 #include "UltraCanvasUtils.h"
 #include "UltraFilerWindow.h"
 #include "UltraFilerSettingsDialog.h"
+
+// A file manager is judged on what it can show, and a format plugin shows
+// nothing until the application registers it. UltraFiler registered none, so
+// every format outside core - the whole Vector matrix (DXF, DWG and the rest)
+// and every 3D format but STL - previewed as a type glyph and greyed itself
+// out on the Display > Thumbnails and Display > Detail view pages, in builds
+// that had the readers compiled in and sitting idle. Each plugin is built
+// only when its CMake option is on, so each include is guarded.
+#ifdef ULTRAFILER_HAS_VECTOR_PLUGIN
+#include "UltraCanvasVectorFormatsPlugin.h"
+#endif
+#ifdef ULTRAFILER_HAS_MODELS_PLUGIN
+#include "Models/UltraCanvasModelFormatsPlugin.h"
+#endif
 
 #ifdef _WIN32
 #include <windows.h>
@@ -106,6 +120,16 @@ int main(int argc, char* argv[]) {
         app.SetDefaultWindowIcon(
                 NormalizePath(GetResourcesDir() + "media/appicon/UltraFiler.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
+
+        // Before the window: the settings pages read what this build can show
+        // when they are first built, and the Filer's format list is what
+        // decides which switches are live.
+#ifdef ULTRAFILER_HAS_VECTOR_PLUGIN
+        RegisterVectorFormatsPlugin();
+#endif
+#ifdef ULTRAFILER_HAS_MODELS_PLUGIN
+        RegisterModelFormatsPlugin();
+#endif
 
         UltraFilerWindow mainWindow;
         if (!mainWindow.Initialize(folderToOpen)) {

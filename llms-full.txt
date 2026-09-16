@@ -19404,7 +19404,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (emf, wmf, dxf, the DWG family — dwg, dwt, dws, sv$ — older RIFF cdr, an EPS written without a preview) has no renderer that works without a window and keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
@@ -19503,7 +19503,7 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 
 `thumbnailSupported` answers for the format in **this** build, and it answers
 honestly: false for audio (nothing reads cover art), for the vector formats
-with no renderer and no embedded preview (emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings), for PDF without
+with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
 reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
 ones are refused by the text-preview extractor too, so the tile keeps its type
@@ -31469,6 +31469,7 @@ viewer in a top-level window.
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
 | `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
+| `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF and XAR once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
@@ -54689,6 +54690,43 @@ LoadGraphicsFile("Plan.bak");   // a drawing when its header says so, else null
 
 Writing is unchanged: the save list names `.dwg` alone, because the alias
 suffixes are what drawings arrive under, not what a "save as" offers.
+
+## Previews: what the media viewer and the Filer show
+
+Core owns the vector document model and the renderer that draws one, but no
+reader — every reader is in this plugin, which links *against* core. So the
+media viewer's preview pane and the Filer's thumbnails could only show a
+drawing two ways: rasterized by libvips (svg/svgz, and eps/ps where the
+libvips build has a PostScript loader), or as the preview bitmap some formats
+store inside themselves. A DXF or a DWG is neither, so it showed nothing —
+in a build whose Vector plugin had just read the same drawing for the
+FileLoader.
+
+`RegisterVectorFormatsPlugin()` now also installs a **vector preview
+provider** (`UltraCanvasVectorPreview.h`), the same seam
+`UltraCanvasModelPreview.h` is for 3D formats: core asks "turn this path into
+a `VectorDocument`" and "is this one you read", and the plugin answers. With
+it registered:
+
+- `UltraCanvasMediaViewer` opens a drawing in `UltraCanvasVectorElement` — the
+  document itself, sharp at any zoom, not a bitmap of it;
+- the Filer's thumbnail workers render the document at the tile's size
+  (serialized: unlike the other preview producers, drawing a document touches
+  the process-wide font machinery);
+- the Filer's **Display > Thumbnails** and **Display > Detail view** settings
+  pages stop greying the formats out, because `GetPreviewableFormats()` asks
+  the same seam.
+
+```cpp
+RegisterVectorFormatsPlugin();                    // once, at startup
+
+CanPreviewVectorExtension("dwg");                 // true
+LoadVectorPreviewDocument("plan.dxf");            // a VectorDocument
+RenderVectorPreviewPixmap("plan.dwg", 256, 256);  // a UCPixmap for a tile
+```
+
+An application that registers no plugin is unchanged: the seam answers no to
+everything and the old two ways are all there is.
 
 ## The graphics plugin (load and save through the registry)
 

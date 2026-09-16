@@ -101,6 +101,43 @@ LoadGraphicsFile("Plan.bak");   // a drawing when its header says so, else null
 Writing is unchanged: the save list names `.dwg` alone, because the alias
 suffixes are what drawings arrive under, not what a "save as" offers.
 
+## Previews: what the media viewer and the Filer show
+
+Core owns the vector document model and the renderer that draws one, but no
+reader — every reader is in this plugin, which links *against* core. So the
+media viewer's preview pane and the Filer's thumbnails could only show a
+drawing two ways: rasterized by libvips (svg/svgz, and eps/ps where the
+libvips build has a PostScript loader), or as the preview bitmap some formats
+store inside themselves. A DXF or a DWG is neither, so it showed nothing —
+in a build whose Vector plugin had just read the same drawing for the
+FileLoader.
+
+`RegisterVectorFormatsPlugin()` now also installs a **vector preview
+provider** (`UltraCanvasVectorPreview.h`), the same seam
+`UltraCanvasModelPreview.h` is for 3D formats: core asks "turn this path into
+a `VectorDocument`" and "is this one you read", and the plugin answers. With
+it registered:
+
+- `UltraCanvasMediaViewer` opens a drawing in `UltraCanvasVectorElement` — the
+  document itself, sharp at any zoom, not a bitmap of it;
+- the Filer's thumbnail workers render the document at the tile's size
+  (serialized: unlike the other preview producers, drawing a document touches
+  the process-wide font machinery);
+- the Filer's **Display > Thumbnails** and **Display > Detail view** settings
+  pages stop greying the formats out, because `GetPreviewableFormats()` asks
+  the same seam.
+
+```cpp
+RegisterVectorFormatsPlugin();                    // once, at startup
+
+CanPreviewVectorExtension("dwg");                 // true
+LoadVectorPreviewDocument("plan.dxf");            // a VectorDocument
+RenderVectorPreviewPixmap("plan.dwg", 256, 256);  // a UCPixmap for a tile
+```
+
+An application that registers no plugin is unchanged: the seam answers no to
+everything and the old two ways are all there is.
+
 ## The graphics plugin (load and save through the registry)
 
 `UltraCanvasVectorFormatsPlugin` exposes the matrix to the framework's
