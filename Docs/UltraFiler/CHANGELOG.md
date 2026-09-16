@@ -1,3 +1,53 @@
+#### 2026-09-15 *1.35.0*
+- **Settings > Extras > Cache: what UltraFiler is holding, and whether it
+  should.** A page beside *Open prompt* and *History & Favorites* with two
+  switches and four figures.
+
+  The switches are **Keep thumbnails on disk between runs** (on) and
+  **Compress thumbnails held in memory** (off - roughly a quarter the size,
+  at the cost of unpacking each tile as it comes on screen). Both apply to
+  every open tab straight away and are saved, like every other setting here.
+
+  The figures are what is held against what may be held: what is on disk, the
+  previews in memory and their ceiling, the application icons and *their*
+  ceiling - they have their own so that a folder of photos cannot push the
+  programs' icons out - and, with compression on, the tiles unpacked for
+  drawing. The ceilings are the framework's own numbers, asked for rather than
+  written down here, so this page cannot fall out of step with them. The path
+  the files are kept at is shown under the figures.
+
+  **Empty cache** deletes them all and frees the memory; **Refresh** re-reads
+  the figures, which is worth a press after emptying, because whatever is on
+  screen is decoded again immediately and goes straight back into the cache.
+
+#### 2026-09-15 *1.34.1*
+- **Thumbnails come back, and they come back fast.** Two framework changes
+  carry to UltraFiler here (see framework 0.8.62); nothing changed in the
+  application itself.
+
+  The first is the reason thumbnails could stop appearing altogether. The
+  shared image cache miscounted the bytes it held, in a way that could wrap its
+  total to an enormous number — after which it evicted everything on every
+  insert and effectively cached nothing, so every picture in a folder was
+  decoded again on every repaint. It looked like a cache that was full, and in
+  the sense that mattered it was: permanently, and with nothing in it. Browsing
+  a folder with animated GIF or WebP files in it was enough to trigger it.
+
+  The second is that finished thumbnails are now kept **between runs**, in
+  `%LOCALAPPDATA%\UltraCanvas\thumbnails` on Windows (`~/Library/Caches/…` on
+  macOS, `$XDG_CACHE_HOME/…` elsewhere), so the folder that cost minutes of
+  decoding on its first visit draws from disk on every visit after it,
+  restarts included. A thumbnail whose file has since been edited is never
+  served — the entry records what it was made from — so this cannot show a
+  stale picture.
+
+  The cache looks after its own size: an entry is stamped with the day it was
+  last served, and entries not served for **two weeks** are deleted at startup.
+  A folder you keep visiting keeps its thumbnails; one you opened once pays for
+  itself and then goes away. Application icons are not stored — Windows
+  produces those faster than a file read, and an upgraded program must not show
+  yesterday's icon.
+
 #### 2026-09-14 *1.34.0*
 - **The folder the detail pane is showing can be moved into the folder
   display with one click.** Clicking a folder shows what is in it in the

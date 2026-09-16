@@ -106,6 +106,12 @@ menuBar->AddItem(UltraCanvasSpellChecker::BuildSpellCheckMenu(options));
 
 std::vector<MenuItemData> items = UltraCanvasSpellChecker::BuildSpellCheckMenuItems(options);
 std::vector<MenuItemData> languages = UltraCanvasSpellChecker::BuildLanguageMenuItems(true);
+
+// With a handler, the application decides what picking a dictionary means.
+// UltraTexter switches checking on at the same time, because a language chosen
+// on a document that stays unmarked reads as a broken spell checker.
+std::vector<MenuItemData> ownLanguages = UltraCanvasSpellChecker::BuildLanguageMenuItems(
+    true, [this](const std::string& code) { OnDictionaryPicked(code); });
 ```
 
 ### Settings and style
@@ -158,6 +164,38 @@ Stale results are discarded automatically: the worker compares its `jobId`
 against the newest job for that context before publishing, so a slow check that
 finishes after a newer edit is dropped rather than painting marks at old
 positions.
+
+### What a backend must survive
+
+Because the UI thread manages the language and the worker thread runs the
+checks, **every backend is entered from two threads**. On Windows that is not
+just a locking question: COM objects belong to the apartment of the thread that
+created them, and UltraCanvas calls `OleInitialize()` on the UI thread, so
+anything created there is single-threaded-apartment bound. The Windows backend
+therefore keeps its `ISpellCheckerFactory` and `ISpellChecker` **per thread**,
+created in that thread's own apartment and released when it exits; only the
+selected language is shared, with a generation counter telling each thread when
+its checker is stale.
+
+Sharing one checker across the two threads is the failure this design exists to
+prevent: the cross-apartment call fails, `IsWordCorrect()` answers "correct" to
+every word, and the application shows a spell checker whose menus all work and
+whose documents are never marked.
+
+### Diagnosing "nothing is marked"
+
+`debugOutput` (see `UltraCanvasDebug.h`; set `ULTRACANVAS_DEBUG_LOG=1` or a file
+path in any build) carries two lines that separate the possible causes:
+
+```
+UltraCanvasSpellChecker: backend Windows ISpellChecker, dictionaries: 41, language: 'de-DE'
+TextArea: spell check of 4821 bytes returned 7 error(s), language 'de-DE'
+```
+
+An empty `language` means no dictionary is loaded and every word will look
+correct. `0 error(s)` on text that clearly has typos means the backend answered
+"correct" to everything - a dictionary that failed to load, or a backend being
+used from the wrong thread.
 
 Because results are drained while rendering, a check that finishes *after* the
 edit's repaint would otherwise sit undelivered. `SetContextNotifier()` closes
@@ -223,7 +261,22 @@ bool SetLanguage(const std::string& languageCode);
 std::string GetLanguage() const;
 SpellLanguageInfo GetLanguageInfo(const std::string& languageCode) const;
 std::string DetectPreferredLanguage() const;
+std::string ResolveAvailableLanguageCode(const std::string& requested) const;
 ```
+
+Language codes are matched case-insensitively and with `-` and `_` treated as
+the same separator, so a code saved on one machine selects the right dictionary
+on another: enchant enumerates `en_US`, Windows and macOS enumerate `en-US`, and
+the POSIX variables add a charset (`en_US.UTF-8`) on top. `SetLanguage()` runs
+its argument through `ResolveAvailableLanguageCode()` first and reports the
+resolved spelling through `onSpellLanguageChange`, so what a host stores in its
+settings is what the backend enumerated.
+
+`DetectPreferredLanguage()` asks, in order: `LC_ALL`, `LC_MESSAGES`, `LANG`,
+`LANGUAGE`; then the backend's `GetPreferredLanguageHint()` (on Windows the
+locale from `GetUserDefaultLocaleName`, since the POSIX variables are normally
+unset there); then the same base language with any region; then the first
+available dictionary.
 
 ### Mode and style
 ```cpp
@@ -272,7 +325,9 @@ to the on-disk list, whose parent directory is created on demand.
 ```cpp
 static MenuItemData BuildSpellCheckMenu(const SpellMenuOptions& = SpellMenuOptions());
 static std::vector<MenuItemData> BuildSpellCheckMenuItems(const SpellMenuOptions& = SpellMenuOptions());
-static std::vector<MenuItemData> BuildLanguageMenuItems(bool useNativeNames = true);
+static std::vector<MenuItemData> BuildLanguageMenuItems(
+    bool useNativeNames = true,
+    std::function<void(const std::string&)> onSelect = nullptr);
 static std::vector<MenuItemData> BuildSuggestionMenuItems(
     const SpellError& error,
     std::function<void(const std::string&)> onApply,

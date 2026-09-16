@@ -1,83 +1,72 @@
-#### 2026-09-15 *0.8.63*
-- **Every image export is written the safe way now, not just a paint
-  document's save.** 0.8.62 gave `UCRasterDocument::SaveToFile` a staged
-  write - encode beside the target, move it into place once it is whole - but
-  the framework's own export path still handed each libvips saver the caller's
-  file. Every one of them opens truncating, so an export that failed after
-  that point destroyed the picture that was already there. Measured: exporting
-  an image wider than JPEG can represent (libjpeg stops at 65500 pixels) over
-  an existing file leaves it 0 bytes long, because the encoder opens and
-  empties the destination before it checks the dimensions. That reached users
-  through `UCImageRaster::Save` and the image export dialog.
-  `WriteFileAtomically()` in `UltraCanvasFileError.h` now holds the one copy of
-  that logic - staged path in the target's own folder, the target's
-  permissions carried across, a symlink written through rather than replaced,
-  the staged file removed on every failure path including an exception, and
-  the staged name replaced by the caller's own in whatever an encoder says
-  went wrong. `ExportVImage` wraps its encoding half in it, so every caller of
-  the export path gets the guarantee; `SaveToFile` uses it for the one write
-  that does not go that way and hands `ExportVImage` the real path, so a save
-  is staged once rather than twice. `RasterEditingTest` covers both paths with
-  a failure that happens *inside* the encoder, with the destination already
-  open - which is the case that actually destroys a file, and which passes
-  whether or not the write is staged if the test only uses a format nothing
-  can encode.
-
 #### 2026-09-15 *0.8.62*
-- **An image saves over the file it was opened from again, and a save that
-  fails no longer costs the user the file that was there.** Reported from
-  UltraPaint on Windows: opening a JPEG, editing it and pressing Save put up
-  `unable to open for write / system error: Invalid argument`, followed by a
-  write error, `VipsJpeg: unable to write to target` and two
-  `wbuffer_write: write failed` lines - none of which named a cause a user
-  could act on, and all of which were about the user's own file, in their own
-  Downloads folder, which nothing else was holding.
-  Three separate defects, one symptom:
-  - **The editor never let go of the file it had read.** libvips keeps
-    finished operations in a cache, so the loader of an image read minutes ago
-    is still alive - and for a JPEG it keeps the source file *memory-mapped*
-    (measured: the mapping is still in `/proc/self/maps` after the document has
-    copied every pixel into its own buffer and dropped the image; PNG and TIFF
-    do not map). Windows will not truncate a file that has a mapping open in
-    the process: the open fails with `ERROR_USER_MAPPED_FILE`, which the C
-    runtime reports as `EINVAL` - the "Invalid argument" in the dialog. Linux
-    allows the same truncate, which is why this never showed up here.
-    `PixelFX::ReleaseCachedFiles()` now drops those cached operations, and
-    `UCRasterDocument` calls it as soon as a load has been materialised and
-    again before every save. It trims the cache to nothing and lets it grow
-    again rather than calling `vips_cache_drop_all()`, which reads like the
-    call for this and instead frees the cache table, so that the next libvips
-    operation dereferences freed memory and crashes (reproduced on 8.15).
-  - **The save truncated the target before the first byte was encoded.**
-    `write_to_file` opens with `O_TRUNC`, so any failure after that point -
-    no space, a codec error, a destination that is refusing the write - left
-    the user with the remains of the write instead of the image they had.
-    (Writing an image over a file libvips is still reading does it in one
-    step: on Linux the same case truncates the source under the mapping and
-    the process takes a `SIGBUS` mid-encode.) `UCRasterDocument::SaveToFile`
-    now encodes into a temporary file in the target's own folder and renames
-    it over the target - same volume, so the replacement is atomic - carrying
-    the target's permissions across so a private image does not quietly widen
-    to the default mode, removing the temporary file on every failure path,
-    and putting the caller's own file name back into any message an encoder
-    wrote about the temporary one.
-  - **The reason was reported as a transcript.** libvips appends to a
-    process-wide error buffer and returns the whole of it, so
-    `PixelFX::FileIO::Save` / `SaveWithOptions` and `PFXImage::FromFile`
-    reported this failure together with everything left over from earlier
-    operations - the stack of contradictory lines in the dialog. They clear
-    the buffer first now, as `UCImageRaster::Save` and `ExportVImage` already
-    did.
-  Letting go of the cached loader also fixes a second symptom of the same
-  cause: libvips keys a cached load on the file *name*, and nothing in it
-  notices that the file has since been rewritten, so re-opening an image that
-  was saved earlier in the session handed back the image from before the save.
-  Measured: a black JPEG overwritten with a white one still reads back as
-  black until the cache lets go, and reads white afterwards. That is what the
-  new test catches on Linux, where the truncate itself is allowed.
-  `RasterEditingTest` covers the round trip over the file the document was
-  opened from, that the temporary file leaves no trace, and that a save which
-  cannot be encoded leaves the existing file byte-for-byte intact.
+- **The shared image cache could wedge itself permanently full, and then
+  nothing was cached at all.** `UCCache` (`UltraCanvasUtils.h`) keeps a running
+  total of the bytes it holds and asked each entry for its size *again* when it
+  evicted one. For several payloads that answer grows after the entry is
+  stored — `UCImageRaster::GetDataSize()` counts an animation decoded lazily,
+  `UCSvgDocument::GetMemoryBytes()` counts pages rasterized on demand — so an
+  eviction gave back more than was ever charged. The total is a `size_t`: it
+  wrapped. Every insert after that found itself over budget, and the loop that
+  makes room emptied the entire cache to fit one entry, for the rest of the
+  session. The four caches built on it (pixmaps, images, SVG documents, text
+  layouts) then held a single item each, so every picture was decoded again on
+  every use — which is what "the thumbnails stopped showing" looked like in
+  UltraFiler, on a folder that had merely been browsed for long enough. The
+  size is now asked **once, when the entry is stored**, and exactly that is
+  returned on every path out of it; storing the same key twice (four thumbnail
+  workers missing on one picture at the same moment) returns the old entry's
+  bytes before charging the new one, and the subtraction is floored so no
+  future accounting slip can wrap the counter again. `Tests/ImageCacheAccountingTest`
+  covers both, and fails twelve ways against the old code.
+- **Thumbnails now survive the process that made them.** The Filer's thumbnail
+  cache was memory only, so a folder of photos, videos or documents was decoded
+  again on every launch — and again after any browsing wide enough to push it
+  out of the 96 MB budget. Finished **content previews** are now also written
+  to a per-user cache directory (`%LOCALAPPDATA%\UltraCanvas\thumbnails`,
+  `~/Library/Caches/UltraCanvas/thumbnails`, `$XDG_CACHE_HOME/UltraCanvas/thumbnails`)
+  as QOI blobs — the same compression the in-memory "compressed thumbnails"
+  option uses, so the blob is made once and serves both — and asked for before
+  any decode is queued. Application icons are deliberately not stored: the
+  shell extracts one faster than this could read a file, and an upgraded
+  program must not show yesterday's icon. Staleness is the source file's to
+  decide, not a timer's: each entry records the size and modification time it
+  was made from, and a mismatch deletes the entry and re-decodes, so editing a
+  picture shows the edit. `UltraCanvasThumbnailDiskCache.h`;
+  `SetThumbnailDiskCacheEnabled()`, `GetThumbnailDiskCacheUsage()` and
+  `ClearThumbnailDiskCache()` on the widget switch, measure and empty it.
+- **The thumbnail cache can now be shown and emptied from an application.**
+  `GetThumbnailCacheStats()` reports the three memory ceilings beside what is
+  used, and counts the application icons separately from the previews - a
+  settings page showing "x of y" should not carry its own copy of y, which is
+  how such a page comes to claim a budget the widget stopped using.
+  `ClearThumbnailMemoryCache()` drops the retained pictures on demand, and
+  `SetThumbnailDiskCacheEnabled()`, `GetThumbnailDiskCacheDirectory()`,
+  `GetThumbnailDiskCacheUsage()` and `ClearThumbnailDiskCache()` do the same
+  for the disk half. `GetThumbnailDiskCacheDirectory()` answers whether or not
+  the cache is switched on: switching it off does not move the files, and a
+  page that reported "nowhere to write" for a cache the user had simply turned
+  off would be describing a machine that does not exist. UltraFiler 1.35.0 is
+  the first caller.
+- **Used files are touched, unused ones are deleted after two weeks.** A cache
+  keyed by where its content came from is orphaned by every move, rename,
+  upgrade and delete the user makes, and nothing tells it — so without an
+  expiry it grows for the life of the account. Serving an entry stamps it with
+  the day (at most one write per file per day, so scrolling a folder of a
+  thousand pictures costs no disk writes after the first) and entries not
+  served for two weeks are swept by the first thumbnail worker to start —
+  off the UI thread, because it walks a directory. A folder the user keeps
+  visiting keeps its thumbnails indefinitely.
+- **That retention policy now has one implementation, not two.**
+  `UltraCanvasDiskCache` (`core/UltraCanvasDiskCache.cpp`) holds the per-user
+  cache root, the throttled `Touch()` and the `Sweep()`, and both on-disk
+  caches use it: `FileAssociationsBackend::StampIconCacheFile` /
+  `SweepIconCache` are now three-line wrappers over it and `kIconCacheMaxAge`
+  is the shared default. The icon cache grew this policy first (0.3.98); a
+  second hand-written copy for thumbnails is how two caches orphaned by the
+  same events end up expiring on two different rules.
+  `Tests/ThumbnailDiskCacheTest` covers storing and serving, an edited source,
+  a missing source, the stamp and its throttle, the sweep, a clock that was set
+  back, and that nothing outside the cache's own extensions is ever deleted.
 
 #### 2026-09-15 *0.8.51*
 - **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`

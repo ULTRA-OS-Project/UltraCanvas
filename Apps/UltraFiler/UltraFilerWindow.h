@@ -713,6 +713,10 @@ private:
     // a display revealed by hand stays revealed. Starts at the shipped
     // default, which is what a fresh display is created with.
     bool hiddenFilesApplied = false;
+    // Extras > Cache > Compress thumbnails in memory, likewise: changing it
+    // makes a display drop its thumbnails and decode them again, so it is
+    // pushed only when it moved. Starts at the shipped default.
+    bool compressedThumbnailsApplied = false;
     // Set by the monitor's thread, cleared by the UI thread that acts on it:
     // one tree pass per burst, however many notifications an insertion makes.
     std::atomic<bool> volumeRefreshPending{false};

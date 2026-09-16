@@ -1,7 +1,7 @@
 // Apps/Texter/UltraCanvasTextEditorSpellCheck.cpp
 // Spell checking and the editor context menu for UltraTexter
-// Version: 1.0.0
-// Last Modified: 2026-08-28
+// Version: 1.1.0
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 //
 // The checking itself lives in the framework (UltraCanvasSpellChecker plus the
@@ -106,8 +106,19 @@ void UltraCanvasTextEditor::ShutdownSpellChecker() {
     editors.erase(std::remove(editors.begin(), editors.end(), this), editors.end());
 }
 
-bool UltraCanvasTextEditor::EnsureSpellServiceReady() {
+// Loads the backend and restores the configured dictionary, without turning
+// checking on: the Spelling menu needs the dictionary list whether or not the
+// user has enabled checking yet, and offering an empty list reads as "this
+// machine has no dictionaries installed".
+bool UltraCanvasTextEditor::EnsureSpellDictionariesAvailable() {
     UltraCanvasSpellChecker& service = UltraCanvasSpellChecker::Instance();
+
+    // Read before Initialize(). The service picks a default dictionary while it
+    // starts and raises onSpellLanguageChange for it, and this application's
+    // handler writes that code straight into config.spellCheckLanguage - so by
+    // the time Initialize() returns, the language the user chose last session
+    // has already been overwritten unless it was copied out first.
+    const std::string savedLanguage = config.spellCheckLanguage;
 
     if (!service.IsInitialized() && !service.Initialize()) {
         debugOutput << "UltraTexter: no spell check backend available" << std::endl;
@@ -118,15 +129,22 @@ bool UltraCanvasTextEditor::EnsureSpellServiceReady() {
         return false;
     }
 
-    // An empty setting means "whatever the desktop locale asks for", which is
-    // resolved once and then written back so the choice is stable.
-    std::string language = config.spellCheckLanguage;
-    if (language.empty()) language = service.DetectPreferredLanguage();
-    if (!language.empty() && language != service.GetLanguage()) {
-        service.SetLanguage(language);
+    if (!savedLanguage.empty()) {
+        // SetLanguage resolves the spelling, so a code saved on another machine
+        // ("en_US" against a backend that enumerates "en-US") still matches.
+        if (savedLanguage != service.GetLanguage()) service.SetLanguage(savedLanguage);
+    } else {
+        // Nothing chosen yet: keep whatever the service derived from the
+        // desktop locale, so the choice is stable across restarts.
+        config.spellCheckLanguage = service.GetLanguage();
     }
+    return true;
+}
 
-    service.SetMode(SpellCheckMode::AsYouType);
+bool UltraCanvasTextEditor::EnsureSpellServiceReady() {
+    if (!EnsureSpellDictionariesAvailable()) return false;
+
+    UltraCanvasSpellChecker::Instance().SetMode(SpellCheckMode::AsYouType);
     return true;
 }
 
@@ -223,6 +241,57 @@ void UltraCanvasTextEditor::OnSpellLanguageChanged(const std::string& languageCo
     RecheckAllDocuments();
 }
 
+// Picking a dictionary is how a user says "check my spelling, in this
+// language", so it turns checking on as well when it is off. The alternative -
+// setting the language and leaving the document unmarked - looks exactly like a
+// broken spell checker.
+void UltraCanvasTextEditor::OnSpellDictionarySelected(const std::string& languageCode) {
+    UltraCanvasSpellChecker& service = UltraCanvasSpellChecker::Instance();
+
+    if (!service.SetLanguage(languageCode)) {
+        // A listed dictionary that will not load has to say so: silently
+        // keeping the previous one is indistinguishable from a spell checker
+        // that has stopped working.
+        debugOutput << "UltraTexter: dictionary '" << languageCode
+                    << "' could not be loaded" << std::endl;
+
+        const SpellLanguageInfo info = service.GetLanguageInfo(languageCode);
+        const std::string name = info.nativeName.empty() ? languageCode : info.nativeName;
+        UltraCanvasDialogManager::ShowInformation(
+            "The " + name + " dictionary could not be loaded.\n\n"
+            "Spell checking is still using " +
+            (service.GetLanguage().empty() ? std::string("no dictionary")
+                                           : service.GetLanguage()) + ".",
+            "Spell Check Dictionary",
+            nullptr, this);
+        return;
+    }
+
+    if (!config.spellCheckEnabled) OnEditToggleSpellCheck(true);
+}
+
+std::vector<MenuItemData> UltraCanvasTextEditor::BuildDictionaryMenuItems() {
+    std::vector<MenuItemData> languages;
+
+    // Loading the backend from here - when the menu opens - rather than at
+    // startup keeps a session that never opens this menu from paying for the
+    // dictionary scan, while still filling the list before checking is on.
+    if (EnsureSpellDictionariesAvailable()) {
+        languages = UltraCanvasSpellChecker::BuildLanguageMenuItems(
+            true,
+            [this](const std::string& languageCode) {
+                OnSpellDictionarySelected(languageCode);
+            });
+    }
+
+    if (languages.empty()) {
+        MenuItemData none = MenuItemData::Action("(no dictionaries installed)", []() {});
+        none.enabled = false;
+        languages.push_back(std::move(none));
+    }
+    return languages;
+}
+
 std::vector<MenuItemData> UltraCanvasTextEditor::BuildSpellingMenuItems() {
     std::vector<MenuItemData> items;
 
@@ -234,23 +303,20 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildSpellingMenuItems() {
     items.push_back(MenuItemData::Separator());
 
     // Lambda-provided, so the active-language radio is right every time the
-    // submenu opens even though the menu bar is built once at startup.
-    items.push_back(MenuItemData::Submenu("Dictionary", []() {
-        std::vector<MenuItemData> languages;
-        UltraCanvasSpellChecker& service = UltraCanvasSpellChecker::Instance();
-        if (service.IsInitialized()) {
-            languages = UltraCanvasSpellChecker::BuildLanguageMenuItems(true);
-        }
-        if (languages.empty()) {
-            MenuItemData none = MenuItemData::Action("(no dictionaries installed)", []() {});
-            none.enabled = false;
-            languages.push_back(std::move(none));
-        }
-        return languages;
+    // submenu opens even though the menu bar is built once at startup - and so
+    // the backend is only loaded if the user actually looks at the list.
+    items.push_back(MenuItemData::Submenu("Dictionary", [this]() {
+        return BuildDictionaryMenuItems();
     }));
 
-    MenuItemData recheck = MenuItemData::Action("Recheck Document", []() {
+    // Re-checking with checking switched off would have nothing to draw on, so
+    // the entry follows the toggle.
+    MenuItemData recheck = MenuItemData::Action("Recheck Document", [this]() {
         UltraCanvasSpellChecker::Instance().RequestRecheck();
+        // RequestRecheck reaches every window through the service callback;
+        // this window is re-checked directly as well so the entry still works
+        // if the document was opened before the callbacks were installed.
+        RecheckAllDocuments();
     });
     recheck.enabled = config.spellCheckEnabled;
     items.push_back(std::move(recheck));

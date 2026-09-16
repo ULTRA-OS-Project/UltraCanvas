@@ -632,7 +632,9 @@ the backing implementation can be replaced without affecting callers.
   render thread. Backends are wrapped behind the UltraCanvas-owned
   `ISpellCheckBackend` (`ISpellCheckBackend.h`), never exposed: enchant-2 on
   Linux, ISpellChecker on Windows 8+, NSSpellChecker on macOS, each in
-  `OS/<Platform>/UltraCanvasSpellCheckSupport.*`, with Hunspell
+  `OS/<Platform>/UltraCanvasSpellCheckSupport.*` — each entered from both the
+  UI and the worker thread, which on Windows means per-thread COM objects
+  because `OleInitialize` puts the UI thread in an STA — with Hunspell
   (`core/SpellCheckBackendHunspell.cpp`) as the portable fallback and the only
   backend on Android and WASM. Every dependency is optional — the service falls
   back native → Hunspell → a no-op reporting zero dictionaries, so a missing
@@ -640,7 +642,11 @@ the backing implementation can be replaced without affecting callers.
   - Lifecycle and backend: `Initialize` / `Shutdown` / `IsInitialized`,
     `SetBackend`, `GetBackendName`.
   - Language: `GetAvailableLanguages` / `SetLanguage` / `GetLanguage` /
-    `GetLanguageInfo` / `DetectPreferredLanguage` (from `LC_ALL` / `LANG`).
+    `GetLanguageInfo` / `DetectPreferredLanguage` (from `LC_ALL` / `LANG`, then
+    the backend's own `GetPreferredLanguageHint` — the OS locale on Windows,
+    where those variables are normally unset) / `ResolveAvailableLanguageCode`.
+    Codes are matched separator- and case-insensitively, so `en_US` from a
+    settings file selects the `en-US` a Windows or macOS backend enumerates.
   - Checking: `IsCorrect`, `GetSuggestions`, `CheckText` (synchronous), and the
     asynchronous `QueueCheckText` / `TryTakeResult` / `CancelContext` /
     `SetContextNotifier` pair-with-drain used by text elements.
@@ -648,8 +654,9 @@ the backing implementation can be replaced without affecting callers.
     `IgnoreWord` / `ClearIgnoredWords` / `RequestRecheck`, with
     `SetUserDictionaryPath` / `Load` / `Save`.
   - Menus: `BuildSpellCheckMenu` (a lambda-provided submenu that shows live
-    state), `BuildSpellCheckMenuItems`, `BuildLanguageMenuItems` (radio group),
-    `BuildSuggestionMenuItems` (right-click list).
+    state), `BuildSpellCheckMenuItems`, `BuildLanguageMenuItems` (radio group,
+    with an optional handler so the application decides what picking a
+    dictionary does), `BuildSuggestionMenuItems` (right-click list).
   - `namespace SpellCheckText` — UTF-8 tokenizer and byte/codepoint mapping;
     `namespace SpellCheckRendering` — squiggle drawing over `IRenderContext`,
     usable by any component that can produce a word rectangle.

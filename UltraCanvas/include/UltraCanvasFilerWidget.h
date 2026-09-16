@@ -98,6 +98,7 @@
 #include "UltraCanvasTextWrapping.h"
 #include "UltraCanvasTimer.h"
 #include "UltraCanvasSmoothScroll.h"
+#include "UltraCanvasThumbnailDiskCache.h"
 #include <atomic>
 #include <chrono>
 #include <condition_variable>
@@ -706,18 +707,64 @@ namespace UltraCanvas {
         void SetFlexibleTileWidths(bool enabled);
         bool GetFlexibleTileWidths() const { return flexibleTileWidths; }
 
-        // Snapshot of what the thumbnail cache currently holds — lets an
-        // application (or an A/B test) compare the footprint of compressed
-        // vs. raw storage. rawBytes is what the same thumbnails would take
-        // uncompressed; with compression off, storedBytes == rawBytes.
+        // "Keep thumbnails between runs": finished content previews are also
+        // written to a per-user cache directory, so the folder that cost
+        // minutes of decoding on its first visit draws from disk on every one
+        // after it — including after a restart. On by default. Application
+        // icons are never stored (the shell is faster than a file read, and
+        // an upgraded program must not show yesterday's icon), and an entry
+        // whose file has changed size or modification time is not served.
+        //
+        // Entries are stamped with the day they were last served and swept
+        // when they have not been served for two weeks, so a folder the user
+        // keeps visiting keeps its thumbnails and one they opened once pays
+        // for itself and then goes away. Switching this off stops reading and
+        // writing; what is on disk is left to expire on its own.
+        // See UltraCanvasThumbnailDiskCache.h.
+        static void SetThumbnailDiskCacheEnabled(bool enabled) {
+            ThumbnailDiskCache::SetEnabled(enabled);
+        }
+        static bool IsThumbnailDiskCacheEnabled() {
+            return ThumbnailDiskCache::IsEnabled();
+        }
+        // Where those files are, what they occupy, and how to throw them
+        // away now — for a settings page that shows and clears the cache.
+        static std::string GetThumbnailDiskCacheDirectory() {
+            return ThumbnailDiskCache::Directory();
+        }
+        static DiskCache::Usage GetThumbnailDiskCacheUsage() {
+            return ThumbnailDiskCache::GetUsage();
+        }
+        static size_t ClearThumbnailDiskCache() {
+            return ThumbnailDiskCache::Clear();
+        }
+
+        // Snapshot of what the IN-MEMORY thumbnail cache currently holds —
+        // lets an application (or an A/B test) compare the footprint of
+        // compressed vs. raw storage. rawBytes is what the same thumbnails
+        // would take uncompressed; with compression off,
+        // storedBytes == rawBytes.
         struct ThumbCacheStats {
             size_t entries = 0;       // finished thumbnails held
             size_t storedBytes = 0;   // bytes actually held (blobs or raw)
             size_t rawBytes = 0;      // raw ARGB32 size of those thumbnails
             size_t hotEntries = 0;    // decompressed tiles in the hot cache
             size_t hotBytes = 0;
+            // The ceilings those three are measured against, reported rather
+            // than published as constants so a settings page can show "x of y"
+            // without keeping its own copy of the numbers to fall out of date.
+            size_t contentBudget = 0; // ceiling for content previews
+            size_t iconBudget = 0;    // ceiling for application icons
+            size_t hotBudget = 0;     // ceiling for the decompressed tiles
+            size_t iconEntries = 0;   // how many of `entries` are icons
+            size_t iconBytes = 0;     // and what they occupy
         };
         ThumbCacheStats GetThumbnailCacheStats() const;
+
+        // Throw the retained thumbnails away now, freeing the memory the
+        // stats above report; the tiles on screen re-decode on the next
+        // frame. What a settings page's "Empty cache" button calls.
+        void ClearThumbnailMemoryCache();
 
         // The small icon menu (Copy / Cut / Rename / Delete) shown at the top
         // right of the hovered item. Also toggled by the Display > Icon-Menu
@@ -1694,6 +1741,11 @@ namespace UltraCanvas {
         void PostThumbnailRedraw();
         static std::string ThumbSlotKey(const std::string& path, int w, int h,
                                         ImageFitMode fit, float scale);
+        // The same request as the disk cache keys it (see
+        // UltraCanvasThumbnailDiskCache.h). Memory and disk must describe a
+        // request identically or every tile misses on disk.
+        static ThumbnailDiskCache::Request DiskCacheRequestFor(
+                const ThumbRequest& req);
         // The image file a tile displays; empty when the entry has none.
         std::string ThumbSourceFor(const FilerEntry& e) const;
         // The exact icon rect + fit mode the draw call will use for an item
