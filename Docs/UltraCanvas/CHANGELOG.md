@@ -1,4 +1,4 @@
-#### 2026-09-15 *0.8.62*
+#### 2026-09-16 *0.8.64*
 - **`UltraCanvasListView` shows the tooltips its model has always held.**
   `ListItem::tooltip` and `MultiColumnListItem::tooltip` fed `ToolTipRole`,
   and nothing ever read it: the view never called
@@ -34,6 +34,8 @@
   descriptions, per-column file details), the file table's headers explain
   their columns, and clicking a cell reports which column it was and the
   tooltip behind it.
+
+#### 2026-09-15 *0.8.62*
 - **The shared image cache could wedge itself permanently full, and then
   nothing was cached at all.** `UCCache` (`UltraCanvasUtils.h`) keeps a running
   total of the bytes it holds and asked each entry for its size *again* when it
