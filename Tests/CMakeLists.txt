@@ -509,6 +509,9 @@ if(TINYXML2_TEST_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/WordFormatsTest.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasZipPackage.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasRichDocument.cpp
+        # The editing core is UI-free, so the edit-then-save round trip an
+        # application performs can be covered here without the UI stack.
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp

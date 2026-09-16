@@ -195,7 +195,14 @@ void UltraCanvasTextEditor::OnInfoFileStatistics() {
             row.createdStr = GetFileCreatedTimeString(doc->filePath);
         }
 
-        std::string text = doc->textArea ? doc->textArea->GetText() : "";
+        // A word-processing tab keeps its content in the rich editor, not in
+        // the text area, so counting the text area would report zero words.
+        std::string text;
+        if (doc->IsRichDocument() && doc->richEdit) {
+            text = doc->richEdit->GetPlainText();
+        } else if (doc->textArea) {
+            text = doc->textArea->GetText();
+        }
         CountWordsAndChars(text, row.wordCount, row.charCount);
         totalWords += row.wordCount;
         totalChars += row.charCount;

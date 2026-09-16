@@ -489,6 +489,155 @@ static void TestDocumentIntegration() {
     CHECK(changes >= 2);
 }
 
+// ===================================================================
+// SEARCH
+// ===================================================================
+static void TestSearch() {
+    std::cout << "\n--- Search ---\n";
+
+    auto doc = std::make_shared<UCRichDocument>();
+    auto addParagraph = [&doc](const std::string& text) {
+        RichDocBlock block;
+        block.type = RichBlockType::Paragraph;
+        RichTextRun run;
+        run.text = text;
+        block.runs.push_back(run);
+        doc->blocks.push_back(block);
+    };
+    addParagraph("The report is late.");        // block 0
+    addParagraph("Reporting begins Monday.");   // block 1
+    addParagraph("Another report follows.");    // block 2
+
+    UCRichDocumentEditor ed(doc);
+    RichFindOptions options;                    // case-insensitive, wrapping
+    RichDocRange match;
+
+    // --- forwards ---
+    CHECK(ed.Find("report", {0, 0}, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 0);
+    CHECK_EQ(match.start.byteOffset, 4);
+    CHECK_EQ(match.end.byteOffset, 10);
+
+    // From just past the first match, the next one is in the following block.
+    CHECK(ed.Find("report", match.start, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 0);   // the same match: search starts AT `from`
+    CHECK(ed.Find("report", match.end, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 1);
+    CHECK_EQ(match.start.byteOffset, 0);   // "Reporting", case-insensitively
+
+    CHECK(ed.Find("report", match.end, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 2);
+    CHECK_EQ(match.start.byteOffset, 8);
+
+    // Wrapping past the last match returns to the first.
+    CHECK(ed.Find("report", match.end, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 0);
+
+    // ...unless wrapping is off.
+    RichFindOptions noWrap;
+    noWrap.wrapAround = false;
+    CHECK(!ed.Find("report", {2, 20}, false, noWrap, match));
+
+    // --- backwards ---
+    CHECK(ed.Find("report", {2, 22}, true, options, match));
+    CHECK_EQ(match.start.blockIndex, 2);
+    CHECK_EQ(match.start.byteOffset, 8);
+    // Searching back from a match's own start walks to the previous one rather
+    // than finding the same match again.
+    CHECK(ed.Find("report", match.start, true, options, match));
+    CHECK_EQ(match.start.blockIndex, 1);
+    CHECK(ed.Find("report", match.start, true, options, match));
+    CHECK_EQ(match.start.blockIndex, 0);
+    // And wraps to the last.
+    CHECK(ed.Find("report", match.start, true, options, match));
+    CHECK_EQ(match.start.blockIndex, 2);
+
+    // --- case sensitivity ---
+    RichFindOptions exact;
+    exact.caseSensitive = true;
+    CHECK(ed.Find("Report", {0, 0}, false, exact, match));
+    CHECK_EQ(match.start.blockIndex, 1);        // only "Reporting" has a capital R
+    CHECK(!ed.Find("REPORT", {0, 0}, false, exact, match));
+
+    // --- whole word ---
+    RichFindOptions wholeWord;
+    wholeWord.wholeWord = true;
+    CHECK(ed.Find("report", {0, 0}, false, wholeWord, match));
+    CHECK_EQ(match.start.blockIndex, 0);        // "report", not "Reporting"
+    CHECK(ed.Find("report", match.end, false, wholeWord, match));
+    CHECK_EQ(match.start.blockIndex, 2);
+    CHECK_EQ(ed.FindAll("report", wholeWord).size(), size_t(2));
+    CHECK_EQ(ed.FindAll("report", options).size(), size_t(3));
+
+    // A needle longer than the text, and an empty needle, find nothing.
+    CHECK(!ed.Find("a needle longer than any of these paragraphs are",
+                   {0, 0}, false, options, match));
+    CHECK(!ed.Find("", {0, 0}, false, options, match));
+    CHECK(ed.FindAll("", options).empty());
+
+    // --- blocks with no inline text are skipped, not mis-indexed ---
+    {
+        auto withImage = std::make_shared<UCRichDocument>();
+        RichDocBlock rule;
+        rule.type = RichBlockType::HorizontalRule;
+        withImage->blocks.push_back(rule);
+        RichDocBlock para;
+        para.type = RichBlockType::Paragraph;
+        RichTextRun run;
+        run.text = "after the rule";
+        para.runs.push_back(run);
+        withImage->blocks.push_back(para);
+
+        UCRichDocumentEditor ruled(withImage);
+        RichDocRange hit;
+        CHECK(ruled.Find("rule", {0, 0}, false, options, hit));
+        CHECK_EQ(hit.start.blockIndex, 1);
+    }
+
+    // --- replace all ---
+    const int replaced = ed.ReplaceAll("report", "summary", options);
+    CHECK_EQ(replaced, 3);
+    CHECK_EQ(Shape(ed), std::string("The summary is late.|summarying begins Monday.|Another summary follows."));
+
+    // One undo step for the whole replace, not one per match.
+    CHECK(ed.Undo());
+    CHECK_EQ(Shape(ed), std::string("The report is late.|Reporting begins Monday.|Another report follows."));
+
+    // Replacing with nothing deletes the matches.
+    CHECK_EQ(ed.ReplaceAll("Another ", "", options), 1);
+    CHECK_EQ(ed.BlockText(2), std::string("report follows."));
+    CHECK(ed.Undo());
+
+    // Replacing something absent changes nothing and adds no undo step.
+    const bool couldUndoBefore = ed.CanUndo();
+    CHECK_EQ(ed.ReplaceAll("nothing here matches", "x", options), 0);
+    CHECK_EQ(ed.CanUndo(), couldUndoBefore);
+
+    // Replaced text keeps the formatting of what it replaced.
+    {
+        auto styled = std::make_shared<UCRichDocument>();
+        RichDocBlock block;
+        block.type = RichBlockType::Paragraph;
+        RichTextRun plain;
+        plain.text = "plain ";
+        RichTextRun bold;
+        bold.text = "target";
+        bold.bold = true;
+        block.runs.push_back(plain);
+        block.runs.push_back(bold);
+        styled->blocks.push_back(block);
+
+        UCRichDocumentEditor se(styled);
+        CHECK_EQ(se.ReplaceAll("target", "replaced", options), 1);
+        CHECK_EQ(se.BlockText(0), std::string("plain replaced"));
+        bool boldSurvived = false;
+        for (const auto& run : se.GetBlock(0).runs) {
+            if (run.bold && run.text.find("replaced") != std::string::npos) boldSurvived = true;
+        }
+        CHECK(boldSurvived);
+    }
+}
+
 int main() {
     TestPositionsAndNavigation();
     TestTypingAndDeleting();
@@ -499,6 +648,7 @@ int main() {
     TestClipboardRanges();
     TestUndoRedo();
     TestDocumentIntegration();
+    TestSearch();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";
