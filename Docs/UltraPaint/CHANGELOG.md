@@ -4,7 +4,7 @@
   eight lines of libvips internals and no cause a user could act on; the
   editor was still holding the file it had read, and the save truncated it
   before encoding anything. Both are fixed in the framework - see UltraCanvas
-  0.8.62, which also makes a failed save leave the previous file untouched.
+  0.8.63, which also makes a failed save leave the previous file untouched.
   The Save and Export dialogs now also shorten what they report the way Open
   always did (the reason, not the log), so a destination that really is in use
   or out of space says so in a line instead of a screenful.
