@@ -1,7 +1,7 @@
 // SpellCheckerTest.cpp
 // Test suite for the UltraCanvasSpellChecker service, tokenizer and backends
-// Version: 1.0.0
-// Last Modified: 2026-08-24
+// Version: 1.1.0
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 //
 // Framework-independent: builds straight from the spell sources, with the WASM
@@ -15,6 +15,8 @@
 
 #include <algorithm>
 #include <chrono>
+#include <cstdlib>
+#include <memory>
 #include <iostream>
 #include <thread>
 #include <string>
@@ -63,6 +65,73 @@ const SpellError* FindErrorForWord(const std::vector<SpellError>& errors,
         if (error.word == word) return &error;
     }
     return nullptr;
+}
+
+// Backends spell their dictionary codes differently - enchant uses "en_US",
+// Windows and macOS use "en-US" - and the POSIX variables add a charset on top.
+// A backend with a fixed, known list makes that matching testable without
+// depending on which dictionaries the build machine happens to have.
+class FakeSpellBackend : public ISpellCheckBackend {
+public:
+    FakeSpellBackend(std::vector<std::string> codes, std::string localeHint)
+        : dictionaryCodes(std::move(codes)), localeHint(std::move(localeHint)) {}
+
+    std::string GetBackendName() const override { return "fake"; }
+    bool Initialize() override { return true; }
+    void Shutdown() override {}
+
+    std::vector<SpellLanguageInfo> EnumerateLanguages() override {
+        std::vector<SpellLanguageInfo> languages;
+        for (const std::string& code : dictionaryCodes) {
+            SpellLanguageInfo info = ResolveSpellLanguageNames(code);
+            info.code = code;
+            info.isAvailable = true;
+            languages.push_back(std::move(info));
+        }
+        return languages;
+    }
+
+    // Accepts its own spelling and nothing else, exactly like a real backend:
+    // enchant_broker_request_dict and ISpellCheckerFactory::IsSupported both
+    // reject a code they did not enumerate.
+    bool SetLanguage(const std::string& languageCode) override {
+        for (const std::string& known : dictionaryCodes) {
+            if (known == languageCode) {
+                current = languageCode;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    std::string GetLanguage() const override { return current; }
+    std::string GetPreferredLanguageHint() override { return localeHint; }
+
+    bool IsWordCorrect(const std::string& word) override { return word != "sentance"; }
+    std::vector<std::string> GetSuggestions(const std::string&, int) override { return {}; }
+
+private:
+    std::vector<std::string> dictionaryCodes;
+    std::string localeHint;
+    std::string current;
+};
+
+void SetEnvironmentVariable(const char* name, const char* value) {
+#ifdef _WIN32
+    _putenv_s(name, value ? value : "");
+#else
+    if (value) {
+        setenv(name, value, 1);
+    } else {
+        unsetenv(name);
+    }
+#endif
+}
+
+void ClearLocaleEnvironment() {
+    for (const char* key : { "LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE" }) {
+        SetEnvironmentVariable(key, nullptr);
+    }
 }
 
 } // namespace
@@ -400,6 +469,102 @@ int main() {
 
         service.SetMode(SpellCheckMode::AsYouType);
         TEST("Re-enabling restores IsEnabled", service.IsEnabled());
+    }
+
+    // ===== LANGUAGE CODE MATCHING =====
+    // Regression: the codes a backend enumerates, the code stored in a settings
+    // file and the value of LANG are three different spellings of the same
+    // dictionary. When they failed to match, the backend was left with no
+    // dictionary loaded - which downstream looks exactly like "every word is
+    // spelled correctly", i.e. a spell checker that marks nothing at all.
+    std::cerr << "\n--- Language code matching ---" << std::endl;
+    {
+        service.SetBackend(std::make_unique<FakeSpellBackend>(
+            std::vector<std::string>{ "en-US", "en-GB", "de-DE" }, "de-DE"));
+
+        TEST("Hyphenated code matches an underscored request",
+             service.ResolveAvailableLanguageCode("de_DE") == "de-DE");
+        TEST("Matching ignores case",
+             service.ResolveAvailableLanguageCode("EN-us") == "en-US");
+        TEST("A charset suffix is ignored",
+             service.ResolveAvailableLanguageCode("de_DE.UTF-8") == "de-DE");
+        TEST("A bare base language finds a regional dictionary",
+             service.ResolveAvailableLanguageCode("de") == "de-DE");
+        TEST("An unknown code is returned unchanged",
+             service.ResolveAvailableLanguageCode("zz-ZZ") == "zz-ZZ");
+        TEST("'en' does not match a longer base such as 'de'",
+             service.ResolveAvailableLanguageCode("en").rfind("en", 0) == 0);
+
+        // SetLanguage resolves before it reaches the backend, so a settings
+        // file written on another platform still selects the dictionary.
+        std::string announced;
+        service.onSpellLanguageChange = [&announced](const std::string& code) {
+            announced = code;
+        };
+        TEST("SetLanguage accepts a differently spelled code",
+             service.SetLanguage("de_DE"));
+        TEST("The backend ends up on its own spelling",
+             service.GetLanguage() == "de-DE");
+        TEST("The callback reports the resolved spelling", announced == "de-DE");
+        service.onSpellLanguageChange = nullptr;
+
+        // Detection: the POSIX variables first, then what the platform says.
+        ClearLocaleEnvironment();
+        SetEnvironmentVariable("LANG", "en_GB.UTF-8");
+        TEST("LANG selects the matching dictionary",
+             service.DetectPreferredLanguage() == "en-GB");
+
+        SetEnvironmentVariable("LANG", "en_CA.UTF-8");
+        TEST("An unstocked region falls back to the same language",
+             service.DetectPreferredLanguage().rfind("en-", 0) == 0);
+
+        // No POSIX variables is the normal case on Windows: without the
+        // backend hint every user got whatever enumerated first, so a German
+        // desktop came up checking against an English dictionary.
+        ClearLocaleEnvironment();
+        TEST("With no locale variables the platform hint decides",
+             service.DetectPreferredLanguage() == "de-DE");
+
+        service.SetBackend(std::make_unique<FakeSpellBackend>(
+            std::vector<std::string>{ "en-US", "de-DE" }, ""));
+        TEST("With no hint either, the first dictionary is used",
+             service.DetectPreferredLanguage() == "en-US");
+    }
+
+    // ===== ASYNCHRONOUS QUEUE, BACKEND INDEPENDENT =====
+    // The same drain the text area does once per frame, but against the fake
+    // backend so it runs on every machine rather than only where hunspell data
+    // happens to be installed. A regression here is the one the user sees:
+    // checking is on, a dictionary is selected, and the document stays unmarked.
+    std::cerr << "\n--- Asynchronous queue (fake backend) ---" << std::endl;
+    {
+        service.SetBackend(std::make_unique<FakeSpellBackend>(
+            std::vector<std::string>{ "en-US" }, "en-US"));
+        TEST("The fake dictionary loads", service.SetLanguage("en-US"));
+        service.SetMode(SpellCheckMode::AsYouType);
+
+        const uint64_t contextId = 7777;
+        const std::string text = "This sentance needs checking";
+        TEST("Queuing returns a job id",
+             service.QueueCheckText(contextId, text, SpellCheckOptions()) != 0);
+
+        SpellCheckResult result;
+        bool drained = false;
+        for (int attempt = 0; attempt < 200 && !drained; ++attempt) {
+            drained = service.TryTakeResult(contextId, result);
+            if (!drained) std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        }
+        TEST("The worker publishes a result", drained);
+        TEST("The misspelling reaches the caller",
+             drained && HasErrorForWord(result.errors, "sentance"));
+        TEST("The flagged span indexes the text that was checked",
+             drained && !result.errors.empty() &&
+             text.substr(result.errors[0].startByte, result.errors[0].byteLength) ==
+                 result.errors[0].word);
+        TEST("Correct words are left alone",
+             drained && !HasErrorForWord(result.errors, "checking"));
+
+        service.CancelContext(contextId);
     }
 
     // ===== SHUTDOWN =====

@@ -1137,6 +1137,22 @@ void UltraFilerWindow::ApplySettings() {
         folderPreview->SetDropConfirmation(settings.dropConfirmation);
         folderPreview->SetShowLockState(settings.showLockState);
     }
+    // Extras > Cache. The disk cache is one per process, so it is set once
+    // rather than per display; how thumbnails are held in memory is each
+    // display's own and only re-applied when it moved - the widget drops its
+    // thumbnails when it changes, and doing that on every unrelated settings
+    // change would re-decode the folder on screen for nothing.
+    UltraCanvasFilerWidget::SetThumbnailDiskCacheEnabled(
+            settings.thumbnailDiskCache);
+    if (compressedThumbnailsApplied != settings.compressedThumbnails) {
+        compressedThumbnailsApplied = settings.compressedThumbnails;
+        for (auto& state : tabStates)
+            if (state->filer)
+                state->filer->SetCompressedThumbnails(
+                        settings.compressedThumbnails);
+        if (folderPreview)
+            folderPreview->SetCompressedThumbnails(settings.compressedThumbnails);
+    }
     // Display > Files: only when the setting itself moved. Re-applying it on
     // every unrelated change would undo a display the user revealed by hand
     // (its Display > Hidden files entry, or the Home folder's button) the
@@ -1229,6 +1245,26 @@ void UltraFilerWindow::RefreshHomeTreeChildren() {
 }
 
 void UltraFilerWindow::OpenSettingsDialog(UltraFilerSettingsDialog::Page page) {
+    // What the Extras > Cache page needs from the running application: the
+    // memory figures of the display in front (the disk half it reads for
+    // itself, being one per process), and the two actions its buttons take.
+    UltraFilerSettingsDialog::CacheHooks cacheHooks;
+    cacheHooks.memoryStats = [this]() {
+        FilerTabState* tab = ActiveTabState();
+        return tab && tab->filer ? tab->filer->GetThumbnailCacheStats()
+                                 : UltraCanvasFilerWidget::ThumbCacheStats{};
+    };
+    cacheHooks.clearMemory = [this]() {
+        // Every display, not just the one in front: "Empty cache" means the
+        // cache, and a tab left open in the background holding a hundred
+        // megabytes of thumbnails would make the button look like it lied.
+        for (auto& state : tabStates)
+            if (state->filer) state->filer->ClearThumbnailMemoryCache();
+        if (folderPreview) folderPreview->ClearThumbnailMemoryCache();
+    };
+    cacheHooks.apply = [this]() { ApplySettings(); };
+    UltraFilerSettingsDialog::SetCacheHooks(std::move(cacheHooks));
+
     UltraFilerSettingsDialog::Show(window.get(), &settings,
             [this]() { ApplySettings(); },
             [this]() {   // Clear History

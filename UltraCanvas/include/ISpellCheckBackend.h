@@ -1,7 +1,7 @@
 // include/ISpellCheckBackend.h
 // Abstract spell-check backend interface bridging native OS spell services and Hunspell
-// Version: 1.0.0
-// Last Modified: 2026-08-25
+// Version: 1.1.0
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -67,6 +67,14 @@ public:
         (void)word;
         return false;
     }
+
+    // The dictionary the platform itself would pick, as a language code in the
+    // same spelling EnumerateLanguages() returns. Backends that can ask the OS
+    // (Windows: GetUserDefaultLocaleName) override this so a first run selects
+    // the user's own language; UltraCanvasSpellChecker::DetectPreferredLanguage
+    // consults it after the POSIX locale variables, which are usually unset on
+    // Windows. An empty string means "no opinion" and is the default.
+    virtual std::string GetPreferredLanguageHint() { return std::string(); }
 
     virtual bool IsThreadSafe() const { return false; }
 };

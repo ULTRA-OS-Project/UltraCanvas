@@ -7595,6 +7595,21 @@ namespace UltraCanvas {
              + '|' + std::to_string(static_cast<int>(scale * 100.0f));
     }
 
+    // The same request, in the form the disk cache keys on. Kept next to
+    // ThumbSlotKey because the two must describe the same thing: a tile that
+    // asked memory for one geometry and disk for another would miss on disk
+    // every time and never notice.
+    ThumbnailDiskCache::Request UltraCanvasFilerWidget::DiskCacheRequestFor(
+            const ThumbRequest& req) {
+        ThumbnailDiskCache::Request out;
+        out.sourcePath = req.path;
+        out.width = req.w;
+        out.height = req.h;
+        out.fit = static_cast<int>(req.fit);
+        out.scale = req.scale;
+        return out;
+    }
+
     std::string UltraCanvasFilerWidget::ThumbSourceFor(const FilerEntry& e) const {
         // Programs show their embedded application icon (.exe / .dll / .ico —
         // Explorer-style), and a shortcut shows the icon it names, which is
@@ -7751,6 +7766,12 @@ namespace UltraCanvas {
         // showing" looked like.
         constexpr size_t kThumbBudgetBytes = 96 * 1024 * 1024;
         constexpr size_t kNativeIconBudgetBytes = 16 * 1024 * 1024;
+        // And the third: the decompressed tiles kept hot for drawing when
+        // compressed thumbnails are on. Beside the other two rather than
+        // inside the function that evicts against it, because
+        // GetThumbnailCacheStats reports all three and a settings page shows
+        // them - one definition each, no copies.
+        constexpr size_t kHotThumbBudgetBytes = 32 * 1024 * 1024;
         // Tries an application icon gets from the shell before the tile
         // settles on its type glyph.
         constexpr uint8_t kNativeIconMaxAttempts = 3;
@@ -7976,8 +7997,7 @@ namespace UltraCanvas {
             he.tick = ++thumbHotTick;
             // Evict least-recently-drawn tiles beyond the hot budget — it
             // only needs to cover the visible + prefetch bands.
-            constexpr size_t kHotBudgetBytes = 32 * 1024 * 1024;
-            while (thumbHotBytes > kHotBudgetBytes && thumbHot.size() > 1) {
+            while (thumbHotBytes > kHotThumbBudgetBytes && thumbHot.size() > 1) {
                 auto oldest = thumbHot.end();
                 for (auto hit = thumbHot.begin(); hit != thumbHot.end(); ++hit) {
                     if (hit->first == key) continue;
@@ -8409,16 +8429,30 @@ namespace UltraCanvas {
     UltraCanvasFilerWidget::ThumbCacheStats
     UltraCanvasFilerWidget::GetThumbnailCacheStats() const {
         ThumbCacheStats st;
+        // The ceilings, from the one place they are defined - a settings page
+        // showing "x of y" must not carry its own copy of y.
+        st.contentBudget = kThumbBudgetBytes;
+        st.iconBudget = kNativeIconBudgetBytes;
+        st.hotBudget = kHotThumbBudgetBytes;
         std::lock_guard<std::mutex> lk(thumbMutex);
         for (const auto& kv : thumbSlots) {
             if (kv.second.state != ThumbState::Ready) continue;
             ++st.entries;
             st.storedBytes += kv.second.bytes;
             st.rawBytes += kv.second.rawBytes;
+            if (kv.second.nativeIcon) {
+                ++st.iconEntries;
+                st.iconBytes += kv.second.bytes;
+            }
         }
         st.hotEntries = thumbHot.size();
         st.hotBytes = thumbHotBytes;
         return st;
+    }
+
+    void UltraCanvasFilerWidget::ClearThumbnailMemoryCache() {
+        DropThumbnailCache();
+        RequestRedraw();
     }
 
     void UltraCanvasFilerWidget::ThumbnailWorkerMain() {
@@ -8427,6 +8461,13 @@ namespace UltraCanvas {
         // life of the worker rather than per extraction. A no-op where the
         // icons are read from the files themselves.
         NativeFileIconThreadScope nativeIconScope;
+
+        // Expire what the disk cache has not served in two weeks. Here, on a
+        // worker, rather than at widget construction: it walks a directory,
+        // and nothing that touches the filesystem may run on the UI thread or
+        // under the mutex the paint path takes. Only the first worker of the
+        // process does any work; the rest see the flag already set.
+        ThumbnailDiskCache::SweepOnce();
 
         for (;;) {
             ThumbRequest req;
@@ -8609,8 +8650,46 @@ namespace UltraCanvas {
             // Failed below and the tile keeps its glyph.
             std::shared_ptr<UCPixmap> pm;
             const bool nativeIcon = NativeFileIconAvailable(req.path);
+
+            // The thumbnail this machine already made, on an earlier run.
+            // Asked before anything is decoded, because that is the whole
+            // point: a folder of photos or videos costs minutes of decode the
+            // first time and a few milliseconds every time after it.
+            //
+            // Application icons are deliberately not stored (see
+            // UltraCanvasThumbnailDiskCache.h): the shell extracts one faster
+            // than this could read a file, and an icon that changed because
+            // the program was upgraded must never come from yesterday.
+            std::shared_ptr<std::vector<uint8_t>> diskBlob;
+            if (!nativeIcon) {
+                RunGuarded("thumbnail disk cache read", req.path, [&]() {
+                    std::vector<uint8_t> stored =
+                            ThumbnailDiskCache::Load(DiskCacheRequestFor(req));
+                    if (!stored.empty()) {
+                        diskBlob = std::make_shared<std::vector<uint8_t>>(
+                                std::move(stored));
+                    }
+                });
+                if (diskBlob) {
+                    // A blob the slot can hold as it stands when compressed
+                    // thumbnails are on; otherwise inflated here on the
+                    // worker, so the UI thread never pays for either.
+                    // Guarded like every other decode: these bytes came off
+                    // disk, where a truncated write or a foreign file is
+                    // always possible, and a worker must not die of one.
+                    RunGuarded("thumbnail disk cache inflate", req.path, [&]() {
+                        pm = QoiDecompressPixmap(*diskBlob);
+                    });
+                    // A blob that will not inflate is not this build's -
+                    // fall through and decode the file as if it had missed.
+                    if (!pm) diskBlob = nullptr;
+                }
+            }
+
             RunGuarded("thumbnail decode", req.path, [&]() {
-            if (nativeIcon) {
+            if (pm) {
+                // Served from disk above; nothing to decode.
+            } else if (nativeIcon) {
                 // The icon a program, icon file or shortcut carries, at the
                 // nearest size it embeds.
                 const int edge = std::max(1, static_cast<int>(std::lround(
@@ -8673,12 +8752,19 @@ namespace UltraCanvas {
             }
             });
 
-            // "Compressed thumbnails": deflate here on the worker so the UI
-            // thread never pays for compression; the slot then holds the
-            // blob instead of the raw pixmap. (Should compression throw, the
-            // slot keeps the raw pixmap instead.)
-            std::shared_ptr<std::vector<uint8_t>> blob;
-            if (pm && compressedThumbs.load()) {
+            // One QOI blob serves two purposes, so it is made once: it is
+            // what "compressed thumbnails" holds in memory, and it is what
+            // the disk cache stores. Compressing on the worker means the UI
+            // thread never pays for it. (Should compression throw, the slot
+            // keeps the raw pixmap and nothing is written to disk.)
+            //
+            // A thumbnail that CAME from disk already has its blob and is
+            // already on disk: neither step is redone for it.
+            std::shared_ptr<std::vector<uint8_t>> blob = diskBlob;
+            const bool wantBlob =
+                    pm && !blob && (compressedThumbs.load() ||
+                                    (!nativeIcon && ThumbnailDiskCache::IsEnabled()));
+            if (wantBlob) {
                 RunGuarded("thumbnail compression", req.path, [&]() {
                     std::vector<uint8_t> v = QoiCompressPixmap(*pm);
                     if (!v.empty()) {
@@ -8686,6 +8772,19 @@ namespace UltraCanvas {
                     }
                 });
             }
+
+            // Keep it for the next run. Failure here is not reported: a disk
+            // cache is an optimisation, and a full or read-only disk must
+            // cost the user a re-decode, never a missing thumbnail.
+            if (blob && !diskBlob && !nativeIcon) {
+                RunGuarded("thumbnail disk cache write", req.path, [&]() {
+                    ThumbnailDiskCache::Store(DiskCacheRequestFor(req), *blob);
+                });
+            }
+
+            // With compression switched off the slot holds the raw pixmap;
+            // the blob above was made for the disk and has done its job.
+            if (!compressedThumbs.load()) blob = nullptr;
 
             // Whether this failure says anything about the file, asked
             // before the lock is taken: it opens the file, and nothing that

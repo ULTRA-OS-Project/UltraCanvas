@@ -1,10 +1,11 @@
 // core/UltraCanvasSpellChecker.cpp
 // Implementation of the cross-platform spell checking service
-// Version: 1.0.1
-// Last Modified: 2026-08-24
+// Version: 1.1.0
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasSpellChecker.h"
+#include "UltraCanvasDebug.h"
 
 #include <fstream>
 #include <sstream>
@@ -335,11 +336,22 @@ bool UltraCanvasSpellChecker::Initialize() {
 
     LoadUserDictionary();
 
+    // Live before the language is picked: SetLanguage() raises
+    // onSpellLanguageChange, and a host that re-checks its open documents from
+    // that callback would otherwise queue work at a service still reporting
+    // itself disabled, and the check would be dropped.
+    initialized.store(true);
+    StartWorker();
+
     const std::string preferred = DetectPreferredLanguage();
     if (!preferred.empty()) SetLanguage(preferred);
 
-    initialized.store(true);
-    StartWorker();
+    // The one line that tells a bug report whether checking can work at all:
+    // which backend answered, how many dictionaries it found, and which one is
+    // loaded. An empty language here means every word will look correct.
+    debugOutput << "UltraCanvasSpellChecker: backend " << GetBackendName()
+                << ", dictionaries: " << GetAvailableLanguages().size()
+                << ", language: '" << GetLanguage() << "'" << std::endl;
     return true;
 }
 
@@ -389,6 +401,28 @@ std::string UltraCanvasSpellChecker::GetBackendName() const {
 // SERVICE - LANGUAGE MANAGEMENT
 // ===================================================================
 
+// "de_DE.UTF-8", "de-DE" and "De_de" all have to compare equal to the dictionary
+// code "de-DE": enchant spells its codes with an underscore, Windows and macOS
+// with a hyphen, and the POSIX variables carry a charset and a modifier as well.
+// Everything is folded to lower case with an underscore separator before it is
+// compared, so no lookup depends on which backend produced the list.
+static std::string NormaliseLanguageTag(std::string value) {
+    size_t cut = value.find('.');            // "de_DE.UTF-8" -> "de_DE"
+    if (cut != std::string::npos) value.erase(cut);
+    cut = value.find('@');                   // "sr_RS@latin"  -> "sr_RS"
+    if (cut != std::string::npos) value.erase(cut);
+    cut = value.find(':');                   // LANGUAGE holds a priority list
+    if (cut != std::string::npos) value.erase(cut);
+    std::replace(value.begin(), value.end(), '-', '_');
+    std::transform(value.begin(), value.end(), value.begin(),
+                   [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+    return value;
+}
+
+static std::string LanguageTagBase(const std::string& normalisedTag) {
+    return normalisedTag.substr(0, normalisedTag.find('_'));
+}
+
 std::vector<SpellLanguageInfo> UltraCanvasSpellChecker::GetAvailableLanguages() const {
     std::lock_guard<std::mutex> lock(stateMutex);
     return cachedLanguages;
@@ -405,12 +439,20 @@ SpellLanguageInfo UltraCanvasSpellChecker::GetLanguageInfo(const std::string& la
 bool UltraCanvasSpellChecker::SetLanguage(const std::string& languageCode) {
     if (languageCode.empty()) return false;
 
+    // A code out of a saved setting is not necessarily spelled the way this
+    // backend spells it - "en_US" was written by an enchant machine, "en-US" by
+    // Windows - so it is resolved against the enumerated list before use.
+    // Without this a settings file carried between platforms silently leaves
+    // the backend with no dictionary loaded, which reads downstream as "every
+    // word is spelled correctly".
+    const std::string wanted = ResolveAvailableLanguageCode(languageCode);
+
     bool changed = false;
     {
         std::lock_guard<std::mutex> lock(backendMutex);
         if (!backend) return false;
-        if (backend->GetLanguage() == languageCode) return true;
-        changed = backend->SetLanguage(languageCode);
+        if (backend->GetLanguage() == wanted) return true;
+        changed = backend->SetLanguage(wanted);
     }
     if (!changed) return false;
 
@@ -424,8 +466,39 @@ bool UltraCanvasSpellChecker::SetLanguage(const std::string& languageCode) {
         pendingJobs.clear();
     }
 
-    if (onSpellLanguageChange) onSpellLanguageChange(languageCode);
+    // The resolved spelling is what the host should store, so the next start
+    // asks for exactly what the backend enumerated.
+    if (onSpellLanguageChange) onSpellLanguageChange(wanted);
     return true;
+}
+
+// Returns the enumerated code that `requested` names, whatever separator and
+// case it was written with, or `requested` itself when the list holds nothing
+// like it - a backend may still accept a dictionary it did not enumerate.
+std::string UltraCanvasSpellChecker::ResolveAvailableLanguageCode(
+    const std::string& requested) const {
+
+    if (requested.empty()) return requested;
+
+    std::vector<SpellLanguageInfo> languages;
+    {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        languages = cachedLanguages;
+    }
+
+    const std::string tag = NormaliseLanguageTag(requested);
+    for (const SpellLanguageInfo& info : languages) {
+        if (info.isAvailable && NormaliseLanguageTag(info.code) == tag) return info.code;
+    }
+
+    // "de" on a machine that only has "de-DE" still means German.
+    const std::string base = LanguageTagBase(tag);
+    for (const SpellLanguageInfo& info : languages) {
+        if (info.isAvailable && LanguageTagBase(NormaliseLanguageTag(info.code)) == base) {
+            return info.code;
+        }
+    }
+    return requested;
 }
 
 std::string UltraCanvasSpellChecker::GetLanguage() const {
@@ -441,29 +514,39 @@ std::string UltraCanvasSpellChecker::DetectPreferredLanguage() const {
     }
     if (languages.empty()) return std::string();
 
-    auto normalise = [](std::string value) {
-        size_t cut = value.find('.');            // "de_DE.UTF-8" -> "de_DE"
-        if (cut != std::string::npos) value.erase(cut);
-        cut = value.find('@');
-        if (cut != std::string::npos) value.erase(cut);
-        std::replace(value.begin(), value.end(), '-', '_');
-        return value;
-    };
-
+    // The candidates, best first: what the POSIX variables ask for, then what
+    // the platform itself would pick. On Windows none of the variables is
+    // normally set, so without the backend hint every user would get whatever
+    // dictionary happened to enumerate first - "English (India)" for a German
+    // desktop, which is what this loop exists to avoid.
+    std::vector<std::string> wanted;
     const char* environmentKeys[] = { "LC_ALL", "LC_MESSAGES", "LANG", "LANGUAGE" };
     for (const char* key : environmentKeys) {
         const char* raw = std::getenv(key);
         if (!raw || !*raw) continue;
-        const std::string wanted = normalise(raw);
-        if (wanted.empty() || wanted == "C" || wanted == "POSIX") continue;
-
-        for (const SpellLanguageInfo& info : languages) {
-            if (info.isAvailable && info.code == wanted) return info.code;
+        const std::string tag = NormaliseLanguageTag(raw);
+        if (tag.empty() || tag == "c" || tag == "posix") continue;
+        wanted.push_back(tag);
+    }
+    {
+        std::lock_guard<std::mutex> lock(backendMutex);
+        if (backend) {
+            const std::string hint = NormaliseLanguageTag(backend->GetPreferredLanguageHint());
+            if (!hint.empty()) wanted.push_back(hint);
         }
-        // Fall back to the same base language with a different region.
-        const std::string base = wanted.substr(0, wanted.find('_'));
+    }
+
+    for (const std::string& tag : wanted) {
         for (const SpellLanguageInfo& info : languages) {
-            if (info.isAvailable && info.code.rfind(base, 0) == 0) return info.code;
+            if (info.isAvailable && NormaliseLanguageTag(info.code) == tag) return info.code;
+        }
+        // Fall back to the same base language with a different region, matching
+        // whole tag components so "en" never matches "eng" or "enm".
+        const std::string base = LanguageTagBase(tag);
+        for (const SpellLanguageInfo& info : languages) {
+            if (info.isAvailable && LanguageTagBase(NormaliseLanguageTag(info.code)) == base) {
+                return info.code;
+            }
         }
     }
 
@@ -957,7 +1040,8 @@ namespace {
 constexpr int kSpellLanguageRadioGroup = 9101;
 } // namespace
 
-std::vector<MenuItemData> UltraCanvasSpellChecker::BuildLanguageMenuItems(bool useNativeNames) {
+std::vector<MenuItemData> UltraCanvasSpellChecker::BuildLanguageMenuItems(
+    bool useNativeNames, std::function<void(const std::string&)> onSelect) {
     UltraCanvasSpellChecker& service = Instance();
     std::vector<MenuItemData> items;
 
@@ -980,8 +1064,12 @@ std::vector<MenuItemData> UltraCanvasSpellChecker::BuildLanguageMenuItems(bool u
 
         const std::string code = info.code;
         items.push_back(MenuItemData::Radio(label, kSpellLanguageRadioGroup, code == current,
-            [code]() {
-                UltraCanvasSpellChecker::Instance().SetLanguage(code);
+            [code, onSelect]() {
+                if (onSelect) {
+                    onSelect(code);
+                } else {
+                    UltraCanvasSpellChecker::Instance().SetLanguage(code);
+                }
             }));
     }
 

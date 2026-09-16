@@ -461,9 +461,12 @@ namespace UltraCanvas {
         // See UltraCanvasTextEditorSpellCheck.cpp.
         void SetupSpellChecker();
         void ShutdownSpellChecker();
-        // Starts the shared service if it is not running yet and selects the
-        // configured (or locale-derived) dictionary. False when the platform
-        // has no backend or no dictionary is installed.
+        // Loads the backend and restores the configured dictionary WITHOUT
+        // turning checking on, so the Dictionary list can be shown before the
+        // user enables it. False when the platform has no backend or no
+        // dictionary is installed.
+        bool EnsureSpellDictionariesAvailable();
+        // The same, and then puts the service into as-you-type mode.
         bool EnsureSpellServiceReady();
         bool DocumentWantsSpellCheck(const DocumentTab* doc) const;
         void ApplySpellCheckToDocument(int docIndex);
@@ -471,7 +474,10 @@ namespace UltraCanvas {
         void RecheckAllDocuments();
         void OnEditToggleSpellCheck(bool checked);
         void OnSpellLanguageChanged(const std::string& languageCode);
+        // Menu handler: switches dictionary, and switches checking on with it.
+        void OnSpellDictionarySelected(const std::string& languageCode);
         std::vector<MenuItemData> BuildSpellingMenuItems();
+        std::vector<MenuItemData> BuildDictionaryMenuItems();
 
         // Every open editor window, so the singleton spell service can reach
         // all of them rather than only the one that registered last.
