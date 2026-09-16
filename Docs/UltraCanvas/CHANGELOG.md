@@ -36,6 +36,35 @@
   `--base origin/main` a changelog this branch modified must also not still
   claim the base's version. `.github/workflows/changelog.yml` runs it on pull
   requests and on pushes to `main`.
+- **CI now keeps a ccache between runs.** A hosted runner has no incremental
+  state, so every leg compiled all ~1136 objects from scratch even when a pull
+  request changed one file — six legs, macOS billed at 10x and Windows at 2x.
+  `actions/cache` now carries ccache's objects across runs, keyed per
+  `os`/`build_type` with a prefix `restore-keys` so a run with no exact match
+  still starts from the most recent cache for that leg. ccache is installed on
+  all three platforms (apt, brew, and the MSYS2 `mingw-w64-*-ccache`), wired in
+  with `CMAKE_{C,CXX}_COMPILER_LAUNCHER` and `CMAKE_OBJCXX_COMPILER_LAUNCHER`
+  for the macOS Objective-C++ backends, and `ccache -s` is printed after every
+  build so a misconfigured leg shows as a 0% hit rate rather than as a mystery
+  40-minute run.
+  - `CCACHE_MAXSIZE` is 500 MB, not the 5 GB default: GitHub allows 10 GB of
+    cache per *repository* and evicts least-recently-used, so six legs at the
+    default would evict each other — and the llms-txt and ui-reuse caches — on
+    every push.
+  - `CCACHE_COMPILERCHECK=content`, because the runner image reinstalls the
+    toolchain each run and the default mtime check would call an identical
+    compiler a different one and miss on every object.
+  - The two ccache steps deliberately carry no `shell:`, so they inherit the
+    job default — the MSYS2 shell on the Windows legs. `shell: bash` there is
+    Git Bash, which has no mingw ccache on its PATH.
+  - This is why the `ULTRACANVAS_VERSION` change above matters beyond local
+    builds: a definition on 621 objects' command lines is 621 guaranteed cache
+    misses, since the command line is part of ccache's hash. Measured on a
+    413-object subset, a changelog-only edit with a wiped build directory hits
+    411/413 — the two misses being exactly `UltraCanvasUtils.cpp` and
+    `UltraCanvasElementPlugins.cpp`, the only sources that read the macro.
+  - Not covered: the Rust `vtracer` staticlib, which cargo builds and ccache
+    does not see.
   - History below line 1 is deliberately not policed. The framework changelog
     carries sixteen duplicated version numbers from before this check existed,
     some months old and long since released — renumbering a published release
