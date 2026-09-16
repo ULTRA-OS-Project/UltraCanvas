@@ -1763,9 +1763,26 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
 # ===== COMPILER SETTINGS =====
 target_compile_features(${ULTRACANVAS_LIB_NAME} PUBLIC cxx_std_20)
 
+# The only two sources that read ULTRACANVAS_VERSION. Both have a fallback for
+# when it is absent (UltraCanvasUtils.cpp defines "0.0.0-dev", and
+# UltraCanvasElementPlugins.cpp guards with #ifdef), so nothing else needs it.
+set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementPlugins.cpp
+    PROPERTIES
+        COMPILE_DEFINITIONS ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
+)
+
+# ULTRACANVAS_VERSION is deliberately NOT here. It changes every time anyone
+# adds a changelog entry, and as a PUBLIC definition on this library it sat on
+# the compile command line of 621 of the build's 1136 objects - every source in
+# the library, every app and every test that links it, FontFileTest included.
+# A changelog-only pull request therefore rebuilt almost the whole tree, and two
+# such pull requests invalidated each other's build caches over a file neither
+# had changed any code in. Only two sources read the macro, so it is attached to
+# those two below and a changelog edit now recompiles two objects.
 target_compile_definitions(${ULTRACANVAS_LIB_NAME}
     PUBLIC
-        ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
         $<$<BOOL:${ULTRACANVAS_HAS_VIPS}>:HAS_LIBVIPS=1>
         $<$<BOOL:${LIBRSVG_FOUND}>:HAS_LIBRSVG=1>
