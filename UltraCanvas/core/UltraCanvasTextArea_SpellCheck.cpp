@@ -1,7 +1,7 @@
 // core/UltraCanvasTextArea_SpellCheck.cpp
 // Spell check integration and character-range geometry for UltraCanvasTextArea
-// Version: 1.1.0
-// Last Modified: 2026-08-28
+// Version: 1.1.1
+// Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 //
 // Split out of UltraCanvasTextArea.cpp for the same reason as the _Markdown and
@@ -24,6 +24,7 @@
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasUtilsUtf8.h"
+#include "UltraCanvasDebug.h"
 
 #include <algorithm>
 
@@ -380,6 +381,12 @@ void UltraCanvasTextArea::DrawSpellErrorMarks(IRenderContext* ctx) {
     SpellCheckResult fresh;
     if (service.TryTakeResult(spellContextId, fresh)) {
         spellErrors = std::move(fresh.errors);
+        // One line per completed check, not per frame. "0 errors" against a
+        // document full of typos is the signature of a backend that loaded no
+        // dictionary and is answering "correct" to everything.
+        debugOutput << "TextArea: spell check of " << textContent.size()
+                    << " bytes returned " << spellErrors.size()
+                    << " error(s), language '" << fresh.languageCode << "'" << std::endl;
     }
     if (spellErrors.empty()) return;
 

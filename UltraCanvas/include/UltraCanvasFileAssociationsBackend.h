@@ -12,6 +12,7 @@
 #pragma once
 
 #include "UltraCanvasFileAssociations.h"
+#include "UltraCanvasDiskCache.h"
 
 #include <chrono>
 #include <string>
@@ -53,11 +54,16 @@ namespace UltraCanvas {
         //
         // The two calls below are the whole retention policy, kept here
         // instead of once per backend so both platforms expire on the same
-        // rule. Implemented in core/UltraCanvasFileAssociations.cpp — they
-        // are plain std::filesystem and hold no platform code.
+        // rule. Implemented in core/UltraCanvasFileAssociations.cpp on top of
+        // UltraCanvasDiskCache, which is where the stamp-on-use and sweep
+        // themselves live — the Filer's thumbnail cache expires on that same
+        // code, so the two on-disk caches cannot drift apart.
 
-        // How long a cached icon survives without being served.
-        constexpr auto kIconCacheMaxAge = std::chrono::hours(24 * 14);
+        // How long a cached icon survives without being served. The shared
+        // default: an icon and a thumbnail are orphaned by the same kinds of
+        // event (a file moved, renamed, upgraded away) and there is no reason
+        // for one to outlive the other.
+        constexpr auto kIconCacheMaxAge = DiskCache::kDefaultMaxAge;
 
         // Record that `path` is still in use — call it on every cache hit.
         // The file's modification time is the "last served" stamp: Windows
