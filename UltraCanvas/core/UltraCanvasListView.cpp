@@ -3,6 +3,7 @@
 // Last Modified: 2026-07-22
 #include "UltraCanvasListView.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -136,6 +137,16 @@ namespace UltraCanvas {
 
     bool UltraCanvasListView::GetShowHeader() const {
         return viewStyle.showHeader;
+    }
+
+    void UltraCanvasListView::SetShowItemTooltips(bool enable) {
+        if (showItemTooltips == enable) return;
+        showItemTooltips = enable;
+        if (!showItemTooltips) HideHoverTooltip();
+    }
+
+    bool UltraCanvasListView::GetShowItemTooltips() const {
+        return showItemTooltips;
     }
 
     // ===== SCROLLING =====
@@ -344,9 +355,52 @@ namespace UltraCanvas {
         return -1;
     }
 
+    int UltraCanvasListView::GetHeaderColumnAt(int x, int y, int* columnStartX) const {
+        if (!model || !viewStyle.showHeader) return -1;
+
+        // The header sits at the top of the content rect and spans its full
+        // width (see RenderHeader), above the rows viewport.
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
+        int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
+        if (y < localContentY || y >= localContentY + viewStyle.headerHeight) return -1;
+        if (x < localContentX || x >= localContentX + crWidth) return -1;
+
+        int colX = localContentX;
+        int colCount = model->GetColumnCount();
+        for (int col = 0; col < colCount; col++) {
+            int colW = model->GetColumnDef(col).width;
+            if (x < colX + colW) {
+                if (columnStartX) *columnStartX = colX;
+                return col;
+            }
+            colX += colW;
+        }
+        return -1;
+    }
+
+    std::string UltraCanvasListView::GetTooltipTextAt(int row, int column) const {
+        if (!model) return {};
+        if (row < -1 || row >= model->GetRowCount()) return {};
+        if (column < 0) column = 0;
+
+        if (tooltipProvider) {
+            std::string custom = tooltipProvider(row, column);
+            if (!custom.empty()) return custom;
+        }
+        if (row < 0) {
+            // Header cell
+            return model->GetColumnDef(column).tooltip;
+        }
+        return GetStringValue(model->GetData(ListIndex{row, column}, ListDataRole::ToolTipRole));
+    }
+
     int UltraCanvasListView::GetRowAtY(int y) const {
         if (!model) return -1;
         auto viewport = GetViewportRect();
+        // Above the rows viewport (the header, when shown) is never a row --
+        // without this a scrolled list would report one for header hits.
+        if (y < viewport.y) return -1;
         int relativeY = y - viewport.y + scrollOffsetY;
         if (relativeY < 0 || relativeY >= RowsContentHeight()) return -1;
         int row = ClampRowIndexAtContentY(relativeY);
@@ -548,6 +602,13 @@ namespace UltraCanvas {
                 UCEvent localEvent = event;
                 localEvent.pointer = event.pointer - sbB.TopLeft();
                 if (verticalScrollbar->OnEvent(localEvent)) {
+                    if (event.type == UCEventType::MouseMove) {
+                        // The pointer is on the scrollbar, not on a cell, and a
+                        // drag moves the rows under it.
+                        HideHoverTooltip();
+                        hoveredColumn = -1;
+                        hoveredHeaderColumn = -1;
+                    }
                     return true;
                 }
             }
@@ -560,6 +621,9 @@ namespace UltraCanvas {
                 return HandleMouseMove(event);
             case UCEventType::MouseLeave:
                 if (onCellHovered) onCellHovered(-1, -1, Point2Di(-1, -1));
+                HideHoverTooltip();
+                hoveredColumn = -1;
+                hoveredHeaderColumn = -1;
                 if (hoveredRow != -1) {
                     hoveredRow = -1;
                     RequestRedraw();
@@ -625,18 +689,34 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasListView::HandleMouseMove(const UCEvent& event) {
-        int newHovered = Contains(event.pointer) ? GetRowAtY(event.pointer.y) : -1;
+        bool inside = Contains(event.pointer);
+        int newHovered = inside ? GetRowAtY(event.pointer.y) : -1;
+
+        int colX = 0;
+        int newColumn = (newHovered >= 0) ? GetColumnAt(event.pointer.x, &colX) : -1;
+        int newHeaderColumn = (inside && newHovered < 0)
+                                  ? GetHeaderColumnAt(event.pointer.x, event.pointer.y)
+                                  : -1;
+
         if (onCellHovered) {
-            int colX = 0;
-            int col = newHovered >= 0 ? GetColumnAt(event.pointer.x, &colX) : -1;
-            if (newHovered >= 0 && col >= 0) {
+            if (newHovered >= 0 && newColumn >= 0) {
                 auto rowRect = GetRowRect(newHovered);
-                onCellHovered(newHovered, col, Point2Di(event.pointer.x - colX,
-                                                        event.pointer.y - rowRect.y));
+                onCellHovered(newHovered, newColumn, Point2Di(event.pointer.x - colX,
+                                                              event.pointer.y - rowRect.y));
             } else {
                 onCellHovered(-1, -1, Point2Di(-1, -1));
             }
         }
+
+        // A tooltip belongs to one cell (or one header cell), so it is refreshed
+        // whenever the hovered cell changes -- not only on a row change.
+        if (newHovered != hoveredRow || newColumn != hoveredColumn ||
+            newHeaderColumn != hoveredHeaderColumn) {
+            UpdateHoverTooltip(event, newHovered, newColumn, newHeaderColumn);
+        }
+        hoveredColumn = newColumn;
+        hoveredHeaderColumn = newHeaderColumn;
+
         if (newHovered != hoveredRow) {
             hoveredRow = newHovered;
             if (onItemHovered && hoveredRow >= 0) onItemHovered(hoveredRow);
@@ -644,6 +724,31 @@ namespace UltraCanvas {
             return true;
         }
         return false;
+    }
+
+    // ===== TOOLTIPS =====
+
+    void UltraCanvasListView::UpdateHoverTooltip(const UCEvent& event, int row, int column,
+                                                 int headerColumn) {
+        if (!showItemTooltips || !GetWindow()) return;
+
+        std::string tip;
+        if (headerColumn >= 0) {
+            tip = GetTooltipTextAt(-1, headerColumn);
+        } else if (row >= 0) {
+            tip = GetTooltipTextAt(row, column);
+        }
+
+        if (tip.empty()) {
+            HideHoverTooltip();
+            return;
+        }
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                GetWindow(), tip, Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+    }
+
+    void UltraCanvasListView::HideHoverTooltip() {
+        UltraCanvasTooltipManager::HideTooltip();
     }
 
     bool UltraCanvasListView::HandleMouseUp(const UCEvent& /*event*/) {
@@ -661,6 +766,10 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasListView::HandleMouseWheel(const UCEvent& event) {
+        // Rows move out from under the pointer, so any cell tooltip is stale.
+        HideHoverTooltip();
+        hoveredColumn = -1;
+        hoveredHeaderColumn = -1;
         if (verticalScrollbar->IsVisible()) {
             // Route through the scrollbar so wheel scrolling is smoothly
             // animated; one line step = one row, wheelScrollLines rows/notch.
