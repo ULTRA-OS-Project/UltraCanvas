@@ -49,8 +49,8 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.28.0
-// Last Modified: 2026-09-13
+// Version: 1.28.1
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -272,6 +272,10 @@ namespace UltraCanvas {
                 {"wmf",  {"Windows Metafile", FilerFileCategory::Vector}},
                 {"dxf",  {"AutoCAD DXF", FilerFileCategory::Vector}},
                 {"dwg",  {"AutoCAD DWG", FilerFileCategory::Vector}},
+                // The same drawing database under AutoCAD's other suffixes.
+                {"dwt",  {"AutoCAD Template", FilerFileCategory::Vector}},
+                {"dws",  {"AutoCAD Standards", FilerFileCategory::Vector}},
+                {"sv$",  {"AutoCAD Autosave", FilerFileCategory::Vector}},
                 {"stl",  {"STL",  FilerFileCategory::Model3D}},
                 {"obj",  {"Wavefront", FilerFileCategory::Model3D}},
                 {"ply",  {"PLY",  FilerFileCategory::Model3D}},
@@ -7642,8 +7646,8 @@ namespace UltraCanvas {
                 // preview bitmap of their own, which the workers extract and
                 // decode like any other image (and a PDF-compatible .ai is
                 // rendered as the PDF it is). What is left - emf, wmf, dxf,
-                // dwg, an EPS written without a preview - keeps the type
-                // glyph.
+                // the DWG family (dwg/dwt/dws/sv$), an EPS written without a
+                // preview - keeps the type glyph.
                 return (ImagePipelineLoadsExtension(e.extension) ||
                         FormatCarriesEmbeddedPreview(e.extension))
                                ? e.path : std::string{};
