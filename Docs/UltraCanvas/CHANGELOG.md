@@ -1,4 +1,4 @@
-#### 2026-09-16 *0.8.65*
+#### 2026-09-16 *0.8.70*
 - **The demo application had no WYSIWYG page, and its tree told four lies about
   what is implemented.** Both are the same defect: the tree's status icon is the
   only thing a visitor has to go on, and it was describing the tree rather than
