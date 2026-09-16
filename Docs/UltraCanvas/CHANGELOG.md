@@ -1,3 +1,34 @@
+#### 2026-09-16 *0.8.66*
+- **The caret goes inside table cells.** `UltraCanvasRichTextEdit` rendered
+  tables from the start but treated each one as a single indivisible block, so
+  the text inside was readable and nothing more. Cells are now editable in
+  place: click into one, type, select, format, and Tab or Shift+Tab to walk them
+  in reading order.
+  - A position is now `{blockIndex, cellRow, cellColumn, byteOffset}` and
+    addresses one **text container** — a block's own runs, or one table cell.
+    `cellRow`/`cellColumn` default to -1, so every position outside a table, and
+    every existing `{block, offset}` construction, keeps its old meaning.
+  - Everything that edits or measures text goes through `RunsAt` / `TextAt`
+    rather than reaching into a block directly, which is what let the caret,
+    selection, deletion, formatting, word motion and undo follow into a cell
+    without each one growing its own table special case.
+  - **Find and replace reach into cells**, which they could not before: search
+    walks containers (`AllContainers()`) rather than blocks.
+  - Three behaviours that keep cell editing honest rather than merely possible:
+    Enter inside a cell adds a line to the cell instead of splitting the table's
+    block; Backspace at the start of a cell steps to the previous cell and
+    deletes nothing, because cells cannot be merged by deleting text between
+    them; and a selection is held inside one container, because a range spanning
+    cells would describe an edit no table can honour.
+  - Undo is unchanged in kind: a cell edit records the table block, which is the
+    block span an undo step already replaces.
+  - In the element: clicks hit-test into the nearest cell, the caret takes its
+    geometry from that cell's layout, scrolling follows the line inside the cell
+    rather than jumping to the top of a tall table, and the selection highlight
+    is applied to the cell's own layout.
+  - Covered by 80 new checks in `Tests/RichTextEditorTest.cpp` (269 total) and
+    21 new ones in `Tests/RichTextEditElementTest.cpp` (74 total).
+
 #### 2026-09-16 *0.8.65*
 - **`UltraCanvasRichTextEdit` can search and spell check.** Both were named as
   limits when the element landed in 0.8.50; they were also the two things a

@@ -281,7 +281,9 @@ private:
     void ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                             const std::vector<RichTextRun>& runs,
                             std::vector<RichTextHitRect>* outHits, int blockIndex) const;
-    void ApplySelectionAttributes(ITextLayout* layout, int blockIndex) const;
+    // cellRow/cellColumn identify a table cell's layout; -1/-1 is a block's own.
+    void ApplySelectionAttributes(ITextLayout* layout, int blockIndex,
+                                  int cellRow = -1, int cellColumn = -1) const;
     float BlockIndentFor(const RichDocBlock& block) const;
     FontStyle FontForBlock(const RichDocBlock& block) const;
     void RecalculateVisibleArea();
@@ -307,6 +309,9 @@ private:
     void DrawSpellErrorMarks(IRenderContext* ctx);
     // Selects `match`, scrolls it into view and notifies.
     void SelectMatch(const RichDocRange& match);
+
+    // The laid-out cell a position addresses, or null when it is not in one.
+    const BlockLayout* CellLayoutFor(const RichDocPosition& pos) const;
 
     // ===== HIT TESTING =====
     // Element-local point -> document position. Snaps to the nearest block.
