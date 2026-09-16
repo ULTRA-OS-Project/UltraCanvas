@@ -1,3 +1,15 @@
+#### 2026-09-16 *1.44*
+- **Table cells can be edited in a word-processing document.** Click into a cell
+  and type; **Tab** and **Shift+Tab** move between cells. Selecting, bold and
+  the rest of the formatting all work inside a cell, and **Find and Replace now
+  search table content**, which they skipped before.
+- Enter inside a cell adds a line to that cell rather than breaking the table in
+  two, and Backspace at the start of a cell steps back to the previous one
+  instead of merging cells.
+- Adding and removing rows and columns, merging cells, and selecting across
+  several cells at once are not available yet — which is also why **Insert
+  Table** stays greyed out in these documents.
+
 #### 2026-09-15 *1.43*
 - **Find, Replace and spell checking work in word-processing documents.** Both
   were unavailable when `.odt`/`.docx`/`.doc` files moved into the WYSIWYG
