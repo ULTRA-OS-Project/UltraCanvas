@@ -23,8 +23,10 @@
 // Handling > Tabs (what the "+" of the folder tab strip opens - the
 // current folder again or the Home folder), Extras > Open prompt (the command
 // line program UltraFiler opens, picked with the file dialog and stored with
-// "Save app") and Extras > History & Favorites (clearing the recently-used
-// lists and the pinned entries). Changes apply live and are saved
+// "Save app"), Extras > History & Favorites (clearing the recently-used
+// lists and the pinned entries) and Extras > Cache (whether finished
+// thumbnails are kept on disk between runs and compressed in memory, what
+// each cache is holding against what it may hold, and emptying them). Changes apply live and are saved
 // immediately.
 //
 // Every page is built the same way (MakePage): a bold title, the one-line
@@ -56,6 +58,7 @@
 #include "UltraCanvasMediaViewer.h"
 #include "UltraCanvasRadio.h"
 #include "UltraCanvasSlider.h"
+#include "UltraCanvasSwitch.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasTreeView.h"
 #include "UltraCanvasUtils.h"
@@ -113,6 +116,7 @@ namespace {
     constexpr const char* kPageExtras = "extras";
     constexpr const char* kPageOpenPrompt = "extras/open-prompt";
     constexpr const char* kPageLists = "extras/history-favorites";
+    constexpr const char* kPageCache = "extras/cache";
     // The page shown while nothing is selected - the window opens with every
     // section closed, so there is no page to show yet.
     constexpr const char* kPageStart = "start";
@@ -225,14 +229,33 @@ namespace {
         // History & Favorites
         std::shared_ptr<UltraCanvasLabel>     listsStatus;   // "History cleared."
 
+        // Extras > Cache: the two switches, the four "used of max" lines and
+        // the line the Empty cache button writes. Kept so the numbers can be
+        // refreshed - they are live figures, not a snapshot taken once when
+        // the window was built.
+        std::shared_ptr<UltraCanvasSwitch> diskCacheSwitch;
+        std::shared_ptr<UltraCanvasSwitch> compressedSwitch;
+        std::shared_ptr<UltraCanvasLabel>  cacheDiskLine;
+        std::shared_ptr<UltraCanvasLabel>  cacheMemoryLine;
+        std::shared_ptr<UltraCanvasLabel>  cacheIconLine;
+        std::shared_ptr<UltraCanvasLabel>  cacheHotLine;
+        std::shared_ptr<UltraCanvasLabel>  cacheLocationLine;
+        std::shared_ptr<UltraCanvasLabel>  cacheStatus;
+
         UltraFilerSettings*   settings = nullptr;
         std::function<void()> onChanged;
+        UltraFilerSettingsDialog::CacheHooks cacheHooks;
         std::function<void()> onClearHistory;
         std::function<void()> onClearFavorites;
         std::function<void()> onClearFolderViews;
     };
 
     std::shared_ptr<DialogState> g_dialog;
+
+    // Set by the host before the window is ever opened, and kept outside the
+    // dialog because it outlives it: the window is built and torn down again,
+    // the application's file displays are not.
+    UltraFilerSettingsDialog::CacheHooks g_cacheHooks;
 
     void ApplyAndSave(DialogState* d) {
         if (d->onChanged) d->onChanged();
@@ -1704,6 +1727,236 @@ namespace {
         return parts.page;
     }
 
+    // ===== EXTRAS > CACHE =====
+    // What UltraFiler is holding so a folder it has already looked at opens
+    // instantly, and the two switches that decide whether it holds it at all.
+    //
+    // The ceilings are not written here: they come from
+    // GetThumbnailCacheStats(), which reports them beside what is used, so
+    // this page cannot drift out of step with the widget the way a second
+    // copy of "96 MB" would.
+
+    // A size in the unit a person reads it in. 0 is "nothing", not "0 bytes".
+    std::string FormatBytes(uint64_t bytes) {
+        if (bytes == 0) return "nothing";
+        const char* units[] = { "bytes", "KB", "MB", "GB" };
+        double value = static_cast<double>(bytes);
+        size_t unit = 0;
+        while (value >= 1024.0 && unit + 1 < 4) { value /= 1024.0; ++unit; }
+        char buffer[64];
+        // One decimal from MB up, because "1.4 MB" says more than "1 MB" -
+        // but not on a round number: a ceiling of exactly 96 MB should read
+        // as "96 MB", not as "96.0 MB".
+        const bool round = value == static_cast<double>(static_cast<long long>(value));
+        std::snprintf(buffer, sizeof buffer,
+                      (unit >= 2 && !round) ? "%.1f %s" : "%.0f %s",
+                      value, units[unit]);
+        return buffer;
+    }
+
+    // "231 thumbnails, 12.4 MB of 96 MB" - how many, and what that leaves of
+    // what it may use. Nothing held says so in words: "0 thumbnails, nothing
+    // of 96 MB" is three facts where one will do.
+    std::string FormatUsage(uint64_t used, uint64_t budget, size_t entries,
+                            const char* noun) {
+        if (entries == 0) return "nothing of " + FormatBytes(budget);
+        const std::string count = entries == 1
+                ? "1 " + std::string(noun)
+                : std::to_string(entries) + " " + std::string(noun) + "s";
+        return count + ", " + FormatBytes(used) + " of " + FormatBytes(budget);
+    }
+
+    void SetLine(const std::shared_ptr<UltraCanvasLabel>& label,
+                 const std::string& text) {
+        if (!label) return;
+        label->SetText(text);
+        label->RequestRedraw();
+    }
+
+    // Re-read every figure on the page. Called when the page is shown, after
+    // either switch moves and after the cache is emptied - the numbers are
+    // live, and a settings page that showed what was true when the window
+    // opened would be wrong by the time anyone read it.
+    void RefreshCacheUsage(DialogState* d) {
+        const DiskCache::Usage disk = ThumbnailDiskCache::GetUsage();
+        const std::string directory = ThumbnailDiskCache::Directory();
+
+        // Empty is the only "cannot": switched off is a choice, and the files
+        // are still there, still counted, still expiring.
+        if (directory.empty()) {
+            SetLine(d->cacheDiskLine,
+                    "On disk: unavailable - this system offers nowhere to "
+                    "write a cache.");
+            SetLine(d->cacheLocationLine, "");
+        } else {
+            // No ceiling on the disk half: it is bounded by the two-week
+            // expiry rather than by a byte budget, so what it is holding is
+            // the whole answer.
+            const std::string held = disk.files == 0
+                    ? std::string("nothing yet")
+                    : (disk.files == 1 ? std::string("1 thumbnail")
+                                       : std::to_string(disk.files) + " thumbnails")
+                      + ", " + FormatBytes(disk.bytes);
+            SetLine(d->cacheDiskLine,
+                    "On disk: " + held +
+                    (d->settings && d->settings->thumbnailDiskCache
+                             ? "" : " (switched off - left to expire)"));
+            SetLine(d->cacheLocationLine, directory);
+        }
+
+        if (!d->cacheHooks.memoryStats) {
+            SetLine(d->cacheMemoryLine, "In memory: not available.");
+            SetLine(d->cacheIconLine, "");
+            SetLine(d->cacheHotLine, "");
+            return;
+        }
+        const UltraCanvasFilerWidget::ThumbCacheStats memory =
+                d->cacheHooks.memoryStats();
+        // The icons are counted separately because they have their own
+        // budget: they are the file's identity, not a courtesy preview, and
+        // a folder of photos must not be able to spend their memory.
+        const size_t previewEntries = memory.entries - memory.iconEntries;
+        const size_t previewBytes = memory.storedBytes - memory.iconBytes;
+        SetLine(d->cacheMemoryLine,
+                "In memory, previews: " +
+                FormatUsage(previewBytes, memory.contentBudget,
+                            previewEntries, "thumbnail"));
+        SetLine(d->cacheIconLine,
+                "In memory, application icons: " +
+                FormatUsage(memory.iconBytes, memory.iconBudget,
+                            memory.iconEntries, "icon"));
+        // This one is worth a word of explanation wherever it is shown: it
+        // holds the tiles being painted at this moment and nothing else, so
+        // with a settings window over the file display it is normally empty -
+        // which would otherwise read as something not working.
+        SetLine(d->cacheHotLine,
+                d->settings && d->settings->compressedThumbnails
+                        ? "In memory, unpacked for drawing: " +
+                          FormatUsage(memory.hotBytes, memory.hotBudget,
+                                      memory.hotEntries, "tile") +
+                          " - only the tiles on screen, so this empties while "
+                          "the display is not being drawn."
+                        : "In memory, unpacked for drawing: not used while "
+                          "thumbnails are held uncompressed.");
+    }
+
+    // A switch in the window's text size, laid out like the page's other
+    // controls.
+    std::shared_ptr<UltraCanvasSwitch> MakeSwitch(const std::string& id,
+                                                  const std::string& text,
+                                                  bool checked,
+                                                  std::function<void(bool)> onChange) {
+        auto sw = UltraCanvasSwitch::Create(id, 0, 0, text, checked);
+        SwitchVisualStyle style = sw->GetVisualStyle();
+        style.base.fontSize       = kTextFontSize;
+        style.base.textColor      = kTextColor;
+        style.base.textHoverColor = kTextColor;
+        sw->SetVisualStyle(style);
+        // Explicit sizes: content measuring needs a render context, which the
+        // dialog does not have while it is first laid out.
+        sw->size.width  = CSSLayout::Dimension::Px(kTextWidth);
+        sw->size.height = CSSLayout::Dimension::Px(kControlHeight);
+        sw->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        sw->onStateChanged = [onChange](CheckedState, CheckedState now) {
+            if (onChange) onChange(now == CheckedState::Checked);
+        };
+        return sw;
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildCachePage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-cache", "Cache",
+                "What UltraFiler keeps so a folder opens without being read "
+                "again:");
+
+        d->diskCacheSwitch = MakeSwitch("ufl-set-cache-disk",
+                "Keep thumbnails on disk between runs",
+                d->settings->thumbnailDiskCache, [d](bool on) {
+            d->settings->thumbnailDiskCache = on;
+            UltraCanvasFilerWidget::SetThumbnailDiskCacheEnabled(on);
+            if (d->cacheHooks.apply) d->cacheHooks.apply();
+            ApplyAndSave(d);
+            RefreshCacheUsage(d);
+        });
+        parts.body->AddChild(d->diskCacheSwitch);
+
+        d->compressedSwitch = MakeSwitch("ufl-set-cache-compressed",
+                "Compress thumbnails held in memory",
+                d->settings->compressedThumbnails, [d](bool on) {
+            d->settings->compressedThumbnails = on;
+            if (d->cacheHooks.apply) d->cacheHooks.apply();
+            ApplyAndSave(d);
+            RefreshCacheUsage(d);
+        });
+        parts.body->AddChild(d->compressedSwitch);
+
+        // What is held now, against what it is allowed to hold.
+        parts.body->AddChild(MakeText("ufl-set-cache-used-title",
+                "In use:", kTextWidth, kTextFontSize, kTextColor));
+        d->cacheDiskLine = MakeText("ufl-set-cache-disk-line", "");
+        d->cacheMemoryLine = MakeText("ufl-set-cache-memory-line", "");
+        d->cacheIconLine = MakeText("ufl-set-cache-icon-line", "");
+        d->cacheHotLine = MakeText("ufl-set-cache-hot-line", "");
+        parts.body->AddChild(d->cacheDiskLine);
+        parts.body->AddChild(d->cacheMemoryLine);
+        parts.body->AddChild(d->cacheIconLine);
+        parts.body->AddChild(d->cacheHotLine);
+
+        d->cacheLocationLine = MakeText("ufl-set-cache-location", "", kTextWidth,
+                                        kNoteFontSize, kNoteTextColor);
+        parts.body->AddChild(d->cacheLocationLine);
+
+        auto buttonRow = MakeButtonRow("ufl-set-cache-buttons");
+        buttonRow->AddChild(MakeButton("ufl-set-cache-empty", "Empty cache",
+                                       120, [d]() {
+            const size_t files = UltraCanvasFilerWidget::ClearThumbnailDiskCache();
+            if (d->cacheHooks.clearMemory) d->cacheHooks.clearMemory();
+            // The figures below are read straight away, and whatever is on
+            // screen is already being decoded again behind this window - so
+            // they are a true reading of this moment and an understated one a
+            // second later. Saying so is better than showing a number that
+            // quietly grows, and Refresh is right there.
+            SetLine(d->cacheStatus,
+                    (files == 0
+                        ? std::string("Cache emptied.")
+                        : "Cache emptied: " + std::to_string(files) +
+                          (files == 1 ? " thumbnail" : " thumbnails") +
+                          " deleted from disk.") +
+                    " What is on screen is being read again and goes back into "
+                    "the cache as it lands - press Refresh to see where it "
+                    "settles.");
+            RefreshCacheUsage(d);
+        }));
+        buttonRow->AddChild(MakeButton("ufl-set-cache-refresh", "Refresh", 90,
+                                       [d]() { RefreshCacheUsage(d); }));
+        parts.body->AddChild(buttonRow);
+
+        d->cacheStatus = MakeText("ufl-set-cache-status", "", kTextWidth,
+                                  kTextFontSize, kNoteTextColor);
+        parts.body->AddChild(d->cacheStatus);
+
+        AddNote(parts, "ufl-set-cache-note1",
+                "A thumbnail costs far more to make than to keep: a folder of "
+                "photos, videos or documents is minutes of work the first time "
+                "it is opened. Kept on disk, that is paid once instead of once "
+                "per start.");
+        AddNote(parts, "ufl-set-cache-note2",
+                "The disk cache looks after its own size: a thumbnail not used "
+                "for " +
+                std::to_string(DiskCache::kDefaultMaxAge.count() / 24) +
+                " days is deleted when UltraFiler next starts, so a folder you "
+                "keep visiting keeps its thumbnails and one you opened once "
+                "pays for itself and then goes away. Nothing here can show an "
+                "out-of-date picture - a file's size and date are stored with "
+                "its thumbnail, so a file that has changed is read again.");
+        AddNote(parts, "ufl-set-cache-note3",
+                "The memory figures are the file display in front. Previews and "
+                "application icons have separate ceilings so a folder of photos "
+                "cannot push the programs' icons out, and application icons are "
+                "never written to disk: the system produces those faster than "
+                "they could be read back.");
+        return parts.page;
+    }
+
     // ===== THE PAGE SHOWN WHILE NOTHING IS SELECTED =====
     // The window opens with the three sections closed, so it opens on this
     // rather than on whichever page happened to be first.
@@ -1720,9 +1973,10 @@ namespace {
                 "Handling - what an action does: dropping dragged files onto "
                 "a folder, and what the \"+\" of the tab strip opens.");
         AddNote(parts, "ufl-set-start-note3",
-                "Extras - the command line program \"Open prompt\" starts, and "
+                "Extras - the command line program \"Open prompt\" starts, "
                 "clearing the recently-used lists, the pinned entries and the "
-                "remembered folder views.");
+                "remembered folder views, and what UltraFiler keeps cached so "
+                "a folder opens without being read again.");
         AddNote(parts, "ufl-set-start-note4",
                 "Every change applies straight away and is saved; there is "
                 "nothing to confirm.");
@@ -1771,6 +2025,9 @@ namespace {
         d->shownPage = target;
         for (auto& [id, pageContainer] : d->pages)
             pageContainer->SetVisible(id == target);
+        // The Cache page shows live figures, so it is re-read on the way in
+        // rather than left showing what was true when the window was built.
+        if (target == kPageCache) RefreshCacheUsage(d);
         UpdateRestoreButton(d);
     }
 
@@ -1866,6 +2123,7 @@ namespace {
         AddTreeNode(d, "settings", kPageExtras, "Extras");
         AddTreeNode(d, kPageExtras, kPageOpenPrompt, "Open prompt");
         AddTreeNode(d, kPageExtras, kPageLists, "History & Favorites");
+        AddTreeNode(d, kPageExtras, kPageCache, "Cache");
 
         // After the nodes: hiding the root promotes its children to the top
         // level, which it can only do once they exist. The sections themselves
@@ -1899,6 +2157,7 @@ namespace {
         AddPage(d, kPageTabs, BuildTabsPage(d));
         AddPage(d, kPageOpenPrompt, BuildOpenPromptPage(d));
         AddPage(d, kPageLists, BuildListsPage(d));
+        AddPage(d, kPageCache, BuildCachePage(d));
         AddPage(d, kPageStart, BuildStartPage(d));
 
         d->window->AddChild(content);
@@ -1985,6 +2244,7 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
         case Page::Thumbnails: pageId = kPageThumbnails; break;
         case Page::DetailView: pageId = kPageDetailView; break;
         case Page::FileExtensions: pageId = kPageFileExtensions; break;
+        case Page::Cache: pageId = kPageCache; break;
         default: break;
     }
     // Raise the already open window instead of opening a second one - on the
@@ -1998,6 +2258,7 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
 
     auto state = std::make_shared<DialogState>();
     state->settings = settings;
+    state->cacheHooks = g_cacheHooks;   // read while the Cache page is built
     state->onChanged = std::move(onChanged);
     state->onClearHistory = std::move(onClearHistory);
     state->onClearFavorites = std::move(onClearFavorites);
@@ -2008,8 +2269,16 @@ void UltraFilerSettingsDialog::Show(UltraCanvasWindowBase* parent,
     if (pageId) SelectPage(state.get(), pageId);
 }
 
+void UltraFilerSettingsDialog::SetCacheHooks(CacheHooks hooks) {
+    g_cacheHooks = std::move(hooks);
+    // A window that is already open takes them too, so the Cache page works
+    // whichever order the host does this in.
+    if (g_dialog) g_dialog->cacheHooks = g_cacheHooks;
+}
+
 void UltraFilerSettingsDialog::Shutdown() {
     g_dialog.reset();
+    g_cacheHooks = {};
 }
 
 } // namespace UltraCanvas
