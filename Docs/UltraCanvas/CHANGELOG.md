@@ -1,3 +1,28 @@
+#### 2026-09-16 *0.8.71*
+- **Merged table cells survive a save, and are drawn where they belong.** Two
+  separate defects, found while looking at what tables still could not do.
+  - **Row spans were silently dropped on every save.** The ODT reader has always
+    recovered `table:number-rows-spanned` into `RichTableCell::rowSpan`, but
+    neither writer ever emitted a row merge — so opening a document with
+    vertically merged cells and saving it quietly un-merged them. The ODT writer
+    now emits `table:number-rows-spanned` with the `<table:covered-table-cell/>`
+    placeholders the covered positions need, the DOCX writer emits
+    `<w:vMerge w:val="restart"/>` plus the continuation cells Word requires, and
+    the DOCX reader turns those continuations back into a `rowSpan`, which it
+    previously ignored entirely. A round-trip test in `WordFormatsTest` pins
+    both formats; it failed before the fix, which is how the loss was found.
+  - **`UltraCanvasRichTextEdit` ignored spans when laying tables out.** A cell
+    was positioned by its index within its row and drawn one column wide, so a
+    single merged cell misaligned every cell after it and any cell below a
+    row-spanned one sat in the wrong column. Layout now walks the grid: a cell
+    covering several columns is drawn that wide, a cell covering several rows
+    stretches down over them, and the positions the cells beside them get shift
+    accordingly.
+  - A cell is still addressed as `{row, index-within-row}`. The grid column is
+    geometry alone, so honouring spans moved no caret and changed no position.
+  - Covered by 11 new checks in `Tests/RichTextEditElementTest.cpp` (85 total)
+    and a merged-cell round trip in `Tests/WordFormatsTest.cpp`.
+
 #### 2026-09-16 *0.8.70*
 - **The demo application had no WYSIWYG page, and its tree told four lies about
   what is implemented.** Both are the same defect: the tree's status icon is the
