@@ -362,6 +362,130 @@ int main() {
     TEST("The host gets first refusal on a right-click", hostMenuAsked);
     edit->onContextMenu = nullptr;
 
+    // ===== TABLE CELLS =====
+    std::cerr << "\n--- Table cells ---" << std::endl;
+    edit->SetMarkdown("Intro paragraph.\n\n"
+                      "| Region | Revenue |\n"
+                      "|--------|---------|\n"
+                      "| North  | 1200    |\n"
+                      "| South  | 950     |\n\n"
+                      "Closing paragraph.\n");
+    edit->RequestRedraw();
+    window->UpdateAndRender();
+
+    int tableBlock = -1;
+    for (int i = 0; i < editor.GetBlockCount(); i++) {
+        if (editor.GetBlock(i).type == RichBlockType::Table) tableBlock = i;
+    }
+    TEST("The markdown table became a table block", tableBlock >= 0);
+
+    if (tableBlock >= 0) {
+        TEST("The table has rows", editor.TableRowCount(tableBlock) >= 2);
+        TEST("Cells are containers the editor can reach",
+             editor.AllContainers().size() > static_cast<size_t>(editor.GetBlockCount()));
+
+        // Put the caret in a cell through the public API and type into it.
+        const RichDocPosition cell(tableBlock, 1, 0, 0);
+        const std::string before = editor.TextAt(cell);
+        TEST("A cell has its own text", !before.empty());
+
+        editor.SetCaret(editor.ContainerEnd(cell));
+        window->UpdateAndRender();
+        TEST("The caret is inside the cell", editor.GetCaret().InCell());
+
+        edit->OnEvent(TextEvent("X"));
+        window->UpdateAndRender();
+        TEST("Typing lands in that cell", editor.TextAt(cell) == before + "X");
+        TEST("...and nowhere else",
+             editor.TextAt(RichDocPosition(tableBlock, 1, 1, 0)).find('X') == std::string::npos);
+        TEST("The table did not split into more blocks",
+             editor.GetBlock(tableBlock).type == RichBlockType::Table);
+
+        // Enter inside a cell adds a line to it rather than breaking the table.
+        const int blocksBefore = editor.GetBlockCount();
+        edit->OnEvent(KeyEvent(UCKeys::Enter));
+        window->UpdateAndRender();
+        TEST("Enter in a cell does not split the table",
+             editor.GetBlockCount() == blocksBefore);
+
+        edit->Undo();
+        edit->Undo();
+        window->UpdateAndRender();
+        TEST("Undo restores the cell", editor.TextAt(cell) == before);
+
+        // Tab walks to the next cell.
+        editor.SetCaret(cell);
+        window->UpdateAndRender();
+        const int columnBefore = editor.GetCaret().cellColumn;
+        edit->OnEvent(KeyEvent(UCKeys::Tab));
+        window->UpdateAndRender();
+        TEST("Tab moves to the next cell",
+             editor.GetCaret().InCell() && editor.GetCaret().cellColumn != columnBefore);
+        edit->OnEvent(KeyEvent(UCKeys::Tab, /*ctrl*/ false, /*shift*/ true));
+        window->UpdateAndRender();
+        TEST("Shift+Tab comes back",
+             editor.GetCaret().InCell() && editor.GetCaret().cellColumn == columnBefore);
+
+        // A click inside the table must land in a cell. The table's exact y
+        // depends on font metrics, so this sweeps the band it must occupy and
+        // requires that clicking somewhere in there reaches a cell — which is
+        // false if cell hit testing is not wired up at all.
+        edit->SetFocus(true);
+        bool clickReachedCell = false;
+        int cellsReached = 0;
+        for (int y = 20; y <= 200 && !clickReachedCell; y += 4) {
+            editor.SetCaret(editor.DocumentStart());
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 60, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 60, static_cast<float>(y)));
+            window->UpdateAndRender();
+            if (editor.GetCaret().InCell()) {
+                clickReachedCell = true;
+                cellsReached++;
+            }
+        }
+        TEST("Clicking inside the table puts the caret in a cell", clickReachedCell);
+
+        // Clicking the right-hand column reaches a different cell than the left.
+        int leftColumn = -1, rightColumn = -1;
+        for (int y = 20; y <= 200; y += 4) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 30, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 30, static_cast<float>(y)));
+            window->UpdateAndRender();
+            if (editor.GetCaret().InCell()) { leftColumn = editor.GetCaret().cellColumn; break; }
+        }
+        for (int y = 20; y <= 200; y += 4) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 600, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 600, static_cast<float>(y)));
+            window->UpdateAndRender();
+            if (editor.GetCaret().InCell()) { rightColumn = editor.GetCaret().cellColumn; break; }
+        }
+        TEST("A click on the left reaches the first column", leftColumn == 0);
+        TEST("A click on the right reaches a later column", rightColumn > 0);
+
+        // Selecting inside a cell renders without disturbing the document.
+        editor.SetSelection(RichDocPosition(tableBlock, 1, 0, 0),
+                            editor.ContainerEnd(RichDocPosition(tableBlock, 1, 0, 0)));
+        window->UpdateAndRender();
+        TEST("A cell selection is not empty", editor.HasSelection());
+        TEST("A cell selection stays in one cell",
+             editor.GetSelectionRange().start.SameContainer(editor.GetSelectionRange().end));
+        TEST("Selected cell text comes back", !edit->GetSelectedText().empty());
+
+        // Bold through the element reaches the cell's runs.
+        edit->ToggleBold();
+        window->UpdateAndRender();
+        TEST("Bold applies inside a cell",
+             RichCharFormatState::IsOn(edit->GetFormatState().bold));
+        edit->Undo();
+        window->UpdateAndRender();
+
+        // Find reaches into the table.
+        editor.SetCaret(editor.DocumentStart());
+        TEST("Find reaches a word that only exists in a cell",
+             edit->FindNext("South"));
+        TEST("...and the match is in a cell", editor.GetSelectionRange().start.InCell());
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;
