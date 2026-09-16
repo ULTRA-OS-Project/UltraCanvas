@@ -1,3 +1,76 @@
+#### 2026-09-16 *0.8.66*
+- **A changelog-only pull request rebuilt 621 of the build's 1136 objects, and
+  three open ones kept invalidating each other over a file none of them had
+  changed any code in.** `ULTRACANVAS_VERSION` was a `PUBLIC` compile
+  definition on the core library, so it sat on the compile command line of
+  every source in the library and of every app and test that links it —
+  `FontFileTest` included. The macro changes whenever anyone adds a changelog
+  entry, because it is read from the first line of
+  `Docs/UltraCanvas/CHANGELOG.md`, so each entry changed the command line of
+  all 621 and every one of them recompiled. Exactly two sources read it
+  (`UltraCanvasUtils.cpp`, `UltraCanvasElementPlugins.cpp`, both with a
+  fallback for its absence), so it is attached to those two with
+  `set_source_files_properties` and is no longer part of the library's
+  interface. A changelog edit now recompiles two objects; the number of targets
+  carrying the definition went from 70 to 1.
+- **The collision that made those changelog diffs impossible to settle.** Line
+  one of a changelog *is* the product's version — cmake reads it with
+  `file(STRINGS … LIMIT_COUNT 1)` — which makes it the most contended line in
+  the repository. Two open pull requests collide there in one of two ways, and
+  both had happened:
+  - *Stale.* A branch picks the next number, `main` releases further versions
+    while it waits for review, and it merges carrying a number lower than
+    versions already released below it, so the product's version goes
+    backwards. 0.8.53 landed this way over a `main` that had reached 0.8.60.
+  - *Shared.* Two branches write the same `#### <date> *x.y.z*` header. Git
+    sees an identical context line, merges both bullet lists under the one
+    header without a conflict, and two releases share a number while the
+    version never increments. This is also why such a branch's changelog diff
+    never goes away however often `main` is merged into it: its bullets are not
+    in `main`'s copy of that entry, so they are still an addition, and the two
+    branches keep rewriting the same lines.
+- **`scripts/check_changelog.py` refuses both**, over every changelog
+  `cmake/UltraCanvasVersion.cmake` declares (it parses that file, so the two
+  cannot drift). The top entry must be on line 1, must be unique in its file,
+  and must be strictly greater than every other version in it; with
+  `--base origin/main` a changelog this branch modified must also not still
+  claim the base's version. `.github/workflows/changelog.yml` runs it on pull
+  requests and on pushes to `main`.
+- **CI now keeps a ccache between runs.** A hosted runner has no incremental
+  state, so every leg compiled all ~1136 objects from scratch even when a pull
+  request changed one file — six legs, macOS billed at 10x and Windows at 2x.
+  `actions/cache` now carries ccache's objects across runs, keyed per
+  `os`/`build_type` with a prefix `restore-keys` so a run with no exact match
+  still starts from the most recent cache for that leg. ccache is installed on
+  all three platforms (apt, brew, and the MSYS2 `mingw-w64-*-ccache`), wired in
+  with `CMAKE_{C,CXX}_COMPILER_LAUNCHER` and `CMAKE_OBJCXX_COMPILER_LAUNCHER`
+  for the macOS Objective-C++ backends, and `ccache -s` is printed after every
+  build so a misconfigured leg shows as a 0% hit rate rather than as a mystery
+  40-minute run.
+  - `CCACHE_MAXSIZE` is 500 MB, not the 5 GB default: GitHub allows 10 GB of
+    cache per *repository* and evicts least-recently-used, so six legs at the
+    default would evict each other — and the llms-txt and ui-reuse caches — on
+    every push.
+  - `CCACHE_COMPILERCHECK=content`, because the runner image reinstalls the
+    toolchain each run and the default mtime check would call an identical
+    compiler a different one and miss on every object.
+  - The two ccache steps deliberately carry no `shell:`, so they inherit the
+    job default — the MSYS2 shell on the Windows legs. `shell: bash` there is
+    Git Bash, which has no mingw ccache on its PATH.
+  - This is why the `ULTRACANVAS_VERSION` change above matters beyond local
+    builds: a definition on 621 objects' command lines is 621 guaranteed cache
+    misses, since the command line is part of ccache's hash. Measured on a
+    413-object subset, a changelog-only edit with a wiped build directory hits
+    411/413 — the two misses being exactly `UltraCanvasUtils.cpp` and
+    `UltraCanvasElementPlugins.cpp`, the only sources that read the macro.
+  - Not covered: the Rust `vtracer` staticlib, which cargo builds and ccache
+    does not see.
+  - History below line 1 is deliberately not policed. The framework changelog
+    carries sixteen duplicated version numbers from before this check existed,
+    some months old and long since released — renumbering a published release
+    would be a lie, so they stay and only new top entries have to be
+    well-formed. `0.8.51`/`0.8.53` sitting out of order near the top are two
+    of them.
 #### 2026-09-16 *0.8.65*
 - **`UltraCanvasListView` shows the tooltips its model has always held.**
   `ListItem::tooltip` and `MultiColumnListItem::tooltip` fed `ToolTipRole`,
