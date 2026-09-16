@@ -829,7 +829,9 @@ namespace UltraCanvas {
         }
     }
 
-    std::string ExportVImage(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
+    // The encoding half of ExportVImage. It writes wherever it is told, which
+    // is never the caller's file directly - see ExportVImage below.
+    static std::string EncodeVImageTo(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
         vips_error_clear();   // see UCImageRaster::Save — keep error reports scoped to this export
         // Handle resize if target dimensions specified
         if (!opts.preserveTransparency && vImg.bands() > 3) {
@@ -1102,6 +1104,18 @@ namespace UltraCanvas {
                                      : (std::string("Could not save image: ") + err.what());
         }
         return "";
+    }
+
+    std::string ExportVImage(vips::VImage vImg, const std::string &imagePath, const UCImageSave::ImageExportOptions& opts) {
+        // Every encoder here opens its destination truncating, so writing to
+        // the caller's file directly empties it before the first byte of the
+        // new image exists: an export that then fails - no space, a codec the
+        // build turns out not to have, a destination another program holds -
+        // would cost the user the picture that was there. Stage it beside the
+        // target and move it into place once it is whole.
+        return WriteFileAtomically(imagePath, [&](const std::string& staged) {
+            return EncodeVImageTo(vImg, staged, opts);
+        });
     }
 
     // ===== Runtime libvips capability probes =====
