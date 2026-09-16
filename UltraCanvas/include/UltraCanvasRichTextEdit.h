@@ -28,8 +28,10 @@
 #include "UltraCanvasCommonTypes.h"
 #include "UltraCanvasImage.h"
 #include "UltraCanvasRichDocumentEditor.h"
+#include "UltraCanvasSpellChecker.h"
 
 #include <array>
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -190,6 +192,41 @@ public:
                                const std::vector<uint8_t>& data,
                                const std::string& altText = "");
 
+    // ===== SEARCH =====
+    // FindNext starts at the end of the selection (so repeated calls walk
+    // forwards through matches) and FindPrevious at its start. A match becomes
+    // the selection and is scrolled into view.
+    void SetFindOptions(const RichFindOptions& options) { findOptions = options; }
+    const RichFindOptions& GetFindOptions() const { return findOptions; }
+    bool FindNext(const std::string& needle);
+    bool FindPrevious(const std::string& needle);
+    // Replaces the selection when it already holds a match of `needle`, then
+    // moves to the next one — the usual behaviour of a Replace button, which
+    // does nothing destructive when the user has not found anything yet.
+    bool ReplaceCurrent(const std::string& needle, const std::string& replacement);
+    int ReplaceAll(const std::string& needle, const std::string& replacement);
+    // How many matches the document holds, for a "3 of 12" readout.
+    int CountMatches(const std::string& needle) const;
+
+    // ===== SPELL CHECKING =====
+    // Checking runs on the shared UltraCanvasSpellChecker worker thread, over
+    // the document's text with blocks joined by '\n' — one job for the
+    // document, not one per block. Results are drained while rendering.
+    void SetSpellCheckEnabled(bool enabled);
+    bool IsSpellCheckEnabled() const { return spellCheckEnabled; }
+    void SetSpellCheckOptions(const SpellCheckOptions& options);
+    const SpellCheckOptions& GetSpellCheckOptions() const { return spellOptions; }
+    // Re-checks now (after changing dictionary or user words).
+    void RunSpellCheck();
+    const std::vector<SpellError>& GetSpellErrors() const { return spellErrors; }
+    // The error under an element-local point, or null.
+    const SpellError* GetSpellErrorAtPosition(int x, int y);
+    // Replaces the flagged word and re-queues a check.
+    bool ApplySpellSuggestion(const SpellError& error, const std::string& replacement);
+    // Opens the built-in suggestion popup for a right-click; false when the
+    // click was not on a flagged word, so a host can show its own menu.
+    bool ShowSpellSuggestionMenu(const UCEvent& event);
+
     // ===== SCROLLING =====
     void ScrollToTop();
     void ScrollToCaret();
@@ -203,6 +240,14 @@ public:
     // Return true to consume a link click (otherwise it is ignored; the
     // element never launches a browser on its own).
     std::function<bool(const std::string& target)> onLinkClicked;
+    // Right-click, before the built-in spell popup. Return true to consume it,
+    // which is how a host puts the suggestions inside its own context menu.
+    std::function<bool(const UCEvent& event)> onContextMenu;
+    // Called with a copy of the options and the text about to be checked, so a
+    // host can fill in SpellCheckOptions::shouldSkipRange for that text.
+    // THREADING: see SpellCheckOptions::shouldSkipRange — the hook it installs
+    // runs on the spell worker thread.
+    std::function<void(SpellCheckOptions&, const std::string&)> onPrepareSpellCheck;
 
 private:
     // ===== BLOCK LAYOUT CACHE =====
@@ -236,7 +281,9 @@ private:
     void ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                             const std::vector<RichTextRun>& runs,
                             std::vector<RichTextHitRect>* outHits, int blockIndex) const;
-    void ApplySelectionAttributes(ITextLayout* layout, int blockIndex) const;
+    // cellRow/cellColumn identify a table cell's layout; -1/-1 is a block's own.
+    void ApplySelectionAttributes(ITextLayout* layout, int blockIndex,
+                                  int cellRow = -1, int cellColumn = -1) const;
     float BlockIndentFor(const RichDocBlock& block) const;
     FontStyle FontForBlock(const RichDocBlock& block) const;
     void RecalculateVisibleArea();
@@ -246,6 +293,25 @@ private:
     void DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl);
     void DrawScrollbar(IRenderContext* ctx);
     void UpdateCaret();
+
+    // ===== SEARCH / SPELL INTERNALS =====
+    // The whole document as one string, blocks joined by '\n', plus the start
+    // offset of each block in it. This is what the spell checker is given, and
+    // what maps its byte offsets back onto {blockIndex, byteOffset}.
+    std::string BuildSpellText(std::vector<int>& outBlockStarts) const;
+    RichDocPosition SpellBytePosition(size_t byteOffset) const;
+    // Element-local rectangles covering a byte range of one block, one per
+    // visual line the range crosses.
+    std::vector<Rect2Df> BlockRangeRects(int blockIndex, int startByte, int endByte) const;
+    void QueueSpellCheck();
+    void DropStaleSpellErrors();
+    void RegisterSpellResultNotifier();
+    void DrawSpellErrorMarks(IRenderContext* ctx);
+    // Selects `match`, scrolls it into view and notifies.
+    void SelectMatch(const RichDocRange& match);
+
+    // The laid-out cell a position addresses, or null when it is not in one.
+    const BlockLayout* CellLayoutFor(const RichDocPosition& pos) const;
 
     // ===== HIT TESTING =====
     // Element-local point -> document position. Snaps to the nearest block.
@@ -292,6 +358,22 @@ private:
     // Preferred x for Up/Down motion, so walking through short lines does not
     // drag the caret leftwards. -1 = recompute from the caret.
     float goalColumnX = -1.0f;
+
+    RichFindOptions findOptions;
+
+    // Spell checking. spellContextId identifies this element to the shared
+    // service; spellBlockStarts maps a result's byte offsets back onto blocks.
+    bool spellCheckEnabled = false;
+    std::vector<SpellError> spellErrors;
+    std::vector<int> spellBlockStarts;
+    std::string spellText;            // the text the errors on hand describe
+    uint64_t spellContextId = 0;
+    SpellCheckOptions spellOptions;
+    std::shared_ptr<UltraCanvasMenu> spellSuggestionMenu;
+    // Cleared by the destructor: the worker-thread notifier can outlive the
+    // element, and both of its hops test this before touching it.
+    std::shared_ptr<std::atomic<bool>> spellAlive =
+        std::make_shared<std::atomic<bool>>(true);
 
     // Rich clipboard within the process: the system clipboard carries the
     // plain text, and a paste whose text matches what was copied restores the

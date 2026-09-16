@@ -31,19 +31,37 @@ namespace UltraCanvas {
 // ===== POSITIONS =====
 
 // A caret position or selection endpoint.
+// A position addresses one *text container*: either a block's own runs, or one
+// cell of a table block. cellRow/cellColumn are -1 for the former, which is
+// what every non-table position uses, so the two-argument constructor and every
+// existing {block, offset} position keep their old meaning.
 struct RichDocPosition {
     int blockIndex = 0;     // index into UCRichDocument::blocks
-    int byteOffset = 0;     // into the block's concatenated run text
+    int cellRow = -1;       // -1 = the block's own runs; >= 0 = a table cell
+    int cellColumn = -1;
+    int byteOffset = 0;     // into that container's concatenated run text
 
     RichDocPosition() = default;
     RichDocPosition(int block, int offset) : blockIndex(block), byteOffset(offset) {}
+    RichDocPosition(int block, int row, int column, int offset)
+        : blockIndex(block), cellRow(row), cellColumn(column), byteOffset(offset) {}
+
+    bool InCell() const { return cellRow >= 0 && cellColumn >= 0; }
+    // The container this position is in, ignoring the offset — two positions
+    // are in the same container exactly when this compares equal.
+    bool SameContainer(const RichDocPosition& o) const {
+        return blockIndex == o.blockIndex && cellRow == o.cellRow && cellColumn == o.cellColumn;
+    }
 
     bool operator==(const RichDocPosition& o) const {
-        return blockIndex == o.blockIndex && byteOffset == o.byteOffset;
+        return SameContainer(o) && byteOffset == o.byteOffset;
     }
     bool operator!=(const RichDocPosition& o) const { return !(*this == o); }
+    // Document order: block, then row-major through a table's cells, then offset.
     bool operator<(const RichDocPosition& o) const {
         if (blockIndex != o.blockIndex) return blockIndex < o.blockIndex;
+        if (cellRow != o.cellRow) return cellRow < o.cellRow;
+        if (cellColumn != o.cellColumn) return cellColumn < o.cellColumn;
         return byteOffset < o.byteOffset;
     }
     bool operator<=(const RichDocPosition& o) const { return *this < o || *this == o; }
@@ -62,6 +80,7 @@ struct RichDocRange {
     }
     bool IsEmpty() const { return start == end; }
     bool SingleBlock() const { return start.blockIndex == end.blockIndex; }
+    bool Contains(const RichDocPosition& pos) const { return start <= pos && pos <= end; }
 };
 
 // ===== CHARACTER FORMATTING =====
@@ -117,6 +136,17 @@ struct RichCharFormatState {
     static bool IsOn(Tri t) { return t == Tri::On; }
 };
 
+// ===== SEARCH OPTIONS =====
+// Case folding is ASCII, matching UltraCanvasTextArea's search: a
+// case-insensitive search finds "Report" for "report" but not "STRASSE" for
+// "Straße". Full Unicode case folding would need a folding table the framework
+// does not carry yet.
+struct RichFindOptions {
+    bool caseSensitive = false;
+    bool wholeWord = false;
+    bool wrapAround = true;
+};
+
 // ===== THE EDITOR =====
 
 // Owns a document plus a caret and selection over it, and is the only thing
@@ -135,6 +165,32 @@ public:
     const std::shared_ptr<UCRichDocument>& GetDocument() const { return doc; }
     int GetBlockCount() const { return static_cast<int>(doc->blocks.size()); }
     const RichDocBlock& GetBlock(int index) const { return doc->blocks[index]; }
+
+    // ===== TEXT CONTAINERS =====
+    // A block's own runs, or one table cell's. Everything that edits or
+    // measures text goes through these rather than reaching into blocks
+    // directly, which is what lets a caret sit inside a table cell.
+    const std::vector<RichTextRun>* RunsAt(const RichDocPosition& pos) const;
+    std::vector<RichTextRun>* MutableRunsAt(const RichDocPosition& pos);
+    // Concatenated run text of the container `pos` addresses.
+    std::string TextAt(const RichDocPosition& pos) const;
+    int TextLengthAt(const RichDocPosition& pos) const;
+    // True when the position addresses something editable (a text block's runs,
+    // or a cell of a table).
+    bool IsTextContainer(const RichDocPosition& pos) const;
+    // The first/last position of the container `pos` is in.
+    RichDocPosition ContainerStart(const RichDocPosition& pos) const;
+    RichDocPosition ContainerEnd(const RichDocPosition& pos) const;
+    // Walks containers in document order: cell to cell inside a table, then on
+    // to the next block. False when there is no further container that way.
+    bool NextContainer(RichDocPosition& pos) const;
+    bool PreviousContainer(RichDocPosition& pos) const;
+    // Every text container in the document, in document order.
+    std::vector<RichDocPosition> AllContainers() const;
+    void ForEachContainer(const std::function<void(const RichDocPosition&)>& fn) const;
+    // Table geometry, for callers that move between cells (Tab, arrows).
+    int TableRowCount(int blockIndex) const;
+    int TableColumnCount(int blockIndex, int row) const;
 
     // Concatenated run text of a block — the string positions index into, and
     // the string the element lays out. Empty for Image / HorizontalRule /
@@ -166,7 +222,9 @@ public:
     RichDocPosition PreviousCharacter(const RichDocPosition& pos) const;
     RichDocPosition NextWord(const RichDocPosition& pos) const;
     RichDocPosition PreviousWord(const RichDocPosition& pos) const;
-    RichDocPosition BlockStart(const RichDocPosition& pos) const { return {pos.blockIndex, 0}; }
+    // Start/end of the container the caret is in — inside a table that is the
+    // cell, which is what Home and End should reach there.
+    RichDocPosition BlockStart(const RichDocPosition& pos) const { return ContainerStart(pos); }
     RichDocPosition BlockEnd(const RichDocPosition& pos) const;
     RichDocPosition DocumentStart() const;
     RichDocPosition DocumentEnd() const;
@@ -245,6 +303,27 @@ public:
     // that followed the caret, which is what makes pasting mid-sentence work.
     void InsertBlocks(const std::vector<RichDocBlock>& blocks);
 
+    // ===== SEARCH =====
+    // Matches are found in block text, so a match never spans a block boundary
+    // — which is also what makes every match safe to replace independently.
+    // Blocks holding no editable inline text (images, rules, page breaks and,
+    // for now, tables) are skipped: they are exactly the blocks BlockText()
+    // returns empty for.
+    //
+    // Searches from `from` and returns the first match at or after it
+    // (at or before it, searching backwards). With wrapAround the search
+    // continues from the other end of the document, so it always terminates.
+    bool Find(const std::string& needle, const RichDocPosition& from,
+              bool backwards, const RichFindOptions& options,
+              RichDocRange& outMatch) const;
+    // Every match in the document, in document order.
+    std::vector<RichDocRange> FindAll(const std::string& needle,
+                                      const RichFindOptions& options) const;
+    // Replaces every match in ONE undo step, so Ctrl+Z takes back the whole
+    // replace rather than one word per press. Returns how many were replaced.
+    int ReplaceAll(const std::string& needle, const std::string& replacement,
+                   const RichFindOptions& options);
+
     // ===== UNDO / REDO =====
     bool CanUndo() const { return !undoStack.empty(); }
     bool CanRedo() const { return !redoStack.empty(); }
@@ -312,6 +391,11 @@ private:
     // deletes and then inserts still undoes as a single step.
     void DeleteRangeInternal(const RichDocRange& range);
     void InsertTextInternal(const std::string& utf8);
+    RichDocPosition ClampToAnchorContainer(const RichDocPosition& pos) const;
+    void InsertLineBreakInternal();
+    void ReplaceRangeInternal(const RichDocRange& range, const std::string& utf8);
+    void ApplyCharFormatToRangeInternal(const RichDocRange& range,
+                                        const RichCharFormatDelta& delta);
     void SplitBlockInternal();
     void InsertStructuralBlock(RichBlockType type);
 

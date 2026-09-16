@@ -489,6 +489,372 @@ static void TestDocumentIntegration() {
     CHECK(changes >= 2);
 }
 
+// ===================================================================
+// SEARCH
+// ===================================================================
+static void TestSearch() {
+    std::cout << "\n--- Search ---\n";
+
+    auto doc = std::make_shared<UCRichDocument>();
+    auto addParagraph = [&doc](const std::string& text) {
+        RichDocBlock block;
+        block.type = RichBlockType::Paragraph;
+        RichTextRun run;
+        run.text = text;
+        block.runs.push_back(run);
+        doc->blocks.push_back(block);
+    };
+    addParagraph("The report is late.");        // block 0
+    addParagraph("Reporting begins Monday.");   // block 1
+    addParagraph("Another report follows.");    // block 2
+
+    UCRichDocumentEditor ed(doc);
+    RichFindOptions options;                    // case-insensitive, wrapping
+    RichDocRange match;
+
+    // --- forwards ---
+    CHECK(ed.Find("report", {0, 0}, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 0);
+    CHECK_EQ(match.start.byteOffset, 4);
+    CHECK_EQ(match.end.byteOffset, 10);
+
+    // From just past the first match, the next one is in the following block.
+    CHECK(ed.Find("report", match.start, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 0);   // the same match: search starts AT `from`
+    CHECK(ed.Find("report", match.end, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 1);
+    CHECK_EQ(match.start.byteOffset, 0);   // "Reporting", case-insensitively
+
+    CHECK(ed.Find("report", match.end, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 2);
+    CHECK_EQ(match.start.byteOffset, 8);
+
+    // Wrapping past the last match returns to the first.
+    CHECK(ed.Find("report", match.end, false, options, match));
+    CHECK_EQ(match.start.blockIndex, 0);
+
+    // ...unless wrapping is off.
+    RichFindOptions noWrap;
+    noWrap.wrapAround = false;
+    CHECK(!ed.Find("report", {2, 20}, false, noWrap, match));
+
+    // --- backwards ---
+    CHECK(ed.Find("report", {2, 22}, true, options, match));
+    CHECK_EQ(match.start.blockIndex, 2);
+    CHECK_EQ(match.start.byteOffset, 8);
+    // Searching back from a match's own start walks to the previous one rather
+    // than finding the same match again.
+    CHECK(ed.Find("report", match.start, true, options, match));
+    CHECK_EQ(match.start.blockIndex, 1);
+    CHECK(ed.Find("report", match.start, true, options, match));
+    CHECK_EQ(match.start.blockIndex, 0);
+    // And wraps to the last.
+    CHECK(ed.Find("report", match.start, true, options, match));
+    CHECK_EQ(match.start.blockIndex, 2);
+
+    // --- case sensitivity ---
+    RichFindOptions exact;
+    exact.caseSensitive = true;
+    CHECK(ed.Find("Report", {0, 0}, false, exact, match));
+    CHECK_EQ(match.start.blockIndex, 1);        // only "Reporting" has a capital R
+    CHECK(!ed.Find("REPORT", {0, 0}, false, exact, match));
+
+    // --- whole word ---
+    RichFindOptions wholeWord;
+    wholeWord.wholeWord = true;
+    CHECK(ed.Find("report", {0, 0}, false, wholeWord, match));
+    CHECK_EQ(match.start.blockIndex, 0);        // "report", not "Reporting"
+    CHECK(ed.Find("report", match.end, false, wholeWord, match));
+    CHECK_EQ(match.start.blockIndex, 2);
+    CHECK_EQ(ed.FindAll("report", wholeWord).size(), size_t(2));
+    CHECK_EQ(ed.FindAll("report", options).size(), size_t(3));
+
+    // A needle longer than the text, and an empty needle, find nothing.
+    CHECK(!ed.Find("a needle longer than any of these paragraphs are",
+                   {0, 0}, false, options, match));
+    CHECK(!ed.Find("", {0, 0}, false, options, match));
+    CHECK(ed.FindAll("", options).empty());
+
+    // --- blocks with no inline text are skipped, not mis-indexed ---
+    {
+        auto withImage = std::make_shared<UCRichDocument>();
+        RichDocBlock rule;
+        rule.type = RichBlockType::HorizontalRule;
+        withImage->blocks.push_back(rule);
+        RichDocBlock para;
+        para.type = RichBlockType::Paragraph;
+        RichTextRun run;
+        run.text = "after the rule";
+        para.runs.push_back(run);
+        withImage->blocks.push_back(para);
+
+        UCRichDocumentEditor ruled(withImage);
+        RichDocRange hit;
+        CHECK(ruled.Find("rule", {0, 0}, false, options, hit));
+        CHECK_EQ(hit.start.blockIndex, 1);
+    }
+
+    // --- replace all ---
+    const int replaced = ed.ReplaceAll("report", "summary", options);
+    CHECK_EQ(replaced, 3);
+    CHECK_EQ(Shape(ed), std::string("The summary is late.|summarying begins Monday.|Another summary follows."));
+
+    // One undo step for the whole replace, not one per match.
+    CHECK(ed.Undo());
+    CHECK_EQ(Shape(ed), std::string("The report is late.|Reporting begins Monday.|Another report follows."));
+
+    // Replacing with nothing deletes the matches.
+    CHECK_EQ(ed.ReplaceAll("Another ", "", options), 1);
+    CHECK_EQ(ed.BlockText(2), std::string("report follows."));
+    CHECK(ed.Undo());
+
+    // Replacing something absent changes nothing and adds no undo step.
+    const bool couldUndoBefore = ed.CanUndo();
+    CHECK_EQ(ed.ReplaceAll("nothing here matches", "x", options), 0);
+    CHECK_EQ(ed.CanUndo(), couldUndoBefore);
+
+    // Replaced text keeps the formatting of what it replaced.
+    {
+        auto styled = std::make_shared<UCRichDocument>();
+        RichDocBlock block;
+        block.type = RichBlockType::Paragraph;
+        RichTextRun plain;
+        plain.text = "plain ";
+        RichTextRun bold;
+        bold.text = "target";
+        bold.bold = true;
+        block.runs.push_back(plain);
+        block.runs.push_back(bold);
+        styled->blocks.push_back(block);
+
+        UCRichDocumentEditor se(styled);
+        CHECK_EQ(se.ReplaceAll("target", "replaced", options), 1);
+        CHECK_EQ(se.BlockText(0), std::string("plain replaced"));
+        bool boldSurvived = false;
+        for (const auto& run : se.GetBlock(0).runs) {
+            if (run.bold && run.text.find("replaced") != std::string::npos) boldSurvived = true;
+        }
+        CHECK(boldSurvived);
+    }
+}
+
+// ===================================================================
+// TABLE CELL EDITING
+// ===================================================================
+static std::shared_ptr<UCRichDocument> BuildTableDocument() {
+    auto doc = std::make_shared<UCRichDocument>();
+
+    auto paragraph = [&doc](const std::string& text) {
+        RichDocBlock block;
+        block.type = RichBlockType::Paragraph;
+        RichTextRun run;
+        run.text = text;
+        block.runs.push_back(run);
+        doc->blocks.push_back(block);
+    };
+
+    paragraph("before the table");          // block 0
+
+    RichDocBlock table;                     // block 1: 2 rows x 2 columns
+    table.type = RichBlockType::Table;
+    const char* cellText[2][2] = {{"alpha", "beta"}, {"gamma", "delta"}};
+    for (int r = 0; r < 2; r++) {
+        RichTableRow row;
+        for (int c = 0; c < 2; c++) {
+            RichTableCell cell;
+            RichTextRun run;
+            run.text = cellText[r][c];
+            cell.runs.push_back(run);
+            row.cells.push_back(cell);
+        }
+        table.tableRows.push_back(row);
+    }
+    doc->blocks.push_back(table);
+
+    paragraph("after the table");           // block 2
+    return doc;
+}
+
+static void TestTableCellEditing() {
+    std::cout << "\n--- Table cells ---\n";
+
+    UCRichDocumentEditor ed(BuildTableDocument());
+    CHECK_EQ(ed.GetBlockCount(), 3);
+
+    // --- addressing ---
+    const RichDocPosition a1(1, 0, 0, 0);   // {block, row, column, offset}
+    const RichDocPosition b2(1, 1, 1, 0);
+    CHECK_EQ(ed.TextAt(a1), std::string("alpha"));
+    CHECK_EQ(ed.TextAt(b2), std::string("delta"));
+    CHECK_EQ(ed.TextLengthAt(a1), 5);
+    CHECK(a1.InCell());
+    CHECK(!RichDocPosition(0, 0).InCell());
+    // A table block itself still has no inline text of its own.
+    CHECK_EQ(ed.BlockText(1), std::string(""));
+    CHECK_EQ(ed.TableRowCount(1), 2);
+    CHECK_EQ(ed.TableColumnCount(1, 0), 2);
+
+    // --- container order is row-major, and leaves the table at the end ---
+    std::vector<RichDocPosition> containers = ed.AllContainers();
+    CHECK_EQ(containers.size(), size_t(6));     // 2 paragraphs + 4 cells
+    CHECK_EQ(ed.TextAt(containers[0]), std::string("before the table"));
+    CHECK_EQ(ed.TextAt(containers[1]), std::string("alpha"));
+    CHECK_EQ(ed.TextAt(containers[2]), std::string("beta"));
+    CHECK_EQ(ed.TextAt(containers[3]), std::string("gamma"));
+    CHECK_EQ(ed.TextAt(containers[4]), std::string("delta"));
+    CHECK_EQ(ed.TextAt(containers[5]), std::string("after the table"));
+
+    // --- typing goes into the cell, and only that cell ---
+    ed.SetCaret(RichDocPosition(1, 0, 0, 5));   // end of "alpha"
+    ed.InsertText("!");
+    CHECK_EQ(ed.TextAt(a1), std::string("alpha!"));
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 1, 0)), std::string("beta"));
+    CHECK_EQ(ed.GetBlockCount(), 3);            // the table did not split
+
+    // --- Enter inside a cell is a line break, not a block split ---
+    ed.SplitBlock();
+    CHECK_EQ(ed.GetBlockCount(), 3);
+    CHECK_EQ(ed.TextAt(a1), std::string("alpha!\n"));
+    CHECK(ed.Undo());
+    CHECK(ed.Undo());
+    CHECK_EQ(ed.TextAt(a1), std::string("alpha"));
+    CHECK_EQ(ed.GetBlockCount(), 3);
+
+    // --- character motion crosses cell boundaries in document order ---
+    RichDocPosition p = ed.NextCharacter(RichDocPosition(1, 0, 0, 5));  // end of "alpha"
+    CHECK(p.InCell());
+    CHECK_EQ(p.cellRow, 0);
+    CHECK_EQ(p.cellColumn, 1);                  // into "beta"
+    CHECK_EQ(p.byteOffset, 0);
+
+    p = ed.PreviousCharacter(RichDocPosition(1, 1, 0, 0));   // start of "gamma"
+    CHECK_EQ(p.cellRow, 0);
+    CHECK_EQ(p.cellColumn, 1);                  // back into "beta"
+    CHECK_EQ(p.byteOffset, 4);                  // at its end
+
+    // Out of the last cell into the paragraph after the table.
+    p = ed.NextCharacter(RichDocPosition(1, 1, 1, 5));
+    CHECK_EQ(p.blockIndex, 2);
+    CHECK(!p.InCell());
+
+    // Into the first cell from the paragraph before it.
+    p = ed.NextCharacter(RichDocPosition(0, 16));
+    CHECK_EQ(p.blockIndex, 1);
+    CHECK(p.InCell());
+    CHECK_EQ(p.cellRow, 0);
+    CHECK_EQ(p.cellColumn, 0);
+
+    // --- Home/End act on the cell ---
+    CHECK_EQ(ed.BlockStart(RichDocPosition(1, 1, 0, 3)).byteOffset, 0);
+    CHECK_EQ(ed.BlockEnd(RichDocPosition(1, 1, 0, 0)).byteOffset, 5);   // "gamma"
+    CHECK(ed.BlockEnd(RichDocPosition(1, 1, 0, 0)).InCell());
+
+    // --- Backspace at a cell start steps back, it does not join cells ---
+    ed.SetCaret(RichDocPosition(1, 0, 1, 0));   // start of "beta"
+    CHECK(ed.DeleteBackward());
+    CHECK_EQ(ed.TextAt(a1), std::string("alpha"));            // nothing deleted
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 1, 0)), std::string("beta"));
+    CHECK_EQ(ed.GetCaret().cellColumn, 0);                    // moved into "alpha"
+    CHECK_EQ(ed.GetCaret().byteOffset, 5);                    // at its end
+
+    // Delete at a cell end likewise steps forward.
+    CHECK(ed.DeleteForward());
+    CHECK_EQ(ed.TextAt(a1), std::string("alpha"));
+    CHECK_EQ(ed.GetCaret().cellColumn, 1);
+    CHECK_EQ(ed.GetCaret().byteOffset, 0);
+
+    // --- deleting inside a cell affects only that cell ---
+    ed.SetSelection(RichDocPosition(1, 0, 1, 0), RichDocPosition(1, 0, 1, 2));
+    CHECK(ed.DeleteSelection());
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 1, 0)), std::string("ta"));
+    CHECK_EQ(ed.TextAt(a1), std::string("alpha"));
+    CHECK_EQ(ed.GetBlockCount(), 3);
+    CHECK(ed.Undo());
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 0, 1, 0)), std::string("beta"));
+
+    // --- a selection never spans two cells ---
+    ed.SetSelection(RichDocPosition(1, 0, 0, 0), RichDocPosition(1, 1, 1, 5));
+    CHECK(ed.GetSelectionRange().start.SameContainer(ed.GetSelectionRange().end));
+    // ...nor out of a cell into a following block.
+    ed.SetSelection(RichDocPosition(1, 0, 0, 0), RichDocPosition(2, 5));
+    CHECK(ed.GetSelectionRange().start.SameContainer(ed.GetSelectionRange().end));
+    // Ordinary block-to-block selections still span freely.
+    ed.SetSelection(RichDocPosition(0, 0), RichDocPosition(2, 5));
+    CHECK(!ed.GetSelectionRange().start.SameContainer(ed.GetSelectionRange().end));
+
+    // --- formatting applies inside a cell ---
+    ed.SetSelection(RichDocPosition(1, 1, 0, 0), RichDocPosition(1, 1, 0, 5));
+    ed.ToggleBold();
+    CHECK(RichCharFormatState::IsOn(ed.GetFormatState().bold));
+    bool cellBold = false;
+    for (const auto& run : ed.GetBlock(1).tableRows[1].cells[0].runs) {
+        if (run.bold && run.text.find("gamma") != std::string::npos) cellBold = true;
+    }
+    CHECK(cellBold);
+    CHECK(ed.Undo());
+
+    // --- paragraph commands do not reach past the cell onto the table ---
+    // A RichTableCell holds runs and nothing else, so there is nowhere to
+    // record a heading, list, alignment or quote for one. Applying these to the
+    // enclosing table block instead would silently restyle the whole table.
+    {
+        const RichDocBlock tableBefore = ed.GetBlock(1);
+        ed.SetCaret(RichDocPosition(1, 0, 0, 2));
+        ed.SetAlignment(RichTextAlign::Center);
+        ed.SetHeadingLevel(2);
+        ed.ToggleList(false);
+        ed.ToggleBlockQuote();
+        ed.IndentList();
+        const RichDocBlock& tableAfter = ed.GetBlock(1);
+        CHECK(tableAfter.type == RichBlockType::Table);
+        CHECK(tableAfter.align == tableBefore.align);
+        CHECK_EQ(tableAfter.listLevel, tableBefore.listLevel);
+        CHECK_EQ(tableAfter.headingLevel, tableBefore.headingLevel);
+        CHECK_EQ(ed.TextAt(a1), std::string("alpha"));
+    }
+    // ...but they still work normally outside a table.
+    ed.SetCaret(RichDocPosition(0, 0));
+    ed.SetHeadingLevel(2);
+    CHECK(ed.GetBlock(0).type == RichBlockType::Heading);
+    CHECK(ed.Undo());
+
+    // --- copying from a cell yields its text ---
+    ed.SetSelection(RichDocPosition(1, 1, 1, 0), RichDocPosition(1, 1, 1, 5));
+    CHECK_EQ(ed.RangeToPlainText(ed.GetSelectionRange()), std::string("delta"));
+
+    // --- search reaches into cells (it could not before) ---
+    RichFindOptions options;
+    RichDocRange match;
+    CHECK(ed.Find("gamma", ed.DocumentStart(), false, options, match));
+    CHECK(match.start.InCell());
+    CHECK_EQ(match.start.cellRow, 1);
+    CHECK_EQ(match.start.cellColumn, 0);
+
+    // A term in every cell plus both paragraphs is found in all six containers.
+    CHECK_EQ(ed.FindAll("a", options).size() > 0, true);
+    CHECK_EQ(ed.FindAll("delta", options).size(), size_t(1));
+
+    // Backwards from the paragraph after the table lands in the last cell.
+    CHECK(ed.Find("delta", RichDocPosition(2, 0), true, options, match));
+    CHECK(match.start.InCell());
+    CHECK_EQ(match.start.cellColumn, 1);
+
+    // --- replace reaches into cells too, in one undo step ---
+    CHECK_EQ(ed.ReplaceAll("a", "A", options), 
+             static_cast<int>(ed.FindAll("A", options).size()));
+    CHECK_EQ(ed.TextAt(a1), std::string("AlphA"));
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 1, 0)), std::string("deltA"));
+    CHECK(ed.Undo());
+    CHECK_EQ(ed.TextAt(a1), std::string("alpha"));
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 1, 0)), std::string("delta"));
+
+    // --- a cell edit survives a document round trip through the model ---
+    ed.SetCaret(RichDocPosition(1, 1, 1, 5));
+    ed.InsertText(" edited");
+    CHECK_EQ(ed.TextAt(RichDocPosition(1, 1, 1, 0)), std::string("delta edited"));
+    CHECK(ed.GetDocument()->ToPlainText().find("delta edited") != std::string::npos);
+}
+
 int main() {
     TestPositionsAndNavigation();
     TestTypingAndDeleting();
@@ -499,6 +865,8 @@ int main() {
     TestClipboardRanges();
     TestUndoRedo();
     TestDocumentIntegration();
+    TestSearch();
+    TestTableCellEditing();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";

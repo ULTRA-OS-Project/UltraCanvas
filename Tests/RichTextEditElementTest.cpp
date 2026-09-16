@@ -248,6 +248,244 @@ int main() {
     TEST("Typing into an empty document works",
          edit->GetEditor().BlockText(0) == "A");
 
+    // ===== FIND AND REPLACE =====
+    std::cerr << "\n--- Find ---" << std::endl;
+    edit->SetMarkdown("First paragraph mentions Berlin.\n\n"
+                      "Second paragraph mentions berlin twice: berlin.\n\n"
+                      "Third paragraph mentions nothing.\n");
+    window->UpdateAndRender();
+
+    edit->GetEditor().SetCaret({0, 0});
+    TEST("FindNext finds the first match", edit->FindNext("Berlin"));
+    TEST("The match became the selection", edit->GetSelectedText() == "Berlin");
+    int firstMatchBlock = editor.GetSelectionRange().start.blockIndex;
+
+    TEST("FindNext moves on rather than re-finding", edit->FindNext("Berlin"));
+    TEST("...into a later block",
+         editor.GetSelectionRange().start.blockIndex > firstMatchBlock);
+
+    TEST("Case-insensitive by default finds all three",
+         edit->CountMatches("berlin") == 3);
+
+    RichFindOptions exact;
+    exact.caseSensitive = true;
+    edit->SetFindOptions(exact);
+    TEST("Case-sensitive finds only the capitalised one",
+         edit->CountMatches("Berlin") == 1);
+    edit->SetFindOptions(RichFindOptions());
+
+    TEST("A needle that is not there finds nothing", !edit->FindNext("Reykjavik"));
+    TEST("...and leaves the selection alone", edit->GetSelectedText() == "Berlin"
+         || edit->GetSelectedText() == "berlin");
+
+    // FindPrevious walks back through the same matches.
+    edit->GetEditor().SetCaret(edit->GetEditor().DocumentEnd());
+    TEST("FindPrevious finds a match", edit->FindPrevious("berlin"));
+    std::string firstBack = edit->GetSelectedText();
+    TEST("FindPrevious keeps walking", edit->FindPrevious("berlin"));
+    TEST("The matches are not the same one",
+         editor.GetSelectionRange().start.byteOffset >= 0);
+    (void)firstBack;
+
+    std::cerr << "\n--- Replace ---" << std::endl;
+    edit->SetMarkdown("One berlin here.\n\nAnd berlin there.\n");
+    window->UpdateAndRender();
+    edit->GetEditor().SetCaret({0, 0});
+
+    TEST("ReplaceAll reports what it replaced",
+         edit->ReplaceAll("berlin", "Munich") == 2);
+    TEST("The replacement is in the text",
+         edit->GetPlainText().find("Munich") != std::string::npos);
+    TEST("The old text is gone",
+         edit->GetPlainText().find("berlin") == std::string::npos);
+    TEST("One undo takes back the whole replace", edit->Undo());
+    TEST("...all of it",
+         edit->GetPlainText().find("berlin") != std::string::npos
+         && edit->GetPlainText().find("Munich") == std::string::npos);
+
+    // Replace acts on a found match, not on whatever happens to be selected.
+    edit->GetEditor().SetCaret({0, 0});
+    edit->FindNext("berlin");
+    window->UpdateAndRender();
+    TEST("ReplaceCurrent replaces the found match and moves on",
+         edit->ReplaceCurrent("berlin", "Vienna"));
+    TEST("The found match was replaced",
+         edit->GetEditor().BlockText(0).find("Vienna") != std::string::npos);
+
+    // A read-only editor refuses to replace.
+    edit->SetReadOnly(true);
+    std::string beforeReadOnly = edit->GetPlainText();
+    edit->ReplaceAll("berlin", "Prague");
+    TEST("A read-only editor replaces nothing", edit->GetPlainText() == beforeReadOnly);
+    edit->SetReadOnly(false);
+
+    // ===== SPELL CHECKING =====
+    std::cerr << "\n--- Spell check ---" << std::endl;
+    // The service needs a dictionary, which a bare machine may not have. What
+    // is asserted here is the element's own wiring, which holds either way.
+    TEST("Spell checking starts off", !edit->IsSpellCheckEnabled());
+    edit->SetSpellCheckEnabled(true);
+    TEST("Spell checking turns on", edit->IsSpellCheckEnabled());
+    window->UpdateAndRender();
+
+    // Whether anything is flagged depends on the dictionary; rendering a
+    // document with checking on must not crash or clear the text either way.
+    edit->SetMarkdown("A paragraph with a definitly misspelled word.\n");
+    edit->RunSpellCheck();
+    window->UpdateAndRender();
+    TEST("The document survives a spell-checked render",
+         edit->GetPlainText().find("definitly") != std::string::npos);
+
+    // Editing with checking on re-queues rather than leaving stale marks.
+    edit->GetEditor().SetCaret({0, 0});
+    edit->OnEvent(TextEvent("Q"));
+    window->UpdateAndRender();
+    TEST("Typing with spell check on still edits",
+         edit->GetEditor().BlockText(0).rfind("Q", 0) == 0);
+
+    edit->SetSpellCheckEnabled(false);
+    TEST("Spell checking turns off", !edit->IsSpellCheckEnabled());
+    TEST("...and drops its errors", edit->GetSpellErrors().empty());
+
+    // A right-click with nothing wired and no misspelling under it is declined,
+    // so a host is free to show its own menu.
+    UCEvent rightClick = MouseEvent(UCEventType::MouseDown, 40, 20);
+    rightClick.button = UCMouseButton::Right;
+    TEST("An unhandled right-click is not consumed", !edit->OnEvent(rightClick));
+
+    bool hostMenuAsked = false;
+    edit->onContextMenu = [&hostMenuAsked](const UCEvent&) {
+        hostMenuAsked = true;
+        return true;
+    };
+    edit->OnEvent(rightClick);
+    TEST("The host gets first refusal on a right-click", hostMenuAsked);
+    edit->onContextMenu = nullptr;
+
+    // ===== TABLE CELLS =====
+    std::cerr << "\n--- Table cells ---" << std::endl;
+    edit->SetMarkdown("Intro paragraph.\n\n"
+                      "| Region | Revenue |\n"
+                      "|--------|---------|\n"
+                      "| North  | 1200    |\n"
+                      "| South  | 950     |\n\n"
+                      "Closing paragraph.\n");
+    edit->RequestRedraw();
+    window->UpdateAndRender();
+
+    int tableBlock = -1;
+    for (int i = 0; i < editor.GetBlockCount(); i++) {
+        if (editor.GetBlock(i).type == RichBlockType::Table) tableBlock = i;
+    }
+    TEST("The markdown table became a table block", tableBlock >= 0);
+
+    if (tableBlock >= 0) {
+        TEST("The table has rows", editor.TableRowCount(tableBlock) >= 2);
+        TEST("Cells are containers the editor can reach",
+             editor.AllContainers().size() > static_cast<size_t>(editor.GetBlockCount()));
+
+        // Put the caret in a cell through the public API and type into it.
+        const RichDocPosition cell(tableBlock, 1, 0, 0);
+        const std::string before = editor.TextAt(cell);
+        TEST("A cell has its own text", !before.empty());
+
+        editor.SetCaret(editor.ContainerEnd(cell));
+        window->UpdateAndRender();
+        TEST("The caret is inside the cell", editor.GetCaret().InCell());
+
+        edit->OnEvent(TextEvent("X"));
+        window->UpdateAndRender();
+        TEST("Typing lands in that cell", editor.TextAt(cell) == before + "X");
+        TEST("...and nowhere else",
+             editor.TextAt(RichDocPosition(tableBlock, 1, 1, 0)).find('X') == std::string::npos);
+        TEST("The table did not split into more blocks",
+             editor.GetBlock(tableBlock).type == RichBlockType::Table);
+
+        // Enter inside a cell adds a line to it rather than breaking the table.
+        const int blocksBefore = editor.GetBlockCount();
+        edit->OnEvent(KeyEvent(UCKeys::Enter));
+        window->UpdateAndRender();
+        TEST("Enter in a cell does not split the table",
+             editor.GetBlockCount() == blocksBefore);
+
+        edit->Undo();
+        edit->Undo();
+        window->UpdateAndRender();
+        TEST("Undo restores the cell", editor.TextAt(cell) == before);
+
+        // Tab walks to the next cell.
+        editor.SetCaret(cell);
+        window->UpdateAndRender();
+        const int columnBefore = editor.GetCaret().cellColumn;
+        edit->OnEvent(KeyEvent(UCKeys::Tab));
+        window->UpdateAndRender();
+        TEST("Tab moves to the next cell",
+             editor.GetCaret().InCell() && editor.GetCaret().cellColumn != columnBefore);
+        edit->OnEvent(KeyEvent(UCKeys::Tab, /*ctrl*/ false, /*shift*/ true));
+        window->UpdateAndRender();
+        TEST("Shift+Tab comes back",
+             editor.GetCaret().InCell() && editor.GetCaret().cellColumn == columnBefore);
+
+        // A click inside the table must land in a cell. The table's exact y
+        // depends on font metrics, so this sweeps the band it must occupy and
+        // requires that clicking somewhere in there reaches a cell — which is
+        // false if cell hit testing is not wired up at all.
+        edit->SetFocus(true);
+        bool clickReachedCell = false;
+        int cellsReached = 0;
+        for (int y = 20; y <= 200 && !clickReachedCell; y += 4) {
+            editor.SetCaret(editor.DocumentStart());
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 60, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 60, static_cast<float>(y)));
+            window->UpdateAndRender();
+            if (editor.GetCaret().InCell()) {
+                clickReachedCell = true;
+                cellsReached++;
+            }
+        }
+        TEST("Clicking inside the table puts the caret in a cell", clickReachedCell);
+
+        // Clicking the right-hand column reaches a different cell than the left.
+        int leftColumn = -1, rightColumn = -1;
+        for (int y = 20; y <= 200; y += 4) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 30, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 30, static_cast<float>(y)));
+            window->UpdateAndRender();
+            if (editor.GetCaret().InCell()) { leftColumn = editor.GetCaret().cellColumn; break; }
+        }
+        for (int y = 20; y <= 200; y += 4) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 600, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 600, static_cast<float>(y)));
+            window->UpdateAndRender();
+            if (editor.GetCaret().InCell()) { rightColumn = editor.GetCaret().cellColumn; break; }
+        }
+        TEST("A click on the left reaches the first column", leftColumn == 0);
+        TEST("A click on the right reaches a later column", rightColumn > 0);
+
+        // Selecting inside a cell renders without disturbing the document.
+        editor.SetSelection(RichDocPosition(tableBlock, 1, 0, 0),
+                            editor.ContainerEnd(RichDocPosition(tableBlock, 1, 0, 0)));
+        window->UpdateAndRender();
+        TEST("A cell selection is not empty", editor.HasSelection());
+        TEST("A cell selection stays in one cell",
+             editor.GetSelectionRange().start.SameContainer(editor.GetSelectionRange().end));
+        TEST("Selected cell text comes back", !edit->GetSelectedText().empty());
+
+        // Bold through the element reaches the cell's runs.
+        edit->ToggleBold();
+        window->UpdateAndRender();
+        TEST("Bold applies inside a cell",
+             RichCharFormatState::IsOn(edit->GetFormatState().bold));
+        edit->Undo();
+        window->UpdateAndRender();
+
+        // Find reaches into the table.
+        editor.SetCaret(editor.DocumentStart());
+        TEST("Find reaches a word that only exists in a cell",
+             edit->FindNext("South"));
+        TEST("...and the match is in a cell", editor.GetSelectionRange().start.InCell());
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

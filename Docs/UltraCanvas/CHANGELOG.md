@@ -60,6 +60,182 @@
     documents stop at Phase 3 of the engine proposal, and OCR / Vectorizer /
     Pixel FX / PDF are the `#else` branch of a plugin that this build did not
     include.
+#### 2026-09-16 *0.8.68*
+- **The caret goes inside table cells.** `UltraCanvasRichTextEdit` rendered
+  tables from the start but treated each one as a single indivisible block, so
+  the text inside was readable and nothing more. Cells are now editable in
+  place: click into one, type, select, format, and Tab or Shift+Tab to walk them
+  in reading order.
+  - A position is now `{blockIndex, cellRow, cellColumn, byteOffset}` and
+    addresses one **text container** — a block's own runs, or one table cell.
+    `cellRow`/`cellColumn` default to -1, so every position outside a table, and
+    every existing `{block, offset}` construction, keeps its old meaning.
+  - Everything that edits or measures text goes through `RunsAt` / `TextAt`
+    rather than reaching into a block directly, which is what let the caret,
+    selection, deletion, formatting, word motion and undo follow into a cell
+    without each one growing its own table special case.
+  - **Find and replace reach into cells**, which they could not before: search
+    walks containers (`AllContainers()`) rather than blocks.
+  - Three behaviours that keep cell editing honest rather than merely possible:
+    Enter inside a cell adds a line to the cell instead of splitting the table's
+    block; Backspace at the start of a cell steps to the previous cell and
+    deletes nothing, because cells cannot be merged by deleting text between
+    them; and a selection is held inside one container, because a range spanning
+    cells would describe an edit no table can honour.
+  - Undo is unchanged in kind: a cell edit records the table block, which is the
+    block span an undo step already replaces.
+  - In the element: clicks hit-test into the nearest cell, the caret takes its
+    geometry from that cell's layout, scrolling follows the line inside the cell
+    rather than jumping to the top of a tall table, and the selection highlight
+    is applied to the cell's own layout.
+  - Covered by 80 new checks in `Tests/RichTextEditorTest.cpp` (269 total) and
+    21 new ones in `Tests/RichTextEditElementTest.cpp` (74 total).
+
+#### 2026-09-16 *0.8.67*
+- **`UltraCanvasRichTextEdit` can search and spell check.** Both were named as
+  limits when the element landed in 0.8.50; they were also the two things a
+  word-processing tab in UltraTexter lost by moving off the Markdown detour, so
+  they come first.
+  - Search lives in `UCRichDocumentEditor`, so it is UI-free and testable
+    without a display: `Find` (forwards or backwards, wrapping), `FindAll`, and
+    `ReplaceAll`. Matches are found in block text and never span a block, which
+    is what makes each one safe to replace independently. Case folding is
+    ASCII, as `UltraCanvasTextArea`'s search already was.
+  - `ReplaceAll` is **one undo step** for the whole replace, not one per match:
+    it runs every replacement inside a single `EditScope` over the document.
+  - Replaced text **keeps the formatting of the text it replaced**. Deleting a
+    range leaves the caret at the end of whatever preceded it, so a plain insert
+    would silently adopt that run's formatting and replacing a bold word would
+    leave plain text behind; the format is now sampled from inside the match
+    before it is deleted and reapplied afterwards. `ReplaceRange` gained the
+    same behaviour, since it is the same question.
+  - The element adds `FindNext`/`FindPrevious`/`ReplaceCurrent`/`ReplaceAll`
+    and `CountMatches` over that, selecting each match and scrolling it into
+    view. `ReplaceCurrent` only replaces when the selection *is* a match, so
+    pressing Replace before Find finds rather than overwrites.
+  - Spell checking uses the shared `UltraCanvasSpellChecker` worker exactly as
+    the text area does, over one string for the document with blocks joined by
+    `\n` — one job per document rather than one per block — and maps the
+    result's byte offsets back onto `{blockIndex, byteOffset}`. Squiggles are
+    drawn per visual line through the existing `SpellCheckRendering` helpers,
+    only for blocks the viewport has laid out.
+  - The element gained `onContextMenu`, fired before its own suggestion popup,
+    so a host can put the suggestions inside its own menu instead of a
+    competing one — the same contract `UltraCanvasTextArea` offers.
+  - `RichDocRange::Contains` and a shared `ReplaceRangeInternal` /
+    `ApplyCharFormatToRangeInternal` split so that a caller already inside an
+    `EditScope` does not commit a second undo step.
+  - Covered by 50 new checks in `Tests/RichTextEditorTest.cpp` (189 total) and
+    27 new ones in `Tests/RichTextEditElementTest.cpp` (53 total).
+#### 2026-09-16 *0.8.66*
+- **A changelog-only pull request rebuilt 621 of the build's 1136 objects, and
+  three open ones kept invalidating each other over a file none of them had
+  changed any code in.** `ULTRACANVAS_VERSION` was a `PUBLIC` compile
+  definition on the core library, so it sat on the compile command line of
+  every source in the library and of every app and test that links it —
+  `FontFileTest` included. The macro changes whenever anyone adds a changelog
+  entry, because it is read from the first line of
+  `Docs/UltraCanvas/CHANGELOG.md`, so each entry changed the command line of
+  all 621 and every one of them recompiled. Exactly two sources read it
+  (`UltraCanvasUtils.cpp`, `UltraCanvasElementPlugins.cpp`, both with a
+  fallback for its absence), so it is attached to those two with
+  `set_source_files_properties` and is no longer part of the library's
+  interface. A changelog edit now recompiles two objects; the number of targets
+  carrying the definition went from 70 to 1.
+- **The collision that made those changelog diffs impossible to settle.** Line
+  one of a changelog *is* the product's version — cmake reads it with
+  `file(STRINGS … LIMIT_COUNT 1)` — which makes it the most contended line in
+  the repository. Two open pull requests collide there in one of two ways, and
+  both had happened:
+  - *Stale.* A branch picks the next number, `main` releases further versions
+    while it waits for review, and it merges carrying a number lower than
+    versions already released below it, so the product's version goes
+    backwards. 0.8.53 landed this way over a `main` that had reached 0.8.60.
+  - *Shared.* Two branches write the same `#### <date> *x.y.z*` header. Git
+    sees an identical context line, merges both bullet lists under the one
+    header without a conflict, and two releases share a number while the
+    version never increments. This is also why such a branch's changelog diff
+    never goes away however often `main` is merged into it: its bullets are not
+    in `main`'s copy of that entry, so they are still an addition, and the two
+    branches keep rewriting the same lines.
+- **`scripts/check_changelog.py` refuses both**, over every changelog
+  `cmake/UltraCanvasVersion.cmake` declares (it parses that file, so the two
+  cannot drift). The top entry must be on line 1, must be unique in its file,
+  and must be strictly greater than every other version in it; with
+  `--base origin/main` a changelog this branch modified must also not still
+  claim the base's version. `.github/workflows/changelog.yml` runs it on pull
+  requests and on pushes to `main`.
+- **CI now keeps a ccache between runs.** A hosted runner has no incremental
+  state, so every leg compiled all ~1136 objects from scratch even when a pull
+  request changed one file — six legs, macOS billed at 10x and Windows at 2x.
+  `actions/cache` now carries ccache's objects across runs, keyed per
+  `os`/`build_type` with a prefix `restore-keys` so a run with no exact match
+  still starts from the most recent cache for that leg. ccache is installed on
+  all three platforms (apt, brew, and the MSYS2 `mingw-w64-*-ccache`), wired in
+  with `CMAKE_{C,CXX}_COMPILER_LAUNCHER` and `CMAKE_OBJCXX_COMPILER_LAUNCHER`
+  for the macOS Objective-C++ backends, and `ccache -s` is printed after every
+  build so a misconfigured leg shows as a 0% hit rate rather than as a mystery
+  40-minute run.
+  - `CCACHE_MAXSIZE` is 500 MB, not the 5 GB default: GitHub allows 10 GB of
+    cache per *repository* and evicts least-recently-used, so six legs at the
+    default would evict each other — and the llms-txt and ui-reuse caches — on
+    every push.
+  - `CCACHE_COMPILERCHECK=content`, because the runner image reinstalls the
+    toolchain each run and the default mtime check would call an identical
+    compiler a different one and miss on every object.
+  - The two ccache steps deliberately carry no `shell:`, so they inherit the
+    job default — the MSYS2 shell on the Windows legs. `shell: bash` there is
+    Git Bash, which has no mingw ccache on its PATH.
+  - This is why the `ULTRACANVAS_VERSION` change above matters beyond local
+    builds: a definition on 621 objects' command lines is 621 guaranteed cache
+    misses, since the command line is part of ccache's hash. Measured on a
+    413-object subset, a changelog-only edit with a wiped build directory hits
+    411/413 — the two misses being exactly `UltraCanvasUtils.cpp` and
+    `UltraCanvasElementPlugins.cpp`, the only sources that read the macro.
+  - Not covered: the Rust `vtracer` staticlib, which cargo builds and ccache
+    does not see.
+  - History below line 1 is deliberately not policed. The framework changelog
+    carries sixteen duplicated version numbers from before this check existed,
+    some months old and long since released — renumbering a published release
+    would be a lie, so they stay and only new top entries have to be
+    well-formed. `0.8.51`/`0.8.53` sitting out of order near the top are two
+    of them.
+#### 2026-09-16 *0.8.65*
+- **`UltraCanvasListView` shows the tooltips its model has always held.**
+  `ListItem::tooltip` and `MultiColumnListItem::tooltip` fed `ToolTipRole`,
+  and nothing ever read it: the view never called
+  `UltraCanvasTooltipManager`, so every list in the framework — the DemoApp
+  ListView page included, whose descriptions promise them — silently dropped
+  its tooltips. The view now tracks the hovered *cell* and shows that cell's
+  `ToolTipRole` text, refreshing it when the pointer moves sideways across a
+  row and hiding it when the cell has none, when the pointer leaves, or when
+  the wheel scrolls rows out from under it. `SetShowItemTooltips(false)` opts
+  out; `tooltipProvider(row, column)` supplies computed text; and
+  `GetTooltipTextAt()` returns what would be shown.
+- **Column headers and single cells can carry their own tooltip.**
+  `ListColumnDef::tooltip` (a 4th constructor argument) is shown when the
+  pointer rests on that column's header cell, and
+  `MultiColumnListItem::SetCellTooltip(column, text)` gives one column of one
+  row its own text, with `MultiColumnListItem::tooltip` as the row-wide
+  fallback. `GetHeaderColumnAt(x, y)` exposes the header hit test the tooltip
+  uses.
+- **A scrolled list no longer reports a row for a point inside its header.**
+  `GetRowAtY` added the scroll offset before testing against the rows
+  viewport, so with the list scrolled down, header hits mapped to whichever
+  row the offset landed on — a wrong hover row, and a header click that
+  selected.
+- **DemoApp `--component <id>` lands on the component it names.** It called
+  `DisplayDemoItem`, which only swaps the page: the tree kept its startup
+  selection and the header kept naming it, so `--component listview` showed
+  the ListView page under the title "Various menu types and styles" with
+  Menus highlighted in the sidebar. `SelectDemoItem` now takes the same path
+  a click on the tree takes — display, selection, header and status line
+  together — and an unknown id says so instead of silently doing nothing.
+- **The DemoApp ListView page demonstrates all three.** Its four lists now
+  carry tooltips (fruit descriptions, colour hex values, language
+  descriptions, per-column file details), the file table's headers explain
+  their columns, and clicking a cell reports which column it was and the
+  tooltip behind it.
 
 #### 2026-09-16 *0.8.64*
 - **Every image export is written the safe way now, not just a paint
@@ -212,26 +388,6 @@
   a missing source, the stamp and its throttle, the sweep, a clock that was set
   back, and that nothing outside the cache's own extensions is ever deleted.
 
-#### 2026-09-15 *0.8.51*
-- **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
-  parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
-  away from `strtof` - that one honours `LC_NUMERIC`, so a comma-decimal
-  locale read every `rgba()` alpha and every length as `0`. Apple's libc++
-  implements only the *integral* `from_chars` overloads, and the `bool` one it
-  does declare is `= delete`, so on the Xcode 16.4 SDK the float call resolved
-  to the deleted overload and the file did not compile at all -
-  `build (macos-15-intel, Release)` failed on every push, `main` included,
-  while the Linux and Windows legs were fine.
-  The number is now scanned by hand and converted through
-  `std::locale::classic()`, which keeps the locale independence without
-  `<charconv>`. Scanning first also matters on its own account: converting the
-  whole string in one go reads the `e` of `1.5em` as the start of an exponent
-  and then fails outright, losing the commonest unit in CSS. Checked against
-  `std::from_chars` over 25 inputs - value and end position agree on each -
-  and `HTMLReaderTest` passes under a comma-decimal locale as well as under C.
-  The code itself reached `main` ahead of this note, ported into the 0.8.49
-  release to unblock the branches the red leg was holding up; this entry is
-  the release record it went in without.
 #### 2026-09-15 *0.8.61*
 - **A text field is UTF-8 all the way through now.** Typing the name
   `Fröhling` into a field — UltraMail's "Add email account" wizard is where it
@@ -812,6 +968,25 @@
   render-context and model additions each phase needs.
 - `Masterfile_modules.md` gains the `UltraCanvasVectorStorage` entry; the
   element catalogue lists `UltraCanvasVectorElement`.
+- **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
+  parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
+  away from `strtof` - that one honours `LC_NUMERIC`, so a comma-decimal
+  locale read every `rgba()` alpha and every length as `0`. Apple's libc++
+  implements only the *integral* `from_chars` overloads, and the `bool` one it
+  does declare is `= delete`, so on the Xcode 16.4 SDK the float call resolved
+  to the deleted overload and the file did not compile at all -
+  `build (macos-15-intel, Release)` failed on every push, `main` included,
+  while the Linux and Windows legs were fine.
+  The number is now scanned by hand and converted through
+  `std::locale::classic()`, which keeps the locale independence without
+  `<charconv>`. Scanning first also matters on its own account: converting the
+  whole string in one go reads the `e` of `1.5em` as the start of an exponent
+  and then fails outright, losing the commonest unit in CSS. Checked against
+  `std::from_chars` over 25 inputs - value and end position agree on each -
+  and `HTMLReaderTest` passes under a comma-decimal locale as well as under C.
+  The code itself reached `main` ahead of this note, ported into the 0.8.49
+  release to unblock the branches the red leg was holding up; this entry is
+  the release record it went in without.
 
 #### 2026-09-15 *0.8.50*
 - **A WYSIWYG editing element: `UltraCanvasRichTextEdit`.** The caret sits in

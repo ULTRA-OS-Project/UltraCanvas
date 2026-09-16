@@ -419,19 +419,51 @@ recommendation in §6 was followed as written, including the layering fix.
 | The element (block layouts, rendering, input, caret, scrolling, clipboard) | `include/UltraCanvasRichTextEdit.h`, `core/UltraCanvasRichTextEdit.cpp` | Done |
 | Model-level tests, no display needed | `Tests/RichTextEditorTest.cpp` | Done |
 | Element tests against a real render context (Xvfb) | `Tests/RichTextEditElementTest.cpp` | Done |
+| First application: UltraTexter opens `.odt`/`.docx`/`.doc` in the element | `Apps/Texter/UltraCanvasTextEditor.cpp` | Done — see below |
+| Find / replace, in the editing core so it needs no display | `core/UltraCanvasRichDocumentEditor.cpp` | Done |
+| Spell checking, on the shared worker | `core/UltraCanvasRichTextEdit.cpp` | Done |
 
 `RichDocPosition` is `{blockIndex, byteOffset}` as designed; undo is the
 block-span step of §6 with typing coalescing; layouts are built only for blocks
 near the viewport, with the rest carrying an estimated height until they scroll
 in. Every `RichTextRun` field maps onto the attribute named in §3.2's table.
 
+### UltraTexter as the first host
+
+UltraTexter gained a third `DocumentKind` (`RichDocument`) beside `Text` and
+`Pdf`. A word-processing file is handed to the element as a shared
+`UCRichDocument` and saved straight back through `UCWordDocumentIO`, so the
+Markdown detour — `ToMarkdown` on load, `FromMarkdown(GetText())` on save — is
+gone from that path, and with it the lossy round trip §2 described.
+
+The element replaces the text area *inside* the tab's `editorArea` rather than
+replacing the whole tab content (which is what the PDF view does), so the
+formatting toolbar and the search-bar slot above it stay in the tree. The
+toolbar's buttons now go through one `ApplyFormatCommand` dispatcher: in a
+Markdown tab a button inserts markup, in a word-processing tab it calls the
+element's formatting API, and its pressed state comes from `GetFormatState()`
+with `Mixed` shown as not-pressed.
+
+Find, replace and spell checking followed immediately, because they were the
+two things a word-processing tab *lost* by moving off the Markdown detour — the
+only items on the list that were a step backwards rather than a gap that was
+always there. The shared search bar and the editor context menu now drive
+whichever editor the active tab holds.
+
+What the host still does not have follows the element's own limits: go-to-line
+(a word-processing document has paragraphs, not lines — the status bar reports
+the caret's block instead), search inside table cells, and autosave backups (a
+backup is a text file that recovery reopens as a text tab, so there is nothing
+useful to write). Each is skipped explicitly rather than silently operating on
+the detached, empty text area.
+
 Still open from §4 and §7, and stated as limits in the element's documentation
 rather than hidden: in-place table cell editing and interactive image resizing
 (Phase 4), the clipboard MIME flavours and the HTML→`UCRichDocument` importer
 that cross-application rich paste needs (Phase 5 proper — copy/paste *inside*
 the application does keep formatting, through a process-local buffer), typeset
-math runs, spell checking, and the pre-edit/composition event (§4.8), which no
-text widget in the framework has yet.
+math runs, and the pre-edit/composition event (§4.8), which no text widget in
+the framework has yet.
 
 ## 10. References
 

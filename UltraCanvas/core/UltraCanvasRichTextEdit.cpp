@@ -94,6 +94,12 @@ UltraCanvasRichTextEdit::UltraCanvasRichTextEdit(const std::string& name, float 
 
 UltraCanvasRichTextEdit::~UltraCanvasRichTextEdit() {
     UltraCanvasCaret::GetInstance().Hide(this);
+    // The spell notifier hops through the worker and the UI thread; clearing
+    // this before the service is told to forget us closes both.
+    spellAlive->store(false);
+    if (spellContextId != 0) {
+        UltraCanvasSpellChecker::Instance().CancelContext(spellContextId);
+    }
 }
 
 // ===== DOCUMENT =====
@@ -261,10 +267,17 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
     }
 }
 
-void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int blockIndex) const {
+void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int blockIndex,
+                                                       int cellRow, int cellColumn) const {
     if (!layout || !editor.HasSelection()) return;
     RichDocRange range = editor.GetSelectionRange();
     if (blockIndex < range.start.blockIndex || blockIndex > range.end.blockIndex) return;
+
+    // A cell's layout only carries the highlight when the selection is in that
+    // cell — and a selection never spans cells, so start and end agree.
+    const bool wantCell = (cellRow >= 0 && cellColumn >= 0);
+    if (wantCell != range.start.InCell()) return;
+    if (wantCell && (range.start.cellRow != cellRow || range.start.cellColumn != cellColumn)) return;
 
     int length = static_cast<int>(layout->GetText().size());
     int from = (blockIndex == range.start.blockIndex) ? range.start.byteOffset : 0;
@@ -364,6 +377,8 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                     auto cell = std::make_unique<BlockLayout>();
                     cell->layout = MakeRunsLayout(ctx, cellBlock, row.cells[c].runs,
                                                   columnWidth - 8.0f, nullptr, blockIndex);
+                    ApplySelectionAttributes(cell->layout.get(), blockIndex,
+                                             static_cast<int>(r), static_cast<int>(c));
                     cell->bounds = Rect2Df(indent + static_cast<float>(c) * columnWidth, y,
                                            columnWidth,
                                            static_cast<float>(cell->layout->GetLayoutHeight()));
@@ -510,6 +525,7 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
         if (bl.bounds.y > viewBottom) break;
         RenderBlock(ctx, i, bl);
     }
+    DrawSpellErrorMarks(ctx);
     ctx->PopState();
 
     if (IsFocused() && !readOnly) {
@@ -668,6 +684,21 @@ Rect2Df UltraCanvasRichTextEdit::CaretRect() const {
     float x = visibleArea.x + bl.textLeft;
     float y = visibleArea.y + bl.bounds.y - scrollOffset;
 
+    // Inside a table the caret belongs to a cell's layout, positioned at that
+    // cell's origin rather than the table's.
+    if (const BlockLayout* cell = CellLayoutFor(position)) {
+        const float cellX = visibleArea.x + cell->bounds.x;
+        const float cellY = visibleArea.y + bl.bounds.y + cell->bounds.y - scrollOffset;
+        if (!cell->layout) return Rect2Df(cellX, cellY, 2.0f, cell->bounds.height);
+        int cellLength = static_cast<int>(cell->layout->GetText().size());
+        int cellOffset = std::max(0, std::min(position.byteOffset, cellLength));
+        Rect2Di cursor = cell->layout->GetCursorPos(cellOffset).strongPos;
+        float cellHeight = cursor.height > 0 ? static_cast<float>(cursor.height)
+                                             : static_cast<float>(style.baseFont.fontSize) * 1.3f;
+        return Rect2Df(cellX + static_cast<float>(cursor.x),
+                       cellY + static_cast<float>(cursor.y), 2.0f, cellHeight);
+    }
+
     if (!bl.layout) {
         // Structural block: a full-height bar at its left edge.
         return Rect2Df(x, y, 2.0f, bl.bounds.height);
@@ -678,6 +709,21 @@ Rect2Df UltraCanvasRichTextEdit::CaretRect() const {
     float height = cursor.height > 0 ? static_cast<float>(cursor.height)
                                      : static_cast<float>(style.baseFont.fontSize) * 1.3f;
     return Rect2Df(x + static_cast<float>(cursor.x), y + static_cast<float>(cursor.y), 2.0f, height);
+}
+
+// The laid-out cell a position addresses, or null when it addresses a block's
+// own runs (or the table's layout has not been built yet).
+const UltraCanvasRichTextEdit::BlockLayout* UltraCanvasRichTextEdit::CellLayoutFor(
+        const RichDocPosition& pos) const {
+    if (!pos.InCell()) return nullptr;
+    if (pos.blockIndex < 0 || pos.blockIndex >= static_cast<int>(blockLayouts.size())) return nullptr;
+    const BlockLayout& bl = blockLayouts[static_cast<size_t>(pos.blockIndex)];
+    for (size_t i = 0; i < bl.cells.size(); i++) {
+        if (bl.cellRows[i] == pos.cellRow && bl.cellColumns[i] == pos.cellColumn) {
+            return bl.cells[i].get();
+        }
+    }
+    return nullptr;
 }
 
 RichDocPosition UltraCanvasRichTextEdit::PositionFromPoint(const Point2Df& localPoint) const {
@@ -695,6 +741,38 @@ RichDocPosition UltraCanvasRichTextEdit::PositionFromPoint(const Point2Df& local
         }
     }
     const BlockLayout& bl = blockLayouts[static_cast<size_t>(blockIndex)];
+
+    // A table has no layout of its own; the click lands in one of its cells.
+    // The nearest cell wins, so a click in the padding between cells still puts
+    // the caret somewhere sensible rather than nowhere.
+    if (!bl.cells.empty()) {
+        const float cellY = contentY - bl.bounds.y;
+        size_t best = 0;
+        float bestDistance = -1.0f;
+        for (size_t i = 0; i < bl.cells.size(); i++) {
+            const Rect2Df& cb = bl.cells[i]->bounds;
+            const float dx = std::max(0.0f, std::max(cb.x - contentX, contentX - (cb.x + cb.width)));
+            const float dy = std::max(0.0f, std::max(cb.y - cellY, cellY - (cb.y + cb.height)));
+            const float distance = dx * dx + dy * dy;
+            if (bestDistance < 0.0f || distance < bestDistance) {
+                bestDistance = distance;
+                best = i;
+            }
+        }
+        const BlockLayout& cell = *bl.cells[best];
+        RichDocPosition out(blockIndex, bl.cellRows[best], bl.cellColumns[best], 0);
+        if (cell.layout) {
+            int layoutX = static_cast<int>(contentX - cell.bounds.x);
+            int layoutY = static_cast<int>(cellY - cell.bounds.y);
+            UCLayoutHitResult hit = cell.layout->XYToIndex(std::max(0, layoutX), std::max(0, layoutY));
+            std::string text = cell.layout->GetText();
+            int offset = hit.index;
+            if (hit.trailing > 0) offset = UCRichDocumentEditor::NextCharOffset(text, offset);
+            out.byteOffset = std::max(0, std::min(offset, static_cast<int>(text.size())));
+        }
+        return out;
+    }
+
     if (!bl.layout) return RichDocPosition(blockIndex, 0);
 
     int layoutX = static_cast<int>(contentX - bl.textLeft);
@@ -795,14 +873,25 @@ void UltraCanvasRichTextEdit::ScrollToTop() {
 }
 
 void UltraCanvasRichTextEdit::ScrollToCaret() {
-    int blockIndex = editor.GetCaret().blockIndex;
+    const RichDocPosition caret = editor.GetCaret();
+    int blockIndex = caret.blockIndex;
     if (blockIndex < 0 || blockIndex >= static_cast<int>(blockLayouts.size())) return;
     const BlockLayout& bl = blockLayouts[static_cast<size_t>(blockIndex)];
 
     float top = bl.bounds.y;
     float bottom = bl.bounds.y + bl.bounds.height;
-    if (bl.layout) {
-        Rect2Di cursor = bl.layout->GetCursorPos(editor.GetCaret().byteOffset).strongPos;
+    if (const BlockLayout* cell = CellLayoutFor(caret)) {
+        // Scroll to the line inside the cell, not to the whole table — a tall
+        // table would otherwise jump the view to its top on every keystroke.
+        top = bl.bounds.y + cell->bounds.y;
+        bottom = top + cell->bounds.height;
+        if (cell->layout) {
+            Rect2Di cursor = cell->layout->GetCursorPos(caret.byteOffset).strongPos;
+            top = bl.bounds.y + cell->bounds.y + static_cast<float>(cursor.y);
+            bottom = top + static_cast<float>(std::max(cursor.height, 4));
+        }
+    } else if (bl.layout) {
+        Rect2Di cursor = bl.layout->GetCursorPos(caret.byteOffset).strongPos;
         top = bl.bounds.y + static_cast<float>(cursor.y);
         bottom = top + static_cast<float>(std::max(cursor.height, 4));
     }
@@ -815,9 +904,364 @@ void UltraCanvasRichTextEdit::ScrollToCaret() {
 
 // ===== EDIT PLUMBING =====
 
+// ===== SEARCH =====
+
+void UltraCanvasRichTextEdit::SelectMatch(const RichDocRange& match) {
+    editor.SetSelection(match.start, match.end);
+    // A match is a caret move by any other means, so a typing run ends here:
+    // typing over a found word must undo separately from what came before.
+    editor.BreakUndoCoalescing();
+    AfterSelectionChange();
+    if (onSelectionChanged) onSelectionChanged();
+}
+
+bool UltraCanvasRichTextEdit::FindNext(const std::string& needle) {
+    // From the end of the selection, so pressing Find again moves on rather
+    // than finding the match the user is already looking at.
+    const RichDocPosition from = editor.HasSelection()
+        ? editor.GetSelectionRange().end : editor.GetCaret();
+    RichDocRange match;
+    if (!editor.Find(needle, from, /*backwards*/ false, findOptions, match)) return false;
+    SelectMatch(match);
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::FindPrevious(const std::string& needle) {
+    const RichDocPosition from = editor.HasSelection()
+        ? editor.GetSelectionRange().start : editor.GetCaret();
+    RichDocRange match;
+    if (!editor.Find(needle, from, /*backwards*/ true, findOptions, match)) return false;
+    SelectMatch(match);
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::ReplaceCurrent(const std::string& needle,
+                                             const std::string& replacement) {
+    if (readOnly || needle.empty()) return false;
+
+    // Only replace what the user can see is selected. Pressing Replace before
+    // Find should find, not overwrite whatever happens to be selected.
+    if (editor.HasSelection()) {
+        const RichDocRange selection = editor.GetSelectionRange();
+        const std::string selected = editor.RangeToPlainText(selection);
+        bool isMatch = selected.size() == needle.size();
+        if (isMatch && findOptions.caseSensitive) {
+            isMatch = selected == needle;
+        } else if (isMatch) {
+            for (size_t i = 0; i < needle.size() && isMatch; i++) {
+                isMatch = std::tolower(static_cast<unsigned char>(selected[i]))
+                       == std::tolower(static_cast<unsigned char>(needle[i]));
+            }
+        }
+        if (isMatch) {
+            editor.ReplaceRange(selection, replacement);
+            AfterEdit();
+            QueueSpellCheck();
+            if (onDocumentChanged) onDocumentChanged();
+        }
+    }
+    return FindNext(needle);
+}
+
+int UltraCanvasRichTextEdit::ReplaceAll(const std::string& needle,
+                                        const std::string& replacement) {
+    if (readOnly) return 0;
+    const int count = editor.ReplaceAll(needle, replacement, findOptions);
+    if (count > 0) {
+        AfterEdit();
+        QueueSpellCheck();
+        if (onDocumentChanged) onDocumentChanged();
+    }
+    return count;
+}
+
+int UltraCanvasRichTextEdit::CountMatches(const std::string& needle) const {
+    return static_cast<int>(editor.FindAll(needle, findOptions).size());
+}
+
+// ===== SPELL CHECKING =====
+
+// One string for the whole document, blocks joined by '\n' — so the checker
+// runs one job rather than one per block, and sees sentence context across a
+// block the way it would across a line.
+std::string UltraCanvasRichTextEdit::BuildSpellText(std::vector<int>& outBlockStarts) const {
+    std::string text;
+    outBlockStarts.assign(static_cast<size_t>(editor.GetBlockCount()), 0);
+    for (int i = 0; i < editor.GetBlockCount(); i++) {
+        if (i) text += '\n';
+        // Recorded for every block, text or not, so the index of a block is
+        // always usable as an index into this table.
+        outBlockStarts[static_cast<size_t>(i)] = static_cast<int>(text.size());
+        text += editor.BlockText(i);
+    }
+    return text;
+}
+
+RichDocPosition UltraCanvasRichTextEdit::SpellBytePosition(size_t byteOffset) const {
+    if (spellBlockStarts.empty()) return {0, 0};
+    // The last block whose start is at or before byteOffset owns it.
+    int block = 0;
+    for (int i = 0; i < static_cast<int>(spellBlockStarts.size()); i++) {
+        if (static_cast<size_t>(spellBlockStarts[static_cast<size_t>(i)]) > byteOffset) break;
+        block = i;
+    }
+    const int within = static_cast<int>(byteOffset)
+                     - spellBlockStarts[static_cast<size_t>(block)];
+    return editor.ClampPosition(RichDocPosition(block, within));
+}
+
+void UltraCanvasRichTextEdit::SetSpellCheckEnabled(bool enabled) {
+    if (spellCheckEnabled == enabled) return;
+    spellCheckEnabled = enabled;
+
+    if (spellContextId == 0) spellContextId = reinterpret_cast<uint64_t>(this);
+
+    if (enabled) {
+        RegisterSpellResultNotifier();
+        QueueSpellCheck();
+    } else {
+        UltraCanvasSpellChecker::Instance().CancelContext(spellContextId);
+        spellErrors.clear();
+        RequestRedraw();
+    }
+}
+
+void UltraCanvasRichTextEdit::SetSpellCheckOptions(const SpellCheckOptions& options) {
+    spellOptions = options;
+    QueueSpellCheck();
+}
+
+void UltraCanvasRichTextEdit::RunSpellCheck() {
+    QueueSpellCheck();
+}
+
+// Results are drained while rendering, so a check that finishes after an edit's
+// repaint would sit undelivered until something else redrew. This asks for that
+// frame. The notifier runs on the worker thread and can outlive this element,
+// so it marshals to the UI thread and both hops test the liveness flag the
+// destructor clears — the same pattern UltraCanvasTextArea uses.
+void UltraCanvasRichTextEdit::RegisterSpellResultNotifier() {
+    if (spellContextId == 0) spellContextId = reinterpret_cast<uint64_t>(this);
+
+    std::shared_ptr<std::atomic<bool>> alive = spellAlive;
+    UltraCanvasRichTextEdit* self = this;
+
+    UltraCanvasSpellChecker::Instance().SetContextNotifier(spellContextId,
+        [self, alive]() {
+            if (!alive->load()) return;
+            auto* app = UltraCanvasApplication::GetInstance();
+            if (!app) return;
+            app->PostToUIThread([self, alive]() {
+                if (!alive->load()) return;   // element destroyed meanwhile
+                self->RequestRedraw();
+            });
+        });
+}
+
+void UltraCanvasRichTextEdit::QueueSpellCheck() {
+    if (!spellCheckEnabled) return;
+
+    UltraCanvasSpellChecker& service = UltraCanvasSpellChecker::Instance();
+    if (!service.IsEnabled()) return;
+
+    if (spellContextId == 0) spellContextId = reinterpret_cast<uint64_t>(this);
+
+    DropStaleSpellErrors();
+
+    std::vector<int> starts;
+    std::string text = BuildSpellText(starts);
+
+    // Options that depend on the text — shouldSkipRange above all — have to be
+    // rebuilt from the text this check will actually run on, so the host gets a
+    // copy to fill in rather than the stored options being mutated.
+    SpellCheckOptions options = spellOptions;
+    if (onPrepareSpellCheck) onPrepareSpellCheck(options, text);
+
+    // Queuing replaces any job still pending for this element, so holding a key
+    // down builds no backlog.
+    service.QueueCheckText(spellContextId, text, options);
+}
+
+// The errors on hand describe the document as it was when the check ran. Until
+// the next result arrives they would be painted against the edited text, so any
+// whose span no longer holds the word it was raised for is dropped now. Keeping
+// the ones that still match matters: typing at the end of a document leaves
+// every earlier mark in place, so squiggles stay put instead of blinking off
+// and back on at every keystroke.
+void UltraCanvasRichTextEdit::DropStaleSpellErrors() {
+    if (spellErrors.empty()) return;
+
+    std::vector<int> starts;
+    const std::string current = BuildSpellText(starts);
+
+    const size_t sizeBefore = spellErrors.size();
+    spellErrors.erase(
+        std::remove_if(spellErrors.begin(), spellErrors.end(),
+                       [&current](const SpellError& error) {
+                           if (error.startByte + error.byteLength > current.size()) {
+                               return true;
+                           }
+                           return current.compare(error.startByte, error.byteLength,
+                                                  error.word) != 0;
+                       }),
+        spellErrors.end());
+
+    if (spellErrors.size() != sizeBefore) {
+        spellText = current;
+        spellBlockStarts = std::move(starts);
+        RequestRedraw();
+    }
+}
+
+const SpellError* UltraCanvasRichTextEdit::GetSpellErrorAtPosition(int x, int y) {
+    if (!spellCheckEnabled || spellErrors.empty()) return nullptr;
+
+    const RichDocPosition hit = PositionFromPoint(Point2Df(static_cast<float>(x),
+                                                           static_cast<float>(y)));
+    if (hit.blockIndex < 0
+        || hit.blockIndex >= static_cast<int>(spellBlockStarts.size())) {
+        return nullptr;
+    }
+    const size_t byteOffset =
+        static_cast<size_t>(spellBlockStarts[static_cast<size_t>(hit.blockIndex)]
+                            + hit.byteOffset);
+    return SpellCheckText::FindErrorAtByteOffset(spellErrors, byteOffset);
+}
+
+bool UltraCanvasRichTextEdit::ApplySpellSuggestion(const SpellError& error,
+                                                   const std::string& replacement) {
+    if (readOnly) return false;
+
+    // `error` may point into spellErrors, which the edit below rebuilds, so the
+    // span is copied out before anything is replaced.
+    const size_t startByte = error.startByte;
+    const size_t byteLength = error.byteLength;
+
+    const RichDocPosition start = SpellBytePosition(startByte);
+    const RichDocPosition end = SpellBytePosition(startByte + byteLength);
+    if (start.blockIndex != end.blockIndex) return false;   // spans a block: not a word
+
+    editor.ReplaceRange(RichDocRange(start, end), replacement);
+    AfterEdit();
+    QueueSpellCheck();
+    if (onDocumentChanged) onDocumentChanged();
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::ShowSpellSuggestionMenu(const UCEvent& event) {
+    if (!spellCheckEnabled) return false;
+
+    const SpellError* hit = GetSpellErrorAtPosition(event.pointer.x, event.pointer.y);
+    if (!hit) return false;
+
+    auto window = GetWindow();
+    if (!window) return false;
+
+    // The menu outlives this call, and applying a suggestion re-runs the check
+    // and rebuilds spellErrors — which `hit` points into. Copy the error so the
+    // callbacks below never dereference freed storage.
+    const SpellError error = *hit;
+
+    spellSuggestionMenu = std::make_shared<UltraCanvasMenu>(
+        "RichTextEditSpellSuggestions", 0, 0, 220, 0);
+    spellSuggestionMenu->SetMenuType(MenuType::PopupMenu);
+
+    std::weak_ptr<UltraCanvasRichTextEdit> weakSelf =
+        std::static_pointer_cast<UltraCanvasRichTextEdit>(shared_from_this());
+
+    for (MenuItemData& item : UltraCanvasSpellChecker::BuildSuggestionMenuItems(
+             error,
+             [weakSelf, error](const std::string& replacement) {
+                 if (auto self = weakSelf.lock()) {
+                     self->ApplySpellSuggestion(error, replacement);
+                 }
+             },
+             [weakSelf]() {
+                 if (auto self = weakSelf.lock()) self->RunSpellCheck();
+             })) {
+        spellSuggestionMenu->AddItem(std::move(item));
+    }
+
+    spellSuggestionMenu->OpenMenu(event.pointerWindow, *window, PopupElementSettings());
+    return true;
+}
+
+// Element-local rectangles for a byte range of one block — one per visual line
+// the range crosses, so a word broken across a wrap still gets a full mark.
+std::vector<Rect2Df> UltraCanvasRichTextEdit::BlockRangeRects(int blockIndex,
+                                                              int startByte,
+                                                              int endByte) const {
+    std::vector<Rect2Df> rects;
+    if (blockIndex < 0 || blockIndex >= static_cast<int>(blockLayouts.size())) return rects;
+    const BlockLayout& bl = blockLayouts[static_cast<size_t>(blockIndex)];
+    if (!bl.layout || endByte <= startByte) return rects;
+
+    const float originX = visibleArea.x + bl.textLeft;
+    const float originY = visibleArea.y + bl.bounds.y - scrollOffset;
+
+    for (const LayoutLineRange& line : bl.layout->GetLineByteRanges()) {
+        const int from = std::max(startByte, line.startByte);
+        const int to = std::min(endByte, line.startByte + line.lengthBytes);
+        if (to <= from) continue;
+
+        const Rect2Di head = bl.layout->IndexToPos(from);
+        const Rect2Di tail = bl.layout->IndexToPos(to);
+        // A trailing position at a line end reports the next line's origin, so
+        // the width is taken from the head's line rather than across the wrap.
+        float right = static_cast<float>(tail.x);
+        if (tail.y != head.y) right = static_cast<float>(head.x + head.width);
+        const float left = static_cast<float>(head.x);
+        if (right <= left) continue;
+
+        rects.emplace_back(originX + left, originY + static_cast<float>(head.y),
+                           right - left, static_cast<float>(head.height));
+    }
+    return rects;
+}
+
+void UltraCanvasRichTextEdit::DrawSpellErrorMarks(IRenderContext* ctx) {
+    if (!ctx || !spellCheckEnabled) return;
+
+    UltraCanvasSpellChecker& service = UltraCanvasSpellChecker::Instance();
+
+    // Drain anything the worker finished since the last frame. The block table
+    // is rebuilt with it: the offsets in a fresh result index the text as it is
+    // now, which is the text the marks are about to be drawn against.
+    SpellCheckResult fresh;
+    if (service.TryTakeResult(spellContextId, fresh)) {
+        spellErrors = std::move(fresh.errors);
+        spellText = BuildSpellText(spellBlockStarts);
+    }
+    if (spellErrors.empty()) return;
+
+    const SpellCheckStyle markStyle = service.GetStyle();
+    const float viewTop = scrollOffset;
+    const float viewBottom = scrollOffset + visibleArea.height;
+
+    ctx->PushState();
+    for (const SpellError& error : spellErrors) {
+        const RichDocPosition start = SpellBytePosition(error.startByte);
+        const RichDocPosition end = SpellBytePosition(error.startByte + error.byteLength);
+        if (start.blockIndex != end.blockIndex) continue;
+        if (start.blockIndex >= static_cast<int>(blockLayouts.size())) continue;
+
+        // Blocks outside the viewport have no built layout to measure against.
+        const BlockLayout& bl = blockLayouts[static_cast<size_t>(start.blockIndex)];
+        if (!bl.valid || bl.bounds.y + bl.bounds.height < viewTop) continue;
+        if (bl.bounds.y > viewBottom) break;
+
+        for (const Rect2Df& wordBounds :
+             BlockRangeRects(start.blockIndex, start.byteOffset, end.byteOffset)) {
+            SpellCheckRendering::DrawSpellErrorMark(ctx, wordBounds, markStyle, error.kind);
+        }
+    }
+    ctx->PopState();
+}
+
 void UltraCanvasRichTextEdit::AfterEdit() {
     layoutsDirty = true;
     caretMoved = true;
+    QueueSpellCheck();
     RequestRedraw();
 }
 
@@ -854,6 +1298,30 @@ bool UltraCanvasRichTextEdit::OnEvent(const UCEvent& event) {
 
 bool UltraCanvasRichTextEdit::HandleMouseDown(const UCEvent& event) {
     if (!Contains(event.pointer)) return false;
+
+    if (event.button == UCMouseButton::Right) {
+        if (!IsFocused()) SetFocus(true);
+        // A click inside the selection keeps it, so a host menu's Cut and Copy
+        // still act on what is highlighted; a click outside moves the caret so
+        // that Paste lands where the user clicked. The hit test runs before
+        // either, while the layouts still describe what was on screen.
+        const RichDocPosition hit = PositionFromPoint(event.pointer);
+        const bool insideSelection =
+            editor.HasSelection() && editor.GetSelectionRange().Contains(hit);
+
+        // The host gets first refusal, which is how it puts the spell
+        // suggestions inside its own context menu rather than a competing one.
+        const bool handled = (onContextMenu && onContextMenu(event))
+                          || ShowSpellSuggestionMenu(event);
+        if (handled) {
+            if (!insideSelection) {
+                editor.SetCaret(hit, false);
+                AfterSelectionChange();
+            }
+            return true;
+        }
+        return false;
+    }
 
     if (thumbRect.width > 0 && thumbRect.Contains(event.pointer)) {
         draggingThumb = true;
@@ -979,8 +1447,21 @@ bool UltraCanvasRichTextEdit::HandleKeyDown(const UCEvent& event) {
             }
             break;
         case UCKeys::Tab:
-            // Tab restructures lists; elsewhere it is left to focus traversal.
-            if (editor.GetBlock(caret.blockIndex).type == RichBlockType::ListItem) {
+            // Inside a table Tab walks the cells, which is what every word
+            // processor does and the only way to reach a cell from the keyboard.
+            if (caret.InCell()) {
+                RichDocPosition target = caret;
+                const bool moved = event.shift ? editor.PreviousContainer(target)
+                                               : editor.NextContainer(target);
+                // Only within this table: Tab out of the last cell is left to
+                // focus traversal, as it is everywhere else.
+                if (moved && target.blockIndex == caret.blockIndex && target.InCell()) {
+                    editor.SetCaret(event.shift ? editor.ContainerEnd(target) : target);
+                    AfterSelectionChange();
+                } else {
+                    handled = false;
+                }
+            } else if (editor.GetBlock(caret.blockIndex).type == RichBlockType::ListItem) {
                 if (event.shift) editor.OutdentList(); else editor.IndentList();
             } else {
                 handled = false;

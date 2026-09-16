@@ -509,6 +509,9 @@ if(TINYXML2_TEST_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/WordFormatsTest.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasZipPackage.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasRichDocument.cpp
+        # The editing core is UI-free, so the edit-then-save round trip an
+        # application performs can be covered here without the UI stack.
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
@@ -716,6 +719,30 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: SpreadsheetColumnSizingTest")
+
+# ===== LISTVIEW TOOLTIP TEST =====
+# The tooltip text a ListView reads on hover: per-cell tooltips over the
+# row-wide fallback, the header tooltip on ListColumnDef, and the ToolTipRole
+# reads/writes behind both. Exercises the real list models with no UI stack.
+message(STATUS "  Building ListViewTooltipTest...")
+add_executable(ListViewTooltipTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ListViewTooltipTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasListModel.cpp
+)
+target_include_directories(ListViewTooltipTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ListViewTooltipTest PRIVATE cxx_std_20)
+set_target_properties(ListViewTooltipTest PROPERTIES
+    OUTPUT_NAME "ListViewTooltipTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ListViewTooltipTest
+    COMMAND ListViewTooltipTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ListViewTooltipTest")
 
 # ===== CONTOUR GEOMETRY TEST =====
 # Marching-squares isolines (including saddle disambiguation), isoband cell

@@ -29971,6 +29971,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 - **Built-in vertical scrollbar** with mouse wheel support
 - **Keyboard navigation** (arrow keys, Page Up/Down, Home/End)
 - **Per-row icon support** through `DecorationRole`
+- **Hover tooltips** per cell, per row, and per column header
 - **Custom delegates** for fully bespoke row rendering
 
 ## Header Includes
@@ -30081,6 +30082,54 @@ void EnsureRowVisible(int row);
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
 
+### Tooltips
+
+```cpp
+void SetShowItemTooltips(bool enable);   // default: true
+bool GetShowItemTooltips() const;
+
+// Consulted before the model; row == -1 means the header cell of `column`.
+// Return "" to fall back to the model tooltip / ListColumnDef::tooltip.
+std::function<std::string(int row, int column)> tooltipProvider;
+
+// What the hover tooltip would show (row == -1 for a column header); "" if none
+std::string GetTooltipTextAt(int row, int column) const;
+
+// Header column under an element-local point, -1 when outside it
+int GetHeaderColumnAt(int x, int y, int* columnStartX = nullptr) const;
+```
+
+Tooltips are on by default and need no wiring: the view watches the hovered
+cell and asks `UltraCanvasTooltipManager` to show
+
+- the cell's `ToolTipRole` text when the pointer rests on a row — per-cell for
+  a multi-column model, falling back to the row-wide `tooltip`; and
+- `ListColumnDef::tooltip` when the pointer rests on a column header.
+
+The tooltip is refreshed whenever the hovered *cell* changes, so moving sideways
+across a row swaps it, and hidden when the cell has no tooltip, when the pointer
+leaves the list, and when the wheel scrolls rows out from under it.
+
+```cpp
+// Per-column header tooltips
+multiModel->AddColumn(ListColumnDef("Size", 70, TextAlignment::Right,
+                                    "Size on disk, rounded to one decimal"));
+
+// Per-cell tooltips, with a row-wide fallback
+MultiColumnListItem item({"main.cpp", "C++ Source", "2.4 KB", "2025-03-15"});
+item.tooltip = "src/main.cpp";            // used by any cell without its own
+item.SetCellTooltip(2, "2,458 bytes");    // Size column only
+multiModel->AddItem(item);
+
+// Computed tooltips (no data stored in the model)
+listView->tooltipProvider = [](int row, int column) -> std::string {
+    if (row < 0) return {};               // let the header use its ListColumnDef
+    return "Row " + std::to_string(row);
+};
+
+listView->SetShowItemTooltips(false);     // opt out entirely
+```
+
 ## Model Reference
 
 ### Data roles
@@ -30161,13 +30210,23 @@ struct ListColumnDef {
     std::string title;
     int width = 100;
     TextAlignment alignment = TextAlignment::Left;
+    std::string tooltip;        // shown when hovering this column's header
+
+    ListColumnDef(const std::string& t, int w = 100,
+                  TextAlignment a = TextAlignment::Left);
+    ListColumnDef(const std::string& t, int w, TextAlignment a,
+                  const std::string& tip);
 };
 
 struct MultiColumnListItem {
     std::vector<std::string> labels;
     std::vector<std::string> iconPaths;
-    std::string tooltip;
+    std::string tooltip;                     // row-wide fallback tooltip
+    std::vector<std::string> cellTooltips;   // optional, per column
     void* userData = nullptr;
+
+    void SetCellTooltip(int column, const std::string& tip);
+    const std::string& GetCellTooltip(int column) const;  // falls back to tooltip
 };
 ```
 
@@ -30246,9 +30305,15 @@ std::function<void(int row)> onItemDoubleClicked;
 std::function<void(int row)> onItemActivated;
 std::function<void(const std::vector<int>&)> onSelectionChanged;
 std::function<void(int row)> onItemHovered;
+
+// Cell-level (multi-column aware). posInCell is relative to the cell's
+// top-left corner. onCellHovered reports (-1, -1) when the pointer leaves
+// the rows area.
+std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
+std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
 ```
 
-`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click.
+`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
 
 ## Usage Examples
 
@@ -30282,18 +30347,27 @@ container->AddChild(simpleList);
 
 ```cpp
 auto multiModel = std::make_shared<UltraCanvasMultiColumnListModel>();
-multiModel->AddColumn(ListColumnDef("File Name", 170, TextAlignment::Left));
-multiModel->AddColumn(ListColumnDef("Type",       90, TextAlignment::Left));
-multiModel->AddColumn(ListColumnDef("Size",       70, TextAlignment::Right));
-multiModel->AddColumn(ListColumnDef("Modified",  110, TextAlignment::Left));
+multiModel->AddColumn(ListColumnDef("File Name", 170, TextAlignment::Left,
+                                    "Name of the file on disk"));
+multiModel->AddColumn(ListColumnDef("Type",       90, TextAlignment::Left,
+                                    "File type, derived from the extension"));
+multiModel->AddColumn(ListColumnDef("Size",       70, TextAlignment::Right,
+                                    "Size on disk, rounded to one decimal"));
+multiModel->AddColumn(ListColumnDef("Modified",  110, TextAlignment::Left,
+                                    "Date of the last write, YYYY-MM-DD"));
 
-multiModel->AddItem(MultiColumnListItem({"main.cpp",   "C++ Source",  "2.4 KB",  "2025-03-15"}));
+MultiColumnListItem mainCpp({"main.cpp", "C++ Source", "2.4 KB", "2025-03-15"});
+mainCpp.tooltip = "src/main.cpp";               // any cell without its own
+mainCpp.SetCellTooltip(2, "2,458 bytes");       // Size column
+mainCpp.SetCellTooltip(3, "15 Mar 2025, 09:14");// Modified column
+multiModel->AddItem(mainCpp);
+
 multiModel->AddItem(MultiColumnListItem({"utils.h",    "C++ Header",  "1.1 KB",  "2025-03-14"}));
 multiModel->AddItem(MultiColumnListItem({"README.md",  "Markdown",    "3.8 KB",  "2025-03-10"}));
 multiModel->AddItem(MultiColumnListItem({"Makefile",   "Build Script","0.9 KB",  "2025-02-28"}));
 
 auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 500, 125, 480, 225);
-multiList->SetModel(multiMode);
+multiList->SetModel(multiModel);
 
 ListViewStyle multiStyle;
 multiStyle.headerFontSize = 10;
@@ -41423,8 +41497,11 @@ UCRichDocument             document model: blocks, runs, media, serializers     
 Both lower layers are plain C++ over std types, so every editing rule is
 testable without a display (`Tests/RichTextEditorTest.cpp`).
 
-**Positions are `{blockIndex, byteOffset}`** — the offset is into the block's
-*concatenated run text*, never a `{run, offset}` pair. Applying a format splits
+**Positions are `{blockIndex, cellRow, cellColumn, byteOffset}`** — the offset
+is into the *concatenated run text* of one **text container**, never a
+`{run, offset}` pair. A container is either a block's own runs
+(`cellRow == cellColumn == -1`, which is every position outside a table) or one
+cell of a table block. Applying a format splits
 and merges runs constantly; a caret must not move when the run structure
 changes underneath it. That same string is what the element hands to
 `ITextLayout`, so hit testing and caret geometry need no translation layer.
@@ -41468,6 +41545,14 @@ UCWordDocumentIO::Save(savePath, *editor->GetDocument(), error);
 Because the element shares ownership of the document (`std::shared_ptr`), an
 application can keep holding it — to save it, to inspect blocks the user never
 touched, or to hand the same document to a read-only view.
+
+UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
+the reader produced, hands it to the element, and hands the same object back to
+`UCWordDocumentIO::Save` — no conversion in either direction. See
+`Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
+`SaveRichDocumentAs`) for a worked integration, including how the element is
+swapped into an existing tab layout and how a shared formatting toolbar drives
+either this element or a Markdown text area.
 
 ## Building the toolbar
 
@@ -41561,6 +41646,33 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+### Tables
+
+The caret goes inside table cells: click into one, type, select, format, and
+**Tab** / **Shift+Tab** walk the cells in reading order.
+
+```cpp
+RichDocPosition cell(tableBlock, /*row*/ 1, /*column*/ 0, /*byteOffset*/ 0);
+editor->GetEditor().SetCaret(cell);
+std::string text = editor->GetEditor().TextAt(cell);
+```
+
+Three rules make cell editing behave the way a word processor does rather than
+the way a naive text model would:
+
+- **Enter inside a cell adds a line to the cell**, it does not split the table's
+  block in two.
+- **Backspace at the start of a cell steps to the previous cell** and deletes
+  nothing — cells cannot be merged by deleting the text between them, so there
+  is nothing sensible to join.
+- **A selection never spans two cells** (nor crosses into or out of one). The
+  moving end is held at the edge of the anchor's container, because a range
+  that spanned cells would describe an edit no table can honour.
+
+Search reaches into cells, so **find and replace now cover table content**.
+`AllContainers()` enumerates every container in document order if you need to
+walk the document yourself.
+
 ### Structure
 
 ```cpp
@@ -41588,6 +41700,62 @@ self-contained and saves to `.odt`/`.docx` with the picture inside it.
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+click on a link | `onLinkClicked` (a plain click just places the caret, so links stay editable) |
+
+## Find and replace
+
+```cpp
+RichFindOptions options;
+options.caseSensitive = false;
+options.wholeWord = true;
+editor->SetFindOptions(options);
+
+editor->FindNext("Berlin");        // selects the match and scrolls to it
+editor->FindPrevious("Berlin");
+editor->ReplaceCurrent("Berlin", "Munich");   // only if the selection IS a match
+int replaced = editor->ReplaceAll("Berlin", "Munich");
+int total = editor->CountMatches("Berlin");   // for a "3 of 12" readout
+```
+
+Two things worth knowing:
+
+- **`ReplaceAll` is one undo step**, not one per match, so Ctrl+Z takes the
+  whole replace back.
+- **Replaced text keeps the formatting of the text it replaced.** Replacing a
+  word inside a bold heading leaves it bold — the format is sampled from inside
+  the match before it is deleted, because deleting it would otherwise leave the
+  caret in the preceding run and the insert would adopt *that* formatting.
+
+Search lives in `UCRichDocumentEditor` (`Find`, `FindAll`, `ReplaceAll`), so it
+is testable without a display. Matches never span a block boundary, which is
+what makes each one independently replaceable. Case folding is ASCII, the same
+as `UltraCanvasTextArea`'s search: `report` finds `Report`, but `strasse` does
+not find `STRASSE`.
+
+## Spell checking
+
+```cpp
+editor->SetSpellCheckEnabled(true);
+editor->RunSpellCheck();                     // after changing dictionary
+```
+
+Checking runs on the shared `UltraCanvasSpellChecker` worker thread, over the
+document as one string with blocks joined by `\n` — one job per document rather
+than one per block, so a long document does not flood the queue. Results are
+drained while rendering and their byte offsets map back onto
+`{blockIndex, byteOffset}`; squiggles are drawn only for blocks the viewport has
+laid out.
+
+Right-click offers the suggestions. A host that has its own context menu takes
+the click first and puts them inside it:
+
+```cpp
+editor->onContextMenu = [this](const UCEvent& event) {
+    return ShowMyOwnMenu(event);   // true = consumed, no built-in popup
+};
+```
+
+This is the same contract `UltraCanvasTextArea` offers, and UltraTexter uses it
+so a right-click in a `.docx` tab gives one menu rather than two.
 
 ## Undo
 
@@ -41642,15 +41810,15 @@ This is the shortest path to a faithful `.odt`/`.docx` preview pane.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **Tables render but are not edited in place.** A table block draws with its
-  cells laid out; the caret treats it as one indivisible block. Editing inside
-  cells is the next phase.
+- **A table's own structure is not edited yet.** Text inside cells is fully
+  editable, but adding or removing rows and columns, merging and splitting
+  cells, and selecting across several cells at once are not there — and neither
+  is inserting a new table, which is why UltraTexter's Insert Table button stays
+  disabled for these documents.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
   TextArea's Markdown mode and is the intended path.
-- **No spell checking yet** — `UltraCanvasSpellChecker` integrates the same way
-  it does in the TextArea.
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).
@@ -58149,19 +58317,51 @@ recommendation in §6 was followed as written, including the layering fix.
 | The element (block layouts, rendering, input, caret, scrolling, clipboard) | `include/UltraCanvasRichTextEdit.h`, `core/UltraCanvasRichTextEdit.cpp` | Done |
 | Model-level tests, no display needed | `Tests/RichTextEditorTest.cpp` | Done |
 | Element tests against a real render context (Xvfb) | `Tests/RichTextEditElementTest.cpp` | Done |
+| First application: UltraTexter opens `.odt`/`.docx`/`.doc` in the element | `Apps/Texter/UltraCanvasTextEditor.cpp` | Done — see below |
+| Find / replace, in the editing core so it needs no display | `core/UltraCanvasRichDocumentEditor.cpp` | Done |
+| Spell checking, on the shared worker | `core/UltraCanvasRichTextEdit.cpp` | Done |
 
 `RichDocPosition` is `{blockIndex, byteOffset}` as designed; undo is the
 block-span step of §6 with typing coalescing; layouts are built only for blocks
 near the viewport, with the rest carrying an estimated height until they scroll
 in. Every `RichTextRun` field maps onto the attribute named in §3.2's table.
 
+### UltraTexter as the first host
+
+UltraTexter gained a third `DocumentKind` (`RichDocument`) beside `Text` and
+`Pdf`. A word-processing file is handed to the element as a shared
+`UCRichDocument` and saved straight back through `UCWordDocumentIO`, so the
+Markdown detour — `ToMarkdown` on load, `FromMarkdown(GetText())` on save — is
+gone from that path, and with it the lossy round trip §2 described.
+
+The element replaces the text area *inside* the tab's `editorArea` rather than
+replacing the whole tab content (which is what the PDF view does), so the
+formatting toolbar and the search-bar slot above it stay in the tree. The
+toolbar's buttons now go through one `ApplyFormatCommand` dispatcher: in a
+Markdown tab a button inserts markup, in a word-processing tab it calls the
+element's formatting API, and its pressed state comes from `GetFormatState()`
+with `Mixed` shown as not-pressed.
+
+Find, replace and spell checking followed immediately, because they were the
+two things a word-processing tab *lost* by moving off the Markdown detour — the
+only items on the list that were a step backwards rather than a gap that was
+always there. The shared search bar and the editor context menu now drive
+whichever editor the active tab holds.
+
+What the host still does not have follows the element's own limits: go-to-line
+(a word-processing document has paragraphs, not lines — the status bar reports
+the caret's block instead), search inside table cells, and autosave backups (a
+backup is a text file that recovery reopens as a text tab, so there is nothing
+useful to write). Each is skipped explicitly rather than silently operating on
+the detached, empty text area.
+
 Still open from §4 and §7, and stated as limits in the element's documentation
 rather than hidden: in-place table cell editing and interactive image resizing
 (Phase 4), the clipboard MIME flavours and the HTML→`UCRichDocument` importer
 that cross-application rich paste needs (Phase 5 proper — copy/paste *inside*
 the application does keep formatting, through a process-local buffer), typeset
-math runs, spell checking, and the pre-edit/composition event (§4.8), which no
-text widget in the framework has yet.
+math runs, and the pre-edit/composition event (§4.8), which no text widget in
+the framework has yet.
 
 ## 10. References
 
