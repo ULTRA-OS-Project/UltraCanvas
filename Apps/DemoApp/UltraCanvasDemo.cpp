@@ -937,9 +937,11 @@ namespace UltraCanvas {
                 .AddVariant("imageperformance", "Decompress + Draw Test")
                 .AddVariant("imageperformance", "Draw Only Test");
 
-        bitmapBuilder.AddItem("drawing", "Drawing Surface", "Vector drawing and primitives",
-                              ImplementationStatus::PartiallyImplemented,
-                              [this]() { return CreateVectorExamples(); });
+        // ("drawing" / "Drawing Surface" placeholder removed: no
+        // UltraCanvasDrawingSurface was ever built, so the page rendered an
+        // empty container. The surface that does exist is
+        // UltraCanvasVectorCanvas, registered under Vector Graphics as
+        // "vectorcanvas" — draw, select, move, scale, rotate, group, undo.)
 
         // ===== VECTOR ELEMENTS =====
         auto vectorBuilder = DemoCategoryBuilder(this, DemoCategory::VectorElements);
@@ -1618,9 +1620,9 @@ namespace UltraCanvas {
                 .AddVariant("timelinediagram", "Chevron")
                 .AddVariant("timelinediagram", "Steps");
 
-        infoBuilder.AddItem("heatmap", "Heat map", "Heat map",
-                             ImplementationStatus::PartiallyImplemented,
-                             [this]() { return CreatePartiallyImplementedExamples("HeatMap is not ready yet"); });
+        // ("heatmap" placeholder removed: the heat map is implemented and
+        // registered in the Charts section as "heatmapchart" — interactive
+        // heatmap, STFT spectrogram, calendar and hexbin variants.)
 
         infoBuilder.AddItem("circularinfo", "Circular info graphic",
                             "Concentric rings of styled cells with value tracks, decorative "
@@ -1646,15 +1648,19 @@ namespace UltraCanvas {
                 .AddVariant("circlediagram", "Node Count Sweep")
                 .AddVariant("circlediagram", "Outside Labels");
 
+        // Nothing is built for either of these: no element, no plugin, no
+        // renderer — the demo page is the placeholder text itself. "Planned",
+        // like the specification-only modules below: there is nothing partial
+        // to show.
         infoBuilder.AddItem("wavesinfo", "Waves info graphic", "Waves info graphic",
-                            ImplementationStatus::PartiallyImplemented,
+                            ImplementationStatus::Planned,
                             [this]() { return CreatePartiallyImplementedExamples("Waves info graphic is not ready yet"); });
 
         // ("matrix" placeholder removed: the matrix diagram is implemented and
         // registered in the Diagrams section as "matrixdiagram".)
 
         infoBuilder.AddItem("performancematrix", "Performance Matrix", "Performance Matrix",
-                            ImplementationStatus::PartiallyImplemented,
+                            ImplementationStatus::Planned,
                             [this]() { return CreatePartiallyImplementedExamples("Performance Matrix is not ready yet"); });
 
 
@@ -1724,6 +1730,29 @@ namespace UltraCanvas {
                                [this]() { return CreateTextDocumentExamples(); },
                                "DemoApp/UltraCanvasDemoExamples.cpp",
                                "Docs/UltraCanvas/UltraCanvasTextAreaExamples.md");
+
+        // The WYSIWYG element. "Partially implemented" is its own
+        // documentation's verdict rather than a guess: editing, formatting,
+        // undo, clipboard, images, links and the .odt/.docx round trip all
+        // work, but tables render without being editable in place, images are
+        // not resized interactively, math runs show their LaTeX source, there
+        // is no spell checking yet and cross-application rich paste needs
+        // clipboard MIME flavours the backend does not carry
+        // (Docs/UltraCanvas/UltraCanvasRichTextEdit.md, "What is not
+        // implemented yet").
+        textDocBuilder.AddItem("wysiwyg", "WYSIWYG Editor",
+                               "Formatted documents edited as they look — the caret sits in "
+                               "rendered text and bold is a state of the selection, over the same "
+                               "UCRichDocument the ODT/DOCX/LaTeX readers produce",
+                               ImplementationStatus::PartiallyImplemented,
+                               [this]() { return CreateWYSIWYGExamples(); },
+                               "DemoApp/UltraCanvasWYSIWYGExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasRichTextEdit.md")
+                .AddVariant("wysiwyg", "Character formatting")
+                .AddVariant("wysiwyg", "Paragraph styles & lists")
+                .AddVariant("wysiwyg", "Tables, rules & pictures")
+                .AddVariant("wysiwyg", "Open & save .odt / .docx")
+                .AddVariant("wysiwyg", "Read-only preview");
 
       textDocBuilder.AddItem("ebook", "eBook Reader",
                                "EPUB/FB2/MOBI/TXT reading with chapters, TOC, themes and font scaling "

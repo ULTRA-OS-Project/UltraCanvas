@@ -100,25 +100,47 @@ rule — see [AGENTS.md](../../AGENTS.md)) and drive it from `GetFormatState()`,
 which reports every attribute as on, off or *mixed* across the selection:
 
 ```cpp
-auto toolbar = CreateToolbar("format-bar", 0, 0, 800, 32);
-auto boldButton = CreateButton("bold", 1, 0, 0, 28, 28, "B");
-boldButton->onClick = [editor]() { editor->ToggleBold(); };
+auto toolbar = std::make_shared<UltraCanvasToolbar>("format-bar", 0, 0, 800, 40);
 
-auto styleBox = CreateDropdown("style", 0, 0, 140, 28);
-styleBox->AddItem("Body text");
-styleBox->AddItem("Heading 1");
-styleBox->AddItem("Heading 2");
-styleBox->onSelectionChanged = [editor](int index) {
-    editor->SetHeadingLevel(index);          // 0 = body text
+// A toggle button carries its own on/off state: SetCanToggled(true) (which
+// AddToggleButton does) makes it report through onToggle and hold its pressed
+// look afterwards.
+auto boldButton = toolbar->AddToggleButton("bold", "B", "",
+    [editorRaw](bool) { editorRaw->ToggleBold(); SyncToolbar(); });
+// Toolbar buttons must not take the focus, or pressing Bold and carrying on
+// typing would type into the button.
+boldButton->SetAcceptsFocus(false);
+
+auto styleBox = toolbar->AddDropdownButton("style", "",
+    {"Body text", "Heading 1", "Heading 2"}, nullptr);
+styleBox->onSelectionChanged = [editorRaw](int index, const DropdownItem&) {
+    editorRaw->SetHeadingLevel(index);       // 0 = body text
+    SyncToolbar();
 };
 
 // Keep the toolbar in step with the caret.
-editor->onSelectionChanged = [editor, boldButton, styleBox]() {
-    RichCharFormatState state = editor->GetFormatState();
-    boldButton->SetToggled(RichCharFormatState::IsOn(state.bold));
-    styleBox->SetSelectedIndex(editor->GetCurrentHeadingLevel());
-};
+void SyncToolbar() {
+    RichCharFormatState state = editorRaw->GetFormatState();
+    boldButton->SetPressed(RichCharFormatState::IsOn(state.bold));
+    // `false` = do not re-notify, or writing the box back would re-apply the
+    // style that was just read out of the document.
+    styleBox->SetSelectedIndex(editorRaw->GetCurrentHeadingLevel(), false);
+}
+editor->onSelectionChanged = SyncToolbar;
+editor->onDocumentChanged = SyncToolbar;
 ```
+
+Two things that only show up once it is wired for real:
+
+- **Call the sync after a toolbar action too.** Pressing Bold at a *collapsed*
+  caret arms the format instead of editing anything, so it raises neither
+  `onDocumentChanged` nor `onSelectionChanged` — the toolbar would show the old
+  state until the caret next moved.
+- **Point one direction of the wiring with raw pointers.** The element owns
+  `onSelectionChanged`, and the container owns both the element and the
+  toolbar; capturing the widgets' `shared_ptr`s in the element's callbacks
+  *and* the element's in theirs closes an ownership cycle that never frees the
+  page. `Apps/DemoApp/UltraCanvasWYSIWYGExamples.cpp` is the worked example.
 
 `Tri::Mixed` is a real state: a selection spanning bold and plain text is
 neither, and a toolbar should show that rather than lying in one direction.
@@ -343,6 +365,10 @@ Honest limits of this first version — none of them silently misbehave:
 
 ## Related
 
+- `Apps/DemoApp/UltraCanvasWYSIWYGExamples.cpp` — the demo application's
+  **WYSIWYG Editor** page (Document support): three toolbars built from real
+  elements, a sample document carrying formatting Markdown cannot spell, and
+  open/save through `UCWordDocumentIO`
 - [`WYSIWYGElementInvestigation.md`](WYSIWYGElementInvestigation.md) — why this
   element exists, what was measured, and the phased plan it follows
 - [`ODT-DOCX-Support-Proposal.md`](ODT-DOCX-Support-Proposal.md) — the format

@@ -23,45 +23,6 @@
 #include <set>
 
 namespace UltraCanvas {
-    std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorExamples() {
-        auto container = std::make_shared<UltraCanvasContainer>("VectorExamples", 0, 0, 1000, 600);
-
-        // Title
-        auto title = std::make_shared<UltraCanvasLabel>("VectorTitle", 10, 10, 300, 30);
-        title->SetText("Vector Graphics Examples");
-        title->SetFontSize(16);
-        title->SetFontWeight(FontWeight::Bold);
-        container->AddChild(title);
-
-        // Drawing Surface
-//        auto drawingSurface = std::make_shared<UltraCanvasDrawingSurface>("DrawingSurface", 20, 50, 600, 400);
-//        drawingSurface->SetBackgroundColor(Colors::White);
-//        drawingSurface->SetBorderStyle(BorderStyle::Solid);
-//        drawingSurface->SetBorderWidth(2.0f);
-//
-//        // Draw some example shapes
-//        drawingSurface->SetForegroundColor(Color(255, 0, 0, 255));
-//        drawingSurface->DrawRectangle(50, 50, 100, 80);
-//
-//        drawingSurface->SetForegroundColor(Color(0, 255, 0, 255));
-//        drawingSurface->DrawCircle(200, 100, 40);
-//
-//        drawingSurface->SetForegroundColor(Color(0, 0, 255, 255));
-//        drawingSurface->SetLineWidth(3.0f);
-//        drawingSurface->DrawLine(Point2D(300, 50), Point2D(400, 150));
-//
-//        container->AddChild(drawingSurface);
-//
-//        // Drawing tools info
-//        auto toolsLabel = std::make_shared<UltraCanvasLabel>("VectorTools", 650, 70, 320, 200);
-//        toolsLabel->SetText("Drawing Surface Features:\n• Vector primitives (lines, circles, rectangles)\n• Bezier curves and paths\n• Fill and stroke styling\n• Layer management\n• Undo/redo support\n• Selection and manipulation\n• Export to SVG/PNG");
-//        toolsLabel->SetBackgroundColor(Color(240, 255, 240, 255));
-////        toolsLabel->SetBorderStyle(BorderStyle::Solid);
-//        toolsLabel->SetPadding(10.0f);
-//        container->AddChild(toolsLabel);
-
-        return container;
-    }
 
 // ===== NOT IMPLEMENTED PLACEHOLDERS =====
 
