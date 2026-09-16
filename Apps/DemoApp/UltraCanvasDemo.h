@@ -261,7 +261,6 @@ namespace UltraCanvas {
         std::shared_ptr<UltraCanvasUIElement> CreateBMPExamples();
 
 
-        std::shared_ptr<UltraCanvasUIElement> CreateVectorExamples();
         std::shared_ptr<UltraCanvasUIElement> Create3DExamples();
 #ifdef ULTRACANVAS_ENABLE_GL
         std::shared_ptr<UltraCanvasUIElement> CreateGLSurfaceExamples();
@@ -278,6 +277,9 @@ namespace UltraCanvas {
         // in a vertical tab (rendered output + source).
         std::shared_ptr<UltraCanvasUIElement> CreateLaTeXExamples();
         std::shared_ptr<UltraCanvasUIElement> CreateEBookExamples();
+        // WYSIWYG page: UltraCanvasRichTextEdit with toolbars built from real
+        // elements and driven by GetFormatState(), plus .odt/.docx open & save.
+        std::shared_ptr<UltraCanvasUIElement> CreateWYSIWYGExamples();
         std::shared_ptr<UltraCanvasUIElement> CreatePartiallyImplementedExamples(const std::string& text);
         std::shared_ptr<UltraCanvasUIElement> CreateDomainTableDemo();
 

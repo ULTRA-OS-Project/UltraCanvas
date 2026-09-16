@@ -1,3 +1,66 @@
+#### 2026-09-16 *0.8.65*
+- **The demo application had no WYSIWYG page, and its tree told four lies about
+  what is implemented.** Both are the same defect: the tree's status icon is the
+  only thing a visitor has to go on, and it was describing the tree rather than
+  the framework.
+- **New page: WYSIWYG Editor** (Document support), the demo's first showing of
+  `UltraCanvasRichTextEdit` — `Apps/DemoApp/UltraCanvasWYSIWYGExamples.cpp`.
+  Three toolbars built from real elements (`UltraCanvasToolbar`,
+  `UltraCanvasButton`, `UltraCanvasDropdown`), because the element deliberately
+  draws no chrome, all driven from `GetFormatState()` so a selection spanning
+  bold and plain text reads as *mixed* instead of picking a side. Document
+  open/save go through `UltraCanvasFileLoader::LoadTextDocument` and
+  `UCWordDocumentIO::Save`, since the element performs no file I/O of its own.
+  - The sample document is assembled as a `UCRichDocument` rather than parsed
+    from Markdown, on purpose: its "14 pt Georgia in red" run, its centred
+    heading and its table are precisely the formatting a Markdown buffer cannot
+    spell, which is the reason the element exists next to
+    `UltraCanvasTextArea`.
+  - Toolbar buttons are `SetAcceptsFocus(false)`, or pressing Bold and carrying
+    on typing would type into the button. The toolbars re-sync after every
+    toolbar action as well as on the element's change callbacks, because arming
+    a format at a collapsed caret mutates nothing and so raises neither.
+  - Listed as *partially implemented*, which is its own documentation's verdict:
+    tables render without being editable in place, images are not resized
+    interactively, math runs show their LaTeX source, there is no spell checking
+    yet, and cross-application rich paste still needs clipboard MIME flavours
+    the backend does not carry.
+- **`UltraCanvasRichTextEdit.md`'s toolbar example did not compile.** It called
+  `CreateToolbar(...)` (no such factory for `UltraCanvasToolbar`), passed seven
+  arguments to a six-argument `CreateButton`, called a `SetToggled()` that
+  exists nowhere in the tree, and gave `onSelectionChanged` a one-argument
+  signature where the dropdown's is `(int, const DropdownItem&)`. Rewritten
+  against the real API — `AddToggleButton` / `SetPressed`,
+  `SetSelectedIndex(index, false)` so writing the box back does not re-apply
+  what was just read out of the document — plus the two things that only show
+  up once it is wired for real: sync after a toolbar action too, and point one
+  direction of the wiring with raw pointers so the callbacks do not close an
+  ownership cycle.
+- **Demo tree statuses corrected against the tree, not against memory.** All 155
+  registered items were checked; 14 claimed less than "fully implemented" and
+  four of those were wrong.
+  - *Heat map* (Info Graphics) was a "not ready yet" placeholder while the heat
+    map has been implemented and registered under Charts as `heatmapchart` for
+    some time — interactive heatmap, STFT spectrogram, calendar and hexbin
+    variants. The duplicate placeholder is removed, the way the "matrix"
+    placeholder was when the matrix diagram landed.
+  - *Drawing Surface* (Bitmap Elements) pointed at a `CreateVectorExamples()`
+    whose body was entirely commented out, around an `UltraCanvasDrawingSurface`
+    that was never built: the page rendered an empty container with a title. The
+    item and the dead function are removed; the surface that does exist is
+    `UltraCanvasVectorCanvas`, already registered under Vector Graphics as
+    "Vector Editing".
+  - *Waves info graphic* and *Performance Matrix* have no element, no plugin and
+    no renderer anywhere in the tree, so "partially implemented" overstated
+    them. Both are now *planned*, matching what the specification-only modules
+    (IODeviceManager, Smart Home, VideoFX) already say.
+  - The remaining ten are accurate and were left alone: XAR and EPS say
+    "partially implemented" in their own docs (effect nodes parsed but not
+    rendered; a PostScript subset with diagnosed approximations), LaTeX
+    documents stop at Phase 3 of the engine proposal, and OCR / Vectorizer /
+    Pixel FX / PDF are the `#else` branch of a plugin that this build did not
+    include.
+
 #### 2026-09-16 *0.8.64*
 - **Every image export is written the safe way now, not just a paint
   document's save.** 0.8.63 gave `UCRasterDocument::SaveToFile` a staged
