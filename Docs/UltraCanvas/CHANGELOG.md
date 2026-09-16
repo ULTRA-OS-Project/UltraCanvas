@@ -1,3 +1,26 @@
+#### 2026-09-16 *0.8.69*
+- **A pull request based on another pull request's branch got no CI at all.**
+  Every workflow triggered on `pull_request: branches: [main]`, and for a
+  `pull_request` that filter matches the *base* branch — the branch the pull
+  request targets, not the branch it comes from. A stacked pull request targets
+  the parent's `claude/**` branch, so it matched no trigger in any of the four
+  workflows: no 3-OS matrix, no `llms-txt`, no `ui-reuse`, no `changelog`
+  check. #455 reached 1059 changed lines across the caret and position model of
+  `UltraCanvasRichTextEdit` without a single job ever running against it; the
+  test results in its description were all from its author's own machine.
+  `main` and `'claude/**'` are both listed now, in all four.
+  - `push` deliberately stays `branches: [main]`. Adding the glob there would
+    build every commit on every `claude/**` branch whether or not a pull request
+    exists — the double-building the note at the top of `build.yml` describes,
+    at 10x the Linux rate on macOS and 2x on Windows. Widening only
+    `pull_request` costs a matrix exactly for the stacked pull requests that
+    have one, which is the point.
+  - What this does not buy: a stacked pull request is built on top of its
+    unmerged parent, so a green result does not show the change is sound against
+    `main`. It is retargeted and rebuilt when the parent merges, and that run is
+    the one that proves it. Green-on-parent is still far better than the nothing
+    that came before.
+
 #### 2026-09-16 *0.8.67*
 - **`UltraCanvasRichTextEdit` can search and spell check.** Both were named as
   limits when the element landed in 0.8.50; they were also the two things a
