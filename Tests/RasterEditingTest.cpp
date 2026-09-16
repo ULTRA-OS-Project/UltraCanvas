@@ -333,6 +333,130 @@ static void TestPixelFXAndFiles() {
     std::filesystem::remove_all(dir);
 }
 
+// Saving back over the file the document was opened from - the commonest
+// save UltraPaint makes, and the one that used to fail. libvips keeps a
+// finished loader in its operation cache, which for a JPEG leaves the source
+// file memory-mapped; Windows refuses to truncate a file that has a mapping
+// open in the process, so the save has to let go of the source first. The new
+// bytes go through a temporary file next to the target, which must leave no
+// trace behind it and must leave the old file alone when a save fails.
+static void TestSaveOverTheOpenFile() {
+    const std::filesystem::path dir =
+            std::filesystem::temp_directory_path() / "ultracanvas-raster-resave";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::string jpg = (dir / "photo.jpg").string();
+    std::string err;
+
+    UCRasterDocument original(16, 16, RasterPixel(10, 120, 200, 255));
+    CHECK(original.SaveToFile(jpg, err));
+
+    UCRasterDocument doc;
+    CHECK(doc.LoadFromFile(jpg, err));
+    doc.GetLayer(0)->SetPixel(4, 4, RasterPixel(250, 250, 250, 255));
+    CHECK(doc.SaveToFile(jpg, err));
+
+    UCRasterDocument reopened;
+    CHECK(reopened.LoadFromFile(jpg, err));
+    CHECK(reopened.GetWidth() == 16 && reopened.GetHeight() == 16);
+    CHECK(reopened.GetLayer(0)->GetPixel(4, 4).r > reopened.GetLayer(0)->GetPixel(12, 12).r);
+
+    auto strays = [&dir]() {
+        int n = 0;
+        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+            if (entry.path().filename().string().rfind(".ucsave", 0) == 0) ++n;
+        }
+        return n;
+    };
+    CHECK(strays() == 0);
+
+    // A save that fails must not cost the user the file that was already
+    // there, and must not leave its attempt behind. An image wider than JPEG
+    // can represent fails *inside* the encoder, after it has the destination
+    // open - which is exactly when writing in place destroys it (libvips
+    // truncates on open, so the file the user had becomes 0 bytes).
+    const auto sizeBefore = std::filesystem::file_size(jpg);
+    UCRasterDocument oversized(70000, 2, RasterPixel(1, 2, 3, 255));
+    CHECK(!oversized.SaveToFile(jpg, err));
+    CHECK(err.find(".ucsave") == std::string::npos);   // the message names the file the caller asked for
+    CHECK(std::filesystem::file_size(jpg) == sizeBefore);
+    CHECK(strays() == 0);
+    UCRasterDocument survived;
+    CHECK(survived.LoadFromFile(jpg, err));
+    CHECK(survived.GetWidth() == 16 && survived.GetHeight() == 16);
+
+    // A format nothing in this build can write fails before the encoder opens
+    // anything, and must be just as tidy.
+    const std::string keep = (dir / "keep.zzz").string();
+    { std::FILE* f = std::fopen(keep.c_str(), "wb"); CHECK(f != nullptr); if (f) { std::fputs("not an image", f); std::fclose(f); } }
+    UCRasterDocument unsupported(8, 8, RasterPixel(1, 2, 3, 255));
+    CHECK(!unsupported.SaveToFile(keep, err));
+    CHECK(err.find(".ucsave") == std::string::npos);
+    CHECK(std::filesystem::file_size(keep) == 12);
+    CHECK(strays() == 0);
+
+    std::filesystem::remove_all(dir);
+}
+
+// The export path - the one the image export dialog and every UCImageRaster
+// save go through, rather than a plain document save - stages its write the
+// same way: the picture that is already at the destination survives an export
+// that fails, and nothing is left beside it.
+static void TestExportIsStaged() {
+    const std::filesystem::path dir =
+            std::filesystem::temp_directory_path() / "ultracanvas-raster-export";
+    std::filesystem::remove_all(dir);
+    std::filesystem::create_directories(dir);
+    const std::string png = (dir / "export.png").string();
+    std::string err;
+
+    auto strays = [&dir]() {
+        int n = 0;
+        for (const auto& entry : std::filesystem::directory_iterator(dir)) {
+            if (entry.path().filename().string().rfind(".ucsave", 0) == 0) ++n;
+        }
+        return n;
+    };
+
+    UCRasterDocument doc(12, 12, RasterPixel(30, 60, 90, 255));
+    UCImageSave::ImageExportOptions options;
+    options.format = UCImageSaveFormat::PNG;
+    CHECK(doc.SaveToFile(png, err, &options));
+    CHECK(strays() == 0);
+
+    UCRasterDocument reopened;
+    CHECK(reopened.LoadFromFile(png, err));
+    CHECK(reopened.GetWidth() == 12 && reopened.GetLayer(0)->GetPixel(5, 5) == RasterPixel(30, 60, 90, 255));
+
+    // Now an export that fails inside the encoder, over the file just
+    // written: an image wider than JPEG can represent, once the encoder
+    // already has the destination open. Written in place that empties the
+    // user's picture; staged, it cannot touch it.
+    const auto before = std::filesystem::file_size(png);
+    UCImageSave::ImageExportOptions oversized;
+    oversized.format = UCImageSaveFormat::JPEG;
+    UCRasterDocument wide(70000, 2, RasterPixel(255, 0, 0, 255));
+    CHECK(!wide.SaveToFile(png, err, &oversized));
+    CHECK(err.find(".ucsave") == std::string::npos);
+    CHECK(std::filesystem::file_size(png) == before);
+    CHECK(strays() == 0);
+
+    UCRasterDocument intact;
+    CHECK(intact.LoadFromFile(png, err));
+    CHECK(intact.GetWidth() == 12 && intact.GetLayer(0)->GetPixel(5, 5) == RasterPixel(30, 60, 90, 255));
+
+    // And a format no build can write, which fails before the encoder opens
+    // anything.
+    UCImageSave::ImageExportOptions broken;
+    broken.format = static_cast<UCImageSaveFormat>(9999);
+    UCRasterDocument other(4, 4, RasterPixel(255, 0, 0, 255));
+    CHECK(!other.SaveToFile(png, err, &broken));
+    CHECK(std::filesystem::file_size(png) == before);
+    CHECK(strays() == 0);
+
+    std::filesystem::remove_all(dir);
+}
+
 // PixelFX::Colour::ColourToAlpha - turning a colour into transparency, the
 // engine behind UltraPaint's Adjust > Colour to Alpha.
 static void TestColourToAlpha() {
@@ -426,6 +550,8 @@ int main() {
     TestDocument();
 #ifdef HAS_LIBVIPS
     TestPixelFXAndFiles();
+    TestSaveOverTheOpenFile();
+    TestExportIsStaged();
     TestColourToAlpha();
 #endif
     std::printf("RasterEditingTest: %d checks, %d failures\n", checks, failures);
