@@ -1,4 +1,4 @@
-#### 2026-09-15 *0.8.62*
+#### 2026-09-16 *0.8.65*
 - **`UltraCanvasRichTextEdit` can search and spell check.** Both were named as
   limits when the element landed in 0.8.50; they were also the two things a
   word-processing tab in UltraTexter lost by moving off the Markdown detour, so
@@ -34,6 +34,8 @@
     `EditScope` does not commit a second undo step.
   - Covered by 50 new checks in `Tests/RichTextEditorTest.cpp` (189 total) and
     27 new ones in `Tests/RichTextEditElementTest.cpp` (53 total).
+
+#### 2026-09-15 *0.8.62*
 - **The shared image cache could wedge itself permanently full, and then
   nothing was cached at all.** `UCCache` (`UltraCanvasUtils.h`) keeps a running
   total of the bytes it holds and asked each entry for its size *again* when it
