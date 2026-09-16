@@ -14,6 +14,7 @@
 
 #include "UltraCanvasRasterDocument.h"
 #include "UltraCanvasZipPackage.h"
+#include "UltraCanvasFileError.h"
 #include "DataFormats/UltraCanvasJSON.h"
 
 #ifdef HAS_LIBVIPS
@@ -747,10 +748,22 @@ bool UCRasterDocument::LoadFromFile(const std::string& path, std::string& error)
     if (IsProjectFile(path)) return LoadProject(path, error);
 #ifdef HAS_LIBVIPS
     try {
-        PixelFX::PFXImage img = PixelFX::FileIO::Load(path);
-        try { img = PixelFX::Resample::Autorot(img); } catch (...) {}
         auto layer = std::make_shared<UCRasterLayer>();
-        if (!layer->FromPixelFX(img)) { error = "Could not decode " + path; return false; }
+        bool decoded = false;
+        {
+            PixelFX::PFXImage img = PixelFX::FileIO::Load(path);
+            try { img = PixelFX::Resample::Autorot(img); } catch (...) {}
+            decoded = layer->FromPixelFX(img);
+        }
+        // Every pixel is now the document's own, so the file has nothing left
+        // to give - and an open document must not keep its source file held.
+        // libvips caches the finished loader, which for a JPEG keeps the file
+        // memory-mapped; on Windows a mapping makes the file impossible to
+        // truncate, so saving back over it fails with "unable to open for
+        // write / system error: Invalid argument" (ERROR_USER_MAPPED_FILE,
+        // which the C runtime reports as EINVAL).
+        PixelFX::ReleaseCachedFiles();
+        if (!decoded) { error = "Could not decode " + path; return false; }
         layer->name = "Background";
         width = layer->GetWidth(); height = layer->GetHeight();
         layers.clear();
@@ -787,13 +800,34 @@ bool UCRasterDocument::SaveToFile(const std::string& path, std::string& error,
         if (ext == "jpg" || ext == "jpeg" || ext == "bmp" || ext == "ppm" || ext == "pgm") {
             img = PixelFX::Colour::Flatten(img);
         }
+
+        // Nothing in this process may still be holding the destination: an
+        // image opened earlier - this document's own file, most of the time -
+        // is still held by the libvips operation cache, and on Windows that
+        // is what makes saving over it fail. See LoadFromFile().
+        PixelFX::ReleaseCachedFiles();
+
+        // The export path stages its own write (ExportVImage), so it is
+        // handed the caller's file and does the staging once. A plain save
+        // goes straight to libvips' write_to_file, which truncates what it
+        // opens, so it is staged here: a failure after that point - no space
+        // left, a codec error, a destination another program holds - would
+        // otherwise leave the user with the remains of the write instead of
+        // the image they had.
         if (options) {
             const std::string err = ExportVImage(img, path, *options);
             if (!err.empty()) { error = err; return false; }
-        } else if (!PixelFX::FileIO::Save(img, path)) {
-            error = PixelFX::GetLastError();
-            if (error.empty()) error = "Could not write " + path;
-            return false;
+        } else {
+            error = WriteFileAtomically(path, [&img](const std::string& staged) -> std::string {
+                try {
+                    if (PixelFX::FileIO::Save(img, staged)) return std::string();
+                } catch (const std::exception& e) {
+                    return e.what();
+                }
+                const std::string vipsError = PixelFX::GetLastError();
+                return vipsError.empty() ? std::string("The image could not be encoded.") : vipsError;
+            });
+            if (!error.empty()) return false;
         }
         filePath = path;
         SetModified(false);

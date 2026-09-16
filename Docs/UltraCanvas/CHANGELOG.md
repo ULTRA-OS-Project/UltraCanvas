@@ -1,4 +1,4 @@
-#### 2026-09-16 *0.8.66*
+#### 2026-09-16 *0.8.68*
 - **The caret goes inside table cells.** `UltraCanvasRichTextEdit` rendered
   tables from the start but treated each one as a single indivisible block, so
   the text inside was readable and nothing more. Cells are now editable in
@@ -29,7 +29,7 @@
   - Covered by 80 new checks in `Tests/RichTextEditorTest.cpp` (269 total) and
     21 new ones in `Tests/RichTextEditElementTest.cpp` (74 total).
 
-#### 2026-09-16 *0.8.65*
+#### 2026-09-16 *0.8.67*
 - **`UltraCanvasRichTextEdit` can search and spell check.** Both were named as
   limits when the element landed in 0.8.50; they were also the two things a
   word-processing tab in UltraTexter lost by moving off the Markdown detour, so
@@ -65,6 +65,196 @@
     `EditScope` does not commit a second undo step.
   - Covered by 50 new checks in `Tests/RichTextEditorTest.cpp` (189 total) and
     27 new ones in `Tests/RichTextEditElementTest.cpp` (53 total).
+#### 2026-09-16 *0.8.66*
+- **A changelog-only pull request rebuilt 621 of the build's 1136 objects, and
+  three open ones kept invalidating each other over a file none of them had
+  changed any code in.** `ULTRACANVAS_VERSION` was a `PUBLIC` compile
+  definition on the core library, so it sat on the compile command line of
+  every source in the library and of every app and test that links it —
+  `FontFileTest` included. The macro changes whenever anyone adds a changelog
+  entry, because it is read from the first line of
+  `Docs/UltraCanvas/CHANGELOG.md`, so each entry changed the command line of
+  all 621 and every one of them recompiled. Exactly two sources read it
+  (`UltraCanvasUtils.cpp`, `UltraCanvasElementPlugins.cpp`, both with a
+  fallback for its absence), so it is attached to those two with
+  `set_source_files_properties` and is no longer part of the library's
+  interface. A changelog edit now recompiles two objects; the number of targets
+  carrying the definition went from 70 to 1.
+- **The collision that made those changelog diffs impossible to settle.** Line
+  one of a changelog *is* the product's version — cmake reads it with
+  `file(STRINGS … LIMIT_COUNT 1)` — which makes it the most contended line in
+  the repository. Two open pull requests collide there in one of two ways, and
+  both had happened:
+  - *Stale.* A branch picks the next number, `main` releases further versions
+    while it waits for review, and it merges carrying a number lower than
+    versions already released below it, so the product's version goes
+    backwards. 0.8.53 landed this way over a `main` that had reached 0.8.60.
+  - *Shared.* Two branches write the same `#### <date> *x.y.z*` header. Git
+    sees an identical context line, merges both bullet lists under the one
+    header without a conflict, and two releases share a number while the
+    version never increments. This is also why such a branch's changelog diff
+    never goes away however often `main` is merged into it: its bullets are not
+    in `main`'s copy of that entry, so they are still an addition, and the two
+    branches keep rewriting the same lines.
+- **`scripts/check_changelog.py` refuses both**, over every changelog
+  `cmake/UltraCanvasVersion.cmake` declares (it parses that file, so the two
+  cannot drift). The top entry must be on line 1, must be unique in its file,
+  and must be strictly greater than every other version in it; with
+  `--base origin/main` a changelog this branch modified must also not still
+  claim the base's version. `.github/workflows/changelog.yml` runs it on pull
+  requests and on pushes to `main`.
+- **CI now keeps a ccache between runs.** A hosted runner has no incremental
+  state, so every leg compiled all ~1136 objects from scratch even when a pull
+  request changed one file — six legs, macOS billed at 10x and Windows at 2x.
+  `actions/cache` now carries ccache's objects across runs, keyed per
+  `os`/`build_type` with a prefix `restore-keys` so a run with no exact match
+  still starts from the most recent cache for that leg. ccache is installed on
+  all three platforms (apt, brew, and the MSYS2 `mingw-w64-*-ccache`), wired in
+  with `CMAKE_{C,CXX}_COMPILER_LAUNCHER` and `CMAKE_OBJCXX_COMPILER_LAUNCHER`
+  for the macOS Objective-C++ backends, and `ccache -s` is printed after every
+  build so a misconfigured leg shows as a 0% hit rate rather than as a mystery
+  40-minute run.
+  - `CCACHE_MAXSIZE` is 500 MB, not the 5 GB default: GitHub allows 10 GB of
+    cache per *repository* and evicts least-recently-used, so six legs at the
+    default would evict each other — and the llms-txt and ui-reuse caches — on
+    every push.
+  - `CCACHE_COMPILERCHECK=content`, because the runner image reinstalls the
+    toolchain each run and the default mtime check would call an identical
+    compiler a different one and miss on every object.
+  - The two ccache steps deliberately carry no `shell:`, so they inherit the
+    job default — the MSYS2 shell on the Windows legs. `shell: bash` there is
+    Git Bash, which has no mingw ccache on its PATH.
+  - This is why the `ULTRACANVAS_VERSION` change above matters beyond local
+    builds: a definition on 621 objects' command lines is 621 guaranteed cache
+    misses, since the command line is part of ccache's hash. Measured on a
+    413-object subset, a changelog-only edit with a wiped build directory hits
+    411/413 — the two misses being exactly `UltraCanvasUtils.cpp` and
+    `UltraCanvasElementPlugins.cpp`, the only sources that read the macro.
+  - Not covered: the Rust `vtracer` staticlib, which cargo builds and ccache
+    does not see.
+  - History below line 1 is deliberately not policed. The framework changelog
+    carries sixteen duplicated version numbers from before this check existed,
+    some months old and long since released — renumbering a published release
+    would be a lie, so they stay and only new top entries have to be
+    well-formed. `0.8.51`/`0.8.53` sitting out of order near the top are two
+    of them.
+#### 2026-09-16 *0.8.65*
+- **`UltraCanvasListView` shows the tooltips its model has always held.**
+  `ListItem::tooltip` and `MultiColumnListItem::tooltip` fed `ToolTipRole`,
+  and nothing ever read it: the view never called
+  `UltraCanvasTooltipManager`, so every list in the framework — the DemoApp
+  ListView page included, whose descriptions promise them — silently dropped
+  its tooltips. The view now tracks the hovered *cell* and shows that cell's
+  `ToolTipRole` text, refreshing it when the pointer moves sideways across a
+  row and hiding it when the cell has none, when the pointer leaves, or when
+  the wheel scrolls rows out from under it. `SetShowItemTooltips(false)` opts
+  out; `tooltipProvider(row, column)` supplies computed text; and
+  `GetTooltipTextAt()` returns what would be shown.
+- **Column headers and single cells can carry their own tooltip.**
+  `ListColumnDef::tooltip` (a 4th constructor argument) is shown when the
+  pointer rests on that column's header cell, and
+  `MultiColumnListItem::SetCellTooltip(column, text)` gives one column of one
+  row its own text, with `MultiColumnListItem::tooltip` as the row-wide
+  fallback. `GetHeaderColumnAt(x, y)` exposes the header hit test the tooltip
+  uses.
+- **A scrolled list no longer reports a row for a point inside its header.**
+  `GetRowAtY` added the scroll offset before testing against the rows
+  viewport, so with the list scrolled down, header hits mapped to whichever
+  row the offset landed on — a wrong hover row, and a header click that
+  selected.
+- **DemoApp `--component <id>` lands on the component it names.** It called
+  `DisplayDemoItem`, which only swaps the page: the tree kept its startup
+  selection and the header kept naming it, so `--component listview` showed
+  the ListView page under the title "Various menu types and styles" with
+  Menus highlighted in the sidebar. `SelectDemoItem` now takes the same path
+  a click on the tree takes — display, selection, header and status line
+  together — and an unknown id says so instead of silently doing nothing.
+- **The DemoApp ListView page demonstrates all three.** Its four lists now
+  carry tooltips (fruit descriptions, colour hex values, language
+  descriptions, per-column file details), the file table's headers explain
+  their columns, and clicking a cell reports which column it was and the
+  tooltip behind it.
+
+#### 2026-09-16 *0.8.64*
+- **Every image export is written the safe way now, not just a paint
+  document's save.** 0.8.63 gave `UCRasterDocument::SaveToFile` a staged
+  write - encode beside the target, move it into place once it is whole - but
+  the framework's own export path still handed each libvips saver the caller's
+  file. Every one of them opens truncating, so an export that failed after
+  that point destroyed the picture that was already there. Measured: exporting
+  an image wider than JPEG can represent (libjpeg stops at 65500 pixels) over
+  an existing file leaves it 0 bytes long, because the encoder opens and
+  empties the destination before it checks the dimensions. That reached users
+  through `UCImageRaster::Save` and the image export dialog.
+  `WriteFileAtomically()` in `UltraCanvasFileError.h` now holds the one copy of
+  that logic - staged path in the target's own folder, the target's
+  permissions carried across, a symlink written through rather than replaced,
+  the staged file removed on every failure path including an exception, and
+  the staged name replaced by the caller's own in whatever an encoder says
+  went wrong. `ExportVImage` wraps its encoding half in it, so every caller of
+  the export path gets the guarantee; `SaveToFile` uses it for the one write
+  that does not go that way and hands `ExportVImage` the real path, so a save
+  is staged once rather than twice. `RasterEditingTest` covers both paths with
+  a failure that happens *inside* the encoder, with the destination already
+  open - which is the case that actually destroys a file, and which passes
+  whether or not the write is staged if the test only uses a format nothing
+  can encode.
+
+#### 2026-09-16 *0.8.63*
+- **An image saves over the file it was opened from again, and a save that
+  fails no longer costs the user the file that was there.** Reported from
+  UltraPaint on Windows: opening a JPEG, editing it and pressing Save put up
+  `unable to open for write / system error: Invalid argument`, followed by a
+  write error, `VipsJpeg: unable to write to target` and two
+  `wbuffer_write: write failed` lines - none of which named a cause a user
+  could act on, and all of which were about the user's own file, in their own
+  Downloads folder, which nothing else was holding.
+  Three separate defects, one symptom:
+  - **The editor never let go of the file it had read.** libvips keeps
+    finished operations in a cache, so the loader of an image read minutes ago
+    is still alive - and for a JPEG it keeps the source file *memory-mapped*
+    (measured: the mapping is still in `/proc/self/maps` after the document has
+    copied every pixel into its own buffer and dropped the image; PNG and TIFF
+    do not map). Windows will not truncate a file that has a mapping open in
+    the process: the open fails with `ERROR_USER_MAPPED_FILE`, which the C
+    runtime reports as `EINVAL` - the "Invalid argument" in the dialog. Linux
+    allows the same truncate, which is why this never showed up here.
+    `PixelFX::ReleaseCachedFiles()` now drops those cached operations, and
+    `UCRasterDocument` calls it as soon as a load has been materialised and
+    again before every save. It trims the cache to nothing and lets it grow
+    again rather than calling `vips_cache_drop_all()`, which reads like the
+    call for this and instead frees the cache table, so that the next libvips
+    operation dereferences freed memory and crashes (reproduced on 8.15).
+  - **The save truncated the target before the first byte was encoded.**
+    `write_to_file` opens with `O_TRUNC`, so any failure after that point -
+    no space, a codec error, a destination that is refusing the write - left
+    the user with the remains of the write instead of the image they had.
+    (Writing an image over a file libvips is still reading does it in one
+    step: on Linux the same case truncates the source under the mapping and
+    the process takes a `SIGBUS` mid-encode.) `UCRasterDocument::SaveToFile`
+    now encodes into a temporary file in the target's own folder and renames
+    it over the target - same volume, so the replacement is atomic - carrying
+    the target's permissions across so a private image does not quietly widen
+    to the default mode, removing the temporary file on every failure path,
+    and putting the caller's own file name back into any message an encoder
+    wrote about the temporary one.
+  - **The reason was reported as a transcript.** libvips appends to a
+    process-wide error buffer and returns the whole of it, so
+    `PixelFX::FileIO::Save` / `SaveWithOptions` and `PFXImage::FromFile`
+    reported this failure together with everything left over from earlier
+    operations - the stack of contradictory lines in the dialog. They clear
+    the buffer first now, as `UCImageRaster::Save` and `ExportVImage` already
+    did.
+  Letting go of the cached loader also fixes a second symptom of the same
+  cause: libvips keys a cached load on the file *name*, and nothing in it
+  notices that the file has since been rewritten, so re-opening an image that
+  was saved earlier in the session handed back the image from before the save.
+  Measured: a black JPEG overwritten with a white one still reads back as
+  black until the cache lets go, and reads white afterwards. That is what the
+  new test catches on Linux, where the truncate itself is allowed.
+  `RasterEditingTest` covers the round trip over the file the document was
+  opened from, that the temporary file leaves no trace, and that a save which
+  cannot be encoded leaves the existing file byte-for-byte intact.
 
 #### 2026-09-15 *0.8.62*
 - **The shared image cache could wedge itself permanently full, and then
@@ -136,26 +326,6 @@
   a missing source, the stamp and its throttle, the sweep, a clock that was set
   back, and that nothing outside the cache's own extensions is ever deleted.
 
-#### 2026-09-15 *0.8.51*
-- **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
-  parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
-  away from `strtof` - that one honours `LC_NUMERIC`, so a comma-decimal
-  locale read every `rgba()` alpha and every length as `0`. Apple's libc++
-  implements only the *integral* `from_chars` overloads, and the `bool` one it
-  does declare is `= delete`, so on the Xcode 16.4 SDK the float call resolved
-  to the deleted overload and the file did not compile at all -
-  `build (macos-15-intel, Release)` failed on every push, `main` included,
-  while the Linux and Windows legs were fine.
-  The number is now scanned by hand and converted through
-  `std::locale::classic()`, which keeps the locale independence without
-  `<charconv>`. Scanning first also matters on its own account: converting the
-  whole string in one go reads the `e` of `1.5em` as the start of an exponent
-  and then fails outright, losing the commonest unit in CSS. Checked against
-  `std::from_chars` over 25 inputs - value and end position agree on each -
-  and `HTMLReaderTest` passes under a comma-decimal locale as well as under C.
-  The code itself reached `main` ahead of this note, ported into the 0.8.49
-  release to unblock the branches the red leg was holding up; this entry is
-  the release record it went in without.
 #### 2026-09-15 *0.8.61*
 - **A text field is UTF-8 all the way through now.** Typing the name
   `Fröhling` into a field — UltraMail's "Add email account" wizard is where it
@@ -736,6 +906,25 @@
   render-context and model additions each phase needs.
 - `Masterfile_modules.md` gains the `UltraCanvasVectorStorage` entry; the
   element catalogue lists `UltraCanvasVectorElement`.
+- **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
+  parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
+  away from `strtof` - that one honours `LC_NUMERIC`, so a comma-decimal
+  locale read every `rgba()` alpha and every length as `0`. Apple's libc++
+  implements only the *integral* `from_chars` overloads, and the `bool` one it
+  does declare is `= delete`, so on the Xcode 16.4 SDK the float call resolved
+  to the deleted overload and the file did not compile at all -
+  `build (macos-15-intel, Release)` failed on every push, `main` included,
+  while the Linux and Windows legs were fine.
+  The number is now scanned by hand and converted through
+  `std::locale::classic()`, which keeps the locale independence without
+  `<charconv>`. Scanning first also matters on its own account: converting the
+  whole string in one go reads the `e` of `1.5em` as the start of an exponent
+  and then fails outright, losing the commonest unit in CSS. Checked against
+  `std::from_chars` over 25 inputs - value and end position agree on each -
+  and `HTMLReaderTest` passes under a comma-decimal locale as well as under C.
+  The code itself reached `main` ahead of this note, ported into the 0.8.49
+  release to unblock the branches the red leg was holding up; this entry is
+  the release record it went in without.
 
 #### 2026-09-15 *0.8.50*
 - **A WYSIWYG editing element: `UltraCanvasRichTextEdit`.** The caret sits in

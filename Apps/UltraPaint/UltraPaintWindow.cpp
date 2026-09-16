@@ -1011,7 +1011,7 @@ bool UltraPaintWindow::SaveToPath(const std::string& path) {
     if (!document) return false;
     std::string error;
     if (!document->SaveToFile(path, error)) {
-        UltraCanvasDialogManager::ShowError("Could not save " + path + "\n" + error, "Save", nullptr, window.get());
+        UltraCanvasDialogManager::ShowError("Could not save " + path + "\n" + ShortError(error), "Save", nullptr, window.get());
         return false;
     }
     UpdateTitle();
@@ -1292,7 +1292,7 @@ void UltraPaintWindow::CmdExport() {
             dlg->onSave = [this, path](const UCImageSave::ImageExportOptions& options) {
                 std::string error;
                 if (!document->SaveToFile(path, error, &options))
-                    UltraCanvasDialogManager::ShowError("Could not export " + path + "\n" + error, "Export", nullptr, window.get());
+                    UltraCanvasDialogManager::ShowError("Could not export " + path + "\n" + ShortError(error), "Export", nullptr, window.get());
                 else if (statusHint) statusHint->SetText("Exported " + FileNameOf(path));
             };
             ShowDialog(dlg);
