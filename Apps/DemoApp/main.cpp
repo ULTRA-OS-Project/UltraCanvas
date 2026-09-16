@@ -236,7 +236,10 @@ int main(int argc, char* argv[]) {
         // Auto-select startup component if specified
         if (!startupComponent.empty()) {
             debugOutput << "Auto-selecting component: " << startupComponent << std::endl;
-            g_demoApp->DisplayDemoItem(startupComponent);
+            if (!g_demoApp->SelectDemoItem(startupComponent)) {
+                debugOutput << "Unknown component: " << startupComponent
+                            << " (starting on the default page)" << std::endl;
+            }
         }
 
         debugOutput << std::endl;
