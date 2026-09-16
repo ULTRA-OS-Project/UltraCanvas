@@ -966,14 +966,14 @@ namespace UltraCanvas {
 #endif
 #ifdef ULTRACANVAS_HAS_XAR_PLUGIN
         vectorBuilder.AddItem("xarimages", "XAR Images", "XAR Image display and manipulation",
-                              ImplementationStatus::PartiallyImplemented,
+                              ImplementationStatus::FullyImplemented,
                               [this]() { return CreateXARVectorExamples(); },
                               "DemoApp/UltraCanvasXARExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasXARExamples.md");
 #endif
 #ifdef ULTRACANVAS_HAS_EPS_PLUGIN
         vectorBuilder.AddItem("epsimages", "EPS Images", "EPS (Encapsulated PostScript) display via the built-in PostScript interpreter",
-                              ImplementationStatus::PartiallyImplemented,
+                              ImplementationStatus::FullyImplemented,
                               [this]() { return CreateEPSVectorExamples(); },
                               "DemoApp/UltraCanvasEPSExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasEPSExamples.md");
@@ -1767,7 +1767,7 @@ namespace UltraCanvas {
         textDocBuilder.AddItem("textdocuments_latex", "LaTeX Documents",
                                "LaTeX documents typeset live from source by the UltraCanvas math "
                                "engine — rendered output and source per document",
-                               ImplementationStatus::PartiallyImplemented,
+                               ImplementationStatus::FullyImplemented,
                                [this]() { return CreateLaTeXExamples(); },
                                "DemoApp/UltraCanvasLaTeXExamples.cpp");
 

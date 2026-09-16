@@ -1,3 +1,19 @@
+#### 2026-09-16 *0.8.66*
+- **LaTeX Documents, XAR Images and EPS Images now read as fully implemented in
+  the demo tree.** All three carried the blue "partially implemented" icon
+  because each one's own documentation opens with that phrase — but that phrase
+  is about *format coverage* (the effect nodes XAR parses without painting, the
+  PostScript operators the EPS interpreter approximates, the pgfplots/TikZ phase
+  the LaTeX importer has not started), not about the demo pages or the elements
+  behind them, which are finished and drive their shipped sample corpora
+  (`media/vector/XAR`, `media/vector/EPS`, `media/LaTex`). The tree's icon
+  answers "can I use this?", and for all three the answer is yes.
+- Note for whoever reads the pages next: the overview sections of
+  `UltraCanvasXARExamples.md` and `UltraCanvasEPSExamples.md` still open with
+  "partially implemented", and the demo's documentation button on those very
+  pages opens those files. Their per-format gap lists are accurate and should
+  stay; only the leading verdict now disagrees with the tree.
+
 #### 2026-09-16 *0.8.65*
 - **The demo application had no WYSIWYG page, and its tree told four lies about
   what is implemented.** Both are the same defect: the tree's status icon is the
