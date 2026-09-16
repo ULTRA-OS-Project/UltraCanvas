@@ -1,3 +1,14 @@
+#### 2026-09-15 *0.2.6*
+- **Save over the image you opened works on Windows, and says something
+  usable when it cannot.** Saving an opened JPEG back over itself failed with
+  eight lines of libvips internals and no cause a user could act on; the
+  editor was still holding the file it had read, and the save truncated it
+  before encoding anything. Both are fixed in the framework - see UltraCanvas
+  0.8.63, which also makes a failed save leave the previous file untouched.
+  The Save and Export dialogs now also shorten what they report the way Open
+  always did (the reason, not the log), so a destination that really is in use
+  or out of space says so in a line instead of a screenful.
+
 #### 2026-09-15 *0.2.5*
 - **The Pan tool pans.** Selecting it (H) showed the Hand cursor, but a
   drag still went nowhere: the framework's `SetPanMode` (fixed in

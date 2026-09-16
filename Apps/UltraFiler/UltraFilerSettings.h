@@ -175,6 +175,19 @@ public:
     // screen, which is the reason this can be turned off.
     bool folderPreviews = true;
 
+    // Extras > Cache: whether finished thumbnails are kept on disk between
+    // runs, so a folder that cost minutes of decoding on its first visit
+    // draws from disk on every visit after it, restarts included. Entries
+    // expire two weeks after they were last served. Off stops reading and
+    // writing; what is already on disk is left to expire on its own.
+    bool thumbnailDiskCache = true;
+
+    // Extras > Cache: whether finished thumbnails are held QOI-compressed in
+    // memory (roughly 3-4x smaller for photos) instead of as raw pixmaps, so
+    // the same memory budget holds several times as many tiles. Costs a
+    // decompression per tile entering the drawn band, on a worker thread.
+    bool compressedThumbnails = false;
+
     // Handling > Drag & Drop: what dropping dragged files onto a folder of the
     // file display does without a modifier - move them (the default) or copy
     // them. Ctrl at the drop always copies and Shift always moves, whichever
@@ -313,6 +326,14 @@ public:
         if (it != kv.end())
             folderPreviews =
                     (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("extras.cache.thumbnails.disk");
+        if (it != kv.end())
+            thumbnailDiskCache =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("extras.cache.thumbnails.compressed");
+        if (it != kv.end())
+            compressedThumbnails =
+                    (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("handling.dragdrop.drop.on.folder");
         if (it != kv.end()) dropOnFolderCopies = (it->second == "copy");
         it = kv.find("handling.dragdrop.confirmation");
@@ -377,6 +398,10 @@ public:
              << (showLockState ? "true" : "false") << "\n";
         file << "display.folder.previews = "
              << (folderPreviews ? "true" : "false") << "\n";
+        file << "extras.cache.thumbnails.disk = "
+             << (thumbnailDiskCache ? "true" : "false") << "\n";
+        file << "extras.cache.thumbnails.compressed = "
+             << (compressedThumbnails ? "true" : "false") << "\n";
         file << "handling.dragdrop.drop.on.folder = "
              << (dropOnFolderCopies ? "copy" : "move") << "\n";
         file << "handling.dragdrop.confirmation = "

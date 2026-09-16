@@ -735,6 +735,16 @@ namespace PixelFX {
     void SetCacheMax(size_t bytes);
     void SetCacheMaxFiles(int files);
     void SetCacheMaxMem(size_t bytes);
+
+    // Lets go of every file a finished load still holds. libvips keeps
+    // completed operations in a cache, so the loader of an image read minutes
+    // ago is still alive - and with it the descriptor and, for JPEG, the
+    // memory map of the source file. Call this before writing to a path the
+    // application may have read earlier: Windows refuses to truncate a file
+    // that has a mapping open in the process, so without it saving over an
+    // image that is open in the editor fails. Cheap, and costs only the
+    // caching of operations that have already finished.
+    void ReleaseCachedFiles();
     void SetConcurrency(int threads);
     int GetConcurrency();
 

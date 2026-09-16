@@ -3107,3 +3107,50 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: IODeviceScannerTest")
+message(STATUS "")
+
+# ===== IMAGE CACHE ACCOUNTING TEST =====
+# UCCache's running byte total (UltraCanvasUtils.h). A total that drifts does
+# not merely mis-report: it is unsigned, so subtracting more than was added
+# wraps it, every later insert finds itself over budget, and the cache empties
+# itself to make room for one entry. Header-only, so it links nothing.
+message(STATUS "  Building ImageCacheAccountingTest...")
+add_executable(ImageCacheAccountingTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ImageCacheAccountingTest.cpp
+)
+target_include_directories(ImageCacheAccountingTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+target_compile_features(ImageCacheAccountingTest PRIVATE cxx_std_20)
+find_package(Threads REQUIRED)
+target_link_libraries(ImageCacheAccountingTest PRIVATE Threads::Threads)
+set_target_properties(ImageCacheAccountingTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME ImageCacheAccountingTest COMMAND ImageCacheAccountingTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: ImageCacheAccountingTest")
+
+message(STATUS "")
+
+# ===== THUMBNAIL DISK CACHE TEST =====
+# Thumbnails kept between runs, and the retention that keeps that directory
+# from growing for the life of the account: a stored thumbnail comes back, one
+# whose source changed does not, serving a file stamps it, and a file not
+# served for two weeks is swept. Plain std::filesystem - the test points the
+# cache at a temporary directory, never the user's own.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building ThumbnailDiskCacheTest...")
+    add_executable(ThumbnailDiskCacheTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ThumbnailDiskCacheTest.cpp
+    )
+    target_include_directories(ThumbnailDiskCacheTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(ThumbnailDiskCacheTest PRIVATE cxx_std_20)
+    target_link_libraries(ThumbnailDiskCacheTest PRIVATE UltraCanvas)
+    set_target_properties(ThumbnailDiskCacheTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ThumbnailDiskCacheTest COMMAND ThumbnailDiskCacheTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ThumbnailDiskCacheTest")
+else()
+    message(STATUS "  ThumbnailDiskCacheTest skipped (UltraCanvas target not present)")
+endif()

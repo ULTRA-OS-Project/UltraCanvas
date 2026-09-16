@@ -202,8 +202,12 @@ The layer, selection, document, brush engine and surface compile without
 `RasterEditingTest`) covers the layer and blend arithmetic, the selection
 shapes and set algebra, strokes (opacity cap, erase, selection clipping, the
 one-pixel pencil), shapes / fills / gradients / wand, document undo / redo
-across pixel and structural edits, selection-aware `ApplyFilter`, and the
-PNG and `.ucraster` round trips.
+across pixel and structural edits, selection-aware `ApplyFilter`, the
+PNG and `.ucraster` round trips, and saving back over the file a document was
+opened from -- that the image survives the round trip, that the temporary
+file the save goes through leaves no trace, and that neither a save nor an export
+which fails inside the encoder leaves a mark on the file that was already
+there.
 
 ## See also
 
