@@ -259,26 +259,6 @@
   a missing source, the stamp and its throttle, the sweep, a clock that was set
   back, and that nothing outside the cache's own extensions is ever deleted.
 
-#### 2026-09-15 *0.8.51*
-- **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
-  parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
-  away from `strtof` - that one honours `LC_NUMERIC`, so a comma-decimal
-  locale read every `rgba()` alpha and every length as `0`. Apple's libc++
-  implements only the *integral* `from_chars` overloads, and the `bool` one it
-  does declare is `= delete`, so on the Xcode 16.4 SDK the float call resolved
-  to the deleted overload and the file did not compile at all -
-  `build (macos-15-intel, Release)` failed on every push, `main` included,
-  while the Linux and Windows legs were fine.
-  The number is now scanned by hand and converted through
-  `std::locale::classic()`, which keeps the locale independence without
-  `<charconv>`. Scanning first also matters on its own account: converting the
-  whole string in one go reads the `e` of `1.5em` as the start of an exponent
-  and then fails outright, losing the commonest unit in CSS. Checked against
-  `std::from_chars` over 25 inputs - value and end position agree on each -
-  and `HTMLReaderTest` passes under a comma-decimal locale as well as under C.
-  The code itself reached `main` ahead of this note, ported into the 0.8.49
-  release to unblock the branches the red leg was holding up; this entry is
-  the release record it went in without.
 #### 2026-09-15 *0.8.61*
 - **A text field is UTF-8 all the way through now.** Typing the name
   `Fröhling` into a field — UltraMail's "Add email account" wizard is where it
@@ -859,6 +839,25 @@
   render-context and model additions each phase needs.
 - `Masterfile_modules.md` gains the `UltraCanvasVectorStorage` entry; the
   element catalogue lists `UltraCanvasVectorElement`.
+- **The macOS Intel build is green again.** `HTMLReader/CSSStyleSheet.cpp`
+  parsed CSS numbers with `std::from_chars`, which 0.8.47 introduced to get
+  away from `strtof` - that one honours `LC_NUMERIC`, so a comma-decimal
+  locale read every `rgba()` alpha and every length as `0`. Apple's libc++
+  implements only the *integral* `from_chars` overloads, and the `bool` one it
+  does declare is `= delete`, so on the Xcode 16.4 SDK the float call resolved
+  to the deleted overload and the file did not compile at all -
+  `build (macos-15-intel, Release)` failed on every push, `main` included,
+  while the Linux and Windows legs were fine.
+  The number is now scanned by hand and converted through
+  `std::locale::classic()`, which keeps the locale independence without
+  `<charconv>`. Scanning first also matters on its own account: converting the
+  whole string in one go reads the `e` of `1.5em` as the start of an exponent
+  and then fails outright, losing the commonest unit in CSS. Checked against
+  `std::from_chars` over 25 inputs - value and end position agree on each -
+  and `HTMLReaderTest` passes under a comma-decimal locale as well as under C.
+  The code itself reached `main` ahead of this note, ported into the 0.8.49
+  release to unblock the branches the red leg was holding up; this entry is
+  the release record it went in without.
 
 #### 2026-09-15 *0.8.50*
 - **A WYSIWYG editing element: `UltraCanvasRichTextEdit`.** The caret sits in
