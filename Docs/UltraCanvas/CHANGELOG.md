@@ -1,4 +1,4 @@
-#### 2026-09-16 *0.8.65*
+#### 2026-09-16 *0.8.67*
 - **`UltraCanvasRichTextEdit` can search and spell check.** Both were named as
   limits when the element landed in 0.8.50; they were also the two things a
   word-processing tab in UltraTexter lost by moving off the Markdown detour, so
