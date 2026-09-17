@@ -1,5 +1,4 @@
-<<<<<<< HEAD
-#### 2026-09-17 *0.8.74*
+#### 2026-09-17 *0.8.78*
 - **New design proposal: UltraMessage, the cross-platform message channel**
   (`Docs/Research/UltraMessageDesignProposal.md`, registered as
   `Masterfile_modules.md` §13). One API for app-to-app messages with RISC OS
@@ -24,7 +23,6 @@
   buses as adapters, and lays out the data model, the `UltraMsg_*` API, the
   broker, the per-platform adapters, security and a four-phase delivery plan.
   Documentation only; no code.
-=======
 #### 2026-09-17 *0.8.77*
 - **A copy, a move or a delete that takes more than two seconds now says so.**
   `UltraCanvasFilerWidget` ran all three straight through on the UI thread: a
@@ -141,7 +139,6 @@
   succeed. The problem dialog helper is now `ShowProblemChoiceDialog` (any
   number of exclusive choices); `ShowProceedSkipDialog` remains as its
   two-choice form.
->>>>>>> origin/main
 
 #### 2026-09-16 *0.8.73*
 - **A drawing the framework could read showed nothing in the preview pane.**
