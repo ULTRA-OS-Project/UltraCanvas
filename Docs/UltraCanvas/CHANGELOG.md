@@ -1,3 +1,20 @@
+#### 2026-09-17 *0.8.74*
+- **New design proposal: UltraMessage, the cross-platform message channel**
+  (`Docs/Research/UltraMessageDesignProposal.md`, registered as
+  `Masterfile_modules.md` §13). One API for app-to-app messages with RISC OS
+  Wimp semantics (post, recorded post with bounce, request/reply, topic
+  subscriptions), a journaled feed of well-known topics
+  (`messaging.message`, `mail.message`, `system.notification`) so the ULTRA OS
+  desktop can show every messenger's and mail client's messages in one
+  structured view, and a command surface (`RegisterCommand` / `Invoke`) that
+  is the Apple-Events half of an AppleScript-class automation story;
+  UltraScript is specified as a client of it. The proposal surveys what each
+  OS offers (D-Bus, `WM_COPYDATA`, Apple Events, notification listeners),
+  settles on one broker and one wire protocol per user session with platform
+  buses as adapters, and lays out the data model, the `UltraMsg_*` API, the
+  broker, the per-platform adapters, security and a four-phase delivery plan.
+  Documentation only; no code.
+
 #### 2026-09-16 *0.8.73*
 - **A drawing the framework could read showed nothing in the preview pane.**
   Core owns the vector document model and the renderer that draws one, but not
