@@ -1488,7 +1488,7 @@ UltraMessage elements must comply with the following rules:
 
 Design: `Docs/Research/UltraMessageDesignProposal.md` (platform survey,
 data model, API, broker, adapters, security, delivery plan, and §12 on how
-UIScript and the channel share one dictionary).
+UltraScript and the channel share one dictionary).
 
 **Proposed Functions (Phase 1 — channel and journal):**
 - `UltraMsg_Initialize`, `UltraMsg_Shutdown`, `UltraMsg_IsAvailable`,
@@ -1525,8 +1525,8 @@ UIScript and the channel share one dictionary).
 
 **Planned (Phase 4):** Android `NotificationListenerService`, WebAssembly
 `BroadcastChannel` transport, `apple-messages`, `matrix`, `imap-idle`,
-`com-automation`, at-rest journal encryption via UltraCrypt. **UIScript**
-(`Docs/Research/UIScriptSpecification.md`: the AppleScript-class language,
+`com-automation`, at-rest journal encryption via UltraCrypt. **UltraScript**
+(`Docs/Research/UltraScriptSpecification.md`: the AppleScript-class language,
 its recorder, SDEF-compatible dictionary, executor and Script Editor) is a
 client of the Phase 3 command surface: an app's scripting dictionary is its
 UltraMessage command manifest, and a `tell application "X"` block whose

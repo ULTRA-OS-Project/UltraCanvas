@@ -8,10 +8,10 @@
   desktop can show every messenger's and mail client's messages in one
   structured view, and a command surface (`RegisterCommand` / `Invoke`) that
   is the Apple-Events half of an AppleScript-class automation story. The
-  UIScript language specification (recorder, SDEF-compatible dictionary,
+  UltraScript language specification (recorder, SDEF-compatible dictionary,
   parser, executor, Script Editor) is filed alongside as
-  `Docs/Research/UIScriptSpecification.md`; §12 of the proposal makes the
-  scripting dictionary the channel's command manifest and routes UIScript's
+  `Docs/Research/UltraScriptSpecification.md`; §12 of the proposal makes the
+  scripting dictionary the channel's command manifest and routes UltraScript's
   cross-application `tell` blocks over it as `ui.*` verbs. The proposal surveys what each
   OS offers (D-Bus, `WM_COPYDATA`, Apple Events, notification listeners),
   settles on one broker and one wire protocol per user session with platform

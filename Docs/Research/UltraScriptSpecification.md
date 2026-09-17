@@ -1,7 +1,7 @@
-# UIScript - Specification and Implementation Guide
+# UltraScript - Specification and Implementation Guide
 
-**Document Version:** 1.0.0  
-**Last Modified:** 2024-12-19  
+**Document Version:** 1.0.1  
+**Last Modified:** 2026-09-17  
 **Author:** UltraCanvas Framework  
 **Status:** Master Specification
 
@@ -26,9 +26,9 @@
 
 ## 1. Overview
 
-### 1.1 What is UIScript?
+### 1.1 What is UltraScript?
 
-**UIScript** is a modern, cross-platform scripting language designed for automating UltraCanvas applications. It provides the same functionality as macOS AppleScript but with contemporary syntax styles and cross-platform support.
+**UltraScript** is a modern, cross-platform scripting language designed for automating UltraCanvas applications. It provides the same functionality as macOS AppleScript but with contemporary syntax styles and cross-platform support.
 
 **Key Features:**
 - **Modern Syntax** - Three syntax styles (Modern, Natural, Classic)
@@ -51,7 +51,7 @@
 
 ### 1.3 Comparison with AppleScript
 
-| Feature | AppleScript | UIScript |
+| Feature | AppleScript | UltraScript |
 |---------|-------------|----------|
 | Platform | macOS only | Cross-platform |
 | Syntax | Single style | Three styles (Modern/Natural/Classic) |
@@ -67,7 +67,7 @@
 
 ### 2.1 Object Model
 
-UIScript operates on a hierarchical object model:
+UltraScript operates on a hierarchical object model:
 
 ```
 Application
@@ -95,12 +95,12 @@ User Action → Platform Event → UCEvent → Recording → Element Handler
 - Recording happens BEFORE element handling
 - All UCEvents are potentially recordable
 - Elements control recordability via opt-out flag
-- Recording is centralized in UIScriptRecorder
+- Recording is centralized in UltraScriptRecorder
 
 ### 2.3 Script Execution Model
 
 ```
-UIScript Code → Parser → AST → Interpreter → UltraCanvas API Calls
+UltraScript Code → Parser → AST → Interpreter → UltraCanvas API Calls
 ```
 
 **Execution Modes:**
@@ -116,7 +116,7 @@ UIScript Code → Parser → AST → Interpreter → UltraCanvas API Calls
 
 ```
 ┌─────────────────────────────────────────────────────┐
-│                  UIScript System                     │
+│                  UltraScript System                     │
 ├─────────────────────────────────────────────────────┤
 │                                                      │
 │  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
@@ -144,31 +144,31 @@ UIScript Code → Parser → AST → Interpreter → UltraCanvas API Calls
 
 ### 3.2 Core Components
 
-#### 3.2.1 UIScriptRecorder
+#### 3.2.1 UltraScriptRecorder
 - **Purpose:** Automatic event recording
 - **Location:** `include/UltraCanvasScriptRecorder.h`
 - **Responsibility:** Monitor UCEvents, generate script code
 - **Singleton:** Yes
 
-#### 3.2.2 UIScriptParser
-- **Purpose:** Parse UIScript code into AST
-- **Location:** `include/UIScriptParser.h`
+#### 3.2.2 UltraScriptParser
+- **Purpose:** Parse UltraScript code into AST
+- **Location:** `include/UltraScriptParser.h`
 - **Responsibility:** Syntax validation, AST generation
 - **Supports:** All three syntax styles
 
-#### 3.2.3 UIScriptExecutor
+#### 3.2.3 UltraScriptExecutor
 - **Purpose:** Execute parsed scripts
-- **Location:** `include/UIScriptExecutor.h`
+- **Location:** `include/UltraScriptExecutor.h`
 - **Responsibility:** Interpret AST, call UltraCanvas APIs
 - **Thread-Safe:** Yes
 
-#### 3.2.4 UIScriptDictionary
+#### 3.2.4 UltraScriptDictionary
 - **Purpose:** Element metadata registry
-- **Location:** `include/UIScriptDictionary.h`
+- **Location:** `include/UltraScriptDictionary.h`
 - **Responsibility:** Property/command definitions, type validation
 - **Format:** XML (compatible with AppleScript SDEF)
 
-#### 3.2.5 IUIScriptable Interface
+#### 3.2.5 IUltraScriptable Interface
 - **Purpose:** Mark elements as scriptable
 - **Location:** `include/UltraCanvasScriptableElement.h`
 - **Responsibility:** Provide script identity and metadata
@@ -182,19 +182,19 @@ UIScript Code → Parser → AST → Interpreter → UltraCanvas API Calls
 2. X11/Cocoa generates platform event
 3. Platform-specific code converts to UCEvent
 4. UltraCanvasWindow::DispatchEvent() receives UCEvent
-5. UIScriptRecorder::RecordEventIfEnabled() called
+5. UltraScriptRecorder::RecordEventIfEnabled() called
    ├─ Check: Is recording active? → NO → Skip
    ├─ Check: Is element scriptable? → NO → Skip
    ├─ Check: Should record this event type? → NO → Skip
-   └─ YES → Create UIScriptAction, add to list, call live callback
+   └─ YES → Create UltraScriptAction, add to list, call live callback
 6. Element->HandleEvent() processes event normally
 ```
 
 #### 3.3.2 Execution Flow
 ```
-1. User enters UIScript code in Script Editor
-2. UIScriptParser::Parse() generates AST
-3. UIScriptExecutor::Execute() interprets AST
+1. User enters UltraScript code in Script Editor
+2. UltraScriptParser::Parse() generates AST
+3. UltraScriptExecutor::Execute() interprets AST
 4. For each command:
    ├─ Resolve target element (by name, class, index)
    ├─ Validate command exists for element type
@@ -408,9 +408,9 @@ clipboard                   // System clipboard
 #### 5.1.1 Recording Trigger
 ```cpp
 // Recording is controlled globally
-UIScriptRecorder::StartRecording()  // Begin recording
-UIScriptRecorder::StopRecording()   // End recording
-UIScriptRecorder::IsRecording()     // Check status
+UltraScriptRecorder::StartRecording()  // Begin recording
+UltraScriptRecorder::StopRecording()   // End recording
+UltraScriptRecorder::IsRecording()     // Check status
 ```
 
 #### 5.1.2 Automatic Recording Points
@@ -420,7 +420,7 @@ bool DispatchEvent(const UCEvent& event) {
     UltraCanvasUIElement* target = FindEventTarget(event);
     
     // AUTOMATIC RECORDING HAPPENS HERE
-    UIScriptRecorder::RecordEventIfEnabled(event, target);
+    UltraScriptRecorder::RecordEventIfEnabled(event, target);
     
     // Normal event handling
     if (target) {
@@ -444,7 +444,7 @@ UCEvent received
     │                               YES ↓
     ├─ Should record event type? ─── NO → Skip
     │                               YES ↓
-    └─ CREATE UIScriptAction → Add to list → Call live callback
+    └─ CREATE UltraScriptAction → Add to list → Call live callback
 ```
 
 ### 5.2 Recordable Events
@@ -473,10 +473,10 @@ UCEventType::WindowRepaint   - Internal events
 UCEventType::WindowResize    - Internal events
 ```
 
-### 5.3 UIScriptAction Structure
+### 5.3 UltraScriptAction Structure
 
 ```cpp
-struct UIScriptAction {
+struct UltraScriptAction {
     // Element identification
     std::string elementName;        // "OKButton"
     std::string elementClass;       // "Button"
@@ -497,7 +497,7 @@ struct UIScriptAction {
     std::chrono::steady_clock::time_point timestamp;
     
     // Script generation
-    std::string ToUIScript(UIScriptSyntaxStyle style);
+    std::string ToUltraScript(UltraScriptSyntaxStyle style);
 };
 ```
 
@@ -546,8 +546,8 @@ end tell
 
 ```cpp
 // Real-time script display
-UIScriptRecorder::SetLiveCallback([](const UIScriptAction& action) {
-    std::string code = action.ToUIScript(UIScriptSyntaxStyle::Modern);
+UltraScriptRecorder::SetLiveCallback([](const UltraScriptAction& action) {
+    std::string code = action.ToUltraScript(UltraScriptSyntaxStyle::Modern);
     scriptEditorWindow->AppendLine(code);
 });
 ```
@@ -695,14 +695,14 @@ The Script Editor includes a **Dictionary Browser** that:
 
 ## 7. API Definitions
 
-### 7.1 IUIScriptable Interface
+### 7.1 IUltraScriptable Interface
 
 ```cpp
 // include/UltraCanvasScriptableElement.h
 
-class IUIScriptable {
+class IUltraScriptable {
 public:
-    virtual ~IUIScriptable() = default;
+    virtual ~IUltraScriptable() = default;
     
     // ===== REQUIRED METHODS =====
     virtual std::string GetScriptName() const = 0;
@@ -724,12 +724,12 @@ public:
 };
 ```
 
-### 7.2 UIScriptRecorder API
+### 7.2 UltraScriptRecorder API
 
 ```cpp
 // include/UltraCanvasScriptRecorder.h
 
-class UIScriptRecorder {
+class UltraScriptRecorder {
 public:
     // ===== RECORDING CONTROL =====
     static void StartRecording();
@@ -743,10 +743,10 @@ public:
     static void SetRecordMouseMoves(bool enable);
     static void SetRecordTimingDelays(bool enable);
     static void SetMouseMoveThreshold(int pixels);
-    static void SetSyntaxStyle(UIScriptSyntaxStyle style);
+    static void SetSyntaxStyle(UltraScriptSyntaxStyle style);
     
     // ===== CALLBACKS =====
-    static void SetLiveCallback(std::function<void(const UIScriptAction&)> callback);
+    static void SetLiveCallback(std::function<void(const UltraScriptAction&)> callback);
     static void SetErrorCallback(std::function<void(const std::string&)> callback);
     
     // ===== CORE RECORDING FUNCTION =====
@@ -754,8 +754,8 @@ public:
     static void RecordEventIfEnabled(const UCEvent& event, UltraCanvasUIElement* target);
     
     // ===== SCRIPT GENERATION =====
-    static std::string GenerateScript(UIScriptSyntaxStyle style = UIScriptSyntaxStyle::Modern);
-    static std::vector<UIScriptAction> GetActions();
+    static std::string GenerateScript(UltraScriptSyntaxStyle style = UltraScriptSyntaxStyle::Modern);
+    static std::vector<UltraScriptAction> GetActions();
     static void OptimizeActions();  // Remove redundant actions
     
     // ===== IMPORT/EXPORT =====
@@ -764,42 +764,42 @@ public:
 };
 ```
 
-### 7.3 UIScriptParser API
+### 7.3 UltraScriptParser API
 
 ```cpp
-// include/UIScriptParser.h
+// include/UltraScriptParser.h
 
-class UIScriptParser {
+class UltraScriptParser {
 public:
     // ===== PARSING =====
-    static UIScriptAST Parse(const std::string& script, UIScriptSyntaxStyle style);
-    static UIScriptAST ParseFile(const std::string& filepath);
+    static UltraScriptAST Parse(const std::string& script, UltraScriptSyntaxStyle style);
+    static UltraScriptAST ParseFile(const std::string& filepath);
     
     // ===== VALIDATION =====
     static bool Validate(const std::string& script, std::string& error);
-    static bool CheckSyntax(const std::string& script, UIScriptSyntaxStyle style, std::string& error);
+    static bool CheckSyntax(const std::string& script, UltraScriptSyntaxStyle style, std::string& error);
     
     // ===== SYNTAX DETECTION =====
-    static UIScriptSyntaxStyle DetectSyntaxStyle(const std::string& script);
+    static UltraScriptSyntaxStyle DetectSyntaxStyle(const std::string& script);
     
     // ===== CONVERSION =====
     static std::string ConvertSyntax(const std::string& script, 
-                                     UIScriptSyntaxStyle from, 
-                                     UIScriptSyntaxStyle to);
+                                     UltraScriptSyntaxStyle from, 
+                                     UltraScriptSyntaxStyle to);
 };
 ```
 
-### 7.4 UIScriptExecutor API
+### 7.4 UltraScriptExecutor API
 
 ```cpp
-// include/UIScriptExecutor.h
+// include/UltraScriptExecutor.h
 
-class UIScriptExecutor {
+class UltraScriptExecutor {
 public:
     // ===== EXECUTION =====
-    static UIScriptResult Execute(const UIScriptAST& ast);
-    static UIScriptResult ExecuteScript(const std::string& script, UIScriptSyntaxStyle style);
-    static UIScriptResult ExecuteFile(const std::string& filepath);
+    static UltraScriptResult Execute(const UltraScriptAST& ast);
+    static UltraScriptResult ExecuteScript(const std::string& script, UltraScriptSyntaxStyle style);
+    static UltraScriptResult ExecuteFile(const std::string& filepath);
     
     // ===== STEP EXECUTION (DEBUGGING) =====
     static void StepInto();
@@ -823,10 +823,10 @@ public:
 };
 ```
 
-### 7.5 UIScriptResult Structure
+### 7.5 UltraScriptResult Structure
 
 ```cpp
-struct UIScriptResult {
+struct UltraScriptResult {
     bool success;
     std::string value;          // Return value (as string)
     std::string errorMessage;   // Error description
@@ -852,14 +852,14 @@ UltraCanvas/
 │   ├── UltraCanvasScriptParser.h           # Parser
 │   ├── UltraCanvasScriptExecutor.h         # Executor
 │   ├── UltraCanvasScriptableElement.h      # Scriptable interface
-│   ├── UIScriptTypes.h                     # Type definitions
-│   └── UIScriptStandardLibrary.h           # Built-in functions
+│   ├── UltraScriptTypes.h                     # Type definitions
+│   └── UltraScriptStandardLibrary.h           # Built-in functions
 │
 ├── core/
 │   ├── UltraCanvasScriptRecorder.cpp       # Recording implementation
 │   ├── UltraCanvasScriptParser.cpp         # Parser implementation
 │   ├── UltraCanvasScriptExecutor.cpp       # Executor implementation
-│   └── UIScriptStandardLibrary.cpp         # Standard library
+│   └── UltraScriptStandardLibrary.cpp         # Standard library
 │
 ├── Apps/
 │   └── ScriptEditor/                        # Script Editor application
@@ -894,8 +894,8 @@ protected:
         
         // ===== AUTOMATIC RECORDING INTEGRATION =====
         // This is the ONLY place recording happens
-        #ifdef UISCRIPT_ENABLED
-        UIScriptRecorder::RecordEventIfEnabled(event, target);
+        #ifdef ULTRASCRIPT_ENABLED
+        UltraScriptRecorder::RecordEventIfEnabled(event, target);
         #endif
         
         // Normal event handling
@@ -907,7 +907,7 @@ protected:
 ### 8.3 Element Registration
 
 ```cpp
-// Elements automatically register when created if they implement IUIScriptable
+// Elements automatically register when created if they implement IUltraScriptable
 
 class UltraCanvasButton : public UltraCanvasScriptableElement {
 public:
@@ -971,20 +971,20 @@ protected:
 ```cmake
 # CMakeLists.txt
 
-option(UISCRIPT_ENABLE "Enable UIScript support" ON)
-option(UISCRIPT_RECORDING "Enable script recording" ON)
-option(UISCRIPT_JIT "Enable JIT compilation" OFF)
-option(UISCRIPT_DEBUGGER "Enable script debugger" ON)
+option(ULTRASCRIPT_ENABLE "Enable UltraScript support" ON)
+option(ULTRASCRIPT_RECORDING "Enable script recording" ON)
+option(ULTRASCRIPT_JIT "Enable JIT compilation" OFF)
+option(ULTRASCRIPT_DEBUGGER "Enable script debugger" ON)
 
-if(UISCRIPT_ENABLE)
-    add_definitions(-DUISCRIPT_ENABLED)
+if(ULTRASCRIPT_ENABLE)
+    add_definitions(-DULTRASCRIPT_ENABLED)
     
-    if(UISCRIPT_RECORDING)
-        add_definitions(-DUISCRIPT_RECORDING_ENABLED)
+    if(ULTRASCRIPT_RECORDING)
+        add_definitions(-DULTRASCRIPT_RECORDING_ENABLED)
     endif()
     
-    if(UISCRIPT_JIT)
-        add_definitions(-DUISCRIPT_JIT_ENABLED)
+    if(ULTRASCRIPT_JIT)
+        add_definitions(-DULTRASCRIPT_JIT_ENABLED)
     endif()
 endif()
 ```
@@ -995,17 +995,17 @@ endif()
 
 ### 9.1 Core Headers
 
-#### 9.1.1 UIScriptTypes.h
+#### 9.1.1 UltraScriptTypes.h
 ```cpp
 // Fundamental types and enums
 
-enum class UIScriptSyntaxStyle {
+enum class UltraScriptSyntaxStyle {
     Modern,
     Natural,
     Classic
 };
 
-enum class UIScriptValueType {
+enum class UltraScriptValueType {
     Void,
     String,
     Integer,
@@ -1018,8 +1018,8 @@ enum class UIScriptValueType {
     List
 };
 
-struct UIScriptValue {
-    UIScriptValueType type;
+struct UltraScriptValue {
+    UltraScriptValueType type;
     std::string stringValue;
     int intValue;
     double realValue;
@@ -1028,7 +1028,7 @@ struct UIScriptValue {
 };
 ```
 
-#### 9.1.2 UIScriptAST.h
+#### 9.1.2 UltraScriptAST.h
 ```cpp
 // Abstract Syntax Tree definitions
 
@@ -1053,7 +1053,7 @@ class ASTNode {
 public:
     ASTNodeType type;
     std::vector<std::shared_ptr<ASTNode>> children;
-    UIScriptValue value;
+    UltraScriptValue value;
     int lineNumber;
     
     virtual ~ASTNode() = default;
@@ -1066,7 +1066,7 @@ public:
 **Key Functions:**
 - `RecordEventIfEnabled()` - Main recording function
 - `ShouldRecordEvent()` - Event filtering
-- `CreateAction()` - UCEvent → UIScriptAction conversion
+- `CreateAction()` - UCEvent → UltraScriptAction conversion
 - `GenerateScript()` - Action list → script code
 - `OptimizeActions()` - Remove redundant actions
 
@@ -1099,8 +1099,8 @@ public:
 bool DispatchEventToChildren(const UCEvent& event) override {
     // ... find target element ...
     
-    #ifdef UISCRIPT_RECORDING_ENABLED
-    UIScriptRecorder::RecordEventIfEnabled(event, target);
+    #ifdef ULTRASCRIPT_RECORDING_ENABLED
+    UltraScriptRecorder::RecordEventIfEnabled(event, target);
     #endif
     
     return target->HandleEvent(event);
@@ -1115,7 +1115,7 @@ bool DispatchEventToChildren(const UCEvent& event) override {
 class MyApplication : public UltraCanvasApplication {
 public:
     void Initialize() override {
-        // Enable UIScript
+        // Enable UltraScript
         SetApplicationScriptName("MyApp");
         SetApplicationVersion("1.0.0");
         
@@ -1180,7 +1180,7 @@ protected:
 
 ```cpp
 // Start recording
-UIScriptRecorder::StartRecording();
+UltraScriptRecorder::StartRecording();
 
 // User performs actions:
 //   1. Clicks "Open" button
@@ -1188,10 +1188,10 @@ UIScriptRecorder::StartRecording();
 //   3. Clicks "OK" button
 
 // Stop recording
-UIScriptRecorder::StopRecording();
+UltraScriptRecorder::StopRecording();
 
 // Generate script
-std::string script = UIScriptRecorder::GenerateScript(UIScriptSyntaxStyle::Modern);
+std::string script = UltraScriptRecorder::GenerateScript(UltraScriptSyntaxStyle::Modern);
 
 // Result:
 // window("Main").button("Open").click();
@@ -1210,9 +1210,9 @@ std::string script = R"(
 )";
 
 // Execute
-UIScriptResult result = UIScriptExecutor::ExecuteScript(
+UltraScriptResult result = UltraScriptExecutor::ExecuteScript(
     script, 
-    UIScriptSyntaxStyle::Modern
+    UltraScriptSyntaxStyle::Modern
 );
 
 if (result.success) {
@@ -1243,9 +1243,9 @@ file.close();
 
 ```cpp
 // Script Editor setup
-UIScriptRecorder::SetLiveCallback([this](const UIScriptAction& action) {
+UltraScriptRecorder::SetLiveCallback([this](const UltraScriptAction& action) {
     // Convert action to code
-    std::string code = action.ToUIScript(UIScriptSyntaxStyle::Modern);
+    std::string code = action.ToUltraScript(UltraScriptSyntaxStyle::Modern);
     
     // Append to editor in real-time
     codeEditor->AppendText(code + "\n");
@@ -1255,7 +1255,7 @@ UIScriptRecorder::SetLiveCallback([this](const UIScriptAction& action) {
 });
 
 // Start recording
-UIScriptRecorder::StartRecording();
+UltraScriptRecorder::StartRecording();
 
 // Now as user performs actions, they appear in editor immediately
 ```
@@ -1339,7 +1339,7 @@ end tell
 
 ```cpp
 // Always validate script execution
-UIScriptResult result = UIScriptExecutor::ExecuteScript(script);
+UltraScriptResult result = UltraScriptExecutor::ExecuteScript(script);
 
 if (!result.success) {
     std::cerr << "Error on line " << result.errorLine << ": " 
@@ -1354,8 +1354,8 @@ if (!result.success) {
 
 **Unit Tests:**
 ```cpp
-TEST(UIScriptRecorder, BasicRecording) {
-    UIScriptRecorder::StartRecording();
+TEST(UltraScriptRecorder, BasicRecording) {
+    UltraScriptRecorder::StartRecording();
     
     // Simulate event
     UCEvent event;
@@ -1366,28 +1366,28 @@ TEST(UIScriptRecorder, BasicRecording) {
     auto button = std::make_shared<UltraCanvasButton>("Test", 1, 90, 40, 100, 30);
     button->SetScriptName("TestButton");
     
-    UIScriptRecorder::RecordEventIfEnabled(event, button.get());
+    UltraScriptRecorder::RecordEventIfEnabled(event, button.get());
     
-    std::string script = UIScriptRecorder::GenerateScript();
+    std::string script = UltraScriptRecorder::GenerateScript();
     EXPECT_TRUE(script.find("TestButton") != std::string::npos);
     EXPECT_TRUE(script.find("click") != std::string::npos);
 }
 
-TEST(UIScriptParser, ModernSyntax) {
+TEST(UltraScriptParser, ModernSyntax) {
     std::string script = "window(\"Main\").button(\"OK\").click();";
     std::string error;
     
-    bool valid = UIScriptParser::Validate(script, error);
+    bool valid = UltraScriptParser::Validate(script, error);
     EXPECT_TRUE(valid);
     EXPECT_TRUE(error.empty());
 }
 
-TEST(UIScriptExecutor, SimpleExecution) {
+TEST(UltraScriptExecutor, SimpleExecution) {
     auto app = CreateTestApplication();
-    UIScriptExecutor::SetExecutionContext(app.get());
+    UltraScriptExecutor::SetExecutionContext(app.get());
     
     std::string script = "button(\"Test\").click();";
-    UIScriptResult result = UIScriptExecutor::ExecuteScript(script);
+    UltraScriptResult result = UltraScriptExecutor::ExecuteScript(script);
     
     EXPECT_TRUE(result.success);
     EXPECT_EQ(result.commandsExecuted, 1);
@@ -1437,14 +1437,14 @@ TEST(UIScriptExecutor, SimpleExecution) {
 **Debug Output:**
 ```cpp
 // Enable debug logging
-UIScriptExecutor::SetDebugMode(true);
+UltraScriptExecutor::SetDebugMode(true);
 
 // Execution will log:
-// [UIScript] Executing line 1: window("Main").button("OK").click()
-// [UIScript] Resolved window: Main
-// [UIScript] Resolved button: OK
-// [UIScript] Executing command: click
-// [UIScript] Command returned: void
+// [UltraScript] Executing line 1: window("Main").button("OK").click()
+// [UltraScript] Resolved window: Main
+// [UltraScript] Resolved button: OK
+// [UltraScript] Executing command: click
+// [UltraScript] Command returned: void
 ```
 
 ---
@@ -1476,7 +1476,7 @@ UIScriptExecutor::SetDebugMode(true);
 **Custom Syntax Styles:**
 ```cpp
 // Register custom syntax parser
-UIScriptParser::RegisterSyntaxHandler(
+UltraScriptParser::RegisterSyntaxHandler(
     "PythonStyle",
     new PythonSyntaxParser()
 );
@@ -1485,7 +1485,7 @@ UIScriptParser::RegisterSyntaxHandler(
 **Custom Commands:**
 ```cpp
 // Register global command
-UIScriptStandardLibrary::RegisterCommand(
+UltraScriptStandardLibrary::RegisterCommand(
     "sendEmail",
     [](const std::vector<std::string>& params) {
         std::string to = params[0];
@@ -1500,9 +1500,9 @@ UIScriptStandardLibrary::RegisterCommand(
 **Custom Types:**
 ```cpp
 // Register custom type
-UIScriptTypes::RegisterType(
+UltraScriptTypes::RegisterType(
     "Image",
-    UIScriptValueType::Object,
+    UltraScriptValueType::Object,
     new ImageTypeHandler()
 );
 ```
@@ -1656,6 +1656,12 @@ launch()                    - Launch app
 ---
 
 ## 15. Version History
+
+**Version 1.0.1 (2026-09-17)**
+- Renamed from UIScript to UltraScript throughout (identifiers, macros,
+  file names) to match the ULTRA OS module family; no content change
+- Filed under `Docs/Research/` beside `UltraMessageDesignProposal.md`,
+  whose §12 defines how cross-application scripting rides on UltraMessage
 
 **Version 1.0.0 (2024-12-19)**
 - Initial specification
