@@ -54522,7 +54522,19 @@ The design is the one in
 ```cpp
 #include "UltraCanvasVectorCanvas.h"
 
+// Sizeless: the parent's layout sizes the canvas. Give it flex-grow (or a
+// grid cell) so it fills the space the rest of the window leaves.
 auto canvas = CreateVectorCanvas("canvas");
+canvas->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+// Or, on a page that places its widgets at fixed coordinates, build the
+// canvas WITH its box:
+//   auto canvas = CreateVectorCanvas("canvas", 10, 130, 720, 600);
+// `SetBounds()` on a sizeless canvas is not the same thing: it moves
+// finalBounds without stamping the CSS width/height or position, so the
+// next layout pass re-flows the canvas as a zero-height in-flow child and
+// the drawing area disappears.
+
 canvas->SetDocument(doc);
 canvas->SetSelection(selectionPtr);            // shared with the tools and panels
 canvas->SetShowRulers(true);

@@ -42,7 +42,11 @@ namespace {
 }
 
 UltraCanvasVectorCanvas::UltraCanvasVectorCanvas(const std::string& elemId)
-    : UltraCanvasUIElement(elemId, 0.0f, 0.0f, 0.0f, 0.0f),
+    : UltraCanvasVectorCanvas(elemId, 0.0f, 0.0f, 0.0f, 0.0f) {}
+
+UltraCanvasVectorCanvas::UltraCanvasVectorCanvas(const std::string& elemId,
+                                                 float x, float y, float w, float h)
+    : UltraCanvasUIElement(elemId, x, y, w, h),
       renderer(std::make_unique<VectorRenderer>()) {
     SetMouseCursor(UCMouseCursor::Arrow);
     selection = std::make_shared<VectorEdit::VectorSelection>();

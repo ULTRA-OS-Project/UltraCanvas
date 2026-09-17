@@ -91,6 +91,39 @@
   family** (the five suffixes, which are settled by name and which by content);
   the Filer, vector-raster, UI-element and FileLoader format tables list the new
   extensions.
+#### 2026-09-16 *0.8.71*
+- **The demo's Vector Editing page had no drawing area.** The page places its
+  widgets at fixed coordinates and built the canvas with the sizeless factory,
+  then called `SetBounds(10, 130, 720, 600)`. `SetBounds()` writes `finalBounds`
+  and nothing else — no CSS `size.width/height`, no `AbsoluteUI` position — so
+  the next layout pass re-flowed the canvas as an in-flow child with auto
+  height, which is zero. The toolbar, the fill panel and the status bar (all
+  built with explicit bounds, hence absolutely placed) drew where they belonged,
+  and the canvas between them was six hundred pixels of nothing.
+  - `UltraCanvasVectorCanvas` now has the `(id, x, y, w, h)` constructor every
+    other element has, with a matching `CreateVectorCanvas(id, x, y, w, h)`
+    overload; the sizeless pair stays for layout-driven hosts such as
+    ArtCreator, which gives the canvas `flex-grow` instead.
+    `Docs/UltraCanvas/UltraCanvasVectorCanvas.md` documents both and says why
+    `SetBounds()` is not a substitute for either.
+- **The page's toolbar reads as icons now, not clipped words.** Fourteen text
+  buttons in 980 pixels left every label truncated to "Sel…", "Recta…",
+  "Duplic…". It now uses ArtCreator's icon set (`media/icons/artcreator/`,
+  `media/icons/texter/`) with the command and its shortcut in the tooltip, the
+  way ArtCreator's own toolbar does.
+  - Four icons the set was missing were added in the same 24 × 24, 1.8-stroke
+    style: `delete.svg`, `duplicate.svg`, `grid.svg` and `snap.svg`.
+  - `to-front.svg` and `to-back.svg` were redrawn, because on a toolbar they
+    were the same picture. The toolbar draws button icons as a single-colour
+    mask (`ButtonStyle::useIconAsMask`), which flattens a two-tone icon: both
+    were a `#333` square overlapping a `#fff` one, and once the white square
+    masked to black the pair merged into one identical blob — in ArtCreator's
+    toolbar too. They are now a square with an up or down arrow, which reads
+    the same under a mask as it does in colour.
+- **Vector Editing moved from *Vector Graphics* to *Widgets*.**
+  `UltraCanvasVectorCanvas` is a widget an application drops into a window; the
+  Vector Graphics category is about the file formats the vector readers produce
+  (SVG, CDR, XAR, EPS, DWG, AI).
 
 #### 2026-09-16 *0.8.70*
 - **The demo application had no WYSIWYG page, and its tree told four lies about
