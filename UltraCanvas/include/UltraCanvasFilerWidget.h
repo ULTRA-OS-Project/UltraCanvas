@@ -58,6 +58,11 @@
 // rename / duplicate / delete / compress / extract) are reported through
 // onFolderModified, apart from the rescan notification onFolderRefreshed; a
 // move reports both the folder the entries arrived in and the ones they left.
+// Copying, moving and deleting run on a background worker, so the display goes
+// on painting and scrolling while they do; if one is still going two seconds
+// later it gets a progress window with the percentage, the file being handled
+// and Cancel. Anything quicker passes without a window at all. Packing and
+// unpacking get the same window, immediately - those are never quick.
 // Which file kinds show a real content preview instead of their type glyph is
 // selectable per kind (Display > Thumbnails: Bitmaps, Vector graphics, 3D,
 // PDF, Text, Docs, Spreadsheets, Videos, Audio, Fonts — all on by default), so
@@ -82,7 +87,7 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.29.0
+// Version: 1.30.0
 // Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
@@ -1078,6 +1083,14 @@ namespace UltraCanvas {
                             bool cut,
                             std::function<void(bool changed)> onDone = nullptr);
         void DeleteSelection();    // gated by confirmDelete when set
+        // Delete `paths` with no confirmation of the widget's own - the caller
+        // has already asked. They go through the same worker, progress window
+        // and problem dialogs as a delete started in the view, which is the
+        // point: UltraFiler's folder-tree delete used a bare remove_all and
+        // froze the window for as long as it took. `onDone` is told whether
+        // anything was removed.
+        void DeletePaths(std::vector<std::string> paths,
+                         std::function<void(bool changed)> onDone = nullptr);
         void DuplicateSelection(); // copy alongside with a unique name
         void StartRename(size_t entryIndex);   // inline rename editor
         // What a delete that wipes out the whole selection leaves selected.
@@ -2474,6 +2487,137 @@ namespace UltraCanvas {
         static std::string UniquePathIn(const std::string& folder,
                                         const std::string& baseName);
 
+        // ===== COPY / MOVE / DELETE WORKER =====
+        // Copying, moving and deleting run on a worker thread, and a progress
+        // window opens over them once the operation has been running for
+        // kFileOpProgressDelayMs. Anything quicker never shows a window at
+        // all: a file manager that flashes a dialog for every copied text file
+        // is worse than one that shows none. Packing and unpacking (ArchiveJob
+        // below) open theirs at once instead, because those are never quick.
+        //
+        // The queues themselves stay on the UI thread, because their conflict
+        // and problem dialogs are answers only the user can give: the worker
+        // walks the queue until it reaches an entry that needs one, hands the
+        // queue back, and the UI thread asks and starts the next stretch.
+        // While a stretch runs, the queue belongs to the worker and the UI
+        // thread does not touch it.
+        struct FileOperation {
+            std::string title;      // window title: "Copying" / "Deleting"
+            std::string caption;    // the line above the ring
+            std::chrono::steady_clock::time_point started;
+            std::shared_ptr<UltraCanvasProgressDialog> dialog;   // after 2 s
+            // Set the moment the window was due, whether or not one could be
+            // made: with dialogs unavailable Show() answers nullptr, and
+            // without this the poll timer would ask it again every tick.
+            bool dialogDue = false;
+            TimerId timer = InvalidTimerId;
+            std::atomic<bool> cancelled{false};
+            // What the ring shows. Every entry of the queue is worth
+            // kFileOpItemUnits of the total, and the bytes (a copy) or entries
+            // (a delete) inside it move the ring within that slice — see
+            // FileOpItemCredit. Counting the whole queue up front was the
+            // alternative, and it would mean walking every tree before
+            // touching anything: for a move, where each entry is one instant
+            // rename, that walk is longer than the move itself.
+            std::atomic<uint64_t> totalUnits{0};
+            std::atomic<uint64_t> doneUnits{0};
+            std::mutex mutex;
+            std::string currentFile;                  // guarded by mutex
+            std::vector<std::string> deferredErrors;  // guarded by mutex
+            // The stretch of the queue currently running off the UI thread.
+            std::thread worker;
+            std::atomic<bool> running{false};
+            std::atomic<bool> finished{false};
+            std::function<void()> onStretchDone;      // runs on the UI thread
+            // Without an application timer (a headless host, a test) there is
+            // nothing to collect a worker, so the stretches run on the calling
+            // thread — one after the other through here rather than nested, so
+            // a long queue does not recurse once per entry.
+            std::function<void()> syncWork;
+            std::function<void()> syncDone;
+            bool syncActive = false;
+        };
+        std::unique_ptr<FileOperation> fileOp;
+
+        // One queue entry's share of the ring. The worker reports the bytes it
+        // copied (or the entries it removed) inside the entry, and this turns
+        // them into that entry's kFileOpItemUnits-wide slice of the operation:
+        // one huge file moves the ring smoothly, a queue of small ones moves
+        // it a step at a time. A `total` of 0 means the size was not counted
+        // (a move is one rename, not a walk): the file name is still reported
+        // and Finish credits the slice in one go.
+        struct FileOpItemCredit {
+            FileOperation* op = nullptr;
+            uint64_t slice = 0;     // units this queue entry is worth
+            uint64_t total = 0;     // bytes / entries in it, 0 = not counted
+            // A step that must not be interrupted half way through turns this
+            // off - removing the source of a cross-volume move, once the copy
+            // is safely there. The file names keep coming; Cancel takes effect
+            // at the next entry of the queue instead of inside this one.
+            bool heedCancel = true;
+            uint64_t done = 0;      // of `total`, so far
+            uint64_t credited = 0;  // units already added to op->doneUnits
+            bool Cancelled() const;
+            void SetFile(const std::string& file);
+            void Step(uint64_t units, const std::string& file);
+            void Finish();          // credit the rest of the slice
+            void Rollback();        // an attempt that failed credits nothing
+        };
+
+        // Why the worker handed the queue back: it walked it to the end, the
+        // user cancelled, or the entry at `next` needs a dialog — a name that
+        // is taken, a write-protected entry, or an attempt that failed.
+        enum class FileOpStop { Done, Cancelled, Conflict, Protected, Problem };
+
+        // Opens a progress session for `title` / `caption` over `itemCount`
+        // queue entries. No window opens here; the poll timer opens one when
+        // the operation turns out to be a long one. Ended by EndFileOperation.
+        void BeginFileOperation(const std::string& title,
+                                const std::string& caption, size_t itemCount);
+        // Runs `work` on the file-operation worker; `onDone` runs on the UI
+        // thread once it returns. One stretch at a time.
+        void RunFileOperationStretch(std::function<void()> work,
+                                     std::function<void()> onDone);
+        void PollFileOperation();   // UI timer: opens / feeds / closes the window
+        void EndFileOperation();    // joins the worker and drops the session
+        bool FileOperationBusy() const;   // a stretch is on the worker right now
+        // Shows the errors the worker collected on its way through the queue
+        // (it cannot open a dialog, or even touch the widget, itself).
+        void FlushFileOperationErrors();
+        // The caption above the ring: "3 items to \"Backup\"" and the like.
+        static std::string FileOperationCaption(const std::string& verb,
+                                                size_t itemCount,
+                                                const std::string& firstName,
+                                                const std::string& target);
+
+        // Copies `from` to `to` (which must not exist yet), crediting bytes as
+        // it goes and stopping when the user cancels. Symlinks are followed,
+        // exactly as in the std::filesystem::copy(..., recursive) call this
+        // replaces. False = cancelled, or `ec` says why it failed.
+        static bool CopyTreeWithProgress(const std::string& from,
+                                         const std::string& to,
+                                         FileOpItemCredit& credit,
+                                         std::error_code& ec);
+        // Removes `path` and everything under it, crediting entries as it
+        // goes: post-order, and a symlink is removed as the link it is —
+        // std::filesystem::remove_all's semantics, which this replaces.
+        static bool RemoveTreeWithProgress(const std::string& path,
+                                           FileOpItemCredit& credit,
+                                           std::error_code& ec);
+        // Copies one file, in chunks once it is big enough for the ring to
+        // move inside it (and for Cancel to be answered before it ends).
+        static bool CopyFileWithProgress(const std::string& from,
+                                         const std::string& to,
+                                         FileOpItemCredit& credit,
+                                         std::error_code& ec);
+        // What the two above will report for `path`: bytes plus one per entry
+        // (so a tree of empty files still moves the ring), or entries. Both
+        // give up when the operation `credit` belongs to is cancelled.
+        static uint64_t CountTreeBytes(const std::string& path,
+                                       const FileOpItemCredit& credit);
+        static uint64_t CountTreeEntries(const std::string& path,
+                                         const FileOpItemCredit& credit);
+
         // ===== PASTE CONFLICTS =====
         // One paste in flight: the sources not yet processed and the choices
         // the conflict dialog collected so far.
@@ -2498,21 +2642,38 @@ namespace UltraCanvas {
             bool retryFailedForAll = false;
             bool currentRetried = false;
             PasteConflictAction currentAction = PasteConflictAction::KeepBoth;
+            // The conflict dialog's answer for the entry at `next` alone
+            // (the "for all" answers are the two above it).
+            bool currentDecided = false;
+            // Where the worker left off: what the UI thread has to ask about
+            // before the next stretch can run — with the entry it is about
+            // and, for a failure, the operating system's words for it.
+            FileOpStop stop = FileOpStop::Done;
+            std::string stopSource;
+            std::string stopReason;
             std::function<void(bool changed)> onDone;
         };
         std::unique_ptr<PendingPaste> pendingPaste;
 
-        // Processes sources until a name conflict or a failure needs a
-        // dialog (which resumes it) or the queue is done (FinishPendingPaste).
+        // Hands the queue to the file-operation worker (which stops at the
+        // first entry needing a dialog) or finishes it. Called again by every
+        // dialog that resumes the paste.
         void ContinuePendingPaste();
         void FinishPendingPaste();
+        // The worker's walk through the queue: copies / moves entries until
+        // one needs an answer, then records it in `pp->stop` and returns.
+        // Runs off the UI thread and touches nothing but the queue, the
+        // filesystem and the progress counters.
+        void PasteWorkerLoop(PendingPaste* pp);
+        // UI thread, once the worker handed the queue back: opens the dialog
+        // the stop asks for, or finishes the paste.
+        void AfterPasteStretch();
         // Copy / move one source into the pending paste's folder, honoring
         // `action` when the name is taken. False = failed, with the reason.
-        bool PasteOneEntry(const std::string& src, PasteConflictAction action,
-                          std::string& whyFailed);
-        // Pastes the entry at `next` (with the failure policy applied) and
-        // advances. False = a problem dialog was opened and resumes the queue.
-        bool PasteCurrentAndAdvance(PasteConflictAction action);
+        // Worker-side: it reports its bytes into `credit`.
+        bool PasteOneEntry(PendingPaste& pp, const std::string& src,
+                           PasteConflictAction action,
+                           FileOpItemCredit& credit, std::string& whyFailed);
         // The "already exists" dialog: exclusive Keep both / Replace / Skip
         // switches, a "do this for all remaining conflicts" switch, and
         // Continue / Cancel buttons.
@@ -2577,11 +2738,20 @@ namespace UltraCanvas {
             std::vector<FilerEntry> elevatedVictims;
             bool elevateForAll = false;
             bool elevationStarted = false;   // the helper run is under way / done
+            // Where the worker left off (see PendingPaste::stop); the entry it
+            // is about is the one at `next`, and `stopKind` says which of the
+            // problem dialog's flavors it asks for.
+            FileOpStop stop = FileOpStop::Done;
+            DeleteProblemKind stopKind = DeleteProblemKind::Failed;
+            std::string stopReason;
+            // Runs when the queue is done, if the caller asked to be told.
+            std::function<void(bool changed)> onDone;
         };
         std::unique_ptr<PendingDelete> pendingDelete;
 
-        // Processes victims until a problem needs a dialog (which resumes it)
-        // or the queue is done (FinishPendingDelete).
+        // Hands the queue to the file-operation worker (which stops at the
+        // first victim needing a dialog) or finishes it. Called again by every
+        // dialog that resumes the delete.
         void ContinuePendingDelete();
         // Ends the delete: runs the elevated helper first when entries are
         // waiting for it (and returns to itself from that job), then clears
@@ -2590,6 +2760,10 @@ namespace UltraCanvas {
         // A problem dialog's Cancel: keeps what was already deleted, drops
         // the rest - the entries waiting for the administrator retry too.
         void CancelPendingDelete();
+        // The worker's walk through the queue; see PasteWorkerLoop.
+        void DeleteWorkerLoop(PendingDelete* pd);
+        // UI thread, once the worker handed the queue back.
+        void AfterDeleteStretch();
         void AdvancePendingDelete();   // to the next victim, forgetting the
                                        // per-entry decisions
         // The one elevated helper run for pendingDelete->elevatedVictims, on
@@ -2784,7 +2958,9 @@ namespace UltraCanvas {
 
         // ===== DELETE CONFIRMATION =====
         // Actually removes the given entries from disk (no confirmation).
-        void PerformDeletion(const std::vector<FilerEntry>& victims);
+        // `onDone` is told, when the queue is through, whether anything went.
+        void PerformDeletion(const std::vector<FilerEntry>& victims,
+                             std::function<void(bool changed)> onDone = nullptr);
         // Shows the built-in modal confirmation dialog (used when no
         // confirmDelete veto is installed). Deletes on confirm. When a folder is
         // among the victims, a preview of its first entries (with thumbnails) is
