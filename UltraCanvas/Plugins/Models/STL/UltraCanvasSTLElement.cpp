@@ -234,8 +234,13 @@ void UltraCanvasSTLElement::OnGLRender(const RenderSurfaceInfo& info) {
     float invR = (radius > 1e-6f) ? (1.0f / radius) : 1.0f;
 
     Mat4 normModel = Mat4::Scale(invR) * Mat4::Translation(-center.x, -center.y, -center.z);
+    // Stand the model up before posing it: this camera has +Y on screen, so a
+    // Z-up mesh needs -90 degrees about X or it faces the floor. Applied after
+    // centring, and a uniform scale, so the framing above is unaffected.
+    Mat4 upright = (mesh_.upAxis == MeshUpAxis::ZUp)
+                   ? Mat4::RotationX(-kPi * 0.5f) : Mat4();
     Mat4 rot = Mat4::RotationY(yaw_) * Mat4::RotationX(pitch_);
-    Mat4 model = rot * normModel;
+    Mat4 model = rot * upright * normModel;
 
     float aspect = (info.height > 0)
                    ? static_cast<float>(info.width) / static_cast<float>(info.height)

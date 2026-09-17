@@ -165,6 +165,21 @@ The element is named for STL but takes a `Mesh3D` and knows nothing about where
 it came from: a mouse-orbited GL view on a build with
 `-DULTRACANVAS_ENABLE_GL=ON`, and a shaded software still otherwise.
 
+**The flatten carries the up axis across.** `Mesh3D::upAxis` is set from
+`document.Up`, and the viewers rotate a `ZUp` mesh by -90 degrees about X
+before posing it, because their cameras put +Y on screen. Without that a
+Z-up file — STEP, DXF, 3D Studio, most CAD — is drawn standing on its nose,
+which is how every 3D page in the demo used to look. Only the viewers rotate:
+the vertex data, the bounds and the extents a page reports stay in the file's
+own frame, so a reader still reports "Z-up" for a file that says so. A
+`Mesh3D` built by hand keeps the `YUp` default, and `Mesh3DToModelDocument`
+writes the axis back, so the round trip preserves orientation as well as
+geometry.
+
+To move the geometry itself rather than the view — for a writer, or to
+normalise a scene — ask the reader for it with
+`ConversionOptions::ForceUpAxis`, or call `ModelDocument::ConvertUpAxis`.
+
 Code that only needs "turn this path into a mesh" should use the core seam
 `UltraCanvasModelPreview.h` (`CanPreviewModelExtension`,
 `LoadModelPreviewMesh`) instead of calling this plugin. Core cannot call a

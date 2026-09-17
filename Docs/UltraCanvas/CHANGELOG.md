@@ -1,3 +1,32 @@
+#### 2026-09-17 *0.8.72*
+- **Every 3D model in the demo was drawn standing on its nose.** The viewers'
+  cameras put +Y on screen, but nothing told them which axis a mesh called up,
+  and the formats disagree: STL, STEP, DXF and most CAD are Z-up, glTF and FBX
+  are Y-up. A Z-up mesh handed over unrotated has its length running up the
+  screen, which is why the demo's aeroplanes pointed at the floor.
+  - `Mesh3D` now carries `upAxis` (`MeshUpAxis::YUp` / `ZUp`), and each
+    producer states what it read: `UltraCanvasSTLLoader` sets `ZUp`, the
+    format's universal convention, and `ModelDocumentToMesh3D` takes it from
+    `document.Up`. `Mesh3DToModelDocument` writes it back, so the round trip
+    keeps orientation as well as geometry; a `Mesh3D` built in code keeps the
+    `YUp` default and is unaffected.
+  - `UltraCanvasSTLElement` and `UltraCanvasModelRaster` both rotate a `ZUp`
+    mesh by -90 degrees about X before posing it — the same sense and sign as
+    `ModelDocument::ConvertUpAxis`, and the same in both, so the software still
+    remains the view that was on screen. Only the view rotates: vertex data,
+    bounds and the extents a page reports stay in the file's own frame, so the
+    Model Formats panels still report "Z-up" for a file that says so.
+  - This reached every caller, not just the demo: the media viewer opens `.stl`
+    and the other model formats through the same element, and the Filer's
+    thumbnails go through the same raster.
+- **The 3D Graphics tree listed one "3D Model Formats" page for seven readers.**
+  A visitor asking whether FBX is supported had to open a page and click
+  through a carousel to find out. Each format is now its own entry beside STL
+  — STEP, MilkShape, FBX, Alembic, COLLADA, 3D Studio and DirectX .x —
+  and `CreateModelFormatsExamples(extension)` filters the same page to that
+  reader. A single-sample format shows no Prev/Next buttons rather than two
+  that do nothing.
+
 #### 2026-09-16 *0.8.71*
 - **The demo's Vector Editing page had no drawing area.** The page places its
   widgets at fixed coordinates and built the canvas with the sizeless factory,

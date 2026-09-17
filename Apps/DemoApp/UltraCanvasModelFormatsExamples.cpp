@@ -344,6 +344,24 @@ namespace {
         return colors;
     }
 
+    // The tree entry's own name, and the page's heading. Kept beside the
+    // sample table so a new sample cannot arrive without a title for it.
+    std::string FormatTitle(const std::string& extension) {
+        struct Named { const char* extension; const char* title; };
+        static const Named kNames[] = {
+                {"step", "STEP 3D Models - Exact B-rep Solids"},
+                {"ms3d", "MilkShape 3D Models"},
+                {"fbx",  "FBX 3D Models"},
+                {"abc",  "Alembic 3D Models - A Sampled Cache"},
+                {"dae",  "COLLADA 3D Models - A Scene Graph in XML"},
+                {"3ds",  "3D Studio Models"},
+                {"x",    "DirectX .x 3D Models"},
+        };
+        for (const Named& named : kNames)
+            if (extension == named.extension) return named.title;
+        return "." + extension + " 3D Models";
+    }
+
     std::shared_ptr<UltraCanvasButton> MakeToolButton(const std::string& id, int x, int y, int w,
                                                       const std::string& text,
                                                       std::function<void()> action) {
@@ -358,20 +376,31 @@ namespace {
 } // namespace
 
 // ===== MODEL FORMATS DEMO PAGE =====
-std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFormatsExamples() {
+// `extension` selects one format, which is how the tree lists them: a reader
+// per entry, beside STL, rather than one page a visitor has to page through to
+// discover that .step and .3ds are both supported. Empty shows them all.
+std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFormatsExamples(
+        const std::string& extension) {
     auto container = std::make_shared<UltraCanvasContainer>("ModelFormatsExamples", 0, 0, 1000, 780);
     container->SetBackgroundColor(Color(245, 245, 245, 255));
 
     auto title = std::make_shared<UltraCanvasLabel>("MFTitle", 10, 10, 800, 30);
-    title->SetText("3D Model Formats - One Document Structure, Nine Readers");
+    title->SetText(extension.empty()
+                   ? std::string("3D Model Formats - One Document Structure, Nine Readers")
+                   : FormatTitle(extension));
     title->SetFontSize(16);
     title->SetFontWeight(FontWeight::Bold);
     container->AddChild(title);
 
     auto description = std::make_shared<UltraCanvasLabel>("MFDescription", 10, 45, 960, 44);
     description->SetText(
-            "Every sample is read into the same ModelStorage::ModelDocument, so the panels on the right show where the\n"
-            "formats genuinely differ - scene graph, materials, units, up-axis, exact solids - rather than nine of the same row.");
+            extension.empty()
+            ? std::string(
+                "Every sample is read into the same ModelStorage::ModelDocument, so the panels on the right show where the\n"
+                "formats genuinely differ - scene graph, materials, units, up-axis, exact solids - rather than nine of the same row.")
+            : std::string(
+                "Read into a ModelStorage::ModelDocument by the Models plugin's dispatch - the same universal structure every\n"
+                "other 3D format lands in, so the panels on the right say what this one carried and what the format can carry."));
     description->SetFontSize(12);
     description->SetTextColor(Color(80, 80, 80, 255));
     container->AddChild(description);
@@ -386,6 +415,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     const std::string modelsDir = NormalizePath(GetResourcesDir() + "media/3D/");
     auto samples = std::make_shared<std::vector<FormatSample>>();
     for (const SampleSpec& spec : Samples()) {
+        if (!extension.empty() && extension != spec.extension) continue;
         FormatSample sample;
         sample.path = NormalizePath(modelsDir + spec.relativePath);
         sample.fileName = std::filesystem::path(sample.path).filename().string();
@@ -497,18 +527,22 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     };
     viewerPanel->AddChild(materialBtn);
 
+    // A format page with one sample has nothing to page through, so it says so
+    // by not offering the buttons at all rather than by two that do nothing.
     const size_t sampleCount = samples->size();
-    auto prevBtn = MakeToolButton("MFPrev", 300, 450, 100, "◀ Prev",
-                                  [showSample, currentIndex, sampleCount]() {
-                                      showSample((*currentIndex + sampleCount - 1) % sampleCount);
-                                  });
-    viewerPanel->AddChild(prevBtn);
+    if (sampleCount > 1) {
+        auto prevBtn = MakeToolButton("MFPrev", 300, 450, 100, "◀ Prev",
+                                      [showSample, currentIndex, sampleCount]() {
+                                          showSample((*currentIndex + sampleCount - 1) % sampleCount);
+                                      });
+        viewerPanel->AddChild(prevBtn);
 
-    auto nextBtn = MakeToolButton("MFNext", 410, 450, 100, "Next ▶",
-                                  [showSample, currentIndex, sampleCount]() {
-                                      showSample((*currentIndex + 1) % sampleCount);
-                                  });
-    viewerPanel->AddChild(nextBtn);
+        auto nextBtn = MakeToolButton("MFNext", 410, 450, 100, "Next ▶",
+                                      [showSample, currentIndex, sampleCount]() {
+                                          showSample((*currentIndex + 1) % sampleCount);
+                                      });
+        viewerPanel->AddChild(nextBtn);
+    }
 
     // ===== HOW IT WORKS =====
     auto howContainer = std::make_shared<UltraCanvasContainer>("MFHowPanel", 20, 630, 620, 100);
