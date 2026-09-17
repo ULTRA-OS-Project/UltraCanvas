@@ -4,8 +4,8 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.11.0
-// Last Modified: 2026-09-13
+// Version: 1.12.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -44,6 +44,15 @@ public:
     static constexpr int kMinPdfThumbnailPercent     = 5;
     static constexpr int kMaxPdfThumbnailPercent    = 40;
     static constexpr int kDefaultPdfThumbnailPercent = 25;
+
+    // Extras > History & Favorites: the range the "Limit of entries" slider
+    // offers, and the length the three most-recently-used lists ship with.
+    // Below ~10 a list forgets what was used this morning; above ~1000 it
+    // stops being a history and becomes a second file system - the view
+    // scrolls forever, and every entry costs an existence check when shown.
+    static constexpr int kMinHistoryEntries     = 10;
+    static constexpr int kMaxHistoryEntries     = 1000;
+    static constexpr int kDefaultHistoryEntries = 300;
 
     // ===== THE SETTINGS =====
     // Media viewer: backdrop behind transparent images — the checkered
@@ -187,6 +196,14 @@ public:
     // the same memory budget holds several times as many tiles. Costs a
     // decompression per tile entering the drawn band, on a worker thread.
     bool compressedThumbnails = false;
+
+    // Extras > History & Favorites: how many entries each of the History
+    // view's three lists (Files, Folders and Apps) keeps. The lists are
+    // capped per section rather than together, so a morning of opening
+    // documents cannot push every remembered application out of the Apps tab.
+    // Lowering it takes effect at once: the entries past the new limit are
+    // dropped and history.txt rewritten, not kept out of sight on disk.
+    int historyMaxEntries = kDefaultHistoryEntries;
 
     // Handling > Drag & Drop: what dropping dragged files onto a folder of the
     // file display does without a modifier - move them (the default) or copy
@@ -343,6 +360,10 @@ public:
         it = kv.find("handling.files.double.click");
         if (it != kv.end())
             doubleClickOpensRegisteredApp = (it->second == "application");
+        it = kv.find("extras.history.max.entries");
+        if (it != kv.end())
+            ParseInt(it->second, historyMaxEntries,
+                     kMinHistoryEntries, kMaxHistoryEntries);
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
         return true;
@@ -411,6 +432,7 @@ public:
         file << "handling.files.double.click = "
              << (doubleClickOpensRegisteredApp ? "application" : "preview")
              << "\n";
+        file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
         return true;
     }

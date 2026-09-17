@@ -4,9 +4,13 @@
 // Folders / Apps tabs). Three most-recently-used lists, each capped, each
 // entry remembering when it was last used and how often it was used.
 // Persisted next to the settings (UltraFilerSettings::GetConfigDirectory())
-// as a tab separated text file, so paths keep their '=' and spaces.
-// Version: 1.0.0
-// Last Modified: 2026-08-08
+// as a tab separated text file, so paths keep their '=' and spaces: saved
+// whenever a list changes, read back once at start-up.
+// How many entries a list keeps is Settings > Extras > History & Favorites'
+// "Limit of entries" (UltraFilerSettings::historyMaxEntries), applied through
+// SetLimit(); the cap is per section, so files cannot crowd out apps.
+// Version: 1.1.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -42,8 +46,30 @@ struct FilerHistoryItem {
 
 class UltraFilerHistory {
 public:
-    // Longest list kept per kind; the oldest entries drop off the end.
-    static constexpr size_t kMaxItemsPerKind = 300;
+    // Longest list kept per kind; the oldest entries drop off the end. The
+    // bounds and the default are the settings' own, so the slider on the
+    // settings page and the trimming here cannot drift apart.
+    static constexpr size_t kMinItemsPerKind =
+            static_cast<size_t>(UltraFilerSettings::kMinHistoryEntries);
+    static constexpr size_t kMaxItemsPerKind =
+            static_cast<size_t>(UltraFilerSettings::kMaxHistoryEntries);
+    static constexpr size_t kDefaultItemsPerKind =
+            static_cast<size_t>(UltraFilerSettings::kDefaultHistoryEntries);
+
+    // ===== THE LIMIT =====
+    size_t Limit() const { return itemsPerKind; }
+
+    // How many entries each list keeps, from the setting. A lowered limit
+    // takes effect at once - the entries past it are dropped and the file
+    // rewritten - rather than lingering on disk until some later restart
+    // happens to trim them. Called before Load() at start-up (so the file is
+    // read against the limit in force) and again whenever the setting moves.
+    void SetLimit(size_t limit) {
+        const size_t clamped = ClampLimit(limit);
+        if (clamped == itemsPerKind) return;
+        itemsPerKind = clamped;
+        if (TrimToLimit()) Save();
+    }
 
     // ===== RECORDING =====
     // Moves `path` to the front of its list (adding it when new) and saves.
@@ -62,7 +88,7 @@ public:
         item.useCount += 1;
         item.lastUsed = std::time(nullptr);
         list.insert(list.begin(), std::move(item));
-        if (list.size() > kMaxItemsPerKind) list.resize(kMaxItemsPerKind);
+        if (list.size() > itemsPerKind) list.resize(itemsPerKind);
         Save();
     }
 
@@ -147,6 +173,11 @@ public:
             item.path = line.substr(t3 + 1);
             if (item.path.empty()) continue;
 
+            // Read against the hard ceiling rather than the current limit,
+            // because the trimming happens below, after the sort: capping
+            // here instead would keep a file's first N lines, and it is its
+            // N newest entries that are wanted. The ceiling is still there to
+            // bound what a huge or hand-mangled file can make this allocate.
             std::vector<FilerHistoryItem>& list = ListOf(kind);
             if (list.size() < kMaxItemsPerKind) list.push_back(std::move(item));
         }
@@ -158,6 +189,12 @@ public:
                         return a.lastUsed > b.lastUsed;
                     });
         }
+        // A file longer than the limit in force - the limit was lowered while
+        // UltraFiler was not running, or the file was edited by hand - is
+        // written back at its new length, the way Paths() writes back the
+        // entries it found gone. What the view shows and what the file holds
+        // then stay the same thing.
+        if (TrimToLimit()) Save();
         return true;
     }
 
@@ -183,6 +220,24 @@ public:
     }
 
 private:
+    static size_t ClampLimit(size_t limit) {
+        if (limit < kMinItemsPerKind) return kMinItemsPerKind;
+        if (limit > kMaxItemsPerKind) return kMaxItemsPerKind;
+        return limit;
+    }
+
+    // Drops whatever sits past the limit in every list. Says whether it had
+    // anything to drop, so the caller only rewrites the file when it changed.
+    bool TrimToLimit() {
+        bool trimmed = false;
+        for (std::vector<FilerHistoryItem>& list : lists) {
+            if (list.size() <= itemsPerKind) continue;
+            list.resize(itemsPerKind);
+            trimmed = true;
+        }
+        return trimmed;
+    }
+
     static size_t IndexOf(FilerHistoryKind kind) {
         const size_t index = static_cast<size_t>(kind);
         return index < kFilerHistoryKindCount ? index : 0;
@@ -209,6 +264,7 @@ private:
     }
 
     std::vector<FilerHistoryItem> lists[kFilerHistoryKindCount];
+    size_t itemsPerKind = kDefaultItemsPerKind;
 };
 
 } // namespace UltraCanvas
