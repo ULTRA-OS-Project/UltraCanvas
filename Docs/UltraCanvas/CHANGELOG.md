@@ -1,3 +1,36 @@
+#### 2026-09-17 *0.8.79*
+- **An FTP server can be a cloud account: UltraCloud's `ftp` provider.**
+  FTP, FTPS and SFTP now sit behind `ICloudProvider` like Nextcloud or
+  Dropbox, so an app carries a server the way it carries any other account -
+  one record in the account store, the password in UltraVault, the same
+  add-account dialog - instead of keeping a host, a user and a password of its
+  own beside everything else. The transfers are still UltraNet's
+  (`UltraNetFtp.h`); `FtpProvider` is the account-shaped surface over them.
+
+  It is the first provider that can change what is on the server as well as
+  read it, so `ICloudProvider` gained two optional verbs, **`Delete`** and
+  **`Rename`**, and `ProviderCapabilities` a **`modify`** flag to say so.
+  Both default to `Unsupported`, so the providers that only ferry files out
+  are untouched and answer honestly rather than appearing to succeed. `Rename`
+  is a rename in place - it refuses a name containing '/' rather than quietly
+  moving the entry - and `Delete` takes the `isDirectory` the caller already
+  knows, which is what picks `DELE` over `RMD` without paying for a probe.
+
+  The scheme chooses the transport, because the scheme a user types is not
+  always what goes on the wire: `ftp://` plain, `ftps://` with TLS from the
+  first byte, `ftpes://` for TLS negotiated on the control channel (sent as an
+  ordinary `ftp://` URL), `sftp://` for SSH. Share links answer `Unsupported` -
+  no FTP request mints one - and SFTP authenticates with a password only,
+  since UltraNet sets no SSH key options yet.
+
+  Like the HTTP providers, the FTP entry points are an injectable seam
+  (`FtpOps`), so the twenty tests in `Tests/UltraCloud/test_ftp.cpp` run
+  headless and contact nothing. What they mostly pin down is the trailing
+  slash: libcurl lists a URL that ends in '/' and retrieves one that does not,
+  while the commands that reach an entry through its parent - `DELE`, `RMD`,
+  `RNFR`/`RNTO`, `MKD` - derive that parent by cutting at the last '/' and
+  fail outright on a URL that ends in one. `FtpUrl(account, path, directory)`
+  is the one place that decides it.
 #### 2026-09-17 *0.8.78*
 - **New design proposal: UltraMessage, the cross-platform message channel**
   (`Docs/Research/UltraMessageDesignProposal.md`, registered as
