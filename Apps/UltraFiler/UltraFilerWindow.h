@@ -89,6 +89,7 @@
 #include "UltraFilerFolderIcons.h"
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
+#include "UltraFilerRemoteDrives.h"
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerVolumeSpace.h"
@@ -191,6 +192,26 @@ private:
     // restart - the tree used to be enumerated exactly once, at start-up.
     // Cheap and idempotent: calling it when nothing changed does nothing.
     void RefreshDriveNodes();
+    // ===== REMOTE DRIVES =====
+    // The "+ Drive" button in the navigation row: it offers an FTP / SFTP
+    // server or a cloud account, adds it through UltraCloud's shared
+    // add-account dialog, and the drive then appears under the tree's
+    // "Remote Drives" section as a place you can browse.
+    void ShowAddDriveMenu();
+    // Runs the add-account dialog with the provider list narrowed to `kind`,
+    // then picks the new drive up into the tree.
+    void AddDriveOfKind(RemoteDriveKind kind);
+    // Brings the "Remote Drives" rows in line with the configured accounts,
+    // and hides the section while there are none - like "Pinned" and
+    // "Cloud Storage" above it.
+    void RefreshRemoteDriveNodes();
+    // Adds one drive row. Unlike AddTreeFolderNode this queues no subfolder
+    // probe: that probe reads the local filesystem, which has nothing to say
+    // about a path on a server.
+    void AddTreeRemoteDriveNode(const RemoteDrive& drive);
+    // Gives one filer widget the two hooks that let it show a remote folder
+    // (UltraCanvasFilerWidget::isRemotePath / remoteListing).
+    void WireRemoteListing(UltraCanvasFilerWidget* widget);
     // Takes one drive row out of the tree and out of the bookkeeping that
     // would otherwise keep it from ever being scanned again.
     void DropDriveNode(const std::string& path);
@@ -632,6 +653,8 @@ private:
     std::shared_ptr<UltraCanvasContainer>       computerDriveRow;
     std::vector<ComputerDriveCard>              computerDriveCards;
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
+    std::shared_ptr<UltraCanvasButton>          addDriveButton;  // "+ Drive" in the navigation row
+    std::shared_ptr<UltraCanvasMenu>            addDriveMenu;    // its FTP / Cloud choice
     std::shared_ptr<UltraCanvasButton>          newButton;       // "New folder ▾" split button
     std::shared_ptr<UltraCanvasMenu>            newEntryMenu;    // its arrow's dropdown menu
     std::shared_ptr<UltraCanvasContainer>       previewPane;   // split pane hosting the preview
@@ -673,6 +696,12 @@ private:
     // keeps two lookups from running at once.
     std::thread cloudWorker;
     std::atomic<bool> cloudWorkerBusy{false};
+    // The configured remote drives and their listing cache. Held by pointer
+    // so the window's header does not force every including file to see it.
+    std::unique_ptr<UltraFilerRemoteDrives> remoteDrives;
+    // Node ids (the drives' root paths) of the "Remote Drives" rows, so the
+    // section can be rebuilt without walking the whole tree.
+    std::vector<std::string> treeRemoteDriveNodeIds;
     // The volume sizes the Computer page shows (QueueVolumeSpaceQuery):
     // the last answer per mount point, so a re-opened page shows the sizes
     // it already knows while the fresh ones are read; the worker reading

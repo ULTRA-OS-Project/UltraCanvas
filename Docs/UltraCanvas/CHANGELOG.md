@@ -1,3 +1,41 @@
+#### 2026-09-17 *0.8.82*
+- **The file display can show a folder that is not on this machine.**
+  `UltraCanvasFilerWidget` gained two host hooks, **`isRemotePath`** and
+  **`remoteListing`**, so an application can carry a drive for an FTP server
+  or a cloud account and have the widget browse it. The widget takes on no
+  network dependency: it only asks, the way it already asks VirtualFS to list
+  the inside of an archive, and the new branch sits beside that one in the
+  folder scan.
+
+  `isRemotePath` is asked *before* the local filesystem is consulted, which is
+  the whole point of having it. Handing such a path to `std::filesystem` would
+  at best fail, and at worst - for a path that looks like a dead network mount
+  - block the UI thread until the OS times out.
+
+  `remoteListing` runs on the UI thread inside the scan, so a host that has to
+  go to the network answers from what it already holds and calls `Refresh()`
+  when the rest arrives; an empty listing with no error means "nothing yet".
+  A listing it refuses is reported like any other listing error. The widget
+  fills in each entry's extension and type information itself, so a remote
+  file gets the same icon and category as a local one of the same name, and
+  `listingIsRealDirectory` stays false - which turns off the two features that
+  read the local filesystem per entry, the folder previews and the in-use
+  column.
+
+  Writing into such a folder is refused rather than attempted: delete,
+  duplicate, rename, paste, new folder and new file now answer with a message
+  saying the drive can be browsed but not changed. Without that each would
+  reach `std::filesystem` with a path that resolves to nothing and fail with
+  an error about a missing file instead of an answer about where it was
+  pointed. See `Docs/UltraCanvas/UltraCanvasFilerWidget.md`.
+- **UltraCloud's add-account dialog can be narrowed to one kind of provider.**
+  `ShowAddAccountDialog` takes an optional provider filter and an optional
+  title, for a host that offers adding an FTP server and adding a cloud
+  account as two separate commands - the two are configured so differently (a
+  host and a password against a browser sign-in) that one combined list
+  explains neither. Both are defaulted, so the existing callers are unchanged;
+  a filter that would leave nothing to choose is ignored rather than producing
+  an empty form.
 #### 2026-09-17 *0.8.81*
 - **A folder of libraries looked exactly like a folder of programs.**
   `.exe`, `.dll`, `.so`, `.deb` and `.appimage` were one category with one

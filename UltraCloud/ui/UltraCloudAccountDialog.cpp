@@ -48,9 +48,11 @@ std::vector<std::shared_ptr<ICloudProvider>> OrderedProviders() {
 } // namespace
 
 void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
-                          std::function<void(const Account&)> onAdded) {
+                          std::function<void(const Account&)> onAdded,
+                          std::function<bool(const std::string& providerId)> providerFilter,
+                          const std::string& title) {
     DialogConfig config;
-    config.title      = "Add cloud account";
+    config.title      = title.empty() ? "Add cloud account" : title;
     config.width      = 520;
     config.height     = 420;
     config.dialogType = DialogType::Custom;
@@ -92,7 +94,16 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         return row;
     };
 
-    const auto providers = OrderedProviders();
+    // The caller's filter narrows the list; an empty result would leave a
+    // dialog with nothing to choose, so in that case the unfiltered list is
+    // offered rather than an unusable form.
+    std::vector<std::shared_ptr<ICloudProvider>> providers = OrderedProviders();
+    if (providerFilter) {
+        std::vector<std::shared_ptr<ICloudProvider>> kept;
+        for (const auto& p : providers)
+            if (providerFilter(p->Id())) kept.push_back(p);
+        if (!kept.empty()) providers = std::move(kept);
+    }
     auto provider = CreateDropdown("cloudAccProvider", 0, 0, 300, UiStyle::kControlHeight);
     for (const auto& p : providers) provider->AddItem(p->DisplayName(), p->Id());
     if (!providers.empty()) provider->SetSelectedIndex(0, /*runNotifications=*/false);

@@ -1245,6 +1245,33 @@ namespace UltraCanvas {
         // Optional veto for DeleteSelection: return false to abort.
         std::function<bool(const std::vector<FilerEntry>&)> confirmDelete;
 
+        // ---- Remote drives (an FTP or a cloud account carried as a drive) --
+        // A host that can reach paths this widget cannot answers for them
+        // through these two. The widget gains no network dependency of its
+        // own: it only asks, in the same spirit as the VirtualFS branch that
+        // lists the inside of an archive.
+        //
+        // `isRemotePath` recognises one of the host's own paths. It is asked
+        // BEFORE the local filesystem is consulted, which is the whole point:
+        // handing "ultracloud://acc/x" to std::filesystem would at best fail
+        // and at worst - for a path that looks like a dead network mount -
+        // block the UI thread until the OS times out.
+        std::function<bool(const std::string& path)> isRemotePath;
+
+        // Lists a remote folder. Return true and fill `out`; return false and
+        // fill `error` to have the message reported the way any listing error
+        // is. `out` entries need name, path, isDirectory and (for files) size
+        // and modifiedTime - the widget fills in the extension and the type
+        // information itself, exactly as it does for an archive interior.
+        //
+        // IMPORTANT: this is called on the UI thread, inside the folder scan.
+        // A host that has to go to the network must answer from what it has
+        // already fetched (returning an empty listing while a fetch is in
+        // flight) and call Refresh() when the answer arrives. Blocking here
+        // freezes the window for as long as the server takes.
+        std::function<bool(const std::string& path, std::vector<FilerEntry>& out,
+                           std::string& error)> remoteListing;
+
         // Extra info column provider (e.g. plays a media header to report the
         // duration). Called once per entry at scan time; empty result keeps the
         // built-in value (compression factor for archive-compressed entries).
@@ -2023,6 +2050,18 @@ namespace UltraCanvas {
         // Without it they are skipped before the stat they would cost, and
         // `hiddenSkipped` (when given) counts how many were left out - what
         // the hidden-items notice says.
+        // Refuses a command that would write into the listing on screen when
+        // that listing cannot be written to - today, a remote drive: the
+        // widget can browse one (remoteListing) but has no way to change it.
+        // Reports through ReportError and answers true when it refused, so a
+        // command reads `if (RefuseWriteHere("delete")) return;`.
+        //
+        // Without this the command would reach std::filesystem with a path
+        // like "ultracloud://acc/x", which resolves to nothing: the operation
+        // fails anyway, but with an error about a missing file rather than an
+        // answer about where it was pointed.
+        bool RefuseWriteHere(const char* what);
+
         void ScanRealDirectory(const std::string& path, bool includeHidden,
                                std::vector<FilerEntry>& out,
                                int* hiddenSkipped = nullptr) const;

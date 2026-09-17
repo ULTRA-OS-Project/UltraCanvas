@@ -2558,6 +2558,28 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER REMOTE PATH TEST =====
+# The path scheme of UltraFiler's remote drives and the timestamps their
+# listings carry (Apps/UltraFiler/UltraFilerRemotePath.h). Header-only and
+# free of UltraCloud, so the test runs on any build - including one without
+# the module the drives themselves need.
+message(STATUS "  Building FilerRemotePathTest...")
+add_executable(FilerRemotePathTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerRemotePathTest.cpp
+)
+target_include_directories(FilerRemotePathTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerRemotePathTest PRIVATE cxx_std_20)
+set_target_properties(FilerRemotePathTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerRemotePathTest COMMAND FilerRemotePathTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerRemotePathTest")
+
+message(STATUS "")
+
 # ===== FILER VOLUME SPACE TEST =====
 # The Computer page's drive cards: the used share the pie chart is cut by
 # and the "free of" line under it (Apps/UltraFiler/UltraFilerVolumeSpace.h).
