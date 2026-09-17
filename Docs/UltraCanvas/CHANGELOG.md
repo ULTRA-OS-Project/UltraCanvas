@@ -1,3 +1,41 @@
+#### 2026-09-17 *0.8.81*
+- **A folder of libraries looked exactly like a folder of programs.**
+  `.exe`, `.dll`, `.so`, `.deb` and `.appimage` were one category with one
+  colour and one noun, so `core.dll` read as a *Library Program* in the same
+  blue-grey as `Setup.exe` — one step from the grey that source files already
+  had. `FilerFileCategory::Library` now stands beside `Executable`: things you
+  launch against things a program loads, apart in colour, apart in the Type
+  column, apart in a sort by type. `Apps/UltraFiler` drops the private list of
+  program extensions it kept because the category could not be trusted.
+- **The file-type palette is rebuilt around three channels**, one fact each —
+  `EntryColorOf()` in `UltraCanvasFilerWidget.cpp`, documented with the full
+  table in `Docs/UltraCanvas/UltraCanvasFilerWidget.md`.
+  - **Hue is the family**: blue images, green video, yellow-to-orange audio,
+    cyan vector, teal models, purple documents, violet spreadsheets, grey text
+    and code, dark red applications, steel grey libraries, magenta archives,
+    sepia fonts. Media hues saturated, working files muted.
+  - **Brightness is efficiency**: the modern format takes the brightest rung of
+    its family and the legacy one the darkest — AVIF `#2D86EA` over JPEG
+    `#0F4F98` over GIF `#0C3F7A`, Opus over MP3, WebM over AVI, `.exe` over the
+    `.deb` you meet once a year. Formats sharing a compressor share a rung:
+    zip, jar, tgz and gz are all deflate, and colouring them apart would invent
+    a difference the bytes do not have.
+  - **A hue tilt separates lossless from lossy** at the same chroma instead of
+    dulling it — indigo beside azure, pure yellow beside orange — so lossless
+    is a sibling family rather than a washed-out version of its neighbour.
+  - The rungs are not free-hand colours: each is a fixed contrast step against
+    the white glyph sheet, so rung 1 of the blues and rung 1 of the greens are
+    equally deep. `Tests/FilerFormatColorTest.cpp` holds the ladders to it.
+- **The TreeMap drew every caption in white**, which the lightened audio and
+  text shades would have made unreadable. `EntryCaptionInkOf()` takes the ink
+  from the entry's family: white on the dark families, near-black on the light
+  ones. It is a family property, never a per-file one — a GIF does not get
+  black text for being the palest blue — so no ramp switches ink halfway down
+  itself, and the change of ink between families is itself the signal that you
+  have crossed into the light half of the palette.
+- **Formats the table was missing**, now named and ranked rather than falling
+  through to "some file": `.msi`, `.dylib`, `.a`, `.lib`, `.aiff` / `.aif` and
+  `.lzma`.
 #### 2026-09-17 *0.8.80*
 - **An FTP server can be a cloud account: UltraCloud's `ftp` provider.**
   FTP, FTPS and SFTP now sit behind `ICloudProvider` like Nextcloud or
