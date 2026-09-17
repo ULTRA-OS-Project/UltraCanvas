@@ -1272,6 +1272,26 @@ namespace UltraCanvas {
         std::function<bool(const std::string& path, std::vector<FilerEntry>& out,
                            std::string& error)> remoteListing;
 
+        // ---- Changing a remote drive ---------------------------------------
+        // Unlike remoteListing these do not answer with the result. The host
+        // carries the change out and refreshes the display once the server has
+        // answered, so a slow drive never holds the UI thread. Return true
+        // when the request was accepted; false with `error` for what can be
+        // refused outright (a drive that cannot be written to, a name that is
+        // really a path).
+        //
+        // Left unset, the matching command refuses on a remote folder rather
+        // than reaching std::filesystem with a path that resolves to nothing.
+        // Each entry carries its own isDirectory, which is what lets a backend
+        // pick the right call (FTP's DELE against RMD) without a probe.
+        std::function<bool(const std::vector<FilerEntry>& entries,
+                           std::string& error)> remoteDelete;
+        // `newName` is a bare name: a rename in place, never a move.
+        std::function<bool(const std::string& path, const std::string& newName,
+                           std::string& error)> remoteRename;
+        std::function<bool(const std::string& folderPath, const std::string& name,
+                           std::string& error)> remoteMakeDirectory;
+
         // Extra info column provider (e.g. plays a media header to report the
         // duration). Called once per entry at scan time; empty result keeps the
         // built-in value (compression factor for archive-compressed entries).
@@ -2061,6 +2081,15 @@ namespace UltraCanvas {
         // fails anyway, but with an error about a missing file rather than an
         // answer about where it was pointed.
         bool RefuseWriteHere(const char* what);
+
+        // True while the listing on screen is a remote drive's.
+        bool ShowingRemoteFolder() const;
+        // A child name the listing on screen does not already carry ("New
+        // folder", then "New folder (2)"...). The remote counterpart of
+        // UniqueChildPath, which asks the local filesystem; here the listing
+        // in memory is all there is to go on, and a name it misses is refused
+        // by the server rather than silently overwriting anything.
+        std::string UniqueRemoteChildName(const std::string& base) const;
 
         void ScanRealDirectory(const std::string& path, bool includeHidden,
                                std::vector<FilerEntry>& out,

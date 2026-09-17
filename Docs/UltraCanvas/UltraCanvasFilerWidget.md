@@ -898,12 +898,44 @@ filer->remoteListing = [drives](const std::string& path,
 - **Returning `false`** with `error` set reports the message the way any
   listing error is reported; returning `true` with an empty listing means
   "nothing yet".
-- **Writing is refused.** Every command that would write into the displayed
-  folder — delete, duplicate, rename, paste, new folder, new file — answers
-  with a message instead when the listing is remote, because the widget has no
-  way to change one. Without that the command would reach `std::filesystem`
-  with a path that resolves to nothing and fail with an error about a missing
-  file rather than an answer about where it was pointed.
+### Changing a remote folder
+
+Three more hooks let the host carry out the changes that act on the drive
+itself. Unlike `remoteListing` they do not answer with the result: the host
+queues the work and refreshes the display once the server has replied, so a
+slow drive never holds the UI thread.
+
+```cpp
+filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
+                               std::string& error) { … };
+filer->remoteRename = [drives](const std::string& path,
+                               const std::string& newName,
+                               std::string& error) { … };
+filer->remoteMakeDirectory = [drives](const std::string& folderPath,
+                                      const std::string& name,
+                                      std::string& error) { … };
+```
+
+- Each returns `true` when the request was **accepted**, not when it finished;
+  `false` with `error` is for what can be refused outright — a drive that
+  cannot be written to, a name that is really a path.
+- **Each entry carries its own `isDirectory`**, which is what lets a backend
+  pick the right call (FTP's `DELE` against `RMD`) without a probe per entry.
+- `remoteRename` takes a **bare name**: a rename in place, never a move.
+- A remote **new folder** cannot go straight into rename mode the way a local
+  one does — the entry does not exist until the server has answered and the
+  refresh has landed. The widget names it from the listing on screen
+  (`UniqueRemoteChildName`) and the user renames it afterwards.
+- **Left unset, the matching command refuses** rather than reaching
+  `std::filesystem` with a path that resolves to nothing, which would fail
+  with an error about a missing file instead of an answer about where it was
+  pointed. That is still what happens for the operations with no hook:
+  duplicate, paste and new file. Copying between the local disk and a drive is
+  a transfer with progress, conflicts and a cancel, and belongs with the paste
+  machinery rather than in a hook like these.
+- The read-only badge is the host's to set: it fills `FilerEntry::isReadOnly`
+  from what the drive can do, so an entry says so before a command is tried.
+
 - **`listingIsRealDirectory` stays false** for a remote listing, which turns
   off the features that read the local filesystem per entry: the folder
   previews and the in-use (lock) column.

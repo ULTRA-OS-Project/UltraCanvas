@@ -2921,6 +2921,27 @@ namespace UltraCanvas {
         }
     }
 
+    bool UltraCanvasFilerWidget::ShowingRemoteFolder() const {
+        return !fileListMode && !currentPath.empty() &&
+               isRemotePath && isRemotePath(currentPath);
+    }
+
+    std::string UltraCanvasFilerWidget::UniqueRemoteChildName(
+            const std::string& base) const {
+        auto taken = [this](const std::string& name) {
+            for (const FilerEntry& e : entries) {
+                if (e.name == name) return true;
+            }
+            return false;
+        };
+        if (!taken(base)) return base;
+        for (int n = 2; n < 1000; ++n) {
+            const std::string candidate = base + " (" + std::to_string(n) + ")";
+            if (!taken(candidate)) return candidate;
+        }
+        return base;   // a thousand of them: let the server object
+    }
+
     bool UltraCanvasFilerWidget::RefuseWriteHere(const char* what) {
         if (currentPath.empty() || !isRemotePath || !isRemotePath(currentPath))
             return false;
@@ -5134,7 +5155,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DeleteSelection() {
-        if (RefuseWriteHere("delete")) return;
+        // No guard here: a remote delete is supported when the host wired
+        // remoteDelete, and PerformDeletion - which every route to a delete
+        // passes through, the confirmation dialog and a host's own
+        // confirmDelete veto alike - is where the two part company.
         DeleteEntries(GetSelectedEntries());
     }
 
@@ -5204,6 +5228,22 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::PerformDeletion(
             const std::vector<FilerEntry>& victims,
             std::function<void(bool changed)> onDone) {
+        // A remote drive's entries are the host's to remove: the queue below
+        // works in std::filesystem terms and would simply find nothing there.
+        // The host accepts the request at once and refreshes the display when
+        // the server has answered.
+        if (ShowingRemoteFolder()) {
+            std::string error;
+            if (!remoteDelete) {
+                ReportError("Cannot delete on this drive.");
+            } else if (!remoteDelete(victims, error)) {
+                ReportError(error.empty() ? "Cannot delete on this drive." : error);
+            }
+            // No local change either way, so the caller hears "nothing moved";
+            // what did happen arrives with the refresh.
+            if (onDone) onDone(false);
+            return;
+        }
         // One delete (and its dialogs) at a time, and one file operation at a
         // time: a delete started while a paste is still running would share
         // the progress session with it and report into the wrong window.
@@ -5832,7 +5872,17 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::StartRename(size_t entryIndex) {
-        if (RefuseWriteHere("rename")) return;
+        // On a remote drive the editor opens only if the host can actually
+        // carry the rename out; otherwise refuse now rather than let someone
+        // type a new name that goes nowhere.
+        if (ShowingRemoteFolder()) {
+            if (!remoteRename) {
+                ReportError("Cannot rename on this drive.");
+                return;
+            }
+        } else if (RefuseWriteHere("rename")) {
+            return;
+        }
         if (entryIndex >= entries.size()) return;
         CancelPendingRename();   // the editor opens now; drop any armed click
         if (renamingIndex >= 0) CancelRename();   // only one editor at a time
@@ -5908,6 +5958,20 @@ namespace UltraCanvas {
         DestroyRenameInput(restoreFocus);
         if (newName.empty() || newName == oldName ||
             newName.find('/') != std::string::npos) {
+            RequestRedraw();
+            return;
+        }
+        // A remote drive: the name goes to the host, and the "does the target
+        // already exist" question goes with it. Asking std::filesystem here
+        // would be asking the local disk about a path on a server, and the
+        // replace dialog below has nothing it could act on either.
+        if (ShowingRemoteFolder()) {
+            std::string error;
+            if (!remoteRename) {
+                ReportError("Cannot rename on this drive.");
+            } else if (!remoteRename(oldPath, newName, error)) {
+                ReportError(error.empty() ? "Cannot rename on this drive." : error);
+            }
             RequestRedraw();
             return;
         }
@@ -7502,6 +7566,24 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewFolder() {
+        // On a remote drive the folder is the host's to create. The name is
+        // picked from the listing on screen rather than by asking a
+        // filesystem, and the entry cannot be put straight into rename mode
+        // the way the local one is: it does not exist until the server has
+        // answered and the refresh has landed. Renaming it afterwards works.
+        if (ShowingRemoteFolder()) {
+            if (!remoteMakeDirectory) {
+                ReportError("Cannot create a folder on this drive.");
+                return;
+            }
+            std::string error;
+            const std::string name = UniqueRemoteChildName("New folder");
+            if (!remoteMakeDirectory(currentPath, name, error)) {
+                ReportError(error.empty() ? "Cannot create a folder on this drive."
+                                          : error);
+            }
+            return;
+        }
         if (RefuseWriteHere("create a folder")) return;
         // Same as CreateNewDocument: the fresh folder must be visible in the
         // folder display, so the search-result display and the name filter
