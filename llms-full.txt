@@ -1487,7 +1487,8 @@ UltraMessage elements must comply with the following rules:
   UltraNet-based engines (UltraMail, UltraSocial connectors, MQTT) fetched
 
 Design: `Docs/Research/UltraMessageDesignProposal.md` (platform survey,
-data model, API, broker, adapters, security, delivery plan).
+data model, API, broker, adapters, security, delivery plan, and §12 on how
+UIScript and the channel share one dictionary).
 
 **Proposed Functions (Phase 1 — channel and journal):**
 - `UltraMsg_Initialize`, `UltraMsg_Shutdown`, `UltraMsg_IsAvailable`,
@@ -1524,9 +1525,12 @@ data model, API, broker, adapters, security, delivery plan).
 
 **Planned (Phase 4):** Android `NotificationListenerService`, WebAssembly
 `BroadcastChannel` transport, `apple-messages`, `matrix`, `imap-idle`,
-`com-automation`, at-rest journal encryption via UltraCrypt. UltraScript — the
-scripting language for repeating tasks across applications — is a client of
-the Phase 3 command surface and is specified separately.
+`com-automation`, at-rest journal encryption via UltraCrypt. **UIScript**
+(`Docs/Research/UIScriptSpecification.md`: the AppleScript-class language,
+its recorder, SDEF-compatible dictionary, executor and Script Editor) is a
+client of the Phase 3 command surface: an app's scripting dictionary is its
+UltraMessage command manifest, and a `tell application "X"` block whose
+target is another process travels over this channel as `ui.*` / app verbs.
 
 UltraMessage is intended to be the recommended way for UltraFiler,
 UltraViewer, UltraMail, UltraSocial and the ULTRA OS desktop to talk to one
