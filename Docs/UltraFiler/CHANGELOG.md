@@ -1,3 +1,20 @@
+#### 2026-09-17 *1.39.1*
+- **The Cloud Storage section no longer gives up after one look.** The folder
+  tree's cloud lookup marks itself busy while it runs so two cannot overlap,
+  but three of its ways out - finding no cloud folders at all, and either kind
+  of failure reading a provider's registry or configuration - forgot to clear
+  that mark. The first such lookup left it set for the rest of the session, and
+  every later one returned at the door without looking.
+
+  On a machine with no sync client installed the very first lookup finds
+  nothing, so this was the normal case: from then on plugging in a drive never
+  re-checked for cloud folders - which is exactly what the re-check exists for,
+  a Google Drive that mounts as its own drive letter. A provider that threw
+  cost the section permanently instead of for that one attempt.
+
+  The mark is now released on every path out of the lookup, and where the
+  results are handed to the window it is released once they have been applied,
+  so a lookup still cannot overlap with the one before it.
 #### 2026-09-17 *1.39.0*
 - **Copying, moving and deleting show their progress.** An operation that is
   still running two seconds after it started now opens a window with a ring,
