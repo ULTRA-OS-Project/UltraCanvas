@@ -975,6 +975,22 @@ namespace UltraCanvas {
                               "DemoApp/UltraCanvasEPSExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasEPSExamples.md");
 #endif
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+        // CAD as drawings: four of the five samples are flat by construction -
+        // blocks, hatches, LWPOLYLINEs and NURBS splines, every Z at zero - so
+        // they belong here rather than among the 3D models, and they live in
+        // media/vector/{DWG,DXF} to match. The fifth, a DWG of 3D polyface
+        // meshes, stays with the models in media/3D/DWG and is shown here
+        // projected to plan view, which is what a CAD reader does with it.
+        // The DXF that really is geometry has its own "DXF 3D Models" page
+        // under 3D Graphics, read through the Models plugin.
+        vectorBuilder.AddItem("dwgdrawings", "DWG / DXF Drawings",
+                              "AutoCAD drawings decoded natively (R13 to R2018) through the Vector plugin's converter matrix",
+                              ImplementationStatus::FullyImplemented,
+                              [this]() { return CreateDWGVectorExamples(); },
+                              "DemoApp/UltraCanvasDWGExamples.cpp",
+                              "Docs/UltraCanvas/UltraCanvasVectorConverters.md");
+#endif
 #ifdef ULTRACANVAS_PLUGIN_PDF
         vectorBuilder.AddItem("aiartwork", "AI Artwork", "Adobe Illustrator .ai artwork - PDF-based files read through the PDF engine, written by the Vector plugin's AIConverter",
                               ImplementationStatus::FullyImplemented,
@@ -1715,21 +1731,6 @@ namespace UltraCanvas {
         }
 #endif
 
-#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
-        // CAD, in the 3D section because that is where a visitor looks for DWG
-        // and DXF. The samples live beside the 3D models in media/3D/DWG and
-        // media/3D/DXF - but four of the five are flat drawings (blocks,
-        // hatches, splines), so the page draws them as documents rather than
-        // shading them as meshes. The one DXF that is a mesh, and the 3D
-        // polyface DWG, are the exceptions; "DXF 3D Models" above reads the
-        // former through the Models plugin instead.
-        graphics3DBuilder.AddItem("dwgdrawings", "DWG / DXF Drawings",
-                                  "AutoCAD drawings decoded natively (R13 to R2018) through the Vector plugin's converter matrix",
-                                  ImplementationStatus::FullyImplemented,
-                                  [this]() { return CreateDWGVectorExamples(); },
-                                  "DemoApp/UltraCanvasDWGExamples.cpp",
-                                  "Docs/UltraCanvas/UltraCanvasVectorConverters.md");
-#endif
 
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);

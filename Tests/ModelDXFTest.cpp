@@ -3,7 +3,7 @@
 //
 // The interesting cases here are the two kinds of DXF. media/3D/DXF holds
 // an exported model — 8110 3DFACE quads, which must arrive as 8110 quads with
-// the Z the 2D reader discards. media/3D/DXF also holds flat drawings — splines and
+// the Z the 2D reader discards. media/vector/DXF holds drawings — splines and
 // polylines, no 3D at all — which must be refused with an explanation rather
 // than returned as an empty document, because a DXF is a drawing format first
 // and most files in the wild have nothing for this reader.

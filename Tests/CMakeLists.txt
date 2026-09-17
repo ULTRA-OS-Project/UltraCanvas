@@ -1000,7 +1000,7 @@ message(STATUS "    Test registered: ModelOBJTest")
 # ===== DXF 3D MODEL READER TEST =====
 # DXF read as geometry rather than as a drawing: the 3D entities the Vector
 # plugin's DXF reader has to flatten. Checks both kinds of DXF - the exported
-# model in media/3D/DXF, and a 2D drawing beside it that must be
+# model in media/3D/DXF, and a drawing from media/vector/DXF that must be
 # refused with an explanation instead of returned empty.
 message(STATUS "  Building ModelDXFTest...")
 add_executable(ModelDXFTest
@@ -1027,7 +1027,7 @@ add_test(
     COMMAND ModelDXFTest
             "${ULTRACANVAS_ROOT}/media/3D/DXF/E-45-Aircraft.dxf"
             "${ULTRACANVAS_ROOT}/media/3D/3DS/E-45-Aircraft.3ds"
-            "${ULTRACANVAS_ROOT}/media/3D/DXF/women-body.dxf"
+            "${ULTRACANVAS_ROOT}/media/vector/DXF/women-body.dxf"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelDXFTest")

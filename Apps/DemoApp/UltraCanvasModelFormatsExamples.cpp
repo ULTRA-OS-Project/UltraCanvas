@@ -119,8 +119,8 @@ namespace {
                  "The same CAD format the drawings page reads, this time\n"
                  "carrying geometry: 8110 3DFACE entities rather than the\n"
                  "LWPOLYLINEs and SPLINEs of a flat drawing. A DXF holding\n"
-                 "only 2D entities is refused here with an explanation - see\n"
-                 "media/3D/DXF for one of each."},
+                 "only 2D entities is refused here with an explanation, and\n"
+                 "belongs on that page instead - see media/vector/DXF."},
         };
         return kSamples;
     }

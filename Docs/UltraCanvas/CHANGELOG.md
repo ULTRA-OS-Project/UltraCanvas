@@ -51,14 +51,24 @@
     Nothing here writes Alembic — not the framework, whose writers cover 3DS,
     OBJ, PLY, STEP, COLLADA and X3D, nor Debian's Blender, which ships without
     the Alembic and COLLADA exporters — so that one is left as found.
-- **DWG and DXF moved from `media/vector/` to `media/3D/`**, and the drawings
-  page with them: "DWG / DXF Drawings" now sits in 3D Graphics, where a visitor
-  looks for CAD, rather than under Vector Graphics. A new "DXF 3D Models" entry
-  reads `media/3D/DXF/E-45-Aircraft.dxf` through the Models plugin instead —
-  8110 3DFACE entities as a mesh. The other four drawings are flat by
-  construction (1015 LWPOLYLINEs, 507 LINEs, 74 SPLINEs, all at Z=0), which is
-  why they stay on the drawings page and why `ModelDXFTest` asserts the 3D
-  reader refuses one of them with an explanation rather than returning empty.
+- **The DWG and DXF samples are now filed by what they hold rather than by
+  format.** CAD covers both, so the folders held a mix: `media/vector/DXF`
+  carried `E-45-Aircraft.dxf`'s sibling drawings while the 3D DXF sat in
+  `media/3D`, and nothing said which was which. Counting entities settles each
+  one — the Millennium Falcon is 1015 LWPOLYLINEs and 507 LINEs, the figure
+  study 74 NURBS SPLINEs, the Audi and the hostel plans 2D blocks and hatches,
+  every Z at zero; `E-45-Aircraft.dxf` is 8110 3DFACEs and `bagno_3d_1.dwg`
+  polyface meshes.
+  - The four flat drawings live in `media/vector/{DWG,DXF}` and stay on the
+    "DWG / DXF Drawings" page under Vector Graphics. The two that carry
+    geometry live in `media/3D/{DWG,DXF}`.
+  - New **"DXF 3D Models"** entry under 3D Graphics reads the E-45 DXF through
+    the Models plugin as a mesh — 16220 triangles, extent 1.95 × 6.14 × 4.19,
+    the same aeroplane 3DS describes. A DXF of only 2D entities is refused
+    there with an explanation, which `ModelDXFTest` asserts.
+  - The 3D DWG is still drawn on the drawings page, projected to plan view,
+    because that is what a CAD reader does with polyface meshes — the page now
+    names the file's root per tile rather than assuming one folder.
 #### 2026-09-17 *0.8.78*
 - **New design proposal: UltraMessage, the cross-platform message channel**
   (`Docs/Research/UltraMessageDesignProposal.md`, registered as
