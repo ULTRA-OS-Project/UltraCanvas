@@ -1220,7 +1220,10 @@ filer->Paste();               // into the current folder, with the conflict
 filer->PasteFilesInto(folder, paths, cut, onDone);  // same paste machinery
                               // aimed at any folder (see below)
 filer->DeleteSelection();     // gated by confirmDelete when set
+filer->DeletePaths(paths, onDone);   // delete without asking again - for a
+                              // host that ran its own confirmation
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
+                              // (the paste machinery, aimed at this folder)
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
@@ -1229,6 +1232,55 @@ filer->ExtractSelection();           // into sibling folders; a taken folder
 filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Progress window (copy / move / delete)
+
+Copying, moving and deleting run on a **background worker**, and a
+[progress window](UltraCanvasProgressDialog.md) — the ring with the
+percentage, the file being handled and **Cancel** — opens over them **once the
+operation has been running for two seconds**. Anything shorter never shows a
+window at all: a file manager that flashes a dialog for every copied text file
+is worse than one that shows none. (Packing, unpacking and the
+["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
+open theirs immediately instead: none of those is ever the quick case, and the
+last one is waiting on a consent prompt the user has to answer.)
+
+The window is the same for every route into these operations — Ctrl+V, the
+context menu, `Delete`, a drag & drop between panes, `Duplicate`,
+`PasteFilesInto()`, `DeletePaths()` — because they all go through the same two
+queues.
+
+What the ring shows: every entry of the queue is worth an equal slice of it,
+and the bytes copied (or the entries removed) inside an entry move the ring
+within its slice. So a single large file fills the ring smoothly and a
+thousand small ones fill it a step at a time. The size of an entry is counted
+just before it is worked on, never for the whole queue up front — for a move,
+where each entry is one instant rename, walking every tree first would take
+longer than the move.
+
+Files larger than 8 MB are copied in 1 MB chunks so the ring moves *inside*
+the file and **Cancel** does not have to wait for it; smaller files go through
+`std::filesystem::copy_file` in one call, which lets the platform hand the
+copy to the filesystem itself.
+
+**Cancel** stops at the next file. What was already copied, moved or deleted
+stays; the entry the cancel interrupted does not: a half-copied file or folder
+is removed, so nothing partial is left in the listing. The one step that is
+never interrupted is the *second half of a cross-volume move* — once the copy
+is safely on the other volume, the original is removed to the end, because
+stopping there would leave the entry half in both places.
+
+The queues themselves stay on the UI thread, because their conflict and
+problem dialogs are answers only the user can give: the worker walks the queue
+until it reaches an entry that needs one and hands the queue back. The
+progress window closes while such a dialog is up (two modal windows at once is
+nobody's idea of a file manager) and reopens when the work resumes — without a
+second two-second wait, because the delay is measured from the start of the
+whole operation.
+
+The application window stays live throughout: the folder display keeps
+painting and scrolling while a long copy runs. Auto-refresh is held back until the
+operation ends, exactly as it is for an open rename editor or a drag.
 
 ### Activating files — running applications
 
@@ -1316,11 +1368,32 @@ and drops the rest):
   preselected) and a *"Do this for all remaining items"* scope switch.
   A stored try-again-for-all grants each later failing entry one silent
   retry before asking again, so a stubborn entry can never loop forever.
+- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+  answers with its shield button: the entry is deletable, just not by this
+  user. Where the host has wired
+  [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
+  (UltraFiler has), the dialog is **Administrator Permission Needed** —
+  "Deleting this file needs administrator permission. Windows will ask you to
+  confirm before it is deleted." — with **Delete as administrator**
+  (preselected) / **Try again** / **Skip this file** and the same scope switch.
+  Entries handed to the administrator are collected while the queue runs and go
+  to the elevated helper in **one run at the end**, so the whole delete costs
+  one consent prompt however many entries need it; a "Deleting as
+  Administrator" progress window stands in for the wait, and the widget stays
+  responsive because the helper is waited for off the UI thread. What the
+  helper still could not delete comes back in a **Cannot Delete** dialog with
+  the system's reason per entry; a declined prompt is reported through
+  `onError` and leaves the entries in place. Sharing violations ("in use by
+  another program") are not permission failures and keep the plain dialog,
+  as does a process that already runs as administrator — asking again cannot
+  change the system's answer there.
 
 Entries inside archives are still deleted in one batched archive rewrite
 before the interactive queue; their failures are reported via `onError` as
 before. When modal dialogs are unavailable the delete falls back to the old
-fixed behavior (attempt everything, report failures).
+fixed behavior (attempt everything, report failures). A problem dialog's
+**Cancel** keeps what was already deleted and drops the rest — the entries
+waiting for the administrator retry included.
 
 ### Selection after a delete
 
@@ -1420,6 +1493,11 @@ Extract dialogs all run the work on a background worker behind an
 [`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md): a ring with the
 percentage, the file being handled, and Cancel. The UI stays live throughout —
 packing a few hundred megabytes no longer freezes the window.
+
+Unlike a copy, move or delete (see
+[Progress window](#progress-window-copy--move--delete)), the window opens
+**immediately** rather than after two seconds: packing and unpacking are never
+over in a blink.
 
 The progress window is opened **without the severity badge**
 (`showIcon = false`), so the ring is horizontally centred in the dialog instead

@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 #### 2026-09-17 *0.8.74*
 - **New design proposal: UltraMessage, the cross-platform message channel**
   (`Docs/Research/UltraMessageDesignProposal.md`, registered as
@@ -23,6 +24,124 @@
   buses as adapters, and lays out the data model, the `UltraMsg_*` API, the
   broker, the per-platform adapters, security and a four-phase delivery plan.
   Documentation only; no code.
+=======
+#### 2026-09-17 *0.8.77*
+- **A copy, a move or a delete that takes more than two seconds now says so.**
+  `UltraCanvasFilerWidget` ran all three straight through on the UI thread: a
+  folder of holiday photos dragged onto another drive froze the window for as
+  long as the copy took, with nothing on screen to say whether anything was
+  happening, how far along it was, or how to stop it. Packing and unpacking
+  archives had had a progress window since 0.3.63; the everyday operations had
+  none.
+
+  They now run on a background worker, and if one is still going **two seconds
+  later** it gets the same window packing gets - the ring with the percentage,
+  the file being handled and **Cancel** (`UltraCanvasProgressDialog`).
+  Anything quicker passes without a window at all: a file manager that flashes
+  a dialog for every copied text file is worse than one that shows none. Every
+  route in shares it - Ctrl+V, the context menu, `Delete`, a drag & drop
+  between panes, `Duplicate`, `PasteFilesInto()`, `DeletePaths()` - because
+  they all go through the same two queues.
+  - **What the ring shows.** Each entry of the queue is worth an equal slice of
+    it, and the bytes copied (or entries removed) inside an entry move the ring
+    within its slice, so one large file fills it smoothly and a thousand small
+    ones fill it a step at a time. An entry is measured just before it is
+    worked on, never the whole queue up front: for a move, where each entry is
+    one instant rename, walking every tree first would take longer than the
+    move.
+  - **Files over 8 MB are copied in 1 MB chunks**, so the ring moves *inside* a
+    single big file and Cancel does not have to wait for it. Smaller files
+    still go through `std::filesystem::copy_file` in one call, which lets the
+    platform hand the copy to the filesystem itself.
+  - **Cancel stops at the next file.** What was already copied, moved or
+    deleted stays; the entry the cancel interrupted does not - a half-written
+    file or folder is removed rather than left in the listing. The one step
+    that is never interrupted is the second half of a cross-volume move: once
+    the copy is safely across, the original is removed to the end, because
+    stopping there would leave the entry half in both places.
+  - **The conflict and problem dialogs are unchanged**, and still belong to the
+    UI thread: the worker walks the queue until it reaches an entry that needs
+    an answer and hands the queue back. The progress window steps aside while
+    such a dialog is up and returns when the work resumes, without a second
+    two-second wait - the delay is measured from the start of the operation,
+    not of the current step.
+  - `DeletePaths(paths, onDone)` is new: a delete with no confirmation of the
+    widget's own, for a host that has already asked. `DuplicateSelection()` is
+    now the paste queue aimed at the folder the entries already live in, which
+    is what it always was by hand - it just could not be cancelled or watched.
+  - Without an application timer (a headless host, a test) there is nothing to
+    collect a worker with, so the queues run on the calling thread exactly as
+    they did before.
+#### 2026-09-17 *0.8.76*
+- **A picture can sit inside a line of text.** Every image in a loaded document
+  became a paragraph of its own, because `RichTextRun` had no way to hold one:
+  a logo mid-sentence, an icon in a heading or a signature in a sign-off was
+  pulled out of its line and dropped below it, re-flowing the text around it.
+  - `RichTextRun` gains `mediaIndex`, `imageWidthPt`, `imageHeightPt` and
+    `imageAltText`. A run with `mediaIndex >= 0` *is* a picture, and its `text`
+    is a single U+FFFC OBJECT REPLACEMENT CHARACTER - the standard placeholder
+    for an inline attachment. It gives the picture one character's worth of the
+    block's text, so the caret steps over it, a selection covers it and
+    Backspace deletes it, with no position needing to know it is not a letter.
+  - Two pictures never coalesce into one run and a picture never merges with
+    the text beside it: `HasSameFormatting` refuses, because the run is what
+    carries which picture it is.
+  - The DOCX reader tells `<wp:inline>` from `<wp:anchor>`, the ODT reader
+    tells `text:anchor-type="as-char"` from the floating anchorings, and both
+    writers emit a picture run back in the line it came from.
+  - **A picture alone in a paragraph stays a block.** Both formats anchor a
+    standalone image in the text as well - a picture on its own line really is
+    "inline, with nothing beside it" - so the markup cannot separate the two
+    cases and what else the paragraph holds decides it. Without that rule this
+    change turned every existing block image into a run, which the format
+    tests caught.
+  - The element reserves a box for each picture through
+    `TextAttributeFactory::CreateShape` over its placeholder, so the line grows
+    to hold it and the following text flows along, then draws the picture at
+    the box's position.
+  - `ToPlainText`, `ToMarkdown` and `ToHTML` render a picture run as its alt
+    text, a markdown image reference and an embedded `<img>` respectively. The
+    placeholder never reaches a reader.
+  - `UCRichDocumentEditor::InsertInlineImage` and the element's
+    `InsertInlineImageFromFile`/`FromMemory` put a picture in the line at the
+    caret.
+  - Covered by 28 new checks in `Tests/RichTextEditorTest.cpp` (304 total),
+    12 in `Tests/RichTextEditElementTest.cpp` (96 total) and an inline round
+    trip in `Tests/WordFormatsTest.cpp`.
+
+#### 2026-09-17 *0.8.74*
+- **`UltraCanvasElevatedFileOperations` — "Delete as administrator", the retry
+  Explorer offers when a delete answers "You need permission to perform this
+  action".** A standard user's process cannot raise its own rights, so the
+  retry starts a second copy of the host executable through the shell's
+  `runas` verb: Windows shows its consent prompt, the elevated copy deletes
+  what the user named (read-only attributes lifted first, absolute paths
+  only, nothing read from anywhere but its command line) and exits, and what
+  it still could not delete comes back with the system's reason per entry
+  through a report file the caller created. Consent is asked every time and
+  nothing else is elevated. Host side: `RunHelperIfRequested(argc, argv,
+  exitCode)` first in `main()` — it turns the relaunch into the helper and is
+  what makes `IsAvailable()` true, so an application that never calls it never
+  offers the retry. `IsPermissionFailure(ec)` tells the "Access is denied" the
+  retry resolves from the sharing violation it cannot. Windows backend;
+  everywhere else `Unavailable`. `Tests/ElevatedFileOperationsTest.cpp` covers
+  the encodings, the helper's delete and the no-backend answers on every
+  platform. See `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+- **`UltraCanvasFilerWidget`: a delete refused with "Access is denied" now
+  offers the administrator retry** wherever the host wired the helper. The
+  problem dialog becomes *Administrator Permission Needed* with **Delete as
+  administrator** (preselected) / **Try again** / **Skip**, plus the usual
+  "do this for all remaining items" switch. Entries handed to the administrator
+  are collected while the queue runs and go to the helper in one run at the
+  end — one consent prompt for the whole delete, as Explorer asks once —
+  behind a "Deleting as Administrator" progress window, waited for off the UI
+  thread. Failures the helper reports come back in a *Cannot Delete* dialog;
+  a declined prompt goes to `onError`. Before this, the dialog's only offers
+  for such an entry were "Try again" and "Skip", neither of which could ever
+  succeed. The problem dialog helper is now `ShowProblemChoiceDialog` (any
+  number of exclusive choices); `ShowProceedSkipDialog` remains as its
+  two-choice form.
+>>>>>>> origin/main
 
 #### 2026-09-16 *0.8.73*
 - **A drawing the framework could read showed nothing in the preview pane.**

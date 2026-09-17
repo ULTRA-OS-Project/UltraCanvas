@@ -630,6 +630,115 @@ int main() {
              editor.GetBlock(0).tableRows[0].cells[0].rowSpan == 2);
     }
 
+    // ===== INLINE IMAGES =====
+    // A picture in the line has to take up room in that line: the layout
+    // reserves a box for it, so the text after it is pushed along and the line
+    // grows tall enough to hold it.
+    std::cerr << "\n--- Inline images ---" << std::endl;
+    {
+        // A 1x1 PNG. It decodes, so the element draws it rather than a
+        // placeholder frame - which is the path worth exercising.
+        const std::vector<uint8_t> png = {
+            0x89,0x50,0x4E,0x47,0x0D,0x0A,0x1A,0x0A,0x00,0x00,0x00,0x0D,0x49,0x48,0x44,0x52,
+            0x00,0x00,0x00,0x01,0x00,0x00,0x00,0x01,0x08,0x02,0x00,0x00,0x00,0x90,0x77,0x53,
+            0xDE,0x00,0x00,0x00,0x0C,0x49,0x44,0x41,0x54,0x78,0x9C,0x63,0xF8,0xCF,0xC0,0x00,
+            0x00,0x03,0x01,0x01,0x00,0xC9,0xFE,0x92,0xEF,0x00,0x00,0x00,0x00,0x49,0x45,0x4E,
+            0x44,0xAE,0x42,0x60,0x82};
+
+        auto textOnly = [&](bool withPicture) {
+            auto doc = std::make_shared<UCRichDocument>();
+            if (withPicture) doc->AddMedia("dot.png", "image/png", png);
+            RichDocBlock para;
+            para.type = RichBlockType::Paragraph;
+            RichTextRun a;
+            a.text = "Before ";
+            para.runs.push_back(a);
+            if (withPicture) {
+                RichTextRun pic;
+                pic.text = RichTextRun::kObjectReplacement;
+                pic.mediaIndex = 0;
+                pic.imageWidthPt = 40.0f;
+                pic.imageHeightPt = 40.0f;
+                pic.imageAltText = "dot";
+                para.runs.push_back(pic);
+            }
+            RichTextRun b;
+            b.text = " After";
+            para.runs.push_back(b);
+            doc->blocks.push_back(para);
+            return doc;
+        };
+
+        edit->SetDocument(textOnly(false));
+        edit->RequestRedraw();
+        window->UpdateAndRender();
+        const float plainHeight = edit->GetContentHeight();
+        TEST("A plain paragraph has a height", plainHeight > 0.0f);
+
+        edit->SetDocument(textOnly(true));
+        edit->RequestRedraw();
+        window->UpdateAndRender();
+        const float withImageHeight = edit->GetContentHeight();
+
+        // A 40pt picture cannot fit in a line of body text, so the line must
+        // have grown. This is what CreateShape reserving a box actually buys.
+        // The line must be at least as tall as the 40pt picture. Merely
+        // "taller than plain text" does not discriminate: the U+FFFC glyph on
+        // its own nudges the height by about a point, so that assertion passes
+        // even with no box reserved at all (measured: 21.8 vs 20.9). What the
+        // reserved box buys is the jump to ~43.
+        TEST("An inline picture reserves its full height in the line",
+             withImageHeight >= 40.0f);
+        TEST("...which is well beyond what the placeholder glyph alone gives",
+             withImageHeight > plainHeight * 1.5f);
+
+        TEST("The document is still one paragraph", editor.GetBlockCount() == 1);
+        TEST("...holding the picture as a run", [&]() {
+            for (const auto& r : editor.GetBlock(0).runs) if (r.IsInlineImage()) return true;
+            return false;
+        }());
+
+        // The placeholder never reaches the reader.
+        TEST("Plain text shows the alt text, not the placeholder",
+             edit->GetPlainText().find(RichTextRun::kObjectReplacement) == std::string::npos);
+
+        // Clicking to the right of the picture lands after it; to the left,
+        // before it. Both sides of a 40pt box are reachable.
+        const int pictureOffset = static_cast<int>(std::string("Before ").size());
+        edit->SetFocus(true);
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 4, 10));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 4, 10));
+        window->UpdateAndRender();
+        const int leftClick = editor.GetCaret().byteOffset;
+        edit->OnEvent(MouseEvent(UCEventType::MouseDown, 300, 10));
+        edit->OnEvent(MouseEvent(UCEventType::MouseUp, 300, 10));
+        window->UpdateAndRender();
+        const int rightClick = editor.GetCaret().byteOffset;
+        TEST("A click at the start lands before the picture", leftClick <= pictureOffset);
+        TEST("A click past it lands after the picture", rightClick > pictureOffset);
+
+        // Typing beside a picture leaves it alone.
+        editor.SetCaret(editor.DocumentEnd());
+        edit->OnEvent(TextEvent("!"));
+        window->UpdateAndRender();
+        TEST("Typing next to a picture keeps it",
+             [&]() {
+                 for (const auto& r : editor.GetBlock(0).runs) if (r.IsInlineImage()) return true;
+                 return false;
+             }());
+        TEST("...and the typed character arrived",
+             edit->GetPlainText().find("After!") != std::string::npos);
+
+        // Selecting across the picture and deleting removes it whole.
+        edit->SelectAll();
+        edit->OnEvent(KeyEvent(UCKeys::Backspace));
+        window->UpdateAndRender();
+        TEST("Deleting a selection across a picture removes it", [&]() {
+            for (const auto& r : editor.GetBlock(0).runs) if (r.IsInlineImage()) return false;
+            return true;
+        }());
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

@@ -1829,6 +1829,44 @@ void UCRichDocumentEditor::InsertPageBreak() {
     InsertStructuralBlock(RichBlockType::PageBreak);
 }
 
+int UCRichDocumentEditor::InsertInlineImage(const std::string& name,
+                                            const std::string& mimeType,
+                                            const std::vector<uint8_t>& data,
+                                            const std::string& altText) {
+    if (data.empty()) return -1;
+    // A picture in the line is a run, so it goes in exactly where typed text
+    // would: same container, same offset, same undo step.
+    if (!IsTextContainer(caret)) return -1;
+    const int mediaIndex = doc->AddMedia(name, mimeType, data);
+
+    RichTextRun picture;
+    picture.text = RichTextRun::kObjectReplacement;
+    picture.mediaIndex = mediaIndex;
+    picture.imageAltText = altText;
+    int width = 0, height = 0;
+    if (UCRichDocument::SniffImagePixelSize(data, width, height)) {
+        picture.imageWidthPt = static_cast<float>(width);
+        picture.imageHeightPt = static_cast<float>(height);
+    }
+
+    RichDocRange selection = GetSelectionRange();
+    int first = selection.start.blockIndex;
+    int count = selection.end.blockIndex - first + 1;
+    {
+        EditScope scope(*this, first, count);
+        if (HasSelection()) DeleteRangeInternal(selection);
+        std::vector<RichTextRun>* runs = MutableRunsAt(caret);
+        if (!runs) return -1;
+        InsertIntoRuns(*runs, caret.byteOffset, picture.text, &picture);
+        caret.byteOffset += static_cast<int>(picture.text.size());
+        anchor = caret;
+    }
+    coalescing = false;
+    NotifyChanged();
+    NotifySelectionChanged();
+    return mediaIndex;
+}
+
 int UCRichDocumentEditor::InsertImage(const std::string& name, const std::string& mimeType,
                                       const std::vector<uint8_t>& data,
                                       const std::string& altText) {

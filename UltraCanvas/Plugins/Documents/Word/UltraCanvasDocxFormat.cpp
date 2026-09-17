@@ -254,17 +254,41 @@ private:
         std::string relId = Attr(blip, "r:embed");
         int mediaIndex = LoadImageByRelId(relId);
         if (mediaIndex < 0) return;
+
+        float widthPt = 0.0f, heightPt = 0.0f;
+        if (auto* extent = FindDescendant(drawing, "wp:extent")) {
+            widthPt = extent->FloatAttribute("cx", 0.0f) / kEmuPerPoint;
+            heightPt = extent->FloatAttribute("cy", 0.0f) / kEmuPerPoint;
+        }
+        std::string altText;
+        if (auto* docPr = FindDescendant(drawing, "wp:docPr")) {
+            altText = Attr(docPr, "descr");
+            if (altText.empty()) altText = Attr(docPr, "name");
+        }
+
+        // <wp:inline> is a picture sitting in the line of text; <wp:anchor> is
+        // one floating with text flowed around it. Only the first belongs in
+        // the run stream - treating both as a trailing paragraph is what used
+        // to pull a logo out of the middle of a sentence.
+        if (drawing->FirstChildElement("wp:inline") != nullptr) {
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            run.mediaIndex = mediaIndex;
+            run.imageWidthPt = widthPt;
+            run.imageHeightPt = heightPt;
+            run.imageAltText = altText;
+            run.lineBreakBefore = ctx.pendingLineBreak;
+            ctx.pendingLineBreak = false;
+            ctx.runs.push_back(std::move(run));
+            return;
+        }
+
         RichDocBlock block;
         block.type = RichBlockType::Image;
         block.mediaIndex = mediaIndex;
-        if (auto* extent = FindDescendant(drawing, "wp:extent")) {
-            block.imageWidthPt = extent->FloatAttribute("cx", 0.0f) / kEmuPerPoint;
-            block.imageHeightPt = extent->FloatAttribute("cy", 0.0f) / kEmuPerPoint;
-        }
-        if (auto* docPr = FindDescendant(drawing, "wp:docPr")) {
-            block.imageAltText = Attr(docPr, "descr");
-            if (block.imageAltText.empty()) block.imageAltText = Attr(docPr, "name");
-        }
+        block.imageWidthPt = widthPt;
+        block.imageHeightPt = heightPt;
+        block.imageAltText = altText;
         ctx.trailingImages.push_back(std::move(block));
     }
 
@@ -411,6 +435,15 @@ private:
         // horizontal-rule idiom.
         if (block.type == RichBlockType::Paragraph && block.runs.empty() && hasBottomBorder) {
             block.type = RichBlockType::HorizontalRule;
+        }
+
+        // A picture on a line of its own is a standalone image, not a run.
+        RichDocBlock promoted;
+        if (block.type == RichBlockType::Paragraph
+            && WordFormatInternal::ParagraphIsOneInlineImage(block.runs, promoted)) {
+            doc_->blocks.push_back(std::move(promoted));
+            for (auto& image : ctx.trailingImages) doc_->blocks.push_back(std::move(image));
+            return;
         }
 
         bool emptyParagraph = block.runs.empty() && ctx.trailingImages.empty()
@@ -571,6 +604,10 @@ public:
 private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
+    // Drawing ids only have to be unique within the document. Inline pictures
+    // count from a high base so they cannot collide with the block images,
+    // which number from 1.
+    int inlineDrawingId_ = 100000;
     std::vector<std::string> hyperlinks_;   // index -> URL; rel id = rIdLink{index+1}
     bool usesLists_ = false;
 
@@ -646,9 +683,15 @@ private:
                     << (HyperlinkRelIndex(run.linkTarget) + 1) << "\">";
             }
             xml << "<w:r>";
-            WriteRunProperties(xml, run, isLink);
-            if (run.lineBreakBefore) xml << "<w:br/>";
-            WriteRunText(xml, run.text);
+            if (run.IsInlineImage()) {
+                if (run.lineBreakBefore) xml << "<w:br/>";
+                WriteDrawing(xml, run.mediaIndex, run.imageWidthPt, run.imageHeightPt,
+                             run.imageAltText, ++inlineDrawingId_);
+            } else {
+                WriteRunProperties(xml, run, isLink);
+                if (run.lineBreakBefore) xml << "<w:br/>";
+                WriteRunText(xml, run.text);
+            }
             xml << "</w:r>";
             if (isLink) xml << "</w:hyperlink>";
         }
@@ -700,10 +743,29 @@ private:
         xml << "</w:p>\n";
     }
 
+    // The <w:drawing> element alone. A picture is the same markup whether it
+    // is a paragraph of its own or sits inside a line; only the wrapping differs.
+    void WriteDrawing(std::ostringstream& xml, int mediaIndex, float widthPtIn,
+                      float heightPtIn, const std::string& altText, int drawingId) {
+        if (mediaIndex < 0 || mediaIndex >= static_cast<int>(doc_->media.size())) return;
+        RichDocBlock shim;
+        shim.mediaIndex = mediaIndex;
+        shim.imageWidthPt = widthPtIn;
+        shim.imageHeightPt = heightPtIn;
+        shim.imageAltText = altText;
+        WriteDrawingElement(xml, shim, drawingId);
+    }
+
     void WriteImage(std::ostringstream& xml, const RichDocBlock& block, int drawingId) {
         if (block.mediaIndex < 0 || block.mediaIndex >= static_cast<int>(doc_->media.size())) {
             return;
         }
+        xml << "<w:p><w:r>";
+        WriteDrawingElement(xml, block, drawingId);
+        xml << "</w:r></w:p>\n";
+    }
+
+    void WriteDrawingElement(std::ostringstream& xml, const RichDocBlock& block, int drawingId) {
         float widthPt = block.imageWidthPt;
         float heightPt = block.imageHeightPt;
         if (widthPt <= 0 || heightPt <= 0) {
@@ -721,7 +783,7 @@ private:
         std::string name = block.imageAltText.empty()
             ? "Image " + std::to_string(drawingId) : block.imageAltText;
 
-        xml << "<w:p><w:r><w:drawing>"
+        xml << "<w:drawing>"
             << "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
             << "<wp:extent cx=\"" << cx << "\" cy=\"" << cy << "\"/>"
             << "<wp:docPr id=\"" << drawingId << "\" name=\"" << EscapeXml(name) << "\"/>"
@@ -735,7 +797,7 @@ private:
             << "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx
             << "\" cy=\"" << cy << "\"/></a:xfrm>"
             << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
-            << "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>\n";
+            << "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>";
     }
 
     void WriteTable(std::ostringstream& xml, const RichDocBlock& block) {

@@ -132,7 +132,39 @@ void SplitEdgeWhitespace(const std::string& text, std::string& lead,
     trail = text.substr(end + 1);
 }
 
-std::string RunToMarkdown(const RichTextRun& run, bool inTableCell) {
+// The concatenated run text with each inline-image placeholder replaced by its
+// alt text in brackets. ConcatenateRunText() must keep returning the raw
+// placeholder - positions index into it - so anything meant for a human reads
+// through here instead.
+std::string RunsToReadableText(const std::vector<RichTextRun>& runs) {
+    std::string out;
+    for (const auto& run : runs) {
+        if (run.lineBreakBefore) out += '\n';
+        if (run.IsInlineImage()) {
+            out += "[" + (run.imageAltText.empty() ? std::string("image") : run.imageAltText) + "]";
+        } else {
+            out += run.text;
+        }
+    }
+    return out;
+}
+
+std::string RunToMarkdown(const RichTextRun& run, bool inTableCell,
+                          const std::vector<std::string>* mediaPaths = nullptr) {
+    // An inline picture is a markdown image reference sitting in the line, not
+    // a paragraph of its own. With no media directory to write files into there
+    // is no path to point at, so it degrades to its alt text in brackets -
+    // the same way a block image does.
+    if (run.IsInlineImage()) {
+        const std::string alt = run.imageAltText.empty() ? std::string("image") : run.imageAltText;
+        if (mediaPaths && run.mediaIndex >= 0
+            && run.mediaIndex < static_cast<int>(mediaPaths->size())
+            && !(*mediaPaths)[static_cast<size_t>(run.mediaIndex)].empty()) {
+            return "![" + alt + "](" + (*mediaPaths)[static_cast<size_t>(run.mediaIndex)] + ")";
+        }
+        return "[" + alt + "]";
+    }
+
     std::string lead, core, trail;
     SplitEdgeWhitespace(run.text, lead, core, trail);
     if (core.empty()) return run.text;
@@ -168,7 +200,8 @@ std::string RunToMarkdown(const RichTextRun& run, bool inTableCell) {
     return lead + body + trail;
 }
 
-std::string RunsToMarkdown(const std::vector<RichTextRun>& runs, bool inTableCell) {
+std::string RunsToMarkdown(const std::vector<RichTextRun>& runs, bool inTableCell,
+                           const std::vector<std::string>* mediaPaths = nullptr) {
     std::string out;
     for (const auto& run : MergeAdjacentRuns(runs)) {
         if (run.lineBreakBefore && !out.empty()) {
@@ -176,7 +209,7 @@ std::string RunsToMarkdown(const std::vector<RichTextRun>& runs, bool inTableCel
             // normal flow, "<br>" is avoided; inside table cells fall back to a space.
             out += inTableCell ? " " : "  \n";
         }
-        out += RunToMarkdown(run, inTableCell);
+        out += RunToMarkdown(run, inTableCell, mediaPaths);
     }
     return out;
 }
@@ -562,7 +595,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
             case RichBlockType::Heading: {
                 blockSeparator();
                 int level = std::clamp(block.headingLevel, 1, 6);
-                md << std::string(level, '#') << ' ' << RunsToMarkdown(block.runs, false) << "\n";
+                md << std::string(level, '#') << ' ' << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
                 break;
             }
             case RichBlockType::ListItem: {
@@ -572,7 +605,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
                 else first = false;
                 md << std::string(static_cast<size_t>(std::max(0, block.listLevel)) * 2, ' ')
                    << (block.orderedList ? "1. " : "- ")
-                   << RunsToMarkdown(block.runs, false) << "\n";
+                   << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
                 break;
             }
             case RichBlockType::CodeBlock: {
@@ -583,7 +616,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
             }
             case RichBlockType::BlockQuote: {
                 blockSeparator();
-                md << "> " << RunsToMarkdown(block.runs, false) << "\n";
+                md << "> " << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
                 break;
             }
             case RichBlockType::Table: {
@@ -593,7 +626,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
                     md << "|";
                     size_t columns = 0;
                     for (const auto& cell : row.cells) {
-                        md << ' ' << RunsToMarkdown(cell.runs, true) << " |";
+                        md << ' ' << RunsToMarkdown(cell.runs, true, &mediaPaths) << " |";
                         // Markdown has no column spans: a spanning cell is
                         // followed by empty cells so the grid stays aligned.
                         for (int span = 1; span < cell.columnSpan; ++span) md << " |";
@@ -636,7 +669,7 @@ std::string UCRichDocument::ToMarkdown(const RichDocumentMarkdownOptions& option
             case RichBlockType::Paragraph:
             default: {
                 blockSeparator();
-                md << RunsToMarkdown(block.runs, false) << "\n";
+                md << RunsToMarkdown(block.runs, false, &mediaPaths) << "\n";
                 break;
             }
         }
@@ -853,10 +886,23 @@ UCRichDocument UCRichDocument::FromMarkdown(const std::string& markdown,
 
 namespace {
 
-std::string RunsToHtml(const std::vector<RichTextRun>& runs) {
+std::string RunsToHtml(const std::vector<RichTextRun>& runs,
+                       const std::vector<RichDocMedia>* media = nullptr) {
     std::string out;
     for (const auto& run : MergeAdjacentRuns(runs)) {
         if (run.lineBreakBefore && !out.empty()) out += "<br/>";
+        if (run.IsInlineImage()) {
+            const std::string alt = EscapeHtml(run.imageAltText);
+            if (media && run.mediaIndex >= 0
+                && run.mediaIndex < static_cast<int>(media->size())) {
+                const RichDocMedia& m = (*media)[static_cast<size_t>(run.mediaIndex)];
+                out += "<img alt=\"" + alt + "\" src=\"data:" + m.mimeType
+                     + ";base64," + Base64Encode(m.data) + "\"/>";
+            } else {
+                out += "[" + alt + "]";
+            }
+            continue;
+        }
         std::string body = EscapeHtml(run.text);
         if (run.math) body = "<span class=\"math\">$" + body + "$</span>";
         if (run.code) body = "<code>" + body + "</code>";
@@ -909,7 +955,7 @@ std::string UCRichDocument::ToHTML() const {
         switch (block.type) {
             case RichBlockType::Heading: {
                 int level = std::clamp(block.headingLevel, 1, 6);
-                html << "<h" << level << ">" << RunsToHtml(block.runs) << "</h" << level << ">\n";
+                html << "<h" << level << ">" << RunsToHtml(block.runs, &media) << "</h" << level << ">\n";
                 break;
             }
             case RichBlockType::ListItem: {
@@ -924,7 +970,7 @@ std::string UCRichDocument::ToHTML() const {
                     listOrderedStack.push_back(block.orderedList);
                     ++openListLevel;
                 }
-                html << "<li>" << RunsToHtml(block.runs) << "</li>\n";
+                html << "<li>" << RunsToHtml(block.runs, &media) << "</li>\n";
                 break;
             }
             case RichBlockType::CodeBlock:
@@ -932,7 +978,7 @@ std::string UCRichDocument::ToHTML() const {
                      << "</code></pre>\n";
                 break;
             case RichBlockType::BlockQuote:
-                html << "<blockquote><p>" << RunsToHtml(block.runs) << "</p></blockquote>\n";
+                html << "<blockquote><p>" << RunsToHtml(block.runs, &media) << "</p></blockquote>\n";
                 break;
             case RichBlockType::Table: {
                 html << "<table border=\"1\">\n";
@@ -943,7 +989,7 @@ std::string UCRichDocument::ToHTML() const {
                         html << "<" << tag;
                         if (cell.columnSpan > 1) html << " colspan=\"" << cell.columnSpan << "\"";
                         if (cell.rowSpan > 1) html << " rowspan=\"" << cell.rowSpan << "\"";
-                        html << ">" << RunsToHtml(cell.runs) << "</" << tag << ">";
+                        html << ">" << RunsToHtml(cell.runs, &media) << "</" << tag << ">";
                     }
                     html << "</tr>\n";
                 }
@@ -974,7 +1020,7 @@ std::string UCRichDocument::ToHTML() const {
                 const char* alignCss = AlignCss(block.align);
                 if (alignCss) html << "<p style=\"text-align:" << alignCss << "\">";
                 else html << "<p>";
-                html << RunsToHtml(block.runs) << "</p>\n";
+                html << RunsToHtml(block.runs, &media) << "</p>\n";
                 break;
             }
         }
@@ -998,7 +1044,7 @@ std::string UCRichDocument::ToPlainText() const {
                     for (const auto& cell : row.cells) {
                         if (!firstCell) text << "\t";
                         firstCell = false;
-                        text << ConcatenateRunText(cell.runs);
+                        text << RunsToReadableText(cell.runs);
                     }
                     text << "\n";
                 }
@@ -1011,7 +1057,7 @@ std::string UCRichDocument::ToPlainText() const {
                 text << "----------\n";
                 break;
             default:
-                text << ConcatenateRunText(block.runs) << "\n";
+                text << RunsToReadableText(block.runs) << "\n";
                 break;
         }
     }

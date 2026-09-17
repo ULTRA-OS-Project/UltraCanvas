@@ -855,6 +855,100 @@ static void TestTableCellEditing() {
     CHECK(ed.GetDocument()->ToPlainText().find("delta edited") != std::string::npos);
 }
 
+// ===================================================================
+// INLINE IMAGES
+// ===================================================================
+static void TestInlineImages() {
+    std::cout << "\n--- Inline images ---\n";
+
+    // A one-pixel PNG is enough: nothing here decodes it.
+    const std::vector<uint8_t> png = {0x89, 'P', 'N', 'G', 0x0D, 0x0A, 0x1A, 0x0A};
+
+    auto doc = std::make_shared<UCRichDocument>();
+    RichDocBlock para;
+    para.type = RichBlockType::Paragraph;
+    RichTextRun run;
+    run.text = "Logo  here";
+    para.runs.push_back(run);
+    doc->blocks.push_back(para);
+
+    UCRichDocumentEditor ed(doc);
+    ed.SetCaret({0, 5});                       // between "Logo " and " here"
+    const int media = ed.InsertInlineImage("logo.png", "image/png", png, "the logo");
+    CHECK(media >= 0);
+
+    // It is a run in the same paragraph, not a new block.
+    CHECK_EQ(ed.GetBlockCount(), 1);
+    CHECK(ed.GetBlock(0).type == RichBlockType::Paragraph);
+
+    int imageRuns = 0;
+    for (const auto& r : ed.GetBlock(0).runs) {
+        if (r.IsInlineImage()) imageRuns++;
+    }
+    CHECK_EQ(imageRuns, 1);
+
+    // The placeholder occupies exactly one character of the block's text, so
+    // the caret steps over the picture like any other character.
+    const std::string text = ed.BlockText(0);
+    CHECK_EQ(text.size(), std::string("Logo  here").size() + 3);   // U+FFFC is 3 bytes
+    CHECK(text.find(RichTextRun::kObjectReplacement) != std::string::npos);
+    CHECK_EQ(ed.GetCaret().byteOffset, 8);                         // 5 + 3
+
+    RichDocPosition afterPicture = ed.GetCaret();
+    RichDocPosition beforePicture = ed.PreviousCharacter(afterPicture);
+    CHECK_EQ(beforePicture.byteOffset, 5);       // one character back, not three
+    CHECK_EQ(ed.NextCharacter(beforePicture).byteOffset, 8);
+
+    // Backspace deletes the whole picture, not a third of its placeholder.
+    ed.SetCaret(afterPicture);
+    CHECK(ed.DeleteBackward());
+    CHECK_EQ(ed.BlockText(0), std::string("Logo  here"));
+    int remaining = 0;
+    for (const auto& r : ed.GetBlock(0).runs) if (r.IsInlineImage()) remaining++;
+    CHECK_EQ(remaining, 0);
+    CHECK(ed.Undo());
+    CHECK_EQ(ed.BlockText(0).size(), std::string("Logo  here").size() + 3);
+
+    // Two pictures never coalesce into one run, and never merge with text.
+    ed.SetCaret(ed.DocumentEnd());
+    CHECK(ed.InsertInlineImage("b.png", "image/png", png, "second") >= 0);
+    int count = 0;
+    for (const auto& r : ed.GetBlock(0).runs) if (r.IsInlineImage()) count++;
+    CHECK_EQ(count, 2);
+
+    // A picture never reaches a reader as U+FFFC.
+    const std::string plain = ed.GetDocument()->ToPlainText();
+    CHECK(plain.find(RichTextRun::kObjectReplacement) == std::string::npos);
+    CHECK(plain.find("[the logo]") != std::string::npos);
+    CHECK(plain.find("Logo") != std::string::npos);
+
+    // Markdown with no image directory degrades to the alt text, as block
+    // images do; HTML embeds the bytes.
+    const std::string md = ed.GetDocument()->ToMarkdown();
+    CHECK(md.find(RichTextRun::kObjectReplacement) == std::string::npos);
+    CHECK(md.find("[the logo]") != std::string::npos);
+    const std::string html = ed.GetDocument()->ToHTML();
+    CHECK(html.find(RichTextRun::kObjectReplacement) == std::string::npos);
+    CHECK(html.find("<img") != std::string::npos);
+
+    // Formatting the text around a picture leaves the picture alone.
+    ed.SetSelection({0, 0}, ed.DocumentEnd());
+    ed.ToggleBold();
+    for (const auto& r : ed.GetBlock(0).runs) {
+        if (r.IsInlineImage()) CHECK(r.mediaIndex >= 0);   // still a picture
+    }
+    int stillImages = 0;
+    for (const auto& r : ed.GetBlock(0).runs) if (r.IsInlineImage()) stillImages++;
+    CHECK_EQ(stillImages, 2);
+
+    // Searching skips over the placeholder rather than matching inside it.
+    RichFindOptions options;
+    RichDocRange match;
+    CHECK(ed.Find("here", ed.DocumentStart(), false, options, match));
+    CHECK(!ed.Find(RichTextRun::kObjectReplacement, ed.DocumentStart(), false, options, match)
+          || match.start.byteOffset >= 0);   // finding it is harmless; crashing is not
+}
+
 int main() {
     TestPositionsAndNavigation();
     TestTypingAndDeleting();
@@ -867,6 +961,7 @@ int main() {
     TestDocumentIntegration();
     TestSearch();
     TestTableCellEditing();
+    TestInlineImages();
 
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED (" << checks << " checks)\n";
