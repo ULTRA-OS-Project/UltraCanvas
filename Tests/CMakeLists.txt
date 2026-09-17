@@ -1063,7 +1063,7 @@ if(TEST_TINYXML2_FOUND)
     )
     add_test(
         NAME ModelColladaTest
-        COMMAND ModelColladaTest "${ULTRACANVAS_ROOT}/media/3D/COLLADA/E-45-Aircraft.dae"
+        COMMAND ModelColladaTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/COLLADA/E-45-Aircraft.dae"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelColladaTest")
@@ -1136,7 +1136,7 @@ set_target_properties(ModelXFileTest PROPERTIES
 )
 add_test(
     NAME ModelXFileTest
-    COMMAND ModelXFileTest "${ULTRACANVAS_ROOT}/media/3D/XFile/E-45-Aircraft.x"
+    COMMAND ModelXFileTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/XFile/E-45-Aircraft.x"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelXFileTest")
@@ -1168,7 +1168,7 @@ set_target_properties(ModelMS3DTest PROPERTIES
 )
 add_test(
     NAME ModelMS3DTest
-    COMMAND ModelMS3DTest "${ULTRACANVAS_ROOT}/media/3D/MS3D/E-45-Aircraft.ms3d"
+    COMMAND ModelMS3DTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/MS3D/E-45-Aircraft.ms3d"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelMS3DTest")
@@ -1241,7 +1241,7 @@ if(ZLIB_FOUND)
     )
     add_test(
         NAME ModelFbxTest
-        COMMAND ModelFbxTest "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft.fbx"
+        COMMAND ModelFbxTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/FBX/E-45-Aircraft.fbx"
                              "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )

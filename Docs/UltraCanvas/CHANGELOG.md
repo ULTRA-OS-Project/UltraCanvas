@@ -46,6 +46,20 @@
     3.5 m out and the canopy 5 m behind it, detached. Recomputing both local
     transforms against the .blend's world matrices brings the document extent
     to 1.95 × 6.17 × 4.21, the same aeroplane the other formats describe.
+  - The exports as they came out of Blender are kept in `Tests/data/3D/`,
+    because their defects are what four test suites pin. `ModelColladaTest`,
+    `ModelXFileTest`, `ModelMS3DTest` and `ModelFbxTest` assert the half hull
+    and the canopy-only MilkShape deliberately — "a property of the file rather
+    than of the reader … asserting it stops a later change *fixing* the reader
+    to match the others" — and cross-check the files against each other: the
+    MilkShape canopy is "exactly twice the Alembic canopy's 744 faces", and the
+    two FBX exports are one scene "on opposite sides of the mirror-modifier
+    split". Completing the media copies in place would have deleted that net,
+    and the re-exported .fbx carries neither the stacked DiffuseColor textures
+    nor the transparent canopy material the original pins. So `media/3D/` now
+    holds the demo's showcase assets and `Tests/data/3D/` the fixtures, with
+    the four tests pointed at the latter and `Tests/data/3D/README.md` saying
+    which is which.
   - Still outstanding: `media/3D/Alembic/E-45-Aircraft.abc` is a narrower mesh
     than its siblings (3297 faces against 3990, X span 1.53 against 1.95).
     Nothing here writes Alembic — not the framework, whose writers cover 3DS,

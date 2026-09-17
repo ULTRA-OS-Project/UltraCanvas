@@ -13,7 +13,9 @@
 // built byte by byte - a binary lexer nothing exercises is a liability, and
 // nothing in the sample exercises it.
 //
-// argv[1] is the .x. Without it only the synthetic cases run.
+// argv[1] is the .x - Tests/data/3D/XFile, not the demo copy under media/3D,
+// which was completed from the .blend and no longer has the half-hull this
+// suite pins. Without it only the synthetic cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-11
