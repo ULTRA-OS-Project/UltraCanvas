@@ -18,7 +18,7 @@
 #include <windows.h>
 #include <shlobj.h>          // SHGetImageList
 #include <shellapi.h>        // SHGetFileInfoW
-#include <commoncontrols.h>  // IImageList, IID_IImageList
+#include <commoncontrols.h>  // IImageList (its IID is defined below)
 
 #include <cairo/cairo.h>
 
@@ -44,6 +44,17 @@ namespace UltraCanvas {
             MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, w.data(), n);
             return w;
         }
+
+        // commoncontrols.h only DECLARES IID_IImageList: the value itself
+        // lives in a uuid import library, and mingw-w64's does not carry this
+        // one, so the Windows build linked with an undefined symbol. The
+        // value is a Windows constant and is spelled out here instead, which
+        // costs nothing and needs no library on any toolchain. (Verified
+        // against the SDK header's own DEFINE_GUID, byte for byte.)
+        constexpr GUID kImageListIid = {
+            0x46eb5926, 0x582e, 0x4017,
+            { 0x9f, 0xdf, 0xe8, 0x99, 0x8d, 0xaa, 0x09, 0x50 }
+        };
 
         // The shell's icon lists from the smallest icon to the largest -
         // SHIL_ constants are identifiers, not sizes, so the order has to be
@@ -139,7 +150,7 @@ namespace UltraCanvas {
 
         std::shared_ptr<UCPixmap> IconFromImageList(int list, int index) {
             IImageList* images = nullptr;
-            if (FAILED(SHGetImageList(list, IID_IImageList,
+            if (FAILED(SHGetImageList(list, kImageListIid,
                                       reinterpret_cast<void**>(&images))) ||
                 !images)
                 return nullptr;
