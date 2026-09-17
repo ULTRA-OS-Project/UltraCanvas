@@ -1,3 +1,51 @@
+#### 2026-09-17 *1.37.0*
+- The CorelDRAW, Xara and EPS viewer plugins are linked and registered too,
+  after the Vector plugin rather than before it: both read some of the same
+  extensions, the graphics registry's last registration owns them, and for
+  those the dedicated viewers are the better reader - libcdr parses CorelDRAW
+  files no converter here writes, the XAR plugin covers the compressed Xara
+  files the converter's reader does not, and the EPS plugin interprets
+  PostScript instead of looking for a preview bitmap in it. The Vector plugin
+  keeps what only it reads (DXF, the DWG family, EMF, WMF) and stays the only
+  writer, since saving matches on GetSaveExtensions instead.
+- Measured, so as not to overstate it: on a build of this container - where
+  libcdr is absent, so the CDR plugin is not built - registering XAR and EPS
+  changes **nothing** on the Display > Thumbnails and Display > Detail view
+  pages. Their formats were already covered, xar through the Vector plugin's
+  reader and eps/ps through libvips. The registration is what a build WITH
+  libcdr needs to gain cdr/cmx/ccx/cdt in the FileLoader inventory, and what
+  gives `LoadGraphicsFile` and the vector rasterizer a real reader for them.
+  Lighting up the two settings pages for ccx/cmx needs one more thing, which
+  is not in this release: the Filer's and the media viewer's preview tests ask
+  the vector preview seam and the embedded-preview probe, never the graphics
+  registry, so a format only a registered plugin can draw is still greyed.
+
+#### 2026-09-16 *1.36.0*
+- **UltraFiler registered no format plugins at all.** A plugin reads nothing
+  until an application links and registers it, and this one linked only the
+  core library - so the entire Vector matrix (DXF, DWG and the rest) and every
+  3D format but STL previewed as a plain type glyph, greyed themselves out on
+  the Display > Thumbnails and Display > Detail view settings pages, and
+  produced no detail pane when selected. The readers were compiled into the
+  build and sitting idle. Reported as "selecting a DWG file doesn't produce a
+  detailed window section", which is exactly what it was.
+- The Vector and Models plugins are now linked and registered at startup,
+  before the main window, since the settings pages read what the build can
+  show when they are first built. Each is an optional CMake target
+  (`ULTRACANVAS_PLUGIN_VECTOR`, `ULTRACANVAS_PLUGIN_MODELS`), so each is
+  picked up only where it was built and `main.cpp` registers it behind the
+  matching define - a build without them behaves exactly as before.
+- With both registered, 23 formats change from greyed to live on those two
+  pages: dxf, dwg, dwt, dws, sv$, emf, wmf, and sixteen 3D formats (3ds, obj,
+  ply, dae, fbx, x, ms3d, blend, abc, step/stp/p21, x3d/x3dv, wrl/vrml). What
+  stays greyed now stays greyed for a reason this build can name: no PDF
+  plugin, no video or audio backend, no reader for glTF/GLB/3MF, and no
+  picture inside an audio file or a Corel .ccx/.cmx to show.
+- Needs framework 0.8.73, which is where the drawings become showable at all:
+  the vector preview seam, the media viewer's vector view and the Filer's
+  vector thumbnails. The lighter greyed-out colour on the settings pages -
+  the disabled switches used to be drawn darker than the live ones - is from
+  the same release.
 #### 2026-09-17 *1.36.0*
 - **The History view's lists have a length you can set.** *Settings > Extras >
   History & Favorites* gains **Limit of entries**, a slider from 10 to 1000

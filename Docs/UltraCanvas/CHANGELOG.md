@@ -1,3 +1,96 @@
+#### 2026-09-16 *0.8.73*
+- **A drawing the framework could read showed nothing in the preview pane.**
+  Core owns the vector document model and the renderer that draws one, but not
+  a single reader - SVG, XAR, EMF, WMF, DXF and the DWG family all live in the
+  Vector plugin, which links *against* core. So the media viewer and the Filer
+  had exactly two ways to show a vector file: rasterized by libvips
+  (svg/svgz, and eps/ps where that build has a PostScript loader), or as the
+  preview bitmap some formats store inside themselves. A DXF or a DWG is
+  neither, so selecting one produced an empty pane and a plain type glyph -
+  in a build whose Vector plugin had just read the same drawing for the
+  FileLoader.
+- **New: `UltraCanvasVectorPreview.h` / `core/UltraCanvasVectorPreview.cpp`** -
+  the same seam `UltraCanvasModelPreview.h` is for 3D formats, for drawings.
+  Core declares what it wants ("turn this path into a `VectorDocument`", "is
+  this one you read") and `RegisterVectorFormatsPlugin()` installs an
+  implementation on the way in, so the dependency still runs plugin -> core.
+  `CanPreviewVectorExtension()`, `PreviewableVectorExtensions()`,
+  `LoadVectorPreviewDocument()`, plus the drawing half every caller shares:
+  `RenderVectorDocumentPixmap()` / `RenderVectorPreviewPixmap()`, a document
+  fitted into an offscreen render context and read back. A provider may also
+  claim a file by content (`ClaimsFile`), which is what a `.bak` holding a
+  drawing needs.
+- **The media viewer opens drawings in `UltraCanvasVectorElement`**, a display
+  view of its own next to the PDF, model, book and font views: the document
+  itself, sharp at any zoom, rather than a bitmap of it. A format with no
+  reader in this build still falls back to the embedded preview bitmap and
+  still says so when there is not even that.
+- **The Filer thumbnails them too**, rendered from the document at the tile's
+  size. Serialized behind one mutex, unlike every other preview producer here:
+  a PDF worker owns its engine context and a font specimen its FreeType
+  library, but drawing a document goes through a render context and the
+  process-wide font machinery, and one at a time costs nothing worth having
+  for a file kind that is not photographs.
+- `GetPreviewableFormats()` asks the same seam, so **Display > Thumbnails** and
+  **Display > Detail view** stop greying out formats the build can show. With
+  the Vector and Models plugins registered, 23 formats change from greyed to
+  live: dxf, dwg, dwt, dws, sv$, emf, wmf, and sixteen 3D formats (3ds, obj,
+  ply, dae, fbx, x, ms3d, blend, abc, step/stp/p21, x3d/x3dv, wrl/vrml).
+- **Disabled controls were drawn heavier than live ones.** `Colors::LightGray`
+  (192) was the disabled face of checkboxes, radios and segmented controls,
+  and it is *darker* than `Colors::ButtonFace` (225) - so on a settings page
+  listing one switch per file format, the unsupported formats were the
+  strongest thing on the page. The border made it worse: it stayed at
+  `ButtonShadow` whatever the state. New `Colors::ControlDisabled` (238) and
+  `Colors::ControlDisabledBorder` (202), both lighter than their live
+  counterparts, are now the default for checkbox, radio, segmented-control and
+  button faces, and the checkbox and radio borders grey with them.
+
+#### 2026-09-16 *0.8.72*
+- **A DWG drawing was only recognised when it was called `.dwg`.** AutoCAD
+  writes the *same* drawing database — same `AC10xx` header, same object map —
+  to four suffixes and copies it verbatim to a fifth, and every layer that
+  decided "this is a drawing" compared against the single string `"dwg"`. A
+  template, a standards file or an automatic save opened nowhere: the Vector
+  plugin's dispatch returned null before reading a byte, `GraphicsFormatDetector`
+  filed them as Unknown, and the Filer gave them a generic glyph and no type
+  name. The native decoder in the tree could read all of them perfectly well.
+- **`.dwt` (template), `.dws` (drawing standards) and `.sv$` (automatic save)
+  are now first-class drawing extensions.** `DWGConverter::GetFileExtensions()`
+  lists them, `UltraCanvasVectorFormatsPlugin::GetSupportedExtensions()` reports
+  them as loadable (so they reach `UltraCanvasSupportedFormats`, the FileLoader
+  inventory and file-dialog filters), `GraphicsFormatDetector` files them as
+  `Vector` (so `GraphicsFileInfo::IsValid()` and the vector rasterizer accept
+  them), and the Filer names them AutoCAD Template / Standards / Autosave in the
+  Vector category. They go through the same native R13–R2018 decoder as a
+  `.dwg`, so they open, preview and rasterize identically.
+- **`.bak` is recognised by its header, not its name.** AutoCAD's backup is a
+  drawing, but the suffix belongs to no format — editors, package managers and
+  databases all write `.bak` — so claiming every one of them as CAD would be
+  wrong. `DWGConverter::IsAmbiguousDrawingExtension()` marks it, and the plugin
+  takes it only when the file's first six bytes carry the `AC10xx` magic that
+  `ValidateFile()` already checked for. It is deliberately not an advertised
+  extension.
+- `UltraCanvasGraphicsPluginRegistry::FindPluginForFile()` no longer stops at
+  the extension map: a suffix nothing advertises now falls through to the
+  plugins' own `CanHandle()`, which is the contract for deciding by content.
+  Without it a format recognised from its header was reachable through the
+  converter API but not through `LoadGraphicsFile`. Every plugin's `CanHandle`
+  is an extension comparison plus at most a header peek, so the fallback costs
+  what the missed map lookup did.
+- `UltraCanvasVectorFormatsPlugin::CanHandle(const GraphicsFileInfo&)` passes
+  the file's path instead of rebuilding `"." + extension` from it: an extension
+  alone cannot answer for a format decided by content, and this overload has to
+  agree with what `LoadGraphics()` will do with the same file.
+- `DWGReaderTest` loads the R2000 fixture's own bytes under each of `.dwg`,
+  `.dwt`, `.dws`, `.sv$` and `.bak` and checks that a `.bak` holding anything
+  else is left alone; `VectorFormatsPluginTest` checks the registry listing, the
+  converter dispatch and the format inventory for the new extensions, and that
+  `bak` is advertised nowhere yet still recognised from its header.
+- Docs: `Docs/UltraCanvas/UltraCanvasVectorConverters.md` gains **The DWG
+  family** (the five suffixes, which are settled by name and which by content);
+  the Filer, vector-raster, UI-element and FileLoader format tables list the new
+  extensions.
 #### 2026-09-17 *0.8.72*
 - **Merged table cells survive a save, and are drawn where they belong.** Two
   separate defects, found while looking at what tables still could not do.

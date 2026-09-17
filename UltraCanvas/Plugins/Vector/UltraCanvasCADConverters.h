@@ -15,8 +15,12 @@
 //                  the R2004+ compressed page layout, the R2007 Reed-Solomon
 //                  pages, object map, CLASSES, block definitions - is decoded
 //                  and rendered as DXF for the DXF reader, so .dwg files open
-//                  and preview without any external program. Writing
-//                  delegates to GNU LibreDWG's dxf2dwg when it is installed
+//                  and preview without any external program. The same
+//                  container also ships as .dwt (template), .dws (drawing
+//                  standards) and .sv$ (automatic save), which all read here
+//                  as drawings; .bak, AutoCAD's verbatim backup copy, is
+//                  recognised by its content because the suffix is generic.
+//                  Writing delegates to GNU LibreDWG's dxf2dwg when installed
 //                  (ULTRACANVAS_DXF2DWG or PATH): DWG has no public
 //                  specification and the only open implementation is GPL,
 //                  so it stays an optional external process; dwg2dxf is
@@ -28,8 +32,8 @@
 // DXF has no alpha channel that pre-2011 consumers honour, so style opacity
 // is reported through the warning callback and colours are written at full
 // strength.
-// Version: 1.2.0
-// Last Modified: 2026-09-08
+// Version: 1.3.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -73,7 +77,14 @@ namespace UltraCanvas {
             VectorFormat GetFormat() const override { return VectorFormat::DWG; }
             std::string GetFormatName() const override { return "AutoCAD Drawing"; }
             std::string GetFormatVersion() const override { return "R2000"; }
-            std::vector<std::string> GetFileExtensions() const override { return {".dwg"}; }
+            // The drawing database is not only what is called a .dwg:
+            // AutoCAD's template (.dwt), drawing-standards (.dws) and
+            // automatic-save (.sv$) files are the same container with the
+            // same AC10xx header, and open here unchanged. .bak is left out
+            // deliberately - see IsAmbiguousDrawingExtension().
+            std::vector<std::string> GetFileExtensions() const override {
+                return {".dwg", ".dwt", ".dws", ".sv$"};
+            }
             std::string GetMimeType() const override { return "image/vnd.dwg"; }
             FormatCapabilities GetCapabilities() const override;
 
@@ -103,6 +114,24 @@ namespace UltraCanvas {
             // fallback for files the native decoder declines.
             static std::string FindDxf2Dwg();
             static std::string FindDwg2Dxf();
+
+            // ----- Recognising the drawing family by name -----
+            // A DWG arrives under more than one suffix, so callers that
+            // dispatch on the extension ask here rather than comparing
+            // against "dwg". Both take an extension or a path, with or
+            // without the leading dot, in any case.
+
+            // True for the suffixes that are always a drawing database:
+            // .dwg and the template/standards/autosave files above.
+            static bool IsDrawingExtension(const std::string& extensionOrPath);
+
+            // True for .bak, which is a drawing only some of the time.
+            // AutoCAD's backup is a verbatim copy of the drawing it was made
+            // from, but the suffix belongs to no one - text editors, package
+            // managers and databases all write .bak files - so it is never
+            // advertised as a supported extension and a caller must confirm
+            // the content with ValidateFile() before treating one as a DWG.
+            static bool IsAmbiguousDrawingExtension(const std::string& extensionOrPath);
         };
 
     } // namespace VectorConverter

@@ -37,7 +37,7 @@ applies (`VectorSourceInfo::source`) and who does the work
 | `VectorRasterSource` | Formats | How |
 |---|---|---|
 | `ImagePipeline` | `.svg`, `.svgz`, `.pdf`, `.ai`, `.eps`, `.ps` | libvips: `svgload` (librsvg), `pdfload` (poppler/pdfium), the PostScript delegate. Rendered at the resolution that produces the requested size — `PixelFX::FileIO::LoadSvg` / `LoadPdf` underneath. |
-| `GraphicsPlugin` | whatever a registered `IGraphicsPlugin` claims and `GraphicsFormatDetector` files as `Vector` — the [Vector plugin](UltraCanvasVectorConverters.md)'s DXF / DWG / EMF / WMF / XAR, the CDR and XAR viewer plugins | the plugin's element is given the target bounds and rendered into an offscreen `IRenderContext`; the premultiplied ARGB32 pixels are read back and un-premultiplied into the layer. |
+| `GraphicsPlugin` | whatever a registered `IGraphicsPlugin` claims and `GraphicsFormatDetector` files as `Vector` — the [Vector plugin](UltraCanvasVectorConverters.md)'s DXF / DWG (including the drawing family's `.dwt`, `.dws` and `.sv$`) / EMF / WMF / XAR, the CDR and XAR viewer plugins | the plugin's element is given the target bounds and rendered into an offscreen `IRenderContext`; the premultiplied ARGB32 pixels are read back and un-premultiplied into the layer. |
 | `Unsupported` | everything else | nothing in this build reads it; `VectorSourceInfo::error` says so. |
 
 Both halves are **runtime** answers. The libvips half depends on how libvips

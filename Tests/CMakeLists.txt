@@ -1669,6 +1669,28 @@ add_test(NAME ClassLayoutTest COMMAND ClassLayoutTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ClassLayoutTest")
 
+# ===== DISABLED CONTROL CONTRAST TEST =====
+# One rule for every control with a disabled state: the disabled face, border
+# and label must be LIGHTER than the live ones. The defaults had it backwards
+# (Colors::LightGray is darker than Colors::ButtonFace), which drew every
+# greyed switch on a settings page heavier than the live ones around it.
+# Header-only comparisons - no UI stack, no window.
+message(STATUS "  Building DisabledControlContrastTest...")
+add_executable(DisabledControlContrastTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DisabledControlContrastTest.cpp
+)
+target_include_directories(DisabledControlContrastTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(DisabledControlContrastTest PRIVATE cxx_std_20)
+target_link_libraries(DisabledControlContrastTest PRIVATE UltraCanvas)
+set_target_properties(DisabledControlContrastTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME DisabledControlContrastTest COMMAND DisabledControlContrastTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: DisabledControlContrastTest")
+
 # ===== UML MODEL TEST =====
 # Unit tests for the UML static-structure model, the member-notation grammar,
 # the heuristic C++ reverse engineer and PlantUML/Mermaid export. UI-free.
