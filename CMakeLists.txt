@@ -116,7 +116,13 @@ option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_EPS "Build EPS (PostScript) plugin" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Build audio backend" ON)
-option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
+# ON like the other format plugins. It needs libvips, zlib and tinyxml2, which
+# are core's own dependencies, so it costs no new one - and off by default it
+# took DXF, the DWG family, EMF and WMF out of every build made the ordinary
+# way, CI's included, so a file manager could not read a drawing however it
+# registered its plugins. (The Android phase-1 block above still forces it
+# off: libvips is not in that sysroot, and this plugin needs it.)
+option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" ON)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)

@@ -42,6 +42,13 @@
   that table they were `Unknown`, which is what the vector rasterizer tests
   before it will touch a file - so a `.ccx` the CDR plugin draws perfectly
   well was refused before the plugin was ever asked.
+- **`ULTRACANVAS_PLUGIN_VECTOR` defaults ON**, like every other format plugin.
+  It needs libvips, zlib and tinyxml2, which are core's own dependencies, so
+  it costs no new one - and off by default it took DXF, the DWG family, EMF
+  and WMF out of every build made the ordinary way, CI's included, so a file
+  manager could not read a drawing however it registered its plugins. The
+  Android phase-1 block still forces it off: libvips is not in that sysroot,
+  and this plugin needs it.
 - `AutoFormatRegistrationTest` (new) calls no `Register*Plugin()` and checks
   every built plugin is in the registry anyway, that the Vector plugin's
   preview seam came with it, and that registering again is a no-op.

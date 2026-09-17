@@ -40,7 +40,12 @@ else()
     option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
 endif ()
 option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
-option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
+# ON like the other format plugins: it needs libvips, zlib and tinyxml2, which
+# are core's own dependencies, so it costs no new one. Off by default it took
+# DXF, the DWG family, EMF and WMF out of every default build - including CI's
+# - so a file manager built the ordinary way could not read a drawing however
+# it registered its plugins.
+option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_EPS "Build EPS (PostScript) plugin" ON)
 option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
