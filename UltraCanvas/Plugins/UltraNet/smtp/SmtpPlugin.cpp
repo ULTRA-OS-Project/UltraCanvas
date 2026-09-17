@@ -17,6 +17,8 @@
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>
+#include <UltraNet/UltraNetCurlDebug.h>
+#include <UltraNet/UltraNetMailAddr.h>
 
 #include <curl/curl.h>
 
@@ -29,14 +31,6 @@
 #include <vector>
 
 namespace {
-
-// ============================================================================
-// Helpers
-// ============================================================================
-std::string AngleAddr(const std::string& addr) {
-    if (!addr.empty() && addr.front() == '<' && addr.back() == '>') return addr;
-    return "<" + addr + ">";
-}
 
 // ============================================================================
 // Message construction — delegates to the shared UltraNet MIME builder
@@ -110,6 +104,8 @@ UltraNetResultCode MapCurlError(CURLcode rc) {
         case CURLE_SSL_CONNECT_ERROR:       return UltraNetResultCode::TlsHandshakeFailed;
         case CURLE_PEER_FAILED_VERIFICATION:return UltraNetResultCode::TlsCertificateInvalid;
         case CURLE_SSL_CACERT_BADFILE:      return UltraNetResultCode::TlsCertificateInvalid;
+        case CURLE_SEND_ERROR:              return UltraNetResultCode::SendFailed;
+        case CURLE_RECV_ERROR:              return UltraNetResultCode::ReceiveFailed;
         default:                            return UltraNetResultCode::Unknown;
     }
 }
@@ -151,6 +147,8 @@ public:
                                          "curl_easy_init() failed");
         }
 
+        ultranet_curldebug::EnableIfRequested(h.get());
+
         curl_easy_setopt(h.get(), CURLOPT_URL, options.serverUrl.c_str());
 
         const auto& cred = options.credentials;
@@ -165,11 +163,14 @@ public:
             curl_easy_setopt(h.get(), CURLOPT_USERNAME, cred.username.c_str());
             curl_easy_setopt(h.get(), CURLOPT_PASSWORD, cred.password.c_str());
         }
-        if (options.useTls && !options.implicitTls) {
-            // STARTTLS upgrade (smtp://host:587)
-            curl_easy_setopt(h.get(), CURLOPT_USE_SSL, CURLUSESSL_ALL);
-        }
         if (options.useTls || options.implicitTls) {
+            // Require TLS for both modes: implicit (smtps://host:465, TLS from
+            // connect) and STARTTLS upgrade (smtp://host:587). CURLUSESSL_ALL
+            // fails the transfer if TLS cannot be established instead of silently
+            // continuing in plaintext — the IMAP plug-in enforces TLS the same
+            // way, and relying on the smtps:// scheme alone left the implicit
+            // path without this guarantee.
+            curl_easy_setopt(h.get(), CURLOPT_USE_SSL, CURLUSESSL_ALL);
             // Trust the same CA anchors as the HTTP client. Matters on Windows,
             // where the system libcurl's baked-in CA path does not exist on an
             // end user's machine; empty leaves libcurl's own default in place.
@@ -181,13 +182,17 @@ public:
 #endif
         }
 
-        const std::string fromAngle = AngleAddr(message.from);
+        // The envelope (MAIL FROM / RCPT TO) takes the bare addr-spec only —
+        // never the display name that the MIME From:/To: headers carry, or the
+        // server rejects "<Name <addr>>" (Gmail: 555 5.5.2 Syntax error).
+        const std::string fromAngle = ultranet_mailaddr::EnvelopeAddr(message.from);
         curl_easy_setopt(h.get(), CURLOPT_MAIL_FROM, fromAngle.c_str());
 
         curl_slist* recipients = nullptr;
         auto addAll = [&](const std::vector<std::string>& list) {
             for (const auto& addr : list) {
-                recipients = curl_slist_append(recipients, AngleAddr(addr).c_str());
+                recipients = curl_slist_append(
+                    recipients, ultranet_mailaddr::EnvelopeAddr(addr).c_str());
             }
         };
         addAll(message.to);

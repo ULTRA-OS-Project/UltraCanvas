@@ -21,6 +21,7 @@
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetUrl.h>
+#include <UltraNet/UltraNetCurlDebug.h>
 
 #include "ImapParse.h"
 
@@ -66,6 +67,8 @@ UltraNetResultCode MapCurlError(CURLcode rc) {
         case CURLE_SSL_CONNECT_ERROR:        return UltraNetResultCode::TlsHandshakeFailed;
         case CURLE_PEER_FAILED_VERIFICATION: return UltraNetResultCode::TlsCertificateInvalid;
         case CURLE_SSL_CACERT_BADFILE:       return UltraNetResultCode::TlsCertificateInvalid;
+        case CURLE_SEND_ERROR:               return UltraNetResultCode::SendFailed;
+        case CURLE_RECV_ERROR:               return UltraNetResultCode::ReceiveFailed;
         default:                             return UltraNetResultCode::Unknown;
     }
 }
@@ -91,6 +94,7 @@ bool ParseServerBase(const std::string& serverUrl, std::string& outBase, bool& o
 }
 
 void ApplyCommonOptions(CURL* h, const UltraNetMailOptions& opt, bool implicitTls) {
+    ultranet_curldebug::EnableIfRequested(h);
     const auto& cred = opt.credentials;
     const bool useBearer = !cred.token.empty() &&
         (cred.type == UltraNetAuthType::OAuth2 || cred.type == UltraNetAuthType::Bearer);
@@ -251,12 +255,27 @@ public:
         return UltraNetResult::Ok();
     }
 
+    // Batch form: collect the streamed envelopes into the caller's vector.
     UltraNetResult FetchEnvelopes(const std::string& serverUrl,
                                   const std::string& folder,
                                   uint32_t sinceUid,
                                   std::vector<UltraNetMailEnvelope>& outEnvelopes,
                                   const UltraNetMailOptions& options) override {
         outEnvelopes.clear();
+        return FetchEnvelopes(serverUrl, folder, sinceUid,
+                              [&outEnvelopes](const UltraNetMailEnvelope& e) {
+                                  outEnvelopes.push_back(e);
+                              },
+                              options);
+    }
+
+    // Streaming form: fire `onEnvelope` for each message as its header/flags land
+    // over the one reused connection, so the UI can fill the list incrementally.
+    UltraNetResult FetchEnvelopes(const std::string& serverUrl,
+                                  const std::string& folder,
+                                  uint32_t sinceUid,
+                                  const std::function<void(const UltraNetMailEnvelope&)>& onEnvelope,
+                                  const UltraNetMailOptions& options) override {
         std::string base; bool tls = false;
         if (!ParseServerBase(serverUrl, base, tls))
             return UltraNetResult::Error(UltraNetResultCode::InvalidUrl, "bad imap server URL");
@@ -299,7 +318,7 @@ public:
             if (PerformOn(h.get(), mbUrl, fcmd.str(), flagsBody))
                 env.flags = ParseFetchFlags(flagsBody);
 
-            outEnvelopes.push_back(std::move(env));
+            if (onEnvelope) onEnvelope(env);
         }
         return UltraNetResult::Ok();
     }

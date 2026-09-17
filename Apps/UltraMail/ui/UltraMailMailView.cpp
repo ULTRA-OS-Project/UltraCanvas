@@ -10,6 +10,7 @@
 
 #include <UltraNet/UltraNetMime.h>
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <ctime>
@@ -174,9 +175,47 @@ void MailView::Reload() {
     RebuildList();
 }
 
+void MailView::AddMessageRow(std::size_t index, const MessageEnvelope& m,
+                             const std::set<int64_t>& waitingUids) {
+    const bool isUnread  = (m.flags & Flag_Seen) == 0;
+    const bool isWaiting = waitingUids.count(m.uid) > 0;
+    if (isUnread) ++shownUnread_;
+    const Color& text = isUnread ? kUnreadText : kReadText;
+
+    // Decode defensively: messages synced before header decoding are still
+    // stored raw. Decoding already-decoded text is a no-op.
+    std::string sender  = UltraNet_MimeDecodeHeader(
+        m.fromName.empty() ? m.fromAddr : m.fromName);
+    std::string subject = m.subject.empty()
+        ? std::string("(no subject)") : UltraNet_MimeDecodeHeader(m.subject);
+
+    // State glyphs in front of the sender: ● unread, ↩ waiting for a reply.
+    std::string state = std::string(isUnread ? "● " : "") + (isWaiting ? "↩ " : "");
+    TreeNodeData node(kRowPrefix + std::to_string(index), state + sender);
+    node.textColor = text;
+    node.tooltip   = sender + " <" + m.fromAddr + ">"
+                   + (isUnread ? " — unread" : "") + (isWaiting ? " — waiting for reply" : "");
+    node.SetCell(kColSubject, subject, text);
+    node.SetCell(kColDate, FormatListDate(m.date), text);
+    node.tooltip += "\n" + FormatShortDate(m.date);
+    list_->AddNode(kRootId, node);
+}
+
+void MailView::UpdateInboxTitle() {
+    if (!inboxBox_) return;
+    std::string title = "Inbox";
+    if (!messages_.empty()) {
+        title += " — " + std::to_string(messages_.size()) + " message"
+               + (messages_.size() == 1 ? "" : "s");
+        if (shownUnread_ > 0) title += ", " + std::to_string(shownUnread_) + " unread";
+    }
+    inboxBox_->SetTitle(title);
+}
+
 void MailView::RebuildList() {
     if (!list_) return;
     messages_.clear();
+    shownUnread_ = 0;
     preview_.Clear();
 
     // A hidden root whose children are the rows.
@@ -195,43 +234,11 @@ void MailView::RebuildList() {
     std::set<int64_t> waitingUids;
     for (const auto& w : waiting) if (w.folder == "INBOX") waitingUids.insert(w.uid);
 
-    int unread = 0;
-    for (std::size_t i = 0; i < messages_.size(); ++i) {
-        const MessageEnvelope& m = messages_[i];
-        const bool isUnread  = (m.flags & Flag_Seen) == 0;
-        const bool isWaiting = waitingUids.count(m.uid) > 0;
-        if (isUnread) ++unread;
-        const Color& text = isUnread ? kUnreadText : kReadText;
-
-        // Decode defensively: messages synced before header decoding are still
-        // stored raw. Decoding already-decoded text is a no-op.
-        std::string sender  = UltraNet_MimeDecodeHeader(
-            m.fromName.empty() ? m.fromAddr : m.fromName);
-        std::string subject = m.subject.empty()
-            ? std::string("(no subject)") : UltraNet_MimeDecodeHeader(m.subject);
-
-        // State glyphs in front of the sender: ● unread, ↩ waiting for a reply.
-        std::string state = std::string(isUnread ? "● " : "") + (isWaiting ? "↩ " : "");
-        TreeNodeData node(kRowPrefix + std::to_string(i), state + sender);
-        node.textColor = text;
-        node.tooltip   = sender + " <" + m.fromAddr + ">"
-                       + (isUnread ? " — unread" : "") + (isWaiting ? " — waiting for reply" : "");
-        node.SetCell(kColSubject, subject, text);
-        node.SetCell(kColDate, FormatListDate(m.date), text);
-        node.tooltip += "\n" + FormatShortDate(m.date);
-        list_->AddNode(kRootId, node);
-    }
+    for (std::size_t i = 0; i < messages_.size(); ++i)
+        AddMessageRow(i, messages_[i], waitingUids);
     list_->ExpandAll();
 
-    if (inboxBox_) {
-        std::string title = "Inbox";
-        if (!messages_.empty()) {
-            title += " — " + std::to_string(messages_.size()) + " message"
-                   + (messages_.size() == 1 ? "" : "s");
-            if (unread > 0) title += ", " + std::to_string(unread) + " unread";
-        }
-        inboxBox_->SetTitle(title);
-    }
+    UpdateInboxTitle();
 
     // Preview the newest message by default.
     if (!messages_.empty()) {
@@ -239,6 +246,31 @@ void MailView::RebuildList() {
             list_->SelectNode(first);
         SelectRow(0);
     }
+}
+
+void MailView::AppendMessages(const std::string& accountId,
+                              const std::vector<MessageEnvelope>& batch) {
+    // Only the currently-shown account's rows belong in this list. The root is
+    // already expanded (RebuildList ran when the account was shown), so appended
+    // children just need a redraw — no ExpandAll, which would be O(n) per batch.
+    std::fprintf(stderr, "[UMSTREAM] AppendMessages account=%s cur=%s batch=%zu list=%p -> %s\n",
+                 accountId.c_str(), curAccount_.c_str(), batch.size(), (void*)list_.get(),
+                 (!list_ || batch.empty() || accountId != curAccount_) ? "SKIP" : "APPEND");
+    if (!list_ || batch.empty() || accountId != curAccount_) return;
+
+    // Needs-answer glyphs (↩) are filled in by the final RebuildList; freshly
+    // arrived mail is essentially never already awaiting a reply, so stream with
+    // an empty set to keep the per-row cost off the store.
+    static const std::set<int64_t> kNoWaiting;
+    for (const auto& m : batch) {
+        messages_.push_back(m);
+        AddMessageRow(messages_.size() - 1, m, kNoWaiting);
+    }
+    UpdateInboxTitle();
+    // Same finalizer RebuildList uses to make freshly added rows appear: it
+    // recomputes scroll geometry and requests the repaint. (A bare RequestRedraw
+    // can leave the new rows unrendered if the view hasn't refreshed its layout.)
+    list_->ExpandAll();
 }
 
 void MailView::SelectRow(int row) {

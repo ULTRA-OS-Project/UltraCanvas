@@ -141,41 +141,50 @@ SyncOutcome SyncEngine::SyncMessages(const std::string& accountId,
                                      const std::string& folder,
                                      const std::string& serverUrl,
                                      const UltraNetMailOptions& options,
-                                     bool fetchBodies) {
+                                     bool fetchBodies,
+                                     const std::function<void(const MessageEnvelope&)>& onMessageStored) {
     int64_t sinceUid = 0;
     store_.GetMaxUid(accountId, folder, sinceUid);
 
-    std::vector<UltraNetMailEnvelope> envelopes;
-    UltraNetResult r = mailbox_.FetchEnvelopes(
-        serverUrl, folder, static_cast<uint32_t>(sinceUid), envelopes, options);
-    if (!r) return SyncOutcome::Fail(r.message);
-
     SyncOutcome out;
     std::vector<uint32_t> bodyUids;
-    for (const auto& e : envelopes) {
-        MessageEnvelope m;
-        m.accountId = accountId;
-        m.folder    = folder;
-        m.uid       = static_cast<int64_t>(e.uid);
-        m.messageId = e.messageId;
-        m.inReplyTo = e.inReplyTo;
-        // Subject / display names arrive as RFC 2047 encoded-words on the
-        // envelope path (unlike a full message parse). Decode them once here so
-        // the store — list, preview and collected contacts — holds readable text.
-        m.subject   = UltraNet_MimeDecodeHeader(e.subject);
-        ParseFromField(e.from, m.fromName, m.fromAddr);
-        m.fromName = UltraNet_MimeDecodeHeader(m.fromName);
-        m.to    = e.to;
-        for (auto& addr : m.to) addr = UltraNet_MimeDecodeHeader(addr);
-        m.date  = ParseRfc2822Date(e.date);
-        m.flags = MapNetFlagsToLocal(e.flags);
-        // Automated/bulk detection needs List-*/Precedence headers, which the
-        // envelope fetch does not carry yet; left false for now.
-        m.automated = false;
+    // Stream envelopes: each header lands one at a time so `onMessageStored` can
+    // fill the UI list incrementally instead of the caller waiting for the whole
+    // mailbox (a large INBOX otherwise looks like the app has hung).
+    UltraNetResult r = mailbox_.FetchEnvelopes(
+        serverUrl, folder, static_cast<uint32_t>(sinceUid),
+        [&](const UltraNetMailEnvelope& e) {
+            MessageEnvelope m;
+            m.accountId = accountId;
+            m.folder    = folder;
+            m.uid       = static_cast<int64_t>(e.uid);
+            m.messageId = e.messageId;
+            m.inReplyTo = e.inReplyTo;
+            // Subject / display names arrive as RFC 2047 encoded-words on the
+            // envelope path (unlike a full message parse). Decode them once here
+            // so the store — list, preview and collected contacts — holds
+            // readable text.
+            m.subject   = UltraNet_MimeDecodeHeader(e.subject);
+            ParseFromField(e.from, m.fromName, m.fromAddr);
+            m.fromName = UltraNet_MimeDecodeHeader(m.fromName);
+            m.to    = e.to;
+            for (auto& addr : m.to) addr = UltraNet_MimeDecodeHeader(addr);
+            m.date  = ParseRfc2822Date(e.date);
+            m.flags = MapNetFlagsToLocal(e.flags);
+            // Automated/bulk detection needs List-*/Precedence headers, which the
+            // envelope fetch does not carry yet; left false for now.
+            m.automated = false;
 
-        if (store_.UpsertMessage(m)) out.stats.messages++;
-        if (fetchBodies) bodyUids.push_back(e.uid);
-    }
+            if (store_.UpsertMessage(m)) out.stats.messages++;
+            if (fetchBodies) bodyUids.push_back(e.uid);
+            if (onMessageStored) onMessageStored(m);
+        },
+        options);
+    std::fprintf(stderr, "[UMSTREAM] SyncMessages folder=%s sinceUid=%lld new=%d "
+                         "onMessageStored=%s ok=%d\n",
+                 folder.c_str(), (long long)sinceUid, out.stats.messages,
+                 onMessageStored ? "set" : "null", (int)(bool)r);
+    if (!r) return SyncOutcome::Fail(r.message);
 
     // Fetch all new bodies over ONE reused connection (see
     // IMailboxProtocolPlugin::FetchMessageBodies) instead of reconnecting per
