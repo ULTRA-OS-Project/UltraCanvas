@@ -5,8 +5,8 @@
 // main page has no content of its own. Changes apply to the running
 // application immediately (via the onChanged callback) and are persisted
 // right away.
-// Version: 1.5.0
-// Last Modified: 2026-09-13
+// Version: 1.6.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 

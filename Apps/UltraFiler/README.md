@@ -82,8 +82,12 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   media); the context menu's **Open path (in new tab)** opens its folder in a
   new tab instead. Clicking the clock again, **Esc**, or
   any browsing action (navigation, search, a file command) returns to the
-  folder view. The lists survive restarts — they are stored next to the
-  settings as `history.txt` — and *Settings ▸ Clear History* empties them.
+  folder view. The lists survive restarts — they are written to `history.txt`
+  next to the settings whenever one of them changes, and read back at start-up,
+  so nothing is lost if UltraFiler is killed rather than closed. Each list keeps
+  the number of entries *Settings > Extras > History & Favorites > Limit of
+  entries* is set to (10–1000, 300 by default), counted per section, with the
+  oldest dropping off the end; *Settings ▸ Clear History* empties them.
 - **Favorites (pinning):** the heart button next to the clock shows the
   Favorites view — the same **Files** / **Folders** / **Apps** layout as the
   History view, but listing what was pinned deliberately instead of what was
@@ -309,7 +313,7 @@ to the running application immediately and is saved to the config file
 | Handling > Opening files | **Double-click (or Enter) on a file** — **Start the registered program**, the way Explorer and the Finder do (the default on Windows), or **Show it in the preview**, keeping the file inside UltraFiler (the default on Linux and macOS). A file type this system has no program for is previewed either way, so the setting never turns a double-click into nothing happening; a file that cannot be previewed always goes to the system, and the context menu's *Open with* starts a program whichever is set |
 | Handling > Tabs | **New tab** — what the **"+"** at the end of the tab strip opens: a **new view of the current folder** (the default) or the **Home folder**. Only the "+" follows this; a tab opened on a named folder — the containing folder of a search result, an entry of the History or Favorites view — still opens on that folder |
 | Extras > Open prompt | The command line application started by **Extras > Open prompt** |
-| Extras > History & Favorites | Clears the recently-used lists, the pinned entries, and the per-folder view settings |
+| Extras > History & Favorites | **Limit of entries** — how many entries each of the History view's three lists keeps: a slider from 10 to 1000, 300 by default. The limit counts *per section*, so Files, Folders and Apps each keep that many and a day of opening documents cannot push the remembered applications out. Lowering it takes effect at once — the oldest entries past the new limit are dropped and `history.txt` rewritten, not left on disk until some later restart. Also clears the recently-used lists, the pinned entries, and the per-folder view settings |
 
 On the *Open prompt* page the folder button next to the path field opens the
 file dialog filtered to applications (`*.exe`, `*.com`, `*.bat`, `*.cmd` on

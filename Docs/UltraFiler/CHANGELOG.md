@@ -1,3 +1,27 @@
+#### 2026-09-17 *1.36.0*
+- **The History view's lists have a length you can set.** *Settings > Extras >
+  History & Favorites* gains **Limit of entries**, a slider from 10 to 1000
+  entries; it ships at 300, the length the lists always had, so nothing changes
+  until it is moved.
+
+  The limit counts **per section**: *Files*, *Folders* and *Apps* each keep that
+  many. That is the point of capping them separately — a morning of opening
+  documents cannot push out the applications you launch once a week.
+
+  Lowering it takes effect **now**, not at the next start: the entries past the
+  new limit are dropped and `history.txt` is rewritten at its new length, and
+  the History view is refreshed if it is the one on screen. A limit that only
+  applied after a restart would, to the person who just moved the slider, look
+  like it had done nothing. Raising it back does not bring the forgotten
+  entries back — they are gone from the file. *Restore default limit* in the
+  bottom bar puts it back to 300.
+
+  The lists themselves were already saved whenever one of them changed and read
+  back at start-up; a shorter limit set while UltraFiler was not running (the
+  config file edited by hand, settings arriving from another machine) is now
+  applied as the file is read, rather than after the first entry happens to be
+  recorded into it.
+
 #### 2026-09-15 *1.35.0*
 - **Settings > Extras > Cache: what UltraFiler is holding, and whether it
   should.** A page beside *Open prompt* and *History & Favorites* with two
