@@ -858,6 +858,7 @@ if (BUILD_ULTRAFILER_APP)
             Apps/UltraFiler/UltraFilerRunWindowsDialog.cpp
             Apps/UltraFiler/UltraFilerPropertiesDialogs.cpp
             Apps/UltraFiler/UltraFilerShare.cpp
+            Apps/UltraFiler/UltraFilerRemoteDrives.cpp
     )
     # Export dynamic symbols so on-demand plugin modules can resolve core
     # symbols when the core is linked statically (see UltraCanvasDemo).
@@ -867,6 +868,23 @@ if (BUILD_ULTRAFILER_APP)
             ${ULTRACANVAS_INCLUDE_DIRS}
             ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraFiler
     )
+
+    # Remote drives ("+ Drive"): the FTP / SFTP servers and cloud accounts are
+    # UltraCloud accounts, and the add-account dialog is UltraCloudUI's shared
+    # one. Without the module UltraFiler still builds - the button says the
+    # build cannot carry drives - so this is a target check, not a hard
+    # requirement.
+    #
+    # Linked BEFORE the core library for the reason Apps/UltraMail/CMakeLists.txt
+    # gives: UltraCloud pulls UltraCanvasJSON out of libultracanvas, and GNU ld
+    # resolves a static archive left to right, so the consumer must come first.
+    if(TARGET UltraCloudUI)
+        target_link_libraries(UltraFiler PRIVATE UltraCloudUI)
+        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_ULTRACLOUD=1)
+        message(STATUS "  UltraFiler: remote drives enabled (UltraCloud)")
+    else()
+        message(STATUS "  UltraFiler: remote drives disabled (UltraCloudUI not built)")
+    endif()
 
     target_link_libraries(UltraFiler PRIVATE
             ${ULTRACANVAS_LIBRARY}

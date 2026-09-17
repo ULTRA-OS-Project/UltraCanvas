@@ -2699,6 +2699,36 @@ if(ULTRACANVAS_PLUGIN_PDF)
             target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_extra_lib}})
         endif()
     endforeach()
+    # Keep MuPDF's symbols inside the shared library instead of exporting them.
+    #
+    # MuPDF does not use stock Little-CMS: it bundles the lcms2mt fork, whose
+    # every entry point takes an extra leading context argument. Those objects
+    # come out of libmupdf-third.a with default ELF visibility, so a shared
+    # libUltraCanvas.so re-exports cmsCreateTransform and friends - and because
+    # it is earlier in the global lookup scope than liblcms2.so.2, ANY other
+    # library in the process that calls Little-CMS is silently redirected into
+    # the fork. libcdr does exactly that when it parses a CorelDRAW file: its
+    # six-argument cmsCreateTransform(hInput, ...) lands on the fork's
+    # seven-argument one, every argument shifts by one, and cmsGetColorSpace
+    # dereferences what was meant to be a pixel-format integer. Segmentation
+    # fault inside CDRDocument::parse, in a build where nothing is wrong with
+    # the CDR file or with libcdr.
+    #
+    # This is the same class of bug as the libjpeg version clash noted above,
+    # and it is not fixable the same way: MuPDF does not support building
+    # against a system Little-CMS. Hiding the archives is what fixes it, and
+    # --exclude-libs is the targeted form - it localizes only what these two
+    # archives define, so our own symbols (and the other static archives linked
+    # into the library, uc-yyjson and VirtualFS) stay exported. A whole-library
+    # version script is still not usable here, for the reason given above.
+    #
+    # Only meaningful for an ELF shared object: a static build exports nothing,
+    # and macOS resolves through two-level namespaces, so neither can interpose
+    # this way. Apple's ld does not take --exclude-libs either.
+    if(ULTRACANVAS_BUILD_SHARED AND UNIX AND NOT APPLE)
+        target_link_options(${ULTRACANVAS_LIB_NAME} PRIVATE
+            "-Wl,--exclude-libs,libmupdf.a:libmupdf-third.a")
+    endif()
     message(STATUS "  [✓] PDF Plugin - ENABLED (MuPDF at ${MUPDF_LIBRARY})")
 else()
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
