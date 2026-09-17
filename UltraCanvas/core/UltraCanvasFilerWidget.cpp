@@ -9789,20 +9789,27 @@ namespace UltraCanvas {
     // a file TYPE, resolved on a worker and held per type rather than per
     // file, so a folder of four thousand ".txt" files costs one lookup.
 
-    int UltraCanvasFilerWidget::HostIconEdgeFor(const Rect2Di& rect) {
-        // The sizes the icon sources themselves keep (16 / 32 / 48 / 64 /
-        // 128 / 256). Resolving at the box's exact pixel height instead would
-        // re-resolve every type each time a window is dragged wider, and
-        // would ask a theme for sizes it does not have anyway.
+    int UltraCanvasFilerWidget::HostIconEdgeFor(const Rect2Di& rect,
+                                               float deviceScale) {
+        // The sizes the icon sources themselves keep (16 / 24 / 32 / 48 / 64
+        // / 128 / 256). Resolving at the box's exact pixel height instead
+        // would re-resolve every type each time a window is dragged wider,
+        // and would ask a theme for sizes it does not have anyway.
         static const int kEdges[] = { 16, 24, 32, 48, 64, 128, 256 };
-        const int want = std::max(1, std::min(rect.width, rect.height));
+        // The DEVICE pixels the icon will be drawn with: on a HiDPI display
+        // an icon resolved at the logical size is drawn at twice its own
+        // resolution, which is exactly the blur this size chain exists to
+        // avoid.
+        const double scale = deviceScale > 0.0f ? deviceScale : 1.0;
+        const int want = std::max(1, static_cast<int>(std::lround(
+                std::min(rect.width, rect.height) * scale)));
         for (int edge : kEdges)
             if (edge >= want) return edge;
         return kEdges[std::size(kEdges) - 1];
     }
 
     std::shared_ptr<UCPixmap> UltraCanvasFilerWidget::AcquireHostIcon(
-            const FilerEntry& e, const Rect2Di& rect) {
+            const FilerEntry& e, const Rect2Di& rect, float deviceScale) {
         if (fileIconStyle != FilerFileIconStyle::HostOperatingSystem)
             return nullptr;
         if (!HostFileIconsAvailable() || e.path.empty()) return nullptr;
@@ -9811,13 +9818,15 @@ namespace UltraCanvas {
         // lookup. It never reaches here (ThumbSourceFor claims it first);
         // asking for the folder icon on its behalf would be wrong if it did.
         const bool directory = e.isDirectory && !e.isBundle;
-        const int edge = HostIconEdgeFor(rect);
+        const int edge = HostIconEdgeFor(rect, deviceScale);
         const std::string key = HostFileIconKey(e.path, directory) + "|" +
                                 std::to_string(edge);
 
         std::lock_guard<std::mutex> lk(hostIconMutex);
         auto it = hostIconSlots.find(key);
         if (it != hostIconSlots.end()) {
+            // Drawn now, so it is the last thing an eviction should drop.
+            it->second.tick = ++hostIconTick;
             if (it->second.state == ThumbState::Ready) return it->second.pixmap;
             return nullptr;   // pending, or this system has no icon for it
         }
@@ -9825,11 +9834,13 @@ namespace UltraCanvas {
         // meantime. The frame never waits for a lookup.
         HostIconSlot& slot = hostIconSlots[key];
         slot.state = ThumbState::Pending;
+        slot.tick = ++hostIconTick;
         HostIconRequest request;
         request.key = key;
         request.path = e.path;
         request.isDirectory = directory;
         request.edge = edge;
+        request.generation = hostIconGeneration;
         hostIconQueue.push_back(std::move(request));
         StartHostIconWorkerLocked();
         hostIconCond.notify_one();
@@ -9880,14 +9891,21 @@ namespace UltraCanvas {
             {
                 std::lock_guard<std::mutex> lk(hostIconMutex);
                 if (hostIconShutdown) return;
-                auto it = hostIconSlots.find(request.key);
                 // The cache was dropped while this ran (the setting changed,
                 // the theme changed): the answer is for a cache that no
-                // longer exists, so it goes nowhere.
+                // longer exists - and under a theme that may no longer be the
+                // one in use - so it goes nowhere.
+                if (request.generation != hostIconGeneration) continue;
+                auto it = hostIconSlots.find(request.key);
                 if (it == hostIconSlots.end()) continue;
                 if (pixmap) {
+                    it->second.bytes =
+                            static_cast<size_t>(std::max(0, pixmap->GetRawWidth())) *
+                            static_cast<size_t>(std::max(0, pixmap->GetRawHeight())) * 4;
+                    hostIconBytes += it->second.bytes;
                     it->second.pixmap = std::move(pixmap);
                     it->second.state = ThumbState::Ready;
+                    EvictHostIconsLocked(request.key);
                 } else {
                     // No icon for this type on this system. Retried once: a
                     // theme is read from disk, and the first read of a folder
@@ -9907,10 +9925,34 @@ namespace UltraCanvas {
         }
     }
 
+    void UltraCanvasFilerWidget::EvictHostIconsLocked(const std::string& keepKey) {
+        if (hostIconBytes <= kHostIconBudget) return;
+        // Least recently drawn first, so what is on screen survives. Only
+        // finished slots are droppable: a pending one has a lookup in flight
+        // that would land in a slot that is no longer there.
+        std::vector<std::pair<uint64_t, std::string>> droppable;
+        droppable.reserve(hostIconSlots.size());
+        for (const auto& [key, slot] : hostIconSlots) {
+            if (key == keepKey || slot.state != ThumbState::Ready) continue;
+            droppable.emplace_back(slot.tick, key);
+        }
+        std::sort(droppable.begin(), droppable.end());
+        for (const auto& [tick, key] : droppable) {
+            if (hostIconBytes <= kHostIconBudget) break;
+            auto it = hostIconSlots.find(key);
+            if (it == hostIconSlots.end()) continue;
+            hostIconBytes -= std::min(hostIconBytes, it->second.bytes);
+            hostIconSlots.erase(it);
+        }
+    }
+
     void UltraCanvasFilerWidget::DropHostIconCache() {
         std::lock_guard<std::mutex> lk(hostIconMutex);
         hostIconSlots.clear();
         hostIconQueue.clear();
+        hostIconBytes = 0;
+        // Anything already in flight belongs to the cache just thrown away.
+        ++hostIconGeneration;
     }
 
 
@@ -10011,7 +10053,7 @@ namespace UltraCanvas {
             // there is no shape to draw them into here. Null while the
             // lookup is still running, and on a system with no icon to give,
             // so both fall through to what the widget draws itself.
-            if (auto hostIcon = AcquireHostIcon(e, rect)) {
+            if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
                 ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
                 return;
             }
@@ -10042,7 +10084,7 @@ namespace UltraCanvas {
         // Explorer, Finder and the Linux file managers all do that, and the
         // type icon is what they fall back to. Null while the lookup runs, or
         // where the system has no icon for the type: the sheet below.
-        if (auto hostIcon = AcquireHostIcon(e, rect)) {
+        if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
             ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
             return;
         }

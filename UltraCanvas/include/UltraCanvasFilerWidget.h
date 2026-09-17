@@ -1831,12 +1831,14 @@ namespace UltraCanvas {
         // icon of a TYPE. Keyed per type and size (HostFileIconKey), a folder
         // of four thousand ".txt" files therefore costs one lookup and holds
         // one pixmap, where the thumbnail cache would key four thousand
-        // slots. They are small and few, so there is no byte budget and no
-        // eviction: what bounds the cache is the number of file types the
-        // user has looked at.
+        // slots. It is bounded by its own small budget rather than by the
+        // thumbnail pools, which a folder of photos would otherwise be able
+        // to push the icons out of.
         struct HostIconSlot {
             ThumbState state = ThumbState::Pending;
             std::shared_ptr<UCPixmap> pixmap;   // null once Failed
+            size_t bytes = 0;
+            uint64_t tick = 0;      // last frame that asked for it (LRU)
             uint8_t attempts = 0;
         };
         struct HostIconRequest {
@@ -1844,28 +1846,48 @@ namespace UltraCanvas {
             std::string path;             // one file of that type to ask about
             bool isDirectory = false;
             int  edge = 0;                // pixels, already bucketed
+            uint64_t generation = 0;      // the cache this was asked for
         };
         std::unordered_map<std::string, HostIconSlot> hostIconSlots;
         std::deque<HostIconRequest> hostIconQueue;
-        mutable std::mutex hostIconMutex;     // guards the two above
+        mutable std::mutex hostIconMutex;   // guards these and the counters
         std::condition_variable hostIconCond;
         // One worker: the lookups are a theme read or a shell call, and a
         // folder asks for a handful of distinct types, not thousands.
         std::thread hostIconWorker;
         bool hostIconShutdown = false;
+        size_t   hostIconBytes = 0;       // what the held pixmaps occupy
+        uint64_t hostIconTick = 0;        // LRU clock for hostIconSlots
+        // Bumped whenever the cache is dropped, so an answer already being
+        // looked up when the user switched theme cannot land in the cache
+        // that replaced it — it would be an icon from the old theme, kept
+        // until the next drop.
+        uint64_t hostIconGeneration = 0;
+        // A ceiling, because the types a user visits accumulate: at the
+        // largest tile size one icon is a quarter of a megabyte, and a long
+        // session across many folders would otherwise hold every type it ever
+        // saw. Small next to the thumbnail budgets — these are icons, and
+        // re-resolving one is a theme read rather than a decode.
+        static constexpr size_t kHostIconBudget = 8 * 1024 * 1024;
 
         // The host's icon for `e` at `rect`, or null while it is being
         // resolved / when this system has none — the caller then draws the
         // simple icon. Queues the lookup on first ask; never blocks.
+        // `deviceScale` is the surface's, so a HiDPI display resolves the
+        // icon at the pixels it will actually be drawn with.
         std::shared_ptr<UCPixmap> AcquireHostIcon(const FilerEntry& e,
-                                                  const Rect2Di& rect);
+                                                  const Rect2Di& rect,
+                                                  float deviceScale);
         // Icons are resolved at a few standard edges rather than at every
         // pixel size a view happens to use, so re-sizing tiles re-uses what
         // is already held instead of resolving the same types again.
-        static int HostIconEdgeFor(const Rect2Di& rect);
+        static int HostIconEdgeFor(const Rect2Di& rect, float deviceScale);
         void StartHostIconWorkerLocked();
         void StopHostIconWorker();
         void HostIconWorkerMain();
+        // Drop the least-recently-drawn icons until the budget is met again.
+        // `keepKey` (the one just stored) is never dropped.
+        void EvictHostIconsLocked(const std::string& keepKey);
         // Drop the resolved icons (Display > File icons switched, or the host
         // asked for a refresh). Safe to call with no worker running.
         void DropHostIconCache();
