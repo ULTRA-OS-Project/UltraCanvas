@@ -1,7 +1,7 @@
 // UltraCanvasRadio.h
 // Radio button: circular indicator with center dot, exclusive selection via UltraCanvasRadioGroup.
-// Version: 1.1.0
-// Last Modified: 2026-05-29
+// Version: 1.2.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -20,7 +20,10 @@ namespace UltraCanvas {
         Color outerBorderColor = Colors::ButtonShadow;
         Color outerHoverColor = Colors::SelectionHover;
         Color outerPressedColor = Color(204, 228, 247, 255);
-        Color outerDisabledColor = Colors::LightGray;
+        // Lighter than outerColor, and the border lighter than
+        // outerBorderColor - see the note on Colors::ControlDisabled.
+        Color outerDisabledColor = Colors::ControlDisabled;
+        Color outerBorderDisabledColor = Colors::ControlDisabledBorder;
 
         // Inner dot (visible when checked)
         Color innerDotColor = Colors::TextDefault;

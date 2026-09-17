@@ -8,20 +8,28 @@
 // external program. GNU LibreDWG's dwg2dxf, when installed, is only tried
 // for files the native decoder declines (pre-R13 drawings, damaged files).
 //
+// A drawing is not always named .dwg: AutoCAD writes the same database to
+// .dwt (template), .dws (drawing standards) and .sv$ (automatic save), and
+// copies it verbatim to .bak. IsDrawingExtension() names the first three
+// alongside .dwg for callers that dispatch on the suffix;
+// IsAmbiguousDrawingExtension() marks .bak, whose suffix half the world
+// uses, as one to confirm with ValidateFile() before claiming it.
+//
 // Writing still delegates to LibreDWG's dxf2dwg (ULTRACANVAS_DXF2DWG names
 // the executable, otherwise PATH): DWG is a proprietary format with no
 // public specification and the framework is MIT-licensed, so the GPL
 // implementation stays an optional external process. Without the tool the
 // export warns with that guidance and fails cleanly; the DXF the export is
 // built on is AutoCAD's own exchange format and opens everywhere DWG does.
-// Version: 1.2.0
-// Last Modified: 2026-09-08
+// Version: 1.3.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasCADConverters.h"
 #include "UltraCanvasDWGDecoder.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 
+#include <cctype>
 #include <cstdio>
 #include <cstdlib>
 #include <fstream>
@@ -194,6 +202,33 @@ bool DWGConverter::ValidateData(const std::string& data) const {
     return data.size() >= 6 && data.compare(0, 4, "AC10") == 0 &&
            std::isdigit(static_cast<unsigned char>(data[4])) &&
            std::isdigit(static_cast<unsigned char>(data[5]));
+}
+
+namespace {
+
+// The lowercase tail after the last dot of an extension or a path, without
+// the dot. "Plan.DWT" and ".dwt" and "dwt" all give "dwt"; a name with no
+// dot is taken to be the extension itself.
+std::string LowerExtensionOf(const std::string& extensionOrPath) {
+    size_t dot = extensionOrPath.find_last_of('.');
+    std::string ext = dot == std::string::npos ? extensionOrPath
+                                               : extensionOrPath.substr(dot + 1);
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext;
+}
+
+}   // namespace
+
+bool DWGConverter::IsDrawingExtension(const std::string& extensionOrPath) {
+    // A drawing, a template, a standards file and an automatic save are one
+    // format under four names - AutoCAD writes the same drawing database to
+    // all of them, so what opens a .dwg opens these unchanged.
+    const std::string ext = LowerExtensionOf(extensionOrPath);
+    return ext == "dwg" || ext == "dwt" || ext == "dws" || ext == "sv$";
+}
+
+bool DWGConverter::IsAmbiguousDrawingExtension(const std::string& extensionOrPath) {
+    return LowerExtensionOf(extensionOrPath) == "bak";
 }
 
 } // namespace VectorConverter
