@@ -1,3 +1,26 @@
+#### 2026-09-17 *1.36.0*
+- **Copying, moving and deleting show their progress.** An operation that is
+  still running two seconds after it started now opens a window with a ring,
+  the percentage, the name of the file being handled and a **Cancel** button -
+  the same window compressing and extracting have had all along. Anything
+  quicker still passes without one, so copying a text file does not flash a
+  dialog at you.
+
+  It covers every way of starting one: **Ctrl+V** and the context menu's
+  Paste, **Delete**, **Duplicate**, dragging files between the panes or from
+  another program, and the folder tree's own **Delete folder** - which until
+  now removed the folder with the window frozen and nothing to look at.
+
+  And UltraFiler no longer stands still while it happens: the work runs in the
+  background, so the file display goes on painting and scrolling while a few
+  gigabytes are on the move. **Cancel** stops it at the next file - what was
+  already copied, moved or deleted stays, and the file the cancel interrupted
+  is cleaned up rather than left half-written.
+
+  Framework change, see UltraCanvas 0.8.72; the application's own part is the
+  folder tree's delete, which now goes through the filer widget so it gets the
+  window and the "cannot delete" dialog like every other delete.
+
 #### 2026-09-15 *1.35.0*
 - **Settings > Extras > Cache: what UltraFiler is holding, and whether it
   should.** A page beside *Open prompt* and *History & Favorites* with two

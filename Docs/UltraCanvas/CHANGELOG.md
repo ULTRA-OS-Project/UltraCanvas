@@ -1,3 +1,51 @@
+#### 2026-09-17 *0.8.72*
+- **A copy, a move or a delete that takes more than two seconds now says so.**
+  `UltraCanvasFilerWidget` ran all three straight through on the UI thread: a
+  folder of holiday photos dragged onto another drive froze the window for as
+  long as the copy took, with nothing on screen to say whether anything was
+  happening, how far along it was, or how to stop it. Packing and unpacking
+  archives had had a progress window since 0.3.63; the everyday operations had
+  none.
+
+  They now run on a background worker, and if one is still going **two seconds
+  later** it gets the same window packing gets - the ring with the percentage,
+  the file being handled and **Cancel** (`UltraCanvasProgressDialog`).
+  Anything quicker passes without a window at all: a file manager that flashes
+  a dialog for every copied text file is worse than one that shows none. Every
+  route in shares it - Ctrl+V, the context menu, `Delete`, a drag & drop
+  between panes, `Duplicate`, `PasteFilesInto()`, `DeletePaths()` - because
+  they all go through the same two queues.
+  - **What the ring shows.** Each entry of the queue is worth an equal slice of
+    it, and the bytes copied (or entries removed) inside an entry move the ring
+    within its slice, so one large file fills it smoothly and a thousand small
+    ones fill it a step at a time. An entry is measured just before it is
+    worked on, never the whole queue up front: for a move, where each entry is
+    one instant rename, walking every tree first would take longer than the
+    move.
+  - **Files over 8 MB are copied in 1 MB chunks**, so the ring moves *inside* a
+    single big file and Cancel does not have to wait for it. Smaller files
+    still go through `std::filesystem::copy_file` in one call, which lets the
+    platform hand the copy to the filesystem itself.
+  - **Cancel stops at the next file.** What was already copied, moved or
+    deleted stays; the entry the cancel interrupted does not - a half-written
+    file or folder is removed rather than left in the listing. The one step
+    that is never interrupted is the second half of a cross-volume move: once
+    the copy is safely across, the original is removed to the end, because
+    stopping there would leave the entry half in both places.
+  - **The conflict and problem dialogs are unchanged**, and still belong to the
+    UI thread: the worker walks the queue until it reaches an entry that needs
+    an answer and hands the queue back. The progress window steps aside while
+    such a dialog is up and returns when the work resumes, without a second
+    two-second wait - the delay is measured from the start of the operation,
+    not of the current step.
+  - `DeletePaths(paths, onDone)` is new: a delete with no confirmation of the
+    widget's own, for a host that has already asked. `DuplicateSelection()` is
+    now the paste queue aimed at the folder the entries already live in, which
+    is what it always was by hand - it just could not be cancelled or watched.
+  - Without an application timer (a headless host, a test) there is nothing to
+    collect a worker with, so the queues run on the calling thread exactly as
+    they did before.
+
 #### 2026-09-16 *0.8.71*
 - **The demo's Vector Editing page had no drawing area.** The page places its
   widgets at fixed coordinates and built the canvas with the sizeless factory,
