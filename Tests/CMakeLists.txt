@@ -3260,3 +3260,32 @@ if(TARGET UltraCanvas)
 else()
     message(STATUS "  ThumbnailDiskCacheTest skipped (UltraCanvas target not present)")
 endif()
+
+message(STATUS "")
+
+# ===== DEMO SCROLLING TEXT TEST =====
+# The demo's scrolling text block (Apps/DemoApp/UltraCanvasDemoScrollText.h),
+# which the 3D Graphics pages fill with text of an unpredictable length: the
+# label is measured against the whole text, the container shows its vertical
+# scrollbar only when the text overflows, and either way the first line is at
+# the top of the box rather than centred out of view.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DemoScrollTextTest...")
+    add_executable(DemoScrollTextTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DemoScrollTextTest.cpp
+    )
+    target_include_directories(DemoScrollTextTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/DemoApp
+    )
+    target_compile_features(DemoScrollTextTest PRIVATE cxx_std_20)
+    target_link_libraries(DemoScrollTextTest PRIVATE UltraCanvas)
+    set_target_properties(DemoScrollTextTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DemoScrollTextTest COMMAND DemoScrollTextTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DemoScrollTextTest")
+else()
+    message(STATUS "  DemoScrollTextTest skipped (UltraCanvas target not present)")
+endif()
