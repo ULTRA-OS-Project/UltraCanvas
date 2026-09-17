@@ -1,3 +1,40 @@
+#### 2026-09-17 *0.8.74*
+- **A picture can sit inside a line of text.** Every image in a loaded document
+  became a paragraph of its own, because `RichTextRun` had no way to hold one:
+  a logo mid-sentence, an icon in a heading or a signature in a sign-off was
+  pulled out of its line and dropped below it, re-flowing the text around it.
+  - `RichTextRun` gains `mediaIndex`, `imageWidthPt`, `imageHeightPt` and
+    `imageAltText`. A run with `mediaIndex >= 0` *is* a picture, and its `text`
+    is a single U+FFFC OBJECT REPLACEMENT CHARACTER - the standard placeholder
+    for an inline attachment. It gives the picture one character's worth of the
+    block's text, so the caret steps over it, a selection covers it and
+    Backspace deletes it, with no position needing to know it is not a letter.
+  - Two pictures never coalesce into one run and a picture never merges with
+    the text beside it: `HasSameFormatting` refuses, because the run is what
+    carries which picture it is.
+  - The DOCX reader tells `<wp:inline>` from `<wp:anchor>`, the ODT reader
+    tells `text:anchor-type="as-char"` from the floating anchorings, and both
+    writers emit a picture run back in the line it came from.
+  - **A picture alone in a paragraph stays a block.** Both formats anchor a
+    standalone image in the text as well - a picture on its own line really is
+    "inline, with nothing beside it" - so the markup cannot separate the two
+    cases and what else the paragraph holds decides it. Without that rule this
+    change turned every existing block image into a run, which the format
+    tests caught.
+  - The element reserves a box for each picture through
+    `TextAttributeFactory::CreateShape` over its placeholder, so the line grows
+    to hold it and the following text flows along, then draws the picture at
+    the box's position.
+  - `ToPlainText`, `ToMarkdown` and `ToHTML` render a picture run as its alt
+    text, a markdown image reference and an embedded `<img>` respectively. The
+    placeholder never reaches a reader.
+  - `UCRichDocumentEditor::InsertInlineImage` and the element's
+    `InsertInlineImageFromFile`/`FromMemory` put a picture in the line at the
+    caret.
+  - Covered by 28 new checks in `Tests/RichTextEditorTest.cpp` (304 total),
+    12 in `Tests/RichTextEditElementTest.cpp` (96 total) and an inline round
+    trip in `Tests/WordFormatsTest.cpp`.
+
 #### 2026-09-16 *0.8.73*
 - **A drawing the framework could read showed nothing in the preview pane.**
   Core owns the vector document model and the renderer that draws one, but not

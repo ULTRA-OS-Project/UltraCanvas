@@ -290,6 +290,11 @@ public:
     int InsertImage(const std::string& name, const std::string& mimeType,
                     const std::vector<uint8_t>& data,
                     const std::string& altText = "");
+    // Inserts the picture INTO the line at the caret, as a run, rather than as
+    // a paragraph of its own. Returns the media index, or -1.
+    int InsertInlineImage(const std::string& name, const std::string& mimeType,
+                          const std::vector<uint8_t>& data,
+                          const std::string& altText = "");
     void DeleteBlock(int blockIndex);
 
     // ===== CLIPBOARD SUPPORT =====

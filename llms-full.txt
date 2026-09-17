@@ -41687,7 +41687,24 @@ editor->InsertHorizontalRule();
 editor->InsertPageBreak();
 editor->InsertImageFromFile("/path/diagram.png", "Architecture diagram");
 editor->InsertImageFromMemory("chart.png", "image/png", bytes, "Q3 revenue");
+
+// ...or INSIDE the line at the caret, rather than as a paragraph of its own:
+editor->InsertInlineImageFromFile("/path/logo.png", "Logo");
+editor->InsertInlineImageFromMemory("icon.png", "image/png", bytes, "warning");
 ```
+
+**A picture can sit in the text.** A run with `mediaIndex >= 0` *is* a picture -
+a logo mid-sentence, an icon in a heading - and its `text` is a single U+FFFC
+OBJECT REPLACEMENT CHARACTER. That placeholder gives the picture one character's
+worth of the block's text, so the caret steps over it, a selection covers it and
+Backspace deletes it, with no position needing to know it is not a letter. The
+layout reserves a box for it (`TextAttributeFactory::CreateShape`), so the line
+grows to hold it and the text after it flows along.
+
+Readers decide inline-versus-block by what else the paragraph holds: a picture
+alone on a line is a standalone `RichBlockType::Image`, a picture among words is
+a run. Both formats anchor the two the same way in their markup, so the markup
+alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.

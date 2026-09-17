@@ -40,7 +40,28 @@ struct RichTextRun {
     std::string color;              // "#RRGGBB" or empty = inherit
     bool lineBreakBefore = false;   // hard line break precedes this run (within the same paragraph)
 
+    // ===== INLINE IMAGE =====
+    // A run with mediaIndex >= 0 IS a picture sitting in the run of text - a
+    // logo mid-sentence, an icon in a heading - rather than a paragraph of its
+    // own (that is RichBlockType::Image). Its `text` is a single U+FFFC OBJECT
+    // REPLACEMENT CHARACTER, the standard placeholder for an inline attachment:
+    // it gives the picture one character's worth of the block's text, so the
+    // caret steps over it, a selection covers it and Backspace deletes it, all
+    // without any position needing to know it is not a letter.
+    int mediaIndex = -1;                // index into UCRichDocument::media
+    float imageWidthPt = 0.0f;          // 0 = use the image's own size
+    float imageHeightPt = 0.0f;
+    std::string imageAltText;
+
+    static constexpr const char* kObjectReplacement = "\xEF\xBF\xBC";   // U+FFFC
+
+    bool IsInlineImage() const { return mediaIndex >= 0; }
+
     bool HasSameFormatting(const RichTextRun& other) const {
+        // Two pictures are never one run, and a picture never merges into the
+        // text beside it: each placeholder has to stay its own run, because the
+        // run is what carries which picture it is.
+        if (IsInlineImage() || other.IsInlineImage()) return false;
         return bold == other.bold && italic == other.italic && underline == other.underline
             && strikethrough == other.strikethrough && code == other.code
             && subscript == other.subscript && superscript == other.superscript
