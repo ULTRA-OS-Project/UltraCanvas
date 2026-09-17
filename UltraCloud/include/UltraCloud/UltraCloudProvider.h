@@ -40,6 +40,24 @@ public:
     virtual Result Download(const Account& account, const Credentials& credentials,
                             const std::string& remotePath, const std::string& localPath) = 0;
 
+    // ---- Changing what is there (optional) ---------------------------------
+    // A provider that only ferries files out (a share-link target) does not
+    // need these; one carried as a drive in a file manager does. `isDirectory`
+    // is what the caller already knows from the Entry - FTP needs it to pick
+    // DELE over RMD, and no provider should pay for a probe to find out.
+    virtual Result Delete(const Account& account, const Credentials& credentials,
+                          const std::string& path, bool isDirectory) {
+        (void)account; (void)credentials; (void)path; (void)isDirectory;
+        return Result::Error(ResultCode::Unsupported, "this provider cannot delete");
+    }
+    // Renames in place: `newName` is a bare name, not a path, so this never
+    // moves an entry to another folder.
+    virtual Result Rename(const Account& account, const Credentials& credentials,
+                          const std::string& path, const std::string& newName) {
+        (void)account; (void)credentials; (void)path; (void)newName;
+        return Result::Error(ResultCode::Unsupported, "this provider cannot rename");
+    }
+
     // A link anyone can open. Returns Unsupported when the provider (or this
     // account's configuration) cannot mint one.
     virtual Result CreateShareLink(const Account& account, const Credentials& credentials,

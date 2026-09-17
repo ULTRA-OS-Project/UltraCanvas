@@ -49,7 +49,7 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.30.0
+// Version: 1.31.0
 // Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
@@ -94,6 +94,7 @@
 #include "Models/STL/UltraCanvasSTLLoader.h"
 #include "UltraCanvasModelPreview.h"
 #include "UltraCanvasVectorPreview.h"
+#include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -247,28 +248,189 @@ namespace UltraCanvas {
             return a.size() < b.size() ? -1 : 1;
         }
 
-        // Extension -> (type label, category). The label is completed to
-        // "<LABEL> <category noun>" ("PNG Image") in ApplyEntryTypeInfo.
+        // ===== FILE TYPE COLOUR FAMILIES =====
+        // A family is a hue (what kind of file this is) plus a ladder of
+        // shades (how efficient the format is, brightest first). The rungs
+        // below are not free-hand colours: each one is a fixed contrast step
+        // against the white glyph sheet, so rung 1 of the blues and rung 1 of
+        // the greens are equally deep, and every rung of a family clears
+        // 3.2:1 against the family's single ink. Two formats share a rung
+        // when they share a compressor - zip, jar and gz are all deflate.
+        //
+        // Lossless formats are their own family beside their lossy sibling
+        // (indigo beside azure, pure yellow beside orange) rather than a
+        // dulled version of it: media stays saturated, which is what makes a
+        // picture folder look like a picture folder.
+        enum class ColorFamily : uint8_t {
+            NoneFamily,     // no ladder: the category's own colour is used
+            ImageLossy,
+            ImageLossless,
+            Video,
+            AudioLossy,
+            AudioLossless,
+            VectorArt,
+            Model3D,
+            Document,
+            Spreadsheet,
+            TextCode,
+            Application,
+            Library,
+            Archive,
+            Font
+        };
+
+        const Color kImageLossyShades[] = {
+            Color( 45, 134, 234, 255),
+            Color( 22, 114, 219, 255),
+            Color( 18,  96, 186, 255),
+            Color( 15,  79, 152, 255),
+            Color( 12,  63, 122, 255)};
+        const Color kImageLosslessShades[] = {
+            Color(111, 121, 204, 255),
+            Color( 87,  97, 196, 255),
+            Color( 65,  77, 184, 255),
+            Color( 54,  63, 152, 255),
+            Color( 43,  51, 122, 255)};
+        const Color kVideoShades[] = {
+            Color( 28, 160,  75, 255),
+            Color( 26, 149,  69, 255),
+            Color( 24, 136,  63, 255),
+            Color( 21, 121,  56, 255),
+            Color( 18,  99,  46, 255),
+            Color( 15,  83,  38, 255)};
+        const Color kAudioLossyShades[] = {
+            Color(255, 170,  84, 255),
+            Color(255, 152,  48, 255),
+            Color(255, 132,   8, 255),
+            Color(243, 121,   0, 255),
+            Color(226, 113,   0, 255)};
+        const Color kAudioLosslessShades[] = {
+            Color(255, 220,  77, 255),
+            Color(253, 202,   0, 255),
+            Color(237, 189,   0, 255),
+            Color(222, 178,   0, 255)};
+        const Color kVectorArtShades[] = {
+            Color( 14, 147, 174, 255),
+            Color( 13, 136, 160, 255),
+            Color( 12, 121, 142, 255),
+            Color( 10, 103, 122, 255),
+            Color(  8,  86, 102, 255)};
+        const Color kModel3DShades[] = {
+            Color( 38, 153, 138, 255),
+            Color( 36, 145, 130, 255),
+            Color( 33, 133, 119, 255),
+            Color( 30, 119, 107, 255),
+            Color( 26, 102,  92, 255),
+            Color( 22,  88,  79, 255)};
+        const Color kDocumentShades[] = {
+            Color(168, 118, 212, 255),
+            Color(159, 105, 207, 255),
+            Color(151,  91, 203, 255),
+            Color(139,  73, 198, 255),
+            Color(126,  58, 185, 255),
+            Color(109,  51, 160, 255),
+            Color( 92,  43, 135, 255)};
+        const Color kSpreadsheetShades[] = {
+            Color(137,  53, 137, 255),
+            Color(167,  65, 167, 255),
+            Color(189,  87, 189, 255)};
+        const Color kTextCodeShades[] = {
+            Color(129, 139, 152, 255),
+            Color(148, 157, 168, 255),
+            Color(171, 177, 186, 255),
+            Color(186, 191, 199, 255)};
+        const Color kApplicationShades[] = {
+            Color(220,  54,  68, 255),
+            Color(202,  36,  49, 255),
+            Color(174,  31,  43, 255),
+            Color(145,  26,  36, 255)};
+        const Color kLibraryShades[] = {
+            Color( 68,  86,  98, 255),
+            Color( 80, 101, 115, 255),
+            Color( 92, 115, 132, 255),
+            Color(104, 131, 150, 255)};
+        const Color kArchiveShades[] = {
+            Color(132,  42,  87, 255),
+            Color(158,  50, 104, 255),
+            Color(185,  58, 121, 255),
+            Color(199,  78, 138, 255),
+            Color(207, 102, 155, 255)};
+        const Color kFontShades[] = {
+            Color(110,  74,  54, 255),
+            Color(129,  87,  63, 255),
+            Color(148, 100,  73, 255),
+            Color(164, 112,  81, 255),
+            Color(174, 122,  91, 255),
+            Color(180, 132, 103, 255)};
+
+        struct FamilyRamp {
+            const Color* shades = nullptr;
+            uint8_t      count  = 0;
+            // Captions drawn on top of these shades (the TreeMap's file
+            // names). One ink for the whole family, never per file.
+            bool         darkInk = false;
+        };
+
+        const FamilyRamp& RampOf(ColorFamily family) {
+            static const FamilyRamp kNone;
+            static const FamilyRamp kRamps[] = {
+                kNone,
+                {kImageLossyShades,    5, false},
+                {kImageLosslessShades, 5, false},
+                {kVideoShades,         6, false},
+                {kAudioLossyShades,    5, true},
+                {kAudioLosslessShades, 4, true},
+                {kVectorArtShades,     5, false},
+                {kModel3DShades,       6, false},
+                {kDocumentShades,      7, false},
+                {kSpreadsheetShades,   3, false},
+                {kTextCodeShades,      4, true},
+                {kApplicationShades,   4, false},
+                {kLibraryShades,       4, false},
+                {kArchiveShades,       5, false},
+                {kFontShades,          6, false},
+            };
+            const size_t i = static_cast<size_t>(family);
+            return i < sizeof(kRamps) / sizeof(kRamps[0]) ? kRamps[i] : kNone;
+        }
+
+        // A rank past the end of its ladder is the ladder's last rung rather
+        // than a fallback colour: a format filed one rung too far is still a
+        // format of that family, and a grey hole in a row of blues would be
+        // read as a different kind of file.
+        Color RampShade(ColorFamily family, uint8_t rank) {
+            const FamilyRamp& ramp = RampOf(family);
+            if (!ramp.shades || ramp.count == 0) return Color(158, 158, 158, 255);
+            return ramp.shades[rank < ramp.count ? rank : ramp.count - 1];
+        }
+
+        // Extension -> (type label, category, colour family, rank in it). The
+        // label is completed to "<LABEL> <category noun>" ("PNG Image") in
+        // ApplyEntryTypeInfo. An entry with no family (a format a plugin
+        // registered, which the table below does not list) falls back to its
+        // category's own colour.
         struct TypeInfo {
             const char* label;
             FilerFileCategory category;
+            ColorFamily family = ColorFamily::NoneFamily;
+            uint8_t     rank   = 0;
         };
 
         const std::map<std::string, TypeInfo>& ExtensionTypeMap() {
             static const std::map<std::string, TypeInfo> m = {
-                {"png",  {"PNG",  FilerFileCategory::Image}},
-                {"jpg",  {"JPEG", FilerFileCategory::Image}},
-                {"jpeg", {"JPEG", FilerFileCategory::Image}},
-                {"gif",  {"GIF",  FilerFileCategory::Image}},
-                {"bmp",  {"BMP",  FilerFileCategory::Image}},
-                {"webp", {"WebP", FilerFileCategory::Image}},
-                {"avif", {"AVIF", FilerFileCategory::Image}},
-                {"heif", {"HEIF", FilerFileCategory::Image}},
-                {"heic", {"HEIC", FilerFileCategory::Image}},
-                {"tif",  {"TIFF", FilerFileCategory::Image}},
-                {"tiff", {"TIFF", FilerFileCategory::Image}},
-                {"qoi",  {"QOI",  FilerFileCategory::Image}},
-                {"ico",  {"Icon", FilerFileCategory::Image}},
+                {"png",  {"PNG",  FilerFileCategory::Image, ColorFamily::ImageLossless, 0}},
+                {"jpg",  {"JPEG", FilerFileCategory::Image, ColorFamily::ImageLossy, 3}},
+                {"jpeg", {"JPEG", FilerFileCategory::Image, ColorFamily::ImageLossy, 3}},
+                {"gif",  {"GIF",  FilerFileCategory::Image, ColorFamily::ImageLossy, 4}},
+                {"bmp",  {"BMP",  FilerFileCategory::Image, ColorFamily::ImageLossless, 4}},
+                {"webp", {"WebP", FilerFileCategory::Image, ColorFamily::ImageLossy, 2}},
+                {"avif", {"AVIF", FilerFileCategory::Image, ColorFamily::ImageLossy, 0}},
+                {"heif", {"HEIF", FilerFileCategory::Image, ColorFamily::ImageLossy, 1}},
+                {"heic", {"HEIC", FilerFileCategory::Image, ColorFamily::ImageLossy, 1}},
+                {"tif",  {"TIFF", FilerFileCategory::Image, ColorFamily::ImageLossless, 2}},
+                {"tiff", {"TIFF", FilerFileCategory::Image, ColorFamily::ImageLossless, 2}},
+                {"qoi",  {"QOI",  FilerFileCategory::Image, ColorFamily::ImageLossless, 1}},
+                {"ico",  {"Icon", FilerFileCategory::Image, ColorFamily::ImageLossless, 3}},
                 // Vector: every format the FileLoader inventory reports for
                 // MediaFormatCategory::Vector - the image pipeline's own
                 // (svg/svgz, and eps/ps where the libvips build has a
@@ -277,110 +439,119 @@ namespace UltraCanvas {
                 // knows still lands in the right category through
                 // RegisteredCategoryForExtension below; these entries only
                 // give the well-known ones a proper name.
-                {"svg",  {"SVG",  FilerFileCategory::Vector}},
-                {"svgz", {"SVG (compressed)", FilerFileCategory::Vector}},
-                {"eps",  {"EPS",  FilerFileCategory::Vector}},
-                {"epsf", {"EPS",  FilerFileCategory::Vector}},
-                {"ps",   {"PostScript", FilerFileCategory::Vector}},
-                {"ai",   {"Illustrator", FilerFileCategory::Vector}},
-                {"cdr",  {"CorelDRAW", FilerFileCategory::Vector}},
-                {"cdt",  {"CorelDRAW Template", FilerFileCategory::Vector}},
-                {"cmx",  {"Corel Metafile", FilerFileCategory::Vector}},
-                {"ccx",  {"Corel Exchange", FilerFileCategory::Vector}},
-                {"xar",  {"Xara", FilerFileCategory::Vector}},
-                {"web",  {"Xara Web", FilerFileCategory::Vector}},
-                {"wix",  {"Xara Web", FilerFileCategory::Vector}},
-                {"emf",  {"Enhanced Metafile", FilerFileCategory::Vector}},
-                {"wmf",  {"Windows Metafile", FilerFileCategory::Vector}},
-                {"dxf",  {"AutoCAD DXF", FilerFileCategory::Vector}},
-                {"dwg",  {"AutoCAD DWG", FilerFileCategory::Vector}},
+                {"svg",  {"SVG",  FilerFileCategory::Vector, ColorFamily::VectorArt, 1}},
+                {"svgz", {"SVG (compressed)", FilerFileCategory::Vector, ColorFamily::VectorArt, 0}},
+                {"eps",  {"EPS",  FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"epsf", {"EPS",  FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"ps",   {"PostScript", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"ai",   {"Illustrator", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"cdr",  {"CorelDRAW", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"cdt",  {"CorelDRAW Template", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"cmx",  {"Corel Metafile", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"ccx",  {"Corel Exchange", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"xar",  {"Xara", FilerFileCategory::Vector, ColorFamily::VectorArt, 1}},
+                {"web",  {"Xara Web", FilerFileCategory::Vector, ColorFamily::VectorArt, 1}},
+                {"wix",  {"Xara Web", FilerFileCategory::Vector, ColorFamily::VectorArt, 1}},
+                {"emf",  {"Enhanced Metafile", FilerFileCategory::Vector, ColorFamily::VectorArt, 4}},
+                {"wmf",  {"Windows Metafile", FilerFileCategory::Vector, ColorFamily::VectorArt, 4}},
+                {"dxf",  {"AutoCAD DXF", FilerFileCategory::Vector, ColorFamily::VectorArt, 4}},
+                {"dwg",  {"AutoCAD DWG", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
                 // The same drawing database under AutoCAD's other suffixes.
-                {"dwt",  {"AutoCAD Template", FilerFileCategory::Vector}},
-                {"dws",  {"AutoCAD Standards", FilerFileCategory::Vector}},
-                {"sv$",  {"AutoCAD Autosave", FilerFileCategory::Vector}},
-                {"stl",  {"STL",  FilerFileCategory::Model3D}},
-                {"obj",  {"Wavefront", FilerFileCategory::Model3D}},
-                {"ply",  {"PLY",  FilerFileCategory::Model3D}},
-                {"3ds",  {"3D Studio", FilerFileCategory::Model3D}},
-                {"3mf",  {"3MF",  FilerFileCategory::Model3D}},
-                {"gltf", {"glTF", FilerFileCategory::Model3D}},
-                {"glb",  {"glTF Binary", FilerFileCategory::Model3D}},
-                {"dae",  {"COLLADA", FilerFileCategory::Model3D}},
-                {"fbx",  {"FBX",  FilerFileCategory::Model3D}},
-                {"mp3",  {"MP3",  FilerFileCategory::Audio}},
-                {"wav",  {"WAV",  FilerFileCategory::Audio}},
-                {"flac", {"FLAC", FilerFileCategory::Audio}},
-                {"ogg",  {"OGG",  FilerFileCategory::Audio}},
-                {"m4a",  {"M4A",  FilerFileCategory::Audio}},
-                {"m4b",  {"M4B",  FilerFileCategory::Audio}},
-                {"aac",  {"AAC",  FilerFileCategory::Audio}},
-                {"opus", {"Opus", FilerFileCategory::Audio}},
-                {"mp4",  {"MP4",  FilerFileCategory::Video}},
-                {"mkv",  {"MKV",  FilerFileCategory::Video}},
-                {"avi",  {"AVI",  FilerFileCategory::Video}},
-                {"mov",  {"QuickTime", FilerFileCategory::Video}},
-                {"webm", {"WebM", FilerFileCategory::Video}},
-                {"wmv",  {"WMV",  FilerFileCategory::Video}},
-                {"pdf",  {"PDF",  FilerFileCategory::Document}},
-                {"odt",  {"OpenDocument", FilerFileCategory::Document}},
-                {"doc",  {"Word", FilerFileCategory::Document}},
-                {"docx", {"Word", FilerFileCategory::Document}},
-                {"rtf",  {"RTF",  FilerFileCategory::Document}},
-                {"md",   {"Markdown", FilerFileCategory::Document}},
-                {"html", {"HTML", FilerFileCategory::Document}},
-                {"htm",  {"HTML", FilerFileCategory::Document}},
-                {"tex",  {"LaTeX", FilerFileCategory::Document}},
-                {"epub", {"EPUB", FilerFileCategory::Document}},
-                {"txt",  {"Text", FilerFileCategory::Text}},
-                {"log",  {"Log",  FilerFileCategory::Text}},
-                {"ini",  {"Config", FilerFileCategory::Text}},
-                {"conf", {"Config", FilerFileCategory::Text}},
-                {"json", {"JSON", FilerFileCategory::Text}},
-                {"xml",  {"XML",  FilerFileCategory::Text}},
-                {"yaml", {"YAML", FilerFileCategory::Text}},
-                {"yml",  {"YAML", FilerFileCategory::Text}},
-                {"csv",  {"CSV",  FilerFileCategory::Text}},
-                {"tsv",  {"TSV",  FilerFileCategory::Text}},
-                {"cpp",  {"C++ Source", FilerFileCategory::Text}},
-                {"cc",   {"C++ Source", FilerFileCategory::Text}},
-                {"h",    {"C Header", FilerFileCategory::Text}},
-                {"hpp",  {"C++ Header", FilerFileCategory::Text}},
-                {"c",    {"C Source", FilerFileCategory::Text}},
-                {"py",   {"Python", FilerFileCategory::Text}},
-                {"js",   {"JavaScript", FilerFileCategory::Text}},
-                {"ts",   {"TypeScript", FilerFileCategory::Text}},
-                {"sh",   {"Shell Script", FilerFileCategory::Text}},
-                {"ods",  {"OpenDocument", FilerFileCategory::Spreadsheet}},
-                {"xls",  {"Excel", FilerFileCategory::Spreadsheet}},
-                {"xlsx", {"Excel", FilerFileCategory::Spreadsheet}},
-                {"zip",  {"ZIP",  FilerFileCategory::Archive}},
-                {"7z",   {"7-Zip", FilerFileCategory::Archive}},
-                {"rar",  {"RAR",  FilerFileCategory::Archive}},
-                {"tar",  {"TAR",  FilerFileCategory::Archive}},
-                {"gz",   {"GZip", FilerFileCategory::Archive}},
-                {"tgz",  {"TAR GZip", FilerFileCategory::Archive}},
-                {"bz2",  {"BZip2", FilerFileCategory::Archive}},
-                {"xz",   {"XZ",   FilerFileCategory::Archive}},
-                {"zst",  {"Zstandard", FilerFileCategory::Archive}},
-                {"jar",  {"Java Archive", FilerFileCategory::Archive}},
-                {"exe",  {"Executable", FilerFileCategory::Executable}},
-                {"appimage", {"AppImage", FilerFileCategory::Executable}},
-                {"deb",  {"Debian Package", FilerFileCategory::Executable}},
-                {"rpm",  {"RPM Package", FilerFileCategory::Executable}},
-                {"so",   {"Shared Library", FilerFileCategory::Executable}},
-                {"dll",  {"Library", FilerFileCategory::Executable}},
-                {"ttf",  {"TrueType Font", FilerFileCategory::Font}},
-                {"ttc",  {"TrueType Collection", FilerFileCategory::Font}},
-                {"otf",  {"OpenType Font", FilerFileCategory::Font}},
-                {"otc",  {"OpenType Collection", FilerFileCategory::Font}},
-                {"woff", {"Web Font", FilerFileCategory::Font}},
-                {"woff2",{"Web Font 2", FilerFileCategory::Font}},
-                {"pfb",  {"Type 1 Font", FilerFileCategory::Font}},
-                {"pfa",  {"Type 1 Font", FilerFileCategory::Font}},
-                {"bdf",  {"Bitmap Font", FilerFileCategory::Font}},
-                {"pcf",  {"Bitmap Font", FilerFileCategory::Font}},
-                {"fon",  {"Bitmap Font", FilerFileCategory::Font}},
-                {"fnt",  {"Bitmap Font", FilerFileCategory::Font}},
+                {"dwt",  {"AutoCAD Template", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"dws",  {"AutoCAD Standards", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"sv$",  {"AutoCAD Autosave", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"stl",  {"STL",  FilerFileCategory::Model3D, ColorFamily::Model3D, 2}},
+                {"obj",  {"Wavefront", FilerFileCategory::Model3D, ColorFamily::Model3D, 5}},
+                {"ply",  {"PLY",  FilerFileCategory::Model3D, ColorFamily::Model3D, 3}},
+                {"3ds",  {"3D Studio", FilerFileCategory::Model3D, ColorFamily::Model3D, 3}},
+                {"3mf",  {"3MF",  FilerFileCategory::Model3D, ColorFamily::Model3D, 1}},
+                {"gltf", {"glTF", FilerFileCategory::Model3D, ColorFamily::Model3D, 4}},
+                {"glb",  {"glTF Binary", FilerFileCategory::Model3D, ColorFamily::Model3D, 0}},
+                {"dae",  {"COLLADA", FilerFileCategory::Model3D, ColorFamily::Model3D, 5}},
+                {"fbx",  {"FBX",  FilerFileCategory::Model3D, ColorFamily::Model3D, 2}},
+                {"mp3",  {"MP3",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 4}},
+                {"wav",  {"WAV",  FilerFileCategory::Audio, ColorFamily::AudioLossless, 2}},
+                {"flac", {"FLAC", FilerFileCategory::Audio, ColorFamily::AudioLossless, 0}},
+                {"ogg",  {"OGG",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 3}},
+                {"m4a",  {"M4A",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 1}},
+                {"m4b",  {"M4B",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 2}},
+                {"aac",  {"AAC",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 1}},
+                {"opus", {"Opus", FilerFileCategory::Audio, ColorFamily::AudioLossy, 0}},
+                {"aiff", {"AIFF", FilerFileCategory::Audio, ColorFamily::AudioLossless, 3}},
+                {"aif",  {"AIFF", FilerFileCategory::Audio, ColorFamily::AudioLossless, 3}},
+                {"mp4",  {"MP4",  FilerFileCategory::Video, ColorFamily::Video, 2}},
+                {"mkv",  {"MKV",  FilerFileCategory::Video, ColorFamily::Video, 1}},
+                {"avi",  {"AVI",  FilerFileCategory::Video, ColorFamily::Video, 4}},
+                {"mov",  {"QuickTime", FilerFileCategory::Video, ColorFamily::Video, 3}},
+                {"webm", {"WebM", FilerFileCategory::Video, ColorFamily::Video, 0}},
+                {"wmv",  {"WMV",  FilerFileCategory::Video, ColorFamily::Video, 5}},
+                {"pdf",  {"PDF",  FilerFileCategory::Document, ColorFamily::Document, 0}},
+                {"odt",  {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
+                {"doc",  {"Word", FilerFileCategory::Document, ColorFamily::Document, 4}},
+                {"docx", {"Word", FilerFileCategory::Document, ColorFamily::Document, 3}},
+                {"rtf",  {"RTF",  FilerFileCategory::Document, ColorFamily::Document, 5}},
+                {"md",   {"Markdown", FilerFileCategory::Document, ColorFamily::Document, 6}},
+                {"html", {"HTML", FilerFileCategory::Document, ColorFamily::Document, 6}},
+                {"htm",  {"HTML", FilerFileCategory::Document, ColorFamily::Document, 6}},
+                {"tex",  {"LaTeX", FilerFileCategory::Document, ColorFamily::Document, 6}},
+                {"epub", {"EPUB", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"txt",  {"Text", FilerFileCategory::Text, ColorFamily::TextCode, 2}},
+                {"log",  {"Log",  FilerFileCategory::Text, ColorFamily::TextCode, 3}},
+                {"ini",  {"Config", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"conf", {"Config", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"json", {"JSON", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"xml",  {"XML",  FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"yaml", {"YAML", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"yml",  {"YAML", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"csv",  {"CSV",  FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"tsv",  {"TSV",  FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"cpp",  {"C++ Source", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"cc",   {"C++ Source", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"h",    {"C Header", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"hpp",  {"C++ Header", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"c",    {"C Source", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"py",   {"Python", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"js",   {"JavaScript", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"ts",   {"TypeScript", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"sh",   {"Shell Script", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"ods",  {"OpenDocument", FilerFileCategory::Spreadsheet, ColorFamily::Spreadsheet, 1}},
+                {"xls",  {"Excel", FilerFileCategory::Spreadsheet, ColorFamily::Spreadsheet, 2}},
+                {"xlsx", {"Excel", FilerFileCategory::Spreadsheet, ColorFamily::Spreadsheet, 0}},
+                {"zip",  {"ZIP",  FilerFileCategory::Archive, ColorFamily::Archive, 3}},
+                {"7z",   {"7-Zip", FilerFileCategory::Archive, ColorFamily::Archive, 0}},
+                {"rar",  {"RAR",  FilerFileCategory::Archive, ColorFamily::Archive, 2}},
+                {"tar",  {"TAR",  FilerFileCategory::Archive, ColorFamily::Archive, 4}},
+                {"gz",   {"GZip", FilerFileCategory::Archive, ColorFamily::Archive, 3}},
+                {"tgz",  {"TAR GZip", FilerFileCategory::Archive, ColorFamily::Archive, 3}},
+                {"bz2",  {"BZip2", FilerFileCategory::Archive, ColorFamily::Archive, 2}},
+                {"xz",   {"XZ",   FilerFileCategory::Archive, ColorFamily::Archive, 1}},
+                {"zst",  {"Zstandard", FilerFileCategory::Archive, ColorFamily::Archive, 0}},
+                {"lzma", {"LZMA", FilerFileCategory::Archive, ColorFamily::Archive, 1}},
+                {"jar",  {"Java Archive", FilerFileCategory::Archive, ColorFamily::Archive, 3}},
+                {"exe",  {"Executable", FilerFileCategory::Executable, ColorFamily::Application, 0}},
+                {"appimage", {"AppImage", FilerFileCategory::Executable, ColorFamily::Application, 1}},
+                {"deb",  {"Debian Package", FilerFileCategory::Executable, ColorFamily::Application, 3}},
+                {"rpm",  {"RPM Package", FilerFileCategory::Executable, ColorFamily::Application, 3}},
+                {"msi",  {"Installer", FilerFileCategory::Executable, ColorFamily::Application, 2}},
+                // Loaded by a program, never launched by the user: their own
+                // category, their own noun, their own ramp of greys.
+                {"so",   {"Shared Object", FilerFileCategory::Library, ColorFamily::Library, 0}},
+                {"dll",  {"Dynamic Link", FilerFileCategory::Library, ColorFamily::Library, 1}},
+                {"dylib",{"Dynamic", FilerFileCategory::Library, ColorFamily::Library, 2}},
+                {"a",    {"Static", FilerFileCategory::Library, ColorFamily::Library, 3}},
+                {"lib",  {"Static", FilerFileCategory::Library, ColorFamily::Library, 3}},
+                {"ttf",  {"TrueType Font", FilerFileCategory::Font, ColorFamily::Font, 3}},
+                {"ttc",  {"TrueType Collection", FilerFileCategory::Font, ColorFamily::Font, 4}},
+                {"otf",  {"OpenType Font", FilerFileCategory::Font, ColorFamily::Font, 2}},
+                {"otc",  {"OpenType Collection", FilerFileCategory::Font, ColorFamily::Font, 4}},
+                {"woff", {"Web Font", FilerFileCategory::Font, ColorFamily::Font, 1}},
+                {"woff2",{"Web Font 2", FilerFileCategory::Font, ColorFamily::Font, 0}},
+                {"pfb",  {"Type 1 Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"pfa",  {"Type 1 Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"bdf",  {"Bitmap Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"pcf",  {"Bitmap Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"fon",  {"Bitmap Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"fnt",  {"Bitmap Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
             };
             return m;
         }
@@ -459,27 +630,68 @@ namespace UltraCanvas {
                 case FilerFileCategory::Spreadsheet: return "Spreadsheet";
                 case FilerFileCategory::Archive:     return "Archive";
                 case FilerFileCategory::Executable:  return "Program";
+                case FilerFileCategory::Library:     return "Library";
                 case FilerFileCategory::Font:        return "Font";
                 default:                             return "File";
             }
         }
 
+        // The colour of a category with no ranked format behind it: a folder,
+        // a format one of the plugins registered (it has a family but no rung
+        // in its ladder), a file whose extension nothing recognises. Each one
+        // is the rung the everyday formats of that family sit on, so an
+        // unranked image still lands among the images instead of in a grey
+        // hole. The folder amber is the one colour kept from the old palette:
+        // it is the icon nobody should have to relearn.
         Color CategoryColor(FilerFileCategory c) {
             switch (c) {
                 case FilerFileCategory::Folder:      return Color(247, 190, 80, 255);
-                case FilerFileCategory::Image:       return Color(76, 175, 130, 255);
-                case FilerFileCategory::Vector:      return Color(0, 150, 167, 255);
-                case FilerFileCategory::Model3D:     return Color(126, 87, 194, 255);
-                case FilerFileCategory::Audio:       return Color(156, 89, 182, 255);
-                case FilerFileCategory::Video:       return Color(230, 106, 86, 255);
-                case FilerFileCategory::Document:    return Color(66, 133, 244, 255);
-                case FilerFileCategory::Text:        return Color(120, 144, 156, 255);
-                case FilerFileCategory::Spreadsheet: return Color(46, 125, 50, 255);
-                case FilerFileCategory::Archive:     return Color(141, 110, 99, 255);
-                case FilerFileCategory::Executable:  return Color(84, 110, 122, 255);
-                case FilerFileCategory::Font:        return Color(216, 67, 21, 255);
+                case FilerFileCategory::Image:       return RampShade(ColorFamily::ImageLossy, 2);
+                case FilerFileCategory::Vector:      return RampShade(ColorFamily::VectorArt, 2);
+                case FilerFileCategory::Model3D:     return RampShade(ColorFamily::Model3D, 2);
+                case FilerFileCategory::Audio:       return RampShade(ColorFamily::AudioLossy, 2);
+                case FilerFileCategory::Video:       return RampShade(ColorFamily::Video, 2);
+                case FilerFileCategory::Document:    return RampShade(ColorFamily::Document, 3);
+                case FilerFileCategory::Text:        return RampShade(ColorFamily::TextCode, 1);
+                case FilerFileCategory::Spreadsheet: return RampShade(ColorFamily::Spreadsheet, 1);
+                case FilerFileCategory::Archive:     return RampShade(ColorFamily::Archive, 3);
+                case FilerFileCategory::Executable:  return RampShade(ColorFamily::Application, 0);
+                case FilerFileCategory::Library:     return RampShade(ColorFamily::Library, 1);
+                case FilerFileCategory::Font:        return RampShade(ColorFamily::Font, 2);
                 default:                             return Color(158, 158, 158, 255);
             }
+        }
+
+        // Which half of the palette a category lives in, for the entries that
+        // never reach a ladder. The light families - the folder amber, the
+        // oranges and yellows of audio, the text greys, the unrecognised grey
+        // - take dark captions; everything else takes white ones.
+        bool CategoryUsesDarkInk(FilerFileCategory c) {
+            switch (c) {
+                case FilerFileCategory::Folder:
+                case FilerFileCategory::Audio:
+                case FilerFileCategory::Text:
+                case FilerFileCategory::Other: return true;
+                default:                       return false;
+            }
+        }
+
+        // The colour of a format: its rung when the table ranks it, its
+        // category's colour when it does not.
+        Color FormatColor(const std::string& ext, FilerFileCategory category) {
+            const auto& m = ExtensionTypeMap();
+            auto it = m.find(ext);
+            if (it != m.end() && it->second.family != ColorFamily::NoneFamily)
+                return RampShade(it->second.family, it->second.rank);
+            return CategoryColor(category);
+        }
+
+        bool FormatUsesDarkInk(const std::string& ext, FilerFileCategory category) {
+            const auto& m = ExtensionTypeMap();
+            auto it = m.find(ext);
+            if (it != m.end() && it->second.family != ColorFamily::NoneFamily)
+                return RampOf(it->second.family).darkInk;
+            return CategoryUsesDarkInk(category);
         }
 
         std::string FormatSize(uint64_t bytes) {
@@ -693,6 +905,7 @@ namespace UltraCanvas {
                     // plugin read them perfectly well.
                     return ImagePipelineLoadsExtension(ext) ||
                            CanPreviewVectorExtension(ext) ||
+                           IsVectorGraphicsPath("file." + ext) ||
                            FormatCarriesEmbeddedPreview(ext);
                 case FilerPreviewType::Models3D:
                     return CanPreviewModelExtension(ext);
@@ -806,6 +1019,13 @@ namespace UltraCanvas {
             return img->GetPixmap(w, h, fit, scale);
         }
 
+        // Logical size times the display scale, floored at one pixel.
+        int DeviceEdge(int logical, float scale) {
+            if (logical <= 0) return 0;
+            return std::max(1, static_cast<int>(std::lround(
+                    logical * std::max(1.0f, scale))));
+        }
+
         // ===== VECTOR DRAWING PREVIEW =====
         // The drawing itself, for the formats a registered Vector plugin
         // reads (UltraCanvasVectorPreview.h): DXF, DWG and the rest, which
@@ -824,7 +1044,26 @@ namespace UltraCanvas {
                                                             int w, int h, float scale) {
             static std::mutex renderMutex;
             std::lock_guard<std::mutex> lock(renderMutex);
-            return RenderVectorPreviewPixmap(path, w, h, scale);
+            if (auto pm = RenderVectorPreviewPixmap(path, w, h, scale)) return pm;
+            // Formats no reader turns into a document, but a registered
+            // graphics plugin can draw: the CorelDRAW files libcdr parses,
+            // and anything else a plugin claims. The plugin's own element is
+            // rendered into an offscreen context by UltraCanvasVectorRaster
+            // and handed back as pixels, which is why this shares the mutex
+            // above rather than getting one of its own.
+            if (!IsVectorGraphicsPath(path)) return nullptr;
+            VectorRasterOptions options;
+            options.width = DeviceEdge(w, scale);
+            options.height = DeviceEdge(h, scale);
+            std::string error;
+            auto layer = RasterizeVectorFile(path, options, error);
+            if (!layer || !layer->IsValid()) {
+                if (!error.empty())
+                    debugOutput << "Filer: " << path << ": " << error << std::endl;
+                return nullptr;
+            }
+            return PixmapFromRGBA(layer->Row(0), layer->GetWidth(),
+                                  layer->GetHeight(), layer->GetWidth() * 4);
         }
 
         // ===== 3D MODEL PREVIEW =====
@@ -2712,6 +2951,14 @@ namespace UltraCanvas {
         }
     }
 
+    bool UltraCanvasFilerWidget::RefuseWriteHere(const char* what) {
+        if (currentPath.empty() || !isRemotePath || !isRemotePath(currentPath))
+            return false;
+        ReportError(std::string("Cannot ") + what +
+                    " on a remote drive: this build can browse one, not change it.");
+        return true;
+    }
+
     void UltraCanvasFilerWidget::ScanRealDirectory(const std::string& path,
                                                    bool includeHidden,
                                                    std::vector<FilerEntry>& out,
@@ -2901,7 +3148,17 @@ namespace UltraCanvas {
         DropThumbnailCache();
 
         std::error_code ec;
-        bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
+        // A remote drive's path is the host's to answer (see remoteListing),
+        // and is recognised before std::filesystem is asked anything: such a
+        // path is not on this machine, so is_directory() could only fail -
+        // after however long the OS takes to decide that.
+        const bool isRemoteDir = !fileListMode && !currentPath.empty() &&
+                                 isRemotePath && isRemotePath(currentPath);
+        bool isRealDir = !isRemoteDir && !currentPath.empty() &&
+                         fs::is_directory(currentPath, ec);
+        // Stays false for a remote listing: what it gates - the folder
+        // previews, the lock column - reads the local filesystem per entry,
+        // which is exactly what a remote drive cannot serve.
         listingIsRealDirectory = fileListMode || isRealDir;
 
         // What this listing leaves out, for the hidden-items notice: the
@@ -2934,6 +3191,27 @@ namespace UltraCanvas {
                 }
             } else {
                 entries = std::move(listing);
+            }
+        } else if (isRemoteDir) {
+            // A remote drive. The host answers from what it already holds; an
+            // empty listing with no error is the "still fetching" case, and
+            // the Refresh() it posts when the data lands brings us back here.
+            std::vector<FilerEntry> listing;
+            std::string error;
+            if (!remoteListing ||
+                !remoteListing(currentPath, listing, error)) {
+                if (!error.empty()) ReportError(error);
+            } else {
+                for (FilerEntry& e : listing) {
+                    if (e.isHidden && !showHiddenFiles) { ++heldBack; continue; }
+                    // The host supplies the facts it knows; the type
+                    // information is derived here, the way the archive branch
+                    // below derives it, so a remote file gets the same icon
+                    // and category as a local one of the same name.
+                    e.extension = e.isDirectory ? "" : LowerExtension(e.name);
+                    ApplyEntryTypeInfo(e);
+                    entries.push_back(std::move(e));
+                }
             }
         }
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -3559,6 +3837,30 @@ namespace UltraCanvas {
     std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
         if (e.isDirectory) return "";
         return LooksLikeFileExtension(e.extension) ? e.extension : std::string();
+    }
+
+    Color UltraCanvasFilerWidget::EntryColorOf(const FilerEntry& e) {
+        // A directory is coloured by what it is and never by a dot in its
+        // name: a folder called "render.mp4" is a folder, not a video. That
+        // also keeps a bundle (a directory the platform presents as one
+        // object) on its application colour.
+        if (e.isDirectory) return CategoryColor(e.category);
+        // A shortcut has the category of what it points at but its own
+        // extension (.lnk, .desktop), which no ladder ranks - so it lands on
+        // that category's colour, which is exactly the target's family.
+        return FormatColor(e.extension, e.category);
+    }
+
+    Color UltraCanvasFilerWidget::EntryCaptionInkOf(const FilerEntry& e) {
+        const bool dark = e.isDirectory
+                                  ? CategoryUsesDarkInk(e.category)
+                                  : FormatUsesDarkInk(e.extension, e.category);
+        return dark ? Color(28, 28, 34, 255) : Color(255, 255, 255, 255);
+    }
+
+    Color UltraCanvasFilerWidget::FormatColorOf(const std::string& extension,
+                                                FilerFileCategory category) {
+        return FormatColor(extension, category);
     }
 
     std::string UltraCanvasFilerWidget::DisplayNameOf(const FilerEntry& e) const {
@@ -4317,6 +4619,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::Paste() {
+        if (RefuseWriteHere("paste")) return;
         // The system clipboard wins: it holds whatever was copied last,
         // whether here (mirrored by SelectionToClipboard) or in another
         // program. The internal clipboard is the fallback when no system
@@ -4904,6 +5207,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DeleteSelection() {
+        if (RefuseWriteHere("delete")) return;
         DeleteEntries(GetSelectedEntries());
     }
 
@@ -5586,6 +5890,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DuplicateSelection() {
+        if (RefuseWriteHere("duplicate")) return;
         std::vector<FilerEntry> sources = GetSelectedEntries();
         if (sources.empty()) return;
         std::vector<std::string> paths;
@@ -5600,6 +5905,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::StartRename(size_t entryIndex) {
+        if (RefuseWriteHere("rename")) return;
         if (entryIndex >= entries.size()) return;
         CancelPendingRename();   // the editor opens now; drop any armed click
         if (renamingIndex >= 0) CancelRename();   // only one editor at a time
@@ -7235,6 +7541,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewDocument(const FilerNewDocumentType& type) {
+        if (RefuseWriteHere("create a file")) return;
         // The fresh document lands in the shown folder and has to be visible
         // there (with its rename editor reachable): a file-list (search
         // result) display returns to the folder first, and an active name
@@ -7268,6 +7575,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewFolder() {
+        if (RefuseWriteHere("create a folder")) return;
         // Same as CreateNewDocument: the fresh folder must be visible in the
         // folder display, so the search-result display and the name filter
         // both end here.
@@ -8535,6 +8843,7 @@ namespace UltraCanvas {
                 // preview - keeps the type glyph.
                 return (ImagePipelineLoadsExtension(e.extension) ||
                         CanPreviewVectorExtension(e.path) ||
+                        IsVectorGraphicsPath(e.path) ||
                         FormatCarriesEmbeddedPreview(e.extension))
                                ? e.path : std::string{};
             // Videos thumbnail as their poster frame (the first frame of the
@@ -10028,7 +10337,7 @@ namespace UltraCanvas {
             }
         }
 
-        Color color = CategoryColor(e.category);
+        Color color = EntryColorOf(e);
         if (e.isDirectory) {
             // A folder the host gave an icon (the well-known user folders, or
             // one the user picked) is drawn as that image instead of the
@@ -10548,7 +10857,7 @@ namespace UltraCanvas {
         const FilerEntry& e = entries[item.entryIndex];
         bool selected = item.entryIndex < frameSelected.size() &&
                         frameSelected[item.entryIndex];
-        Color base = CategoryColor(e.category);
+        Color base = EntryColorOf(e);
         // Vary the shade a little by index so equal categories stay separable.
         int delta = int(item.entryIndex % 5) * 6 - 12;
         Color fill(clampi(base.r + delta, 0, 255), clampi(base.g + delta, 0, 255),
@@ -10575,7 +10884,12 @@ namespace UltraCanvas {
             fsty.fontSize = style.smallFontSize;
             fsty.fontWeight = FontWeight::Bold;
             ctx->SetFontStyle(fsty);
-            ctx->SetTextPaint(Color(255, 255, 255, 235));
+            // The caption sits ON the category colour, so its ink comes from
+            // the entry's family rather than being white by assumption: white
+            // on the dark families, near-black on the light ones (audio, text
+            // and code, folders), where white would be unreadable.
+            const Color ink = EntryCaptionInkOf(e);
+            ctx->SetTextPaint(Color(ink.r, ink.g, ink.b, 235));
             // The name wraps into whatever the cell has room for above the size
             // line (cells are sized by the treemap, not by the caption).
             int lineH = NameLineHeight();
@@ -10594,7 +10908,7 @@ namespace UltraCanvas {
             if (showSize) {
                 fsty.fontWeight = FontWeight::Normal;
                 ctx->SetFontStyle(fsty);
-                ctx->SetTextPaint(Color(255, 255, 255, 190));
+                ctx->SetTextPaint(Color(ink.r, ink.g, ink.b, 190));
                 ctx->DrawText(FormatSize(e.effectiveSize),
                               Point2Dd(item.rect.x + 4, ny + 1));
             }

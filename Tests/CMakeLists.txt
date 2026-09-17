@@ -1699,6 +1699,33 @@ add_test(NAME ClassLayoutTest COMMAND ClassLayoutTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ClassLayoutTest")
 
+# ===== AUTOMATIC FORMAT REGISTRATION TEST =====
+# Pins that linking UltraCanvasAllFormats is all an application does: the
+# test calls no Register*Plugin() and still finds every built plugin in the
+# registry. Guards the two things that would quietly break it - a static
+# library letting the linker drop the registrar, and a registry constructed
+# after the registration that filled it.
+if(TARGET UltraCanvasAllFormats)
+    message(STATUS "  Building AutoFormatRegistrationTest...")
+    add_executable(AutoFormatRegistrationTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/AutoFormatRegistrationTest.cpp
+    )
+    target_include_directories(AutoFormatRegistrationTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+    )
+    target_compile_features(AutoFormatRegistrationTest PRIVATE cxx_std_20)
+    target_link_libraries(AutoFormatRegistrationTest PRIVATE
+        ${ULTRACANVAS_PLUGIN_TARGETS} UltraCanvasAllFormats UltraCanvas)
+    set_target_properties(AutoFormatRegistrationTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME AutoFormatRegistrationTest COMMAND AutoFormatRegistrationTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: AutoFormatRegistrationTest")
+else()
+    message(STATUS "  AutoFormatRegistrationTest skipped (no format plugins built)")
+endif()
+
 # ===== DISABLED CONTROL CONTRAST TEST =====
 # One rule for every control with a disabled state: the disabled face, border
 # and label must be LIGHTER than the live ones. The defaults had it backwards
@@ -2190,6 +2217,10 @@ if(TARGET UltraCanvasCDRPlugin AND TARGET UltraCanvasVectorPlugin)
     target_compile_features(CDRWriterTest PRIVATE cxx_std_20)
     target_link_libraries(CDRWriterTest PRIVATE
         UltraCanvasVectorPlugin UltraCanvasCDRPlugin UltraCanvas)
+    # Exported symbols, so the crash backtrace this test prints can name the
+    # frames in our own painter and not just the ones in libcdr's shared
+    # object. Costs nothing but a slightly larger dynamic symbol table.
+    set_target_properties(CDRWriterTest PROPERTIES ENABLE_EXPORTS ON)
     if(NOT WIN32)
         find_package(PkgConfig QUIET)
         if(PkgConfig_FOUND)
@@ -2558,6 +2589,28 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER REMOTE PATH TEST =====
+# The path scheme of UltraFiler's remote drives and the timestamps their
+# listings carry (Apps/UltraFiler/UltraFilerRemotePath.h). Header-only and
+# free of UltraCloud, so the test runs on any build - including one without
+# the module the drives themselves need.
+message(STATUS "  Building FilerRemotePathTest...")
+add_executable(FilerRemotePathTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerRemotePathTest.cpp
+)
+target_include_directories(FilerRemotePathTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerRemotePathTest PRIVATE cxx_std_20)
+set_target_properties(FilerRemotePathTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerRemotePathTest COMMAND FilerRemotePathTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerRemotePathTest")
+
+message(STATUS "")
+
 # ===== FILER VOLUME SPACE TEST =====
 # The Computer page's drive cards: the used share the pie chart is cut by
 # and the "free of" line under it (Apps/UltraFiler/UltraFilerVolumeSpace.h).
@@ -2627,6 +2680,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerFormatListTest")
 else()
     message(STATUS "  FilerFormatListTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER FORMAT COLOUR TEST =====
+# The file-type palette: a family is a hue, brightness is efficiency, and the
+# caption ink belongs to the family rather than to the file. A .dll drawn in
+# the colour of a .exe is how a folder of libraries came to look like a folder
+# of programs.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerFormatColorTest...")
+    add_executable(FilerFormatColorTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerFormatColorTest.cpp
+    )
+    target_include_directories(FilerFormatColorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerFormatColorTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerFormatColorTest PRIVATE UltraCanvas)
+    set_target_properties(FilerFormatColorTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerFormatColorTest COMMAND FilerFormatColorTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerFormatColorTest")
+else()
+    message(STATUS "  FilerFormatColorTest skipped (UltraCanvas target not present)")
 endif()
 
 message(STATUS "")
