@@ -625,17 +625,19 @@ namespace {
     constexpr const char* kHistoryTabTitles[] = {"Files", "Folders", "Apps"};
 
     // Does this entry belong in the History view's Apps tab rather than its
-    // Files tab? Program and installer extensions say so outright; on the
-    // Unixes a plain executable usually has no extension at all, so the
-    // execute bit decides there. FilerFileCategory::Executable is not used on
-    // its own because it also covers .so / .dll, which are libraries rather
-    // than things the user launches.
+    // Files tab? The widget's Executable category answers for every format it
+    // knows - and answers it correctly now that libraries have a category of
+    // their own, so a .so no longer counts as something the user launches.
+    // The list below is what it cannot answer: formats the widget's table
+    // does not carry (.com, .bat, .apk, .snap) and, on the Unixes, a plain
+    // executable with no extension at all, where the execute bit decides.
     bool IsApplicationEntry(const FilerEntry& e) {
         if (e.isDirectory) return false;
         // A Windows shortcut is whatever it points at: one to a program
         // belongs in the Applications list (that is what a Start-Menu entry
         // is), one to a document does not.
         if (e.isShortcut) return e.category == FilerFileCategory::Executable;
+        if (e.category == FilerFileCategory::Executable) return true;
         static const char* const kAppExtensions[] = {
             "exe", "msi", "com", "bat", "cmd", "appimage", "desktop",
             "app", "apk", "deb", "rpm", "flatpakref", "snap", "run"};

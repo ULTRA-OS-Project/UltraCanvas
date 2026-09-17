@@ -2653,6 +2653,31 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER FORMAT COLOUR TEST =====
+# The file-type palette: a family is a hue, brightness is efficiency, and the
+# caption ink belongs to the family rather than to the file. A .dll drawn in
+# the colour of a .exe is how a folder of libraries came to look like a folder
+# of programs.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerFormatColorTest...")
+    add_executable(FilerFormatColorTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerFormatColorTest.cpp
+    )
+    target_include_directories(FilerFormatColorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerFormatColorTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerFormatColorTest PRIVATE UltraCanvas)
+    set_target_properties(FilerFormatColorTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerFormatColorTest COMMAND FilerFormatColorTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerFormatColorTest")
+else()
+    message(STATUS "  FilerFormatColorTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== FILER FILE-EXTENSION DISPLAY TEST =====
 # Display > File extensions: the name the file display draws for an entry and
 # the type tag its thumbnail tiles carry. Hiding an extension must never

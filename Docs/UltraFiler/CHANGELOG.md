@@ -34,10 +34,22 @@
   list itself. A build made without UltraCloud has the button disabled and
   says why, rather than offering something it cannot do.
 
-  Built on framework 0.8.81's `isRemotePath` / `remoteListing` hooks and the
+  Built on framework 0.8.82's `isRemotePath` / `remoteListing` hooks and the
   add-account dialog's new provider filter; UltraFiler's own part is
   `UltraFilerRemoteDrives` (the drive list, the listing cache and its worker)
   and `UltraFilerRemotePath.h` (the `ultracloud://<account><path>` scheme).
+#### 2026-09-17 *1.39.2*
+- **Programs and libraries are told apart on sight.** The framework's file
+  display now carries a `Library` category of its own, so `.dll`, `.so` and
+  `.dylib` are steel grey against the dark red of `.exe` and the installers,
+  and the Type column calls `core.dll` a *Dynamic Link Library* instead of a
+  *Library Program*. The whole file-type palette moves with it: hue says which
+  family a file belongs to, brightness says how efficient its format is (AVIF
+  over JPEG over GIF, Opus over MP3, WebM over AVI), and lossless formats sit
+  beside their lossy siblings instead of being a duller shade of them.
+- The History view's *Apps* tab asks the category rather than matching its own
+  list of program extensions — the list existed only because the old category
+  counted libraries as programs.
 #### 2026-09-17 *1.39.1*
 - **The Cloud Storage section no longer gives up after one look.** The folder
   tree's cloud lookup marks itself busy while it runs so two cannot overlap,

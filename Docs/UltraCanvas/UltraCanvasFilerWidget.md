@@ -1124,6 +1124,92 @@ rule, including a desktop launcher's own `Name=`
 where the home folder is shown as *Home* — what the folder tree's row and the
 folder tab call it too — instead of the account the folder is named after.
 
+## File type colours
+
+Every colour the display gives an entry — the band across the foot of its
+glyph, its TreeMap cell, the folder shape — comes from
+`UltraCanvasFilerWidget::EntryColorOf(entry)`. Three independent channels carry
+three facts, and none of them is the file's name:
+
+- **Hue is the family.** Blue images, green video, yellow-to-orange audio, cyan
+  vector, teal 3D models, purple documents, violet spreadsheets, grey text and
+  code, dark red applications, steel grey libraries, magenta archives, sepia
+  fonts. The media hues are saturated and the working files muted, so a folder
+  of photographs looks unlike a source tree before a single name is read.
+- **Brightness is efficiency.** Inside a family the modern format takes the
+  brightest rung and the legacy one sinks to the dark end. Two formats share a
+  rung when they share a compressor: zip, jar, tgz and gz are all deflate, and
+  colouring them apart would invent a difference the bytes do not have.
+- **A hue tilt separates lossless from lossy**, at the same chroma rather than
+  by dulling it — indigo beside azure for images, pure yellow beside orange for
+  audio. Lossless is a sibling family, not a washed-out version of its lossy
+  neighbour.
+
+| Family | Rungs, most efficient first |
+|---|---|
+| Images, lossy | `avif #2D86EA` · `heic/heif #1672DB` · `webp #1260BA` · `jpg #0F4F98` · `gif #0C3F7A` |
+| Images, lossless | `png #6F79CC` · `qoi #5761C4` · `tif #414DB8` · `ico #363F98` · `bmp #2B337A` |
+| Video | `webm #1CA04B` · `mkv #1A9545` · `mp4 #18883F` · `mov #157938` · `avi #12632E` · `wmv #0F5326` |
+| Audio, lossy | `opus #FFAA54` · `aac/m4a #FF9830` · `m4b #FF8408` · `ogg #F37900` · `mp3 #E27100` |
+| Audio, lossless | `flac #FFDC4D` · *(ALAC #FDCA00)* · `wav #EDBD00` · `aiff #DEB200` |
+| Vector | `svgz #0E93AE` · `svg #0D88A0` · `ai/cdr #0C798E` · `eps/ps/dwg #0A677A` · `dxf/emf/wmf #085666` |
+| 3D models | `glb #26998A` · `3mf #249182` · `stl/fbx #218577` · `ply/3ds #1E776B` · `gltf #1A665C` · `obj/dae #16584F` |
+| Documents | `pdf #A876D4` · `epub #9F69CF` · `odt #975BCB` · `docx #8B49C6` · `doc #7E3AB9` · `rtf #6D33A0` · `md/html/tex #5C2B87` |
+| Spreadsheets | `xlsx #893589` · `ods #A741A7` · `xls #BD57BD` |
+| Text and code | source `#818B98` · config and data `#949DA8` · `txt #ABB1BA` · `log #BABFC7` |
+| Applications | `exe #DC3644` · `appimage #CA2431` · `msi #AE1F2B` · `deb/rpm #911A24` |
+| Libraries | `so #445662` · `dll #506573` · `dylib #5C7384` · `a/lib #688396` |
+| Archives | `7z/zst #842A57` · `xz/lzma #9E3268` · `rar/bz2 #B93A79` · `gz/zip/jar/tgz #C74E8A` · `tar #CF669B` |
+| Fonts | `woff2 #6E4A36` · `woff #81573F` · `otf #946449` · `ttf #A47051` · `ttc/otc #AE7A5B` · legacy `#B48467` |
+
+Folders keep the amber `#F7BE50` they have always had — it is the one icon
+nobody should have to relearn — and a directory is coloured by what it is, so a
+folder called `render.mp4` is not drawn as a video. Anything the format table
+and the plugin inventory both miss is the neutral `#9E9E9E`.
+
+### Programs are not libraries
+
+`.exe` and `.dll` used to be one category, one noun and one colour, which is
+how a folder of system plumbing came to look exactly like a folder of programs.
+They are now `FilerFileCategory::Executable` and `FilerFileCategory::Library`:
+separate colours (dark red against steel grey), separate nouns in the Type
+column (`core.dll` is a *Dynamic Link Library*, not a *Library Program*), and
+separate positions in a sort by type. A host that asks "is this something the
+user launches?" can now trust the category — UltraFiler's History *Apps* tab
+does — instead of carrying its own list of program extensions.
+
+### Caption ink
+
+The TreeMap draws file names on top of these colours, so the ink has to answer
+to them: `EntryCaptionInkOf(entry)` returns white for the dark families and
+near-black for the light ones (audio, text and code, folders, unrecognised
+files). The ink is a property of the **family**, never of the single file:
+every rung of a family clears 3.2:1 against one ink, so no ramp ever switches
+ink halfway down itself — a GIF does not get black text because it happens to
+be the palest blue. Where the ink does change, between families, the change
+itself says which half of the palette you are looking at.
+
+### What the extension cannot say
+
+The colour does not claim to know more than the file name does. `.webp` and
+`.jxl` are both lossy and lossless and are coloured lossy, which is what almost
+every one of them is. `.m4a` holds AAC or ALAC. `.mp4`, `.mkv` and `.mov` name
+a container, not a codec, so an AV1 MKV and an MPEG-2 MKV share a rung until
+something reads the file — the widget already probes audio and video lazily for
+the Length column, and that probe is where a codec-accurate rung would come
+from, filling in behind the extension's shade the way a thumbnail fills in
+behind its glyph.
+
+A host drawing its own file lists can ask for the same colours directly:
+
+```cpp
+const Color band = UltraCanvasFilerWidget::EntryColorOf(entry);
+const Color ink  = UltraCanvasFilerWidget::EntryCaptionInkOf(entry);
+// by extension alone, with the category as the fallback for formats the
+// ladders do not rank (anything a plugin registered):
+const Color c = UltraCanvasFilerWidget::FormatColorOf("avif", FilerFileCategory::Image);
+```
+
 ## Folder icons
 
 Folders are drawn as a colored folder shape. `folderIconProvider(entry)` lets
