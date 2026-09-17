@@ -41669,6 +41669,12 @@ the way a naive text model would:
   moving end is held at the edge of the anchor's container, because a range
   that spanned cells would describe an edit no table can honour.
 
+**Merged cells are laid out on the grid.** A cell spanning columns is drawn that
+many columns wide and the cells beside it shift past it; a cell spanning rows
+stretches down over them and owns its column in every row it covers. A cell's
+position stays `{row, index-within-row}` — the grid column is geometry only, so
+spans never move a caret.
+
 Search reaches into cells, so **find and replace now cover table content**.
 `AllContainers()` enumerates every container in document order if you need to
 walk the document yourself.
@@ -41810,11 +41816,11 @@ This is the shortest path to a faithful `.odt`/`.docx` preview pane.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **A table's own structure is not edited yet.** Text inside cells is fully
-  editable, but adding or removing rows and columns, merging and splitting
-  cells, and selecting across several cells at once are not there — and neither
-  is inserting a new table, which is why UltraTexter's Insert Table button stays
-  disabled for these documents.
+- **A table's own structure is not edited yet.** Merged cells load, save and
+  lay out correctly, but *making* them does not: adding or removing rows and
+  columns, merging and splitting cells, and selecting across several cells at
+  once are not there — and neither is inserting a new table, which is why
+  UltraTexter's Insert Table button stays disabled for these documents.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
