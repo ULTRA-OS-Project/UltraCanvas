@@ -2549,6 +2549,33 @@ message(STATUS "    Test registered: FilerVolumeSpaceTest")
 
 message(STATUS "")
 
+# ===== FILER HISTORY TEST =====
+# The recently used files / folders / apps behind the toolbar's clock button
+# (Apps/UltraFiler/UltraFilerHistory.h): that the three lists survive a
+# restart, and that each keeps the number of entries Settings > Extras >
+# History & Favorites asks for - while recording, while reading the file back,
+# and at the moment the limit is lowered.
+# Header-only, so the test needs no library - it runs on any build. It points
+# the config directory at a temporary folder, so it never touches a real
+# UltraFiler installation.
+message(STATUS "  Building FilerHistoryTest...")
+add_executable(FilerHistoryTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerHistoryTest.cpp
+)
+target_include_directories(FilerHistoryTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(FilerHistoryTest PRIVATE cxx_std_20)
+set_target_properties(FilerHistoryTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerHistoryTest COMMAND FilerHistoryTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerHistoryTest")
+
+message(STATUS "")
+
 # ===== FILER FORMAT LIST TEST =====
 # The list of files behind Display > Thumbnails and Display > Detail view has
 # to hold every format the FileLoader inventory reports for this build, filed
