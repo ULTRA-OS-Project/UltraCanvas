@@ -940,7 +940,7 @@ namespace UltraCanvas {
         // ("drawing" / "Drawing Surface" placeholder removed: no
         // UltraCanvasDrawingSurface was ever built, so the page rendered an
         // empty container. The surface that does exist is
-        // UltraCanvasVectorCanvas, registered under Vector Graphics as
+        // UltraCanvasVectorCanvas, registered under Widgets as
         // "vectorcanvas" — draw, select, move, scale, rotate, group, undo.)
 
         // ===== VECTOR ELEMENTS =====
@@ -954,11 +954,6 @@ namespace UltraCanvas {
                 .AddVariant("svg", "SVG File Display")
                 .AddVariant("svg", "Interactive SVG")
                 .AddVariant("svg", "SVG Animations");
-        vectorBuilder.AddItem("vectorcanvas", "Vector Editing", "Edit a vector drawing on an UltraCanvasVectorCanvas: select, move, scale, rotate, draw, undo, group, gradients",
-                              ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateVectorCanvasExamples(); },
-                              "DemoApp/UltraCanvasVectorCanvasExamples.cpp",
-                              "Docs/UltraCanvas/UltraCanvasVectorCanvas.md");
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         vectorBuilder.AddItem("cdrimages", "CDR Images", "CDR (CorelDraw) images display and manipulation",
                               ImplementationStatus::FullyImplemented,
@@ -2007,6 +2002,17 @@ namespace UltraCanvas {
                                "Docs/Dependencies.md");
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
+
+        // UltraCanvasVectorCanvas is a widget an application drops into a
+        // window, not a file format, so it lives here rather than under
+        // Vector Graphics (which shows what the vector *readers* produce).
+        widgetsBuilder.AddItem("vectorcanvas", "Vector Editing",
+                               "Edit a vector drawing on an UltraCanvasVectorCanvas: select, move, "
+                               "scale, rotate, draw, undo, group, gradients",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateVectorCanvasExamples(); },
+                               "DemoApp/UltraCanvasVectorCanvasExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasVectorCanvas.md");
 
         widgetsBuilder.AddItem("menuconfig", "Menu Configurator",
                                "Customise menus: command registry, editable layout, live Apply",
