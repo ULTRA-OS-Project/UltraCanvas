@@ -95,6 +95,21 @@ Four findings drive the overall shape:
    transaction, optimistic locking on every editable document, and a startup
    migration gate so an old client cannot write into a newer schema (§10.3).
 
+### 1.1 Decisions already taken (2026-09-17)
+
+Three questions that would otherwise steer the plan were answered by the
+owner while this document was being written, and the plan below reflects them:
+
+| Question | Decision | What it changes |
+|---|---|---|
+| Does the *Kanzlei* keep doing the *Jahresabschluss*? | **No — UltraFIBU should eventually produce the annual accounts itself** | *Bilanz*/GuV and **E-Bilanz** move from "out of scope" to a named later track (A10, §13). Two things change *early*: each account carries a **balance-sheet classification** from the first chart import, and closing entries / *Saldenvortrag* are journal concepts rather than report code (§2) |
+| When is shared-server mode needed? | **Day one, as a parallel track** | The `libpq` driver (B4) starts beside A1 instead of waiting for A8, and the **user table, roles and attribution ship with the very first schema** so no history is written without a real user (§10.2, §13) |
+| Which bookkeeping basis is the default? | **SKR03 and *Soll-Versteuerung*** | SKR03 is the chart shipped and tested first (SKR04 beside it as data); VAT falls due at invoice date, so the EÜR/UStVA projection defaults to *Belegdatum* while still storing the payment date (§4.3, §6.4) |
+
+Neither decision removes a switch: the chart, the *Besteuerungsart* and the
+storage mode remain per-*Mandant* settings, because the code that hard-codes
+one of them is the code that cannot be given to a second company.
+
 ---
 
 ## 2. What the application is
@@ -125,10 +140,22 @@ Two things visible in those screenshots are worth calling out because they are
 
 Explicitly **out of scope** for this proposal: payroll (*Lohnbuchhaltung* — a
 separate regulated world with its own ELSTER data types and monthly
-*Beitragsnachweise*), cash registers (*DSFinV-K*/TSE), *E-Bilanz* (XBRL
-taxonomy submission), and inventory. Each is a project of the same size as this
-one. The *Anlagenverzeichnis* (fixed assets with depreciation) is borderline: it
-is needed for a complete EÜR, so §13 schedules a minimal version late.
+*Beitragsnachweise*), cash registers (*DSFinV-K*/TSE), and inventory. Each is a
+project of the same size as this one.
+
+**In scope, but as its own later track:** the *Jahresabschluss* — balance sheet
+and P&L (*Bilanz*/GuV) and **E-Bilanz**, the XBRL taxonomy transmission that
+ERiC's `checkBilanz_<taxonomy>` plugins validate. The decision (§1.1) is that
+UltraFIBU should eventually produce the annual accounts itself rather than hand
+them to the *Kanzlei*, which changes two things early even though the work is
+late: the chart of accounts must carry **balance-sheet classification** per
+account from the start (not only EÜR lines and BWA positions), and the closing
+machinery — *Abschlussbuchungen*, *Saldenvortrag* into the next
+*Geschäftsjahr*, *Rechnungsabgrenzung*, provisions — has to be a first-class
+concept in the journal rather than a report. Both are cheap now and expensive
+to retrofit; the XBRL taxonomy work itself is phase A10 (§13). The
+*Anlagenverzeichnis* (fixed assets with depreciation) moves in with it, since a
+balance sheet needs it and a complete EÜR does too.
 
 ---
 
@@ -368,8 +395,11 @@ package; DATEV's *printed editions* are.
 [DATEV overview](https://www.datev.de/web/de/berufsgruppenuebergreifend/ratgeber/rechnungswesen/datev-standard-kontenrahmen))
 Ship both as **data files, not code** — one JSON/CSV per chart per validity year,
 carrying for each account: number, name, type, default *Steuerschlüssel*,
-UStVA *Kennzahl*, EÜR line, and BWA position. The user's actual chart, exported
-from their *Kanzlei* as category 20, then overrides it.
+UStVA *Kennzahl*, EÜR line, BWA position, **and balance-sheet classification**
+(the last one because the annual accounts are in scope, §2). **SKR03 is the
+default and the one shipped and tested first** (§1.1); SKR04 sits beside it as a
+second data file, not as a second code path. The user's actual chart, exported
+from their *Kanzlei* as category 20, then overrides either.
 
 ---
 
@@ -610,9 +640,11 @@ cash-basis EÜR list cannot be turned back into a ledger.
 **EÜR is then a projection, not a second store.** Whether a receipt hits the
 EÜR at invoice date or at payment date is the *Soll-* vs *Ist-Versteuerung*
 question (§ 20 UStG), it is a per-company setting, and it also decides which
-period a VAT amount belongs to. Having both the *Belegdatum* and the linked
-payment date on hand means one flag switches the projection. Deciding this late
-is fine; storing only one of the two dates is not.
+period a VAT amount belongs to. **The default is *Soll-Versteuerung*** (§1.1):
+VAT falls due with the invoice, so the projection keys on *Belegdatum*. Having
+both that date and the linked payment date on hand is what makes the other
+setting a one-flag change — storing only one of the two dates is the mistake
+that cannot be undone later.
 
 Documents (`beleg`) sit beside the journal, not inside it: an invoice has
 positions, a supplier, a currency, a file, a status, a dunning history — and it
@@ -1064,6 +1096,7 @@ Apps/UltraFIBU/
     UltraFIBUReports.{h,cpp}      EÜR, BWA, Cashflow, journal, Z3 export
     UltraFIBUVatId.{h,cpp}        checksums + BZSt eVatR REST
     UltraFIBUUsers.{h,cpp}        users, roles, permissions (§10.2)
+    UltraFIBUAbschluss.{h,cpp}    closing entries, Saldenvortrag, Bilanz/GuV (A9/A10)
   ui/                   # the German UI, one file per section
 Docs/UltraFIBU/CHANGELOG.md   # first line is the version — the only place it lives
 Docs/UltraFIBU/README.md
@@ -1108,29 +1141,35 @@ the repository.
 ## 13. Phase plan
 
 Two tracks: framework prerequisites (B) and the application (A). B1 and B2 gate
-the first real screens, so they come first; B4 unblocks server mode and can run
-in parallel with any A phase because §10.1's rules keep the application portable
-meanwhile.
+the first real screens. **B4 (the `libpq` driver) runs in parallel from the
+start** rather than late, because server mode is wanted from day one (§1.1) —
+and it *can* run in parallel precisely because §10.1's rules keep the
+application driver-agnostic meanwhile, so the two tracks only meet at A8.
 
 | # | Deliverable | Verifiable when |
 |---|---|---|
+| **B4** *(parallel from day one)* | `libpq` PostgreSQL driver for UltraDatabase behind `IDatabaseDriverPlugin`: TLS required, credentials via UltraVault, pooling, the Stage 2 shape its README already specifies + `Tests/UltraDatabase` coverage against a real server | The existing UltraDatabase test suite passes unchanged against PostgreSQL as well as SQLite |
 | **B1** | `UltraCanvasDataGrid` (sort, filter, badge/checkbox/icon cells, inline edit, virtualised data source, footer aggregates, CSV/clipboard copy) + doc + catalogue fix (§3.3) | DemoApp shows 100 000 rows sorted and filtered without stutter |
 | **B2** | `UltraCanvasXML` over a vendored parser + `Docs/Dependencies.md`, `master_dependencies.yaml`, `THIRD_PARTY_LICENSES.md` entries | Round-trips a ZUGFeRD CII file and a CAMT.053 statement |
 | **B3** | `UltraCanvasMoney` + currency/number input element + German formatting helpers | Property tests in `Tests/` |
-| **A1** | Engine skeleton, store + migrations, *Mandant*, **Geschäftsjahr (flexible start)**, chart of accounts (SKR03/SKR04 as data), *Steuerschlüssel* table, number ranges; master data for **Kunden/Lieferanten with USt-IdNr, address, contact** incl. offline VAT-number checksums; German UI shell | Create a 1 April fiscal year, import a chart, enter a supplier, see it in a grid |
+| **A1** | Engine skeleton, store + migrations, *Mandant*, **Geschäftsjahr (flexible start)**, chart of accounts (**SKR03 shipped first**, SKR04 beside it, both as data, each account carrying its EÜR line, BWA position **and balance-sheet classification**), *Steuerschlüssel* table, number ranges; master data for **Kunden/Lieferanten with USt-IdNr, address, contact** incl. offline VAT-number checksums; **user table and roles from the first schema** (§10.2), so attribution is unbroken when the server arrives; German UI shell | Create a 1 April fiscal year, import SKR03, enter a supplier, see it in a grid |
 | **A2** | Documents and the journal: outgoing invoice editor + PDF, incoming receipts with file attachment, postings, *Storno*, **Festschreibung**, hash chain, audit trail, journal view | A month of postings, frozen, with a *Storno* and a verified hash chain |
 | **A3** | **DATEV**: export and import of categories 21 / 16 / 20, monthly stacks, `WJ-Beginn` from the *Geschäftsjahr*, round-trip test against the user's real files | The user's *Kanzlei* imports a stack without errors — the real acceptance test |
 | **A4** | Bank: CAMT.053 / MT940 / CSV import, assignment with learning rules; reports: journal, *Summen- und Saldenliste*, **EÜR**, **BWA**, Cashflow, and the UStVA figures on screen | Figures reconcile against the user's existing bookkeeping for one closed month |
 | **A5** | **ELSTER**: UStVA XML for manual upload, ERiC backend behind it, *Dauerfristverlängerung*, **ZM**, submission log with *Transferticket* | A test-period submission accepted by ERiC validation |
 | **A6** | **OSS/IOSS**: per-country ledger, quarterly figures, BOP CSV, §3c threshold monitor, Kz 45 linkage; BZSt eVatR REST qualified confirmation with stored proof | A quarter's OSS figures matching a hand calculation; a stored confirmation record |
 | **A7** | **E-Rechnung**: read XRechnung (UBL+CII) and ZUGFeRD; write XRechnung; DATEV XML document package (§4.2) | A received ZUGFeRD invoice becomes a proposed *Beleg*; an issued XRechnung passes the KoSIT validator |
-| **B4 / A8** | `libpq` driver for UltraDatabase (framework), then **server mode**: users, roles, optimistic locking, transactional number allocation, migration gate | Two clients on one PostgreSQL database posting concurrently without a duplicate number |
-| **A9** | GoBD **Z3 export**, *Verfahrensdokumentation* template, backup/restore to UltraCloud, *Anlagenverzeichnis* with depreciation | A Z3 medium that IDEA reads; a restore rehearsal |
+| **A8** *(as soon as B4 lands)* | **Server mode**: login, role enforcement in the store, optimistic locking with soft edit locks, transactional number allocation, the migration gate, and local↔server database transfer | Two clients on one PostgreSQL database posting concurrently without a duplicate number or a lost update |
+| **A9** | GoBD **Z3 export**, *Verfahrensdokumentation* template, backup/restore to UltraCloud, **Anlagenverzeichnis** with depreciation (AfA), *Abschlussbuchungen* and *Saldenvortrag* into the next *Geschäftsjahr* | A Z3 medium that IDEA reads; a restore rehearsal; a closed year carried forward |
+| **A10** | **Jahresabschluss**: *Bilanz* and GuV from the balance-sheet classification, then **E-Bilanz** — the XBRL taxonomy submission ERiC validates with its `checkBilanz_<taxonomy>` plugin (§2) | A balance sheet that balances, and an E-Bilanz accepted by ERiC validation for a test period |
 | **later** | ZUGFeRD *output* (PDF/A-3 in the PDF writer), FinTS 3.0 fetching (after product registration), OCR-assisted receipt capture | — |
 
 A1–A3 is the smallest set that replaces a spreadsheet and keeps the *Kanzlei*
 happy; A4–A5 is the point at which the application files its own VAT; A6 covers
-the OSS obligation; A8 is the multi-user requirement.
+the OSS obligation; A8 is the multi-user requirement, gated only on B4 running
+beside it from the start; A10 is where the *Kanzlei*'s last remaining job comes
+in-house, and it is the one phase that should not be started before the ledger
+underneath it has survived a full *Geschäftsjahr*.
 
 ---
 
@@ -1199,34 +1238,38 @@ the repository):
 
 ## 16. Open questions for the user
 
-None of these block starting on B1–B3 and A1; each changes work later.
+Three are answered in §1.1 (annual accounts in scope, server mode from day one,
+SKR03 + *Soll-Versteuerung*). What is still open — none of it blocking B1–B4 or
+A1:
 
-1. **Does the *Kanzlei* keep doing the annual accounts?** If yes, UltraFIBU needs
-   DATEV export and never needs a balance sheet, *E-Bilanz* or XBRL — a large
-   scope reduction. If no, the balance-sheet and E-Bilanz track is a project of
-   its own and should be named as such.
-2. **SKR03 or SKR04**, and is the chart the standard one or the *Kanzlei*'s
-   modified version?
-3. ***Soll-* or *Ist-Versteuerung*** (§ 20 UStG), and is the company on
-   *Einnahmen-Überschuss-Rechnung* (EÜR) or full double-entry accounts? The
-   screenshots show EÜR, BWA *and* UStVA, which is consistent with EÜR plus a
-   ledger — worth confirming.
-4. **UStVA rhythm** — monthly or quarterly — and is there a
+1. **Is the company on *Einnahmen-Überschuss-Rechnung* or on full double-entry
+   accounts (*Bilanzierung*)?** The screenshots show EÜR, BWA *and* UStVA, which
+   fits EÜR over a ledger; but the decision that UltraFIBU should eventually
+   produce the *Jahresabschluss* (§1.1) implies *Bilanzierung* sooner or later,
+   and the two differ in what A10 must produce — an EÜR (*Anlage EÜR*) or a
+   *Bilanz* with GuV and E-Bilanz. Answering it decides whether A10 is one
+   deliverable or two.
+2. **Is the chart the standard SKR03 or the *Kanzlei*'s modified version**, and
+   can the category-20 export be supplied (§15)?
+3. **UStVA rhythm** — monthly or quarterly — and is there a
    *Dauerfristverlängerung*?
-5. **Fiscal year**: 1 April – 31 March confirmed; is there a
+4. **Fiscal year**: 1 April – 31 March confirmed; is there a
    *Rumpfwirtschaftsjahr* in the history that must be representable?
-6. **OSS**: registered for the EU scheme already, which destination countries,
+5. **OSS**: registered for the EU scheme already, which destination countries,
    and IOSS as well?
-7. **Multi-user**: how many people, which roles, and one company or several
-   *Mandanten* in one installation? Is the server a machine on a LAN, or
-   reachable over the internet (which means a VPN, §10.5)?
-8. **Platforms** — Linux only, or Windows and macOS too? ERiC exists for all
+6. **Multi-user specifics**, now that server mode is a day-one track: how many
+   users, which of the five roles (§10.2) are actually wanted, one *Mandant* or
+   several in one installation, and is the database server on a LAN or reached
+   over the internet — the latter means a VPN, or the HTTP application server
+   noted in §10.5. Also: who administers PostgreSQL, since backups that are
+   never restored are not backups (§10.4).
+7. **Platforms** — Linux only, or Windows and macOS too? ERiC exists for all
    three, but each needs its own SDK build and its own packaging step.
-9. **Foreign currency** beyond EUR: the screenshots show only EUR; if not, the
+8. **Foreign currency** beyond EUR: the screenshots show only EUR; if not, the
    conversion and rate-source design in §6.1 grows.
-10. **Is UltraFIBU for this company only, or a product?** A product means the
-    manufacturer registrations of §14 and a support obligation; for in-house use
-    the same code needs neither.
+9. **Is UltraFIBU for this company only, or a product?** A product means the
+   manufacturer registrations of §14 and a support obligation; for in-house use
+   the same code needs neither.
 
 ---
 
@@ -1238,8 +1281,9 @@ storage, HTTPS with client certificates, OAuth2, charts, forms, PDF reading and
 spreadsheet export are all present and in production use by other applications.
 The genuinely missing pieces are few and each is worth having for its own sake:
 a real data grid, an XML facade, an exact money type, and — for the multi-user
-requirement — the `libpq` driver that UltraDatabase's own roadmap already
-promises.
+requirement, which is wanted from day one — the `libpq` driver that
+UltraDatabase's own roadmap already promises, started in parallel with the first
+application phase rather than after it.
 
 The hard parts are not the framework. They are ERiC's distribution terms and
 release cadence, the absence of any OSS machine interface, PDF/A-3 for ZUGFeRD

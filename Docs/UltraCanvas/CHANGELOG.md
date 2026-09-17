@@ -46,8 +46,16 @@
   VAT-number XML-RPC endpoint went obsolete on 30 November 2025 and is now a
   REST API. A *Geschaeftsjahr* starting 1 April and a UStVA period that is
   always a calendar month are two calendars over one journal, which is a
-  schema decision and cheap only while it is early. Documentation only; no
-  code.
+  schema decision and cheap only while it is early.
+  Three scope decisions taken with the owner are recorded in §1.1 and carried
+  through the plan: the *Jahresabschluss* stays in-house (so *Bilanz*/GuV and
+  E-Bilanz become a named later phase, and every account carries a
+  balance-sheet classification from the first chart import), shared-server mode
+  is wanted from day one (so the libpq driver runs beside the first application
+  phase, and users, roles and attribution ship with the very first schema), and
+  SKR03 with *Soll-Versteuerung* are the defaults - each still a per-client
+  setting, because the hard-coded one is the one that cannot be given to a
+  second company. Documentation only; no code.
 
 #### 2026-09-17 *0.8.81*
 - **A folder of libraries looked exactly like a folder of programs.**
