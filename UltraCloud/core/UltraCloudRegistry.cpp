@@ -5,6 +5,7 @@
 #include <UltraCloud/UltraCloudProvider.h>
 #include <UltraCloud/UltraCloudMemory.h>
 #include <UltraCloud/UltraCloudNextcloud.h>
+#include <UltraCloud/UltraCloudFtp.h>
 #include <UltraCloud/UltraCloudWebDav.h>
 
 #include <UltraCloud/UltraCloudDropbox.h>
@@ -58,6 +59,7 @@ std::vector<std::shared_ptr<ICloudProvider>> ListProviders() {
 void RegisterBuiltInProviders() {
     if (!GetProvider("nextcloud"))   RegisterProvider(std::make_shared<NextcloudProvider>());
     if (!GetProvider("webdav"))      RegisterProvider(std::make_shared<WebDavProvider>());
+    if (!GetProvider("ftp"))         RegisterProvider(std::make_shared<FtpProvider>());
     if (!GetProvider("dropbox"))     RegisterProvider(std::make_shared<DropboxProvider>());
     if (!GetProvider("onedrive"))    RegisterProvider(std::make_shared<OneDriveProvider>());
     if (!GetProvider("googledrive")) RegisterProvider(std::make_shared<GoogleDriveProvider>());
