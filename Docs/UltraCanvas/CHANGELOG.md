@@ -7,12 +7,17 @@
   (`messaging.message`, `mail.message`, `system.notification`) so the ULTRA OS
   desktop can show every messenger's and mail client's messages in one
   structured view, and a command surface (`RegisterCommand` / `Invoke`) that
-  is the Apple-Events half of an AppleScript-class automation story. The
-  UltraScript language specification (recorder, SDEF-compatible dictionary,
-  parser, executor, Script Editor) is filed alongside as
-  `Docs/Research/UltraScriptSpecification.md`; §12 of the proposal makes the
-  scripting dictionary the channel's command manifest and routes UltraScript's
-  cross-application `tell` blocks over it as `ui.*` verbs. The proposal surveys what each
+  is the Apple-Events half of an AppleScript-class automation story, kept
+  to register, list, invoke and consent.
+- **New registry entry: UltraScript** (`Masterfile_modules.md` §14), the
+  scripting language, filed as `Docs/Research/UltraScriptSpecification.md`
+  (recorder, SDEF-compatible dictionary, parser, executor, Script Editor).
+  Its new §17 specifies cross-application scripting on UltraMessage: the
+  dictionary doubles as the command manifest, `ui.*` verbs expose the
+  object model, the executor routes `tell` blocks aimed at another process,
+  recording can span applications, and message triggers plus schedules
+  cover repeating tasks. The two modules meet on one primitive and
+  UltraScript links UltraMessage, never the reverse. The proposal surveys what each
   OS offers (D-Bus, `WM_COPYDATA`, Apple Events, notification listeners),
   settles on one broker and one wire protocol per user session with platform
   buses as adapters, and lays out the data model, the `UltraMsg_*` API, the

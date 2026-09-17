@@ -1,6 +1,6 @@
 # UltraScript - Specification and Implementation Guide
 
-**Document Version:** 1.0.1  
+**Document Version:** 1.1.0  
 **Last Modified:** 2026-09-17  
 **Author:** UltraCanvas Framework  
 **Status:** Master Specification
@@ -21,6 +21,11 @@
 10. [Integration Points](#10-integration-points)
 11. [Examples](#11-examples)
 12. [Development Guidelines](#12-development-guidelines)
+13. [Future Enhancements](#13-future-enhancements)
+14. [Appendices](#14-appendices)
+15. [Version History](#15-version-history)
+16. [References](#16-references)
+17. [Cross-Application Scripting on UltraMessage](#17-cross-application-scripting-on-ultramessage)
 
 ---
 
@@ -1463,13 +1468,15 @@ UltraScriptExecutor::SetDebugMode(true);
 - 🔲 JIT compilation for performance
 - 🔲 Advanced debugger with breakpoints
 - 🔲 Script libraries and imports
-- 🔲 Remote scripting (control apps over network)
+- 🔲 Remote scripting (control apps over network) — specified in §17 as
+  cross-application scripting reaching a broker over UltraNet
 
 **Phase 3:**
 - 🔲 Visual script builder (flowchart-style)
 - 🔲 AI-assisted script generation
 - 🔲 Script marketplace/repository
-- 🔲 Cross-application scripting
+- 🔲 Cross-application scripting — specified in §17, delivered on
+  UltraMessage Phase 3
 
 ### 13.2 Extension Points
 
@@ -1657,11 +1664,20 @@ launch()                    - Launch app
 
 ## 15. Version History
 
+**Version 1.1.0 (2026-09-17)**
+- New §17: cross-application scripting on UltraMessage — the `ui.*` verbs,
+  executor routing of `tell` blocks aimed at another process, one dictionary
+  as the command manifest, consent, cross-application recording, message
+  triggers and schedules, and the event-hook names this specification must
+  correct before implementation. Moved here from the UltraMessage proposal
+  so that each module owns its own surface
+- §13.1 points its remote and cross-application items at §17
+
 **Version 1.0.1 (2026-09-17)**
 - Renamed from UIScript to UltraScript throughout (identifiers, macros,
   file names) to match the ULTRA OS module family; no content change
 - Filed under `Docs/Research/` beside `UltraMessageDesignProposal.md`,
-  whose §12 defines how cross-application scripting rides on UltraMessage
+  whose §12 draws the boundary between the two modules
 
 **Version 1.0.0 (2024-12-19)**
 - Initial specification
@@ -1684,6 +1700,188 @@ launch()                    - Launch app
 - XML Schema for Scripting Dictionaries (SDEF)
 - ECMAScript Language Specification (for Modern syntax inspiration)
 - AppleScript Language Guide (for Natural/Classic syntax)
+
+## 17. Cross-Application Scripting on UltraMessage
+
+### 17.1 Scope
+
+Everything before this chapter runs inside one process: the recorder sees
+its own events, the executor resolves `window "Main"` in its own window
+list, the dictionary describes its own elements. §13.1 leaves two items
+open — remote scripting and cross-application scripting — and this chapter
+specifies both on top of **UltraMessage**, the ULTRA OS message channel
+(`Docs/Research/UltraMessageDesignProposal.md`, registry §13). UltraMessage
+provides a per-user broker with application identity, addressed request and
+reply, topic subscriptions, consent and a journal. UltraScript **links**
+UltraMessage and needs its Phases 1 and 3; UltraMessage never links
+UltraScript, and nothing in this chapter adds to the channel — an
+UltraScript-linked application is an ordinary endpoint registering
+ordinary commands.
+
+| | UltraScript owns | UltraMessage owns |
+|---|---|---|
+| Language, recorder, dictionary format and generation, executor, editor | ✅ | — |
+| The generic verbs exposing the object model to other processes (§17.3) | ✅ | — |
+| Cross-application recording (§17.6), triggers and schedules (§17.7) | ✅ | — |
+| Application identity, launch, transport, delivery guarantees, consent store, journal, distribution of dictionaries | — | ✅ |
+
+### 17.2 One dictionary
+
+The dictionary this specification defines (§6, SDEF-compatible XML) is also
+the application's **UltraMessage command manifest**
+(UltraMessage proposal §6.4). `GenerateScriptingDictionary()` writes
+`<app>.sdef`; the broker indexes it per installed application;
+`UltraMsg_ListCommands(appId)` returns it rendered to JSON; the macOS
+adapter hands the same file to the system so AppleScript and Shortcuts can
+drive the application. One description of what an application can do, four
+consumers: the Script Editor's dictionary browser, the channel, D-Bus
+introspection and macOS.
+
+### 17.3 The `ui.*` verbs: the object model over the channel
+
+Every application that links UltraScript registers four generic commands on
+its UltraMessage endpoint at start-up, implemented by `UltraScriptExecutor`:
+
+| Verb | Arguments | Reply |
+|---|---|---|
+| `ui.list` | `path` (object path), `class?` | The matching children as `{class, name, index}` |
+| `ui.get` | `path`, `property` | The value |
+| `ui.set` | `path`, `property`, `value` | ok / error |
+| `ui.invoke` | `path`, `command`, `args[]` | The command's result |
+
+An **object path** is this specification's object reference serialised as a
+JSON array from the application down. `button "OK" of window "Main"` is
+
+```json
+[{"class":"Window","name":"Main"},{"class":"Button","name":"OK"}]
+```
+
+and an index reference carries `"index"` instead of `"name"`. Values cross
+as `JSONValue` (UltraCanvasJSON) with §4.4's types mapped one to one:
+`string`, `integer`, `real`, `boolean` natively; `color`, `point`, `rect`
+through the existing `JSON::FromColor` / `FromPoint` / `FromRect` helpers;
+`list` as an array; an object reference as a path. `UltraScriptValue` gains
+`ToJSON()` / `FromJSON()` for this.
+
+The channel does not know what these verbs mean; they are entries in the
+application's dictionary like any other, under a `UltraScript Suite`.
+
+### 17.4 Executor routing of `tell` blocks
+
+When `UltraScriptExecutor` resolves `tell application "UltraViewer"` (or a
+Modern-style `application("UltraViewer")` chain) and that is not the running
+process, it does not fail:
+
+1. Resolve the name to an app id through `UltraMsg_ResolveApp`; if the
+   application is installed but not running, launch it with
+   `UltraMsg_Invoke`'s `launch` option and wait for its
+   `app.lifecycle.started`.
+2. Send each statement inside the block as an `app.command.invoke` request
+   carrying the matching `ui.*` verb — or the application's own verb when the
+   statement names one from its application suite — and wait for the reply
+   within the script's timeout (default 30 s, `set timeout` to change).
+3. Map an error reply onto `UltraScriptResult` with `errorType`
+   `"RemoteError"`, the remote message, and the local line number.
+4. Nested `tell` blocks re-target per level; a `tell` to the running
+   application short-circuits to the in-process path of §8.
+
+Remote scripting (§13.1, Phase 2) is the same routing with a broker reached
+over UltraNet instead of the local socket, and needs nothing further from
+the language.
+
+### 17.5 Application-level commands and consent
+
+The global command registry of §13.2
+(`UltraScriptStandardLibrary::RegisterCommand("sendEmail", …)`) and
+UltraMessage's `UltraMsg_RegisterCommand` describe the same thing. They are
+**one call**: the UltraScript registry is a thin wrapper that also registers
+on the endpoint, so a verb is available to a local script and to every other
+process alike, and appears in the dictionary automatically.
+
+§12.6 asks for a sandbox and for permission before scripts act. A script
+acting inside its own process needs no consent. A script driving *another*
+application goes through UltraMessage's consent store, once per caller and
+target pair, which is also where the user revokes it. The broker verifies
+the caller's executable, so consent granted to the Script Editor does not
+extend to a process merely claiming its name.
+
+### 17.6 Recording across applications
+
+`UltraScriptRecorder` (§5) sees only its own process. For a recording that
+spans applications, the Script Editor subscribes to UltraMessage's
+`app.command.echo` topic — the broker's silent, non-journaled echo of every
+invocation it routed (caller, target, verb, arguments), delivered only to
+endpoints the user granted the *recorder* role — and emits
+`tell application "X" … end tell` blocks in the chosen syntax style,
+interleaved with the local recording by timestamp. §5.4's optimisation
+passes apply unchanged; context grouping (§5.4.2) groups by application
+before grouping by window.
+
+### 17.7 Triggers and schedules
+
+§4.5 has `delay()` but no scheduler and no way to react to something
+happening elsewhere. Two additions close the "repeating tasks in
+applications" use case without changing the language's shape:
+
+**Triggers.** A script may declare handlers for UltraMessage topics:
+
+```applescript
+on message "mail.message" (msg)
+    if sender of msg contains "accountant" then
+        tell application "UltraFiler"
+            move attachments of msg to folder "Invoices"
+        end tell
+    end if
+end message
+```
+
+```javascript
+onMessage("mail.message", function(msg) {
+    if (msg.from.address.contains("accountant")) {
+        application("UltraFiler").moveAttachments(msg, "Invoices");
+    }
+});
+```
+
+The executor subscribes through `UltraMsg_Subscribe` and runs the handler on
+the UI thread with the message body as an object of the topic's schema. A
+script with handlers stays resident until stopped; the Script Editor shows
+it as running.
+
+**Schedules.** A script may be scheduled at a time, an interval, or log-in.
+The ULTRA OS shell keeps schedules (elsewhere the `ultramsg schedule`
+sub-command of UltraMessage's CLI does) and every run is journaled on
+`script.run` — script, start, end, result — so the desktop message centre
+can show what ran and what failed. Scheduling is data about a script, not
+syntax in it.
+
+### 17.8 Implementation note: event hooks
+
+§5.1.2, §8.2 and §10.1 wire the recorder into
+`UltraCanvasWindow::DispatchEventToChildren` / `FindEventTarget`, and §5.2
+records `UCEventType::ValueChanged` and `SelectionChanged`. None of these
+exist in the codebase under those names. Event dispatch lives in
+`UltraCanvasApplication::DispatchEvent` / `DispatchEventToElement`
+(`UltraCanvas/include/UltraCanvasApplication.h`), and `UCEventType`
+(`UltraCanvasEvent.h`) has no value or selection events — those are
+per-widget callbacks (`onValueChanged`, `onSelectionChanged`). The recorder
+therefore needs either a `NotifyScriptableChange` call from the elements
+that fire such callbacks or a value-change hook on `UltraCanvasUIElement`.
+The `ui.get` / `ui.set` verbs of §17.3 rely on the same property plumbing
+(§8.4), so the two should be designed together before Phase 1 of this
+specification is implemented.
+
+### 17.9 Mapping
+
+| AppleScript | UltraScript | UltraMessage |
+|---|---|---|
+| Apple Event (class, id, parameters, reply) | Statement in a `tell` block, executed in-process | `app.command.invoke` request with `verb`, `args`, and a reply |
+| Scripting dictionary (`sdef`) | The dictionary (§6), generated from element metadata | The same file, indexed per app; `UltraMsg_ListCommands` |
+| `tell application "X"` | Resolved to the current application | Routed to `org.example.x`, launching if needed (§17.4) |
+| Object specifier (`button "OK" of window "Main"`) | Element resolved by name and class | Object path in a `ui.*` verb (§17.3) |
+| Automation consent | §12.6 | Consent store, per caller and target (§17.5) |
+| Folder actions / `on idle` | `delay()` | `on message` handlers and schedules (§17.7) |
+| `osascript` | The Script Editor | The `ultramsg` CLI |
 
 ---
 
