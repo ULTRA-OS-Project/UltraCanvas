@@ -1,3 +1,37 @@
+#### 2026-09-17 *0.8.85*
+- **A remote drive can be changed, not only read.** `UltraCanvasFilerWidget`
+  gained three more host hooks beside `remoteListing` - **`remoteDelete`**,
+  **`remoteRename`** and **`remoteMakeDirectory`** - so the folder display can
+  delete an entry, rename one in place and create a folder on a drive the host
+  carries for an FTP server or a cloud account.
+
+  They differ from the listing hook in what they promise: they answer that the
+  request was *accepted*, not that it finished. The host queues the work and
+  refreshes the display when the server has replied, because a delete over a
+  slow link would otherwise hold the UI thread exactly as a blocking listing
+  would. Each entry handed to `remoteDelete` carries its own `isDirectory`,
+  which is what lets a backend pick FTP's `DELE` over `RMD` without a probe per
+  entry, and `remoteRename` takes a bare name - a rename in place, never a
+  move.
+
+  A remote new folder cannot go straight into rename mode the way a local one
+  does: it does not exist until the server has answered and the refresh has
+  landed. The widget names it from the listing on screen instead, and renaming
+  it afterwards now works.
+
+  The commands with no hook - duplicate, paste, new file - still refuse on a
+  remote folder rather than reaching `std::filesystem` with a path that
+  resolves to nothing. Copying between the local disk and a drive is a
+  transfer with progress, conflicts and a cancel, so it belongs with the paste
+  machinery rather than in a hook of this shape.
+- **`CloudService` forwards the change verbs.** `Delete`, `Rename` and
+  `MakeDirectory` were added to `ICloudProvider` in 0.8.80 for the FTP
+  provider, but the app-facing facade had no way to reach them - so an
+  application could hold an account and still not delete a file on it. All
+  three now resolve the account and its credentials and hand the call on with
+  the path normalised, exactly as `List` does. A provider that never
+  implemented them still answers `Unsupported`, and the suite checks both
+  halves of that.
 #### 2026-09-17 *0.8.83*
 - **A format plugin read nothing until an application named it.** Registration
   was per-application boilerplate, so UltraFiler registered none and every
