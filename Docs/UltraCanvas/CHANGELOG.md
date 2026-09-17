@@ -1,4 +1,4 @@
-#### 2026-09-16 *0.8.72*
+#### 2026-09-16 *0.8.73*
 - **A drawing the framework could read showed nothing in the preview pane.**
   Core owns the vector document model and the renderer that draws one, but not
   a single reader - SVG, XAR, EMF, WMF, DXF and the DWG family all live in the
@@ -46,7 +46,7 @@
   counterparts, are now the default for checkbox, radio, segmented-control and
   button faces, and the checkbox and radio borders grey with them.
 
-#### 2026-09-16 *0.8.71*
+#### 2026-09-16 *0.8.72*
 - **A DWG drawing was only recognised when it was called `.dwg`.** AutoCAD
   writes the *same* drawing database — same `AC10xx` header, same object map —
   to four suffixes and copies it verbatim to a fifth, and every layer that

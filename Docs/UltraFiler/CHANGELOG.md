@@ -19,7 +19,7 @@
   stays greyed now stays greyed for a reason this build can name: no PDF
   plugin, no video or audio backend, no reader for glTF/GLB/3MF, and no
   picture inside an audio file or a Corel .ccx/.cmx to show.
-- Needs framework 0.8.72, which is where the drawings become showable at all:
+- Needs framework 0.8.73, which is where the drawings become showable at all:
   the vector preview seam, the media viewer's vector view and the Filer's
   vector thumbnails. The lighter greyed-out colour on the settings pages -
   the disabled switches used to be drawn darker than the live ones - is from
