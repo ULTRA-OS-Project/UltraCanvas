@@ -424,7 +424,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (emf, wmf, dxf, dwg, older RIFF cdr, an EPS written without a preview) has no renderer that works without a window and keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
@@ -523,7 +523,7 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 
 `thumbnailSupported` answers for the format in **this** build, and it answers
 honestly: false for audio (nothing reads cover art), for the vector formats
-with no renderer and no embedded preview (emf, wmf, dxf, dwg), for PDF without
+with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
 reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
 ones are refused by the text-preview extractor too, so the tile keeps its type
@@ -1240,8 +1240,10 @@ Copying, moving and deleting run on a **background worker**, and a
 percentage, the file being handled and **Cancel** — opens over them **once the
 operation has been running for two seconds**. Anything shorter never shows a
 window at all: a file manager that flashes a dialog for every copied text file
-is worse than one that shows none. (Packing and unpacking open theirs
-immediately instead; those are never the quick case.)
+is worse than one that shows none. (Packing, unpacking and the
+["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
+open theirs immediately instead: none of those is ever the quick case, and the
+last one is waiting on a consent prompt the user has to answer.)
 
 The window is the same for every route into these operations — Ctrl+V, the
 context menu, `Delete`, a drag & drop between panes, `Duplicate`,
@@ -1366,11 +1368,32 @@ and drops the rest):
   preselected) and a *"Do this for all remaining items"* scope switch.
   A stored try-again-for-all grants each later failing entry one silent
   retry before asking again, so a stubborn entry can never loop forever.
+- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+  answers with its shield button: the entry is deletable, just not by this
+  user. Where the host has wired
+  [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
+  (UltraFiler has), the dialog is **Administrator Permission Needed** —
+  "Deleting this file needs administrator permission. Windows will ask you to
+  confirm before it is deleted." — with **Delete as administrator**
+  (preselected) / **Try again** / **Skip this file** and the same scope switch.
+  Entries handed to the administrator are collected while the queue runs and go
+  to the elevated helper in **one run at the end**, so the whole delete costs
+  one consent prompt however many entries need it; a "Deleting as
+  Administrator" progress window stands in for the wait, and the widget stays
+  responsive because the helper is waited for off the UI thread. What the
+  helper still could not delete comes back in a **Cannot Delete** dialog with
+  the system's reason per entry; a declined prompt is reported through
+  `onError` and leaves the entries in place. Sharing violations ("in use by
+  another program") are not permission failures and keep the plain dialog,
+  as does a process that already runs as administrator — asking again cannot
+  change the system's answer there.
 
 Entries inside archives are still deleted in one batched archive rewrite
 before the interactive queue; their failures are reported via `onError` as
 before. When modal dialogs are unavailable the delete falls back to the old
-fixed behavior (attempt everything, report failures).
+fixed behavior (attempt everything, report failures). A problem dialog's
+**Cancel** keeps what was already deleted and drops the rest — the entries
+waiting for the administrator retry included.
 
 ### Selection after a delete
 

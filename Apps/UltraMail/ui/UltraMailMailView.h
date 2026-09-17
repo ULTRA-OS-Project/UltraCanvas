@@ -17,8 +17,10 @@
 #include "UltraMailMessagePreview.h"
 #include "UltraMailLocalStore.h"
 
+#include <cstddef>
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -38,6 +40,14 @@ public:
     // Re-query the current account (after a sync or a flag change).
     void Reload();
 
+    // Append freshly-synced messages to the list as their headers arrive, so a
+    // large mailbox fills in instead of looking hung. No-op unless `accountId` is
+    // the account currently shown. Appends in arrival order (newest UID first)
+    // without disturbing the user's selection or the preview; the final Reload()
+    // after the sync re-queries the store and puts rows in exact date order.
+    void AppendMessages(const std::string& accountId,
+                        const std::vector<MessageEnvelope>& batch);
+
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Container() const { return root_; }
 
     // Forwarded to the preview.
@@ -48,11 +58,18 @@ public:
 
 private:
     void RebuildList();
+    // Build one row for messages_[index] and add it under the list root. Keeps
+    // the msg_<index> node id in step with messages_[index] (RowIndexOf relies on
+    // it) and bumps shownUnread_ when the row is unread.
+    void AddMessageRow(std::size_t index, const MessageEnvelope& m,
+                       const std::set<int64_t>& waitingUids);
+    void UpdateInboxTitle();
     void SelectRow(int row);
 
     LocalStore* store_ = nullptr;
     std::string curAccount_;
     std::vector<MessageEnvelope> messages_;   // list rows, in list order
+    int shownUnread_ = 0;                      // unread count of the rows shown
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvas::UltraCanvasSplitPane> split_;

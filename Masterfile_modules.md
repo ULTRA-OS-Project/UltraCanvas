@@ -329,6 +329,29 @@ the backing implementation can be replaced without affecting callers.
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
 
+- **UltraCanvasElevatedFileOperations** (`UltraCanvasElevatedFileOperations.h`)
+  — "Delete as administrator": the retry Explorer offers when a delete answers
+  "You need permission to perform this action". A second copy of the host
+  executable is started through the shell's `runas` verb (Windows shows its
+  consent prompt), deletes what the user named and exits; consent is asked
+  every time and nothing else is elevated. Platform-free half (the helper's
+  delete, the command-line and report encodings) in
+  `core/UltraCanvasElevatedFileOperations.cpp`; Windows backend in
+  `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`; every other
+  platform answers Unavailable. Public surface (`namespace
+  ElevatedFileOperations`):
+  - `RunHelperIfRequested(argc, argv, exitCode)` — host side, first in
+    `main()`: turns an elevated relaunch into the helper, and installs the
+    retry for this executable.
+  - `IsAvailable` / `ProcessIsElevated` / `IsPermissionFailure(ec)` — whether
+    to offer the retry, and whether a failure is the kind it resolves.
+  - `DeleteElevated(paths)` — one consent prompt, one helper run; returns
+    `ElevatedDeleteResult` (Completed with per-entry failures / Declined /
+    Failed / Unavailable).
+  `UltraCanvasFilerWidget` offers it from its delete-problem dialog wherever
+  the host wired the helper. See
+  `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+
 - **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
   shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
   points at, the icon it is drawn with, and the command line it starts. Byte

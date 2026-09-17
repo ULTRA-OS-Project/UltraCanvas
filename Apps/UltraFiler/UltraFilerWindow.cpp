@@ -844,6 +844,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // the recently used files / folders / applications behind the clock button.
     settings.Load();
     ApplySettings();
+    // After ApplySettings(), which puts the History limit in force: a
+    // list longer than the limit allows is then trimmed as the file is read,
+    // rather than after the first entry is recorded into it.
     history.Load();
     favorites.Load();
     folderViews.Load();
@@ -1205,6 +1208,16 @@ void UltraFilerWindow::ApplySettings() {
     // off - or may now be allowed to open for what is selected. (A no-op
     // before the split exists, i.e. on the call during start-up.)
     UpdatePreviewPane();
+    // Extras > History & Favorites: how many entries the History view's
+    // three lists keep. A lowered limit drops the entries past it and
+    // rewrites history.txt at once, so the view is refreshed when it is the
+    // one on screen.
+    const size_t historyLimitBefore = history.Limit();
+    history.SetLimit(static_cast<size_t>(settings.historyMaxEntries));
+    if (history.Limit() < historyLimitBefore && historyShown) {
+        RefreshHistoryTabs();
+        UpdateStatusBar();
+    }
     // The tree is built after the settings are loaded, so this is a no-op on
     // the first call and does the work on every later one (BuildFolderTree
     // applies the colours itself).

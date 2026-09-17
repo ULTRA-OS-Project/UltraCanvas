@@ -17,7 +17,7 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | WMF | `WMFConverter` | ✓ | ✓ | [MS-WMF] 16-bit records with the placeable header (twips). No bezier record — curves flatten to polylines; dashes approximate as `PS_DASH`. The reader covers the object table, polygon/polyline/rect/ellipse records and TextOut/ExtTextOut. |
 | AI | `AIConverter` | – | ✓ | Modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading is the PDF plugin's job. |
 | DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), at physical size when `$INSUNITS` declares a unit and the result is a usable page, otherwise scaled to a sensible point size, since drawing units are arbitrary; the unit and scale are recorded on the document, and layer-table properties (colour, lineweight, linetype, frozen/locked/plot flags) land on the `VectorLayer`s. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
-| DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). |
+| DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). The reader answers for the whole drawing family, not just `.dwg` — see [The DWG family](#the-dwg-family). |
 
 All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `DataFormats/UltraCanvasVectorPathOps.h`.
 
@@ -57,6 +57,87 @@ auto fromCad = DXFConverter().Import("plan.dxf");
 auto fromEmf = EMFConverter().Import("clip.emf");
 ```
 
+## The DWG family
+
+A drawing does not always arrive named `.dwg`. AutoCAD writes the *same*
+drawing database — same `AC10xx` version header, same object map — to four
+suffixes, and copies it verbatim to a fifth:
+
+| Suffix | What AutoCAD writes | How it is recognised |
+|---|---|---|
+| `.dwg` | the drawing | by extension |
+| `.dwt` | drawing template | by extension |
+| `.dws` | drawing standards | by extension |
+| `.sv$` | automatic save | by extension |
+| `.bak` | backup — a verbatim copy of the drawing | by content |
+
+The first four are advertised extensions: `DWGConverter::GetFileExtensions()`
+lists them, the Vector plugin's `GetSupportedExtensions()` reports them as
+loadable, `GraphicsFormatDetector` files them as `Vector`, and the Filer
+names them (AutoCAD Template / Standards / Autosave). They decode through the
+same native reader as a `.dwg`, so they open, preview and rasterize
+identically.
+
+`.bak` is deliberately not on that list. AutoCAD's backup *is* a drawing, but
+the suffix belongs to no format — editors, package managers and databases all
+write `.bak` files — so claiming every one of them as CAD would be wrong. It
+is settled by content instead: the plugin reads the file's first six bytes and
+takes it only when they carry the `AC10xx` magic. That check is what
+`DWGConverter::ValidateFile()` / `ValidateData()` already do, and the registry
+reaches it because a suffix no plugin advertises falls through to the plugins'
+own `CanHandle()`.
+
+```cpp
+using namespace UltraCanvas::VectorConverter;
+
+DWGConverter::IsDrawingExtension("plan.dwt");            // true  (also .dwg/.dws/.sv$)
+DWGConverter::IsAmbiguousDrawingExtension("plan.bak");   // true  - ask ValidateFile()
+DWGConverter::IsDrawingExtension("plan.dxf");            // false - a different format
+
+UltraCanvasVectorFormatsPlugin::LoadVectorDocument("Plan_1_1_8421.sv$");   // a drawing
+LoadGraphicsFile("Plan.bak");   // a drawing when its header says so, else null
+```
+
+Writing is unchanged: the save list names `.dwg` alone, because the alias
+suffixes are what drawings arrive under, not what a "save as" offers.
+
+## Previews: what the media viewer and the Filer show
+
+Core owns the vector document model and the renderer that draws one, but no
+reader — every reader is in this plugin, which links *against* core. So the
+media viewer's preview pane and the Filer's thumbnails could only show a
+drawing two ways: rasterized by libvips (svg/svgz, and eps/ps where the
+libvips build has a PostScript loader), or as the preview bitmap some formats
+store inside themselves. A DXF or a DWG is neither, so it showed nothing —
+in a build whose Vector plugin had just read the same drawing for the
+FileLoader.
+
+`RegisterVectorFormatsPlugin()` now also installs a **vector preview
+provider** (`UltraCanvasVectorPreview.h`), the same seam
+`UltraCanvasModelPreview.h` is for 3D formats: core asks "turn this path into
+a `VectorDocument`" and "is this one you read", and the plugin answers. With
+it registered:
+
+- `UltraCanvasMediaViewer` opens a drawing in `UltraCanvasVectorElement` — the
+  document itself, sharp at any zoom, not a bitmap of it;
+- the Filer's thumbnail workers render the document at the tile's size
+  (serialized: unlike the other preview producers, drawing a document touches
+  the process-wide font machinery);
+- the Filer's **Display > Thumbnails** and **Display > Detail view** settings
+  pages stop greying the formats out, because `GetPreviewableFormats()` asks
+  the same seam.
+
+```cpp
+RegisterVectorFormatsPlugin();                    // once, at startup
+
+CanPreviewVectorExtension("dwg");                 // true
+LoadVectorPreviewDocument("plan.dxf");            // a VectorDocument
+RenderVectorPreviewPixmap("plan.dwg", 256, 256);  // a UCPixmap for a tile
+```
+
+An application that registers no plugin is unchanged: the seam answers no to
+everything and the old two ways are all there is.
+
 ## The graphics plugin (load and save through the registry)
 
 `UltraCanvasVectorFormatsPlugin` exposes the matrix to the framework's
@@ -69,7 +150,9 @@ auto element = LoadGraphicsFile("plan.dxf");   // UltraCanvasVectorElement
 SaveGraphicsFile(element, "plan.svg");         // any of the ten formats
 ```
 
-Loading covers the formats with readers (SVG, XAR, EMF, WMF, DXF, DWG) and
+Loading covers the formats with readers (SVG, XAR, EMF, WMF, DXF and the DWG
+family — `.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is
+a drawing) and
 yields an `UltraCanvasVectorElement` holding the editable `VectorDocument`;
 saving covers the whole matrix from any such element. The
 `IGraphicsPlugin` save interface (`GetSaveExtensions`/`SaveGraphics`) is new
@@ -95,7 +178,7 @@ structure — plus LibreOffice; DWG through LibreDWG's dxf2dwg/dwgread when
 installed), and `VectorFormatsPluginTest` (the whole matrix through the
 plugin registry: save all ten formats via `SaveGraphicsFile`, load the
 readable ones back via `LoadGraphicsFile` with geometry/style round-trip
-checks, plus the supported-format inventory). `VectorModelTest` covers the shared model itself: `Matrix3x3` arithmetic and double precision, group/document bounds through nested transforms, hit testing through layer and group transforms, the unit helpers, and a DXF round trip of units and layer properties. `DWGReaderTest` covers the CAD import path: the DXF reader's block machinery on a synthetic drawing (nested, arrayed and mirrored inserts, dimension blocks, inheritance, visibility, geometry-derived extents) and the native DWG decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the framework's own test document converted with dxf2dwg; extra `.dwg` files on its command line are decoded and reported (`DWG_TEST_SVG_DIR` exports them as SVG).
+checks, plus the supported-format inventory). `VectorModelTest` covers the shared model itself: `Matrix3x3` arithmetic and double precision, group/document bounds through nested transforms, hit testing through layer and group transforms, the unit helpers, and a DXF round trip of units and layer properties. `DWGReaderTest` covers the CAD import path: the DXF reader's block machinery on a synthetic drawing (nested, arrayed and mirrored inserts, dimension blocks, inheritance, visibility, geometry-derived extents) and the native DWG decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the framework's own test document converted with dxf2dwg; extra `.dwg` files on its command line are decoded and reported (`DWG_TEST_SVG_DIR` exports them as SVG). It also covers the family dispatch above: the fixture's own bytes must load under each of `.dwg`, `.dwt`, `.dws`, `.sv$` and `.bak`, and a `.bak` holding anything else must not be claimed.
 
 ## See Also
 

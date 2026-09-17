@@ -8,20 +8,23 @@
 //
 // Usage: VectorFormatsPluginTest [basename]
 // Exit code is the number of failed checks.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorFormatsPlugin.h"
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasCADConverters.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "UltraCanvasSupportedFormats.h"
+#include "UltraCanvasVectorPreview.h"
 #include "UltraCanvasImage.h"
 
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <fstream>
 #include <string>
+#include <vector>
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::VectorStorage;
@@ -179,6 +182,62 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== The DWG family reaches the DWG converter =====
+    // A drawing arrives as .dwg, as a template (.dwt), a standards file
+    // (.dws) or an automatic save (.sv$) - one format under four names.
+    {
+        auto loadExts = UltraCanvasGraphicsPluginRegistry::GetSupportedExtensions();
+        for (const char* ext : {"dwg", "dwt", "dws", "sv$"}) {
+            Check(std::find(loadExts.begin(), loadExts.end(), ext) != loadExts.end(),
+                  std::string("registry lists load extension ") + ext);
+            auto converter =
+                    UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(ext);
+            Check(converter &&
+                          converter->GetFormat() == VectorConverter::VectorFormat::DWG,
+                  std::string(ext) + " dispatches to the DWG converter");
+        }
+        // .bak is settled by content, so it is claimed for no bare extension
+        // and advertised nowhere.
+        Check(UltraCanvasVectorFormatsPlugin::CreateConverterForExtension("bak") ==
+                      nullptr,
+              "bak alone is not claimed as a format");
+        Check(std::find(loadExts.begin(), loadExts.end(), "bak") == loadExts.end(),
+              "registry does not advertise bak");
+        // The registry still reaches the plugin for one: an unadvertised
+        // suffix falls through to the plugins' own CanHandle, and the DWG
+        // converter answers for the header it finds.
+        const std::string bak = base + ".dwg_backup.bak";
+        {
+            std::ofstream f(bak, std::ios::binary | std::ios::trunc);
+            f << "AC1015";   // the version magic alone settles the question
+        }
+        Check(CanHandleGraphicsFile(bak), "a .bak holding a drawing is recognised");
+        const std::string notBak = base + ".editor_backup.bak";
+        {
+            std::ofstream f(notBak, std::ios::binary | std::ios::trunc);
+            f << "# somebody else's backup\n";
+        }
+        Check(!CanHandleGraphicsFile(notBak),
+              "a .bak holding something else is not");
+        std::remove(bak.c_str());
+        std::remove(notBak.c_str());
+    }
+
+    // ===== The core-side preview seam =====
+    // Registering the plugin must also lend core its readers, or the media
+    // viewer's preview pane and the Filer's thumbnails stay blind to every
+    // format core cannot read itself - which is every one of them.
+    {
+        for (const char* ext : {"dxf", "dwg", "dwt", "dws", "sv$", "xar", "emf", "wmf"}) {
+            Check(CanPreviewVectorExtension(ext),
+                  std::string("preview seam reads ") + ext);
+        }
+        Check(!CanPreviewVectorExtension("png"), "preview seam declines png");
+        auto seamExts = PreviewableVectorExtensions();
+        Check(std::find(seamExts.begin(), seamExts.end(), "dwg") != seamExts.end(),
+              "preview seam lists dwg");
+    }
+
     // ===== Supported-format inventory =====
     {
         auto dxf = UltraCanvasSupportedFormats::FindByExtension("dxf");
@@ -189,6 +248,11 @@ int main(int argc, char** argv) {
         auto emf = UltraCanvasSupportedFormats::FindByExtension("emf");
         Check(emf && emf->canLoad && emf->canSave,
               "inventory: emf loads and saves");
+        for (const char* ext : {"dwt", "dws", "sv$"}) {
+            auto f = UltraCanvasSupportedFormats::FindByExtension(ext);
+            Check(f && f->canLoad && f->category == MediaFormatCategory::Vector,
+                  std::string("inventory: ") + ext + " loads as vector graphics");
+        }
     }
 
     // ===== Save through the registry, validate each file =====
@@ -210,6 +274,20 @@ int main(int argc, char** argv) {
                 UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(ext);
         Check(converter && converter->ValidateFile(path),
               std::string("saved ") + ext + " passes format validation");
+    }
+
+    // ===== The preview seam on a real drawing =====
+    // The DXF the writer just produced, read back through the seam and drawn:
+    // the whole path the media viewer's preview pane and the Filer's
+    // thumbnails take for a format core has no reader for.
+    {
+        auto drawing = LoadVectorPreviewDocument(base + ".dxf");
+        Check(drawing != nullptr, "preview seam reads a drawing into a document");
+        if (drawing) {
+            auto pm = RenderVectorDocumentPixmap(*drawing, 160, 120);
+            Check(pm && pm->GetWidth() == 160 && pm->GetHeight() == 120,
+                  "a document renders to a pixmap of the asked-for size");
+        }
     }
 
     // ===== Load back through the registry (formats with readers) =====

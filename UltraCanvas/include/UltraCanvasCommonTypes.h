@@ -1,7 +1,7 @@
 // include/UltraCanvasCommonTypes.h
 // Unified common types and structures for UltraCanvas Framework
-// Version: 2.1.0
-// Last Modified: 2026-04-10
+// Version: 2.2.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -393,6 +393,17 @@ namespace Colors {
     const Color SelectionHover(229, 243, 255, 255);
     const Color TextDefault(0, 0, 0, 255);
     const Color TextDisabled(109, 109, 109, 255);
+
+    // Disabled controls. A control that cannot be used must read as LESS ink
+    // than one that can, never more: its face is lighter than ButtonFace and
+    // its border lighter than ButtonShadow, so an unavailable checkbox
+    // recedes next to an available one. LightGray (192) was being used for
+    // this and is *darker* than ButtonFace (225), which drew every greyed
+    // switch heavier than the live ones around it - the settings pages that
+    // list one switch per file format showed the unsupported formats as the
+    // strongest thing on the page.
+    const Color ControlDisabled(238, 238, 238, 255);
+    const Color ControlDisabledBorder(202, 202, 202, 255);
 }
 
 // ===== COLOR UTILITY FUNCTIONS =====

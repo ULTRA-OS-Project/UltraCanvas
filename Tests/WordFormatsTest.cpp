@@ -11,6 +11,7 @@
 #include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasZipPackage.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <filesystem>
@@ -801,6 +802,72 @@ int main(int argc, char** argv) {
         CHECK(editor.GetBlockCount() == static_cast<int>(blocksBefore));
         CHECK(document->media.size() == mediaBefore);
         CHECK(document->ToPlainText().find("EDITED") == std::string::npos);
+    }
+
+    // ===== MERGED CELLS SURVIVE A ROUND TRIP =====
+    // A table whose cells span columns and rows must come back spanning them.
+    // Spans are structure, not decoration: losing one silently re-flows the
+    // whole table, and the reader already recovers them.
+    {
+        std::cout << "\n--- Merged cells ---\n";
+
+        auto makeCell = [](const std::string& text, int cols, int rows) {
+            RichTableCell cell;
+            RichTextRun run;
+            run.text = text;
+            cell.runs.push_back(run);
+            cell.columnSpan = cols;
+            cell.rowSpan = rows;
+            return cell;
+        };
+
+        UCRichDocument doc;
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        {
+            RichTableRow row;                       // one cell across both columns
+            row.cells.push_back(makeCell("banner", 2, 1));
+            table.tableRows.push_back(row);
+        }
+        {
+            RichTableRow row;                       // left cell down both rows
+            row.cells.push_back(makeCell("tall", 1, 2));
+            row.cells.push_back(makeCell("right-top", 1, 1));
+            table.tableRows.push_back(row);
+        }
+        {
+            RichTableRow row;
+            row.cells.push_back(makeCell("right-bottom", 1, 1));
+            table.tableRows.push_back(row);
+        }
+        doc.blocks.push_back(table);
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("spans.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, doc, err), err);
+
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+
+            const RichDocBlock* reloaded = nullptr;
+            for (const auto& b : back.blocks) {
+                if (b.type == RichBlockType::Table) { reloaded = &b; break; }
+            }
+            CHECK_MSG(reloaded != nullptr, ext);
+            if (!reloaded) continue;
+
+            int maxColumnSpan = 0;
+            int maxRowSpan = 0;
+            for (const auto& row : reloaded->tableRows) {
+                for (const auto& cell : row.cells) {
+                    maxColumnSpan = std::max(maxColumnSpan, cell.columnSpan);
+                    maxRowSpan = std::max(maxRowSpan, cell.rowSpan);
+                }
+            }
+            CHECK_MSG(maxColumnSpan == 2, std::string(ext) + " column span lost");
+            CHECK_MSG(maxRowSpan == 2, std::string(ext) + " row span lost");
+        }
     }
 
     if (failures == 0) {

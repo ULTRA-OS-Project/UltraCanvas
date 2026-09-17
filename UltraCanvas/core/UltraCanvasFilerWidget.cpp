@@ -49,8 +49,8 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.28.0
-// Last Modified: 2026-09-13
+// Version: 1.30.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -92,6 +92,7 @@
 #include "UltraCanvasZipPackage.h"
 #include "Models/STL/UltraCanvasSTLLoader.h"
 #include "UltraCanvasModelPreview.h"
+#include "UltraCanvasVectorPreview.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -108,6 +109,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <set>
 #include <sys/stat.h>
 #if defined(_WIN32) || defined(_WIN64)
@@ -291,6 +293,10 @@ namespace UltraCanvas {
                 {"wmf",  {"Windows Metafile", FilerFileCategory::Vector}},
                 {"dxf",  {"AutoCAD DXF", FilerFileCategory::Vector}},
                 {"dwg",  {"AutoCAD DWG", FilerFileCategory::Vector}},
+                // The same drawing database under AutoCAD's other suffixes.
+                {"dwt",  {"AutoCAD Template", FilerFileCategory::Vector}},
+                {"dws",  {"AutoCAD Standards", FilerFileCategory::Vector}},
+                {"sv$",  {"AutoCAD Autosave", FilerFileCategory::Vector}},
                 {"stl",  {"STL",  FilerFileCategory::Model3D}},
                 {"obj",  {"Wavefront", FilerFileCategory::Model3D}},
                 {"ply",  {"PLY",  FilerFileCategory::Model3D}},
@@ -677,7 +683,15 @@ namespace UltraCanvas {
                 case FilerPreviewType::Bitmaps:
                     return ImagePipelineLoadsExtension(ext);
                 case FilerPreviewType::VectorGraphics:
+                    // Three ways to a picture, in the order the worker tries
+                    // them: the image pipeline rasterizes it, a registered
+                    // Vector plugin reads it into a document this draws
+                    // itself, or the file carries a preview bitmap. Only the
+                    // first and last used to count, so dxf/dwg/emf/wmf were
+                    // greyed on the settings page of a build whose Vector
+                    // plugin read them perfectly well.
                     return ImagePipelineLoadsExtension(ext) ||
+                           CanPreviewVectorExtension(ext) ||
                            FormatCarriesEmbeddedPreview(ext);
                 case FilerPreviewType::Models3D:
                     return CanPreviewModelExtension(ext);
@@ -789,6 +803,27 @@ namespace UltraCanvas {
             auto img = UCImage::LoadFromMemory(bytes);
             if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
             return img->GetPixmap(w, h, fit, scale);
+        }
+
+        // ===== VECTOR DRAWING PREVIEW =====
+        // The drawing itself, for the formats a registered Vector plugin
+        // reads (UltraCanvasVectorPreview.h): DXF, DWG and the rest, which
+        // rasterize through neither libvips nor an embedded preview bitmap
+        // and so used to keep the plain type glyph.
+        //
+        // Serialized, unlike every other producer here. The rest of them own
+        // everything they touch - a PDF document with its own engine context,
+        // a FreeType library per specimen, a mesh rasterizer that is pure
+        // arithmetic - which is what makes running several at once safe.
+        // Drawing a document does not: it goes through a render context, and
+        // the text in it through the process-wide font machinery. One at a
+        // time costs nothing worth having (a folder of drawings is not a
+        // folder of photos) and keeps that promise unbroken.
+        std::shared_ptr<UCPixmap> RenderVectorDrawingPixmap(const std::string& path,
+                                                            int w, int h, float scale) {
+            static std::mutex renderMutex;
+            std::lock_guard<std::mutex> lock(renderMutex);
+            return RenderVectorPreviewPixmap(path, w, h, scale);
         }
 
         // ===== 3D MODEL PREVIEW =====
@@ -4308,22 +4343,24 @@ namespace UltraCanvas {
         }
     }
 
-    bool UltraCanvasFilerWidget::ShowProceedSkipDialog(
+    bool UltraCanvasFilerWidget::ShowProblemChoiceDialog(
             DialogConfig& cfg,
-            const std::string& proceedLabel, const std::string& skipLabel,
-            const std::string& allLabel, bool proceedDefault,
-            std::function<void(bool proceed, bool all)> onContinue,
+            const std::vector<std::string>& choiceLabels, size_t defaultChoice,
+            const std::string& allLabel,
+            std::function<void(size_t choice, bool all)> onContinue,
             std::function<void()> onCancel) {
+        if (choiceLabels.empty()) return false;
+        if (defaultChoice >= choiceLabels.size()) defaultChoice = 0;
         cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
         auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
         if (!dialog) return false;
 
-        struct Choice { bool proceed = true; bool all = false; };
+        struct Choice { size_t index = 0; bool all = false; };
         auto choice = std::make_shared<Choice>();
-        choice->proceed = proceedDefault;
+        choice->index = defaultChoice;
         AddExclusiveSwitches(dialog.get(), "FilerProblemOpt",
-                {proceedLabel, skipLabel}, proceedDefault ? 0 : 1,
-                [choice](size_t index) { choice->proceed = (index == 0); });
+                choiceLabels, defaultChoice,
+                [choice](size_t index) { choice->index = index; });
 
         // Scope: ask again on the next problem (off, the default) or apply
         // this choice to the remaining entries of the operation.
@@ -4339,13 +4376,27 @@ namespace UltraCanvas {
         dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
         dialog->onResult = [choice, onContinue, onCancel](DialogResult result) {
             if (result == DialogResult::Yes) {
-                if (onContinue) onContinue(choice->proceed, choice->all);
+                if (onContinue) onContinue(choice->index, choice->all);
             } else if (onCancel) {
                 onCancel();
             }
         };
         UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
         return true;
+    }
+
+    bool UltraCanvasFilerWidget::ShowProceedSkipDialog(
+            DialogConfig& cfg,
+            const std::string& proceedLabel, const std::string& skipLabel,
+            const std::string& allLabel, bool proceedDefault,
+            std::function<void(bool proceed, bool all)> onContinue,
+            std::function<void()> onCancel) {
+        return ShowProblemChoiceDialog(cfg, {proceedLabel, skipLabel},
+                proceedDefault ? 0 : 1, allLabel,
+                [onContinue](size_t index, bool all) {
+                    if (onContinue) onContinue(index == 0, all);
+                },
+                std::move(onCancel));
     }
 
     void UltraCanvasFilerWidget::PasteFilesInto(std::string folder,
@@ -4999,7 +5050,11 @@ namespace UltraCanvas {
                 DeleteProblemAction action;
                 if (pd->currentDecided)       action = pd->currentAction;
                 else if (pd->protectedForAll) action = pd->protectedAction;
-                else { pd->stop = FileOpStop::Protected; return; }
+                else {
+                    pd->stop = FileOpStop::Protected;
+                    pd->stopKind = DeleteProblemKind::WriteProtected;
+                    return;
+                }
                 if (action == DeleteProblemAction::Skip) {
                     AdvancePendingDelete();
                     continue;
@@ -5032,12 +5087,27 @@ namespace UltraCanvas {
                     pd->stop = FileOpStop::Cancelled;
                     return;
                 }
+                // "Access is denied" from a standard-user process is what
+                // Explorer answers with its shield button: the entry can be
+                // deleted, just not by this user. Where the host wired the
+                // elevated helper the dialog offers that retry; the entry
+                // then waits for the one helper run at the end of the queue.
+                const bool needsPermission =
+                        ElevatedFileOperations::IsAvailable() &&
+                        ElevatedFileOperations::IsPermissionFailure(ec);
+                if (needsPermission && pd->elevateForAll) {
+                    pd->elevatedVictims.push_back(e);
+                    AdvancePendingDelete();
+                    continue;
+                }
                 if (pd->skipFailedForAll) { AdvancePendingDelete(); continue; }
                 if (pd->retryFailedForAll && !pd->currentRetried) {
                     pd->currentRetried = true;   // one silent retry, then ask
                     continue;
                 }
                 pd->stop = FileOpStop::Problem;
+                pd->stopKind = needsPermission ? DeleteProblemKind::NeedsPermission
+                                               : DeleteProblemKind::Failed;
                 pd->stopReason = ec ? ec.message() : std::string("unknown error");
                 return;
             }
@@ -5054,11 +5124,13 @@ namespace UltraCanvas {
         PendingDelete& pd = *pendingDelete;
         const bool onEntry = pd.next < pd.victims.size();
         if (pd.stop == FileOpStop::Protected && onEntry) {
-            ShowDeleteProblemDialog(pd.victims[pd.next], true, {});
+            ShowDeleteProblemDialog(pd.victims[pd.next],
+                                    DeleteProblemKind::WriteProtected, {});
             return;
         }
         if (pd.stop == FileOpStop::Problem && onEntry) {
-            ShowDeleteProblemDialog(pd.victims[pd.next], false, pd.stopReason);
+            ShowDeleteProblemDialog(pd.victims[pd.next], pd.stopKind,
+                                    pd.stopReason);
             return;
         }
         FinishPendingDelete();   // walked to the end, or cancelled
@@ -5071,9 +5143,130 @@ namespace UltraCanvas {
         pendingDelete->currentRetried = false;
     }
 
+    void UltraCanvasFilerWidget::CancelPendingDelete() {
+        if (!pendingDelete) return;
+        pendingDelete->elevatedVictims.clear();
+        FinishPendingDelete();
+    }
+
+    void UltraCanvasFilerWidget::RunElevatedDeletes() {
+        if (!pendingDelete) return;
+        PendingDelete& pd = *pendingDelete;
+        pd.elevationStarted = true;
+        std::vector<std::string> paths;
+        paths.reserve(pd.elevatedVictims.size());
+        for (const FilerEntry& v : pd.elevatedVictims) paths.push_back(v.path);
+
+        const std::string caption = paths.size() == 1
+                ? "Windows is asking for permission to delete \""
+                          + pd.elevatedVictims.front().name + "\"."
+                : "Windows is asking for permission to delete "
+                          + std::to_string(paths.size()) + " items.";
+        auto result = std::make_shared<ElevatedFileOperations::ElevatedDeleteResult>();
+        auto work = [paths, result](const ArchiveProgressReporter&) {
+            // Blocks for the consent prompt and the helper; that is why it
+            // runs on the job's worker and not on the UI thread.
+            *result = ElevatedFileOperations::DeleteElevated(paths);
+            return result->outcome == ElevatedFileOperations::ElevatedOutcome::Completed;
+        };
+        // The pack / unpack job is the widget's "one background task with a
+        // progress window, finished on the UI thread" - a delete that waits
+        // on another process needs exactly that. Its Cancel cannot take the
+        // consent prompt down, so the window offers none of the job's
+        // cancel semantics beyond closing when the helper is back.
+        if (archiveJob) {
+            // Another job has the worker: run inline rather than never.
+            work(ArchiveProgressReporter());
+            FinishElevatedDeletes(*result);
+            return;
+        }
+        StartArchiveJob("Deleting as Administrator", caption, "", false,
+                        std::move(work),
+                        [this, result](bool, bool) { FinishElevatedDeletes(*result); });
+    }
+
+    void UltraCanvasFilerWidget::FinishElevatedDeletes(
+            const ElevatedFileOperations::ElevatedDeleteResult& result) {
+        if (!pendingDelete) return;
+        PendingDelete& pd = *pendingDelete;
+        using ElevatedFileOperations::ElevatedOutcome;
+
+        // What the helper really removed is what is gone now - it reports
+        // the failures, so the successes are read off the disk.
+        std::error_code ec;
+        size_t gone = 0;
+        for (const FilerEntry& v : pd.elevatedVictims) {
+            if (fs::exists(v.path, ec)) continue;
+            ++gone;
+            const std::string folder = fs::path(v.path).parent_path().string();
+            if (!folder.empty()) pd.modifiedFolders.push_back(folder);
+        }
+        const size_t left = pd.elevatedVictims.size() - gone;
+        auto items = [](size_t n) {
+            return std::to_string(n) + (n == 1 ? " item" : " items");
+        };
+
+        switch (result.outcome) {
+            case ElevatedOutcome::Completed:
+                if (!result.failures.empty()) {
+                    // The system's reason per entry: the dialog names the
+                    // first few; without dialogs the count goes to onError.
+                    DialogConfig cfg;
+                    cfg.dialogType = DialogType::Warning;
+                    cfg.title = "Cannot Delete";
+                    cfg.width = 560;
+                    cfg.height = 280;
+                    if (result.failures.size() == 1) {
+                        cfg.message = "\"" + fs::path(result.failures.front().path).filename().string()
+                                + "\" could not be deleted even with administrator permission: "
+                                + result.failures.front().reason + ".";
+                    } else {
+                        cfg.message = items(result.failures.size())
+                                + " could not be deleted even with administrator permission.";
+                        std::string lines;
+                        const size_t shown = std::min<size_t>(result.failures.size(), 4);
+                        for (size_t i = 0; i < shown; ++i) {
+                            if (i) lines += "\n";
+                            lines += fs::path(result.failures[i].path).filename().string()
+                                    + ": " + result.failures[i].reason;
+                        }
+                        if (result.failures.size() > shown)
+                            lines += "\n… and " + items(result.failures.size() - shown) + " more";
+                        cfg.details = lines;
+                    }
+                    cfg.buttons = DialogButtons::OK;
+                    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+                    if (dialog) UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
+                    else        ReportError(cfg.message);
+                }
+                break;
+            case ElevatedOutcome::Declined:
+                ReportError("Administrator permission was not granted; "
+                            + items(left) + " left in place.");
+                break;
+            case ElevatedOutcome::Failed:
+                ReportError("Could not delete as administrator: " + result.error);
+                break;
+            case ElevatedOutcome::Unavailable:
+                ReportError("Deleting as administrator is not available: " + result.error);
+                break;
+        }
+        FinishPendingDelete();   // elevationStarted: the ordinary finish now
+    }
+
     void UltraCanvasFilerWidget::FinishPendingDelete() {
         if (!pendingDelete) return;
-        EndFileOperation();   // the window goes before the refresh it triggers
+        // The queue is through: its worker and its progress window go before
+        // anything else, because what follows opens windows of its own.
+        EndFileOperation();
+        // Entries the user handed to the administrator retry go to the
+        // helper in one run before the delete is finished; the job's end
+        // returns here with elevationStarted set.
+        if (!pendingDelete->elevatedVictims.empty() &&
+            !pendingDelete->elevationStarted) {
+            RunElevatedDeletes();
+            return;
+        }
         std::unique_ptr<PendingDelete> pd = std::move(pendingDelete);
         // Silent clear when a neighbour is waiting to inherit the selection:
         // the rescan reports that one change. Firing an empty selection first
@@ -5095,43 +5288,62 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::ShowDeleteProblemDialog(const FilerEntry& entry,
-                                                         bool writeProtected,
+                                                         DeleteProblemKind kind,
                                                          const std::string& reason) {
-        const std::string kind = entry.isDirectory ? "folder" : "file";
+        const std::string kindWord = entry.isDirectory ? "folder" : "file";
+        const bool writeProtected = kind == DeleteProblemKind::WriteProtected;
+        const bool needsPermission = kind == DeleteProblemKind::NeedsPermission;
 
         DialogConfig cfg;
         cfg.dialogType = DialogType::Warning;
         cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
         cfg.width = 560;
-        cfg.height = 300;
+        cfg.height = needsPermission ? 340 : 300;   // one switch more
+        const std::string failure = "\"" + entry.name + "\" could not be deleted: "
+                + (reason.empty() ? std::string("unknown error") : reason) + ".";
+        std::vector<std::string> choices;
+        std::string allLabel;
+        size_t defaultChoice = 0;
         if (writeProtected) {
             cfg.title = entry.isDirectory
                     ? "Folder Is Write-Protected" : "File Is Write-Protected";
             cfg.message = "\"" + entry.name + "\" is write-protected.";
-            cfg.details = "Choose what to do with the locked " + kind + ":";
+            cfg.details = "Choose what to do with the locked " + kindWord + ":";
+            choices = {"Delete it anyway", "Skip this " + kindWord};
+            defaultChoice = 1;   // skipping is the safe default for a locked entry
+            allLabel = "Do this for all remaining write-protected items";
+        } else if (needsPermission) {
+            // Explorer's "You'll need to provide administrator permission to
+            // delete this file": the entry is deletable, just not by this
+            // user. Windows asks for consent before the helper runs.
+            cfg.title = "Administrator Permission Needed";
+            cfg.message = failure;
+            cfg.details = "Deleting this " + kindWord + " needs administrator permission. "
+                    "Windows will ask you to confirm before it is deleted.";
+            choices = {"Delete as administrator", "Try again", "Skip this " + kindWord};
+            defaultChoice = 0;
+            allLabel = "Do this for all remaining items";
         } else {
             cfg.title = "Cannot Delete";
-            cfg.message = "\"" + entry.name + "\" could not be deleted: "
-                    + (reason.empty() ? std::string("unknown error") : reason)
-                    + ".";
-            cfg.details = "The " + kind
+            cfg.message = failure;
+            cfg.details = "The " + kindWord
                     + " may be locked or in use by another program.";
+            choices = {"Try again", "Skip this " + kindWord};
+            defaultChoice = 0;   // trying again is the default for a failure
+            allLabel = "Do this for all remaining items";
         }
 
-        // Skipping is the safe default for a locked entry, trying again for
-        // a failure.
         auto self = this;
-        const bool shown = ShowProceedSkipDialog(cfg,
-                writeProtected ? "Delete it anyway" : "Try again",
-                "Skip this " + kind,
-                writeProtected
-                        ? "Do this for all remaining write-protected items"
-                        : "Do this for all remaining items",
-                /*proceedDefault=*/!writeProtected,
-                [self, writeProtected](bool proceed, bool all) {
+        // What each switch index means, per flavor: the write-protected and
+        // failed dialogs have proceed at 0 and skip at 1; the permission
+        // dialog puts the administrator retry first, try again second.
+        const FilerEntry victim = entry;   // `entry` aliases the queue
+        const bool shown = ShowProblemChoiceDialog(cfg, choices, defaultChoice, allLabel,
+                [self, kind, victim](size_t choice, bool all) {
                     if (!self->pendingDelete) return;
                     PendingDelete& pd = *self->pendingDelete;
-                    if (writeProtected) {
+                    if (kind == DeleteProblemKind::WriteProtected) {
+                        const bool proceed = (choice == 0);
                         if (all) {
                             pd.protectedForAll = true;
                             pd.protectedAction = proceed
@@ -5144,20 +5356,37 @@ namespace UltraCanvas {
                             pd.currentDecided = true;
                             pd.currentAction = DeleteProblemAction::Delete;
                         }
-                    } else if (!proceed) {
-                        if (all) pd.skipFailedForAll = true;
-                        self->AdvancePendingDelete();
                     } else {
-                        // Try again now; a stored "for all" grants every later
-                        // failing entry one silent retry before asking again.
-                        if (all) pd.retryFailedForAll = true;
-                        pd.currentRetried = true;
+                        // Failed: 0 = try again, 1 = skip.
+                        // NeedsPermission: 0 = as administrator, 1 = try
+                        // again, 2 = skip.
+                        const bool elevate = kind == DeleteProblemKind::NeedsPermission
+                                && choice == 0;
+                        const bool skip = choice ==
+                                (kind == DeleteProblemKind::NeedsPermission ? 2u : 1u);
+                        if (elevate) {
+                            // Deferred to the one helper run at the end of
+                            // the queue; "for all" sends every later
+                            // permission failure there without asking.
+                            if (all) pd.elevateForAll = true;
+                            pd.elevatedVictims.push_back(victim);
+                            self->AdvancePendingDelete();
+                        } else if (skip) {
+                            if (all) pd.skipFailedForAll = true;
+                            self->AdvancePendingDelete();
+                        } else {
+                            // Try again now; a stored "for all" grants every
+                            // later failing entry one silent retry before
+                            // asking again.
+                            if (all) pd.retryFailedForAll = true;
+                            pd.currentRetried = true;
+                        }
                     }
                     self->ContinuePendingDelete();
                 },
                 [self]() {
                     // Cancel keeps what was already deleted and drops the rest.
-                    self->FinishPendingDelete();
+                    self->CancelPendingDelete();
                 });
         if (!shown) {   // dialogs disabled — the old fixed behavior
             if (writeProtected) {   // attempt the delete like before
@@ -8257,9 +8486,10 @@ namespace UltraCanvas {
                 // preview bitmap of their own, which the workers extract and
                 // decode like any other image (and a PDF-compatible .ai is
                 // rendered as the PDF it is). What is left - emf, wmf, dxf,
-                // dwg, an EPS written without a preview - keeps the type
-                // glyph.
+                // the DWG family (dwg/dwt/dws/sv$), an EPS written without a
+                // preview - keeps the type glyph.
                 return (ImagePipelineLoadsExtension(e.extension) ||
+                        CanPreviewVectorExtension(e.path) ||
                         FormatCarriesEmbeddedPreview(e.extension))
                                ? e.path : std::string{};
             // Videos thumbnail as their poster frame (the first frame of the
@@ -9342,6 +9572,14 @@ namespace UltraCanvas {
                         auto img = UCImage::Get(req.path);
                         if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
                             pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
+                    }
+                    // The drawing itself, where a registered Vector plugin
+                    // reads the format: rendered from the document at the
+                    // tile's size rather than scaled from whatever bitmap
+                    // the authoring program happened to store.
+                    if (!pm && CanPreviewVectorExtension(req.path)) {
+                        pm = RenderVectorDrawingPixmap(req.path, req.w, req.h,
+                                                       req.scale);
                     }
                     if (!pm && FormatCarriesEmbeddedPreview(ext)) {
                         pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,

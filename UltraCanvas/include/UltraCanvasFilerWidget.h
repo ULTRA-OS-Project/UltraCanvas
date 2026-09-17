@@ -87,8 +87,8 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.28.0
-// Last Modified: 2026-09-13
+// Version: 1.30.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -99,6 +99,7 @@
 #include "UltraCanvasMenu.h"
 #include "UltraCanvasFolderWatcher.h"
 #include "UltraCanvasFileLock.h"
+#include "UltraCanvasElevatedFileOperations.h"
 #include "UltraCanvasSplitPane.h"
 #include "UltraCanvasTextWrapping.h"
 #include "UltraCanvasTimer.h"
@@ -2681,10 +2682,18 @@ namespace UltraCanvas {
         void ShowPasteProblemDialog(const std::string& src,
                                     const std::string& reason);
 
-        // A two-choice problem dialog in the house style: exclusive switches
-        // for proceed (try again / delete anyway / …) vs. skip, a "do this
-        // for all" scope switch, and Continue / Cancel buttons. False = modal
-        // dialogs are unavailable and the caller must fall back.
+        // A problem dialog in the house style: one exclusive switch per
+        // choice (try again / delete anyway / skip / …), a "do this for all"
+        // scope switch, and Continue / Cancel buttons. onContinue gets the
+        // index of the chosen label. False = modal dialogs are unavailable
+        // and the caller must fall back.
+        bool ShowProblemChoiceDialog(
+                DialogConfig& cfg,
+                const std::vector<std::string>& choiceLabels, size_t defaultChoice,
+                const std::string& allLabel,
+                std::function<void(size_t choice, bool all)> onContinue,
+                std::function<void()> onCancel);
+        // The two-choice form of it: proceed (index 0) vs. skip (index 1).
         bool ShowProceedSkipDialog(
                 DialogConfig& cfg,
                 const std::string& proceedLabel, const std::string& skipLabel,
@@ -2695,8 +2704,14 @@ namespace UltraCanvas {
         // ===== DELETE PROBLEMS =====
         // What the delete-problem dialog decides for the entry it is about:
         // delete it after all (a write-protected entry, or another try after
-        // a failure) or leave it alone.
-        enum class DeleteProblemAction { Delete, Skip };
+        // a failure), hand it to the administrator retry, or leave it alone.
+        enum class DeleteProblemAction { Delete, Skip, Elevate };
+
+        // Which problem the dialog is about: a write-protected entry (asked
+        // before the attempt), a failed delete, or a failed delete that a
+        // retry with administrator rights may resolve (Windows, when the
+        // host wired UltraCanvasElevatedFileOperations).
+        enum class DeleteProblemKind { WriteProtected, Failed, NeedsPermission };
 
         // One delete in flight: the real-filesystem victims not yet processed
         // and the choices the problem dialogs collected so far.
@@ -2715,9 +2730,19 @@ namespace UltraCanvas {
             bool currentRetried = false;
             // Folders that really lost an entry, for onFolderModified.
             std::vector<std::string> modifiedFolders;
+            // Entries the user chose to delete as administrator. They wait
+            // here until the queue is through, then go to the elevated
+            // helper in ONE run - one consent prompt for the whole delete,
+            // as Explorer asks once. elevateForAll sends every later
+            // permission failure straight here without asking.
+            std::vector<FilerEntry> elevatedVictims;
+            bool elevateForAll = false;
+            bool elevationStarted = false;   // the helper run is under way / done
             // Where the worker left off (see PendingPaste::stop); the entry it
-            // is about is the one at `next`.
+            // is about is the one at `next`, and `stopKind` says which of the
+            // problem dialog's flavors it asks for.
             FileOpStop stop = FileOpStop::Done;
+            DeleteProblemKind stopKind = DeleteProblemKind::Failed;
             std::string stopReason;
             // Runs when the queue is done, if the caller asked to be told.
             std::function<void(bool changed)> onDone;
@@ -2728,18 +2753,30 @@ namespace UltraCanvas {
         // first victim needing a dialog) or finishes it. Called again by every
         // dialog that resumes the delete.
         void ContinuePendingDelete();
+        // Ends the delete: runs the elevated helper first when entries are
+        // waiting for it (and returns to itself from that job), then clears
+        // the selection, rescans and reports the modified folders.
         void FinishPendingDelete();
+        // A problem dialog's Cancel: keeps what was already deleted, drops
+        // the rest - the entries waiting for the administrator retry too.
+        void CancelPendingDelete();
         // The worker's walk through the queue; see PasteWorkerLoop.
         void DeleteWorkerLoop(PendingDelete* pd);
         // UI thread, once the worker handed the queue back.
         void AfterDeleteStretch();
         void AdvancePendingDelete();   // to the next victim, forgetting the
                                        // per-entry decisions
-        // The problem dialog, in two flavors: a write-protected (locked)
-        // entry before the attempt ("Delete it anyway" / "Skip"), or a
-        // failed delete ("Try again" / "Skip" with the failure reason).
+        // The one elevated helper run for pendingDelete->elevatedVictims, on
+        // a worker with a progress window, and what it found when it is back.
+        void RunElevatedDeletes();
+        void FinishElevatedDeletes(const ElevatedFileOperations::ElevatedDeleteResult& result);
+        // The problem dialog, in three flavors: a write-protected (locked)
+        // entry before the attempt ("Delete it anyway" / "Skip"), a failed
+        // delete ("Try again" / "Skip" with the failure reason), or a failed
+        // delete that needs administrator rights ("Delete as administrator" /
+        // "Try again" / "Skip").
         void ShowDeleteProblemDialog(const FilerEntry& entry,
-                                     bool writeProtected,
+                                     DeleteProblemKind kind,
                                      const std::string& reason);
 
         // Executable script activated: Run / Open (view it) / Cancel.

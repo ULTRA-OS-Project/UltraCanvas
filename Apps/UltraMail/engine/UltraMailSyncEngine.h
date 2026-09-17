@@ -19,6 +19,7 @@
 #include <UltraNet/UltraNetPlugins.h>
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 namespace UltraMail {
@@ -53,11 +54,16 @@ public:
 
     // Fetch envelopes with UID greater than the highest already stored, upsert
     // them, and — when fetchBodies is true — cache each new message's raw body.
+    // `onMessageStored`, when set, is invoked (on the caller's thread) with each
+    // decoded envelope right after it is upserted, so a caller can stream new
+    // messages into the UI as their headers arrive instead of waiting for the
+    // whole mailbox. Bodies are still fetched in one batch afterwards.
     SyncOutcome SyncMessages(const std::string& accountId,
                              const std::string& folder,
                              const std::string& serverUrl,
                              const UltraNetMailOptions& options,
-                             bool fetchBodies = false);
+                             bool fetchBodies = false,
+                             const std::function<void(const MessageEnvelope&)>& onMessageStored = {});
 
     // Fetch and cache one message body; returns the .eml path (empty on failure).
     std::string FetchBody(const std::string& accountId, const std::string& folder,
