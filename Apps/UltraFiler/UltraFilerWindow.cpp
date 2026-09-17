@@ -3067,27 +3067,29 @@ void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
             "Delete \"" + name + "\" and everything in it?", "Delete",
             [this, path](bool confirmed) {
         if (!confirmed) return;
+        if (!filer) return;
+        // The filer widget runs the delete, so a folder that takes a while to
+        // empty gets its progress window - and its "cannot delete" dialog -
+        // exactly like a delete started in the view. The confirmation above
+        // is this window's own, so the widget is told not to ask again.
         const std::string parent = fs::path(path).parent_path().string();
-        std::error_code ec;
-        fs::remove_all(path, ec);
-        if (ec) {
-            if (statusLabel) statusLabel->SetText("Error: cannot delete " + path + ": " + ec.message());
-            return;
-        }
-        // Take the folder out of the tree, its pins, and the bookkeeping of
-        // scanned nodes (it may be recreated and scanned again later).
-        DropTreeSubtree(path);
-        RefreshPinnedTreeNodes();
-        // Tabs that were inside the deleted folder move to its parent; tabs
-        // showing the parent re-list it without the deleted entry.
-        for (auto& state : tabStates) {
-            if (!state->filer) continue;
-            const std::string shown = state->filer->GetPath();
-            if (IsPathInside(shown, path)) state->filer->SetPath(parent);
-            else if (shown == parent) state->filer->Refresh();
-        }
-        RecordFolderInHistory(parent);
-        UpdateStatusBar();
+        filer->DeletePaths({path}, [this, path, parent](bool changed) {
+            if (!changed) return;
+            // Take the folder out of the tree, its pins, and the bookkeeping
+            // of scanned nodes (it may be recreated and scanned again later).
+            DropTreeSubtree(path);
+            RefreshPinnedTreeNodes();
+            // Tabs that were inside the deleted folder move to its parent;
+            // tabs showing the parent re-list it without the deleted entry.
+            for (auto& state : tabStates) {
+                if (!state->filer) continue;
+                const std::string shown = state->filer->GetPath();
+                if (IsPathInside(shown, path)) state->filer->SetPath(parent);
+                else if (shown == parent) state->filer->Refresh();
+            }
+            RecordFolderInHistory(parent);
+            UpdateStatusBar();
+        });
     }, window.get());
 }
 

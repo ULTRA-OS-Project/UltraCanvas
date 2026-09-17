@@ -1,3 +1,11 @@
+#### 2026-09-17 *1.46*
+- **Pictures inside a line of text stay there.** A logo in the middle of a
+  sentence, an icon in a heading or a signature beside a sign-off used to be
+  pulled out of its line and dropped below it as a paragraph of its own, which
+  re-flowed everything around it. Such a picture now stays where the author put
+  it, on opening, on screen and on saving.
+- A picture on a line of its own is still a standalone image, as before.
+
 #### 2026-09-16 *1.45*
 - **Tables with merged cells open, display and save correctly.** A cell spanning
   several columns is drawn that wide and the cells beside it sit past it, and a
