@@ -1,4 +1,4 @@
-#### 2026-09-17 *0.8.78*
+#### 2026-09-17 *0.8.79*
 - **The 3D demo pages clipped their own text.** Every information panel in the
   3D Graphics section - "What the reader found", "What the format can carry",
   the "how it works" strip, and the notes beside the OpenGL canvases - was a
@@ -32,6 +32,32 @@
   against an offscreen render context: overflowing text is measured in full
   and raises the scrollbar, fitting text raises none, and both start at the
   top.
+
+#### 2026-09-17 *0.8.78*
+- **New design proposal: UltraMessage, the cross-platform message channel**
+  (`Docs/Research/UltraMessageDesignProposal.md`, registered as
+  `Masterfile_modules.md` §13). One API for app-to-app messages with RISC OS
+  Wimp semantics (post, recorded post with bounce, request/reply, topic
+  subscriptions), a journaled feed of well-known topics
+  (`messaging.message`, `mail.message`, `system.notification`) so the ULTRA OS
+  desktop can show every messenger's and mail client's messages in one
+  structured view, and a command surface (`RegisterCommand` / `Invoke`) that
+  is the Apple-Events half of an AppleScript-class automation story, kept
+  to register, list, invoke and consent.
+- **New registry entry: UltraScript** (`Masterfile_modules.md` §14), the
+  scripting language, filed as `Docs/Research/UltraScriptSpecification.md`
+  (recorder, SDEF-compatible dictionary, parser, executor, Script Editor).
+  Its new §17 specifies cross-application scripting on UltraMessage: the
+  dictionary doubles as the command manifest, `ui.*` verbs expose the
+  object model, the executor routes `tell` blocks aimed at another process,
+  recording can span applications, and message triggers plus schedules
+  cover repeating tasks. The two modules meet on one primitive and
+  UltraScript links UltraMessage, never the reverse. The proposal surveys what each
+  OS offers (D-Bus, `WM_COPYDATA`, Apple Events, notification listeners),
+  settles on one broker and one wire protocol per user session with platform
+  buses as adapters, and lays out the data model, the `UltraMsg_*` API, the
+  broker, the per-platform adapters, security and a four-phase delivery plan.
+  Documentation only; no code.
 
 #### 2026-09-17 *0.8.77*
 - **A copy, a move or a delete that takes more than two seconds now says so.**
