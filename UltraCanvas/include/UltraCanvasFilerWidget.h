@@ -87,7 +87,7 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.30.0
+// Version: 1.31.0
 // Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
@@ -303,6 +303,31 @@ namespace UltraCanvas {
         NoneBadge,
         Bar,
         Icon
+    };
+
+    // ===== WHICH ICONS A FILE DISPLAY DRAWS =====
+    // Display > File icons. What an entry with no picture of its own is
+    // drawn with — the file kinds that thumbnail as their content, and the
+    // programs and shortcuts that carry an icon inside them, are unaffected
+    // and look the same under both settings.
+    //   Simple              — the widget's own icons: the folder shape and
+    //                         the coloured sheet with the extension on it.
+    //                         The default, and the only thing earlier
+    //                         releases drew. Identical on every platform,
+    //                         and needs nothing installed.
+    //   HostOperatingSystem — what THIS desktop draws for the type: the
+    //                         shell's icon on Windows, Finder's on macOS, the
+    //                         icon theme's on Linux/BSD, so a folder listing
+    //                         matches the rest of the desktop. Resolved once
+    //                         per file type on a background thread (see
+    //                         UltraCanvasHostFileIcons.h); until the answer
+    //                         lands — and on a system that has no icon for
+    //                         the type, or no desktop to ask at all — the
+    //                         simple icon is drawn, so the display is never
+    //                         empty and never blocks on a lookup.
+    enum class FilerFileIconStyle {
+        Simple,
+        HostOperatingSystem
     };
 
     // ===== ASKING BEFORE A DROP IS CARRIED OUT =====
@@ -906,6 +931,28 @@ namespace UltraCanvas {
         // The three modes in the order the menus and lists show them.
         static const std::vector<FilerExtensionBadge>& AllExtensionBadges();
 
+        // ===== FILE ICONS =====
+        // Display > File icons: the widget's own drawn icons, or the ones
+        // this desktop uses for the type (see FilerFileIconStyle). Switching
+        // drops the resolved icons and repaints; fires
+        // onDisplayFormatsChanged so a host can persist the choice.
+        void SetFileIconStyle(FilerFileIconStyle style);
+        FilerFileIconStyle GetFileIconStyle() const { return fileIconStyle; }
+        // Whether this build has a desktop to take icons from at all. False
+        // on the platforms without one, where HostOperatingSystem can be set
+        // but draws exactly what Simple draws — a settings page should say so
+        // rather than offer a choice that changes nothing.
+        static bool AreHostFileIconsAvailable();
+        // The menu label of a style ("Host OS icons"), shared by the Display
+        // submenu and by an application's settings page.
+        static const char* FileIconStyleLabel(FilerFileIconStyle style);
+        // The styles in the order the menus and lists show them.
+        static const std::vector<FilerFileIconStyle>& AllFileIconStyles();
+        // Throw away the icons taken from the host and ask it again — after
+        // the user changes desktop theme, or installs an application that
+        // brings icons with it.
+        void RefreshHostIcons();
+
         // The name of `e` as this display draws it — the full name, or the
         // name without its extension while the names carry none. What a host
         // needs to label an entry the way the display does (a drag badge, a
@@ -1317,6 +1364,9 @@ namespace UltraCanvas {
         // and the tag the thumbnail tiles carry instead of / beside it.
         bool fileExtensionsInNames = true;
         FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
+        // Display > File icons: whose icons an entry with no picture of its
+        // own is drawn with.
+        FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
         // Bitmask of FilerPreviewType values that may show a thumbnail, and
         // the same for the host's detail pane (Display > Thumbnails /
         // Display > Detail view).
@@ -1773,6 +1823,53 @@ namespace UltraCanvas {
         // Swaps thumbFrameWants into the worker queue and forgets pending
         // slots that fell out of the visible + prefetch bands.
         void CommitThumbnailWants();
+
+        // ===== HOST OPERATING-SYSTEM FILE ICONS =====
+        // Display > File icons = HostOperatingSystem. Deliberately NOT part
+        // of the thumbnail cache above, because it answers a different
+        // question: a thumbnail is a picture OF ONE FILE, while this is the
+        // icon of a TYPE. Keyed per type and size (HostFileIconKey), a folder
+        // of four thousand ".txt" files therefore costs one lookup and holds
+        // one pixmap, where the thumbnail cache would key four thousand
+        // slots. They are small and few, so there is no byte budget and no
+        // eviction: what bounds the cache is the number of file types the
+        // user has looked at.
+        struct HostIconSlot {
+            ThumbState state = ThumbState::Pending;
+            std::shared_ptr<UCPixmap> pixmap;   // null once Failed
+            uint8_t attempts = 0;
+        };
+        struct HostIconRequest {
+            std::string key;              // type + size, as the slots are keyed
+            std::string path;             // one file of that type to ask about
+            bool isDirectory = false;
+            int  edge = 0;                // pixels, already bucketed
+        };
+        std::unordered_map<std::string, HostIconSlot> hostIconSlots;
+        std::deque<HostIconRequest> hostIconQueue;
+        mutable std::mutex hostIconMutex;     // guards the two above
+        std::condition_variable hostIconCond;
+        // One worker: the lookups are a theme read or a shell call, and a
+        // folder asks for a handful of distinct types, not thousands.
+        std::thread hostIconWorker;
+        bool hostIconShutdown = false;
+
+        // The host's icon for `e` at `rect`, or null while it is being
+        // resolved / when this system has none — the caller then draws the
+        // simple icon. Queues the lookup on first ask; never blocks.
+        std::shared_ptr<UCPixmap> AcquireHostIcon(const FilerEntry& e,
+                                                  const Rect2Di& rect);
+        // Icons are resolved at a few standard edges rather than at every
+        // pixel size a view happens to use, so re-sizing tiles re-uses what
+        // is already held instead of resolving the same types again.
+        static int HostIconEdgeFor(const Rect2Di& rect);
+        void StartHostIconWorkerLocked();
+        void StopHostIconWorker();
+        void HostIconWorkerMain();
+        // Drop the resolved icons (Display > File icons switched, or the host
+        // asked for a refresh). Safe to call with no worker running.
+        void DropHostIconCache();
+
         // Both switch sets share one implementation: `kinds` is the mask and
         // `disabled` the per-format exception list of the set being asked.
         static bool PreviewAllowed(const FilerEntry& e, uint32_t kinds,

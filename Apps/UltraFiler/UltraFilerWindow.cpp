@@ -1029,6 +1029,8 @@ void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
     // The same hook reports the Display > File extensions switches.
     settings.showFileExtensions = source->AreFileExtensionsInNames();
     settings.extensionBadge     = source->GetExtensionBadge();
+    // And Display > File icons.
+    settings.fileIconStyle = source->GetFileIconStyle();
     // And Display > Folder previews.
     settings.folderPreviews = source->AreFolderPreviewsEnabled();
     settings.Save();
@@ -1105,6 +1107,9 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     // the tag the thumbnail tiles carry.
     target->SetFileExtensionsInNames(settings.showFileExtensions);
     target->SetExtensionBadge(settings.extensionBadge);
+    // Display > File icons: UltraFiler's own drawn icons, or the ones this
+    // desktop draws for the type.
+    target->SetFileIconStyle(settings.fileIconStyle);
     // Display > Folder previews: the first pictures inside a folder on its
     // icon.
     target->SetFolderPreviewsEnabled(settings.folderPreviews);

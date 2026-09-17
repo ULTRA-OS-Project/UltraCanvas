@@ -459,6 +459,12 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
+        # The icon the HOST desktop draws for a file type (Explorer / Finder /
+        # the icon theme), as opposed to the one a file carries itself. The
+        # lookups are per platform and live under OS/<Platform>/, picked up by
+        # the platform glob below; this is the shared cache key plus the no-op
+        # backend for the platforms with no desktop to ask.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHostFileIcons.cpp
         # Windows shell links (.lnk) and the icon resources they point at,
         # both parsed from the files themselves so a Windows disk shows its
         # shortcuts and programs with their own icons on every platform.

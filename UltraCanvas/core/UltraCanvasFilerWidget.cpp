@@ -69,6 +69,7 @@
 #include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasFontFile.h"
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasDesktopEntry.h"
 #include "UltraCanvasMacBundle.h"
 #include "UltraCanvasShellLink.h"
@@ -1952,6 +1953,7 @@ namespace UltraCanvas {
         HideDragOverlay();          // its renderer captures `this`
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
+        StopHostIconWorker();
         StopFolderWatchTimer();     // its callback captures `this`
         folderWatcher.Stop();       // joins its thread; its callback too
         // A pack / unpack still running: ask it to stop, then wait for it. The
@@ -3509,6 +3511,49 @@ namespace UltraCanvas {
             FilerExtensionBadge::Icon,
         };
         return all;
+    }
+
+    void UltraCanvasFilerWidget::SetFileIconStyle(FilerFileIconStyle style) {
+        if (fileIconStyle == style) return;
+        fileIconStyle = style;
+        // Switching back to the simple icons frees what the host answered;
+        // switching to them resolves the visible types on the next frames.
+        DropHostIconCache();
+        // Only what is painted inside the icon boxes changes - the boxes
+        // themselves keep their geometry, so nothing is relaid out.
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    bool UltraCanvasFilerWidget::AreHostFileIconsAvailable() {
+        return HostFileIconsAvailable();
+    }
+
+    const char* UltraCanvasFilerWidget::FileIconStyleLabel(
+            FilerFileIconStyle style) {
+        switch (style) {
+            case FilerFileIconStyle::HostOperatingSystem:
+                return "Host OS icons";
+            default:
+                return "UltraFiler simple";
+        }
+    }
+
+    const std::vector<FilerFileIconStyle>&
+    UltraCanvasFilerWidget::AllFileIconStyles() {
+        static const std::vector<FilerFileIconStyle> all = {
+            FilerFileIconStyle::Simple,
+            FilerFileIconStyle::HostOperatingSystem,
+        };
+        return all;
+    }
+
+    void UltraCanvasFilerWidget::RefreshHostIcons() {
+        // The host's own lookups first - the theme it resolved names
+        // against may be a different theme now - then what we held of them.
+        RefreshHostFileIcons();
+        DropHostIconCache();
+        RequestRedraw();
     }
 
     std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
@@ -9739,6 +9784,136 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== HOST OPERATING-SYSTEM FILE ICONS =====
+    // Display > File icons = HostOperatingSystem. What the desktop draws for
+    // a file TYPE, resolved on a worker and held per type rather than per
+    // file, so a folder of four thousand ".txt" files costs one lookup.
+
+    int UltraCanvasFilerWidget::HostIconEdgeFor(const Rect2Di& rect) {
+        // The sizes the icon sources themselves keep (16 / 32 / 48 / 64 /
+        // 128 / 256). Resolving at the box's exact pixel height instead would
+        // re-resolve every type each time a window is dragged wider, and
+        // would ask a theme for sizes it does not have anyway.
+        static const int kEdges[] = { 16, 24, 32, 48, 64, 128, 256 };
+        const int want = std::max(1, std::min(rect.width, rect.height));
+        for (int edge : kEdges)
+            if (edge >= want) return edge;
+        return kEdges[std::size(kEdges) - 1];
+    }
+
+    std::shared_ptr<UCPixmap> UltraCanvasFilerWidget::AcquireHostIcon(
+            const FilerEntry& e, const Rect2Di& rect) {
+        if (fileIconStyle != FilerFileIconStyle::HostOperatingSystem)
+            return nullptr;
+        if (!HostFileIconsAvailable() || e.path.empty()) return nullptr;
+        // A bundle is a directory that is drawn as an application, and it
+        // carries its own icon: that is the native module's job, not a type
+        // lookup. It never reaches here (ThumbSourceFor claims it first);
+        // asking for the folder icon on its behalf would be wrong if it did.
+        const bool directory = e.isDirectory && !e.isBundle;
+        const int edge = HostIconEdgeFor(rect);
+        const std::string key = HostFileIconKey(e.path, directory) + "|" +
+                                std::to_string(edge);
+
+        std::lock_guard<std::mutex> lk(hostIconMutex);
+        auto it = hostIconSlots.find(key);
+        if (it != hostIconSlots.end()) {
+            if (it->second.state == ThumbState::Ready) return it->second.pixmap;
+            return nullptr;   // pending, or this system has no icon for it
+        }
+        // First ask for this type: queue it and draw the simple icon in the
+        // meantime. The frame never waits for a lookup.
+        HostIconSlot& slot = hostIconSlots[key];
+        slot.state = ThumbState::Pending;
+        HostIconRequest request;
+        request.key = key;
+        request.path = e.path;
+        request.isDirectory = directory;
+        request.edge = edge;
+        hostIconQueue.push_back(std::move(request));
+        StartHostIconWorkerLocked();
+        hostIconCond.notify_one();
+        return nullptr;
+    }
+
+    void UltraCanvasFilerWidget::StartHostIconWorkerLocked() {
+        if (hostIconWorker.joinable() || hostIconShutdown) return;
+        hostIconWorker = std::thread([this]() { HostIconWorkerMain(); });
+    }
+
+    void UltraCanvasFilerWidget::StopHostIconWorker() {
+        {
+            std::lock_guard<std::mutex> lk(hostIconMutex);
+            hostIconShutdown = true;
+            hostIconQueue.clear();
+        }
+        hostIconCond.notify_all();
+        if (hostIconWorker.joinable()) hostIconWorker.join();
+    }
+
+    void UltraCanvasFilerWidget::HostIconWorkerMain() {
+        // The Windows shell wants the calling thread in a COM apartment, and
+        // held for the life of the thread rather than per lookup - the same
+        // setup the thumbnail workers hold for extracting application icons.
+        NativeFileIconThreadScope hostIconScope;
+        for (;;) {
+            HostIconRequest request;
+            {
+                std::unique_lock<std::mutex> lk(hostIconMutex);
+                hostIconCond.wait(lk, [this]() {
+                    return hostIconShutdown || !hostIconQueue.empty();
+                });
+                if (hostIconShutdown) return;
+                request = std::move(hostIconQueue.front());
+                hostIconQueue.pop_front();
+            }
+
+            // Outside the lock: a theme lookup reads directories, and a shell
+            // call is a shell call.
+            std::shared_ptr<UCPixmap> pixmap;
+            RunGuarded("host file icon", request.path, [&]() {
+                pixmap = LoadHostFileIconPixmap(request.path,
+                                                request.isDirectory,
+                                                request.edge);
+            });
+
+            {
+                std::lock_guard<std::mutex> lk(hostIconMutex);
+                if (hostIconShutdown) return;
+                auto it = hostIconSlots.find(request.key);
+                // The cache was dropped while this ran (the setting changed,
+                // the theme changed): the answer is for a cache that no
+                // longer exists, so it goes nowhere.
+                if (it == hostIconSlots.end()) continue;
+                if (pixmap) {
+                    it->second.pixmap = std::move(pixmap);
+                    it->second.state = ThumbState::Ready;
+                } else {
+                    // No icon for this type on this system. Retried once: a
+                    // theme is read from disk, and the first read of a folder
+                    // can fail for the same transient reasons any other can.
+                    // After that the type keeps the simple icon and is never
+                    // asked about again.
+                    if (++it->second.attempts < 2) {
+                        HostIconRequest retry = request;
+                        hostIconQueue.push_back(std::move(retry));
+                        hostIconCond.notify_one();
+                        continue;
+                    }
+                    it->second.state = ThumbState::Failed;
+                }
+            }
+            PostThumbnailRedraw();
+        }
+    }
+
+    void UltraCanvasFilerWidget::DropHostIconCache() {
+        std::lock_guard<std::mutex> lk(hostIconMutex);
+        hostIconSlots.clear();
+        hostIconQueue.clear();
+    }
+
+
     void UltraCanvasFilerWidget::PostThumbnailRedraw() {
         // Coalesced: one queued UI task repaints however many thumbnails
         // finished before it ran.
@@ -9829,6 +10004,17 @@ namespace UltraCanvas {
                     return;
                 }
             }
+            // Display > File icons = Host OS: this desktop's folder icon,
+            // which is the point of the setting - a listing that matches the
+            // rest of the desktop. It therefore wins over the folder previews
+            // below: those are drawn INTO the built-in folder shape, and
+            // there is no shape to draw them into here. Null while the
+            // lookup is still running, and on a system with no icon to give,
+            // so both fall through to what the widget draws itself.
+            if (auto hostIcon = AcquireHostIcon(e, rect)) {
+                ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
+                return;
+            }
             // Display > Folder previews: the first pictures inside the folder
             // peeking out of it. Only once the listing has landed and found
             // some - a folder with nothing to show, or one still being
@@ -9847,6 +10033,17 @@ namespace UltraCanvas {
             ctx->SetFillPaint(body);
             ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y + tabH,
                                               rect.width, rect.height - tabH), 2);
+            return;
+        }
+
+        // Display > File icons = Host OS: what this desktop draws for the
+        // type. Asked here rather than before the thumbnail above because a
+        // file with a picture of its own shows the picture on every desktop -
+        // Explorer, Finder and the Linux file managers all do that, and the
+        // type icon is what they fall back to. Null while the lookup runs, or
+        // where the system has no icon for the type: the sheet below.
+        if (auto hostIcon = AcquireHostIcon(e, rect)) {
+            ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
             return;
         }
 
@@ -12425,11 +12622,28 @@ namespace UltraCanvas {
                         [this, b]() { SetExtensionBadge(b); }));
             }
 
+            // File icons > the widget's own drawn icons, or the ones this
+            // desktop uses for the type. Only offered where there is a
+            // desktop to take them from: on a platform without one the second
+            // choice would draw exactly what the first does.
+            std::vector<MenuItemData> fileIconItems;
+            if (AreHostFileIconsAvailable()) {
+                for (FilerFileIconStyle s : AllFileIconStyles()) {
+                    fileIconItems.push_back(MenuItemData::Radio(
+                            FileIconStyleLabel(s), 5, fileIconStyle == s,
+                            [this, s]() { SetFileIconStyle(s); }));
+                }
+            }
+
             std::vector<MenuItemData> displayItems;
             displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
             displayItems.push_back(MenuItemData::Submenu("File extensions",
                                                          extensionItems));
+            if (!fileIconItems.empty()) {
+                displayItems.push_back(MenuItemData::Submenu("File icons",
+                                                             fileIconItems));
+            }
             displayItems.push_back(MenuItemData::Submenu("Thumbnails", thumbnailItems));
             displayItems.push_back(MenuItemData::Submenu("Detail view", detailViewItems));
             displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));
