@@ -220,6 +220,24 @@ public:
         std::vector<UltraNetMailEnvelope>& outEnvelopes,
         const UltraNetMailOptions& options) = 0;
 
+    // Streaming variant: fires `onEnvelope` for each message as its header/flags
+    // are fetched, so callers can update the UI incrementally instead of waiting
+    // for the whole mailbox — the difference between a list that fills in and a
+    // window that looks hung on a large INBOX. The default keeps the old
+    // behaviour (fetch the whole batch, then replay) so plug-ins that do not
+    // override it, and test fakes, are unaffected.
+    virtual UltraNetResult FetchEnvelopes(
+        const std::string& serverUrl,
+        const std::string& folder,
+        uint32_t sinceUid,
+        const std::function<void(const UltraNetMailEnvelope&)>& onEnvelope,
+        const UltraNetMailOptions& options) {
+        std::vector<UltraNetMailEnvelope> tmp;
+        UltraNetResult r = FetchEnvelopes(serverUrl, folder, sinceUid, tmp, options);
+        if (r) for (const auto& e : tmp) onEnvelope(e);
+        return r;
+    }
+
     // Full raw RFC 5322 body of a single message by UID.
     virtual UltraNetResult FetchMessage(
         const std::string& serverUrl,

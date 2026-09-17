@@ -846,6 +846,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // the recently used files / folders / applications behind the clock button.
     settings.Load();
     ApplySettings();
+    // After ApplySettings(), which puts the History limit in force: a
+    // list longer than the limit allows is then trimmed as the file is read,
+    // rather than after the first entry is recorded into it.
     history.Load();
     favorites.Load();
     folderViews.Load();
@@ -1207,6 +1210,16 @@ void UltraFilerWindow::ApplySettings() {
     // off - or may now be allowed to open for what is selected. (A no-op
     // before the split exists, i.e. on the call during start-up.)
     UpdatePreviewPane();
+    // Extras > History & Favorites: how many entries the History view's
+    // three lists keep. A lowered limit drops the entries past it and
+    // rewrites history.txt at once, so the view is refreshed when it is the
+    // one on screen.
+    const size_t historyLimitBefore = history.Limit();
+    history.SetLimit(static_cast<size_t>(settings.historyMaxEntries));
+    if (history.Limit() < historyLimitBefore && historyShown) {
+        RefreshHistoryTabs();
+        UpdateStatusBar();
+    }
     // The tree is built after the settings are loaded, so this is a no-op on
     // the first call and does the work on every later one (BuildFolderTree
     // applies the colours itself).
@@ -2717,8 +2730,28 @@ void UltraFilerWindow::QueueCloudStorageDiscovery() {
     if (cloudWorker.joinable()) cloudWorker.join();
     auto alive = probeAlive;
     cloudWorker = std::thread([this, alive]() {
+        // Releasing the busy flag is this thread's job, on every way out:
+        // a lookup that finds nothing - the normal answer on a machine with
+        // no sync client installed - must not cost the Cloud section for the
+        // rest of the session, and neither must a provider that throws. The
+        // hand-off below is the one exception: once the results are on their
+        // way to the UI thread, clearing the flag belongs to the callback
+        // that applies them, so the guard is dismissed first. Clearing it
+        // here as well would release a *later* lookup's flag and let two
+        // overlap - the one thing the flag exists to prevent.
+        //
+        // Touching the window from this thread is safe: the destructor's
+        // StopCloudStorageDiscovery() joins, so the window outlives the
+        // guard. Only the posted callback can arrive after the window is
+        // gone, which is what `alive` is for.
+        struct BusyFlagGuard {
+            std::atomic<bool>* flag;
+            ~BusyFlagGuard() { if (flag) flag->store(false); }
+            void Dismiss() { flag = nullptr; }
+        } busy{&cloudWorkerBusy};
+
         // An exception leaving a std::thread ends the process; a provider
-        // whose registry or config cannot be read costs the Cloud section.
+        // whose registry or config cannot be read costs this one lookup.
         std::vector<CloudStorageInfo> found;
         try {
             found = GetCloudStorageFolders();
@@ -2732,12 +2765,15 @@ void UltraFilerWindow::QueueCloudStorageDiscovery() {
         }
         if (found.empty()) return;
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
-        if (found.empty() || !app) {
-            cloudWorkerBusy.store(false);
-            return;
-        }
+        if (!app) return;
+        // Dismissed before the post, not after: the callback can run the
+        // moment it is queued, and a guard that fired afterwards would clear
+        // a flag the next lookup had already taken.
+        busy.Dismiss();
         app->PostToUIThread([this, alive, found = std::move(found)]() {
-            if (!alive->load()) return;   // window destroyed meanwhile
+            // Window destroyed meanwhile: the flag died with it, so there is
+            // nothing to release - and nothing left to read it.
+            if (!alive->load()) return;
             ApplyCloudStorageFolders(found);
             cloudWorkerBusy.store(false);
         });
@@ -3056,27 +3092,29 @@ void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
             "Delete \"" + name + "\" and everything in it?", "Delete",
             [this, path](bool confirmed) {
         if (!confirmed) return;
+        if (!filer) return;
+        // The filer widget runs the delete, so a folder that takes a while to
+        // empty gets its progress window - and its "cannot delete" dialog -
+        // exactly like a delete started in the view. The confirmation above
+        // is this window's own, so the widget is told not to ask again.
         const std::string parent = fs::path(path).parent_path().string();
-        std::error_code ec;
-        fs::remove_all(path, ec);
-        if (ec) {
-            if (statusLabel) statusLabel->SetText("Error: cannot delete " + path + ": " + ec.message());
-            return;
-        }
-        // Take the folder out of the tree, its pins, and the bookkeeping of
-        // scanned nodes (it may be recreated and scanned again later).
-        DropTreeSubtree(path);
-        RefreshPinnedTreeNodes();
-        // Tabs that were inside the deleted folder move to its parent; tabs
-        // showing the parent re-list it without the deleted entry.
-        for (auto& state : tabStates) {
-            if (!state->filer) continue;
-            const std::string shown = state->filer->GetPath();
-            if (IsPathInside(shown, path)) state->filer->SetPath(parent);
-            else if (shown == parent) state->filer->Refresh();
-        }
-        RecordFolderInHistory(parent);
-        UpdateStatusBar();
+        filer->DeletePaths({path}, [this, path, parent](bool changed) {
+            if (!changed) return;
+            // Take the folder out of the tree, its pins, and the bookkeeping
+            // of scanned nodes (it may be recreated and scanned again later).
+            DropTreeSubtree(path);
+            RefreshPinnedTreeNodes();
+            // Tabs that were inside the deleted folder move to its parent;
+            // tabs showing the parent re-list it without the deleted entry.
+            for (auto& state : tabStates) {
+                if (!state->filer) continue;
+                const std::string shown = state->filer->GetPath();
+                if (IsPathInside(shown, path)) state->filer->SetPath(parent);
+                else if (shown == parent) state->filer->Refresh();
+            }
+            RecordFolderInHistory(parent);
+            UpdateStatusBar();
+        });
     }, window.get());
 }
 

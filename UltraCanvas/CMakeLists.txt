@@ -498,6 +498,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
+        # "Delete as administrator": the UAC relaunch behind a permission
+        # failure. Windows backend under OS/MSWindows/, picked up by the
+        # platform glob; every other platform gets the fallbacks in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElevatedFileOperations.cpp
         # Mounted volumes + notification when that set changes. The platform
         # backend lives in OS/<Platform>/UltraCanvas*VolumeMonitor.* and is
         # picked up by the platform glob.
@@ -712,6 +716,13 @@ set(ULTRACANVAS_CORE_SOURCES
         # dependency still runs plugin -> core. See
         # include/UltraCanvasModelPreview.h.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModelPreview.cpp
+
+        # The same seam for vector drawings: core owns the document model and
+        # the renderer but not one reader, so RegisterVectorFormatsPlugin()
+        # lends it the Vector plugin's. Without it the media viewer and the
+        # Filer could only show a drawing that carried a preview bitmap.
+        # See include/UltraCanvasVectorPreview.h.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorPreview.cpp
 
         # The software mesh rasterizer: a shaded three-quarter still with no
         # GL anywhere in it. Written for the Filer's thumbnails, which are

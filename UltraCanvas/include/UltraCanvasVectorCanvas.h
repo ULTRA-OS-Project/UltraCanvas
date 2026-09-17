@@ -100,7 +100,15 @@ enum class VectorHandleMode { Scale, Rotate };
 
 class UltraCanvasVectorCanvas : public UltraCanvasUIElement {
 public:
+    // Sizeless: the parent's layout (flex grow / grid cell / stretch) decides
+    // the canvas's box. This is what a full-window editor wants.
     explicit UltraCanvasVectorCanvas(const std::string& elemId = "VectorCanvas");
+    // Fixed box at (x, y): for absolutely-placed pages that position their
+    // widgets themselves. SetBounds() alone does NOT do this - it moves
+    // finalBounds without stamping the CSS size or position, so the next
+    // layout pass collapses the canvas to a zero-height in-flow child and
+    // the drawing area disappears.
+    UltraCanvasVectorCanvas(const std::string& elemId, float x, float y, float w, float h);
     ~UltraCanvasVectorCanvas() override;
 
     // ===== DOCUMENT AND SELECTION =====
@@ -271,6 +279,11 @@ private:
 
 inline std::shared_ptr<UltraCanvasVectorCanvas> CreateVectorCanvas(const std::string& id = "VectorCanvas") {
     return std::make_shared<UltraCanvasVectorCanvas>(id);
+}
+
+inline std::shared_ptr<UltraCanvasVectorCanvas> CreateVectorCanvas(
+        const std::string& id, float x, float y, float w, float h) {
+    return std::make_shared<UltraCanvasVectorCanvas>(id, x, y, w, h);
 }
 
 } // namespace UltraCanvas

@@ -24,8 +24,8 @@
 // the page names the large ones it skips rather than pretending they are
 // unsupported. See kSamples below.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-13
+// Version: 1.1.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -35,6 +35,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDemoScrollText.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 
@@ -408,10 +409,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     statsTitle->SetFontSize(13);
     statsContainer->AddChild(statsTitle);
 
-    auto statsText = std::make_shared<UltraCanvasLabel>("MFStatsText", 10, 38, 300, 344);
-    statsText->SetFontSize(11);
-    statsText->SetTextColor(Color(50, 50, 50, 255));
-    statsContainer->AddChild(statsText);
+    // Scrolled rather than plain: a COLLADA scene fills this panel and then
+    // some, while a STEP solid leaves it half empty.
+    auto statsText = demoui::MakeScrollingText("MFStatsText", 10, 38, 300, 344);
+    statsContainer->AddChild(statsText.View);
     container->AddChild(statsContainer);
 
     // ===== CAPABILITY PANEL =====
@@ -425,10 +426,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     capsTitle->SetFontSize(13);
     capsContainer->AddChild(capsTitle);
 
-    auto capsText = std::make_shared<UltraCanvasLabel>("MFCapsText", 10, 34, 300, 190);
-    capsText->SetFontSize(11);
-    capsText->SetTextColor(Color(50, 50, 50, 255));
-    capsContainer->AddChild(capsText);
+    // The capability grid is a fixed twelve lines, but the per-sample note
+    // under it is not - and it is a paragraph when the build has no converter.
+    auto capsText = demoui::MakeScrollingText("MFCapsText", 10, 34, 300, 190);
+    capsContainer->AddChild(capsText.View);
     container->AddChild(capsContainer);
 
     // ===== VIEWER PANEL =====
@@ -470,8 +471,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
         char counter[64];
         std::snprintf(counter, sizeof(counter), "  (%zu of %zu)", index + 1, samples->size());
         nameLabel->SetText(sample.formatName + " - " + sample.fileName + counter);
-        statsText->SetText(DescribeDocument(sample));
-        capsText->SetText(DescribeCapabilities(sample));
+        statsText.SetText(DescribeDocument(sample));
+        capsText.SetText(DescribeCapabilities(sample));
         statusLabel->SetText(SummariseSample(sample));
     };
 
@@ -515,15 +516,13 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     howContainer->SetBackgroundColor(Color(255, 250, 240, 255));
     howContainer->SetBorders(2, Color(222, 184, 135, 255));
 
-    auto howText = std::make_shared<UltraCanvasLabel>("MFHowText", 10, 8, 600, 88);
-    howText->SetText(
+    auto howText = demoui::MakeScrollingText("MFHowText", 10, 8, 600, 88);
+    howText.SetText(
             std::string("ConversionOptions o; o.TriangulateOnImport = o.TessellateOnImport = true;\n") +
             "auto doc = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, o);\n"
             "Mesh3D mesh = ModelDocumentToMesh3D(*doc);\n"
             "\n" + kOmittedNote);
-    howText->SetFontSize(11);
-    howText->SetTextColor(Color(50, 50, 50, 255));
-    howContainer->AddChild(howText);
+    howContainer->AddChild(howText.View);
     container->AddChild(howContainer);
 
     return container;

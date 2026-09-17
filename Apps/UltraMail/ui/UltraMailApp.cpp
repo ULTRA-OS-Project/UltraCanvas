@@ -35,6 +35,7 @@
 #include <UltraNet/UltraNetMime.h>
 
 #include <cctype>
+#include <cstdio>
 #include <cstdlib>
 #include <ctime>
 #include <filesystem>
@@ -781,6 +782,10 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         // restored even when the sync failed.
         // The credentials are resolved on the worker: an expired OAuth2 token
         // is refreshed through the provider first, which must not block the UI.
+        // onProgress streams each new header off the worker thread; we batch a
+        // few before marshalling to the UI so a large mailbox's list fills in as
+        // it downloads instead of appearing frozen until the whole sync ends.
+        auto progressBuf = std::make_shared<std::vector<MessageEnvelope>>();
         svc->SyncInBackground(aid, acc.serverUrl, opts,
                               [this, aid, username, provider](UltraNetMailOptions& o) {
                                   return ResolveCredentials(aid, username, provider, o.credentials);
@@ -804,8 +809,28 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                 }
                 syncErrorReported_ = false;   // recovered: arm the next report
                 CollectContacts(aid, "INBOX");
-                Refresh();
+                Refresh();   // authoritative, correctly date-sorted final list
             });
+        },
+                              // onProgress — runs on the worker thread. Only this
+                              // one worker touches progressBuf, so no lock is
+                              // needed; each flush hands a fresh batch to the UI.
+                              [this, aid, progressBuf](const MessageEnvelope& m) {
+            progressBuf->push_back(m);
+            std::fprintf(stderr, "[UMSTREAM] onProgress uid=%lld buf=%zu aid=%s\n",
+                         (long long)m.uid, progressBuf->size(), aid.c_str());
+            if (progressBuf->size() < 20) return;   // bound UI churn on big syncs
+            auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+            if (!app) { progressBuf->clear(); return; }
+            auto batch = std::make_shared<std::vector<MessageEnvelope>>();
+            batch->swap(*progressBuf);
+            std::fprintf(stderr, "[UMSTREAM] flush batch=%zu aid=%s selected=%s\n",
+                         batch->size(), aid.c_str(), selectedAccount_.c_str());
+            app->PostToUIThread([this, aid, batch]() {
+                if (aid == selectedAccount_) mailView_.AppendMessages(aid, *batch);
+            });
+            // The trailing partial batch (< 20) is left for the final Refresh(),
+            // which re-queries the store and shows every message anyway.
         });
         scheduler_.MarkSynced(acc.accountId, now);
     }

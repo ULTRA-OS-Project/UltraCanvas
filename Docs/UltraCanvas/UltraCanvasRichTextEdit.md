@@ -208,6 +208,12 @@ the way a naive text model would:
   moving end is held at the edge of the anchor's container, because a range
   that spanned cells would describe an edit no table can honour.
 
+**Merged cells are laid out on the grid.** A cell spanning columns is drawn that
+many columns wide and the cells beside it shift past it; a cell spanning rows
+stretches down over them and owns its column in every row it covers. A cell's
+position stays `{row, index-within-row}` — the grid column is geometry only, so
+spans never move a caret.
+
 Search reaches into cells, so **find and replace now cover table content**.
 `AllContainers()` enumerates every container in document order if you need to
 walk the document yourself.
@@ -219,7 +225,24 @@ editor->InsertHorizontalRule();
 editor->InsertPageBreak();
 editor->InsertImageFromFile("/path/diagram.png", "Architecture diagram");
 editor->InsertImageFromMemory("chart.png", "image/png", bytes, "Q3 revenue");
+
+// ...or INSIDE the line at the caret, rather than as a paragraph of its own:
+editor->InsertInlineImageFromFile("/path/logo.png", "Logo");
+editor->InsertInlineImageFromMemory("icon.png", "image/png", bytes, "warning");
 ```
+
+**A picture can sit in the text.** A run with `mediaIndex >= 0` *is* a picture -
+a logo mid-sentence, an icon in a heading - and its `text` is a single U+FFFC
+OBJECT REPLACEMENT CHARACTER. That placeholder gives the picture one character's
+worth of the block's text, so the caret steps over it, a selection covers it and
+Backspace deletes it, with no position needing to know it is not a letter. The
+layout reserves a box for it (`TextAttributeFactory::CreateShape`), so the line
+grows to hold it and the text after it flows along.
+
+Readers decide inline-versus-block by what else the paragraph holds: a picture
+alone on a line is a standalone `RichBlockType::Image`, a picture among words is
+a run. Both formats anchor the two the same way in their markup, so the markup
+alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
@@ -349,11 +372,11 @@ This is the shortest path to a faithful `.odt`/`.docx` preview pane.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **A table's own structure is not edited yet.** Text inside cells is fully
-  editable, but adding or removing rows and columns, merging and splitting
-  cells, and selecting across several cells at once are not there — and neither
-  is inserting a new table, which is why UltraTexter's Insert Table button stays
-  disabled for these documents.
+- **A table's own structure is not edited yet.** Merged cells load, save and
+  lay out correctly, but *making* them does not: adding or removing rows and
+  columns, merging and splitting cells, and selecting across several cells at
+  once are not there — and neither is inserting a new table, which is why
+  UltraTexter's Insert Table button stays disabled for these documents.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the

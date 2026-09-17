@@ -20,6 +20,8 @@
 #include "UltraCanvasVectorCanvas.h"
 #include "UltraCanvasGradientEditor.h"
 #include "UltraCanvasBezierPath.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir
+#include "UltraCanvasUtils.h"    // NormalizePath
 #include "DataFormats/UltraCanvasVectorEdit.h"
 
 #include <cmath>
@@ -502,38 +504,57 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateVectorCa
 
     auto editor = std::make_shared<DemoVectorEditor>();
 
+    // The toolbar carries icons, not words - the same set ArtCreator uses
+    // (media/icons/artcreator and media/icons/texter), with the name and its
+    // shortcut in the tooltip. Labels are off, so a button is its icon.
     auto toolbar = std::make_shared<UltraCanvasToolbar>("VCToolbar", 10, 88, 980, 36);
-    editor->toolButtons.push_back(toolbar->AddToggleButton("vcSelect", "Select", "", [editor](bool) { editor->SetTool(DemoVectorEditor::Tool::Select); }));
-    editor->toolButtons.push_back(toolbar->AddToggleButton("vcRect", "Rectangle", "", [editor](bool) { editor->SetTool(DemoVectorEditor::Tool::Rectangle); }));
-    editor->toolButtons.push_back(toolbar->AddToggleButton("vcEllipse", "Ellipse", "", [editor](bool) { editor->SetTool(DemoVectorEditor::Tool::Ellipse); }));
-    editor->toolButtons.push_back(toolbar->AddToggleButton("vcFreehand", "Freehand", "", [editor](bool) { editor->SetTool(DemoVectorEditor::Tool::Freehand); }));
+    {
+        ToolbarAppearance app = toolbar->GetAppearance();
+        app.showIconLabels = false;
+        toolbar->SetAppearance(app);
+    }
+
+    const std::string artIcons = NormalizePath(GetResourcesDir() + "media/icons/artcreator/");
+    const std::string textIcons = NormalizePath(GetResourcesDir() + "media/icons/texter/");
+
+    auto addTool = [&](const std::string& id, const std::string& icon, const std::string& tip,
+                       DemoVectorEditor::Tool t) {
+        auto b = toolbar->AddToggleButton(id, "", artIcons + icon, [editor, t](bool) { editor->SetTool(t); });
+        b->SetTooltip(tip);
+        editor->toolButtons.push_back(b);
+    };
+    addTool("vcSelect", "selector.svg", "Select - click, shift-click, marquee; drag to move", DemoVectorEditor::Tool::Select);
+    addTool("vcRect", "rectangle.svg", "Rectangle - drag to draw", DemoVectorEditor::Tool::Rectangle);
+    addTool("vcEllipse", "ellipse.svg", "Ellipse - drag to draw", DemoVectorEditor::Tool::Ellipse);
+    addTool("vcFreehand", "freehand.svg", "Freehand - drag to draw a curve", DemoVectorEditor::Tool::Freehand);
     toolbar->AddSeparator();
-    toolbar->AddButton("vcUndo", "Undo", "", [editor]() { editor->history.Undo(); });
-    toolbar->AddButton("vcRedo", "Redo", "", [editor]() { editor->history.Redo(); });
+    toolbar->AddButton("vcUndo", "", textIcons + "undo.svg", [editor]() { editor->history.Undo(); })->SetTooltip("Undo (Ctrl+Z)");
+    toolbar->AddButton("vcRedo", "", textIcons + "redo.svg", [editor]() { editor->history.Redo(); })->SetTooltip("Redo (Ctrl+Y)");
     toolbar->AddSeparator();
-    toolbar->AddButton("vcDelete", "Delete", "", [editor]() { editor->DeleteSelection(); });
-    toolbar->AddButton("vcDuplicate", "Duplicate", "", [editor]() { editor->Duplicate(); });
-    toolbar->AddButton("vcGroup", "Group", "", [editor]() { editor->Group(); });
-    toolbar->AddButton("vcUngroup", "Ungroup", "", [editor]() { editor->Ungroup(); });
-    toolbar->AddButton("vcFront", "To Front", "", [editor]() { editor->Reorder(ZOrderMove::ToFront); });
-    toolbar->AddButton("vcBack", "To Back", "", [editor]() { editor->Reorder(ZOrderMove::ToBack); });
+    toolbar->AddButton("vcDelete", "", artIcons + "delete.svg", [editor]() { editor->DeleteSelection(); })->SetTooltip("Delete (Del)");
+    toolbar->AddButton("vcDuplicate", "", artIcons + "duplicate.svg", [editor]() { editor->Duplicate(); })->SetTooltip("Duplicate (Ctrl+D)");
+    toolbar->AddButton("vcGroup", "", artIcons + "group.svg", [editor]() { editor->Group(); })->SetTooltip("Group (Ctrl+G)");
+    toolbar->AddButton("vcUngroup", "", artIcons + "ungroup.svg", [editor]() { editor->Ungroup(); })->SetTooltip("Ungroup (Ctrl+Shift+G)");
+    toolbar->AddButton("vcFront", "", artIcons + "to-front.svg", [editor]() { editor->Reorder(ZOrderMove::ToFront); })->SetTooltip("Bring to front");
+    toolbar->AddButton("vcBack", "", artIcons + "to-back.svg", [editor]() { editor->Reorder(ZOrderMove::ToBack); })->SetTooltip("Send to back");
     toolbar->AddSeparator();
-    toolbar->AddButton("vcZoomPage", "Fit Page", "", [editor]() { editor->canvas->ZoomToPage(); });
-    auto gridBtn = toolbar->AddToggleButton("vcGrid", "Grid", "", [editor](bool on) {
+    toolbar->AddButton("vcZoomPage", "", artIcons + "zoom-page.svg", [editor]() { editor->canvas->ZoomToPage(); })->SetTooltip("Fit page");
+    toolbar->AddToggleButton("vcGrid", "", artIcons + "grid.svg", [editor](bool on) {
         VectorGridSpec g = editor->canvas->GetGrid();
         g.visible = on;
         editor->canvas->SetGrid(g);
-    });
-    auto snapBtn = toolbar->AddToggleButton("vcSnap", "Snap", "", [editor](bool on) {
+    })->SetTooltip("Show the grid");
+    toolbar->AddToggleButton("vcSnap", "", artIcons + "snap.svg", [editor](bool on) {
         VectorSnapOptions s = editor->canvas->GetSnapOptions();
         s.toGrid = on; s.toObjects = on; s.toPage = on;
         editor->canvas->SetSnapOptions(s);
-    });
-    (void)gridBtn; (void)snapBtn;
+    })->SetTooltip("Snap to the grid, other objects and the page");
     container->AddChild(toolbar);
 
-    auto canvas = CreateVectorCanvas("VCCanvas");
-    canvas->SetBounds(10, 130, 720, 600);
+    // The canvas is built WITH its box. SetBounds() on a sizeless element
+    // only moves finalBounds: the next layout pass gives an in-flow child
+    // with no CSS width/height a zero height, and the drawing area vanishes.
+    auto canvas = CreateVectorCanvas("VCCanvas", 10, 130, 720, 600);
     VectorGridSpec grid;
     grid.visible = false; grid.spacing = 20; grid.subdivisions = 2;
     canvas->SetGrid(grid);

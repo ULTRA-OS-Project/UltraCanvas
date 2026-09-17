@@ -1,4 +1,4 @@
-#### 2026-09-17 *0.8.71*
+#### 2026-09-17 *0.8.81*
 - **A folder of libraries looked exactly like a folder of programs.**
   `.exe`, `.dll`, `.so`, `.deb` and `.appimage` were one category with one
   colour and one noun, so `core.dll` read as a *Library Program* in the same
@@ -36,6 +36,368 @@
 - **Formats the table was missing**, now named and ranked rather than falling
   through to "some file": `.msi`, `.dylib`, `.a`, `.lib`, `.aiff` / `.aif` and
   `.lzma`.
+#### 2026-09-17 *0.8.80*
+- **An FTP server can be a cloud account: UltraCloud's `ftp` provider.**
+  FTP, FTPS and SFTP now sit behind `ICloudProvider` like Nextcloud or
+  Dropbox, so an app carries a server the way it carries any other account -
+  one record in the account store, the password in UltraVault, the same
+  add-account dialog - instead of keeping a host, a user and a password of its
+  own beside everything else. The transfers are still UltraNet's
+  (`UltraNetFtp.h`); `FtpProvider` is the account-shaped surface over them.
+
+  It is the first provider that can change what is on the server as well as
+  read it, so `ICloudProvider` gained two optional verbs, **`Delete`** and
+  **`Rename`**, and `ProviderCapabilities` a **`modify`** flag to say so.
+  Both default to `Unsupported`, so the providers that only ferry files out
+  are untouched and answer honestly rather than appearing to succeed. `Rename`
+  is a rename in place - it refuses a name containing '/' rather than quietly
+  moving the entry - and `Delete` takes the `isDirectory` the caller already
+  knows, which is what picks `DELE` over `RMD` without paying for a probe.
+
+  The scheme chooses the transport, because the scheme a user types is not
+  always what goes on the wire: `ftp://` plain, `ftps://` with TLS from the
+  first byte, `ftpes://` for TLS negotiated on the control channel (sent as an
+  ordinary `ftp://` URL), `sftp://` for SSH. Share links answer `Unsupported` -
+  no FTP request mints one - and SFTP authenticates with a password only,
+  since UltraNet sets no SSH key options yet.
+
+  Like the HTTP providers, the FTP entry points are an injectable seam
+  (`FtpOps`), so the twenty tests in `Tests/UltraCloud/test_ftp.cpp` run
+  headless and contact nothing. What they mostly pin down is the trailing
+  slash: libcurl lists a URL that ends in '/' and retrieves one that does not,
+  while the commands that reach an entry through its parent - `DELE`, `RMD`,
+  `RNFR`/`RNTO`, `MKD` - derive that parent by cutting at the last '/' and
+  fail outright on a URL that ends in one. `FtpUrl(account, path, directory)`
+  is the one place that decides it.
+#### 2026-09-17 *0.8.79*
+- **The 3D demo pages clipped their own text.** Every information panel in the
+  3D Graphics section - "What the reader found", "What the format can carry",
+  the "how it works" strip, and the notes beside the OpenGL canvases - was a
+  plain `UltraCanvasLabel` in a fixed rectangle, filled with text whose length
+  depends on the file being described. A COLLADA scene says far more than a
+  STEP solid, and a build with no converter for an extension replaces the
+  capability grid with a paragraph. Labels are vertically centred by default,
+  so text that outgrew its panel lost its FIRST line off the top as well as
+  its last off the bottom - the FBX sample's "Read yes / Write read-only" row
+  was cut in half - and nothing on screen said anything was missing.
+- **New `Apps/DemoApp/UltraCanvasDemoScrollText.h`**: the text now lives in an
+  `UltraCanvasContainer` sized to the space available, with an auto-sized
+  `UltraCanvasLabel` as its only child. The layout engine measures the label
+  against the whole text, the container sees a child taller than its viewport
+  and shows its vertical scrollbar, and the wheel and the bar reach the rest.
+  Text that fits is drawn exactly as before - no bar appears. The block is
+  top-aligned, so a panel starts at its first line rather than centring short
+  text in a tall box, and `SetText()` returns to the top so switching samples
+  does not open the next one halfway down.
+- **Lines too long for a panel wrap instead of being cut short.** The same
+  panels ellipsized anything wider than the box, which is how "Autodesk FBX
+  6.x and 7.x, binary and ASCII" became "Autodesk FBX 6.x and 7.x, bina...",
+  the generator string lost its version and the unit scale lost its number -
+  and the box cannot get any wider. The aligned columns these panels are
+  built from are far shorter than the box and look exactly as before.
+- Used by **3D Model Formats** (stats, capabilities, how-it-works), **STL 3D
+  Models** (stats, support list, how-it-works) and the three **OpenGL 3D
+  support** tabs (the model, shader and Zarch notes). The Models tab's note
+  was 26 lines in a 360px box and had been losing its last lines outright.
+- `Tests/DemoScrollTextTest.cpp` runs the real layout engine over the block
+  against an offscreen render context: overflowing text is measured in full
+  and raises the scrollbar, fitting text raises none, and both start at the
+  top.
+
+#### 2026-09-17 *0.8.78*
+- **New design proposal: UltraMessage, the cross-platform message channel**
+  (`Docs/Research/UltraMessageDesignProposal.md`, registered as
+  `Masterfile_modules.md` §13). One API for app-to-app messages with RISC OS
+  Wimp semantics (post, recorded post with bounce, request/reply, topic
+  subscriptions), a journaled feed of well-known topics
+  (`messaging.message`, `mail.message`, `system.notification`) so the ULTRA OS
+  desktop can show every messenger's and mail client's messages in one
+  structured view, and a command surface (`RegisterCommand` / `Invoke`) that
+  is the Apple-Events half of an AppleScript-class automation story, kept
+  to register, list, invoke and consent.
+- **New registry entry: UltraScript** (`Masterfile_modules.md` §14), the
+  scripting language, filed as `Docs/Research/UltraScriptSpecification.md`
+  (recorder, SDEF-compatible dictionary, parser, executor, Script Editor).
+  Its new §17 specifies cross-application scripting on UltraMessage: the
+  dictionary doubles as the command manifest, `ui.*` verbs expose the
+  object model, the executor routes `tell` blocks aimed at another process,
+  recording can span applications, and message triggers plus schedules
+  cover repeating tasks. The two modules meet on one primitive and
+  UltraScript links UltraMessage, never the reverse. The proposal surveys what each
+  OS offers (D-Bus, `WM_COPYDATA`, Apple Events, notification listeners),
+  settles on one broker and one wire protocol per user session with platform
+  buses as adapters, and lays out the data model, the `UltraMsg_*` API, the
+  broker, the per-platform adapters, security and a four-phase delivery plan.
+  Documentation only; no code.
+
+#### 2026-09-17 *0.8.77*
+- **A copy, a move or a delete that takes more than two seconds now says so.**
+  `UltraCanvasFilerWidget` ran all three straight through on the UI thread: a
+  folder of holiday photos dragged onto another drive froze the window for as
+  long as the copy took, with nothing on screen to say whether anything was
+  happening, how far along it was, or how to stop it. Packing and unpacking
+  archives had had a progress window since 0.3.63; the everyday operations had
+  none.
+
+  They now run on a background worker, and if one is still going **two seconds
+  later** it gets the same window packing gets - the ring with the percentage,
+  the file being handled and **Cancel** (`UltraCanvasProgressDialog`).
+  Anything quicker passes without a window at all: a file manager that flashes
+  a dialog for every copied text file is worse than one that shows none. Every
+  route in shares it - Ctrl+V, the context menu, `Delete`, a drag & drop
+  between panes, `Duplicate`, `PasteFilesInto()`, `DeletePaths()` - because
+  they all go through the same two queues.
+  - **What the ring shows.** Each entry of the queue is worth an equal slice of
+    it, and the bytes copied (or entries removed) inside an entry move the ring
+    within its slice, so one large file fills it smoothly and a thousand small
+    ones fill it a step at a time. An entry is measured just before it is
+    worked on, never the whole queue up front: for a move, where each entry is
+    one instant rename, walking every tree first would take longer than the
+    move.
+  - **Files over 8 MB are copied in 1 MB chunks**, so the ring moves *inside* a
+    single big file and Cancel does not have to wait for it. Smaller files
+    still go through `std::filesystem::copy_file` in one call, which lets the
+    platform hand the copy to the filesystem itself.
+  - **Cancel stops at the next file.** What was already copied, moved or
+    deleted stays; the entry the cancel interrupted does not - a half-written
+    file or folder is removed rather than left in the listing. The one step
+    that is never interrupted is the second half of a cross-volume move: once
+    the copy is safely across, the original is removed to the end, because
+    stopping there would leave the entry half in both places.
+  - **The conflict and problem dialogs are unchanged**, and still belong to the
+    UI thread: the worker walks the queue until it reaches an entry that needs
+    an answer and hands the queue back. The progress window steps aside while
+    such a dialog is up and returns when the work resumes, without a second
+    two-second wait - the delay is measured from the start of the operation,
+    not of the current step.
+  - `DeletePaths(paths, onDone)` is new: a delete with no confirmation of the
+    widget's own, for a host that has already asked. `DuplicateSelection()` is
+    now the paste queue aimed at the folder the entries already live in, which
+    is what it always was by hand - it just could not be cancelled or watched.
+  - Without an application timer (a headless host, a test) there is nothing to
+    collect a worker with, so the queues run on the calling thread exactly as
+    they did before.
+#### 2026-09-17 *0.8.76*
+- **A picture can sit inside a line of text.** Every image in a loaded document
+  became a paragraph of its own, because `RichTextRun` had no way to hold one:
+  a logo mid-sentence, an icon in a heading or a signature in a sign-off was
+  pulled out of its line and dropped below it, re-flowing the text around it.
+  - `RichTextRun` gains `mediaIndex`, `imageWidthPt`, `imageHeightPt` and
+    `imageAltText`. A run with `mediaIndex >= 0` *is* a picture, and its `text`
+    is a single U+FFFC OBJECT REPLACEMENT CHARACTER - the standard placeholder
+    for an inline attachment. It gives the picture one character's worth of the
+    block's text, so the caret steps over it, a selection covers it and
+    Backspace deletes it, with no position needing to know it is not a letter.
+  - Two pictures never coalesce into one run and a picture never merges with
+    the text beside it: `HasSameFormatting` refuses, because the run is what
+    carries which picture it is.
+  - The DOCX reader tells `<wp:inline>` from `<wp:anchor>`, the ODT reader
+    tells `text:anchor-type="as-char"` from the floating anchorings, and both
+    writers emit a picture run back in the line it came from.
+  - **A picture alone in a paragraph stays a block.** Both formats anchor a
+    standalone image in the text as well - a picture on its own line really is
+    "inline, with nothing beside it" - so the markup cannot separate the two
+    cases and what else the paragraph holds decides it. Without that rule this
+    change turned every existing block image into a run, which the format
+    tests caught.
+  - The element reserves a box for each picture through
+    `TextAttributeFactory::CreateShape` over its placeholder, so the line grows
+    to hold it and the following text flows along, then draws the picture at
+    the box's position.
+  - `ToPlainText`, `ToMarkdown` and `ToHTML` render a picture run as its alt
+    text, a markdown image reference and an embedded `<img>` respectively. The
+    placeholder never reaches a reader.
+  - `UCRichDocumentEditor::InsertInlineImage` and the element's
+    `InsertInlineImageFromFile`/`FromMemory` put a picture in the line at the
+    caret.
+  - Covered by 28 new checks in `Tests/RichTextEditorTest.cpp` (304 total),
+    12 in `Tests/RichTextEditElementTest.cpp` (96 total) and an inline round
+    trip in `Tests/WordFormatsTest.cpp`.
+
+#### 2026-09-17 *0.8.74*
+- **`UltraCanvasElevatedFileOperations` — "Delete as administrator", the retry
+  Explorer offers when a delete answers "You need permission to perform this
+  action".** A standard user's process cannot raise its own rights, so the
+  retry starts a second copy of the host executable through the shell's
+  `runas` verb: Windows shows its consent prompt, the elevated copy deletes
+  what the user named (read-only attributes lifted first, absolute paths
+  only, nothing read from anywhere but its command line) and exits, and what
+  it still could not delete comes back with the system's reason per entry
+  through a report file the caller created. Consent is asked every time and
+  nothing else is elevated. Host side: `RunHelperIfRequested(argc, argv,
+  exitCode)` first in `main()` — it turns the relaunch into the helper and is
+  what makes `IsAvailable()` true, so an application that never calls it never
+  offers the retry. `IsPermissionFailure(ec)` tells the "Access is denied" the
+  retry resolves from the sharing violation it cannot. Windows backend;
+  everywhere else `Unavailable`. `Tests/ElevatedFileOperationsTest.cpp` covers
+  the encodings, the helper's delete and the no-backend answers on every
+  platform. See `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+- **`UltraCanvasFilerWidget`: a delete refused with "Access is denied" now
+  offers the administrator retry** wherever the host wired the helper. The
+  problem dialog becomes *Administrator Permission Needed* with **Delete as
+  administrator** (preselected) / **Try again** / **Skip**, plus the usual
+  "do this for all remaining items" switch. Entries handed to the administrator
+  are collected while the queue runs and go to the helper in one run at the
+  end — one consent prompt for the whole delete, as Explorer asks once —
+  behind a "Deleting as Administrator" progress window, waited for off the UI
+  thread. Failures the helper reports come back in a *Cannot Delete* dialog;
+  a declined prompt goes to `onError`. Before this, the dialog's only offers
+  for such an entry were "Try again" and "Skip", neither of which could ever
+  succeed. The problem dialog helper is now `ShowProblemChoiceDialog` (any
+  number of exclusive choices); `ShowProceedSkipDialog` remains as its
+  two-choice form.
+
+#### 2026-09-16 *0.8.73*
+- **A drawing the framework could read showed nothing in the preview pane.**
+  Core owns the vector document model and the renderer that draws one, but not
+  a single reader - SVG, XAR, EMF, WMF, DXF and the DWG family all live in the
+  Vector plugin, which links *against* core. So the media viewer and the Filer
+  had exactly two ways to show a vector file: rasterized by libvips
+  (svg/svgz, and eps/ps where that build has a PostScript loader), or as the
+  preview bitmap some formats store inside themselves. A DXF or a DWG is
+  neither, so selecting one produced an empty pane and a plain type glyph -
+  in a build whose Vector plugin had just read the same drawing for the
+  FileLoader.
+- **New: `UltraCanvasVectorPreview.h` / `core/UltraCanvasVectorPreview.cpp`** -
+  the same seam `UltraCanvasModelPreview.h` is for 3D formats, for drawings.
+  Core declares what it wants ("turn this path into a `VectorDocument`", "is
+  this one you read") and `RegisterVectorFormatsPlugin()` installs an
+  implementation on the way in, so the dependency still runs plugin -> core.
+  `CanPreviewVectorExtension()`, `PreviewableVectorExtensions()`,
+  `LoadVectorPreviewDocument()`, plus the drawing half every caller shares:
+  `RenderVectorDocumentPixmap()` / `RenderVectorPreviewPixmap()`, a document
+  fitted into an offscreen render context and read back. A provider may also
+  claim a file by content (`ClaimsFile`), which is what a `.bak` holding a
+  drawing needs.
+- **The media viewer opens drawings in `UltraCanvasVectorElement`**, a display
+  view of its own next to the PDF, model, book and font views: the document
+  itself, sharp at any zoom, rather than a bitmap of it. A format with no
+  reader in this build still falls back to the embedded preview bitmap and
+  still says so when there is not even that.
+- **The Filer thumbnails them too**, rendered from the document at the tile's
+  size. Serialized behind one mutex, unlike every other preview producer here:
+  a PDF worker owns its engine context and a font specimen its FreeType
+  library, but drawing a document goes through a render context and the
+  process-wide font machinery, and one at a time costs nothing worth having
+  for a file kind that is not photographs.
+- `GetPreviewableFormats()` asks the same seam, so **Display > Thumbnails** and
+  **Display > Detail view** stop greying out formats the build can show. With
+  the Vector and Models plugins registered, 23 formats change from greyed to
+  live: dxf, dwg, dwt, dws, sv$, emf, wmf, and sixteen 3D formats (3ds, obj,
+  ply, dae, fbx, x, ms3d, blend, abc, step/stp/p21, x3d/x3dv, wrl/vrml).
+- **Disabled controls were drawn heavier than live ones.** `Colors::LightGray`
+  (192) was the disabled face of checkboxes, radios and segmented controls,
+  and it is *darker* than `Colors::ButtonFace` (225) - so on a settings page
+  listing one switch per file format, the unsupported formats were the
+  strongest thing on the page. The border made it worse: it stayed at
+  `ButtonShadow` whatever the state. New `Colors::ControlDisabled` (238) and
+  `Colors::ControlDisabledBorder` (202), both lighter than their live
+  counterparts, are now the default for checkbox, radio, segmented-control and
+  button faces, and the checkbox and radio borders grey with them.
+
+#### 2026-09-16 *0.8.72*
+- **A DWG drawing was only recognised when it was called `.dwg`.** AutoCAD
+  writes the *same* drawing database — same `AC10xx` header, same object map —
+  to four suffixes and copies it verbatim to a fifth, and every layer that
+  decided "this is a drawing" compared against the single string `"dwg"`. A
+  template, a standards file or an automatic save opened nowhere: the Vector
+  plugin's dispatch returned null before reading a byte, `GraphicsFormatDetector`
+  filed them as Unknown, and the Filer gave them a generic glyph and no type
+  name. The native decoder in the tree could read all of them perfectly well.
+- **`.dwt` (template), `.dws` (drawing standards) and `.sv$` (automatic save)
+  are now first-class drawing extensions.** `DWGConverter::GetFileExtensions()`
+  lists them, `UltraCanvasVectorFormatsPlugin::GetSupportedExtensions()` reports
+  them as loadable (so they reach `UltraCanvasSupportedFormats`, the FileLoader
+  inventory and file-dialog filters), `GraphicsFormatDetector` files them as
+  `Vector` (so `GraphicsFileInfo::IsValid()` and the vector rasterizer accept
+  them), and the Filer names them AutoCAD Template / Standards / Autosave in the
+  Vector category. They go through the same native R13–R2018 decoder as a
+  `.dwg`, so they open, preview and rasterize identically.
+- **`.bak` is recognised by its header, not its name.** AutoCAD's backup is a
+  drawing, but the suffix belongs to no format — editors, package managers and
+  databases all write `.bak` — so claiming every one of them as CAD would be
+  wrong. `DWGConverter::IsAmbiguousDrawingExtension()` marks it, and the plugin
+  takes it only when the file's first six bytes carry the `AC10xx` magic that
+  `ValidateFile()` already checked for. It is deliberately not an advertised
+  extension.
+- `UltraCanvasGraphicsPluginRegistry::FindPluginForFile()` no longer stops at
+  the extension map: a suffix nothing advertises now falls through to the
+  plugins' own `CanHandle()`, which is the contract for deciding by content.
+  Without it a format recognised from its header was reachable through the
+  converter API but not through `LoadGraphicsFile`. Every plugin's `CanHandle`
+  is an extension comparison plus at most a header peek, so the fallback costs
+  what the missed map lookup did.
+- `UltraCanvasVectorFormatsPlugin::CanHandle(const GraphicsFileInfo&)` passes
+  the file's path instead of rebuilding `"." + extension` from it: an extension
+  alone cannot answer for a format decided by content, and this overload has to
+  agree with what `LoadGraphics()` will do with the same file.
+- `DWGReaderTest` loads the R2000 fixture's own bytes under each of `.dwg`,
+  `.dwt`, `.dws`, `.sv$` and `.bak` and checks that a `.bak` holding anything
+  else is left alone; `VectorFormatsPluginTest` checks the registry listing, the
+  converter dispatch and the format inventory for the new extensions, and that
+  `bak` is advertised nowhere yet still recognised from its header.
+- Docs: `Docs/UltraCanvas/UltraCanvasVectorConverters.md` gains **The DWG
+  family** (the five suffixes, which are settled by name and which by content);
+  the Filer, vector-raster, UI-element and FileLoader format tables list the new
+  extensions.
+#### 2026-09-17 *0.8.72*
+- **Merged table cells survive a save, and are drawn where they belong.** Two
+  separate defects, found while looking at what tables still could not do.
+  - **Row spans were silently dropped on every save.** The ODT reader has always
+    recovered `table:number-rows-spanned` into `RichTableCell::rowSpan`, but
+    neither writer ever emitted a row merge — so opening a document with
+    vertically merged cells and saving it quietly un-merged them. The ODT writer
+    now emits `table:number-rows-spanned` with the `<table:covered-table-cell/>`
+    placeholders the covered positions need, the DOCX writer emits
+    `<w:vMerge w:val="restart"/>` plus the continuation cells Word requires, and
+    the DOCX reader turns those continuations back into a `rowSpan`, which it
+    previously ignored entirely. A round-trip test in `WordFormatsTest` pins
+    both formats; it failed before the fix, which is how the loss was found.
+  - **`UltraCanvasRichTextEdit` ignored spans when laying tables out.** A cell
+    was positioned by its index within its row and drawn one column wide, so a
+    single merged cell misaligned every cell after it and any cell below a
+    row-spanned one sat in the wrong column. Layout now walks the grid: a cell
+    covering several columns is drawn that wide, a cell covering several rows
+    stretches down over them, and the positions the cells beside them get shift
+    accordingly.
+  - A cell is still addressed as `{row, index-within-row}`. The grid column is
+    geometry alone, so honouring spans moved no caret and changed no position.
+  - Covered by 11 new checks in `Tests/RichTextEditElementTest.cpp` (85 total)
+    and a merged-cell round trip in `Tests/WordFormatsTest.cpp`.
+
+#### 2026-09-16 *0.8.71*
+- **The demo's Vector Editing page had no drawing area.** The page places its
+  widgets at fixed coordinates and built the canvas with the sizeless factory,
+  then called `SetBounds(10, 130, 720, 600)`. `SetBounds()` writes `finalBounds`
+  and nothing else — no CSS `size.width/height`, no `AbsoluteUI` position — so
+  the next layout pass re-flowed the canvas as an in-flow child with auto
+  height, which is zero. The toolbar, the fill panel and the status bar (all
+  built with explicit bounds, hence absolutely placed) drew where they belonged,
+  and the canvas between them was six hundred pixels of nothing.
+  - `UltraCanvasVectorCanvas` now has the `(id, x, y, w, h)` constructor every
+    other element has, with a matching `CreateVectorCanvas(id, x, y, w, h)`
+    overload; the sizeless pair stays for layout-driven hosts such as
+    ArtCreator, which gives the canvas `flex-grow` instead.
+    `Docs/UltraCanvas/UltraCanvasVectorCanvas.md` documents both and says why
+    `SetBounds()` is not a substitute for either.
+- **The page's toolbar reads as icons now, not clipped words.** Fourteen text
+  buttons in 980 pixels left every label truncated to "Sel…", "Recta…",
+  "Duplic…". It now uses ArtCreator's icon set (`media/icons/artcreator/`,
+  `media/icons/texter/`) with the command and its shortcut in the tooltip, the
+  way ArtCreator's own toolbar does.
+  - Four icons the set was missing were added in the same 24 × 24, 1.8-stroke
+    style: `delete.svg`, `duplicate.svg`, `grid.svg` and `snap.svg`.
+  - `to-front.svg` and `to-back.svg` were redrawn, because on a toolbar they
+    were the same picture. The toolbar draws button icons as a single-colour
+    mask (`ButtonStyle::useIconAsMask`), which flattens a two-tone icon: both
+    were a `#333` square overlapping a `#fff` one, and once the white square
+    masked to black the pair merged into one identical blob — in ArtCreator's
+    toolbar too. They are now a square with an up or down arrow, which reads
+    the same under a mask as it does in colour.
+- **Vector Editing moved from *Vector Graphics* to *Widgets*.**
+  `UltraCanvasVectorCanvas` is a widget an application drops into a window; the
+  Vector Graphics category is about the file formats the vector readers produce
+  (SVG, CDR, XAR, EPS, DWG, AI).
 
 #### 2026-09-16 *0.8.70*
 - **The demo application had no WYSIWYG page, and its tree told four lies about

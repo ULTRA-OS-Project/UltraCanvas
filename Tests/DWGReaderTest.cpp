@@ -5,18 +5,21 @@
 // layer/entity visibility, paper-space filtering, geometry-derived extents)
 // through a synthetic drawing, and the native DWG decoder through the
 // R2000 fixture in Tests/DataFormats (the framework's own test document,
-// written by the DXF writer and converted with LibreDWG's dxf2dwg).
+// written by the DXF writer and converted with LibreDWG's dxf2dwg), plus
+// the extension dispatch for the rest of the drawing family - .dwt, .dws,
+// .sv$ and the content-decided .bak.
 //
 // Usage: DWGReaderTest [file.dwg ...]
 // Extra DWG files are decoded and reported (entity histogram, page size);
 // with DWG_TEST_SVG_DIR set, each is also exported as SVG there for a look.
 // Exit code is the number of failed checks.
-// Version: 1.0.0
-// Last Modified: 2026-09-08
+// Version: 1.1.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasCADConverters.h"
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasDWGDecoder.h"
+#include "../UltraCanvas/Plugins/Vector/UltraCanvasVectorFormatsPlugin.h"
 #include "UltraCanvasVectorConverter.h"
 #include "DataFormats/UltraCanvasVectorStorage.h"
 
@@ -629,6 +632,13 @@ std::string ReadFile(const std::string& path) {
     return ss.str();
 }
 
+bool WriteFile(const std::string& path, const std::string& data) {
+    std::ofstream f(path, std::ios::binary | std::ios::trunc);
+    if (!f.is_open()) return false;
+    f.write(data.data(), static_cast<std::streamsize>(data.size()));
+    return f.good();
+}
+
 std::map<std::string, int> EntityHistogram(const std::string& dxf) {
     std::map<std::string, int> hist;
     std::istringstream in(dxf);
@@ -690,6 +700,57 @@ void TestFixture() {
     Check(doc->Size.width > doc->Size.height, "page is landscape like the source");
 }
 
+// A drawing does not always arrive named .dwg: AutoCAD writes the same
+// database to .dwt (template), .dws (drawing standards) and .sv$ (automatic
+// save), and copies it verbatim to .bak. The extension dispatch must reach
+// the DWG converter for all of them - and must leave alone a .bak that is
+// some other program's backup, since that suffix belongs to no format.
+void TestDrawingFamily() {
+    std::printf("== DWG family extensions\n");
+    using VectorConverter::DWGConverter;
+    for (const char* name : {"plan.dwg", "plan.dwt", "plan.dws",
+                             "plan_1_1_5678.sv$", "PLAN.DWT", ".dws", "sv$"}) {
+        Check(DWGConverter::IsDrawingExtension(name),
+              std::string("drawing extension: ") + name);
+    }
+    for (const char* name : {"plan.dxf", "plan.bak", "plan.svg", "plan"}) {
+        Check(!DWGConverter::IsDrawingExtension(name),
+              std::string("not a drawing extension: ") + name);
+    }
+    Check(DWGConverter::IsAmbiguousDrawingExtension("plan.BAK") &&
+                  !DWGConverter::IsAmbiguousDrawingExtension("plan.dwg"),
+          ".bak is the one decided by content");
+
+    std::string data = ReadFile(std::string(DWG_TEST_DATA_DIR) +
+                                "/cad-test-document.r2000.dwg");
+    if (data.empty()) {
+        std::printf("  note: fixture not found; dispatch checks skipped\n");
+        return;
+    }
+    // The fixture's own bytes under each name of the family.
+    for (const char* suffix : {".dwg", ".dwt", ".dws", ".sv$", ".bak"}) {
+        const std::string path = std::string("dwg_family_test") + suffix;
+        if (!WriteFile(path, data)) {
+            std::printf("  note: cannot write %s; skipped\n", path.c_str());
+            continue;
+        }
+        auto doc = UltraCanvasVectorFormatsPlugin::LoadVectorDocument(path);
+        Check(doc && !Drawables(*doc).empty(),
+              std::string("a drawing named *") + suffix + " loads");
+        std::remove(path.c_str());
+    }
+    // ... and a .bak that holds something else is not a drawing.
+    const std::string other = "dwg_family_test_other.bak";
+    if (WriteFile(other, "# an editor's backup, not a drawing\n")) {
+        Check(UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(other) ==
+                      nullptr,
+              "a .bak that is not a drawing is left alone");
+        Check(UltraCanvasVectorFormatsPlugin::LoadVectorDocument(other) == nullptr,
+              "... and does not load as one");
+        std::remove(other.c_str());
+    }
+}
+
 void ReportFile(const std::string& path) {
     std::printf("== %s\n", path.c_str());
     std::string data = ReadFile(path);
@@ -733,6 +794,7 @@ int main(int argc, char** argv) {
     }
     TestBlockMachinery();
     TestFixture();
+    TestDrawingFamily();
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);
     return failures;
 }

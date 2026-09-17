@@ -194,7 +194,8 @@ FontStyle UltraCanvasRichTextEdit::FontForBlock(const RichDocBlock& block) const
 void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                                                   const std::vector<RichTextRun>& runs,
                                                   std::vector<RichTextHitRect>* outHits,
-                                                  int blockIndex) const {
+                                                  int blockIndex,
+                                                  std::vector<BlockLayout::InlineImage>* outInlineImages) const {
     if (!layout) return;
 
     int position = 0;
@@ -210,6 +211,39 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             attr->SetRange(start, end);
             layout->InsertAttribute(std::move(attr));
         };
+
+        // A picture in the line: reserve a box over its placeholder so the text
+        // flows around it, and record where to draw it once the layout is laid.
+        if (run.IsInlineImage()) {
+            std::shared_ptr<UCImage> image;
+            const UCRichDocument& document = *editor.GetDocument();
+            if (run.mediaIndex >= 0 && run.mediaIndex < static_cast<int>(document.media.size())) {
+                image = UCImage::LoadFromMemory(document.media[static_cast<size_t>(run.mediaIndex)].data);
+            }
+            float width = run.imageWidthPt > 0.0f ? run.imageWidthPt
+                        : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
+            float height = run.imageHeightPt > 0.0f ? run.imageHeightPt
+                         : (image ? static_cast<float>(image->GetHeight()) : 16.0f);
+            // Never wider than the column it sits in; keep the aspect ratio.
+            const float maxWidth = std::max(16.0f, visibleArea.width);
+            if (width > maxWidth) {
+                height *= maxWidth / width;
+                width = maxWidth;
+            }
+            // The picture sits on the baseline, which is where a word processor
+            // puts an inline image.
+            add(TextAttributeFactory::CreateShape(width, height, 0.0));
+            if (outInlineImages) {
+                BlockLayout::InlineImage placed;
+                placed.byteOffset = start;
+                placed.width = width;
+                placed.height = height;
+                placed.image = image;
+                placed.altText = run.imageAltText;
+                outInlineImages->push_back(std::move(placed));
+            }
+            continue;       // a picture carries no text formatting
+        }
 
         if (run.bold)          add(TextAttributeFactory::CreateFontWeight(FontWeight::Bold));
         if (run.italic)        add(TextAttributeFactory::CreateFontStyle(FontSlant::Italic));
@@ -293,7 +327,8 @@ void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int 
 
 std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
         IRenderContext* ctx, const RichDocBlock& block, const std::vector<RichTextRun>& runs,
-        float wrapWidth, std::vector<RichTextHitRect>* outHits, int blockIndex) const {
+        float wrapWidth, std::vector<RichTextHitRect>* outHits, int blockIndex,
+        std::vector<BlockLayout::InlineImage>* outInlineImages) const {
     std::string text = UCRichDocumentEditor::RunsText(runs);
     auto layout = ctx->CreateTextLayout(text, false);
     layout->SetFontStyle(FontForBlock(block));
@@ -304,7 +339,7 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     if (block.align != RichTextAlign::Default) {
         layout->SetAlignment(ToTextAlignment(block.align));
     }
-    ApplyRunAttributes(layout.get(), block, runs, outHits, blockIndex);
+    ApplyRunAttributes(layout.get(), block, runs, outHits, blockIndex, outInlineImages);
     return layout;
 }
 
@@ -357,48 +392,117 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
         }
 
         case RichBlockType::Table: {
-            // Columns share the width evenly; each cell lays out inside its own
-            // column and the row takes the tallest cell's height.
+            // The grid is as wide as the widest row counting column spans, not
+            // as the row with the most cells: one cell spanning three columns
+            // is three columns wide.
             size_t columnCount = 0;
-            for (const auto& row : block.tableRows) columnCount = std::max(columnCount, row.cells.size());
+            for (const auto& row : block.tableRows) {
+                size_t width = 0;
+                for (const auto& cell : row.cells) width += static_cast<size_t>(std::max(1, cell.columnSpan));
+                columnCount = std::max(columnCount, width);
+            }
             if (columnCount == 0) {
                 bl.bounds.width = visibleArea.width;
                 bl.bounds.height = static_cast<float>(style.baseFont.fontSize);
                 break;
             }
             float columnWidth = std::max(24.0f, (visibleArea.width - indent) / static_cast<float>(columnCount));
+
+            // A cell's position is its GRID column, which is not its index in
+            // the row once anything spans: a row-spanning cell above occupies a
+            // column here, and the cells of this row shift past it. The model
+            // indices (row, index-within-row) are what positions address, so
+            // cellRows/cellColumns keep storing those while the geometry
+            // follows the grid.
+            std::vector<int> rowSpanRemaining(columnCount, 0);
+            // Cells still growing downwards: index into bl.cells, and the row
+            // they must reach. Their height is fixed up once rows are measured.
+            struct PendingSpan { size_t cellIndex; size_t lastRow; };
+            std::vector<PendingSpan> pendingSpans;
+            std::vector<float> rowTop(block.tableRows.size(), 0.0f);
+            std::vector<float> rowBottom(block.tableRows.size(), 0.0f);
+
             float y = 0.0f;
             for (size_t r = 0; r < block.tableRows.size(); r++) {
                 const RichTableRow& row = block.tableRows[r];
-                float rowHeight = 0.0f;
-                for (size_t c = 0; c < row.cells.size(); c++) {
+                rowTop[r] = y;
+                float rowHeight = static_cast<float>(style.baseFont.fontSize) * 1.3f;
+                const size_t firstCellOfRow = bl.cells.size();
+
+                size_t cellIndex = 0;
+                for (size_t gridColumn = 0; gridColumn < columnCount; ) {
+                    if (rowSpanRemaining[gridColumn] > 0) {
+                        rowSpanRemaining[gridColumn]--;
+                        gridColumn++;
+                        continue;           // covered by a cell from an earlier row
+                    }
+                    if (cellIndex >= row.cells.size()) break;
+                    const RichTableCell& modelCell = row.cells[cellIndex];
+                    const int columnSpan = std::max(1, modelCell.columnSpan);
+                    const int rowSpan = std::max(1, modelCell.rowSpan);
+                    const float cellWidth = columnWidth * static_cast<float>(columnSpan);
+
                     RichDocBlock cellBlock;
                     cellBlock.type = RichBlockType::Paragraph;
                     auto cell = std::make_unique<BlockLayout>();
-                    cell->layout = MakeRunsLayout(ctx, cellBlock, row.cells[c].runs,
-                                                  columnWidth - 8.0f, nullptr, blockIndex);
+                    cell->layout = MakeRunsLayout(ctx, cellBlock, modelCell.runs,
+                                                  cellWidth - 8.0f, nullptr, blockIndex,
+                                                  &cell->inlineImages);
                     ApplySelectionAttributes(cell->layout.get(), blockIndex,
-                                             static_cast<int>(r), static_cast<int>(c));
-                    cell->bounds = Rect2Df(indent + static_cast<float>(c) * columnWidth, y,
-                                           columnWidth,
+                                             static_cast<int>(r), static_cast<int>(cellIndex));
+                    cell->bounds = Rect2Df(indent + static_cast<float>(gridColumn) * columnWidth, y,
+                                           cellWidth,
                                            static_cast<float>(cell->layout->GetLayoutHeight()));
-                    rowHeight = std::max(rowHeight, cell->bounds.height);
-                    bl.cellColumns.push_back(static_cast<int>(c));
+                    // A cell spanning rows must not force this row to its full
+                    // height; it stretches over the rows below instead.
+                    if (rowSpan == 1) rowHeight = std::max(rowHeight, cell->bounds.height);
+
+                    bl.cellColumns.push_back(static_cast<int>(cellIndex));
                     bl.cellRows.push_back(static_cast<int>(r));
+                    if (rowSpan > 1) {
+                        pendingSpans.push_back(PendingSpan{
+                            bl.cells.size(),
+                            std::min(r + static_cast<size_t>(rowSpan) - 1,
+                                     block.tableRows.size() - 1)});
+                        for (size_t c = gridColumn;
+                             c < gridColumn + static_cast<size_t>(columnSpan) && c < columnCount; c++) {
+                            rowSpanRemaining[c] = rowSpan - 1;
+                        }
+                    }
                     bl.cells.push_back(std::move(cell));
+
+                    cellIndex++;
+                    gridColumn += static_cast<size_t>(columnSpan);
                 }
-                for (auto& cell : bl.cells) {
-                    if (std::abs(cell->bounds.y - y) < 0.01f) cell->bounds.height = rowHeight;
+
+                // Every cell that belongs to this row alone takes its height.
+                for (size_t i = firstCellOfRow; i < bl.cells.size(); i++) {
+                    bool spans = false;
+                    for (const PendingSpan& pending : pendingSpans) {
+                        if (pending.cellIndex == i) { spans = true; break; }
+                    }
+                    if (!spans) bl.cells[i]->bounds.height = rowHeight;
                 }
                 y += rowHeight + 4.0f;
+                rowBottom[r] = y - 4.0f;
             }
+
+            // Now that every row has a height, stretch the row-spanning cells
+            // down to the bottom of the last row they cover.
+            for (const PendingSpan& pending : pendingSpans) {
+                BlockLayout& cell = *bl.cells[pending.cellIndex];
+                const float bottom = rowBottom[pending.lastRow];
+                cell.bounds.height = std::max(cell.bounds.height, bottom - cell.bounds.y);
+            }
+
             bl.bounds.width = columnWidth * static_cast<float>(columnCount);
             bl.bounds.height = y;
             break;
         }
 
         default: {
-            bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth, &bl.hitRects, blockIndex);
+            bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth, &bl.hitRects, blockIndex,
+                                       &bl.inlineImages);
             ApplySelectionAttributes(bl.layout.get(), blockIndex);
             bl.bounds.width = static_cast<float>(bl.layout->GetLayoutWidth());
             bl.bounds.height = static_cast<float>(bl.layout->GetLayoutHeight()) + style.paragraphLeading;
@@ -537,6 +641,28 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
     DrawScrollbar(ctx);
 }
 
+// Draws the pictures sitting inside a laid-out text. The layout reserved a box
+// for each over its placeholder, so IndexToPos() gives the box's top-left and
+// the picture goes straight into it.
+void UltraCanvasRichTextEdit::DrawInlineImages(IRenderContext* ctx, const BlockLayout& bl,
+                                               float originX, float originY) const {
+    if (bl.inlineImages.empty() || !bl.layout) return;
+    for (const BlockLayout::InlineImage& placed : bl.inlineImages) {
+        Rect2Di box = bl.layout->IndexToPos(placed.byteOffset);
+        Rect2Dd target(originX + static_cast<double>(box.x),
+                       originY + static_cast<double>(box.y),
+                       placed.width, placed.height);
+        if (placed.image) {
+            ctx->DrawImage(*placed.image, target, ImageFitMode::Contain);
+        } else {
+            // Undecodable media: the same framed placeholder a block image
+            // gets, so the picture's place in the line stays visible.
+            ctx->DrawFilledRectangle(target, Colors::Transparent, 1.0f,
+                                     style.imagePlaceholderColor);
+        }
+    }
+}
+
 void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
                                           const BlockLayout& bl) {
     const RichDocBlock& block = editor.GetBlock(blockIndex);
@@ -591,6 +717,8 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
                 ctx->DrawFilledRectangle(cellRect, Colors::Transparent, 1.0f, style.tableBorderColor);
                 ctx->SetCurrentPaint(style.textColor);
                 ctx->DrawTextLayout(*cell->layout, Point2Dd(cellRect.x + 4.0, cellRect.y + 2.0));
+                DrawInlineImages(ctx, *cell, static_cast<float>(cellRect.x + 4.0),
+                                 static_cast<float>(cellRect.y + 2.0));
             }
             DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
             return;
@@ -618,6 +746,7 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
     if (bl.layout) {
         ctx->SetCurrentPaint(style.textColor);
         ctx->DrawTextLayout(*bl.layout, Point2Dd(textX, originY));
+        DrawInlineImages(ctx, bl, static_cast<float>(textX), static_cast<float>(originY));
     }
 }
 
@@ -1628,6 +1757,31 @@ int UltraCanvasRichTextEdit::GetCurrentHeadingLevel() const {
     if (blockIndex < 0 || blockIndex >= editor.GetBlockCount()) return 0;
     const RichDocBlock& block = editor.GetBlock(blockIndex);
     return block.type == RichBlockType::Heading ? block.headingLevel : 0;
+}
+
+bool UltraCanvasRichTextEdit::InsertInlineImageFromFile(const std::string& path,
+                                                        const std::string& altText) {
+    if (readOnly) return false;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    if (data.empty()) return false;
+
+    std::string name = path;
+    size_t slash = name.find_last_of("/\\");
+    if (slash != std::string::npos) name = name.substr(slash + 1);
+    InsertInlineImageFromMemory(name, UCRichDocument::MimeTypeForImageName(name), data, altText);
+    return true;
+}
+
+void UltraCanvasRichTextEdit::InsertInlineImageFromMemory(const std::string& name,
+                                                          const std::string& mimeType,
+                                                          const std::vector<uint8_t>& data,
+                                                          const std::string& altText) {
+    if (readOnly) return;
+    editor.InsertInlineImage(name, mimeType, data, altText);
+    AfterEdit();
 }
 
 void UltraCanvasRichTextEdit::InsertImageFromMemory(const std::string& name,

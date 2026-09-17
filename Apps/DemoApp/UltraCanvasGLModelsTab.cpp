@@ -25,6 +25,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDemoScrollText.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 // Which formats this build can turn into geometry, and the call that does it.
@@ -462,8 +463,12 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
     speedSlider->onValueChanged = [state](float v) { state->autoSpeed = v; };
     panel->AddChild(speedSlider);
 
-    auto info = std::make_shared<UltraCanvasLabel>("ModelInfo", 10, 186, 270, 360);
-    info->SetText(
+    // Scrolled: this note is longer than the 360px the panel has for it, and
+    // the lines it used to lose off the bottom are the ones pointing at the
+    // 3D Model Formats page and the maximize control.
+    auto info = demoui::MakeScrollingText("ModelInfo", 10, 186, 270, 360, 11.0f,
+                                          Color(60, 60, 60, 255));
+    info.SetText(
         "Real meshes are streamed from\n"
         "media/3D/ into the GL surface\n"
         "and shaded with a two-light Phong\n"
@@ -488,10 +493,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLModelsTab() {
         "double-click the canvas to maximize it;\n"
         "Esc or another double-click restores."
     );
-    info->SetFontSize(11);
-    info->SetAlignment(TextAlignment::Left);
-    info->SetTextColor(Color(60, 60, 60, 255));
-    panel->AddChild(info);
+    panel->AddChild(info.View);
 
     root->AddChild(panel);
 
