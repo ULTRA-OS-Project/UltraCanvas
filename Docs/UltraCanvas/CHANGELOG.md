@@ -1,4 +1,4 @@
-#### 2026-09-17 *0.8.79*
+#### 2026-09-17 *0.8.80*
 - **A file display can now draw the icons the host desktop draws.** The filer
   widget has always painted its own: the folder shape and the category-coloured
   sheet with the extension on it. They look the same everywhere and need
@@ -72,6 +72,40 @@
     `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`, with the widget's side in
     `UltraCanvasFilerWidget.md` and the two new association calls in
     `UltraCanvasFileAssociations.md`.
+#### 2026-09-17 *0.8.79*
+- **The 3D demo pages clipped their own text.** Every information panel in the
+  3D Graphics section - "What the reader found", "What the format can carry",
+  the "how it works" strip, and the notes beside the OpenGL canvases - was a
+  plain `UltraCanvasLabel` in a fixed rectangle, filled with text whose length
+  depends on the file being described. A COLLADA scene says far more than a
+  STEP solid, and a build with no converter for an extension replaces the
+  capability grid with a paragraph. Labels are vertically centred by default,
+  so text that outgrew its panel lost its FIRST line off the top as well as
+  its last off the bottom - the FBX sample's "Read yes / Write read-only" row
+  was cut in half - and nothing on screen said anything was missing.
+- **New `Apps/DemoApp/UltraCanvasDemoScrollText.h`**: the text now lives in an
+  `UltraCanvasContainer` sized to the space available, with an auto-sized
+  `UltraCanvasLabel` as its only child. The layout engine measures the label
+  against the whole text, the container sees a child taller than its viewport
+  and shows its vertical scrollbar, and the wheel and the bar reach the rest.
+  Text that fits is drawn exactly as before - no bar appears. The block is
+  top-aligned, so a panel starts at its first line rather than centring short
+  text in a tall box, and `SetText()` returns to the top so switching samples
+  does not open the next one halfway down.
+- **Lines too long for a panel wrap instead of being cut short.** The same
+  panels ellipsized anything wider than the box, which is how "Autodesk FBX
+  6.x and 7.x, binary and ASCII" became "Autodesk FBX 6.x and 7.x, bina...",
+  the generator string lost its version and the unit scale lost its number -
+  and the box cannot get any wider. The aligned columns these panels are
+  built from are far shorter than the box and look exactly as before.
+- Used by **3D Model Formats** (stats, capabilities, how-it-works), **STL 3D
+  Models** (stats, support list, how-it-works) and the three **OpenGL 3D
+  support** tabs (the model, shader and Zarch notes). The Models tab's note
+  was 26 lines in a 360px box and had been losing its last lines outright.
+- `Tests/DemoScrollTextTest.cpp` runs the real layout engine over the block
+  against an offscreen render context: overflowing text is measured in full
+  and raises the scrollbar, fitting text raises none, and both start at the
+  top.
 
 #### 2026-09-17 *0.8.78*
 - **New design proposal: UltraMessage, the cross-platform message channel**
@@ -98,6 +132,7 @@
   buses as adapters, and lays out the data model, the `UltraMsg_*` API, the
   broker, the per-platform adapters, security and a four-phase delivery plan.
   Documentation only; no code.
+
 #### 2026-09-17 *0.8.77*
 - **A copy, a move or a delete that takes more than two seconds now says so.**
   `UltraCanvasFilerWidget` ran all three straight through on the UI thread: a

@@ -22,6 +22,7 @@
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDemoScrollText.h"
 #include "UltraCanvasTextArea.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasConfig.h"
@@ -1024,10 +1025,12 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         };
 
     // The panel's content box ends at y=628, so the info text has ~310px here —
-    // the previous version listed every effect (the dropdown already does) and
+    // an earlier version listed every effect (the dropdown already does) and
     // ran off the bottom of the panel, taking the interaction hints with it.
-    auto info = std::make_shared<UltraCanvasLabel>("ShaderInfo", 10, 318, 270, 310);
-    info->SetText(
+    // It scrolls now, so text that outgrows the panel can still be read.
+    auto info = demoui::MakeScrollingText("ShaderInfo", 10, 318, 270, 310, 11.0f,
+                                          Color(60, 60, 60, 255));
+    info.SetText(
         "Most effects are a single fragment\n"
         "shader over one full-screen triangle;\n"
         "Circles and Alien Caterpillar are drawn\n"
@@ -1043,10 +1046,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLShaderTab() {
         "double-click the canvas to maximize it;\n"
         "Esc or another double-click restores."
     );
-    info->SetFontSize(11);
-    info->SetAlignment(TextAlignment::Left);
-    info->SetTextColor(Color(60, 60, 60, 255));
-    panel->AddChild(info);
+    panel->AddChild(info.View);
 
     root->AddChild(panel);
 
