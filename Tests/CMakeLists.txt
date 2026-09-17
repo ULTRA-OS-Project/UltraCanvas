@@ -2463,6 +2463,34 @@ else()
     message(STATUS "  DWGReaderTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# ===== AI READER TEST =====
+# The Adobe Illustrator import path: the two shipped samples in
+# media/vector/AI (CorelDRAW exports whose PDF page is empty and whose
+# artwork is entirely in the /AIPrivateData streams - the case that used to
+# render as a blank page), plus the art language itself on a synthetic
+# legacy file. Extra .ai files on the command line are imported and
+# reported (AI_TEST_SVG_DIR exports them as SVG).
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building AIReaderTest...")
+    add_executable(AIReaderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/AIReaderTest.cpp
+    )
+    target_include_directories(AIReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(AIReaderTest PRIVATE cxx_std_20)
+    target_compile_definitions(AIReaderTest PRIVATE
+        AI_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/AI"
+    )
+    target_link_libraries(AIReaderTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(AIReaderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME AIReaderTest COMMAND AIReaderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: AIReaderTest")
+else()
+    message(STATUS "  AIReaderTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #

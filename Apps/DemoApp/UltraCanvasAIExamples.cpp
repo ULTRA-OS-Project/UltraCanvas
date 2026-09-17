@@ -1,35 +1,46 @@
 // Apps/DemoApp/UltraCanvasAIExamples.cpp
 // Adobe Illustrator (.ai) artwork demo for the UltraCanvas demo app.
 //
-// Since Illustrator 9 a .ai file IS a PDF: the page content is ordinary PDF,
-// with Illustrator's private editing data attached as an extra stream
-// (AIPrivateData) that every other PDF consumer ignores. Both samples under
-// media/vector/AI are exactly that - %PDF-1.5, one page, AIPrivateData
-// present - so this page reads them with the MuPDF-backed
-// UltraCanvasPDFView, the same viewer the PDF Documents page uses.
-// UltraCanvasPDFView::LoadFromPath() reads a document of this size into
-// memory and opens it as "application/pdf", so the .ai extension needs no
-// special handling.
+// "Since Illustrator 9 a .ai file IS a PDF, so open it with the PDF engine"
+// is only half the story, and this page used to tell only that half - which
+// is why it showed a blank page for both of the samples under
+// media/vector/AI. Illustrator's "Create PDF Compatible File" option decides
+// whether the PDF page carries the artwork at all; with it off (and it is
+// off in what CorelDRAW and several other exporters write) the PDF page
+// draws nothing and every path lives in the private /AIPrivateData streams
+// instead. Those are what the Vector plugin's AIConverter reads
+// (UltraCanvasAIReader.cpp), building a VectorStorage::VectorDocument that
+// this page shows in an UltraCanvasVectorElement.
 //
-// Writing .ai is the Vector plugin's VectorConverter::AIConverter: it is
-// export-only and emits the PDF writer's output under the .ai extension.
-// Version: 1.0.0
-// Last Modified: 2026-09-13
+// So the page tries the Vector plugin first and names the route it took. A
+// .ai whose artwork really is in its PDF page carries no private data,
+// AIConverter declines it, and the MuPDF-backed UltraCanvasPDFView takes
+// over - which is what a file written by AIConverter itself (an export-only
+// path that emits the PDF writer's output) needs.
+// Version: 2.0.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 
-#ifdef ULTRACANVAS_PLUGIN_PDF
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
 
-#include "Plugins/Documents/UltraCanvasPDFView.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasVectorElement.h"
+#include "UltraCanvasVectorFormatsPlugin.h"
+#include "UltraCanvasMetafileConverters.h"
 #include "UltraCanvasConfig.h"   // GetResourcesDir
 #include "UltraCanvasUtils.h"    // NormalizePath
 
-#include <cmath>
+#ifdef ULTRACANVAS_PLUGIN_PDF
+#include "Plugins/Documents/UltraCanvasPDFView.h"
+#endif
+
+#include <cstdio>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -42,13 +53,80 @@ namespace {
         std::string caption;
     };
 
-    // Every .ai file shipped under media/vector/AI.
+    // Every .ai file shipped under media/vector/AI. Both are CorelDRAW
+    // exports: a valid PDF container whose page is empty, with the line art
+    // in the Illustrator private data.
     const std::vector<AISample>& AISamples() {
         static const std::vector<AISample> samples = {
-                {"turtle.ai", "turtle.ai - filled and stroked artwork, one page"},
-                {"mandalorian-star-wars.ai", "mandalorian-star-wars.ai - flat-colour line art, one page"},
+                {"turtle.ai", "turtle.ai - decorative line art"},
+                {"mandalorian-star-wars.ai", "mandalorian-star-wars.ai - flat-colour line art"},
         };
         return samples;
+    }
+
+    // The page's two viewers. They are held together so the toolbar's
+    // lambdas capture one thing rather than a capture list that changes
+    // shape with the build's plugins.
+    struct Viewers {
+        std::weak_ptr<UltraCanvasVectorElement> vector;
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        std::weak_ptr<UltraCanvasPDFView> pdf;
+#endif
+        // Which one the toolbar drives: the vector viewer whenever it is the
+        // one on screen.
+        std::shared_ptr<UltraCanvasVectorElement> ActiveVector() const {
+            auto element = vector.lock();
+            return (element && element->IsVisible()) ? element : nullptr;
+        }
+        void ShowVector() const {
+            if (auto element = vector.lock()) element->SetVisible(true);
+#ifdef ULTRACANVAS_PLUGIN_PDF
+            if (auto element = pdf.lock()) element->SetVisible(false);
+#endif
+        }
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        void ShowPdf() const {
+            if (auto element = vector.lock()) element->SetVisible(false);
+            if (auto element = pdf.lock()) element->SetVisible(true);
+        }
+#endif
+    };
+
+    struct AILoadResult {
+        std::shared_ptr<VectorStorage::VectorDocument> document;
+        std::vector<std::string> warnings;
+    };
+
+    AILoadResult LoadAIDocument(const std::string& path) {
+        AILoadResult result;
+        VectorConverter::AIConverter converter;
+        VectorConverter::ConversionOptions options;
+        options.WarningCallback = [&result](const std::string& message) {
+            result.warnings.push_back(message);
+        };
+        result.document = converter.Import(path, options);
+        return result;
+    }
+
+    size_t CountDrawables(const VectorStorage::VectorElement& element) {
+        if (const auto* group = dynamic_cast<const VectorStorage::VectorGroup*>(&element)) {
+            size_t total = 0;
+            for (const auto& child : group->Children) if (child) total += CountDrawables(*child);
+            return total;
+        }
+        return 1;
+    }
+
+    std::string DescribeDocument(const VectorStorage::VectorDocument& doc) {
+        size_t drawables = 0;
+        for (const auto& layer : doc.Layers) if (layer) drawables += CountDrawables(*layer);
+        char buffer[160];
+        std::snprintf(buffer, sizeof(buffer),
+                      "%zu object%s on %zu layer%s, page %.0f x %.0f pt",
+                      drawables, drawables == 1 ? "" : "s",
+                      doc.Layers.size(), doc.Layers.size() == 1 ? "" : "s",
+                      doc.Size.width, doc.Size.height);
+        return buffer;
     }
 
 }   // namespace
@@ -69,67 +147,98 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
     title->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     root->AddChild(title);
 
-    // ----- Explanation of what an .ai file actually is -----
+    // ----- What an .ai file actually is -----
     auto description = std::make_shared<UltraCanvasLabel>("AIDescription", 0, 0, 0, 34);
-    description->SetText("Since Illustrator 9 an .ai file is a PDF with Illustrator's private editing data attached, "
-                         "so UltraCanvas reads it\nwith the same MuPDF-backed viewer as the PDF page. "
-                         "Writing .ai is the Vector plugin's AIConverter (export only).");
+    description->SetText("An .ai file is a PDF that also carries Illustrator's own artwork data. Saved without PDF "
+                         "compatibility, the\nPDF page draws nothing and that private data is the only copy of the "
+                         "drawing - which is what AIConverter reads.");
     description->SetFontSize(11);
     description->SetTextColor(Color(110, 110, 110, 255));
     description->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     root->AddChild(description);
 
-    // ----- The viewer (created first so the toolbar can capture it) -----
-    auto view = CreatePDFView("AIView", 0, 0, 0, 0);
-    view->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                    .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    std::weak_ptr<UltraCanvasPDFView> viewWeak = view;
+    // ----- The two viewers: one per route, only one shown at a time -----
+    auto stage = std::make_shared<UltraCanvasContainer>("AIStage", 0, 0, 0, 0);
+    stage->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    stage->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                     .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto pageLabel = std::make_shared<UltraCanvasLabel>("AIPageLabel", 0, 0, 120, 30);
-    pageLabel->SetText("Page - / -");
-    pageLabel->SetFontSize(12);
-    pageLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    pageLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(0);
+    auto vectorView = CreateVectorElement("AIVectorView", 0, 0, 0, 0);
+    VectorElementOptions vectorOptions = vectorView->GetOptions();
+    vectorOptions.InteractionMode = VectorInteractionMode::PanZoom;
+    vectorOptions.BackgroundColor = Colors::White;
+    vectorOptions.MinZoom = 0.05f;
+    vectorOptions.MaxZoom = 50.0f;
+    vectorView->SetOptions(vectorOptions);
+    vectorView->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                          .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    stage->AddChild(vectorView);
 
+    auto viewers = std::make_shared<Viewers>();
+    viewers->vector = vectorView;
+
+#ifdef ULTRACANVAS_PLUGIN_PDF
+    auto pdfView = CreatePDFView("AIPDFView", 0, 0, 0, 0);
+    pdfView->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                       .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    pdfView->SetVisible(false);
+    stage->AddChild(pdfView);
+    viewers->pdf = pdfView;
+#endif
+
+    // ----- Status and route -----
     auto statusLabel = std::make_shared<UltraCanvasLabel>("AIStatusLabel", 0, 0, 0, 22);
     statusLabel->SetFontSize(11);
     statusLabel->SetTextColor(Color(110, 110, 110, 255));
     statusLabel->layoutItem.SetFlexGrow(1).SetFlexShrink(1);
 
-    auto zoomLabel = std::make_shared<UltraCanvasLabel>("AIZoomLabel", 0, 0, 80, 22);
-    zoomLabel->SetText("100%");
-    zoomLabel->SetFontSize(11);
-    zoomLabel->SetTextColor(Color(110, 110, 110, 255));
-    zoomLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
-    zoomLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    auto routeLabel = std::make_shared<UltraCanvasLabel>("AIRouteLabel", 0, 0, 220, 22);
+    routeLabel->SetFontSize(11);
+    routeLabel->SetTextColor(Color(110, 110, 110, 255));
+    routeLabel->SetAlignment(TextAlignment::Right, VerticalAlignment::Middle);
+    routeLabel->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
 
-    // Wire the callbacks before loading so the first document is reflected too.
-    view->onPageChanged = [pageLabel](int cur, int total) {
-        pageLabel->SetText("Page " + std::to_string(cur) + " / " + std::to_string(total));
-    };
-    view->onZoomChanged = [zoomLabel](float percent) {
-        zoomLabel->SetText(std::to_string(static_cast<int>(std::lround(percent))) + "%");
-    };
-    view->onError = [statusLabel](const std::string& msg) {
-        statusLabel->SetTextColor(Color(180, 60, 60, 255));
-        statusLabel->SetText("Error: " + msg);
-    };
-
-    // Loads one of the shipped samples and reports what happened.
-    auto loadSample = [viewWeak, statusLabel](const AISample& sample) {
-        auto v = viewWeak.lock();
-        if (!v) return;
+    // Loads one of the shipped samples: the Vector plugin first, the PDF
+    // engine only for a file whose artwork really is in its PDF page.
+    auto loadSample = [viewers, statusLabel, routeLabel](const AISample& sample) {
         const std::string path =
                 NormalizePath(GetResourcesDir() + "media/vector/AI/" + sample.fileName);
-        if (v->LoadFromPath(path)) {
-            v->ZoomToFit();
+        AILoadResult loaded = LoadAIDocument(path);
+
+        auto vector = viewers->vector.lock();
+        if (loaded.document && vector) {
+            vector->SetDocument(loaded.document);
+            viewers->ShowVector();
+            vector->ZoomToFit();
+            routeLabel->SetText("Vector plugin - AIConverter");
             statusLabel->SetTextColor(Color(110, 110, 110, 255));
-            statusLabel->SetText("Loaded " + sample.caption +
-                                 "  -  mouse-wheel scrolls, Ctrl+wheel zooms.");
-        } else {
-            statusLabel->SetTextColor(Color(180, 60, 60, 255));
-            statusLabel->SetText("Failed to load " + path);
+            statusLabel->SetText(sample.caption + " - " + DescribeDocument(*loaded.document) +
+                                 "  -  drag to pan, wheel to zoom.");
+            return;
         }
+
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        // No private artwork: a PDF-compatible .ai, which the PDF engine
+        // renders exactly as Illustrator wrote it.
+        if (auto pdf = viewers->pdf.lock()) {
+            viewers->ShowPdf();
+            if (pdf->LoadFromPath(path)) {
+                pdf->ZoomToFit();
+                routeLabel->SetText("PDF engine - MuPDF");
+                statusLabel->SetTextColor(Color(110, 110, 110, 255));
+                statusLabel->SetText(sample.caption +
+                                     " - the artwork is in the PDF page  -  "
+                                     "mouse-wheel scrolls, Ctrl+wheel zooms.");
+                return;
+            }
+        }
+#endif
+
+        routeLabel->SetText("not loaded");
+        statusLabel->SetTextColor(Color(180, 60, 60, 255));
+        std::string message = "Failed to load " + path;
+        for (const std::string& warning : loaded.warnings) message += "  -  " + warning;
+        statusLabel->SetText(message);
     };
 
     loadSample(AISamples().front());
@@ -159,37 +268,46 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
         };
     toolbar->AddChild(sampleDropdown);
 
-    auto addToolbarButton = [&](const std::string& id, const std::string& text,
-                                int w, std::function<void()> onClick) {
-        auto btn = CreateButton(id, 0, 0, w, 30, text);
-        btn->onClick = std::move(onClick);
-        btn->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        toolbar->AddChild(btn);
+    // The zoom buttons drive whichever viewer is showing.
+    auto zoomBy = [viewers](float factor) {
+        if (auto vector = viewers->ActiveVector()) {
+            vector->SetZoom(vector->GetZoom() * factor);
+            return;
+        }
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        if (auto pdf = viewers->pdf.lock()) {
+            if (factor > 1.0f) pdf->ZoomIn(); else pdf->ZoomOut();
+        }
+#else
+        (void)factor;
+#endif
+    };
+    auto fitPage = [viewers]() {
+        if (auto vector = viewers->ActiveVector()) { vector->ZoomToFit(); return; }
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        if (auto pdf = viewers->pdf.lock()) pdf->ZoomToFit();
+#endif
+    };
+    auto actualSize = [viewers]() {
+        if (auto vector = viewers->ActiveVector()) { vector->ZoomToActualSize(); return; }
+#ifdef ULTRACANVAS_PLUGIN_PDF
+        if (auto pdf = viewers->pdf.lock()) pdf->ZoomActualSize();
+#endif
     };
 
-    addToolbarButton("AIPrev", "Prev", 60, [viewWeak]() {
-        if (auto v = viewWeak.lock()) v->GoToPrevPage();
-    });
-    addToolbarButton("AINext", "Next", 60, [viewWeak]() {
-        if (auto v = viewWeak.lock()) v->GoToNextPage();
-    });
-    addToolbarButton("AIZoomOut", "Zoom -", 70, [viewWeak]() {
-        if (auto v = viewWeak.lock()) v->ZoomOut();
-    });
-    addToolbarButton("AIZoomIn", "Zoom +", 70, [viewWeak]() {
-        if (auto v = viewWeak.lock()) v->ZoomIn();
-    });
-    addToolbarButton("AIFitPage", "Fit Page", 80, [viewWeak]() {
-        if (auto v = viewWeak.lock()) v->ZoomToFit();
-    });
-    addToolbarButton("AIFitWidth", "Fit Width", 80, [viewWeak]() {
-        if (auto v = viewWeak.lock()) v->ZoomToWidth();
-    });
-    addToolbarButton("AIActualSize", "100%", 60, [viewWeak]() {
-        if (auto v = viewWeak.lock()) v->ZoomActualSize();
-    });
+    auto addToolbarButton = [&](const std::string& id, const std::string& text,
+                                int width, std::function<void()> onClick) {
+        auto button = CreateButton(id, 0, 0, width, 30, text);
+        button->onClick = std::move(onClick);
+        button->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        toolbar->AddChild(button);
+    };
 
-    toolbar->AddChild(pageLabel);
+    addToolbarButton("AIZoomOut", "Zoom -", 70, [zoomBy]() { zoomBy(1.0f / 1.25f); });
+    addToolbarButton("AIZoomIn", "Zoom +", 70, [zoomBy]() { zoomBy(1.25f); });
+    addToolbarButton("AIFitPage", "Fit Page", 80, fitPage);
+    addToolbarButton("AIActualSize", "100%", 60, actualSize);
+    toolbar->AddChild(routeLabel);
 
     // ----- Status row below the view -----
     auto statusRow = std::make_shared<UltraCanvasContainer>("AIStatusRow", 0, 0, 0, 22);
@@ -197,7 +315,6 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
     statusRow->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     statusRow->AddChild(statusLabel);
-    statusRow->AddChild(zoomLabel);
 
     // ----- Format notes -----
     auto notes = std::make_shared<UltraCanvasContainer>("AINotes", 0, 0, 0, 116);
@@ -213,11 +330,11 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
 
     auto notesText = std::make_shared<UltraCanvasLabel>("AINotesText", 10, 30, 940, 82);
     notesText->SetText(
-            "Reading: modern (Illustrator 9 and later) .ai files are PDF documents, so they open through the MuPDF-backed\n"
-            "PDF engine - paths, clips, transparency groups, gradients, embedded fonts and images all render as in a PDF.\n"
-            "Writing: VectorConverter::AIConverter is export-only and writes the Vector plugin's PDF output under the .ai\n"
-            "extension - valid for Illustrator and for every PDF consumer.   Legacy (v8 and earlier) .ai files are\n"
-            "EPS/PostScript-based; AIConverter recognises them in ValidateData() but does not write them."
+            "Reading: AIConverter takes the artwork from the file's /AIPrivateData streams and interprets Illustrator's art\n"
+            "language - paths, compound paths, clips, layers, groups, the grey / CMYK / RGB / spot colour operators and the\n"
+            "AI9 transparency operator. Legacy (v8 and earlier) EPS-based .ai files carry the same language in the open and\n"
+            "read through the same parser. A .ai saved WITH \"Create PDF compatible file\" also draws through its PDF page, so\n"
+            "it falls back to the MuPDF engine. Writing: AIConverter is export-only and emits PDF under the .ai extension."
     );
     notesText->SetFontSize(11);
     notesText->SetTextColor(Color(50, 50, 50, 255));
@@ -225,7 +342,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
 
     // ----- Assemble in visual order -----
     root->AddChild(toolbar);
-    root->AddChild(view);
+    root->AddChild(stage);
     root->AddChild(statusRow);
     root->AddChild(notes);
 
@@ -234,4 +351,4 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateAIVector
 
 } // namespace UltraCanvas
 
-#endif // ULTRACANVAS_PLUGIN_PDF
+#endif // ULTRACANVAS_HAS_VECTOR_PLUGIN

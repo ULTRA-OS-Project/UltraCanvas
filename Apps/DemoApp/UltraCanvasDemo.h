@@ -423,9 +423,11 @@ namespace UltraCanvas {
 #ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateDWGVectorExamples();
 #endif
-#ifdef ULTRACANVAS_PLUGIN_PDF
-        // Adobe Illustrator artwork: modern .ai files are PDF documents, so this
-        // page reads media/vector/AI through the MuPDF-backed PDF view.
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+        // Adobe Illustrator artwork: the Vector plugin's AIConverter reads
+        // media/vector/AI, whose artwork lives in the files' Illustrator
+        // private data rather than in their PDF page; a PDF-compatible .ai
+        // falls back to the PDF view where that plugin is built.
         std::shared_ptr<UltraCanvasUIElement> CreateAIVectorExamples();
 #endif
         // STL 3D models (3D Graphics category): the Models/STL loader is part of the
