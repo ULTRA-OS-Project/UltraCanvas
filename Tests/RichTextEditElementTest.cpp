@@ -486,6 +486,150 @@ int main() {
         TEST("...and the match is in a cell", editor.GetSelectionRange().start.InCell());
     }
 
+    // ===== MERGED CELLS =====
+    // Spans are geometry, not decoration: a cell covering two columns has to be
+    // laid out two columns wide, and the cells beside it shifted past it. Both
+    // are checked through hit testing, which is the only thing that can tell
+    // where a cell actually ended up.
+    std::cerr << "\n--- Merged cells ---" << std::endl;
+    {
+        auto cellWith = [](const std::string& text, int columnSpan, int rowSpan) {
+            RichTableCell cell;
+            RichTextRun run;
+            run.text = text;
+            cell.runs.push_back(run);
+            cell.columnSpan = columnSpan;
+            cell.rowSpan = rowSpan;
+            return cell;
+        };
+
+        // Grid is three columns wide: a cell spanning two, then a single one.
+        auto doc = std::make_shared<UCRichDocument>();
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        {
+            RichTableRow row;
+            row.cells.push_back(cellWith("wide", 2, 1));
+            row.cells.push_back(cellWith("narrow", 1, 1));
+            table.tableRows.push_back(row);
+        }
+        {
+            RichTableRow row;
+            row.cells.push_back(cellWith("a", 1, 1));
+            row.cells.push_back(cellWith("b", 1, 1));
+            row.cells.push_back(cellWith("c", 1, 1));
+            table.tableRows.push_back(row);
+        }
+        doc->blocks.push_back(table);
+        edit->SetDocument(doc);
+        edit->RequestRedraw();
+        window->UpdateAndRender();
+
+        // Find the row-0 band by clicking down the left edge until a cell of
+        // row 0 answers, then probe across it at that y.
+        auto columnAt = [&](float x, int wantRow) -> int {
+            for (int y = 4; y <= 240; y += 2) {
+                edit->OnEvent(MouseEvent(UCEventType::MouseDown, x, static_cast<float>(y)));
+                edit->OnEvent(MouseEvent(UCEventType::MouseUp, x, static_cast<float>(y)));
+                window->UpdateAndRender();
+                const RichDocPosition p = editor.GetCaret();
+                if (p.InCell() && p.cellRow == wantRow) return p.cellColumn;
+            }
+            return -2;
+        };
+
+        // The element is 780 wide, so a three-column grid puts column
+        // boundaries near 260 and 520. At x=400 (the middle column) row 0 must
+        // answer with the SPANNING cell (index 0), because "wide" covers grid
+        // columns 0 and 1. Laying it out one column wide would put "narrow"
+        // there instead, which is exactly the old behaviour.
+        const int midRow0 = columnAt(400.0f, 0);
+        TEST("A column-spanning cell covers the column beside it", midRow0 == 0);
+
+        // Far right of row 0 is past the span: that is "narrow", index 1.
+        const int rightRow0 = columnAt(700.0f, 0);
+        TEST("The cell after a span sits past it, not beside it", rightRow0 == 1);
+
+        // Row 1 is unspanned, so its three cells land in their own thirds.
+        TEST("An unspanned row keeps one cell per column", columnAt(100.0f, 1) == 0);
+        TEST("...including the middle one", columnAt(400.0f, 1) == 1);
+        TEST("...and the last", columnAt(700.0f, 1) == 2);
+    }
+
+    // A row-spanning cell must still be there in the row below it.
+    {
+        auto cellWith = [](const std::string& text, int columnSpan, int rowSpan) {
+            RichTableCell cell;
+            RichTextRun run;
+            run.text = text;
+            cell.runs.push_back(run);
+            cell.columnSpan = columnSpan;
+            cell.rowSpan = rowSpan;
+            return cell;
+        };
+
+        auto doc = std::make_shared<UCRichDocument>();
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        {
+            RichTableRow row;
+            row.cells.push_back(cellWith("tall", 1, 2));      // covers both rows
+            row.cells.push_back(cellWith("top-right", 1, 1));
+            table.tableRows.push_back(row);
+        }
+        {
+            RichTableRow row;
+            row.cells.push_back(cellWith("bottom-right", 1, 1));  // grid column 1
+            table.tableRows.push_back(row);
+        }
+        doc->blocks.push_back(table);
+        edit->SetDocument(doc);
+        edit->RequestRedraw();
+        window->UpdateAndRender();
+
+        // Walk down the right-hand column: it must answer row 0 first, then
+        // row 1 — the second row's single cell belongs at grid column 1,
+        // because column 0 is taken by the cell spanning down from above.
+        int firstRightRow = -1, secondRightRow = -1;
+        for (int y = 4; y <= 240; y += 2) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 600, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 600, static_cast<float>(y)));
+            window->UpdateAndRender();
+            const RichDocPosition p = editor.GetCaret();
+            if (!p.InCell()) continue;
+            if (firstRightRow < 0) firstRightRow = p.cellRow;
+            else if (p.cellRow != firstRightRow) { secondRightRow = p.cellRow; break; }
+        }
+        TEST("The right column starts in row 0", firstRightRow == 0);
+        TEST("...and reaches row 1 below it", secondRightRow == 1);
+
+        // The left column is the spanning cell for the whole table height, so
+        // every y that answers there reports row 0, cell 0.
+        bool leftAlwaysSpanningCell = true;
+        bool leftAnswered = false;
+        for (int y = 4; y <= 240; y += 2) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 60, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 60, static_cast<float>(y)));
+            window->UpdateAndRender();
+            const RichDocPosition p = editor.GetCaret();
+            if (!p.InCell()) continue;
+            leftAnswered = true;
+            if (p.cellRow != 0 || p.cellColumn != 0) leftAlwaysSpanningCell = false;
+        }
+        TEST("The left column answered at all", leftAnswered);
+        TEST("A row-spanning cell owns the column for both rows",
+             leftAlwaysSpanningCell);
+
+        // Typing into it still edits the one model cell.
+        editor.SetCaret(editor.ContainerEnd(RichDocPosition(0, 0, 0, 0)));
+        edit->OnEvent(TextEvent("!"));
+        window->UpdateAndRender();
+        TEST("The spanning cell is editable",
+             editor.TextAt(RichDocPosition(0, 0, 0, 0)) == "tall!");
+        TEST("...and its span is untouched by the edit",
+             editor.GetBlock(0).tableRows[0].cells[0].rowSpan == 2);
+    }
+
     std::cerr << "\n========================================" << std::endl;
     std::cerr << "   " << (testCount - failCount) << "/" << testCount << " passed" << std::endl;
     std::cerr << "========================================" << std::endl;

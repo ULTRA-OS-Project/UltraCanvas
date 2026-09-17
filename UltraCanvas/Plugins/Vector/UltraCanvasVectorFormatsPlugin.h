@@ -3,7 +3,8 @@
 // framework's plugin registry, so every vector format is reachable through
 // LoadGraphicsFile / SaveGraphicsFile and the FileLoader format inventory.
 //
-// Loading covers the formats with a reader (SVG, XAR, EMF, WMF, DXF, DWG*)
+// Loading covers the formats with a reader (SVG, XAR, EMF, WMF, DXF and the
+// DWG family - .dwg, .dwt, .dws, .sv$ and a .bak that carries a drawing)
 // and produces an UltraCanvasVectorElement holding the parsed
 // VectorDocument - an editable model, unlike the render-only elements of
 // the dedicated XAR/EPS/CDR plugins. Register this plugin alongside those:
@@ -12,11 +13,13 @@
 // it is the only one that writes vector formats.
 //
 // Saving covers the whole matrix (SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI,
-// DXF, DWG*) from any UltraCanvasVectorElement.
+// DXF, DWG*) from any UltraCanvasVectorElement. The save list names .dwg
+// alone: the alias suffixes are what drawings arrive under, not what a
+// "save as" offers.
 // (*) DWG needs GNU LibreDWG's command-line tools - see
 // UltraCanvasCADConverters.h.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -37,9 +40,14 @@ namespace UltraCanvas {
         }
         std::string GetPluginVersion() const override { return "1.0.0"; }
 
-        // Formats with a reader in the converter matrix.
+        // Formats with a reader in the converter matrix. dwt/dws/sv$ are
+        // AutoCAD's template, drawing-standards and automatic-save files:
+        // the same drawing database as a .dwg, read by the same converter.
+        // A .bak is one too when it is a copy of a drawing, but the suffix
+        // is not AutoCAD's to claim, so it is recognised from its content
+        // rather than listed here (UltraCanvasCADConverters.h).
         std::vector<std::string> GetSupportedExtensions() const override {
-            return {"svg", "xar", "emf", "wmf", "dxf", "dwg"};
+            return {"svg", "xar", "emf", "wmf", "dxf", "dwg", "dwt", "dws", "sv$"};
         }
         // The full writer matrix.
         std::vector<std::string> GetSaveExtensions() const override {
@@ -82,10 +90,12 @@ namespace UltraCanvas {
     };
 
 // Call once at startup to make the vector formats available to
-// FileLoader / LoadGraphicsFile / SaveGraphicsFile.
-    inline void RegisterVectorFormatsPlugin() {
-        UltraCanvasGraphicsPluginRegistry::RegisterPlugin(
-                std::make_shared<UltraCanvasVectorFormatsPlugin>());
-    }
+// FileLoader / LoadGraphicsFile / SaveGraphicsFile - and to the media
+// viewer's preview pane and the Filer's thumbnails, which reach the readers
+// through the core-side seam this also installs
+// (UltraCanvasVectorPreview.h). Without the call, core has no vector reader
+// at all and a DXF or a DWG shows nothing, which is what every application
+// that registers no plugins used to get.
+    void RegisterVectorFormatsPlugin();
 
 } // namespace UltraCanvas

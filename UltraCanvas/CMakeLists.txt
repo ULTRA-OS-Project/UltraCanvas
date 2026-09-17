@@ -717,6 +717,13 @@ set(ULTRACANVAS_CORE_SOURCES
         # include/UltraCanvasModelPreview.h.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModelPreview.cpp
 
+        # The same seam for vector drawings: core owns the document model and
+        # the renderer but not one reader, so RegisterVectorFormatsPlugin()
+        # lends it the Vector plugin's. Without it the media viewer and the
+        # Filer could only show a drawing that carried a preview bitmap.
+        # See include/UltraCanvasVectorPreview.h.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorPreview.cpp
+
         # The software mesh rasterizer: a shaded three-quarter still with no
         # GL anywhere in it. Written for the Filer's thumbnails, which are
         # produced on background workers that have no current context, and

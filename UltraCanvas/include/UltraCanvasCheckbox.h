@@ -2,8 +2,8 @@
 // Interactive checkbox component with multiple states and customizable appearance.
 // Visual variants only (Standard/Rounded/Material). Radio and Switch are now
 // separate classes — see UltraCanvasRadio.h and UltraCanvasSwitch.h.
-// Version: 2.1.0
-// Last Modified: 2026-05-29
+// Version: 2.2.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -28,7 +28,10 @@ namespace UltraCanvas {
         Color boxBorderColor = Colors::ButtonShadow;
         Color boxHoverColor = Colors::SelectionHover;
         Color boxPressedColor = Color(204, 228, 247, 255);
-        Color boxDisabledColor = Colors::LightGray;
+        // Lighter than boxColor, and the border lighter than boxBorderColor:
+        // a switch that cannot be used recedes, it does not stand out.
+        Color boxDisabledColor = Colors::ControlDisabled;
+        Color boxBorderDisabledColor = Colors::ControlDisabledBorder;
 
         // Checkmark appearance
         Color checkmarkColor = Colors::TextDefault;
@@ -50,6 +53,7 @@ namespace UltraCanvas {
         bool allowIndeterminate = false;
 
         Color GetCurrentBoxColor() const;
+        Color GetCurrentBoxBorderColor() const;
         Color GetCurrentCheckmarkColor() const;
         float GetEffectiveCornerRadius() const;
 

@@ -1,7 +1,7 @@
 // include/UltraCanvasGraphicsPluginSystem.h
 // Complete graphics plugin system with all required components
-// Version: 1.3.0
-// Last Modified: 2026-09-11
+// Version: 1.4.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -103,6 +103,14 @@ namespace UltraCanvas {
                     {"cdr", GraphicsFormatType::Vector}, {"cmx", GraphicsFormatType::Vector},
                     {"emf", GraphicsFormatType::Vector}, {"wmf", GraphicsFormatType::Vector},
                     {"dxf", GraphicsFormatType::Vector}, {"dwg", GraphicsFormatType::Vector},
+                    // The DWG drawing database under its other names:
+                    // AutoCAD's template, drawing-standards and automatic-
+                    // save files are .dwg content with a different suffix.
+                    // (.bak is one too when it copies a drawing, but the
+                    // suffix says nothing, so it is settled by content in
+                    // the Vector plugin rather than claimed here.)
+                    {"dwt", GraphicsFormatType::Vector}, {"dws", GraphicsFormatType::Vector},
+                    {"sv$", GraphicsFormatType::Vector},
 
                     // 3D model formats. This table answers "what kind of file
                     // is this", not "does this build have a reader": a .step
@@ -318,7 +326,18 @@ namespace UltraCanvas {
             std::string ext = ExtensionOf(filePath);
             if (ext.empty()) return nullptr;
             auto it = extensionMap.find(ext);
-            return (it != extensionMap.end()) ? it->second : nullptr;
+            if (it != extensionMap.end()) return it->second;
+            // A suffix no plugin advertises is not the end of it: some
+            // formats cannot be claimed by name at all. AutoCAD copies a
+            // drawing verbatim to .bak, and so does every text editor and
+            // package manager, so the Vector plugin claims one only after
+            // reading its header. Ask the plugins themselves - CanHandle is
+            // the contract for that - instead of concluding from the map
+            // that nothing can read the file.
+            for (const auto& plugin : plugins) {
+                if (plugin && plugin->CanHandle(filePath)) return plugin;
+            }
+            return nullptr;
         }
 
         // Save dispatch matches against GetSaveExtensions, which is

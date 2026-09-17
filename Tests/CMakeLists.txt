@@ -1699,6 +1699,28 @@ add_test(NAME ClassLayoutTest COMMAND ClassLayoutTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ClassLayoutTest")
 
+# ===== DISABLED CONTROL CONTRAST TEST =====
+# One rule for every control with a disabled state: the disabled face, border
+# and label must be LIGHTER than the live ones. The defaults had it backwards
+# (Colors::LightGray is darker than Colors::ButtonFace), which drew every
+# greyed switch on a settings page heavier than the live ones around it.
+# Header-only comparisons - no UI stack, no window.
+message(STATUS "  Building DisabledControlContrastTest...")
+add_executable(DisabledControlContrastTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DisabledControlContrastTest.cpp
+)
+target_include_directories(DisabledControlContrastTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(DisabledControlContrastTest PRIVATE cxx_std_20)
+target_link_libraries(DisabledControlContrastTest PRIVATE UltraCanvas)
+set_target_properties(DisabledControlContrastTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME DisabledControlContrastTest COMMAND DisabledControlContrastTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: DisabledControlContrastTest")
+
 # ===== UML MODEL TEST =====
 # Unit tests for the UML static-structure model, the member-notation grammar,
 # the heuristic C++ reverse engineer and PlantUML/Mermaid export. UI-free.
@@ -2554,6 +2576,33 @@ set_target_properties(FilerVolumeSpaceTest PROPERTIES
 add_test(NAME FilerVolumeSpaceTest COMMAND FilerVolumeSpaceTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerVolumeSpaceTest")
+
+message(STATUS "")
+
+# ===== FILER HISTORY TEST =====
+# The recently used files / folders / apps behind the toolbar's clock button
+# (Apps/UltraFiler/UltraFilerHistory.h): that the three lists survive a
+# restart, and that each keeps the number of entries Settings > Extras >
+# History & Favorites asks for - while recording, while reading the file back,
+# and at the moment the limit is lowered.
+# Header-only, so the test needs no library - it runs on any build. It points
+# the config directory at a temporary folder, so it never touches a real
+# UltraFiler installation.
+message(STATUS "  Building FilerHistoryTest...")
+add_executable(FilerHistoryTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerHistoryTest.cpp
+)
+target_include_directories(FilerHistoryTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(FilerHistoryTest PRIVATE cxx_std_20)
+set_target_properties(FilerHistoryTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerHistoryTest COMMAND FilerHistoryTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerHistoryTest")
 
 message(STATUS "")
 
