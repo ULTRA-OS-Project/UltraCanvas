@@ -31,14 +31,19 @@
 #ifdef ULTRAFILER_HAS_MODELS_PLUGIN
 #include "Models/UltraCanvasModelFormatsPlugin.h"
 #endif
+// Each viewer plugin puts its OWN directory on the include path of whatever
+// links it, so these are unprefixed. Writing them as "CDR/..." worked only
+// while the Vector plugin happened to be linked too - it is what contributes
+// the Plugins/Vector directory these sit under - and the Vector plugin is off
+// by default, so the prefixed form broke every build that did not ask for it.
 #ifdef ULTRAFILER_HAS_CDR_PLUGIN
-#include "CDR/UltraCanvasCDRPlugin.h"
+#include "UltraCanvasCDRPlugin.h"
 #endif
 #ifdef ULTRAFILER_HAS_XAR_PLUGIN
-#include "XAR/UltraCanvasXARPlugin.h"
+#include "UltraCanvasXARPlugin.h"
 #endif
 #ifdef ULTRAFILER_HAS_EPS_PLUGIN
-#include "EPS/UltraCanvasEPSPlugin.h"
+#include "UltraCanvasEPSPlugin.h"
 #endif
 
 #ifdef _WIN32
