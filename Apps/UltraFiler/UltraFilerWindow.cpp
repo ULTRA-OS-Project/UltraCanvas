@@ -70,6 +70,11 @@
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerShare.h"
 #include "UltraFilerPrompt.h"
+#ifdef ULTRAFILER_HAS_ULTRACLOUD
+// UltraCloudUI's shared "add account" dialog - the same one UltraMail uses
+// for "Attach cloud link". Its include directory comes with the target.
+#include "UltraCloudAccountDialog.h"
+#endif
 #ifdef ULTRACANVAS_HAS_ULTRAWIN
 #include "UltraFilerRunWindowsDialog.h"
 #include "UltraWin/UltraWin.h"
@@ -112,6 +117,11 @@ namespace {
     // Dropbox / iCloud folders hang under. Like "Pinned" it is a header, not a
     // folder, and is never scanned as a path.
     constexpr const char* kCloudNodeId = "ufl-cloud";
+    // "Remote Drives": the FTP / SFTP servers and cloud accounts added
+    // through "+ Drive". Kept apart from "Cloud Storage" above it, which
+    // lists the sync folders a cloud client already put on this disk: one
+    // section holds local paths that work offline, the other holds servers.
+    constexpr const char* kRemoteNodeId = "ufl-remote-drives";
     // "Computer": the section Home, Cloud Storage and the drives hang under -
     // and the entry that opens the Computer page (BuildComputerPage).
     constexpr const char* kComputerNodeId = "ufl-computer";
@@ -615,17 +625,19 @@ namespace {
     constexpr const char* kHistoryTabTitles[] = {"Files", "Folders", "Apps"};
 
     // Does this entry belong in the History view's Apps tab rather than its
-    // Files tab? Program and installer extensions say so outright; on the
-    // Unixes a plain executable usually has no extension at all, so the
-    // execute bit decides there. FilerFileCategory::Executable is not used on
-    // its own because it also covers .so / .dll, which are libraries rather
-    // than things the user launches.
+    // Files tab? The widget's Executable category answers for every format it
+    // knows - and answers it correctly now that libraries have a category of
+    // their own, so a .so no longer counts as something the user launches.
+    // The list below is what it cannot answer: formats the widget's table
+    // does not carry (.com, .bat, .apk, .snap) and, on the Unixes, a plain
+    // executable with no extension at all, where the execute bit decides.
     bool IsApplicationEntry(const FilerEntry& e) {
         if (e.isDirectory) return false;
         // A Windows shortcut is whatever it points at: one to a program
         // belongs in the Applications list (that is what a Start-Menu entry
         // is), one to a document does not.
         if (e.isShortcut) return e.category == FilerFileCategory::Executable;
+        if (e.category == FilerFileCategory::Executable) return true;
         static const char* const kAppExtensions[] = {
             "exe", "msi", "com", "bat", "cmd", "appimage", "desktop",
             "app", "apk", "deb", "rpm", "flatpakref", "snap", "run"};
@@ -686,6 +698,14 @@ UltraFilerWindow::~UltraFilerWindow() {
     ReapSearchWorkers(true);    // now the search threads are waited for
     StopSubfolderProbeWorker();
     StopCloudStorageDiscovery();
+    // Its worker posts into this window, so it has to be joined here like the
+    // others - and before the widgets its callback touches are destroyed. The
+    // callback is dropped first: Stop() joins the worker, but a listing it
+    // had already posted is queued on the UI thread and cannot be recalled.
+    if (remoteDrives) {
+        remoteDrives->onListingArrived = nullptr;
+        remoteDrives->Stop();
+    }
     StopVolumeSpaceQuery();
 }
 
@@ -792,6 +812,9 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     // default application, and a double-clicked subfolder is entered right
     // in the pane.
     folderPreview = CreateFilerWidget("ufl-folder-preview", 0, 0, 0, 0);
+    // Selecting a folder on a remote drive previews it like a local one;
+    // without this the pane would ask the local filesystem and show nothing.
+    WireRemoteListing(folderPreview.get());
     // Created before settings.Load(); ApplySettings() right after it applies
     // the Display > Home folder mode here.
     FilerStyle folderPreviewStyle = folderPreview->GetStyle();
@@ -1416,7 +1439,9 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
 // so removing an icon cannot leave a drive or the Home row showing a folder.
 std::string UltraFilerWindow::DefaultTreeIconFile(const TreeNode* node) const {
     if (!node) return "folder-brown.svg";
-    if (node->parent && node->parent->data.nodeId == kCloudNodeId) return "cloud.svg";
+    if (node->parent && (node->parent->data.nodeId == kCloudNodeId ||
+                         node->parent->data.nodeId == kRemoteNodeId))
+        return "cloud.svg";
     const std::string path = TreeNodeTargetPath(node);
     if (std::find(treeDriveNodeIds.begin(), treeDriveNodeIds.end(),
                   node->data.nodeId) != treeDriveNodeIds.end())
@@ -1604,7 +1629,14 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
             [this]() {
         if (historyShown) RefreshHistoryTabs();
         else if (favoritesShown) RefreshFavoritesTabs();
-        else if (filer) filer->Refresh();
+        else if (filer) {
+            // On a remote folder, Refresh has to mean "ask the server again":
+            // re-reading a cache that is already answering would repaint the
+            // same listing and look like the button does nothing.
+            if (remoteDrives && IsRemoteFilerPath(filer->GetPath()))
+                remoteDrives->Invalidate(filer->GetPath());
+            filer->Refresh();
+        }
     });
     row->AddChild(backButton);
     row->AddChild(forwardButton);
@@ -1626,6 +1658,18 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     favoritesButton->SetTooltip("Favorites");
     StyleToggleButton(favoritesButton.get(), favoritesShown);
     row->AddChild(favoritesButton);
+
+    // "+ Drive": adds an FTP / SFTP server or a cloud account as a place you
+    // can browse. It sits with the other buttons that change what the window
+    // can reach rather than in the file commands row below, which acts on the
+    // entries of one folder.
+    addDriveButton = MakeToolButton("ufl-add-drive", "Drive", "add-folder.svg", 0,
+            [this]() { ShowAddDriveMenu(); });
+    addDriveButton->SetTooltip(UltraFilerRemoteDrives::Available()
+            ? "Add a drive: an FTP / SFTP server or a cloud account"
+            : "Add a drive - not available in this build (UltraCloud is not built in)");
+    addDriveButton->SetDisabled(!UltraFilerRemoteDrives::Available());
+    row->AddChild(addDriveButton);
 
     breadcrumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-breadcrumb", 0, 0, 0, 28);
     breadcrumb->SetStyle(MakePathBreadcrumbStyle());
@@ -1720,6 +1764,135 @@ void UltraFilerWindow::ShowNewEntryMenu() {
             Point2Di(newButton->GetXInWindow(),
                      newButton->GetYInWindow() + (int)newButton->GetHeight() + 1),
             *window, PopupElementSettings());
+}
+
+// ===== REMOTE DRIVES =====
+
+void UltraFilerWindow::ShowAddDriveMenu() {
+    if (!window || !addDriveButton) return;
+    if (!UltraFilerRemoteDrives::Available()) {
+        // The button is disabled in such a build, so this is belt and braces -
+        // but saying why beats a button that does nothing.
+        UltraCanvasAlert::Info("This build of UltraFiler was made without "
+                               "UltraCloud, so it cannot carry FTP or cloud drives.",
+                               "Add a drive", nullptr, window.get());
+        return;
+    }
+    MenuStyle style = MenuStyle::Default();
+    style.font.fontSize = kUiFontSize;
+    addDriveMenu = std::make_shared<UltraCanvasMenu>("ufl-add-drive-menu", 0, 0, 260, 0);
+    addDriveMenu->SetMenuType(MenuType::PopupMenu);
+    addDriveMenu->SetStyle(style);
+    // Two kinds, because the two are configured differently: a server you
+    // type a host and a password for, against an account you sign in to.
+    addDriveMenu->AddItem(MenuItemData::Action(
+            "FTP / SFTP server...",
+            [this]() { AddDriveOfKind(RemoteDriveKind::FtpOrSftp); }));
+    addDriveMenu->AddItem(MenuItemData::Action(
+            "Cloud storage...",
+            [this]() { AddDriveOfKind(RemoteDriveKind::CloudStorage); }));
+    addDriveMenu->OpenMenu(
+            Point2Di(addDriveButton->GetXInWindow(),
+                     addDriveButton->GetYInWindow() + (int)addDriveButton->GetHeight() + 1),
+            *window, PopupElementSettings());
+}
+
+void UltraFilerWindow::AddDriveOfKind(RemoteDriveKind kind) {
+#ifndef ULTRAFILER_HAS_ULTRACLOUD
+    (void)kind;
+    UltraCanvasAlert::Info("This build of UltraFiler was made without "
+                           "UltraCloud, so it cannot carry FTP or cloud drives.",
+                           "Add a drive", nullptr, window.get());
+#else
+    if (!remoteDrives) return;
+    std::string error;
+    // Opening the account store can fail (no configuration directory, a
+    // database that cannot be created); say so rather than showing a dialog
+    // whose Add button could only fail.
+    if (!remoteDrives->Reload(error)) {
+        UltraCanvasAlert::Error(error, "Add a drive", nullptr, window.get());
+        return;
+    }
+    UltraCloud::CloudService* service = remoteDrives->Service();
+    if (!service) {
+        UltraCanvasAlert::Error("The drive list is not available.",
+                                "Add a drive", nullptr, window.get());
+        return;
+    }
+    const bool ftp = kind == RemoteDriveKind::FtpOrSftp;
+    UltraCloud::ShowAddAccountDialog(
+            window.get(), *service,
+            [this](const UltraCloud::Account&) {
+                // Stored: re-read the list so the new row appears, and drop
+                // the listing cache in case an account was replaced under the
+                // same id.
+                std::string reloadError;
+                if (!remoteDrives->Reload(reloadError)) {
+                    UltraCanvasAlert::Error(reloadError, "Add a drive",
+                                            nullptr, window.get());
+                    return;
+                }
+                remoteDrives->InvalidateAll();
+                RefreshRemoteDriveNodes();
+            },
+            [ftp](const std::string& providerId) {
+                return UltraFilerRemoteDrives::ProviderBelongsToKind(
+                        providerId, ftp ? RemoteDriveKind::FtpOrSftp
+                                        : RemoteDriveKind::CloudStorage);
+            },
+            ftp ? "Add an FTP / SFTP drive" : "Add a cloud drive");
+#endif
+}
+
+void UltraFilerWindow::AddTreeRemoteDriveNode(const RemoteDrive& drive) {
+    if (!folderTree) return;
+    // No subfolder probe: it reads the local filesystem, which knows nothing
+    // about a path on a server. The row is given the expand button the first
+    // time it is opened instead, by the listing itself.
+    TreeNodeData data = MakeFolderNodeData(drive.rootPath, drive.displayName,
+                                           "cloud.svg");
+    if (!folderTree->AddNode(kRemoteNodeId, data)) return;
+    treeRemoteDriveNodeIds.push_back(drive.rootPath);
+}
+
+void UltraFilerWindow::RefreshRemoteDriveNodes() {
+    if (!folderTree || !remoteDrives) return;
+    TreeNode* section = folderTree->FindNode(kRemoteNodeId);
+    if (!section) return;
+
+    for (const std::string& id : treeRemoteDriveNodeIds)
+        folderTree->RemoveNode(id);
+    treeRemoteDriveNodeIds.clear();
+
+    for (const RemoteDrive& d : remoteDrives->Drives())
+        AddTreeRemoteDriveNode(d);
+
+    // Empty stays hidden, like "Pinned" and "Cloud Storage": a section that
+    // is only ever a header is noise.
+    const bool any = !treeRemoteDriveNodeIds.empty();
+    section->data.visible = any;
+    if (any) folderTree->ExpandNode(section);
+    ApplyTreeColors();
+    folderTree->RequestRedraw();
+}
+
+void UltraFilerWindow::WireRemoteListing(UltraCanvasFilerWidget* widget) {
+    if (!widget) return;
+    // Recognising a remote path costs a string comparison and is asked before
+    // any std::filesystem call, which is the point: a path on a server must
+    // never be handed to the local filesystem first.
+    widget->isRemotePath = [](const std::string& path) {
+        return IsRemoteFilerPath(path);
+    };
+    if (!remoteDrives) return;
+    // Answers from the drives' cache. It never blocks: a folder that has not
+    // been fetched lists empty for the moment, and the arriving listing
+    // refreshes the display (see onListingArrived, set in Initialize).
+    widget->remoteListing = [this](const std::string& path,
+                                   std::vector<FilerEntry>& out,
+                                   std::string& error) {
+        return remoteDrives->List(path, out, error);
+    };
 }
 
 void UltraFilerWindow::RunSearch(const std::string& query) {
@@ -2353,6 +2526,15 @@ void UltraFilerWindow::BuildFolderTree() {
         cloud->data.visible = false;
     QueueCloudStorageDiscovery();
 
+    // "Remote Drives" sits between the cloud sync folders and the real
+    // drives: the servers added through "+ Drive". Created here so the
+    // section keeps its place in the order; empty stays hidden.
+    folderTree->AddNode(kComputerNodeId,
+            MakeFolderNodeData(kRemoteNodeId, "Remote Drives", "cloud.svg"));
+    treeChildrenLoaded.insert(kRemoteNodeId);
+    if (TreeNode* remote = folderTree->FindNode(kRemoteNodeId))
+        remote->data.visible = false;
+
     // ListMountedVolumes() reads the mount table in one pass (the drive
     // letters on Windows, the directories volumes are mounted under
     // elsewhere - /media, /run/media, /Volumes, /mnt). Probing every drive
@@ -2369,6 +2551,29 @@ void UltraFilerWindow::BuildFolderTree() {
 
     if (root) root->Expand();
     ApplyTreeColors();
+
+    // The remote drives: read the configured accounts and show a row per
+    // drive. A failure here costs the section, not the window - UltraFiler
+    // without its FTP drives is still a file manager - so it is reported to
+    // the log rather than thrown in the user's face at start-up.
+    remoteDrives = std::make_unique<UltraFilerRemoteDrives>();
+    // Fires on the UI thread once a queued listing has arrived: the folder
+    // display is asked again, and this time the cache answers.
+    remoteDrives->onListingArrived = [this](const std::string& path) {
+        // Only the display actually showing that folder needs redoing.
+        for (auto& tab : tabStates) {
+            if (tab->filer && !tab->filer->IsShowingFileList() &&
+                tab->filer->GetPath() == path)
+                tab->filer->Refresh();
+        }
+        if (folderPreview && folderPreview->GetPath() == path)
+            folderPreview->Refresh();
+    };
+    if (std::string driveError; !remoteDrives->Reload(driveError)) {
+        debugOutput << "UltraFiler: remote drives unavailable: "
+                    << driveError << std::endl;
+    }
+    RefreshRemoteDriveNodes();
 
     // From here the drive rows follow the machine: a USB stick, a card, an
     // optical disc, a network share or a disk image appearing or going away
@@ -2389,6 +2594,10 @@ void UltraFilerWindow::BuildFolderTree() {
         // A pinned entry navigates to its target folder, like a bookmark.
         const std::string path = TreeNodeTargetPath(node);
         if (path.empty()) return;
+        // A remote drive's row is not a local folder, and asking the local
+        // filesystem about it would only answer "no" - after a timeout, for a
+        // path that looks like a dead mount. The drive answers for itself.
+        if (IsRemoteFilerPath(path)) { NavigateTo(path); return; }
         std::error_code ec;
         if (fs::is_directory(path, ec) && !ec) NavigateTo(path);
     };
@@ -2597,6 +2806,11 @@ void UltraFilerWindow::ApplyTreeColors() {
 void UltraFilerWindow::EnsureTreeChildren(TreeNode* node) {
     if (!node) return;
     const std::string path = node->data.nodeId;
+    // A remote drive's row is a leaf in the tree: its children would have to
+    // be fetched from a server, which the tree cannot wait for. Clicking it
+    // browses the drive in the folder display, which can. Guarded rather than
+    // left to find nothing, so no local scan is ever run on a remote path.
+    if (IsRemoteFilerPath(path)) return;
     // Once per node: the placeholder is only a hint that a scan is due, and a
     // node may reach this before its probe has even added one.
     if (!treeChildrenLoaded.insert(path).second) return;
@@ -2728,8 +2942,28 @@ void UltraFilerWindow::QueueCloudStorageDiscovery() {
     if (cloudWorker.joinable()) cloudWorker.join();
     auto alive = probeAlive;
     cloudWorker = std::thread([this, alive]() {
+        // Releasing the busy flag is this thread's job, on every way out:
+        // a lookup that finds nothing - the normal answer on a machine with
+        // no sync client installed - must not cost the Cloud section for the
+        // rest of the session, and neither must a provider that throws. The
+        // hand-off below is the one exception: once the results are on their
+        // way to the UI thread, clearing the flag belongs to the callback
+        // that applies them, so the guard is dismissed first. Clearing it
+        // here as well would release a *later* lookup's flag and let two
+        // overlap - the one thing the flag exists to prevent.
+        //
+        // Touching the window from this thread is safe: the destructor's
+        // StopCloudStorageDiscovery() joins, so the window outlives the
+        // guard. Only the posted callback can arrive after the window is
+        // gone, which is what `alive` is for.
+        struct BusyFlagGuard {
+            std::atomic<bool>* flag;
+            ~BusyFlagGuard() { if (flag) flag->store(false); }
+            void Dismiss() { flag = nullptr; }
+        } busy{&cloudWorkerBusy};
+
         // An exception leaving a std::thread ends the process; a provider
-        // whose registry or config cannot be read costs the Cloud section.
+        // whose registry or config cannot be read costs this one lookup.
         std::vector<CloudStorageInfo> found;
         try {
             found = GetCloudStorageFolders();
@@ -2743,12 +2977,15 @@ void UltraFilerWindow::QueueCloudStorageDiscovery() {
         }
         if (found.empty()) return;
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
-        if (found.empty() || !app) {
-            cloudWorkerBusy.store(false);
-            return;
-        }
+        if (!app) return;
+        // Dismissed before the post, not after: the callback can run the
+        // moment it is queued, and a guard that fired afterwards would clear
+        // a flag the next lookup had already taken.
+        busy.Dismiss();
         app->PostToUIThread([this, alive, found = std::move(found)]() {
-            if (!alive->load()) return;   // window destroyed meanwhile
+            // Window destroyed meanwhile: the flag died with it, so there is
+            // nothing to release - and nothing left to read it.
+            if (!alive->load()) return;
             ApplyCloudStorageFolders(found);
             cloudWorkerBusy.store(false);
         });
@@ -2901,7 +3138,7 @@ std::string UltraFilerWindow::TreeNodeTargetPath(const TreeNode* node) const {
     if (!node) return {};
     const std::string& id = node->data.nodeId;
     if (id == kTreeRootNodeId || id == kComputerNodeId || id == kPinnedNodeId ||
-        id == kCloudNodeId)
+        id == kCloudNodeId || id == kRemoteNodeId)
         return {};
     if (id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
         return id.substr(kPinnedChildPrefixLen);
@@ -2950,14 +3187,16 @@ void UltraFilerWindow::ShowTreeContextMenu(TreeNode* node, const UCEvent& event)
     const std::string& id = node->data.nodeId;
     const bool isPinnedEntry =
             id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0;
-    // Home, File System, the drive roots and the cloud folders are the roots of
-    // the tree - the first sit directly under Computer, the others under Cloud
-    // Storage. Deleting one of those from a context menu would be a
-    // catastrophe (a cloud folder syncs the deletion to every other device), so
-    // they keep Delete disabled.
+    // Home, File System, the drive roots, the cloud folders and the remote
+    // drives are the roots of the tree - the first sit directly under
+    // Computer, the others under Cloud Storage and Remote Drives. Deleting one
+    // of those from a context menu would be a catastrophe (a cloud folder
+    // syncs the deletion to every other device, and a remote drive's root is
+    // somebody's server), so they keep Delete disabled.
     const bool isTopLevelRoot = !isPinnedEntry && node->parent &&
             (node->parent->data.nodeId == kComputerNodeId ||
-             node->parent->data.nodeId == kCloudNodeId);
+             node->parent->data.nodeId == kCloudNodeId ||
+             node->parent->data.nodeId == kRemoteNodeId);
 
     std::vector<std::string> clipboardFiles;
     bool clipboardCut = false;
@@ -3225,6 +3464,8 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
 }
 
 void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
+    // What lets this display show a remote drive at all.
+    WireRemoteListing(tab->filer.get());
     tab->filer->onPathChanged = [this, tab](const std::string& path) {
         HandlePathChanged(tab, path);
     };
@@ -4285,7 +4526,17 @@ void UltraFilerWindow::NavigateForward() {
 
 void UltraFilerWindow::NavigateUp() {
     if (!filer || computerShown) return;
-    const fs::path p(filer->GetPath());
+    // A remote path is not a filesystem path: fs::path would mangle the
+    // "ultracloud://" prefix into a directory of its own. Above a drive's
+    // root sits the machine, the same place Up from "C:\\" lands.
+    const std::string current = filer->GetPath();
+    if (IsRemoteFilerPath(current)) {
+        const std::string parent = RemoteFilerParent(current);
+        if (!parent.empty()) NavigateTo(parent);
+        else SetComputerPageVisible(true);
+        return;
+    }
+    const fs::path p(current);
     if (p.has_parent_path() && p.parent_path() != p) {
         NavigateTo(p.parent_path().string());
         return;

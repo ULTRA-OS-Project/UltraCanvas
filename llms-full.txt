@@ -1390,12 +1390,16 @@ Cloud storage — the single home for cloud accounts, the default account, and
 "upload this and give me a share link", so no application talks to a cloud
 provider on its own. Providers are stateless plug-ins behind `ICloudProvider`
 (Verify / List / MakeDirectory / Upload / Download / CreateShareLink /
-SignIn / RefreshCredentials / AccountInfo); v0.2 ships Nextcloud / ownCloud
+SignIn / RefreshCredentials / AccountInfo, plus the optional Delete / Rename a
+provider carried as a drive implements); v0.2 ships Nextcloud / ownCloud
 (WebDAV + OCS share API, password and expiry on links), generic WebDAV (links
 through a public web-folder URL), Dropbox, OneDrive and Google Drive (OAuth2 +
 PKCE through the system browser via UltraNet, tokens refreshed automatically;
 the OAuth client id is configuration, `SetOAuthApp` or
-`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), and an in-memory demo provider. Providers
+`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), FTP / FTPS / SFTP over UltraNet's FTP
+surface (the one provider that can also delete and rename, so a file manager
+can carry an FTP server as a drive; no share links, and SFTP authenticates
+with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
@@ -20144,6 +20148,53 @@ does.
 Directories are never probed: what holds a folder open is usually a program's
 *working directory*, which no probe here can see.
 
+## Remote folders
+
+The widget can show a folder that is not on this machine — a drive the host
+carries for an FTP / SFTP server or a cloud account — through two hooks. It
+gains no network dependency of its own: it only asks, in the same spirit as
+the VirtualFS branch that lists the inside of an archive.
+
+```cpp
+filer->isRemotePath = [](const std::string& path) {
+    return path.compare(0, 13, "ultracloud://") == 0;
+};
+filer->remoteListing = [drives](const std::string& path,
+                                std::vector<FilerEntry>& out,
+                                std::string& error) {
+    return drives->List(path, out, error);   // from a cache, never blocking
+};
+```
+
+- **`isRemotePath` is asked first**, before the local filesystem is consulted.
+  That is the point of it: handing a remote path to `std::filesystem` would at
+  best fail, and at worst — for a path that looks like a dead network mount —
+  block the UI thread until the OS times out.
+- **`remoteListing` runs on the UI thread**, inside the folder scan. A host
+  that has to go to the network must answer from what it already holds,
+  returning an empty listing while a fetch is in flight, and call `Refresh()`
+  when the answer arrives. Blocking here freezes the window for as long as the
+  server takes.
+- **What an entry needs**: `name`, `path`, `isDirectory`, and for files `size`
+  and `modifiedTime`. The widget derives the extension and the type
+  information itself, so a remote file gets the same icon and category as a
+  local one of the same name.
+- **Returning `false`** with `error` set reports the message the way any
+  listing error is reported; returning `true` with an empty listing means
+  "nothing yet".
+- **Writing is refused.** Every command that would write into the displayed
+  folder — delete, duplicate, rename, paste, new folder, new file — answers
+  with a message instead when the listing is remote, because the widget has no
+  way to change one. Without that the command would reach `std::filesystem`
+  with a path that resolves to nothing and fail with an error about a missing
+  file rather than an answer about where it was pointed.
+- **`listingIsRealDirectory` stays false** for a remote listing, which turns
+  off the features that read the local filesystem per entry: the folder
+  previews and the in-use (lock) column.
+
+UltraFiler's remote drives are built on these two hooks; see
+`Apps/UltraFiler/UltraFilerRemoteDrives.h`.
+
 ## Folder listing prefetch
 
 With `SetFolderPrefetchEnabled` (default on), a low-priority worker pre-scans
@@ -20356,6 +20407,92 @@ rule, including a desktop launcher's own `Name=`
 (`FilerEntry::linkDisplayName`). UltraFiler answers it on its Computer page,
 where the home folder is shown as *Home* — what the folder tree's row and the
 folder tab call it too — instead of the account the folder is named after.
+
+## File type colours
+
+Every colour the display gives an entry — the band across the foot of its
+glyph, its TreeMap cell, the folder shape — comes from
+`UltraCanvasFilerWidget::EntryColorOf(entry)`. Three independent channels carry
+three facts, and none of them is the file's name:
+
+- **Hue is the family.** Blue images, green video, yellow-to-orange audio, cyan
+  vector, teal 3D models, purple documents, violet spreadsheets, grey text and
+  code, dark red applications, steel grey libraries, magenta archives, sepia
+  fonts. The media hues are saturated and the working files muted, so a folder
+  of photographs looks unlike a source tree before a single name is read.
+- **Brightness is efficiency.** Inside a family the modern format takes the
+  brightest rung and the legacy one sinks to the dark end. Two formats share a
+  rung when they share a compressor: zip, jar, tgz and gz are all deflate, and
+  colouring them apart would invent a difference the bytes do not have.
+- **A hue tilt separates lossless from lossy**, at the same chroma rather than
+  by dulling it — indigo beside azure for images, pure yellow beside orange for
+  audio. Lossless is a sibling family, not a washed-out version of its lossy
+  neighbour.
+
+| Family | Rungs, most efficient first |
+|---|---|
+| Images, lossy | `avif #2D86EA` · `heic/heif #1672DB` · `webp #1260BA` · `jpg #0F4F98` · `gif #0C3F7A` |
+| Images, lossless | `png #6F79CC` · `qoi #5761C4` · `tif #414DB8` · `ico #363F98` · `bmp #2B337A` |
+| Video | `webm #1CA04B` · `mkv #1A9545` · `mp4 #18883F` · `mov #157938` · `avi #12632E` · `wmv #0F5326` |
+| Audio, lossy | `opus #FFAA54` · `aac/m4a #FF9830` · `m4b #FF8408` · `ogg #F37900` · `mp3 #E27100` |
+| Audio, lossless | `flac #FFDC4D` · *(ALAC #FDCA00)* · `wav #EDBD00` · `aiff #DEB200` |
+| Vector | `svgz #0E93AE` · `svg #0D88A0` · `ai/cdr #0C798E` · `eps/ps/dwg #0A677A` · `dxf/emf/wmf #085666` |
+| 3D models | `glb #26998A` · `3mf #249182` · `stl/fbx #218577` · `ply/3ds #1E776B` · `gltf #1A665C` · `obj/dae #16584F` |
+| Documents | `pdf #A876D4` · `epub #9F69CF` · `odt #975BCB` · `docx #8B49C6` · `doc #7E3AB9` · `rtf #6D33A0` · `md/html/tex #5C2B87` |
+| Spreadsheets | `xlsx #893589` · `ods #A741A7` · `xls #BD57BD` |
+| Text and code | source `#818B98` · config and data `#949DA8` · `txt #ABB1BA` · `log #BABFC7` |
+| Applications | `exe #DC3644` · `appimage #CA2431` · `msi #AE1F2B` · `deb/rpm #911A24` |
+| Libraries | `so #445662` · `dll #506573` · `dylib #5C7384` · `a/lib #688396` |
+| Archives | `7z/zst #842A57` · `xz/lzma #9E3268` · `rar/bz2 #B93A79` · `gz/zip/jar/tgz #C74E8A` · `tar #CF669B` |
+| Fonts | `woff2 #6E4A36` · `woff #81573F` · `otf #946449` · `ttf #A47051` · `ttc/otc #AE7A5B` · legacy `#B48467` |
+
+Folders keep the amber `#F7BE50` they have always had — it is the one icon
+nobody should have to relearn — and a directory is coloured by what it is, so a
+folder called `render.mp4` is not drawn as a video. Anything the format table
+and the plugin inventory both miss is the neutral `#9E9E9E`.
+
+### Programs are not libraries
+
+`.exe` and `.dll` used to be one category, one noun and one colour, which is
+how a folder of system plumbing came to look exactly like a folder of programs.
+They are now `FilerFileCategory::Executable` and `FilerFileCategory::Library`:
+separate colours (dark red against steel grey), separate nouns in the Type
+column (`core.dll` is a *Dynamic Link Library*, not a *Library Program*), and
+separate positions in a sort by type. A host that asks "is this something the
+user launches?" can now trust the category — UltraFiler's History *Apps* tab
+does — instead of carrying its own list of program extensions.
+
+### Caption ink
+
+The TreeMap draws file names on top of these colours, so the ink has to answer
+to them: `EntryCaptionInkOf(entry)` returns white for the dark families and
+near-black for the light ones (audio, text and code, folders, unrecognised
+files). The ink is a property of the **family**, never of the single file:
+every rung of a family clears 3.2:1 against one ink, so no ramp ever switches
+ink halfway down itself — a GIF does not get black text because it happens to
+be the palest blue. Where the ink does change, between families, the change
+itself says which half of the palette you are looking at.
+
+### What the extension cannot say
+
+The colour does not claim to know more than the file name does. `.webp` and
+`.jxl` are both lossy and lossless and are coloured lossy, which is what almost
+every one of them is. `.m4a` holds AAC or ALAC. `.mp4`, `.mkv` and `.mov` name
+a container, not a codec, so an AV1 MKV and an MPEG-2 MKV share a rung until
+something reads the file — the widget already probes audio and video lazily for
+the Length column, and that probe is where a codec-accurate rung would come
+from, filling in behind the extension's shade the way a thumbnail fills in
+behind its glyph.
+
+A host drawing its own file lists can ask for the same colours directly:
+
+```cpp
+const Color band = UltraCanvasFilerWidget::EntryColorOf(entry);
+const Color ink  = UltraCanvasFilerWidget::EntryCaptionInkOf(entry);
+// by extension alone, with the category as the fallback for formats the
+// ladders do not rank (anything a plugin registered):
+const Color c = UltraCanvasFilerWidget::FormatColorOf("avif", FilerFileCategory::Image);
+```
 
 ## Folder icons
 
@@ -55177,6 +55314,41 @@ RenderVectorPreviewPixmap("plan.dwg", 256, 256);  // a UCPixmap for a tile
 An application that registers no plugin is unchanged: the seam answers no to
 everything and the old two ways are all there is.
 
+## Registration: automatic, once, for every application
+
+Nothing above happens until the plugin is registered, and that used to be each
+application's job — which is why UltraFiler showed none of these formats while
+carrying every reader for them.
+
+Linking the **`UltraCanvasAllFormats`** object library is now the whole of it:
+every format plugin the build produced registers itself before `main()`, with
+no application code. CMake defines `ULTRACANVAS_HAS_<PLUGIN>` for each plugin
+target it actually built, and the registrar
+(`UltraCanvas/Plugins/UltraCanvasAllFormats.cpp`) calls what those defines
+admit exists. Adding a plugin to the framework reaches every application that
+links the library, instead of every application having to learn its name.
+
+It is an `OBJECT` library on purpose — a linker keeps only the object files of
+a static library that something references, and nothing references a
+registrar, so in a `.a` it would be dropped and the registration would
+silently never happen.
+
+Registration order is ownership order: the dedicated CDR, XAR and EPS viewer
+plugins register *after* this one, because the registry lets the last
+registration win a shared extension and for those formats they are the better
+reader. This plugin keeps what only it reads (DXF, the DWG family, EMF, WMF)
+and remains the only writer, since save dispatch matches on
+`GetSaveExtensions` rather than the extension map.
+
+```cpp
+// An application does this and nothing else:
+//     target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_LIBRARIES}
+//                                         UltraCanvasAllFormats)
+
+AutoRegisteredFormatPlugins();   // {"Vector","Models","CDR","XAR","EPS"}
+RegisterAllFormatPlugins();      // harmless: the automatic pass already ran
+```
+
 ## The graphics plugin (load and save through the registry)
 
 `UltraCanvasVectorFormatsPlugin` exposes the matrix to the framework's
@@ -62175,8 +62347,10 @@ same default.
 > **Nextcloud / ownCloud** (WebDAV + OCS share links), **generic WebDAV**
 > (browse and upload; links only through a public web-folder URL),
 > **Dropbox**, **OneDrive** and **Google Drive** (OAuth2 + PKCE through the
-> system browser, tokens refreshed automatically) and an **in-memory demo
-> provider**. iCloud Drive cannot mint links from an app at all. Providers
+> system browser, tokens refreshed automatically), **FTP / FTPS / SFTP**
+> (browse, upload, download, and - alone among the providers - delete and
+> rename, so a file manager can carry a server as a drive; no share links)
+> and an **in-memory demo provider**. iCloud Drive cannot mint links from an app at all. Providers
 > can also ship as plug-in libraries. Sources under
 > `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud` (headless)
 > and `UltraCloudUI` (dialogs), header `<UltraCloud/UltraCloud.h>`,
@@ -62214,6 +62388,7 @@ What already existed and stays where it is:
 | Dropbox | `files/upload` up to 150 MB, an upload session (`upload_session/start` → `append_v2` → `finish`) in 8 MiB chunks above | `sharing/create_shared_link_with_settings` (password + expiry on paid plans); an existing link is reused | OAuth2 + PKCE, offline access | `https://www.dropbox.com/scl/fi/…` |
 | OneDrive | Graph `PUT …:/content` up to 4 MB, an upload session in 10 MiB chunks above | Graph `createLink` (anonymous view; password + expiry on personal accounts) | OAuth2 + PKCE, `offline_access` | `https://1drv.ms/…` |
 | Google Drive | multipart `files.create` (or a media update when the name exists) up to 5 MB, a resumable upload in 8 MiB chunks above | `permissions.create` (anyone with the link) + the file's `webViewLink`; no password / expiry | OAuth2 + PKCE, `access_type=offline` | `https://drive.google.com/file/d/<id>/view` |
+| FTP / FTPS / SFTP | `UltraNet_FtpUpload`, missing folders created on the way | — (no FTP request mints a link) | user + password (`CURLOPT_USERNAME` / `CURLOPT_PASSWORD`); implicit TLS on `ftps://`, explicit on `ftpes://` | not possible from an app |
 | iCloud Drive | — | Finder / share sheet only | — | not possible from an app |
 | Demo (in memory) | in process | in process | — | `https://demo.ultra-os.local/s/<n>` |
 
@@ -62237,6 +62412,7 @@ What already existed and stays where it is:
           │           ├── DropboxProvider           Dropbox API v2
           │           ├── OneDriveProvider          Microsoft Graph
           │           └── GoogleDriveProvider       Drive API v3 (paths resolved to ids)
+          ├── FtpProvider                           FTP / FTPS / SFTP over UltraNet FTP
           └── MemoryProvider                        in-process fake
 ```
 
@@ -62342,6 +62518,12 @@ The dialogs (`UltraCloudUI`):
 #include "UltraCloudPickerDialog.h"
 
 UltraCloud::ShowAddAccountDialog(window, cloud, [](const Account& added) { ... });
+
+// Narrowed to one kind of provider, with a title to match - what a host does
+// when it offers "add an FTP drive" and "add a cloud drive" as two commands.
+UltraCloud::ShowAddAccountDialog(window, cloud, onAdded,
+        [](const std::string& id) { return id == "ftp"; },
+        "Add an FTP / SFTP drive");
 UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
     InsertIntoBody(pick.entry.name + ": " + pick.link.url);
 });
@@ -62358,9 +62540,10 @@ providers.
 | Header | Contents |
 |---|---|
 | `UltraCloudTypes.h` | `Result` / `ResultCode`, `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
-| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
+| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
 | `UltraCloudOAuth.h` | `OAuthApp`, `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp`, `OAuthHooks`, `OAuthProviderBase` |
+| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
@@ -62370,7 +62553,7 @@ providers.
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog`, `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (with an optional provider filter and title), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing

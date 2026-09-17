@@ -1218,12 +1218,16 @@ Cloud storage — the single home for cloud accounts, the default account, and
 "upload this and give me a share link", so no application talks to a cloud
 provider on its own. Providers are stateless plug-ins behind `ICloudProvider`
 (Verify / List / MakeDirectory / Upload / Download / CreateShareLink /
-SignIn / RefreshCredentials / AccountInfo); v0.2 ships Nextcloud / ownCloud
+SignIn / RefreshCredentials / AccountInfo, plus the optional Delete / Rename a
+provider carried as a drive implements); v0.2 ships Nextcloud / ownCloud
 (WebDAV + OCS share API, password and expiry on links), generic WebDAV (links
 through a public web-folder URL), Dropbox, OneDrive and Google Drive (OAuth2 +
 PKCE through the system browser via UltraNet, tokens refreshed automatically;
 the OAuth client id is configuration, `SetOAuthApp` or
-`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), and an in-memory demo provider. Providers
+`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), FTP / FTPS / SFTP over UltraNet's FTP
+surface (the one provider that can also delete and rename, so a file manager
+can carry an FTP server as a drive; no share links, and SFTP authenticates
+with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault

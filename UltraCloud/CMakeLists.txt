@@ -22,6 +22,7 @@ set(ULTRACLOUD_SOURCES
     core/UltraCloudHttp.cpp
     core/UltraCloudOAuth.cpp
     providers/UltraCloudWebDav.cpp
+    providers/UltraCloudFtp.cpp
     providers/UltraCloudNextcloud.cpp
     providers/UltraCloudMemory.cpp
     providers/UltraCloudDropbox.cpp

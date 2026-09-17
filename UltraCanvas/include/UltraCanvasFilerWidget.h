@@ -87,7 +87,7 @@
 // icon box (Display > File extensions). Both are display-only: FilerEntry
 // keeps the real name, so renaming, sorting and every file operation are
 // unaffected.
-// Version: 1.30.0
+// Version: 1.31.0
 // Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
@@ -200,6 +200,11 @@ namespace UltraCanvas {
     };
 
     // ===== COARSE FILE CATEGORY (drives icons / colors / type sorting) =====
+    // Executable and Library are deliberately separate: a .exe is something
+    // the user launches, a .dll is something a program loads. They sort apart,
+    // they are named apart ("Program" against "Library"), and they are
+    // coloured apart - one category for both is how a folder of libraries
+    // came to look exactly like a folder of applications.
     enum class FilerFileCategory {
         Folder,
         Image,
@@ -211,7 +216,8 @@ namespace UltraCanvas {
         Text,
         Spreadsheet,
         Archive,
-        Executable,
+        Executable,    // programs and installers (exe, appimage, deb, ...)
+        Library,       // loaded by a program, never launched (dll, so, ...)
         Font,          // font definition files (ttf, otf, woff, ...)
         Other
     };
@@ -915,6 +921,51 @@ namespace UltraCanvas {
         // empty for folders and for names whose tail is not a file type.
         static std::string ExtensionTagOf(const FilerEntry& e);
 
+        // ===== FILE TYPE COLOURS =====
+        // The colour the display gives an entry: the band across the foot of
+        // its glyph, its TreeMap cell, the folder shape. Three independent
+        // channels carry three facts, and none of them is the file's name:
+        //
+        //   * HUE says which family the format belongs to - blue images,
+        //     green video, yellow-to-orange audio, cyan vector, teal models,
+        //     purple documents and spreadsheets, grey text and code, dark red
+        //     applications, steel grey libraries, magenta archives, sepia
+        //     fonts. Media hues are saturated, working files muted, so a
+        //     folder of photographs looks different from a source tree before
+        //     a single name is read.
+        //   * BRIGHTNESS says how efficient the format is. The modern format
+        //     takes the brightest rung of its family and the legacy one sinks
+        //     into the dark end: AVIF over HEIC over WebP over JPEG over GIF,
+        //     Opus over AAC over Vorbis over MP3, WebM over MKV over MP4 over
+        //     AVI. Formats that share a compressor share a rung - zip, jar
+        //     and gz are all deflate, and pretending otherwise would invent a
+        //     distinction the bytes do not have.
+        //   * A HUE TILT inside the family separates lossless from lossy, at
+        //     the same chroma rather than by dulling it: indigo beside azure
+        //     for images, pure yellow beside orange for audio.
+        //
+        // What the extension cannot answer, the colour does not pretend to:
+        // .webp and .jxl are both lossy and lossless and are coloured lossy,
+        // which is what almost every one of them is; .m4a holds AAC or ALAC;
+        // and .mp4 / .mkv / .mov name a container, not a codec, so an AV1 MKV
+        // and an MPEG-2 MKV share a rung until something reads the file.
+        static Color EntryColorOf(const FilerEntry& e);
+        // The ink for a caption drawn ON TOP of that colour (the TreeMap's
+        // file names). It is a property of the family, never of the single
+        // file: every rung of a family clears 3.2:1 against one ink, so no
+        // ramp ever switches ink halfway down itself. White for the dark
+        // families, near-black for the light ones - audio, text and code,
+        // folders - where the switch says "you are in the light half of the
+        // palette" rather than "this one file happens to be pale".
+        static Color EntryCaptionInkOf(const FilerEntry& e);
+        // The colour of a format by extension alone (lowercase, no dot), for
+        // a host that draws its own file lists. `category` is the fallback
+        // for an extension the format table does not rank - a format a plugin
+        // registered, which still belongs to a family but has no place in its
+        // efficiency ladder.
+        static Color FormatColorOf(const std::string& extension,
+                                   FilerFileCategory category);
+
         // ===== SELECTIVE PREVIEWS =====
         // Which file kinds get a thumbnail rendered from the file instead of
         // their type glyph (Display > Thumbnails). All kinds are on by
@@ -1193,6 +1244,33 @@ namespace UltraCanvas {
 
         // Optional veto for DeleteSelection: return false to abort.
         std::function<bool(const std::vector<FilerEntry>&)> confirmDelete;
+
+        // ---- Remote drives (an FTP or a cloud account carried as a drive) --
+        // A host that can reach paths this widget cannot answers for them
+        // through these two. The widget gains no network dependency of its
+        // own: it only asks, in the same spirit as the VirtualFS branch that
+        // lists the inside of an archive.
+        //
+        // `isRemotePath` recognises one of the host's own paths. It is asked
+        // BEFORE the local filesystem is consulted, which is the whole point:
+        // handing "ultracloud://acc/x" to std::filesystem would at best fail
+        // and at worst - for a path that looks like a dead network mount -
+        // block the UI thread until the OS times out.
+        std::function<bool(const std::string& path)> isRemotePath;
+
+        // Lists a remote folder. Return true and fill `out`; return false and
+        // fill `error` to have the message reported the way any listing error
+        // is. `out` entries need name, path, isDirectory and (for files) size
+        // and modifiedTime - the widget fills in the extension and the type
+        // information itself, exactly as it does for an archive interior.
+        //
+        // IMPORTANT: this is called on the UI thread, inside the folder scan.
+        // A host that has to go to the network must answer from what it has
+        // already fetched (returning an empty listing while a fetch is in
+        // flight) and call Refresh() when the answer arrives. Blocking here
+        // freezes the window for as long as the server takes.
+        std::function<bool(const std::string& path, std::vector<FilerEntry>& out,
+                           std::string& error)> remoteListing;
 
         // Extra info column provider (e.g. plays a media header to report the
         // duration). Called once per entry at scan time; empty result keeps the
@@ -1972,6 +2050,18 @@ namespace UltraCanvas {
         // Without it they are skipped before the stat they would cost, and
         // `hiddenSkipped` (when given) counts how many were left out - what
         // the hidden-items notice says.
+        // Refuses a command that would write into the listing on screen when
+        // that listing cannot be written to - today, a remote drive: the
+        // widget can browse one (remoteListing) but has no way to change it.
+        // Reports through ReportError and answers true when it refused, so a
+        // command reads `if (RefuseWriteHere("delete")) return;`.
+        //
+        // Without this the command would reach std::filesystem with a path
+        // like "ultracloud://acc/x", which resolves to nothing: the operation
+        // fails anyway, but with an error about a missing file rather than an
+        // answer about where it was pointed.
+        bool RefuseWriteHere(const char* what);
+
         void ScanRealDirectory(const std::string& path, bool includeHidden,
                                std::vector<FilerEntry>& out,
                                int* hiddenSkipped = nullptr) const;

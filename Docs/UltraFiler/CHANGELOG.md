@@ -1,3 +1,84 @@
+#### 2026-09-17 *1.41.0*
+- The per-application plugin list is gone. UltraFiler links
+  `UltraCanvasAllFormats` and every format plugin the build produced registers
+  itself before `main()` - no includes, no defines, no registration calls in
+  `main.cpp`, and nothing to update when a plugin is added to the framework.
+  Needs framework 0.8.83.
+- With the preview tests now asking the graphics registry as well (also
+  0.8.83), the formats only a registered plugin can draw stop being greyed on
+  Display > Thumbnails and Display > Detail view: the CorelDRAW files libcdr
+  parses, `.ccx` and `.cdt` included, which the previous release could
+  register but not show.
+
+#### 2026-09-17 *1.40.0*
+- **"+ Drive": an FTP / SFTP server or a cloud account as a place you can
+  browse.** The navigation row has a new **Drive** button. It offers two
+  kinds - *FTP / SFTP server...* and *Cloud storage...* - because the two are
+  configured quite differently: a server you type a host, a user and a
+  password for, against an account you sign in to through the browser. Either
+  choice opens UltraCloud's shared add-account dialog with only that kind's
+  providers in it, so neither list is padded with the other's.
+
+  What you add appears under a new **Remote Drives** section of the folder
+  tree, between the cloud sync folders and the real drives. The distinction is
+  deliberate: **Cloud Storage** above it lists the folders a sync client has
+  already put on this disk, which work with the network off, while a remote
+  drive is the server itself. Like *Pinned* and *Cloud Storage*, the section
+  stays hidden while there is nothing in it.
+
+  Clicking a drive browses it in the folder display - names, sizes, dates,
+  folders first - with the icons any local file of the same name would get.
+  Up climbs back through the server's folders and steps out to the Computer
+  page at the drive's root; **Refresh** on a remote folder asks the server
+  again rather than repainting what was cached.
+
+  The server is never waited on while the window paints: a folder that has not
+  been fetched yet shows empty for the moment, a worker fetches it, and the
+  display fills itself in when the answer lands. An unreachable server costs
+  that one folder a message, not a frozen file manager.
+
+  **Read-only for now.** Delete, rename, duplicate, paste, new folder and new
+  file all answer that a remote drive can be browsed but not changed, rather
+  than failing obscurely. Uploading and deleting on a drive is the next step.
+
+  Credentials go where the rest of the system keeps secrets - UltraVault, or
+  the per-app obfuscated file in a build without it - and never into the drive
+  list itself. A build made without UltraCloud has the button disabled and
+  says why, rather than offering something it cannot do.
+
+  Built on framework 0.8.82's `isRemotePath` / `remoteListing` hooks and the
+  add-account dialog's new provider filter; UltraFiler's own part is
+  `UltraFilerRemoteDrives` (the drive list, the listing cache and its worker)
+  and `UltraFilerRemotePath.h` (the `ultracloud://<account><path>` scheme).
+#### 2026-09-17 *1.39.2*
+- **Programs and libraries are told apart on sight.** The framework's file
+  display now carries a `Library` category of its own, so `.dll`, `.so` and
+  `.dylib` are steel grey against the dark red of `.exe` and the installers,
+  and the Type column calls `core.dll` a *Dynamic Link Library* instead of a
+  *Library Program*. The whole file-type palette moves with it: hue says which
+  family a file belongs to, brightness says how efficient its format is (AVIF
+  over JPEG over GIF, Opus over MP3, WebM over AVI), and lossless formats sit
+  beside their lossy siblings instead of being a duller shade of them.
+- The History view's *Apps* tab asks the category rather than matching its own
+  list of program extensions — the list existed only because the old category
+  counted libraries as programs.
+#### 2026-09-17 *1.39.1*
+- **The Cloud Storage section no longer gives up after one look.** The folder
+  tree's cloud lookup marks itself busy while it runs so two cannot overlap,
+  but three of its ways out - finding no cloud folders at all, and either kind
+  of failure reading a provider's registry or configuration - forgot to clear
+  that mark. The first such lookup left it set for the rest of the session, and
+  every later one returned at the door without looking.
+
+  On a machine with no sync client installed the very first lookup finds
+  nothing, so this was the normal case: from then on plugging in a drive never
+  re-checked for cloud folders - which is exactly what the re-check exists for,
+  a Google Drive that mounts as its own drive letter. A provider that threw
+  cost the section permanently instead of for that one attempt.
+
+  The mark is now released on every path out of the lookup, and where the
+  results are handed to the window it is released once they have been applied,
+  so a lookup still cannot overlap with the one before it.
 #### 2026-09-17 *1.39.0*
 - **Copying, moving and deleting show their progress.** An operation that is
   still running two seconds after it started now opens a window with a ring,
