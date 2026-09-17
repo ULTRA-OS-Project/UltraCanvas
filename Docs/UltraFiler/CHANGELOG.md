@@ -1,3 +1,15 @@
+#### 2026-09-17 *1.40.0*
+- The per-application plugin list is gone. UltraFiler links
+  `UltraCanvasAllFormats` and every format plugin the build produced registers
+  itself before `main()` - no includes, no defines, no registration calls in
+  `main.cpp`, and nothing to update when a plugin is added to the framework.
+  Needs framework 0.8.80.
+- With the preview tests now asking the graphics registry as well (also
+  0.8.80), the formats only a registered plugin can draw stop being greyed on
+  Display > Thumbnails and Display > Detail view: the CorelDRAW files libcdr
+  parses, `.ccx` and `.cdt` included, which the previous release could
+  register but not show.
+
 #### 2026-09-17 *1.39.0*
 - **Copying, moving and deleting show their progress.** An operation that is
   still running two seconds after it started now opens a window with a ring,

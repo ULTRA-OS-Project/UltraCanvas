@@ -55153,6 +55153,41 @@ RenderVectorPreviewPixmap("plan.dwg", 256, 256);  // a UCPixmap for a tile
 An application that registers no plugin is unchanged: the seam answers no to
 everything and the old two ways are all there is.
 
+## Registration: automatic, once, for every application
+
+Nothing above happens until the plugin is registered, and that used to be each
+application's job — which is why UltraFiler showed none of these formats while
+carrying every reader for them.
+
+Linking the **`UltraCanvasAllFormats`** object library is now the whole of it:
+every format plugin the build produced registers itself before `main()`, with
+no application code. CMake defines `ULTRACANVAS_HAS_<PLUGIN>` for each plugin
+target it actually built, and the registrar
+(`UltraCanvas/Plugins/UltraCanvasAllFormats.cpp`) calls what those defines
+admit exists. Adding a plugin to the framework reaches every application that
+links the library, instead of every application having to learn its name.
+
+It is an `OBJECT` library on purpose — a linker keeps only the object files of
+a static library that something references, and nothing references a
+registrar, so in a `.a` it would be dropped and the registration would
+silently never happen.
+
+Registration order is ownership order: the dedicated CDR, XAR and EPS viewer
+plugins register *after* this one, because the registry lets the last
+registration win a shared extension and for those formats they are the better
+reader. This plugin keeps what only it reads (DXF, the DWG family, EMF, WMF)
+and remains the only writer, since save dispatch matches on
+`GetSaveExtensions` rather than the extension map.
+
+```cpp
+// An application does this and nothing else:
+//     target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_LIBRARIES}
+//                                         UltraCanvasAllFormats)
+
+AutoRegisteredFormatPlugins();   // {"Vector","Models","CDR","XAR","EPS"}
+RegisterAllFormatPlugins();      // harmless: the automatic pass already ran
+```
+
 ## The graphics plugin (load and save through the registry)
 
 `UltraCanvasVectorFormatsPlugin` exposes the matrix to the framework's

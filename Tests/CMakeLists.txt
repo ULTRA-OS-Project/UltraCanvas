@@ -1699,6 +1699,33 @@ add_test(NAME ClassLayoutTest COMMAND ClassLayoutTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ClassLayoutTest")
 
+# ===== AUTOMATIC FORMAT REGISTRATION TEST =====
+# Pins that linking UltraCanvasAllFormats is all an application does: the
+# test calls no Register*Plugin() and still finds every built plugin in the
+# registry. Guards the two things that would quietly break it - a static
+# library letting the linker drop the registrar, and a registry constructed
+# after the registration that filled it.
+if(TARGET UltraCanvasAllFormats)
+    message(STATUS "  Building AutoFormatRegistrationTest...")
+    add_executable(AutoFormatRegistrationTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/AutoFormatRegistrationTest.cpp
+    )
+    target_include_directories(AutoFormatRegistrationTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+    )
+    target_compile_features(AutoFormatRegistrationTest PRIVATE cxx_std_20)
+    target_link_libraries(AutoFormatRegistrationTest PRIVATE
+        ${ULTRACANVAS_PLUGIN_TARGETS} UltraCanvasAllFormats UltraCanvas)
+    set_target_properties(AutoFormatRegistrationTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME AutoFormatRegistrationTest COMMAND AutoFormatRegistrationTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: AutoFormatRegistrationTest")
+else()
+    message(STATUS "  AutoFormatRegistrationTest skipped (no format plugins built)")
+endif()
+
 # ===== DISABLED CONTROL CONTRAST TEST =====
 # One rule for every control with a disabled state: the disabled face, border
 # and label must be LIGHTER than the live ones. The defaults had it backwards

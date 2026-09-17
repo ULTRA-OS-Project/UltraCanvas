@@ -93,6 +93,7 @@
 #include "Models/STL/UltraCanvasSTLLoader.h"
 #include "UltraCanvasModelPreview.h"
 #include "UltraCanvasVectorPreview.h"
+#include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -692,6 +693,7 @@ namespace UltraCanvas {
                     // plugin read them perfectly well.
                     return ImagePipelineLoadsExtension(ext) ||
                            CanPreviewVectorExtension(ext) ||
+                           IsVectorGraphicsPath("file." + ext) ||
                            FormatCarriesEmbeddedPreview(ext);
                 case FilerPreviewType::Models3D:
                     return CanPreviewModelExtension(ext);
@@ -805,6 +807,13 @@ namespace UltraCanvas {
             return img->GetPixmap(w, h, fit, scale);
         }
 
+        // Logical size times the display scale, floored at one pixel.
+        int DeviceEdge(int logical, float scale) {
+            if (logical <= 0) return 0;
+            return std::max(1, static_cast<int>(std::lround(
+                    logical * std::max(1.0f, scale))));
+        }
+
         // ===== VECTOR DRAWING PREVIEW =====
         // The drawing itself, for the formats a registered Vector plugin
         // reads (UltraCanvasVectorPreview.h): DXF, DWG and the rest, which
@@ -823,7 +832,26 @@ namespace UltraCanvas {
                                                             int w, int h, float scale) {
             static std::mutex renderMutex;
             std::lock_guard<std::mutex> lock(renderMutex);
-            return RenderVectorPreviewPixmap(path, w, h, scale);
+            if (auto pm = RenderVectorPreviewPixmap(path, w, h, scale)) return pm;
+            // Formats no reader turns into a document, but a registered
+            // graphics plugin can draw: the CorelDRAW files libcdr parses,
+            // and anything else a plugin claims. The plugin's own element is
+            // rendered into an offscreen context by UltraCanvasVectorRaster
+            // and handed back as pixels, which is why this shares the mutex
+            // above rather than getting one of its own.
+            if (!IsVectorGraphicsPath(path)) return nullptr;
+            VectorRasterOptions options;
+            options.width = DeviceEdge(w, scale);
+            options.height = DeviceEdge(h, scale);
+            std::string error;
+            auto layer = RasterizeVectorFile(path, options, error);
+            if (!layer || !layer->IsValid()) {
+                if (!error.empty())
+                    debugOutput << "Filer: " << path << ": " << error << std::endl;
+                return nullptr;
+            }
+            return PixmapFromRGBA(layer->Row(0), layer->GetWidth(),
+                                  layer->GetHeight(), layer->GetWidth() * 4);
         }
 
         // ===== 3D MODEL PREVIEW =====
@@ -8490,6 +8518,7 @@ namespace UltraCanvas {
                 // preview - keeps the type glyph.
                 return (ImagePipelineLoadsExtension(e.extension) ||
                         CanPreviewVectorExtension(e.path) ||
+                        IsVectorGraphicsPath(e.path) ||
                         FormatCarriesEmbeddedPreview(e.extension))
                                ? e.path : std::string{};
             // Videos thumbnail as their poster frame (the first frame of the

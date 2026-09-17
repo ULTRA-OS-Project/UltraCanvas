@@ -2879,6 +2879,61 @@ endif()
 
 # Add more plugins here...
 
+# ===== AUTOMATIC FORMAT REGISTRATION =====
+# One object library that registers every plugin built above, before main().
+# An application links it and gets every format this build can read without
+# writing a line; adding a plugin to the framework reaches every application
+# instead of every application having to learn its name.
+#
+# OBJECT, not STATIC, and that is the whole trick: a linker keeps only the
+# object files of a static library that something references, and nothing
+# references a registrar, so in a .a this would be dropped and the
+# registration would silently never happen. Every object of an OBJECT library
+# is linked in.
+#
+# It compiles against the plugin headers but links nothing itself - the
+# plugin libraries come with ULTRACANVAS_LIBRARIES - so it needs their
+# include directories and a define per plugin that exists.
+add_library(UltraCanvasAllFormats OBJECT
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraCanvasAllFormats.cpp
+)
+target_compile_features(UltraCanvasAllFormats PRIVATE cxx_std_20)
+target_include_directories(UltraCanvasAllFormats
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${ULTRACANVAS_PLUGIN_INCLUDE_DIRS}
+)
+# The core library's interface include directories (Cairo and friends) reach
+# it the way every plugin gets them, without linking core in.
+target_include_directories(UltraCanvasAllFormats PRIVATE
+    $<TARGET_PROPERTY:${ULTRACANVAS_LIB_NAME},INTERFACE_INCLUDE_DIRECTORIES>
+)
+target_compile_definitions(UltraCanvasAllFormats PRIVATE
+    $<TARGET_PROPERTY:${ULTRACANVAS_LIB_NAME},INTERFACE_COMPILE_DEFINITIONS>
+)
+set(ULTRACANVAS_AUTOFORMAT_PLUGINS "")
+foreach(_plugin VECTOR MODELS CDR XAR EPS)
+    if(_plugin STREQUAL "VECTOR")
+        set(_target UltraCanvasVectorPlugin)
+    elseif(_plugin STREQUAL "MODELS")
+        set(_target UltraCanvasModelsPlugin)
+    else()
+        set(_target UltraCanvas${_plugin}Plugin)
+    endif()
+    if(TARGET ${_target})
+        target_compile_definitions(UltraCanvasAllFormats PRIVATE
+                ULTRACANVAS_HAS_${_plugin}_PLUGIN=1)
+        list(APPEND ULTRACANVAS_AUTOFORMAT_PLUGINS ${_plugin})
+    endif()
+endforeach()
+if(ULTRACANVAS_AUTOFORMAT_PLUGINS)
+    message(STATUS "  [✓] Automatic format registration: ${ULTRACANVAS_AUTOFORMAT_PLUGINS}")
+else()
+    message(STATUS "  [−] Automatic format registration - no format plugins built")
+endif()
+
 # ===== EXPORT VARIABLES TO PARENT =====
 set(ULTRACANVAS_LIBRARY ${ULTRACANVAS_LIB_NAME} PARENT_SCOPE)
 set(ULTRACANVAS_LIBRARIES ${ULTRACANVAS_LIB_NAME} ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
@@ -2889,6 +2944,10 @@ set(ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
 # Named individually as well, so an application can link one plugin without
 # taking every other format's code with it (UltraPaint wants the 3D readers).
 set(ULTRACANVAS_MODELS_PLUGIN_TARGET ${ULTRACANVAS_MODELS_PLUGIN_TARGET} PARENT_SCOPE)
+# The automatic registrar: applications link this (as an object library, so
+# $<TARGET_OBJECTS:...> or a plain link both work) to get every built format
+# registered before main().
+set(ULTRACANVAS_ALLFORMATS_TARGET UltraCanvasAllFormats PARENT_SCOPE)
 set(ULTRACANVAS_INCLUDE_DIRS 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${ULTRACANVAS_PLUGIN_INCLUDE_DIRS}
