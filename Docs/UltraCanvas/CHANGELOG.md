@@ -1,3 +1,54 @@
+#### 2026-09-17 *0.8.82*
+- **New design proposal: UltraFIBU, a German double-entry accounting
+  application** (`Docs/Research/UltraFIBUDesignProposal.md`). DATEV import and
+  export, UStVA/ZM submission to ELSTER, One-Stop-Shop reporting, a
+  *Geschaeftsjahr* whose start date is free (1 April is an ordinary row, not a
+  special case), customer and supplier master data with European VAT numbers,
+  a German UI, and two deployment modes - a local SQLite database and a shared
+  server database several users work on. The investigation checks every
+  requirement against the tree rather than against expectation, and the
+  answers are the interesting part: the CSV layer already speaks the DATEV
+  dialect (CP1252, semicolons, quoted fields), `UCZipPackageWriter` gives the
+  containers DATEV XML, ZUGFeRD and the GoBD Z3 medium need, UltraVault holds
+  the ELSTER PIN and UltraCrypt the journal's hash chain - while four things
+  are missing and each is worth having for its own sake.
+  - **`UltraCanvasTableView` does not exist.** The UI catalogue names it and
+    there is no such header; `UltraCanvasListView` has no column API at all,
+    and `UltraCanvasColumnsTreeView` - columns, header band, group rows - has
+    no sort, filter, badge or checkbox cell, inline edit, virtualisation or
+    footer aggregate. The proposal asks for a real `UltraCanvasDataGrid` built
+    on that groundwork, and for the catalogue row to stop sending readers
+    after a file that is not there.
+  - **There is no XML facade.** Six of this application's formats are XML
+    (XRechnung UBL and CII, ZUGFeRD, the ELSTER data types, CAMT.053, the GoBD
+    `index.xml`); `grep` finds one `class XMLElement`, inside the Word
+    plugin's LaTeX converter. `UltraCanvasXML` over a vendored parser, wrapped
+    the way `UltraCanvasJSON` wraps yyjson.
+  - **There is no money type.** The one currency value in the tree is a
+    `double` in the spreadsheet types, which a ledger may not use; exact
+    integer minor units with explicit *kaufmaennische Rundung* and allocation
+    helpers belongs in the framework. With it, a German number input - and
+    the note that DATEV CSV is comma-decimal, the exact inverse of the
+    dot-decimal file-format rule the framework has already been bitten by
+    twice.
+  - **Multi-user has one answer and it is a driver.** `core/UltraDatabase/`
+    holds the SQLite driver alone and there is no `Plugins/UltraDatabase/`, so
+    server mode waits on the `libpq` driver the module's own Stage 2 plan
+    promises. A shared SQLite file on a network share or a synced folder is
+    not a deployment mode - it is silent loss of a book that must by law be
+    complete.
+  The rest is regulatory reality, sourced and dated: UStVA goes through ERiC,
+  which cannot be vendored here, needs a manufacturer registration and is
+  re-released twice a year - so an interface, a dynamically loaded backend
+  that soft-fails, and an always-available path that writes the XML for manual
+  upload. OSS has no published machine interface at all, only a CSV transport
+  file uploaded by hand, so the design computes and hands over. The BZSt's
+  VAT-number XML-RPC endpoint went obsolete on 30 November 2025 and is now a
+  REST API. A *Geschaeftsjahr* starting 1 April and a UStVA period that is
+  always a calendar month are two calendars over one journal, which is a
+  schema decision and cheap only while it is early. Documentation only; no
+  code.
+
 #### 2026-09-17 *0.8.81*
 - **A folder of libraries looked exactly like a folder of programs.**
   `.exe`, `.dll`, `.so`, `.deb` and `.appimage` were one category with one
