@@ -116,7 +116,13 @@ option(ULTRACANVAS_PLUGIN_CDR "Build CDR plugin (requires libcdr)" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_EPS "Build EPS (PostScript) plugin" ON)
 option(ULTRACANVAS_ENABLE_AUDIO "Build audio backend" ON)
-option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
+# ON like the other format plugins. It needs libvips, zlib and tinyxml2, which
+# are core's own dependencies, so it costs no new one - and off by default it
+# took DXF, the DWG family, EMF and WMF out of every build made the ordinary
+# way, CI's included, so a file manager could not read a drawing however it
+# registered its plugins. (The Android phase-1 block above still forces it
+# off: libvips is not in that sysroot, and this plugin needs it.)
+option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" ON)
 option(ULTRACANVAS_PLUGIN_PDF "Build PDF plugin (requires MuPDF / libmupdf-dev)" ON)
 option(ULTRACANVAS_PLUGIN_OCR "Build OCR plugin (requires tesseract + leptonica)" ON)
 option(ULTRACANVAS_PLUGIN_VECTORIZER "Build Vectorizer plugin (raster→SVG via VTracer; requires cargo)" ON)
@@ -887,47 +893,13 @@ if (BUILD_ULTRAFILER_APP)
     )
     target_link_libraries(UltraFiler PRIVATE fmt::fmt)
 
-    # The format plugins, where this build has them. A file manager shows what
-    # the framework can read, and a plugin reads nothing until an application
-    # links and registers it: without these, the whole Vector matrix (DXF, DWG
-    # and the rest) and every 3D format but STL previewed as a type glyph and
-    # greyed themselves out on the Display > Thumbnails and Display > Detail
-    # view settings pages. Both plugins are optional targets
-    # (ULTRACANVAS_PLUGIN_VECTOR / ULTRACANVAS_PLUGIN_MODELS), so each is
-    # picked up only when it was built; main.cpp registers them behind the
-    # matching define.
-    if(TARGET UltraCanvasVectorPlugin)
-        target_link_libraries(UltraFiler PRIVATE UltraCanvasVectorPlugin)
-        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_VECTOR_PLUGIN=1)
-        message(STATUS "  UltraFiler: vector formats enabled (Vector plugin)")
-    endif()
-    if(TARGET UltraCanvasModelsPlugin)
-        target_link_libraries(UltraFiler PRIVATE UltraCanvasModelsPlugin)
-        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_MODELS_PLUGIN=1)
-        message(STATUS "  UltraFiler: 3D formats enabled (Models plugin)")
-    endif()
-    # The dedicated viewer plugins, each with a renderer of its own richer than
-    # the Vector plugin's converter for the same file: CorelDRAW through libcdr
-    # (cdr/cmx/ccx/cdt), Xara's own record grammar including the compressed
-    # files the converter's reader does not cover (xar/web/wix), and the EPS
-    # plugin's PostScript interpreter (eps/epsf/ps). main.cpp registers these
-    # AFTER the Vector plugin so they own the extensions the two share - the
-    # registry's last registration wins, which is how
-    # UltraCanvasVectorFormatsPlugin.h says ownership is meant to be decided.
-    if(TARGET UltraCanvasCDRPlugin)
-        target_link_libraries(UltraFiler PRIVATE UltraCanvasCDRPlugin)
-        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_CDR_PLUGIN=1)
-        message(STATUS "  UltraFiler: CorelDRAW formats enabled (CDR plugin)")
-    endif()
-    if(TARGET UltraCanvasXARPlugin)
-        target_link_libraries(UltraFiler PRIVATE UltraCanvasXARPlugin)
-        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_XAR_PLUGIN=1)
-        message(STATUS "  UltraFiler: Xara formats enabled (XAR plugin)")
-    endif()
-    if(TARGET UltraCanvasEPSPlugin)
-        target_link_libraries(UltraFiler PRIVATE UltraCanvasEPSPlugin)
-        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_EPS_PLUGIN=1)
-        message(STATUS "  UltraFiler: PostScript formats enabled (EPS plugin)")
+    # Every format plugin this build produced, registered before main() with
+    # no code in this application: linking the object library is the whole
+    # mechanism, and a plugin added to the framework arrives here for free.
+    # The plugin libraries themselves come with ULTRACANVAS_LIBRARIES.
+    if(TARGET UltraCanvasAllFormats)
+        target_link_libraries(UltraFiler PRIVATE
+                ${ULTRACANVAS_PLUGIN_TARGETS} UltraCanvasAllFormats)
     endif()
 
     target_compile_features(UltraFiler PRIVATE cxx_std_20)

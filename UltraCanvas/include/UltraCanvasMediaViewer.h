@@ -505,6 +505,8 @@ private:
     void ZoomFitAction();
     void ZoomPercentAction(double percent);
     void ShowView(MediaKind kind);    // toggle child visibility for the kind
+    // Detach and forget the current plugin-built view, if any.
+    void DropPluginView();
     static bool IsDocumentFile(const std::string& path);   // PDF (and other docs)
     static bool IsSpreadsheetFile(const std::string& path); // ODS / CSV / TSV
     static bool IsModelFile(const std::string& path);       // STL 3D models
@@ -579,6 +581,13 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
     std::shared_ptr<UltraCanvasUIElement>    fontView;      // UltraCanvasFontViewer
     std::shared_ptr<UltraCanvasUIElement>    vectorView;    // UltraCanvasVectorElement
+    // Whatever element a registered graphics plugin builds for the current
+    // file, for the drawings no reader turns into a VectorDocument (the
+    // CorelDRAW files libcdr parses, and anything else a plugin claims).
+    // Rebuilt per file, unlike the fixed views above, because the plugin
+    // decides the type - so it is added as a child on load and dropped on
+    // the next one.
+    std::shared_ptr<UltraCanvasUIElement>    pluginView;
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
     MediaKind activeKind = MediaKind::Image;
