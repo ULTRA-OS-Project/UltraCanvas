@@ -13,7 +13,7 @@
 // Usage: CDRWriterTest [output.cdr]
 // The export is kept on disk (default: cdr_writer_roundtrip.cdr in the
 // working directory). Exit code is the number of failed checks.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
@@ -29,12 +29,37 @@
 #include <cstdio>
 #include <string>
 
+#if defined(__linux__) && defined(__GLIBC__)
+#include <execinfo.h>
+#include <csignal>
+#include <unistd.h>
+#define CDRWRITER_HAVE_BACKTRACE 1
+#endif
+
 using namespace UltraCanvas;
 using namespace UltraCanvas::VectorStorage;
 
 namespace {
 
 int failures = 0;
+
+#ifdef CDRWRITER_HAVE_BACKTRACE
+// This test round-trips through libcdr, which parses a file we wrote and
+// calls back into our own painter - so a crash can be on either side of that
+// line, and on a CI runner there is no core dump and no debugger to ask.
+// The handler names the frames, which is the difference between "it
+// segfaults on 22.04" and knowing whose code did it. Only async-signal-safe
+// calls here: backtrace_symbols_fd writes straight to the fd.
+void CrashHandler(int sig) {
+    static const char msg[] = "\n*** CDRWriterTest crashed - backtrace ***\n";
+    ssize_t ignored = write(STDERR_FILENO, msg, sizeof(msg) - 1);
+    (void)ignored;
+    void* frames[32];
+    const int n = backtrace(frames, 32);
+    backtrace_symbols_fd(frames, n, STDERR_FILENO);
+    _exit(128 + sig);
+}
+#endif
 
 // Unbuffered, deliberately. stdout to a pipe is block-buffered, so a crash
 // anywhere below would take the whole buffer with it and the log would show
@@ -131,6 +156,11 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
 }   // namespace
 
 int main(int argc, char** argv) {
+#ifdef CDRWRITER_HAVE_BACKTRACE
+    std::signal(SIGSEGV, CrashHandler);
+    std::signal(SIGABRT, CrashHandler);
+    std::signal(SIGBUS, CrashHandler);
+#endif
     std::string outPath = argc > 1 ? argv[1] : "cdr_writer_roundtrip.cdr";
 
     auto doc = BuildTestDocument();

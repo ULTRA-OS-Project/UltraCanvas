@@ -56,7 +56,12 @@
   first time (it needs both that plugin and the CDR one), and there it
   segfaults on ubuntu-22.04 while passing on 24.04 - with stdout block-buffered
   to a pipe, the crash took the whole buffer with it and the log said nothing
-  about how far it got. It says now.
+  about how far it got. It says now: the crash is inside
+  `UltraCanvasCDRRenderer::LoadFromFile()`, i.e. libcdr parsing a file our own
+  CDR writer produced, before any rendering happens. The test also installs a
+  SIGSEGV/SIGABRT/SIGBUS handler that prints a backtrace and is built with
+  exported symbols, so the next failure names the frame - on either side of
+  the line between our painter callbacks and libcdr itself.
 - `AutoFormatRegistrationTest` (new) calls no `Register*Plugin()` and checks
   every built plugin is in the registry anyway, that the Vector plugin's
   preview seam came with it, and that registering again is a no-op.

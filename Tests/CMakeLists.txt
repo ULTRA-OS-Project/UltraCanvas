@@ -2217,6 +2217,10 @@ if(TARGET UltraCanvasCDRPlugin AND TARGET UltraCanvasVectorPlugin)
     target_compile_features(CDRWriterTest PRIVATE cxx_std_20)
     target_link_libraries(CDRWriterTest PRIVATE
         UltraCanvasVectorPlugin UltraCanvasCDRPlugin UltraCanvas)
+    # Exported symbols, so the crash backtrace this test prints can name the
+    # frames in our own painter and not just the ones in libcdr's shared
+    # object. Costs nothing but a slightly larger dynamic symbol table.
+    set_target_properties(CDRWriterTest PROPERTIES ENABLE_EXPORTS ON)
     if(NOT WIN32)
         find_package(PkgConfig QUIET)
         if(PkgConfig_FOUND)
