@@ -2728,8 +2728,28 @@ void UltraFilerWindow::QueueCloudStorageDiscovery() {
     if (cloudWorker.joinable()) cloudWorker.join();
     auto alive = probeAlive;
     cloudWorker = std::thread([this, alive]() {
+        // Releasing the busy flag is this thread's job, on every way out:
+        // a lookup that finds nothing - the normal answer on a machine with
+        // no sync client installed - must not cost the Cloud section for the
+        // rest of the session, and neither must a provider that throws. The
+        // hand-off below is the one exception: once the results are on their
+        // way to the UI thread, clearing the flag belongs to the callback
+        // that applies them, so the guard is dismissed first. Clearing it
+        // here as well would release a *later* lookup's flag and let two
+        // overlap - the one thing the flag exists to prevent.
+        //
+        // Touching the window from this thread is safe: the destructor's
+        // StopCloudStorageDiscovery() joins, so the window outlives the
+        // guard. Only the posted callback can arrive after the window is
+        // gone, which is what `alive` is for.
+        struct BusyFlagGuard {
+            std::atomic<bool>* flag;
+            ~BusyFlagGuard() { if (flag) flag->store(false); }
+            void Dismiss() { flag = nullptr; }
+        } busy{&cloudWorkerBusy};
+
         // An exception leaving a std::thread ends the process; a provider
-        // whose registry or config cannot be read costs the Cloud section.
+        // whose registry or config cannot be read costs this one lookup.
         std::vector<CloudStorageInfo> found;
         try {
             found = GetCloudStorageFolders();
@@ -2743,12 +2763,15 @@ void UltraFilerWindow::QueueCloudStorageDiscovery() {
         }
         if (found.empty()) return;
         UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent();
-        if (found.empty() || !app) {
-            cloudWorkerBusy.store(false);
-            return;
-        }
+        if (!app) return;
+        // Dismissed before the post, not after: the callback can run the
+        // moment it is queued, and a guard that fired afterwards would clear
+        // a flag the next lookup had already taken.
+        busy.Dismiss();
         app->PostToUIThread([this, alive, found = std::move(found)]() {
-            if (!alive->load()) return;   // window destroyed meanwhile
+            // Window destroyed meanwhile: the flag died with it, so there is
+            // nothing to release - and nothing left to read it.
+            if (!alive->load()) return;
             ApplyCloudStorageFolders(found);
             cloudWorkerBusy.store(false);
         });
