@@ -17,7 +17,7 @@
   already copied, moved or deleted stays, and the file the cancel interrupted
   is cleaned up rather than left half-written.
 
-  Framework change, see UltraCanvas 0.8.75; the application's own part is the
+  Framework change, see UltraCanvas 0.8.77; the application's own part is the
   folder tree's delete, which now goes through the filer widget so it gets the
   window and the "cannot delete" dialog like every other delete.
 #### 2026-09-17 *1.38.0*

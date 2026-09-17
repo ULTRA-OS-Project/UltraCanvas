@@ -347,12 +347,33 @@ private:
         if (!image) return false;
         int mediaIndex = LoadPicture(Attr(image, "xlink:href"));
         if (mediaIndex < 0) return false;
+
+        const float widthPt = ParseLengthPt(Attr(frame, "svg:width"));
+        const float heightPt = ParseLengthPt(Attr(frame, "svg:height"));
+        const std::string altText = Attr(frame, "draw:name");
+
+        // text:anchor-type="as-char" is a picture anchored *in* the text, which
+        // belongs in the run stream. Every other anchoring (paragraph, page,
+        // frame) floats and stays a block of its own.
+        if (std::string(Attr(frame, "text:anchor-type")) == "as-char") {
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            run.mediaIndex = mediaIndex;
+            run.imageWidthPt = widthPt;
+            run.imageHeightPt = heightPt;
+            run.imageAltText = altText;
+            run.lineBreakBefore = ctx.pendingLineBreak;
+            ctx.pendingLineBreak = false;
+            ctx.runs.push_back(std::move(run));
+            return true;
+        }
+
         RichDocBlock block;
         block.type = RichBlockType::Image;
         block.mediaIndex = mediaIndex;
-        block.imageWidthPt = ParseLengthPt(Attr(frame, "svg:width"));
-        block.imageHeightPt = ParseLengthPt(Attr(frame, "svg:height"));
-        block.imageAltText = Attr(frame, "draw:name");
+        block.imageWidthPt = widthPt;
+        block.imageHeightPt = heightPt;
+        block.imageAltText = altText;
         ctx.trailingImages.push_back(std::move(block));
         return true;
     }
@@ -470,6 +491,20 @@ private:
         if (block.type == RichBlockType::Paragraph && block.runs.empty()
             && paraProps.bottomBorder) {
             block.type = RichBlockType::HorizontalRule;
+        }
+
+        // A picture on a line of its own is a standalone image, not a run:
+        // ODT anchors both kinds as-char, so what else the paragraph holds is
+        // what tells them apart.
+        RichDocBlock promotedImage;
+        if (block.type == RichBlockType::Paragraph && ctx.textBoxes.empty()
+            && WordFormatInternal::ParagraphIsOneInlineImage(block.runs, promotedImage)) {
+            block.type = RichBlockType::Image;
+            block.runs.clear();
+            block.mediaIndex = promotedImage.mediaIndex;
+            block.imageWidthPt = promotedImage.imageWidthPt;
+            block.imageHeightPt = promotedImage.imageHeightPt;
+            block.imageAltText = promotedImage.imageAltText;
         }
 
         bool emptyPageBreakCarrier = pageBreak && block.runs.empty()
@@ -632,10 +667,15 @@ private:
                 InlineContext ctx;
                 ParseFrame(elem, OdtTextProps{}, "", ctx);
                 if (!ctx.runs.empty()) {
-                    RichDocBlock block;
-                    block.type = RichBlockType::Paragraph;
-                    block.runs = std::move(ctx.runs);
-                    doc_->blocks.push_back(std::move(block));
+                    RichDocBlock promoted;
+                    if (WordFormatInternal::ParagraphIsOneInlineImage(ctx.runs, promoted)) {
+                        doc_->blocks.push_back(std::move(promoted));
+                    } else {
+                        RichDocBlock block;
+                        block.type = RichBlockType::Paragraph;
+                        block.runs = std::move(ctx.runs);
+                        doc_->blocks.push_back(std::move(block));
+                    }
                 }
                 for (auto& image : ctx.trailingImages) {
                     doc_->blocks.push_back(std::move(image));
@@ -899,9 +939,42 @@ private:
         return out;
     }
 
+    // A picture inside a line: the same draw:frame a block image uses, anchored
+    // as-char so it stays in the text rather than becoming its own paragraph.
+    void WriteInlineImage(std::ostringstream& xml, const RichTextRun& run) {
+        if (run.mediaIndex < 0 || run.mediaIndex >= static_cast<int>(doc_->media.size())) {
+            // No such picture: keep the alt text rather than emitting nothing.
+            xml << OdtText(run.imageAltText);
+            return;
+        }
+        float widthPt = run.imageWidthPt;
+        float heightPt = run.imageHeightPt;
+        if (widthPt <= 0.0f || heightPt <= 0.0f) {
+            int w = 0, h = 0;
+            if (UCRichDocument::SniffImagePixelSize(doc_->media[run.mediaIndex].data, w, h)) {
+                widthPt = static_cast<float>(w) * 72.0f / 96.0f;
+                heightPt = static_cast<float>(h) * 72.0f / 96.0f;
+            } else {
+                widthPt = 72.0f;
+                heightPt = 72.0f;
+            }
+        }
+        xml << "<draw:frame draw:name=\""
+            << EscapeXml(run.imageAltText.empty() ? std::string("Image") : run.imageAltText)
+            << "\" text:anchor-type=\"as-char\" svg:width=\"" << widthPt
+            << "pt\" svg:height=\"" << heightPt << "pt\">"
+            << "<draw:image xlink:href=\"" << PictureHref(run.mediaIndex)
+            << "\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>"
+            << "</draw:frame>";
+    }
+
     void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
         for (const auto& run : runs) {
             if (run.lineBreakBefore) xml << "<text:line-break/>";
+            if (run.IsInlineImage()) {
+                WriteInlineImage(xml, run);
+                continue;
+            }
             std::string styleName = TextStyleNameFor(run);
             std::string body = OdtText(run.text);
             if (!styleName.empty()) {

@@ -41928,7 +41928,24 @@ editor->InsertHorizontalRule();
 editor->InsertPageBreak();
 editor->InsertImageFromFile("/path/diagram.png", "Architecture diagram");
 editor->InsertImageFromMemory("chart.png", "image/png", bytes, "Q3 revenue");
+
+// ...or INSIDE the line at the caret, rather than as a paragraph of its own:
+editor->InsertInlineImageFromFile("/path/logo.png", "Logo");
+editor->InsertInlineImageFromMemory("icon.png", "image/png", bytes, "warning");
 ```
+
+**A picture can sit in the text.** A run with `mediaIndex >= 0` *is* a picture -
+a logo mid-sentence, an icon in a heading - and its `text` is a single U+FFFC
+OBJECT REPLACEMENT CHARACTER. That placeholder gives the picture one character's
+worth of the block's text, so the caret steps over it, a selection covers it and
+Backspace deletes it, with no position needing to know it is not a letter. The
+layout reserves a box for it (`TextAttributeFactory::CreateShape`), so the line
+grows to hold it and the text after it flows along.
+
+Readers decide inline-versus-block by what else the paragraph holds: a picture
+alone on a line is a standalone `RichBlockType::Image`, a picture among words is
+a run. Both formats anchor the two the same way in their markup, so the markup
+alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
@@ -64100,6 +64117,8 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
+│   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
+│   ├── UltraNetCurlDebug.h       (header-only, opt-in protocol trace)
 │   └── UltraNetPlugins.h
 ├── core/UltraNet/                (.cpp implementations of the headers above)
 ├── OS/<Platform>/UltraNetSupport.cpp
@@ -64111,6 +64130,34 @@ UltraCanvas/                      (or wherever the build places it)
 ```
 
 CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
+
+---
+
+## Debugging a mail connection
+
+An account that will not send or fetch is rarely diagnosable from the
+`UltraNetResultCode` alone — the server says why in its reply text, and
+libcurl discards that once it has mapped the exchange to a `CURLcode`. Set
+`ULTRANET_CURL_DEBUG` to put the conversation on stderr:
+
+```
+ULTRANET_CURL_DEBUG=1 ./UltraMail
+```
+
+| Line | Meaning |
+|---|---|
+| `[ultranet] * …` | libcurl's own notes (connection, TLS, auth mechanism chosen) |
+| `[ultranet] > …` | what we sent |
+| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error` |
+
+It is off unless asked for, message bodies are never printed, and the SASL
+exchange is replaced with `<redacted>` — including the bare base64
+continuation lines of `AUTH LOGIN`, which carry the password with no keyword
+on them — so a trace can be pasted into a bug report as it stands. The
+mechanism name is kept, because which step failed is the useful part.
+
+Applies to every plug-in that goes through libcurl (SMTP, IMAP, POP3);
+`ultranet_curldebug::EnableIfRequested()` is one call in the handle setup.
 
 ---
 
