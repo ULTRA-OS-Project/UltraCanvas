@@ -886,6 +886,29 @@ if (BUILD_ULTRAFILER_APP)
         target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_MODELS_PLUGIN=1)
         message(STATUS "  UltraFiler: 3D formats enabled (Models plugin)")
     endif()
+    # The dedicated viewer plugins, each with a renderer of its own richer than
+    # the Vector plugin's converter for the same file: CorelDRAW through libcdr
+    # (cdr/cmx/ccx/cdt), Xara's own record grammar including the compressed
+    # files the converter's reader does not cover (xar/web/wix), and the EPS
+    # plugin's PostScript interpreter (eps/epsf/ps). main.cpp registers these
+    # AFTER the Vector plugin so they own the extensions the two share - the
+    # registry's last registration wins, which is how
+    # UltraCanvasVectorFormatsPlugin.h says ownership is meant to be decided.
+    if(TARGET UltraCanvasCDRPlugin)
+        target_link_libraries(UltraFiler PRIVATE UltraCanvasCDRPlugin)
+        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_CDR_PLUGIN=1)
+        message(STATUS "  UltraFiler: CorelDRAW formats enabled (CDR plugin)")
+    endif()
+    if(TARGET UltraCanvasXARPlugin)
+        target_link_libraries(UltraFiler PRIVATE UltraCanvasXARPlugin)
+        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_XAR_PLUGIN=1)
+        message(STATUS "  UltraFiler: Xara formats enabled (XAR plugin)")
+    endif()
+    if(TARGET UltraCanvasEPSPlugin)
+        target_link_libraries(UltraFiler PRIVATE UltraCanvasEPSPlugin)
+        target_compile_definitions(UltraFiler PRIVATE ULTRAFILER_HAS_EPS_PLUGIN=1)
+        message(STATUS "  UltraFiler: PostScript formats enabled (EPS plugin)")
+    endif()
 
     target_compile_features(UltraFiler PRIVATE cxx_std_20)
 

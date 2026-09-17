@@ -1,3 +1,25 @@
+#### 2026-09-17 *1.37.0*
+- The CorelDRAW, Xara and EPS viewer plugins are linked and registered too,
+  after the Vector plugin rather than before it: both read some of the same
+  extensions, the graphics registry's last registration owns them, and for
+  those the dedicated viewers are the better reader - libcdr parses CorelDRAW
+  files no converter here writes, the XAR plugin covers the compressed Xara
+  files the converter's reader does not, and the EPS plugin interprets
+  PostScript instead of looking for a preview bitmap in it. The Vector plugin
+  keeps what only it reads (DXF, the DWG family, EMF, WMF) and stays the only
+  writer, since saving matches on GetSaveExtensions instead.
+- Measured, so as not to overstate it: on a build of this container - where
+  libcdr is absent, so the CDR plugin is not built - registering XAR and EPS
+  changes **nothing** on the Display > Thumbnails and Display > Detail view
+  pages. Their formats were already covered, xar through the Vector plugin's
+  reader and eps/ps through libvips. The registration is what a build WITH
+  libcdr needs to gain cdr/cmx/ccx/cdt in the FileLoader inventory, and what
+  gives `LoadGraphicsFile` and the vector rasterizer a real reader for them.
+  Lighting up the two settings pages for ccx/cmx needs one more thing, which
+  is not in this release: the Filer's and the media viewer's preview tests ask
+  the vector preview seam and the embedded-preview probe, never the graphics
+  registry, so a format only a registered plugin can draw is still greyed.
+
 #### 2026-09-16 *1.36.0*
 - **UltraFiler registered no format plugins at all.** A plugin reads nothing
   until an application links and registers it, and this one linked only the

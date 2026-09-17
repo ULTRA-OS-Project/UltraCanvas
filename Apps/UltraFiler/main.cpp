@@ -2,8 +2,8 @@
 // UltraFiler - file manager application built on the UltraCanvas framework:
 // folder tree (UltraCanvasTreeView) + folder content (UltraCanvasFilerWidget)
 // + media preview (UltraCanvasMediaViewer) in a Windows Explorer style window.
-// Version: 0.9.0
-// Last Modified: 2026-09-16
+// Version: 0.10.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -30,6 +30,15 @@
 #endif
 #ifdef ULTRAFILER_HAS_MODELS_PLUGIN
 #include "Models/UltraCanvasModelFormatsPlugin.h"
+#endif
+#ifdef ULTRAFILER_HAS_CDR_PLUGIN
+#include "CDR/UltraCanvasCDRPlugin.h"
+#endif
+#ifdef ULTRAFILER_HAS_XAR_PLUGIN
+#include "XAR/UltraCanvasXARPlugin.h"
+#endif
+#ifdef ULTRAFILER_HAS_EPS_PLUGIN
+#include "EPS/UltraCanvasEPSPlugin.h"
 #endif
 
 #ifdef _WIN32
@@ -129,6 +138,24 @@ int main(int argc, char* argv[]) {
 #endif
 #ifdef ULTRAFILER_HAS_MODELS_PLUGIN
         RegisterModelFormatsPlugin();
+#endif
+        // The dedicated viewer plugins go AFTER the Vector plugin, never
+        // before: both read some of the same extensions, the registry's last
+        // registration owns them, and for those the viewers are the better
+        // reader - libcdr parses CorelDRAW files no converter here writes,
+        // the XAR plugin covers the compressed Xara files the converter's
+        // reader does not, and the EPS plugin interprets PostScript rather
+        // than looking for a preview bitmap in it. The Vector plugin keeps
+        // what only it reads (DXF, the DWG family, EMF, WMF) and stays the
+        // only writer, since saving matches on GetSaveExtensions instead.
+#ifdef ULTRAFILER_HAS_CDR_PLUGIN
+        RegisterCDRPlugin();
+#endif
+#ifdef ULTRAFILER_HAS_XAR_PLUGIN
+        RegisterXARPlugin();
+#endif
+#ifdef ULTRAFILER_HAS_EPS_PLUGIN
+        RegisterEPSPlugin();
 #endif
 
         UltraFilerWindow mainWindow;
