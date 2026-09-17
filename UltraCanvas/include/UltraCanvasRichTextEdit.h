@@ -191,6 +191,12 @@ public:
     void InsertImageFromMemory(const std::string& name, const std::string& mimeType,
                                const std::vector<uint8_t>& data,
                                const std::string& altText = "");
+    // The same two, but placing the picture INSIDE the line at the caret
+    // rather than as a paragraph of its own.
+    bool InsertInlineImageFromFile(const std::string& path, const std::string& altText = "");
+    void InsertInlineImageFromMemory(const std::string& name, const std::string& mimeType,
+                                     const std::vector<uint8_t>& data,
+                                     const std::string& altText = "");
 
     // ===== SEARCH =====
     // FindNext starts at the end of the selection (so repeated calls walk
@@ -266,6 +272,17 @@ private:
         std::vector<int> cellColumns;
         std::vector<int> cellRows;
         std::shared_ptr<UCImage> image;           // image blocks
+        // Pictures sitting inside this block's text. The layout reserves a box
+        // for each (a CreateShape attribute over its U+FFFC placeholder) and
+        // leaves the drawing to the caller, which is what these record.
+        struct InlineImage {
+            int byteOffset = 0;                   // the placeholder, in layout text
+            float width = 0.0f;
+            float height = 0.0f;
+            std::shared_ptr<UCImage> image;
+            std::string altText;
+        };
+        std::vector<InlineImage> inlineImages;
         bool valid = false;
     };
 
@@ -277,10 +294,12 @@ private:
                                                 const std::vector<RichTextRun>& runs,
                                                 float wrapWidth,
                                                 std::vector<RichTextHitRect>* outHits,
-                                                int blockIndex) const;
+                                                int blockIndex,
+                                                std::vector<BlockLayout::InlineImage>* outInlineImages = nullptr) const;
     void ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                             const std::vector<RichTextRun>& runs,
-                            std::vector<RichTextHitRect>* outHits, int blockIndex) const;
+                            std::vector<RichTextHitRect>* outHits, int blockIndex,
+                            std::vector<BlockLayout::InlineImage>* outInlineImages = nullptr) const;
     // cellRow/cellColumn identify a table cell's layout; -1/-1 is a block's own.
     void ApplySelectionAttributes(ITextLayout* layout, int blockIndex,
                                   int cellRow = -1, int cellColumn = -1) const;
@@ -290,6 +309,8 @@ private:
 
     // ===== RENDERING =====
     void RenderBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl);
+    void DrawInlineImages(IRenderContext* ctx, const BlockLayout& bl,
+                          float originX, float originY) const;
     void DrawSelectionForNonTextBlock(IRenderContext* ctx, int blockIndex, const BlockLayout& bl);
     void DrawScrollbar(IRenderContext* ctx);
     void UpdateCaret();

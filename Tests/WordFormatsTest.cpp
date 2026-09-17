@@ -870,6 +870,108 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== AN INLINE PICTURE STAYS IN ITS SENTENCE =====
+    // A logo mid-sentence, an icon in a heading: these are runs, not
+    // paragraphs. Pulling one out into a block of its own re-flows the text
+    // around it and is what used to happen to every image on load.
+    {
+        std::cout << "\n--- Inline images ---\n";
+
+        const std::string imgPath = TmpPath("inline.png");
+        WriteFile(imgPath, kTinyPng, sizeof(kTinyPng));
+
+        UCRichDocument doc;
+        doc.media.push_back(RichDocMedia{
+            "inline.png", "image/png",
+            std::vector<uint8_t>(kTinyPng, kTinyPng + sizeof(kTinyPng))});
+
+        RichDocBlock para;
+        para.type = RichBlockType::Paragraph;
+        RichTextRun before;
+        before.text = "Logo ";
+        RichTextRun picture;
+        picture.text = RichTextRun::kObjectReplacement;
+        picture.mediaIndex = 0;
+        picture.imageWidthPt = 12.0f;
+        picture.imageHeightPt = 12.0f;
+        picture.imageAltText = "the logo";
+        RichTextRun after;
+        after.text = " follows.";
+        para.runs.push_back(before);
+        para.runs.push_back(picture);
+        para.runs.push_back(after);
+        doc.blocks.push_back(para);
+
+        CHECK(doc.blocks.size() == 1);
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("inline.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, doc, err), err);
+
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+
+            // It must still be ONE paragraph: an inline picture turned into a
+            // block is exactly the regression this guards.
+            int paragraphs = 0, imageBlocks = 0;
+            for (const auto& b : back.blocks) {
+                if (b.type == RichBlockType::Paragraph) paragraphs++;
+                if (b.type == RichBlockType::Image) imageBlocks++;
+            }
+            CHECK_MSG(imageBlocks == 0, std::string(ext) + ": picture became its own block");
+            CHECK_MSG(paragraphs == 1, std::string(ext) + ": paragraph count changed");
+
+            // ...with the picture as a run between the two pieces of text.
+            bool foundInline = false;
+            int runIndex = -1, imageRunIndex = -1;
+            for (const auto& b : back.blocks) {
+                if (b.type != RichBlockType::Paragraph) continue;
+                for (const auto& run : b.runs) {
+                    runIndex++;
+                    if (!run.IsInlineImage()) continue;
+                    foundInline = true;
+                    imageRunIndex = runIndex;
+                    CHECK_MSG(run.mediaIndex >= 0
+                              && run.mediaIndex < static_cast<int>(back.media.size()),
+                              std::string(ext) + ": media index lost");
+                }
+            }
+            CHECK_MSG(foundInline, std::string(ext) + ": no inline image run came back");
+            CHECK_MSG(imageRunIndex > 0, std::string(ext) + ": picture is not after the text");
+
+            // The surrounding words are still around it, in order.
+            const std::string plain = back.ToPlainText();
+            CHECK_MSG(plain.find("Logo") != std::string::npos, ext);
+            CHECK_MSG(plain.find("follows.") != std::string::npos, ext);
+            // The placeholder itself must never reach a reader.
+            CHECK_MSG(plain.find(RichTextRun::kObjectReplacement) == std::string::npos,
+                      std::string(ext) + ": U+FFFC leaked into plain text");
+        }
+
+        // A block image must still round-trip as a block, not become inline.
+        {
+            UCRichDocument blockDoc;
+            blockDoc.media = doc.media;
+            RichDocBlock imageBlock;
+            imageBlock.type = RichBlockType::Image;
+            imageBlock.mediaIndex = 0;
+            imageBlock.imageAltText = "standalone";
+            blockDoc.blocks.push_back(imageBlock);
+
+            const std::string path = TmpPath("blockimage.docx");
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, blockDoc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            bool sawImageBlock = false;
+            for (const auto& b : back.blocks) {
+                if (b.type == RichBlockType::Image) sawImageBlock = true;
+            }
+            CHECK_MSG(sawImageBlock, "a standalone image must stay a block");
+        }
+    }
+
     if (failures == 0) {
         std::cout << "ALL TESTS PASSED\n";
         return 0;

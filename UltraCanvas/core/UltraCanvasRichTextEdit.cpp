@@ -194,7 +194,8 @@ FontStyle UltraCanvasRichTextEdit::FontForBlock(const RichDocBlock& block) const
 void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const RichDocBlock& block,
                                                   const std::vector<RichTextRun>& runs,
                                                   std::vector<RichTextHitRect>* outHits,
-                                                  int blockIndex) const {
+                                                  int blockIndex,
+                                                  std::vector<BlockLayout::InlineImage>* outInlineImages) const {
     if (!layout) return;
 
     int position = 0;
@@ -210,6 +211,39 @@ void UltraCanvasRichTextEdit::ApplyRunAttributes(ITextLayout* layout, const Rich
             attr->SetRange(start, end);
             layout->InsertAttribute(std::move(attr));
         };
+
+        // A picture in the line: reserve a box over its placeholder so the text
+        // flows around it, and record where to draw it once the layout is laid.
+        if (run.IsInlineImage()) {
+            std::shared_ptr<UCImage> image;
+            const UCRichDocument& document = *editor.GetDocument();
+            if (run.mediaIndex >= 0 && run.mediaIndex < static_cast<int>(document.media.size())) {
+                image = UCImage::LoadFromMemory(document.media[static_cast<size_t>(run.mediaIndex)].data);
+            }
+            float width = run.imageWidthPt > 0.0f ? run.imageWidthPt
+                        : (image ? static_cast<float>(image->GetWidth()) : 16.0f);
+            float height = run.imageHeightPt > 0.0f ? run.imageHeightPt
+                         : (image ? static_cast<float>(image->GetHeight()) : 16.0f);
+            // Never wider than the column it sits in; keep the aspect ratio.
+            const float maxWidth = std::max(16.0f, visibleArea.width);
+            if (width > maxWidth) {
+                height *= maxWidth / width;
+                width = maxWidth;
+            }
+            // The picture sits on the baseline, which is where a word processor
+            // puts an inline image.
+            add(TextAttributeFactory::CreateShape(width, height, 0.0));
+            if (outInlineImages) {
+                BlockLayout::InlineImage placed;
+                placed.byteOffset = start;
+                placed.width = width;
+                placed.height = height;
+                placed.image = image;
+                placed.altText = run.imageAltText;
+                outInlineImages->push_back(std::move(placed));
+            }
+            continue;       // a picture carries no text formatting
+        }
 
         if (run.bold)          add(TextAttributeFactory::CreateFontWeight(FontWeight::Bold));
         if (run.italic)        add(TextAttributeFactory::CreateFontStyle(FontSlant::Italic));
@@ -293,7 +327,8 @@ void UltraCanvasRichTextEdit::ApplySelectionAttributes(ITextLayout* layout, int 
 
 std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
         IRenderContext* ctx, const RichDocBlock& block, const std::vector<RichTextRun>& runs,
-        float wrapWidth, std::vector<RichTextHitRect>* outHits, int blockIndex) const {
+        float wrapWidth, std::vector<RichTextHitRect>* outHits, int blockIndex,
+        std::vector<BlockLayout::InlineImage>* outInlineImages) const {
     std::string text = UCRichDocumentEditor::RunsText(runs);
     auto layout = ctx->CreateTextLayout(text, false);
     layout->SetFontStyle(FontForBlock(block));
@@ -304,7 +339,7 @@ std::unique_ptr<ITextLayout> UltraCanvasRichTextEdit::MakeRunsLayout(
     if (block.align != RichTextAlign::Default) {
         layout->SetAlignment(ToTextAlignment(block.align));
     }
-    ApplyRunAttributes(layout.get(), block, runs, outHits, blockIndex);
+    ApplyRunAttributes(layout.get(), block, runs, outHits, blockIndex, outInlineImages);
     return layout;
 }
 
@@ -411,7 +446,8 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                     cellBlock.type = RichBlockType::Paragraph;
                     auto cell = std::make_unique<BlockLayout>();
                     cell->layout = MakeRunsLayout(ctx, cellBlock, modelCell.runs,
-                                                  cellWidth - 8.0f, nullptr, blockIndex);
+                                                  cellWidth - 8.0f, nullptr, blockIndex,
+                                                  &cell->inlineImages);
                     ApplySelectionAttributes(cell->layout.get(), blockIndex,
                                              static_cast<int>(r), static_cast<int>(cellIndex));
                     cell->bounds = Rect2Df(indent + static_cast<float>(gridColumn) * columnWidth, y,
@@ -465,7 +501,8 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
         }
 
         default: {
-            bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth, &bl.hitRects, blockIndex);
+            bl.layout = MakeRunsLayout(ctx, block, block.runs, wrapWidth, &bl.hitRects, blockIndex,
+                                       &bl.inlineImages);
             ApplySelectionAttributes(bl.layout.get(), blockIndex);
             bl.bounds.width = static_cast<float>(bl.layout->GetLayoutWidth());
             bl.bounds.height = static_cast<float>(bl.layout->GetLayoutHeight()) + style.paragraphLeading;
@@ -604,6 +641,28 @@ void UltraCanvasRichTextEdit::Render(IRenderContext* ctx, const Rect2Df& dirtyRe
     DrawScrollbar(ctx);
 }
 
+// Draws the pictures sitting inside a laid-out text. The layout reserved a box
+// for each over its placeholder, so IndexToPos() gives the box's top-left and
+// the picture goes straight into it.
+void UltraCanvasRichTextEdit::DrawInlineImages(IRenderContext* ctx, const BlockLayout& bl,
+                                               float originX, float originY) const {
+    if (bl.inlineImages.empty() || !bl.layout) return;
+    for (const BlockLayout::InlineImage& placed : bl.inlineImages) {
+        Rect2Di box = bl.layout->IndexToPos(placed.byteOffset);
+        Rect2Dd target(originX + static_cast<double>(box.x),
+                       originY + static_cast<double>(box.y),
+                       placed.width, placed.height);
+        if (placed.image) {
+            ctx->DrawImage(*placed.image, target, ImageFitMode::Contain);
+        } else {
+            // Undecodable media: the same framed placeholder a block image
+            // gets, so the picture's place in the line stays visible.
+            ctx->DrawFilledRectangle(target, Colors::Transparent, 1.0f,
+                                     style.imagePlaceholderColor);
+        }
+    }
+}
+
 void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
                                           const BlockLayout& bl) {
     const RichDocBlock& block = editor.GetBlock(blockIndex);
@@ -658,6 +717,8 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
                 ctx->DrawFilledRectangle(cellRect, Colors::Transparent, 1.0f, style.tableBorderColor);
                 ctx->SetCurrentPaint(style.textColor);
                 ctx->DrawTextLayout(*cell->layout, Point2Dd(cellRect.x + 4.0, cellRect.y + 2.0));
+                DrawInlineImages(ctx, *cell, static_cast<float>(cellRect.x + 4.0),
+                                 static_cast<float>(cellRect.y + 2.0));
             }
             DrawSelectionForNonTextBlock(ctx, blockIndex, bl);
             return;
@@ -685,6 +746,7 @@ void UltraCanvasRichTextEdit::RenderBlock(IRenderContext* ctx, int blockIndex,
     if (bl.layout) {
         ctx->SetCurrentPaint(style.textColor);
         ctx->DrawTextLayout(*bl.layout, Point2Dd(textX, originY));
+        DrawInlineImages(ctx, bl, static_cast<float>(textX), static_cast<float>(originY));
     }
 }
 
@@ -1695,6 +1757,31 @@ int UltraCanvasRichTextEdit::GetCurrentHeadingLevel() const {
     if (blockIndex < 0 || blockIndex >= editor.GetBlockCount()) return 0;
     const RichDocBlock& block = editor.GetBlock(blockIndex);
     return block.type == RichBlockType::Heading ? block.headingLevel : 0;
+}
+
+bool UltraCanvasRichTextEdit::InsertInlineImageFromFile(const std::string& path,
+                                                        const std::string& altText) {
+    if (readOnly) return false;
+    std::ifstream in(path, std::ios::binary);
+    if (!in) return false;
+    std::vector<uint8_t> data((std::istreambuf_iterator<char>(in)),
+                              std::istreambuf_iterator<char>());
+    if (data.empty()) return false;
+
+    std::string name = path;
+    size_t slash = name.find_last_of("/\\");
+    if (slash != std::string::npos) name = name.substr(slash + 1);
+    InsertInlineImageFromMemory(name, UCRichDocument::MimeTypeForImageName(name), data, altText);
+    return true;
+}
+
+void UltraCanvasRichTextEdit::InsertInlineImageFromMemory(const std::string& name,
+                                                          const std::string& mimeType,
+                                                          const std::vector<uint8_t>& data,
+                                                          const std::string& altText) {
+    if (readOnly) return;
+    editor.InsertInlineImage(name, mimeType, data, altText);
+    AfterEdit();
 }
 
 void UltraCanvasRichTextEdit::InsertImageFromMemory(const std::string& name,
