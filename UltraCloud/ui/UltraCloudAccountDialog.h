@@ -14,12 +14,26 @@
 #include <UltraCloud/UltraCloudService.h>
 
 #include <functional>
+#include <string>
 
 namespace UltraCloud {
 
 // Show the dialog modally over `parent`. `onAdded` receives the stored
 // account; nothing is called on cancel.
+//
+// `providerFilter`, when set, limits the provider list to the ids it accepts.
+// A host that offers adding an FTP server and adding a cloud account as two
+// separate commands passes one so that each shows only its own providers -
+// the two are configured so differently (a host and a password against a
+// browser sign-in) that one combined list explains neither. Unset, every
+// registered provider is offered, which is what it has always done.
+//
+// `title`, when not empty, replaces the window title for the same reason: a
+// dialog reached through "add an FTP drive" should not call itself "Add cloud
+// account".
 void ShowAddAccountDialog(UltraCanvas::UltraCanvasWindowBase* parent, CloudService& service,
-                          std::function<void(const Account&)> onAdded);
+                          std::function<void(const Account&)> onAdded,
+                          std::function<bool(const std::string& providerId)> providerFilter = {},
+                          const std::string& title = std::string());
 
 } // namespace UltraCloud

@@ -2710,6 +2710,14 @@ namespace UltraCanvas {
         }
     }
 
+    bool UltraCanvasFilerWidget::RefuseWriteHere(const char* what) {
+        if (currentPath.empty() || !isRemotePath || !isRemotePath(currentPath))
+            return false;
+        ReportError(std::string("Cannot ") + what +
+                    " on a remote drive: this build can browse one, not change it.");
+        return true;
+    }
+
     void UltraCanvasFilerWidget::ScanRealDirectory(const std::string& path,
                                                    bool includeHidden,
                                                    std::vector<FilerEntry>& out,
@@ -2899,7 +2907,17 @@ namespace UltraCanvas {
         DropThumbnailCache();
 
         std::error_code ec;
-        bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
+        // A remote drive's path is the host's to answer (see remoteListing),
+        // and is recognised before std::filesystem is asked anything: such a
+        // path is not on this machine, so is_directory() could only fail -
+        // after however long the OS takes to decide that.
+        const bool isRemoteDir = !fileListMode && !currentPath.empty() &&
+                                 isRemotePath && isRemotePath(currentPath);
+        bool isRealDir = !isRemoteDir && !currentPath.empty() &&
+                         fs::is_directory(currentPath, ec);
+        // Stays false for a remote listing: what it gates - the folder
+        // previews, the lock column - reads the local filesystem per entry,
+        // which is exactly what a remote drive cannot serve.
         listingIsRealDirectory = fileListMode || isRealDir;
 
         // What this listing leaves out, for the hidden-items notice: the
@@ -2932,6 +2950,27 @@ namespace UltraCanvas {
                 }
             } else {
                 entries = std::move(listing);
+            }
+        } else if (isRemoteDir) {
+            // A remote drive. The host answers from what it already holds; an
+            // empty listing with no error is the "still fetching" case, and
+            // the Refresh() it posts when the data lands brings us back here.
+            std::vector<FilerEntry> listing;
+            std::string error;
+            if (!remoteListing ||
+                !remoteListing(currentPath, listing, error)) {
+                if (!error.empty()) ReportError(error);
+            } else {
+                for (FilerEntry& e : listing) {
+                    if (e.isHidden && !showHiddenFiles) { ++heldBack; continue; }
+                    // The host supplies the facts it knows; the type
+                    // information is derived here, the way the archive branch
+                    // below derives it, so a remote file gets the same icon
+                    // and category as a local one of the same name.
+                    e.extension = e.isDirectory ? "" : LowerExtension(e.name);
+                    ApplyEntryTypeInfo(e);
+                    entries.push_back(std::move(e));
+                }
             }
         }
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -4272,6 +4311,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::Paste() {
+        if (RefuseWriteHere("paste")) return;
         // The system clipboard wins: it holds whatever was copied last,
         // whether here (mirrored by SelectionToClipboard) or in another
         // program. The internal clipboard is the fallback when no system
@@ -4859,6 +4899,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DeleteSelection() {
+        if (RefuseWriteHere("delete")) return;
         DeleteEntries(GetSelectedEntries());
     }
 
@@ -5541,6 +5582,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DuplicateSelection() {
+        if (RefuseWriteHere("duplicate")) return;
         std::vector<FilerEntry> sources = GetSelectedEntries();
         if (sources.empty()) return;
         std::vector<std::string> paths;
@@ -5555,6 +5597,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::StartRename(size_t entryIndex) {
+        if (RefuseWriteHere("rename")) return;
         if (entryIndex >= entries.size()) return;
         CancelPendingRename();   // the editor opens now; drop any armed click
         if (renamingIndex >= 0) CancelRename();   // only one editor at a time
@@ -7190,6 +7233,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewDocument(const FilerNewDocumentType& type) {
+        if (RefuseWriteHere("create a file")) return;
         // The fresh document lands in the shown folder and has to be visible
         // there (with its rename editor reachable): a file-list (search
         // result) display returns to the folder first, and an active name
@@ -7223,6 +7267,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewFolder() {
+        if (RefuseWriteHere("create a folder")) return;
         // Same as CreateNewDocument: the fresh folder must be visible in the
         // folder display, so the search-result display and the name filter
         // both end here.
