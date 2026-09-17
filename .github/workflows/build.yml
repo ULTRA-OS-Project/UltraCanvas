@@ -376,6 +376,7 @@ jobs:
             -DULTRACANVAS_PLUGIN_CDR=OFF \
             -DULTRACANVAS_PLUGIN_XAR=ON \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
@@ -391,6 +392,7 @@ jobs:
             -DULTRACANVAS_PLUGIN_XAR=ON \
             -DULTRACANVAS_BUILD_SHARED=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 

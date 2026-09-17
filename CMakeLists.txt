@@ -713,8 +713,10 @@ if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
 endif()
 
 # ===== ULTRACLOUD TESTS =====
-# Headless module tests (account store on UltraDatabase, secret stores, the
-# WebDAV / Nextcloud providers against a fake HTTP function); in-tree framework.
+# Headless module tests: the account store on UltraDatabase, the secret stores,
+# and every provider - WebDAV, Nextcloud, FTP, Dropbox, OneDrive, Google Drive -
+# driven against an injected fake instead of a server, so nothing is contacted.
+# In-tree framework, no external test library. CI turns this ON.
 option(ULTRACANVAS_BUILD_ULTRACLOUD_TESTS "Build the UltraCloud test suite" OFF)
 if(ULTRACANVAS_BUILD_ULTRACLOUD_TESTS AND TARGET UltraCloud)
     enable_testing()
