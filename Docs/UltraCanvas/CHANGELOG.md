@@ -1,3 +1,36 @@
+#### 2026-09-17 *0.8.72*
+- **`UltraCanvasElevatedFileOperations` — "Delete as administrator", the retry
+  Explorer offers when a delete answers "You need permission to perform this
+  action".** A standard user's process cannot raise its own rights, so the
+  retry starts a second copy of the host executable through the shell's
+  `runas` verb: Windows shows its consent prompt, the elevated copy deletes
+  what the user named (read-only attributes lifted first, absolute paths
+  only, nothing read from anywhere but its command line) and exits, and what
+  it still could not delete comes back with the system's reason per entry
+  through a report file the caller created. Consent is asked every time and
+  nothing else is elevated. Host side: `RunHelperIfRequested(argc, argv,
+  exitCode)` first in `main()` — it turns the relaunch into the helper and is
+  what makes `IsAvailable()` true, so an application that never calls it never
+  offers the retry. `IsPermissionFailure(ec)` tells the "Access is denied" the
+  retry resolves from the sharing violation it cannot. Windows backend;
+  everywhere else `Unavailable`. `Tests/ElevatedFileOperationsTest.cpp` covers
+  the encodings, the helper's delete and the no-backend answers on every
+  platform. See `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
+- **`UltraCanvasFilerWidget`: a delete refused with "Access is denied" now
+  offers the administrator retry** wherever the host wired the helper. The
+  problem dialog becomes *Administrator Permission Needed* with **Delete as
+  administrator** (preselected) / **Try again** / **Skip**, plus the usual
+  "do this for all remaining items" switch. Entries handed to the administrator
+  are collected while the queue runs and go to the helper in one run at the
+  end — one consent prompt for the whole delete, as Explorer asks once —
+  behind a "Deleting as Administrator" progress window, waited for off the UI
+  thread. Failures the helper reports come back in a *Cannot Delete* dialog;
+  a declined prompt goes to `onError`. Before this, the dialog's only offers
+  for such an entry were "Try again" and "Skip", neither of which could ever
+  succeed. The problem dialog helper is now `ShowProblemChoiceDialog` (any
+  number of exclusive choices); `ShowProceedSkipDialog` remains as its
+  two-choice form.
+
 #### 2026-09-16 *0.8.71*
 - **The demo's Vector Editing page had no drawing area.** The page places its
   widgets at fixed coordinates and built the canvas with the sizeless factory,
