@@ -49,6 +49,14 @@
   manager could not read a drawing however it registered its plugins. The
   Android phase-1 block still forces it off: libvips is not in that sysroot,
   and this plugin needs it.
+- `CDRWriterTest` flushes each line as it prints and marks the libcdr parse and
+  the render, and it null- and bounds-checks the cairo pixel probes instead of
+  dereferencing what `cairo_image_surface_get_data()` returns on trust. Turning
+  `ULTRACANVAS_PLUGIN_VECTOR` on is what makes this test run in CI for the
+  first time (it needs both that plugin and the CDR one), and there it
+  segfaults on ubuntu-22.04 while passing on 24.04 - with stdout block-buffered
+  to a pipe, the crash took the whole buffer with it and the log said nothing
+  about how far it got. It says now.
 - `AutoFormatRegistrationTest` (new) calls no `Register*Plugin()` and checks
   every built plugin is in the registry anyway, that the Vector plugin's
   preview seam came with it, and that registering again is a no-op.

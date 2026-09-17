@@ -13,7 +13,7 @@
 // Usage: CDRWriterTest [output.cdr]
 // The export is kept on disk (default: cdr_writer_roundtrip.cdr in the
 // working directory). Exit code is the number of failed checks.
-// Version: 1.0.0
+// Version: 1.1.0
 // Last Modified: 2026-08-26
 // Author: UltraCanvas Framework
 
@@ -36,6 +36,10 @@ namespace {
 
 int failures = 0;
 
+// Unbuffered, deliberately. stdout to a pipe is block-buffered, so a crash
+// anywhere below would take the whole buffer with it and the log would show
+// nothing at all about how far the test got - which is exactly what a
+// SEGFAULT on a CI runner this test had never run on before left us with.
 void Check(bool ok, const std::string& what) {
     if (!ok) {
         ++failures;
@@ -43,6 +47,15 @@ void Check(bool ok, const std::string& what) {
     } else {
         std::printf("  ok: %s\n", what.c_str());
     }
+    std::fflush(stdout);
+}
+
+// A step marker, for the work between the checks: parsing and rendering
+// happen inside libcdr and the CDR plugin, and a crash in there is otherwise
+// invisible - the last marker printed names the call that did not return.
+void Step(const std::string& what) {
+    std::printf("  .. %s\n", what.c_str());
+    std::fflush(stdout);
 }
 
 std::shared_ptr<VectorDocument> BuildTestDocument() {
@@ -132,10 +145,12 @@ int main(int argc, char** argv) {
     Check(converter.ValidateFile(outPath), "exported file carries the RIFF CDR signature");
 
     UltraCanvasCDRRenderer reader;
+    Step("LoadFromFile (libcdr parse)");
     Check(reader.LoadFromFile(outPath), "the CDR plugin (libcdr) loads the exported file");
     if (failures) return failures;
 
     Check(reader.GetPageCount() == 1, "one page");
+    Step("page size and render context");
 
     // The plugin stores page size in pixels at 96 dpi: 400x300pt -> 533.3x400.
     constexpr float kPxPerPt = 96.0f / 72.0f;
@@ -150,7 +165,9 @@ int main(int argc, char** argv) {
         ctx->SetFillPaint(Color(255, 255, 255, 255));
         ctx->FillRectangle(Rect2Dd(0, 0, pageWpx, pageHpx));
         reader.SetViewport(pageWpx, pageHpx);
+        Step("RenderPage (libcdr document -> render context)");
         reader.RenderPage(ctx.get(), 0);
+        Step("RenderPage returned");
 
 #ifdef CDRWRITER_HAVE_CAIRO
         cairo_t* cr = static_cast<cairo_t*>(ctx->GetNativeContext());
@@ -159,10 +176,25 @@ int main(int argc, char** argv) {
         if (surface) {
             cairo_surface_flush(surface);
             const unsigned char* data = cairo_image_surface_get_data(surface);
-            int stride = cairo_image_surface_get_stride(surface);
-            auto px = [&](double xPt, double yPt) {
-                int x = static_cast<int>(xPt * kPxPerPt + 0.5f);
-                int y = static_cast<int>(yPt * kPxPerPt + 0.5f);
+            const int stride = cairo_image_surface_get_stride(surface);
+            const int surfW = cairo_image_surface_get_width(surface);
+            const int surfH = cairo_image_surface_get_height(surface);
+            // cairo hands back a null pointer for a surface that is not an
+            // image surface or has gone into an error state, and the probes
+            // below index it directly - so this is checked rather than
+            // dereferenced on trust.
+            Check(data != nullptr && stride > 0,
+                  "image surface exposes pixels (type " +
+                          std::to_string(static_cast<int>(
+                                  cairo_surface_get_type(surface))) +
+                          ", " + std::to_string(surfW) + "x" +
+                          std::to_string(surfH) + ")");
+            auto px = [&](double xPt, double yPt) -> uint32_t {
+                if (!data || stride <= 0) return 0;
+                const int x = static_cast<int>(xPt * kPxPerPt + 0.5f);
+                const int y = static_cast<int>(yPt * kPxPerPt + 0.5f);
+                // A probe outside the surface would read past the buffer.
+                if (x < 0 || y < 0 || x >= surfW || y >= surfH) return 0;
                 const uint32_t* row = reinterpret_cast<const uint32_t*>(data + y * stride);
                 return row[x];   // ARGB32 premultiplied
             };
@@ -183,7 +215,7 @@ int main(int argc, char** argv) {
             Check((bgPx & 0xFFFFFF) == 0xFFFFFF, "background stays white");
 
             // Keep the raster next to the .cdr for visual inspection.
-            cairo_surface_write_to_png(surface, (outPath + ".png").c_str());
+            if (data) cairo_surface_write_to_png(surface, (outPath + ".png").c_str());
         }
 #endif
     }
