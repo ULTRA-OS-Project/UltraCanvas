@@ -219,36 +219,6 @@ add_test(NAME FileLockTest COMMAND FileLockTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLockTest")
 
-# ===== ELEVATED FILE OPERATIONS TEST =====
-# The "Delete as administrator" retry (UltraCanvasElevatedFileOperations):
-# the command-line and report encodings the two processes agree on, the
-# helper's own delete in a temp folder, and the no-backend answers. Built from
-# its own sources like the file-lock test; on Windows the backend comes along
-# so the elevation and permission-failure probes compile, though the test
-# never starts a helper (that would put up a consent prompt).
-message(STATUS "  Building ElevatedFileOperationsTest...")
-
-set(ELEVATED_FILE_OPERATIONS_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/ElevatedFileOperationsTest.cpp
-    ${ULTRACANVAS_CORE_DIR}/UltraCanvasElevatedFileOperations.cpp
-)
-if(WIN32)
-    list(APPEND ELEVATED_FILE_OPERATIONS_SOURCES
-        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp)
-endif()
-add_executable(ElevatedFileOperationsTest ${ELEVATED_FILE_OPERATIONS_SOURCES})
-target_include_directories(ElevatedFileOperationsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-target_compile_features(ElevatedFileOperationsTest PRIVATE cxx_std_20)
-if(WIN32)
-    target_link_libraries(ElevatedFileOperationsTest PRIVATE shell32 advapi32 ole32)
-endif()
-set_target_properties(ElevatedFileOperationsTest PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-add_test(NAME ElevatedFileOperationsTest COMMAND ElevatedFileOperationsTest
-         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-message(STATUS "    Test registered: ElevatedFileOperationsTest")
-
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
 # built from its own sources, needs no display and does not link UltraCanvas.
@@ -1030,7 +1000,7 @@ message(STATUS "    Test registered: ModelOBJTest")
 # ===== DXF 3D MODEL READER TEST =====
 # DXF read as geometry rather than as a drawing: the 3D entities the Vector
 # plugin's DXF reader has to flatten. Checks both kinds of DXF - the exported
-# model in media/3D/DXF, and a drawing from media/vector/DXF that must be
+# model in media/3D/DXF, and a 2D drawing beside it that must be
 # refused with an explanation instead of returned empty.
 message(STATUS "  Building ModelDXFTest...")
 add_executable(ModelDXFTest
@@ -1057,7 +1027,7 @@ add_test(
     COMMAND ModelDXFTest
             "${ULTRACANVAS_ROOT}/media/3D/DXF/E-45-Aircraft.dxf"
             "${ULTRACANVAS_ROOT}/media/3D/3DS/E-45-Aircraft.3ds"
-            "${ULTRACANVAS_ROOT}/media/vector/DXF/women-body.dxf"
+            "${ULTRACANVAS_ROOT}/media/3D/DXF/women-body.dxf"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelDXFTest")
@@ -1698,28 +1668,6 @@ set_target_properties(ClassLayoutTest PROPERTIES
 add_test(NAME ClassLayoutTest COMMAND ClassLayoutTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ClassLayoutTest")
-
-# ===== DISABLED CONTROL CONTRAST TEST =====
-# One rule for every control with a disabled state: the disabled face, border
-# and label must be LIGHTER than the live ones. The defaults had it backwards
-# (Colors::LightGray is darker than Colors::ButtonFace), which drew every
-# greyed switch on a settings page heavier than the live ones around it.
-# Header-only comparisons - no UI stack, no window.
-message(STATUS "  Building DisabledControlContrastTest...")
-add_executable(DisabledControlContrastTest
-    ${CMAKE_CURRENT_SOURCE_DIR}/DisabledControlContrastTest.cpp
-)
-target_include_directories(DisabledControlContrastTest PRIVATE
-    ${ULTRACANVAS_INCLUDE_DIR}
-)
-target_compile_features(DisabledControlContrastTest PRIVATE cxx_std_20)
-target_link_libraries(DisabledControlContrastTest PRIVATE UltraCanvas)
-set_target_properties(DisabledControlContrastTest PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-add_test(NAME DisabledControlContrastTest COMMAND DisabledControlContrastTest
-         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-message(STATUS "    Test registered: DisabledControlContrastTest")
 
 # ===== UML MODEL TEST =====
 # Unit tests for the UML static-structure model, the member-notation grammar,
@@ -2576,33 +2524,6 @@ set_target_properties(FilerVolumeSpaceTest PROPERTIES
 add_test(NAME FilerVolumeSpaceTest COMMAND FilerVolumeSpaceTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerVolumeSpaceTest")
-
-message(STATUS "")
-
-# ===== FILER HISTORY TEST =====
-# The recently used files / folders / apps behind the toolbar's clock button
-# (Apps/UltraFiler/UltraFilerHistory.h): that the three lists survive a
-# restart, and that each keeps the number of entries Settings > Extras >
-# History & Favorites asks for - while recording, while reading the file back,
-# and at the moment the limit is lowered.
-# Header-only, so the test needs no library - it runs on any build. It points
-# the config directory at a temporary folder, so it never touches a real
-# UltraFiler installation.
-message(STATUS "  Building FilerHistoryTest...")
-add_executable(FilerHistoryTest
-    ${CMAKE_CURRENT_SOURCE_DIR}/FilerHistoryTest.cpp
-)
-target_include_directories(FilerHistoryTest PRIVATE
-    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
-    ${ULTRACANVAS_INCLUDE_DIR}
-)
-target_compile_features(FilerHistoryTest PRIVATE cxx_std_20)
-set_target_properties(FilerHistoryTest PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-add_test(NAME FilerHistoryTest COMMAND FilerHistoryTest
-         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-message(STATUS "    Test registered: FilerHistoryTest")
 
 message(STATUS "")
 

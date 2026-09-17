@@ -1,7 +1,7 @@
 // Apps/DemoApp/UltraCanvasDWGExamples.cpp
 // AutoCAD DWG and DXF drawings demo - the Vector plugin's native CAD import.
-// Each sample in media/vector/DWG is decoded by the native DWG reader
-// (UltraCanvasDWGDecoder) and each sample in media/vector/DXF is read
+// Each sample in media/3D/DWG is decoded by the native DWG reader
+// (UltraCanvasDWGDecoder) and each sample in media/3D/DXF is read
 // directly; both are built into a VectorStorage::VectorDocument by the DXF
 // reader and shown in an UltraCanvasVectorElement; a click opens the drawing
 // fullscreen with pan and zoom. The status line reports what the reader
@@ -172,14 +172,14 @@ namespace {
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
         container->AddChild(statusLabel);
 
-        // One tile per sample drawing in media/vector/DWG/ and media/vector/DXF/.
+        // One tile per sample drawing in media/3D/DWG/ and media/3D/DXF/.
         auto makeTile = [&](const std::string& id, int x, int y, const std::string& folder,
                             const std::string& fileName, const std::string& caption) {
             auto tile = std::make_shared<UltraCanvasContainer>(id, x, y, 300, 240);
             tile->SetBackgroundColor(Colors::White);
             tile->SetBorders(2, Color(180, 180, 180, 255));
 
-            std::string path = NormalizePath(GetResourcesDir() + "media/vector/" + folder + "/" + fileName);
+            std::string path = NormalizePath(GetResourcesDir() + "media/3D/" + folder + "/" + fileName);
             CadLoadResult loaded = LoadCadDocument(path);
 
             auto element = CreateVectorElement(id + "El", 10, 10, 280, 190);
