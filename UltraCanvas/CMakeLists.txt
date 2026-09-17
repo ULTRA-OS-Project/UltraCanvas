@@ -498,6 +498,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
+        # "Delete as administrator": the UAC relaunch behind a permission
+        # failure. Windows backend under OS/MSWindows/, picked up by the
+        # platform glob; every other platform gets the fallbacks in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElevatedFileOperations.cpp
         # Mounted volumes + notification when that set changes. The platform
         # backend lives in OS/<Platform>/UltraCanvas*VolumeMonitor.* and is
         # picked up by the platform glob.
