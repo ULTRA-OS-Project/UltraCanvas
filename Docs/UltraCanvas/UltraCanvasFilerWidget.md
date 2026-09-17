@@ -1316,11 +1316,32 @@ and drops the rest):
   preselected) and a *"Do this for all remaining items"* scope switch.
   A stored try-again-for-all grants each later failing entry one silent
   retry before asking again, so a stubborn entry can never loop forever.
+- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+  answers with its shield button: the entry is deletable, just not by this
+  user. Where the host has wired
+  [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
+  (UltraFiler has), the dialog is **Administrator Permission Needed** —
+  "Deleting this file needs administrator permission. Windows will ask you to
+  confirm before it is deleted." — with **Delete as administrator**
+  (preselected) / **Try again** / **Skip this file** and the same scope switch.
+  Entries handed to the administrator are collected while the queue runs and go
+  to the elevated helper in **one run at the end**, so the whole delete costs
+  one consent prompt however many entries need it; a "Deleting as
+  Administrator" progress window stands in for the wait, and the widget stays
+  responsive because the helper is waited for off the UI thread. What the
+  helper still could not delete comes back in a **Cannot Delete** dialog with
+  the system's reason per entry; a declined prompt is reported through
+  `onError` and leaves the entries in place. Sharing violations ("in use by
+  another program") are not permission failures and keep the plain dialog,
+  as does a process that already runs as administrator — asking again cannot
+  change the system's answer there.
 
 Entries inside archives are still deleted in one batched archive rewrite
 before the interactive queue; their failures are reported via `onError` as
 before. When modal dialogs are unavailable the delete falls back to the old
-fixed behavior (attempt everything, report failures).
+fixed behavior (attempt everything, report failures). A problem dialog's
+**Cancel** keeps what was already deleted and drops the rest — the entries
+waiting for the administrator retry included.
 
 ### Selection after a delete
 

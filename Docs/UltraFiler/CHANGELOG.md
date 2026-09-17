@@ -1,3 +1,17 @@
+#### 2026-09-17 *1.38.0*
+- **Deleting a file that needs administrator rights now works, the way it does
+  in Explorer.** A file or folder whose permissions grant deletion only to
+  administrators used to fail with "Access is denied", and the dialog's
+  offers — *Try again* and *Skip* — could not get past that. Now that dialog
+  is **Administrator Permission Needed** with **Delete as administrator**
+  preselected: Windows puts up its consent prompt, and on *Yes* the entry is
+  deleted. Several such entries in one delete are collected and cost one
+  prompt at the end, whatever "do this for all remaining items" was set to;
+  what still cannot be deleted even then (a file owned by TrustedInstaller, one
+  in use by a running program) is listed with the system's reason. Declining
+  the prompt leaves everything in place. Built on framework 0.8.74's
+  `UltraCanvasElevatedFileOperations`; UltraFiler's `main.cpp` runs the
+  elevated helper before any window exists.
 #### 2026-09-17 *1.37.0*
 - The CorelDRAW, Xara and EPS viewer plugins are linked and registered too,
   after the Vector plugin rather than before it: both read some of the same

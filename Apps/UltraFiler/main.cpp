@@ -13,6 +13,7 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasElevatedFileOperations.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasUtils.h"
 #include "UltraFilerWindow.h"
@@ -94,6 +95,15 @@ static void PrintUsage(const char* programName) {
 
 // ===== MAIN APPLICATION ENTRY POINT =====
 int main(int argc, char* argv[]) {
+    // Started by our own "Delete as administrator" retry? That is a second
+    // copy of this executable, launched elevated through the UAC prompt with
+    // the helper flag on its command line: it deletes what the user
+    // consented to and exits here, before any window exists. Calling this
+    // is also what lets the Filer widget offer the retry at all.
+    int helperExit = 0;
+    if (ElevatedFileOperations::RunHelperIfRequested(argc, argv, helperExit))
+        return helperExit;
+
     std::string folderToOpen;
 
     for (int i = 1; i < argc; i++) {
