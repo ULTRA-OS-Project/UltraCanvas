@@ -258,6 +258,16 @@ if(BUILD_ULTRASOCIAL AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraSocial)
 endif()
 
+# ===== ULTRAFIBU =====
+# German double-entry accounting: DATEV, UStVA/ELSTER, One-Stop-Shop, a fiscal
+# year with a free start date. Phase A1 builds the headless engine and the
+# ultrafibu CLI on top of it; the German UI follows once the framework has a
+# data grid (Docs/Research/UltraFIBUDesignProposal.md).
+option(BUILD_ULTRAFIBU "Build the UltraFIBU accounting application" ON)
+if(BUILD_ULTRAFIBU AND TARGET UltraDatabase)
+    add_subdirectory(Apps/UltraFIBU)
+endif()
+
 # ===== ULTRACLEANER =====
 # Removes the files macOS, Windows and Linux leave behind: temporary files,
 # application and browser caches, logs, crash reports, thumbnail databases,
@@ -750,6 +760,19 @@ if(ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS AND TARGET UltraSocialEngine)
     add_subdirectory(Tests/UltraSocial)
     message(STATUS "")
     message(STATUS "── UltraSocial engine test suite enabled (target: UltraSocialEngineTests) ──")
+endif()
+
+# ===== ULTRAFIBU ENGINE TESTS =====
+# Headless engine tests: the calendar, a fiscal year with any start date, the
+# two reporting calendars, VAT-number checking, the data-file readers and the
+# store (numbering, optimistic locking, Festschreibung, roles). Compiles the
+# engine sources directly, so it runs where the UI library cannot be built.
+option(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS "Build the UltraFIBU engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS AND TARGET UltraDatabase)
+    enable_testing()
+    add_subdirectory(Tests/UltraFIBU)
+    message(STATUS "")
+    message(STATUS "── UltraFIBU engine test suite enabled (target: UltraFIBUEngineTests) ──")
 endif()
 
 # ===== ULTRACLEANER ENGINE TESTS =====

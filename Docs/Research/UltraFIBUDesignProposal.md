@@ -36,7 +36,7 @@ will want them:**
 | Add to framework | Why it cannot live in the app |
 |---|---|
 | `UltraCanvasDataGrid` — a sortable, filterable, groupable, inline-editable multi-column grid | Every screen in this app is a table of thousands of rows. The catalogue promises `UltraCanvasTableView` but **no such header exists** (§3.3); painting a grid inside the app is exactly what AGENTS.md forbids |
-| `UltraCanvasXML` — an owned XML reader/writer wrapping one vendored parser | XRechnung, ZUGFeRD, ELSTER, CAMT.053 and the GoBD `index.xml` are all XML. The tree has no XML module at all (§3.4) — only ad-hoc parsing inside the SVG and Word plugins |
+| `UltraCanvasXML` — an owned XML reader/writer over the **tinyxml2 the framework already links** | XRechnung, ZUGFeRD, ELSTER, CAMT.053 and the GoBD `index.xml` are all XML. tinyxml2 is a core dependency already, but nothing owns it: every caller parses its own way and two of them parse the same file twice (§3.4). No new dependency — a facade |
 | `UltraCanvasMoney` — exact decimal money (integer minor units) with parse/format | An accounting program may not represent 37,28 € as a `double`. The one currency type in the tree (`CurrencyValue`, `UltraCanvasSpreadsheetTypes.h:267`) is a `double` and must not be used for a ledger |
 | `UltraCanvasNumberInput` / currency field, and a minimal string catalogue | The UI is German: comma decimals, `1.234,56 €`, and ~800 labels. Hard-coding literals throughout is what every other app did, and this app is large enough that it hurts |
 | **The `libpq` (PostgreSQL) driver for UltraDatabase** — its own documented Stage 2 plan, not yet built | The multi-user requirement has no other answer. A shared SQLite file on a network share or a synced folder is data loss, not a deployment mode (§10.1). The driver is framework work every app inherits |
@@ -236,24 +236,33 @@ for the vector canvas, and the same rule AGENTS.md states as a prohibition:
 it too."* Every app in `Apps/` would use it. Also fix the catalogue row, which
 currently sends readers looking for a header that is not there.
 
-### 3.4 There is no XML module
+### 3.4 There is an XML parser, and nobody owns it
 
 Six of this application's formats are XML: XRechnung (UBL *and* CII),
 ZUGFeRD/Factur-X (CII), the ELSTER data types, CAMT.053 bank statements, the
-DATEV XML interface (`document.xml`), and the GoBD `index.xml`. The tree has no
-XML facade — `grep` finds one `class XMLElement` and it lives inside the Word
-plugin's `UltraCanvasMathToLatex.h`; the SVG plugin parses its own; nothing is
-vendored (`third_party/` holds curl, microtex, miniz, nlohmann, yyjson).
+DATEV XML interface (`document.xml`), and the GoBD `index.xml`.
 
-**Recommendation:** add `UltraCanvasXML` next to `UltraCanvasJSON`, wrapping one
-vendored parser behind an UltraCanvas-owned API — that is the framework's
-standing rule for engines (*"public engines are always wrapped … never expose a
-third-party type in a public header"*), and `UltraCanvasJSON` over yyjson is the
-pattern to copy. **pugixml** (MIT, two files, DOM with XPath) is the obvious
-candidate; it needs a `Docs/Dependencies.md`, `master_dependencies.yaml` and
-`THIRD_PARTY_LICENSES.md` entry. XSD *validation* should not be attempted with
-it: ELSTER validation is ERiC's job and XRechnung validation belongs to the
-KoSIT validator, which is a separate tool the user runs.
+**tinyxml2 is already a core dependency** — `Docs/UltraCanvas/README.md` lists
+it among the framework's utility libraries, the CMake configure requires it, and
+the COLLADA reader, the mind-map IO and `UltraCanvasPropertyList`'s XML form all
+go through it. What does not exist is an **owned facade** over it. The
+consequences are already recorded in this repository:
+`UltraCanvasPropertyList` parses XML one way, the diagram readers another, the
+SVG plugin has its own parser entirely, and
+[`VersioningInvestigation.md`](../UltraCanvas/VersioningInvestigation.md) notes a
+file being parsed "a second time, with tinyxml2 again" into a different model —
+*"two parsers, two"* models of the same document.
+
+**Recommendation:** add `UltraCanvasXML` next to `UltraCanvasJSON`, wrapping the
+tinyxml2 that is already linked. That is the framework's standing rule for
+engines (*"public engines are always wrapped … never expose a third-party type
+in a public header"*), and `UltraCanvasJSON` over yyjson is the pattern to copy.
+**No new third-party dependency is involved**, so `Docs/Dependencies.md`,
+`master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md` need nothing new —
+which also makes this the cheapest of the four framework additions. XSD
+*validation* should not be attempted with it: ELSTER validation is ERiC's job
+and XRechnung validation belongs to the KoSIT validator, which is a separate
+tool the user runs.
 
 ### 3.5 There is no money type, and no translation layer
 
@@ -1150,7 +1159,7 @@ application driver-agnostic meanwhile, so the two tracks only meet at A8.
 |---|---|---|
 | **B4** *(parallel from day one)* | `libpq` PostgreSQL driver for UltraDatabase behind `IDatabaseDriverPlugin`: TLS required, credentials via UltraVault, pooling, the Stage 2 shape its README already specifies + `Tests/UltraDatabase` coverage against a real server | The existing UltraDatabase test suite passes unchanged against PostgreSQL as well as SQLite |
 | **B1** | `UltraCanvasDataGrid` (sort, filter, badge/checkbox/icon cells, inline edit, virtualised data source, footer aggregates, CSV/clipboard copy) + doc + catalogue fix (§3.3) | DemoApp shows 100 000 rows sorted and filtered without stutter |
-| **B2** | `UltraCanvasXML` over a vendored parser + `Docs/Dependencies.md`, `master_dependencies.yaml`, `THIRD_PARTY_LICENSES.md` entries | Round-trips a ZUGFeRD CII file and a CAMT.053 statement |
+| **B2** | `UltraCanvasXML` over the tinyxml2 the framework already links — a facade, not a new dependency | Round-trips a ZUGFeRD CII file and a CAMT.053 statement |
 | **B3** | `UltraCanvasMoney` + currency/number input element + German formatting helpers | Property tests in `Tests/` |
 | **A1** | Engine skeleton, store + migrations, *Mandant*, **Geschäftsjahr (flexible start)**, chart of accounts (**SKR03 shipped first**, SKR04 beside it, both as data, each account carrying its EÜR line, BWA position **and balance-sheet classification**), *Steuerschlüssel* table, number ranges; master data for **Kunden/Lieferanten with USt-IdNr, address, contact** incl. offline VAT-number checksums; **user table and roles from the first schema** (§10.2), so attribution is unbroken when the server arrives; German UI shell | Create a 1 April fiscal year, import SKR03, enter a supplier, see it in a grid |
 | **A2** | Documents and the journal: outgoing invoice editor + PDF, incoming receipts with file attachment, postings, *Storno*, **Festschreibung**, hash chain, audit trail, journal view | A month of postings, frozen, with a *Storno* and a verified hash chain |
@@ -1280,7 +1289,8 @@ appear to. Persistence, migrations, CP1252 CSV, ZIP containers, hashing, secret
 storage, HTTPS with client certificates, OAuth2, charts, forms, PDF reading and
 spreadsheet export are all present and in production use by other applications.
 The genuinely missing pieces are few and each is worth having for its own sake:
-a real data grid, an XML facade, an exact money type, and — for the multi-user
+a real data grid, a facade over the XML parser the build already requires, an
+exact money type, and — for the multi-user
 requirement, which is wanted from day one — the `libpq` driver that
 UltraDatabase's own roadmap already promises, started in parallel with the first
 application phase rather than after it.

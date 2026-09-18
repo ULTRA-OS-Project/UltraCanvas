@@ -75,11 +75,14 @@
     footer aggregate. The proposal asks for a real `UltraCanvasDataGrid` built
     on that groundwork, and for the catalogue row to stop sending readers
     after a file that is not there.
-  - **There is no XML facade.** Six of this application's formats are XML
-    (XRechnung UBL and CII, ZUGFeRD, the ELSTER data types, CAMT.053, the GoBD
-    `index.xml`); `grep` finds one `class XMLElement`, inside the Word
-    plugin's LaTeX converter. `UltraCanvasXML` over a vendored parser, wrapped
-    the way `UltraCanvasJSON` wraps yyjson.
+  - **There is an XML parser and nobody owns it.** Six of this application's
+    formats are XML (XRechnung UBL and CII, ZUGFeRD, the ELSTER data types,
+    CAMT.053, the GoBD `index.xml`). tinyxml2 is already a core dependency -
+    COLLADA, the mind-map IO and `UltraCanvasPropertyList` all use it - but
+    there is no facade over it, so every caller parses its own way and
+    `VersioningInvestigation.md` already records one file being parsed twice
+    into two models. `UltraCanvasXML` wraps what is there, the way
+    `UltraCanvasJSON` wraps yyjson; no new dependency.
   - **There is no money type.** The one currency value in the tree is a
     `double` in the spreadsheet types, which a ledger may not use; exact
     integer minor units with explicit *kaufmaennische Rundung* and allocation
