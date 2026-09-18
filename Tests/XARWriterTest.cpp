@@ -2,11 +2,15 @@
 // Round-trip test for the XAR writer in the Vector plugin: builds a
 // VectorDocument covering the writer's feature matrix (shapes, paths with
 // beziers and closes, groups with transforms, gradients, strokes, opacity,
-// multi-span text), exports it through VectorConverter::XARConverter, then
+// multi-span text, and the phase-4 additions: multistage fills, gradient
+// transparency with a mix, a shadow, a feather, a baked arrowhead and
+// width profile), exports it through VectorConverter::XARConverter, then
 // loads the result back through the XAR plugin's spec-verified XARDocument
 // reader and asserts the structure survived: page size, node-type counts,
 // coordinate placement (including the Y-axis flip to millipoints), resolved
-// colours, and a parse with no unhandled records and no warnings.
+// colours, and a parse with no unhandled records and no warnings. Finally
+// the converter's own Import (the same reader, translated to the model)
+// reads the file back and the effects are checked on the model.
 //
 // Usage: XARWriterTest [output.xar]
 // The export is kept on disk (default: xar_writer_roundtrip.xar in the
@@ -21,6 +25,7 @@
 #include "../UltraCanvas/Plugins/Vector/XAR/UltraCanvasXARPlugin.h"
 
 #include <cmath>
+#include <functional>
 #include <cstdio>
 #include <map>
 #include <memory>
@@ -144,6 +149,64 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     text->Style.Fill = Color(20, 20, 20, 255);
     layer->AddChild(text);
 
+    // 8. Phase 4: a four-stop gradient with a linear bleach transparency
+    // ramp and a wall shadow.
+    auto shaded = std::make_shared<VectorRect>();
+    shaded->Id = "shaded";
+    shaded->Bounds = Rect2Dd{40, 60, 100, 40};
+    LinearGradientData ramp;
+    ramp.Units = GradientUnits::UserSpaceOnUse;
+    ramp.Start = Point2Dd(40, 80);
+    ramp.End = Point2Dd(140, 80);
+    ramp.Stops = {GradientStop(0.0, Color(255, 0, 0, 255)), GradientStop(0.3, Color(255, 255, 0, 255)),
+                  GradientStop(0.7, Color(0, 255, 0, 255)), GradientStop(1.0, Color(0, 0, 255, 255))};
+    shaded->Style.Fill = GradientData(ramp);
+    TransparencyData fade;
+    fade.Shape = TransparencyShape::Linear;
+    fade.Start = Point2Dd(40, 80);
+    fade.End = Point2Dd(140, 80);
+    fade.Stops = {{0.0, 0.0f}, {1.0, 0.8f}};
+    fade.Mix = TransparencyMix::Bleach;
+    shaded->Style.Transparency = fade;
+    ShadowEffect shadow;
+    shadow.Kind = ShadowKind::Wall;
+    shadow.Offset = Point2Dd(5, 7);
+    shadow.Blur = 3;
+    shadow.Darkness = 0.6f;
+    shaded->Effects.Shadow = shadow;
+    layer->AddChild(shaded);
+
+    // 9. A feathered circle.
+    auto soft = std::make_shared<VectorCircle>();
+    soft->Id = "soft";
+    soft->Center = Point2Dd(200, 80);
+    soft->Radius = 25;
+    soft->Style.Fill = Color(0, 160, 200, 255);
+    soft->Effects.Feather = FeatherEffect{6.0f};
+    layer->AddChild(soft);
+
+    // 10. A line with an end arrowhead and a tapered polyline: the gallery
+    // is baked into extra filled paths.
+    auto arrow = std::make_shared<VectorLine>();
+    arrow->Id = "arrow";
+    arrow->Start = Point2Dd(40, 120);
+    arrow->End = Point2Dd(140, 120);
+    StrokeData arrowStroke;
+    arrowStroke.Fill = Color(0, 0, 0, 255);
+    arrowStroke.Width = 3;
+    arrowStroke.EndArrow.Kind = ArrowheadKind::Triangle;
+    arrow->Style.Stroke = arrowStroke;
+    layer->AddChild(arrow);
+    auto taper = std::make_shared<VectorPolyline>();
+    taper->Id = "taper";
+    taper->Points = {Point2Dd(160, 120), Point2Dd(220, 110), Point2Dd(280, 120)};
+    StrokeData taperStroke;
+    taperStroke.Fill = Color(120, 0, 0, 255);
+    taperStroke.Width = 8;
+    taperStroke.WidthProfile = {{0.0f, 1.0f}, {1.0f, 0.0f}};
+    taper->Style.Stroke = taperStroke;
+    layer->AddChild(taper);
+
     return doc;
 }
 
@@ -181,10 +244,13 @@ int main(int argc, char** argv) {
     std::map<XARNodeType, int> counts;
     CountNodes(reader.GetRoot(), counts);
     Check(counts[XARNodeType::Layer] == 1, "one layer");
-    Check(counts[XARNodeType::Rectangle] == 2, "two rectangle records (plain + rounded)");
-    Check(counts[XARNodeType::Ellipse] == 2, "two ellipse records (circle + ellipse)");
-    Check(counts[XARNodeType::Path] == 2, "two path records (bezier leaf + rotated rect)");
+    Check(counts[XARNodeType::Rectangle] == 3, "three rectangle records (plain + rounded + shaded)");
+    Check(counts[XARNodeType::Ellipse] == 3, "three ellipse records (circle + ellipse + feathered)");
+    // bezier leaf, rotated rect, the arrow's line, its baked head, the taper's band
+    Check(counts[XARNodeType::Path] == 5, "five path records (two shapes, the arrow line, its head, the width band)");
     Check(counts[XARNodeType::Group] == 1, "one group");
+    Check(counts[XARNodeType::Shadow] == 1, "one shadow controller");
+    Check(counts[XARNodeType::Feather] == 1, "one feather attribute");
     Check(counts[XARNodeType::TextStory] == 1, "one text story");
     Check(counts[XARNodeType::TextLine] == 2, "two text lines");
     Check(counts[XARNodeType::TextString] >= 3, "at least three text strings (span splits)");
@@ -258,6 +324,77 @@ int main(int argc, char** argv) {
         Check(std::static_pointer_cast<XARTextStringNode>(strings.front())
                       ->textAttr.fontSize == 18000,
               "font size is 18000 millipoints");
+    }
+
+    // ===== Phase 4 records as the plugin reads them =====
+    {
+        std::vector<XARNodePtr> rects, shadows, ellipses;
+        Collect(reader.GetRoot(), XARNodeType::Rectangle, rects);
+        Collect(reader.GetRoot(), XARNodeType::Shadow, shadows);
+        Collect(reader.GetRoot(), XARNodeType::Ellipse, ellipses);
+        const XARNodePtr* shadedNode = nullptr;
+        for (const auto& r : rects) if (r->fill.type == XARFillType::LinearGradient && r->fill.stops.size() >= 4) shadedNode = &r;
+        Check(shadedNode != nullptr, "the four-stop gradient comes back as a multistage linear fill with four stops");
+        if (shadedNode) {
+            const auto& f = (*shadedNode)->fill;
+            Check(f.stops.size() == 4 && std::fabs(f.stops[1].position - 0.3) < 1e-6 && f.stops[1].color.g == 255,
+                  "inner stops keep their position and colour");
+            Check((*shadedNode)->hasTransparency && (*shadedNode)->transparency.type == XARTransparencyType::LinearGradient &&
+                  (*shadedNode)->transparency.mix == XARTransparencyMix::Bleach &&
+                  (*shadedNode)->transparency.endTransparency == 204,
+                  "the linear transparency ramp keeps its shape, end level and bleach mix");
+        }
+        Check(shadows.size() == 1, "one shadow controller was written");
+        if (shadows.size() == 1) {
+            auto sh = std::static_pointer_cast<XARShadowNode>(shadows.front());
+            Check(sh->shadowType == 1 && sh->offsetX == 5000 && sh->offsetY == -7000 && sh->blurRadius == 3000,
+                  "the wall shadow keeps its offset (Y flipped) and penumbra");
+            Check(sh->shadowColor.a == 153, "the shadow's darkness is 60 percent");
+            Check(sh->children.size() == 1 && sh->children.front()->type == XARNodeType::Rectangle,
+                  "the shadowed rectangle is the controller's child");
+        }
+        bool feathered = false;
+        for (const auto& e : ellipses)
+            for (const auto& c : e->children)
+                if (c->type == XARNodeType::Feather && std::static_pointer_cast<XARFeatherNode>(c)->featherRadius == 6000) feathered = true;
+        Check(feathered, "the feather is an attribute of the circle with its radius in millipoints");
+    }
+
+    // ===== The converter reads the file back into the model =====
+    {
+        std::vector<std::string> warnings;
+        VectorConverter::ConversionOptions opts;
+        opts.WarningCallback = [&warnings](const std::string& w) { warnings.push_back(w); };
+        auto back = converter.Import(outPath, opts);
+        Check(back != nullptr, "Import() reads the exported file through the XAR plugin");
+        if (back) {
+            Check(std::fabs(back->Size.width - 400.0) < 0.5 && std::fabs(back->Size.height - 300.0) < 0.5,
+                  "the page size survives the round trip");
+            Check(back->Layers.size() == 1, "one layer comes back");
+            int shadowed = 0, feathered = 0, ramped = 0, multistage = 0, texts = 0;
+            std::function<void(const std::shared_ptr<VectorElement>&)> walk = [&](const std::shared_ptr<VectorElement>& e) {
+                if (!e) return;
+                if (e->Effects.Shadow && std::fabs(e->Effects.Shadow->Offset.x - 5.0) < 0.01 &&
+                    std::fabs(e->Effects.Shadow->Offset.y - 7.0) < 0.01 && std::fabs(e->Effects.Shadow->Darkness - 0.6f) < 0.01f) ++shadowed;
+                if (e->Effects.Feather && std::fabs(e->Effects.Feather->Radius - 6.0f) < 0.01f) ++feathered;
+                if (e->Style.Transparency && e->Style.Transparency->Shape == TransparencyShape::Linear &&
+                    e->Style.Transparency->Mix == TransparencyMix::Bleach) ++ramped;
+                if (e->Style.Fill)
+                    if (auto* g = std::get_if<GradientData>(&*e->Style.Fill))
+                        if (auto* l = std::get_if<LinearGradientData>(g))
+                            if (l->Stops.size() == 4) ++multistage;
+                if (e->Type == VectorElementType::Text) ++texts;
+                if (e->Type == VectorElementType::Group || e->Type == VectorElementType::Layer)
+                    for (const auto& c : std::static_pointer_cast<VectorGroup>(e)->Children) walk(c);
+            };
+            for (const auto& l : back->Layers) walk(l);
+            Check(shadowed == 1, "the wall shadow comes back on the model (offset and darkness)");
+            Check(feathered == 1, "the feather comes back on the model");
+            Check(ramped == 1, "the transparency ramp comes back with its mix");
+            Check(multistage == 1, "the four-stop gradient comes back with four stops");
+            Check(texts == 1, "the text story comes back as one text element");
+            for (const auto& w : warnings) std::printf("  (import note) %s\n", w.c_str());
+        }
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

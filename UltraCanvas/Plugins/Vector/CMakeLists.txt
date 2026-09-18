@@ -79,6 +79,16 @@ target_link_libraries(${PLUGIN_NAME}
                       # symbol references resolve at final link (GNU/MinGW ld order).
 )
 
+# XAR reading is the XAR plugin's parser translated into the model; when
+# that plugin is built (ULTRACANVAS_PLUGIN_XAR, on by default) link it
+# publicly so ULTRACANVAS_HAS_XAR_PLUGIN reaches the converter and its users.
+if(TARGET UltraCanvasXARPlugin)
+    target_link_libraries(${PLUGIN_NAME} PUBLIC UltraCanvasXARPlugin)
+    message(STATUS "  XAR import: through the XAR plugin's reader")
+else()
+    message(STATUS "  XAR import: unavailable (XAR plugin not built); XAR export only")
+endif()
+
 # Include UltraCanvas core headers (passed from parent)
 if(DEFINED ULTRACANVAS_INCLUDE_DIR)
     target_include_directories(${PLUGIN_NAME} PRIVATE

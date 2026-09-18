@@ -809,67 +809,14 @@ namespace UltraCanvas {
     // ===========================================================================
     // LINE GALLERY: arrowheads, variable width, brushes
     // ===========================================================================
+    // The geometry comes from the model (FlattenPathData, PathEndpoints,
+    // ArrowheadOutline, VariableWidthOutline) so the XAR writer bakes the
+    // same shapes this draws.
 
     namespace {
-        struct FlatPolyline {
-            std::vector<Point2Dd> pts;
-            bool closed = false;
-        };
-
         Point2Dd Unit(const Point2Dd &v) {
             const double l = std::hypot(v.x, v.y);
             return l > 1e-12 ? Point2Dd(v.x / l, v.y / l) : Point2Dd(1, 0);
-        }
-
-        // Flattens path data to polylines in element units, one per
-        // subpath, cubics subdivided by their control-polygon length.
-        std::vector<FlatPolyline> FlattenOutline(const PathData &pd) {
-            using namespace VectorConverter::PathOps;
-            std::vector<FlatPolyline> out;
-            Point2Dd cur{0, 0};
-            for (const auto &s: NormalizePath(pd)) {
-                switch (s.kind) {
-                    case FlatSeg::Move:
-                        out.push_back({});
-                        out.back().pts.push_back(s.p[0]);
-                        cur = s.p[0];
-                        break;
-                    case FlatSeg::Line:
-                        if (out.empty()) { out.push_back({}); out.back().pts.push_back(cur); }
-                        out.back().pts.push_back(s.p[0]);
-                        cur = s.p[0];
-                        break;
-                    case FlatSeg::Cubic: {
-                        if (out.empty()) { out.push_back({}); out.back().pts.push_back(cur); }
-                        const double len = std::hypot(s.p[0].x - cur.x, s.p[0].y - cur.y) +
-                                           std::hypot(s.p[1].x - s.p[0].x, s.p[1].y - s.p[0].y) +
-                                           std::hypot(s.p[2].x - s.p[1].x, s.p[2].y - s.p[1].y);
-                        const int n = std::min(64, std::max(4, static_cast<int>(std::ceil(len / 3.0))));
-                        for (int i = 1; i <= n; ++i) {
-                            const double u = static_cast<double>(i) / n, v = 1.0 - u;
-                            out.back().pts.emplace_back(
-                                    v * v * v * cur.x + 3 * v * v * u * s.p[0].x + 3 * v * u * u * s.p[1].x + u * u * u * s.p[2].x,
-                                    v * v * v * cur.y + 3 * v * v * u * s.p[0].y + 3 * v * u * u * s.p[1].y + u * u * u * s.p[2].y);
-                        }
-                        cur = s.p[2];
-                        break;
-                    }
-                }
-                if (s.closeAfter && !out.empty()) {
-                    out.back().closed = true;
-                    if (!out.back().pts.empty()) cur = out.back().pts.front();
-                }
-            }
-            out.erase(std::remove_if(out.begin(), out.end(),
-                                     [](const FlatPolyline &l) { return l.pts.size() < 2; }), out.end());
-            return out;
-        }
-
-        std::vector<double> CumulativeLengths(const std::vector<Point2Dd> &pts) {
-            std::vector<double> cum(pts.size(), 0.0);
-            for (size_t i = 1; i < pts.size(); ++i)
-                cum[i] = cum[i - 1] + std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
-            return cum;
         }
     }
 
@@ -877,30 +824,26 @@ namespace UltraCanvas {
                                            const Rect2Dd &bounds, float opacity) {
         PathData pd;
         if (!BuildOutlinePath(element, pd)) return;
-        const auto lines = FlattenOutline(pd);
-        if (lines.empty()) return;
         SetGalleryPaint(stroke, bounds, opacity);
         if (stroke.HasWidthProfile()) {
-            for (const auto &l: lines) FillVariableWidth(l.pts, l.closed, stroke);
+            const PathData band = VariableWidthOutline(pd, stroke);
+            if (!band.commands.empty()) {
+                ctx->ClearPath();
+                BuildPath(band);
+                ctx->SetFillRule(UltraCanvas::FillRule::EvenOdd);
+                ctx->FillPathPreserve();
+                ctx->ClearPath();
+                ctx->SetFillRule(UltraCanvas::FillRule::NonZero);
+            }
         } else if (stroke.HasBrush()) {
-            for (const auto &l: lines) StampBrush(l.pts, stroke);
+            for (const auto &sub: FlattenPathData(pd)) StampBrush(sub.Points, stroke);
         }
         if (stroke.HasArrowheads()) {
-            SetGalleryPaint(stroke, bounds, opacity);
-            const FlatPolyline &first = lines.front();
-            const FlatPolyline &last = lines.back();
-            if (stroke.StartArrow.IsSet() && !first.closed && first.pts.size() >= 2) {
-                size_t k = 1;
-                while (k + 1 < first.pts.size() && std::hypot(first.pts[k].x - first.pts[0].x, first.pts[k].y - first.pts[0].y) < 1e-9) ++k;
-                DrawArrowhead(stroke.StartArrow, first.pts[0],
-                              Unit(Point2Dd(first.pts[0].x - first.pts[k].x, first.pts[0].y - first.pts[k].y)), stroke);
-            }
-            if (stroke.EndArrow.IsSet() && !last.closed && last.pts.size() >= 2) {
-                const size_t n = last.pts.size();
-                size_t k = n - 2;
-                while (k > 0 && std::hypot(last.pts[n - 1].x - last.pts[k].x, last.pts[n - 1].y - last.pts[k].y) < 1e-9) --k;
-                DrawArrowhead(stroke.EndArrow, last.pts[n - 1],
-                              Unit(Point2Dd(last.pts[n - 1].x - last.pts[k].x, last.pts[n - 1].y - last.pts[k].y)), stroke);
+            Point2Dd start, startDir, end, endDir;
+            if (PathEndpoints(pd, start, startDir, end, endDir)) {
+                SetGalleryPaint(stroke, bounds, opacity);
+                if (stroke.StartArrow.IsSet()) DrawArrowhead(stroke.StartArrow, start, startDir, stroke);
+                if (stroke.EndArrow.IsSet()) DrawArrowhead(stroke.EndArrow, end, endDir, stroke);
             }
         }
     }
@@ -931,104 +874,32 @@ namespace UltraCanvas {
 
     void VectorRenderer::DrawArrowhead(const ArrowheadData &arrow, const Point2Dd &tip, const Point2Dd &d,
                                        const StrokeData &stroke) {
-        const double W = std::max(0.5f, stroke.Width);
-        const double L = 4.0 * W * arrow.Scale, H = 2.0 * W * arrow.Scale;
-        const Point2Dd n(-d.y, d.x);
-        // `along` back from the tip, `across` to the side.
-        auto P = [&](double along, double across) {
-            return Point2Dd(tip.x - d.x * along + n.x * across, tip.y - d.y * along + n.y * across);
-        };
-        auto poly = [&](std::initializer_list<Point2Dd> pts) {
-            bool first = true;
-            for (const auto &p: pts) {
-                if (first) ctx->MoveTo(p.x, p.y); else ctx->LineTo(p.x, p.y);
-                first = false;
-            }
-            ctx->ClosePath();
-        };
+        bool stroked = false;
+        const PathData outline = ArrowheadOutline(arrow, tip, d, stroke.Width, stroked);
+        if (outline.commands.empty()) return;
         ctx->ClearPath();
-        switch (arrow.Kind) {
-            case ArrowheadKind::Triangle:
-                poly({tip, P(L, H / 2), P(L, -H / 2)});
-                ctx->FillPathPreserve();
-                break;
-            case ArrowheadKind::OpenArrow: {
-                const Point2Dd a = P(L, H / 2), b = P(L, -H / 2);
-                ctx->MoveTo(a.x, a.y);
-                ctx->LineTo(tip.x, tip.y);
-                ctx->LineTo(b.x, b.y);
-                ctx->StrokePathPreserve();
-                break;
-            }
-            case ArrowheadKind::Circle: {
-                const Point2Dd c = P(H / 2, 0);
-                ctx->Circle(c.x, c.y, H / 2);
-                ctx->FillPathPreserve();
-                break;
-            }
-            case ArrowheadKind::Square:
-                poly({P(0, H / 2), P(H, H / 2), P(H, -H / 2), P(0, -H / 2)});
-                ctx->FillPathPreserve();
-                break;
-            case ArrowheadKind::Diamond:
-                poly({tip, P(L / 2, H / 2), P(L, 0), P(L / 2, -H / 2)});
-                ctx->FillPathPreserve();
-                break;
-            case ArrowheadKind::Bar: {
-                const Point2Dd a = P(0, H / 2), b = P(0, -H / 2);
-                ctx->MoveTo(a.x, a.y);
-                ctx->LineTo(b.x, b.y);
-                ctx->StrokePathPreserve();
-                break;
-            }
-            case ArrowheadKind::NoArrowhead:
-            default:
-                break;
-        }
+        BuildPath(outline);
+        if (stroked) ctx->StrokePathPreserve();
+        else ctx->FillPathPreserve();
         ctx->ClearPath();
     }
 
-    // The band between the left and right offsets of the polyline, its
-    // half-width following the profile; a closed polyline gives a ring.
-    void VectorRenderer::FillVariableWidth(const std::vector<Point2Dd> &input, bool closed, const StrokeData &stroke) {
-        std::vector<Point2Dd> pts = input;
-        if (closed && pts.size() > 2 &&
-            std::hypot(pts.front().x - pts.back().x, pts.front().y - pts.back().y) < 1e-9)
-            pts.pop_back();
-        const size_t n = pts.size();
-        if (n < 2) return;
-        const std::vector<double> cum = CumulativeLengths(pts);
-        const double total = closed ? cum.back() + std::hypot(pts.front().x - pts.back().x, pts.front().y - pts.back().y)
-                                    : cum.back();
-        if (total <= 1e-9) return;
-        std::vector<Point2Dd> left(n), right(n);
-        Point2Dd lastT(1, 0);
-        for (size_t i = 0; i < n; ++i) {
-            const Point2Dd &prev = i > 0 ? pts[i - 1] : (closed ? pts[n - 1] : pts[i]);
-            const Point2Dd &next = i + 1 < n ? pts[i + 1] : (closed ? pts[0] : pts[i]);
-            Point2Dd t(next.x - prev.x, next.y - prev.y);
-            if (std::hypot(t.x, t.y) < 1e-12) t = lastT; else t = Unit(t);
-            lastT = t;
-            const double half = stroke.WidthAt(static_cast<float>(cum[i] / total)) / 2.0;
-            left[i] = Point2Dd(pts[i].x - t.y * half, pts[i].y + t.x * half);
-            right[i] = Point2Dd(pts[i].x + t.y * half, pts[i].y - t.x * half);
+    void VectorRenderer::FillVariableWidth(const std::vector<Point2Dd> &pts, bool closed, const StrokeData &stroke) {
+        // Kept for the header's sake; RenderLineGallery uses the model's
+        // VariableWidthOutline over the whole path instead.
+        PathData pd;
+        for (size_t i = 0; i < pts.size(); ++i) {
+            PathCommand c;
+            c.Type = i == 0 ? PathCommandType::MoveTo : PathCommandType::LineTo;
+            c.Parameters = {static_cast<float>(pts[i].x), static_cast<float>(pts[i].y)};
+            pd.commands.push_back(c);
         }
+        if (closed) { PathCommand z; z.Type = PathCommandType::ClosePath; pd.commands.push_back(z); pd.Closed = true; }
+        const PathData band = VariableWidthOutline(pd, stroke);
+        if (band.commands.empty()) return;
         ctx->ClearPath();
-        if (closed) {
-            ctx->MoveTo(left[0].x, left[0].y);
-            for (size_t i = 1; i < n; ++i) ctx->LineTo(left[i].x, left[i].y);
-            ctx->ClosePath();
-            ctx->MoveTo(right[0].x, right[0].y);
-            for (size_t i = 1; i < n; ++i) ctx->LineTo(right[i].x, right[i].y);
-            ctx->ClosePath();
-            ctx->SetFillRule(UltraCanvas::FillRule::EvenOdd);
-        } else {
-            ctx->MoveTo(left[0].x, left[0].y);
-            for (size_t i = 1; i < n; ++i) ctx->LineTo(left[i].x, left[i].y);
-            for (size_t i = n; i-- > 0;) ctx->LineTo(right[i].x, right[i].y);
-            ctx->ClosePath();
-            ctx->SetFillRule(UltraCanvas::FillRule::NonZero);
-        }
+        BuildPath(band);
+        ctx->SetFillRule(UltraCanvas::FillRule::EvenOdd);
         ctx->FillPathPreserve();
         ctx->ClearPath();
         ctx->SetFillRule(UltraCanvas::FillRule::NonZero);
@@ -1041,7 +912,9 @@ namespace UltraCanvas {
         if (sb.width <= 0 || sb.height <= 0) return;
         const double k = (std::max(0.5f, stroke.Width) * std::max(0.01f, b.Scale)) / sb.height;
         const double step = std::max(0.25, sb.width * k * std::max(0.05f, b.Spacing));
-        const std::vector<double> cum = CumulativeLengths(pts);
+        std::vector<double> cum(pts.size(), 0.0);
+        for (size_t i = 1; i < pts.size(); ++i)
+            cum[i] = cum[i - 1] + std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
         const double total = cum.back();
         if (total <= 1e-9) return;
         const VectorRenderOptions savedOptions = options;

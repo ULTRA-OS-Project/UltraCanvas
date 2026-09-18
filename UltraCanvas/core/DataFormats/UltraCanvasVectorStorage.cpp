@@ -1259,6 +1259,170 @@ bool BuildOutlinePath(const VectorElement& element, PathData& out) {
     }
 }
 
+// ===== LINE GALLERY GEOMETRY =====
+
+namespace {
+    Point2Dd UnitVector(const Point2Dd& v) {
+        const double l = std::hypot(v.x, v.y);
+        return l > 1e-12 ? Point2Dd(v.x / l, v.y / l) : Point2Dd(1, 0);
+    }
+    void AppendPolyline(PathData& out, const std::vector<Point2Dd>& pts, bool close) {
+        for (size_t i = 0; i < pts.size(); ++i) {
+            PathCommand c;
+            c.Type = i == 0 ? PathCommandType::MoveTo : PathCommandType::LineTo;
+            c.Parameters = {static_cast<float>(pts[i].x), static_cast<float>(pts[i].y)};
+            out.commands.push_back(c);
+        }
+        if (close && !pts.empty()) {
+            PathCommand z; z.Type = PathCommandType::ClosePath;
+            out.commands.push_back(z);
+        }
+    }
+}
+
+std::vector<FlatSubpath> FlattenPathData(const PathData& path) {
+    using namespace VectorConverter::PathOps;
+    std::vector<FlatSubpath> out;
+    Point2Dd cur{0, 0};
+    for (const auto& s : NormalizePath(path)) {
+        switch (s.kind) {
+            case FlatSeg::Move:
+                out.push_back({});
+                out.back().Points.push_back(s.p[0]);
+                cur = s.p[0];
+                break;
+            case FlatSeg::Line:
+                if (out.empty()) { out.push_back({}); out.back().Points.push_back(cur); }
+                out.back().Points.push_back(s.p[0]);
+                cur = s.p[0];
+                break;
+            case FlatSeg::Cubic: {
+                if (out.empty()) { out.push_back({}); out.back().Points.push_back(cur); }
+                const double len = std::hypot(s.p[0].x - cur.x, s.p[0].y - cur.y) +
+                                   std::hypot(s.p[1].x - s.p[0].x, s.p[1].y - s.p[0].y) +
+                                   std::hypot(s.p[2].x - s.p[1].x, s.p[2].y - s.p[1].y);
+                const int n = std::min(64, std::max(4, static_cast<int>(std::ceil(len / 3.0))));
+                for (int i = 1; i <= n; ++i) {
+                    const double u = static_cast<double>(i) / n, v = 1.0 - u;
+                    out.back().Points.emplace_back(
+                            v * v * v * cur.x + 3 * v * v * u * s.p[0].x + 3 * v * u * u * s.p[1].x + u * u * u * s.p[2].x,
+                            v * v * v * cur.y + 3 * v * v * u * s.p[0].y + 3 * v * u * u * s.p[1].y + u * u * u * s.p[2].y);
+                }
+                cur = s.p[2];
+                break;
+            }
+        }
+        if (s.closeAfter && !out.empty()) {
+            out.back().Closed = true;
+            if (!out.back().Points.empty()) cur = out.back().Points.front();
+        }
+    }
+    out.erase(std::remove_if(out.begin(), out.end(),
+                             [](const FlatSubpath& l) { return l.Points.size() < 2; }), out.end());
+    return out;
+}
+
+bool PathEndpoints(const PathData& path, Point2Dd& start, Point2Dd& startDir, Point2Dd& end, Point2Dd& endDir) {
+    const auto lines = FlattenPathData(path);
+    if (lines.empty()) return false;
+    const FlatSubpath& first = lines.front();
+    const FlatSubpath& last = lines.back();
+    if (first.Closed || last.Closed) return false;
+    size_t k = 1;
+    while (k + 1 < first.Points.size() &&
+           std::hypot(first.Points[k].x - first.Points[0].x, first.Points[k].y - first.Points[0].y) < 1e-9) ++k;
+    start = first.Points[0];
+    startDir = UnitVector(Point2Dd(first.Points[0].x - first.Points[k].x, first.Points[0].y - first.Points[k].y));
+    const size_t n = last.Points.size();
+    size_t j = n - 2;
+    while (j > 0 && std::hypot(last.Points[n - 1].x - last.Points[j].x, last.Points[n - 1].y - last.Points[j].y) < 1e-9) --j;
+    end = last.Points[n - 1];
+    endDir = UnitVector(Point2Dd(last.Points[n - 1].x - last.Points[j].x, last.Points[n - 1].y - last.Points[j].y));
+    return true;
+}
+
+PathData ArrowheadOutline(const ArrowheadData& arrow, const Point2Dd& tip, const Point2Dd& d, float width, bool& stroked) {
+    PathData out;
+    stroked = false;
+    if (!arrow.IsSet()) return out;
+    const double W = std::max(0.5f, width);
+    const double L = 4.0 * W * arrow.Scale, H = 2.0 * W * arrow.Scale;
+    const Point2Dd n(-d.y, d.x);
+    // `along` back from the tip, `across` to the side.
+    auto P = [&](double along, double across) {
+        return Point2Dd(tip.x - d.x * along + n.x * across, tip.y - d.y * along + n.y * across);
+    };
+    switch (arrow.Kind) {
+        case ArrowheadKind::Triangle:
+            AppendPolyline(out, {tip, P(L, H / 2), P(L, -H / 2)}, true);
+            break;
+        case ArrowheadKind::OpenArrow:
+            AppendPolyline(out, {P(L, H / 2), tip, P(L, -H / 2)}, false);
+            stroked = true;
+            break;
+        case ArrowheadKind::Circle: {
+            const Point2Dd c = P(H / 2, 0);
+            out = VectorConverter::PathOps::SegsToPathData(VectorConverter::PathOps::EllipseSegs(c, H / 2, H / 2));
+            break;
+        }
+        case ArrowheadKind::Square:
+            AppendPolyline(out, {P(0, H / 2), P(H, H / 2), P(H, -H / 2), P(0, -H / 2)}, true);
+            break;
+        case ArrowheadKind::Diamond:
+            AppendPolyline(out, {tip, P(L / 2, H / 2), P(L, 0), P(L / 2, -H / 2)}, true);
+            break;
+        case ArrowheadKind::Bar:
+            AppendPolyline(out, {P(0, H / 2), P(0, -H / 2)}, false);
+            stroked = true;
+            break;
+        case ArrowheadKind::NoArrowhead:
+        default:
+            break;
+    }
+    out.Closed = !stroked;
+    return out;
+}
+
+PathData VariableWidthOutline(const PathData& path, const StrokeData& stroke) {
+    PathData out;
+    for (const FlatSubpath& sub : FlattenPathData(path)) {
+        std::vector<Point2Dd> pts = sub.Points;
+        const bool closed = sub.Closed;
+        if (closed && pts.size() > 2 &&
+            std::hypot(pts.front().x - pts.back().x, pts.front().y - pts.back().y) < 1e-9)
+            pts.pop_back();
+        const size_t n = pts.size();
+        if (n < 2) continue;
+        std::vector<double> cum(n, 0.0);
+        for (size_t i = 1; i < n; ++i) cum[i] = cum[i - 1] + std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        const double total = closed ? cum.back() + std::hypot(pts.front().x - pts.back().x, pts.front().y - pts.back().y)
+                                    : cum.back();
+        if (total <= 1e-9) continue;
+        std::vector<Point2Dd> left(n), right(n);
+        Point2Dd lastT(1, 0);
+        for (size_t i = 0; i < n; ++i) {
+            const Point2Dd& prev = i > 0 ? pts[i - 1] : (closed ? pts[n - 1] : pts[i]);
+            const Point2Dd& next = i + 1 < n ? pts[i + 1] : (closed ? pts[0] : pts[i]);
+            Point2Dd t(next.x - prev.x, next.y - prev.y);
+            if (std::hypot(t.x, t.y) < 1e-12) t = lastT; else t = UnitVector(t);
+            lastT = t;
+            const double half = stroke.WidthAt(static_cast<float>(cum[i] / total)) / 2.0;
+            left[i] = Point2Dd(pts[i].x - t.y * half, pts[i].y + t.x * half);
+            right[i] = Point2Dd(pts[i].x + t.y * half, pts[i].y - t.x * half);
+        }
+        if (closed) {
+            AppendPolyline(out, left, true);
+            AppendPolyline(out, right, true);
+        } else {
+            std::vector<Point2Dd> ring = left;
+            for (size_t i = n; i-- > 0;) ring.push_back(right[i]);
+            AppendPolyline(out, ring, true);
+        }
+    }
+    out.Closed = true;
+    return out;
+}
+
 PathData ParsePathString(const std::string& pathStr) {
     PathData result;
     std::istringstream iss(pathStr);

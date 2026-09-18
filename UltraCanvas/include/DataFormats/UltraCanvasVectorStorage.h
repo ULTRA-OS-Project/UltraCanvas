@@ -834,6 +834,29 @@ namespace UltraCanvas {
         // (text, images, groups). What the renderer strokes, the line
         // gallery decorates and the editor converts to a path.
         bool BuildOutlinePath(const VectorElement& element, PathData& out);
+
+        // ----- line gallery geometry (shared by the renderer and the writers) -----
+        // Path data flattened to polylines, one per subpath, cubics
+        // subdivided by their control-polygon length.
+        struct FlatSubpath {
+            std::vector<Point2Dd> Points;
+            bool Closed = false;
+        };
+        std::vector<FlatSubpath> FlattenPathData(const PathData& path);
+        // The open path's first and last points with the outward unit
+        // directions an arrowhead points along; false for a closed or
+        // degenerate path.
+        bool PathEndpoints(const PathData& path, Point2Dd& start, Point2Dd& startDir,
+                           Point2Dd& end, Point2Dd& endDir);
+        // A gallery arrowhead's outline at `tip` pointing along `dir` for a
+        // line `width` wide. `stroked` is set for the open kinds (OpenArrow,
+        // Bar), which are stroked at the line width rather than filled.
+        PathData ArrowheadOutline(const ArrowheadData& arrow, const Point2Dd& tip, const Point2Dd& dir,
+                                  float width, bool& stroked);
+        // The band a width profile turns a stroke into: a filled outline
+        // (even-odd for closed subpaths, where it becomes a ring).
+        PathData VariableWidthOutline(const PathData& path, const StrokeData& stroke);
+
         PathData ParsePathString(const std::string &pathStr);
         std::string SerializePathData(const PathData &path);
         Color ParseColorString(const std::string &colorStr);
