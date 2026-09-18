@@ -104,6 +104,11 @@ public:
     virtual void OnHover(PaintToolContext&, const PaintPointerEvent&) {}
     virtual void OnDoubleClick(PaintToolContext&, const PaintPointerEvent&) {}
     virtual bool OnKey(PaintToolContext&, const UCEvent&) { return false; }
+    // A tool may be holding a rectangle the user reads as "the area": the
+    // Crop tool's drag. Image > Crop to Selection applies it rather than
+    // telling the user to select something they believe they have selected.
+    // Returns true when a pending rectangle was applied.
+    virtual bool ApplyPendingCrop(PaintToolContext&) { return false; }
     virtual void DrawOverlay(PaintToolContext&, IRenderContext*, const PaintViewTransform&) {}
     // Add option widgets to `panel` (a flex column). `changed` is called
     // after any option changes so the host can refresh cursors.

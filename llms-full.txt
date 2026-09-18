@@ -36662,13 +36662,20 @@ Two kinds of history entry keep memory in check:
 
 `SetUndoMemoryLimit()` bounds the history; the oldest entries go first.
 
+A selection belongs to the canvas it was made on. The whole-image geometry
+operations (`CropTo`, `ScaleImage`, `ResizeCanvas`, `Rotate90`) re-shape it,
+which is a selection change like any other: they fire `onSelectionChanged()`
+and move the history's committed baseline with them. Undo and redo drop a
+recorded selection whose size does not match the canvas being restored,
+rather than installing a mask of the wrong shape.
+
 ### Notifications
 
 | Callback | Fired when |
 |---|---|
 | `onPixelsChanged(rect)` | pixels of `rect` changed (a stroke calls it per dab) |
 | `onStructureChanged()` | layer list, attributes, active layer or canvas size changed |
-| `onSelectionChanged()` | the selection changed |
+| `onSelectionChanged()` | the selection changed, including when a canvas-geometry change dropped it |
 | `onStateChanged()` | modified flag or undo / redo availability changed |
 
 `UltraCanvasPaintSurface::SetDocument()` installs the first three; a host

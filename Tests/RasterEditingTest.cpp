@@ -120,6 +120,52 @@ static void TestSelection() {
     CHECK(s.Coverage(9, 6) == 255 && s.Coverage(6, 6) == 0);
 }
 
+// A canvas-geometry change re-shapes the selection. If the history does not
+// follow, an undo restores a selection made on the old canvas: its bounds
+// then fall outside the image and "Crop to Selection" quietly does nothing.
+static void TestSelectionFollowsTheCanvas() {
+    UCRasterDocument doc(600, 400, RasterPixel(255, 255, 255, 255));
+    int selectionSignals = 0;
+    doc.onSelectionChanged = [&selectionSignals]() { ++selectionSignals; };
+
+    doc.GetSelection().SetRectangle(Rect2Di(380, 220, 134, 133));
+    doc.CommitSelectionChange("Rectangle Select");
+    CHECK(doc.GetSelection().IsActive() && doc.GetSelection().GetBounds().width == 134);
+
+    const int before = selectionSignals;
+    doc.CropTo(doc.GetSelection().GetBounds());
+    CHECK(doc.GetWidth() == 134 && doc.GetHeight() == 133);
+    // The crop dropped the selection, so the views have to be told.
+    CHECK(!doc.GetSelection().IsActive());
+    CHECK(selectionSignals > before);
+    CHECK(doc.GetSelection().GetWidth() == doc.GetWidth());
+
+    // Select again on the cropped canvas, then take that selection back.
+    doc.GetSelection().SetRectangle(Rect2Di(10, 10, 40, 40));
+    doc.CommitSelectionChange("Rectangle Select");
+    doc.Undo();
+    // Whatever came back has to fit the image that is actually open.
+    CHECK(doc.GetSelection().GetWidth() == doc.GetWidth());
+    CHECK(doc.GetSelection().GetHeight() == doc.GetHeight());
+
+    // And cropping still works: either nothing is selected, or the selection
+    // lies on this canvas and cropping to it changes the image.
+    if (doc.GetSelection().IsActive()) {
+        const Rect2Di bounds = doc.GetSelection().GetBounds();
+        CHECK(bounds.x >= 0 && bounds.y >= 0);
+        CHECK(bounds.x + bounds.width <= doc.GetWidth());
+        CHECK(bounds.y + bounds.height <= doc.GetHeight());
+    }
+    doc.GetSelection().SetRectangle(Rect2Di(4, 4, 20, 20));
+    doc.CommitSelectionChange("Rectangle Select");
+    doc.CropTo(doc.GetSelection().GetBounds());
+    CHECK(doc.GetWidth() == 20 && doc.GetHeight() == 20);
+
+    // A rectangle wholly outside the canvas is a no-op, not a broken canvas.
+    doc.CropTo(Rect2Di(500, 500, 10, 10));
+    CHECK(doc.GetWidth() == 20 && doc.GetHeight() == 20);
+}
+
 static void TestBrush() {
     auto layer = std::make_shared<UCRasterLayer>(64, 64, RasterPixel(255, 255, 255, 255));
     UCBrushSettings s;
@@ -545,6 +591,7 @@ int main() {
     TestLayerBasics();
     TestBlend();
     TestSelection();
+    TestSelectionFollowsTheCanvas();
     TestBrush();
     TestRasterPaint();
     TestDocument();

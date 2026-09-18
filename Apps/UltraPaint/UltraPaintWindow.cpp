@@ -1438,7 +1438,16 @@ void UltraPaintWindow::CmdCanvasSize() {
 
 void UltraPaintWindow::CmdCropToSelection() {
     if (!document) return;
-    if (!document->GetSelection().IsActive()) { if (statusHint) statusHint->SetText("Select an area to crop to first"); return; }
+    // The Crop tool's dragged rectangle looks exactly like a selected area -
+    // the rest of the image is dimmed around it - so this is the command the
+    // user reaches for to apply it. Take it before asking for a selection.
+    if (auto* tool = ActiveTool()) {
+        if (tool->ApplyPendingCrop(toolContext)) return;
+    }
+    if (!document->GetSelection().IsActive()) {
+        if (statusHint) statusHint->SetText("Nothing is selected: drag an area with a selection tool, or with the Crop tool, first");
+        return;
+    }
     document->CropTo(document->GetSelection().GetBounds());
     surface->ZoomToFit();
 }
