@@ -1,9 +1,10 @@
 // Apps/ArtCreator/ArtCreatorTools.cpp
 // ArtCreator tool implementations: selector, shape editor, pen, freehand,
-// line, rectangle, ellipse, quick shape, text, fill, transparency, zoom,
-// push - and the option widget helpers they share with the window.
-// Version: 1.0.0
-// Last Modified: 2026-09-15
+// line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
+// feather, zoom, push - the line gallery's named choices, and the option
+// widget helpers they share with the window.
+// Version: 1.1.0
+// Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorTools.h"
@@ -147,6 +148,7 @@ void ApplyNewShapeStyle(VectorElement& element, const ArtToolContext& ctx) {
         st.Width = o.strokeWidth;
         st.LineJoin = StrokeLineJoin::Round;
         st.LineCap = StrokeLineCap::Round;
+        ArtLineGallery::ApplyToStroke(st, o);
         element.Style.Stroke = st;
     } else {
         element.Style.Stroke.reset();
@@ -179,6 +181,112 @@ Rect2Dd DragRect(const Point2Dd& from, const Point2Dd& to, bool square, bool fro
 }
 
 } // namespace ArtToolHelpers
+
+// ===========================================================================
+// LINE GALLERY
+// ===========================================================================
+namespace ArtLineGallery {
+
+const std::vector<std::string>& ArrowheadNames() {
+    static const std::vector<std::string> names = { "None", "Triangle", "Open arrow", "Circle", "Square", "Diamond", "Bar" };
+    return names;
+}
+const std::vector<std::string>& ProfileNames() {
+    static const std::vector<std::string> names = { "Constant", "Taper to end", "Taper from start", "Taper both ends", "Bulge" };
+    return names;
+}
+const std::vector<std::string>& BrushNames() {
+    static const std::vector<std::string> names = { "None", "Dots", "Dashes", "Hearts" };
+    return names;
+}
+
+std::vector<WidthSample> Profile(int index) {
+    switch (index) {
+        case 1: return {{0.0f, 1.0f}, {1.0f, 0.0f}};
+        case 2: return {{0.0f, 0.0f}, {1.0f, 1.0f}};
+        case 3: return {{0.0f, 0.0f}, {0.5f, 1.0f}, {1.0f, 0.0f}};
+        case 4: return {{0.0f, 0.35f}, {0.5f, 1.0f}, {1.0f, 0.35f}};
+        default: return {};
+    }
+}
+
+std::optional<BrushData> Brush(int index) {
+    if (index <= 0) return std::nullopt;
+    BrushData b;
+    b.Stamp = std::make_shared<VectorGroup>();
+    b.Stamp->Id = "brush-stamp";
+    switch (index) {
+        case 1: {   // dots
+            auto dot = std::make_shared<VectorCircle>();
+            dot->Center = Point2Dd(0, 0);
+            dot->Radius = 5;
+            dot->Style.Fill = Color(0, 0, 0, 255);
+            b.Stamp->AddChild(dot);
+            b.Spacing = 1.6f;
+            break;
+        }
+        case 2: {   // dashes
+            auto dash = std::make_shared<VectorRect>();
+            dash->Bounds = Rect2Dd(0, 0, 14, 5);
+            dash->RadiusX = dash->RadiusY = 2.5f;
+            dash->Style.Fill = Color(0, 0, 0, 255);
+            b.Stamp->AddChild(dash);
+            b.Spacing = 1.5f;
+            break;
+        }
+        default: {  // hearts
+            auto heart = std::make_shared<VectorPath>();
+            heart->MoveTo(0, 6);
+            heart->CurveTo(-8, -2, -8, -10, -3, -10);
+            heart->CurveTo(-1, -10, 0, -8, 0, -7);
+            heart->CurveTo(0, -8, 1, -10, 3, -10);
+            heart->CurveTo(8, -10, 8, -2, 0, 6);
+            heart->ClosePath();
+            heart->Style.Fill = Color(0, 0, 0, 255);
+            b.Stamp->AddChild(heart);
+            b.Spacing = 1.3f;
+            break;
+        }
+    }
+    return b;
+}
+
+void ApplyToStroke(StrokeData& stroke, const ArtToolOptions& o) {
+    stroke.StartArrow.Kind = static_cast<ArrowheadKind>(std::clamp(o.lineStartArrow, 0, 6));
+    stroke.StartArrow.Scale = o.lineArrowScale;
+    stroke.EndArrow.Kind = static_cast<ArrowheadKind>(std::clamp(o.lineEndArrow, 0, 6));
+    stroke.EndArrow.Scale = o.lineArrowScale;
+    stroke.WidthProfile = Profile(o.lineProfile);
+    stroke.Brush = Brush(o.lineBrush);
+    // The brush stamps take the line's colour.
+    if (stroke.Brush && stroke.Brush->Stamp) {
+        if (auto* c = std::get_if<Color>(&stroke.Fill))
+            for (auto& child : stroke.Brush->Stamp->Children) if (child) child->Style.Fill = *c;
+    }
+}
+
+void ReadFromStroke(const StrokeData& stroke, ArtToolOptions& o) {
+    o.lineStartArrow = static_cast<int>(stroke.StartArrow.Kind);
+    o.lineEndArrow = static_cast<int>(stroke.EndArrow.Kind);
+    o.lineArrowScale = stroke.StartArrow.IsSet() ? stroke.StartArrow.Scale : stroke.EndArrow.IsSet() ? stroke.EndArrow.Scale : o.lineArrowScale;
+    o.lineProfile = 0;
+    for (int i = 1; i <= 4; ++i) {
+        const auto p = Profile(i);
+        if (p.size() != stroke.WidthProfile.size()) continue;
+        bool same = true;
+        for (size_t k = 0; k < p.size(); ++k)
+            if (std::fabs(p[k].T - stroke.WidthProfile[k].T) > 1e-4f || std::fabs(p[k].Factor - stroke.WidthProfile[k].Factor) > 1e-4f) same = false;
+        if (same) { o.lineProfile = i; break; }
+    }
+    o.lineBrush = 0;
+    if (stroke.HasBrush() && stroke.Brush->Stamp && !stroke.Brush->Stamp->Children.empty()) {
+        const auto& first = stroke.Brush->Stamp->Children.front();
+        o.lineBrush = first->Type == VectorElementType::Circle ? 1
+                    : first->Type == VectorElementType::Rectangle || first->Type == VectorElementType::RoundedRectangle ? 2 : 3;
+    }
+}
+
+} // namespace ArtLineGallery
 
 using namespace ArtOptionWidgets;
 using namespace ArtToolHelpers;
@@ -1184,7 +1292,8 @@ private:
 
 class TransparencyTool : public ArtTool {
 public:
-    TransparencyTool() : ArtTool(ArtToolId::Transparency, "Transparency", "transparency.svg", 'Y', "Click a shape, then drag right to make it more transparent") {}
+    TransparencyTool() : ArtTool(ArtToolId::Transparency, "Transparency", "transparency.svg", 'Y',
+                                 "Click a shape and drag right for flat transparency, or drag across it for a ramp; the mix is in the options") {}
 
     void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
         auto hit = ctx.canvas->HitTest(e.doc, 4.0);
@@ -1192,6 +1301,7 @@ public:
         target = hit->topLevel ? hit->topLevel : hit->element;
         ctx.selection->Set(target);
         startX = e.view.x;
+        startDoc = e.snapped;
         startOpacity = target->Style.Opacity;
         ctx.history->BeginEdit("Transparency");
         moved = false;
@@ -1199,9 +1309,13 @@ public:
     void OnDrag(ArtToolContext& ctx, const VectorPointerEvent& e) override {
         if (!target) return;
         moved = true;
-        const float t = std::clamp(startOpacity - static_cast<float>(e.view.x - startX) / 200.0f, 0.0f, 1.0f);
-        target->Style.Opacity = t;
-        ctx.options->transparency = (1.0f - t) * 100.0f;
+        const int shape = ctx.options->transparencyShape;
+        if (shape == 0) {
+            const float t = std::clamp(startOpacity - static_cast<float>(e.view.x - startX) / 200.0f, 0.0f, 1.0f);
+            ApplyFlat(ctx, *target, 1.0f - t);
+        } else {
+            ApplyRamp(ctx, *target, startDoc, e.snapped);
+        }
         ctx.canvas->Refresh();
     }
     void OnRelease(ArtToolContext& ctx, const VectorPointerEvent&) override {
@@ -1213,25 +1327,267 @@ public:
         if (ctx.refreshOptions) ctx.refreshOptions();
     }
     void OnSelectionChanged(ArtToolContext& ctx) override {
-        if (ctx.selection && ctx.selection->Count() == 1 && ctx.selection->First())
-            ctx.options->transparency = (1.0f - ctx.selection->First()->Style.Opacity) * 100.0f;
+        if (ctx.selection && ctx.selection->Count() == 1 && ctx.selection->First()) {
+            const auto& st = ctx.selection->First()->Style;
+            ArtToolOptions& o = *ctx.options;
+            if (st.Transparency.has_value()) {
+                o.transparencyShape = static_cast<int>(st.Transparency->Shape);
+                o.transparencyMix = static_cast<int>(st.Transparency->Mix);
+                o.transparency = st.Transparency->IsGradient() ? st.Transparency->Stops.back().Level * 100.0f
+                                                               : st.Transparency->Level * 100.0f;
+            } else {
+                o.transparency = (1.0f - st.Opacity) * 100.0f;
+            }
+        }
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void DrawOverlay(ArtToolContext& tctx, IRenderContext* ctx, const VectorViewTransform& v) override {
+        auto sel = target ? target : (tctx.selection && tctx.selection->Count() == 1 ? tctx.selection->First() : nullptr);
+        if (!sel || !sel->Style.Transparency.has_value() || !sel->Style.Transparency->IsGradient()) return;
+        const auto& t = *sel->Style.Transparency;
+        const Point2Dd va = v.DocToView(sel->LocalToGlobal(t.Start)), vb = v.DocToView(sel->LocalToGlobal(t.End));
+        ctx->SetStrokePaint(Color(120, 120, 130, 220));
+        ctx->SetStrokeWidth(1.0);
+        ctx->SetLineDash(UCDashPattern());
+        ctx->DrawLine(va, vb);
+        DrawViewSquare(ctx, va, 8.0, Colors::White, Color(120, 120, 130, 255));
+        ctx->SetFillPaint(Colors::White);
+        ctx->FillCircle(vb, 4.5);
+        ctx->DrawCircle(vb, 4.5);
+    }
+    void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
+        ArtToolOptions& o = *ctx.options;
+        AddDropdown(panel, "ac-tr-shape", "Shape", { "Flat", "Linear", "Radial", "Conical" }, o.transparencyShape, [&o](int i) { o.transparencyShape = i; });
+        AddDropdown(panel, "ac-tr-mix", "Mix", { "Mix", "Stained glass", "Bleach", "Contrast", "Saturation", "Darken", "Lighten", "Brightness", "Luminosity", "Hue" },
+                    o.transparencyMix, [&ctx, &o](int i) {
+            o.transparencyMix = i;
+            if (ctx.selection->Empty()) return;
+            auto ids = ctx.selection->Ids();
+            ctx.history->Record("Transparency Mix", [&]() {
+                for (auto& e : ctx.selection->Elements()) {
+                    if (!e->Style.Transparency.has_value()) {
+                        TransparencyData d;
+                        d.Shape = TransparencyShape::Flat;
+                        d.Level = 1.0f - e->Style.Opacity;
+                        e->Style.Opacity = 1.0f;
+                        e->Style.Transparency = d;
+                    }
+                    e->Style.Transparency->Mix = static_cast<TransparencyMix>(i);
+                }
+            }, true);
+            ReselectByIds(ctx, ids);
+        });
+        AddSliderRow(panel, "ac-tr-amount", "Level", 0, 100, o.transparency, 1, true, [&ctx, &o](float v) {
+            o.transparency = v;
+            if (ctx.selection->Empty()) return;
+            auto ids = ctx.selection->Ids();
+            ctx.history->Record("Transparency", [&]() {
+                for (auto& e : ctx.selection->Elements()) {
+                    if (e->Style.Transparency.has_value() && e->Style.Transparency->IsGradient())
+                        e->Style.Transparency->Stops.back().Level = v / 100.0f;   // the ramp's far end
+                    else ApplyFlat(ctx, *e, v / 100.0f);
+                }
+            }, true);
+            ReselectByIds(ctx, ids);
+        });
+        AddButtonRow(panel, "ac-tr-ops", {
+            {"Opaque", [&ctx]() {
+                if (ctx.selection->Empty()) return;
+                auto ids = ctx.selection->Ids();
+                ctx.history->Record("Opaque", [&]() { for (auto& e : ctx.selection->Elements()) { e->Style.Opacity = 1.0f; e->Style.Transparency.reset(); } });
+                ReselectByIds(ctx, ids);
+                if (ctx.refreshOptions) ctx.refreshOptions();
+            }},
+        });
+    }
+private:
+    // A flat level: the normal mix lives in Opacity, any other mix in a
+    // flat TransparencyData.
+    static void ApplyFlat(ArtToolContext& ctx, VectorElement& e, float level) {
+        level = std::clamp(level, 0.0f, 1.0f);
+        const int mix = ctx.options->transparencyMix;
+        if (mix == 0 && !(e.Style.Transparency.has_value() && e.Style.Transparency->IsGradient())) {
+            e.Style.Transparency.reset();
+            e.Style.Opacity = 1.0f - level;
+            return;
+        }
+        TransparencyData d;
+        d.Shape = TransparencyShape::Flat;
+        d.Level = level;
+        d.Mix = static_cast<TransparencyMix>(mix);
+        e.Style.Opacity = 1.0f;
+        e.Style.Transparency = d;
+    }
+    static void ApplyRamp(ArtToolContext& ctx, VectorElement& e, const Point2Dd& from, const Point2Dd& to) {
+        TransparencyData d;
+        d.Shape = static_cast<TransparencyShape>(std::clamp(ctx.options->transparencyShape, 1, 3));
+        d.Mix = static_cast<TransparencyMix>(ctx.options->transparencyMix);
+        d.Start = e.GlobalToLocal(from);
+        d.End = e.GlobalToLocal(to);
+        if (std::hypot(d.End.x - d.Start.x, d.End.y - d.Start.y) < 0.5) d.End = Point2Dd(d.Start.x + 1, d.Start.y);
+        const float far = std::clamp(ctx.options->transparency / 100.0f, 0.0f, 1.0f);
+        d.Stops = {{0.0, 0.0f}, {1.0, far > 0.0f ? far : 1.0f}};
+        e.Style.Opacity = 1.0f;
+        e.Style.Transparency = d;
+    }
+    ElementPtr target;
+    int startX = 0;
+    Point2Dd startDoc;
+    float startOpacity = 1.0f;
+    bool moved = false;
+};
+
+// ===========================================================================
+// SHADOW AND FEATHER
+// ===========================================================================
+
+class ShadowTool : public ArtTool {
+public:
+    ShadowTool() : ArtTool(ArtToolId::Shadow, "Shadow", "shadow.svg", 'W',
+                           "Click a shape for a shadow, then drag to place it; kind, blur and darkness are in the options") {}
+
+    void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        auto hit = ctx.canvas->HitTest(e.doc, 4.0);
+        if (!hit || !hit->element) { target = nullptr; return; }
+        target = hit->topLevel ? hit->topLevel : hit->element;
+        ctx.selection->Set(target);
+        startDoc = e.doc;
+        ctx.history->BeginEdit("Shadow");
+        if (!target->Effects.Shadow.has_value()) target->Effects.Shadow = FromOptions(*ctx.options);
+        startOffset = target->Effects.Shadow->Offset;
+        ctx.canvas->Refresh();
+    }
+    void OnDrag(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        if (!target || !target->Effects.Shadow.has_value()) return;
+        target->Effects.Shadow->Offset = Point2Dd(startOffset.x + (e.doc.x - startDoc.x), startOffset.y + (e.doc.y - startDoc.y));
+        ctx.canvas->Refresh();
+    }
+    void OnRelease(ArtToolContext& ctx, const VectorPointerEvent&) override {
+        if (!target) return;
+        const std::string id = target->Id;
+        ctx.history->EndEdit();
+        target = nullptr;
+        ReselectByIds(ctx, {id});
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void OnSelectionChanged(ArtToolContext& ctx) override {
+        if (ctx.selection && ctx.selection->Count() == 1 && ctx.selection->First() && ctx.selection->First()->Effects.Shadow.has_value()) {
+            const auto& sh = *ctx.selection->First()->Effects.Shadow;
+            ctx.options->shadowKind = static_cast<int>(sh.Kind);
+            ctx.options->shadowBlur = sh.Blur;
+            ctx.options->shadowDarkness = sh.Darkness * 100.0f;
+        }
         if (ctx.refreshOptions) ctx.refreshOptions();
     }
     void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
         ArtToolOptions& o = *ctx.options;
-        AddSliderRow(panel, "ac-tr-amount", "Transparency", 0, 100, o.transparency, 1, true, [&ctx, &o](float v) {
-            o.transparency = v;
+        auto update = [&ctx](const std::string& label, const std::function<void(ShadowEffect&)>& fn) {
             if (ctx.selection->Empty()) return;
             auto ids = ctx.selection->Ids();
-            ctx.history->Record("Transparency", [&]() { for (auto& e : ctx.selection->Elements()) e->Style.Opacity = 1.0f - v / 100.0f; }, true);
+            ctx.history->Record(label, [&]() {
+                for (auto& e : ctx.selection->Elements()) {
+                    if (!e->Effects.Shadow.has_value()) e->Effects.Shadow = FromOptions(*ctx.options);
+                    fn(*e->Effects.Shadow);
+                }
+            }, true);
             ReselectByIds(ctx, ids);
+        };
+        AddDropdown(panel, "ac-sh-kind", "Kind", { "Wall", "Floor", "Glow" }, o.shadowKind, [&o, update](int i) {
+            o.shadowKind = i;
+            update("Shadow Kind", [i](ShadowEffect& s) { s.Kind = static_cast<ShadowKind>(i); });
+        });
+        AddSliderRow(panel, "ac-sh-blur", "Blur", 0, 40, o.shadowBlur, 0.5f, false, [&o, update](float v) {
+            o.shadowBlur = v;
+            update("Shadow Blur", [v](ShadowEffect& s) { s.Blur = v; });
+        });
+        AddSliderRow(panel, "ac-sh-dark", "Darkness", 0, 100, o.shadowDarkness, 1, true, [&o, update](float v) {
+            o.shadowDarkness = v;
+            update("Shadow Darkness", [v](ShadowEffect& s) { s.Darkness = v / 100.0f; });
+        });
+        AddButtonRow(panel, "ac-sh-ops", {
+            {"Line colour", [&ctx, update]() {
+                const Color c = ctx.lineColor ? ctx.lineColor() : Colors::Black;
+                update("Shadow Colour", [c](ShadowEffect& s) { s.Colour = Color(c.r, c.g, c.b, 255); });
+            }},
+            {"Remove", [&ctx]() {
+                if (ctx.selection->Empty()) return;
+                auto ids = ctx.selection->Ids();
+                ctx.history->Record("Remove Shadow", [&]() { for (auto& e : ctx.selection->Elements()) e->Effects.Shadow.reset(); });
+                ReselectByIds(ctx, ids);
+            }},
+        });
+    }
+private:
+    static ShadowEffect FromOptions(const ArtToolOptions& o) {
+        ShadowEffect s;
+        s.Kind = static_cast<ShadowKind>(std::clamp(o.shadowKind, 0, 2));
+        s.Blur = o.shadowBlur;
+        s.Darkness = std::clamp(o.shadowDarkness / 100.0f, 0.0f, 1.0f);
+        s.Offset = Point2Dd(4, 4);
+        return s;
+    }
+    ElementPtr target;
+    Point2Dd startDoc, startOffset;
+};
+
+class FeatherTool : public ArtTool {
+public:
+    FeatherTool() : ArtTool(ArtToolId::Feather, "Feather", "feather.svg", 'K',
+                            "Click a shape to feather its edges, then drag right for a wider fade") {}
+
+    void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        auto hit = ctx.canvas->HitTest(e.doc, 4.0);
+        if (!hit || !hit->element) { target = nullptr; return; }
+        target = hit->topLevel ? hit->topLevel : hit->element;
+        ctx.selection->Set(target);
+        startX = e.view.x;
+        ctx.history->BeginEdit("Feather");
+        if (!target->Effects.Feather.has_value()) target->Effects.Feather = FeatherEffect{ctx.options->featherRadius};
+        startRadius = target->Effects.Feather->Radius;
+        ctx.canvas->Refresh();
+    }
+    void OnDrag(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        if (!target || !target->Effects.Feather.has_value()) return;
+        const float r = std::clamp(startRadius + static_cast<float>(ctx.canvas->PixelsToDoc(e.view.x - startX)), 0.0f, 200.0f);
+        target->Effects.Feather->Radius = r;
+        ctx.options->featherRadius = r;
+        ctx.canvas->Refresh();
+    }
+    void OnRelease(ArtToolContext& ctx, const VectorPointerEvent&) override {
+        if (!target) return;
+        const std::string id = target->Id;
+        ctx.history->EndEdit();
+        target = nullptr;
+        ReselectByIds(ctx, {id});
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void OnSelectionChanged(ArtToolContext& ctx) override {
+        if (ctx.selection && ctx.selection->Count() == 1 && ctx.selection->First() && ctx.selection->First()->Effects.Feather.has_value())
+            ctx.options->featherRadius = ctx.selection->First()->Effects.Feather->Radius;
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
+        ArtToolOptions& o = *ctx.options;
+        AddSliderRow(panel, "ac-fe-radius", "Radius", 0, 60, o.featherRadius, 0.5f, false, [&ctx, &o](float v) {
+            o.featherRadius = v;
+            if (ctx.selection->Empty()) return;
+            auto ids = ctx.selection->Ids();
+            ctx.history->Record("Feather", [&]() { for (auto& e : ctx.selection->Elements()) e->Effects.Feather = FeatherEffect{v}; }, true);
+            ReselectByIds(ctx, ids);
+        });
+        AddButtonRow(panel, "ac-fe-ops", {
+            {"Remove", [&ctx]() {
+                if (ctx.selection->Empty()) return;
+                auto ids = ctx.selection->Ids();
+                ctx.history->Record("Remove Feather", [&]() { for (auto& e : ctx.selection->Elements()) e->Effects.Feather.reset(); });
+                ReselectByIds(ctx, ids);
+            }},
         });
     }
 private:
     ElementPtr target;
     int startX = 0;
-    float startOpacity = 1.0f;
-    bool moved = false;
+    float startRadius = 0;
 };
 
 // ===========================================================================
@@ -1293,6 +1649,8 @@ std::vector<std::unique_ptr<ArtTool>> CreateArtTools() {
     tools.push_back(std::make_unique<TextTool>());
     tools.push_back(std::make_unique<FillTool>());
     tools.push_back(std::make_unique<TransparencyTool>());
+    tools.push_back(std::make_unique<ShadowTool>());
+    tools.push_back(std::make_unique<FeatherTool>());
     tools.push_back(std::make_unique<ZoomTool>());
     tools.push_back(std::make_unique<PushTool>());
     return tools;

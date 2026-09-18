@@ -153,18 +153,18 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     // ramp and a wall shadow.
     auto shaded = std::make_shared<VectorRect>();
     shaded->Id = "shaded";
-    shaded->Bounds = Rect2Dd{40, 60, 100, 40};
+    shaded->Bounds = Rect2Dd{40, 110, 100, 40};
     LinearGradientData ramp;
     ramp.Units = GradientUnits::UserSpaceOnUse;
-    ramp.Start = Point2Dd(40, 80);
-    ramp.End = Point2Dd(140, 80);
+    ramp.Start = Point2Dd(40, 130);
+    ramp.End = Point2Dd(140, 130);
     ramp.Stops = {GradientStop(0.0, Color(255, 0, 0, 255)), GradientStop(0.3, Color(255, 255, 0, 255)),
                   GradientStop(0.7, Color(0, 255, 0, 255)), GradientStop(1.0, Color(0, 0, 255, 255))};
     shaded->Style.Fill = GradientData(ramp);
     TransparencyData fade;
     fade.Shape = TransparencyShape::Linear;
-    fade.Start = Point2Dd(40, 80);
-    fade.End = Point2Dd(140, 80);
+    fade.Start = Point2Dd(40, 130);
+    fade.End = Point2Dd(140, 130);
     fade.Stops = {{0.0, 0.0f}, {1.0, 0.8f}};
     fade.Mix = TransparencyMix::Bleach;
     shaded->Style.Transparency = fade;
@@ -179,8 +179,8 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     // 9. A feathered circle.
     auto soft = std::make_shared<VectorCircle>();
     soft->Id = "soft";
-    soft->Center = Point2Dd(200, 80);
-    soft->Radius = 25;
+    soft->Center = Point2Dd(340, 122);
+    soft->Radius = 20;
     soft->Style.Fill = Color(0, 160, 200, 255);
     soft->Effects.Feather = FeatherEffect{6.0f};
     layer->AddChild(soft);
@@ -189,8 +189,8 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     // is baked into extra filled paths.
     auto arrow = std::make_shared<VectorLine>();
     arrow->Id = "arrow";
-    arrow->Start = Point2Dd(40, 120);
-    arrow->End = Point2Dd(140, 120);
+    arrow->Start = Point2Dd(40, 175);
+    arrow->End = Point2Dd(140, 175);
     StrokeData arrowStroke;
     arrowStroke.Fill = Color(0, 0, 0, 255);
     arrowStroke.Width = 3;
@@ -199,7 +199,7 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     layer->AddChild(arrow);
     auto taper = std::make_shared<VectorPolyline>();
     taper->Id = "taper";
-    taper->Points = {Point2Dd(160, 120), Point2Dd(220, 110), Point2Dd(280, 120)};
+    taper->Points = {Point2Dd(40, 205), Point2Dd(90, 195), Point2Dd(140, 205)};
     StrokeData taperStroke;
     taperStroke.Fill = Color(120, 0, 0, 255);
     taperStroke.Width = 8;
@@ -371,11 +371,14 @@ int main(int argc, char** argv) {
             Check(std::fabs(back->Size.width - 400.0) < 0.5 && std::fabs(back->Size.height - 300.0) < 0.5,
                   "the page size survives the round trip");
             Check(back->Layers.size() == 1, "one layer comes back");
-            int shadowed = 0, feathered = 0, ramped = 0, multistage = 0, texts = 0;
+            int shadowed = 0, feathered = 0, ramped = 0, multistage = 0, texts = 0, strokedShadowed = 0;
             std::function<void(const std::shared_ptr<VectorElement>&)> walk = [&](const std::shared_ptr<VectorElement>& e) {
                 if (!e) return;
                 if (e->Effects.Shadow && std::fabs(e->Effects.Shadow->Offset.x - 5.0) < 0.01 &&
-                    std::fabs(e->Effects.Shadow->Offset.y - 7.0) < 0.01 && std::fabs(e->Effects.Shadow->Darkness - 0.6f) < 0.01f) ++shadowed;
+                    std::fabs(e->Effects.Shadow->Offset.y - 7.0) < 0.01 && std::fabs(e->Effects.Shadow->Darkness - 0.6f) < 0.01f) {
+                    ++shadowed;
+                    if (e->Style.Stroke.has_value()) ++strokedShadowed;
+                }
                 if (e->Effects.Feather && std::fabs(e->Effects.Feather->Radius - 6.0f) < 0.01f) ++feathered;
                 if (e->Style.Transparency && e->Style.Transparency->Shape == TransparencyShape::Linear &&
                     e->Style.Transparency->Mix == TransparencyMix::Bleach) ++ramped;
@@ -389,6 +392,7 @@ int main(int argc, char** argv) {
             };
             for (const auto& l : back->Layers) walk(l);
             Check(shadowed == 1, "the wall shadow comes back on the model (offset and darkness)");
+            Check(strokedShadowed == 0, "an unstroked shape comes back without a stroke");
             Check(feathered == 1, "the feather comes back on the model");
             Check(ramped == 1, "the transparency ramp comes back with its mix");
             Check(multistage == 1, "the four-stop gradient comes back with four stops");
