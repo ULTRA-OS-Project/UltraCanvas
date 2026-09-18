@@ -1,4 +1,4 @@
-#### 2026-09-17 *0.8.82*
+#### 2026-09-18 *0.8.84*
 - **New design proposal: UltraFIBU, a German double-entry accounting
   application** (`Docs/Research/UltraFIBUDesignProposal.md`). DATEV import and
   export, UStVA/ZM submission to ELSTER, One-Stop-Shop reporting, a
@@ -57,6 +57,126 @@
   setting, because the hard-coded one is the one that cannot be given to a
   second company. Documentation only; no code.
 
+#### 2026-09-17 *0.8.83*
+- **A format plugin read nothing until an application named it.** Registration
+  was per-application boilerplate, so UltraFiler registered none and every
+  format outside core sat compiled into the binary and unusable; each new
+  application had to learn the same list, and each new plugin had to be added
+  to every application that wanted it.
+- **New: `Plugins/UltraCanvasAllFormats.{h,cpp}` and the
+  `UltraCanvasAllFormats` object library.** The list lives in the framework
+  once and the build fills it in: CMake defines `ULTRACANVAS_HAS_<PLUGIN>`
+  per plugin target that was actually built, and a registrar calls what those
+  defines admit exists - before `main()`. An application links it and gets
+  every format its build can read, writing nothing; a plugin added to the
+  framework reaches every application that links it.
+  - OBJECT rather than STATIC, and that is the whole trick: a linker keeps
+    only the object files of a static library that something references, and
+    nothing references a registrar, so in a `.a` it would be dropped and the
+    registration would silently never happen.
+  - Registration order is ownership order. The dedicated viewer plugins (CDR,
+    XAR, EPS) go after the Vector plugin, because the registry lets the last
+    registration win a shared extension and for those they are the better
+    reader. The Vector plugin keeps what only it reads and stays the only
+    writer, since save dispatch matches on `GetSaveExtensions`.
+  - `RegisterAllFormatPlugins()` and `AutoRegisteredFormatPlugins()` are
+    exposed for the cases that want to look rather than to register.
+- **`UltraCanvasGraphicsPluginRegistry`'s storage is function-local now**
+  (`Plugins()`, `ExtensionMap()`, `Initialized()`) instead of three
+  namespace-scope statics. A plugin registering from a static initialiser can
+  run before another translation unit's globals are alive, and a registry
+  whose vector had not been constructed yet would have taken those
+  registrations into a dead object. Whoever touches it first now builds it.
+- **The preview tests ask the graphics registry too.** The Filer's thumbnail
+  test and the media viewer's `IsVectorDocumentFile` consulted the vector
+  preview seam and the embedded-preview probe, never the registry - so a
+  format only a registered plugin could draw stayed greyed however many
+  plugins were loaded. Both now also accept `IsVectorGraphicsPath()`:
+  - the media viewer hosts the plugin's **own element** for such a file (a new
+    per-file `pluginView`, rebuilt on each load and dropped on the next),
+    rather than a bitmap of it - the same choice the 3D and PDF views make;
+  - the Filer's thumbnail worker falls back to `RasterizeVectorFile()`, inside
+    the mutex that already serializes vector drawing.
+- `GraphicsFormatDetector` files `ccx` and `cdt` as `Vector`. Missing from
+  that table they were `Unknown`, which is what the vector rasterizer tests
+  before it will touch a file - so a `.ccx` the CDR plugin draws perfectly
+  well was refused before the plugin was ever asked.
+- **`ULTRACANVAS_PLUGIN_VECTOR` defaults ON**, like every other format plugin.
+  It needs libvips, zlib and tinyxml2, which are core's own dependencies, so
+  it costs no new one - and off by default it took DXF, the DWG family, EMF
+  and WMF out of every build made the ordinary way, CI's included, so a file
+  manager could not read a drawing however it registered its plugins. The
+  Android phase-1 block still forces it off: libvips is not in that sysroot,
+  and this plugin needs it.
+- **Opening a CorelDRAW file could crash a shared Linux build, and the CDR
+  file had nothing to do with it.** MuPDF does not use stock Little-CMS: it
+  bundles the **lcms2mt** fork, whose every entry point takes an extra leading
+  context argument. Those objects come out of `libmupdf-third.a` with default
+  ELF visibility, so a shared `libUltraCanvas.so` re-exported
+  `cmsCreateTransform` and friends - and being earlier in the global lookup
+  scope than `liblcms2.so.2`, it silently captured every Little-CMS call made
+  by anything else in the process. libcdr makes one while parsing: its
+  six-argument `cmsCreateTransform(hInput, ...)` landed on the fork's
+  seven-argument one, every argument shifted by one, and `cmsGetColorSpace`
+  dereferenced what was meant to be a pixel-format integer. The MuPDF archives
+  are now linked with `--exclude-libs`, which localizes what they define and
+  leaves our own symbols (and `uc-yyjson`, `VirtualFS`) exported. Same class of
+  bug as the libjpeg version clash already noted in the PDF plugin's linkage,
+  and not fixable the same way, because MuPDF does not support building
+  against a system Little-CMS.
+- `CDRWriterTest` is what found it. Defaulting `ULTRACANVAS_PLUGIN_VECTOR` to
+  ON is what makes this test run in CI at all (it needs both that plugin and
+  the CDR one), and its first run segfaulted on both ubuntu-22.04 runners
+  while passing on 24.04. It now flushes each line as it prints, marks the
+  libcdr parse and the render, and null- and bounds-checks the cairo pixel
+  probes instead of dereferencing what `cairo_image_surface_get_data()` returns
+  on trust. It also installs a SIGSEGV/SIGABRT/SIGBUS handler that prints a
+  backtrace and is built with exported symbols - which is what named
+  `cmsGetColorSpace` inside `libUltraCanvas.so` as the faulting frame, with
+  `libcdr` two frames below it, and turned a platform-specific segfault into a
+  one-line linker fix.
+- `AutoFormatRegistrationTest` (new) calls no `Register*Plugin()` and checks
+  every built plugin is in the registry anyway, that the Vector plugin's
+  preview seam came with it, and that registering again is a no-op.
+
+#### 2026-09-17 *0.8.82*
+- **The file display can show a folder that is not on this machine.**
+  `UltraCanvasFilerWidget` gained two host hooks, **`isRemotePath`** and
+  **`remoteListing`**, so an application can carry a drive for an FTP server
+  or a cloud account and have the widget browse it. The widget takes on no
+  network dependency: it only asks, the way it already asks VirtualFS to list
+  the inside of an archive, and the new branch sits beside that one in the
+  folder scan.
+
+  `isRemotePath` is asked *before* the local filesystem is consulted, which is
+  the whole point of having it. Handing such a path to `std::filesystem` would
+  at best fail, and at worst - for a path that looks like a dead network mount
+  - block the UI thread until the OS times out.
+
+  `remoteListing` runs on the UI thread inside the scan, so a host that has to
+  go to the network answers from what it already holds and calls `Refresh()`
+  when the rest arrives; an empty listing with no error means "nothing yet".
+  A listing it refuses is reported like any other listing error. The widget
+  fills in each entry's extension and type information itself, so a remote
+  file gets the same icon and category as a local one of the same name, and
+  `listingIsRealDirectory` stays false - which turns off the two features that
+  read the local filesystem per entry, the folder previews and the in-use
+  column.
+
+  Writing into such a folder is refused rather than attempted: delete,
+  duplicate, rename, paste, new folder and new file now answer with a message
+  saying the drive can be browsed but not changed. Without that each would
+  reach `std::filesystem` with a path that resolves to nothing and fail with
+  an error about a missing file instead of an answer about where it was
+  pointed. See `Docs/UltraCanvas/UltraCanvasFilerWidget.md`.
+- **UltraCloud's add-account dialog can be narrowed to one kind of provider.**
+  `ShowAddAccountDialog` takes an optional provider filter and an optional
+  title, for a host that offers adding an FTP server and adding a cloud
+  account as two separate commands - the two are configured so differently (a
+  host and a password against a browser sign-in) that one combined list
+  explains neither. Both are defaulted, so the existing callers are unchanged;
+  a filter that would leave nothing to choose is ignored rather than producing
+  an empty form.
 #### 2026-09-17 *0.8.81*
 - **A folder of libraries looked exactly like a folder of programs.**
   `.exe`, `.dll`, `.so`, `.deb` and `.appimage` were one category with one

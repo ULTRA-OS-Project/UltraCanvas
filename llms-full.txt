@@ -20148,6 +20148,53 @@ does.
 Directories are never probed: what holds a folder open is usually a program's
 *working directory*, which no probe here can see.
 
+## Remote folders
+
+The widget can show a folder that is not on this machine — a drive the host
+carries for an FTP / SFTP server or a cloud account — through two hooks. It
+gains no network dependency of its own: it only asks, in the same spirit as
+the VirtualFS branch that lists the inside of an archive.
+
+```cpp
+filer->isRemotePath = [](const std::string& path) {
+    return path.compare(0, 13, "ultracloud://") == 0;
+};
+filer->remoteListing = [drives](const std::string& path,
+                                std::vector<FilerEntry>& out,
+                                std::string& error) {
+    return drives->List(path, out, error);   // from a cache, never blocking
+};
+```
+
+- **`isRemotePath` is asked first**, before the local filesystem is consulted.
+  That is the point of it: handing a remote path to `std::filesystem` would at
+  best fail, and at worst — for a path that looks like a dead network mount —
+  block the UI thread until the OS times out.
+- **`remoteListing` runs on the UI thread**, inside the folder scan. A host
+  that has to go to the network must answer from what it already holds,
+  returning an empty listing while a fetch is in flight, and call `Refresh()`
+  when the answer arrives. Blocking here freezes the window for as long as the
+  server takes.
+- **What an entry needs**: `name`, `path`, `isDirectory`, and for files `size`
+  and `modifiedTime`. The widget derives the extension and the type
+  information itself, so a remote file gets the same icon and category as a
+  local one of the same name.
+- **Returning `false`** with `error` set reports the message the way any
+  listing error is reported; returning `true` with an empty listing means
+  "nothing yet".
+- **Writing is refused.** Every command that would write into the displayed
+  folder — delete, duplicate, rename, paste, new folder, new file — answers
+  with a message instead when the listing is remote, because the widget has no
+  way to change one. Without that the command would reach `std::filesystem`
+  with a path that resolves to nothing and fail with an error about a missing
+  file rather than an answer about where it was pointed.
+- **`listingIsRealDirectory` stays false** for a remote listing, which turns
+  off the features that read the local filesystem per entry: the folder
+  previews and the in-use (lock) column.
+
+UltraFiler's remote drives are built on these two hooks; see
+`Apps/UltraFiler/UltraFilerRemoteDrives.h`.
+
 ## Folder listing prefetch
 
 With `SetFolderPrefetchEnabled` (default on), a low-priority worker pre-scans
@@ -55243,6 +55290,41 @@ RenderVectorPreviewPixmap("plan.dwg", 256, 256);  // a UCPixmap for a tile
 An application that registers no plugin is unchanged: the seam answers no to
 everything and the old two ways are all there is.
 
+## Registration: automatic, once, for every application
+
+Nothing above happens until the plugin is registered, and that used to be each
+application's job — which is why UltraFiler showed none of these formats while
+carrying every reader for them.
+
+Linking the **`UltraCanvasAllFormats`** object library is now the whole of it:
+every format plugin the build produced registers itself before `main()`, with
+no application code. CMake defines `ULTRACANVAS_HAS_<PLUGIN>` for each plugin
+target it actually built, and the registrar
+(`UltraCanvas/Plugins/UltraCanvasAllFormats.cpp`) calls what those defines
+admit exists. Adding a plugin to the framework reaches every application that
+links the library, instead of every application having to learn its name.
+
+It is an `OBJECT` library on purpose — a linker keeps only the object files of
+a static library that something references, and nothing references a
+registrar, so in a `.a` it would be dropped and the registration would
+silently never happen.
+
+Registration order is ownership order: the dedicated CDR, XAR and EPS viewer
+plugins register *after* this one, because the registry lets the last
+registration win a shared extension and for those formats they are the better
+reader. This plugin keeps what only it reads (DXF, the DWG family, EMF, WMF)
+and remains the only writer, since save dispatch matches on
+`GetSaveExtensions` rather than the extension map.
+
+```cpp
+// An application does this and nothing else:
+//     target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_LIBRARIES}
+//                                         UltraCanvasAllFormats)
+
+AutoRegisteredFormatPlugins();   // {"Vector","Models","CDR","XAR","EPS"}
+RegisterAllFormatPlugins();      // harmless: the automatic pass already ran
+```
+
 ## The graphics plugin (load and save through the registry)
 
 `UltraCanvasVectorFormatsPlugin` exposes the matrix to the framework's
@@ -62412,6 +62494,12 @@ The dialogs (`UltraCloudUI`):
 #include "UltraCloudPickerDialog.h"
 
 UltraCloud::ShowAddAccountDialog(window, cloud, [](const Account& added) { ... });
+
+// Narrowed to one kind of provider, with a title to match - what a host does
+// when it offers "add an FTP drive" and "add a cloud drive" as two commands.
+UltraCloud::ShowAddAccountDialog(window, cloud, onAdded,
+        [](const std::string& id) { return id == "ftp"; },
+        "Add an FTP / SFTP drive");
 UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
     InsertIntoBody(pick.entry.name + ": " + pick.link.url);
 });
@@ -62441,7 +62529,7 @@ providers.
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog`, `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (with an optional provider filter and title), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing

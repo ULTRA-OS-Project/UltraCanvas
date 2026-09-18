@@ -41,6 +41,8 @@
 #include "UltraCanvasSupportedFormats.h" // what the image pipeline can rasterize
 #include "UltraCanvasVectorPreview.h"   // the readers a registered plugin lends core
 #include "UltraCanvasVectorElement.h"   // the view a drawing is shown in
+#include "UltraCanvasVectorRaster.h"     // what a registered plugin can draw
+#include "UltraCanvasGraphicsPluginSystem.h" // LoadGraphicsFile, for a plugin view
 #include "Documents/eBook/TXTEngine.h" // RegisterBuiltinEBookEngines (idempotent)
 #ifdef ULTRACANVAS_PLUGIN_PDF
 #include "Plugins/Documents/UltraCanvasPDFView.h"
@@ -1306,7 +1308,8 @@ bool UltraCanvasMediaViewer::IsVectorDocumentFile(const std::string& path) {
     // previewable file at all and the pane stayed empty for it - even in a
     // build whose Vector plugin had just read the same drawing for the
     // FileLoader.
-    return CanPreviewVectorExtension(path) || FormatCarriesEmbeddedPreview(path);
+    return CanPreviewVectorExtension(path) || IsVectorGraphicsPath(path) ||
+           FormatCarriesEmbeddedPreview(path);
 }
 
 // Image / vector formats the image pipeline can rasterize. Kept in one place
@@ -1492,6 +1495,7 @@ void UltraCanvasMediaViewer::ReleaseViewBackends() {
     if (textView) static_cast<UltraCanvasTextArea*>(textView.get())->SetText("");
     // The document can be a large drawing; a closed preview must not keep it.
     if (vectorView) static_cast<UltraCanvasVectorElement*>(vectorView.get())->ClearDocument();
+    DropPluginView();
     if (surface) surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
     ucdDetails.clear();
     // A stopped clip is still an OPEN clip: the decoder keeps the file until
@@ -1571,6 +1575,16 @@ void UltraCanvasMediaViewer::GoTo(size_t index, bool animated) {
     LoadCurrent(animated);
 }
 
+void UltraCanvasMediaViewer::DropPluginView() {
+    if (!pluginView) return;
+    // Detached before the reference goes, so the element is not destroyed
+    // while it is still a child being laid out.
+    auto element = pluginView;
+    pluginView.reset();
+    element->SetVisible(false);
+    RemoveChild(element);
+}
+
 void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     activeKind = kind;
     if (surface)     surface->SetVisible(kind == MediaKind::Image);
@@ -1580,7 +1594,8 @@ void UltraCanvasMediaViewer::ShowView(MediaKind kind) {
     if (textView)    textView->SetVisible(kind == MediaKind::Text);
     if (bookView)    bookView->SetVisible(kind == MediaKind::Book);
     if (fontView)    fontView->SetVisible(kind == MediaKind::Font);
-    if (vectorView)  vectorView->SetVisible(kind == MediaKind::Vector);
+    if (vectorView)  vectorView->SetVisible(kind == MediaKind::Vector && !pluginView);
+    if (pluginView)  pluginView->SetVisible(kind == MediaKind::Vector);
     if (videoPlayer) videoPlayer->SetVisible(kind == MediaKind::Video);
     if (audioPlayer) audioPlayer->SetVisible(kind == MediaKind::Audio);
 }
@@ -1856,7 +1871,30 @@ void UltraCanvasMediaViewer::LoadCurrent(bool animated) {
             CanPreviewVectorExtension(path)) {
             drawing = LoadVectorPreviewDocument(path);
         }
-        if (drawing) {
+        // The previous file's plugin element, if there was one, goes now -
+        // whatever this file turns out to need, it is not that.
+        DropPluginView();
+
+        // (2b) A drawing no reader turns into a document, but a registered
+        // graphics plugin draws: CorelDRAW through libcdr, and anything else
+        // a plugin claims. The plugin's own element is the best view of it
+        // there is, so it is hosted rather than rasterized - the same choice
+        // the 3D and PDF views make.
+        if (!img || !img->IsValid()) {
+            if (!drawing && IsVectorGraphicsPath(path)) {
+                if (auto element = LoadGraphicsFile(path)) {
+                    element->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+                    pluginView = element;
+                    AddChild(pluginView);
+                }
+            }
+        }
+        if (pluginView) {
+            ShowView(MediaKind::Vector);
+            surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
+            handled = true;
+        } else if (drawing) {
             ShowView(MediaKind::Vector);
             surface->ShowImage(nullptr, MediaTransition::NoTransition, 0, false);
             auto* vv = static_cast<UltraCanvasVectorElement*>(vectorView.get());
@@ -2558,7 +2596,8 @@ UltraCanvasUIElement* UltraCanvasMediaViewer::ActiveViewElement() const {
         case MediaKind::Text:     return textView.get();
         case MediaKind::Book:     return bookView.get();
         case MediaKind::Font:     return fontView.get();
-        case MediaKind::Vector:   return vectorView.get();
+        case MediaKind::Vector:   return pluginView ? pluginView.get()
+                                                    : vectorView.get();
         case MediaKind::Video:    return videoPlayer.get();
         case MediaKind::Audio:    return audioPlayer.get();
         case MediaKind::Image:
@@ -2571,7 +2610,7 @@ bool UltraCanvasMediaViewer::IsDisplayView(const UltraCanvasUIElement* element) 
     return element == surface.get()     || element == pdfView.get() ||
            element == sheetView.get()   || element == modelView.get() ||
            element == textView.get()    || element == bookView.get() ||
-           element == vectorView.get()  ||
+           element == vectorView.get()  || element == pluginView.get() ||
            element == videoPlayer.get() || element == audioPlayer.get();
 }
 
