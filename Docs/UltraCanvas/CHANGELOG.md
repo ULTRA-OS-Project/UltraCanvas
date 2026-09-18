@@ -1,3 +1,59 @@
+#### 2026-09-18 *0.8.85*
+- **`UltraCanvasMoney`: an amount that is still right after the arithmetic.**
+  `int64_t` minor units plus an ISO 4217 code, header-only
+  (`include/UltraCanvasMoney.h`), free of every other UltraCanvas header - so a
+  headless engine, a test target and the UI all use one definition. The
+  framework's only currency type until now was `CurrencyValue`, a `double` in
+  the spreadsheet types; it stays what it is, a cell value, and nothing that
+  keeps a balance should use it. `Docs/UltraCanvas/UltraCanvasMoney.md`,
+  `Tests/MoneyTests.cpp` (target `MoneyTests`, 118 checks).
+  - **Rates are applied exactly.** Every multiply and divide goes through
+    `MoneyMulDiv`, which forms the full 128-bit product in 32-bit limbs and
+    divides it bitwise with *kaufmaennische Rundung* - half away from zero, so
+    2,5 becomes 3 and -2,5 becomes -3, which is the rounding German tax
+    arithmetic does. No `__int128`, no intrinsic, identical on every platform,
+    and overflow is reported rather than wrapped. The carry out of bit 63 is
+    handled explicitly, because the shift-and-subtract loop that ignores it is
+    wrong for divisors above 2^63 and right for every divisor anyone tests
+    with.
+  - **The VAT identities hold by construction.** `TaxOnNet`, `GrossFromNet`,
+    `TaxInGross` and `NetFromGross` take the rate in permille (190 is 19 %, 25
+    is 2,5 %), and `NetFromGross` is defined as the gross minus the contained
+    tax rather than as its own division - which is what keeps
+    `net + tax == gross` true whatever the rounding did. The tests assert both
+    identities across a matrix of rates and amounts, down to one cent at 19 %.
+  - **A split sums to the whole.** `SplitProportionally` distributes by largest
+    remainder, so 100,00 over three positions is 33,34 / 33,33 / 33,33 and a
+    discount spread over invoice lines cannot lose a cent. Negative amounts
+    (credit notes) split with the sign; degenerate input returns nothing rather
+    than something wrong.
+  - **Three text styles, no locale.** German `1.234,56` for the UI, plain
+    `1234.56` for dot-decimal file formats, and `1234,56` for DATEV's
+    comma-decimal CSV columns - chosen by the destination, never inherited from
+    the process. Digits are assembled from the integer, so `LC_NUMERIC` cannot
+    reach them: this is the one numeric type in the tree that cannot acquire
+    the decimal-separator bug the Linux backend's `setlocale(LC_ALL, "")` has
+    already caused twice. Parsing accepts what people and files actually write
+    (grouping, parentheses for negative, a trailing symbol, finer decimals
+    rounded half away from zero), and the two machine styles are deliberately
+    strict - a misplaced grouping separator fails the parse, because an
+    importer that misreads an amount does more damage than one that rejects a
+    line.
+  - Invalidity replaces exceptions and is sticky: a currency mismatch, a failed
+    parse or an overflow yields an invalid amount that propagates through the
+    arithmetic and formats as an empty string, never as `0,00`. One check at
+    the end of a calculation is enough, and a mismatch can never print as a
+    plausible wrong number.
+- **The UI element catalogue no longer names an element that does not exist.**
+  `Docs/UltraCanvas/UltraCanvasUIElements.md` listed `UltraCanvasTableView`
+  with "matching `*.h`"; there is no such header anywhere in the tree, and
+  `UltraCanvasListView` has no column API at all. The row now names
+  `UltraCanvasColumnsTreeView`, which is what actually draws columns today. A
+  real data grid - sort, filter, badge and checkbox cells, inline editing,
+  virtualisation, footer aggregates - is proposed in
+  `Docs/Research/UltraFIBUDesignProposal.md` §3.3; until it exists the
+  catalogue should send readers to the element that does.
+
 #### 2026-09-18 *0.8.84*
 - **New design proposal: UltraFIBU, a German double-entry accounting
   application** (`Docs/Research/UltraFIBUDesignProposal.md`). DATEV import and

@@ -1233,6 +1233,20 @@ if (BUILD_TESTS)
     add_test(NAME JSONTests COMMAND JSONTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
+    # UltraCanvasMoney unit tests. The subject is header-only and free of every
+    # other UltraCanvas header, so this target compiles one file and links
+    # nothing - which is the point: the money arithmetic an accounting
+    # application depends on is verifiable without the UI stack.
+    add_executable(MoneyTests Tests/MoneyTests.cpp)
+    target_include_directories(MoneyTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
+    target_compile_features(MoneyTests PRIVATE cxx_std_20)
+    set_target_properties(MoneyTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MoneyTests COMMAND MoneyTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
     # Hardware inventory tests: formatters, identifier masking, the query
     # selector, report shape and the invariants a live capture must hold.
     # Compiles the module and its platform probe only, so it runs headless.
