@@ -42,10 +42,50 @@ namespace UltraCanvas {
         scrollOffsetY = 0;
         hoveredRow = -1;
         focusedRow = -1;
+        // A new model means new columns; drop any per-view width overrides so a
+        // stale override can't mis-size a different column set.
+        columnWidthOverrides.clear();
+        userAdjustedColumns = false;
         if (selection) selection->Clear();
         InvalidateRowGeometry();
         UpdateScrollbar();
         RequestRedraw();
+    }
+
+    // ===== COLUMN WIDTHS =====
+    int UltraCanvasListView::GetColumnWidth(int column) const {
+        if (column >= 0 && column < static_cast<int>(columnWidthOverrides.size()) &&
+            columnWidthOverrides[column] >= 0)
+            return columnWidthOverrides[column];
+        return model ? model->GetColumnDef(column).width : 0;
+    }
+
+    void UltraCanvasListView::SetColumnWidth(int column, int width) {
+        if (column < 0) return;
+        static constexpr int kMinColumnWidth = 24;
+        if (width < kMinColumnWidth) width = kMinColumnWidth;
+        if (static_cast<int>(columnWidthOverrides.size()) <= column)
+            columnWidthOverrides.resize(column + 1, -1);
+        if (columnWidthOverrides[column] == width) return;
+        columnWidthOverrides[column] = width;
+        InvalidateRowGeometry();
+        UpdateScrollbar();
+        RequestRedraw();
+    }
+
+    int UltraCanvasListView::ColumnBoundaryAt(int x, int y) const {
+        if (!model || !viewStyle.showHeader || !columnsResizable) return -1;
+        int colCount = model->GetColumnCount();
+        if (colCount < 2) return -1;
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
+        if (y < localContentY || y >= localContentY + viewStyle.headerHeight) return -1;
+        int colX = localContentX;
+        for (int col = 0; col + 1 < colCount; ++col) {
+            colX += GetColumnWidth(col);
+            if (x >= colX - 4 && x <= colX + 4) return col;   // ~4px hot zone
+        }
+        return -1;
     }
 
     IListModel* UltraCanvasListView::GetModel() const {
@@ -345,7 +385,7 @@ namespace UltraCanvas {
         }
         int colX = viewport.x;
         for (int col = 0; col < colCount; col++) {
-            int colW = model->GetColumnDef(col).width;
+            int colW = GetColumnWidth(col);
             if (x < colX + colW) {
                 if (columnStartX) *columnStartX = colX;
                 return col;
@@ -369,7 +409,7 @@ namespace UltraCanvas {
         int colX = localContentX;
         int colCount = model->GetColumnCount();
         for (int col = 0; col < colCount; col++) {
-            int colW = model->GetColumnDef(col).width;
+            int colW = GetColumnWidth(col);
             if (x < colX + colW) {
                 if (columnStartX) *columnStartX = colX;
                 return col;
@@ -471,16 +511,20 @@ namespace UltraCanvas {
         int colCount = model->GetColumnCount();
         for (int col = 0; col < colCount; col++) {
             auto colDef = model->GetColumnDef(col);
+            int colW = GetColumnWidth(col);
             ctx->SetTextAlignment(colDef.alignment);
-            ctx->DrawTextInRect(colDef.title, Rect2Dd(colX + 4, headerRect.y, colDef.width - 8, headerRect.height));
+            ctx->SetTextPaint(viewStyle.headerTextColor);
+            ctx->DrawTextInRect(colDef.title, Rect2Dd(colX + 4, headerRect.y, colW - 8, headerRect.height));
 
-            // Grid line between columns
-            if (viewStyle.showGridLines && col < colCount - 1) {
+            // Separator between columns: the resize boundary. Drawn for every
+            // interior border (not only when showGridLines) so the draggable
+            // edge is discoverable in the header.
+            if (col < colCount - 1) {
                 ctx->SetStrokePaint(viewStyle.gridLineColor);
-                ctx->DrawLine({colX + colDef.width, headerRect.y}, {colX + colDef.width, headerRect.Bottom()});
+                ctx->DrawLine({colX + colW, headerRect.y}, {colX + colW, headerRect.Bottom()});
             }
 
-            colX += colDef.width;
+            colX += colW;
         }
 
         // Bottom border of header
@@ -556,6 +600,7 @@ namespace UltraCanvas {
                 int colX = viewport.x;
                 for (int col = 0; col < colCount; col++) {
                     auto colDef = model->GetColumnDef(col);
+                    int colW = GetColumnWidth(col);
 
                     ListItemStyleOption opt;
                     opt.rect = Rect2Di(viewport.x, rowY, viewport.width, rowH);
@@ -567,22 +612,22 @@ namespace UltraCanvas {
                     opt.column = col;
                     opt.columnCount = colCount;
                     opt.columnX = colX;
-                    opt.columnWidth = colDef.width;
+                    opt.columnWidth = colW;
                     opt.columnAlignment = colDef.alignment;
 
                     ctx->PushState();
-                    ctx->ClipRect({colX, rowY, colDef.width, rowH});
+                    ctx->ClipRect({colX, rowY, colW, rowH});
                     delegate->RenderItem(ctx, model.get(), row, col, opt);
                     ctx->PopState();
 
                     // Grid line between columns
                     if (viewStyle.showGridLines && col < colCount - 1) {
                         ctx->SetStrokePaint(viewStyle.gridLineColor);
-                        ctx->DrawLine({colX + colDef.width, rowY},
-                                      {colX + colDef.width, rowY + rowH});
+                        ctx->DrawLine({colX + colW, rowY},
+                                      {colX + colW, rowY + rowH});
                     }
 
-                    colX += colDef.width;
+                    colX += colW;
                 }
             }
         }
@@ -611,6 +656,47 @@ namespace UltraCanvas {
                     }
                     return true;
                 }
+            }
+        }
+
+        // Interactive column resize (multi-column header). Handled before row
+        // hit-testing so grabbing a border never selects a row. A drag keeps the
+        // mouse captured, so moves/ups arrive even outside the element.
+        if (columnsResizable) {
+            switch (event.type) {
+                case UCEventType::MouseDown: {
+                    int col = Contains(event.pointer)
+                                  ? ColumnBoundaryAt(event.pointer.x, event.pointer.y) : -1;
+                    if (col >= 0) {
+                        resizeCol = col;
+                        resizeStartX = event.pointer.x;
+                        resizeStartW = GetColumnWidth(col);
+                        if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+                        return true;
+                    }
+                    break;
+                }
+                case UCEventType::MouseMove:
+                    if (resizeCol >= 0) {
+                        SetColumnWidth(resizeCol, resizeStartW + (event.pointer.x - resizeStartX));
+                        userAdjustedColumns = true;
+                        return true;
+                    }
+                    // Hover affordance over a resizable border.
+                    SetMouseCursor(
+                        (Contains(event.pointer) &&
+                         ColumnBoundaryAt(event.pointer.x, event.pointer.y) >= 0)
+                            ? UCMouseCursor::SizeWE : UCMouseCursor::Default);
+                    break;
+                case UCEventType::MouseUp:
+                    if (resizeCol >= 0) {
+                        resizeCol = -1;
+                        if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+                        return true;
+                    }
+                    break;
+                default:
+                    break;
             }
         }
 
