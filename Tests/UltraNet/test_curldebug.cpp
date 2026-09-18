@@ -1,15 +1,15 @@
 // Tests/UltraNet/test_curldebug.cpp
-// Covers ultranet_curldebug: the opt-in libcurl trace used to debug a mail
-// account that will not connect.
-//
-// Two properties are worth pinning. It is OFF unless asked for - a trace is a
-// user's mail session. And what it prints is redacted: a trace pasted into a
-// bug report must not carry the password, which for AUTH LOGIN arrives as a
-// bare base64 line with no keyword on it to match.
+// Unit tests for the opt-in curl wire-trace redaction rule
+// (ultranet_curldebug::ShouldRedact). The security property under test: an
+// outbound AUTH / SASL line — which carries the XOAUTH2 bearer token or the
+// account password — must never be logged, while ordinary commands and every
+// inbound server response are kept so the trace is actually useful for
+// diagnosing where an SMTP / IMAP session fails.
 #include "test_framework.h"
 
 #include <UltraNet/UltraNetCurlDebug.h>
 
+using ultranet_curldebug::ShouldRedact;
 #include <cstdlib>
 #include <string>
 
@@ -70,11 +70,27 @@ TEST(CurlDebug_RedactsSmtpAuth) {
     REQUIRE_EQ(Redact("AUTH LOGIN"), std::string("AUTH LOGIN"));
 }
 
+TEST(curldebug_redacts_outbound_auth) {
+    // The AUTH command and its base64 SASL initial response (client -> server).
+    CHECK(ShouldRedact(CURLINFO_HEADER_OUT,
+                       "AUTH XOAUTH2 dXNlcj1mb29AYmFyLmNvbQFhdXRoPUJlYXJlciB4"));
+    CHECK(ShouldRedact(CURLINFO_HEADER_OUT, "AUTH LOGIN"));
+    CHECK(ShouldRedact(CURLINFO_HEADER_OUT, "A001 AUTHENTICATE XOAUTH2"));  // IMAP form
+    // A bare base64 continuation has no keyword, but is far longer than any real
+    // SMTP/IMAP command — the length rule catches it.
+    const std::string blob(200, 'x');
+    CHECK(ShouldRedact(CURLINFO_HEADER_OUT, blob));
 TEST(CurlDebug_RedactsTheBareBase64OfAuthLogin) {
     // The password arrives on a line of its own, with no keyword to match.
     REQUIRE_EQ(Redact("cGFzc3dvcmQxMjM="), std::string("<redacted>"));
 }
 
+TEST(curldebug_keeps_outbound_commands) {
+    CHECK(!ShouldRedact(CURLINFO_HEADER_OUT, "EHLO client.example.com"));
+    CHECK(!ShouldRedact(CURLINFO_HEADER_OUT, "MAIL FROM:<erika@example.com>"));
+    CHECK(!ShouldRedact(CURLINFO_HEADER_OUT, "RCPT TO:<bob@example.net>"));
+    CHECK(!ShouldRedact(CURLINFO_HEADER_OUT, "DATA"));
+    CHECK(!ShouldRedact(CURLINFO_HEADER_OUT, "QUIT"));
 TEST(CurlDebug_RedactsImapAndPop3Credentials) {
     REQUIRE_EQ(Redact("a003 LOGIN erika s3cret"),
                std::string("a003 LOGIN <redacted>"));
@@ -83,11 +99,25 @@ TEST(CurlDebug_RedactsImapAndPop3Credentials) {
     REQUIRE_EQ(Redact("PASS s3cret"), std::string("PASS <redacted>"));
 }
 
+TEST(curldebug_keeps_all_inbound_responses) {
+    // Server responses are never redacted — even when they mention AUTH — because
+    // they are exactly what a trace is read for. The EHLO capability line and the
+    // "334" AUTH error challenge must survive.
+    CHECK(!ShouldRedact(CURLINFO_HEADER_IN, "220 smtp.gmail.com ESMTP ready"));
+    CHECK(!ShouldRedact(CURLINFO_HEADER_IN, "250-smtp.gmail.com at your service"));
+    CHECK(!ShouldRedact(CURLINFO_HEADER_IN, "250-AUTH LOGIN PLAIN XOAUTH2"));
+    CHECK(!ShouldRedact(CURLINFO_HEADER_IN, "334 eyJzdGF0dXMiOiI0MDEiLCJzY2hlbWVz"));
+    CHECK(!ShouldRedact(CURLINFO_HEADER_IN, "535-5.7.8 Username and Password not accepted"));
 TEST(CurlDebug_RedactsAnAuthorizationHeader) {
     REQUIRE_EQ(Redact("Authorization: Bearer ya29.a0AfH6"),
                std::string("Authorization: <redacted>"));
 }
 
+TEST(curldebug_keeps_curl_commentary) {
+    // curl's own text (connect / TLS handshake notes) — the most useful lines for
+    // spotting a TLS-vs-plaintext-port mismatch — are kept.
+    CHECK(!ShouldRedact(CURLINFO_TEXT, "Trying 142.250.1.108:465..."));
+    CHECK(!ShouldRedact(CURLINFO_TEXT, "SSL connection using TLSv1.3 / AEAD-CHACHA20"));
 TEST(CurlDebug_KeepsTheServerReplyThatExplainsTheFailure) {
     // The whole point of the trace: these lines must survive intact.
     const std::string syntax = "555 5.5.2 Syntax error, goodbye";
