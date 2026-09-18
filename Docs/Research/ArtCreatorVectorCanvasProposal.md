@@ -1,6 +1,6 @@
 # ArtCreator and a public `UltraCanvasVectorCanvas` — Investigation and Proposal
 
-**Status:** phases 0–3 implemented (framework 0.8.51, ArtCreator 0.1.0); phases 4–5 open
+**Status:** phases 0–4 implemented (framework 0.8.84, ArtCreator 0.2.0); phase 5 open
 **Date:** 2026-09-15
 **Scope:** a new application, `Apps/ArtCreator`, a vector graphics editor of
 the Xara Designer / ArtWorks class, and the question of whether the editing
@@ -544,7 +544,7 @@ further ahead on the model and further behind on the render context.
 | **1. Render context** | blend modes, groups with opacity / mask, `IsPointInFill/Stroke`, stroke extents, CTM readback, pattern-from-pixmap + matrix, conic / mesh gradients, text path | ~900 lines + tests | — |
 | **2. Core editing layer** | `VectorSelection`, `VectorHistory`, `VectorHitTest`, `UltraCanvasBezierPath`, `VectorEditOps` (transform, arrange, group, align), `UltraCanvasVectorCanvas` with rulers / guides / grid / snap / handles, `UltraCanvasGradientEditor`; catalogue entries, docs, a DemoApp page | ~5 k lines | 0, 1 (parts) |
 | **3. ArtCreator 0.1** | the 13 tools of §4.5, panels, layers, pages UI (single page), import via converters, save as SVG, export via the matrix and `UltraCanvasVectorRaster` | ~5–6 k lines | 2 |
-| **4. Xara-class effects** | effects in the model, per-object raster caches with blur, shadow / feather / transparency tools, multi-stage fills, XAR round trip of effects, unify the two XAR readers, arrowheads / brushes / variable width | ~4 k lines | 1, 3 |
+| **4. Xara-class effects** — *done in 0.8.84 / ArtCreator 0.2.0* | effects in the model, per-object raster caches with blur, shadow / feather / transparency tools, multi-stage fills, XAR round trip of effects, unify the two XAR readers (the converter now reads through the XAR plugin's `XARDocument`), arrowheads / brushes / variable width (arrowheads and width profiles bake into XAR as shapes; brushes render but are not written) | ~4 k lines | 1, 3 |
 | **5. Depth** | bevel, contour (offsetting), blend, mould, ClipView tool, booleans, text on path and text areas, pages and spreads, colour gallery with linked shades, symbols, photo tool over the raster bridge, live effects via PixelFX, trace-to-vector | open-ended | 4 |
 
 Phases 0 and 1 are independent and small; they are also useful on their
@@ -570,11 +570,19 @@ element, and it ships with a demo page before any application uses it.
    **UCD v2 `UCVector` section** (`Docs/UltraCanvas/UCD-FileFormat-v2.md`),
    a container that can also hold the raster layers and thumbnails.
    Proposal: SVG for 0.1, XAR as the interchange target, UCD when effects
-   land — decide before phase 4.
+   land — decide before phase 4. **Decided with phase 4: XAR is the native
+   format** (ArtCreator 0.2.0 saves it first); it carries the effects,
+   multistage fills and transparency ramps natively and Xara opens it.
+   SVG stays the interchange format for shapes, fills and text. UCD is
+   not needed for the drawing alone; it remains the option if raster
+   layers and thumbnails join the file.
 3. **Where the XAR viewer goes.** Once the model holds Xara's effects and
    the converter reads compressed files, `UltraCanvasXARElement` is a
    second renderer of the same data. Keep it as the fidelity reference
    (`XARFidelityTest` compares against Designer Pro exports) or retire it.
+   *After phase 4:* the reader is shared (the converter translates the
+   plugin's node tree), so the only duplication left is the viewer's own
+   renderer; it stays as the fidelity reference for now.
 4. **Path booleans.** Write a clipper or vendor one. The dependency policy
    (`Docs/Dependencies.md`) and licence record decide; a Vatti / Martinez
    implementation is a bounded piece of work if vendoring is refused.

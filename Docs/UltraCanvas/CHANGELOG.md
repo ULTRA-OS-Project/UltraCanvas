@@ -1,3 +1,47 @@
+#### 2026-09-18 *0.8.84*
+- **Xara-class effects in the vector model, renderer and XAR converter** -
+  phase 4 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`; the
+  application half is ArtCreator 0.2.0.
+  - *Model* (`DataFormats/UltraCanvasVectorStorage.h`):
+    `VectorElement::Effects` carries an optional `ShadowEffect` (wall,
+    floor or glow: offset, penumbra, colour, darkness) and `FeatherEffect`
+    (radius). `VectorStyle::Transparency` is a Xara-style level ramp
+    (flat, linear, radial, conical; level 0 opaque, 1 clear) with a mix
+    (stained glass, bleach, contrast, saturation, darken, lighten,
+    brightness, luminosity, hue) beside the flat `Opacity`. `StrokeData`
+    gains the line gallery: `StartArrow` / `EndArrow` (six kinds, scaled
+    from the line width), a `WidthProfile` of samples along the path and a
+    vector `Brush` stamped along it. `BuildOutlinePath`, `FlattenPathData`,
+    `PathEndpoints`, `ArrowheadOutline` and `VariableWidthOutline` are the
+    shared geometry (the editing layer's `OutlineOf` delegates;
+    `PathOps::SegsToPathData` is public).
+  - *Renderer*: an element with effects renders through groups. The shadow
+    and the feather come from a raster of the element's silhouette, drawn
+    black offscreen at the device scale, blurred with three box passes and
+    cached per object (`ClearCaches`, `EffectCacheSize`; replaced when the
+    geometry, blur or zoom changes). A shadow paints it as a colour mask
+    at its offset, squashed and sheared for floor shadows; a feather masks
+    the element's group with it; a transparency ramp masks the group with
+    an alpha gradient and paints it with the mix's blend operator.
+    Arrowheads, width bands and brush stamps come from the outline.
+  - *XAR converter*: reads through the XAR plugin's `XARDocument` - the
+    spec-verified parser, compressed files included - translated into
+    the model, replacing the converter's own uncompressed-only reader
+    and the older dead one; without `ULTRACANVAS_PLUGIN_XAR` it only
+    writes. Multistage fills, conical fills, transparency ramps with their
+    mixes, line transparency, shadow controllers and feather attributes
+    round trip; bounding-box gradient units resolve against the object;
+    arrowheads and width profiles are written as filled shapes. What the
+    reader cannot represent is counted in one warning. The Vector plugin
+    links the XAR plugin publicly when it is built, and the capability
+    flags say what is written.
+  - *Tests*: `VectorModelTest` renders every effect and checks pixels,
+    the ramp and profile interpolation and the raster cache;
+    `XARWriterTest` round-trips a four-stop gradient with a bleach ramp
+    and a wall shadow, a feathered circle, an arrowed line and a tapered
+    polyline through the plugin's reader and back through the converter;
+    `VectorFormatsPluginTest` pins the new flags.
+
 #### 2026-09-17 *0.8.83*
 - **A format plugin read nothing until an application named it.** Registration
   was per-application boilerplate, so UltraFiler registered none and every
