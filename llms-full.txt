@@ -23151,12 +23151,17 @@ coordinate, and a longer caption widens the column instead of clipping.
 
 | Call | What it makes |
 |---|---|
-| `CreateFormGrid(id, rowGap, columnGap)` | The grid: columns `[auto, 1fr]`, items centred vertically, stretched into its parent. Add it to the window or section. |
+| `CreateFormGrid(id, rowGap, columnGap)` | The grid: columns `[auto, 1fr]`, items centred vertically, stretched into its parent, and never scrolling. Add it to the window or section. |
 | `AddFormRow(grid, id, "Caption:", control)` | A row. Returns the caption label, so a caller that hides rows can hide the caption with them. |
 | `AddFormRow(grid, caption, control)` | The same with a caption the caller built (to restyle it, or to keep a pointer). |
 | `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
 | `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
 | `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+
+The grid does not scroll: whatever needs to, the pane or dialog around it
+does. A grid left on the container default would raise a scrollbar for a row
+a pixel taller than its track, and the bar - plus the second one its own width
+brings on - covers that row.
 
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
