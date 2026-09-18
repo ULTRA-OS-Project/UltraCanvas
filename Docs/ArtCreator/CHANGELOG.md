@@ -16,8 +16,10 @@
     renderer paints as the matching blend mode. Flat transparency with
     the normal mix stays plain opacity.
   - **Line panel**: width, an arrowhead for each end (triangle, open
-    arrow, circle, square, diamond, bar, and Xara's angled, rounded,
-    feather, feather 2 and hollow diamond) and their size, a width profile
+    arrow, circle, square, diamond, bar, and Xara's eight stock
+    arrowheads - straight, angled, rounded, spot, diamond, feather,
+    feather 2, hollow diamond - drawn with Xara's own shapes and sizes)
+    and their size, a width profile
     (taper to either end, both, bulge) and a brush (dots, dashes, hearts
     stamped along the path, in the line colour). It applies to the
     selection and to every line, rectangle, ellipse and path drawn
@@ -28,8 +30,9 @@
   framework's XAR converter now reads through the XAR plugin's parser,
   so compressed Xara files open too). SVG remains for shapes, fills and
   text without the effects. The line gallery round-trips as well:
-  Xara's own arrowheads are saved as Xara arrowheads (and a Xara drawing's
-  default arrowheads open as the matching kinds); the other arrowheads,
+  Xara's stock arrowheads are saved as Xara arrowheads with their size
+  (and a Xara drawing's arrowheads open as the same kinds at the same
+  size, at either end); the other arrowheads,
   width profiles and brushes are saved as plain shapes - the brush as its
   stamped copies - marked with a Xara user value, so Xara shows them as
   drawn and ArtCreator reads them back as the stroke they were.
@@ -38,8 +41,7 @@
   the Windows `.exe` icon are made from is re-rendered from it.
 - Not in this release (phase 5 of the proposal): bevel, contour, blend,
   mould, ClipView, path booleans, text on path, pages, editable brushes,
-  a live-effects gallery. A custom arrowhead defined in a Xara file (not
-  one of the defaults) opens as the triangle.
+  a live-effects gallery.
 
 #### 2026-09-15 *0.1.0*
 - **First release of ArtCreator, a vector drawing editor of the Xara

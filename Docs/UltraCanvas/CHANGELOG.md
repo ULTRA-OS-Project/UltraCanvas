@@ -9,11 +9,13 @@
     (flat, linear, radial, conical; level 0 opaque, 1 clear) with a mix
     (stained glass, bleach, contrast, saturation, darken, lighten,
     brightness, luminosity, hue) beside the flat `Opacity`. `StrokeData`
-    gains the line gallery: `StartArrow` / `EndArrow` (twelve kinds -
-    the six gallery shapes and Xara's own straight, angled, rounded,
-    spot, diamond, feather, feather 2 and hollow diamond - scaled from the
-    line width), a `WidthProfile` of samples along the path and a vector
-    `Brush` stamped along it. `BuildOutlinePath`, `FlattenPathData`,
+    gains the line gallery: `StartArrow` / `EndArrow` (fourteen kinds:
+    six gallery shapes with the tip on the line's end, and Xara's eight
+    stock arrowheads - straight, angled, rounded, spot, diamond, feather,
+    feather 2, hollow diamond - with Xara's own geometry and placement,
+    taken from its source, where Scale 1 is Xara's default size;
+    `IsXaraArrowhead`), a `WidthProfile` of samples along the path and a
+    vector `Brush` stamped along it. `BuildOutlinePath`, `FlattenPathData`,
     `PathEndpoints`, `ArrowheadOutline` and `VariableWidthOutline` are the
     shared geometry (the editing layer's `OutlineOf` delegates;
     `PathOps::SegsToPathData` is public).
@@ -33,21 +35,22 @@
     writes. Multistage fills, conical fills, transparency ramps with their
     mixes, line transparency, shadow controllers and feather attributes
     round trip; bounding-box gradient units resolve against the object.
-    The line gallery round-trips too: Xara's own arrowheads are written
-    as `TAG_ARROWHEAD` / `TAG_ARROWTAIL` line attributes (the default
-    definitions' negative references, numbered as in Xara LX - the repo's
-    Xara samples carry no arrowheads, so the numbering is not yet checked
-    against a Designer export) and read back as the same kinds; every
+    The line gallery round-trips too: Xara's stock arrowheads are
+    written as `TAG_ARROWHEAD` (the path's start) / `TAG_ARROWTAIL` (its
+    end) line attributes exactly as Xara's own source writes them - an
+    INT32 stock reference (-2 straight .. -9 hollow diamond) and two
+    FIXED16 scales (Xara's arrow size, 3 by default, so the model's Scale
+    times 3) - and read back as the same kinds at the same size; every
     other arrowhead, a width profile and a brush are baked into plain
     shapes - the brush as one group per stamped copy, exactly what the
     renderer draws - under a group that carries a `TAG_USERVALUE`
     (`UltraCanvas.LineGallery`) describing the stroke, so Xara shows the
     shapes, keeps the value, and the converter rebuilds the stroke from
-    it on the way back (the brush stamp is the first copy, un-placed). An
-    arrowhead scale other than one travels in an `UltraCanvas.ArrowScale`
-    user value. A custom `TAG_DEFINEARROW` reference still reads as the
-    triangle. What the reader cannot represent is counted in one
-    warning. The Vector plugin
+    it on the way back (the brush stamp is the first copy, un-placed).
+    `TAG_DEFINEARROW` is a tag Xara defines but never writes or reads; a
+    positive reference is read as the straight arrow and reported. What
+    the reader cannot represent is counted in one warning. The Vector
+    plugin
     links the XAR plugin publicly when it is built, and the capability
     flags say what is written.
   - *Tests*: `VectorModelTest` renders every effect and checks pixels,
@@ -59,9 +62,12 @@
     checking the strokes come back as strokes; `VectorFormatsPluginTest`
     pins the new flags.
   - *XAR plugin*: `TAG_USERVALUE` records are parsed (two UTF-16 strings)
-    into `XARNode::userValues` instead of being skipped, and a line
-    attribute's `startArrowRef` / `endArrowRef` default to 0 (none)
-    rather than -1.
+    into `XARNode::userValues` instead of being skipped. Arrowhead
+    records read their full 12 bytes into `XARLineAttribute` - the
+    reference (default 0, none) and the width / height scales (default
+    3) - and `TAG_ARROWHEAD` now lands on the start of the path and
+    `TAG_ARROWTAIL` on its end, as Xara's `AttrStartArrow` /
+    `AttrEndArrow` write them (they were swapped).
 
 #### 2026-09-17 *0.8.83*
 - **A format plugin read nothing until an application named it.** Registration

@@ -284,18 +284,25 @@ namespace UltraCanvas {
 // ===== LINE GALLERY (arrowheads, width profiles, brushes) =====
 
         // A gallery arrowhead at one end of a stroke, drawn in the stroke's
-        // paint and sized from the line width: at Scale 1 a Triangle is four
-        // widths long and two wide. OpenArrow is the unfilled chevron; Bar is
-        // the perpendicular tick. The second row are Xara's default
-        // arrowheads (the XAR converter writes them as Xara's own line
-        // attributes): AngledArrow is swept back with a notch, RoundedArrow
-        // has a round back, Feather and Feather2 are fletchings,
-        // HollowDiamond is an outlined diamond. Scale 0 draws nothing.
+        // paint and sized from the line width. The first row is this
+        // framework's own gallery, the tip on the line's end: at Scale 1 a
+        // Triangle is four widths long and two wide; OpenArrow is the
+        // unfilled chevron, Bar the perpendicular tick. The second row are
+        // Xara's eight default arrowheads with Xara's own geometry and
+        // placement (they reach past the line's end, as in Xara; Spot and
+        // SolidDiamond sit centred on it) - the XAR converter writes them as
+        // Xara's own line attributes. For them Scale 1 is Xara's default
+        // arrow size (its size 3: a StraightArrow is 10.5 widths long).
+        // Scale 0 draws nothing.
         enum class ArrowheadKind {
             NoArrowhead, Triangle, OpenArrow, Circle, Square, Diamond, Bar,
-            AngledArrow, RoundedArrow, Feather, Feather2, HollowDiamond
+            StraightArrow, AngledArrow, RoundedArrow, Spot, SolidDiamond,
+            Feather, Feather2, HollowDiamond
         };
-        constexpr int ArrowheadKindCount = 12;
+        constexpr int ArrowheadKindCount = 15;
+        constexpr bool IsXaraArrowhead(ArrowheadKind k) {
+            return k >= ArrowheadKind::StraightArrow && k <= ArrowheadKind::HollowDiamond;
+        }
         struct ArrowheadData {
             ArrowheadKind Kind = ArrowheadKind::NoArrowhead;
             float Scale = 1.0f;

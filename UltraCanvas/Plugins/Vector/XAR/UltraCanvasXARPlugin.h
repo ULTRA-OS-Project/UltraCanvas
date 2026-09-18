@@ -1,6 +1,6 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.h
 // Xara XAR vector graphics format plugin for UltraCanvas
-// Version: 2.2.0
+// Version: 2.3.0
 // Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 //
@@ -619,10 +619,20 @@ namespace UltraCanvas {
         LineJoin join = LineJoin::Miter;
         float mitreLimit = 4.0f;
         std::vector<double> dashPattern;        // pixels (UCDashPattern uses double)
-        // 0: no arrowhead record seen. Xara's default arrowheads are the
-        // negative references (Appendix B), TAG_DEFINEARROW records positive.
+        // TAG_ARROWHEAD is the arrow at the path's start, TAG_ARROWTAIL the
+        // one at its end (Xara's AttrStartArrow / AttrEndArrow write them so).
+        // 0: no record seen. Xara's default arrowheads are the negative
+        // references -2 straight .. -9 hollow diamond (-1 none); a positive
+        // number would name a TAG_DEFINEARROW, a tag Xara defines but never
+        // writes. The scales are the record's two FIXED16 fields: how many
+        // times the stock shape (drawn for a 36000 mp line) is enlarged per
+        // line width; Xara's default is 3.
         int32_t startArrowRef = 0;
         int32_t endArrowRef = 0;
+        float startArrowWidthScale = 3.0f;
+        float startArrowHeightScale = 3.0f;
+        float endArrowWidthScale = 3.0f;
+        float endArrowHeightScale = 3.0f;
         uint8_t lineTransparency = 0;
         XARTransparencyMix lineTransparencyMix = XARTransparencyMix::Mix;
 

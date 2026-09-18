@@ -1,6 +1,6 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.cpp
 // Xara XAR vector graphics format plugin implementation for UltraCanvas
-// Version: 2.2.0
+// Version: 2.3.0
 // Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 
@@ -1512,8 +1512,8 @@ namespace UltraCanvas {
             case XARTag::TAG_DASHSTYLE: ParseDashStyleRecord(record); break;
             case XARTag::TAG_DEFINEDASH: ParseDefineDashRecord(record, false); break;
             case XARTag::TAG_DEFINEDASH_SCALED: ParseDefineDashRecord(record, true); break;
-            case XARTag::TAG_ARROWHEAD: ParseArrowRecord(record, false); break;
-            case XARTag::TAG_ARROWTAIL: ParseArrowRecord(record, true); break;
+            case XARTag::TAG_ARROWHEAD: ParseArrowRecord(record, true); break;
+            case XARTag::TAG_ARROWTAIL: ParseArrowRecord(record, false); break;
             case XARTag::TAG_DEFINEARROW: ParseDefineArrowRecord(record); break;
             case XARTag::TAG_WINDINGRULE: ParseWindingRuleRecord(record); break;
 
@@ -2950,19 +2950,36 @@ namespace UltraCanvas {
         dashes[currentSequenceNumber] = std::move(dd);
     }
 
+    // INT32 reference, FIXED16 width scale, FIXED16 height scale (12 bytes;
+    // Xara's AttrStartArrow::WritePreChildrenWeb). A 4-byte record carries
+    // the reference alone and keeps the default scale.
     void XARDocument::ParseArrowRecord(const XARRecord& record, bool isStart) {
         if (record.data.size() < 4) return;
         const uint8_t* d = record.data.data();
         size_t off = 0;
         int32_t ref = ReadInt32(d, off);
-        if (isStart) currentContext.line.startArrowRef = ref;
-        else currentContext.line.endArrowRef = ref;
+        float w = 3.0f, h = 3.0f;
+        if (record.data.size() >= 12) {
+            w = static_cast<float>(ReadInt32(d, off)) / 65536.0f;
+            h = static_cast<float>(ReadInt32(d, off)) / 65536.0f;
+        }
+        if (isStart) {
+            currentContext.line.startArrowRef = ref;
+            currentContext.line.startArrowWidthScale = w;
+            currentContext.line.startArrowHeightScale = h;
+        } else {
+            currentContext.line.endArrowRef = ref;
+            currentContext.line.endArrowWidthScale = w;
+            currentContext.line.endArrowHeightScale = h;
+        }
     }
 
     void XARDocument::ParseDefineArrowRecord(const XARRecord&) {
         XARArrowDefinition ad;
         ad.sequenceNumber = currentSequenceNumber;
-        // Full arrow definition rendering is out of scope; store an empty stub.
+        // Xara defines this tag but neither writes nor reads it (its
+        // arrowheads are the eight stock ones), so no layout is known;
+        // store an empty stub under its sequence number.
         arrows[currentSequenceNumber] = std::move(ad);
     }
 

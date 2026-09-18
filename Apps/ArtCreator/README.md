@@ -62,8 +62,8 @@ guide to move it; drop it back on a ruler to delete it.
 
 The **Line** panel on the right holds the line gallery: the width, an
 arrowhead for each end (triangle, open arrow, circle, square, diamond,
-bar, and Xara's angled, rounded, feather, feather 2 and hollow diamond)
-and their size, a width profile (taper to either end, both, bulge)
+bar, and Xara's eight stock arrowheads drawn with Xara's own shapes and
+sizes) and their size, a width profile (taper to either end, both, bulge)
 and a brush (dots, dashes, hearts stamped along the path). It applies to
 the selection and to every line drawn afterwards.
 

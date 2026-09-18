@@ -402,6 +402,31 @@ int main() {
         Check(arrowBody.a == 255, "the end arrowhead fills beside the line");
         Check(beyondTip.a == 0, "nothing past the arrow's tip");
 
+        // Xara's stock arrowheads keep Xara's geometry: for a 4 wide line at
+        // Scale 1 (Xara's size 3) the straight arrow's tip is 39 past the
+        // end, its base 3 behind it and 18 high; the spot is a circle of
+        // radius 18 centred on the start.
+        VectorDocument xdoc;
+        auto xlayer = MakeDoc(xdoc, 200, 100);
+        auto xline = std::make_shared<VectorLine>();
+        xline->Start = Point2Dd(40, 50);
+        xline->End = Point2Dd(120, 50);
+        StrokeData xst;
+        xst.Fill = Color(0, 0, 0, 255);
+        xst.Width = 4;
+        xst.StartArrow.Kind = ArrowheadKind::Spot;
+        xst.EndArrow.Kind = ArrowheadKind::StraightArrow;
+        xline->Style.Stroke = xst;
+        xlayer->AddChild(xline);
+        Rgba headMid = RenderAndSample(xdoc, 200, 100, 150, 50);    // 30 past the end, inside the head
+        Rgba headBase = RenderAndSample(xdoc, 200, 100, 118, 62);   // 2 behind the end, 12 aside: in the head, off the line
+        Rgba pastTip = RenderAndSample(xdoc, 200, 100, 161, 50);
+        Rgba spotEdge = RenderAndSample(xdoc, 200, 100, 25, 50);    // 15 before the start, inside the spot
+        Rgba beforeSpot = RenderAndSample(xdoc, 200, 100, 19, 50);
+        Check(headMid.a == 255 && headBase.a == 255, "the Xara straight arrow reaches past the line's end at Xara's size");
+        Check(pastTip.a == 0, "nothing past the straight arrow's tip (39 beyond the end)");
+        Check(spotEdge.a == 255 && beforeSpot.a == 0, "the Xara spot is centred on the start with radius 18");
+
         // A width profile: thick at the start, vanishing at the end.
         VectorDocument wdoc;
         auto wlayer = MakeDoc(wdoc, 200, 100);

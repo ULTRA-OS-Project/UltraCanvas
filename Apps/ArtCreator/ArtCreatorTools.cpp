@@ -189,7 +189,8 @@ namespace ArtLineGallery {
 
 const std::vector<std::string>& ArrowheadNames() {
     static const std::vector<std::string> names = { "None", "Triangle", "Open arrow", "Circle", "Square", "Diamond", "Bar",
-                                                    "Angled arrow", "Rounded arrow", "Feather", "Feather 2", "Hollow diamond" };
+                                                    "Xara straight", "Xara angled", "Xara rounded", "Xara spot", "Xara diamond",
+                                                    "Xara feather", "Xara feather 2", "Xara hollow diamond" };
     return names;
 }
 const std::vector<std::string>& ProfileNames() {

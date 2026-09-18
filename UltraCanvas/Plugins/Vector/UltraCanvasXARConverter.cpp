@@ -274,8 +274,8 @@ namespace UltraCanvas {
                 constexpr uint32_t CircularTransparentFill = 168;
                 constexpr uint32_t ConicalTransparentFill = 170;
                 constexpr uint32_t LineTransparency = 173;
-                constexpr uint32_t ArrowHead = 185;      // the end of the line
-                constexpr uint32_t ArrowTail = 186;      // the start
+                constexpr uint32_t ArrowHead = 185;      // the arrow at the path's start (AttrStartArrow)
+                constexpr uint32_t ArrowTail = 186;      // the one at its end (AttrEndArrow)
                 constexpr uint32_t UserValue = 189;
                 constexpr uint32_t StartCap = 174;
                 constexpr uint32_t EndCap = 175;
@@ -312,45 +312,46 @@ namespace UltraCanvas {
                 constexpr uint32_t Feather = 4086;
             }
 
-            // Xara's default arrowheads by reference, as the Xara LX sources
-            // number them (Appendix B of the format specification): -1
-            // straight arrow, -2 angled arrow, -3 rounded arrow, -4 spot, -5
-            // diamond, -6 arrow feather, -7 arrow feather 2, -8 hollow
-            // diamond. The repo's Xara samples carry no arrowheads, so this
-            // numbering is not verified against a Designer export here; a
-            // TAG_DEFINEARROW (positive reference) reads as the triangle.
+            // Xara's stock arrowheads, as its source numbers them
+            // (Kernel/cxfarrow.h: REF_ARROW_NULL -1, STRAIGHT -2, ANGLED -3,
+            // ROUNDED -4, SPOT -5, DIAMOND -6, FEATHER -7, FEATHER2 -8,
+            // HOLLOWDIAMOND -9). A positive reference would name a
+            // TAG_DEFINEARROW, which Xara defines but never writes or reads;
+            // it is read as the straight arrow and reported.
             int32_t NativeArrowRef(ArrowheadKind k) {
                 switch (k) {
-                    case ArrowheadKind::Triangle: return -1;
-                    case ArrowheadKind::AngledArrow: return -2;
-                    case ArrowheadKind::RoundedArrow: return -3;
-                    case ArrowheadKind::Circle: return -4;
-                    case ArrowheadKind::Diamond: return -5;
-                    case ArrowheadKind::Feather: return -6;
-                    case ArrowheadKind::Feather2: return -7;
-                    case ArrowheadKind::HollowDiamond: return -8;
+                    case ArrowheadKind::StraightArrow: return -2;
+                    case ArrowheadKind::AngledArrow: return -3;
+                    case ArrowheadKind::RoundedArrow: return -4;
+                    case ArrowheadKind::Spot: return -5;
+                    case ArrowheadKind::SolidDiamond: return -6;
+                    case ArrowheadKind::Feather: return -7;
+                    case ArrowheadKind::Feather2: return -8;
+                    case ArrowheadKind::HollowDiamond: return -9;
                     default: return 0;
                 }
             }
             ArrowheadKind KindFromArrowRef(int32_t ref) {
                 switch (ref) {
-                    case -1: return ArrowheadKind::Triangle;
-                    case -2: return ArrowheadKind::AngledArrow;
-                    case -3: return ArrowheadKind::RoundedArrow;
-                    case -4: return ArrowheadKind::Circle;
-                    case -5: return ArrowheadKind::Diamond;
-                    case -6: return ArrowheadKind::Feather;
-                    case -7: return ArrowheadKind::Feather2;
-                    case -8: return ArrowheadKind::HollowDiamond;
-                    case 0: return ArrowheadKind::NoArrowhead;
-                    default: return ArrowheadKind::Triangle;   // a custom definition
+                    case -2: return ArrowheadKind::StraightArrow;
+                    case -3: return ArrowheadKind::AngledArrow;
+                    case -4: return ArrowheadKind::RoundedArrow;
+                    case -5: return ArrowheadKind::Spot;
+                    case -6: return ArrowheadKind::SolidDiamond;
+                    case -7: return ArrowheadKind::Feather;
+                    case -8: return ArrowheadKind::Feather2;
+                    case -9: return ArrowheadKind::HollowDiamond;
+                    case -1: case 0: return ArrowheadKind::NoArrowhead;
+                    default: return ArrowheadKind::StraightArrow;   // a TAG_DEFINEARROW reference
                 }
             }
+            // The record's FIXED16 scale is Xara's arrow size (default 3);
+            // the model's Scale 1 is that default.
+            constexpr float kXaraDefaultArrowSize = 3.0f;
 
             // The user values this converter writes on objects: what it baked
             // into shapes, so the reader can rebuild the stroke.
             constexpr const char* kLineGalleryKey = "UltraCanvas.LineGallery";
-            constexpr const char* kArrowScaleKey = "UltraCanvas.ArrowScale";
 
             std::map<std::string, std::string> ParseMarker(const std::string& value) {
                 std::map<std::string, std::string> out;
@@ -581,16 +582,7 @@ namespace UltraCanvas {
                     }
                     if (!made) return;
                     ApplyFeatherChild(n, *made);
-                    ApplyArrowScale(n, *made);
                     into.AddChild(made);
-                }
-
-                void ApplyArrowScale(const UltraCanvas::XARNodePtr& n, VectorElement& e) {
-                    auto it = n->userValues.find(kArrowScaleKey);
-                    if (it == n->userValues.end() || !e.Style.Stroke.has_value()) return;
-                    const auto m = ParseMarker(it->second);
-                    e.Style.Stroke->StartArrow.Scale = static_cast<float>(MarkerNumber(m, "start", 1.0));
-                    e.Style.Stroke->EndArrow.Scale = static_cast<float>(MarkerNumber(m, "end", 1.0));
                 }
 
                 // A group this converter wrote around a baked line gallery: the
@@ -963,9 +955,15 @@ namespace UltraCanvas {
                     st.MiterLimit = l.mitreLimit;
                     st.DashArray = l.dashPattern;
                     if (l.lineTransparency > 0) st.Opacity = 1.0f - l.lineTransparency / 255.0f;
-                    if (l.startArrowRef != 0) st.StartArrow.Kind = KindFromArrowRef(l.startArrowRef);
-                    if (l.endArrowRef != 0) st.EndArrow.Kind = KindFromArrowRef(l.endArrowRef);
-                    if (l.startArrowRef > 0 || l.endArrowRef > 0) Skip("custom arrowhead definition (read as the triangle)");
+                    if (l.startArrowRef != 0) {
+                        st.StartArrow.Kind = KindFromArrowRef(l.startArrowRef);
+                        st.StartArrow.Scale = l.startArrowWidthScale / kXaraDefaultArrowSize;
+                    }
+                    if (l.endArrowRef != 0) {
+                        st.EndArrow.Kind = KindFromArrowRef(l.endArrowRef);
+                        st.EndArrow.Scale = l.endArrowWidthScale / kXaraDefaultArrowSize;
+                    }
+                    if (l.startArrowRef > 0 || l.endArrowRef > 0) Skip("arrowhead definition reference (read as the straight arrow)");
                     return st;
                 }
 
@@ -1890,15 +1888,15 @@ namespace UltraCanvas {
                             db.I32(DashRef(st.DashArray, AvgScale(ctm)));
                             Rec(XarOut::DashStyle, db);
                         }
-                        if (st.StartArrow.IsSet() && NativeArrowRef(st.StartArrow.Kind) != 0) {
-                            XarBody ab; ab.I32(NativeArrowRef(st.StartArrow.Kind)); Rec(XarOut::ArrowTail, ab);
-                        }
-                        if (st.EndArrow.IsSet() && NativeArrowRef(st.EndArrow.Kind) != 0) {
-                            XarBody ab; ab.I32(NativeArrowRef(st.EndArrow.Kind)); Rec(XarOut::ArrowHead, ab);
-                        }
-                        if ((st.StartArrow.IsSet() && std::fabs(st.StartArrow.Scale - 1.0f) > 1e-4f) ||
-                            (st.EndArrow.IsSet() && std::fabs(st.EndArrow.Scale - 1.0f) > 1e-4f))
-                            EmitUserValue(kArrowScaleKey, "start=" + Num(st.StartArrow.Scale) + ";end=" + Num(st.EndArrow.Scale));
+                        // INT32 reference, FIXED16 width and height scale.
+                        auto arrowRecord = [&](const ArrowheadData& a, uint32_t tag) {
+                            if (!a.IsSet() || NativeArrowRef(a.Kind) == 0) return;
+                            const int32_t size = static_cast<int32_t>(std::lround(a.Scale * kXaraDefaultArrowSize * 65536.0f));
+                            XarBody ab; ab.I32(NativeArrowRef(a.Kind)); ab.I32(size); ab.I32(size);
+                            Rec(tag, ab);
+                        };
+                        arrowRecord(st.StartArrow, XarOut::ArrowHead);
+                        arrowRecord(st.EndArrow, XarOut::ArrowTail);
                         const float strokeOpacity = style.StrokeOpacity * st.Opacity;
                         if (strokeOpacity < 0.999f) {
                             XarBody lt;

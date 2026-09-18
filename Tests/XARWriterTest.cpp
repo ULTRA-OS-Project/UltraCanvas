@@ -185,8 +185,9 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     soft->Effects.Feather = FeatherEffect{6.0f};
     layer->AddChild(soft);
 
-    // 10. A line with an end arrowhead and a tapered polyline: the gallery
-    // is baked into extra filled paths.
+    // 10. A line with Xara's own arrowheads at both ends (a spot at the
+    // start, the straight arrow at the end: line attributes, no baking) and
+    // a tapered polyline, whose width band is baked into a filled path.
     auto arrow = std::make_shared<VectorLine>();
     arrow->Id = "arrow";
     arrow->Start = Point2Dd(40, 205);
@@ -194,7 +195,8 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     StrokeData arrowStroke;
     arrowStroke.Fill = Color(0, 0, 0, 255);
     arrowStroke.Width = 3;
-    arrowStroke.EndArrow.Kind = ArrowheadKind::Triangle;
+    arrowStroke.StartArrow.Kind = ArrowheadKind::Spot;
+    arrowStroke.EndArrow.Kind = ArrowheadKind::StraightArrow;
     arrow->Style.Stroke = arrowStroke;
     layer->AddChild(arrow);
     auto taper = std::make_shared<VectorPolyline>();
@@ -208,8 +210,8 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     layer->AddChild(taper);
 
     // 11. A line with a bar tail (not one of Xara's own arrowheads, so it
-    // is baked) and a doubled triangle head (Xara's, written as the line
-    // attribute plus a scale user value).
+    // is baked) and a doubled straight head (Xara's, written as the line
+    // attribute with its scale).
     auto barred = std::make_shared<VectorLine>();
     barred->Id = "barred";
     barred->Start = Point2Dd(40, 240);
@@ -218,7 +220,7 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     barredStroke.Fill = Color(0, 0, 120, 255);
     barredStroke.Width = 2;
     barredStroke.StartArrow.Kind = ArrowheadKind::Bar;
-    barredStroke.EndArrow.Kind = ArrowheadKind::Triangle;
+    barredStroke.EndArrow.Kind = ArrowheadKind::StraightArrow;
     barredStroke.EndArrow.Scale = 2.0f;
     barred->Style.Stroke = barredStroke;
     layer->AddChild(barred);
@@ -403,17 +405,20 @@ int main(int argc, char** argv) {
 
         // Line gallery records: Xara's own arrowhead is a line attribute, the
         // rest is baked under a group carrying the marker user value.
-        int nativeHeads = 0, scaledHeads = 0;
+        int nativeEnds = 0, scaledEnds = 0, spotStarts = 0;
         for (const auto& p : paths) {
             auto pn = std::static_pointer_cast<XARPathNode>(p);
-            if (pn->hasLine && pn->line.endArrowRef == -1) {
-                ++nativeHeads;
-                auto sc = pn->userValues.find("UltraCanvas.ArrowScale");
-                if (sc != pn->userValues.end() && sc->second.find("end=2") != std::string::npos) ++scaledHeads;
+            if (!pn->hasLine) continue;
+            if (pn->line.endArrowRef == -2) {
+                ++nativeEnds;
+                if (std::fabs(pn->line.endArrowWidthScale - 6.0f) < 0.01f &&
+                    std::fabs(pn->line.endArrowHeightScale - 6.0f) < 0.01f) ++scaledEnds;
             }
+            if (pn->line.startArrowRef == -5 && std::fabs(pn->line.startArrowWidthScale - 3.0f) < 0.01f) ++spotStarts;
         }
-        Check(nativeHeads == 2, "the two triangle heads are ARROWHEAD line attributes (ref -1)");
-        Check(scaledHeads == 1, "the doubled head carries an ArrowScale user value");
+        Check(nativeEnds == 2, "the two straight heads are ARROWTAIL line attributes (Xara ref -2)");
+        Check(scaledEnds == 1, "the doubled head's FIXED16 scales are 6 (twice Xara's default 3)");
+        Check(spotStarts == 1, "the spot is an ARROWHEAD attribute (ref -5) at Xara's default size");
         std::vector<XARNodePtr> groups;
         Collect(reader.GetRoot(), XARNodeType::Group, groups);
         int markers = 0, brushMarkers = 0, stampCopies = 0;
@@ -474,10 +479,10 @@ int main(int argc, char** argv) {
                         st.Brush->Stamp->Children.size() == 1 &&
                         (st.Brush->Stamp->Children.front()->Type == VectorElementType::Ellipse ||
                          st.Brush->Stamp->Children.front()->Type == VectorElementType::Circle)) ++brushes;
-                    if (st.StartArrow.Kind == ArrowheadKind::Bar && st.EndArrow.Kind == ArrowheadKind::Triangle &&
+                    if (st.StartArrow.Kind == ArrowheadKind::Bar && st.EndArrow.Kind == ArrowheadKind::StraightArrow &&
                         std::fabs(st.EndArrow.Scale - 2.0f) < 0.01f) ++barred;
-                    if (!st.StartArrow.IsSet() && st.EndArrow.Kind == ArrowheadKind::Triangle &&
-                        std::fabs(st.EndArrow.Scale - 1.0f) < 0.01f) ++plainArrows;
+                    if (st.StartArrow.Kind == ArrowheadKind::Spot && st.EndArrow.Kind == ArrowheadKind::StraightArrow &&
+                        std::fabs(st.StartArrow.Scale - 1.0f) < 0.01f && std::fabs(st.EndArrow.Scale - 1.0f) < 0.01f) ++plainArrows;
                 }
                 if (e->Type == VectorElementType::Group) ++groups;
                 if (e->Type == VectorElementType::Group || e->Type == VectorElementType::Layer)
@@ -490,7 +495,7 @@ int main(int argc, char** argv) {
             Check(ramped == 1, "the transparency ramp comes back with its mix");
             Check(multistage == 1, "the four-stop gradient comes back with four stops");
             Check(texts == 1, "the text story comes back as one text element");
-            Check(plainArrows == 1, "Xara's triangle arrowhead reads back as the triangle kind");
+            Check(plainArrows == 1, "Xara's spot and straight arrowheads read back as those kinds at Scale 1");
             Check(barred == 1, "the baked bar tail and the doubled head read back on the stroke");
             Check(tapers == 1, "the width profile reads back as a stroke, not as the baked band");
             Check(brushes == 1, "the brush reads back with its spacing and one-dot stamp");

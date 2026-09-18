@@ -7,6 +7,7 @@
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #include <cmath>
+#include <cstdlib>
 #include <algorithm>
 #include <sstream>
 #include <regex>
@@ -1341,6 +1342,86 @@ bool PathEndpoints(const PathData& path, Point2Dd& start, Point2Dd& startDir, Po
     return true;
 }
 
+// Xara's default arrowheads, as its source defines them (Kernel/arrows.cpp,
+// ArrowRec::CreateStockArrow): path data in millipoints for a line 36000
+// millipoints wide, x pointing away from the line's end, scaled by
+// (arrow size * line width / 36000) and placed with `centre` on the end
+// point (Kernel/arrows.cpp, ArrowRec::GetArrowMatrix). Xara's default size
+// is 3, which is this model's Scale 1. The hollow diamond's inner subpath
+// is wound the other way so a non-zero fill leaves the hole.
+namespace {
+    struct XaraStock { const char* Spec; double Cx, Cy; };
+    const XaraStock* StockArrow(ArrowheadKind k) {
+        static const XaraStock straight{"M -9000 54000 L -9000 -54000 L 117000 0 Z", 0, 0};
+        static const XaraStock angled{"M -27000 54000 L -9000 0 L -27000 -54000 L 135000 0 Z", 0, 0};
+        static const XaraStock rounded{
+            "M -9000 0 L -9000 -45000 C -9000 -51708 2808 -56580 9000 -54000 L 117000 -9000 "
+            "C 120916 -7369 126000 -4242 126000 0 C 126000 4242 120916 7369 117000 9000 "
+            "L 9000 54000 C 2808 56580 -9000 51708 -9000 45000 Z", 0, 0};
+        static const XaraStock spot{
+            "M -54000 0 C -54000 29807 -29807 54000 0 54000 C 29807 54000 54000 29807 54000 0 "
+            "C 54000 -29807 29807 -54000 0 -54000 C -29807 -54000 -54000 -29807 -54000 0 Z", 0, 0};
+        static const XaraStock diamond{"M -63000 0 L 0 63000 L 63000 0 L 0 -63000 Z", 0, 0};
+        static const XaraStock feather{
+            "M 18000 -54000 L 108000 -54000 L 63000 0 L 108000 54000 L 18000 54000 L -36000 0 Z", 0, 0};
+        static const XaraStock feather2{
+            "M -36000 0 L 18000 -54000 L 54000 -54000 L 18000 -18000 L 27000 -18000 L 63000 -54000 "
+            "L 99000 -54000 L 63000 -18000 L 72000 -18000 L 108000 -54000 L 144000 -54000 L 90000 0 "
+            "L 144000 54000 L 108000 54000 L 72000 18000 L 63000 18000 L 99000 54000 L 63000 54000 "
+            "L 27000 18000 L 18000 18000 L 54000 54000 L 18000 54000 Z", 0, 0};
+        static const XaraStock hollow{
+            "M 0 63000 L -63000 0 L 0 -63000 L 63000 0 Z M 0 45000 L 45000 0 L 0 -45000 L -45000 0 Z", -45000, 0};
+        switch (k) {
+            case ArrowheadKind::StraightArrow: return &straight;
+            case ArrowheadKind::AngledArrow: return &angled;
+            case ArrowheadKind::RoundedArrow: return &rounded;
+            case ArrowheadKind::Spot: return &spot;
+            case ArrowheadKind::SolidDiamond: return &diamond;
+            case ArrowheadKind::Feather: return &feather;
+            case ArrowheadKind::Feather2: return &feather2;
+            case ArrowheadKind::HollowDiamond: return &hollow;
+            default: return nullptr;
+        }
+    }
+
+    PathData XaraStockArrowhead(const ArrowheadData& arrow, const Point2Dd& tip, const Point2Dd& d, double W) {
+        PathData out;
+        const XaraStock* stock = StockArrow(arrow.Kind);
+        if (!stock) return out;
+        const double k = 3.0 * arrow.Scale * W / 36000.0;
+        const Point2Dd n(-d.y, d.x);
+        // Stock x runs away from the line, stock y across it.
+        auto at = [&](double x, double y) {
+            const double ax = (x - stock->Cx) * k, ay = (y - stock->Cy) * k;
+            return Point2Dd(tip.x + d.x * ax + n.x * ay, tip.y + d.y * ax + n.y * ay);
+        };
+        const char* s = stock->Spec;
+        auto num = [&]() { char* e = nullptr; const double v = std::strtod(s, &e); s = e; return v; };
+        while (*s) {
+            while (*s == ' ') ++s;
+            const char verb = *s;
+            if (!verb) break;
+            ++s;
+            PathCommand c;
+            if (verb == 'Z') {
+                c.Type = PathCommandType::ClosePath;
+            } else {
+                const int pts = verb == 'C' ? 3 : 1;
+                c.Type = verb == 'M' ? PathCommandType::MoveTo : verb == 'C' ? PathCommandType::CurveTo : PathCommandType::LineTo;
+                for (int i = 0; i < pts; ++i) {
+                    const double x = num(), y = num();
+                    const Point2Dd p = at(x, y);
+                    c.Parameters.push_back(static_cast<float>(p.x));
+                    c.Parameters.push_back(static_cast<float>(p.y));
+                }
+            }
+            out.commands.push_back(c);
+        }
+        out.Closed = true;
+        return out;
+    }
+}   // namespace
+
 PathData ArrowheadOutline(const ArrowheadData& arrow, const Point2Dd& tip, const Point2Dd& d, float width, bool& stroked) {
     PathData out;
     stroked = false;
@@ -1375,42 +1456,21 @@ PathData ArrowheadOutline(const ArrowheadData& arrow, const Point2Dd& tip, const
             AppendPolyline(out, {P(0, H / 2), P(0, -H / 2)}, false);
             stroked = true;
             break;
+        case ArrowheadKind::StraightArrow:
         case ArrowheadKind::AngledArrow:
-            // Swept back: the barbs trail the notch.
-            AppendPolyline(out, {tip, P(L, H / 2), P(0.7 * L, 0), P(L, -H / 2)}, true);
-            break;
-        case ArrowheadKind::RoundedArrow: {
-            // A triangle whose back bulges into a half circle.
-            const Point2Dd a = P(L * 0.75, H / 2), b = P(L * 0.75, -H / 2);
-            const Point2Dd c1 = P(L * 0.75 + H * 0.55, H / 2), c2 = P(L * 0.75 + H * 0.55, -H / 2);
-            PathCommand m; m.Type = PathCommandType::MoveTo; m.Parameters = {static_cast<float>(tip.x), static_cast<float>(tip.y)};
-            PathCommand l1; l1.Type = PathCommandType::LineTo; l1.Parameters = {static_cast<float>(a.x), static_cast<float>(a.y)};
-            PathCommand cv; cv.Type = PathCommandType::CurveTo;
-            cv.Parameters = {static_cast<float>(c1.x), static_cast<float>(c1.y), static_cast<float>(c2.x), static_cast<float>(c2.y),
-                             static_cast<float>(b.x), static_cast<float>(b.y)};
-            PathCommand z; z.Type = PathCommandType::ClosePath;
-            out.commands = {m, l1, cv, z};
-            break;
-        }
+        case ArrowheadKind::RoundedArrow:
+        case ArrowheadKind::Spot:
+        case ArrowheadKind::SolidDiamond:
         case ArrowheadKind::Feather:
-            // A fletching: two slanted vanes either side of the shaft.
-            AppendPolyline(out, {P(0, 0), P(L * 0.45, H / 2), P(L, H / 2), P(L * 0.55, 0), P(L, -H / 2), P(L * 0.45, -H / 2)}, true);
-            break;
         case ArrowheadKind::Feather2:
-            // The vanes split into two pairs.
-            AppendPolyline(out, {P(0, 0), P(L * 0.3, H / 2), P(L * 0.55, H / 2), P(L * 0.35, 0.1 * H), P(L * 0.55, 0.1 * H),
-                                 P(L * 0.8, H / 2), P(L, H / 2), P(L * 0.7, 0), P(L, -H / 2), P(L * 0.8, -H / 2),
-                                 P(L * 0.55, -0.1 * H), P(L * 0.35, -0.1 * H), P(L * 0.55, -H / 2), P(L * 0.3, -H / 2)}, true);
-            break;
         case ArrowheadKind::HollowDiamond:
-            AppendPolyline(out, {tip, P(L / 2, H / 2), P(L, 0), P(L / 2, -H / 2)}, true);
-            stroked = true;
+            out = XaraStockArrowhead(arrow, tip, d, W);
             break;
         case ArrowheadKind::NoArrowhead:
         default:
             break;
     }
-    out.Closed = !stroked || arrow.Kind == ArrowheadKind::HollowDiamond;
+    if (!IsXaraArrowhead(arrow.Kind)) out.Closed = !stroked;
     return out;
 }
 
