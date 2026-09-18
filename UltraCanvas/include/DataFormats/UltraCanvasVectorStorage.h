@@ -281,6 +281,42 @@ namespace UltraCanvas {
         };
         using FillData = std::variant<std::monostate, Color, GradientData, PatternData, std::string>;
 
+// ===== LINE GALLERY (arrowheads, width profiles, brushes) =====
+
+        // A gallery arrowhead at one end of a stroke, drawn in the stroke's
+        // paint and sized from the line width: at Scale 1 a Triangle is four
+        // widths long and two wide. OpenArrow is the unfilled chevron; Bar is
+        // the perpendicular tick. Scale 0 draws nothing.
+        enum class ArrowheadKind {
+            NoArrowhead, Triangle, OpenArrow, Circle, Square, Diamond, Bar
+        };
+        struct ArrowheadData {
+            ArrowheadKind Kind = ArrowheadKind::NoArrowhead;
+            float Scale = 1.0f;
+            bool IsSet() const { return Kind != ArrowheadKind::NoArrowhead && Scale > 0; }
+        };
+
+        // One sample of a variable-width profile: at fraction T (0 = start,
+        // 1 = end) of the path the line is Factor times Width wide. Samples
+        // are sorted by T; the profile is linear between them and flat
+        // outside. Two or more samples turn the stroke into a filled
+        // outline (caps and dashes no longer apply).
+        struct WidthSample {
+            float T = 0.0f;
+            float Factor = 1.0f;
+        };
+
+        // A vector brush: `Stamp` is drawn repeatedly along the path, scaled
+        // so its own height becomes Width * Scale, one copy every Spacing
+        // stamp-widths, rotated to the tangent when Rotate is set. A brush
+        // replaces the plain stroke.
+        struct BrushData {
+            std::shared_ptr<VectorGroup> Stamp;
+            float Spacing = 1.0f;
+            float Scale = 1.0f;
+            bool Rotate = true;
+        };
+
         struct StrokeData {
             FillData Fill = Color(0, 0, 0, 255);
             float Width = 1.0f;
@@ -290,6 +326,57 @@ namespace UltraCanvas {
             std::vector<double> DashArray;
             double DashOffset = 0.0f;
             float Opacity = 1.0f;
+            // Line gallery (see above). Readers of formats without these
+            // leave them at their defaults; the renderer draws them, the
+            // XAR writer bakes them into geometry.
+            ArrowheadData StartArrow;
+            ArrowheadData EndArrow;
+            std::vector<WidthSample> WidthProfile;
+            std::optional<BrushData> Brush;
+
+            bool HasArrowheads() const { return StartArrow.IsSet() || EndArrow.IsSet(); }
+            bool HasWidthProfile() const { return WidthProfile.size() >= 2; }
+            bool HasBrush() const { return Brush.has_value() && Brush->Stamp != nullptr; }
+            // Width * the profile's factor at fraction t of the path.
+            float WidthAt(float t) const;
+        };
+
+// ===== TRANSPARENCY (Xara-style: a level ramp over the object and a mix) =====
+
+        // How the object composites with what is below it. Mix is normal
+        // alpha; the others are Xara's names for the blend modes the
+        // renderer maps them to (StainedGlass = multiply, Bleach = screen,
+        // Contrast = overlay, Brightness = hard light).
+        enum class TransparencyMix {
+            Mix, StainedGlass, Bleach, Contrast, Saturation, Darken, Lighten,
+            Brightness, Luminosity, Hue
+        };
+        enum class TransparencyShape { Flat, Linear, Radial, Conical };
+
+        // Level 0 is opaque, 1 fully transparent - Xara's convention, the
+        // inverse of alpha.
+        struct TransparencyStop {
+            double Position = 0.0;
+            float Level = 0.0f;
+        };
+
+        // A transparency is a level ramp over the whole object (fill and
+        // stroke together), unlike VectorStyle::Opacity which is one flat
+        // level with the normal mix. Gradient axes are in the element's own
+        // coordinate space: Start..End for Linear, Start = centre and End a
+        // point on the radius for Radial and Conical (End sets the start
+        // angle).
+        struct TransparencyData {
+            TransparencyShape Shape = TransparencyShape::Flat;
+            float Level = 0.0f;                    // Flat
+            Point2Dd Start{0, 0};
+            Point2Dd End{1, 0};
+            std::vector<TransparencyStop> Stops;   // gradients: at least two
+            TransparencyMix Mix = TransparencyMix::Mix;
+
+            bool IsGradient() const { return Shape != TransparencyShape::Flat && Stops.size() >= 2; }
+            // The level at fraction t of the ramp (Flat: Level).
+            float LevelAt(double t) const;
         };
 
 // ===== TEXT (Uses FontWeight, FontSlant from RenderContext.h) =====
@@ -362,6 +449,9 @@ namespace UltraCanvas {
             float FillOpacity = 1.0f;
             float StrokeOpacity = 1.0f;
             BlendMode Blend = BlendMode::Normal;
+            // Xara-style transparency (a level ramp and a mix) on top of the
+            // flat Opacity; not inherited from a parent.
+            std::optional<TransparencyData> Transparency;
             std::optional<std::string> ClipPath;
             std::optional<std::string> Mask;
             FillRule ClipRule = FillRule::NonZero;
@@ -370,6 +460,34 @@ namespace UltraCanvas {
             bool Display = true;
 
             void Inherit(const VectorStyle& parent);
+        };
+
+// ===== EFFECTS (Xara-class, per object) =====
+
+        // Wall: the silhouette offset behind the object. Floor: the
+        // silhouette squashed and sheared from the object's bottom edge,
+        // as if lying on the ground. Glow: the silhouette blurred outward
+        // around the object with no offset.
+        enum class ShadowKind { Wall, Floor, Glow };
+        struct ShadowEffect {
+            ShadowKind Kind = ShadowKind::Wall;
+            Point2Dd Offset{4, 4};      // Wall: document units in the element's space
+            float Blur = 4.0f;          // penumbra width, element units (0 = hard edge)
+            Color Colour{0, 0, 0, 255};
+            float Darkness = 0.5f;      // 0..1 opacity of the shadow
+            float FloorSquash = 0.5f;   // Floor: height factor
+            float FloorShear = 0.4f;    // Floor: horizontal shear per unit of height
+        };
+
+        // The object's edges fade out over Radius element units.
+        struct FeatherEffect {
+            float Radius = 4.0f;
+        };
+
+        struct VectorEffects {
+            std::optional<ShadowEffect> Shadow;
+            std::optional<FeatherEffect> Feather;
+            bool Any() const { return Shadow.has_value() || Feather.has_value(); }
         };
 
 // ===== BASE ELEMENT =====
@@ -382,6 +500,9 @@ namespace UltraCanvas {
             std::vector<std::string> Classes;
             VectorStyle Style;
             std::optional<Matrix3x3> Transform;
+            // Shadow and feather; rendered around the element in its own
+            // space, cloned with it, never inherited.
+            VectorEffects Effects;
 
             virtual ~VectorElement() { Parent.reset(); };
 
@@ -707,6 +828,12 @@ namespace UltraCanvas {
         };
 
 // Utility function declarations
+        // The element's outline as path data in its own coordinate space
+        // (rectangles, rounded rectangles, circles, ellipses, lines,
+        // polylines, polygons and paths); false for kinds without one
+        // (text, images, groups). What the renderer strokes, the line
+        // gallery decorates and the editor converts to a path.
+        bool BuildOutlinePath(const VectorElement& element, PathData& out);
         PathData ParsePathString(const std::string &pathStr);
         std::string SerializePathData(const PathData &path);
         Color ParseColorString(const std::string &colorStr);

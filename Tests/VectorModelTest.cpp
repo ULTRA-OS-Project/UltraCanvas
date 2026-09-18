@@ -294,6 +294,177 @@ int main() {
         Check(outside.a == 0, "clip-path removes the fill outside the clip");
     }
 
+    // ===== Effects, transparency ramps and the line gallery =====
+    {
+        auto MakeDoc = [](VectorDocument& d, int w, int h) {
+            d.Size = Size2Dd{static_cast<double>(w), static_cast<double>(h)};
+            d.ViewBox = Rect2Dd{0, 0, static_cast<double>(w), static_cast<double>(h)};
+            return d.AddLayer("main");
+        };
+
+        // A wall shadow: black at the offset beside the shape, nothing on
+        // the far side, the shape itself untouched.
+        VectorDocument sdoc;
+        auto slayer = MakeDoc(sdoc, 120, 120);
+        auto box = MakeRect(20, 20, 50, 50);
+        box->Style.Fill = Color(255, 0, 0, 255);
+        ShadowEffect shadow;
+        shadow.Kind = ShadowKind::Wall;
+        shadow.Offset = Point2Dd(20, 20);
+        shadow.Blur = 0;
+        shadow.Darkness = 1.0f;
+        box->Effects.Shadow = shadow;
+        slayer->AddChild(box);
+        Rgba onShape = RenderAndSample(sdoc, 120, 120, 45, 45);
+        Rgba inShadow = RenderAndSample(sdoc, 120, 120, 80, 80);
+        Rgba farSide = RenderAndSample(sdoc, 120, 120, 10, 10);
+        Check(onShape.r == 255 && onShape.a == 255, "a shadowed shape still draws its own fill");
+        Check(inShadow.a > 200 && inShadow.r < 40 && inShadow.g < 40, "the wall shadow lies at the offset");
+        Check(farSide.a == 0, "no shadow on the far side of the shape");
+
+        // A blurred shadow softens: the alpha falls off past the offset edge.
+        shadow.Blur = 12;
+        shadow.Darkness = 1.0f;
+        box->Effects.Shadow = shadow;
+        Rgba softEdge = RenderAndSample(sdoc, 120, 120, 95, 80);
+        Rgba softCore = RenderAndSample(sdoc, 120, 120, 75, 75);
+        Check(softEdge.a > 0 && softEdge.a < 250, "a blurred shadow has a penumbra past its edge");
+        Check(softCore.a > softEdge.a, "the penumbra is lighter than the shadow's core");
+
+        // Feather: the shape's centre stays solid, its edge fades.
+        VectorDocument fdoc;
+        auto flayer = MakeDoc(fdoc, 100, 100);
+        auto disc = std::make_shared<VectorCircle>();
+        disc->Center = Point2Dd(50, 50);
+        disc->Radius = 40;
+        disc->Style.Fill = Color(0, 0, 255, 255);
+        disc->Effects.Feather = FeatherEffect{10.0f};
+        flayer->AddChild(disc);
+        Rgba centre = RenderAndSample(fdoc, 100, 100, 50, 50);
+        Rgba rim = RenderAndSample(fdoc, 100, 100, 50, 12);
+        Check(centre.a == 255 && centre.b == 255, "a feathered shape is solid at its centre");
+        Check(rim.a > 0 && rim.a < 250, "a feathered shape fades at its rim");
+
+        // A linear transparency ramp: opaque on the left, clear on the right.
+        VectorDocument tdoc;
+        auto tlayer = MakeDoc(tdoc, 200, 100);
+        auto band = MakeRect(0, 0, 200, 100);
+        band->Style.Fill = Color(0, 128, 0, 255);
+        TransparencyData ramp;
+        ramp.Shape = TransparencyShape::Linear;
+        ramp.Start = Point2Dd(0, 50);
+        ramp.End = Point2Dd(200, 50);
+        ramp.Stops = {{0.0, 0.0f}, {1.0, 1.0f}};
+        band->Style.Transparency = ramp;
+        tlayer->AddChild(band);
+        Rgba leftEnd = RenderAndSample(tdoc, 200, 100, 5, 50);
+        Rgba middle = RenderAndSample(tdoc, 200, 100, 100, 50);
+        Rgba rightEnd = RenderAndSample(tdoc, 200, 100, 197, 50);
+        Check(leftEnd.a > 240, "linear transparency: opaque at the start");
+        Check(middle.a > 100 && middle.a < 160, "linear transparency: half way at the middle");
+        Check(rightEnd.a < 15, "linear transparency: clear at the end");
+        Check(Near(ramp.LevelAt(0.25), 0.25, 1e-6), "LevelAt interpolates between stops");
+
+        // A stained-glass mix multiplies with what is below.
+        VectorDocument mdoc;
+        auto mlayer = MakeDoc(mdoc, 50, 50);
+        auto under = MakeRect(0, 0, 50, 50);
+        under->Style.Fill = Color(255, 255, 0, 255);
+        mlayer->AddChild(under);
+        auto over = MakeRect(0, 0, 50, 50);
+        over->Style.Fill = Color(0, 255, 255, 255);
+        TransparencyData mix;
+        mix.Shape = TransparencyShape::Flat;
+        mix.Level = 0.0f;
+        mix.Mix = TransparencyMix::StainedGlass;
+        over->Style.Transparency = mix;
+        mlayer->AddChild(over);
+        Rgba multiplied = RenderAndSample(mdoc, 50, 50, 25, 25);
+        Check(multiplied.r < 10 && multiplied.g > 240 && multiplied.b < 10, "stained glass multiplies yellow under cyan to green");
+
+        // Arrowheads: a triangle past the end of a stroked line.
+        VectorDocument adoc;
+        auto alayer = MakeDoc(adoc, 200, 100);
+        auto line = std::make_shared<VectorLine>();
+        line->Start = Point2Dd(20, 50);
+        line->End = Point2Dd(120, 50);
+        StrokeData st;
+        st.Fill = Color(0, 0, 0, 255);
+        st.Width = 4;
+        st.EndArrow.Kind = ArrowheadKind::Triangle;
+        st.EndArrow.Scale = 3.0f;   // 48 long, 24 wide
+        line->Style.Stroke = st;
+        alayer->AddChild(line);
+        Rgba onLine = RenderAndSample(adoc, 200, 100, 60, 50);
+        Rgba arrowBody = RenderAndSample(adoc, 200, 100, 80, 56);   // 40 back from the tip (half-width 10 there), 6 aside: inside the head, outside the line
+        Rgba beyondTip = RenderAndSample(adoc, 200, 100, 126, 50);
+        Check(onLine.a == 255, "the line itself is stroked");
+        Check(arrowBody.a == 255, "the end arrowhead fills beside the line");
+        Check(beyondTip.a == 0, "nothing past the arrow's tip");
+
+        // A width profile: thick at the start, vanishing at the end.
+        VectorDocument wdoc;
+        auto wlayer = MakeDoc(wdoc, 200, 100);
+        auto taper = std::make_shared<VectorLine>();
+        taper->Start = Point2Dd(10, 50);
+        taper->End = Point2Dd(190, 50);
+        StrokeData ts;
+        ts.Fill = Color(0, 0, 0, 255);
+        ts.Width = 20;
+        ts.WidthProfile = {{0.0f, 1.0f}, {1.0f, 0.0f}};
+        taper->Style.Stroke = ts;
+        wlayer->AddChild(taper);
+        Rgba thickEnd = RenderAndSample(wdoc, 200, 100, 20, 42);
+        Rgba thinEnd = RenderAndSample(wdoc, 200, 100, 180, 42);
+        Check(thickEnd.a == 255, "a width profile is full width at its start");
+        Check(thinEnd.a == 0, "a width profile tapers to nothing at its end");
+        Check(Near(ts.WidthAt(0.5f), 10.0, 1e-5), "WidthAt interpolates the profile");
+
+        // A brush: stamps along the path replace the stroke.
+        VectorDocument bdoc;
+        auto blayer = MakeDoc(bdoc, 200, 100);
+        auto brushed = std::make_shared<VectorLine>();
+        brushed->Start = Point2Dd(10, 50);
+        brushed->End = Point2Dd(190, 50);
+        StrokeData bs;
+        bs.Fill = Color(0, 0, 0, 255);
+        bs.Width = 10;
+        BrushData brush;
+        brush.Stamp = std::make_shared<VectorGroup>();
+        auto dot = std::make_shared<VectorCircle>();
+        dot->Center = Point2Dd(0, 0);
+        dot->Radius = 5;
+        dot->Style.Fill = Color(255, 0, 255, 255);
+        brush.Stamp->AddChild(dot);
+        brush.Spacing = 2.0f;   // one dot every two dot widths
+        bs.Brush = brush;
+        brushed->Style.Stroke = bs;
+        blayer->AddChild(brushed);
+        Rgba atStamp = RenderAndSample(bdoc, 200, 100, 10, 50);
+        Rgba between = RenderAndSample(bdoc, 200, 100, 20, 50);
+        Check(atStamp.a == 255 && atStamp.r == 255 && atStamp.b == 255, "a brush stamps its group at the path start");
+        Check(between.a == 0, "a brush leaves the gap between stamps empty");
+
+        // The outline helper feeds the gallery and the editor alike.
+        PathData outline;
+        Check(BuildOutlinePath(*box, outline) && outline.commands.size() == 6, "BuildOutlinePath: a rectangle is M L L L L Z");
+        VectorText label;
+        Check(!BuildOutlinePath(label, outline), "BuildOutlinePath: text has no outline");
+
+        // The raster cache keeps one entry per shadowed object and drops it on demand.
+        VectorRenderer cached;
+        {
+            UCPixmap pm;
+            pm.Init(120, 120);
+            std::unique_ptr<IRenderContext> cctx = CreateRenderContext(Size2Di(120, 120), nullptr);
+            cached.RenderDocument(cctx.get(), sdoc);
+            cached.RenderDocument(cctx.get(), sdoc);
+        }
+        Check(cached.EffectCacheSize() == 1, "one raster is cached for the shadowed shape across frames");
+        cached.ClearCaches();
+        Check(cached.EffectCacheSize() == 0, "ClearCaches drops the effect rasters");
+    }
+
 #ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
     // ===== DXF carries units and layer properties =====
     {

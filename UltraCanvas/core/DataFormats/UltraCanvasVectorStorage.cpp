@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorPathOps.h"
 #include <cmath>
 #include <algorithm>
 #include <sstream>
@@ -170,6 +171,40 @@ Matrix3x3 Matrix3x3::Inverse() const {
 
 // ===== VECTOR STYLE IMPLEMENTATION =====
 
+// ===== STROKE / TRANSPARENCY RAMPS =====
+
+float StrokeData::WidthAt(float t) const {
+    if (WidthProfile.size() < 2) return Width;
+    if (t <= WidthProfile.front().T) return Width * WidthProfile.front().Factor;
+    if (t >= WidthProfile.back().T) return Width * WidthProfile.back().Factor;
+    for (size_t i = 1; i < WidthProfile.size(); ++i) {
+        const WidthSample& a = WidthProfile[i - 1];
+        const WidthSample& b = WidthProfile[i];
+        if (t <= b.T) {
+            const float span = b.T - a.T;
+            const float u = span > 1e-6f ? (t - a.T) / span : 1.0f;
+            return Width * (a.Factor + (b.Factor - a.Factor) * u);
+        }
+    }
+    return Width * WidthProfile.back().Factor;
+}
+
+float TransparencyData::LevelAt(double t) const {
+    if (!IsGradient()) return Level;
+    if (t <= Stops.front().Position) return Stops.front().Level;
+    if (t >= Stops.back().Position) return Stops.back().Level;
+    for (size_t i = 1; i < Stops.size(); ++i) {
+        const TransparencyStop& a = Stops[i - 1];
+        const TransparencyStop& b = Stops[i];
+        if (t <= b.Position) {
+            const double span = b.Position - a.Position;
+            const double u = span > 1e-9 ? (t - a.Position) / span : 1.0;
+            return static_cast<float>(a.Level + (b.Level - a.Level) * u);
+        }
+    }
+    return Stops.back().Level;
+}
+
 void VectorStyle::Inherit(const VectorStyle& parent) {
     // Inherit properties that weren't explicitly set
     if (!Fill.has_value() && parent.Fill.has_value()) {
@@ -179,6 +214,10 @@ void VectorStyle::Inherit(const VectorStyle& parent) {
         Stroke = parent.Stroke;
     }
     
+    if (!Transparency.has_value() && parent.Transparency.has_value()) {
+        Transparency = parent.Transparency;
+    }
+
     // Multiply opacity values
     Opacity *= parent.Opacity;
     FillOpacity *= parent.FillOpacity;
@@ -1157,6 +1196,68 @@ std::shared_ptr<VectorDocument> VectorDocument::Clone() const {
 }
 
 // ===== UTILITY FUNCTIONS IMPLEMENTATION =====
+
+// ===== OUTLINES =====
+
+bool BuildOutlinePath(const VectorElement& element, PathData& out) {
+    using namespace VectorConverter::PathOps;
+    switch (element.Type) {
+        case VectorElementType::Rectangle:
+        case VectorElementType::RoundedRectangle: {
+            const auto& r = static_cast<const VectorRect&>(element);
+            out = (r.RadiusX > 0 || r.RadiusY > 0) ? SegsToPathData(RoundedRectSegs(r.Bounds, r.RadiusX, r.RadiusY))
+                                                   : SegsToPathData(RectSegs(r.Bounds));
+            return true;
+        }
+        case VectorElementType::Circle: {
+            const auto& c = static_cast<const VectorCircle&>(element);
+            out = SegsToPathData(EllipseSegs(c.Center, c.Radius, c.Radius));
+            return true;
+        }
+        case VectorElementType::Ellipse: {
+            const auto& e = static_cast<const VectorEllipse&>(element);
+            out = SegsToPathData(EllipseSegs(e.Center, e.RadiusX, e.RadiusY));
+            return true;
+        }
+        case VectorElementType::Line: {
+            const auto& l = static_cast<const VectorLine&>(element);
+            PathData d;
+            PathCommand m; m.Type = PathCommandType::MoveTo;
+            m.Parameters = {static_cast<float>(l.Start.x), static_cast<float>(l.Start.y)};
+            PathCommand n; n.Type = PathCommandType::LineTo;
+            n.Parameters = {static_cast<float>(l.End.x), static_cast<float>(l.End.y)};
+            d.commands = {m, n};
+            out = d;
+            return true;
+        }
+        case VectorElementType::Polyline:
+        case VectorElementType::Polygon: {
+            const auto* pts = element.Type == VectorElementType::Polyline
+                              ? &static_cast<const VectorPolyline&>(element).Points
+                              : &static_cast<const VectorPolygon&>(element).Points;
+            if (pts->empty()) return false;
+            PathData d;
+            for (size_t i = 0; i < pts->size(); ++i) {
+                PathCommand c;
+                c.Type = i == 0 ? PathCommandType::MoveTo : PathCommandType::LineTo;
+                c.Parameters = {static_cast<float>((*pts)[i].x), static_cast<float>((*pts)[i].y)};
+                d.commands.push_back(c);
+            }
+            if (element.Type == VectorElementType::Polygon) {
+                PathCommand z; z.Type = PathCommandType::ClosePath;
+                d.commands.push_back(z);
+                d.Closed = true;
+            }
+            out = d;
+            return true;
+        }
+        case VectorElementType::Path:
+            out = static_cast<const VectorPath&>(element).Path;
+            return !out.commands.empty();
+        default:
+            return false;
+    }
+}
 
 PathData ParsePathString(const std::string& pathStr) {
     PathData result;

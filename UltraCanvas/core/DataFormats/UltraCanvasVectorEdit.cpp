@@ -65,33 +65,12 @@ namespace {
         else element->Transform = result;
     }
 
-    PathData SegsToPathData(const std::vector<VectorConverter::PathOps::FlatSeg>& segs) {
-        using VectorConverter::PathOps::FlatSeg;
-        PathData data;
-        auto cmd = [&](PathCommandType type, std::initializer_list<double> params) {
-            PathCommand c;
-            c.Type = type;
-            c.Relative = false;
-            for (double v : params) c.Parameters.push_back(static_cast<float>(v));
-            data.commands.push_back(c);
-        };
-        for (const auto& s : segs) {
-            switch (s.kind) {
-                case FlatSeg::Move: cmd(PathCommandType::MoveTo, {s.p[0].x, s.p[0].y}); break;
-                case FlatSeg::Line: cmd(PathCommandType::LineTo, {s.p[0].x, s.p[0].y}); break;
-                case FlatSeg::Cubic: cmd(PathCommandType::CurveTo, {s.p[0].x, s.p[0].y, s.p[1].x, s.p[1].y, s.p[2].x, s.p[2].y}); break;
-            }
-            if (s.closeAfter) cmd(PathCommandType::ClosePath, {});
-        }
-        return data;
-    }
-
     void TransformPathData(PathData& data, const Matrix3x3& m) {
         // Normalise first so every coordinate is absolute, then map.
         auto segs = VectorConverter::PathOps::NormalizePath(data);
         for (auto& s : segs)
             for (auto& p : s.p) p = m.Transform(p);
-        data = SegsToPathData(segs);
+        data = VectorConverter::PathOps::SegsToPathData(segs);
     }
 }
 
@@ -519,55 +498,9 @@ void SkewElements(const std::vector<ElementPtr>& elements, double radiansX, doub
 }
 
 std::optional<PathData> OutlineOf(const VectorElement& element) {
-    using namespace VectorConverter::PathOps;
-    switch (element.Type) {
-        case VectorElementType::Rectangle:
-        case VectorElementType::RoundedRectangle: {
-            const auto& r = static_cast<const VectorRect&>(element);
-            if (r.RadiusX > 0 || r.RadiusY > 0) return SegsToPathData(RoundedRectSegs(r.Bounds, r.RadiusX, r.RadiusY));
-            return SegsToPathData(RectSegs(r.Bounds));
-        }
-        case VectorElementType::Circle: {
-            const auto& c = static_cast<const VectorCircle&>(element);
-            return SegsToPathData(EllipseSegs(c.Center, c.Radius, c.Radius));
-        }
-        case VectorElementType::Ellipse: {
-            const auto& e = static_cast<const VectorEllipse&>(element);
-            return SegsToPathData(EllipseSegs(e.Center, e.RadiusX, e.RadiusY));
-        }
-        case VectorElementType::Line: {
-            const auto& l = static_cast<const VectorLine&>(element);
-            PathData d;
-            PathCommand m; m.Type = PathCommandType::MoveTo; m.Parameters = {static_cast<float>(l.Start.x), static_cast<float>(l.Start.y)};
-            PathCommand n; n.Type = PathCommandType::LineTo; n.Parameters = {static_cast<float>(l.End.x), static_cast<float>(l.End.y)};
-            d.commands = {m, n};
-            return d;
-        }
-        case VectorElementType::Polyline:
-        case VectorElementType::Polygon: {
-            const auto* pts = element.Type == VectorElementType::Polyline
-                              ? &static_cast<const VectorPolyline&>(element).Points
-                              : &static_cast<const VectorPolygon&>(element).Points;
-            if (pts->empty()) return std::nullopt;
-            PathData d;
-            for (size_t i = 0; i < pts->size(); ++i) {
-                PathCommand c;
-                c.Type = i == 0 ? PathCommandType::MoveTo : PathCommandType::LineTo;
-                c.Parameters = {static_cast<float>((*pts)[i].x), static_cast<float>((*pts)[i].y)};
-                d.commands.push_back(c);
-            }
-            if (element.Type == VectorElementType::Polygon) {
-                PathCommand z; z.Type = PathCommandType::ClosePath;
-                d.commands.push_back(z);
-                d.Closed = true;
-            }
-            return d;
-        }
-        case VectorElementType::Path:
-            return static_cast<const VectorPath&>(element).Path;
-        default:
-            return std::nullopt;
-    }
+    PathData d;
+    if (!BuildOutlinePath(element, d)) return std::nullopt;
+    return d;
 }
 
 std::shared_ptr<VectorPath> ConvertToPath(const ElementPtr& element) {
