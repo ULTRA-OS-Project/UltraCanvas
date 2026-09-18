@@ -153,18 +153,18 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     // ramp and a wall shadow.
     auto shaded = std::make_shared<VectorRect>();
     shaded->Id = "shaded";
-    shaded->Bounds = Rect2Dd{40, 110, 100, 40};
+    shaded->Bounds = Rect2Dd{240, 222, 110, 34};
     LinearGradientData ramp;
     ramp.Units = GradientUnits::UserSpaceOnUse;
-    ramp.Start = Point2Dd(40, 130);
-    ramp.End = Point2Dd(140, 130);
+    ramp.Start = Point2Dd(240, 239);
+    ramp.End = Point2Dd(350, 239);
     ramp.Stops = {GradientStop(0.0, Color(255, 0, 0, 255)), GradientStop(0.3, Color(255, 255, 0, 255)),
                   GradientStop(0.7, Color(0, 255, 0, 255)), GradientStop(1.0, Color(0, 0, 255, 255))};
     shaded->Style.Fill = GradientData(ramp);
     TransparencyData fade;
     fade.Shape = TransparencyShape::Linear;
-    fade.Start = Point2Dd(40, 130);
-    fade.End = Point2Dd(140, 130);
+    fade.Start = Point2Dd(240, 239);
+    fade.End = Point2Dd(350, 239);
     fade.Stops = {{0.0, 0.0f}, {1.0, 0.8f}};
     fade.Mix = TransparencyMix::Bleach;
     shaded->Style.Transparency = fade;
@@ -189,8 +189,8 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     // is baked into extra filled paths.
     auto arrow = std::make_shared<VectorLine>();
     arrow->Id = "arrow";
-    arrow->Start = Point2Dd(40, 175);
-    arrow->End = Point2Dd(140, 175);
+    arrow->Start = Point2Dd(40, 205);
+    arrow->End = Point2Dd(140, 205);
     StrokeData arrowStroke;
     arrowStroke.Fill = Color(0, 0, 0, 255);
     arrowStroke.Width = 3;
@@ -199,7 +199,7 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     layer->AddChild(arrow);
     auto taper = std::make_shared<VectorPolyline>();
     taper->Id = "taper";
-    taper->Points = {Point2Dd(40, 205), Point2Dd(90, 195), Point2Dd(140, 205)};
+    taper->Points = {Point2Dd(40, 224), Point2Dd(90, 216), Point2Dd(140, 224)};
     StrokeData taperStroke;
     taperStroke.Fill = Color(120, 0, 0, 255);
     taperStroke.Width = 8;
