@@ -62,7 +62,8 @@ guide to move it; drop it back on a ruler to delete it.
 
 The **Line** panel on the right holds the line gallery: the width, an
 arrowhead for each end (triangle, open arrow, circle, square, diamond,
-bar) and their size, a width profile (taper to either end, both, bulge)
+bar, and Xara's angled, rounded, feather, feather 2 and hollow diamond)
+and their size, a width profile (taper to either end, both, bulge)
 and a brush (dots, dashes, hearts stamped along the path). It applies to
 the selection and to every line drawn afterwards.
 
@@ -87,7 +88,8 @@ the selection and to every line drawn afterwards.
 Opens SVG, XAR (compressed too, through the XAR plugin's reader), EMF,
 WMF, DXF and DWG; saves XAR (the native format: shapes, fills with every
 stop, text, transparency ramps and mixes, shadows and feathers all round
-trip, arrowheads and width profiles as baked shapes), SVG (shapes, fills,
+trip; Xara's own arrowheads as Xara arrowheads, the rest of the line
+gallery as plain shapes that read back as strokes), SVG (shapes, fills,
 text - no effects), DXF, EMF, WMF; exports PDF, AI, EPS and CDR too. What
 a reader or writer had to drop is reported in the status bar. Without
 the Vector plugin (`-DULTRACANVAS_PLUGIN_VECTOR=ON`) the editor draws but

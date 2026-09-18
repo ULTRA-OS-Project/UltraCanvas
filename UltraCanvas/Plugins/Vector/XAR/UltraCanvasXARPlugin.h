@@ -1,7 +1,7 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.h
 // Xara XAR vector graphics format plugin for UltraCanvas
-// Version: 2.1.0
-// Last Modified: 2026-08-26
+// Version: 2.2.0
+// Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 //
 // Tag values are taken verbatim from the Xar Format Specification, Appendix A
@@ -16,6 +16,7 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <map>
 #include <unordered_map>
 #include <stack>
 #include <cstdint>
@@ -618,8 +619,10 @@ namespace UltraCanvas {
         LineJoin join = LineJoin::Miter;
         float mitreLimit = 4.0f;
         std::vector<double> dashPattern;        // pixels (UCDashPattern uses double)
-        int32_t startArrowRef = -1;
-        int32_t endArrowRef = -1;
+        // 0: no arrowhead record seen. Xara's default arrowheads are the
+        // negative references (Appendix B), TAG_DEFINEARROW records positive.
+        int32_t startArrowRef = 0;
+        int32_t endArrowRef = 0;
         uint8_t lineTransparency = 0;
         XARTransparencyMix lineTransparencyMix = XARTransparencyMix::Mix;
 
@@ -706,6 +709,11 @@ namespace UltraCanvas {
         bool hasFill = false;
         bool hasLine = false;
         bool hasTransparency = false;
+
+        // TAG_USERVALUE records in the node's scope: Xara's per-object user
+        // data (key / value strings), which Xara itself preserves. Writers
+        // in this framework use them to mark what they baked into shapes.
+        std::map<std::string, std::string> userValues;
 
         Rect2Dd bounds;
         bool boundsCached = false;
@@ -1127,6 +1135,7 @@ namespace UltraCanvas {
         void ParseTextCharRecord(const XARRecord& record);
         void ParseTextKernRecord(const XARRecord& record);
         void ParseTextLineInfoRecord(const XARRecord& record);
+        void ParseUserValueRecord(const XARRecord& record);
         // True between a TAG_TEXT_LIST_* record and the paragraph's
         // TAG_TEXT_EOL: lines opened in that window are continuation lines
         // of the list item and take its hanging indent.

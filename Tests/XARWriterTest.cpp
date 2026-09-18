@@ -3,8 +3,8 @@
 // VectorDocument covering the writer's feature matrix (shapes, paths with
 // beziers and closes, groups with transforms, gradients, strokes, opacity,
 // multi-span text, and the phase-4 additions: multistage fills, gradient
-// transparency with a mix, a shadow, a feather, a baked arrowhead and
-// width profile), exports it through VectorConverter::XARConverter, then
+// transparency with a mix, a shadow, a feather, native and baked
+// arrowheads, a width profile and a brush), exports it through VectorConverter::XARConverter, then
 // loads the result back through the XAR plugin's spec-verified XARDocument
 // reader and asserts the structure survived: page size, node-type counts,
 // coordinate placement (including the Y-axis flip to millipoints), resolved
@@ -16,8 +16,8 @@
 // The export is kept on disk (default: xar_writer_roundtrip.xar in the
 // working directory) so it can be inspected with XARProbeTest --render or
 // opened in Xara. Exit code is the number of failed checks.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasXARConverter.h"
@@ -207,6 +207,42 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     taper->Style.Stroke = taperStroke;
     layer->AddChild(taper);
 
+    // 11. A line with a bar tail (not one of Xara's own arrowheads, so it
+    // is baked) and a doubled triangle head (Xara's, written as the line
+    // attribute plus a scale user value).
+    auto barred = std::make_shared<VectorLine>();
+    barred->Id = "barred";
+    barred->Start = Point2Dd(40, 240);
+    barred->End = Point2Dd(140, 240);
+    StrokeData barredStroke;
+    barredStroke.Fill = Color(0, 0, 120, 255);
+    barredStroke.Width = 2;
+    barredStroke.StartArrow.Kind = ArrowheadKind::Bar;
+    barredStroke.EndArrow.Kind = ArrowheadKind::Triangle;
+    barredStroke.EndArrow.Scale = 2.0f;
+    barred->Style.Stroke = barredStroke;
+    layer->AddChild(barred);
+
+    // 12. A brushed line: a one-dot stamp repeated along the line, saved as
+    // plain stamped shapes plus the marker the reader rebuilds the brush from.
+    auto stamp = std::make_shared<VectorGroup>();
+    auto dot = std::make_shared<VectorEllipse>();
+    dot->Center = Point2Dd(0, 0);
+    dot->RadiusX = 1;
+    dot->RadiusY = 1;
+    dot->Style.Fill = Color(0, 120, 0, 255);
+    stamp->AddChild(dot);
+    auto brushed = std::make_shared<VectorLine>();
+    brushed->Id = "brushed";
+    brushed->Start = Point2Dd(40, 260);
+    brushed->End = Point2Dd(140, 260);
+    StrokeData brushStroke;
+    brushStroke.Fill = Color(0, 120, 0, 255);
+    brushStroke.Width = 6;
+    brushStroke.Brush = BrushData{stamp, 1.6f, 1.0f, true};
+    brushed->Style.Stroke = brushStroke;
+    layer->AddChild(brushed);
+
     return doc;
 }
 
@@ -245,10 +281,16 @@ int main(int argc, char** argv) {
     CountNodes(reader.GetRoot(), counts);
     Check(counts[XARNodeType::Layer] == 1, "one layer");
     Check(counts[XARNodeType::Rectangle] == 3, "three rectangle records (plain + rounded + shaded)");
-    Check(counts[XARNodeType::Ellipse] == 3, "three ellipse records (circle + ellipse + feathered)");
-    // bezier leaf, rotated rect, the arrow's line, its baked head, the taper's band
-    Check(counts[XARNodeType::Path] == 5, "five path records (two shapes, the arrow line, its head, the width band)");
-    Check(counts[XARNodeType::Group] == 1, "one group");
+    // circle + ellipse + feathered, plus the brush's stamped copies of its dot
+    Check(counts[XARNodeType::Ellipse] >= 12 && counts[XARNodeType::Ellipse] <= 15,
+          "three ellipse records plus the brush's stamped dots");
+    // bezier leaf, rotated rect, the arrow's line, the taper's polyline and
+    // its band, the barred line and its baked bar, the brushed line
+    Check(counts[XARNodeType::Path] == 8, "eight path records (two shapes, three lines, the width band, the bar, the taper)");
+    // the rotated one, one marker group each for the taper, the bar and the
+    // brush, the brush's stamps group and one group per stamped copy
+    Check(counts[XARNodeType::Group] >= 14 && counts[XARNodeType::Group] <= 17,
+          "the rotated group, three marker groups, the stamps group and one group per stamp");
     Check(counts[XARNodeType::Shadow] == 1, "one shadow controller");
     Check(counts[XARNodeType::Feather] == 1, "one feather attribute");
     Check(counts[XARNodeType::TextStory] == 1, "one text story");
@@ -293,7 +335,7 @@ int main(int argc, char** argv) {
 
     std::vector<XARNodePtr> paths;
     Collect(reader.GetRoot(), XARNodeType::Path, paths);
-    if (paths.size() == 2) {
+    if (paths.size() >= 2) {
         auto p = std::static_pointer_cast<XARPathNode>(paths[0]);
         Check(p->isFilled && p->isStroked, "bezier path is filled and stroked");
         bool sawBezier = false, sawClose = false;
@@ -358,6 +400,42 @@ int main(int argc, char** argv) {
             for (const auto& c : e->children)
                 if (c->type == XARNodeType::Feather && std::static_pointer_cast<XARFeatherNode>(c)->featherRadius == 6000) feathered = true;
         Check(feathered, "the feather is an attribute of the circle with its radius in millipoints");
+
+        // Line gallery records: Xara's own arrowhead is a line attribute, the
+        // rest is baked under a group carrying the marker user value.
+        int nativeHeads = 0, scaledHeads = 0;
+        for (const auto& p : paths) {
+            auto pn = std::static_pointer_cast<XARPathNode>(p);
+            if (pn->hasLine && pn->line.endArrowRef == -1) {
+                ++nativeHeads;
+                auto sc = pn->userValues.find("UltraCanvas.ArrowScale");
+                if (sc != pn->userValues.end() && sc->second.find("end=2") != std::string::npos) ++scaledHeads;
+            }
+        }
+        Check(nativeHeads == 2, "the two triangle heads are ARROWHEAD line attributes (ref -1)");
+        Check(scaledHeads == 1, "the doubled head carries an ArrowScale user value");
+        std::vector<XARNodePtr> groups;
+        Collect(reader.GetRoot(), XARNodeType::Group, groups);
+        int markers = 0, brushMarkers = 0, stampCopies = 0;
+        for (const auto& g : groups) {
+            auto m = g->userValues.find("UltraCanvas.LineGallery");
+            if (m == g->userValues.end()) continue;
+            ++markers;
+            if (m->second.find("brush=1") != std::string::npos) {
+                ++brushMarkers;
+                // last child: the group of stamped copies
+                if (!g->children.empty()) {
+                    std::vector<XARNodePtr> dots;
+                    Collect(g->children.back(), XARNodeType::Ellipse, dots);
+                    stampCopies = static_cast<int>(dots.size());
+                }
+            }
+        }
+        Check(markers == 3, "three line-gallery marker groups (taper, bar, brush)");
+        Check(brushMarkers == 1, "one of them is a brush");
+        // 100pt line, stamp height 6pt, spacing 1.6 stamp widths -> ~11 copies
+        Check(stampCopies >= 9 && stampCopies <= 12, "the brush is written as stamped ellipse copies");
+        std::printf("      (stamp copies: %d)\n", stampCopies);
     }
 
     // ===== The converter reads the file back into the model =====
@@ -372,6 +450,7 @@ int main(int argc, char** argv) {
                   "the page size survives the round trip");
             Check(back->Layers.size() == 1, "one layer comes back");
             int shadowed = 0, feathered = 0, ramped = 0, multistage = 0, texts = 0, strokedShadowed = 0;
+            int tapers = 0, brushes = 0, barred = 0, plainArrows = 0, groups = 0;
             std::function<void(const std::shared_ptr<VectorElement>&)> walk = [&](const std::shared_ptr<VectorElement>& e) {
                 if (!e) return;
                 if (e->Effects.Shadow && std::fabs(e->Effects.Shadow->Offset.x - 5.0) < 0.01 &&
@@ -387,6 +466,20 @@ int main(int argc, char** argv) {
                         if (auto* l = std::get_if<LinearGradientData>(g))
                             if (l->Stops.size() == 4) ++multistage;
                 if (e->Type == VectorElementType::Text) ++texts;
+                if (e->Style.Stroke) {
+                    const auto& st = *e->Style.Stroke;
+                    if (st.HasWidthProfile() && st.WidthProfile.size() == 2 &&
+                        std::fabs(st.WidthProfile[1].Factor) < 0.01f && std::fabs(st.Width - 8.0f) < 0.01f) ++tapers;
+                    if (st.HasBrush() && std::fabs(st.Brush->Spacing - 1.6f) < 0.01f &&
+                        st.Brush->Stamp->Children.size() == 1 &&
+                        (st.Brush->Stamp->Children.front()->Type == VectorElementType::Ellipse ||
+                         st.Brush->Stamp->Children.front()->Type == VectorElementType::Circle)) ++brushes;
+                    if (st.StartArrow.Kind == ArrowheadKind::Bar && st.EndArrow.Kind == ArrowheadKind::Triangle &&
+                        std::fabs(st.EndArrow.Scale - 2.0f) < 0.01f) ++barred;
+                    if (!st.StartArrow.IsSet() && st.EndArrow.Kind == ArrowheadKind::Triangle &&
+                        std::fabs(st.EndArrow.Scale - 1.0f) < 0.01f) ++plainArrows;
+                }
+                if (e->Type == VectorElementType::Group) ++groups;
                 if (e->Type == VectorElementType::Group || e->Type == VectorElementType::Layer)
                     for (const auto& c : std::static_pointer_cast<VectorGroup>(e)->Children) walk(c);
             };
@@ -397,6 +490,11 @@ int main(int argc, char** argv) {
             Check(ramped == 1, "the transparency ramp comes back with its mix");
             Check(multistage == 1, "the four-stop gradient comes back with four stops");
             Check(texts == 1, "the text story comes back as one text element");
+            Check(plainArrows == 1, "Xara's triangle arrowhead reads back as the triangle kind");
+            Check(barred == 1, "the baked bar tail and the doubled head read back on the stroke");
+            Check(tapers == 1, "the width profile reads back as a stroke, not as the baked band");
+            Check(brushes == 1, "the brush reads back with its spacing and one-dot stamp");
+            Check(groups == 1, "only the rotated group stays a group (the marker groups unwrap)");
             for (const auto& w : warnings) std::printf("  (import note) %s\n", w.c_str());
         }
     }

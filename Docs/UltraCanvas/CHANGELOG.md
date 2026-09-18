@@ -9,9 +9,11 @@
     (flat, linear, radial, conical; level 0 opaque, 1 clear) with a mix
     (stained glass, bleach, contrast, saturation, darken, lighten,
     brightness, luminosity, hue) beside the flat `Opacity`. `StrokeData`
-    gains the line gallery: `StartArrow` / `EndArrow` (six kinds, scaled
-    from the line width), a `WidthProfile` of samples along the path and a
-    vector `Brush` stamped along it. `BuildOutlinePath`, `FlattenPathData`,
+    gains the line gallery: `StartArrow` / `EndArrow` (twelve kinds -
+    the six gallery shapes and Xara's own straight, angled, rounded,
+    spot, diamond, feather, feather 2 and hollow diamond - scaled from the
+    line width), a `WidthProfile` of samples along the path and a vector
+    `Brush` stamped along it. `BuildOutlinePath`, `FlattenPathData`,
     `PathEndpoints`, `ArrowheadOutline` and `VariableWidthOutline` are the
     shared geometry (the editing layer's `OutlineOf` delegates;
     `PathOps::SegsToPathData` is public).
@@ -30,17 +32,36 @@
     and the older dead one; without `ULTRACANVAS_PLUGIN_XAR` it only
     writes. Multistage fills, conical fills, transparency ramps with their
     mixes, line transparency, shadow controllers and feather attributes
-    round trip; bounding-box gradient units resolve against the object;
-    arrowheads and width profiles are written as filled shapes. What the
-    reader cannot represent is counted in one warning. The Vector plugin
+    round trip; bounding-box gradient units resolve against the object.
+    The line gallery round-trips too: Xara's own arrowheads are written
+    as `TAG_ARROWHEAD` / `TAG_ARROWTAIL` line attributes (the default
+    definitions' negative references, numbered as in Xara LX - the repo's
+    Xara samples carry no arrowheads, so the numbering is not yet checked
+    against a Designer export) and read back as the same kinds; every
+    other arrowhead, a width profile and a brush are baked into plain
+    shapes - the brush as one group per stamped copy, exactly what the
+    renderer draws - under a group that carries a `TAG_USERVALUE`
+    (`UltraCanvas.LineGallery`) describing the stroke, so Xara shows the
+    shapes, keeps the value, and the converter rebuilds the stroke from
+    it on the way back (the brush stamp is the first copy, un-placed). An
+    arrowhead scale other than one travels in an `UltraCanvas.ArrowScale`
+    user value. A custom `TAG_DEFINEARROW` reference still reads as the
+    triangle. What the reader cannot represent is counted in one
+    warning. The Vector plugin
     links the XAR plugin publicly when it is built, and the capability
     flags say what is written.
   - *Tests*: `VectorModelTest` renders every effect and checks pixels,
     the ramp and profile interpolation and the raster cache;
     `XARWriterTest` round-trips a four-stop gradient with a bleach ramp
-    and a wall shadow, a feathered circle, an arrowed line and a tapered
-    polyline through the plugin's reader and back through the converter;
-    `VectorFormatsPluginTest` pins the new flags.
+    and a wall shadow, a feathered circle, an arrowed line, a tapered
+    polyline, a bar-tailed line with a doubled native head and a brushed
+    line through the plugin's reader and back through the converter,
+    checking the strokes come back as strokes; `VectorFormatsPluginTest`
+    pins the new flags.
+  - *XAR plugin*: `TAG_USERVALUE` records are parsed (two UTF-16 strings)
+    into `XARNode::userValues` instead of being skipped, and a line
+    attribute's `startArrowRef` / `endArrowRef` default to 0 (none)
+    rather than -1.
 
 #### 2026-09-17 *0.8.83*
 - **A format plugin read nothing until an application named it.** Registration

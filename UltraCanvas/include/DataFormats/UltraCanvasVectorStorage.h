@@ -286,10 +286,16 @@ namespace UltraCanvas {
         // A gallery arrowhead at one end of a stroke, drawn in the stroke's
         // paint and sized from the line width: at Scale 1 a Triangle is four
         // widths long and two wide. OpenArrow is the unfilled chevron; Bar is
-        // the perpendicular tick. Scale 0 draws nothing.
+        // the perpendicular tick. The second row are Xara's default
+        // arrowheads (the XAR converter writes them as Xara's own line
+        // attributes): AngledArrow is swept back with a notch, RoundedArrow
+        // has a round back, Feather and Feather2 are fletchings,
+        // HollowDiamond is an outlined diamond. Scale 0 draws nothing.
         enum class ArrowheadKind {
-            NoArrowhead, Triangle, OpenArrow, Circle, Square, Diamond, Bar
+            NoArrowhead, Triangle, OpenArrow, Circle, Square, Diamond, Bar,
+            AngledArrow, RoundedArrow, Feather, Feather2, HollowDiamond
         };
+        constexpr int ArrowheadKindCount = 12;
         struct ArrowheadData {
             ArrowheadKind Kind = ArrowheadKind::NoArrowhead;
             float Scale = 1.0f;

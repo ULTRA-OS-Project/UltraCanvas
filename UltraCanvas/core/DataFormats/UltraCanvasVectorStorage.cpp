@@ -1375,11 +1375,42 @@ PathData ArrowheadOutline(const ArrowheadData& arrow, const Point2Dd& tip, const
             AppendPolyline(out, {P(0, H / 2), P(0, -H / 2)}, false);
             stroked = true;
             break;
+        case ArrowheadKind::AngledArrow:
+            // Swept back: the barbs trail the notch.
+            AppendPolyline(out, {tip, P(L, H / 2), P(0.7 * L, 0), P(L, -H / 2)}, true);
+            break;
+        case ArrowheadKind::RoundedArrow: {
+            // A triangle whose back bulges into a half circle.
+            const Point2Dd a = P(L * 0.75, H / 2), b = P(L * 0.75, -H / 2);
+            const Point2Dd c1 = P(L * 0.75 + H * 0.55, H / 2), c2 = P(L * 0.75 + H * 0.55, -H / 2);
+            PathCommand m; m.Type = PathCommandType::MoveTo; m.Parameters = {static_cast<float>(tip.x), static_cast<float>(tip.y)};
+            PathCommand l1; l1.Type = PathCommandType::LineTo; l1.Parameters = {static_cast<float>(a.x), static_cast<float>(a.y)};
+            PathCommand cv; cv.Type = PathCommandType::CurveTo;
+            cv.Parameters = {static_cast<float>(c1.x), static_cast<float>(c1.y), static_cast<float>(c2.x), static_cast<float>(c2.y),
+                             static_cast<float>(b.x), static_cast<float>(b.y)};
+            PathCommand z; z.Type = PathCommandType::ClosePath;
+            out.commands = {m, l1, cv, z};
+            break;
+        }
+        case ArrowheadKind::Feather:
+            // A fletching: two slanted vanes either side of the shaft.
+            AppendPolyline(out, {P(0, 0), P(L * 0.45, H / 2), P(L, H / 2), P(L * 0.55, 0), P(L, -H / 2), P(L * 0.45, -H / 2)}, true);
+            break;
+        case ArrowheadKind::Feather2:
+            // The vanes split into two pairs.
+            AppendPolyline(out, {P(0, 0), P(L * 0.3, H / 2), P(L * 0.55, H / 2), P(L * 0.35, 0.1 * H), P(L * 0.55, 0.1 * H),
+                                 P(L * 0.8, H / 2), P(L, H / 2), P(L * 0.7, 0), P(L, -H / 2), P(L * 0.8, -H / 2),
+                                 P(L * 0.55, -0.1 * H), P(L * 0.35, -0.1 * H), P(L * 0.55, -H / 2), P(L * 0.3, -H / 2)}, true);
+            break;
+        case ArrowheadKind::HollowDiamond:
+            AppendPolyline(out, {tip, P(L / 2, H / 2), P(L, 0), P(L / 2, -H / 2)}, true);
+            stroked = true;
+            break;
         case ArrowheadKind::NoArrowhead:
         default:
             break;
     }
-    out.Closed = !stroked;
+    out.Closed = !stroked || arrow.Kind == ArrowheadKind::HollowDiamond;
     return out;
 }
 

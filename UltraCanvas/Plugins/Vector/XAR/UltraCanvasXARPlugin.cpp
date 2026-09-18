@@ -1,7 +1,7 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.cpp
 // Xara XAR vector graphics format plugin implementation for UltraCanvas
-// Version: 2.1.0
-// Last Modified: 2026-08-26
+// Version: 2.2.0
+// Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARPlugin.h"
@@ -1620,6 +1620,9 @@ namespace UltraCanvas {
             case XARTag::TAG_TEXT_EXTRA_ATM_FONT_DEF:
                 ParseFontDefRecord(record, false); break;
 
+            // Per-object user data
+            case XARTag::TAG_USERVALUE: ParseUserValueRecord(record); break;
+
             // Effects
             case XARTag::TAG_SHADOWCONTROLLER: ParseShadowRecord(record); break;
             case XARTag::TAG_SHADOW:
@@ -1716,7 +1719,6 @@ namespace UltraCanvas {
             case XARTag::TAG_OVERPRINTFILLOFF:
             case XARTag::TAG_PRINTONALLPLATESON:
             case XARTag::TAG_PRINTONALLPLATESOFF:
-            case XARTag::TAG_USERVALUE:
             case XARTag::TAG_EXPORT_HINT:
             case XARTag::TAG_WEBADDRESS:
             case XARTag::TAG_WEBADDRESS_BOUNDINGBOX:
@@ -2238,6 +2240,18 @@ namespace UltraCanvas {
             f->featherRadius = ReadInt32(d, off);
         }
         AttachNode(f);
+    }
+
+    // TAG_USERVALUE: STRING key, STRING value (UTF-16, each terminated),
+    // an attribute of the object whose scope it sits in. Verified against
+    // Designer output ("SmartGroup\\Id" = "1" in the repo's samples).
+    void XARDocument::ParseUserValueRecord(const XARRecord& record) {
+        if (record.data.size() < 4) return;
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        std::string key = ReadUTF16String(d, off, record.data.size() - off);
+        std::string value = off < record.data.size() ? ReadUTF16String(d, off, record.data.size() - off) : std::string();
+        if (auto node = CurrentNode()) node->userValues[key] = value;
     }
 
     void XARDocument::ParseLiveEffectRecord(const XARRecord& record) {

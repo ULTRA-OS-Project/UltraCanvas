@@ -12,6 +12,8 @@
 #endif
 #include <fstream>
 #include <cstdint>
+#include <cstdlib>
+#include <cstdio>
 #include <sstream>
 #include <cstring>
 #include <zlib.h>
@@ -272,6 +274,9 @@ namespace UltraCanvas {
                 constexpr uint32_t CircularTransparentFill = 168;
                 constexpr uint32_t ConicalTransparentFill = 170;
                 constexpr uint32_t LineTransparency = 173;
+                constexpr uint32_t ArrowHead = 185;      // the end of the line
+                constexpr uint32_t ArrowTail = 186;      // the start
+                constexpr uint32_t UserValue = 189;
                 constexpr uint32_t StartCap = 174;
                 constexpr uint32_t EndCap = 175;
                 constexpr uint32_t JoinStyle = 176;
@@ -305,6 +310,65 @@ namespace UltraCanvas {
                 constexpr uint32_t CircularFillMultistage = 4076;
                 constexpr uint32_t ConicalFillMultistage = 4078;
                 constexpr uint32_t Feather = 4086;
+            }
+
+            // Xara's default arrowheads by reference, as the Xara LX sources
+            // number them (Appendix B of the format specification): -1
+            // straight arrow, -2 angled arrow, -3 rounded arrow, -4 spot, -5
+            // diamond, -6 arrow feather, -7 arrow feather 2, -8 hollow
+            // diamond. The repo's Xara samples carry no arrowheads, so this
+            // numbering is not verified against a Designer export here; a
+            // TAG_DEFINEARROW (positive reference) reads as the triangle.
+            int32_t NativeArrowRef(ArrowheadKind k) {
+                switch (k) {
+                    case ArrowheadKind::Triangle: return -1;
+                    case ArrowheadKind::AngledArrow: return -2;
+                    case ArrowheadKind::RoundedArrow: return -3;
+                    case ArrowheadKind::Circle: return -4;
+                    case ArrowheadKind::Diamond: return -5;
+                    case ArrowheadKind::Feather: return -6;
+                    case ArrowheadKind::Feather2: return -7;
+                    case ArrowheadKind::HollowDiamond: return -8;
+                    default: return 0;
+                }
+            }
+            ArrowheadKind KindFromArrowRef(int32_t ref) {
+                switch (ref) {
+                    case -1: return ArrowheadKind::Triangle;
+                    case -2: return ArrowheadKind::AngledArrow;
+                    case -3: return ArrowheadKind::RoundedArrow;
+                    case -4: return ArrowheadKind::Circle;
+                    case -5: return ArrowheadKind::Diamond;
+                    case -6: return ArrowheadKind::Feather;
+                    case -7: return ArrowheadKind::Feather2;
+                    case -8: return ArrowheadKind::HollowDiamond;
+                    case 0: return ArrowheadKind::NoArrowhead;
+                    default: return ArrowheadKind::Triangle;   // a custom definition
+                }
+            }
+
+            // The user values this converter writes on objects: what it baked
+            // into shapes, so the reader can rebuild the stroke.
+            constexpr const char* kLineGalleryKey = "UltraCanvas.LineGallery";
+            constexpr const char* kArrowScaleKey = "UltraCanvas.ArrowScale";
+
+            std::map<std::string, std::string> ParseMarker(const std::string& value) {
+                std::map<std::string, std::string> out;
+                size_t pos = 0;
+                while (pos <= value.size()) {
+                    size_t semi = value.find(';', pos);
+                    if (semi == std::string::npos) semi = value.size();
+                    const std::string item = value.substr(pos, semi - pos);
+                    const size_t eq = item.find('=');
+                    if (eq != std::string::npos) out[item.substr(0, eq)] = item.substr(eq + 1);
+                    pos = semi + 1;
+                }
+                return out;
+            }
+            double MarkerNumber(const std::map<std::string, std::string>& m, const char* key, double fallback) {
+                auto it = m.find(key);
+                if (it == m.end() || it->second.empty()) return fallback;
+                return std::atof(it->second.c_str());
             }
 
         }   // anonymous namespace
@@ -440,6 +504,12 @@ namespace UltraCanvas {
                     switch (n->type) {
                         case XARNodeType::Layer:
                         case XARNodeType::Group: {
+                            auto marker = n->userValues.find(kLineGalleryKey);
+                            if (marker != n->userValues.end()) {
+                                made = RebuildLineGallery(n, marker->second);
+                                if (!made) return;
+                                break;
+                            }
                             auto g = std::make_shared<VectorGroup>();
                             TranslateChildren(n, *g);
                             if (n->hasTransparency) ApplyTransparency(n->transparency, g->Style);
@@ -511,7 +581,99 @@ namespace UltraCanvas {
                     }
                     if (!made) return;
                     ApplyFeatherChild(n, *made);
+                    ApplyArrowScale(n, *made);
                     into.AddChild(made);
+                }
+
+                void ApplyArrowScale(const UltraCanvas::XARNodePtr& n, VectorElement& e) {
+                    auto it = n->userValues.find(kArrowScaleKey);
+                    if (it == n->userValues.end() || !e.Style.Stroke.has_value()) return;
+                    const auto m = ParseMarker(it->second);
+                    e.Style.Stroke->StartArrow.Scale = static_cast<float>(MarkerNumber(m, "start", 1.0));
+                    e.Style.Stroke->EndArrow.Scale = static_cast<float>(MarkerNumber(m, "end", 1.0));
+                }
+
+                // A group this converter wrote around a baked line gallery: the
+                // first child is the object, the rest the shapes Xara shows;
+                // the stroke comes back from the marker and, for a brush, the
+                // stamp from the first stamped copy placed back into its own
+                // space.
+                std::shared_ptr<VectorElement> RebuildLineGallery(const UltraCanvas::XARNodePtr& n, const std::string& marker) {
+                    auto tmp = std::make_shared<VectorGroup>();
+                    TranslateChildren(n, *tmp);
+                    if (tmp->Children.empty()) return nullptr;
+                    auto element = tmp->Children.front();
+                    const auto m = ParseMarker(marker);
+                    StrokeData st;
+                    Color c(0, 0, 0, 255);
+                    auto ci = m.find("colour");
+                    if (ci != m.end() && ci->second.size() == 6) {
+                        const unsigned v = static_cast<unsigned>(std::strtoul(ci->second.c_str(), nullptr, 16));
+                        c = Color((v >> 16) & 0xFF, (v >> 8) & 0xFF, v & 0xFF, static_cast<uint8_t>(MarkerNumber(m, "alpha", 255)));
+                    }
+                    st.Fill = c;
+                    st.Width = static_cast<float>(MarkerNumber(m, "width", 1.0));
+                    st.Opacity = static_cast<float>(MarkerNumber(m, "opacity", 1.0));
+                    st.LineCap = static_cast<StrokeLineCap>(static_cast<int>(MarkerNumber(m, "cap", 0)));
+                    st.LineJoin = static_cast<StrokeLineJoin>(static_cast<int>(MarkerNumber(m, "join", 0)));
+                    st.MiterLimit = static_cast<float>(MarkerNumber(m, "mitre", 4.0));
+                    auto kind = [&](const char* key) {
+                        const int k = static_cast<int>(MarkerNumber(m, key, 0));
+                        return static_cast<ArrowheadKind>(std::max(0, std::min(ArrowheadKindCount - 1, k)));
+                    };
+                    st.StartArrow.Kind = kind("startArrow");
+                    st.StartArrow.Scale = static_cast<float>(MarkerNumber(m, "startScale", 1.0));
+                    st.EndArrow.Kind = kind("endArrow");
+                    st.EndArrow.Scale = static_cast<float>(MarkerNumber(m, "endScale", 1.0));
+                    auto list = [&](const char* key) {
+                        std::vector<std::string> items;
+                        auto it = m.find(key);
+                        if (it == m.end()) return items;
+                        size_t pos = 0;
+                        while (pos <= it->second.size()) {
+                            size_t comma = it->second.find(',', pos);
+                            if (comma == std::string::npos) comma = it->second.size();
+                            items.push_back(it->second.substr(pos, comma - pos));
+                            pos = comma + 1;
+                        }
+                        return items;
+                    };
+                    for (const auto& d : list("dash")) if (!d.empty()) st.DashArray.push_back(std::atof(d.c_str()));
+                    for (const auto& p : list("profile")) {
+                        const size_t colon = p.find(':');
+                        if (colon == std::string::npos) continue;
+                        st.WidthProfile.push_back({static_cast<float>(std::atof(p.substr(0, colon).c_str())),
+                                                   static_cast<float>(std::atof(p.substr(colon + 1).c_str()))});
+                    }
+                    if (MarkerNumber(m, "brush", 0) > 0 && tmp->Children.size() >= 2) {
+                        // The stamps group is the last child; its first copy,
+                        // placed back through the inverse of its placement, is
+                        // the stamp in its own space.
+                        auto stamps = std::dynamic_pointer_cast<VectorGroup>(tmp->Children.back());
+                        std::shared_ptr<VectorGroup> copy;
+                        if (stamps && !stamps->Children.empty()) copy = std::dynamic_pointer_cast<VectorGroup>(stamps->Children.front());
+                        const auto mm = list("stampm");
+                        if (copy && mm.size() == 6) {
+                            const Matrix3x3 placement = Matrix3x3::FromValues(std::atof(mm[0].c_str()), std::atof(mm[1].c_str()),
+                                                                              std::atof(mm[2].c_str()), std::atof(mm[3].c_str()),
+                                                                              std::atof(mm[4].c_str()), std::atof(mm[5].c_str()));
+                            stamps->Children.erase(stamps->Children.begin());
+                            copy->Parent.reset();
+                            copy->Transform = placement.Inverse();
+                            BrushData b;
+                            b.Stamp = copy;
+                            b.Spacing = static_cast<float>(MarkerNumber(m, "spacing", 1.0));
+                            b.Scale = static_cast<float>(MarkerNumber(m, "scale", 1.0));
+                            b.Rotate = MarkerNumber(m, "rotate", 1) > 0;
+                            st.Brush = b;
+                        } else {
+                            Skip("brush stroke (stamps kept as shapes)");
+                            return tmp;   // keep what Xara shows
+                        }
+                    }
+                    element->Style.Stroke = st;
+                    element->Parent.reset();
+                    return element;
                 }
 
                 // An object's own children are its attribute-derived nodes;
@@ -801,8 +963,9 @@ namespace UltraCanvas {
                     st.MiterLimit = l.mitreLimit;
                     st.DashArray = l.dashPattern;
                     if (l.lineTransparency > 0) st.Opacity = 1.0f - l.lineTransparency / 255.0f;
-                    if (l.startArrowRef > 0) { st.StartArrow.Kind = ArrowheadKind::Triangle; Skip("arrowhead definition (gallery triangle substituted)"); }
-                    if (l.endArrowRef > 0) { st.EndArrow.Kind = ArrowheadKind::Triangle; Skip("arrowhead definition (gallery triangle substituted)"); }
+                    if (l.startArrowRef != 0) st.StartArrow.Kind = KindFromArrowRef(l.startArrowRef);
+                    if (l.endArrowRef != 0) st.EndArrow.Kind = KindFromArrowRef(l.endArrowRef);
+                    if (l.startArrowRef > 0 || l.endArrowRef > 0) Skip("custom arrowhead definition (read as the triangle)");
                     return st;
                 }
 
@@ -1199,18 +1362,46 @@ namespace UltraCanvas {
                     // A shadow is a controller group around the object.
                     const bool shadow = effectsOn && e.Effects.Shadow.has_value() && e.Effects.Shadow->Darkness > 0;
                     if (shadow) { EmitShadowController(*e.Effects.Shadow, ctm); Down(); }
-                    // A width profile or a brush replaces the plain stroke; the
-                    // band is baked after the object (brushes are not).
+                    // The line gallery: Xara's own arrowheads are line
+                    // attributes; a width profile, a brush or another arrowhead
+                    // kind is baked into shapes after the object, and the
+                    // whole thing is a group carrying a user value the reader
+                    // rebuilds the stroke from. A profile or brush replaces the
+                    // plain stroke.
+                    const StrokeData* st = HasVisibleStroke(eff) ? &*eff.Stroke : nullptr;
+                    const bool bakedArrows = st && ((st->StartArrow.IsSet() && NativeArrowRef(st->StartArrow.Kind) == 0) ||
+                                                    (st->EndArrow.IsSet() && NativeArrowRef(st->EndArrow.Kind) == 0));
+                    const bool baked = st && (bakedArrows || st->HasWidthProfile() || (st->HasBrush() && st->Brush->Stamp));
                     VectorStyle drawStyle = eff;
-                    if (HasVisibleStroke(eff) && (eff.Stroke->HasWidthProfile() || eff.Stroke->HasBrush()))
-                        drawStyle.Stroke.reset();
+                    if (st && (st->HasWidthProfile() || st->HasBrush())) drawStyle.Stroke.reset();
+                    std::vector<Matrix3x3> stampPlacements;
+                    std::vector<std::vector<Point2Dd>> stampLines;
+                    if (baked) {
+                        if (st->HasBrush()) {
+                            PathData outline;
+                            if (BuildOutlinePath(e, outline))
+                                for (const auto& sub : FlattenPathData(outline)) {
+                                    std::vector<Matrix3x3> placements;
+                                    if (StampPlacements(sub.Points, *st, placements)) {
+                                        stampLines.push_back(sub.Points);
+                                        stampPlacements.insert(stampPlacements.end(), placements.begin(), placements.end());
+                                    }
+                                }
+                        }
+                        Rec(XarOut::Group);
+                        Down();
+                        std::optional<Matrix3x3> firstStamp;
+                        if (!stampPlacements.empty()) firstStamp = ctm * stampPlacements.front();
+                        EmitUserValue(kLineGalleryKey, LineGalleryMarker(*st, eff, ctm, firstStamp ? &*firstStamp : nullptr));
+                    }
                     activeEffects = effectsOn ? &e.Effects : nullptr;
                     // A shape left with neither fill nor stroke (its stroke is
-                    // baked below) has no record of its own.
+                    // baked below) has no record of its own - unless the baked
+                    // group needs its outline back.
                     const bool container = e.Type == VectorElementType::Group || e.Type == VectorElementType::Symbol ||
                                            e.Type == VectorElementType::Layer || e.Type == VectorElementType::Text ||
                                            e.Type == VectorElementType::Image;
-                    const bool invisible = !container && !HasVisibleFill(drawStyle) && !HasVisibleStroke(drawStyle);
+                    const bool invisible = !container && !baked && !HasVisibleFill(drawStyle) && !HasVisibleStroke(drawStyle);
 
                     switch (invisible ? VectorElementType::NoneType : e.Type) {
                         case VectorElementType::NoneType:
@@ -1280,7 +1471,16 @@ namespace UltraCanvas {
                             break;
                     }
                     activeEffects = nullptr;
-                    if (HasVisibleStroke(eff)) EmitBakedGallery(e, eff, ctm);
+                    if (baked) {
+                        EmitBakedGallery(e, eff, ctm, bakedArrows);
+                        if (!stampPlacements.empty()) {
+                            Rec(XarOut::Group);
+                            Down();
+                            for (const auto& placement : stampPlacements) EmitElement(*st->Brush->Stamp, VectorStyle(), ctm * placement);
+                            Up();
+                        }
+                        Up();
+                    }
                     if (shadow) Up();
                 }
 
@@ -1304,6 +1504,90 @@ namespace UltraCanvas {
                     b.I32(0);
                     b.I32(0);
                     Rec(XarOut::ShadowController, b);
+                }
+
+                // TAG_USERVALUE: STRING key, STRING value, an attribute of the
+                // object being written; Xara keeps it.
+                void EmitUserValue(const std::string& key, const std::string& value) {
+                    XarBody b;
+                    b.Utf16(key);
+                    b.Utf16(value);
+                    Rec(XarOut::UserValue, b);
+                }
+
+                static std::string Num(double v) {
+                    char buf[48];
+                    std::snprintf(buf, sizeof(buf), "%.6g", v);
+                    return buf;
+                }
+                static std::string HexColour(const Color& c) {
+                    char buf[16];
+                    std::snprintf(buf, sizeof(buf), "%02x%02x%02x", c.r, c.g, c.b);
+                    return buf;
+                }
+
+                // What the line gallery bakes: everything the reader needs to
+                // rebuild the stroke, in document points.
+                std::string LineGalleryMarker(const StrokeData& st, const VectorStyle& eff, const Matrix3x3& ctm,
+                                              const Matrix3x3* stampPlacement) {
+                    const double k = AvgScale(ctm);
+                    Color c(0, 0, 0, 255);
+                    if (const Color* col = std::get_if<Color>(&st.Fill)) c = *col;
+                    std::string m = "v=1;width=" + Num(st.Width * k) + ";colour=" + HexColour(c) + ";alpha=" + Num(c.a) +
+                                    ";opacity=" + Num(st.Opacity * eff.StrokeOpacity) +
+                                    ";cap=" + Num(static_cast<int>(st.LineCap)) + ";join=" + Num(static_cast<int>(st.LineJoin)) +
+                                    ";mitre=" + Num(st.MiterLimit) +
+                                    ";startArrow=" + Num(static_cast<int>(st.StartArrow.Kind)) + ";startScale=" + Num(st.StartArrow.Scale) +
+                                    ";endArrow=" + Num(static_cast<int>(st.EndArrow.Kind)) + ";endScale=" + Num(st.EndArrow.Scale);
+                    if (!st.DashArray.empty()) {
+                        m += ";dash=";
+                        for (size_t i = 0; i < st.DashArray.size(); ++i) m += (i ? "," : "") + Num(st.DashArray[i] * k);
+                    }
+                    if (st.HasWidthProfile()) {
+                        m += ";profile=";
+                        for (size_t i = 0; i < st.WidthProfile.size(); ++i)
+                            m += (i ? "," : "") + Num(st.WidthProfile[i].T) + ":" + Num(st.WidthProfile[i].Factor);
+                    }
+                    if (st.HasBrush() && stampPlacement) {
+                        const BrushData& b = *st.Brush;
+                        m += ";brush=1;spacing=" + Num(b.Spacing) + ";scale=" + Num(b.Scale) + ";rotate=" + (b.Rotate ? "1" : "0");
+                        m += ";stampm=";
+                        const Matrix3x3& M = *stampPlacement;
+                        // Row-major, the FromValues(a, b, c, d, e, f) order.
+                        m += Num(M.m[0][0]) + "," + Num(M.m[0][1]) + "," + Num(M.m[1][0]) + "," + Num(M.m[1][1]) + "," +
+                             Num(M.m[0][2]) + "," + Num(M.m[1][2]);
+                    }
+                    return m;
+                }
+
+                // The placement of stamp `i` along a polyline, as the renderer
+                // stamps it: translate to the point, rotate to the tangent,
+                // scale the stamp's height to the line width, centre it.
+                static bool StampPlacements(const std::vector<Point2Dd>& pts, const StrokeData& st,
+                                            std::vector<Matrix3x3>& out) {
+                    const BrushData& b = *st.Brush;
+                    const Rect2Dd sb = b.Stamp->GetBoundingBox();
+                    if (sb.width <= 0 || sb.height <= 0 || pts.size() < 2) return false;
+                    const double k = (std::max(0.5f, st.Width) * std::max(0.01f, b.Scale)) / sb.height;
+                    const double step = std::max(0.25, sb.width * k * std::max(0.05f, b.Spacing));
+                    std::vector<double> cum(pts.size(), 0.0);
+                    for (size_t i = 1; i < pts.size(); ++i)
+                        cum[i] = cum[i - 1] + std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+                    const double total = cum.back();
+                    if (total <= 1e-9) return false;
+                    size_t seg = 1;
+                    int stamps = 0;
+                    for (double dist = 0; dist <= total + 1e-9 && stamps < 4000; dist += step, ++stamps) {
+                        while (seg + 1 < pts.size() && cum[seg] < dist) ++seg;
+                        const double segLen = cum[seg] - cum[seg - 1];
+                        const double u = segLen > 1e-12 ? std::min(1.0, std::max(0.0, (dist - cum[seg - 1]) / segLen)) : 0.0;
+                        const Point2Dd p(pts[seg - 1].x + (pts[seg].x - pts[seg - 1].x) * u,
+                                         pts[seg - 1].y + (pts[seg].y - pts[seg - 1].y) * u);
+                        const double angle = b.Rotate ? std::atan2(pts[seg].y - pts[seg - 1].y, pts[seg].x - pts[seg - 1].x) : 0.0;
+                        out.push_back(Matrix3x3::Translate(p.x, p.y) * Matrix3x3::Rotate(angle) * Matrix3x3::Scale(k, k) *
+                                      Matrix3x3::Translate(-(sb.x + sb.width / 2), -(sb.y + sb.height / 2)));
+                    }
+                    return !out.empty();
                 }
 
                 // TAG_FEATHER, an attribute of the object being written.
@@ -1368,14 +1652,15 @@ namespace UltraCanvas {
 
                 // Arrowheads and width profiles as filled shapes after the
                 // object: Xara shows them, and they read back as shapes.
-                void EmitBakedGallery(const VectorElement& e, const VectorStyle& eff, const Matrix3x3& ctm) {
+                void EmitBakedGallery(const VectorElement& e, const VectorStyle& eff, const Matrix3x3& ctm, bool bakedArrows) {
                     const StrokeData& st = *eff.Stroke;
-                    if (!st.HasArrowheads() && !st.HasWidthProfile() && !st.HasBrush()) return;
+                    if (!bakedArrows && !st.HasWidthProfile()) return;
                     PathData outline;
                     if (!BuildOutlinePath(e, outline)) return;
                     if (!galleryWarned) {
                         galleryWarned = true;
-                        warn("XAR export: arrowheads and width profiles are written as filled shapes; brushes as plain strokes");
+                        warn("XAR export: width profiles, brush stamps and non-Xara arrowheads are written as shapes "
+                             "in a group Xara shows; the group's user value lets this converter read the stroke back");
                     }
                     VectorStyle fillStyle;
                     if (std::holds_alternative<Color>(st.Fill) || std::holds_alternative<GradientData>(st.Fill)) fillStyle.Fill = st.Fill;
@@ -1395,18 +1680,12 @@ namespace UltraCanvas {
                     if (st.HasWidthProfile()) {
                         const PathData band = VariableWidthOutline(outline, st);
                         if (!band.commands.empty()) EmitPathRecord(NormalizePath(band), fillStyle, ctm, true);
-                    } else if (st.HasBrush()) {
-                        // The plain stroke stands in for the brush.
-                        StrokeData ghost = plain;
-                        VectorStyle ghostStyle = strokeStyle;
-                        ghostStyle.Stroke = ghost;
-                        EmitPathRecord(NormalizePath(outline), ghostStyle, ctm, false);
                     }
-                    if (st.HasArrowheads()) {
+                    if (bakedArrows) {
                         Point2Dd start, startDir, end, endDir;
                         if (PathEndpoints(outline, start, startDir, end, endDir)) {
                             auto emitArrow = [&](const ArrowheadData& a, const Point2Dd& tip, const Point2Dd& dir) {
-                                if (!a.IsSet()) return;
+                                if (!a.IsSet() || NativeArrowRef(a.Kind) != 0) return;
                                 bool stroked = false;
                                 const PathData shape = ArrowheadOutline(a, tip, dir, st.Width, stroked);
                                 if (shape.commands.empty()) return;
@@ -1611,6 +1890,15 @@ namespace UltraCanvas {
                             db.I32(DashRef(st.DashArray, AvgScale(ctm)));
                             Rec(XarOut::DashStyle, db);
                         }
+                        if (st.StartArrow.IsSet() && NativeArrowRef(st.StartArrow.Kind) != 0) {
+                            XarBody ab; ab.I32(NativeArrowRef(st.StartArrow.Kind)); Rec(XarOut::ArrowTail, ab);
+                        }
+                        if (st.EndArrow.IsSet() && NativeArrowRef(st.EndArrow.Kind) != 0) {
+                            XarBody ab; ab.I32(NativeArrowRef(st.EndArrow.Kind)); Rec(XarOut::ArrowHead, ab);
+                        }
+                        if ((st.StartArrow.IsSet() && std::fabs(st.StartArrow.Scale - 1.0f) > 1e-4f) ||
+                            (st.EndArrow.IsSet() && std::fabs(st.EndArrow.Scale - 1.0f) > 1e-4f))
+                            EmitUserValue(kArrowScaleKey, "start=" + Num(st.StartArrow.Scale) + ";end=" + Num(st.EndArrow.Scale));
                         const float strokeOpacity = style.StrokeOpacity * st.Opacity;
                         if (strokeOpacity < 0.999f) {
                             XarBody lt;

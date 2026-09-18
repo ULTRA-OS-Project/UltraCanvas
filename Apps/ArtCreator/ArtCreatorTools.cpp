@@ -188,7 +188,8 @@ Rect2Dd DragRect(const Point2Dd& from, const Point2Dd& to, bool square, bool fro
 namespace ArtLineGallery {
 
 const std::vector<std::string>& ArrowheadNames() {
-    static const std::vector<std::string> names = { "None", "Triangle", "Open arrow", "Circle", "Square", "Diamond", "Bar" };
+    static const std::vector<std::string> names = { "None", "Triangle", "Open arrow", "Circle", "Square", "Diamond", "Bar",
+                                                    "Angled arrow", "Rounded arrow", "Feather", "Feather 2", "Hollow diamond" };
     return names;
 }
 const std::vector<std::string>& ProfileNames() {
@@ -252,9 +253,9 @@ std::optional<BrushData> Brush(int index) {
 }
 
 void ApplyToStroke(StrokeData& stroke, const ArtToolOptions& o) {
-    stroke.StartArrow.Kind = static_cast<ArrowheadKind>(std::clamp(o.lineStartArrow, 0, 6));
+    stroke.StartArrow.Kind = static_cast<ArrowheadKind>(std::clamp(o.lineStartArrow, 0, ArrowheadKindCount - 1));
     stroke.StartArrow.Scale = o.lineArrowScale;
-    stroke.EndArrow.Kind = static_cast<ArrowheadKind>(std::clamp(o.lineEndArrow, 0, 6));
+    stroke.EndArrow.Kind = static_cast<ArrowheadKind>(std::clamp(o.lineEndArrow, 0, ArrowheadKindCount - 1));
     stroke.EndArrow.Scale = o.lineArrowScale;
     stroke.WidthProfile = Profile(o.lineProfile);
     stroke.Brush = Brush(o.lineBrush);
