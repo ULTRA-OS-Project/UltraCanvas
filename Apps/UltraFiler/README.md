@@ -12,6 +12,7 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 | Folder content (center pane) | one `UltraCanvasFilerWidget` per tab, the active one shown in the tab strip's content host — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
 | Detail / preview (right pane) | `UltraCanvasMediaViewer` for a selected file — images, video, audio, PDFs, spreadsheets, 3D models and text files — and a second small-thumbnail `UltraCanvasFilerWidget` showing the content of a selected folder; the two share the pane |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
+| Split view (two displays side by side) | a second `UltraCanvasFilerWidget` in a pane of the same `UltraCanvasSplitPane`, each display under a header row of a folder-tree `UltraCanvasButton` and its own `UltraCanvasBreadcrumb`; the one folder tree docks into whichever pane's button was pressed |
 | Search field | a container holding an `UltraCanvasTextInput` — driving `UltraCanvasFilerWidget::SetNameFilter()` as-you-type — and the in-field **Scan sub folder** `UltraCanvasButton`, which starts the background sub-folder scan whose matches arrive through `ShowFileList()` / `AppendToFileList()` |
 | History view | `UltraCanvasTabbedContainer` (Files / Folders / Apps) hosting one small-thumbnail `UltraCanvasFilerWidget` per tab, fed with `ShowFileList()` from `UltraFilerHistory` |
 | Favorites view | the same tabbed layout, fed with `ShowFileList()` from `UltraFilerFavorites` (the pinned paths) |
@@ -40,9 +41,31 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   view settings; tabs can be reordered by dragging and closed (the last one
   stays open). The strip stays visible while the History or Favorites view
   replaces the folder display, so clicking a tab returns to browsing it.
-- **Navigation:** Back / Forward history (per tab), Up, Refresh, clickable
-  breadcrumb path (each segment's dropdown lists sibling folders), folder
-  tree with lazy expansion, and the History toggle (see below).
+- **Navigation:** Back / Forward history (per tab), Up, Refresh, the Split
+  view toggle (see below), clickable breadcrumb path (each segment's dropdown
+  lists sibling folders), folder tree with lazy expansion, and the History
+  toggle (see below).
+- **Split view:** the split-screen button in the navigation row (left of the
+  clock) shows **two folder displays side by side** in place of the folder
+  tree and the single display: the active tab's display on the left and a
+  second display on the right, which has a Back / Forward history of its own
+  and is in no tab. The two share the width the tree and the display had,
+  with a draggable splitter between them. Each pane carries a **header row**
+  of a folder-tree button and the pane's own breadcrumb, which navigates that
+  pane. The **tree button** docks the folder tree down the left of that
+  display, under its header, and takes it away again (also **Esc**); there is
+  one tree, so pressing the other pane's button moves it over. A docked tree
+  follows and navigates the display it sits beside. **The display clicked
+  last is the active one** — its header is tinted — and it is what the
+  navigation row, the command bar, the search field, the status bar and the
+  preview pane act on, exactly as they act on the active tab; clicking a tab
+  makes the left-hand pane active again, and the Computer page always opens
+  in the left-hand pane. Files drag and drop between the two displays like
+  between any two displays of the window. The right-hand display's folder
+  and the switch itself are saved with the settings (`view.split`,
+  `view.split.second.folder`), so the next start opens the pair as it was
+  left. Pressing the button again brings the tree pane back as wide as it
+  was.
 - **Search:** typing in the field filters the shown folder **as-you-type**
   (case-insensitive name filter, no disk walk; the status bar notes the
   filter). A **Scan sub folder** button appears *inside* the search field as
