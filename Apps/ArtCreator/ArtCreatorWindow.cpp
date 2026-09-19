@@ -2,7 +2,7 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 
@@ -82,6 +82,9 @@ namespace {
             case VectorElementType::Path: return "shape";
             case VectorElementType::Text: return "text";
             case VectorElementType::Group: return "group";
+            case VectorElementType::ClipView: return "clip view";
+            case VectorElementType::Blend: return "blend";
+            case VectorElementType::Mould: return "mould";
             case VectorElementType::Image: return "image";
             default: return "object";
         }
@@ -317,6 +320,15 @@ void ArtCreatorWindow::BuildMenuBar() {
             M::Action("Vertical Centres Evenly", [this]() { CmdDistribute(DistributeMode::VerticalCenters); }),
             M::Action("Equal Horizontal Gaps", [this]() { CmdDistribute(DistributeMode::HorizontalGaps); }),
             M::Action("Equal Vertical Gaps", [this]() { CmdDistribute(DistributeMode::VerticalGaps); }),
+            M::Separator(),
+            M::Header("Combine shapes"),
+            M::Action("Add Shapes", [this]() { CmdCombine(CombineOp::Add); }),
+            M::Action("Subtract Shapes", [this]() { CmdCombine(CombineOp::Subtract); }),
+            M::Action("Intersect Shapes", [this]() { CmdCombine(CombineOp::Intersect); }),
+            M::Action("Slice Shapes", [this]() { CmdCombine(CombineOp::Slice); }),
+            M::Separator(),
+            M::ActionWithShortcut("Apply ClipView", "Ctrl+K", [this]() { CmdApplyClipView(); }),
+            M::Action("Remove ClipView, Blend or Mould", [this]() { CmdRemoveContainer(); }),
             M::Separator(),
             M::ActionWithShortcut("Convert to Editable Shapes", "Ctrl+Shift+S", [this]() { CmdConvertToPath(); }),
         })
@@ -1003,6 +1015,54 @@ void ArtCreatorWindow::CmdConvertToPath() {
     if (selection->Empty()) return;
     auto ids = selection->Ids();
     history.Record("Convert to Editable Shapes", [&]() { for (auto& e : selection->Elements()) ConvertToPath(e); });
+    Reselect(ids);
+}
+
+// Xara's Combine Shapes: the result replaces the selection.
+void ArtCreatorWindow::CmdCombine(CombineOp op) {
+    if (selection->Count() < 2) return;
+    static const char* labels[] = { "Add Shapes", "Subtract Shapes", "Intersect Shapes", "Slice Shapes" };
+    std::vector<std::string> ids;
+    history.Record(labels[static_cast<int>(op)], [&]() {
+        for (auto& e : CombineShapes(selection->Elements(), op)) ids.push_back(e->Id);
+    });
+    if (ids.empty() && toolContext.setStatus) toolContext.setStatus("Combine shapes needs two or more shapes with outlines");
+    Reselect(ids);
+}
+
+// The front shape of the selection becomes the keyhole the others show
+// through.
+void ArtCreatorWindow::CmdApplyClipView() {
+    if (selection->Count() < 2) return;
+    std::string id;
+    history.Record("Apply ClipView", [&]() {
+        const auto ordered = SortByDrawingOrder(selection->Elements());
+        auto parent = ParentOf(ordered.back());
+        if (!parent) return;
+        auto clip = std::make_shared<VectorClipView>();
+        clip->Id = GenerateId("clip");
+        clip->Keyholes = 1;
+        std::vector<ElementPtr> members;
+        members.push_back(ordered.back());
+        for (size_t i = 0; i + 1 < ordered.size(); ++i) members.push_back(ordered[i]);
+        const int index = IndexInParent(ordered.front());
+        ArtToolHelpers::WrapInContainer(clip, parent, index, {});
+        int at = 0;
+        for (const auto& m : members) ReparentElement(m, clip, at++);
+        id = clip->Id;
+    });
+    if (!id.empty()) Reselect({id});
+}
+
+void ArtCreatorWindow::CmdRemoveContainer() {
+    if (selection->Empty()) return;
+    std::vector<ElementPtr> containers;
+    for (const auto& e : selection->Elements())
+        if (e && (e->Type == VectorElementType::ClipView || e->Type == VectorElementType::Blend || e->Type == VectorElementType::Mould))
+            containers.push_back(e);
+    if (containers.empty()) { if (toolContext.setStatus) toolContext.setStatus("Select a clip view, blend or mould to remove"); return; }
+    std::vector<std::string> ids;
+    history.Record("Remove Container", [&]() { for (auto& e : UngroupElements(containers)) ids.push_back(e->Id); });
     Reselect(ids);
 }
 

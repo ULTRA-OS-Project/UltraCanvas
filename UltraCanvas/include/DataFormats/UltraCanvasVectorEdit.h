@@ -228,6 +228,9 @@ std::vector<ElementPtr> SortByDrawingOrder(const std::vector<ElementPtr>& elemen
 std::shared_ptr<VectorGroup> GroupElements(const std::vector<ElementPtr>& elements);
 // Replaces every group in the list by its children (transforms composed);
 // non-groups pass through. Returns the resulting elements.
+// Dissolves groups, symbols and the ClipView / Blend / Mould containers
+// (not layers): their children take their place, keeping their document
+// placement. Other elements pass through.
 std::vector<ElementPtr> UngroupElements(const std::vector<ElementPtr>& elements);
 // Moves an element to another parent at an index (-1 = end), keeping its
 // document-space placement.

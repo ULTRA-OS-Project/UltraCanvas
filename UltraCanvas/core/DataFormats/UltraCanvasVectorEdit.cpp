@@ -810,7 +810,10 @@ std::vector<ElementPtr> UngroupElements(const std::vector<ElementPtr>& elements)
     std::vector<ElementPtr> out;
     for (const auto& e : elements) {
         if (!e) continue;
-        if (e->Type != VectorElementType::Group && e->Type != VectorElementType::Symbol) { out.push_back(e); continue; }
+        // Any container but a layer: a plain group, a symbol, and the
+        // ClipView / Blend / Mould containers, whose children come back as
+        // they are.
+        if (!IsGroupType(e->Type) || e->Type == VectorElementType::Layer) { out.push_back(e); continue; }
         auto group = std::dynamic_pointer_cast<VectorGroup>(e);
         auto parent = ParentOf(e);
         if (!parent) { out.push_back(e); continue; }
