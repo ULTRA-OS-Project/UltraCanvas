@@ -2659,8 +2659,27 @@ if(ULTRACANVAS_PLUGIN_PDF)
         set(MUPDF_FOUND TRUE)
     else()
         set(MUPDF_FOUND FALSE)
+        # A dependency the machine does not have disables its plugin; it does
+        # not fail the build. MUPDF_FOUND was computed here and then ignored:
+        # the sources, the include directory and ${MUPDF_LIBRARY} were wired
+        # in regardless, so a machine without MuPDF stopped at configure time
+        # with "MUPDF_LIBRARY ... NOTFOUND" and no way forward but installing
+        # it. That is what made an upstream package disappearing (MSYS2
+        # dropped mingw-w64-x86_64-mupdf on 2026-09-17) an unfixable build
+        # outage rather than a build without PDF previews.
+        #
+        # Everything that uses the plugin is already guarded by
+        # ULTRACANVAS_PLUGIN_PDF - UltraCanvasPDFView.cpp and
+        # UltraCanvasPDF_MuPDF.cpp compile to nothing without it, and the
+        # filer's PDF thumbnails fall back to the type glyph - so skipping it
+        # here degrades cleanly.
+        message(STATUS "  [✗] PDF Plugin - DISABLED (MuPDF not found; install "
+                       "libmupdf-dev / <msys_prefix>-mupdf, or pass "
+                       "-DULTRACANVAS_PLUGIN_PDF=OFF to ask for this)")
     endif()
+endif()
 
+if(ULTRACANVAS_PLUGIN_PDF AND MUPDF_FOUND)
     list(APPEND ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
@@ -2736,7 +2755,9 @@ if(ULTRACANVAS_PLUGIN_PDF)
             "-Wl,--exclude-libs,libmupdf.a:libmupdf-third.a")
     endif()
     message(STATUS "  [✓] PDF Plugin - ENABLED (MuPDF at ${MUPDF_LIBRARY})")
-else()
+elseif(NOT ULTRACANVAS_PLUGIN_PDF)
+    # The MuPDF-not-found case already said so above, so this is only the
+    # option being off.
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()
 

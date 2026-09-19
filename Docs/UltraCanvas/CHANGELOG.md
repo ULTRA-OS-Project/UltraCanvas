@@ -1,3 +1,51 @@
+#### 2026-09-19 *0.8.86*
+- **The Linux build is green again under Clang, and a missing MuPDF no longer
+  stops a build.** Two independent breakages, both from the move to Clang
+  (0.8.83's "Migrate from GCC to Clang"), and both of which left `main` red.
+
+  - **Three files captured a structured binding in a lambda.** Legal only
+    since C++20's P1091, and **Clang 14 - which is what `apt install clang`
+    gives on the `ubuntu-22.04` runner - does not implement it**:
+
+    ```
+    UltraCanvasBreadcrumb.cpp:1722: error: 'path' in capture list does not name a variable
+    UltraCanvasBreadcrumb.cpp:1723: error: reference to local binding 'path' declared in enclosing function
+    ```
+
+    GCC accepted all three, so they only surfaced when the compiler changed.
+    Each now binds the pair to a named variable before the lambda, which every
+    compiler accepts at every standard:
+    `UltraCanvasBreadcrumb.cpp` (the sub-folder menu's navigate callback),
+    `UltraCanvasRequirementDiagramLayout.cpp` (the A* heuristic's goal cell)
+    and `UltraCanvasWordCloudDiagram.cpp` (the bigram reducer).
+
+    Only the first was visible on CI: the build stops at the first error, so
+    fixing it alone would have turned the next file red on the following run.
+    All three were found by building the tree with Clang 14 locally.
+
+  - **A missing MuPDF is now a skipped plugin, not a configure error.**
+    `MUPDF_FOUND` was computed and then ignored - the sources, the include
+    directory and `${MUPDF_LIBRARY}` were wired in whether or not MuPDF was
+    there - so a machine without it stopped at configure time with
+    `MUPDF_LIBRARY ... NOTFOUND` and no way forward but installing it. That is
+    what turned an upstream package disappearing (MSYS2 dropped
+    `mingw-w64-x86_64-mupdf` on 2026-09-17, taking every Windows build in the
+    repository with it) into an unfixable outage rather than a build without
+    PDF previews.
+
+    Everything downstream was already guarded by `ULTRACANVAS_PLUGIN_PDF`:
+    `UltraCanvasPDFView.cpp` and `UltraCanvasPDF_MuPDF.cpp` compile to nothing
+    without it, and the filer's PDF thumbnails fall back to the type glyph. So
+    the plugin now simply reports itself disabled and the build continues.
+    Verified by hiding the MuPDF headers and building the framework through to
+    a linked library. `-DULTRACANVAS_PLUGIN_PDF=OFF` remains the way to ask for
+    this deliberately, and is unchanged.
+
+  Both halves were validated against the CI compiler rather than the local
+  one: Clang 14 installed alongside, pointed at libstdc++ 12, and the whole
+  framework built with it. The original error reproduces byte for byte on
+  Clang 14 and compiles under Clang 14, Clang 18 and GCC after the fix.
+
 #### 2026-09-17 *0.8.84*
 - **A file display can now draw the icons the host desktop draws.** The filer
   widget has always painted its own: the folder shape and the category-coloured
