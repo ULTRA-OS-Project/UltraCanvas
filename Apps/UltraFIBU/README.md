@@ -21,7 +21,7 @@ European VAT numbers, and a German user interface.
 | `cli/` | `ultrafibu`, the command line over that engine |
 | `report/` | The printed invoice (`UltraFIBUReport`) — builds a VectorDocument for the framework's PDF writer |
 | `data/` | The chart of accounts and the tax keys, as data files |
-| `ui/` | The German UI (empty; the screens build on `UltraCanvasListView` and its sorting proxy) |
+| `ui/` | The German screens (`ultrafibu-ui`) — Belege, Journal, Summen und Salden, Partner |
 | `../../Tests/UltraFIBU/` | The engine test suite |
 
 ## Build
@@ -97,6 +97,28 @@ reason — the check is in the store, not in the front end.
 
 `ULTRAFIBU_DATA_DIR` points at the data files when they are not beside the
 binary.
+
+### The screens
+
+```bash
+ultrafibu-ui buch.db
+```
+
+Four tabs over the same file the CLI writes: **Belege**, **Journal**, **Summen
+und Salden** and **Partner**. Each is a table you can sort by clicking a column
+and narrow by typing; amounts sort by their value and dates by their day, not
+by how they read as text. The summary line under each table describes the rows
+actually showing, so filtering to one customer gives that customer's open
+total and says it is filtered.
+
+The journal re-checks the hash chain and the double entry every time it loads
+and reports both in its summary line.
+
+Two buttons write: **Beleg buchen** posts the selected draft, and **Rechnung
+als PDF** prints it. Everything else is read-only — entering a document is
+`ultrafibu beleg-neu` until the position editor exists. Both buttons go through
+the store, so a frozen period or an already-posted document is refused there
+and the reason appears in the status line.
 
 ## The decisions worth knowing
 

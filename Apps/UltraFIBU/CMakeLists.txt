@@ -115,3 +115,32 @@ set_target_properties(ultrafibu PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
 message(STATUS "  [✓] UltraFIBU CLI - ENABLED (target: ultrafibu)")
+
+# ── ultrafibu-ui: the German screens ────────────────────────────────────
+# Belege, Journal, Summen und Salden and the partners, each a sortable and
+# filterable table over UltraCanvasListView and its sort/filter proxy.
+#
+# Needs the UI library, so unlike the engine and the CLI it is skipped where
+# that cannot be built - a headless CI runner, a machine without pango or
+# vips. The engine stays reachable there through `ultrafibu`.
+if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
+    add_executable(ultrafibu-ui
+        ui/main.cpp
+        ui/UltraFIBUApp.cpp
+        ui/UltraFIBUTabelle.cpp
+    )
+    target_compile_features(ultrafibu-ui PRIVATE cxx_std_20)
+    target_include_directories(ultrafibu-ui PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/ui)
+    target_link_libraries(ultrafibu-ui PRIVATE
+        UltraFIBUEngine UltraFIBUReport ${ULTRACANVAS_LIBRARY})
+    if(ULTRAFIBU_VERSION)
+        set_source_files_properties(ui/main.cpp PROPERTIES
+            COMPILE_DEFINITIONS "ULTRAFIBU_UI_VERSION=\"${ULTRAFIBU_VERSION}\"")
+    endif()
+    set_target_properties(ultrafibu-ui PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "  [✓] UltraFIBU Oberfläche - ENABLED (target: ultrafibu-ui)")
+else()
+    message(STATUS "  [−] UltraFIBU Oberfläche - SKIPPED (UltraCanvas UI library not built)")
+endif()

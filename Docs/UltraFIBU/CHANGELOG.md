@@ -1,3 +1,45 @@
+#### 2026-09-19 *0.4.0*
+- **Die Oberfläche: vier Bildschirme über der Engine.** `Apps/UltraFIBU/ui/`,
+  target `ultrafibu-ui`. Belege, Journal, Summen und Salden, Partner - each a
+  sortable, filterable table over `UltraCanvasListView` and
+  `UltraCanvasListSortFilterProxy`, in German, reading a real bookkeeping file.
+  This is what phase B1's sorting work was built for.
+- **One panel, four screens.** `TabellenPanel` is a search box, a table and a
+  summary line; the screens differ only in the columns they declare and the
+  store call that fills them. Writing that four times is how the fourth one
+  ends up subtly different from the first.
+- **The columns sort by value, not by their text.** `TabellenModell` answers
+  `ListDataRole::SortRole`, so `1.232,80` sorts after `404,60` instead of
+  before it the way those read as text, and `15.06.2026` sorts by its day
+  number rather than by its day of month.
+  - `ListDataValue` has no `int64` alternative - its choices are string, int,
+    float and Color - and an amount in minor units passes 2^31 at
+    **21.474.836,47**, a figure a company can genuinely invoice in a year.
+    Truncating there would have mis-sorted silently. So the panel installs a
+    per-column comparator through the proxy's `SetColumnComparator` seam, which
+    reads the exact `int64` from the model; `SortRole` stays as the fallback
+    for anything driving the model without one.
+- **A row carries its record's id, never its position.** The proxy re-orders
+  rows, so a selection is mapped back through `MapToSource` before anything
+  acts on it. That is the mistake the proxy's own documentation warns about,
+  and a sorted table that opens the wrong invoice is how it looks.
+- **Two actions, and only two**: post the selected draft, and print it as a
+  PDF. Each is one engine call, and every rule that protects the ledger - the
+  draft state, the frozen period, the role - stays in the store, so the button
+  can do nothing the CLI could not. Entering a document still belongs to
+  `ultrafibu beleg-neu` until the position editor exists.
+- **The journal screen verifies the hash chain and the double entry every time
+  it loads**, and says so in its summary line. Both are statements about the
+  whole ledger, so they are deliberately not recomputed when a filter narrows
+  the view - half a ledger has no reason to balance.
+- **A bug found by looking at the running window, not by reading the code.**
+  With a static summary line, filtering the Belege list to one customer left
+  *"4 Beleg(e), offen insgesamt 3.904,60 EUR"* under a single row. A total that
+  does not describe what is above it is worse than no total, because somebody
+  reads it. The summary is now a function of the visible rows, and says
+  "1 Beleg(e) von 4 (gefiltert)" when it is showing a subset. Two column widths
+  that clipped `05.08.20…` and `Teilweise bez…` came from the same look.
+
 #### 2026-09-19 *0.3.0*
 - **Die Rechnung als PDF.** `Apps/UltraFIBU/report/UltraFIBURechnungPdf.{h,cpp}`,
   the target `UltraFIBUReport`, `ultrafibu rechnung-pdf`, and 32 further checks
