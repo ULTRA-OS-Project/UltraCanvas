@@ -11,6 +11,7 @@
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
 #include <cmath>
+#include <initializer_list>
 #include <vector>
 
 namespace UltraCanvas {
@@ -238,6 +239,31 @@ namespace UltraCanvas {
                     segs[lastDrawIdx].closeAfter = true;
                 }
                 return segs;
+            }
+
+            // The inverse of NormalizePath: absolute Move / Line / Cubic
+            // commands (and ClosePath after a closing segment) from flat
+            // segments.
+            inline VectorStorage::PathData SegsToPathData(const std::vector<FlatSeg>& segs) {
+                using VectorStorage::PathCommand;
+                using VectorStorage::PathCommandType;
+                VectorStorage::PathData data;
+                auto cmd = [&](PathCommandType type, std::initializer_list<double> params) {
+                    PathCommand c;
+                    c.Type = type;
+                    c.Relative = false;
+                    for (double v : params) c.Parameters.push_back(static_cast<float>(v));
+                    data.commands.push_back(c);
+                };
+                for (const auto& s : segs) {
+                    switch (s.kind) {
+                        case FlatSeg::Move: cmd(PathCommandType::MoveTo, {s.p[0].x, s.p[0].y}); break;
+                        case FlatSeg::Line: cmd(PathCommandType::LineTo, {s.p[0].x, s.p[0].y}); break;
+                        case FlatSeg::Cubic: cmd(PathCommandType::CurveTo, {s.p[0].x, s.p[0].y, s.p[1].x, s.p[1].y, s.p[2].x, s.p[2].y}); break;
+                    }
+                    if (s.closeAfter) { cmd(PathCommandType::ClosePath, {}); data.Closed = true; }
+                }
+                return data;
             }
 
             inline std::vector<FlatSeg> RectSegs(const Rect2Dd& r) {

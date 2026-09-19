@@ -7,8 +7,8 @@
 // The editor is multi-window: the class also holds the registry of open
 // windows, so File > New Window and a second file on the command line add
 // to it and the application exits with the last of them.
-// Version: 1.0.0
-// Last Modified: 2026-09-15
+// Version: 1.1.0
+// Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -122,7 +122,12 @@ private:
     ArtTool* ActiveTool() const;
     void RebuildToolOptions();
     void RebuildLayerPanel();
+    void RebuildLinePanel();
     void SyncColourPanelFromSelection();
+    void SyncLinePanelFromSelection();
+    // Applies the options' line gallery (arrowheads, profile, brush) to the
+    // selection's strokes.
+    void ApplyLineGallery(const std::string& label);
     void ApplyFillColour(const Color& c, bool commit);
     void ApplyLineColour(const Color& c, bool commit);
     void ApplyRamp(bool commit);
@@ -143,6 +148,7 @@ private:
     std::shared_ptr<UltraCanvasGradientEditor>  ramp;
     std::shared_ptr<UltraCanvasContainer>       optionsPanel;
     std::shared_ptr<UltraCanvasLabel>           optionsTitle;
+    std::shared_ptr<UltraCanvasContainer>       linePanel;
     std::shared_ptr<UltraCanvasContainer>       layersPanel;
     std::shared_ptr<UltraCanvasContainer>       layerRows;
     std::shared_ptr<UltraCanvasContainer>       statusBar;

@@ -2,18 +2,22 @@
 // Round-trip test for the XAR writer in the Vector plugin: builds a
 // VectorDocument covering the writer's feature matrix (shapes, paths with
 // beziers and closes, groups with transforms, gradients, strokes, opacity,
-// multi-span text), exports it through VectorConverter::XARConverter, then
+// multi-span text, and the phase-4 additions: multistage fills, gradient
+// transparency with a mix, a shadow, a feather, native and baked
+// arrowheads, a width profile and a brush), exports it through VectorConverter::XARConverter, then
 // loads the result back through the XAR plugin's spec-verified XARDocument
 // reader and asserts the structure survived: page size, node-type counts,
 // coordinate placement (including the Y-axis flip to millipoints), resolved
-// colours, and a parse with no unhandled records and no warnings.
+// colours, and a parse with no unhandled records and no warnings. Finally
+// the converter's own Import (the same reader, translated to the model)
+// reads the file back and the effects are checked on the model.
 //
 // Usage: XARWriterTest [output.xar]
 // The export is kept on disk (default: xar_writer_roundtrip.xar in the
 // working directory) so it can be inspected with XARProbeTest --render or
 // opened in Xara. Exit code is the number of failed checks.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 
 #include "../UltraCanvas/Plugins/Vector/UltraCanvasXARConverter.h"
@@ -21,6 +25,7 @@
 #include "../UltraCanvas/Plugins/Vector/XAR/UltraCanvasXARPlugin.h"
 
 #include <cmath>
+#include <functional>
 #include <cstdio>
 #include <map>
 #include <memory>
@@ -144,6 +149,102 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     text->Style.Fill = Color(20, 20, 20, 255);
     layer->AddChild(text);
 
+    // 8. Phase 4: a four-stop gradient with a linear bleach transparency
+    // ramp and a wall shadow.
+    auto shaded = std::make_shared<VectorRect>();
+    shaded->Id = "shaded";
+    shaded->Bounds = Rect2Dd{240, 222, 110, 34};
+    LinearGradientData ramp;
+    ramp.Units = GradientUnits::UserSpaceOnUse;
+    ramp.Start = Point2Dd(240, 239);
+    ramp.End = Point2Dd(350, 239);
+    ramp.Stops = {GradientStop(0.0, Color(255, 0, 0, 255)), GradientStop(0.3, Color(255, 255, 0, 255)),
+                  GradientStop(0.7, Color(0, 255, 0, 255)), GradientStop(1.0, Color(0, 0, 255, 255))};
+    shaded->Style.Fill = GradientData(ramp);
+    TransparencyData fade;
+    fade.Shape = TransparencyShape::Linear;
+    fade.Start = Point2Dd(240, 239);
+    fade.End = Point2Dd(350, 239);
+    fade.Stops = {{0.0, 0.0f}, {1.0, 0.8f}};
+    fade.Mix = TransparencyMix::Bleach;
+    shaded->Style.Transparency = fade;
+    ShadowEffect shadow;
+    shadow.Kind = ShadowKind::Wall;
+    shadow.Offset = Point2Dd(5, 7);
+    shadow.Blur = 3;
+    shadow.Darkness = 0.6f;
+    shaded->Effects.Shadow = shadow;
+    layer->AddChild(shaded);
+
+    // 9. A feathered circle.
+    auto soft = std::make_shared<VectorCircle>();
+    soft->Id = "soft";
+    soft->Center = Point2Dd(340, 122);
+    soft->Radius = 20;
+    soft->Style.Fill = Color(0, 160, 200, 255);
+    soft->Effects.Feather = FeatherEffect{6.0f};
+    layer->AddChild(soft);
+
+    // 10. A line with Xara's own arrowheads at both ends (a spot at the
+    // start, the straight arrow at the end: line attributes, no baking) and
+    // a tapered polyline, whose width band is baked into a filled path.
+    auto arrow = std::make_shared<VectorLine>();
+    arrow->Id = "arrow";
+    arrow->Start = Point2Dd(40, 205);
+    arrow->End = Point2Dd(140, 205);
+    StrokeData arrowStroke;
+    arrowStroke.Fill = Color(0, 0, 0, 255);
+    arrowStroke.Width = 3;
+    arrowStroke.StartArrow.Kind = ArrowheadKind::Spot;
+    arrowStroke.EndArrow.Kind = ArrowheadKind::StraightArrow;
+    arrow->Style.Stroke = arrowStroke;
+    layer->AddChild(arrow);
+    auto taper = std::make_shared<VectorPolyline>();
+    taper->Id = "taper";
+    taper->Points = {Point2Dd(40, 224), Point2Dd(90, 216), Point2Dd(140, 224)};
+    StrokeData taperStroke;
+    taperStroke.Fill = Color(120, 0, 0, 255);
+    taperStroke.Width = 8;
+    taperStroke.WidthProfile = {{0.0f, 1.0f}, {1.0f, 0.0f}};
+    taper->Style.Stroke = taperStroke;
+    layer->AddChild(taper);
+
+    // 11. A line with a bar tail (not one of Xara's own arrowheads, so it
+    // is baked) and a doubled straight head (Xara's, written as the line
+    // attribute with its scale).
+    auto barred = std::make_shared<VectorLine>();
+    barred->Id = "barred";
+    barred->Start = Point2Dd(40, 240);
+    barred->End = Point2Dd(140, 240);
+    StrokeData barredStroke;
+    barredStroke.Fill = Color(0, 0, 120, 255);
+    barredStroke.Width = 2;
+    barredStroke.StartArrow.Kind = ArrowheadKind::Bar;
+    barredStroke.EndArrow.Kind = ArrowheadKind::StraightArrow;
+    barredStroke.EndArrow.Scale = 2.0f;
+    barred->Style.Stroke = barredStroke;
+    layer->AddChild(barred);
+
+    // 12. A brushed line: a one-dot stamp repeated along the line, saved as
+    // plain stamped shapes plus the marker the reader rebuilds the brush from.
+    auto stamp = std::make_shared<VectorGroup>();
+    auto dot = std::make_shared<VectorEllipse>();
+    dot->Center = Point2Dd(0, 0);
+    dot->RadiusX = 1;
+    dot->RadiusY = 1;
+    dot->Style.Fill = Color(0, 120, 0, 255);
+    stamp->AddChild(dot);
+    auto brushed = std::make_shared<VectorLine>();
+    brushed->Id = "brushed";
+    brushed->Start = Point2Dd(40, 260);
+    brushed->End = Point2Dd(140, 260);
+    StrokeData brushStroke;
+    brushStroke.Fill = Color(0, 120, 0, 255);
+    brushStroke.Width = 6;
+    brushStroke.Brush = BrushData{stamp, 1.6f, 1.0f, true};
+    brushed->Style.Stroke = brushStroke;
+    layer->AddChild(brushed);
+
     return doc;
 }
 
@@ -181,10 +282,19 @@ int main(int argc, char** argv) {
     std::map<XARNodeType, int> counts;
     CountNodes(reader.GetRoot(), counts);
     Check(counts[XARNodeType::Layer] == 1, "one layer");
-    Check(counts[XARNodeType::Rectangle] == 2, "two rectangle records (plain + rounded)");
-    Check(counts[XARNodeType::Ellipse] == 2, "two ellipse records (circle + ellipse)");
-    Check(counts[XARNodeType::Path] == 2, "two path records (bezier leaf + rotated rect)");
-    Check(counts[XARNodeType::Group] == 1, "one group");
+    Check(counts[XARNodeType::Rectangle] == 3, "three rectangle records (plain + rounded + shaded)");
+    // circle + ellipse + feathered, plus the brush's stamped copies of its dot
+    Check(counts[XARNodeType::Ellipse] >= 12 && counts[XARNodeType::Ellipse] <= 15,
+          "three ellipse records plus the brush's stamped dots");
+    // bezier leaf, rotated rect, the arrow's line, the taper's polyline and
+    // its band, the barred line and its baked bar, the brushed line
+    Check(counts[XARNodeType::Path] == 8, "eight path records (two shapes, three lines, the width band, the bar, the taper)");
+    // the rotated one, one marker group each for the taper, the bar and the
+    // brush, the brush's stamps group and one group per stamped copy
+    Check(counts[XARNodeType::Group] >= 14 && counts[XARNodeType::Group] <= 17,
+          "the rotated group, three marker groups, the stamps group and one group per stamp");
+    Check(counts[XARNodeType::Shadow] == 1, "one shadow controller");
+    Check(counts[XARNodeType::Feather] == 1, "one feather attribute");
     Check(counts[XARNodeType::TextStory] == 1, "one text story");
     Check(counts[XARNodeType::TextLine] == 2, "two text lines");
     Check(counts[XARNodeType::TextString] >= 3, "at least three text strings (span splits)");
@@ -227,7 +337,7 @@ int main(int argc, char** argv) {
 
     std::vector<XARNodePtr> paths;
     Collect(reader.GetRoot(), XARNodeType::Path, paths);
-    if (paths.size() == 2) {
+    if (paths.size() >= 2) {
         auto p = std::static_pointer_cast<XARPathNode>(paths[0]);
         Check(p->isFilled && p->isStroked, "bezier path is filled and stroked");
         bool sawBezier = false, sawClose = false;
@@ -258,6 +368,140 @@ int main(int argc, char** argv) {
         Check(std::static_pointer_cast<XARTextStringNode>(strings.front())
                       ->textAttr.fontSize == 18000,
               "font size is 18000 millipoints");
+    }
+
+    // ===== Phase 4 records as the plugin reads them =====
+    {
+        std::vector<XARNodePtr> rects, shadows, ellipses;
+        Collect(reader.GetRoot(), XARNodeType::Rectangle, rects);
+        Collect(reader.GetRoot(), XARNodeType::Shadow, shadows);
+        Collect(reader.GetRoot(), XARNodeType::Ellipse, ellipses);
+        const XARNodePtr* shadedNode = nullptr;
+        for (const auto& r : rects) if (r->fill.type == XARFillType::LinearGradient && r->fill.stops.size() >= 4) shadedNode = &r;
+        Check(shadedNode != nullptr, "the four-stop gradient comes back as a multistage linear fill with four stops");
+        if (shadedNode) {
+            const auto& f = (*shadedNode)->fill;
+            Check(f.stops.size() == 4 && std::fabs(f.stops[1].position - 0.3) < 1e-6 && f.stops[1].color.g == 255,
+                  "inner stops keep their position and colour");
+            Check((*shadedNode)->hasTransparency && (*shadedNode)->transparency.type == XARTransparencyType::LinearGradient &&
+                  (*shadedNode)->transparency.mix == XARTransparencyMix::Bleach &&
+                  (*shadedNode)->transparency.endTransparency == 204,
+                  "the linear transparency ramp keeps its shape, end level and bleach mix");
+        }
+        Check(shadows.size() == 1, "one shadow controller was written");
+        if (shadows.size() == 1) {
+            auto sh = std::static_pointer_cast<XARShadowNode>(shadows.front());
+            Check(sh->shadowType == 1 && sh->offsetX == 5000 && sh->offsetY == -7000 && sh->blurRadius == 3000,
+                  "the wall shadow keeps its offset (Y flipped) and penumbra");
+            Check(sh->shadowColor.a == 153, "the shadow's darkness is 60 percent");
+            Check(sh->children.size() == 1 && sh->children.front()->type == XARNodeType::Rectangle,
+                  "the shadowed rectangle is the controller's child");
+        }
+        bool feathered = false;
+        for (const auto& e : ellipses)
+            for (const auto& c : e->children)
+                if (c->type == XARNodeType::Feather && std::static_pointer_cast<XARFeatherNode>(c)->featherRadius == 6000) feathered = true;
+        Check(feathered, "the feather is an attribute of the circle with its radius in millipoints");
+
+        // Line gallery records: Xara's own arrowhead is a line attribute, the
+        // rest is baked under a group carrying the marker user value.
+        int nativeEnds = 0, scaledEnds = 0, spotStarts = 0;
+        for (const auto& p : paths) {
+            auto pn = std::static_pointer_cast<XARPathNode>(p);
+            if (!pn->hasLine) continue;
+            if (pn->line.endArrowRef == -2) {
+                ++nativeEnds;
+                if (std::fabs(pn->line.endArrowWidthScale - 6.0f) < 0.01f &&
+                    std::fabs(pn->line.endArrowHeightScale - 6.0f) < 0.01f) ++scaledEnds;
+            }
+            if (pn->line.startArrowRef == -5 && std::fabs(pn->line.startArrowWidthScale - 3.0f) < 0.01f) ++spotStarts;
+        }
+        Check(nativeEnds == 2, "the two straight heads are ARROWTAIL line attributes (Xara ref -2)");
+        Check(scaledEnds == 1, "the doubled head's FIXED16 scales are 6 (twice Xara's default 3)");
+        Check(spotStarts == 1, "the spot is an ARROWHEAD attribute (ref -5) at Xara's default size");
+        std::vector<XARNodePtr> groups;
+        Collect(reader.GetRoot(), XARNodeType::Group, groups);
+        int markers = 0, brushMarkers = 0, stampCopies = 0;
+        for (const auto& g : groups) {
+            auto m = g->userValues.find("UltraCanvas.LineGallery");
+            if (m == g->userValues.end()) continue;
+            ++markers;
+            if (m->second.find("brush=1") != std::string::npos) {
+                ++brushMarkers;
+                // last child: the group of stamped copies
+                if (!g->children.empty()) {
+                    std::vector<XARNodePtr> dots;
+                    Collect(g->children.back(), XARNodeType::Ellipse, dots);
+                    stampCopies = static_cast<int>(dots.size());
+                }
+            }
+        }
+        Check(markers == 3, "three line-gallery marker groups (taper, bar, brush)");
+        Check(brushMarkers == 1, "one of them is a brush");
+        // 100pt line, stamp height 6pt, spacing 1.6 stamp widths -> ~11 copies
+        Check(stampCopies >= 9 && stampCopies <= 12, "the brush is written as stamped ellipse copies");
+        std::printf("      (stamp copies: %d)\n", stampCopies);
+    }
+
+    // ===== The converter reads the file back into the model =====
+    {
+        std::vector<std::string> warnings;
+        VectorConverter::ConversionOptions opts;
+        opts.WarningCallback = [&warnings](const std::string& w) { warnings.push_back(w); };
+        auto back = converter.Import(outPath, opts);
+        Check(back != nullptr, "Import() reads the exported file through the XAR plugin");
+        if (back) {
+            Check(std::fabs(back->Size.width - 400.0) < 0.5 && std::fabs(back->Size.height - 300.0) < 0.5,
+                  "the page size survives the round trip");
+            Check(back->Layers.size() == 1, "one layer comes back");
+            int shadowed = 0, feathered = 0, ramped = 0, multistage = 0, texts = 0, strokedShadowed = 0;
+            int tapers = 0, brushes = 0, barred = 0, plainArrows = 0, groups = 0;
+            std::function<void(const std::shared_ptr<VectorElement>&)> walk = [&](const std::shared_ptr<VectorElement>& e) {
+                if (!e) return;
+                if (e->Effects.Shadow && std::fabs(e->Effects.Shadow->Offset.x - 5.0) < 0.01 &&
+                    std::fabs(e->Effects.Shadow->Offset.y - 7.0) < 0.01 && std::fabs(e->Effects.Shadow->Darkness - 0.6f) < 0.01f) {
+                    ++shadowed;
+                    if (e->Style.Stroke.has_value()) ++strokedShadowed;
+                }
+                if (e->Effects.Feather && std::fabs(e->Effects.Feather->Radius - 6.0f) < 0.01f) ++feathered;
+                if (e->Style.Transparency && e->Style.Transparency->Shape == TransparencyShape::Linear &&
+                    e->Style.Transparency->Mix == TransparencyMix::Bleach) ++ramped;
+                if (e->Style.Fill)
+                    if (auto* g = std::get_if<GradientData>(&*e->Style.Fill))
+                        if (auto* l = std::get_if<LinearGradientData>(g))
+                            if (l->Stops.size() == 4) ++multistage;
+                if (e->Type == VectorElementType::Text) ++texts;
+                if (e->Style.Stroke) {
+                    const auto& st = *e->Style.Stroke;
+                    if (st.HasWidthProfile() && st.WidthProfile.size() == 2 &&
+                        std::fabs(st.WidthProfile[1].Factor) < 0.01f && std::fabs(st.Width - 8.0f) < 0.01f) ++tapers;
+                    if (st.HasBrush() && std::fabs(st.Brush->Spacing - 1.6f) < 0.01f &&
+                        st.Brush->Stamp->Children.size() == 1 &&
+                        (st.Brush->Stamp->Children.front()->Type == VectorElementType::Ellipse ||
+                         st.Brush->Stamp->Children.front()->Type == VectorElementType::Circle)) ++brushes;
+                    if (st.StartArrow.Kind == ArrowheadKind::Bar && st.EndArrow.Kind == ArrowheadKind::StraightArrow &&
+                        std::fabs(st.EndArrow.Scale - 2.0f) < 0.01f) ++barred;
+                    if (st.StartArrow.Kind == ArrowheadKind::Spot && st.EndArrow.Kind == ArrowheadKind::StraightArrow &&
+                        std::fabs(st.StartArrow.Scale - 1.0f) < 0.01f && std::fabs(st.EndArrow.Scale - 1.0f) < 0.01f) ++plainArrows;
+                }
+                if (e->Type == VectorElementType::Group) ++groups;
+                if (e->Type == VectorElementType::Group || e->Type == VectorElementType::Layer)
+                    for (const auto& c : std::static_pointer_cast<VectorGroup>(e)->Children) walk(c);
+            };
+            for (const auto& l : back->Layers) walk(l);
+            Check(shadowed == 1, "the wall shadow comes back on the model (offset and darkness)");
+            Check(strokedShadowed == 0, "an unstroked shape comes back without a stroke");
+            Check(feathered == 1, "the feather comes back on the model");
+            Check(ramped == 1, "the transparency ramp comes back with its mix");
+            Check(multistage == 1, "the four-stop gradient comes back with four stops");
+            Check(texts == 1, "the text story comes back as one text element");
+            Check(plainArrows == 1, "Xara's spot and straight arrowheads read back as those kinds at Scale 1");
+            Check(barred == 1, "the baked bar tail and the doubled head read back on the stroke");
+            Check(tapers == 1, "the width profile reads back as a stroke, not as the baked band");
+            Check(brushes == 1, "the brush reads back with its spacing and one-dot stamp");
+            Check(groups == 1, "only the rotated group stays a group (the marker groups unwrap)");
+            for (const auto& w : warnings) std::printf("  (import note) %s\n", w.c_str());
+        }
     }
 
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

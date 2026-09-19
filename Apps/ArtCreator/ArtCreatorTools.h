@@ -21,6 +21,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -28,7 +29,7 @@ namespace UltraCanvas {
 
 enum class ArtToolId {
     Selector = 0, ShapeEditor, Pen, Freehand, Line, Rectangle, Ellipse, QuickShape,
-    Text, Fill, Transparency, Zoom, Push,
+    Text, Fill, Transparency, Shadow, Feather, Zoom, Push,
     Count
 };
 
@@ -44,10 +45,35 @@ struct ArtToolOptions {
     float freehandSmoothing = 2.0f;    // simplification tolerance in screen pixels
     int   fillKind = 1;                // 0 flat, 1 linear, 2 radial
     float transparency = 0.0f;         // 0..100 %
+    int   transparencyShape = 0;       // 0 flat, 1 linear, 2 radial, 3 conical (VectorStorage::TransparencyShape)
+    int   transparencyMix = 0;         // VectorStorage::TransparencyMix
+    int   shadowKind = 0;              // VectorStorage::ShadowKind
+    float shadowBlur = 4.0f;           // document units
+    float shadowDarkness = 50.0f;      // 0..100 %
+    float featherRadius = 6.0f;        // document units
+    int   lineStartArrow = 0;          // VectorStorage::ArrowheadKind
+    int   lineEndArrow = 0;
+    float lineArrowScale = 1.0f;
+    int   lineProfile = 0;             // 0 none, 1 taper end, 2 taper start, 3 taper both, 4 bulge
+    int   lineBrush = 0;               // 0 none, 1 dots, 2 dashes, 3 hearts
     std::string textFont = "Sans";
     int   textSize = 24;
     bool  textBold = false;
 };
+
+// The line gallery's named choices, shared by the Line panel and the
+// tools that draw new lines.
+namespace ArtLineGallery {
+    const std::vector<std::string>& ArrowheadNames();   // indexed by VectorStorage::ArrowheadKind
+    const std::vector<std::string>& ProfileNames();     // indexed by ArtToolOptions::lineProfile
+    const std::vector<std::string>& BrushNames();       // indexed by ArtToolOptions::lineBrush
+    std::vector<VectorStorage::WidthSample> Profile(int index);
+    std::optional<VectorStorage::BrushData> Brush(int index);
+    // Applies the options' arrowheads, profile and brush to a stroke.
+    void ApplyToStroke(VectorStorage::StrokeData& stroke, const ArtToolOptions& o);
+    // Reads them back from a stroke into the options (for the panel).
+    void ReadFromStroke(const VectorStorage::StrokeData& stroke, ArtToolOptions& o);
+}
 
 // ===== WHAT A TOOL CAN REACH =====
 struct ArtToolContext {
