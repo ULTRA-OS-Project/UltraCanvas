@@ -5,6 +5,7 @@
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorEdit.h"
+#include "DataFormats/UltraCanvasVectorGeometry.h"
 #include "DataFormats/UltraCanvasVectorPathOps.h"
 #include "DataFormats/UltraCanvasVectorRenderer.h"
 
@@ -521,6 +522,102 @@ std::shared_ptr<VectorPath> ConvertToPath(const ElementPtr& element) {
         InsertChild(parent, path, index);
     }
     return path;
+}
+
+// ===== COMBINE SHAPES =====
+
+namespace {
+    // The element's outline flattened into document space.
+    std::optional<PolygonSet> DocumentPolygons(const ElementPtr& e) {
+        auto outline = OutlineOf(*e);
+        if (!outline) return std::nullopt;
+        const Matrix3x3 M = ParentToDocument(e) * (e->Transform.has_value() ? *e->Transform : Matrix3x3::Identity());
+        PolygonSet polys = FlattenToPolygons(*outline);
+        for (auto& ring : polys)
+            for (auto& p : ring) p = M.Transform(p);
+        return polys;
+    }
+
+    // A path element in `like`'s parent space holding `polys` (document
+    // space), styled like it.
+    std::shared_ptr<VectorPath> PathLike(const ElementPtr& like, const PolygonSet& polys) {
+        const Matrix3x3 inv = ParentToDocument(like).Inverse();
+        PolygonSet local = polys;
+        for (auto& ring : local)
+            for (auto& p : ring) p = inv.Transform(p);
+        auto path = std::make_shared<VectorPath>();
+        path->Path = PolygonsToPath(local);
+        path->Id = GenerateId("path");
+        path->Classes = like->Classes;
+        path->Style = like->Style;
+        path->Effects = like->Effects;
+        return path;
+    }
+}
+
+std::vector<ElementPtr> CombineShapes(const std::vector<ElementPtr>& elements, CombineOp op) {
+    std::vector<ElementPtr> shapes;
+    std::vector<PolygonSet> polys;
+    for (const auto& e : SortByDrawingOrder(elements)) {
+        if (!e) continue;
+        if (auto p = DocumentPolygons(e)) {
+            shapes.push_back(e);
+            polys.push_back(std::move(*p));
+        }
+    }
+    std::vector<ElementPtr> made;
+    if (shapes.size() < 2) return made;
+    const ElementPtr back = shapes.front();
+    const ElementPtr front = shapes.back();
+
+    auto replaceWith = [&](const ElementPtr& target, const std::vector<std::shared_ptr<VectorPath>>& paths) {
+        auto parent = ParentOf(target);
+        int index = IndexInParent(target);
+        EraseFromParent(target);
+        for (const auto& path : paths) {
+            if (parent) InsertChild(parent, path, index++);
+            made.push_back(path);
+        }
+    };
+
+    switch (op) {
+        case CombineOp::Add:
+        case CombineOp::Intersect: {
+            PolygonSet acc = polys.front();
+            for (size_t i = 1; i < polys.size(); ++i)
+                acc = PolygonBoolean(acc, VectorStorage::FillRule::NonZero, polys[i], VectorStorage::FillRule::NonZero,
+                                     op == CombineOp::Add ? PathBooleanOp::Union : PathBooleanOp::Intersect);
+            auto path = PathLike(back, acc);
+            for (size_t i = 1; i < shapes.size(); ++i) EraseFromParent(shapes[i]);
+            replaceWith(back, {path});
+            break;
+        }
+        case CombineOp::Subtract: {
+            const PolygonSet& cutter = polys.back();
+            for (size_t i = 0; i + 1 < shapes.size(); ++i) {
+                const PolygonSet rest = PolygonBoolean(polys[i], VectorStorage::FillRule::NonZero, cutter, VectorStorage::FillRule::NonZero, PathBooleanOp::Subtract);
+                std::vector<std::shared_ptr<VectorPath>> out;
+                if (!rest.empty()) out.push_back(PathLike(shapes[i], rest));
+                replaceWith(shapes[i], out);
+            }
+            EraseFromParent(front);
+            break;
+        }
+        case CombineOp::Slice: {
+            const PolygonSet& cutter = polys.back();
+            for (size_t i = 0; i + 1 < shapes.size(); ++i) {
+                const PolygonSet inside = PolygonBoolean(polys[i], VectorStorage::FillRule::NonZero, cutter, VectorStorage::FillRule::NonZero, PathBooleanOp::Intersect);
+                const PolygonSet outside = PolygonBoolean(polys[i], VectorStorage::FillRule::NonZero, cutter, VectorStorage::FillRule::NonZero, PathBooleanOp::Subtract);
+                std::vector<std::shared_ptr<VectorPath>> out;
+                if (!outside.empty()) out.push_back(PathLike(shapes[i], outside));
+                if (!inside.empty()) out.push_back(PathLike(shapes[i], inside));
+                replaceWith(shapes[i], out);
+            }
+            EraseFromParent(front);
+            break;
+        }
+    }
+    return made;
 }
 
 ElementPtr BakeTransform(const ElementPtr& element) {

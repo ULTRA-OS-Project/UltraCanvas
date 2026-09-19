@@ -799,6 +799,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Vector format-converter plugin (Plugins/Vector) is built.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasVectorStorage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasVectorRenderer.cpp
+        # Polygon booleans and offsetting over the model's paths (combine
+        # shapes, the contour effect).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasVectorGeometry.cpp
         # The editing layer over it (selection, history, hit testing, the
         # transform / arrange / group / align operations) and the Bezier node
         # model a shape editor edits paths through.
