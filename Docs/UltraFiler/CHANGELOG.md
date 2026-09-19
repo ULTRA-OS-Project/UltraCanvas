@@ -1,3 +1,37 @@
+#### 2026-09-19 *1.43.0*
+- **Remote drives are writable: delete, rename and new folder.** A drive added
+  through **+ Drive** could be browsed and nothing more; now the three commands
+  that act on what is *on* the drive work against the server. Deleting asks
+  first, exactly as a local delete does, and a folder goes with `RMD` where a
+  file goes with `DELE` - the display already knows which it is, so no round
+  trip is spent finding out. **F2** renames in place. **New folder** creates one,
+  named after what the folder already holds, and you can rename it once it
+  appears.
+
+  Nothing waits on the server while the window paints: each change is queued,
+  the folder it touched is dropped from the cache, and the display refetches
+  when the answer arrives. A refusal is reported in the server's own words -
+  "550 Permission denied" says what to change where "it did not work" says
+  nothing - and deleting a dozen entries that all fail the same way is one
+  dialog, not a dozen.
+
+  **What a drive can take depends on the drive**, and it says so before you
+  try: FTP, FTPS and SFTP can be changed, while a Nextcloud, WebDAV, Dropbox,
+  OneDrive or Google Drive account is still read-only here and draws its
+  entries with the read-only badge. That follows the provider's own
+  capabilities rather than a list kept in the file manager.
+
+  **Copying files to or from a drive is not in this yet.** A transfer needs the
+  progress window, the conflict questions and the Cancel that copying already
+  has, and that machinery is built on the local filesystem throughout; giving
+  it a second backend is its own change rather than a fourth hook. Duplicate,
+  paste and New > *document* therefore still say a remote drive cannot take
+  them.
+
+  Built on framework 0.8.93's `remoteDelete` / `remoteRename` /
+  `remoteMakeDirectory` hooks and the `CloudService` change verbs added with
+  them.
+
 #### 2026-09-17 *1.42.0*
 - **UltraFiler can now use your desktop's own file icons.** Until now a file
   with no preview of its own was drawn as a coloured sheet with its extension

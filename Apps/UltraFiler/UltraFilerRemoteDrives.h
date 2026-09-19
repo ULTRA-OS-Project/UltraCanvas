@@ -64,6 +64,17 @@ enum class RemoteDriveKind {
     CloudStorage    // everything else UltraCloud knows
 };
 
+// A change to what is on a drive. Each maps onto one UltraCloud provider verb,
+// which is why these three and not more: a transfer between the local disk and
+// a drive is not a provider verb applied in place, it is a copy with progress,
+// conflicts and a cancel, and it belongs with the paste machinery rather than
+// here.
+enum class RemoteOperation {
+    Delete,          // a file or a folder: the provider picks DELE over RMD
+    Rename,          // in place; the argument is a bare name
+    MakeDirectory    // the argument is the new folder's name
+};
+
 class UltraFilerRemoteDrives {
 public:
     UltraFilerRemoteDrives();
@@ -110,6 +121,30 @@ public:
     // naming the path that changed. The window refreshes the display from it.
     std::function<void(const std::string& path)> onListingArrived;
 
+    // ---- Changing what is on a drive --------------------------------------
+    // Queues one change and answers at once: the work happens on the worker,
+    // so a slow server never holds the UI thread, and onOperationFinished
+    // fires when it is done. `path` is the entry acted on (for MakeDirectory,
+    // the folder to create it in); `argument` is the new name for Rename and
+    // MakeDirectory and is ignored by Delete; `isDirectory` is what the caller
+    // already knows from the entry, which is what lets the FTP provider pick
+    // DELE over RMD without a probe.
+    //
+    // Returns false with a message for what can be refused outright: a path
+    // that is not a remote path, a drive that is gone, a provider that cannot
+    // write at all (ProviderCapabilities::modify), a name that is really a
+    // path, or the drive's own root.
+    bool Submit(RemoteOperation operation, const std::string& path,
+                const std::string& argument, bool isDirectory,
+                std::string& error);
+
+    // Fires on the UI THREAD when a queued change has finished. `message` is
+    // empty on success and carries the provider's reason on failure;
+    // `folderPath` is the folder whose listing changed, already invalidated,
+    // so the window can refresh it either way.
+    std::function<void(const std::string& folderPath,
+                       const std::string& message)> onOperationFinished;
+
     // Forgets what is cached, so the next List fetches again. Invalidate() is
     // what a manual Refresh on a remote folder means.
     void Invalidate(const std::string& path);
@@ -132,10 +167,23 @@ private:
         std::string error;
     };
 
+    // One thing for the worker to do. A listing and a change queue together
+    // and are carried out in order, which is what makes a delete followed by a
+    // refresh behave: the refetch cannot overtake the delete it is showing.
+    struct Job {
+        bool isListing = true;
+        std::string path;
+        // Change jobs only.
+        RemoteOperation operation = RemoteOperation::Delete;
+        std::string argument;
+        bool isDirectory = false;
+    };
+
     void EnsureWorker();
     void WorkerMain();
-    // Runs on the worker thread: the actual UltraCloud call.
+    // Both run on the worker thread and make the actual UltraCloud call.
     void FetchListing(const std::string& path);
+    void RunOperation(const Job& job);
 
     // The UltraCloud objects (account store, secret store, service) live
     // here rather than in this header: UltraFiler must build when the module
@@ -146,11 +194,14 @@ private:
     mutable std::mutex mutex_;
     std::vector<RemoteDrive> drives_;
     std::unordered_map<std::string, CacheEntry> cache_;
-    std::deque<std::string> queue_;
+    std::deque<Job> queue_;
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;
     bool workerStarted_ = false;
+    // Where RunOperation leaves a provider's refusal for the worker loop to
+    // report. Written and read on the worker thread only, under the lock.
+    std::string lastOperationError_;
 
     // Neutralises a queued UI-thread callback when this object is gone, the
     // way UltraFilerWindow's probeAlive does for its own posted tasks.
