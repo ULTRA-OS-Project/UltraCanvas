@@ -673,7 +673,10 @@ the backing implementation can be replaced without affecting callers.
     printer bytes: `Native`, `GutenPrint`, `IPP`) from the **transport** (how
     those bytes reach the device: a CUPS raw job, or `StartDocPrinter` with
     datatype `RAW`), which is what lets GutenPrint be selectable on Windows as
-    well as Linux and macOS — libgutenprint is portable C and needs no CUPS.
+    well as Linux and macOS. GutenPrint is **run, not linked** — it is
+    GPL-2.0-or-later and this framework is MIT — so the renderer pipes a
+    rasterised page through GutenPrint's own `rastertogutenprint` program and
+    sends back what it gets, the same way UltraWin runs QEMU and Wine.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform

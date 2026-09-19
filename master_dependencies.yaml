@@ -313,6 +313,21 @@ windows_compatibility:
       # No cmake_module / pkg_config: nothing is linked. Runtime probe only.
       apt: "winetricks"
 
+    gutenprint:
+      min_version: "5.2"              # 5.3 is what current distributions ship
+      purpose: "GutenPrint print renderer: rasterised pages piped through rastertogutenprint to the printer's own command language (runtime, spawned - never linked)"
+      required: false
+      priority: "medium"
+      platforms: ["linux", "macos", "windows"]
+      # No cmake_module / pkg_config, and that is a licence decision rather
+      # than an oversight: libgutenprint is GPL-2.0-or-later and UltraCanvas
+      # is MIT, so linking it would make the distributed binary GPL. Only
+      # GutenPrint's own programs are run, which creates no such obligation.
+      # The build looks for them to report a status line; the renderer looks
+      # again at run time and is simply not offered when they are absent.
+      apt: "printer-driver-gutenprint"
+      brew: "gutenprint"
+
     qemu:
       min_version: "8.0"
       purpose: "VM tier (Stage 2): headless Windows guest via qemu-system-x86_64 + qemu-img, KVM-accelerated (runtime, spawned — never linked; controlled over QMP)"

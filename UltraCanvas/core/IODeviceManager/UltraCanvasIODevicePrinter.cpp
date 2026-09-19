@@ -21,9 +21,11 @@ bool NativePrintRenderer::SupportsPrinter(const IODeviceInfo& printer) const {
     return true;
 }
 
-IODeviceResult NativePrintRenderer::Render(const IOPrintJob& job,
+IODeviceResult NativePrintRenderer::Render(const IODeviceInfo& printer,
+                                           const IOPrintJob& job,
                                            const IOPrinterCapabilities& capabilities,
                                            IOPrintPayload& payload) {
+    (void)printer;
     (void)capabilities;
 
     if (!job.IsValid()) {
@@ -254,7 +256,8 @@ IODeviceResult PrinterDevice::Print(const IOPrintJob& job) {
     // has been defaulted above so it is never empty.
     payload.jobName = resolvedJob.jobName;
     payload.pageRange = resolvedJob.pageRange;
-    IODeviceResult rendered = renderer->Render(resolvedJob, capabilities, payload);
+    IODeviceResult rendered =
+        renderer->Render(GetDeviceInfo(), resolvedJob, capabilities, payload);
     if (!rendered.success) {
         SetLastError(rendered);
         return rendered;

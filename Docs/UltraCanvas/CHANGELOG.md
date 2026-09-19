@@ -1,3 +1,71 @@
+#### 2026-09-19 *0.8.99*
+- **GutenPrint printing works, and the framework is still MIT.** GutenPrint
+  drives several thousand inkjet and dye-sublimation printers far better than
+  their own generic drivers, which is why the renderer/transport split was
+  built to accommodate it in the first place. The obstacle was never
+  technical: `libgutenprint` is GPL-2.0-or-later, so linking it would make
+  every distributed binary a GPL work.
+- **So it is run, not linked.** GutenPrint ships its own programs, and between
+  them they are a complete interface: `gutenprint.5.3 list` names the ~3,500
+  models it drives with each one's IEEE-1284 device id, `gutenprint.5.3 cat`
+  emits a model's PPD, and `rastertogutenprint.5.3` reads a page of CUPS
+  raster and writes the printer's own command language. Running a program is
+  not linking against it. This is the same treatment QEMU and Wine already
+  get here, and it is recorded that way in `Docs/Dependencies.md`,
+  `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`.
+- **One renderer class, no transport change.** What comes back from the filter
+  is a device-native stream, so it goes out as a raw job — the CUPS raw path
+  on Linux and macOS, datatype `RAW` through the Windows spooler. Both already
+  existed. That was the point of separating the renderer from the transport,
+  and this is the first time the claim has been cashed.
+- **A page is drawn, not converted.** `RasterPageTarget` draws an
+  `IPrintPageSource` onto an off-screen surface, so the same wrapped text, the
+  same fitted image and the same pagination the Windows GDI path uses serve
+  here too. Deciding what a job *contains* moved into `MakePageSourceForJob`
+  as well, so the two renderers cannot drift about which extensions are text.
+- **`IPrintRenderer::Render()` now receives the printer.** It did not, and a
+  renderer that emits a device's own command language cannot work without
+  knowing the device — GutenPrint has to pick a model before it can produce a
+  byte. Passed rather than remembered from `SupportsPrinter()`, because one
+  renderer is shared between the devices that register it and leftover state
+  would be the wrong printer's.
+- **A reusable way to run a program and keep what it says**, as
+  `RunProcessCaptured()` beside the existing detached launcher. It takes an
+  argument **list** and executes the program directly — `execvp`, or
+  `CreateProcessW` — so no shell ever sees it and there is nothing to escape.
+  The prototype this module replaces built a command line by pasting a device
+  path into a string and handing it to `popen()`.
+- **It pumps input and output together, and that is load-bearing.** `poll()`
+  reporting a pipe writable means one byte is free, not 64K, so a blocking
+  write parks in the kernel until the child drains it — and if the child is
+  meanwhile blocked writing output nobody is reading, neither side moves
+  again. Both processes sat in `anon_pipe_write`. The pipe ends are
+  non-blocking now. The bug appears only once the data outgrows a pipe
+  buffer, which is to say on every real page and on no small test.
+- GutenPrint is handed RGB and left to do its own colour separation: matching
+  an ink set at a resolution is the one thing it is unambiguously better at.
+  The raster is uncompressed (`RaS3`) because it travels down a pipe to a
+  filter that reads it immediately, and a run-length encoder is wrong in ways
+  that surface on one printer at one resolution.
+- **macOS does not implement `sigtimedwait`.** The SIGPIPE drain used it and
+  broke the macOS build; it uses `sigwait` now, and only when a write has
+  actually reported `EPIPE`. That second part is not tidiness: a SIGPIPE from
+  `write()` is directed at the calling thread, so having seen `EPIPE` proves
+  there is one pending for *this* thread and `sigwait` returns at once.
+  Deciding from `sigpending()` instead would also match a process-directed
+  SIGPIPE meant for another thread, and if that one were consumed elsewhere
+  in between, the wait would never return.
+- `Tests/ProcessRunnerTest` (POSIX): 16 assertions over the three ways a
+  process runner goes wrong and only at scale - 64 MB written into a closed
+  pipe without dying, 64 MB through a filter reading and writing at once
+  without deadlocking, and shell metacharacters reaching the program as text.
+- `Tests/IODevicePrinterTest`: 173 assertions, up from 157. Parsing
+  GutenPrint's listing and matching a printer to a model are string work with
+  no tools installed, so they live in a translation unit the tests link and
+  run on every arm of the matrix — including that an R2400 is never handed
+  the R200's driver, and that an unknown printer matches nothing rather than
+  something close.
+
 #### 2026-09-19 *0.8.97*
 - **`UltraCanvasListView` shows which column its rows are sorted by.**
   `SetSortIndicator(column, ascending)` draws a small triangle in that column's
