@@ -34,9 +34,10 @@ UltraNetMonitor --list --no-listen --no-loopback
 
 ## What it cannot see
 
-Not running as root, only this user's processes can be attributed: other
-users' sockets still appear, as *(unattributed)* with the owning UID, and
-the status line says how many processes could not be inspected. Byte
-counters, connection events and domain names are later phases of the
-module. Linux only in this build; the window opens on every platform and
-reports *No NetworkMonitor backend* where there is none yet.
+Not elevated, only this user's processes can be attributed: on Linux and
+Windows other users' sockets still appear, as *(unattributed)*; on macOS
+they do not appear at all, because sockets there are enumerated per process.
+The status line says how many processes could not be inspected. The *Sent*
+and *Received* columns are filled on Linux (netlink `sock_diag`) and show a
+dash — never a zero — where a backend collects no counter. Connection events
+and domain names are later phases of the module.

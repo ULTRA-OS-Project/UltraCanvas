@@ -4,7 +4,7 @@
 // own structs, so UltraCanvasListView renders them and
 // UltraCanvasListSortFilterProxy sorts and filters them; the numeric columns
 // answer SortRole with the number, so "10" sorts after "9".
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -17,7 +17,7 @@ namespace UltraNetMonitor {
 
 class ConnectionListModel : public UltraCanvas::IListModel {
 public:
-    enum Column { Application = 0, Pid, Protocol, Local, Remote, State, User, ColumnCount };
+    enum Column { Application = 0, Pid, Protocol, Local, Remote, State, Sent, Received, User, ColumnCount };
 
     int GetRowCount() const override;
     int GetColumnCount() const override;
@@ -38,7 +38,7 @@ private:
 
 class ProcessListModel : public UltraCanvas::IListModel {
 public:
-    enum Column { Application = 0, Pid, Connections, Established, Listening, Remotes, ColumnCount };
+    enum Column { Application = 0, Pid, Connections, Established, Listening, Remotes, Sent, Received, ColumnCount };
 
     int GetRowCount() const override;
     int GetColumnCount() const override;

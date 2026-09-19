@@ -4,10 +4,11 @@
 // "0100007F" is the bytes 7F 00 00 01 read back from a little-endian word,
 // i.e. 127.0.0.1 - not 1.0.0.127.
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitorProcfs.h"
+#include "NetworkMonitor/NetworkMonitorAddress.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -41,54 +42,6 @@ void WordToBytes(uint32_t word, unsigned char* bytes) {
     bytes[3] = static_cast<unsigned char>((word >> 24) & 0xFF);
 }
 
-std::string FormatIPv4(const unsigned char* b) {
-    char buffer[16];
-    std::snprintf(buffer, sizeof buffer, "%u.%u.%u.%u", b[0], b[1], b[2], b[3]);
-    return buffer;
-}
-
-// RFC 5952 text form: lower-case hex, the longest run of zero groups (at
-// least two long) collapsed once, leftmost on a tie. Written here rather than
-// through inet_ntop so the parser stays free of platform headers and behaves
-// identically on every host the test runs on.
-std::string FormatIPv6(const unsigned char* b) {
-    // An IPv4-mapped address (::ffff:a.b.c.d) is what a dual-stack socket
-    // reports for an IPv4 peer; print it the way inet_ntop does, so it reads
-    // as the IPv4 address it is and the loopback test can recognise it.
-    bool mapped = true;
-    for (int i = 0; i < 10; ++i) if (b[i] != 0) { mapped = false; break; }
-    if (mapped && b[10] == 0xFF && b[11] == 0xFF) return "::ffff:" + FormatIPv4(b + 12);
-
-    uint16_t groups[8];
-    for (int i = 0; i < 8; ++i) {
-        groups[i] = static_cast<uint16_t>((b[2 * i] << 8) | b[2 * i + 1]);
-    }
-    int bestStart = -1, bestLength = 0;
-    for (int i = 0; i < 8;) {
-        if (groups[i] != 0) { ++i; continue; }
-        int j = i;
-        while (j < 8 && groups[j] == 0) ++j;
-        if (j - i > bestLength) { bestStart = i; bestLength = j - i; }
-        i = j;
-    }
-    if (bestLength < 2) bestStart = -1;
-
-    std::string text;
-    char buffer[8];
-    for (int i = 0; i < 8;) {
-        if (i == bestStart) {
-            text += "::";
-            i += bestLength;
-            continue;
-        }
-        if (!text.empty() && text.back() != ':') text += ':';
-        std::snprintf(buffer, sizeof buffer, "%x", groups[i]);
-        text += buffer;
-        ++i;
-    }
-    return text;
-}
-
 } // namespace
 
 bool DecodeAddress(const std::string& field, NetworkAddressFamily family,
@@ -110,7 +63,8 @@ bool DecodeAddress(const std::string& field, NetworkAddressFamily family,
         const std::string padded = "0000" + field.substr(colon + 1);
         if (!ParseHexWord(padded, 0, port)) return false;
     }
-    outAddress = family == NetworkAddressFamily::IPv4 ? FormatIPv4(bytes) : FormatIPv6(bytes);
+    outAddress = family == NetworkAddressFamily::IPv4
+        ? NetworkMonitorAddress::FormatIPv4(bytes) : NetworkMonitorAddress::FormatIPv6(bytes);
     outPort = static_cast<uint16_t>(port);
     return true;
 }

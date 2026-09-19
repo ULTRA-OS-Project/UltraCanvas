@@ -1137,6 +1137,22 @@ if(_ultracanvas_ultranet_platform_srcs)
     list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_ultranet_platform_srcs})
 endif()
 
+# Same for the NetworkMonitor backends (UltraCanvas<Platform>NetworkMonitor):
+# they belong to the NetworkMonitor static library below and reference its
+# core (NetworkMonitorAddress, NetworkMonitorProcfs). Left in the platform
+# glob they were compiled into the core too, which a static libultracanvas
+# tolerated and a shared one on Linux deferred to load time - and a Windows
+# DLL refused outright: "undefined symbol:
+# UltraCanvas::NetworkMonitorAddress::FormatIPv4". Compile them exactly once,
+# into NetworkMonitor, which the applications link.
+file(GLOB _ultracanvas_networkmonitor_platform_srcs
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor.mm
+)
+if(_ultracanvas_networkmonitor_platform_srcs)
+    list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_networkmonitor_platform_srcs})
+endif()
+
 # The platform-dir glob above also matches the GL context managers
 # (GLContextManager{EGL,GLX,WGL,CGL}_*). Those are compiled ONLY when
 # ULTRACANVAS_ENABLE_GL is on (they are re-added explicitly, guarded, in the GL
@@ -2044,10 +2060,17 @@ target_link_libraries(UltraVault PUBLIC UltraCrypt)
 # with this list.
 set(_uc_networkmonitor_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorAddress.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorProcfs.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp)
+elseif(WIN32)
+    list(APPEND _uc_networkmonitor_sources
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp)
+elseif(APPLE)
+    list(APPEND _uc_networkmonitor_sources
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)
 endif()
 add_library(NetworkMonitor STATIC ${_uc_networkmonitor_sources})
 target_include_directories(NetworkMonitor PUBLIC
@@ -2055,6 +2078,13 @@ target_include_directories(NetworkMonitor PUBLIC
     $<INSTALL_INTERFACE:include/ultracanvas>)
 target_compile_features(NetworkMonitor PUBLIC cxx_std_20)
 set_target_properties(NetworkMonitor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(WIN32)
+    # IP Helper for the socket tables, Winsock for ntohs, advapi32 for the
+    # owning user's name from the process token. Same header hygiene as the
+    # core library, since this target does not inherit it.
+    target_link_libraries(NetworkMonitor PUBLIC iphlpapi ws2_32 advapi32)
+    target_compile_definitions(NetworkMonitor PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+endif()
 
 if(ULTRACANVAS_ENABLE_NET)
     find_package(Threads REQUIRED)
