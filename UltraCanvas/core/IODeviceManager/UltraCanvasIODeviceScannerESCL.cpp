@@ -60,6 +60,28 @@ IODeviceResult DecodePage(const std::vector<uint8_t>& encoded,
                                      "The scanner returned an empty page");
     }
 
+    // The image library has to be initialised before anything is decoded, and
+    // decoding without it does not fail - it crashes, somewhere inside the
+    // library, with a message about an unclassed type. An application built
+    // on UltraCanvas normally initialises it at startup, but a scan can be
+    // driven by a tool that never opened a window, and a backend that dies
+    // because its host did not call something is a bad way to find that out.
+    //
+    // Doing it here is safe: the underlying init is idempotent, so a second
+    // call from an application that already did it is a no-op, and once_flag
+    // keeps concurrent scans from racing into it.
+    static std::once_flag imagingReady;
+    static bool imagingOk = false;
+    std::call_once(imagingReady, []() {
+        imagingOk = UCImageRaster::InitializeImageSubsysterm("UltraCanvasScanner");
+    });
+    if (!imagingOk) {
+        return IODeviceResult::Error(
+            IODeviceResultCode::BackendUnavailable,
+            "The image library could not be started, so a scanned page cannot "
+            "be decoded");
+    }
+
     std::shared_ptr<UCImageRaster> image = UCImageRaster::LoadFromMemory(encoded);
 
     // Not IsValid(): that also requires a file name, and an image decoded
@@ -324,19 +346,18 @@ IODeviceResult EsclScannerDevice::DoScanPage(ScannedImage& image) {
                                      "The scan was cancelled", GetDeviceId());
     }
 
-    if (!result.success) {
-        AbandonJob();
-        return IODeviceResult::BackendError(
-            IODeviceResultCode::CommunicationError,
-            "Lost the scanner while fetching a page: " + result.message,
-            response.statusCode, GetDeviceId());
-    }
-
     // **404 (or 410) is how eSCL says the feeder is empty.** It ends a run;
     // it does not fail one. Reported as DeviceNotFound, which ScanPages()
     // treats as the end of the run once at least one page has arrived - and
     // as a genuine failure before that, which is right: a job that yields
     // nothing at all was a bad job, not an empty tray.
+    //
+    // Checked BEFORE result.success, and that order is the whole point: the
+    // HTTP client reports any non-2xx as a failed result, so a 404 arrives
+    // here looking exactly like a lost connection. Testing the transport
+    // first turns the ordinary end of every feeder run into an error, and
+    // the pages already scanned are thrown away with it. A real failure has
+    // no status code at all, which is what separates the two.
     if (response.statusCode == 404 || response.statusCode == 410) {
         const int produced = pagesInJob;
         AbandonJob();
@@ -345,6 +366,16 @@ IODeviceResult EsclScannerDevice::DoScanPage(ScannedImage& image) {
             produced > 0 ? "The feeder is empty; the run is complete"
                          : "The scanner produced no pages for this job",
             GetDeviceId());
+    }
+
+    // No status at all means the request never got an answer - the scanner
+    // went away, or was never there.
+    if (!result.success && response.statusCode == 0) {
+        AbandonJob();
+        return IODeviceResult::BackendError(
+            IODeviceResultCode::CommunicationError,
+            "Lost the scanner while fetching a page: " + result.message,
+            response.statusCode, GetDeviceId());
     }
 
     if (!response.IsSuccess()) {
