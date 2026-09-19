@@ -1,3 +1,45 @@
+#### 2026-09-19 *0.8.100*
+- **The Alembic aircraft was half an aeroplane, and its canopy was inside the
+  fuselage.** Two separate defects that looked like one: `media/3D/Alembic/
+  E-45-Aircraft.abc` was the last of the 2017 exports still missing its
+  mirrored half, and the reader was dropping every Alembic transform.
+  - The hull mesh in the `.abc` stopped dead at X=0 — 937 faces of the
+    unevaluated cage, against the 7366 its siblings carry — because Blender
+    exported it without applying the Mirror modifier, the same way the `.dae`,
+    `.x`, `.fbx` and `.ms3d` were. Nothing available writes Alembic (the
+    framework's writers cover 3DS, OBJ, PLY, STEP, COLLADA and X3D, and
+    Debian's Blender is built without the exporter), so the archive was
+    repaired rather than re-exported: its Ogawa tree was re-serialised with
+    the hull's `P`, `.faceIndices`, `.faceCounts`, `N`, `uv` and `.selfBnds`
+    replaced by the mesh evaluated from `media/3D/Blend/E-45-Aircraft.blend`
+    with the whole modifier stack applied, the face set renumbered and the
+    archive's `.childBnds` recomputed. Every other object, property, metadata
+    string and time sampling is the bytes Blender wrote in 2017, and each new
+    sample carries a real Alembic sample key — MurmurHash3 x64 128 over the
+    payload, which reproduces the digest on every array the file already had.
+    The demo page now reports 8110 faces and an extent of 1.95 × 4.19 × 6.12,
+    the OBJ export's numbers.
+  - `ReadXform` mapped Alembic's matrix into `ModelStorage::Matrix4x4` by
+    reordering its sixteen doubles. Alembic is row-major *and* row-vector, so
+    the translation is its last row; `Matrix4x4` is column-major *and*
+    column-vector, so the translation is its last column. The two
+    disagreements cancel and the correct conversion is a straight copy — the
+    reorder put the translation in the bottom row, where `DecomposeTRS` never
+    looks, so **every transform in every Alembic read by this framework lost
+    its offset**. In the sample that put the glass canopy at the origin,
+    sunk into the hull, instead of 1.53 up it. Documented as the third entry
+    under "things that surprise people" in `UltraCanvasModelFormats.md`.
+- **The untouched export is now a fixture, like the other four.**
+  `Tests/data/3D/Alembic/E-45-Aircraft.abc` is the 2017 file byte for byte, and
+  `ModelAlembicTest` reads it for the assertions that pin the half hull — not
+  one of which changed. The suite now takes `Tests/data/3D` and `media/3D` as
+  its two arguments and adds `TestTheDemoCopy()`, which holds the repaired
+  asset to the OBJ export's 8110 faces, to symmetry about X, to face-varying
+  normals and UVs one per corner, to a winding that still agrees with the
+  file's own normals, and to the same width, height and length as the OBJ
+  within a percent. `TestSample()` gained the canopy's translation, which is
+  the regression test for the matrix mapping. All 122 tests pass.
+
 #### 2026-09-19 *0.8.99*
 - **NetworkMonitor on Windows and macOS, and byte counters on Linux** — the
   platform half of the proposal's Phase 2. Windows reads the socket tables
