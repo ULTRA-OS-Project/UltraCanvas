@@ -1504,3 +1504,41 @@ UltraScript elements must comply with the following rules:
 event-dispatch hooks that do not exist under those names in the codebase
 (its §17.8 lists the corrections); resolving that is the first task of
 Phase 1.
+
+### **15. NetworkMonitor**
+
+System-wide network activity: the operating system's socket table with the
+process behind every connection — the view `ss -p` / `netstat -p` give, as a
+library. Sources under `UltraCanvas/{include,core}/NetworkMonitor/` and
+`UltraCanvas/OS/<Platform>/UltraCanvas<Platform>NetworkMonitor.cpp`; see
+`Docs/Modules/NetworkMonitor/README.md` and, for the research and the later
+phases, `Docs/Modules/NetworkMonitor/NetworkMonitorProposal.md`.
+
+**Not part of UltraNet.** UltraNet is a client library and sees only its own
+process's traffic; NetworkMonitor observes other processes' sockets, which is
+an OS question, and has no dependency on UltraNet. It observes and records;
+it never blocks, filters or modifies traffic, and never terminates TLS.
+
+**Implementation status:** Phase 2 (platforms). Linux — netlink `sock_diag`
+with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
+`/proc/<pid>/fd` walk for attribution; Windows — IP Helper
+(`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
+macOS — libproc, per process. All polling. Connection events (ETW, eBPF),
+domain names, persistence and file-transfer correlation are still to come.
+Where there is no backend the module reports `NotSupported`.
+
+- Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
+  `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
+  `NetworkMonitorOptions`, `ProcessTrafficSummary`, `NetworkMonitorResult`
+- `NetworkMonitor_GetCapabilities`, `NetworkMonitor_IsAvailable`
+- `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
+- `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
+  `NetworkMonitor_FormatEndpoint`
+- Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
+  (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
+  StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`)
+
+Rules: every blocking call returns `NetworkMonitorResult`; `std::optional`
+for anything a backend may not report, so "0" and "not reported" are never
+confused; a backend counts and reports what it could not see rather than
+leaving it out; platform code only under `OS/<Platform>/`.

@@ -1,7 +1,7 @@
 #### 2026-09-19 *0.3.0*
 - **Depth, phase 5 of the proposal (first slice).** Four tools after
   Feather in the palette and three commands, on the framework's new
-  containers, effects and polygon booleans (UltraCanvas 0.8.99):
+  containers, effects and polygon booleans (UltraCanvas 0.9.3):
   - **Contour (C)**: click a shape for a contour; drag right for an
     outward width, left for an inward one; steps, the colour run (fade,
     rainbow, alt rainbow, constant) and the colour - from the line or the

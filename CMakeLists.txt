@@ -353,6 +353,17 @@ if(BUILD_ULTRACLEANER)
     add_subdirectory(Apps/UltraCleaner)
 endif()
 
+# ===== ULTRANETMONITOR =====
+# Shows which processes hold which network connections, live, from the
+# operating system's socket table (the NetworkMonitor module). Headless
+# --list / --by-app modes for the command line, plus the GUI.
+option(BUILD_ULTRANETMONITOR "Build the UltraNetMonitor application" ON)
+if(BUILD_ULTRANETMONITOR)
+    message(STATUS "")
+    message(STATUS "── Building UltraNetMonitor ──")
+    add_subdirectory(Apps/UltraNetMonitor)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -1085,6 +1096,27 @@ if (BUILD_ULTRAVIEWER_APP)
     # opens arbitrary paths, so narrow Win32/CRT calls must read them as UTF-8.
     ultracanvas_embed_windows_manifest(UltraViewer)
 
+    # The freedesktop shortcut. This is what registers UltraViewer with the
+    # desktop as a handler for the media it displays — and so what makes a
+    # file opened from a filer, or dropped on its icon in a dock or taskbar,
+    # arrive as an argument, the same path `UltraViewer photo.jpg` takes.
+    # It is also what gives UltraFiler a name for the viewer's icon.
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+        # Exec=UltraViewer / TryExec=UltraViewer are resolved against PATH, so
+        # the entry is only true if the binary is installed with it.
+        install(TARGETS UltraViewer RUNTIME DESTINATION bin)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraViewer/UltraViewer.desktop
+                DESTINATION share/applications)
+        # Icon=UltraViewer is an icon *name*: it is resolved through the
+        # installed themes, so the files have to land in one. The PNG is
+        # rendered from the SVG, so both sizes carry the same artwork.
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraViewer.png
+                DESTINATION share/icons/hicolor/256x256/apps)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraViewer.svg
+                DESTINATION share/icons/hicolor/scalable/apps)
+        message(STATUS "  UltraViewer desktop entry: share/applications/UltraViewer.desktop")
+    endif()
+
     message(STATUS "  UltraViewer executable: UltraViewer")
 endif()
 
@@ -1386,6 +1418,20 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME HardwareInfoTests COMMAND HardwareInfoTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # NetworkMonitor unit tests: the /proc/net parser against fixture text,
+    # the per-process roll-up, endpoint formatting, and - where this platform
+    # has a backend - that a socket the test opens appears in the snapshot
+    # attributed to the test's own PID. Links only NetworkMonitor, so it runs
+    # headless.
+    add_executable(NetworkMonitorTests Tests/NetworkMonitorTests.cpp)
+    target_link_libraries(NetworkMonitorTests PRIVATE NetworkMonitor)
+    target_compile_features(NetworkMonitorTests PRIVATE cxx_std_20)
+    set_target_properties(NetworkMonitorTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME NetworkMonitorTests COMMAND NetworkMonitorTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraCrypt unit tests: published vectors (FIPS 180-4, RFC 4231), AEAD
