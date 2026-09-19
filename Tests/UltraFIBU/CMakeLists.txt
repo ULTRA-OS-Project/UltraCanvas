@@ -28,6 +28,7 @@ set(ULTRAFIBU_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUKontenrahmen.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUBeleg.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUBuchung.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUDatev.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUStore.cpp
     # The invoice print, and the two framework sources its PDF writer
     # needs. Compiled here rather than linked as the Vector plugin for

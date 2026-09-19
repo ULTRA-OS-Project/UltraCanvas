@@ -21,6 +21,7 @@ set(ULTRAFIBU_ENGINE_SOURCES
     engine/UltraFIBUKontenrahmen.cpp
     engine/UltraFIBUBeleg.cpp
     engine/UltraFIBUBuchung.cpp
+    engine/UltraFIBUDatev.cpp
     engine/UltraFIBUStore.cpp
 )
 
@@ -86,6 +87,8 @@ message(STATUS "  [✓] UltraFIBU Rechnungsdruck - ENABLED (target: UltraFIBURep
 set(ULTRAFIBU_DATA_FILES
     ${CMAKE_CURRENT_SOURCE_DIR}/data/SKR03.csv
     ${CMAKE_CURRENT_SOURCE_DIR}/data/Steuerschluessel.csv
+    ${CMAKE_CURRENT_SOURCE_DIR}/data/DATEV-Buchungsstapel-v700.csv
+    ${CMAKE_CURRENT_SOURCE_DIR}/data/DATEV-Sachkontenbeschriftungen-v700.csv
 )
 add_custom_target(UltraFIBUData ALL
     COMMAND ${CMAKE_COMMAND} -E make_directory ${CMAKE_BINARY_DIR}/bin/data

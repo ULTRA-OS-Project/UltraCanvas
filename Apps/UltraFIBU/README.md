@@ -20,7 +20,7 @@ European VAT numbers, and a German user interface.
 | `engine/` | The headless engine — no UI, no SQL outside the store, unit-tested (`UltraFIBUEngine`) |
 | `cli/` | `ultrafibu`, the command line over that engine |
 | `report/` | The printed invoice (`UltraFIBUReport`) — builds a VectorDocument for the framework's PDF writer |
-| `data/` | The chart of accounts and the tax keys, as data files |
+| `data/` | The chart of accounts, the tax keys and the DATEV column definitions, as data files |
 | `ui/` | The German screens (`ultrafibu-ui`) — Belege, Journal, Summen und Salden, Partner |
 | `../../Tests/UltraFIBU/` | The engine test suite |
 
@@ -80,6 +80,11 @@ ultrafibu storno  buch.db R-202606001 --datum 25.07.2026 \
           --grund "Falsche Menge" --ja
 
 ultrafibu rechnung-pdf buch.db R-202606001 --datei rechnung.pdf
+
+# DATEV: one Buchungsstapel per calendar month
+ultrafibu datev-export buch.db --monat 2026-06 --ziel ./datev
+ultrafibu datev-export buch.db --konten --ziel ./datev
+ultrafibu datev-pruefen ./datev/EXTF_Buchungsstapel_202606.csv
 
 ultrafibu festschreiben buch.db 30.06.2026 --ja
 ultrafibu pruefen buch.db                # the journal's hash chain
@@ -149,6 +154,17 @@ and the reason appears in the status line.
   owe 19,00 €, not the 18,99 € that rounding each line first would give; the
   single figure is then shared back over the lines so the invoice's tax column
   still adds up to its total.
+- **The DATEV column order is a data file, and it is not yet verified.**
+  `data/DATEV-Buchungsstapel-v700.csv` is the best reconstruction available
+  without an original, and it says so in its own header. The export writes each
+  value **by column name**, so correcting the file moves the values with it.
+  `ultrafibu datev-pruefen <real file>` compares the definition against a real
+  DATEV export and names the position of every difference — one command, not a
+  rewrite.
+- **A Buchungsstapel is always one calendar month.** The Belegdatum field is
+  `TTMM` with no year; DATEV infers it from the Wirtschaftsjahr. A month not
+  wholly inside the fiscal year is refused rather than mis-booked, which for a
+  1 April Geschäftsjahr is the difference that matters.
 - **The invoice PDF reuses the framework's PDF writer**, it does not contain
   one. `PDFVectorConverter` writes the file; `report/` only builds the
   `VectorDocument` it consumes. The two sources that writer needs were checked

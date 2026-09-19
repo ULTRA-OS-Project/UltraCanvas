@@ -15,6 +15,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUBeleg.h"
+#include "UltraFIBUDatev.h"
 #include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUBuchung.h"
 #include "UltraFIBUGeschaeftsjahr.h"
@@ -53,6 +54,9 @@ void PrintUsage() {
         "        --steuernummer <nr>   Steuernummer des Finanzamts\n"
         "        --telefon <nr> --email <adr> --web <url>\n"
         "        --iban <iban> --bic <bic> --bank <name>\n"
+        "        --beraternummer <nr> --mandantennummer <nr>\n"
+        "                              von der Kanzlei; ohne sie lehnt\n"
+        "                              DATEV den Import ab\n"
         "                              Anschrift und Steuernummer sind\n"
         "                              Pflichtangaben auf jeder Rechnung\n"
         "                              (§ 14 UStG).\n"
@@ -94,6 +98,14 @@ void PrintUsage() {
         "  rechnung-pdf <datei> <nummer>  Beleg als PDF drucken\n"
         "        --datei <pfad>        Zieldatei (Standard: <Nummer>.pdf)\n"
         "        --zahlungshinweis <text>  --fusszeile <text>\n"
+        "\n"
+        "DATEV:\n"
+        "  datev-export <datei>    Buchungsstapel im DATEV-Format schreiben\n"
+        "        --monat <JJJJ-MM>     genau ein Kalendermonat (Pflicht)\n"
+        "        --konten              statt dessen die Kontenbeschriftungen\n"
+        "        --ziel <verzeichnis>  Zielverzeichnis (Standard: .)\n"
+        "  datev-pruefen <EXTF.csv>  Spaltendefinition gegen eine echte\n"
+        "                          DATEV-Datei prüfen\n"
         "\n"
         "Datumsangaben in deutscher (01.04.2026) oder ISO-Schreibweise (2026-04-01).\n",
         ULTRAFIBU_CLI_VERSION);
@@ -227,6 +239,11 @@ int Einrichten(int argc, char** argv) {
     mandant.bic          = Option(argc, argv, "--bic");
     mandant.bank         = Option(argc, argv, "--bank");
     mandant.rechtsform   = Option(argc, argv, "--rechtsform");
+    // Assigned by the Kanzlei. Without them a DATEV import is refused
+    // there, so they belong in the same setup step as everything else
+    // that has to be right before the first export.
+    mandant.beraternummer   = Option(argc, argv, "--beraternummer");
+    mandant.mandantennummer = Option(argc, argv, "--mandantennummer");
     const StoreResult mandantSaved = store.SaveMandant(mandant, akteur);
     if (!mandantSaved) { std::printf("Fehler: %s\n", mandantSaved.fehler.c_str()); return 1; }
 
@@ -1060,6 +1077,139 @@ int RechnungDrucken(int argc, char** argv) {
     return 0;
 }
 
+// ===== DATEV =====
+
+bool LadeDatevDefinition(const std::string& dateiname, DatevDefinition& out) {
+    const std::string pfad = DatevDefinitionPfad(dateiname);
+    std::string fehler;
+    if (!out.Laden(pfad, fehler)) {
+        std::printf("Fehler: %s\n", fehler.c_str());
+        return false;
+    }
+    return true;
+}
+
+void ZeigeDatevErgebnis(const DatevErgebnis& ergebnis) {
+    std::printf("\"%s\" geschrieben, %d Zeile(n).\n", ergebnis.datei.c_str(),
+                ergebnis.zeilen);
+    for (const std::string& warnung : ergebnis.warnungen)
+        std::printf("  ACHTUNG: %s\n", warnung.c_str());
+}
+
+int DatevExport(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    const std::string ziel = Option(argc, argv, "--ziel", ".");
+
+    // Kontenbeschriftungen: the whole chart, not tied to a month.
+    if (HasOption(argc, argv, "--konten")) {
+        DatevDefinition definition;
+        if (!LadeDatevDefinition("DATEV-Sachkontenbeschriftungen-v700.csv", definition))
+            return 1;
+        std::vector<Geschaeftsjahr> jahre = store.Geschaeftsjahre(mandant.id);
+        if (jahre.empty()) {
+            std::printf("Fehler: Es ist kein Geschäftsjahr angelegt.\n");
+            return 1;
+        }
+        const DatevErgebnis ergebnis = SchreibeKontenbeschriftungen(
+            mandant, jahre.back(), store.Konten(mandant.id), definition, ziel,
+            akteur.anmeldename);
+        if (!ergebnis.ok) { std::printf("Fehler: %s\n", ergebnis.fehler.c_str()); return 1; }
+        ZeigeDatevErgebnis(ergebnis);
+        return ergebnis.warnungen.empty() ? 0 : 1;
+    }
+
+    // A Buchungsstapel is always one calendar month: the Belegdatum field
+    // carries no year, so a stack that spans one would be mis-booked.
+    const std::string monatText = Option(argc, argv, "--monat");
+    if (monatText.empty()) {
+        std::printf("Fehler: --monat <JJJJ-MM> fehlt.\n"
+                    "Ein Buchungsstapel umfasst immer genau einen Kalendermonat:\n"
+                    "das Feld Belegdatum trägt nur TTMM, das Jahr leitet DATEV aus\n"
+                    "dem Wirtschaftsjahr ab. Für alle Monate: --alle\n");
+        return 2;
+    }
+
+    int jahrZahl = 0, monatZahl = 0;
+    if (monatText.size() >= 7 && monatText[4] == '-') {
+        jahrZahl  = std::atoi(monatText.substr(0, 4).c_str());
+        monatZahl = std::atoi(monatText.substr(5, 2).c_str());
+    }
+    if (jahrZahl < 1900 || monatZahl < 1 || monatZahl > 12) {
+        std::printf("Fehler: \"%s\" ist kein Monat (erwartet JJJJ-MM).\n",
+                    monatText.c_str());
+        return 2;
+    }
+
+    Geschaeftsjahr jahr;
+    if (!store.GeschaeftsjahrAt(mandant.id, Date(jahrZahl, monatZahl, 1), jahr)) {
+        std::printf("Fehler: Zum %02d/%d ist kein Geschäftsjahr angelegt.\n",
+                    monatZahl, jahrZahl);
+        return 1;
+    }
+
+    DatevDefinition definition;
+    if (!LadeDatevDefinition("DATEV-Buchungsstapel-v700.csv", definition)) return 1;
+
+    const DatevErgebnis ergebnis = SchreibeBuchungsstapel(
+        mandant, jahr, store.Journal(mandant.id), definition, jahrZahl, monatZahl,
+        ziel, akteur.anmeldename);
+    if (!ergebnis.ok) { std::printf("Fehler: %s\n", ergebnis.fehler.c_str()); return 1; }
+    ZeigeDatevErgebnis(ergebnis);
+    return ergebnis.warnungen.empty() ? 0 : 1;
+}
+
+int DatevPruefen(int argc, char** argv) {
+    const std::string datevDatei = Positional(argc, argv, 0);
+    if (datevDatei.empty()) {
+        std::printf("Fehler: Keine DATEV-Datei angegeben.\n"
+                    "Aufruf: ultrafibu datev-pruefen <EXTF_Datei.csv>\n");
+        return 2;
+    }
+
+    // Which definition to compare against follows from the file's own
+    // Format-Kategorie, so the user does not have to know it.
+    DatevDefinition stapel;
+    if (!LadeDatevDefinition("DATEV-Buchungsstapel-v700.csv", stapel)) return 1;
+    DatevPruefung pruefung = PruefeDateiGegenDefinition(datevDatei, stapel);
+
+    if (pruefung.fehler.empty() && pruefung.kategorie == 20) {
+        DatevDefinition konten;
+        if (!LadeDatevDefinition("DATEV-Sachkontenbeschriftungen-v700.csv", konten))
+            return 1;
+        pruefung = PruefeDateiGegenDefinition(datevDatei, konten);
+    }
+
+    if (!pruefung.fehler.empty()) {
+        std::printf("Fehler: %s\n", pruefung.fehler.c_str());
+        return 1;
+    }
+
+    std::printf("%s, Version %d, Kategorie %d, Formatversion %d\n",
+                pruefung.kennzeichen.c_str(), pruefung.versionsnummer,
+                pruefung.kategorie, pruefung.formatversion);
+    std::printf("Spalten in der Datei: %d, in der Definition: %d\n",
+                static_cast<int>(pruefung.spaltenInDatei),
+                static_cast<int>(pruefung.spaltenInDefinition));
+
+    if (pruefung.ok) {
+        std::printf("\nDie Spaltendefinition stimmt mit dieser Datei überein.\n");
+        return 0;
+    }
+    std::printf("\n%d Abweichung(en):\n",
+                static_cast<int>(pruefung.abweichungen.size()));
+    for (const std::string& abweichung : pruefung.abweichungen)
+        std::printf("  %s\n", abweichung.c_str());
+    std::printf("\nBitte die Definition in data/ entsprechend korrigieren. Der\n"
+                "Export schreibt über den Spaltennamen, die Werte wandern also mit.\n");
+    return 1;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1087,6 +1237,8 @@ int main(int argc, char** argv) {
     if (befehl == "salden")        return SaldenZeigen(argc, argv);
     if (befehl == "pruefen")       return KettePruefen(argc, argv);
     if (befehl == "rechnung-pdf")  return RechnungDrucken(argc, argv);
+    if (befehl == "datev-export")  return DatevExport(argc, argv);
+    if (befehl == "datev-pruefen") return DatevPruefen(argc, argv);
 
     std::printf("Unbekannter Befehl: %s\n\n", befehl.c_str());
     PrintUsage();

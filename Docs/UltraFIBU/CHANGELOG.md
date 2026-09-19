@@ -1,3 +1,47 @@
+#### 2026-09-19 *0.5.0*
+- **DATEV-Export: der Buchungsstapel.** `Apps/UltraFIBU/engine/UltraFIBUDatev.{h,cpp}`,
+  `ultrafibu datev-export` und `ultrafibu datev-pruefen`, 49 weitere Prüfungen
+  (707 insgesamt). Phase A3 des Vorschlags, Kategorie 21 (Buchungsstapel) und
+  20 (Kontenbeschriftungen).
+- **Die Spaltenreihenfolge ist eine Datendatei, kein Quelltext**
+  (`data/DATEV-Buchungsstapel-v700.csv`). DATEV gibt rund 120 Spalten in fester
+  Reihenfolge vor, und **diese Datei ist noch nicht an einer echten DATEV-Datei
+  geprüft** - sie sagt das oben in sich selbst. Der Export schreibt jeden Wert
+  **über den Spaltennamen**, nicht über die Position, also wandern die Werte
+  beim Korrigieren mit und es braucht keinen neuen Build.
+  - **`ultrafibu datev-pruefen <echte_datei.csv>`** liest die Kopf- und die
+    Spaltenzeile einer echten DATEV-Datei und meldet jede Abweichung mit ihrer
+    Position. Damit hört die Reihenfolge in dem Moment auf, eine Vermutung zu
+    sein, in dem eine echte Datei vorliegt - ein Befehl, keine Nachprogrammierung.
+    Der Test korrumpiert einen Spaltennamen und prüft, dass genau diese Position
+    gemeldet wird.
+- **Drei Formatregeln, die eingebaut und nicht später entdeckt sind:**
+  - **Belegdatum ist TTMM - vier Stellen, kein Jahr.** DATEV leitet das Jahr aus
+    dem Wirtschaftsjahr ab. Deshalb schreibt der Export **eine Datei je
+    Kalendermonat** und weist einen Monat zurück, der nicht vollständig im
+    Geschäftsjahr liegt. Für ein Geschäftsjahr ab 1. April ist das der
+    Unterschied zwischen einem richtigen Export und einem, der Dezember
+    stillschweigend in den Januar bucht.
+  - **Umsatz ist vorzeichenlos**; die Richtung trägt das
+    Soll-/Haben-Kennzeichen. Ein vorzeichenbehafteter Betrag ergibt ein
+    plausibel aussehendes, falsches Hauptbuch. Der Test prüft, dass in der
+    ganzen Datei kein Minuszeichen steht.
+  - **Die Datei ist CP1252 mit CRLF**, nicht UTF-8. Ein Umlaut als UTF-8
+    geschrieben kommt in der Kanzlei als zwei falsche Zeichen an und bleibt dort
+    zehn Jahre stehen. Derselbe CP1252-Bereich wie beim Euro-Zeichen im
+    PDF-Writer; hier wird er direkt getestet, Byte für Byte.
+- **Was fehlt, wird gesagt statt weggelassen.** Ohne Berater- und
+  Mandantennummer - beide vergibt die Kanzlei - lehnt DATEV den Import ab, also
+  lehnt der Export vorher ab und nennt beide. Hat eine Buchung einen
+  Steuerschlüssel, aber keinen DATEV-BU-Schlüssel, warnt der Export: die Datei
+  importiert, aber DATEV bucht ohne Steuerautomatik. Die Zuordnung steht in
+  `data/Steuerschluessel.csv`, Spalte `datev_bu`, und ist dort noch leer.
+- **Kategorie 16 (Debitoren/Kreditoren) ist bewusst nicht dabei.** Rund 240
+  Spalten, deren Reihenfolge zu raten schlechter wäre als sie nicht anzubieten.
+  Sie wartet auf eine echte Datei - dann ist sie eine weitere Datendatei.
+- **`ultrafibu einrichten` kennt jetzt Berater- und Mandantennummer**, wie
+  zuvor schon die Pflichtangaben nach § 14 UStG.
+
 #### 2026-09-19 *0.4.0*
 - **Die Oberfläche: vier Bildschirme über der Engine.** `Apps/UltraFIBU/ui/`,
   target `ultrafibu-ui`. Belege, Journal, Summen und Salden, Partner - each a

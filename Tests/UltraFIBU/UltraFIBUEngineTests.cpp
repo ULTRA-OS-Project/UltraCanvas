@@ -35,6 +35,7 @@
 #include "UltraFIBUDate.h"
 #include "UltraFIBUGeschaeftsjahr.h"
 #include "UltraFIBUKontenrahmen.h"
+#include "UltraFIBUDatev.h"
 #include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUStore.h"
 #include "UltraFIBUTypes.h"
@@ -48,6 +49,7 @@
 #include <UltraDatabase/UltraDatabaseQuery.h>
 
 #include <cstdio>
+#include <cstring>
 #include <set>
 #include <string>
 #include <vector>
@@ -1918,6 +1920,243 @@ static void TestRechnungPdf() {
     std::remove(pfadLang.c_str());
 }
 
+
+// ===== DATEV =====
+//
+// What is worth testing about a DATEV export, given that the real acceptance
+// test - a Kanzlei importing the stack - cannot be run here:
+//
+//  - **The file is CP1252, not UTF-8.** An umlaut written as UTF-8 arrives as
+//    two wrong characters in a Kanzlei's ledger and stays there for ten years.
+//  - **Umsatz is unsigned** and the direction is the Soll/Haben-Kennzeichen. A
+//    signed amount produces a plausible-looking, wrong ledger.
+//  - **Belegdatum is TTMM**, so a stack may not span a calendar year and this
+//    writer goes further and refuses a month not wholly inside the fiscal
+//    year - which is the whole point for a 1 April Geschäftsjahr.
+//  - **The column order is a guess until a real file confirms it**, so the
+//    checker that compares a definition against a real file is itself tested,
+//    in both directions: it accepts a matching file and names the position of
+//    every mismatch.
+
+static void TestDatev() {
+    std::printf("DATEV-Export\n");
+
+    // --- CP1252 ---
+    bool verlust = false;
+    const std::string umlaute = NachCp1252("Müller & Söhne, Straße", verlust);
+    Check(!verlust, "German letters fit in CP1252");
+    Check(umlaute.find('\xFC') != std::string::npos, "u-umlaut is the single byte 0xFC");
+    Check(umlaute.find('\xF6') != std::string::npos, "o-umlaut is 0xF6");
+    Check(umlaute.find('\xDF') != std::string::npos, "sharp s is 0xDF");
+    CheckInt(static_cast<int64_t>(umlaute.size()), 22,
+             "and each is one byte, not the two UTF-8 uses");
+
+    const std::string euro = NachCp1252("1.234,56 €", verlust);
+    Check(!verlust, "the euro sign fits");
+    Check(euro.find('\x80') != std::string::npos,
+          "as WinAnsi 0x80, where CP1252 puts it");
+
+    const std::string chinesisch = NachCp1252("Konto 北京", verlust);
+    Check(verlust, "a character outside CP1252 is reported as a loss");
+    Check(chinesisch.find('?') != std::string::npos, "and written as '?'");
+
+    // --- the column definition ---
+    DatevDefinition definition;
+    std::string fehler;
+    const std::string pfad = DatevDefinitionPfad("DATEV-Buchungsstapel-v700.csv");
+    if (pfad.empty()) {
+        std::printf("    note: DATEV-Buchungsstapel-v700.csv not found, skipping\n");
+        return;
+    }
+    Check(definition.Laden(pfad, fehler), "the shipped column definition loads");
+    CheckInt(static_cast<int64_t>(definition.Anzahl()), 120,
+             "and has the 120 columns the format describes");
+    Check(definition.Index("Umsatz (ohne Soll/Haben-Kz)") == 0,
+          "Umsatz is the first column");
+    Check(definition.Index("Soll/Haben-Kennzeichen") == 1, "the S/H flag the second");
+    Check(definition.Index("Festschreibung") > 0, "and Festschreibung is in there");
+    Check(definition.Index("Gibt Es Nicht") == -1, "an unknown column reports -1");
+
+    // A definition with a line missing would write every later value into the
+    // wrong column, so the loader refuses a gap rather than shifting silently.
+    const std::string luecke = "luecke-test.csv";
+    {
+        std::FILE* f = std::fopen(luecke.c_str(), "wb");
+        const char* inhalt = "1;Erste;text\n3;Dritte;text\n";
+        std::fwrite(inhalt, 1, std::strlen(inhalt), f);
+        std::fclose(f);
+    }
+    DatevDefinition kaputt;
+    Check(!kaputt.Laden(luecke, fehler),
+          "a gap in the column numbering is refused, not silently shifted");
+    Check(fehler.find("springen") != std::string::npos, "and the reason says so");
+    std::remove(luecke.c_str());
+
+    // --- the ground for an export ---
+    Mandant mandant;
+    mandant.name            = "Beispiel GmbH";
+    mandant.waehrung        = "EUR";
+    Geschaeftsjahr jahr;
+    jahr.beginn      = Date(2026, 4, 1);
+    jahr.ende        = Date(2027, 3, 31);
+    jahr.bezeichnung = "2026/2027";
+    jahr.sachkontenlaenge = 4;
+
+    std::vector<Buchung> journal;
+    auto buchung = [&](const Date& datum, const std::string& konto,
+                       const std::string& gegenkonto, int64_t minor,
+                       SollHaben sh, const std::string& text,
+                       const std::string& steuerschluessel) {
+        Buchung b;
+        b.mandantId  = 1;
+        b.belegdatum = datum;
+        b.konto      = konto;
+        b.gegenkonto = gegenkonto;
+        b.umsatz     = Money::FromMinor(minor, "EUR");
+        b.sollHaben  = sh;
+        b.buchungstext = text;
+        b.belegfeld1 = "R-1";
+        b.waehrung   = "EUR";
+        // A tax key with no DATEV BU-Schlüssel beside it is exactly the case
+        // the export has to warn about: the file imports, and DATEV books it
+        // without the tax automatics.
+        b.steuerschluessel = steuerschluessel;
+        b.laufendeNummer = static_cast<int64_t>(journal.size()) + 1;
+        journal.push_back(b);
+    };
+    buchung(Date(2026, 6, 15), "10000", "8400", 119000, SollHaben::Soll,
+            "Beratung; mit Semikolon", "USt19");
+    buchung(Date(2026, 6, 20), "1200", "10000", 50000, SollHaben::Soll,
+            "Zahlung", "");
+    buchung(Date(2026, 7,  3), "10000", "8400", 23800, SollHaben::Soll,
+            "Juli", "USt19");
+
+    // Berater- and Mandantennummer are the Kanzlei's; without them the import
+    // is refused there, so the export refuses here and says which is missing.
+    DatevErgebnis ohneNummern =
+        SchreibeBuchungsstapel(mandant, jahr, journal, definition, 2026, 6, ".", "test");
+    Check(!ohneNummern.ok, "an export without the Kanzlei's numbers is refused");
+    Check(ohneNummern.fehler.find("Beraternummer") != std::string::npos ||
+          ohneNummern.fehler.find("Berater") != std::string::npos,
+          "and the refusal names them");
+
+    mandant.beraternummer   = "1001";
+    mandant.mandantennummer = "456";
+
+    // --- a month that is not wholly inside the fiscal year ---
+    // The Belegdatum field carries no year; DATEV infers it from the
+    // Wirtschaftsjahr. A month straddling the boundary would be mis-booked.
+    Geschaeftsjahr rumpf;
+    rumpf.beginn      = Date(2026, 6, 15);      // starts mid-month on purpose
+    rumpf.ende        = Date(2027, 3, 31);
+    rumpf.bezeichnung = "Rumpfjahr";
+    rumpf.sachkontenlaenge = 4;
+    const DatevErgebnis halberMonat =
+        SchreibeBuchungsstapel(mandant, rumpf, journal, definition, 2026, 6, ".", "test");
+    Check(!halberMonat.ok,
+          "a month only partly inside the Geschäftsjahr is refused");
+    Check(halberMonat.fehler.find("Wirtschaftsjahr") != std::string::npos,
+          "and the refusal explains that the Belegdatum carries no year");
+
+    // --- the export itself ---
+    const DatevErgebnis juni =
+        SchreibeBuchungsstapel(mandant, jahr, journal, definition, 2026, 6,
+                               ".", "pruefer");
+    Check(juni.ok, "June exports");
+    CheckInt(juni.zeilen, 2, "with only June's two postings, not July's");
+
+    const std::string inhalt = LiesDatei(juni.datei);
+    Check(!inhalt.empty(), "the file has content");
+
+    // Line endings and encoding: both invisible in a diff and both fatal.
+    Check(inhalt.find("\r\n") != std::string::npos, "the lines end CRLF");
+    Check(inhalt.find('\n') != std::string::npos, "and there is more than one");
+    bool nurCrLf = true;
+    for (size_t i = 0; i < inhalt.size(); ++i)
+        if (inhalt[i] == '\n' && (i == 0 || inhalt[i - 1] != '\r')) nurCrLf = false;
+    Check(nurCrLf, "with no bare LF anywhere");
+
+    // The header fields that decide whether the import lands in the right year.
+    Check(inhalt.compare(0, 6, "\"EXTF\"") == 0, "the file starts with EXTF");
+    Check(inhalt.find(";700;21;") != std::string::npos,
+          "version 700, category 21 Buchungsstapel");
+    Check(inhalt.find("20260401") != std::string::npos,
+          "the WJ-Beginn is the 1 April fiscal year, not a January default");
+    Check(inhalt.find(";1001;456;") != std::string::npos,
+          "the Kanzlei's Berater- and Mandantennummer are in the header");
+    Check(inhalt.find("20260601;20260630") != std::string::npos,
+          "and the period is the whole month");
+
+    // The data rows.
+    Check(inhalt.find("1190,00;\"S\"") != std::string::npos,
+          "the Umsatz is unsigned with a comma decimal, and S/H carries the direction");
+    Check(inhalt.find("-1190") == std::string::npos,
+          "no signed amount anywhere - that is what the S/H flag is for");
+    Check(inhalt.find(";1506;") != std::string::npos,
+          "the Belegdatum is TTMM: 15 June is 1506");
+    Check(inhalt.find("\"Beratung; mit Semikolon\"") != std::string::npos,
+          "a Buchungstext containing the separator is quoted and does not split the row");
+    Check(inhalt.find("\xFC") == std::string::npos ||
+          inhalt.find("\xC3\xBC") == std::string::npos,
+          "nothing is written as a UTF-8 multi-byte sequence");
+
+    Check(!juni.warnungen.empty(),
+          "the missing DATEV BU-Schlüssel is warned about, not passed over");
+    bool nenntBu = false;
+    for (const std::string& w : juni.warnungen)
+        if (w.find("BU-Schl") != std::string::npos) nenntBu = true;
+    Check(nenntBu, "and the warning names it");
+
+    // --- the checker, both ways ---
+    DatevPruefung gut = PruefeDateiGegenDefinition(juni.datei, definition);
+    Check(gut.ok, "the checker accepts a file written from the same definition");
+    CheckInt(static_cast<int64_t>(gut.spaltenInDatei), 120, "and counts its columns");
+    CheckInt(gut.kategorie, 21, "and reads the category out of the header");
+
+    // Corrupt one column name and confirm the position is named. This is the
+    // check that will turn the shipped definition from a guess into a fact the
+    // moment a real DATEV file exists.
+    {
+        std::string kaputtText = inhalt;
+        const size_t stelle = kaputtText.find("\"Belegfeld 1\"");
+        Check(stelle != std::string::npos, "Belegfeld 1 is in the column line");
+        if (stelle != std::string::npos)
+            kaputtText.replace(stelle, 13, "\"Belegfeld X\"");
+        const std::string kaputtDatei = "datev-kaputt.csv";
+        std::FILE* f = std::fopen(kaputtDatei.c_str(), "wb");
+        std::fwrite(kaputtText.data(), 1, kaputtText.size(), f);
+        std::fclose(f);
+
+        const DatevPruefung schlecht =
+            PruefeDateiGegenDefinition(kaputtDatei, definition);
+        Check(!schlecht.ok, "a changed column name is detected");
+        CheckInt(static_cast<int64_t>(schlecht.abweichungen.size()), 1,
+                 "as exactly one difference");
+        if (!schlecht.abweichungen.empty())
+            Check(schlecht.abweichungen[0].find("Spalte 11") != std::string::npos,
+                  "naming its position, so the definition can be corrected there");
+        std::remove(kaputtDatei.c_str());
+    }
+
+    // A file that is not DATEV at all.
+    {
+        const std::string fremd = "kein-datev.csv";
+        std::FILE* f = std::fopen(fremd.c_str(), "wb");
+        const char* inhaltFremd = "\"IRGENDWAS\";1\r\n\"a\";\"b\"\r\n";
+        std::fwrite(inhaltFremd, 1, std::strlen(inhaltFremd), f);
+        std::fclose(f);
+        const DatevPruefung fremdPruefung =
+            PruefeDateiGegenDefinition(fremd, definition);
+        Check(!fremdPruefung.ok, "a file that is not DATEV is rejected");
+        Check(!fremdPruefung.fehler.empty(), "with a reason rather than a diff");
+        std::remove(fremd.c_str());
+    }
+    Check(!PruefeDateiGegenDefinition("gibtesnicht.csv", definition).fehler.empty(),
+          "and a missing file is reported rather than crashing");
+
+    std::remove(juni.datei.c_str());
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -1929,6 +2168,7 @@ int main() {
     TestStore();
     TestBelegeUndBuchungen();
     TestRechnungPdf();
+    TestDatev();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
