@@ -1718,8 +1718,13 @@ namespace UltraCanvas {
                          const std::pair<std::string, std::string>& b) {
                           return LabelLess(a.first, b.first);
                       });
-            for (const auto& [name, path] : dirs) {
-                out.emplace_back(name, [onNavigate, path]() {
+            // Bound to a named variable rather than destructured: a lambda
+            // may not capture a structured binding before C++20's P1091, and
+            // the Clang the oldest supported Linux runner ships (14) does not
+            // implement it - "'path' in capture list does not name a variable".
+            for (const auto& entry : dirs) {
+                const std::string& path = entry.second;
+                out.emplace_back(entry.first, [onNavigate, path]() {
                     if (onNavigate) onNavigate(path);
                 });
             }
