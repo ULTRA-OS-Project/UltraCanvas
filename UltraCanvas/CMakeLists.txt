@@ -2606,6 +2606,58 @@ else()
     message(STATUS "  [−] UltraDatabase - DISABLED")
 endif()
 
+# ===== BUILD ULTRAMESSAGE LIBRARY (Phase 1: channel + journal) =====
+# The per-user message channel (Masterfile_modules.md §13): broker, local
+# socket / named pipe transport, subscriptions, recorded delivery, request /
+# reply and the journal on UltraDatabase. UI-free like UltraDatabase and
+# UltraVault, so tools and the test suite link it headless; an UltraCanvas
+# application installs its UI dispatcher through
+# include/UltraMessage/UltraMessageUltraCanvas.h (header-only).
+option(ULTRACANVAS_ENABLE_ULTRAMESSAGE "Build the UltraMessage message-channel library" ON)
+if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
+    find_package(Threads REQUIRED)
+    set(ULTRAMESSAGE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageSchemas.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageTransport.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageJournal.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageBroker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageEndpoint.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageHelpers.cpp
+    )
+    # UltraCanvasJSON lives in the core library. With a STATIC core, compile
+    # it into this archive too so UltraMessage links without the widget layer
+    # (a static-library duplicate the linker resolves to one copy); with a
+    # SHARED core, take it from libultracanvas instead, exactly as
+    # UltraSocialEngine does, so the DSO stays the single home of the symbols.
+    get_target_property(_um_core_type ${ULTRACANVAS_LIB_NAME} TYPE)
+    if(NOT _um_core_type STREQUAL "SHARED_LIBRARY")
+        list(APPEND ULTRAMESSAGE_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp)
+    endif()
+    add_library(UltraMessage STATIC ${ULTRAMESSAGE_SOURCES})
+    set_target_properties(UltraMessage PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultramessage")
+    target_compile_features(UltraMessage PUBLIC cxx_std_20)
+    target_include_directories(UltraMessage
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas>)
+    target_link_libraries(UltraMessage PUBLIC UltraDatabase Threads::Threads)
+    if(_um_core_type STREQUAL "SHARED_LIBRARY")
+        target_link_libraries(UltraMessage PUBLIC ${ULTRACANVAS_LIB_NAME})
+    else()
+        target_link_libraries(UltraMessage PRIVATE uc-yyjson)
+    endif()
+    target_compile_definitions(UltraMessage PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
+    message(STATUS "  [✓] UltraMessage - ENABLED")
+elseif(ULTRACANVAS_ENABLE_ULTRAMESSAGE)
+    message(STATUS "  [−] UltraMessage - DISABLED (needs UltraDatabase)")
+else()
+    message(STATUS "  [−] UltraMessage - DISABLED")
+endif()
+
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====
 set(ULTRACANVAS_PLUGIN_TARGETS "")
 set(ULTRACANVAS_PLUGIN_INCLUDE_DIRS "")
