@@ -62,9 +62,9 @@ jobs:
             arch_label: arm64
           - os: windows-latest
             arch_label: x86_64
-            msystem: MINGW64
-            msys_prefix: mingw-w64-x86_64
-            msys_toolchain: mingw-w64-x86_64-gcc
+            msystem: CLANG64
+            msys_prefix: mingw-w64-clang-x86_64
+            msys_toolchain: mingw-w64-clang-x86_64-clang
           - os: windows-11-arm
             arch_label: arm64
             msystem: CLANGARM64
@@ -215,7 +215,7 @@ jobs:
           # identical on Ubuntu ports, so the only architecture-dependent bit
           # is the multiarch libdir the from-source builds install into.
           sudo apt-get update
-          sudo apt-get install -y cmake pkg-config build-essential ccache
+          sudo apt-get install -y cmake pkg-config build-essential ccache clang
           # dpkg-architecture comes with dpkg-dev (pulled in by build-essential
           # above), so this is resolved only after that install.
           MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
@@ -305,7 +305,7 @@ jobs:
 
       # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
       # Windows installs MSYS2's native rust package above (gnu/gnullvm ABI,
-      # matching the MinGW/CLANGARM64 compiler; MSYS2's /usr/bin POSIX rust breaks
+      # matching the CLANG64/CLANGARM64 clang compiler (both use the *-windows-gnullvm ABI); MSYS2's /usr/bin POSIX rust breaks
       # Corrosion with 'failed to join paths from $LD_LIBRARY_PATH'). On macOS/Linux use the
       # runner's preinstalled rustup to pin a current stable, so the version-pinned
       # vtracer / visioncortex crates build with a new-enough compiler.

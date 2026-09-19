@@ -11,6 +11,27 @@ cmake_minimum_required(VERSION 3.16)
 # before project(), which needs ULTRACANVAS_VERSION.
 include(cmake/UltraCanvasVersion.cmake)
 
+# Prefer Clang on Linux (GCC/MinGW is deprecated for this project). Honour an
+# explicit choice: CC/CXX in the environment, -DCMAKE_CXX_COMPILER on the command
+# line, or a value already in the cache all win over this default. Does not touch
+# macOS (Apple Clang already), Android (NDK toolchain), or Windows (the MSYS2
+# CLANG64 environment sets clang as the default compiler itself).
+if(UNIX AND NOT APPLE AND NOT ANDROID
+   AND NOT DEFINED ENV{CXX} AND NOT DEFINED CMAKE_CXX_COMPILER)
+    # Prefer the unversioned name (present on CI via the `clang` metapackage and
+    # a stable ccache key), then fall back to versioned binaries `clang-NN` for
+    # dev boxes that install e.g. clang-21 without the unversioned symlink.
+    find_program(_uc_clang   NAMES clang
+        clang-25 clang-24 clang-23 clang-22 clang-21 clang-20 clang-19 clang-18 clang-17 clang-16)
+    find_program(_uc_clangxx NAMES clang++
+        clang++-25 clang++-24 clang++-23 clang++-22 clang++-21 clang++-20 clang++-19 clang++-18 clang++-17 clang++-16)
+    if(_uc_clang AND _uc_clangxx)
+        set(CMAKE_C_COMPILER   "${_uc_clang}"   CACHE FILEPATH "C compiler")
+        set(CMAKE_CXX_COMPILER "${_uc_clangxx}" CACHE FILEPATH "C++ compiler")
+        message(STATUS "Defaulting to Clang on Linux (${_uc_clangxx})")
+    endif()
+endif()
+
 project(UltraCanvasDemoApp
     VERSION ${ULTRACANVAS_VERSION}
     DESCRIPTION "UltraCanvas Framework Demo Application"

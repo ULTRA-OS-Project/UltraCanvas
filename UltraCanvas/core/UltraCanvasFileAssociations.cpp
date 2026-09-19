@@ -219,6 +219,31 @@ bool HasDefaultApplication(const std::string& path) {
     return false;
 }
 
+std::string GetMimeType(const std::string& path) {
+    if (path.empty()) return {};
+    // The globs match a file NAME; handing them a path would let a folder
+    // called "my.backup" decide the type of every file inside it.
+    const size_t slash = path.find_last_of("/\\");
+    const std::string name = slash == std::string::npos ? path
+                                                        : path.substr(slash + 1);
+    if (name.empty()) return {};
+    Service& service = Service::Instance();
+    std::lock_guard<std::mutex> lk(service.backendMutex);
+    // A rebuild here invalidates the candidate lists the service is holding
+    // just as one inside Lookup() would - the index they were resolved from
+    // is gone.
+    if (FileAssociationsBackend::RefreshGlobalIndex()) service.DropCache();
+    return FileAssociationsBackend::MimeTypeFor(name);
+}
+
+std::string GetMimeGenericIcon(const std::string& mime) {
+    if (mime.empty()) return {};
+    Service& service = Service::Instance();
+    std::lock_guard<std::mutex> lk(service.backendMutex);
+    if (FileAssociationsBackend::RefreshGlobalIndex()) service.DropCache();
+    return FileAssociationsBackend::MimeGenericIconFor(mime);
+}
+
 bool OpenWithDefaultApplication(const std::vector<std::string>& paths,
                                 std::string& outError) {
     outError.clear();
@@ -382,6 +407,8 @@ namespace FileAssociationsBackend {
 namespace FileAssociationsBackend {
     bool RefreshGlobalIndex() { return false; }
     std::vector<FileAssociationApp> ResolveFile(const std::string&) { return {}; }
+    std::string MimeTypeFor(const std::string&) { return {}; }
+    std::string MimeGenericIconFor(const std::string&) { return {}; }
     bool LaunchDefault(const std::vector<std::string>&, std::string& outError) {
         outError = "Opening files with applications is not available here.";
         return false;

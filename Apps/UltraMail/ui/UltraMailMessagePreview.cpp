@@ -1,8 +1,11 @@
 // Apps/UltraMail/ui/UltraMailMessagePreview.cpp
+// Version: 0.5.0 - sender badge instead of the initial avatar; the cached body
+//                  is scanned on first read and the verdict stored, with a
+//                  warning strip above suspicious and scam messages.
 // Version: 0.4.3 - From/To are auto-height labels (never cropped); the HTML body
 //                  fills the pane width (reflows) and gets a horizontal scrollbar
 //                  when content cannot reflow, instead of being clipped.
-// Last Modified: 2026-09-13
+// Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailMessagePreview.h"
 
@@ -70,14 +73,6 @@ std::string JoinAddresses(const std::vector<std::string>& v) {
     std::string s;
     for (std::size_t i = 0; i < v.size(); ++i) { if (i) s += ", "; s += v[i]; }
     return s;
-}
-
-// The sender's initial for the avatar square ("?" for an empty address).
-std::string SenderInitial(const std::string& name, const std::string& addr) {
-    for (char c : name.empty() ? addr : name)
-        if (std::isalnum(static_cast<unsigned char>(c)))
-            return std::string(1, static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
-    return "?";
 }
 
 } // namespace
@@ -171,6 +166,27 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     rule_ = Theme::MakeDivider("prevRule");
     root_->AddChild(rule_);
 
+    // The warning strip: hidden for ordinary mail, shown above the body when
+    // the content scan found something worth stopping the reader for. It says
+    // what and why — never "blocked", because the message is still readable.
+    warning_ = CreateContainer("prevWarning", 0, 0, 0, 0);
+    warning_->layout.SetFlexColumn()
+                    .SetFlexGap(2);
+    warning_->SetPadding(8.0f, 10.0f);
+    warningTitle_ = Theme::MakeText("prevWarningTitle", "", Theme::kSizeBody,
+                                    Theme::kTrustScam, FontWeight::Bold);
+    warningTitle_->SetWrap(TextWrap::WrapWord);
+    warningText_ = Theme::MakeText("prevWarningText", "", Theme::kSizeSecondary,
+                                   Theme::kTextPrimary);
+    warningText_->SetWrap(TextWrap::WrapWord);
+    warning_->AddChild(warningTitle_);
+    warning_->AddChild(warningText_);
+    warningTitle_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    warningText_->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    root_->AddChild(warning_);
+    warning_->layoutItem.SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    warning_->SetVisible(false);
+
     // Body host: takes the remaining height; RenderBody() fills it with either
     // a read-only text area (plain text) or the HTMLReader-built element tree.
     bodyHost_ = CreateContainer("prevBodyHost", 0, 0, 0, 0);
@@ -250,6 +266,52 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
     text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 }
 
+MessageSecurity MessagePreview::SecurityFor(const MessageEnvelope& env,
+                                            const std::string& raw) {
+    MessageSecurity sec;
+    if (store_) store_->GetSecurity(env.accountId, env.folder, env.uid, sec);
+    if (sec.Scanned() || raw.empty()) return sec;
+
+    // First read of this message: scan the cached body once and keep the
+    // verdict, so the list can colour the row without parsing every .eml.
+    const ThreatReport report = ScanRawMessage(raw);
+    sec.level  = report.level;
+    sec.score  = report.score;
+    sec.bulk   = report.bulk;
+    sec.reason = report.Summary();
+    if (store_) store_->SetSecurity(env.accountId, env.folder, env.uid, sec);
+    if (onSecurityScanned) onSecurityScanned(env, sec);
+    return sec;
+}
+
+void MessagePreview::ShowSecurityWarning(const SenderStatus& status,
+                                         const MessageSecurity& security) {
+    if (!warning_ || !warningTitle_ || !warningText_) return;
+
+    // Only the two verdicts worth interrupting a reader for. Advertisements and
+    // unknown senders are the badge's business, not a banner's.
+    if (!status.Dangerous()) {
+        warning_->SetVisible(false);
+        return;
+    }
+
+    const bool scam = status.cls == SenderClass::Scam;
+    const Color accent = scam ? Theme::kTrustScam : Theme::kTrustSpam;
+    warning_->SetBackgroundColor(scam ? Theme::kTrustScamSoft : Theme::kTrustSpamSoft);
+    warning_->SetBorders(1.0f, accent, Theme::kControlRadius);
+    warningTitle_->SetTextColor(accent);
+    warningTitle_->SetText(std::string("\xE2\x9A\xA0 ") +
+        (scam ? "This message looks like a scam or phishing attempt"
+              : "Parts of this message do not add up"));
+
+    std::string text = status.reason;
+    if (!security.reason.empty()) text += (text.empty() ? "" : "\n") + security.reason;
+    text += "\nDo not sign in, pay or reply through the links in this message unless you "
+            "are sure who sent it.";
+    warningText_->SetText(text);
+    warning_->SetVisible(true);
+}
+
 void MessagePreview::Clear() {
     hasMessage_ = false;
     current_ = SourceMessage{};
@@ -260,8 +322,9 @@ void MessagePreview::Clear() {
         subject_->SetFontWeight(FontWeight::Normal);
         subject_->SetTextColor(Theme::kTextMuted);
     }
-    if (header_) header_->SetVisible(false);
-    if (rule_)   rule_->SetVisible(false);
+    if (header_)  header_->SetVisible(false);
+    if (rule_)    rule_->SetVisible(false);
+    if (warning_) warning_->SetVisible(false);
     if (from_)    from_->SetText("");
     if (to_)      to_->SetText("");
     if (date_)    date_->SetText("");
@@ -305,12 +368,10 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         to_->SetTooltip(meta);
     }
     if (date_)    date_->SetText(FormatShortDate(env.date));
-    if (avatarHost_) {
-        avatarHost_->ClearChildren();
-        avatarHost_->AddChild(Theme::MakeAvatar("prevAvatar",
-                                                SenderInitial(fromName, env.fromAddr),
-                                                kAvatarSide));
-    }
+
+    // The badge (and the warning strip) need the scan verdict, which needs the
+    // body — so both are filled in after it has been loaded, below.
+    std::string raw;
 
     // Load the cached body (.eml) and decode it.
     fs::path path = fs::path(mailDir_) / env.accountId / SanitizeFolder(env.folder)
@@ -332,7 +393,7 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         current_.body.clear();
         current_.attachments.clear();
     } else {
-        const std::string raw(loaded.bytes.begin(), loaded.bytes.end());
+        raw.assign(loaded.bytes.begin(), loaded.bytes.end());
         ParsedMessage pm = MimeCodec::Parse(raw);
         RenderBody(pm.body, pm.bodyIsHtml);
         attachmentStrip_.SetAttachments(pm.attachments);
@@ -340,6 +401,25 @@ void MessagePreview::Show(const MessageEnvelope& env) {
         current_.body = pm.bodyIsHtml ? HtmlToText(pm.body) : pm.body;
         current_.attachments = pm.attachments;
     }
+
+    // Who the message is from, in the same badge the list row wears, and the
+    // warning strip when the scan found something.
+    const MessageSecurity security = SecurityFor(env, raw);
+    const SenderStatus    status   = badges_.Classify(env, security, junkFolder_);
+    if (avatarHost_) {
+        avatarHost_->ClearChildren();
+        avatarHost_->AddChild(MakeSenderBadgeElement(
+            "prevBadge", badges_.Resolve(env, security, junkFolder_), kAvatarSide));
+    }
+    if (from_) {
+        // The sender line carries the verdict in words, so the badge's colour
+        // is never the only place it is said.
+        std::string tip = sender + "\n" + DisplayName(status.cls);
+        if (!status.reason.empty()) tip += " \xE2\x80\x94 " + status.reason;
+        if (!security.reason.empty()) tip += "\n" + security.reason;
+        from_->SetTooltip(tip);
+    }
+    ShowSecurityWarning(status, security);
 
     // Capture the selection for a possible Reply (decoded, so the quoted reply
     // header and Re: subject read correctly).

@@ -558,6 +558,104 @@ std::string UltraNet_MimeEncodeAddress(const std::string& utf8Address, bool useB
     return encodedName + " " + utf8Address.substr(lt);
 }
 
+// ---- IMAP modified UTF-7 (RFC 3501 §5.1.3) ---------------------------------
+
+namespace {
+
+// Append one Unicode code point as UTF-8.
+void AppendUtf8(std::string& out, uint32_t cp) {
+    if (cp <= 0x7F) {
+        out.push_back(static_cast<char>(cp));
+    } else if (cp <= 0x7FF) {
+        out.push_back(static_cast<char>(0xC0 | (cp >> 6)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else if (cp <= 0xFFFF) {
+        out.push_back(static_cast<char>(0xE0 | (cp >> 12)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    } else {
+        out.push_back(static_cast<char>(0xF0 | (cp >> 18)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 12) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | ((cp >> 6) & 0x3F)));
+        out.push_back(static_cast<char>(0x80 | (cp & 0x3F)));
+    }
+}
+
+// Modified BASE64 alphabet value (RFC 3501: standard alphabet with ',' for
+// '/'); -1 for any character that is not part of the alphabet.
+int ModBase64Val(char c) {
+    if (c >= 'A' && c <= 'Z') return c - 'A';
+    if (c >= 'a' && c <= 'z') return c - 'a' + 26;
+    if (c >= '0' && c <= '9') return c - '0' + 52;
+    if (c == '+') return 62;
+    if (c == ',') return 63;
+    return -1;
+}
+
+// Decode one "&...-" shift (chars is the run between '&' and '-', without them)
+// of modified BASE64 into UTF-16BE code units, transcoded to UTF-8, appended to
+// `out`. Returns false on a malformed run (caller then falls back to raw).
+bool DecodeUtf7Shift(const std::string& chars, std::string& out) {
+    // Modified BASE64 -> a bitstream -> 16-bit UTF-16 code units.
+    std::vector<uint16_t> units;
+    uint32_t acc = 0;
+    int bits = 0;
+    for (char c : chars) {
+        int v = ModBase64Val(c);
+        if (v < 0) return false;
+        acc = (acc << 6) | static_cast<uint32_t>(v);
+        bits += 6;
+        if (bits >= 16) {
+            bits -= 16;
+            units.push_back(static_cast<uint16_t>((acc >> bits) & 0xFFFF));
+        }
+    }
+    // Any leftover bits must be zero padding (< 6 bits worth); reject stray 1s.
+    if (bits >= 6) return false;
+    if (bits > 0 && (acc & ((1u << bits) - 1)) != 0) return false;
+
+    // UTF-16BE -> code points (combine surrogate pairs).
+    for (std::size_t i = 0; i < units.size(); ++i) {
+        uint16_t u = units[i];
+        if (u >= 0xD800 && u <= 0xDBFF) {
+            if (i + 1 >= units.size()) return false;
+            uint16_t lo = units[i + 1];
+            if (lo < 0xDC00 || lo > 0xDFFF) return false;
+            uint32_t cp = 0x10000 + ((static_cast<uint32_t>(u - 0xD800) << 10) |
+                                     static_cast<uint32_t>(lo - 0xDC00));
+            AppendUtf8(out, cp);
+            ++i;
+        } else if (u >= 0xDC00 && u <= 0xDFFF) {
+            return false;   // lone low surrogate
+        } else {
+            AppendUtf8(out, u);
+        }
+    }
+    return true;
+}
+
+} // namespace
+
+std::string UltraNet_ImapUtf7Decode(const std::string& mUtf7) {
+    // Fast path: a plain-ASCII name with no shift character is already correct.
+    if (mUtf7.find('&') == std::string::npos) return mUtf7;
+
+    std::string out;
+    out.reserve(mUtf7.size());
+    for (std::size_t i = 0; i < mUtf7.size(); ) {
+        char c = mUtf7[i];
+        if (c != '&') { out.push_back(c); ++i; continue; }
+        // '&' begins a shift. "&-" is a literal '&'.
+        std::size_t dash = mUtf7.find('-', i + 1);
+        if (dash == std::string::npos) return mUtf7;   // unterminated: give up, show raw
+        if (dash == i + 1) { out.push_back('&'); i = dash + 1; continue; }
+        if (!DecodeUtf7Shift(mUtf7.substr(i + 1, dash - i - 1), out))
+            return mUtf7;   // malformed: never show worse than the raw name
+        i = dash + 1;
+    }
+    return out;
+}
+
 bool UltraNet_MimeParse(const std::string& rawMessage, UltraNetMimeMessage& out) {
     if (rawMessage.empty()) return false;
     out = UltraNetMimeMessage{};

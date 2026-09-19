@@ -142,12 +142,15 @@ finding.
 ```bash
 # Ubuntu/Debian deps
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev
+    libfreetype6-dev libvips-dev libharfbuzz-dev clang
 # macOS deps
 brew install cmake cairo pango freetype vips harfbuzz
 
 mkdir build && cd build && cmake .. && make
 ```
+
+The project now defaults to Clang on Linux, so install the `clang` package
+alongside the existing deps.
 
 The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`

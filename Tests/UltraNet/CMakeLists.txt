@@ -40,7 +40,6 @@ set(ULTRANET_TEST_SOURCES
     test_headers.cpp
     test_result.cpp
     test_plugins.cpp
-    test_curldebug.cpp
     test_mailaddr.cpp
     test_dns_format.cpp
     test_ftp_parser.cpp

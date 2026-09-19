@@ -1,4 +1,4 @@
-#### 2026-09-17 *0.8.84*
+#### 2026-09-19 *0.8.88*
 - **CI builds and runs the UltraCloud test suite.** It has existed since the
   module did, and no continuous build had ever compiled it: the option that
   brings it in (`ULTRACANVAS_BUILD_ULTRACLOUD_TESTS`) defaults to OFF and
@@ -16,6 +16,128 @@
   suite passes as it stands. They are headless by construction - every provider
   is driven through an injected fake rather than a server - so turning them on
   adds no network dependency to the build and no flakiness to it either.
+#### 2026-09-19 *0.8.86*
+- **The Linux build is green again under Clang, and a missing MuPDF no longer
+  stops a build.** Two independent breakages, both from the move to Clang
+  (0.8.83's "Migrate from GCC to Clang"), and both of which left `main` red.
+
+  - **Three files captured a structured binding in a lambda.** Legal only
+    since C++20's P1091, and **Clang 14 - which is what `apt install clang`
+    gives on the `ubuntu-22.04` runner - does not implement it**:
+
+    ```
+    UltraCanvasBreadcrumb.cpp:1722: error: 'path' in capture list does not name a variable
+    UltraCanvasBreadcrumb.cpp:1723: error: reference to local binding 'path' declared in enclosing function
+    ```
+
+    GCC accepted all three, so they only surfaced when the compiler changed.
+    Each now binds the pair to a named variable before the lambda, which every
+    compiler accepts at every standard:
+    `UltraCanvasBreadcrumb.cpp` (the sub-folder menu's navigate callback),
+    `UltraCanvasRequirementDiagramLayout.cpp` (the A* heuristic's goal cell)
+    and `UltraCanvasWordCloudDiagram.cpp` (the bigram reducer).
+
+    Only the first was visible on CI: the build stops at the first error, so
+    fixing it alone would have turned the next file red on the following run.
+    All three were found by building the tree with Clang 14 locally.
+
+  - **A missing MuPDF is now a skipped plugin, not a configure error.**
+    `MUPDF_FOUND` was computed and then ignored - the sources, the include
+    directory and `${MUPDF_LIBRARY}` were wired in whether or not MuPDF was
+    there - so a machine without it stopped at configure time with
+    `MUPDF_LIBRARY ... NOTFOUND` and no way forward but installing it. That is
+    what turned an upstream package disappearing (MSYS2 dropped
+    `mingw-w64-x86_64-mupdf` on 2026-09-17, taking every Windows build in the
+    repository with it) into an unfixable outage rather than a build without
+    PDF previews.
+
+    Everything downstream was already guarded by `ULTRACANVAS_PLUGIN_PDF`:
+    `UltraCanvasPDFView.cpp` and `UltraCanvasPDF_MuPDF.cpp` compile to nothing
+    without it, and the filer's PDF thumbnails fall back to the type glyph. So
+    the plugin now simply reports itself disabled and the build continues.
+    Verified by hiding the MuPDF headers and building the framework through to
+    a linked library. `-DULTRACANVAS_PLUGIN_PDF=OFF` remains the way to ask for
+    this deliberately, and is unchanged.
+
+  Both halves were validated against the CI compiler rather than the local
+  one: Clang 14 installed alongside, pointed at libstdc++ 12, and the whole
+  framework built with it. The original error reproduces byte for byte on
+  Clang 14 and compiles under Clang 14, Clang 18 and GCC after the fix.
+
+#### 2026-09-17 *0.8.84*
+- **A file display can now draw the icons the host desktop draws.** The filer
+  widget has always painted its own: the folder shape and the category-coloured
+  sheet with the extension on it. They look the same everywhere and need
+  nothing installed, but they also look like nothing else on the machine - a
+  `.pdf` in an UltraCanvas file display and the same `.pdf` in Explorer, Finder
+  or Files were two different pictures. `Display > File icons` now chooses:
+
+  ```cpp
+  filer->SetFileIconStyle(FilerFileIconStyle::HostOperatingSystem);
+  ```
+
+  - **New module `UltraCanvasHostFileIcons`** (`include/UltraCanvasHostFileIcons.h`,
+    `core/UltraCanvasHostFileIcons.cpp` plus one backend per platform) answers
+    "what does THIS system draw for a file of this KIND?". It is the
+    type-wide counterpart of `UltraCanvasNativeFileIcons`, which answers the
+    other question - what icon a file carries INSIDE itself - and the two are
+    deliberately separate: a program is drawn as itself on every platform
+    because its picture is in the file, while a `.txt` is drawn as this
+    desktop draws a text file, and looks different on another one.
+  - **The key is the design.** `HostFileIconKey()` says what an answer depends
+    on, and files of one kind share it: a folder of four thousand `.txt` files
+    resolves ONE icon and holds ONE pixmap. A compound suffix keys as itself
+    (`archive.tar.gz` is a tarball, not a gzip file), an extension-less name
+    keys by its name (the freedesktop database knows `makefile`), and a file
+    that carries its own icon keys per file so two programs can never share
+    one.
+  - **Linux / BSD** resolve the file's MIME type through
+    `UltraCanvasFileAssociations` - the shared-mime-info globs the "Open with"
+    menu is already built from, so the framework still has exactly one reader
+    of that database - and then the icon-naming-specification names through
+    `UltraCanvasDesktopEntry`'s theme resolver. Two new calls carry what those
+    rules need: `FileAssociations::GetMimeType()` (the MIME name of a file,
+    matched by name, never by reading it) and
+    `FileAssociations::GetMimeGenericIcon()` (the generic icon the type
+    database names for a type - `application/pdf` is drawn as
+    `x-office-document`, a tarball as `package-x-generic`). Both are empty on
+    Windows and macOS, which associate by extension and by UTI and keep no
+    MIME database to ask. Without the second one every archive and every
+    office document falls back to "some file", which is not what the desktop
+    shows.
+  - **Windows** takes the icon from the shell's system image list - the list
+    Explorer itself draws from - indexed by `SHGetFileInfoW` with
+    `SHGFI_USEFILEATTRIBUTES`, so the type is decided from the file NAME and
+    the shell answers without opening, or even finding, the file. A
+    transparent border is trimmed off what comes back: the jumbo list is a
+    256x256 canvas and a type whose icon exists only at 48 sits in the middle
+    of it with empty space all round, which drawn into a tile would be a
+    postage stamp.
+  - **macOS** asks `NSWorkspace` for the content type the extension names
+    rather than for the file, so one lookup serves every file of a kind.
+    WebAssembly and Android report unavailable, and a caller keeps its own
+    icons.
+  - **Nothing waits for it.** The widget resolves on one background thread and
+    draws its simple icons until an answer lands - and keeps drawing them for
+    a type this system has no icon for, so a machine with no icon theme
+    installed loses nothing and a lookup never reaches the frame.
+  - **What the setting does NOT change**: a file that thumbnails as its own
+    content still shows the thumbnail, and a program, shortcut or bundle still
+    shows the icon inside it. Explorer, Finder and the Linux file managers all
+    prefer those too; the type icon is what they fall back to. A folder with
+    an icon from `folderIconProvider` also still wins. Folder previews are
+    drawn INTO the built-in folder shape, so with host icons on there is no
+    shape to draw them into and a folder is simply the system's folder icon.
+  - `AreHostFileIconsAvailable()` reports whether there is a desktop to ask, so
+    a settings page can say so instead of offering a switch that changes
+    nothing; `RefreshHostIcons()` drops what was resolved, for a host that
+    notices the user changing theme. Switching fires `onDisplayFormatsChanged`
+    like the other Display switches. Default is unchanged -
+    `FilerFileIconStyle::Simple` is what every earlier release drew.
+  - New `Tests/FilerHostIconsTest`; docs in
+    `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`, with the widget's side in
+    `UltraCanvasFilerWidget.md` and the two new association calls in
+    `UltraCanvasFileAssociations.md`.
 #### 2026-09-17 *0.8.83*
 - **A format plugin read nothing until an application named it.** Registration
   was per-application boilerplate, so UltraFiler registered none and every

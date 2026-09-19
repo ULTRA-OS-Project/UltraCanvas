@@ -297,6 +297,35 @@ TEST(fetch_bodies_writes_parseable_eml) {
     REQUIRE(pm.body.find("Can you reply soon?") != std::string::npos);
 }
 
+TEST(a_downloaded_body_is_scanned_once_and_its_verdict_stored) {
+    Fixture fx("scan");
+    // A phishing body under UID 1: the link says paypal.com and goes to a
+    // numeric address. The scan runs where the body is cached, so the message
+    // list can colour its badge without ever re-reading the .eml.
+    fx.fake.bodies["INBOX/1"] = BuildRaw(
+        "Boss <boss@acme.com>", "Please reply",
+        "<html><body><a href=\"http://198.51.100.7/login\">www.paypal.com</a>"
+        "</body></html>");
+
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    REQUIRE(engine.SyncMessages("erika", "INBOX", "imaps://x/", opts,
+                                /*fetchBodies=*/true).ok);
+
+    MessageSecurity sec;
+    REQUIRE(fx.store.GetSecurity("erika", "INBOX", 1, sec).success);
+    REQUIRE(sec.Scanned());
+    REQUIRE(sec.level == ThreatLevel::Scam);
+    REQUIRE(sec.reason.find("198.51.100.7") != std::string::npos);
+
+    // An ordinary message in the same batch is scanned too, and comes out clean.
+    MessageSecurity ordinary;
+    REQUIRE(fx.store.GetSecurity("erika", "INBOX", 2, ordinary).success);
+    REQUIRE(ordinary.Scanned());
+    REQUIRE(ordinary.level == ThreatLevel::Clean);
+}
+
 TEST(set_flag_updates_server_and_local) {
     Fixture fx("flags");
     SyncEngine engine(fx.store, fx.fake, fx.emlDir);

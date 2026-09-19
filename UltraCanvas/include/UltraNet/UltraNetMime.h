@@ -56,6 +56,18 @@ std::string UltraNet_MimeEncodeAddress(const std::string& utf8Address,
                                        bool useBase64 = false);
 
 // ============================================================================
+// IMAP modified UTF-7 (RFC 3501 §5.1.3)
+// ============================================================================
+
+// Decode an IMAP mailbox name from modified UTF-7 to UTF-8 for DISPLAY. ASCII
+// (0x20-0x7E except '&') passes through; "&-" is a literal '&'; "&<b64>-" is
+// modified BASE64 (standard alphabet with ',' for '/', no padding) of UTF-16BE
+// code units, transcoded to UTF-8. Malformed input is returned unchanged, so it
+// is always safe to call. The raw (encoded) name must still be used on the wire
+// for SELECT/FETCH — decode only what the user sees.
+std::string UltraNet_ImapUtf7Decode(const std::string& mUtf7);
+
+// ============================================================================
 // Message parsing
 // ============================================================================
 

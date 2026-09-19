@@ -47,6 +47,16 @@ namespace UltraCanvas {
         grid->layout.SetGridGap(rowGap, columnGap);
         grid->layout.SetGridAlignItems(CSSLayout::AlignItems::Center);
         grid->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        // A form grid lays its rows out; it never scrolls. Left on the
+        // container default, a row one pixel taller than the track it sits in
+        // raised a vertical scrollbar, which narrowed the viewport enough to
+        // raise a horizontal one as well - and the pair covered the last row.
+        // Whatever needs to scroll is the pane or dialog around the grid.
+        ContainerStyle gridStyle = grid->GetContainerStyle();
+        gridStyle.autoShowScrollbars = false;
+        gridStyle.autoShowVerticalScrollbar = false;
+        gridStyle.autoShowHorizontalScrollbar = false;
+        grid->SetContainerStyle(gridStyle);
         return grid;
     }
 
