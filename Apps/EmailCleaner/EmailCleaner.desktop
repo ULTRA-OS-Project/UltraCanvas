@@ -1,0 +1,31 @@
+[Desktop Entry]
+# The freedesktop shortcut for EmailCleaner. It puts the app in the
+# application menu and — the reason it matters beyond that — gives every
+# desktop-aware program a name for its icon: `Icon=EmailCleaner` is an icon
+# *name*, resolved through the installed icon themes, and the project's
+# install rules put media/appicon/EmailCleaner.png into
+# share/icons/hicolor/256x256/apps and media/appicon/EmailCleaner.svg into
+# share/icons/hicolor/scalable/apps so the lookup lands on them. That is the
+# route UltraFiler takes for an application (UltraCanvasNativeFileIcons.cpp ->
+# FindDesktopIconFile). The window and taskbar icon come from the same PNG by
+# a different route — main.cpp hands it to SetDefaultWindowIcon.
+#
+# No MimeType= and no field code in Exec: EmailCleaner's main() takes no
+# arguments, it reads the accounts and mail UltraMail keeps. Claiming a file
+# association here would route files to a program that drops them.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=EmailCleaner
+GenericName=Mailbox Analyzer
+Comment=Map who is filling your mailbox, spot spam and scams, and unsubscribe or clean up in bulk
+Exec=EmailCleaner
+TryExec=EmailCleaner
+Icon=EmailCleaner
+Terminal=false
+StartupNotify=true
+StartupWMClass=EmailCleaner
+Categories=Network;Email;Utility;
+Keywords=mail;email;e-mail;spam;phishing;unsubscribe;sender;mailbox;clean;

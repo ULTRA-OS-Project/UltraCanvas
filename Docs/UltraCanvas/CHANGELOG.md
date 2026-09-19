@@ -1,4 +1,4 @@
-#### 2026-09-19 *0.8.100*
+#### 2026-09-19 *0.9.12*
 - **NetworkMonitor records.** `NetworkMonitorStore.h`: an activity store
   over UltraDatabase (SQLite) that turns snapshots into *flows* — one row per
   connection across the snapshots that saw it, with first and last sighting,
@@ -20,6 +20,186 @@
   - `NetworkMonitorResultCode` gains `InvalidArgument` and `StorageError`.
   - The module links `UltraDatabase` from the block that defines that
     target, since it comes later in the file than NetworkMonitor's own.
+
+#### 2026-09-19 *0.9.11*
+- **GutenPrint printing works, and the framework is still MIT.** GutenPrint
+  drives several thousand inkjet and dye-sublimation printers far better than
+  their own generic drivers, which is why the renderer/transport split was
+  built to accommodate it in the first place. The obstacle was never
+  technical: `libgutenprint` is GPL-2.0-or-later, so linking it would make
+  every distributed binary a GPL work.
+- **So it is run, not linked.** GutenPrint ships its own programs, and between
+  them they are a complete interface: `gutenprint.5.3 list` names the ~3,500
+  models it drives with each one's IEEE-1284 device id, `gutenprint.5.3 cat`
+  emits a model's PPD, and `rastertogutenprint.5.3` reads a page of CUPS
+  raster and writes the printer's own command language. Running a program is
+  not linking against it. This is the same treatment QEMU and Wine already
+  get here, and it is recorded that way in `Docs/Dependencies.md`,
+  `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`.
+- **One renderer class, no transport change.** What comes back from the filter
+  is a device-native stream, so it goes out as a raw job — the CUPS raw path
+  on Linux and macOS, datatype `RAW` through the Windows spooler. Both already
+  existed. That was the point of separating the renderer from the transport,
+  and this is the first time the claim has been cashed.
+- **A page is drawn, not converted.** `RasterPageTarget` draws an
+  `IPrintPageSource` onto an off-screen surface, so the same wrapped text, the
+  same fitted image and the same pagination the Windows GDI path uses serve
+  here too. Deciding what a job *contains* moved into `MakePageSourceForJob`
+  as well, so the two renderers cannot drift about which extensions are text.
+- **`IPrintRenderer::Render()` now receives the printer.** It did not, and a
+  renderer that emits a device's own command language cannot work without
+  knowing the device — GutenPrint has to pick a model before it can produce a
+  byte. Passed rather than remembered from `SupportsPrinter()`, because one
+  renderer is shared between the devices that register it and leftover state
+  would be the wrong printer's.
+- **A reusable way to run a program and keep what it says**, as
+  `RunProcessCaptured()` beside the existing detached launcher. It takes an
+  argument **list** and executes the program directly — `execvp`, or
+  `CreateProcessW` — so no shell ever sees it and there is nothing to escape.
+  The prototype this module replaces built a command line by pasting a device
+  path into a string and handing it to `popen()`.
+- **It pumps input and output together, and that is load-bearing.** `poll()`
+  reporting a pipe writable means one byte is free, not 64K, so a blocking
+  write parks in the kernel until the child drains it — and if the child is
+  meanwhile blocked writing output nobody is reading, neither side moves
+  again. Both processes sat in `anon_pipe_write`. The pipe ends are
+  non-blocking now. The bug appears only once the data outgrows a pipe
+  buffer, which is to say on every real page and on no small test.
+- GutenPrint is handed RGB and left to do its own colour separation: matching
+  an ink set at a resolution is the one thing it is unambiguously better at.
+  The raster is uncompressed (`RaS3`) because it travels down a pipe to a
+  filter that reads it immediately, and a run-length encoder is wrong in ways
+  that surface on one printer at one resolution.
+- **macOS does not implement `sigtimedwait`.** The SIGPIPE drain used it and
+  broke the macOS build; it uses `sigwait` now, and only when a write has
+  actually reported `EPIPE`. That second part is not tidiness: a SIGPIPE from
+  `write()` is directed at the calling thread, so having seen `EPIPE` proves
+  there is one pending for *this* thread and `sigwait` returns at once.
+  Deciding from `sigpending()` instead would also match a process-directed
+  SIGPIPE meant for another thread, and if that one were consumed elsewhere
+  in between, the wait would never return.
+- `Tests/ProcessRunnerTest` (POSIX): 16 assertions over the three ways a
+  process runner goes wrong and only at scale - 64 MB written into a closed
+  pipe without dying, 64 MB through a filter reading and writing at once
+  without deadlocking, and shell metacharacters reaching the program as text.
+- `Tests/IODevicePrinterTest`: 173 assertions, up from 157. Parsing
+  GutenPrint's listing and matching a printer to a model are string work with
+  no tools installed, so they live in a translation unit the tests link and
+  run on every arm of the matrix — including that an R2400 is never handed
+  the R200's driver, and that an unknown printer matches nothing rather than
+  something close.
+#### 2026-09-19 *0.9.9*
+- **LaTeX Documents, XAR Images and EPS Images read as fully implemented in the
+  demo tree.** All three carried the blue "partially implemented" icon because
+  each one's own documentation opened with that phrase - but the phrase was
+  about *format coverage*, not about the demo pages or the elements behind
+  them, which are finished and drive their shipped sample corpora
+  (`media/vector/XAR`, `media/vector/EPS`, `media/LaTex`). The tree's icon
+  answers "can I use this?", and for all three the answer is yes.
+- **The three documents now say the same thing as the tree.**
+  `UltraCanvasXARExamples.md` and `UltraCanvasEPSExamples.md` opened with "XAR
+  support is partially implemented" / "EPS support is partially implemented",
+  and the demo's documentation button on those very pages opens those files -
+  so a reader met a green tick and a "partially implemented" in two clicks.
+  Both overviews now lead with what the plugin does, and every per-format gap
+  is kept, moved to where a reader hits it when it matters: XAR's effect nodes
+  (`XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`,
+  `XARFeatherNode`, `XARLiveEffectNode`) are parsed but not painted, and EPS
+  keeps its *Known gaps* section untouched. Nothing was promoted that is not
+  implemented; only the leading verdict changed.
+#### 2026-09-19 *0.9.7*
+- **Xara-class effects in the vector model, renderer and XAR converter** -
+  phase 4 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`; the
+  application half is ArtCreator 0.2.0.
+  - *Model* (`DataFormats/UltraCanvasVectorStorage.h`):
+    `VectorElement::Effects` carries an optional `ShadowEffect` (wall,
+    floor or glow: offset, penumbra, colour, darkness) and `FeatherEffect`
+    (radius). `VectorStyle::Transparency` is a Xara-style level ramp
+    (flat, linear, radial, conical; level 0 opaque, 1 clear) with a mix
+    (stained glass, bleach, contrast, saturation, darken, lighten,
+    brightness, luminosity, hue) beside the flat `Opacity`. `StrokeData`
+    gains the line gallery: `StartArrow` / `EndArrow` (fourteen kinds:
+    six gallery shapes with the tip on the line's end, and Xara's eight
+    stock arrowheads - straight, angled, rounded, spot, diamond, feather,
+    feather 2, hollow diamond - with Xara's own geometry and placement,
+    taken from its source, where Scale 1 is Xara's default size;
+    `IsXaraArrowhead`), a `WidthProfile` of samples along the path and a
+    vector `Brush` stamped along it. `BuildOutlinePath`, `FlattenPathData`,
+    `PathEndpoints`, `ArrowheadOutline` and `VariableWidthOutline` are the
+    shared geometry (the editing layer's `OutlineOf` delegates;
+    `PathOps::SegsToPathData` is public).
+  - *Renderer*: an element with effects renders through groups. The shadow
+    and the feather come from a raster of the element's silhouette, drawn
+    black offscreen at the device scale, blurred with three box passes and
+    cached per object (`ClearCaches`, `EffectCacheSize`; replaced when the
+    geometry, blur or zoom changes). A shadow paints it as a colour mask
+    at its offset, squashed and sheared for floor shadows; a feather masks
+    the element's group with it; a transparency ramp masks the group with
+    an alpha gradient and paints it with the mix's blend operator.
+    Arrowheads, width bands and brush stamps come from the outline.
+  - *XAR converter*: reads through the XAR plugin's `XARDocument` - the
+    spec-verified parser, compressed files included - translated into
+    the model, replacing the converter's own uncompressed-only reader
+    and the older dead one; without `ULTRACANVAS_PLUGIN_XAR` it only
+    writes. Multistage fills, conical fills, transparency ramps with their
+    mixes, line transparency, shadow controllers and feather attributes
+    round trip; bounding-box gradient units resolve against the object.
+    The line gallery round-trips too: Xara's stock arrowheads are
+    written as `TAG_ARROWHEAD` (the path's start) / `TAG_ARROWTAIL` (its
+    end) line attributes exactly as Xara's own source writes them - an
+    INT32 stock reference (-2 straight .. -9 hollow diamond) and two
+    FIXED16 scales (Xara's arrow size, 3 by default, so the model's Scale
+    times 3) - and read back as the same kinds at the same size; every
+    other arrowhead, a width profile and a brush are baked into plain
+    shapes - the brush as one group per stamped copy, exactly what the
+    renderer draws - under a group that carries a `TAG_USERVALUE`
+    (`UltraCanvas.LineGallery`) describing the stroke, so Xara shows the
+    shapes, keeps the value, and the converter rebuilds the stroke from
+    it on the way back (the brush stamp is the first copy, un-placed).
+    `TAG_DEFINEARROW` is a tag Xara defines but never writes or reads; a
+    positive reference is read as the straight arrow and reported. What
+    the reader cannot represent is counted in one warning. The Vector
+    plugin
+    links the XAR plugin publicly when it is built, and the capability
+    flags say what is written.
+  - *Tests*: `VectorModelTest` renders every effect and checks pixels,
+    the ramp and profile interpolation and the raster cache;
+    `XARWriterTest` round-trips a four-stop gradient with a bleach ramp
+    and a wall shadow, a feathered circle, an arrowed line, a tapered
+    polyline, a bar-tailed line with a doubled native head and a brushed
+    line through the plugin's reader and back through the converter,
+    checking the strokes come back as strokes; `VectorFormatsPluginTest`
+    pins the new flags.
+  - *XAR plugin*: `TAG_USERVALUE` records are parsed (two UTF-16 strings)
+    into `XARNode::userValues` instead of being skipped. Arrowhead
+    records read their full 12 bytes into `XARLineAttribute` - the
+    reference (default 0, none) and the width / height scales (default
+    3) - and `TAG_ARROWHEAD` now lands on the start of the path and
+    `TAG_ARROWTAIL` on its end, as Xara's `AttrStartArrow` /
+    `AttrEndArrow` write them (they were swapped).
+#### 2026-09-19 *0.9.3*
+- **The PDF writer can write a euro sign.** `UltraCanvasPDFVectorConverter`
+  declares `/WinAnsiEncoding` on its base-14 fonts, but its string escaper only
+  passed code points up to U+00FF and replaced everything above with `?`.
+  WinAnsi is CP1252, which agrees with Latin-1 from 0xA0 up but fills
+  0x80..0x9F - Latin-1's unused C1 control block - with 27 printable characters
+  that live far away in Unicode. **The euro sign is one of them, at 0x80**, and
+  so are the typographic quotes, the en and em dash, the bullet, the ellipsis
+  and the per-mille sign. A German invoice reading `1.234,56 ?` is not an
+  invoice, and nothing in the pipeline complained.
+  - Those 27 code points now map to their WinAnsi bytes; anything genuinely
+    outside the encoding still becomes `?` with the same one-time warning.
+  - The C1 control positions U+0080..U+009F, which WinAnsi leaves undefined,
+    now become `?` as well instead of being emitted as raw bytes with no glyph.
+  - Covered by `Tests/UltraFIBU/UltraFIBUEngineTests.cpp`, which asserts that a
+    produced invoice contains the byte 0x80 rather than a question mark. The
+    plugin's own `PDFVectorWriterTest` could not carry it: that test needs the
+    image raster subsystem and so cannot run on a headless machine.
+- **`ULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON` in CI** (`.github/workflows/build.yml`),
+  beside the Net, UltraCloud and EmailCleaner suites that were already there.
+  UltraFIBU's was the one application suite CI never built, so its checks - now
+  833 of them, including the encoding fix above - ran nowhere. It is a headless
+  suite with no UI dependency, which is why it can simply be switched on.
 
 #### 2026-09-19 *0.8.99*
 - **NetworkMonitor on Windows and macOS, and byte counters on Linux** — the

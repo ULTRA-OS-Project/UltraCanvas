@@ -359,6 +359,12 @@ int main(int argc, char* argv[]) {
                         << std::endl;
             return EXIT_FAILURE;
         }
+        // One icon, everywhere the app is drawn: the window and the taskbar
+        // entry that follows it read this file; the .ico embedded in the
+        // Windows binary and the desktop entry's theme icon are rendered from
+        // the same media/appicon/UltraCleaner.svg (see CMakeLists.txt).
+        app.SetDefaultWindowIcon(
+            NormalizePath(GetResourcesDir() + "media/appicon/UltraCleaner.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         UltraCleaner::UltraCleanerWindow window;

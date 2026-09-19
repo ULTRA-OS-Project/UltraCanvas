@@ -1,6 +1,6 @@
 #### 2026-09-19 *0.3*
 - **It remembers.** A *Record* toggle on the toolbar writes every snapshot
-  into the activity store (NetworkMonitor 0.3, framework 0.8.100) at the
+  into the activity store (NetworkMonitor 0.3, framework 0.9.12) at the
   platform's per-user data path — `%LOCALAPPDATA%\UltraNetMonitor`,
   `~/Library/Application Support/UltraNetMonitor`, `$XDG_DATA_HOME/UltraNetMonitor`
   — and a new *History* tab shows what was recorded over the last hour, day,

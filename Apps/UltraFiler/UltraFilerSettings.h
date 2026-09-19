@@ -257,6 +257,14 @@ public:
     bool doubleClickOpensRegisteredApp = false;
 #endif
 
+    // View > Split view: whether the window shows two folder displays side by
+    // side (the navigation row's split-screen toggle), and the folder the
+    // right-hand display last showed, so the next start opens the pair the
+    // way it was left. The left-hand display is the active tab, which needs
+    // no remembering of its own here.
+    bool splitView = false;
+    std::string splitSecondFolder;
+
     // Extras > Open prompt: the command line program the "Open prompt" menu
     // entry starts. Empty means "whatever this OS provides" - the platform
     // default is detected at run time (see UltraFilerPrompt).
@@ -379,6 +387,11 @@ public:
                      kMinHistoryEntries, kMaxHistoryEntries);
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
+        it = kv.find("view.split");
+        if (it != kv.end())
+            splitView = (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("view.split.second.folder");
+        if (it != kv.end()) splitSecondFolder = it->second;
         return true;
     }
 
@@ -449,6 +462,8 @@ public:
              << "\n";
         file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
+        file << "view.split = " << (splitView ? "true" : "false") << "\n";
+        file << "view.split.second.folder = " << splitSecondFolder << "\n";
         return true;
     }
 
