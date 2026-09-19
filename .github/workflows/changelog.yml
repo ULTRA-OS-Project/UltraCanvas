@@ -1,0 +1,76 @@
+name: Changelog versions
+
+# The first line of each changelog IS the product's version - cmake reads it and
+# every project(VERSION), compile definition and packaging artefact name follows
+# from it. That makes line 1 of a shared file the most contended line in the
+# repository, and two pull requests open at once always collide there:
+#
+#   * one picks the next number, main releases further versions while it waits
+#     for review, and it merges carrying a number LOWER than versions already
+#     released - the product's version goes backwards;
+#   * or two both write the same `#### <date> *x.y.z*` line, git merges their
+#     bullet lists under the one header without a conflict, and two releases
+#     share a number while the version never increments. Those two pull requests
+#     then keep rewriting the same lines, so their changelog diffs never settle
+#     however often main is merged in.
+#
+# scripts/check_changelog.py refuses both. See its docstring for the rules.
+
+# Trigger policy matches build.yml / llms-txt.yml / ui-reuse.yml: `pull_request`
+# covers feature branches, so listing them under `push` too would run this check
+# twice per commit.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'Docs/**/CHANGELOG.md'
+      - 'cmake/UltraCanvasVersion.cmake'
+      - 'scripts/check_changelog.py'
+      - '.github/workflows/changelog.yml'
+  pull_request:
+    # Stacked pull requests. `branches` filters the BASE branch here - the
+    # branch the pull request TARGETS - so `main` alone meant a pull request
+    # based on another pull request's branch matched no trigger at all and
+    # got zero checks. #455 reached 1059 changed lines that way without one
+    # job ever running. Deliberately NOT added to `push` above: that would
+    # build every commit on every claude/** branch whether or not a pull
+    # request exists, which is the double-building the note at the top of
+    # build.yml describes.
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'Docs/**/CHANGELOG.md'
+      - 'cmake/UltraCanvasVersion.cmake'
+      - 'scripts/check_changelog.py'
+      - '.github/workflows/changelog.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.ref_name }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          # The --base rule below compares this branch's changelog against the
+          # base branch's, so that commit has to be in the clone. The default
+          # single-commit checkout does not contain it.
+          fetch-depth: 0
+
+      - name: Check changelog versions
+        run: |
+          # On a pull request, also refuse an entry that still claims the base
+          # branch's version - the "two pull requests share one header" case.
+          # On a push to main there is no other side to compare against, so the
+          # per-file rules (top entry unique, and the highest in its file) stand
+          # on their own.
+          if [ -n "${{ github.base_ref }}" ]; then
+            git fetch --no-tags --depth=1 origin "${{ github.base_ref }}"
+            python3 scripts/check_changelog.py --base FETCH_HEAD
+          else
+            python3 scripts/check_changelog.py
+          fi

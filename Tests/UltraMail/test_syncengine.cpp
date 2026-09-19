@@ -222,6 +222,36 @@ TEST(sync_messages_computes_needs_answer) {
     REQUIRE_EQ(UnreadFor(fx.store), 2);
 }
 
+TEST(sync_messages_streams_each_header) {
+    Fixture fx("stream");
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+
+    // onMessageStored fires once per header as it lands, so the UI can fill the
+    // list incrementally instead of waiting for the whole mailbox.
+    std::vector<MessageEnvelope> streamed;
+    SyncOutcome r = engine.SyncMessages(
+        "erika", "INBOX", "imaps://x/", opts, /*fetchBodies=*/false,
+        [&](const MessageEnvelope& m) { streamed.push_back(m); });
+    REQUIRE(r.ok);
+
+    // One callback per envelope, and the count matches what was stored.
+    REQUIRE_EQ(streamed.size(), (size_t)3);
+    REQUIRE_EQ(r.stats.messages, 3);
+
+    // The streamed value is the decoded envelope (name/address parsed), delivered
+    // in the plug-in's order (uids 1, 2, 3 here) — not a bare uid.
+    REQUIRE(streamed[0].uid == 1 && streamed[1].uid == 2 && streamed[2].uid == 3);
+    REQUIRE_EQ(streamed[0].fromAddr, std::string("boss@acme.com"));
+    REQUIRE_EQ(streamed[0].fromName, std::string("Boss"));
+
+    // Each message was already persisted by the time its callback ran.
+    std::vector<MessageEnvelope> msgs;
+    fx.store.ListMessages("erika", "INBOX", 0, msgs);
+    REQUIRE_EQ(msgs.size(), (size_t)3);
+}
+
 TEST(sync_messages_is_incremental) {
     Fixture fx("incr");
     SyncEngine engine(fx.store, fx.fake, fx.emlDir);
@@ -265,6 +295,35 @@ TEST(fetch_bodies_writes_parseable_eml) {
     ParsedMessage pm = MimeCodec::Parse(raw);
     REQUIRE_EQ(pm.subject, std::string("Please reply"));
     REQUIRE(pm.body.find("Can you reply soon?") != std::string::npos);
+}
+
+TEST(a_downloaded_body_is_scanned_once_and_its_verdict_stored) {
+    Fixture fx("scan");
+    // A phishing body under UID 1: the link says paypal.com and goes to a
+    // numeric address. The scan runs where the body is cached, so the message
+    // list can colour its badge without ever re-reading the .eml.
+    fx.fake.bodies["INBOX/1"] = BuildRaw(
+        "Boss <boss@acme.com>", "Please reply",
+        "<html><body><a href=\"http://198.51.100.7/login\">www.paypal.com</a>"
+        "</body></html>");
+
+    SyncEngine engine(fx.store, fx.fake, fx.emlDir);
+    UltraNetMailOptions opts;
+    engine.SyncFolders("erika", "imaps://x/", opts);
+    REQUIRE(engine.SyncMessages("erika", "INBOX", "imaps://x/", opts,
+                                /*fetchBodies=*/true).ok);
+
+    MessageSecurity sec;
+    REQUIRE(fx.store.GetSecurity("erika", "INBOX", 1, sec).success);
+    REQUIRE(sec.Scanned());
+    REQUIRE(sec.level == ThreatLevel::Scam);
+    REQUIRE(sec.reason.find("198.51.100.7") != std::string::npos);
+
+    // An ordinary message in the same batch is scanned too, and comes out clean.
+    MessageSecurity ordinary;
+    REQUIRE(fx.store.GetSecurity("erika", "INBOX", 2, ordinary).success);
+    REQUIRE(ordinary.Scanned());
+    REQUIRE(ordinary.level == ThreatLevel::Clean);
 }
 
 TEST(set_flag_updates_server_and_local) {

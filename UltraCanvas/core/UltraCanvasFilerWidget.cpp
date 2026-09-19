@@ -49,8 +49,8 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.28.0
-// Last Modified: 2026-09-13
+// Version: 1.31.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -69,6 +69,7 @@
 #include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasFontFile.h"
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasDesktopEntry.h"
 #include "UltraCanvasMacBundle.h"
 #include "UltraCanvasShellLink.h"
@@ -92,6 +93,8 @@
 #include "UltraCanvasZipPackage.h"
 #include "Models/STL/UltraCanvasSTLLoader.h"
 #include "UltraCanvasModelPreview.h"
+#include "UltraCanvasVectorPreview.h"
+#include "UltraCanvasVectorRaster.h"
 #include "UltraCanvasModelRaster.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
 #ifdef ULTRACANVAS_PLUGIN_PDF
@@ -108,6 +111,7 @@
 #include <iostream>
 #include <limits>
 #include <map>
+#include <mutex>
 #include <set>
 #include <sys/stat.h>
 #if defined(_WIN32) || defined(_WIN64)
@@ -152,6 +156,25 @@ namespace UltraCanvas {
         // How often the UI reads the archive worker's counters. Fast enough
         // that the ring moves smoothly, slow enough to cost nothing.
         constexpr unsigned int kArchivePollIntervalMs = 100;
+        // How long a copy / move / delete has to run before it gets a progress
+        // window. Everything shorter is over before a window would have
+        // finished appearing, and a file manager that flashes a dialog for
+        // every copied text file is worse than one that shows none.
+        constexpr unsigned int kFileOpProgressDelayMs = 2000;
+        // How often the UI reads the copy / move / delete worker's counters -
+        // and checks whether the window above has become due.
+        constexpr unsigned int kFileOpPollIntervalMs = 100;
+        // What one entry of a copy / move / delete queue is worth on the ring.
+        // The bytes copied (or entries removed) inside it move the ring within
+        // its slice, so one huge file fills the ring smoothly and a thousand
+        // small ones fill it a step at a time.
+        constexpr uint64_t kFileOpItemUnits = 1000000;
+        // Files up to this size are copied by std::filesystem::copy_file in
+        // one call (the platform can hand the copy to the filesystem itself);
+        // bigger ones are copied in chunks of kFileOpChunkBytes, so the ring
+        // moves inside the file and Cancel is answered before it ends.
+        constexpr uint64_t kFileOpChunkThreshold = 8ull * 1024 * 1024;
+        constexpr size_t   kFileOpChunkBytes = 1024 * 1024;
         // How often the UI applies a change the NATIVE watcher reported. The
         // OS tells us immediately; this is only the hand-over to the UI thread,
         // so it is short - and it costs one atomic read per tick.
@@ -225,28 +248,189 @@ namespace UltraCanvas {
             return a.size() < b.size() ? -1 : 1;
         }
 
-        // Extension -> (type label, category). The label is completed to
-        // "<LABEL> <category noun>" ("PNG Image") in ApplyEntryTypeInfo.
+        // ===== FILE TYPE COLOUR FAMILIES =====
+        // A family is a hue (what kind of file this is) plus a ladder of
+        // shades (how efficient the format is, brightest first). The rungs
+        // below are not free-hand colours: each one is a fixed contrast step
+        // against the white glyph sheet, so rung 1 of the blues and rung 1 of
+        // the greens are equally deep, and every rung of a family clears
+        // 3.2:1 against the family's single ink. Two formats share a rung
+        // when they share a compressor - zip, jar and gz are all deflate.
+        //
+        // Lossless formats are their own family beside their lossy sibling
+        // (indigo beside azure, pure yellow beside orange) rather than a
+        // dulled version of it: media stays saturated, which is what makes a
+        // picture folder look like a picture folder.
+        enum class ColorFamily : uint8_t {
+            NoneFamily,     // no ladder: the category's own colour is used
+            ImageLossy,
+            ImageLossless,
+            Video,
+            AudioLossy,
+            AudioLossless,
+            VectorArt,
+            Model3D,
+            Document,
+            Spreadsheet,
+            TextCode,
+            Application,
+            Library,
+            Archive,
+            Font
+        };
+
+        const Color kImageLossyShades[] = {
+            Color( 45, 134, 234, 255),
+            Color( 22, 114, 219, 255),
+            Color( 18,  96, 186, 255),
+            Color( 15,  79, 152, 255),
+            Color( 12,  63, 122, 255)};
+        const Color kImageLosslessShades[] = {
+            Color(111, 121, 204, 255),
+            Color( 87,  97, 196, 255),
+            Color( 65,  77, 184, 255),
+            Color( 54,  63, 152, 255),
+            Color( 43,  51, 122, 255)};
+        const Color kVideoShades[] = {
+            Color( 28, 160,  75, 255),
+            Color( 26, 149,  69, 255),
+            Color( 24, 136,  63, 255),
+            Color( 21, 121,  56, 255),
+            Color( 18,  99,  46, 255),
+            Color( 15,  83,  38, 255)};
+        const Color kAudioLossyShades[] = {
+            Color(255, 170,  84, 255),
+            Color(255, 152,  48, 255),
+            Color(255, 132,   8, 255),
+            Color(243, 121,   0, 255),
+            Color(226, 113,   0, 255)};
+        const Color kAudioLosslessShades[] = {
+            Color(255, 220,  77, 255),
+            Color(253, 202,   0, 255),
+            Color(237, 189,   0, 255),
+            Color(222, 178,   0, 255)};
+        const Color kVectorArtShades[] = {
+            Color( 14, 147, 174, 255),
+            Color( 13, 136, 160, 255),
+            Color( 12, 121, 142, 255),
+            Color( 10, 103, 122, 255),
+            Color(  8,  86, 102, 255)};
+        const Color kModel3DShades[] = {
+            Color( 38, 153, 138, 255),
+            Color( 36, 145, 130, 255),
+            Color( 33, 133, 119, 255),
+            Color( 30, 119, 107, 255),
+            Color( 26, 102,  92, 255),
+            Color( 22,  88,  79, 255)};
+        const Color kDocumentShades[] = {
+            Color(168, 118, 212, 255),
+            Color(159, 105, 207, 255),
+            Color(151,  91, 203, 255),
+            Color(139,  73, 198, 255),
+            Color(126,  58, 185, 255),
+            Color(109,  51, 160, 255),
+            Color( 92,  43, 135, 255)};
+        const Color kSpreadsheetShades[] = {
+            Color(137,  53, 137, 255),
+            Color(167,  65, 167, 255),
+            Color(189,  87, 189, 255)};
+        const Color kTextCodeShades[] = {
+            Color(129, 139, 152, 255),
+            Color(148, 157, 168, 255),
+            Color(171, 177, 186, 255),
+            Color(186, 191, 199, 255)};
+        const Color kApplicationShades[] = {
+            Color(220,  54,  68, 255),
+            Color(202,  36,  49, 255),
+            Color(174,  31,  43, 255),
+            Color(145,  26,  36, 255)};
+        const Color kLibraryShades[] = {
+            Color( 68,  86,  98, 255),
+            Color( 80, 101, 115, 255),
+            Color( 92, 115, 132, 255),
+            Color(104, 131, 150, 255)};
+        const Color kArchiveShades[] = {
+            Color(132,  42,  87, 255),
+            Color(158,  50, 104, 255),
+            Color(185,  58, 121, 255),
+            Color(199,  78, 138, 255),
+            Color(207, 102, 155, 255)};
+        const Color kFontShades[] = {
+            Color(110,  74,  54, 255),
+            Color(129,  87,  63, 255),
+            Color(148, 100,  73, 255),
+            Color(164, 112,  81, 255),
+            Color(174, 122,  91, 255),
+            Color(180, 132, 103, 255)};
+
+        struct FamilyRamp {
+            const Color* shades = nullptr;
+            uint8_t      count  = 0;
+            // Captions drawn on top of these shades (the TreeMap's file
+            // names). One ink for the whole family, never per file.
+            bool         darkInk = false;
+        };
+
+        const FamilyRamp& RampOf(ColorFamily family) {
+            static const FamilyRamp kNone;
+            static const FamilyRamp kRamps[] = {
+                kNone,
+                {kImageLossyShades,    5, false},
+                {kImageLosslessShades, 5, false},
+                {kVideoShades,         6, false},
+                {kAudioLossyShades,    5, true},
+                {kAudioLosslessShades, 4, true},
+                {kVectorArtShades,     5, false},
+                {kModel3DShades,       6, false},
+                {kDocumentShades,      7, false},
+                {kSpreadsheetShades,   3, false},
+                {kTextCodeShades,      4, true},
+                {kApplicationShades,   4, false},
+                {kLibraryShades,       4, false},
+                {kArchiveShades,       5, false},
+                {kFontShades,          6, false},
+            };
+            const size_t i = static_cast<size_t>(family);
+            return i < sizeof(kRamps) / sizeof(kRamps[0]) ? kRamps[i] : kNone;
+        }
+
+        // A rank past the end of its ladder is the ladder's last rung rather
+        // than a fallback colour: a format filed one rung too far is still a
+        // format of that family, and a grey hole in a row of blues would be
+        // read as a different kind of file.
+        Color RampShade(ColorFamily family, uint8_t rank) {
+            const FamilyRamp& ramp = RampOf(family);
+            if (!ramp.shades || ramp.count == 0) return Color(158, 158, 158, 255);
+            return ramp.shades[rank < ramp.count ? rank : ramp.count - 1];
+        }
+
+        // Extension -> (type label, category, colour family, rank in it). The
+        // label is completed to "<LABEL> <category noun>" ("PNG Image") in
+        // ApplyEntryTypeInfo. An entry with no family (a format a plugin
+        // registered, which the table below does not list) falls back to its
+        // category's own colour.
         struct TypeInfo {
             const char* label;
             FilerFileCategory category;
+            ColorFamily family = ColorFamily::NoneFamily;
+            uint8_t     rank   = 0;
         };
 
         const std::map<std::string, TypeInfo>& ExtensionTypeMap() {
             static const std::map<std::string, TypeInfo> m = {
-                {"png",  {"PNG",  FilerFileCategory::Image}},
-                {"jpg",  {"JPEG", FilerFileCategory::Image}},
-                {"jpeg", {"JPEG", FilerFileCategory::Image}},
-                {"gif",  {"GIF",  FilerFileCategory::Image}},
-                {"bmp",  {"BMP",  FilerFileCategory::Image}},
-                {"webp", {"WebP", FilerFileCategory::Image}},
-                {"avif", {"AVIF", FilerFileCategory::Image}},
-                {"heif", {"HEIF", FilerFileCategory::Image}},
-                {"heic", {"HEIC", FilerFileCategory::Image}},
-                {"tif",  {"TIFF", FilerFileCategory::Image}},
-                {"tiff", {"TIFF", FilerFileCategory::Image}},
-                {"qoi",  {"QOI",  FilerFileCategory::Image}},
-                {"ico",  {"Icon", FilerFileCategory::Image}},
+                {"png",  {"PNG",  FilerFileCategory::Image, ColorFamily::ImageLossless, 0}},
+                {"jpg",  {"JPEG", FilerFileCategory::Image, ColorFamily::ImageLossy, 3}},
+                {"jpeg", {"JPEG", FilerFileCategory::Image, ColorFamily::ImageLossy, 3}},
+                {"gif",  {"GIF",  FilerFileCategory::Image, ColorFamily::ImageLossy, 4}},
+                {"bmp",  {"BMP",  FilerFileCategory::Image, ColorFamily::ImageLossless, 4}},
+                {"webp", {"WebP", FilerFileCategory::Image, ColorFamily::ImageLossy, 2}},
+                {"avif", {"AVIF", FilerFileCategory::Image, ColorFamily::ImageLossy, 0}},
+                {"heif", {"HEIF", FilerFileCategory::Image, ColorFamily::ImageLossy, 1}},
+                {"heic", {"HEIC", FilerFileCategory::Image, ColorFamily::ImageLossy, 1}},
+                {"tif",  {"TIFF", FilerFileCategory::Image, ColorFamily::ImageLossless, 2}},
+                {"tiff", {"TIFF", FilerFileCategory::Image, ColorFamily::ImageLossless, 2}},
+                {"qoi",  {"QOI",  FilerFileCategory::Image, ColorFamily::ImageLossless, 1}},
+                {"ico",  {"Icon", FilerFileCategory::Image, ColorFamily::ImageLossless, 3}},
                 // Vector: every format the FileLoader inventory reports for
                 // MediaFormatCategory::Vector - the image pipeline's own
                 // (svg/svgz, and eps/ps where the libvips build has a
@@ -255,106 +439,119 @@ namespace UltraCanvas {
                 // knows still lands in the right category through
                 // RegisteredCategoryForExtension below; these entries only
                 // give the well-known ones a proper name.
-                {"svg",  {"SVG",  FilerFileCategory::Vector}},
-                {"svgz", {"SVG (compressed)", FilerFileCategory::Vector}},
-                {"eps",  {"EPS",  FilerFileCategory::Vector}},
-                {"epsf", {"EPS",  FilerFileCategory::Vector}},
-                {"ps",   {"PostScript", FilerFileCategory::Vector}},
-                {"ai",   {"Illustrator", FilerFileCategory::Vector}},
-                {"cdr",  {"CorelDRAW", FilerFileCategory::Vector}},
-                {"cdt",  {"CorelDRAW Template", FilerFileCategory::Vector}},
-                {"cmx",  {"Corel Metafile", FilerFileCategory::Vector}},
-                {"ccx",  {"Corel Exchange", FilerFileCategory::Vector}},
-                {"xar",  {"Xara", FilerFileCategory::Vector}},
-                {"web",  {"Xara Web", FilerFileCategory::Vector}},
-                {"wix",  {"Xara Web", FilerFileCategory::Vector}},
-                {"emf",  {"Enhanced Metafile", FilerFileCategory::Vector}},
-                {"wmf",  {"Windows Metafile", FilerFileCategory::Vector}},
-                {"dxf",  {"AutoCAD DXF", FilerFileCategory::Vector}},
-                {"dwg",  {"AutoCAD DWG", FilerFileCategory::Vector}},
-                {"stl",  {"STL",  FilerFileCategory::Model3D}},
-                {"obj",  {"Wavefront", FilerFileCategory::Model3D}},
-                {"ply",  {"PLY",  FilerFileCategory::Model3D}},
-                {"3ds",  {"3D Studio", FilerFileCategory::Model3D}},
-                {"3mf",  {"3MF",  FilerFileCategory::Model3D}},
-                {"gltf", {"glTF", FilerFileCategory::Model3D}},
-                {"glb",  {"glTF Binary", FilerFileCategory::Model3D}},
-                {"dae",  {"COLLADA", FilerFileCategory::Model3D}},
-                {"fbx",  {"FBX",  FilerFileCategory::Model3D}},
-                {"mp3",  {"MP3",  FilerFileCategory::Audio}},
-                {"wav",  {"WAV",  FilerFileCategory::Audio}},
-                {"flac", {"FLAC", FilerFileCategory::Audio}},
-                {"ogg",  {"OGG",  FilerFileCategory::Audio}},
-                {"m4a",  {"M4A",  FilerFileCategory::Audio}},
-                {"m4b",  {"M4B",  FilerFileCategory::Audio}},
-                {"aac",  {"AAC",  FilerFileCategory::Audio}},
-                {"opus", {"Opus", FilerFileCategory::Audio}},
-                {"mp4",  {"MP4",  FilerFileCategory::Video}},
-                {"mkv",  {"MKV",  FilerFileCategory::Video}},
-                {"avi",  {"AVI",  FilerFileCategory::Video}},
-                {"mov",  {"QuickTime", FilerFileCategory::Video}},
-                {"webm", {"WebM", FilerFileCategory::Video}},
-                {"wmv",  {"WMV",  FilerFileCategory::Video}},
-                {"pdf",  {"PDF",  FilerFileCategory::Document}},
-                {"odt",  {"OpenDocument", FilerFileCategory::Document}},
-                {"doc",  {"Word", FilerFileCategory::Document}},
-                {"docx", {"Word", FilerFileCategory::Document}},
-                {"rtf",  {"RTF",  FilerFileCategory::Document}},
-                {"md",   {"Markdown", FilerFileCategory::Document}},
-                {"html", {"HTML", FilerFileCategory::Document}},
-                {"htm",  {"HTML", FilerFileCategory::Document}},
-                {"tex",  {"LaTeX", FilerFileCategory::Document}},
-                {"epub", {"EPUB", FilerFileCategory::Document}},
-                {"txt",  {"Text", FilerFileCategory::Text}},
-                {"log",  {"Log",  FilerFileCategory::Text}},
-                {"ini",  {"Config", FilerFileCategory::Text}},
-                {"conf", {"Config", FilerFileCategory::Text}},
-                {"json", {"JSON", FilerFileCategory::Text}},
-                {"xml",  {"XML",  FilerFileCategory::Text}},
-                {"yaml", {"YAML", FilerFileCategory::Text}},
-                {"yml",  {"YAML", FilerFileCategory::Text}},
-                {"csv",  {"CSV",  FilerFileCategory::Text}},
-                {"tsv",  {"TSV",  FilerFileCategory::Text}},
-                {"cpp",  {"C++ Source", FilerFileCategory::Text}},
-                {"cc",   {"C++ Source", FilerFileCategory::Text}},
-                {"h",    {"C Header", FilerFileCategory::Text}},
-                {"hpp",  {"C++ Header", FilerFileCategory::Text}},
-                {"c",    {"C Source", FilerFileCategory::Text}},
-                {"py",   {"Python", FilerFileCategory::Text}},
-                {"js",   {"JavaScript", FilerFileCategory::Text}},
-                {"ts",   {"TypeScript", FilerFileCategory::Text}},
-                {"sh",   {"Shell Script", FilerFileCategory::Text}},
-                {"ods",  {"OpenDocument", FilerFileCategory::Spreadsheet}},
-                {"xls",  {"Excel", FilerFileCategory::Spreadsheet}},
-                {"xlsx", {"Excel", FilerFileCategory::Spreadsheet}},
-                {"zip",  {"ZIP",  FilerFileCategory::Archive}},
-                {"7z",   {"7-Zip", FilerFileCategory::Archive}},
-                {"rar",  {"RAR",  FilerFileCategory::Archive}},
-                {"tar",  {"TAR",  FilerFileCategory::Archive}},
-                {"gz",   {"GZip", FilerFileCategory::Archive}},
-                {"tgz",  {"TAR GZip", FilerFileCategory::Archive}},
-                {"bz2",  {"BZip2", FilerFileCategory::Archive}},
-                {"xz",   {"XZ",   FilerFileCategory::Archive}},
-                {"zst",  {"Zstandard", FilerFileCategory::Archive}},
-                {"jar",  {"Java Archive", FilerFileCategory::Archive}},
-                {"exe",  {"Executable", FilerFileCategory::Executable}},
-                {"appimage", {"AppImage", FilerFileCategory::Executable}},
-                {"deb",  {"Debian Package", FilerFileCategory::Executable}},
-                {"rpm",  {"RPM Package", FilerFileCategory::Executable}},
-                {"so",   {"Shared Library", FilerFileCategory::Executable}},
-                {"dll",  {"Library", FilerFileCategory::Executable}},
-                {"ttf",  {"TrueType Font", FilerFileCategory::Font}},
-                {"ttc",  {"TrueType Collection", FilerFileCategory::Font}},
-                {"otf",  {"OpenType Font", FilerFileCategory::Font}},
-                {"otc",  {"OpenType Collection", FilerFileCategory::Font}},
-                {"woff", {"Web Font", FilerFileCategory::Font}},
-                {"woff2",{"Web Font 2", FilerFileCategory::Font}},
-                {"pfb",  {"Type 1 Font", FilerFileCategory::Font}},
-                {"pfa",  {"Type 1 Font", FilerFileCategory::Font}},
-                {"bdf",  {"Bitmap Font", FilerFileCategory::Font}},
-                {"pcf",  {"Bitmap Font", FilerFileCategory::Font}},
-                {"fon",  {"Bitmap Font", FilerFileCategory::Font}},
-                {"fnt",  {"Bitmap Font", FilerFileCategory::Font}},
+                {"svg",  {"SVG",  FilerFileCategory::Vector, ColorFamily::VectorArt, 1}},
+                {"svgz", {"SVG (compressed)", FilerFileCategory::Vector, ColorFamily::VectorArt, 0}},
+                {"eps",  {"EPS",  FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"epsf", {"EPS",  FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"ps",   {"PostScript", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"ai",   {"Illustrator", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"cdr",  {"CorelDRAW", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"cdt",  {"CorelDRAW Template", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"cmx",  {"Corel Metafile", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"ccx",  {"Corel Exchange", FilerFileCategory::Vector, ColorFamily::VectorArt, 2}},
+                {"xar",  {"Xara", FilerFileCategory::Vector, ColorFamily::VectorArt, 1}},
+                {"web",  {"Xara Web", FilerFileCategory::Vector, ColorFamily::VectorArt, 1}},
+                {"wix",  {"Xara Web", FilerFileCategory::Vector, ColorFamily::VectorArt, 1}},
+                {"emf",  {"Enhanced Metafile", FilerFileCategory::Vector, ColorFamily::VectorArt, 4}},
+                {"wmf",  {"Windows Metafile", FilerFileCategory::Vector, ColorFamily::VectorArt, 4}},
+                {"dxf",  {"AutoCAD DXF", FilerFileCategory::Vector, ColorFamily::VectorArt, 4}},
+                {"dwg",  {"AutoCAD DWG", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                // The same drawing database under AutoCAD's other suffixes.
+                {"dwt",  {"AutoCAD Template", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"dws",  {"AutoCAD Standards", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"sv$",  {"AutoCAD Autosave", FilerFileCategory::Vector, ColorFamily::VectorArt, 3}},
+                {"stl",  {"STL",  FilerFileCategory::Model3D, ColorFamily::Model3D, 2}},
+                {"obj",  {"Wavefront", FilerFileCategory::Model3D, ColorFamily::Model3D, 5}},
+                {"ply",  {"PLY",  FilerFileCategory::Model3D, ColorFamily::Model3D, 3}},
+                {"3ds",  {"3D Studio", FilerFileCategory::Model3D, ColorFamily::Model3D, 3}},
+                {"3mf",  {"3MF",  FilerFileCategory::Model3D, ColorFamily::Model3D, 1}},
+                {"gltf", {"glTF", FilerFileCategory::Model3D, ColorFamily::Model3D, 4}},
+                {"glb",  {"glTF Binary", FilerFileCategory::Model3D, ColorFamily::Model3D, 0}},
+                {"dae",  {"COLLADA", FilerFileCategory::Model3D, ColorFamily::Model3D, 5}},
+                {"fbx",  {"FBX",  FilerFileCategory::Model3D, ColorFamily::Model3D, 2}},
+                {"mp3",  {"MP3",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 4}},
+                {"wav",  {"WAV",  FilerFileCategory::Audio, ColorFamily::AudioLossless, 2}},
+                {"flac", {"FLAC", FilerFileCategory::Audio, ColorFamily::AudioLossless, 0}},
+                {"ogg",  {"OGG",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 3}},
+                {"m4a",  {"M4A",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 1}},
+                {"m4b",  {"M4B",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 2}},
+                {"aac",  {"AAC",  FilerFileCategory::Audio, ColorFamily::AudioLossy, 1}},
+                {"opus", {"Opus", FilerFileCategory::Audio, ColorFamily::AudioLossy, 0}},
+                {"aiff", {"AIFF", FilerFileCategory::Audio, ColorFamily::AudioLossless, 3}},
+                {"aif",  {"AIFF", FilerFileCategory::Audio, ColorFamily::AudioLossless, 3}},
+                {"mp4",  {"MP4",  FilerFileCategory::Video, ColorFamily::Video, 2}},
+                {"mkv",  {"MKV",  FilerFileCategory::Video, ColorFamily::Video, 1}},
+                {"avi",  {"AVI",  FilerFileCategory::Video, ColorFamily::Video, 4}},
+                {"mov",  {"QuickTime", FilerFileCategory::Video, ColorFamily::Video, 3}},
+                {"webm", {"WebM", FilerFileCategory::Video, ColorFamily::Video, 0}},
+                {"wmv",  {"WMV",  FilerFileCategory::Video, ColorFamily::Video, 5}},
+                {"pdf",  {"PDF",  FilerFileCategory::Document, ColorFamily::Document, 0}},
+                {"odt",  {"OpenDocument", FilerFileCategory::Document, ColorFamily::Document, 2}},
+                {"doc",  {"Word", FilerFileCategory::Document, ColorFamily::Document, 4}},
+                {"docx", {"Word", FilerFileCategory::Document, ColorFamily::Document, 3}},
+                {"rtf",  {"RTF",  FilerFileCategory::Document, ColorFamily::Document, 5}},
+                {"md",   {"Markdown", FilerFileCategory::Document, ColorFamily::Document, 6}},
+                {"html", {"HTML", FilerFileCategory::Document, ColorFamily::Document, 6}},
+                {"htm",  {"HTML", FilerFileCategory::Document, ColorFamily::Document, 6}},
+                {"tex",  {"LaTeX", FilerFileCategory::Document, ColorFamily::Document, 6}},
+                {"epub", {"EPUB", FilerFileCategory::Document, ColorFamily::Document, 1}},
+                {"txt",  {"Text", FilerFileCategory::Text, ColorFamily::TextCode, 2}},
+                {"log",  {"Log",  FilerFileCategory::Text, ColorFamily::TextCode, 3}},
+                {"ini",  {"Config", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"conf", {"Config", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"json", {"JSON", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"xml",  {"XML",  FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"yaml", {"YAML", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"yml",  {"YAML", FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"csv",  {"CSV",  FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"tsv",  {"TSV",  FilerFileCategory::Text, ColorFamily::TextCode, 1}},
+                {"cpp",  {"C++ Source", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"cc",   {"C++ Source", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"h",    {"C Header", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"hpp",  {"C++ Header", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"c",    {"C Source", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"py",   {"Python", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"js",   {"JavaScript", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"ts",   {"TypeScript", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"sh",   {"Shell Script", FilerFileCategory::Text, ColorFamily::TextCode, 0}},
+                {"ods",  {"OpenDocument", FilerFileCategory::Spreadsheet, ColorFamily::Spreadsheet, 1}},
+                {"xls",  {"Excel", FilerFileCategory::Spreadsheet, ColorFamily::Spreadsheet, 2}},
+                {"xlsx", {"Excel", FilerFileCategory::Spreadsheet, ColorFamily::Spreadsheet, 0}},
+                {"zip",  {"ZIP",  FilerFileCategory::Archive, ColorFamily::Archive, 3}},
+                {"7z",   {"7-Zip", FilerFileCategory::Archive, ColorFamily::Archive, 0}},
+                {"rar",  {"RAR",  FilerFileCategory::Archive, ColorFamily::Archive, 2}},
+                {"tar",  {"TAR",  FilerFileCategory::Archive, ColorFamily::Archive, 4}},
+                {"gz",   {"GZip", FilerFileCategory::Archive, ColorFamily::Archive, 3}},
+                {"tgz",  {"TAR GZip", FilerFileCategory::Archive, ColorFamily::Archive, 3}},
+                {"bz2",  {"BZip2", FilerFileCategory::Archive, ColorFamily::Archive, 2}},
+                {"xz",   {"XZ",   FilerFileCategory::Archive, ColorFamily::Archive, 1}},
+                {"zst",  {"Zstandard", FilerFileCategory::Archive, ColorFamily::Archive, 0}},
+                {"lzma", {"LZMA", FilerFileCategory::Archive, ColorFamily::Archive, 1}},
+                {"jar",  {"Java Archive", FilerFileCategory::Archive, ColorFamily::Archive, 3}},
+                {"exe",  {"Executable", FilerFileCategory::Executable, ColorFamily::Application, 0}},
+                {"appimage", {"AppImage", FilerFileCategory::Executable, ColorFamily::Application, 1}},
+                {"deb",  {"Debian Package", FilerFileCategory::Executable, ColorFamily::Application, 3}},
+                {"rpm",  {"RPM Package", FilerFileCategory::Executable, ColorFamily::Application, 3}},
+                {"msi",  {"Installer", FilerFileCategory::Executable, ColorFamily::Application, 2}},
+                // Loaded by a program, never launched by the user: their own
+                // category, their own noun, their own ramp of greys.
+                {"so",   {"Shared Object", FilerFileCategory::Library, ColorFamily::Library, 0}},
+                {"dll",  {"Dynamic Link", FilerFileCategory::Library, ColorFamily::Library, 1}},
+                {"dylib",{"Dynamic", FilerFileCategory::Library, ColorFamily::Library, 2}},
+                {"a",    {"Static", FilerFileCategory::Library, ColorFamily::Library, 3}},
+                {"lib",  {"Static", FilerFileCategory::Library, ColorFamily::Library, 3}},
+                {"ttf",  {"TrueType Font", FilerFileCategory::Font, ColorFamily::Font, 3}},
+                {"ttc",  {"TrueType Collection", FilerFileCategory::Font, ColorFamily::Font, 4}},
+                {"otf",  {"OpenType Font", FilerFileCategory::Font, ColorFamily::Font, 2}},
+                {"otc",  {"OpenType Collection", FilerFileCategory::Font, ColorFamily::Font, 4}},
+                {"woff", {"Web Font", FilerFileCategory::Font, ColorFamily::Font, 1}},
+                {"woff2",{"Web Font 2", FilerFileCategory::Font, ColorFamily::Font, 0}},
+                {"pfb",  {"Type 1 Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"pfa",  {"Type 1 Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"bdf",  {"Bitmap Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"pcf",  {"Bitmap Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"fon",  {"Bitmap Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
+                {"fnt",  {"Bitmap Font", FilerFileCategory::Font, ColorFamily::Font, 5}},
             };
             return m;
         }
@@ -433,27 +630,68 @@ namespace UltraCanvas {
                 case FilerFileCategory::Spreadsheet: return "Spreadsheet";
                 case FilerFileCategory::Archive:     return "Archive";
                 case FilerFileCategory::Executable:  return "Program";
+                case FilerFileCategory::Library:     return "Library";
                 case FilerFileCategory::Font:        return "Font";
                 default:                             return "File";
             }
         }
 
+        // The colour of a category with no ranked format behind it: a folder,
+        // a format one of the plugins registered (it has a family but no rung
+        // in its ladder), a file whose extension nothing recognises. Each one
+        // is the rung the everyday formats of that family sit on, so an
+        // unranked image still lands among the images instead of in a grey
+        // hole. The folder amber is the one colour kept from the old palette:
+        // it is the icon nobody should have to relearn.
         Color CategoryColor(FilerFileCategory c) {
             switch (c) {
                 case FilerFileCategory::Folder:      return Color(247, 190, 80, 255);
-                case FilerFileCategory::Image:       return Color(76, 175, 130, 255);
-                case FilerFileCategory::Vector:      return Color(0, 150, 167, 255);
-                case FilerFileCategory::Model3D:     return Color(126, 87, 194, 255);
-                case FilerFileCategory::Audio:       return Color(156, 89, 182, 255);
-                case FilerFileCategory::Video:       return Color(230, 106, 86, 255);
-                case FilerFileCategory::Document:    return Color(66, 133, 244, 255);
-                case FilerFileCategory::Text:        return Color(120, 144, 156, 255);
-                case FilerFileCategory::Spreadsheet: return Color(46, 125, 50, 255);
-                case FilerFileCategory::Archive:     return Color(141, 110, 99, 255);
-                case FilerFileCategory::Executable:  return Color(84, 110, 122, 255);
-                case FilerFileCategory::Font:        return Color(216, 67, 21, 255);
+                case FilerFileCategory::Image:       return RampShade(ColorFamily::ImageLossy, 2);
+                case FilerFileCategory::Vector:      return RampShade(ColorFamily::VectorArt, 2);
+                case FilerFileCategory::Model3D:     return RampShade(ColorFamily::Model3D, 2);
+                case FilerFileCategory::Audio:       return RampShade(ColorFamily::AudioLossy, 2);
+                case FilerFileCategory::Video:       return RampShade(ColorFamily::Video, 2);
+                case FilerFileCategory::Document:    return RampShade(ColorFamily::Document, 3);
+                case FilerFileCategory::Text:        return RampShade(ColorFamily::TextCode, 1);
+                case FilerFileCategory::Spreadsheet: return RampShade(ColorFamily::Spreadsheet, 1);
+                case FilerFileCategory::Archive:     return RampShade(ColorFamily::Archive, 3);
+                case FilerFileCategory::Executable:  return RampShade(ColorFamily::Application, 0);
+                case FilerFileCategory::Library:     return RampShade(ColorFamily::Library, 1);
+                case FilerFileCategory::Font:        return RampShade(ColorFamily::Font, 2);
                 default:                             return Color(158, 158, 158, 255);
             }
+        }
+
+        // Which half of the palette a category lives in, for the entries that
+        // never reach a ladder. The light families - the folder amber, the
+        // oranges and yellows of audio, the text greys, the unrecognised grey
+        // - take dark captions; everything else takes white ones.
+        bool CategoryUsesDarkInk(FilerFileCategory c) {
+            switch (c) {
+                case FilerFileCategory::Folder:
+                case FilerFileCategory::Audio:
+                case FilerFileCategory::Text:
+                case FilerFileCategory::Other: return true;
+                default:                       return false;
+            }
+        }
+
+        // The colour of a format: its rung when the table ranks it, its
+        // category's colour when it does not.
+        Color FormatColor(const std::string& ext, FilerFileCategory category) {
+            const auto& m = ExtensionTypeMap();
+            auto it = m.find(ext);
+            if (it != m.end() && it->second.family != ColorFamily::NoneFamily)
+                return RampShade(it->second.family, it->second.rank);
+            return CategoryColor(category);
+        }
+
+        bool FormatUsesDarkInk(const std::string& ext, FilerFileCategory category) {
+            const auto& m = ExtensionTypeMap();
+            auto it = m.find(ext);
+            if (it != m.end() && it->second.family != ColorFamily::NoneFamily)
+                return RampOf(it->second.family).darkInk;
+            return CategoryUsesDarkInk(category);
         }
 
         std::string FormatSize(uint64_t bytes) {
@@ -658,7 +896,16 @@ namespace UltraCanvas {
                 case FilerPreviewType::Bitmaps:
                     return ImagePipelineLoadsExtension(ext);
                 case FilerPreviewType::VectorGraphics:
+                    // Three ways to a picture, in the order the worker tries
+                    // them: the image pipeline rasterizes it, a registered
+                    // Vector plugin reads it into a document this draws
+                    // itself, or the file carries a preview bitmap. Only the
+                    // first and last used to count, so dxf/dwg/emf/wmf were
+                    // greyed on the settings page of a build whose Vector
+                    // plugin read them perfectly well.
                     return ImagePipelineLoadsExtension(ext) ||
+                           CanPreviewVectorExtension(ext) ||
+                           IsVectorGraphicsPath("file." + ext) ||
                            FormatCarriesEmbeddedPreview(ext);
                 case FilerPreviewType::Models3D:
                     return CanPreviewModelExtension(ext);
@@ -770,6 +1017,53 @@ namespace UltraCanvas {
             auto img = UCImage::LoadFromMemory(bytes);
             if (!img || img->GetWidth() <= 0 || img->GetHeight() <= 0) return nullptr;
             return img->GetPixmap(w, h, fit, scale);
+        }
+
+        // Logical size times the display scale, floored at one pixel.
+        int DeviceEdge(int logical, float scale) {
+            if (logical <= 0) return 0;
+            return std::max(1, static_cast<int>(std::lround(
+                    logical * std::max(1.0f, scale))));
+        }
+
+        // ===== VECTOR DRAWING PREVIEW =====
+        // The drawing itself, for the formats a registered Vector plugin
+        // reads (UltraCanvasVectorPreview.h): DXF, DWG and the rest, which
+        // rasterize through neither libvips nor an embedded preview bitmap
+        // and so used to keep the plain type glyph.
+        //
+        // Serialized, unlike every other producer here. The rest of them own
+        // everything they touch - a PDF document with its own engine context,
+        // a FreeType library per specimen, a mesh rasterizer that is pure
+        // arithmetic - which is what makes running several at once safe.
+        // Drawing a document does not: it goes through a render context, and
+        // the text in it through the process-wide font machinery. One at a
+        // time costs nothing worth having (a folder of drawings is not a
+        // folder of photos) and keeps that promise unbroken.
+        std::shared_ptr<UCPixmap> RenderVectorDrawingPixmap(const std::string& path,
+                                                            int w, int h, float scale) {
+            static std::mutex renderMutex;
+            std::lock_guard<std::mutex> lock(renderMutex);
+            if (auto pm = RenderVectorPreviewPixmap(path, w, h, scale)) return pm;
+            // Formats no reader turns into a document, but a registered
+            // graphics plugin can draw: the CorelDRAW files libcdr parses,
+            // and anything else a plugin claims. The plugin's own element is
+            // rendered into an offscreen context by UltraCanvasVectorRaster
+            // and handed back as pixels, which is why this shares the mutex
+            // above rather than getting one of its own.
+            if (!IsVectorGraphicsPath(path)) return nullptr;
+            VectorRasterOptions options;
+            options.width = DeviceEdge(w, scale);
+            options.height = DeviceEdge(h, scale);
+            std::string error;
+            auto layer = RasterizeVectorFile(path, options, error);
+            if (!layer || !layer->IsValid()) {
+                if (!error.empty())
+                    debugOutput << "Filer: " << path << ": " << error << std::endl;
+                return nullptr;
+            }
+            return PixmapFromRGBA(layer->Row(0), layer->GetWidth(),
+                                  layer->GetHeight(), layer->GetWidth() * 4);
         }
 
         // ===== 3D MODEL PREVIEW =====
@@ -1898,6 +2192,7 @@ namespace UltraCanvas {
         HideDragOverlay();          // its renderer captures `this`
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
+        StopHostIconWorker();
         StopFolderWatchTimer();     // its callback captures `this`
         folderWatcher.Stop();       // joins its thread; its callback too
         // A pack / unpack still running: ask it to stop, then wait for it. The
@@ -1908,6 +2203,15 @@ namespace UltraCanvas {
             archiveJob->onFinished = nullptr;   // nothing left to refresh
             FinishArchiveJob();
         }
+        // A copy / move / delete still running: ask it to stop and wait for
+        // it. Unlike the archive worker this one walks the widget's own
+        // queues, so it must be gone before they are.
+        if (fileOp) {
+            fileOp->onStretchDone = nullptr;   // nothing left to continue
+            EndFileOperation();
+        }
+        pendingPaste.reset();
+        pendingDelete.reset();
         StopFolderStatsWorker();
         StopFolderPrefetchWorker();
         StopFolderWatchWorker();
@@ -2647,6 +2951,35 @@ namespace UltraCanvas {
         }
     }
 
+    bool UltraCanvasFilerWidget::ShowingRemoteFolder() const {
+        return !fileListMode && !currentPath.empty() &&
+               isRemotePath && isRemotePath(currentPath);
+    }
+
+    std::string UltraCanvasFilerWidget::UniqueRemoteChildName(
+            const std::string& base) const {
+        auto taken = [this](const std::string& name) {
+            for (const FilerEntry& e : entries) {
+                if (e.name == name) return true;
+            }
+            return false;
+        };
+        if (!taken(base)) return base;
+        for (int n = 2; n < 1000; ++n) {
+            const std::string candidate = base + " (" + std::to_string(n) + ")";
+            if (!taken(candidate)) return candidate;
+        }
+        return base;   // a thousand of them: let the server object
+    }
+
+    bool UltraCanvasFilerWidget::RefuseWriteHere(const char* what) {
+        if (currentPath.empty() || !isRemotePath || !isRemotePath(currentPath))
+            return false;
+        ReportError(std::string("Cannot ") + what +
+                    " on a remote drive: this build can browse one, not change it.");
+        return true;
+    }
+
     void UltraCanvasFilerWidget::ScanRealDirectory(const std::string& path,
                                                    bool includeHidden,
                                                    std::vector<FilerEntry>& out,
@@ -2836,7 +3169,17 @@ namespace UltraCanvas {
         DropThumbnailCache();
 
         std::error_code ec;
-        bool isRealDir = !currentPath.empty() && fs::is_directory(currentPath, ec);
+        // A remote drive's path is the host's to answer (see remoteListing),
+        // and is recognised before std::filesystem is asked anything: such a
+        // path is not on this machine, so is_directory() could only fail -
+        // after however long the OS takes to decide that.
+        const bool isRemoteDir = !fileListMode && !currentPath.empty() &&
+                                 isRemotePath && isRemotePath(currentPath);
+        bool isRealDir = !isRemoteDir && !currentPath.empty() &&
+                         fs::is_directory(currentPath, ec);
+        // Stays false for a remote listing: what it gates - the folder
+        // previews, the lock column - reads the local filesystem per entry,
+        // which is exactly what a remote drive cannot serve.
         listingIsRealDirectory = fileListMode || isRealDir;
 
         // What this listing leaves out, for the hidden-items notice: the
@@ -2869,6 +3212,27 @@ namespace UltraCanvas {
                 }
             } else {
                 entries = std::move(listing);
+            }
+        } else if (isRemoteDir) {
+            // A remote drive. The host answers from what it already holds; an
+            // empty listing with no error is the "still fetching" case, and
+            // the Refresh() it posts when the data lands brings us back here.
+            std::vector<FilerEntry> listing;
+            std::string error;
+            if (!remoteListing ||
+                !remoteListing(currentPath, listing, error)) {
+                if (!error.empty()) ReportError(error);
+            } else {
+                for (FilerEntry& e : listing) {
+                    if (e.isHidden && !showHiddenFiles) { ++heldBack; continue; }
+                    // The host supplies the facts it knows; the type
+                    // information is derived here, the way the archive branch
+                    // below derives it, so a remote file gets the same icon
+                    // and category as a local one of the same name.
+                    e.extension = e.isDirectory ? "" : LowerExtension(e.name);
+                    ApplyEntryTypeInfo(e);
+                    entries.push_back(std::move(e));
+                }
             }
         }
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -3448,9 +3812,76 @@ namespace UltraCanvas {
         return all;
     }
 
+    void UltraCanvasFilerWidget::SetFileIconStyle(FilerFileIconStyle style) {
+        if (fileIconStyle == style) return;
+        fileIconStyle = style;
+        // Switching back to the simple icons frees what the host answered;
+        // switching to them resolves the visible types on the next frames.
+        DropHostIconCache();
+        // Only what is painted inside the icon boxes changes - the boxes
+        // themselves keep their geometry, so nothing is relaid out.
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    bool UltraCanvasFilerWidget::AreHostFileIconsAvailable() {
+        return HostFileIconsAvailable();
+    }
+
+    const char* UltraCanvasFilerWidget::FileIconStyleLabel(
+            FilerFileIconStyle style) {
+        switch (style) {
+            case FilerFileIconStyle::HostOperatingSystem:
+                return "Host OS icons";
+            default:
+                return "UltraFiler simple";
+        }
+    }
+
+    const std::vector<FilerFileIconStyle>&
+    UltraCanvasFilerWidget::AllFileIconStyles() {
+        static const std::vector<FilerFileIconStyle> all = {
+            FilerFileIconStyle::Simple,
+            FilerFileIconStyle::HostOperatingSystem,
+        };
+        return all;
+    }
+
+    void UltraCanvasFilerWidget::RefreshHostIcons() {
+        // The host's own lookups first - the theme it resolved names
+        // against may be a different theme now - then what we held of them.
+        RefreshHostFileIcons();
+        DropHostIconCache();
+        RequestRedraw();
+    }
+
     std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
         if (e.isDirectory) return "";
         return LooksLikeFileExtension(e.extension) ? e.extension : std::string();
+    }
+
+    Color UltraCanvasFilerWidget::EntryColorOf(const FilerEntry& e) {
+        // A directory is coloured by what it is and never by a dot in its
+        // name: a folder called "render.mp4" is a folder, not a video. That
+        // also keeps a bundle (a directory the platform presents as one
+        // object) on its application colour.
+        if (e.isDirectory) return CategoryColor(e.category);
+        // A shortcut has the category of what it points at but its own
+        // extension (.lnk, .desktop), which no ladder ranks - so it lands on
+        // that category's colour, which is exactly the target's family.
+        return FormatColor(e.extension, e.category);
+    }
+
+    Color UltraCanvasFilerWidget::EntryCaptionInkOf(const FilerEntry& e) {
+        const bool dark = e.isDirectory
+                                  ? CategoryUsesDarkInk(e.category)
+                                  : FormatUsesDarkInk(e.extension, e.category);
+        return dark ? Color(28, 28, 34, 255) : Color(255, 255, 255, 255);
+    }
+
+    Color UltraCanvasFilerWidget::FormatColorOf(const std::string& extension,
+                                                FilerFileCategory category) {
+        return FormatColor(extension, category);
     }
 
     std::string UltraCanvasFilerWidget::DisplayNameOf(const FilerEntry& e) const {
@@ -4209,6 +4640,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::Paste() {
+        if (RefuseWriteHere("paste")) return;
         // The system clipboard wins: it holds whatever was copied last,
         // whether here (mirrored by SelectionToClipboard) or in another
         // program. The internal clipboard is the fallback when no system
@@ -4280,22 +4712,24 @@ namespace UltraCanvas {
         }
     }
 
-    bool UltraCanvasFilerWidget::ShowProceedSkipDialog(
+    bool UltraCanvasFilerWidget::ShowProblemChoiceDialog(
             DialogConfig& cfg,
-            const std::string& proceedLabel, const std::string& skipLabel,
-            const std::string& allLabel, bool proceedDefault,
-            std::function<void(bool proceed, bool all)> onContinue,
+            const std::vector<std::string>& choiceLabels, size_t defaultChoice,
+            const std::string& allLabel,
+            std::function<void(size_t choice, bool all)> onContinue,
             std::function<void()> onCancel) {
+        if (choiceLabels.empty()) return false;
+        if (defaultChoice >= choiceLabels.size()) defaultChoice = 0;
         cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
         auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
         if (!dialog) return false;
 
-        struct Choice { bool proceed = true; bool all = false; };
+        struct Choice { size_t index = 0; bool all = false; };
         auto choice = std::make_shared<Choice>();
-        choice->proceed = proceedDefault;
+        choice->index = defaultChoice;
         AddExclusiveSwitches(dialog.get(), "FilerProblemOpt",
-                {proceedLabel, skipLabel}, proceedDefault ? 0 : 1,
-                [choice](size_t index) { choice->proceed = (index == 0); });
+                choiceLabels, defaultChoice,
+                [choice](size_t index) { choice->index = index; });
 
         // Scope: ask again on the next problem (off, the default) or apply
         // this choice to the remaining entries of the operation.
@@ -4311,7 +4745,7 @@ namespace UltraCanvas {
         dialog->AddCustomButton("Cancel", DialogResult::Cancel, nullptr);
         dialog->onResult = [choice, onContinue, onCancel](DialogResult result) {
             if (result == DialogResult::Yes) {
-                if (onContinue) onContinue(choice->proceed, choice->all);
+                if (onContinue) onContinue(choice->index, choice->all);
             } else if (onCancel) {
                 onCancel();
             }
@@ -4320,11 +4754,31 @@ namespace UltraCanvas {
         return true;
     }
 
+    bool UltraCanvasFilerWidget::ShowProceedSkipDialog(
+            DialogConfig& cfg,
+            const std::string& proceedLabel, const std::string& skipLabel,
+            const std::string& allLabel, bool proceedDefault,
+            std::function<void(bool proceed, bool all)> onContinue,
+            std::function<void()> onCancel) {
+        return ShowProblemChoiceDialog(cfg, {proceedLabel, skipLabel},
+                proceedDefault ? 0 : 1, allLabel,
+                [onContinue](size_t index, bool all) {
+                    if (onContinue) onContinue(index == 0, all);
+                },
+                std::move(onCancel));
+    }
+
     void UltraCanvasFilerWidget::PasteFilesInto(std::string folder,
                                                 std::vector<std::string> paths,
                                                 bool cut,
                                                 std::function<void(bool changed)> onDone) {
-        if (pendingPaste) return;   // one paste (and its dialog) at a time
+        // One paste (and its dialogs) at a time, and one file operation at a
+        // time: a paste started while a delete is still running would share
+        // the progress session with it and report into the wrong window.
+        if (pendingPaste || fileOp || paths.empty()) {
+            if (onDone) onDone(false);
+            return;
+        }
         std::error_code ec;
         if (!fs::is_directory(folder, ec)) {
             ReportError("Paste target is not a writable folder: " + folder);
@@ -4341,39 +4795,119 @@ namespace UltraCanvas {
         pendingPaste->sources = std::move(paths);
         pendingPaste->cut = cut;
         pendingPaste->onDone = std::move(onDone);
+        // The work runs on the file-operation worker; the window over it opens
+        // only if the paste is still going two seconds from now.
+        const std::string verb = cut ? "Moving" : "Copying";
+        std::string target = fs::path(pendingPaste->folder).filename().string();
+        if (target.empty()) target = pendingPaste->folder;   // a drive root
+        BeginFileOperation(verb,
+                FileOperationCaption(verb, pendingPaste->sources.size(),
+                        fs::path(pendingPaste->sources.front()).filename().string(),
+                        target),
+                pendingPaste->sources.size());
         ContinuePendingPaste();
     }
 
     void UltraCanvasFilerWidget::ContinuePendingPaste() {
+        if (!pendingPaste) return;
+        if (FileOperationBusy()) return;   // the worker still has the queue
+        PendingPaste* pp = pendingPaste.get();
+        RunFileOperationStretch([this, pp]() { PasteWorkerLoop(pp); },
+                                [this]() { AfterPasteStretch(); });
+    }
+
+    void UltraCanvasFilerWidget::PasteWorkerLoop(PendingPaste* pp) {
         std::error_code ec;
-        while (pendingPaste && pendingPaste->next < pendingPaste->sources.size()) {
-            PendingPaste& pp = *pendingPaste;
-            const std::string& src = pp.sources[pp.next];
+        FileOperation* op = fileOp.get();
+        while (pp->next < pp->sources.size()) {
+            if (op && op->cancelled.load()) {
+                pp->stop = FileOpStop::Cancelled;
+                return;
+            }
+            const std::string src = pp->sources[pp->next];
             const fs::path from(src);
-            if (!fs::exists(from, ec)) { ++pp.next; continue; }
+            if (!fs::exists(from, ec)) { ++pp->next; continue; }
             // Cut-pasting into the folder the file already lives in is a no-op,
             // and a folder must never be pasted into itself.
-            if (pp.cut && from.parent_path() == fs::path(pp.folder)) { ++pp.next; continue; }
-            if (fs::is_directory(from, ec) && PathIsSameOrBelow(pp.folder, src)) {
-                ReportError("Cannot paste a folder into itself: " + src);
-                ++pp.next;
+            if (pp->cut && from.parent_path() == fs::path(pp->folder)) {
+                ++pp->next;
                 continue;
             }
-            const std::string dest = (fs::path(pp.folder) / from.filename()).string();
+            if (fs::is_directory(from, ec) && PathIsSameOrBelow(pp->folder, src)) {
+                // The worker cannot report anything itself: the message is
+                // handed to the UI thread, which shows it when the stretch ends.
+                if (op) {
+                    std::lock_guard<std::mutex> lk(op->mutex);
+                    op->deferredErrors.push_back(
+                            "Cannot paste a folder into itself: " + src);
+                }
+                ++pp->next;
+                continue;
+            }
+            // What to do about a name that is already taken: the answer this
+            // entry was given, the answer given for all of them, or a dialog.
             // Copy-pasting alongside the original never asks — the copy simply
             // takes the next free name, exactly like Duplicate.
+            PasteConflictAction action = PasteConflictAction::KeepBoth;
+            const std::string dest = (fs::path(pp->folder) / from.filename()).string();
             if (fs::exists(dest, ec) && dest != src) {
-                if (!pp.applyToAll) { ShowPasteConflictDialog(src); return; }
-                if (!PasteCurrentAndAdvance(pp.action)) return;
-            } else {
-                if (!PasteCurrentAndAdvance(PasteConflictAction::KeepBoth)) return;
+                if (pp->currentDecided)       action = pp->currentAction;
+                else if (pp->applyToAll)      action = pp->action;
+                else {
+                    pp->stop = FileOpStop::Conflict;
+                    pp->stopSource = src;
+                    return;
+                }
             }
+            pp->currentAction = action;
+            for (;;) {
+                FileOpItemCredit credit{.op = op, .slice = kFileOpItemUnits};
+                credit.SetFile(from.filename().string());
+                std::string why;
+                if (PasteOneEntry(*pp, src, action, credit, why)) {
+                    credit.Finish();          // this entry's slice, in full
+                    break;
+                }
+                credit.Rollback();            // an attempt that failed counts
+                if (op && op->cancelled.load()) {   // for nothing on the ring
+                    pp->stop = FileOpStop::Cancelled;
+                    return;
+                }
+                if (pp->skipFailedForAll) break;    // skip it, silently
+                if (pp->retryFailedForAll && !pp->currentRetried) {
+                    pp->currentRetried = true;      // one silent retry, then ask
+                    continue;
+                }
+                pp->stop = FileOpStop::Problem;
+                pp->stopSource = src;
+                pp->stopReason = why;
+                return;
+            }
+            ++pp->next;
+            pp->currentRetried = false;
+            pp->currentDecided = false;
         }
-        FinishPendingPaste();
+        pp->stop = FileOpStop::Done;
+    }
+
+    void UltraCanvasFilerWidget::AfterPasteStretch() {
+        if (!pendingPaste) return;
+        const FileOpStop stop = pendingPaste->stop;
+        const std::string source = pendingPaste->stopSource;
+        if (stop == FileOpStop::Conflict) {
+            ShowPasteConflictDialog(source);
+            return;
+        }
+        if (stop == FileOpStop::Problem) {
+            ShowPasteProblemDialog(source, pendingPaste->stopReason);
+            return;
+        }
+        FinishPendingPaste();   // walked to the end, or cancelled
     }
 
     void UltraCanvasFilerWidget::FinishPendingPaste() {
         if (!pendingPaste) return;
+        EndFileOperation();   // the window goes before the refresh it triggers
         const bool changed = pendingPaste->changed;
         const std::string destination = pendingPaste->folder;
         std::vector<std::string> vacated = std::move(pendingPaste->vacatedFolders);
@@ -4393,32 +4927,13 @@ namespace UltraCanvas {
             if (reported.insert(folder).second) NotifyFolderModified(folder);
     }
 
-    bool UltraCanvasFilerWidget::PasteCurrentAndAdvance(PasteConflictAction action) {
-        PendingPaste& pp = *pendingPaste;
-        pp.currentAction = action;
-        const std::string src = pp.sources[pp.next];
-        for (;;) {
-            std::string why;
-            if (PasteOneEntry(src, action, why)) break;   // pasted or skipped
-            if (pp.skipFailedForAll) break;               // skip it, silently
-            if (pp.retryFailedForAll && !pp.currentRetried) {
-                pp.currentRetried = true;   // one silent retry, then ask
-                continue;
-            }
-            ShowPasteProblemDialog(src, why);
-            return false;
-        }
-        ++pp.next;
-        pp.currentRetried = false;
-        return true;
-    }
-
-    bool UltraCanvasFilerWidget::PasteOneEntry(const std::string& src,
+    bool UltraCanvasFilerWidget::PasteOneEntry(PendingPaste& pp,
+                                               const std::string& src,
                                                PasteConflictAction action,
+                                               FileOpItemCredit& credit,
                                                std::string& whyFailed) {
         whyFailed.clear();
-        if (!pendingPaste || action == PasteConflictAction::Skip) return true;
-        PendingPaste& pp = *pendingPaste;
+        if (action == PasteConflictAction::Skip) return true;
         std::error_code ec;
         const fs::path from(src);
         std::string dest = (fs::path(pp.folder) / from.filename()).string();
@@ -4445,13 +4960,25 @@ namespace UltraCanvas {
                 // real cause.
                 const std::error_code renameError = ec;
                 std::error_code fallback;
-                fs::copy(from, dest, fs::copy_options::recursive, fallback);
-                if (fallback) {
-                    whyFailed = renameError.message();
+                // A move that turned into a copy is the slow kind: count what
+                // it is about to move, so the ring advances inside this entry
+                // instead of standing still for a gigabyte.
+                credit.total = CountTreeBytes(src, credit);
+                if (!CopyTreeWithProgress(src, dest, credit, fallback) || fallback) {
+                    // Nothing of a move that did not happen stays behind.
+                    std::error_code cleanup;
+                    fs::remove_all(dest, cleanup);
+                    whyFailed = credit.Cancelled() ? std::string("cancelled")
+                                                   : renameError.message();
                     return false;
                 }
-                fs::remove_all(from, fallback);
-                if (fallback) {
+                // The copy is there; the original goes. Its entries are not
+                // counted onto the ring - the copy above is the long half -
+                // but their names keep coming so the window stays alive. And
+                // it runs to the end even if Cancel was pressed: stopping
+                // here would leave the entry half in both places.
+                FileOpItemCredit removal{.op = credit.op, .heedCancel = false};
+                if (!RemoveTreeWithProgress(src, removal, fallback) || fallback) {
                     // The copy landed but the original would not go: undo the
                     // copy, so a move that failed does not leave the entry in
                     // both places.
@@ -4463,7 +4990,16 @@ namespace UltraCanvas {
                 ec.clear();
             }
         } else {
-            fs::copy(from, dest, fs::copy_options::recursive, ec);
+            credit.total = CountTreeBytes(src, credit);
+            if (!CopyTreeWithProgress(src, dest, credit, ec)) {
+                // Half a copy is not a paste: it goes, whether the copy was
+                // cancelled or failed. Left there, it would also make the
+                // "Try again" of the problem dialog paste alongside it.
+                std::error_code cleanup;
+                fs::remove_all(dest, cleanup);
+                whyFailed = ec ? ec.message() : std::string("cancelled");
+                return false;
+            }
         }
         if (ec) {
             whyFailed = ec.message();
@@ -4518,20 +5054,21 @@ namespace UltraCanvas {
                 [self](bool proceed, bool all) {
                     if (!self->pendingPaste) return;
                     PendingPaste& pp = *self->pendingPaste;
-                    bool resumed;
                     if (!proceed) {
                         if (all) pp.skipFailedForAll = true;
                         ++pp.next;
                         pp.currentRetried = false;
-                        resumed = true;
+                        pp.currentDecided = false;
                     } else {
                         // Try again now; a stored "for all" grants every later
                         // failing entry one silent retry before asking again.
                         if (all) pp.retryFailedForAll = true;
                         pp.currentRetried = true;
-                        resumed = self->PasteCurrentAndAdvance(pp.currentAction);
+                        // Keep the answer the conflict dialog gave this entry
+                        // (pp.currentAction) when the worker picks it up again.
+                        pp.currentDecided = true;
                     }
-                    if (resumed) self->ContinuePendingPaste();
+                    self->ContinuePendingPaste();
                 },
                 [self]() {
                     // Cancel keeps what was already pasted and drops the rest.
@@ -4542,6 +5079,7 @@ namespace UltraCanvas {
                         + " failed for " + src + ": " + reason);
             ++pendingPaste->next;
             pendingPaste->currentRetried = false;
+            pendingPaste->currentDecided = false;
             ContinuePendingPaste();
         }
     }
@@ -4567,8 +5105,7 @@ namespace UltraCanvas {
         if (!dialog) {   // dialogs disabled — keep both, the old fixed behavior
             pendingPaste->action = PasteConflictAction::KeepBoth;
             pendingPaste->applyToAll = true;
-            if (PasteCurrentAndAdvance(PasteConflictAction::KeepBoth))
-                ContinuePendingPaste();
+            ContinuePendingPaste();
             return;
         }
 
@@ -4615,8 +5152,12 @@ namespace UltraCanvas {
                 self->FinishPendingPaste();
                 return;
             }
-            if (self->PasteCurrentAndAdvance(self->pendingPaste->action))
-                self->ContinuePendingPaste();
+            // The switches wrote the choice into the queue as they were
+            // toggled; this one applies to the entry the worker stopped on,
+            // and `applyToAll` decides whether it also applies to the rest.
+            self->pendingPaste->currentAction = self->pendingPaste->action;
+            self->pendingPaste->currentDecided = true;
+            self->ContinuePendingPaste();
         };
 
         UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
@@ -4687,7 +5228,39 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DeleteSelection() {
+        // No guard here: a remote delete is supported when the host wired
+        // remoteDelete, and PerformDeletion - which every route to a delete
+        // passes through, the confirmation dialog and a host's own
+        // confirmDelete veto alike - is where the two part company.
         DeleteEntries(GetSelectedEntries());
+    }
+
+    void UltraCanvasFilerWidget::DeletePaths(
+            std::vector<std::string> paths,
+            std::function<void(bool changed)> onDone) {
+        std::vector<FilerEntry> victims;
+        victims.reserve(paths.size());
+        std::error_code ec;
+        for (const std::string& path : paths) {
+            if (path.empty()) continue;
+            const fs::file_status st = fs::status(path, ec);
+            if (ec) continue;                  // gone already: nothing to do
+            FilerEntry entry;
+            entry.path = path;
+            entry.name = fs::path(path).filename().string();
+            if (entry.name.empty()) entry.name = path;   // a drive root
+            entry.isDirectory = fs::is_directory(st);
+            // The queue asks before touching a write-protected entry, so this
+            // has to be right; the listing reads the same bit for its "R".
+            entry.isReadOnly = (st.permissions() & fs::perms::owner_write)
+                    == fs::perms::none;
+            victims.push_back(std::move(entry));
+        }
+        if (victims.empty()) {
+            if (onDone) onDone(false);
+            return;
+        }
+        PerformDeletion(victims, std::move(onDone));
     }
 
     void UltraCanvasFilerWidget::DeleteEntries(
@@ -4726,8 +5299,31 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::PerformDeletion(
-            const std::vector<FilerEntry>& victims) {
-        if (pendingDelete) return;   // one delete (and its dialogs) at a time
+            const std::vector<FilerEntry>& victims,
+            std::function<void(bool changed)> onDone) {
+        // A remote drive's entries are the host's to remove: the queue below
+        // works in std::filesystem terms and would simply find nothing there.
+        // The host accepts the request at once and refreshes the display when
+        // the server has answered.
+        if (ShowingRemoteFolder()) {
+            std::string error;
+            if (!remoteDelete) {
+                ReportError("Cannot delete on this drive.");
+            } else if (!remoteDelete(victims, error)) {
+                ReportError(error.empty() ? "Cannot delete on this drive." : error);
+            }
+            // No local change either way, so the caller hears "nothing moved";
+            // what did happen arrives with the refresh.
+            if (onDone) onDone(false);
+            return;
+        }
+        // One delete (and its dialogs) at a time, and one file operation at a
+        // time: a delete started while a paste is still running would share
+        // the progress session with it and report into the wrong window.
+        if (pendingDelete || fileOp) {
+            if (onDone) onDone(false);
+            return;
+        }
         // When the delete takes the whole selection away, hand the selection
         // on to the entry that fills its place instead of leaving nothing
         // selected (SetSelectNextAfterDelete). Picked here, while the old
@@ -4808,20 +5404,46 @@ namespace UltraCanvas {
         pendingDelete = std::make_unique<PendingDelete>();
         pendingDelete->victims = fsVictims;   // copy: Refresh() rebuilds `entries`
         pendingDelete->modifiedFolders = std::move(archiveModified);
+        pendingDelete->onDone = std::move(onDone);
+        // The removals run on the file-operation worker; the window over them
+        // opens only if the delete is still going two seconds from now.
+        BeginFileOperation("Deleting",
+                FileOperationCaption("Deleting", pendingDelete->victims.size(),
+                        pendingDelete->victims.empty()
+                                ? std::string()
+                                : pendingDelete->victims.front().name,
+                        std::string()),
+                pendingDelete->victims.size());
         ContinuePendingDelete();
     }
 
     void UltraCanvasFilerWidget::ContinuePendingDelete() {
+        if (!pendingDelete) return;
+        if (FileOperationBusy()) return;   // the worker still has the queue
+        PendingDelete* pd = pendingDelete.get();
+        RunFileOperationStretch([this, pd]() { DeleteWorkerLoop(pd); },
+                                [this]() { AfterDeleteStretch(); });
+    }
+
+    void UltraCanvasFilerWidget::DeleteWorkerLoop(PendingDelete* pd) {
         std::error_code ec;
-        while (pendingDelete && pendingDelete->next < pendingDelete->victims.size()) {
-            PendingDelete& pd = *pendingDelete;
-            const FilerEntry& e = pd.victims[pd.next];
+        FileOperation* op = fileOp.get();
+        while (pd->next < pd->victims.size()) {
+            if (op && op->cancelled.load()) {
+                pd->stop = FileOpStop::Cancelled;
+                return;
+            }
+            const FilerEntry& e = pd->victims[pd->next];
             // A write-protected (locked) entry asks before the attempt.
             if (e.isReadOnly) {
                 DeleteProblemAction action;
-                if (pd.currentDecided)       action = pd.currentAction;
-                else if (pd.protectedForAll) action = pd.protectedAction;
-                else { ShowDeleteProblemDialog(e, true, {}); return; }
+                if (pd->currentDecided)       action = pd->currentAction;
+                else if (pd->protectedForAll) action = pd->protectedAction;
+                else {
+                    pd->stop = FileOpStop::Protected;
+                    pd->stopKind = DeleteProblemKind::WriteProtected;
+                    return;
+                }
                 if (action == DeleteProblemAction::Skip) {
                     AdvancePendingDelete();
                     continue;
@@ -4832,21 +5454,75 @@ namespace UltraCanvas {
                 fs::permissions(e.path, fs::perms::owner_write,
                                 fs::perm_options::add, pec);
             }
-            fs::remove_all(e.path, ec);
-            if (ec) {
-                if (pd.skipFailedForAll) { AdvancePendingDelete(); continue; }
-                if (pd.retryFailedForAll && !pd.currentRetried) {
-                    pd.currentRetried = true;   // one silent retry, then ask
+            FileOpItemCredit credit{.op = op, .slice = kFileOpItemUnits};
+            credit.SetFile(fs::path(e.path).filename().string());
+            // What this entry holds, so the ring advances inside a big folder
+            // instead of jumping once it is gone.
+            credit.total = CountTreeEntries(e.path, credit);
+            ec.clear();
+            if (!RemoveTreeWithProgress(e.path, credit, ec)) {
+                // A removal that got part way - cancelled inside a big folder,
+                // or stopped by one locked file in it - still emptied part of
+                // the folder, and whoever shows that folder has to hear about
+                // it. FinishPendingDelete reports each folder once.
+                const bool partly = credit.done > 0;
+                credit.Rollback();
+                if (partly) {
+                    const std::string parent =
+                            fs::path(e.path).parent_path().string();
+                    if (!parent.empty()) pd->modifiedFolders.push_back(parent);
+                }
+                if (op && op->cancelled.load()) {
+                    pd->stop = FileOpStop::Cancelled;
+                    return;
+                }
+                // "Access is denied" from a standard-user process is what
+                // Explorer answers with its shield button: the entry can be
+                // deleted, just not by this user. Where the host wired the
+                // elevated helper the dialog offers that retry; the entry
+                // then waits for the one helper run at the end of the queue.
+                const bool needsPermission =
+                        ElevatedFileOperations::IsAvailable() &&
+                        ElevatedFileOperations::IsPermissionFailure(ec);
+                if (needsPermission && pd->elevateForAll) {
+                    pd->elevatedVictims.push_back(e);
+                    AdvancePendingDelete();
                     continue;
                 }
-                ShowDeleteProblemDialog(e, false, ec.message());
+                if (pd->skipFailedForAll) { AdvancePendingDelete(); continue; }
+                if (pd->retryFailedForAll && !pd->currentRetried) {
+                    pd->currentRetried = true;   // one silent retry, then ask
+                    continue;
+                }
+                pd->stop = FileOpStop::Problem;
+                pd->stopKind = needsPermission ? DeleteProblemKind::NeedsPermission
+                                               : DeleteProblemKind::Failed;
+                pd->stopReason = ec ? ec.message() : std::string("unknown error");
                 return;
             }
+            credit.Finish();
             const std::string folder = fs::path(e.path).parent_path().string();
-            if (!folder.empty()) pd.modifiedFolders.push_back(folder);
+            if (!folder.empty()) pd->modifiedFolders.push_back(folder);
             AdvancePendingDelete();
         }
-        FinishPendingDelete();
+        pd->stop = FileOpStop::Done;
+    }
+
+    void UltraCanvasFilerWidget::AfterDeleteStretch() {
+        if (!pendingDelete) return;
+        PendingDelete& pd = *pendingDelete;
+        const bool onEntry = pd.next < pd.victims.size();
+        if (pd.stop == FileOpStop::Protected && onEntry) {
+            ShowDeleteProblemDialog(pd.victims[pd.next],
+                                    DeleteProblemKind::WriteProtected, {});
+            return;
+        }
+        if (pd.stop == FileOpStop::Problem && onEntry) {
+            ShowDeleteProblemDialog(pd.victims[pd.next], pd.stopKind,
+                                    pd.stopReason);
+            return;
+        }
+        FinishPendingDelete();   // walked to the end, or cancelled
     }
 
     void UltraCanvasFilerWidget::AdvancePendingDelete() {
@@ -4856,8 +5532,130 @@ namespace UltraCanvas {
         pendingDelete->currentRetried = false;
     }
 
+    void UltraCanvasFilerWidget::CancelPendingDelete() {
+        if (!pendingDelete) return;
+        pendingDelete->elevatedVictims.clear();
+        FinishPendingDelete();
+    }
+
+    void UltraCanvasFilerWidget::RunElevatedDeletes() {
+        if (!pendingDelete) return;
+        PendingDelete& pd = *pendingDelete;
+        pd.elevationStarted = true;
+        std::vector<std::string> paths;
+        paths.reserve(pd.elevatedVictims.size());
+        for (const FilerEntry& v : pd.elevatedVictims) paths.push_back(v.path);
+
+        const std::string caption = paths.size() == 1
+                ? "Windows is asking for permission to delete \""
+                          + pd.elevatedVictims.front().name + "\"."
+                : "Windows is asking for permission to delete "
+                          + std::to_string(paths.size()) + " items.";
+        auto result = std::make_shared<ElevatedFileOperations::ElevatedDeleteResult>();
+        auto work = [paths, result](const ArchiveProgressReporter&) {
+            // Blocks for the consent prompt and the helper; that is why it
+            // runs on the job's worker and not on the UI thread.
+            *result = ElevatedFileOperations::DeleteElevated(paths);
+            return result->outcome == ElevatedFileOperations::ElevatedOutcome::Completed;
+        };
+        // The pack / unpack job is the widget's "one background task with a
+        // progress window, finished on the UI thread" - a delete that waits
+        // on another process needs exactly that. Its Cancel cannot take the
+        // consent prompt down, so the window offers none of the job's
+        // cancel semantics beyond closing when the helper is back.
+        if (archiveJob) {
+            // Another job has the worker: run inline rather than never.
+            work(ArchiveProgressReporter());
+            FinishElevatedDeletes(*result);
+            return;
+        }
+        StartArchiveJob("Deleting as Administrator", caption, "", false,
+                        std::move(work),
+                        [this, result](bool, bool) { FinishElevatedDeletes(*result); });
+    }
+
+    void UltraCanvasFilerWidget::FinishElevatedDeletes(
+            const ElevatedFileOperations::ElevatedDeleteResult& result) {
+        if (!pendingDelete) return;
+        PendingDelete& pd = *pendingDelete;
+        using ElevatedFileOperations::ElevatedOutcome;
+
+        // What the helper really removed is what is gone now - it reports
+        // the failures, so the successes are read off the disk.
+        std::error_code ec;
+        size_t gone = 0;
+        for (const FilerEntry& v : pd.elevatedVictims) {
+            if (fs::exists(v.path, ec)) continue;
+            ++gone;
+            const std::string folder = fs::path(v.path).parent_path().string();
+            if (!folder.empty()) pd.modifiedFolders.push_back(folder);
+        }
+        const size_t left = pd.elevatedVictims.size() - gone;
+        auto items = [](size_t n) {
+            return std::to_string(n) + (n == 1 ? " item" : " items");
+        };
+
+        switch (result.outcome) {
+            case ElevatedOutcome::Completed:
+                if (!result.failures.empty()) {
+                    // The system's reason per entry: the dialog names the
+                    // first few; without dialogs the count goes to onError.
+                    DialogConfig cfg;
+                    cfg.dialogType = DialogType::Warning;
+                    cfg.title = "Cannot Delete";
+                    cfg.width = 560;
+                    cfg.height = 280;
+                    if (result.failures.size() == 1) {
+                        cfg.message = "\"" + fs::path(result.failures.front().path).filename().string()
+                                + "\" could not be deleted even with administrator permission: "
+                                + result.failures.front().reason + ".";
+                    } else {
+                        cfg.message = items(result.failures.size())
+                                + " could not be deleted even with administrator permission.";
+                        std::string lines;
+                        const size_t shown = std::min<size_t>(result.failures.size(), 4);
+                        for (size_t i = 0; i < shown; ++i) {
+                            if (i) lines += "\n";
+                            lines += fs::path(result.failures[i].path).filename().string()
+                                    + ": " + result.failures[i].reason;
+                        }
+                        if (result.failures.size() > shown)
+                            lines += "\n… and " + items(result.failures.size() - shown) + " more";
+                        cfg.details = lines;
+                    }
+                    cfg.buttons = DialogButtons::OK;
+                    auto dialog = UltraCanvasDialogManager::CreateDialog(cfg);
+                    if (dialog) UltraCanvasDialogManager::ShowDialog(dialog, nullptr, GetWindow());
+                    else        ReportError(cfg.message);
+                }
+                break;
+            case ElevatedOutcome::Declined:
+                ReportError("Administrator permission was not granted; "
+                            + items(left) + " left in place.");
+                break;
+            case ElevatedOutcome::Failed:
+                ReportError("Could not delete as administrator: " + result.error);
+                break;
+            case ElevatedOutcome::Unavailable:
+                ReportError("Deleting as administrator is not available: " + result.error);
+                break;
+        }
+        FinishPendingDelete();   // elevationStarted: the ordinary finish now
+    }
+
     void UltraCanvasFilerWidget::FinishPendingDelete() {
         if (!pendingDelete) return;
+        // The queue is through: its worker and its progress window go before
+        // anything else, because what follows opens windows of its own.
+        EndFileOperation();
+        // Entries the user handed to the administrator retry go to the
+        // helper in one run before the delete is finished; the job's end
+        // returns here with elevationStarted set.
+        if (!pendingDelete->elevatedVictims.empty() &&
+            !pendingDelete->elevationStarted) {
+            RunElevatedDeletes();
+            return;
+        }
         std::unique_ptr<PendingDelete> pd = std::move(pendingDelete);
         // Silent clear when a neighbour is waiting to inherit the selection:
         // the rescan reports that one change. Firing an empty selection first
@@ -4873,46 +5671,68 @@ namespace UltraCanvas {
             for (const std::string& folder : pd->modifiedFolders)
                 if (reported.insert(folder).second) NotifyFolderModified(folder);
         }
+        // A caller that ran its own confirmation (DeletePaths) is told what
+        // came of it, the way a paste's caller is.
+        if (pd->onDone) pd->onDone(!pd->modifiedFolders.empty());
     }
 
     void UltraCanvasFilerWidget::ShowDeleteProblemDialog(const FilerEntry& entry,
-                                                         bool writeProtected,
+                                                         DeleteProblemKind kind,
                                                          const std::string& reason) {
-        const std::string kind = entry.isDirectory ? "folder" : "file";
+        const std::string kindWord = entry.isDirectory ? "folder" : "file";
+        const bool writeProtected = kind == DeleteProblemKind::WriteProtected;
+        const bool needsPermission = kind == DeleteProblemKind::NeedsPermission;
 
         DialogConfig cfg;
         cfg.dialogType = DialogType::Warning;
         cfg.buttons = DialogButtons::NoButtons;   // custom buttons added below
         cfg.width = 560;
-        cfg.height = 300;
+        cfg.height = needsPermission ? 340 : 300;   // one switch more
+        const std::string failure = "\"" + entry.name + "\" could not be deleted: "
+                + (reason.empty() ? std::string("unknown error") : reason) + ".";
+        std::vector<std::string> choices;
+        std::string allLabel;
+        size_t defaultChoice = 0;
         if (writeProtected) {
             cfg.title = entry.isDirectory
                     ? "Folder Is Write-Protected" : "File Is Write-Protected";
             cfg.message = "\"" + entry.name + "\" is write-protected.";
-            cfg.details = "Choose what to do with the locked " + kind + ":";
+            cfg.details = "Choose what to do with the locked " + kindWord + ":";
+            choices = {"Delete it anyway", "Skip this " + kindWord};
+            defaultChoice = 1;   // skipping is the safe default for a locked entry
+            allLabel = "Do this for all remaining write-protected items";
+        } else if (needsPermission) {
+            // Explorer's "You'll need to provide administrator permission to
+            // delete this file": the entry is deletable, just not by this
+            // user. Windows asks for consent before the helper runs.
+            cfg.title = "Administrator Permission Needed";
+            cfg.message = failure;
+            cfg.details = "Deleting this " + kindWord + " needs administrator permission. "
+                    "Windows will ask you to confirm before it is deleted.";
+            choices = {"Delete as administrator", "Try again", "Skip this " + kindWord};
+            defaultChoice = 0;
+            allLabel = "Do this for all remaining items";
         } else {
             cfg.title = "Cannot Delete";
-            cfg.message = "\"" + entry.name + "\" could not be deleted: "
-                    + (reason.empty() ? std::string("unknown error") : reason)
-                    + ".";
-            cfg.details = "The " + kind
+            cfg.message = failure;
+            cfg.details = "The " + kindWord
                     + " may be locked or in use by another program.";
+            choices = {"Try again", "Skip this " + kindWord};
+            defaultChoice = 0;   // trying again is the default for a failure
+            allLabel = "Do this for all remaining items";
         }
 
-        // Skipping is the safe default for a locked entry, trying again for
-        // a failure.
         auto self = this;
-        const bool shown = ShowProceedSkipDialog(cfg,
-                writeProtected ? "Delete it anyway" : "Try again",
-                "Skip this " + kind,
-                writeProtected
-                        ? "Do this for all remaining write-protected items"
-                        : "Do this for all remaining items",
-                /*proceedDefault=*/!writeProtected,
-                [self, writeProtected](bool proceed, bool all) {
+        // What each switch index means, per flavor: the write-protected and
+        // failed dialogs have proceed at 0 and skip at 1; the permission
+        // dialog puts the administrator retry first, try again second.
+        const FilerEntry victim = entry;   // `entry` aliases the queue
+        const bool shown = ShowProblemChoiceDialog(cfg, choices, defaultChoice, allLabel,
+                [self, kind, victim](size_t choice, bool all) {
                     if (!self->pendingDelete) return;
                     PendingDelete& pd = *self->pendingDelete;
-                    if (writeProtected) {
+                    if (kind == DeleteProblemKind::WriteProtected) {
+                        const bool proceed = (choice == 0);
                         if (all) {
                             pd.protectedForAll = true;
                             pd.protectedAction = proceed
@@ -4925,20 +5745,37 @@ namespace UltraCanvas {
                             pd.currentDecided = true;
                             pd.currentAction = DeleteProblemAction::Delete;
                         }
-                    } else if (!proceed) {
-                        if (all) pd.skipFailedForAll = true;
-                        self->AdvancePendingDelete();
                     } else {
-                        // Try again now; a stored "for all" grants every later
-                        // failing entry one silent retry before asking again.
-                        if (all) pd.retryFailedForAll = true;
-                        pd.currentRetried = true;
+                        // Failed: 0 = try again, 1 = skip.
+                        // NeedsPermission: 0 = as administrator, 1 = try
+                        // again, 2 = skip.
+                        const bool elevate = kind == DeleteProblemKind::NeedsPermission
+                                && choice == 0;
+                        const bool skip = choice ==
+                                (kind == DeleteProblemKind::NeedsPermission ? 2u : 1u);
+                        if (elevate) {
+                            // Deferred to the one helper run at the end of
+                            // the queue; "for all" sends every later
+                            // permission failure there without asking.
+                            if (all) pd.elevateForAll = true;
+                            pd.elevatedVictims.push_back(victim);
+                            self->AdvancePendingDelete();
+                        } else if (skip) {
+                            if (all) pd.skipFailedForAll = true;
+                            self->AdvancePendingDelete();
+                        } else {
+                            // Try again now; a stored "for all" grants every
+                            // later failing entry one silent retry before
+                            // asking again.
+                            if (all) pd.retryFailedForAll = true;
+                            pd.currentRetried = true;
+                        }
                     }
                     self->ContinuePendingDelete();
                 },
                 [self]() {
                     // Cancel keeps what was already deleted and drops the rest.
-                    self->FinishPendingDelete();
+                    self->CancelPendingDelete();
                 });
         if (!shown) {   // dialogs disabled — the old fixed behavior
             if (writeProtected) {   // attempt the delete like before
@@ -5093,19 +5930,32 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DuplicateSelection() {
+        if (RefuseWriteHere("duplicate")) return;
         std::vector<FilerEntry> sources = GetSelectedEntries();
         if (sources.empty()) return;
-        std::error_code ec;
-        for (const FilerEntry& e : sources) {
-            std::string dest = UniqueChildPath(e.name);
-            fs::copy(e.path, dest, fs::copy_options::recursive, ec);
-            if (ec) ReportError("Duplicate failed for " + e.path + ": " + ec.message());
-        }
-        Refresh();
-        NotifyFolderModified();
+        std::vector<std::string> paths;
+        paths.reserve(sources.size());
+        for (const FilerEntry& e : sources) paths.push_back(e.path);
+        // A duplicate IS a copy into the folder the entry already lives in,
+        // and the paste queue already gives that the next free name without
+        // asking. Going through it means a long duplicate gets the progress
+        // window, the failure dialog and the responsive window that a paste
+        // gets, instead of freezing on a bare recursive copy.
+        PasteFilesInto(currentPath, std::move(paths), /*cut=*/false);
     }
 
     void UltraCanvasFilerWidget::StartRename(size_t entryIndex) {
+        // On a remote drive the editor opens only if the host can actually
+        // carry the rename out; otherwise refuse now rather than let someone
+        // type a new name that goes nowhere.
+        if (ShowingRemoteFolder()) {
+            if (!remoteRename) {
+                ReportError("Cannot rename on this drive.");
+                return;
+            }
+        } else if (RefuseWriteHere("rename")) {
+            return;
+        }
         if (entryIndex >= entries.size()) return;
         CancelPendingRename();   // the editor opens now; drop any armed click
         if (renamingIndex >= 0) CancelRename();   // only one editor at a time
@@ -5181,6 +6031,20 @@ namespace UltraCanvas {
         DestroyRenameInput(restoreFocus);
         if (newName.empty() || newName == oldName ||
             newName.find('/') != std::string::npos) {
+            RequestRedraw();
+            return;
+        }
+        // A remote drive: the name goes to the host, and the "does the target
+        // already exist" question goes with it. Asking std::filesystem here
+        // would be asking the local disk about a path on a server, and the
+        // replace dialog below has nothing it could act on either.
+        if (ShowingRemoteFolder()) {
+            std::string error;
+            if (!remoteRename) {
+                ReportError("Cannot rename on this drive.");
+            } else if (!remoteRename(oldPath, newName, error)) {
+                ReportError(error.empty() ? "Cannot rename on this drive." : error);
+            }
             RequestRedraw();
             return;
         }
@@ -5398,6 +6262,401 @@ namespace UltraCanvas {
         if (auto* app = UltraCanvasApplication::GetInstance())
             app->StopTimer(pendingRenameTimer);
         pendingRenameTimer = InvalidTimerId;
+    }
+
+    // ===== COPY / MOVE / DELETE WORKER =====
+
+    bool UltraCanvasFilerWidget::FileOpItemCredit::Cancelled() const {
+        return heedCancel && op && op->cancelled.load();
+    }
+
+    void UltraCanvasFilerWidget::FileOpItemCredit::SetFile(const std::string& file) {
+        if (!op || file.empty()) return;
+        std::lock_guard<std::mutex> lk(op->mutex);
+        op->currentFile = file;
+    }
+
+    void UltraCanvasFilerWidget::FileOpItemCredit::Step(uint64_t units,
+                                                        const std::string& file) {
+        SetFile(file);
+        if (!op) return;
+        done += units;
+        // Without a slice (a step that only names files) or a total (a size
+        // nobody counted) there is nothing to scale the bytes into: the ring
+        // moves when the entry is done, in Finish.
+        if (slice == 0 || total == 0) return;
+        double fraction = static_cast<double>(done) / static_cast<double>(total);
+        if (fraction > 1.0) fraction = 1.0;
+        uint64_t want = static_cast<uint64_t>(fraction * static_cast<double>(slice));
+        if (want > slice) want = slice;
+        if (want <= credited) return;
+        op->doneUnits.fetch_add(want - credited);
+        credited = want;
+    }
+
+    void UltraCanvasFilerWidget::FileOpItemCredit::Finish() {
+        if (!op || credited >= slice) return;
+        op->doneUnits.fetch_add(slice - credited);
+        credited = slice;
+    }
+
+    void UltraCanvasFilerWidget::FileOpItemCredit::Rollback() {
+        if (!op || credited == 0) return;
+        op->doneUnits.fetch_sub(credited);
+        credited = 0;
+        done = 0;
+    }
+
+    uint64_t UltraCanvasFilerWidget::CountTreeBytes(const std::string& path,
+                                                    const FileOpItemCredit& credit) {
+        // One unit per entry on top of its bytes: a folder of ten thousand
+        // empty files is real work, and a ring that stands at 0 % all through
+        // it is a ring that says the operation is stuck.
+        std::error_code ec;
+        const fs::path root(path);
+        const fs::file_status st = fs::status(root, ec);   // follows links, as
+        if (ec) return 1;                                  // the copy does
+        if (!fs::is_directory(st)) {
+            if (!fs::is_regular_file(st)) return 1;
+            const uintmax_t size = fs::file_size(root, ec);
+            return ec ? 1 : 1 + static_cast<uint64_t>(size);
+        }
+        uint64_t units = 1;
+        std::error_code iterEc;
+        fs::recursive_directory_iterator it(root, iterEc), end;
+        if (iterEc) return units;
+        for (; it != end; it.increment(iterEc)) {
+            if (iterEc || credit.Cancelled()) break;
+            ++units;
+            std::error_code fec;
+            // symlink_status, because a link's target is counted where the
+            // target lives - or not at all, when it leaves the tree.
+            if (!fs::is_regular_file(it->symlink_status(fec)) || fec) continue;
+            const uintmax_t size = it->file_size(fec);
+            if (!fec) units += static_cast<uint64_t>(size);
+        }
+        return units;
+    }
+
+    uint64_t UltraCanvasFilerWidget::CountTreeEntries(const std::string& path,
+                                                      const FileOpItemCredit& credit) {
+        std::error_code ec;
+        const fs::path root(path);
+        if (!fs::is_directory(fs::symlink_status(root, ec)) || ec) return 1;
+        uint64_t entries = 1;
+        std::error_code iterEc;
+        fs::recursive_directory_iterator it(root, iterEc), end;
+        if (iterEc) return entries;
+        for (; it != end; it.increment(iterEc)) {
+            if (iterEc || credit.Cancelled()) break;
+            ++entries;
+        }
+        return entries;
+    }
+
+    bool UltraCanvasFilerWidget::CopyFileWithProgress(const std::string& from,
+                                                      const std::string& to,
+                                                      FileOpItemCredit& credit,
+                                                      std::error_code& ec) {
+        ec.clear();
+        credit.SetFile(fs::path(from).filename().string());
+        std::error_code sizeEc;
+        const uintmax_t size = fs::file_size(from, sizeEc);
+        const uint64_t bytes = sizeEc ? 0 : static_cast<uint64_t>(size);
+        if (sizeEc || bytes <= kFileOpChunkThreshold) {
+            fs::copy_file(from, to, fs::copy_options::overwrite_existing, ec);
+            if (ec) return false;
+            credit.Step(1 + bytes, {});
+            return true;
+        }
+
+        // A big file is copied in chunks so the ring moves inside it: a single
+        // four-gigabyte file is the case a percentage is most wanted for, and
+        // it is also the case where Cancel must not mean "wait for the file".
+        std::ifstream in(from, std::ios::binary);
+        std::ofstream out(to, std::ios::binary | std::ios::trunc);
+        if (!in || !out) {
+            ec = std::make_error_code(std::errc::io_error);
+            return false;
+        }
+        std::vector<char> buffer(kFileOpChunkBytes);
+        credit.Step(1, {});                     // the entry itself
+        while (in.good()) {
+            if (credit.Cancelled()) {
+                in.close();
+                out.close();
+                std::error_code rm;
+                fs::remove(to, rm);             // half a file helps nobody
+                return false;
+            }
+            in.read(buffer.data(), static_cast<std::streamsize>(buffer.size()));
+            const std::streamsize got = in.gcount();
+            if (got <= 0) break;
+            out.write(buffer.data(), got);
+            if (!out) {
+                ec = std::make_error_code(std::errc::io_error);
+                return false;
+            }
+            credit.Step(static_cast<uint64_t>(got), {});
+        }
+        const bool readFailed = in.bad();
+        in.close();
+        out.close();
+        if (readFailed || !out) {
+            ec = std::make_error_code(std::errc::io_error);
+            std::error_code rm;
+            fs::remove(to, rm);
+            return false;
+        }
+        // copy_file gives the copy the original's permissions; a chunked copy
+        // has to do it itself, or the two halves of this function would
+        // produce different files.
+        std::error_code pec;
+        const fs::file_status st = fs::status(from, pec);
+        if (!pec) fs::permissions(to, st.permissions(),
+                                  fs::perm_options::replace, pec);
+        return true;
+    }
+
+    bool UltraCanvasFilerWidget::CopyTreeWithProgress(const std::string& from,
+                                                      const std::string& to,
+                                                      FileOpItemCredit& credit,
+                                                      std::error_code& ec) {
+        ec.clear();
+        if (credit.Cancelled()) return false;
+        const fs::path source(from);
+        const fs::path target(to);
+        // status(), not symlink_status(): this replaces a
+        // std::filesystem::copy(..., recursive) call, which follows symlinks,
+        // and a copy that suddenly stopped following them would be a silent
+        // change of what lands in the destination.
+        const fs::file_status st = fs::status(source, ec);
+        if (ec) return false;
+
+        if (fs::is_directory(st)) {
+            fs::create_directories(target, ec);
+            if (ec) return false;
+            credit.Step(1, source.filename().string());
+            std::error_code iterEc;
+            fs::directory_iterator it(source, iterEc), end;
+            if (iterEc) { ec = iterEc; return false; }
+            for (; it != end; it.increment(iterEc)) {
+                if (iterEc) { ec = iterEc; return false; }
+                if (credit.Cancelled()) return false;
+                if (!CopyTreeWithProgress(it->path().string(),
+                                          (target / it->path().filename()).string(),
+                                          credit, ec))
+                    return false;
+            }
+            // The folder's own permissions go on last: a read-only source
+            // folder would otherwise refuse the children being written into
+            // the copy of it.
+            std::error_code pec;
+            fs::permissions(target, st.permissions(),
+                            fs::perm_options::replace, pec);
+            return true;
+        }
+        if (fs::is_regular_file(st))
+            return CopyFileWithProgress(from, to, credit, ec);
+        // Anything else - a device node, a socket, a link the library has its
+        // own idea about: hand it to the library, which knows what it can do.
+        fs::copy(source, target, fs::copy_options::recursive, ec);
+        if (ec) return false;
+        credit.Step(1, source.filename().string());
+        return true;
+    }
+
+    bool UltraCanvasFilerWidget::RemoveTreeWithProgress(const std::string& path,
+                                                        FileOpItemCredit& credit,
+                                                        std::error_code& ec) {
+        ec.clear();
+        if (credit.Cancelled()) return false;
+        const fs::path victim(path);
+        // symlink_status: a link is removed as the link it is and never
+        // followed - std::filesystem::remove_all's rule, and the one that
+        // keeps a link into somebody's home folder from taking the home
+        // folder with it.
+        std::error_code statEc;
+        const fs::file_status st = fs::symlink_status(victim, statEc);
+        // Nothing there is not a failure: std::filesystem::remove_all says as
+        // much by answering 0 for a path that is not there, and a delete whose
+        // entry vanished under it (a folder watcher, another program) must not
+        // stop the queue with a dialog about it.
+        if (st.type() == fs::file_type::not_found) return true;
+        if (statEc) { ec = statEc; return false; }
+        if (fs::is_directory(st)) {
+            // Reading a directory while unlinking out of it may skip entries
+            // (POSIX leaves it unspecified), so the pass is repeated until it
+            // finds nothing left. The repeat costs one empty readdir per
+            // folder and buys a delete that cannot silently leave files.
+            for (int pass = 0; pass < 8; ++pass) {
+                bool sawEntry = false;
+                std::error_code iterEc;
+                fs::directory_iterator it(victim, iterEc), end;
+                if (iterEc) { ec = iterEc; return false; }
+                for (; it != end; it.increment(iterEc)) {
+                    if (iterEc) { ec = iterEc; return false; }
+                    if (credit.Cancelled()) return false;
+                    sawEntry = true;
+                    if (!RemoveTreeWithProgress(it->path().string(), credit, ec))
+                        return false;
+                }
+                if (!sawEntry) break;
+            }
+        }
+        fs::remove(victim, ec);
+        if (ec) return false;
+        credit.Step(1, victim.filename().string());
+        return true;
+    }
+
+    std::string UltraCanvasFilerWidget::FileOperationCaption(
+            const std::string& verb, size_t itemCount,
+            const std::string& firstName, const std::string& target) {
+        std::string caption = verb + " ";
+        caption += (itemCount == 1 && !firstName.empty())
+                ? "\"" + firstName + "\""
+                : std::to_string(itemCount) + " items";
+        if (!target.empty()) caption += " to \"" + target + "\"";
+        return caption;
+    }
+
+    void UltraCanvasFilerWidget::BeginFileOperation(const std::string& title,
+                                                    const std::string& caption,
+                                                    size_t itemCount) {
+        if (fileOp) return;   // one operation at a time; the callers check too
+        fileOp = std::make_unique<FileOperation>();
+        fileOp->title = title;
+        fileOp->caption = caption;
+        fileOp->started = std::chrono::steady_clock::now();
+        fileOp->totalUnits.store(std::max<uint64_t>(1, itemCount) * kFileOpItemUnits);
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            fileOp->timer = app->StartTimer(kFileOpPollIntervalMs, true,
+                                            [this](TimerId) { PollFileOperation(); });
+    }
+
+    bool UltraCanvasFilerWidget::FileOperationBusy() const {
+        return fileOp && fileOp->running.load();
+    }
+
+    void UltraCanvasFilerWidget::RunFileOperationStretch(
+            std::function<void()> work, std::function<void()> onDone) {
+        if (!work) return;
+        // No session, or no application timer to collect a worker with (a
+        // headless host, a test): the queue runs on the calling thread, the
+        // way it did before there was a progress window at all. Queued rather
+        // than nested, so a paste that opens a dialog per entry does not
+        // recurse once per entry.
+        if (!fileOp || fileOp->timer == InvalidTimerId) {
+            if (fileOp) {
+                fileOp->syncWork = std::move(work);
+                fileOp->syncDone = std::move(onDone);
+                if (fileOp->syncActive) return;
+                fileOp->syncActive = true;
+                while (fileOp && fileOp->syncWork) {
+                    std::function<void()> queuedWork, queuedDone;
+                    queuedWork.swap(fileOp->syncWork);
+                    queuedDone.swap(fileOp->syncDone);
+                    queuedWork();
+                    FlushFileOperationErrors();
+                    if (queuedDone) queuedDone();
+                }
+                if (fileOp) fileOp->syncActive = false;
+                return;
+            }
+            work();
+            if (onDone) onDone();
+            return;
+        }
+        FileOperation* op = fileOp.get();
+        if (op->running.load()) return;   // the worker already has the queue
+        op->onStretchDone = std::move(onDone);
+        op->finished.store(false);
+        op->running.store(true);
+        op->worker = std::thread([op, work = std::move(work)]() {
+            RunGuarded("file operation", op->caption, work);
+            op->finished.store(true);
+        });
+    }
+
+    void UltraCanvasFilerWidget::PollFileOperation() {
+        if (!fileOp) return;
+        FileOperation* op = fileOp.get();
+        const bool stretchEnded = op->running.load() && op->finished.load();
+
+        if (!stretchEnded && op->running.load() && !op->dialogDue &&
+            !op->cancelled.load()) {
+            const auto elapsed = std::chrono::steady_clock::now() - op->started;
+            if (elapsed >= std::chrono::milliseconds(kFileOpProgressDelayMs)) {
+                op->dialogDue = true;
+                // The window is measured from the start of the whole
+                // operation, not of this stretch: a paste that spent the first
+                // two seconds in a conflict dialog does not start the wait
+                // again for every entry after it.
+                op->dialog = UltraCanvasProgressDialog::Show(
+                        GetWindow(), op->title, op->caption,
+                        [this]() { if (fileOp) fileOp->cancelled.store(true); },
+                        /*showIcon=*/false);
+            }
+        }
+        if (op->dialog && !stretchEnded) {
+            const uint64_t total = op->totalUnits.load();
+            const uint64_t done = op->doneUnits.load();
+            op->dialog->SetProgress(total > 0
+                    ? std::min(1.0, static_cast<double>(done) /
+                                    static_cast<double>(total))
+                    : -1.0);
+            std::string file;
+            {
+                std::lock_guard<std::mutex> lk(op->mutex);
+                file = op->currentFile;
+            }
+            op->dialog->SetDetail(file);
+        }
+        if (!stretchEnded) return;
+
+        // The stretch is over. Collect the worker and take the window down:
+        // what comes next is either a dialog of its own - two modal windows
+        // at once is nobody's idea of a file manager - or the end of the
+        // operation. A next stretch reopens it on the following tick, without
+        // a second two-second wait.
+        op->running.store(false);
+        op->finished.store(false);
+        if (op->worker.joinable()) op->worker.join();
+        if (op->dialog) { op->dialog->Close(); op->dialog.reset(); }
+        op->dialogDue = false;   // the next stretch may open its own window
+        FlushFileOperationErrors();
+        std::function<void()> stretchDone;
+        stretchDone.swap(op->onStretchDone);
+        if (stretchDone) stretchDone();   // may end the operation: `op` is gone
+    }
+
+    void UltraCanvasFilerWidget::FlushFileOperationErrors() {
+        if (!fileOp) return;
+        std::vector<std::string> errors;
+        {
+            std::lock_guard<std::mutex> lk(fileOp->mutex);
+            errors.swap(fileOp->deferredErrors);
+        }
+        for (const std::string& message : errors) ReportError(message);
+    }
+
+    void UltraCanvasFilerWidget::EndFileOperation() {
+        if (!fileOp) return;
+        FileOperation* op = fileOp.get();
+        // A worker still on the queue (the widget is going away, or the queue
+        // was cancelled from a dialog) is told to stop and then waited for:
+        // it walks widget state, so it must not outlive it.
+        op->cancelled.store(true);
+        if (op->timer != InvalidTimerId) {
+            if (auto* app = UltraCanvasApplication::GetInstance())
+                app->StopTimer(op->timer);
+            op->timer = InvalidTimerId;
+        }
+        if (op->worker.joinable()) op->worker.join();
+        if (op->dialog) { op->dialog->Close(); op->dialog.reset(); }
+        FlushFileOperationErrors();
+        fileOp.reset();
     }
 
     // ===== ARCHIVE WORKER =====
@@ -6346,6 +7605,7 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewDocument(const FilerNewDocumentType& type) {
+        if (RefuseWriteHere("create a file")) return;
         // The fresh document lands in the shown folder and has to be visible
         // there (with its rename editor reachable): a file-list (search
         // result) display returns to the folder first, and an active name
@@ -6379,6 +7639,25 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewFolder() {
+        // On a remote drive the folder is the host's to create. The name is
+        // picked from the listing on screen rather than by asking a
+        // filesystem, and the entry cannot be put straight into rename mode
+        // the way the local one is: it does not exist until the server has
+        // answered and the refresh has landed. Renaming it afterwards works.
+        if (ShowingRemoteFolder()) {
+            if (!remoteMakeDirectory) {
+                ReportError("Cannot create a folder on this drive.");
+                return;
+            }
+            std::string error;
+            const std::string name = UniqueRemoteChildName("New folder");
+            if (!remoteMakeDirectory(currentPath, name, error)) {
+                ReportError(error.empty() ? "Cannot create a folder on this drive."
+                                          : error);
+            }
+            return;
+        }
+        if (RefuseWriteHere("create a folder")) return;
         // Same as CreateNewDocument: the fresh folder must be visible in the
         // folder display, so the search-result display and the name filter
         // both end here.
@@ -7642,9 +8921,11 @@ namespace UltraCanvas {
                 // preview bitmap of their own, which the workers extract and
                 // decode like any other image (and a PDF-compatible .ai is
                 // rendered as the PDF it is). What is left - emf, wmf, dxf,
-                // dwg, an EPS written without a preview - keeps the type
-                // glyph.
+                // the DWG family (dwg/dwt/dws/sv$), an EPS written without a
+                // preview - keeps the type glyph.
                 return (ImagePipelineLoadsExtension(e.extension) ||
+                        CanPreviewVectorExtension(e.path) ||
+                        IsVectorGraphicsPath(e.path) ||
                         FormatCarriesEmbeddedPreview(e.extension))
                                ? e.path : std::string{};
             // Videos thumbnail as their poster frame (the first frame of the
@@ -8728,6 +10009,14 @@ namespace UltraCanvas {
                         if (img && img->GetWidth() > 0 && img->GetHeight() > 0)
                             pm = img->GetPixmap(req.w, req.h, req.fit, req.scale);
                     }
+                    // The drawing itself, where a registered Vector plugin
+                    // reads the format: rendered from the document at the
+                    // tile's size rather than scaled from whatever bitmap
+                    // the authoring program happened to store.
+                    if (!pm && CanPreviewVectorExtension(req.path)) {
+                        pm = RenderVectorDrawingPixmap(req.path, req.w, req.h,
+                                                       req.scale);
+                    }
                     if (!pm && FormatCarriesEmbeddedPreview(ext)) {
                         pm = RenderEmbeddedPreviewPixmap(req.path, req.w, req.h,
                                                          req.fit, req.scale);
@@ -8886,6 +10175,178 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== HOST OPERATING-SYSTEM FILE ICONS =====
+    // Display > File icons = HostOperatingSystem. What the desktop draws for
+    // a file TYPE, resolved on a worker and held per type rather than per
+    // file, so a folder of four thousand ".txt" files costs one lookup.
+
+    int UltraCanvasFilerWidget::HostIconEdgeFor(const Rect2Di& rect,
+                                               float deviceScale) {
+        // The sizes the icon sources themselves keep (16 / 24 / 32 / 48 / 64
+        // / 128 / 256). Resolving at the box's exact pixel height instead
+        // would re-resolve every type each time a window is dragged wider,
+        // and would ask a theme for sizes it does not have anyway.
+        static const int kEdges[] = { 16, 24, 32, 48, 64, 128, 256 };
+        // The DEVICE pixels the icon will be drawn with: on a HiDPI display
+        // an icon resolved at the logical size is drawn at twice its own
+        // resolution, which is exactly the blur this size chain exists to
+        // avoid.
+        const double scale = deviceScale > 0.0f ? deviceScale : 1.0;
+        const int want = std::max(1, static_cast<int>(std::lround(
+                std::min(rect.width, rect.height) * scale)));
+        for (int edge : kEdges)
+            if (edge >= want) return edge;
+        return kEdges[std::size(kEdges) - 1];
+    }
+
+    std::shared_ptr<UCPixmap> UltraCanvasFilerWidget::AcquireHostIcon(
+            const FilerEntry& e, const Rect2Di& rect, float deviceScale) {
+        if (fileIconStyle != FilerFileIconStyle::HostOperatingSystem)
+            return nullptr;
+        if (!HostFileIconsAvailable() || e.path.empty()) return nullptr;
+        // A bundle is a directory that is drawn as an application, and it
+        // carries its own icon: that is the native module's job, not a type
+        // lookup. It never reaches here (ThumbSourceFor claims it first);
+        // asking for the folder icon on its behalf would be wrong if it did.
+        const bool directory = e.isDirectory && !e.isBundle;
+        const int edge = HostIconEdgeFor(rect, deviceScale);
+        const std::string key = HostFileIconKey(e.path, directory) + "|" +
+                                std::to_string(edge);
+
+        std::lock_guard<std::mutex> lk(hostIconMutex);
+        auto it = hostIconSlots.find(key);
+        if (it != hostIconSlots.end()) {
+            // Drawn now, so it is the last thing an eviction should drop.
+            it->second.tick = ++hostIconTick;
+            if (it->second.state == ThumbState::Ready) return it->second.pixmap;
+            return nullptr;   // pending, or this system has no icon for it
+        }
+        // First ask for this type: queue it and draw the simple icon in the
+        // meantime. The frame never waits for a lookup.
+        HostIconSlot& slot = hostIconSlots[key];
+        slot.state = ThumbState::Pending;
+        slot.tick = ++hostIconTick;
+        HostIconRequest request;
+        request.key = key;
+        request.path = e.path;
+        request.isDirectory = directory;
+        request.edge = edge;
+        request.generation = hostIconGeneration;
+        hostIconQueue.push_back(std::move(request));
+        StartHostIconWorkerLocked();
+        hostIconCond.notify_one();
+        return nullptr;
+    }
+
+    void UltraCanvasFilerWidget::StartHostIconWorkerLocked() {
+        if (hostIconWorker.joinable() || hostIconShutdown) return;
+        hostIconWorker = std::thread([this]() { HostIconWorkerMain(); });
+    }
+
+    void UltraCanvasFilerWidget::StopHostIconWorker() {
+        {
+            std::lock_guard<std::mutex> lk(hostIconMutex);
+            hostIconShutdown = true;
+            hostIconQueue.clear();
+        }
+        hostIconCond.notify_all();
+        if (hostIconWorker.joinable()) hostIconWorker.join();
+    }
+
+    void UltraCanvasFilerWidget::HostIconWorkerMain() {
+        // The Windows shell wants the calling thread in a COM apartment, and
+        // held for the life of the thread rather than per lookup - the same
+        // setup the thumbnail workers hold for extracting application icons.
+        NativeFileIconThreadScope hostIconScope;
+        for (;;) {
+            HostIconRequest request;
+            {
+                std::unique_lock<std::mutex> lk(hostIconMutex);
+                hostIconCond.wait(lk, [this]() {
+                    return hostIconShutdown || !hostIconQueue.empty();
+                });
+                if (hostIconShutdown) return;
+                request = std::move(hostIconQueue.front());
+                hostIconQueue.pop_front();
+            }
+
+            // Outside the lock: a theme lookup reads directories, and a shell
+            // call is a shell call.
+            std::shared_ptr<UCPixmap> pixmap;
+            RunGuarded("host file icon", request.path, [&]() {
+                pixmap = LoadHostFileIconPixmap(request.path,
+                                                request.isDirectory,
+                                                request.edge);
+            });
+
+            {
+                std::lock_guard<std::mutex> lk(hostIconMutex);
+                if (hostIconShutdown) return;
+                // The cache was dropped while this ran (the setting changed,
+                // the theme changed): the answer is for a cache that no
+                // longer exists - and under a theme that may no longer be the
+                // one in use - so it goes nowhere.
+                if (request.generation != hostIconGeneration) continue;
+                auto it = hostIconSlots.find(request.key);
+                if (it == hostIconSlots.end()) continue;
+                if (pixmap) {
+                    it->second.bytes =
+                            static_cast<size_t>(std::max(0, pixmap->GetRawWidth())) *
+                            static_cast<size_t>(std::max(0, pixmap->GetRawHeight())) * 4;
+                    hostIconBytes += it->second.bytes;
+                    it->second.pixmap = std::move(pixmap);
+                    it->second.state = ThumbState::Ready;
+                    EvictHostIconsLocked(request.key);
+                } else {
+                    // No icon for this type on this system. Retried once: a
+                    // theme is read from disk, and the first read of a folder
+                    // can fail for the same transient reasons any other can.
+                    // After that the type keeps the simple icon and is never
+                    // asked about again.
+                    if (++it->second.attempts < 2) {
+                        HostIconRequest retry = request;
+                        hostIconQueue.push_back(std::move(retry));
+                        hostIconCond.notify_one();
+                        continue;
+                    }
+                    it->second.state = ThumbState::Failed;
+                }
+            }
+            PostThumbnailRedraw();
+        }
+    }
+
+    void UltraCanvasFilerWidget::EvictHostIconsLocked(const std::string& keepKey) {
+        if (hostIconBytes <= kHostIconBudget) return;
+        // Least recently drawn first, so what is on screen survives. Only
+        // finished slots are droppable: a pending one has a lookup in flight
+        // that would land in a slot that is no longer there.
+        std::vector<std::pair<uint64_t, std::string>> droppable;
+        droppable.reserve(hostIconSlots.size());
+        for (const auto& [key, slot] : hostIconSlots) {
+            if (key == keepKey || slot.state != ThumbState::Ready) continue;
+            droppable.emplace_back(slot.tick, key);
+        }
+        std::sort(droppable.begin(), droppable.end());
+        for (const auto& [tick, key] : droppable) {
+            if (hostIconBytes <= kHostIconBudget) break;
+            auto it = hostIconSlots.find(key);
+            if (it == hostIconSlots.end()) continue;
+            hostIconBytes -= std::min(hostIconBytes, it->second.bytes);
+            hostIconSlots.erase(it);
+        }
+    }
+
+    void UltraCanvasFilerWidget::DropHostIconCache() {
+        std::lock_guard<std::mutex> lk(hostIconMutex);
+        hostIconSlots.clear();
+        hostIconQueue.clear();
+        hostIconBytes = 0;
+        // Anything already in flight belongs to the cache just thrown away.
+        ++hostIconGeneration;
+    }
+
+
     void UltraCanvasFilerWidget::PostThumbnailRedraw() {
         // Coalesced: one queued UI task repaints however many thumbnails
         // finished before it ran.
@@ -8958,7 +10419,7 @@ namespace UltraCanvas {
             }
         }
 
-        Color color = CategoryColor(e.category);
+        Color color = EntryColorOf(e);
         if (e.isDirectory) {
             // A folder the host gave an icon (the well-known user folders, or
             // one the user picked) is drawn as that image instead of the
@@ -8975,6 +10436,17 @@ namespace UltraCanvas {
                     ctx->DrawImage(*img, Rect2Dd(rect), ImageFitMode::Contain);
                     return;
                 }
+            }
+            // Display > File icons = Host OS: this desktop's folder icon,
+            // which is the point of the setting - a listing that matches the
+            // rest of the desktop. It therefore wins over the folder previews
+            // below: those are drawn INTO the built-in folder shape, and
+            // there is no shape to draw them into here. Null while the
+            // lookup is still running, and on a system with no icon to give,
+            // so both fall through to what the widget draws itself.
+            if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
+                ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
+                return;
             }
             // Display > Folder previews: the first pictures inside the folder
             // peeking out of it. Only once the listing has landed and found
@@ -8994,6 +10466,17 @@ namespace UltraCanvas {
             ctx->SetFillPaint(body);
             ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y + tabH,
                                               rect.width, rect.height - tabH), 2);
+            return;
+        }
+
+        // Display > File icons = Host OS: what this desktop draws for the
+        // type. Asked here rather than before the thumbnail above because a
+        // file with a picture of its own shows the picture on every desktop -
+        // Explorer, Finder and the Linux file managers all do that, and the
+        // type icon is what they fall back to. Null while the lookup runs, or
+        // where the system has no icon for the type: the sheet below.
+        if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
+            ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
             return;
         }
 
@@ -9456,7 +10939,7 @@ namespace UltraCanvas {
         const FilerEntry& e = entries[item.entryIndex];
         bool selected = item.entryIndex < frameSelected.size() &&
                         frameSelected[item.entryIndex];
-        Color base = CategoryColor(e.category);
+        Color base = EntryColorOf(e);
         // Vary the shade a little by index so equal categories stay separable.
         int delta = int(item.entryIndex % 5) * 6 - 12;
         Color fill(clampi(base.r + delta, 0, 255), clampi(base.g + delta, 0, 255),
@@ -9483,7 +10966,12 @@ namespace UltraCanvas {
             fsty.fontSize = style.smallFontSize;
             fsty.fontWeight = FontWeight::Bold;
             ctx->SetFontStyle(fsty);
-            ctx->SetTextPaint(Color(255, 255, 255, 235));
+            // The caption sits ON the category colour, so its ink comes from
+            // the entry's family rather than being white by assumption: white
+            // on the dark families, near-black on the light ones (audio, text
+            // and code, folders), where white would be unreadable.
+            const Color ink = EntryCaptionInkOf(e);
+            ctx->SetTextPaint(Color(ink.r, ink.g, ink.b, 235));
             // The name wraps into whatever the cell has room for above the size
             // line (cells are sized by the treemap, not by the caption).
             int lineH = NameLineHeight();
@@ -9502,7 +10990,7 @@ namespace UltraCanvas {
             if (showSize) {
                 fsty.fontWeight = FontWeight::Normal;
                 ctx->SetFontStyle(fsty);
-                ctx->SetTextPaint(Color(255, 255, 255, 190));
+                ctx->SetTextPaint(Color(ink.r, ink.g, ink.b, 190));
                 ctx->DrawText(FormatSize(e.effectiveSize),
                               Point2Dd(item.rect.x + 4, ny + 1));
             }
@@ -10427,7 +11915,7 @@ namespace UltraCanvas {
         return renamingIndex >= 0 || pendingRenameIndex >= 0 ||
                draggingItems || dragOutArmed || marqueeActive || marqueeArmed ||
                compressDlg.active || activePopupMenu || archiveJob ||
-               pendingPaste || pendingDelete
+               fileOp || pendingPaste || pendingDelete
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
                || pendingExtract
 #endif
@@ -11572,11 +13060,28 @@ namespace UltraCanvas {
                         [this, b]() { SetExtensionBadge(b); }));
             }
 
+            // File icons > the widget's own drawn icons, or the ones this
+            // desktop uses for the type. Only offered where there is a
+            // desktop to take them from: on a platform without one the second
+            // choice would draw exactly what the first does.
+            std::vector<MenuItemData> fileIconItems;
+            if (AreHostFileIconsAvailable()) {
+                for (FilerFileIconStyle s : AllFileIconStyles()) {
+                    fileIconItems.push_back(MenuItemData::Radio(
+                            FileIconStyleLabel(s), 5, fileIconStyle == s,
+                            [this, s]() { SetFileIconStyle(s); }));
+                }
+            }
+
             std::vector<MenuItemData> displayItems;
             displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
             displayItems.push_back(MenuItemData::Submenu("File extensions",
                                                          extensionItems));
+            if (!fileIconItems.empty()) {
+                displayItems.push_back(MenuItemData::Submenu("File icons",
+                                                             fileIconItems));
+            }
             displayItems.push_back(MenuItemData::Submenu("Thumbnails", thumbnailItems));
             displayItems.push_back(MenuItemData::Submenu("Detail view", detailViewItems));
             displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));

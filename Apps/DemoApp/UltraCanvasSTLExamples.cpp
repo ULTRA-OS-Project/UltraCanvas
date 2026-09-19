@@ -6,14 +6,15 @@
 // mouse-orbited 3D view on GL builds, a mesh info placeholder otherwise. The stats
 // panel reports what the parser found - triangles, vertices, bounds, encoding and
 // parse time - and the sample can be opened fullscreen.
-// Version: 1.0.0
-// Last Modified: 2026-09-10
+// Version: 1.1.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDemoScrollText.h"
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
@@ -298,10 +299,10 @@ namespace {
         statsTitle->SetFontSize(13);
         statsContainer->AddChild(statsTitle);
 
-        auto statsText = std::make_shared<UltraCanvasLabel>("STLStatsText", 10, 40, 300, 200);
-        statsText->SetFontSize(11);
-        statsText->SetTextColor(Color(50, 50, 50, 255));
-        statsContainer->AddChild(statsText);
+        // Scrolled rather than plain: the stats grow with the file - a header
+        // comment, a long path and a solid name all land in this panel.
+        auto statsText = demoui::MakeScrollingText("STLStatsText", 10, 40, 300, 200);
+        statsContainer->AddChild(statsText.View);
         container->AddChild(statsContainer);
 
         // ===== VIEWER PANEL =====
@@ -322,7 +323,7 @@ namespace {
         if (files.empty()) {
             const std::string message = "No .stl files found in " + sampleDir;
             statusLabel->SetText(message);
-            statsText->SetText(message);
+            statsText.SetText(message);
             nameLabel->SetText("(no samples)");
             return container;
         }
@@ -347,7 +348,7 @@ namespace {
             char counter[64];
             std::snprintf(counter, sizeof(counter), "  (%zu of %zu)", index + 1, files.size());
             nameLabel->SetText(sample.fileName + counter);
-            statsText->SetText(DescribeSample(sample));
+            statsText.SetText(DescribeSample(sample));
             statusLabel->SetText(SummariseSample(sample));
         };
 
@@ -402,8 +403,8 @@ namespace {
         infoTitle->SetFontSize(13);
         infoContainer->AddChild(infoTitle);
 
-        auto infoText = std::make_shared<UltraCanvasLabel>("STLInfoText", 10, 40, 300, 200);
-        infoText->SetText(
+        auto infoText = demoui::MakeScrollingText("STLInfoText", 10, 40, 300, 200);
+        infoText.SetText(
                 "✓ Read ASCII STL and binary STL (auto-detected)\n"
                 "✓ Write ASCII STL and binary STL\n"
                 "✓ Per-vertex normals, recomputed when a file\n"
@@ -415,9 +416,7 @@ namespace {
                 "✓ Registered with FileLoader: LoadGraphicsFile\n"
                 "   opens .stl like any other graphics file"
         );
-        infoText->SetFontSize(11);
-        infoText->SetTextColor(Color(50, 50, 50, 255));
-        infoContainer->AddChild(infoText);
+        infoContainer->AddChild(infoText.View);
         container->AddChild(infoContainer);
 
         // ===== HOW IT WORKS =====
@@ -425,8 +424,8 @@ namespace {
         howContainer->SetBackgroundColor(Color(255, 250, 240, 255));
         howContainer->SetBorders(2, Color(222, 184, 135, 255));
 
-        auto howText = std::make_shared<UltraCanvasLabel>("STLHowText", 10, 8, 940, 88);
-        howText->SetText(
+        auto howText = demoui::MakeScrollingText("STLHowText", 10, 8, 940, 88);
+        howText.SetText(
                 "UltraCanvasSTLLoader::Load parses the file into a Mesh3D (positions, normals, indices, bounds);\n"
                 "UltraCanvasSTLElement uploads that mesh to an UltraCanvasGLSurface and shades it, or draws the\n"
                 "mesh summary when the build has no GL. UltraCanvasSTLPlugin registers both with FileLoader.\n"
@@ -434,9 +433,7 @@ namespace {
                 "Mesh3D mesh; UltraCanvasSTLLoader::Load(\"model.stl\", mesh);   "
                 "UltraCanvasSTLLoader::Save(\"copy.stl\", mesh, STLFormat::Binary);"
         );
-        howText->SetFontSize(11);
-        howText->SetTextColor(Color(50, 50, 50, 255));
-        howContainer->AddChild(howText);
+        howContainer->AddChild(howText.View);
         container->AddChild(howContainer);
 
         return container;

@@ -24,8 +24,8 @@
 // the page names the large ones it skips rather than pretending they are
 // unsupported. See kSamples below.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-13
+// Version: 1.1.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasDemo.h"
@@ -35,6 +35,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDemoScrollText.h"
 #include "UltraCanvasConfig.h"
 #include "UltraCanvasUtils.h"
 
@@ -68,11 +69,21 @@ namespace {
     };
 
     // Ordered smallest file first, which also happens to run from the most
-    // compact binary format to the most verbose. Everything here is under
-    // 600 kB so the page stays responsive even though each sample is parsed
-    // on demand - the larger samples in media/3D (the 18 MB .blend, the
+    // compact binary format to the most verbose. Everything here is under a
+    // megabyte, bar the 2.6 MB DXF whose 8110 flat triangles cost less to read
+    // than their size suggests, so the page stays responsive even though each
+    // sample is parsed on demand - the larger samples in media/3D (the 18 MB .blend, the
     // 6.9 MB VRML, the 3.9 MB PLY) are read by the same dispatch and are
     // deliberately not listed; see kOmittedNote.
+    //
+    // Four of the aircraft exports used to be incomplete, which looked like a
+    // reader dropping geometry and was not: both meshes in the source
+    // media/3D/Blend/E-45-Aircraft.blend carry a Mirror modifier about X=0,
+    // and the .dae, .x and binary .fbx had been exported without applying
+    // modifiers, so the files held half an aeroplane - while the .ms3d held
+    // only the glass canopy. They were regenerated from that .blend with the
+    // modifier applied (the .fbx by Blender's exporter, the rest by mirroring
+    // the file's own geometry), so every sample now carries the whole model.
     const std::vector<SampleSpec>& Samples() {
         static const std::vector<SampleSpec> kSamples = {
                 {"STEP/Pin.step", "step",
@@ -84,12 +95,13 @@ namespace {
                  "the tessellation tolerance decides the triangle count."},
                 {"MS3D/E-45-Aircraft.ms3d", "ms3d",
                  "A game format: a fixed sequence of packed little-endian\n"
-                 "structs, no chunks or offsets. Groups become meshes, and\n"
-                 "smoothing groups arrive as a bitmask."},
+                 "structs, no chunks or offsets. Groups become meshes - here\n"
+                 "the hull and the canopy - and smoothing groups arrive as a\n"
+                 "bitmask. Sixteen-bit indices cap it at 65535 vertices."},
                 {"FBX/E-45-Aircraft.fbx", "fbx",
-                 "Binary FBX - the same model as the 2.2 MB ASCII variant in\n"
-                 "media/3D/FBX, an order of magnitude smaller. What the\n"
-                 "header declared lands in ModelDocument::Metadata as\n"
+                 "Binary FBX - vertex for vertex the same mesh as the 2.2 MB\n"
+                 "ASCII variant in media/3D/FBX, in a quarter of the space.\n"
+                 "What the header declared lands in ModelDocument::Metadata as\n"
                  "fbx.version, fbx.encoding and fbx.application."},
                 {"Alembic/E-45-Aircraft.abc", "abc",
                  "A sampled cache rather than a scene description: geometry is\n"
@@ -104,14 +116,20 @@ namespace {
                 {"XFile/E-45-Aircraft.x", "x",
                  "DirectX retained-mode .x, text encoding. Templates declare\n"
                  "their own layout, so the parser is driven by the file."},
+                {"DXF/E-45-Aircraft.dxf", "dxf",
+                 "The same CAD format the drawings page reads, this time\n"
+                 "carrying geometry: 8110 3DFACE entities rather than the\n"
+                 "LWPOLYLINEs and SPLINEs of a flat drawing. A DXF holding\n"
+                 "only 2D entities is refused here with an explanation, and\n"
+                 "belongs on that page instead - see media/vector/DXF."},
         };
         return kSamples;
     }
 
     const char* kOmittedNote =
             "Also read, but omitted here for size: .blend (18 MB), VRML .wrl\n"
-            "(6.9 MB), PLY (3.9 MB), DXF (2.6 MB), ASCII FBX (2.2 MB), X3D\n"
-            "(1.4 MB) and OBJ (1.3 MB). Same dispatch, same document.";
+            "(6.9 MB), PLY (3.9 MB), ASCII FBX (2.2 MB), X3D (1.4 MB) and OBJ\n"
+            "(1.3 MB). Same dispatch, same document.";
 
     // ===== LOADING =====
 
@@ -344,6 +362,25 @@ namespace {
         return colors;
     }
 
+    // The tree entry's own name, and the page's heading. Kept beside the
+    // sample table so a new sample cannot arrive without a title for it.
+    std::string FormatTitle(const std::string& extension) {
+        struct Named { const char* extension; const char* title; };
+        static const Named kNames[] = {
+                {"step", "STEP 3D Models - Exact B-rep Solids"},
+                {"ms3d", "MilkShape 3D Models"},
+                {"fbx",  "FBX 3D Models"},
+                {"abc",  "Alembic 3D Models - A Sampled Cache"},
+                {"dae",  "COLLADA 3D Models - A Scene Graph in XML"},
+                {"3ds",  "3D Studio Models"},
+                {"x",    "DirectX .x 3D Models"},
+                {"dxf",  "DXF 3D Models - Geometry, Not a Drawing"},
+        };
+        for (const Named& named : kNames)
+            if (extension == named.extension) return named.title;
+        return "." + extension + " 3D Models";
+    }
+
     std::shared_ptr<UltraCanvasButton> MakeToolButton(const std::string& id, int x, int y, int w,
                                                       const std::string& text,
                                                       std::function<void()> action) {
@@ -358,20 +395,31 @@ namespace {
 } // namespace
 
 // ===== MODEL FORMATS DEMO PAGE =====
-std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFormatsExamples() {
+// `extension` selects one format, which is how the tree lists them: a reader
+// per entry, beside STL, rather than one page a visitor has to page through to
+// discover that .step and .3ds are both supported. Empty shows them all.
+std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFormatsExamples(
+        const std::string& extension) {
     auto container = std::make_shared<UltraCanvasContainer>("ModelFormatsExamples", 0, 0, 1000, 780);
     container->SetBackgroundColor(Color(245, 245, 245, 255));
 
     auto title = std::make_shared<UltraCanvasLabel>("MFTitle", 10, 10, 800, 30);
-    title->SetText("3D Model Formats - One Document Structure, Nine Readers");
+    title->SetText(extension.empty()
+                   ? std::string("3D Model Formats - One Document Structure, Nine Readers")
+                   : FormatTitle(extension));
     title->SetFontSize(16);
     title->SetFontWeight(FontWeight::Bold);
     container->AddChild(title);
 
     auto description = std::make_shared<UltraCanvasLabel>("MFDescription", 10, 45, 960, 44);
     description->SetText(
-            "Every sample is read into the same ModelStorage::ModelDocument, so the panels on the right show where the\n"
-            "formats genuinely differ - scene graph, materials, units, up-axis, exact solids - rather than nine of the same row.");
+            extension.empty()
+            ? std::string(
+                "Every sample is read into the same ModelStorage::ModelDocument, so the panels on the right show where the\n"
+                "formats genuinely differ - scene graph, materials, units, up-axis, exact solids - rather than nine of the same row.")
+            : std::string(
+                "Read into a ModelStorage::ModelDocument by the Models plugin's dispatch - the same universal structure every\n"
+                "other 3D format lands in, so the panels on the right say what this one carried and what the format can carry."));
     description->SetFontSize(12);
     description->SetTextColor(Color(80, 80, 80, 255));
     container->AddChild(description);
@@ -386,6 +434,7 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     const std::string modelsDir = NormalizePath(GetResourcesDir() + "media/3D/");
     auto samples = std::make_shared<std::vector<FormatSample>>();
     for (const SampleSpec& spec : Samples()) {
+        if (!extension.empty() && extension != spec.extension) continue;
         FormatSample sample;
         sample.path = NormalizePath(modelsDir + spec.relativePath);
         sample.fileName = std::filesystem::path(sample.path).filename().string();
@@ -408,10 +457,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     statsTitle->SetFontSize(13);
     statsContainer->AddChild(statsTitle);
 
-    auto statsText = std::make_shared<UltraCanvasLabel>("MFStatsText", 10, 38, 300, 344);
-    statsText->SetFontSize(11);
-    statsText->SetTextColor(Color(50, 50, 50, 255));
-    statsContainer->AddChild(statsText);
+    // Scrolled rather than plain: a COLLADA scene fills this panel and then
+    // some, while a STEP solid leaves it half empty.
+    auto statsText = demoui::MakeScrollingText("MFStatsText", 10, 38, 300, 344);
+    statsContainer->AddChild(statsText.View);
     container->AddChild(statsContainer);
 
     // ===== CAPABILITY PANEL =====
@@ -425,10 +474,10 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     capsTitle->SetFontSize(13);
     capsContainer->AddChild(capsTitle);
 
-    auto capsText = std::make_shared<UltraCanvasLabel>("MFCapsText", 10, 34, 300, 190);
-    capsText->SetFontSize(11);
-    capsText->SetTextColor(Color(50, 50, 50, 255));
-    capsContainer->AddChild(capsText);
+    // The capability grid is a fixed twelve lines, but the per-sample note
+    // under it is not - and it is a paragraph when the build has no converter.
+    auto capsText = demoui::MakeScrollingText("MFCapsText", 10, 34, 300, 190);
+    capsContainer->AddChild(capsText.View);
     container->AddChild(capsContainer);
 
     // ===== VIEWER PANEL =====
@@ -470,8 +519,8 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
         char counter[64];
         std::snprintf(counter, sizeof(counter), "  (%zu of %zu)", index + 1, samples->size());
         nameLabel->SetText(sample.formatName + " - " + sample.fileName + counter);
-        statsText->SetText(DescribeDocument(sample));
-        capsText->SetText(DescribeCapabilities(sample));
+        statsText.SetText(DescribeDocument(sample));
+        capsText.SetText(DescribeCapabilities(sample));
         statusLabel->SetText(SummariseSample(sample));
     };
 
@@ -497,33 +546,35 @@ std::shared_ptr<UltraCanvasUIElement> UltraCanvasDemoApplication::CreateModelFor
     };
     viewerPanel->AddChild(materialBtn);
 
+    // A format page with one sample has nothing to page through, so it says so
+    // by not offering the buttons at all rather than by two that do nothing.
     const size_t sampleCount = samples->size();
-    auto prevBtn = MakeToolButton("MFPrev", 300, 450, 100, "◀ Prev",
-                                  [showSample, currentIndex, sampleCount]() {
-                                      showSample((*currentIndex + sampleCount - 1) % sampleCount);
-                                  });
-    viewerPanel->AddChild(prevBtn);
+    if (sampleCount > 1) {
+        auto prevBtn = MakeToolButton("MFPrev", 300, 450, 100, "◀ Prev",
+                                      [showSample, currentIndex, sampleCount]() {
+                                          showSample((*currentIndex + sampleCount - 1) % sampleCount);
+                                      });
+        viewerPanel->AddChild(prevBtn);
 
-    auto nextBtn = MakeToolButton("MFNext", 410, 450, 100, "Next ▶",
-                                  [showSample, currentIndex, sampleCount]() {
-                                      showSample((*currentIndex + 1) % sampleCount);
-                                  });
-    viewerPanel->AddChild(nextBtn);
+        auto nextBtn = MakeToolButton("MFNext", 410, 450, 100, "Next ▶",
+                                      [showSample, currentIndex, sampleCount]() {
+                                          showSample((*currentIndex + 1) % sampleCount);
+                                      });
+        viewerPanel->AddChild(nextBtn);
+    }
 
     // ===== HOW IT WORKS =====
     auto howContainer = std::make_shared<UltraCanvasContainer>("MFHowPanel", 20, 630, 620, 100);
     howContainer->SetBackgroundColor(Color(255, 250, 240, 255));
     howContainer->SetBorders(2, Color(222, 184, 135, 255));
 
-    auto howText = std::make_shared<UltraCanvasLabel>("MFHowText", 10, 8, 600, 88);
-    howText->SetText(
+    auto howText = demoui::MakeScrollingText("MFHowText", 10, 8, 600, 88);
+    howText.SetText(
             std::string("ConversionOptions o; o.TriangulateOnImport = o.TessellateOnImport = true;\n") +
             "auto doc = UltraCanvasModelFormatsPlugin::LoadModelDocument(path, o);\n"
             "Mesh3D mesh = ModelDocumentToMesh3D(*doc);\n"
             "\n" + kOmittedNote);
-    howText->SetFontSize(11);
-    howText->SetTextColor(Color(50, 50, 50, 255));
-    howContainer->AddChild(howText);
+    howContainer->AddChild(howText.View);
     container->AddChild(howContainer);
 
     return container;

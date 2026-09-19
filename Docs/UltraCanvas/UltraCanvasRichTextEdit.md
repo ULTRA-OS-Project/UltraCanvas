@@ -36,8 +36,11 @@ UCRichDocument             document model: blocks, runs, media, serializers     
 Both lower layers are plain C++ over std types, so every editing rule is
 testable without a display (`Tests/RichTextEditorTest.cpp`).
 
-**Positions are `{blockIndex, byteOffset}`** — the offset is into the block's
-*concatenated run text*, never a `{run, offset}` pair. Applying a format splits
+**Positions are `{blockIndex, cellRow, cellColumn, byteOffset}`** — the offset
+is into the *concatenated run text* of one **text container**, never a
+`{run, offset}` pair. A container is either a block's own runs
+(`cellRow == cellColumn == -1`, which is every position outside a table) or one
+cell of a table block. Applying a format splits
 and merges runs constantly; a caret must not move when the run structure
 changes underneath it. That same string is what the element hands to
 `ITextLayout`, so hit testing and caret geometry need no translation layer.
@@ -81,6 +84,14 @@ UCWordDocumentIO::Save(savePath, *editor->GetDocument(), error);
 Because the element shares ownership of the document (`std::shared_ptr`), an
 application can keep holding it — to save it, to inspect blocks the user never
 touched, or to hand the same document to a read-only view.
+
+UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
+the reader produced, hands it to the element, and hands the same object back to
+`UCWordDocumentIO::Save` — no conversion in either direction. See
+`Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
+`SaveRichDocumentAs`) for a worked integration, including how the element is
+swapped into an existing tab layout and how a shared formatting toolbar drives
+either this element or a Markdown text area.
 
 ## Building the toolbar
 
@@ -174,6 +185,39 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+### Tables
+
+The caret goes inside table cells: click into one, type, select, format, and
+**Tab** / **Shift+Tab** walk the cells in reading order.
+
+```cpp
+RichDocPosition cell(tableBlock, /*row*/ 1, /*column*/ 0, /*byteOffset*/ 0);
+editor->GetEditor().SetCaret(cell);
+std::string text = editor->GetEditor().TextAt(cell);
+```
+
+Three rules make cell editing behave the way a word processor does rather than
+the way a naive text model would:
+
+- **Enter inside a cell adds a line to the cell**, it does not split the table's
+  block in two.
+- **Backspace at the start of a cell steps to the previous cell** and deletes
+  nothing — cells cannot be merged by deleting the text between them, so there
+  is nothing sensible to join.
+- **A selection never spans two cells** (nor crosses into or out of one). The
+  moving end is held at the edge of the anchor's container, because a range
+  that spanned cells would describe an edit no table can honour.
+
+**Merged cells are laid out on the grid.** A cell spanning columns is drawn that
+many columns wide and the cells beside it shift past it; a cell spanning rows
+stretches down over them and owns its column in every row it covers. A cell's
+position stays `{row, index-within-row}` — the grid column is geometry only, so
+spans never move a caret.
+
+Search reaches into cells, so **find and replace now cover table content**.
+`AllContainers()` enumerates every container in document order if you need to
+walk the document yourself.
+
 ### Structure
 
 ```cpp
@@ -181,7 +225,24 @@ editor->InsertHorizontalRule();
 editor->InsertPageBreak();
 editor->InsertImageFromFile("/path/diagram.png", "Architecture diagram");
 editor->InsertImageFromMemory("chart.png", "image/png", bytes, "Q3 revenue");
+
+// ...or INSIDE the line at the caret, rather than as a paragraph of its own:
+editor->InsertInlineImageFromFile("/path/logo.png", "Logo");
+editor->InsertInlineImageFromMemory("icon.png", "image/png", bytes, "warning");
 ```
+
+**A picture can sit in the text.** A run with `mediaIndex >= 0` *is* a picture -
+a logo mid-sentence, an icon in a heading - and its `text` is a single U+FFFC
+OBJECT REPLACEMENT CHARACTER. That placeholder gives the picture one character's
+worth of the block's text, so the caret steps over it, a selection covers it and
+Backspace deletes it, with no position needing to know it is not a letter. The
+layout reserves a box for it (`TextAttributeFactory::CreateShape`), so the line
+grows to hold it and the text after it flows along.
+
+Readers decide inline-versus-block by what else the paragraph holds: a picture
+alone on a line is a standalone `RichBlockType::Image`, a picture among words is
+a run. Both formats anchor the two the same way in their markup, so the markup
+alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
@@ -201,6 +262,62 @@ self-contained and saves to `.odt`/`.docx` with the picture inside it.
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+click on a link | `onLinkClicked` (a plain click just places the caret, so links stay editable) |
+
+## Find and replace
+
+```cpp
+RichFindOptions options;
+options.caseSensitive = false;
+options.wholeWord = true;
+editor->SetFindOptions(options);
+
+editor->FindNext("Berlin");        // selects the match and scrolls to it
+editor->FindPrevious("Berlin");
+editor->ReplaceCurrent("Berlin", "Munich");   // only if the selection IS a match
+int replaced = editor->ReplaceAll("Berlin", "Munich");
+int total = editor->CountMatches("Berlin");   // for a "3 of 12" readout
+```
+
+Two things worth knowing:
+
+- **`ReplaceAll` is one undo step**, not one per match, so Ctrl+Z takes the
+  whole replace back.
+- **Replaced text keeps the formatting of the text it replaced.** Replacing a
+  word inside a bold heading leaves it bold — the format is sampled from inside
+  the match before it is deleted, because deleting it would otherwise leave the
+  caret in the preceding run and the insert would adopt *that* formatting.
+
+Search lives in `UCRichDocumentEditor` (`Find`, `FindAll`, `ReplaceAll`), so it
+is testable without a display. Matches never span a block boundary, which is
+what makes each one independently replaceable. Case folding is ASCII, the same
+as `UltraCanvasTextArea`'s search: `report` finds `Report`, but `strasse` does
+not find `STRASSE`.
+
+## Spell checking
+
+```cpp
+editor->SetSpellCheckEnabled(true);
+editor->RunSpellCheck();                     // after changing dictionary
+```
+
+Checking runs on the shared `UltraCanvasSpellChecker` worker thread, over the
+document as one string with blocks joined by `\n` — one job per document rather
+than one per block, so a long document does not flood the queue. Results are
+drained while rendering and their byte offsets map back onto
+`{blockIndex, byteOffset}`; squiggles are drawn only for blocks the viewport has
+laid out.
+
+Right-click offers the suggestions. A host that has its own context menu takes
+the click first and puts them inside it:
+
+```cpp
+editor->onContextMenu = [this](const UCEvent& event) {
+    return ShowMyOwnMenu(event);   // true = consumed, no built-in popup
+};
+```
+
+This is the same contract `UltraCanvasTextArea` offers, and UltraTexter uses it
+so a right-click in a `.docx` tab gives one menu rather than two.
 
 ## Undo
 
@@ -255,15 +372,15 @@ This is the shortest path to a faithful `.odt`/`.docx` preview pane.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **Tables render but are not edited in place.** A table block draws with its
-  cells laid out; the caret treats it as one indivisible block. Editing inside
-  cells is the next phase.
+- **A table's own structure is not edited yet.** Merged cells load, save and
+  lay out correctly, but *making* them does not: adding or removing rows and
+  columns, merging and splitting cells, and selecting across several cells at
+  once are not there — and neither is inserting a new table, which is why
+  UltraTexter's Insert Table button stays disabled for these documents.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
   TextArea's Markdown mode and is the intended path.
-- **No spell checking yet** — `UltraCanvasSpellChecker` integrates the same way
-  it does in the TextArea.
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).

@@ -62,8 +62,19 @@
 // (UltraCanvasPieChartElement), its name as the button that opens it, and
 // the free / total sizes. The sizes are read off the UI thread and the cards
 // follow mounts and unmounts like the tree's drive rows do.
-// Version: 1.17.0
-// Last Modified: 2026-09-06
+// The split-screen button in the navigation row (left of the clock) turns on
+// the split view: the folder tree pane leaves the split and two folder
+// displays sit side by side in its place - the active tab's display on the
+// left, a second display of its own on the right (with its own Back /
+// Forward history and its own remembered folder) - each under a header row
+// of a folder-tree button and the display's own breadcrumb. The tree button
+// docks the one folder tree down the left of that display, under its header
+// (one tree, so it moves to whichever pane's button was pressed last).
+// Whichever display was clicked last is the active one: the toolbars, the
+// search field, the status bar and the preview pane act on it, exactly as
+// they act on the active tab. See SetSplitViewVisible / ActivateSplitSide.
+// Version: 1.18.0
+// Last Modified: 2026-09-19
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -89,6 +100,7 @@
 #include "UltraFilerFolderIcons.h"
 #include "UltraFilerFolderViews.h"
 #include "UltraFilerHistory.h"
+#include "UltraFilerRemoteDrives.h"
 #include "UltraFilerSettings.h"
 #include "UltraFilerSettingsDialog.h"
 #include "UltraFilerVolumeSpace.h"
@@ -141,6 +153,11 @@ private:
     void BuildFolderTree();
     void BuildTabbedContainer();
     void BuildSplitLayout();
+    // The parts the split view adds to the split (see SetSplitViewVisible):
+    // the header row over the left-hand display, and the right-hand pane
+    // with its header row and its own folder display. Built once, at
+    // start-up; the split view shows and hides them.
+    void BuildSplitViewPanes();
     // The History view (hidden until the clock button turns it on): a tabbed
     // container with one small-thumbnail filer per history kind.
     void BuildHistoryView();
@@ -152,13 +169,82 @@ private:
     // Creates a tab with its own filer widget showing `path`. Wired to the
     // tab strip's "+" button at the end of the tab list.
     void AddNewTab(const std::string& path, bool activate);
+    // A folder display with everything a tab's has - the page wrapper, the
+    // widget configured from the settings, every callback wired - and no tab
+    // yet: AddNewTab puts one into the tab strip, the split view keeps one as
+    // its right-hand display. `suffix` makes the widget ids unique.
+    std::unique_ptr<FilerTabState> CreateFolderDisplayState(const std::string& suffix);
     void WireFilerCallbacks(FilerTabState* tab);
     // Refreshes breadcrumb, nav buttons, tree, dropdowns, status bar, window
     // title and preview from the newly active tab.
     void HandleTabSwitched(int index);
+    // Brings every control that describes the active display in line with
+    // `filer`: the breadcrumb, the search field and its button, the nav
+    // buttons, the tree selection, the status bar, the window title, the
+    // sort / view dropdowns and the preview pane. Shared by a tab switch and
+    // by a change of the active split-view pane.
+    void SyncControlsToActiveDisplay();
+    // The display the toolbars act on: the tab strip's active tab - or, in
+    // the split view while its right-hand pane is the active one, that pane's
+    // display (which is in no tab). Every "is this the active display?"
+    // check goes through here.
     FilerTabState* ActiveTabState() const;
+    // The tab strip's active tab, whichever split-view pane is active.
+    FilerTabState* TabStripActiveState() const;
     bool IsActiveTab(const FilerTabState* tab) const;
     int  TabIndexOf(const FilerTabState* tab) const;
+    // Every folder display that shows a folder of its own: the tabs, and the
+    // split view's right-hand display. What is applied to "every tab" - a
+    // setting, a vanished volume, a deleted folder - is applied to all of
+    // these.
+    std::vector<FilerTabState*> FolderDisplayStates() const;
+
+    // ===== SPLIT VIEW (the split-screen button) =====
+    // The two panes of the split view, and which of them is meant.
+    enum class SplitSide { Left, Right };
+    // Turns the split view on or off. On: the folder tree pane leaves the
+    // split (the tree is reached through the panes' tree buttons instead)
+    // and the right-hand pane joins it after the folder pane, the two sharing
+    // the width the tree and the folder pane had; the right-hand display
+    // opens on the folder it last showed, or on the active tab's folder the
+    // first time. Off: the right-hand pane leaves, the tree pane comes back
+    // as wide as it was, and the active tab is the active display again.
+    // The state is saved with the settings.
+    void SetSplitViewVisible(bool visible);
+    // Makes one pane the active display - `filer`, and with it everything
+    // the toolbars act on and the status bar and preview describe. Left is
+    // the tab strip's active tab, Right the second display. Clicking into a
+    // pane does this (a window event filter), as does a tab switch (Left).
+    void ActivateSplitSide(SplitSide side);
+    // Docks the folder tree down the left of `side`'s display, under its
+    // header, or takes it away again. There is one tree, so docking it on
+    // one side takes it off the other. The docked tree mirrors and navigates
+    // the display it sits beside.
+    void SetTreeDockVisible(bool visible, SplitSide side);
+    // Rebuilds the two pane headers' breadcrumbs from what their displays
+    // show (the left one says "Computer" while that page is up). Nothing to
+    // do while the split view is off.
+    void RefreshPaneBreadcrumbs();
+    // Marks the active pane's header, and the tree buttons' pressed state.
+    void StyleSplitHeaders();
+    // The two panes' minimum widths: a display's minimum, plus the tree's
+    // width for the pane the tree is docked in.
+    void ApplySplitPaneMinSizes();
+    // What ApplySplitPaneMinSizes gives `pane` (kFilerMinWidth while the
+    // split view is off): the preview pane's sizing leaves each display at
+    // least this.
+    int FolderPaneMinWidth(const UltraCanvasContainer* pane) const;
+    // Takes `amount` pixels (negative: gives them) out of the listed panes
+    // of `sizes`, each in proportion to its width - the preview pane's width
+    // comes out of the displays this way and goes back the same way.
+    static void TakeFromPanes(std::vector<int>& sizes,
+                              const std::vector<size_t>& panes, int amount);
+    // Whether the folder tree mirrors the active display right now: always
+    // while it has its own pane, and while docked beside the active one in
+    // the split view. A tree docked beside the OTHER pane keeps following
+    // that pane, so a click into it lands on the row that was under the
+    // mouse.
+    bool TreeFollowsActiveDisplay() const;
 
     // ===== FOLDER TREE (lazy) =====
     // Adds a folder node under `parentId`. Whether the folder has subfolders —
@@ -191,6 +277,30 @@ private:
     // restart - the tree used to be enumerated exactly once, at start-up.
     // Cheap and idempotent: calling it when nothing changed does nothing.
     void RefreshDriveNodes();
+    // ===== REMOTE DRIVES =====
+    // The "+ Drive" button in the navigation row: it offers an FTP / SFTP
+    // server or a cloud account, adds it through UltraCloud's shared
+    // add-account dialog, and the drive then appears under the tree's
+    // "Remote Drives" section as a place you can browse.
+    void ShowAddDriveMenu();
+    // Runs the add-account dialog with the provider list narrowed to `kind`,
+    // then picks the new drive up into the tree.
+    void AddDriveOfKind(RemoteDriveKind kind);
+    // Brings the "Remote Drives" rows in line with the configured accounts,
+    // and hides the section while there are none - like "Pinned" and
+    // "Cloud Storage" above it.
+    void RefreshRemoteDriveNodes();
+    // Adds one drive row. Unlike AddTreeFolderNode this queues no subfolder
+    // probe: that probe reads the local filesystem, which has nothing to say
+    // about a path on a server.
+    void AddTreeRemoteDriveNode(const RemoteDrive& drive);
+    // Gives one filer widget the hooks that let it show a remote folder and
+    // change what is on it (UltraCanvasFilerWidget::isRemotePath,
+    // remoteListing, remoteDelete, remoteRename, remoteMakeDirectory).
+    void WireRemoteDriveHooks(UltraCanvasFilerWidget* widget);
+    // Refreshes whatever display is showing `folderPath`. Used both when a
+    // queued listing arrives and after a change to the drive.
+    void RefreshRemoteFolderDisplays(const std::string& folderPath);
     // Takes one drive row out of the tree and out of the bookkeeping that
     // would otherwise keep it from ever being scanned again.
     void DropDriveNode(const std::string& path);
@@ -397,6 +507,11 @@ private:
     // The breadcrumb while the Computer page is shown: the single "Computer"
     // node, whose dropdown still lists the drives.
     void ShowComputerBreadcrumb();
+    // The two above for any strip: the navigation row's, and the split view's
+    // pane headers. `onNavigate` is what a click on a folder node does.
+    void FillFolderBreadcrumb(UltraCanvasBreadcrumb* crumb, const std::string& path,
+                              std::function<void(const std::string&)> onNavigate);
+    void FillComputerBreadcrumb(UltraCanvasBreadcrumb* crumb);
     // Pin > To Favorites: each target goes into the tab its kind belongs to.
     void PinTargetsToFavorites();
     // Pin > To Treeview: each target folder appears under the tree's Pinned
@@ -612,6 +727,29 @@ private:
     // shows a folder: it moves that folder into the folder display.
     std::shared_ptr<UltraCanvasButton>          folderPreviewPromoteButton;
     std::shared_ptr<UltraCanvasSplitPane>       split;
+    // The split's panes: the tree's (null while the split view is on - the
+    // tree is docked into a display's pane then, or parked hidden), the
+    // folder pane holding the tab content host, and the split view's
+    // right-hand pane (null while the split view is off).
+    std::shared_ptr<UltraCanvasContainer>       treePane;
+    std::shared_ptr<UltraCanvasContainer>       filerPane;
+    std::shared_ptr<UltraCanvasContainer>       rightPane;
+    // What the split view puts into the folder pane and the right-hand pane:
+    // a header row (tree button + breadcrumb) over a body row that holds the
+    // docked tree, when docked, beside the display. The left header is a
+    // child of the folder pane from the start and hidden while the split
+    // view is off; the right-hand box moves into the right pane when that
+    // pane exists.
+    std::shared_ptr<UltraCanvasContainer>       leftPaneHeader;
+    std::shared_ptr<UltraCanvasContainer>       leftPaneBody;   // tree | tab content host + Computer page
+    std::shared_ptr<UltraCanvasContainer>       rightPaneBox;   // header + body
+    std::shared_ptr<UltraCanvasContainer>       rightPaneHeader;
+    std::shared_ptr<UltraCanvasContainer>       rightPaneBody;  // tree | second display
+    std::shared_ptr<UltraCanvasButton>          leftTreeButton;
+    std::shared_ptr<UltraCanvasButton>          rightTreeButton;
+    std::shared_ptr<UltraCanvasBreadcrumb>      leftPaneBreadcrumb;
+    std::shared_ptr<UltraCanvasBreadcrumb>      rightPaneBreadcrumb;
+    std::shared_ptr<UltraCanvasButton>          splitViewButton;  // the split-screen toggle
     std::shared_ptr<UltraCanvasContainer>       contentBox;    // holds the split OR the History view
     std::shared_ptr<UltraCanvasContainer>       historyPane;   // History view root
     std::shared_ptr<UltraCanvasTabbedContainer> historyTabs;   // Files / Folders / Apps
@@ -632,6 +770,8 @@ private:
     std::shared_ptr<UltraCanvasContainer>       computerDriveRow;
     std::vector<ComputerDriveCard>              computerDriveCards;
     std::shared_ptr<UltraCanvasMenu>            treeContextMenu; // folder tree right-click
+    std::shared_ptr<UltraCanvasButton>          addDriveButton;  // "+ Drive" in the navigation row
+    std::shared_ptr<UltraCanvasMenu>            addDriveMenu;    // its FTP / Cloud choice
     std::shared_ptr<UltraCanvasButton>          newButton;       // "New folder ▾" split button
     std::shared_ptr<UltraCanvasMenu>            newEntryMenu;    // its arrow's dropdown menu
     std::shared_ptr<UltraCanvasContainer>       previewPane;   // split pane hosting the preview
@@ -654,6 +794,17 @@ private:
     // ===== STATE =====
     std::vector<std::unique_ptr<FilerTabState>> tabStates;  // mirrors tab order
     int tabCounter = 0;                    // unique widget ids for new tabs
+    // The split view's right-hand display: a folder display like a tab's,
+    // with its own Back / Forward history, that is in no tab. Created with
+    // the window; shown only while the split view is on.
+    std::unique_ptr<FilerTabState> secondPane;
+    bool splitViewShown = false;           // two displays side by side
+    SplitSide activeSplitSide = SplitSide::Left;   // the pane the toolbars act on
+    bool treeDockShown = false;            // the tree is docked in a pane
+    SplitSide treeDockSide = SplitSide::Left;      // ... in this one
+    // The tree pane's width while it is out of the split, so it comes back
+    // as wide as the user had it. Starts at the start-up width.
+    int treePaneWidth = 280;
 
     // Tree nodes whose real children have been scanned (EnsureTreeChildren runs
     // once per node); keyed by node id, which is the folder path.
@@ -673,6 +824,17 @@ private:
     // keeps two lookups from running at once.
     std::thread cloudWorker;
     std::atomic<bool> cloudWorkerBusy{false};
+    // The configured remote drives and their listing cache. Held by pointer
+    // so the window's header does not force every including file to see it.
+    std::unique_ptr<UltraFilerRemoteDrives> remoteDrives;
+    // Node ids (the drives' root paths) of the "Remote Drives" rows, so the
+    // section can be rebuilt without walking the whole tree.
+    std::vector<std::string> treeRemoteDriveNodeIds;
+    // The last failure reported for a drive operation. Deleting five entries
+    // queues five operations, and five identical "permission denied" dialogs
+    // in a row tell the user nothing the first one did not - so a repeat of
+    // the same message is swallowed. Cleared by any success.
+    std::string lastRemoteOperationError;
     // The volume sizes the Computer page shows (QueueVolumeSpaceQuery):
     // the last answer per mount point, so a re-opened page shows the sizes
     // it already knows while the fresh ones are read; the worker reading

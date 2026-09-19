@@ -15,6 +15,7 @@
 #include "UltraCanvasButton.h"
 #include "UltraCanvasSlider.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDemoScrollText.h"
 
 #include <memory>
 #include <vector>
@@ -607,8 +608,9 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
     speedSlider->onValueChanged = [state](float v) { state->speed = v; };
     panel->AddChild(speedSlider);
 
-    auto info = std::make_shared<UltraCanvasLabel>("ZarchInfo", 10, 142, 270, 400);
-    info->SetText(
+    auto info = demoui::MakeScrollingText("ZarchInfo", 10, 142, 270, 400, 11.0f,
+                                          Color(60, 60, 60, 255));
+    info.SetText(
         "A miniature homage to Zarch (1987).\n\n"
         "Drag the mouse to steer the ship\n"
         "left and right; release to let it\n"
@@ -629,10 +631,7 @@ std::shared_ptr<UltraCanvasUIElement> CreateGLZarchTab() {
         "double-click the canvas to maximize it;\n"
         "Esc or another double-click restores."
     );
-    info->SetFontSize(11);
-    info->SetAlignment(TextAlignment::Left);
-    info->SetTextColor(Color(60, 60, 60, 255));
-    panel->AddChild(info);
+    panel->AddChild(info.View);
 
     root->AddChild(panel);
 

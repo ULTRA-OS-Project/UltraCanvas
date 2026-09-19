@@ -90,6 +90,7 @@ struct ShareLink {
 struct ProviderCapabilities {
     bool browse = true;
     bool upload = true;
+    bool modify = false;           // Delete / Rename: a drive, not just a place to upload to
     bool shareLinks = false;
     bool passwordProtectedLinks = false;
     bool expiringLinks = false;

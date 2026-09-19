@@ -323,11 +323,39 @@ the backing implementation can be replaced without affecting callers.
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also
     be a `.desktop` file, whose own command is what then runs).
+  - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
+    file (matched by name, never by reading it) and the generic icon name
+    that type falls back to (`application/pdf` → `x-office-document`). Both
+    empty on Windows and macOS, which keep no MIME database; exposed because
+    the icon-naming rules of `UltraCanvasHostFileIcons` need them.
   - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
     for an "Other application…" picker (the picker UI lives with the caller).
   - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
+
+- **UltraCanvasElevatedFileOperations** (`UltraCanvasElevatedFileOperations.h`)
+  — "Delete as administrator": the retry Explorer offers when a delete answers
+  "You need permission to perform this action". A second copy of the host
+  executable is started through the shell's `runas` verb (Windows shows its
+  consent prompt), deletes what the user named and exits; consent is asked
+  every time and nothing else is elevated. Platform-free half (the helper's
+  delete, the command-line and report encodings) in
+  `core/UltraCanvasElevatedFileOperations.cpp`; Windows backend in
+  `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`; every other
+  platform answers Unavailable. Public surface (`namespace
+  ElevatedFileOperations`):
+  - `RunHelperIfRequested(argc, argv, exitCode)` — host side, first in
+    `main()`: turns an elevated relaunch into the helper, and installs the
+    retry for this executable.
+  - `IsAvailable` / `ProcessIsElevated` / `IsPermissionFailure(ec)` — whether
+    to offer the retry, and whether a failure is the kind it resolves.
+  - `DeleteElevated(paths)` — one consent prompt, one helper run; returns
+    `ElevatedDeleteResult` (Completed with per-entry failures / Declined /
+    Failed / Unavailable).
+  `UltraCanvasFilerWidget` offers it from its delete-problem dialog wherever
+  the host wired the helper. See
+  `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
 - **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
   shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
@@ -422,6 +450,28 @@ the backing implementation can be replaced without affecting callers.
   Used by `LoadNativeFileIconPixmap` (`UltraCanvasNativeFileIcons.h`) off
   Windows, and as the fallback for a file the shell declines on it.
   See `Docs/UltraCanvas/UltraCanvasIconResource.md`.
+
+- **UltraCanvasHostFileIcons** (`UltraCanvasHostFileIcons.h`) — the icon the
+  HOST desktop draws for a file of a given TYPE: what Explorer puts on a
+  `.txt`, Finder on a `.pdf`, the icon theme on a folder. The type-wide
+  counterpart of `UltraCanvasNativeFileIcons`, which answers the other
+  question — what icon a file carries INSIDE itself — and is asked first.
+  Shared key plus the no-op backend in `core/UltraCanvasHostFileIcons.cpp`;
+  the lookups per platform under `OS/<Platform>/` (Linux/BSD: the file's MIME
+  type from `UltraCanvasFileAssociations`, then the icon-naming-spec names
+  through `UltraCanvasDesktopEntry`'s theme resolver; Windows: the shell's
+  system image list via `SHGetFileInfoW` + `SHGetImageList`; macOS:
+  NSWorkspace). WebAssembly and Android report unavailable. Public surface:
+  - `HostFileIconsAvailable` — is there a desktop to ask on this build?
+  - `HostFileIconKey(path, isDirectory)` — the cache key files of one kind
+    share, so a folder of four thousand `.txt` files costs ONE lookup; pure
+    string work, no file access.
+  - `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` — the icon as a
+    `UCPixmap`, or null (no icon for the type, or no desktop): blocking, for
+    a worker thread holding a `NativeFileIconThreadScope`.
+  - `RefreshHostFileIcons` — forget the lookups after a theme change.
+  Used by `UltraCanvasFilerWidget` under Display > File icons > Host OS icons.
+  See `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`.
 
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
@@ -1195,12 +1245,16 @@ Cloud storage — the single home for cloud accounts, the default account, and
 "upload this and give me a share link", so no application talks to a cloud
 provider on its own. Providers are stateless plug-ins behind `ICloudProvider`
 (Verify / List / MakeDirectory / Upload / Download / CreateShareLink /
-SignIn / RefreshCredentials / AccountInfo); v0.2 ships Nextcloud / ownCloud
+SignIn / RefreshCredentials / AccountInfo, plus the optional Delete / Rename a
+provider carried as a drive implements); v0.2 ships Nextcloud / ownCloud
 (WebDAV + OCS share API, password and expiry on links), generic WebDAV (links
 through a public web-folder URL), Dropbox, OneDrive and Google Drive (OAuth2 +
 PKCE through the system browser via UltraNet, tokens refreshed automatically;
 the OAuth client id is configuration, `SetOAuthApp` or
-`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), and an in-memory demo provider. Providers
+`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), FTP / FTPS / SFTP over UltraNet's FTP
+surface (the one provider that can also delete and rename, so a file manager
+can carry an FTP server as a drive; no share links, and SFTP authenticates
+with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
@@ -1279,3 +1333,152 @@ Linux / ULTRA OS only.
 **Implementation status:** none — named and specified only. The design
 proposal is written; no code, no `Docs/Modules/UltraAndroid/README.md` and no
 demo entry exist yet, and those land with Stage 1 rather than before it.
+
+---
+
+### **13. UltraMessage**
+
+The UltraMessage module is the message channel of the ULTRA OS stack: one
+API through which applications send structured messages to each other,
+receive what other applications and the platform publish, and expose
+commands that other programs, scripts and AI agents may invoke — on Linux /
+ULTRA OS, Windows and macOS from one codebase, WebAssembly and Android later.
+The model is the RISC OS Wimp (`Wimp_SendMessage`: broadcast or targeted,
+recorded delivery that bounces when unacknowledged, reply by return); the
+first consumer is the ULTRA OS desktop message centre, which shows every
+messenger's and mail client's messages in one structured feed.
+
+UltraMessage elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- Blocking operations return `UltraMsgResult`; endpoints, subscriptions and
+  registered commands are opaque `UltraMsgHandle`s
+- One broker per user session and one wire protocol (length-prefixed JSON
+  frames over a local socket / named pipe) on every platform; platform buses
+  (D-Bus, `WM_COPYDATA`, Apple Events, notification listeners) are reached
+  only through adapters at the edges, never as the core transport
+- Well-known topics (`messaging.message`, `mail.message`,
+  `system.notification`, `app.command.*`, …) carry versioned schemas;
+  payloads are `JSONValue` (UltraCanvasJSON), never a third-party type
+- Callbacks are delivered on the UI thread through
+  `UltraCanvasApplication::PostToUIThread` unless a subscription opts out
+- Invoking another application's command requires the user's consent once
+  per caller / target; subscribing to the feed does not
+- No credentials travel on the bus; adapters resolve tokens through
+  UltraVault. The journal is owner-only and retention-limited
+- Networking stays in UltraNet: UltraMessage only redistributes locally what
+  UltraNet-based engines (UltraMail, UltraSocial connectors, MQTT) fetched
+
+Design: `Docs/Research/UltraMessageDesignProposal.md` (platform survey,
+data model, API, broker, adapters, security, delivery plan; §12 draws the
+boundary to UltraScript, §14 below).
+
+**Proposed Functions (Phase 1 — channel and journal):**
+- `UltraMsg_Initialize`, `UltraMsg_Shutdown`, `UltraMsg_IsAvailable`,
+  `UltraMsg_GetBrokerInfo`
+- `UltraMsg_Connect`, `UltraMsg_Disconnect`, `UltraMsg_ListEndpoints`,
+  `UltraMsg_ResolveApp`
+- `UltraMsg_Post`, `UltraMsg_PostRecorded`, `UltraMsg_Request`,
+  `UltraMsg_RequestAsync`, `UltraMsg_Reply`, `UltraMsg_ReplyError`,
+  `UltraMsg_Acknowledge`, `UltraMsg_Attach`, `UltraMsg_AttachFile`
+- `UltraMsg_Subscribe`, `UltraMsg_Unsubscribe`, `UltraMsg_ProcessPending`
+- `UltraMsg_Query`, `UltraMsg_Count`, `UltraMsg_MarkRead`,
+  `UltraMsg_MarkUnread`, `UltraMsg_Dismiss`, `UltraMsg_Delete`,
+  `UltraMsg_ListConversations`, `UltraMsg_SetRetention`, `UltraMsg_Export`
+- `UltraMsg_RegisterSchema`, `UltraMsg_GetSchema`, `UltraMsg_Validate`
+- `ultramsg` command-line tool (`post`, `invoke`, `query`, `tail`)
+
+**Proposed Functions (Phase 2 — feed adapters):**
+- `UltraMsg_ListAdapters`, `UltraMsg_EnableAdapter`,
+  `UltraMsg_GetAdapterState`
+- Adapters: `freedesktop-notifications` (the shell owns
+  `org.freedesktop.Notifications` on ULTRA OS; monitor mode elsewhere),
+  `windows-notification-listener`, `apple-mail` (Apple Events),
+  `ultramail` (the app publishes), `telegram`
+- `UltraCanvasMessageCenter` composite element (`Plugins/`)
+
+**Proposed Functions (Phase 3 — commands, the AppleScript-class surface):**
+- `UltraMsg_RegisterCommand`, `UltraMsg_UnregisterCommand`,
+  `UltraMsg_ListCommands`, `UltraMsg_Invoke`, `UltraMsg_InvokeAsync`,
+  `UltraMsg_InvokeNative`
+- Adapters: `dbus-export` / `dbus-invoke`, `apple-events-invoke` /
+  `apple-events-export` (generated `sdef`), `copydata`
+- App manifests (`X-UltraMessage-AppId`, `ultramessage.json`) and the
+  consent store
+
+**Planned (Phase 4):** Android `NotificationListenerService`, WebAssembly
+`BroadcastChannel` transport, `apple-messages`, `matrix`, `imap-idle`,
+`com-automation`, at-rest journal encryption via UltraCrypt.
+
+UltraMessage holds no language feature: the command surface is register,
+list, invoke and consent, plus the `app.command.echo` topic. UltraScript
+(§14) is a client of it and links it; UltraMessage never links UltraScript.
+
+UltraMessage is intended to be the recommended way for UltraFiler,
+UltraViewer, UltraMail, UltraSocial and the ULTRA OS desktop to talk to one
+another and for the desktop to collect messages from every source.
+
+**Implementation status:** none — named and specified only. The design
+proposal is written; no code, no `Docs/Modules/UltraMessage/README.md` and no
+demo entry exist yet, and those land with Phase 1 rather than before it.
+
+---
+
+### **14. UltraScript**
+
+The UltraScript module is the scripting language of the ULTRA OS stack: the
+cross-platform answer to AppleScript for automating UltraCanvas applications
+and repeating tasks across them. Three syntax styles (Modern, Natural,
+Classic), an automatic recorder that turns user actions into script code, an
+SDEF-compatible scripting dictionary generated from element metadata, a
+parser and executor, and a Script Editor application with a dictionary
+browser. Specification: `Docs/Research/UltraScriptSpecification.md`.
+
+UltraScript elements must comply with the following rules:
+- Clear structure; identifiers PascalCase, script property names lowercase
+  nouns, script command names verbs, script classes PascalCase types
+- Every UltraCanvas element is scriptable with no more than a script name
+  and a script class (`IUltraScriptable`); properties and commands are
+  registered once and appear in the dictionary automatically
+- Recording happens in exactly one place, before element handling, and only
+  for user-initiated actions; hover, focus and repaint events are never
+  recorded
+- Scripts never execute arbitrary native code; execution is validated
+  against the dictionary and type-checked
+- Crossing a process boundary — `tell application "X"` aimed at another
+  application, cross-application recording, message triggers, schedules —
+  goes through **UltraMessage** (§13) and nothing else; UltraScript links
+  UltraMessage, never the reverse, and registers its `ui.*` verbs as
+  ordinary commands on an ordinary endpoint (specification §17)
+- Acting on another application requires the user's consent, held in
+  UltraMessage's consent store; acting inside the script's own process does
+  not
+- No messenger- or mail-specific verbs in the language: those are
+  notification actions owned by UltraMessage's adapters
+
+**Proposed Surface (Phase 1 — in-process):**
+- `IUltraScriptable` — `GetScriptName`, `GetScriptClass`,
+  `GetScriptPropertyNames` / `GetScriptPropertyValue` /
+  `SetScriptPropertyValue`, `GetScriptCommandNames` /
+  `ExecuteScriptCommand`; `RegisterScriptProperty`, `RegisterScriptCommand`
+- `UltraScriptRecorder` — `StartRecording`, `StopRecording`,
+  `PauseRecording`, `ResumeRecording`, `IsRecording`, `ClearRecording`,
+  `RecordEventIfEnabled`, `GenerateScript`, `GetActions`, `OptimizeActions`,
+  `SetLiveCallback`, `SaveRecording` / `LoadRecording`
+- `UltraScriptParser` — `Parse`, `ParseFile`, `Validate`, `CheckSyntax`,
+  `DetectSyntaxStyle`, `ConvertSyntax`
+- `UltraScriptExecutor` — `Execute`, `ExecuteScript`, `ExecuteFile`,
+  step / breakpoint / variable inspection, `SetExecutionContext`
+- `UltraScriptDictionary` — `GenerateScriptingDictionary` (SDEF XML)
+- `UltraScriptStandardLibrary` — built-in functions, `RegisterCommand`
+- The Script Editor application (`Apps/ScriptEditor/`)
+
+**Proposed Surface (Phase 3 — cross-application, on UltraMessage):**
+- The `ui.list` / `ui.get` / `ui.set` / `ui.invoke` verbs and object paths
+- Executor routing of `tell` blocks to other processes, with launch
+- Cross-application recording via `app.command.echo`
+- `on message <topic>` handlers and scheduled scripts
+
+**Implementation status:** none — specified only. The specification names
+event-dispatch hooks that do not exist under those names in the codebase
+(its §17.8 lists the corrections); resolving that is the first task of
+Phase 1.

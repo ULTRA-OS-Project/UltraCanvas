@@ -16,8 +16,20 @@ namespace UltraCanvas {
         DisplayRole = 0,        // std::string - primary text
         DecorationRole = 1,     // std::string - icon path
         ToolTipRole = 2,        // std::string - tooltip text
+        // The value a column sorts by, when that is not the text it shows.
+        // A cell displaying "1.234,56 EUR" or "17.09.2026" returns the amount
+        // in minor units or the day number here, and
+        // UltraCanvasListSortFilterProxy sorts by that instead of by the
+        // formatting. Returning nothing (the default) falls back to
+        // DisplayRole.
+        SortRole = 3,
         UserRole = 256          // Starting point for user-defined roles
     };
+
+    // Which way a sorted column runs. Defined here rather than beside the
+    // sorting proxy because the view shows the indicator and the proxy does the
+    // ordering, and neither should have to include the other for an enum.
+    enum class ListSortOrder { Ascending, Descending };
 
     // ===== INDEX =====
 
@@ -51,10 +63,15 @@ namespace UltraCanvas {
         std::string title;
         int width = 100;
         TextAlignment alignment = TextAlignment::Left;
+        // Shown when the pointer rests on this column's header cell. Cells in
+        // the column keep using the per-row/per-cell tooltip from the model.
+        std::string tooltip;
 
         ListColumnDef() = default;
         ListColumnDef(const std::string& t, int w = 100, TextAlignment a = TextAlignment::Left)
             : title(t), width(w), alignment(a) {}
+        ListColumnDef(const std::string& t, int w, TextAlignment a, const std::string& tip)
+            : title(t), width(w), alignment(a), tooltip(tip) {}
     };
 
     // ===== ABSTRACT MODEL INTERFACE =====
@@ -132,13 +149,32 @@ namespace UltraCanvas {
     struct MultiColumnListItem {
         std::vector<std::string> labels;
         std::vector<std::string> iconPaths;
+        // Row tooltip: used for every cell that has no tooltip of its own.
         std::string tooltip;
+        // Optional per-column tooltips. An empty (or missing) entry falls back
+        // to the row tooltip above.
+        std::vector<std::string> cellTooltips;
         void* userData = nullptr;
 
         MultiColumnListItem() = default;
         MultiColumnListItem(const std::vector<std::string>& texts) : labels(texts) {}
         MultiColumnListItem(const std::vector<std::string>& texts, const std::vector<std::string>& icons)
             : labels(texts), iconPaths(icons) {}
+
+        void SetCellTooltip(int column, const std::string& tip) {
+            if (column < 0) return;
+            if (column >= static_cast<int>(cellTooltips.size()))
+                cellTooltips.resize(column + 1);
+            cellTooltips[column] = tip;
+        }
+
+        const std::string& GetCellTooltip(int column) const {
+            if (column >= 0 && column < static_cast<int>(cellTooltips.size()) &&
+                !cellTooltips[column].empty()) {
+                return cellTooltips[column];
+            }
+            return tooltip;
+        }
     };
 
     // ===== MULTI-COLUMN MODEL =====

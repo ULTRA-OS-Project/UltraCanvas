@@ -18,7 +18,17 @@ on:
       - 'llms-full.txt'
       - '.github/workflows/llms-txt.yml'
   pull_request:
-    branches: [main]
+    # Stacked pull requests. `branches` filters the BASE branch here - the
+    # branch the pull request TARGETS - so `main` alone meant a pull request
+    # based on another pull request's branch matched no trigger at all and
+    # got zero checks. #455 reached 1059 changed lines that way without one
+    # job ever running. Deliberately NOT added to `push` above: that would
+    # build every commit on every claude/** branch whether or not a pull
+    # request exists, which is the double-building the note at the top of
+    # build.yml describes.
+    branches:
+      - main
+      - 'claude/**'
     paths:
       - 'Docs/**'
       - 'README.md'

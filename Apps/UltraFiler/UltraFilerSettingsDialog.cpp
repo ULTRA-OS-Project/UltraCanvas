@@ -23,7 +23,8 @@
 // Handling > Tabs (what the "+" of the folder tab strip opens - the
 // current folder again or the Home folder), Extras > Open prompt (the command
 // line program UltraFiler opens, picked with the file dialog and stored with
-// "Save app"), Extras > History & Favorites (clearing the recently-used
+// "Save app"), Extras > History & Favorites (how many entries each of the
+// History view's three lists keeps, and clearing the recently-used
 // lists and the pinned entries) and Extras > Cache (whether finished
 // thumbnails are kept on disk between runs and compressed in memory, what
 // each cache is holding against what it may hold, and emptying them). Changes apply live and are saved
@@ -37,8 +38,8 @@
 // where the same spot serves every page that has one. The backdrop behind
 // transparent images is no longer a page here: the media viewer's own colour
 // strip under the picture chooses it, and the choice is saved from there.
-// Version: 1.13.0
-// Last Modified: 2026-09-13
+// Version: 1.14.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 #include "UltraFilerSettingsDialog.h"
@@ -107,6 +108,7 @@ namespace {
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageThumbnails = "display/thumbnails";
     constexpr const char* kPageFileExtensions = "display/file-extensions";
+    constexpr const char* kPageFileIcons = "display/file-icons";
     constexpr const char* kPageFilesInUse = "display/files-in-use";
     constexpr const char* kPageDetailView = "display/detail-view";
     constexpr const char* kPageHandling = "handling";
@@ -174,6 +176,9 @@ namespace {
         std::vector<std::pair<FilerExtensionBadge,
                               std::shared_ptr<UltraCanvasRadio>>> badgeRadios;
         UltraCanvasRadioGroup                extensionBadgeGroup;
+        std::vector<std::pair<FilerFileIconStyle,
+                              std::shared_ptr<UltraCanvasRadio>>> fileIconRadios;
+        UltraCanvasRadioGroup                fileIconGroup;
 
         // Display > Thumbnails / Display > Detail view: the kind checkboxes
         // and the per-format ones of each page, kept so the two "Everything
@@ -226,8 +231,11 @@ namespace {
         std::shared_ptr<UltraCanvasTextInput> promptInput;   // chosen application
         std::shared_ptr<UltraCanvasLabel>     promptStatus;  // what will be started
 
-        // History & Favorites
-        std::shared_ptr<UltraCanvasLabel>     listsStatus;   // "History cleared."
+        // History & Favorites: the limit of entries per History list, and the
+        // line the clear buttons write.
+        std::shared_ptr<UltraCanvasSlider> historyLimitSlider;
+        std::shared_ptr<UltraCanvasLabel>  historyLimitValue;
+        std::shared_ptr<UltraCanvasLabel>  listsStatus;   // "History cleared."
 
         // Extras > Cache: the two switches, the four "used of max" lines and
         // the line the Empty cache button writes. Kept so the numbers can be
@@ -706,6 +714,67 @@ namespace {
         return parts.page;
     }
 
+    // ===== SLIDERS =====
+    // Shared by every page that sets a number: Display > PDF Inventory's two
+    // widths and Extras > History & Favorites' limit of entries.
+
+    // One "[caption] [slider] [value]" row. `indent` is what the caption
+    // starts at - the PDF widths sit under the radio button they belong to,
+    // a row that answers to nothing above it starts at the margin.
+    std::shared_ptr<UltraCanvasContainer> MakeSliderRow(
+            const std::string& id, const std::string& caption,
+            const std::shared_ptr<UltraCanvasSlider>& slider,
+            const std::shared_ptr<UltraCanvasLabel>& value,
+            int indent = 24, int labelWidth = 130) {
+        auto row = std::make_shared<UltraCanvasContainer>(id);
+        row->layout.SetFlexRow().SetFlexGap(10)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        row->size.width  = CSSLayout::Dimension::Px(kTextWidth);
+        row->size.height = CSSLayout::Dimension::Px(32);
+        row->SetPadding(0, 0, 0, indent);
+
+        auto label = MakeLabel(id + "-label", caption);
+        label->size.width  = CSSLayout::Dimension::Px(labelWidth);
+        label->size.height = CSSLayout::Dimension::Px(20);
+        row->AddChild(label);
+        row->AddChild(slider);
+        row->AddChild(value);
+        return row;
+    }
+
+    // A whole-number slider over [minValue, maxValue].
+    std::shared_ptr<UltraCanvasSlider> MakeIntSlider(
+            const std::string& id, int minValue, int maxValue, int value,
+            std::function<void(int)> onChange) {
+        auto slider = CreateSlider(id, 0, 0, 200, 24);
+        slider->SetRange(static_cast<float>(minValue),
+                         static_cast<float>(maxValue));
+        slider->SetStep(1.0f);
+        slider->SetValue(static_cast<float>(value));
+        slider->size.width  = CSSLayout::Dimension::Px(200);
+        slider->size.height = CSSLayout::Dimension::Px(24);
+        slider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+        // Reported both while the handle is dragged and when it is let go, so
+        // what it sets follows the slider instead of jumping at the end.
+        slider->onValueChanging = [onChange](float v) {
+            if (onChange) onChange(static_cast<int>(v + 0.5f));
+        };
+        slider->onValueChanged = [onChange](float v) {
+            if (onChange) onChange(static_cast<int>(v + 0.5f));
+        };
+        return slider;
+    }
+
+    // The value label beside such a slider - "56 px", "300 entries".
+    std::shared_ptr<UltraCanvasLabel> MakeSliderValueLabel(
+            const std::string& id, int width = 50) {
+        auto label = MakeLabel(id, "");
+        label->size.width  = CSSLayout::Dimension::Px(width);
+        label->size.height = CSSLayout::Dimension::Px(20);
+        return label;
+    }
+
     // ===== DISPLAY > PDF INVENTORY =====
 
     // "56 px" / "25 %" next to the slider it belongs to.
@@ -723,54 +792,9 @@ namespace {
         }
     }
 
-    // One "[caption] [slider] [value]" row of the PDF Inventory page,
-    // indented under the choice it belongs to.
-    std::shared_ptr<UltraCanvasContainer> MakeSliderRow(
-            const std::string& id, const std::string& caption,
-            const std::shared_ptr<UltraCanvasSlider>& slider,
-            const std::shared_ptr<UltraCanvasLabel>& value) {
-        auto row = std::make_shared<UltraCanvasContainer>(id);
-        row->layout.SetFlexRow().SetFlexGap(10)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        row->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        row->size.width  = CSSLayout::Dimension::Px(kTextWidth);
-        row->size.height = CSSLayout::Dimension::Px(32);
-        row->SetPadding(0, 0, 0, 24);   // under the radio's text
-
-        auto label = MakeLabel(id + "-label", caption);
-        label->size.width  = CSSLayout::Dimension::Px(130);
-        label->size.height = CSSLayout::Dimension::Px(20);
-        row->AddChild(label);
-        row->AddChild(slider);
-        row->AddChild(value);
-        return row;
-    }
-
-    // The width slider of one mode. Moving it selects that mode too, so the
-    // slider a user reaches for is the one that takes effect rather than a
-    // value nothing reads.
-    std::shared_ptr<UltraCanvasSlider> MakePdfWidthSlider(
-            const std::string& id, int minValue, int maxValue, int value,
-            std::function<void(int)> onChange) {
-        auto slider = CreateSlider(id, 0, 0, 200, 24);
-        slider->SetRange(static_cast<float>(minValue),
-                         static_cast<float>(maxValue));
-        slider->SetStep(1.0f);
-        slider->SetValue(static_cast<float>(value));
-        slider->size.width  = CSSLayout::Dimension::Px(200);
-        slider->size.height = CSSLayout::Dimension::Px(24);
-        slider->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
-        // Reported both while the handle is dragged and when it is let go, so
-        // the preview follows the slider instead of jumping at the end.
-        slider->onValueChanging = [onChange](float v) {
-            if (onChange) onChange(static_cast<int>(v + 0.5f));
-        };
-        slider->onValueChanged = [onChange](float v) {
-            if (onChange) onChange(static_cast<int>(v + 0.5f));
-        };
-        return slider;
-    }
-
+    // Moving either width slider selects its mode too, so the slider a user
+    // reaches for is the one that takes effect rather than a value nothing
+    // reads - see the two callbacks below.
     std::shared_ptr<UltraCanvasContainer> BuildPdfInventoryPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-pdf", "PDF Inventory",
                 "Width of the page thumbnails in the preview's PDF page "
@@ -792,10 +816,8 @@ namespace {
         };
         parts.body->AddChild(d->pdfAbsoluteRadio);
 
-        d->pdfWidthValue = MakeLabel("ufl-set-pdf-width-value", "");
-        d->pdfWidthValue->size.width  = CSSLayout::Dimension::Px(50);
-        d->pdfWidthValue->size.height = CSSLayout::Dimension::Px(20);
-        d->pdfWidthSlider = MakePdfWidthSlider("ufl-set-pdf-width",
+        d->pdfWidthValue = MakeSliderValueLabel("ufl-set-pdf-width-value");
+        d->pdfWidthSlider = MakeIntSlider("ufl-set-pdf-width",
                 UltraFilerSettings::kMinPdfThumbnailWidth,
                 UltraFilerSettings::kMaxPdfThumbnailWidth,
                 d->settings->pdfThumbnailWidth, [d](int px) {
@@ -815,10 +837,8 @@ namespace {
 
         parts.body->AddChild(d->pdfRelativeRadio);
 
-        d->pdfPercentValue = MakeLabel("ufl-set-pdf-percent-value", "");
-        d->pdfPercentValue->size.width  = CSSLayout::Dimension::Px(50);
-        d->pdfPercentValue->size.height = CSSLayout::Dimension::Px(20);
-        d->pdfPercentSlider = MakePdfWidthSlider("ufl-set-pdf-percent",
+        d->pdfPercentValue = MakeSliderValueLabel("ufl-set-pdf-percent-value");
+        d->pdfPercentSlider = MakeIntSlider("ufl-set-pdf-percent",
                 UltraFilerSettings::kMinPdfThumbnailPercent,
                 UltraFilerSettings::kMaxPdfThumbnailPercent,
                 d->settings->pdfThumbnailWidthPercent, [d](int percent) {
@@ -1141,6 +1161,81 @@ namespace {
                 "The tag is drawn over the foot of the icon, so no tile grows "
                 "for it, and a folder - or a name whose tail is a version "
                 "rather than a type - never gets one.");
+        return parts.page;
+    }
+
+    // ===== DISPLAY > FILE ICONS =====
+    const char* FileIconStyleDescription(FilerFileIconStyle style) {
+        switch (style) {
+            case FilerFileIconStyle::HostOperatingSystem:
+                return "Host OS icons - what this desktop draws for the type";
+            default:
+                return "UltraFiler simple - the drawn folder and sheet icons";
+        }
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildFileIconsPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-file-icons", "File icons",
+                "Whose icons the file display draws for a file that shows no "
+                "picture of its own:");
+
+        const bool hostAvailable =
+                UltraCanvasFilerWidget::AreHostFileIconsAvailable();
+
+        d->fileIconRadios.clear();
+        for (FilerFileIconStyle style :
+             UltraCanvasFilerWidget::AllFileIconStyles()) {
+            auto radio = MakeChoice(
+                    std::string("ufl-set-file-icons-") +
+                            (style == FilerFileIconStyle::HostOperatingSystem
+                                     ? "host" : "simple"),
+                    FileIconStyleDescription(style),
+                    d->settings->fileIconStyle == style);
+            // Nothing to take icons from on this system: the choice is shown
+            // so the page still says what the setting is, and greyed so it
+            // does not promise a display it cannot produce.
+            if (!hostAvailable &&
+                style == FilerFileIconStyle::HostOperatingSystem)
+                radio->SetDisabled(true);
+            d->fileIconGroup.AddRadioButton(radio);
+            d->fileIconRadios.emplace_back(style, radio);
+            parts.body->AddChild(radio);
+        }
+        d->fileIconGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            for (const auto& [style, radio] : d->fileIconRadios) {
+                if (radio != selected) continue;
+                d->settings->fileIconStyle = style;
+                ApplyAndSave(d);
+                return;
+            }
+        };
+
+        if (!hostAvailable) {
+            parts.body->AddChild(MakeText("ufl-set-file-icons-unsupported",
+                    "This system has no desktop to take icons from, so the "
+                    "simple icons are all there is to draw here.",
+                    kTextWidth, kTextFontSize, kNoteTextColor));
+        }
+
+        AddNote(parts, "ufl-set-file-icons-note1",
+                "Host icons come from the shell on Windows, from Finder on "
+                "macOS and from the installed icon theme on Linux and BSD, so "
+                "a folder listing looks like the rest of the desktop rather "
+                "than like a second file manager.");
+        AddNote(parts, "ufl-set-file-icons-note2",
+                "Either way, a file that shows a thumbnail of its own content "
+                "keeps showing it, and a program or shortcut keeps the icon "
+                "it carries inside itself - those are the file's own picture, "
+                "not its type's.");
+        AddNote(parts, "ufl-set-file-icons-note3",
+                "A type this system has no icon for keeps the simple one, and "
+                "so does every icon until its lookup lands: the display never "
+                "waits for the host and never shows an empty box. With host "
+                "icons on, a folder is drawn with the system's folder icon, "
+                "so the pictures inside it (Display > Thumbnails) no longer "
+                "peek out of it.");
         return parts.page;
     }
 
@@ -1668,9 +1763,41 @@ namespace {
     }
 
     // ===== HISTORY & FAVORITES =====
+
+    // "300 entries" beside the limit slider. Always plural: the smallest the
+    // slider offers is kMinHistoryEntries, well above one.
+    void UpdateHistoryLimitLabel(DialogState* d) {
+        if (!d->settings || !d->historyLimitValue) return;
+        d->historyLimitValue->SetText(
+                std::to_string(d->settings->historyMaxEntries) + " entries");
+        d->historyLimitValue->RequestRedraw();
+    }
+
     std::shared_ptr<UltraCanvasContainer> BuildListsPage(DialogState* d) {
         PageParts parts = MakePage("ufl-set-page-lists", "History & Favorites",
-                "Clear the lists UltraFiler keeps:");
+                "How much the History view remembers, and clearing the lists "
+                "UltraFiler keeps:");
+
+        // ----- History: limit of entries -----
+        d->historyLimitValue = MakeSliderValueLabel("ufl-set-hf-limit-value", 80);
+        d->historyLimitSlider = MakeIntSlider("ufl-set-hf-limit",
+                UltraFilerSettings::kMinHistoryEntries,
+                UltraFilerSettings::kMaxHistoryEntries,
+                d->settings ? d->settings->historyMaxEntries
+                            : UltraFilerSettings::kDefaultHistoryEntries,
+                [d](int entries) {
+            if (!d->settings || d->settings->historyMaxEntries == entries) return;
+            d->settings->historyMaxEntries = entries;
+            UpdateHistoryLimitLabel(d);
+            // Applied straight away, like every other setting here: a lowered
+            // limit drops what is past it and rewrites history.txt now,
+            // rather than at the next restart.
+            ApplyAndSave(d);
+        });
+        parts.body->AddChild(MakeSliderRow("ufl-set-hf-limit-row",
+                "Limit of entries:", d->historyLimitSlider,
+                d->historyLimitValue, 0, 110));
+        UpdateHistoryLimitLabel(d);
 
         auto buttonRow = MakeButtonRow("ufl-set-hf-buttons");
 
@@ -1721,9 +1848,29 @@ namespace {
                 "applications; the Favorites view lists the pinned ones, "
                 "including the tree's Pinned section.");
         AddNote(parts, "ufl-set-hf-note2",
+                "The limit counts per section: Files, Folders and Apps each "
+                "keep that many entries, so a day of opening documents cannot "
+                "push the remembered applications out. What is past the limit "
+                "is the oldest, and lowering it forgets those entries for "
+                "good. The lists survive restarts - they are kept next to the "
+                "settings as history.txt.");
+        AddNote(parts, "ufl-set-hf-note3",
                 "Folder views are the view type and sort order each folder "
                 "was last looked at with. Cleared, every folder opens with "
                 "the current view again.");
+
+        d->resets[kPageLists] = PageReset{"Restore default limit", 170, [d]() {
+            if (!d->settings) return;
+            d->settings->historyMaxEntries =
+                    UltraFilerSettings::kDefaultHistoryEntries;
+            // The slider only reports a value it actually moved to, so the
+            // setting is written above rather than left to the callback.
+            if (d->historyLimitSlider)
+                d->historyLimitSlider->SetValue(static_cast<float>(
+                        UltraFilerSettings::kDefaultHistoryEntries));
+            UpdateHistoryLimitLabel(d);
+            ApplyAndSave(d);
+        }};
         return parts.page;
     }
 
@@ -2112,6 +2259,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageFiles, "Files");
         AddTreeNode(d, kPageDisplay, kPageIgnoredFiles, "Ignored files");
         AddTreeNode(d, kPageDisplay, kPageFileExtensions, "File extensions");
+        AddTreeNode(d, kPageDisplay, kPageFileIcons, "File icons");
         AddTreeNode(d, kPageDisplay, kPageFilesInUse, "Files in use");
         AddTreeNode(d, kPageDisplay, kPagePdfInventory, "PDF Inventory");
         AddTreeNode(d, kPageDisplay, kPageThumbnails, "Thumbnails");
@@ -2146,6 +2294,7 @@ namespace {
         AddPage(d, kPageFiles, BuildFilesPage(d));
         AddPage(d, kPageIgnoredFiles, BuildIgnoredFilesPage(d));
         AddPage(d, kPageFileExtensions, BuildFileExtensionsPage(d));
+        AddPage(d, kPageFileIcons, BuildFileIconsPage(d));
         AddPage(d, kPageFilesInUse, BuildFilesInUsePage(d));
         AddPage(d, kPagePdfInventory, BuildPdfInventoryPage(d));
         AddPage(d, kPageThumbnails,

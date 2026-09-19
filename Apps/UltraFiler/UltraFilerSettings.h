@@ -4,13 +4,14 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.11.0
-// Last Modified: 2026-09-13
+// Version: 1.13.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
-#include "UltraCanvasFilerWidget.h"   // FilerPreviewType, FilerExtensionBadge
+#include "UltraCanvasFilerWidget.h"   // FilerPreviewType, FilerExtensionBadge,
+                                     // FilerFileIconStyle
 
 #include <algorithm>
 #include <cstdint>
@@ -44,6 +45,15 @@ public:
     static constexpr int kMinPdfThumbnailPercent     = 5;
     static constexpr int kMaxPdfThumbnailPercent    = 40;
     static constexpr int kDefaultPdfThumbnailPercent = 25;
+
+    // Extras > History & Favorites: the range the "Limit of entries" slider
+    // offers, and the length the three most-recently-used lists ship with.
+    // Below ~10 a list forgets what was used this morning; above ~1000 it
+    // stops being a history and becomes a second file system - the view
+    // scrolls forever, and every entry costs an existence check when shown.
+    static constexpr int kMinHistoryEntries     = 10;
+    static constexpr int kMaxHistoryEntries     = 1000;
+    static constexpr int kDefaultHistoryEntries = 300;
 
     // ===== THE SETTINGS =====
     // Media viewer: backdrop behind transparent images — the checkered
@@ -102,6 +112,16 @@ public:
     // which is the display every earlier release had.
     bool showFileExtensions = true;
     FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
+
+    // Display > File icons: whose icons an entry with no picture of its own
+    // is drawn with - UltraFiler's own drawn folder shape and coloured sheet,
+    // or the icon this desktop uses for the type (the shell's on Windows,
+    // Finder's on macOS, the icon theme's on Linux/BSD). The simple icons by
+    // default: they are what every earlier release drew, they look the same
+    // on every platform, and they need nothing installed. Files that show a
+    // thumbnail of their own content, and programs and shortcuts that carry
+    // an icon inside them, are drawn the same way under both.
+    FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
 
     // Display > Files: whether the file display lists what the platform
     // calls hidden - the dot names everywhere, plus the hidden attribute on
@@ -188,6 +208,14 @@ public:
     // decompression per tile entering the drawn band, on a worker thread.
     bool compressedThumbnails = false;
 
+    // Extras > History & Favorites: how many entries each of the History
+    // view's three lists (Files, Folders and Apps) keeps. The lists are
+    // capped per section rather than together, so a morning of opening
+    // documents cannot push every remembered application out of the Apps tab.
+    // Lowering it takes effect at once: the entries past the new limit are
+    // dropped and history.txt rewritten, not kept out of sight on disk.
+    int historyMaxEntries = kDefaultHistoryEntries;
+
     // Handling > Drag & Drop: what dropping dragged files onto a folder of the
     // file display does without a modifier - move them (the default) or copy
     // them. Ctrl at the drop always copies and Shift always moves, whichever
@@ -228,6 +256,14 @@ public:
 #else
     bool doubleClickOpensRegisteredApp = false;
 #endif
+
+    // View > Split view: whether the window shows two folder displays side by
+    // side (the navigation row's split-screen toggle), and the folder the
+    // right-hand display last showed, so the next start opens the pair the
+    // way it was left. The left-hand display is the active tab, which needs
+    // no remembering of its own here.
+    bool splitView = false;
+    std::string splitSecondFolder;
 
     // Extras > Open prompt: the command line program the "Open prompt" menu
     // entry starts. Empty means "whatever this OS provides" - the platform
@@ -304,6 +340,8 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("display.extensions.badge");
         if (it != kv.end()) extensionBadge = ParseExtensionBadge(it->second);
+        it = kv.find("display.file.icons");
+        if (it != kv.end()) fileIconStyle = ParseFileIconStyle(it->second);
         it = kv.find("display.files.show.hidden");
         if (it != kv.end())
             showHiddenFiles =
@@ -343,8 +381,17 @@ public:
         it = kv.find("handling.files.double.click");
         if (it != kv.end())
             doubleClickOpensRegisteredApp = (it->second == "application");
+        it = kv.find("extras.history.max.entries");
+        if (it != kv.end())
+            ParseInt(it->second, historyMaxEntries,
+                     kMinHistoryEntries, kMaxHistoryEntries);
         it = kv.find("extras.prompt.application");
         if (it != kv.end()) promptApplication = it->second;
+        it = kv.find("view.split");
+        if (it != kv.end())
+            splitView = (it->second == "true" || it->second == "1" || it->second == "yes");
+        it = kv.find("view.split.second.folder");
+        if (it != kv.end()) splitSecondFolder = it->second;
         return true;
     }
 
@@ -384,6 +431,8 @@ public:
              << (showFileExtensions ? "true" : "false") << "\n";
         file << "display.extensions.badge = "
              << FormatExtensionBadge(extensionBadge) << "\n";
+        file << "display.file.icons = "
+             << FormatFileIconStyle(fileIconStyle) << "\n";
         file << "display.files.show.hidden = "
              << (showHiddenFiles ? "true" : "false") << "\n";
         file << "display.ignored.builtin = "
@@ -411,7 +460,10 @@ public:
         file << "handling.files.double.click = "
              << (doubleClickOpensRegisteredApp ? "application" : "preview")
              << "\n";
+        file << "extras.history.max.entries = " << historyMaxEntries << "\n";
         file << "extras.prompt.application = " << promptApplication << "\n";
+        file << "view.split = " << (splitView ? "true" : "false") << "\n";
+        file << "view.split.second.folder = " << splitSecondFolder << "\n";
         return true;
     }
 
@@ -432,6 +484,22 @@ public:
         if (value == "bar")  return FilerExtensionBadge::Bar;
         if (value == "icon") return FilerExtensionBadge::Icon;
         return FilerExtensionBadge::NoneBadge;
+    }
+
+    // ===== WHOSE FILE ICONS THE DISPLAY DRAWS =====
+    // Named, like every other choice in the file. An unknown value - a file
+    // written by a later release that has a third style - reads back as the
+    // simple icons, which every build can draw.
+    static std::string FormatFileIconStyle(FilerFileIconStyle style) {
+        switch (style) {
+            case FilerFileIconStyle::HostOperatingSystem: return "host";
+            default:                                      return "simple";
+        }
+    }
+
+    static FilerFileIconStyle ParseFileIconStyle(const std::string& text) {
+        return Trim(text) == "host" ? FilerFileIconStyle::HostOperatingSystem
+                                    : FilerFileIconStyle::Simple;
     }
 
     // ===== THE DROP CONFIRMATION =====

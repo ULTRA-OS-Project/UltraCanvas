@@ -105,7 +105,7 @@ UltraCanvas/
 -   **Text Rendering:** FreeType, Pango, HarfBuzz
 -   **Image Processing:** libvips
 -   **Utilities:** glib-2.0, tinyxml2, fmt (JSON support is built in via the vendored yyjson engine behind UltraCanvasJSON)
--   **Vector Formats:** converters for SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI, DXF and DWG are implemented in-tree — DWG reading is a native decoder for R13 through R2018 (no external program); DWG *writing* uses GNU LibreDWG's `dxf2dwg` command-line tool (optional, external process — found on PATH or named by `ULTRACANVAS_DXF2DWG`)
+-   **Vector Formats:** converters for SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI, DXF and DWG are implemented in-tree — DWG reading is a native decoder for R13 through R2018 (no external program), and covers the whole drawing family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` that holds a drawing); DWG *writing* uses GNU LibreDWG's `dxf2dwg` command-line tool (optional, external process — found on PATH or named by `ULTRACANVAS_DXF2DWG`)
 
 ----------
 
@@ -118,7 +118,7 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev
+    libfreetype6-dev libvips-dev libharfbuzz-dev clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -495,11 +495,39 @@ the backing implementation can be replaced without affecting callers.
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also
     be a `.desktop` file, whose own command is what then runs).
+  - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
+    file (matched by name, never by reading it) and the generic icon name
+    that type falls back to (`application/pdf` → `x-office-document`). Both
+    empty on Windows and macOS, which keep no MIME database; exposed because
+    the icon-naming rules of `UltraCanvasHostFileIcons` need them.
   - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
     for an "Other application…" picker (the picker UI lives with the caller).
   - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
     the worker only exists once a caller asks for it.
   See `Docs/UltraCanvas/UltraCanvasFileAssociations.md`.
+
+- **UltraCanvasElevatedFileOperations** (`UltraCanvasElevatedFileOperations.h`)
+  — "Delete as administrator": the retry Explorer offers when a delete answers
+  "You need permission to perform this action". A second copy of the host
+  executable is started through the shell's `runas` verb (Windows shows its
+  consent prompt), deletes what the user named and exits; consent is asked
+  every time and nothing else is elevated. Platform-free half (the helper's
+  delete, the command-line and report encodings) in
+  `core/UltraCanvasElevatedFileOperations.cpp`; Windows backend in
+  `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`; every other
+  platform answers Unavailable. Public surface (`namespace
+  ElevatedFileOperations`):
+  - `RunHelperIfRequested(argc, argv, exitCode)` — host side, first in
+    `main()`: turns an elevated relaunch into the helper, and installs the
+    retry for this executable.
+  - `IsAvailable` / `ProcessIsElevated` / `IsPermissionFailure(ec)` — whether
+    to offer the retry, and whether a failure is the kind it resolves.
+  - `DeleteElevated(paths)` — one consent prompt, one helper run; returns
+    `ElevatedDeleteResult` (Completed with per-entry failures / Declined /
+    Failed / Unavailable).
+  `UltraCanvasFilerWidget` offers it from its delete-problem dialog wherever
+  the host wired the helper. See
+  `Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md`.
 
 - **UltraCanvasShellLink** (`UltraCanvasShellLink.h`) — reads a Windows
   shortcut (`.lnk`, the MS-SHLLINK format) on **every** platform: what it
@@ -594,6 +622,28 @@ the backing implementation can be replaced without affecting callers.
   Used by `LoadNativeFileIconPixmap` (`UltraCanvasNativeFileIcons.h`) off
   Windows, and as the fallback for a file the shell declines on it.
   See `Docs/UltraCanvas/UltraCanvasIconResource.md`.
+
+- **UltraCanvasHostFileIcons** (`UltraCanvasHostFileIcons.h`) — the icon the
+  HOST desktop draws for a file of a given TYPE: what Explorer puts on a
+  `.txt`, Finder on a `.pdf`, the icon theme on a folder. The type-wide
+  counterpart of `UltraCanvasNativeFileIcons`, which answers the other
+  question — what icon a file carries INSIDE itself — and is asked first.
+  Shared key plus the no-op backend in `core/UltraCanvasHostFileIcons.cpp`;
+  the lookups per platform under `OS/<Platform>/` (Linux/BSD: the file's MIME
+  type from `UltraCanvasFileAssociations`, then the icon-naming-spec names
+  through `UltraCanvasDesktopEntry`'s theme resolver; Windows: the shell's
+  system image list via `SHGetFileInfoW` + `SHGetImageList`; macOS:
+  NSWorkspace). WebAssembly and Android report unavailable. Public surface:
+  - `HostFileIconsAvailable` — is there a desktop to ask on this build?
+  - `HostFileIconKey(path, isDirectory)` — the cache key files of one kind
+    share, so a folder of four thousand `.txt` files costs ONE lookup; pure
+    string work, no file access.
+  - `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` — the icon as a
+    `UCPixmap`, or null (no icon for the type, or no desktop): blocking, for
+    a worker thread holding a `NativeFileIconThreadScope`.
+  - `RefreshHostFileIcons` — forget the lookups after a theme change.
+  Used by `UltraCanvasFilerWidget` under Display > File icons > Host OS icons.
+  See `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`.
 
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
@@ -1367,12 +1417,16 @@ Cloud storage — the single home for cloud accounts, the default account, and
 "upload this and give me a share link", so no application talks to a cloud
 provider on its own. Providers are stateless plug-ins behind `ICloudProvider`
 (Verify / List / MakeDirectory / Upload / Download / CreateShareLink /
-SignIn / RefreshCredentials / AccountInfo); v0.2 ships Nextcloud / ownCloud
+SignIn / RefreshCredentials / AccountInfo, plus the optional Delete / Rename a
+provider carried as a drive implements); v0.2 ships Nextcloud / ownCloud
 (WebDAV + OCS share API, password and expiry on links), generic WebDAV (links
 through a public web-folder URL), Dropbox, OneDrive and Google Drive (OAuth2 +
 PKCE through the system browser via UltraNet, tokens refreshed automatically;
 the OAuth client id is configuration, `SetOAuthApp` or
-`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), and an in-memory demo provider. Providers
+`ULTRACLOUD_<PROVIDER>_CLIENT_ID`), FTP / FTPS / SFTP over UltraNet's FTP
+surface (the one provider that can also delete and rename, so a file manager
+can carry an FTP server as a drive; no share links, and SFTP authenticates
+with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
 Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
@@ -1451,6 +1505,155 @@ Linux / ULTRA OS only.
 **Implementation status:** none — named and specified only. The design
 proposal is written; no code, no `Docs/Modules/UltraAndroid/README.md` and no
 demo entry exist yet, and those land with Stage 1 rather than before it.
+
+---
+
+### **13. UltraMessage**
+
+The UltraMessage module is the message channel of the ULTRA OS stack: one
+API through which applications send structured messages to each other,
+receive what other applications and the platform publish, and expose
+commands that other programs, scripts and AI agents may invoke — on Linux /
+ULTRA OS, Windows and macOS from one codebase, WebAssembly and Android later.
+The model is the RISC OS Wimp (`Wimp_SendMessage`: broadcast or targeted,
+recorded delivery that bounces when unacknowledged, reply by return); the
+first consumer is the ULTRA OS desktop message centre, which shows every
+messenger's and mail client's messages in one structured feed.
+
+UltraMessage elements must comply with the following rules:
+- Clear structure; function and call names must be easily understandable
+- Blocking operations return `UltraMsgResult`; endpoints, subscriptions and
+  registered commands are opaque `UltraMsgHandle`s
+- One broker per user session and one wire protocol (length-prefixed JSON
+  frames over a local socket / named pipe) on every platform; platform buses
+  (D-Bus, `WM_COPYDATA`, Apple Events, notification listeners) are reached
+  only through adapters at the edges, never as the core transport
+- Well-known topics (`messaging.message`, `mail.message`,
+  `system.notification`, `app.command.*`, …) carry versioned schemas;
+  payloads are `JSONValue` (UltraCanvasJSON), never a third-party type
+- Callbacks are delivered on the UI thread through
+  `UltraCanvasApplication::PostToUIThread` unless a subscription opts out
+- Invoking another application's command requires the user's consent once
+  per caller / target; subscribing to the feed does not
+- No credentials travel on the bus; adapters resolve tokens through
+  UltraVault. The journal is owner-only and retention-limited
+- Networking stays in UltraNet: UltraMessage only redistributes locally what
+  UltraNet-based engines (UltraMail, UltraSocial connectors, MQTT) fetched
+
+Design: `Docs/Research/UltraMessageDesignProposal.md` (platform survey,
+data model, API, broker, adapters, security, delivery plan; §12 draws the
+boundary to UltraScript, §14 below).
+
+**Proposed Functions (Phase 1 — channel and journal):**
+- `UltraMsg_Initialize`, `UltraMsg_Shutdown`, `UltraMsg_IsAvailable`,
+  `UltraMsg_GetBrokerInfo`
+- `UltraMsg_Connect`, `UltraMsg_Disconnect`, `UltraMsg_ListEndpoints`,
+  `UltraMsg_ResolveApp`
+- `UltraMsg_Post`, `UltraMsg_PostRecorded`, `UltraMsg_Request`,
+  `UltraMsg_RequestAsync`, `UltraMsg_Reply`, `UltraMsg_ReplyError`,
+  `UltraMsg_Acknowledge`, `UltraMsg_Attach`, `UltraMsg_AttachFile`
+- `UltraMsg_Subscribe`, `UltraMsg_Unsubscribe`, `UltraMsg_ProcessPending`
+- `UltraMsg_Query`, `UltraMsg_Count`, `UltraMsg_MarkRead`,
+  `UltraMsg_MarkUnread`, `UltraMsg_Dismiss`, `UltraMsg_Delete`,
+  `UltraMsg_ListConversations`, `UltraMsg_SetRetention`, `UltraMsg_Export`
+- `UltraMsg_RegisterSchema`, `UltraMsg_GetSchema`, `UltraMsg_Validate`
+- `ultramsg` command-line tool (`post`, `invoke`, `query`, `tail`)
+
+**Proposed Functions (Phase 2 — feed adapters):**
+- `UltraMsg_ListAdapters`, `UltraMsg_EnableAdapter`,
+  `UltraMsg_GetAdapterState`
+- Adapters: `freedesktop-notifications` (the shell owns
+  `org.freedesktop.Notifications` on ULTRA OS; monitor mode elsewhere),
+  `windows-notification-listener`, `apple-mail` (Apple Events),
+  `ultramail` (the app publishes), `telegram`
+- `UltraCanvasMessageCenter` composite element (`Plugins/`)
+
+**Proposed Functions (Phase 3 — commands, the AppleScript-class surface):**
+- `UltraMsg_RegisterCommand`, `UltraMsg_UnregisterCommand`,
+  `UltraMsg_ListCommands`, `UltraMsg_Invoke`, `UltraMsg_InvokeAsync`,
+  `UltraMsg_InvokeNative`
+- Adapters: `dbus-export` / `dbus-invoke`, `apple-events-invoke` /
+  `apple-events-export` (generated `sdef`), `copydata`
+- App manifests (`X-UltraMessage-AppId`, `ultramessage.json`) and the
+  consent store
+
+**Planned (Phase 4):** Android `NotificationListenerService`, WebAssembly
+`BroadcastChannel` transport, `apple-messages`, `matrix`, `imap-idle`,
+`com-automation`, at-rest journal encryption via UltraCrypt.
+
+UltraMessage holds no language feature: the command surface is register,
+list, invoke and consent, plus the `app.command.echo` topic. UltraScript
+(§14) is a client of it and links it; UltraMessage never links UltraScript.
+
+UltraMessage is intended to be the recommended way for UltraFiler,
+UltraViewer, UltraMail, UltraSocial and the ULTRA OS desktop to talk to one
+another and for the desktop to collect messages from every source.
+
+**Implementation status:** none — named and specified only. The design
+proposal is written; no code, no `Docs/Modules/UltraMessage/README.md` and no
+demo entry exist yet, and those land with Phase 1 rather than before it.
+
+---
+
+### **14. UltraScript**
+
+The UltraScript module is the scripting language of the ULTRA OS stack: the
+cross-platform answer to AppleScript for automating UltraCanvas applications
+and repeating tasks across them. Three syntax styles (Modern, Natural,
+Classic), an automatic recorder that turns user actions into script code, an
+SDEF-compatible scripting dictionary generated from element metadata, a
+parser and executor, and a Script Editor application with a dictionary
+browser. Specification: `Docs/Research/UltraScriptSpecification.md`.
+
+UltraScript elements must comply with the following rules:
+- Clear structure; identifiers PascalCase, script property names lowercase
+  nouns, script command names verbs, script classes PascalCase types
+- Every UltraCanvas element is scriptable with no more than a script name
+  and a script class (`IUltraScriptable`); properties and commands are
+  registered once and appear in the dictionary automatically
+- Recording happens in exactly one place, before element handling, and only
+  for user-initiated actions; hover, focus and repaint events are never
+  recorded
+- Scripts never execute arbitrary native code; execution is validated
+  against the dictionary and type-checked
+- Crossing a process boundary — `tell application "X"` aimed at another
+  application, cross-application recording, message triggers, schedules —
+  goes through **UltraMessage** (§13) and nothing else; UltraScript links
+  UltraMessage, never the reverse, and registers its `ui.*` verbs as
+  ordinary commands on an ordinary endpoint (specification §17)
+- Acting on another application requires the user's consent, held in
+  UltraMessage's consent store; acting inside the script's own process does
+  not
+- No messenger- or mail-specific verbs in the language: those are
+  notification actions owned by UltraMessage's adapters
+
+**Proposed Surface (Phase 1 — in-process):**
+- `IUltraScriptable` — `GetScriptName`, `GetScriptClass`,
+  `GetScriptPropertyNames` / `GetScriptPropertyValue` /
+  `SetScriptPropertyValue`, `GetScriptCommandNames` /
+  `ExecuteScriptCommand`; `RegisterScriptProperty`, `RegisterScriptCommand`
+- `UltraScriptRecorder` — `StartRecording`, `StopRecording`,
+  `PauseRecording`, `ResumeRecording`, `IsRecording`, `ClearRecording`,
+  `RecordEventIfEnabled`, `GenerateScript`, `GetActions`, `OptimizeActions`,
+  `SetLiveCallback`, `SaveRecording` / `LoadRecording`
+- `UltraScriptParser` — `Parse`, `ParseFile`, `Validate`, `CheckSyntax`,
+  `DetectSyntaxStyle`, `ConvertSyntax`
+- `UltraScriptExecutor` — `Execute`, `ExecuteScript`, `ExecuteFile`,
+  step / breakpoint / variable inspection, `SetExecutionContext`
+- `UltraScriptDictionary` — `GenerateScriptingDictionary` (SDEF XML)
+- `UltraScriptStandardLibrary` — built-in functions, `RegisterCommand`
+- The Script Editor application (`Apps/ScriptEditor/`)
+
+**Proposed Surface (Phase 3 — cross-application, on UltraMessage):**
+- The `ui.list` / `ui.get` / `ui.set` / `ui.invoke` verbs and object paths
+- Executor routing of `tell` blocks to other processes, with launch
+- Cross-application recording via `app.command.echo`
+- `on message <topic>` handlers and scheduled scripts
+
+**Implementation status:** none — specified only. The specification names
+event-dispatch hooks that do not exist under those names in the codebase
+(its §17.8 lists the corrections); resolving that is the first task of
+Phase 1.
 
 ==============================================================================
 FILE: Docs/AI-Agent-Integration.md
@@ -4559,95 +4762,116 @@ FILE: Docs/UltraCanvas/UltraCanvasAIExamples.md
 
 ## Overview
 
-An `.ai` file needs no reader of its own. Since **Illustrator 9** the format
-*is* PDF: the page content is ordinary PDF, and Illustrator's own editing data
-rides along in an extra stream (`AIPrivateData`) that every other PDF consumer
-ignores. Both samples shipped under `media/vector/AI/` are exactly that —
-`%PDF-1.5`, one page, `AIPrivateData` present.
+Since **Illustrator 9** an `.ai` file is a PDF — but that alone does not make
+it readable by a PDF viewer. Illustrator's **"Create PDF Compatible File"**
+option decides whether the PDF page carries the artwork at all:
 
-So UltraCanvas reads `.ai` through the **MuPDF-backed PDF engine**, the same
-path the PDF Documents page uses, and writes it through the Vector plugin's
-`VectorConverter::AIConverter`, which is **export-only**.
+| Saved with PDF compatibility | What the file contains | What renders it |
+|---|---|---|
+| **On** | A normal PDF page that draws the artwork, *plus* the private `AIPrivateData` streams Illustrator edits from | Any PDF engine |
+| **Off** | A valid PDF whose page content stream draws **nothing** — the artwork exists only in `AIPrivateData` | The private data has to be read |
+
+Both samples under `media/vector/AI/` are the second kind (CorelDRAW exports;
+several other applications write them too). Their page content stream is 47
+bytes that set a transform and a graphics state and draw nothing, so a PDF
+viewer correctly renders a blank page — which is what UltraCanvas, and the
+online `.ai` viewers this was checked against, used to show.
+
+So UltraCanvas reads `.ai` through the Vector plugin's
+`VectorConverter::AIConverter`, which goes after the private data, and falls
+back to the PDF engine for a file whose artwork really is in its page.
 
 | Direction | Component | Notes |
 |---|---|---|
-| Read | `UltraCanvasPDFView` / `PDFEngineFactory` (`ULTRACANVAS_PLUGIN_PDF`) | Modern PDF-based `.ai`; paths, clips, transparency groups, gradients, embedded fonts and images render as in any PDF |
-| Write | `VectorConverter::AIConverter` (Vector plugin) | Emits the plugin's PDF output under the `.ai` extension — valid for Illustrator and every PDF consumer |
-
-Legacy (v8 and earlier) `.ai` files are EPS/PostScript-based. `AIConverter::ValidateData()`
-recognizes them (`%!PS` as well as `%PDF-`), but the writer does not produce them.
+| Read | `VectorConverter::AIConverter` (`UltraCanvasAIReader.cpp`) | Decodes the `/AIPrivateData` streams and interprets Illustrator's art language into a `VectorStorage::VectorDocument` |
+| Read (fallback) | `UltraCanvasPDFView` / `PDFEngineFactory` (`ULTRACANVAS_PLUGIN_PDF`) | A PDF-compatible `.ai` carries no private data; `AIConverter` declines it and the PDF engine renders the page |
+| Write | `VectorConverter::AIConverter` | Export-only: emits the plugin's PDF output under the `.ai` extension — valid for Illustrator and every PDF consumer |
 
 **Demo source:** `Apps/DemoApp/UltraCanvasAIExamples.cpp`
+**Reader:** `UltraCanvas/Plugins/Vector/UltraCanvasAIReader.cpp`
+**Test:** `Tests/AIReaderTest.cpp`
 **Demo page:** Vector Elements → *AI Artwork*
 **Namespace:** `UltraCanvas`
 
-## Why the `.ai` extension needs no special case
-
-`UltraCanvasPDFView::LoadFromPath()` reads a document that fits in memory
-(anything up to `GetMaxInMemoryBytes()`, 256 MB by default) into a buffer and
-hands it to MuPDF as `"application/pdf"` — the format is stated outright rather
-than sniffed from the file name. A `.ai` file therefore opens with no extension
-mapping and no conversion step:
+## Reading an `.ai`
 
 ```cpp
-auto view = CreatePDFView("AIView", 0, 0, 0, 0);
-view->onError = [](const std::string& msg) { /* report */ };
+#include "UltraCanvasMetafileConverters.h"
+#include "UltraCanvasVectorElement.h"
 
-const std::string path = NormalizePath(GetResourcesDir() + "media/vector/AI/turtle.ai");
-if (view->LoadFromPath(path)) {
+VectorConverter::AIConverter converter;
+VectorConverter::ConversionOptions options;
+options.WarningCallback = [](const std::string& message) { /* report */ };
+
+auto document = converter.Import(
+        NormalizePath(GetResourcesDir() + "media/vector/AI/turtle.ai"), options);
+
+if (document) {
+    auto view = CreateVectorElement("AIView", 0, 0, 800, 600);
+    view->SetDocument(document);
     view->ZoomToFit();
 }
 ```
 
-The streaming fallback (used for a document too large to hold in memory) goes
-through MuPDF's own format detection, which recognizes the `%PDF-` header
-regardless of the extension — so both load paths handle `.ai`. Verified against
-both shipped samples: each opens with one page through `OpenInMemory()` and
-through `Open()`.
+`Import()` returns null for a `.ai` that holds no private artwork, with a
+warning that says so — that is the signal to hand the file to the PDF engine
+rather than an error. `UltraCanvasVectorFormatsPlugin::LoadVectorDocument()`
+and `CreateConverterForExtension("ai")` reach the same converter.
+
+### What the reader understands
+
+The art language is the same PostScript-flavoured operator set that legacy
+(v8 and earlier) EPS-based `.ai` files carry in the open, so a legacy file
+reads through the same parser with no container step.
+
+| Area | Operators | Notes |
+|---|---|---|
+| Path construction | `m`, `l`/`L`, `c`/`C`, `v`/`V`, `y`/`Y` | The case distinction marks a corner or smooth anchor — editing information; both draw the same segment. `v` and `y` are the shorthands whose control point coincides with an endpoint |
+| Painting | `n`/`N`, `f`/`F`, `s`/`S`, `b`/`B` | The lowercase form closes the subpath first |
+| Clipping | `W` | Clips the rest of the enclosing group; becomes a `VectorClipPath` definition and a group carrying it |
+| Compound paths | `*u` … `*U` | All subpaths become one object, so a filled shape keeps its holes |
+| Structure | `u`/`U`, `Lb`/`Ln`/`LB` | Groups and named layers |
+| Graphics state | `w`, `J`, `j`, `M`, `d`, `XR` | Width, cap, join, miter limit, dashes, winding rule |
+| Colour | `g`/`G`, `k`/`K`, `Xa`/`XA`, `x`/`X`, `Xx`/`XX`, `p`/`P` | Grey, CMYK, RGB, spot (converted to its CMYK equivalent) and patterns (flat colour) |
+| Transparency | `Xy` | The AI9 operator; blend mode and opacity survive, isolation and knockout do not |
+| Gradients, text | `Bd`…`BB`, `To`…`TE` | Not imported; reported through `WarningCallback` rather than dropped silently, and the paths around them still come through |
+
+Anything else is counted and listed in one summary warning, so a file that
+displays wrong says which operators it needed.
+
+### Coordinates
+
+Illustrator's ruler space puts the origin at the **top-left** of the artboard
+with y running down as negative numbers; a legacy EPS-based `.ai` uses
+PostScript's **bottom-left** origin with y running up. Both map onto the
+document's y-down page, and the reader picks between them from the art's own
+extent. The page size comes from `%AI5_ArtSize`, falling back to
+`%%BoundingBox`.
 
 ## Example: the demo page
 
-The page is a flex column — title, format note, toolbar, viewer, status row,
-notes panel — with a dropdown that switches between the shipped samples.
+The page is a flex column — title, format note, toolbar, viewer stage, status
+row, notes panel. The stage holds both viewers and shows whichever route the
+file took, so the toolbar's zoom buttons drive the active one:
 
 ```cpp
-auto root = std::make_shared<UltraCanvasContainer>("AIExamples", 0, 0, 1000, 780);
-root->layout.SetFlexColumn().SetFlexGap(8)
-            .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-root->SetPadding(10, 12, 10, 12);
+auto vectorView = CreateVectorElement("AIVectorView", 0, 0, 0, 0);
+VectorElementOptions options = vectorView->GetOptions();
+options.InteractionMode = VectorInteractionMode::PanZoom;
+options.BackgroundColor = Colors::White;
+vectorView->SetOptions(options);
 
-auto view = CreatePDFView("AIView", 0, 0, 0, 0);
-view->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-std::weak_ptr<UltraCanvasPDFView> viewWeak = view;
-
-// Page counter and zoom read-out, wired before the first load so the
-// initial document is reflected too.
-view->onPageChanged = [pageLabel](int cur, int total) {
-    pageLabel->SetText("Page " + std::to_string(cur) + " / " + std::to_string(total));
-};
-view->onZoomChanged = [zoomLabel](float percent) {
-    zoomLabel->SetText(std::to_string(static_cast<int>(std::lround(percent))) + "%");
-};
-
-auto sampleDropdown = CreateDropdown("AISample", 0, 0, 220, 30);
-sampleDropdown->AddItem("turtle.ai");
-sampleDropdown->AddItem("mandalorian-star-wars.ai");
-sampleDropdown->SetSelectedIndex(0, false);
-sampleDropdown->onSelectionChanged = [viewWeak](int index, const DropdownItem& item) {
-    if (auto v = viewWeak.lock()) {
-        v->LoadFromPath(NormalizePath(GetResourcesDir() + "media/vector/AI/" + item.text));
-        v->ZoomToFit();
-    }
-};
+AILoadResult loaded = LoadAIDocument(path);
+if (loaded.document) {
+    vectorView->SetDocument(loaded.document);
+    vectorView->ZoomToFit();          // route: Vector plugin
+} else {
+    pdfView->LoadFromPath(path);      // route: PDF engine
+}
 ```
 
-Navigation and zoom are the `UltraCanvasPDFView` methods —
-`GoToPrevPage()` / `GoToNextPage()`, `ZoomIn()` / `ZoomOut()`,
-`ZoomToFit()` / `ZoomToWidth()` / `ZoomActualSize()` — so text selection,
-search and image extraction are available on `.ai` artwork exactly as they are
-on a `.pdf`. See
-[`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) for the full viewer API.
+The page is built when the Vector plugin is (`ULTRACANVAS_HAS_VECTOR_PLUGIN`);
+the PDF fallback compiles in only where `ULTRACANVAS_PLUGIN_PDF` is also set.
 
 ## Writing `.ai`
 
@@ -4657,9 +4881,9 @@ on a `.pdf`. See
 UltraCanvasVectorFormatsPlugin::SaveVectorDocument(document, "artwork.ai");
 ```
 
-`UltraCanvasVectorFormatsPlugin::CreateConverterForExtension("ai")` returns an
-`AIConverter`. Its `CanImport()` is `false` — reading is the PDF engine's job,
-as above — so `LoadVectorDocument("artwork.ai")` returns null by design.
+The writer produces a PDF-compatible file — which is the kind the PDF engine
+renders — so a document written by UltraCanvas and read back takes the
+fallback route, not the private-data one.
 
 ## Shipped samples
 
@@ -4667,14 +4891,15 @@ as above — so `LoadVectorDocument("artwork.ai")` returns null by design.
 
 | File | Notes |
 |---|---|
-| `turtle.ai` | 319 KB, `%PDF-1.5`, one page, `AIPrivateData` present |
-| `mandalorian-star-wars.ai` | 74 KB, `%PDF-1.5`, one page, `AIPrivateData` present |
+| `turtle.ai` | 319 KB, `%PDF-1.5`, empty page, 868 stroked paths in the private data |
+| `mandalorian-star-wars.ai` | 74 KB, `%PDF-1.5`, empty page, 72 stroked paths in the private data |
 
 ## See also
 
-- [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the viewer this page is built on
 - [`UltraCanvasVectorConverters.md`](UltraCanvasVectorConverters.md) — the converter matrix `AIConverter` belongs to
-- [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, which is what a legacy `.ai` would need
+- [`UltraCanvasVectorRaster.md`](UltraCanvasVectorRaster.md) — the `UltraCanvasVectorElement` viewer
+- [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the PDF viewer used for the fallback route
+- [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, a separate engine for `.eps`
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -18684,6 +18909,134 @@ int loaded = UltraCanvas_RefreshElementPlugins();   // explicit; usually implici
    this at load time rather than at crash time.
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasElevatedFileOperations.md
+==============================================================================
+
+# UltraCanvasElevatedFileOperations
+
+**"Delete as administrator"** — the retry Explorer offers when a delete answers
+*You need permission to perform this action*: Windows asks for consent (the
+UAC prompt) and the operation runs again with administrator rights.
+
+```cpp
+#include "UltraCanvasElevatedFileOperations.h"
+
+// 1. At the very top of main(), before any UI:
+int helperExit = 0;
+if (ElevatedFileOperations::RunHelperIfRequested(argc, argv, helperExit))
+    return helperExit;
+
+// 2. Where a delete fails:
+std::error_code ec;
+std::filesystem::remove_all(path, ec);
+if (ec && ElevatedFileOperations::IsAvailable() &&
+    ElevatedFileOperations::IsPermissionFailure(ec)) {
+    auto result = ElevatedFileOperations::DeleteElevated({path});   // blocks
+    if (result.outcome == ElevatedFileOperations::ElevatedOutcome::Completed &&
+        result.failures.empty()) { /* gone */ }
+}
+```
+
+`UltraCanvasFilerWidget` does step 2 for you: its delete-problem dialog gains a
+**Delete as administrator** choice wherever step 1 has been done (see
+[Delete problems](UltraCanvasFilerWidget.md#delete-problems-locked--failing-entries)).
+UltraFiler does step 1 in its `main.cpp`.
+
+## Why a second process
+
+A running process cannot raise its own rights. What Explorer's shield button
+does — and what this module does — is start **a second copy of the same
+executable** through the shell's `runas` verb. Windows shows its consent prompt
+on the secure desktop (nothing in the application can answer it), and on *Yes*
+the copy starts elevated, sees the helper flag on its command line, deletes what
+it was told to, and exits without ever creating a window.
+
+`RunHelperIfRequested` is the host's half of that contract. Called first thing
+in `main()`, it turns the elevated copy into that helper before any UI exists.
+It is also what makes `IsAvailable()` true: a host that never calls it never
+offers the retry, because relaunching an executable that would open a second
+main window instead of deleting anything helps nobody. The DemoApp's Filer
+page, for example, keeps the plain *Try again / Skip* choice.
+
+## What it does not do
+
+- **Change the user's rights for anything else.** The elevated process lives
+  for the one operation and exits. The application itself stays a standard
+  user's process.
+- **Remember the consent.** Every retry asks again, exactly as Explorer does.
+- **Delete anything the user did not name.** The helper takes the absolute
+  paths on its command line and nothing else; a relative path is refused and
+  reported, not resolved against whatever the elevated process's working
+  directory happens to be. The one file it reads is one it writes — the
+  report — and only after the deletes.
+- **Get past a sharing violation.** "In use by another program" is not a
+  permission problem; `IsPermissionFailure` says no for it and the widget keeps
+  offering *Try again* there.
+- **Help when already elevated.** When the process runs as administrator and
+  the system still says no (a file owned by TrustedInstaller, say), asking
+  again cannot change the answer, so `IsAvailable()` is false then.
+
+## API
+
+| Function | Purpose |
+|---|---|
+| `RunHelperIfRequested(argc, argv, exitCode)` | Host side, first in `main()`. True: this process was the helper, the work is done, return `exitCode`. False: an ordinary start. Calling it at all installs the retry. |
+| `IsAvailable()` | A backend exists, the helper is installed, and this process is not already elevated. |
+| `ProcessIsElevated()` | The process token's elevation state (Windows); false elsewhere. |
+| `IsPermissionFailure(ec)` | Is this `std::error_code` from a filesystem call the refusal administrator rights may resolve (`ERROR_ACCESS_DENIED` / `EACCES`)? |
+| `DeleteElevated(paths)` | Delete these entries (files, or folders with everything in them) through the helper. **Blocks** until the consent prompt is answered and the helper has exited — run it off the UI thread. One prompt for the whole list. |
+
+`DeleteElevated` returns an `ElevatedDeleteResult`:
+
+| `outcome` | Meaning |
+|---|---|
+| `Completed` | The helper ran. `failures` lists what it still could not delete, each with the system's own reason (*"The process cannot access the file because it is being used by another process"*). Empty = everything went. |
+| `Declined` | The user answered *No* to the consent prompt (or it timed out). Nothing was touched. |
+| `Failed` | The helper could not be started; `error` says why. |
+| `Unavailable` | No backend on this platform, the host never called `RunHelperIfRequested`, or the process is already elevated. |
+
+What the helper *did* delete is not reported: the caller reads it off the disk
+(`std::filesystem::exists`), which is also the truth when the helper died
+before it could write anything.
+
+## The helper's contract
+
+```
+<exe> --uc-elevated-delete <report file> <absolute path>...
+```
+
+The helper deletes each path in order, lifting read-only attributes first (on
+the entry and, for a folder, on everything in it — a read-only file cannot be
+removed on Windows, and getting things out of the way is the point). It writes
+one `<path>\t<reason>` line per failure into the report file (UTF-8, LF) —
+an empty file for a clean run, so the caller can tell *nothing failed* from
+*the helper never got this far* — and exits `0` when everything went, `1` when
+something is left, `2` when the arguments made no sense.
+
+The caller creates the report file in its own temp folder before the launch
+(`GetTempFileName`), passes its name, reads and deletes it afterwards. The
+command line is the only input: paths are quoted the way
+`CommandLineToArgvW` unquotes them (`QuoteCommandLineArgument`), and a list too
+long for one command line is split (`SplitIntoCommandLines`) — each part is
+one launch and therefore one consent prompt, which only a selection of many
+thousands of protected entries ever reaches.
+
+The helper's argv comes from `GetCommandLineW`, not from the C runtime's narrow
+`argv`: on a Windows older than 1903, where the manifest's UTF-8 code page does
+not apply, the narrow one mangles a path with characters outside the system
+code page.
+
+## Backends
+
+| Platform | Backend |
+|---|---|
+| Windows | `ShellExecuteEx("runas")` + the process token's `TokenElevation`, in `OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp`. |
+| Linux, macOS, WebAssembly | None: `IsAvailable()` is false and `DeleteElevated` answers `Unavailable`. The platform-free half (the helper's delete, the encodings) lives in `core/UltraCanvasElevatedFileOperations.cpp` and is what `Tests/ElevatedFileOperationsTest.cpp` exercises everywhere. |
+
+A `pkexec` / authorization-services backend for the Unix desktops would slot in
+behind the same four `Native*` functions.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasFileAssociations.md
 ==============================================================================
 
@@ -18739,6 +19092,21 @@ struct FileAssociationApp {
   candidate list answers a different question, since it also carries the
   applications that merely offer to open the type. Cache-served like the
   list.
+- `GetMimeType(path)` — the freedesktop MIME name the system knows this file
+  by (`text/plain`, `application/zip`), matched by file name — the extension,
+  or a literal name like `makefile` — and never by reading the file.
+- `GetMimeGenericIcon(mime)` — the **generic** icon name that type falls back
+  to when nothing has an icon for the type itself: `application/pdf` is drawn
+  as `x-office-document`, a tarball as `package-x-generic`. The type database
+  carries these as exceptions to the rule that a type falls back to its media
+  type's generic icon (`image/*` → `image-x-generic`), so `""` means "the rule
+  applies", not "no icon".
+
+  Both are empty on Windows and macOS, which associate by extension and by
+  UTI and keep no MIME database to ask. They are therefore a Linux/BSD service
+  in practice, exposed because the freedesktop icon-naming rules need them —
+  see [`UltraCanvasHostFileIcons.md`](UltraCanvasHostFileIcons.md), which is
+  what asks.
 - `OpenWithDefaultApplication(paths, outError)` — Explorer / Finder
   double-click semantics. A selection spanning several types launches each
   type's default handler once with its files. On Windows a file type with no
@@ -19229,6 +19597,51 @@ Changing either switch — from the menu or through the setters — fires
 use, so an application persists both from one place (UltraFiler:
 `Settings > Display > File extensions`).
 
+## File icons
+
+What an entry with no picture of its own is drawn with: the widget's own drawn
+icons, or the ones this desktop uses for the type (`Display > File icons`).
+
+```cpp
+if (UltraCanvasFilerWidget::AreHostFileIconsAvailable())
+    filer->SetFileIconStyle(FilerFileIconStyle::HostOperatingSystem);
+```
+
+| Style | What is drawn |
+|---|---|
+| `Simple` (default) | UltraFiler's own icons: the folder shape and the category-coloured sheet with the extension on it. Identical on every platform, and needs nothing installed — what every earlier release drew. |
+| `HostOperatingSystem` | What **this** system draws for the type: the shell's icon on Windows, Finder's on macOS, the installed icon theme's on Linux and BSD, so a folder listing matches the rest of the desktop. |
+
+The setting only governs **type** icons. A file that shows a thumbnail of its
+own content keeps showing it, and a program, shortcut or bundle keeps the icon
+it carries inside itself ([Native application icons](#native-application-icons))
+— those are the file's own picture, and Explorer, Finder and the Linux file
+managers all prefer them too. What changes is the fallback underneath: the
+sheet glyph becomes the desktop's type icon, and the drawn folder shape becomes
+the desktop's folder icon.
+
+A folder the host gave an icon through `folderIconProvider`
+([Folder icons](#folder-icons)) still wins over both — that is an explicit
+choice about one folder. [Folder previews](#folder-previews) are drawn *into*
+the built-in folder shape, so with host icons on there is no shape to draw them
+into and the folder is simply the system's folder icon.
+
+The lookups go through
+[`UltraCanvasHostFileIcons.h`](UltraCanvasHostFileIcons.md) on one background
+thread, and the widget caches what comes back **per type and size**, not per
+file: a folder of four thousand `.txt` files performs one lookup and holds one
+pixmap. Until an answer lands — and on a system that has no icon for the type,
+or no desktop to ask at all — the simple icon is drawn, so the display never
+waits on a lookup and never shows an empty box.
+
+`AreHostFileIconsAvailable()` reports whether there is a desktop to ask
+(false on WebAssembly and Android): a settings page should say so rather than
+offer a choice that changes nothing. `RefreshHostIcons()` throws the resolved
+icons away and asks again, for a host that notices the user changing desktop
+theme. Switching the style fires `onDisplayFormatsChanged`, the same hook the
+other Display switches use, so an application persists it from one place
+(UltraFiler: `Settings > Display > File icons`).
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -19277,6 +19690,8 @@ Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascen
                   Type        >  all view types
                   File extensions > "Show in names" (checkbox) + None / Bar /
                                  Icon (the thumbnail tile tag)
+                  File icons  >  UltraFiler simple / Host OS icons (only
+                                 where this system has icons to give)
                   Thumbnails  >  Bitmaps / Vector graphics / 3D / PDF / Text /
                                  Docs / Spreadsheets / Videos / Audio / Fonts
                                  (checkboxes, all on; the host may append its
@@ -19404,7 +19819,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (emf, wmf, dxf, dwg, older RIFF cdr, an EPS written without a preview) has no renderer that works without a window and keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
@@ -19503,7 +19918,7 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 
 `thumbnailSupported` answers for the format in **this** build, and it answers
 honestly: false for audio (nothing reads cover art), for the vector formats
-with no renderer and no embedded preview (emf, wmf, dxf, dwg), for PDF without
+with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
 reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
 ones are refused by the text-preview extractor too, so the tile keeps its type
@@ -19844,6 +20259,85 @@ does.
 Directories are never probed: what holds a folder open is usually a program's
 *working directory*, which no probe here can see.
 
+## Remote folders
+
+The widget can show a folder that is not on this machine — a drive the host
+carries for an FTP / SFTP server or a cloud account — through two hooks. It
+gains no network dependency of its own: it only asks, in the same spirit as
+the VirtualFS branch that lists the inside of an archive.
+
+```cpp
+filer->isRemotePath = [](const std::string& path) {
+    return path.compare(0, 13, "ultracloud://") == 0;
+};
+filer->remoteListing = [drives](const std::string& path,
+                                std::vector<FilerEntry>& out,
+                                std::string& error) {
+    return drives->List(path, out, error);   // from a cache, never blocking
+};
+```
+
+- **`isRemotePath` is asked first**, before the local filesystem is consulted.
+  That is the point of it: handing a remote path to `std::filesystem` would at
+  best fail, and at worst — for a path that looks like a dead network mount —
+  block the UI thread until the OS times out.
+- **`remoteListing` runs on the UI thread**, inside the folder scan. A host
+  that has to go to the network must answer from what it already holds,
+  returning an empty listing while a fetch is in flight, and call `Refresh()`
+  when the answer arrives. Blocking here freezes the window for as long as the
+  server takes.
+- **What an entry needs**: `name`, `path`, `isDirectory`, and for files `size`
+  and `modifiedTime`. The widget derives the extension and the type
+  information itself, so a remote file gets the same icon and category as a
+  local one of the same name.
+- **Returning `false`** with `error` set reports the message the way any
+  listing error is reported; returning `true` with an empty listing means
+  "nothing yet".
+### Changing a remote folder
+
+Three more hooks let the host carry out the changes that act on the drive
+itself. Unlike `remoteListing` they do not answer with the result: the host
+queues the work and refreshes the display once the server has replied, so a
+slow drive never holds the UI thread.
+
+```cpp
+filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
+                               std::string& error) { … };
+filer->remoteRename = [drives](const std::string& path,
+                               const std::string& newName,
+                               std::string& error) { … };
+filer->remoteMakeDirectory = [drives](const std::string& folderPath,
+                                      const std::string& name,
+                                      std::string& error) { … };
+```
+
+- Each returns `true` when the request was **accepted**, not when it finished;
+  `false` with `error` is for what can be refused outright — a drive that
+  cannot be written to, a name that is really a path.
+- **Each entry carries its own `isDirectory`**, which is what lets a backend
+  pick the right call (FTP's `DELE` against `RMD`) without a probe per entry.
+- `remoteRename` takes a **bare name**: a rename in place, never a move.
+- A remote **new folder** cannot go straight into rename mode the way a local
+  one does — the entry does not exist until the server has answered and the
+  refresh has landed. The widget names it from the listing on screen
+  (`UniqueRemoteChildName`) and the user renames it afterwards.
+- **Left unset, the matching command refuses** rather than reaching
+  `std::filesystem` with a path that resolves to nothing, which would fail
+  with an error about a missing file instead of an answer about where it was
+  pointed. That is still what happens for the operations with no hook:
+  duplicate, paste and new file. Copying between the local disk and a drive is
+  a transfer with progress, conflicts and a cancel, and belongs with the paste
+  machinery rather than in a hook like these.
+- The read-only badge is the host's to set: it fills `FilerEntry::isReadOnly`
+  from what the drive can do, so an entry says so before a command is tried.
+
+- **`listingIsRealDirectory` stays false** for a remote listing, which turns
+  off the features that read the local filesystem per entry: the folder
+  previews and the in-use (lock) column.
+
+UltraFiler's remote drives are built on these two hooks; see
+`Apps/UltraFiler/UltraFilerRemoteDrives.h`.
+
 ## Folder listing prefetch
 
 With `SetFolderPrefetchEnabled` (default on), a low-priority worker pre-scans
@@ -20057,6 +20551,92 @@ rule, including a desktop launcher's own `Name=`
 where the home folder is shown as *Home* — what the folder tree's row and the
 folder tab call it too — instead of the account the folder is named after.
 
+## File type colours
+
+Every colour the display gives an entry — the band across the foot of its
+glyph, its TreeMap cell, the folder shape — comes from
+`UltraCanvasFilerWidget::EntryColorOf(entry)`. Three independent channels carry
+three facts, and none of them is the file's name:
+
+- **Hue is the family.** Blue images, green video, yellow-to-orange audio, cyan
+  vector, teal 3D models, purple documents, violet spreadsheets, grey text and
+  code, dark red applications, steel grey libraries, magenta archives, sepia
+  fonts. The media hues are saturated and the working files muted, so a folder
+  of photographs looks unlike a source tree before a single name is read.
+- **Brightness is efficiency.** Inside a family the modern format takes the
+  brightest rung and the legacy one sinks to the dark end. Two formats share a
+  rung when they share a compressor: zip, jar, tgz and gz are all deflate, and
+  colouring them apart would invent a difference the bytes do not have.
+- **A hue tilt separates lossless from lossy**, at the same chroma rather than
+  by dulling it — indigo beside azure for images, pure yellow beside orange for
+  audio. Lossless is a sibling family, not a washed-out version of its lossy
+  neighbour.
+
+| Family | Rungs, most efficient first |
+|---|---|
+| Images, lossy | `avif #2D86EA` · `heic/heif #1672DB` · `webp #1260BA` · `jpg #0F4F98` · `gif #0C3F7A` |
+| Images, lossless | `png #6F79CC` · `qoi #5761C4` · `tif #414DB8` · `ico #363F98` · `bmp #2B337A` |
+| Video | `webm #1CA04B` · `mkv #1A9545` · `mp4 #18883F` · `mov #157938` · `avi #12632E` · `wmv #0F5326` |
+| Audio, lossy | `opus #FFAA54` · `aac/m4a #FF9830` · `m4b #FF8408` · `ogg #F37900` · `mp3 #E27100` |
+| Audio, lossless | `flac #FFDC4D` · *(ALAC #FDCA00)* · `wav #EDBD00` · `aiff #DEB200` |
+| Vector | `svgz #0E93AE` · `svg #0D88A0` · `ai/cdr #0C798E` · `eps/ps/dwg #0A677A` · `dxf/emf/wmf #085666` |
+| 3D models | `glb #26998A` · `3mf #249182` · `stl/fbx #218577` · `ply/3ds #1E776B` · `gltf #1A665C` · `obj/dae #16584F` |
+| Documents | `pdf #A876D4` · `epub #9F69CF` · `odt #975BCB` · `docx #8B49C6` · `doc #7E3AB9` · `rtf #6D33A0` · `md/html/tex #5C2B87` |
+| Spreadsheets | `xlsx #893589` · `ods #A741A7` · `xls #BD57BD` |
+| Text and code | source `#818B98` · config and data `#949DA8` · `txt #ABB1BA` · `log #BABFC7` |
+| Applications | `exe #DC3644` · `appimage #CA2431` · `msi #AE1F2B` · `deb/rpm #911A24` |
+| Libraries | `so #445662` · `dll #506573` · `dylib #5C7384` · `a/lib #688396` |
+| Archives | `7z/zst #842A57` · `xz/lzma #9E3268` · `rar/bz2 #B93A79` · `gz/zip/jar/tgz #C74E8A` · `tar #CF669B` |
+| Fonts | `woff2 #6E4A36` · `woff #81573F` · `otf #946449` · `ttf #A47051` · `ttc/otc #AE7A5B` · legacy `#B48467` |
+
+Folders keep the amber `#F7BE50` they have always had — it is the one icon
+nobody should have to relearn — and a directory is coloured by what it is, so a
+folder called `render.mp4` is not drawn as a video. Anything the format table
+and the plugin inventory both miss is the neutral `#9E9E9E`.
+
+### Programs are not libraries
+
+`.exe` and `.dll` used to be one category, one noun and one colour, which is
+how a folder of system plumbing came to look exactly like a folder of programs.
+They are now `FilerFileCategory::Executable` and `FilerFileCategory::Library`:
+separate colours (dark red against steel grey), separate nouns in the Type
+column (`core.dll` is a *Dynamic Link Library*, not a *Library Program*), and
+separate positions in a sort by type. A host that asks "is this something the
+user launches?" can now trust the category — UltraFiler's History *Apps* tab
+does — instead of carrying its own list of program extensions.
+
+### Caption ink
+
+The TreeMap draws file names on top of these colours, so the ink has to answer
+to them: `EntryCaptionInkOf(entry)` returns white for the dark families and
+near-black for the light ones (audio, text and code, folders, unrecognised
+files). The ink is a property of the **family**, never of the single file:
+every rung of a family clears 3.2:1 against one ink, so no ramp ever switches
+ink halfway down itself — a GIF does not get black text because it happens to
+be the palest blue. Where the ink does change, between families, the change
+itself says which half of the palette you are looking at.
+
+### What the extension cannot say
+
+The colour does not claim to know more than the file name does. `.webp` and
+`.jxl` are both lossy and lossless and are coloured lossy, which is what almost
+every one of them is. `.m4a` holds AAC or ALAC. `.mp4`, `.mkv` and `.mov` name
+a container, not a codec, so an AV1 MKV and an MPEG-2 MKV share a rung until
+something reads the file — the widget already probes audio and video lazily for
+the Length column, and that probe is where a codec-accurate rung would come
+from, filling in behind the extension's shade the way a thumbnail fills in
+behind its glyph.
+
+A host drawing its own file lists can ask for the same colours directly:
+
+```cpp
+const Color band = UltraCanvasFilerWidget::EntryColorOf(entry);
+const Color ink  = UltraCanvasFilerWidget::EntryCaptionInkOf(entry);
+// by extension alone, with the category as the fallback for formats the
+// ladders do not rank (anything a plugin registered):
+const Color c = UltraCanvasFilerWidget::FormatColorOf("avif", FilerFileCategory::Image);
+```
+
 ## Folder icons
 
 Folders are drawn as a colored folder shape. `folderIconProvider(entry)` lets
@@ -20099,6 +20679,12 @@ persists those persists this one the same way.
 ```cpp
 filer->SetFolderPreviewsEnabled(false);   // plain folder shapes only
 ```
+
+They are drawn into the **built-in** folder shape, so they only appear where
+that shape is what a folder is drawn with: a folder with an icon from
+`folderIconProvider` ([Folder icons](#folder-icons)) keeps that icon, and with
+`Display > File icons` on `HostOperatingSystem` ([File icons](#file-icons))
+every folder is the system's folder icon and none of them peek.
 
 What it costs, and where it is drawn:
 
@@ -20200,7 +20786,10 @@ filer->Paste();               // into the current folder, with the conflict
 filer->PasteFilesInto(folder, paths, cut, onDone);  // same paste machinery
                               // aimed at any folder (see below)
 filer->DeleteSelection();     // gated by confirmDelete when set
+filer->DeletePaths(paths, onDone);   // delete without asking again - for a
+                              // host that ran its own confirmation
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
+                              // (the paste machinery, aimed at this folder)
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
@@ -20209,6 +20798,55 @@ filer->ExtractSelection();           // into sibling folders; a taken folder
 filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Progress window (copy / move / delete)
+
+Copying, moving and deleting run on a **background worker**, and a
+[progress window](UltraCanvasProgressDialog.md) — the ring with the
+percentage, the file being handled and **Cancel** — opens over them **once the
+operation has been running for two seconds**. Anything shorter never shows a
+window at all: a file manager that flashes a dialog for every copied text file
+is worse than one that shows none. (Packing, unpacking and the
+["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
+open theirs immediately instead: none of those is ever the quick case, and the
+last one is waiting on a consent prompt the user has to answer.)
+
+The window is the same for every route into these operations — Ctrl+V, the
+context menu, `Delete`, a drag & drop between panes, `Duplicate`,
+`PasteFilesInto()`, `DeletePaths()` — because they all go through the same two
+queues.
+
+What the ring shows: every entry of the queue is worth an equal slice of it,
+and the bytes copied (or the entries removed) inside an entry move the ring
+within its slice. So a single large file fills the ring smoothly and a
+thousand small ones fill it a step at a time. The size of an entry is counted
+just before it is worked on, never for the whole queue up front — for a move,
+where each entry is one instant rename, walking every tree first would take
+longer than the move.
+
+Files larger than 8 MB are copied in 1 MB chunks so the ring moves *inside*
+the file and **Cancel** does not have to wait for it; smaller files go through
+`std::filesystem::copy_file` in one call, which lets the platform hand the
+copy to the filesystem itself.
+
+**Cancel** stops at the next file. What was already copied, moved or deleted
+stays; the entry the cancel interrupted does not: a half-copied file or folder
+is removed, so nothing partial is left in the listing. The one step that is
+never interrupted is the *second half of a cross-volume move* — once the copy
+is safely on the other volume, the original is removed to the end, because
+stopping there would leave the entry half in both places.
+
+The queues themselves stay on the UI thread, because their conflict and
+problem dialogs are answers only the user can give: the worker walks the queue
+until it reaches an entry that needs one and hands the queue back. The
+progress window closes while such a dialog is up (two modal windows at once is
+nobody's idea of a file manager) and reopens when the work resumes — without a
+second two-second wait, because the delay is measured from the start of the
+whole operation.
+
+The application window stays live throughout: the folder display keeps
+painting and scrolling while a long copy runs. Auto-refresh is held back until the
+operation ends, exactly as it is for an open rename editor or a drag.
 
 ### Activating files — running applications
 
@@ -20296,11 +20934,32 @@ and drops the rest):
   preselected) and a *"Do this for all remaining items"* scope switch.
   A stored try-again-for-all grants each later failing entry one silent
   retry before asking again, so a stubborn entry can never loop forever.
+- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+  answers with its shield button: the entry is deletable, just not by this
+  user. Where the host has wired
+  [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
+  (UltraFiler has), the dialog is **Administrator Permission Needed** —
+  "Deleting this file needs administrator permission. Windows will ask you to
+  confirm before it is deleted." — with **Delete as administrator**
+  (preselected) / **Try again** / **Skip this file** and the same scope switch.
+  Entries handed to the administrator are collected while the queue runs and go
+  to the elevated helper in **one run at the end**, so the whole delete costs
+  one consent prompt however many entries need it; a "Deleting as
+  Administrator" progress window stands in for the wait, and the widget stays
+  responsive because the helper is waited for off the UI thread. What the
+  helper still could not delete comes back in a **Cannot Delete** dialog with
+  the system's reason per entry; a declined prompt is reported through
+  `onError` and leaves the entries in place. Sharing violations ("in use by
+  another program") are not permission failures and keep the plain dialog,
+  as does a process that already runs as administrator — asking again cannot
+  change the system's answer there.
 
 Entries inside archives are still deleted in one batched archive rewrite
 before the interactive queue; their failures are reported via `onError` as
 before. When modal dialogs are unavailable the delete falls back to the old
-fixed behavior (attempt everything, report failures).
+fixed behavior (attempt everything, report failures). A problem dialog's
+**Cancel** keeps what was already deleted and drops the rest — the entries
+waiting for the administrator retry included.
 
 ### Selection after a delete
 
@@ -20400,6 +21059,11 @@ Extract dialogs all run the work on a background worker behind an
 [`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md): a ring with the
 percentage, the file being handled, and Cancel. The UI stays live throughout —
 packing a few hundred megabytes no longer freezes the window.
+
+Unlike a copy, move or delete (see
+[Progress window](#progress-window-copy--move--delete)), the window opens
+**immediately** rather than after two seconds: packing and unpacking are never
+over in a blink.
 
 The progress window is opened **without the severity badge**
 (`showIcon = false`), so the ring is horizontally centred in the dialog instead
@@ -22636,12 +23300,17 @@ coordinate, and a longer caption widens the column instead of clipping.
 
 | Call | What it makes |
 |---|---|
-| `CreateFormGrid(id, rowGap, columnGap)` | The grid: columns `[auto, 1fr]`, items centred vertically, stretched into its parent. Add it to the window or section. |
+| `CreateFormGrid(id, rowGap, columnGap)` | The grid: columns `[auto, 1fr]`, items centred vertically, stretched into its parent, and never scrolling. Add it to the window or section. |
 | `AddFormRow(grid, id, "Caption:", control)` | A row. Returns the caption label, so a caller that hides rows can hide the caption with them. |
 | `AddFormRow(grid, caption, control)` | The same with a caption the caller built (to restyle it, or to keep a pointer). |
 | `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
 | `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
 | `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+
+The grid does not scroll: whatever needs to, the pane or dialog around it
+does. A grid left on the container default would raise a scrollbar for a row
+a pixel taller than its track, and the bar - plus the second one its own width
+brings on - covers that row.
 
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
@@ -24663,7 +25332,7 @@ graph->SetDateFormatter([](int64_t when) { return MyRelativeTime(when); });
 
 Rows are aligned by construction, so selection and scrolling are shared with the
 graph - no synchronisation to wire up. To pair an external
-`UltraCanvasTableView` instead, use the row-alignment API:
+multi-column `UltraCanvasListView` instead, use the row-alignment API:
 
 ```cpp
 const int    rows    = graph->GetRowCount();
@@ -26241,6 +26910,143 @@ default. Hovering a hexagon shows its cell index and value.
 - The geometry math (`MakeHexLayout`, `HexCenter`, `HexNearestCell`) is
   dependency-free and unit-tested (grid fit, centre round-trip, point binning).
 - Cells whose value is `NaN` (transparent NaN colour) are skipped.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasHostFileIcons.md
+==============================================================================
+
+# UltraCanvasHostFileIcons — the icons the host desktop draws
+
+`UltraCanvasHostFileIcons.h` answers one question: **what does the system this
+application is running on draw for a file of this kind?** The picture Explorer
+puts on a `.txt`, the one Finder puts on a `.pdf`, the one the Linux icon theme
+puts on a folder. A file display that asks it looks like the rest of the
+desktop instead of like a second file manager.
+
+It is the type-wide half of a pair, and the two are easy to confuse:
+
+| Module | Question | Where the answer lives |
+|---|---|---|
+| `UltraCanvasNativeFileIcons` | what icon does **this file** carry? | inside the file — a `.exe`'s resources, an `.ico`, the icon a `.lnk` or `.desktop` names, a bundle's `.icns` |
+| `UltraCanvasHostFileIcons` | what does **this system** draw for this **kind** of file? | the host's shell or icon theme — nothing in the file to read |
+
+So a program is drawn as itself on every platform (the native module reads the
+picture out of the file, which is why a Windows disk mounted on Linux still
+shows its programs correctly), while a `.txt` is drawn as *this* desktop draws
+a text file, and looks different on a different desktop. A caller asks the
+native module first and this one for everything else.
+
+```cpp
+#include "UltraCanvasHostFileIcons.h"
+
+if (UltraCanvas::HostFileIconsAvailable()) {
+    // The key files of this kind share — ask once per key, not once per file.
+    const std::string key = UltraCanvas::HostFileIconKey(path, isDirectory);
+    // Blocking: on a worker thread, holding a NativeFileIconThreadScope.
+    auto pixmap = UltraCanvas::LoadHostFileIconPixmap(path, isDirectory, 48);
+}
+```
+
+| Function | Answers |
+|---|---|
+| `HostFileIconsAvailable()` | is there a desktop to ask on this build at all? |
+| `HostFileIconKey(path, isDirectory)` | what the answer depends on — the cache key, pure string work |
+| `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` | the icon as a `UCPixmap`, or null |
+| `RefreshHostFileIcons()` | forget the lookups — after a theme change |
+
+## The key is the whole design
+
+A host icon belongs to a **type**, not to a file, and `HostFileIconKey` is
+what says which type. That one string decides the cost of the feature:
+
+- key two kinds the same, and a folder draws one of them with the other's
+  icon;
+- key them too finely, and a folder of four thousand `.txt` files performs
+  four thousand icon-theme lookups instead of one.
+
+The keys:
+
+| What | Key | Why |
+|---|---|---|
+| a directory | `dir` | every folder is one icon |
+| a file that carries its own icon | `file:<path>` | not a type at all — two programs must never share an icon |
+| a name with no extension | `name:<lowercased name>` | the freedesktop database matches `makefile` and `README` by name |
+| everything else | `ext:<suffix chain>` | `archive.tar.gz` keys as `tar.gz`, not `gz` — a tarball and a gzip file are different types and are drawn differently |
+
+The suffix chain runs from the **first** dot, which is the finest distinction
+the type databases make. A leading dot is part of the name (`.bashrc` is a
+name, not a `bashrc` file).
+
+## The three backends
+
+**Linux / BSD** — `OS/Linux/UltraCanvasLinuxHostFileIcons.cpp`. Two steps,
+neither of which is this module's own work:
+
+1. the file's MIME type, from `FileAssociations::GetMimeType` — the
+   shared-mime-info globs the "Open with" menu is already built from, so the
+   framework keeps exactly one reader of that database;
+2. the icon **names** that type is drawn under, per the icon-naming
+   specification, looked up in the installed themes by
+   `FindDesktopIconFile` — the same resolver a `.desktop` entry's `Icon=`
+   goes through.
+
+The names are tried in order, most specific first:
+
+| Order | Name | Example for `archive.tar.gz` |
+|---|---|---|
+| 1 | the MIME name with its slash replaced | `application-x-compressed-tar` |
+| 2 | the generic icon the type database names (`FileAssociations::GetMimeGenericIcon`) | `package-x-generic` |
+| 3 | the generic icon of the media type | `application-x-generic` |
+| 4 | `application-x-generic`, then `unknown` | — |
+
+Step 2 is what makes a PDF an office document and a tarball a package: no
+theme ships an icon for each of the two thousand known types, and
+`mime/generic-icons` is the database saying which picture each belongs under.
+A machine with no icon theme installed answers nothing at every step, and the
+caller draws its own icon.
+
+**Windows** — `OS/MSWindows/UltraCanvasWindowsHostFileIcons.cpp`. The shell's
+system image list, which is the list Explorer itself draws from, indexed by
+`SHGetFileInfoW` with `SHGFI_USEFILEATTRIBUTES`: the type is decided from the
+file **name**, so the shell answers from the registry without opening — or
+even finding — the file, and a path on a disconnected volume still gets its
+icon. The smallest image list that will not be scaled up is used, down to the
+plain associated icon where a locked-down shell refuses the lists. A
+transparent border is trimmed off what comes back: the jumbo list is a 256×256
+canvas, and a type whose icon exists only at 48 sits in the middle of it with
+empty space all round, which drawn into a tile would be a postage stamp.
+
+**macOS** — `OS/MacOS/UltraCanvasMacOSHostFileIcons.mm`. `NSWorkspace`, asked
+for the content type the extension names rather than for the file, so one
+lookup serves every file of a kind. Where the content-type API is not
+available the path itself is asked, which also picks up a file's custom icon —
+what Finder shows there too. Drawing an `NSImage` into a bitmap is the one
+piece of AppKit rendering that is safe off the main thread, which is where a
+file display calls this from.
+
+**WebAssembly and Android** report unavailable: there is no desktop to ask, so
+`LoadHostFileIconPixmap` returns null and a caller keeps its own icons.
+
+## Threading
+
+`LoadHostFileIconPixmap` blocks — it reads icon themes or calls the shell —
+and belongs on a worker thread. Hold a
+`NativeFileIconThreadScope` for the life of
+that thread: on Windows the shell expects the calling thread to have joined a
+COM apartment, and a thread that has not can fail an extraction that works
+perfectly well elsewhere. Elsewhere the scope is an empty object.
+
+Null is not a failure. It is the ordinary answer on a machine with no icon for
+the type, and callers must draw something of their own for it — the filer
+widget falls back to its built-in icons, so the display is never empty and
+never blocks on a lookup.
+
+## Who uses it
+
+`UltraCanvasFilerWidget`, under **Display > File icons > Host OS icons** (see
+[`UltraCanvasFilerWidget.md`](UltraCanvasFilerWidget.md)). The widget holds
+its own cache keyed by `HostFileIconKey` plus the icon size, resolved on one
+background thread, and draws its simple icons until an answer lands.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasIconResource.md
@@ -29942,6 +30748,162 @@ Events flow through the standard UltraCanvas event system:
   - Animation system
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasListSortFilterProxy.md
+==============================================================================
+
+# UltraCanvasListSortFilterProxy
+
+**Sorting and filtering for any `IListModel`, without touching the model that
+holds the data.** The proxy *is* an `IListModel`: it wraps a source model and
+presents the same columns with the rows re-ordered and thinned out, so a view is
+handed the proxy instead of the model and needs no idea that either is
+happening.
+
+- Header: `UltraCanvas/include/UltraCanvasListSortFilterProxy.h`
+- Implementation: `UltraCanvas/core/UltraCanvasListSortFilterProxy.cpp`
+- Tests: `Tests/ListSortFilterProxyTests.cpp` (target `ListSortFilterProxyTests`)
+- Works with: [`UltraCanvasListView`](UltraCanvasListViewExamples.md), which
+  already renders, virtualises, selects and navigates whatever model it is given
+
+```cpp
+auto rows  = std::make_shared<UltraCanvasMultiColumnListModel>();
+rows->SetColumns({ ListColumnDef("Rechnung", 120),
+                   ListColumnDef("Kunde", 200),
+                   ListColumnDef("Betrag", 100, TextAlignment::Right) });
+rows->AddItem(MultiColumnListItem{{ "R-202607010", "Bear Fruit Ltd.", "189,34" }});
+
+auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(rows);
+
+auto view = CreateListView("invoices", 0, 0, 800, 400);
+view->SetModel(proxy);
+view->SetShowHeader(true);
+proxy->SetFilterText("olpe");       // this filters
+
+// Header clicks sort, with an indicator. The view shows the order but never
+// decides it, so the two lines that do it live here rather than inside the view.
+view->onHeaderClicked = [view, proxy](int column) {
+    const bool ascending = !(column == view->GetSortColumn() && view->GetSortAscending());
+    proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+                                          : ListSortOrder::Descending);
+    view->SetSortIndicator(column, ascending);
+};
+```
+
+## The two things a caller has to know
+
+**1. A proxy row is not a source row.** Anything that identifies a record — a
+database id, an index into your own vector — goes through `MapToSource()` /
+`MapFromSource()`. The selection a view reports is in *proxy* rows, and
+forgetting to map it is how a sorted table deletes the wrong record.
+
+```cpp
+for (int proxyRow : view->GetSelection()->GetSelectedRows()) {
+    const int sourceRow = proxy->MapToSource(proxyRow);   // ← never skip this
+    store.Delete(records[sourceRow].id);
+}
+```
+
+**2. Sorting is stable.** Rows that compare equal keep the order the source gave
+them, so sorting by one column and then another leaves a predictable result
+instead of an arbitrary one.
+
+## Sorting
+
+```cpp
+proxy->SortByColumn(2, ListSortOrder::Descending);
+proxy->ClearSort();                       // back to source order
+proxy->SetColumnSortKind(0, ListSortKind::Natural);
+proxy->SetColumnComparator(3, myComparator);
+```
+
+| `ListSortKind` | What it does |
+|---|---|
+| `Auto` (default) | numeric when both values parse as numbers, otherwise case-insensitive text |
+| `Text` | case-insensitive |
+| `TextCaseSensitive` | byte order |
+| `Number` | `1234.56` and `1.234,56 €` alike; anything that is not a number sorts last |
+| `Natural` | text with embedded numbers: `Beleg 2` before `Beleg 10` |
+
+`TryReadNumber` reads both decimal conventions — `1234.56`, `1.234,56`,
+`-37,28 €`, `(1.234,56)` — **without touching the C locale**, so a
+comma-decimal desktop cannot change how a column sorts. It is deliberately
+strict: a letter anywhere means "not a number". An earlier version skipped `E`,
+`U` and `R` so that `EUR 89,00` would read as a number, and that made
+`R-202607010` parse as **−202607010**, silently reversing a column of document
+numbers. Text that is not unambiguously a number is compared as text instead.
+
+An empty cell sorts after the filled ones in ascending order (and therefore
+before them in descending order — the proxy inverts the whole comparison rather
+than asking comparators to know which direction they are used in).
+
+### `SortRole`: sort by the value, display the formatting
+
+A column showing `1.234,56 €` or `17.09.2026` should sort by the amount or the
+date, not by the text. The model returns the sort key from
+`ListDataRole::SortRole`; the proxy prefers it and falls back to `DisplayRole`
+when there is none:
+
+```cpp
+ListDataValue GetData(const ListIndex& index, ListDataRole role) const override {
+    if (role == ListDataRole::DisplayRole) return FormatGerman(rows[index.row].datum);
+    if (role == ListDataRole::SortRole)    return rows[index.row].datum.ToEpochDay();
+    return {};
+}
+```
+
+A custom comparator (`SetColumnComparator`) wins over both, and receives
+**source** rows.
+
+## Filtering
+
+```cpp
+proxy->SetFilterText("bratislava");              // case-insensitive substring
+proxy->SetFilterColumns({ 0, 1 });               // over these columns ({} = all)
+proxy->SetFilterPredicate([](const IListModel& m, int sourceRow) {
+    return AmountOf(m, sourceRow) >= 200.0;      // and an arbitrary rule
+});
+proxy->ClearFilter();
+```
+
+The text filter and the predicate are **both** applied: a row has to pass each.
+
+## Change notification
+
+Attaching a proxy listens to the source's `onDataChanged` / `onRowChanged` /
+`onRowInserted` / `onRowRemoved` and rebuilds when they fire. Any handler the
+source already carried is **kept and called afterwards**, so putting a proxy in
+front of a model never silently disconnects something else — and destroying the
+proxy restores them, so a model that outlives its proxy does not call into freed
+memory.
+
+`SetDynamic(false)` defers rebuilding during a bulk load; `Invalidate()` forces
+one.
+
+## The view side
+
+`UltraCanvasListView` shows *which* column is sorted and reports header clicks;
+it never sorts anything itself, so a model that is already ordered — by a
+database query, say — keeps working unchanged.
+
+```cpp
+view->onHeaderClicked = [&](int column) { /* sort your way */ };
+view->SetSortIndicator(2, /*ascending=*/false);
+```
+
+The four lines in the example above wire the common case: clicking a header
+sorts that column ascending, clicking the sorted one turns it round, and the
+indicator follows. Sorting moves every row, so the keyboard focus row is dropped on a sort rather
+than left pointing at whatever record landed on that index; the *selection* is
+the caller's to map.
+
+## What this is not
+
+It does not add inline cell editing or a footer/aggregate row to the view — a
+custom `IItemDelegate` already paints anything a cell needs (badges, checkboxes,
+bars), and editing goes through `IListModel::SetData`, which the proxy forwards
+to the right source row.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 ==============================================================================
 
@@ -29966,11 +30928,13 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 - **Model-View-Delegate architecture** — data, painting, and selection are independent
 - **Single-column and multi-column models** with built-in implementations
 - **Optional column headers** with per-column titles, widths, and alignment
+- **Sort indicator** in the sorted column's header (▲ ascending / ▼ descending, drawn as geometry in the header text colour) and a header-click callback to drive it
 - **Single and multi-selection** modes via swappable selection objects
 - **Optional grid lines and alternating row colors**
 - **Built-in vertical scrollbar** with mouse wheel support
 - **Keyboard navigation** (arrow keys, Page Up/Down, Home/End)
 - **Per-row icon support** through `DecorationRole`
+- **Hover tooltips** per cell, per row, and per column header
 - **Custom delegates** for fully bespoke row rendering
 
 ## Header Includes
@@ -30022,7 +30986,21 @@ void InvalidateRowHeights();
 
 void SetShowHeader(bool show);
 bool GetShowHeader() const;
+
+void SetSortIndicator(int column, bool ascending);   // -1 = none
+void ClearSortIndicator();
+int  GetSortColumn() const;
+bool GetSortAscending() const;
 ```
+
+`SetSortIndicator` marks a column as the one the rows are sorted by: its header
+cell shows a small triangle, apex up for ascending and apex down for descending.
+The triangle is drawn as a filled path in `headerTextColor` (never a text glyph,
+so it does not depend on the header font carrying U+25B2/U+25BC and stays crisp
+at any DPI); `ListViewStyle::sortIndicatorSize` sets its width, and it sits
+after the title in a left- or centre-aligned column and before it in a
+right-aligned one. The view only *shows* the order — sorting the rows is the
+model owner's job, normally from `onHeaderClicked` (see Events / Callbacks).
 
 `SetRowHeight` / `rowHeight` set the single height used by every row. For rows
 of differing height, call `SetVariableRowHeights(true)`: the view then asks the
@@ -30057,6 +31035,7 @@ struct ListViewStyle {
     Color gridLineColor = Color(220, 220, 220);
 
     float headerFontSize = 10;
+    int sortIndicatorSize = 8;      // width of the ▲/▼ sort triangle (px)
 
     int rowHeight = 24;
     int headerHeight = 26;
@@ -30080,6 +31059,54 @@ void EnsureRowVisible(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+
+### Tooltips
+
+```cpp
+void SetShowItemTooltips(bool enable);   // default: true
+bool GetShowItemTooltips() const;
+
+// Consulted before the model; row == -1 means the header cell of `column`.
+// Return "" to fall back to the model tooltip / ListColumnDef::tooltip.
+std::function<std::string(int row, int column)> tooltipProvider;
+
+// What the hover tooltip would show (row == -1 for a column header); "" if none
+std::string GetTooltipTextAt(int row, int column) const;
+
+// Header column under an element-local point, -1 when outside it
+int GetHeaderColumnAt(int x, int y, int* columnStartX = nullptr) const;
+```
+
+Tooltips are on by default and need no wiring: the view watches the hovered
+cell and asks `UltraCanvasTooltipManager` to show
+
+- the cell's `ToolTipRole` text when the pointer rests on a row — per-cell for
+  a multi-column model, falling back to the row-wide `tooltip`; and
+- `ListColumnDef::tooltip` when the pointer rests on a column header.
+
+The tooltip is refreshed whenever the hovered *cell* changes, so moving sideways
+across a row swaps it, and hidden when the cell has no tooltip, when the pointer
+leaves the list, and when the wheel scrolls rows out from under it.
+
+```cpp
+// Per-column header tooltips
+multiModel->AddColumn(ListColumnDef("Size", 70, TextAlignment::Right,
+                                    "Size on disk, rounded to one decimal"));
+
+// Per-cell tooltips, with a row-wide fallback
+MultiColumnListItem item({"main.cpp", "C++ Source", "2.4 KB", "2025-03-15"});
+item.tooltip = "src/main.cpp";            // used by any cell without its own
+item.SetCellTooltip(2, "2,458 bytes");    // Size column only
+multiModel->AddItem(item);
+
+// Computed tooltips (no data stored in the model)
+listView->tooltipProvider = [](int row, int column) -> std::string {
+    if (row < 0) return {};               // let the header use its ListColumnDef
+    return "Row " + std::to_string(row);
+};
+
+listView->SetShowItemTooltips(false);     // opt out entirely
+```
 
 ## Model Reference
 
@@ -30161,13 +31188,23 @@ struct ListColumnDef {
     std::string title;
     int width = 100;
     TextAlignment alignment = TextAlignment::Left;
+    std::string tooltip;        // shown when hovering this column's header
+
+    ListColumnDef(const std::string& t, int w = 100,
+                  TextAlignment a = TextAlignment::Left);
+    ListColumnDef(const std::string& t, int w, TextAlignment a,
+                  const std::string& tip);
 };
 
 struct MultiColumnListItem {
     std::vector<std::string> labels;
     std::vector<std::string> iconPaths;
-    std::string tooltip;
+    std::string tooltip;                     // row-wide fallback tooltip
+    std::vector<std::string> cellTooltips;   // optional, per column
     void* userData = nullptr;
+
+    void SetCellTooltip(int column, const std::string& tip);
+    const std::string& GetCellTooltip(int column) const;  // falls back to tooltip
 };
 ```
 
@@ -30246,9 +31283,32 @@ std::function<void(int row)> onItemDoubleClicked;
 std::function<void(int row)> onItemActivated;
 std::function<void(const std::vector<int>&)> onSelectionChanged;
 std::function<void(int row)> onItemHovered;
+
+// Cell-level (multi-column aware). posInCell is relative to the cell's
+// top-left corner. onCellHovered reports (-1, -1) when the pointer leaves
+// the rows area.
+std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
+std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+
+// A click (press and release in the same cell) on a column header. A press
+// on a resize border starts a drag instead and never reports a click.
+std::function<void(int column)> onHeaderClicked;
 ```
 
-`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click.
+`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
+
+`onHeaderClicked` is where sorting is wired up: re-order the model by the
+column, toggling the direction when it is already the sort column, then tell
+the view which column is sorted so the header shows it. A header press no
+longer counts as a click on "no row", so it leaves the selection alone.
+
+```cpp
+listView->onHeaderClicked = [view = listView.get(), model](int column) {
+    bool ascending = (view->GetSortColumn() == column) ? !view->GetSortAscending() : true;
+    model->SortBy(column, ascending);          // however your model orders its rows
+    view->SetSortIndicator(column, ascending); // ▲ or ▼ in that header cell
+};
+```
 
 ## Usage Examples
 
@@ -30282,18 +31342,27 @@ container->AddChild(simpleList);
 
 ```cpp
 auto multiModel = std::make_shared<UltraCanvasMultiColumnListModel>();
-multiModel->AddColumn(ListColumnDef("File Name", 170, TextAlignment::Left));
-multiModel->AddColumn(ListColumnDef("Type",       90, TextAlignment::Left));
-multiModel->AddColumn(ListColumnDef("Size",       70, TextAlignment::Right));
-multiModel->AddColumn(ListColumnDef("Modified",  110, TextAlignment::Left));
+multiModel->AddColumn(ListColumnDef("File Name", 170, TextAlignment::Left,
+                                    "Name of the file on disk"));
+multiModel->AddColumn(ListColumnDef("Type",       90, TextAlignment::Left,
+                                    "File type, derived from the extension"));
+multiModel->AddColumn(ListColumnDef("Size",       70, TextAlignment::Right,
+                                    "Size on disk, rounded to one decimal"));
+multiModel->AddColumn(ListColumnDef("Modified",  110, TextAlignment::Left,
+                                    "Date of the last write, YYYY-MM-DD"));
 
-multiModel->AddItem(MultiColumnListItem({"main.cpp",   "C++ Source",  "2.4 KB",  "2025-03-15"}));
+MultiColumnListItem mainCpp({"main.cpp", "C++ Source", "2.4 KB", "2025-03-15"});
+mainCpp.tooltip = "src/main.cpp";               // any cell without its own
+mainCpp.SetCellTooltip(2, "2,458 bytes");       // Size column
+mainCpp.SetCellTooltip(3, "15 Mar 2025, 09:14");// Modified column
+multiModel->AddItem(mainCpp);
+
 multiModel->AddItem(MultiColumnListItem({"utils.h",    "C++ Header",  "1.1 KB",  "2025-03-14"}));
 multiModel->AddItem(MultiColumnListItem({"README.md",  "Markdown",    "3.8 KB",  "2025-03-10"}));
 multiModel->AddItem(MultiColumnListItem({"Makefile",   "Build Script","0.9 KB",  "2025-02-28"}));
 
 auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 500, 125, 480, 225);
-multiList->SetModel(multiMode);
+multiList->SetModel(multiModel);
 
 ListViewStyle multiStyle;
 multiStyle.headerFontSize = 10;
@@ -31395,6 +32464,7 @@ viewer in a top-level window.
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
 | `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
+| `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
@@ -33412,6 +34482,21 @@ The element is named for STL but takes a `Mesh3D` and knows nothing about where
 it came from: a mouse-orbited GL view on a build with
 `-DULTRACANVAS_ENABLE_GL=ON`, and a shaded software still otherwise.
 
+**The flatten carries the up axis across.** `Mesh3D::upAxis` is set from
+`document.Up`, and the viewers rotate a `ZUp` mesh by -90 degrees about X
+before posing it, because their cameras put +Y on screen. Without that a
+Z-up file — STEP, DXF, 3D Studio, most CAD — is drawn standing on its nose,
+which is how every 3D page in the demo used to look. Only the viewers rotate:
+the vertex data, the bounds and the extents a page reports stay in the file's
+own frame, so a reader still reports "Z-up" for a file that says so. A
+`Mesh3D` built by hand keeps the `YUp` default, and `Mesh3DToModelDocument`
+writes the axis back, so the round trip preserves orientation as well as
+geometry.
+
+To move the geometry itself rather than the view — for a writer, or to
+normalise a scene — ask the reader for it with
+`ConversionOptions::ForceUpAxis`, or call `ModelDocument::ConvertUpAxis`.
+
 Code that only needs "turn this path into a mesh" should use the core seam
 `UltraCanvasModelPreview.h` (`CanPreviewModelExtension`,
 `LoadModelPreviewMesh`) instead of calling this plugin. Core cannot call a
@@ -33662,6 +34747,178 @@ dock or taskbar becomes. See `Apps/UltraPaint/UltraPaintWindow.cpp`
   for drawings, which need only a size
 - [UltraCanvasFormLayout](UltraCanvasFormLayout.md) — the caption grid its
   fields are laid out in
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMoney.md
+==============================================================================
+
+# UltraCanvasMoney
+
+**Exact monetary amounts: an integer count of minor units plus an ISO 4217
+code.** Header-only (`UltraCanvas/include/UltraCanvasMoney.h`), free of every
+other UltraCanvas header, so a headless engine, a test target and the UI can all
+use it. Tests: `Tests/MoneyTests.cpp` (target `MoneyTests`).
+
+```cpp
+#include "UltraCanvasMoney.h"
+using UltraCanvas::Money;
+
+Money net = Money::FromMinor(3728);           // 37,28 EUR
+Money tax = net.TaxOnNet(190);                // 19 % -> 7,08 EUR
+Money gross = net.GrossFromNet(190);          // 44,36 EUR — and net + tax == gross, exactly
+
+std::string label = gross.ToStringWithSymbol();          // "44,36 €"
+std::string csv   = gross.ToString(UltraCanvas::MoneyStyle::Datev);  // "44,36"
+std::string json  = gross.ToString(UltraCanvas::MoneyStyle::Plain);  // "44.36"
+```
+
+## Why not a double
+
+`double` cannot hold 0,01 exactly, so a ledger built on it drifts: totals that
+disagree with the sum of their rows, a VAT split that is a cent off, a
+reconciliation that never closes. `Money` stores `int64_t` minor units — cents
+for EUR, whole yen for JPY, millimes for TND — and never converts to floating
+point, not even while parsing or formatting. `CurrencyValue` in
+`UltraCanvasSpreadsheetTypes.h` *is* a `double`; it is a spreadsheet cell value
+and must not be used for accounting.
+
+The range at two decimals is ±92 000 000 000 000 000,00 — every overflow past
+that is reported, never wrapped.
+
+## Construction
+
+| Call | Meaning |
+|---|---|
+| `Money()` | zero, currency unset — a *neutral* zero that adds to any currency |
+| `Money::FromMinor(3728)` | 37,28 EUR |
+| `Money::FromMajor(1234)` | 1.234,00 EUR |
+| `Money::FromMinor(1234, "JPY")` | ¥1.234 (a zero-decimal currency) |
+| `Money::Zero("USD")`, `Money::Invalid()` | zero / the invalid value |
+
+`MoneyDecimals(code)` gives a currency's scale: 2 by default, 0 for JPY, KRW,
+HUF and the rest of the zero-decimal list, 3 for the dinar-class currencies.
+
+## Validity instead of exceptions
+
+An amount is **invalid** when it came out of a failed parse, a currency
+mismatch or an overflow, and invalidity is **sticky** — it propagates through
+arithmetic, so one `Valid()` check at the end of a calculation is enough. An
+invalid amount formats as an **empty string**, never as `0,00`, so it cannot be
+mistaken for zero in a report.
+
+```cpp
+Money total = eur + usd;      // invalid: a mismatch is a bug, not a conversion
+total += eur;                 // still invalid
+if (!total.Valid()) { /* report it */ }
+```
+
+Comparison compares like with like: across currencies an amount is not less,
+not greater and not equal.
+
+## Arithmetic
+
+| Call | Meaning |
+|---|---|
+| `a + b`, `a - b`, `-a`, `a += b` | same-currency addition and subtraction |
+| `a.Times(7)` | quantity: seven of `a` |
+| `a.ScaledBy(10967, 10000)` | an exact rate as a fraction (here 1,0967) |
+| `a.Permille(25)` | 2,5 % of `a` — permille, because German VAT keys and Skonto rates need one decimal |
+| `MoneySum(list)` | the sum of a list, invalid if any element is |
+
+Every multiplication and division goes through `MoneyMulDiv`, which forms the
+full 128-bit product in 32-bit limbs and divides it with **kaufmännische
+Rundung** (half away from zero: 2,5 → 3 and −2,5 → −3) — the rounding German tax
+arithmetic uses. No compiler intrinsic and no `__int128` is needed, so it
+behaves identically on every platform.
+
+## German VAT
+
+```cpp
+net.TaxOnNet(190)        // tax on a net amount:      net * 190/1000
+net.GrossFromNet(190)    // gross from net:           net * 1190/1000
+gross.TaxInGross(190)    // tax contained in a gross: gross * 190/1190
+gross.NetFromGross(190)  // net from gross:           gross - TaxInGross(190)
+```
+
+`permille` is thousandths: 190 is 19 %, 70 is 7 %, 0 is 0 %, 25 is 2,5 %.
+
+Two identities hold for every rate and amount, and the tests assert them across
+a matrix of both: **`net + TaxOnNet == GrossFromNet`**, and
+**`NetFromGross + TaxInGross == gross`**. `NetFromGross` is deliberately
+defined as *gross minus the contained tax* rather than as its own division, so
+the second identity survives whatever the rounding did.
+
+## Splitting so the parts sum to the whole
+
+```cpp
+auto thirds = Money::FromMinor(10000).SplitEvenly(3);   // 33,34 / 33,33 / 33,33
+auto share  = Money::FromMinor(1000).SplitProportionally({ 7000, 3000 });  // 7,00 / 3,00
+```
+
+Largest-remainder distribution: the truncated shares go out first, then the
+leftover minor units go to the largest remainders. **The parts always sum back
+to the original amount** — that is the property that stops a discount spread
+over invoice positions from losing a cent, and it is tested over a matrix of
+amounts (including negative ones, for credit notes) and weight sets. Degenerate
+input (no weights, a negative weight, zero parts, an invalid amount) yields an
+empty vector rather than a wrong distribution.
+
+## Text: three styles, no locale
+
+```cpp
+enum class MoneyStyle { German, Plain, Datev };
+```
+
+| Style | Writes | For |
+|---|---|---|
+| `German` | `1.234,56` | UI labels, printed documents |
+| `Plain` | `1234.56` | dot-decimal file formats, JSON, SQL text |
+| `Datev` | `1234,56` | DATEV CSV amount columns (comma decimal, no grouping) |
+
+**The style is chosen by the destination, never inherited from the process
+locale.** Digits are assembled from the integer value — no stream, no `printf`,
+no `std::to_string(double)` — so `LC_NUMERIC` cannot reach them. That matters in
+this framework specifically: the Linux backend calls `setlocale(LC_ALL, "")` for
+XIM, which has twice turned dot-decimal file output into comma-decimal output
+(see the numbers rule in [AGENTS.md](../../AGENTS.md)). `Money` cannot have that
+bug, in either direction.
+
+`ToStringWithSymbol()` appends `€`, `$`, `£` or the ISO code.
+
+### Parsing
+
+```cpp
+Money m;
+Money::TryParse("1.234,56", m);                              // 123456 minor
+Money::TryParse("1234.56", m);                               // 123456 — a lone dot two digits from the end is decimal
+Money::TryParse("1.234", m);                                 // 123400 — three digits behind it, so grouping
+Money::TryParse("(37,28)", m);                               // -3728  — parentheses are negative
+Money::TryParse("652,57 €", m);                              // 65257  — symbols and ISO codes are ignored
+Money::TryParse("1,005", m);                                 // 101    — finer input rounds half away from zero
+Money::TryParse("1234.56", m, "EUR", MoneyStyle::Datev);     // false  — malformed for that style
+```
+
+Which separator is the decimal one:
+
+- **both present** → the rightmost one;
+- **one present** → `German` reads `,` as decimal and a lone `.` as decimal too
+  *unless* it stands exactly three digits from the end (so `1.234` is 1234);
+  `Plain` reads `.` as decimal, `Datev` reads `,` as decimal;
+- **the machine styles are strict**: in `Plain` and `Datev`, a grouping
+  separator standing anywhere but three digits from the end means the field is
+  malformed and the parse fails. An importer that misreads an amount does more
+  damage than one that rejects a line.
+
+Format-then-parse is the identity in every style; the tests assert it over a
+range of values.
+
+## Where this is used
+
+`Apps/UltraFIBU` (the German accounting application — see
+[`Docs/Research/UltraFIBUDesignProposal.md`](../Research/UltraFIBUDesignProposal.md))
+uses it for every amount it stores, computes, prints, exports to DATEV and
+reports to the tax authority. Anything else that holds a price, a total or a
+balance should use it too.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasNestedAreaChartExamples.md
@@ -36072,13 +37329,20 @@ Two kinds of history entry keep memory in check:
 
 `SetUndoMemoryLimit()` bounds the history; the oldest entries go first.
 
+A selection belongs to the canvas it was made on. The whole-image geometry
+operations (`CropTo`, `ScaleImage`, `ResizeCanvas`, `Rotate90`) re-shape it,
+which is a selection change like any other: they fire `onSelectionChanged()`
+and move the history's committed baseline with them. Undo and redo drop a
+recorded selection whose size does not match the canvas being restored,
+rather than installing a mask of the wrong shape.
+
 ### Notifications
 
 | Callback | Fired when |
 |---|---|
 | `onPixelsChanged(rect)` | pixels of `rect` changed (a stroke calls it per dab) |
 | `onStructureChanged()` | layer list, attributes, active layer or canvas size changed |
-| `onSelectionChanged()` | the selection changed |
+| `onSelectionChanged()` | the selection changed, including when a canvas-geometry change dropped it |
 | `onStateChanged()` | modified flag or undo / redo availability changed |
 
 `UltraCanvasPaintSurface::SetDocument()` installs the first three; a host
@@ -38352,6 +39616,18 @@ Two details worth copying:
 - **Own the leftovers.** A cancelled *write* usually has to be undone — the
   Filer deletes the half-written archive — while a cancelled *extraction*
   keeps what it already wrote, because those are real files the user may want.
+
+## Opening the window late
+
+Packing an archive is never quick, so that window opens with the job. An
+operation that is *usually* over in a blink and only sometimes is not — a copy,
+a move, a delete — should not flash a window at the user for every text file it
+copies. Give it the poll timer straight away but hold the `Show()` call until
+the job has actually been running a while (the Filer waits two seconds, timed
+from the start of the whole operation rather than of the current step), and
+skip it entirely for a job that has already finished by then. Remember that the
+window was due even when `Show()` answers `nullptr` — otherwise the next tick
+asks again, and every tick after it.
 
 ## No severity badge: the ring is centred
 
@@ -41423,8 +42699,11 @@ UCRichDocument             document model: blocks, runs, media, serializers     
 Both lower layers are plain C++ over std types, so every editing rule is
 testable without a display (`Tests/RichTextEditorTest.cpp`).
 
-**Positions are `{blockIndex, byteOffset}`** — the offset is into the block's
-*concatenated run text*, never a `{run, offset}` pair. Applying a format splits
+**Positions are `{blockIndex, cellRow, cellColumn, byteOffset}`** — the offset
+is into the *concatenated run text* of one **text container**, never a
+`{run, offset}` pair. A container is either a block's own runs
+(`cellRow == cellColumn == -1`, which is every position outside a table) or one
+cell of a table block. Applying a format splits
 and merges runs constantly; a caret must not move when the run structure
 changes underneath it. That same string is what the element hands to
 `ITextLayout`, so hit testing and caret geometry need no translation layer.
@@ -41468,6 +42747,14 @@ UCWordDocumentIO::Save(savePath, *editor->GetDocument(), error);
 Because the element shares ownership of the document (`std::shared_ptr`), an
 application can keep holding it — to save it, to inspect blocks the user never
 touched, or to hand the same document to a read-only view.
+
+UltraTexter does exactly this: a `.odt`/`.docx`/`.doc` tab holds the document
+the reader produced, hands it to the element, and hands the same object back to
+`UCWordDocumentIO::Save` — no conversion in either direction. See
+`Apps/Texter/UltraCanvasTextEditor.cpp` (`LoadWordIntoDocument`,
+`SaveRichDocumentAs`) for a worked integration, including how the element is
+swapped into an existing tab layout and how a shared formatting toolbar drives
+either this element or a Markdown text area.
 
 ## Building the toolbar
 
@@ -41561,6 +42848,39 @@ Each applies to every block the selection touches. A selection that ends exactly
 at the start of a block does not include it, which is what users expect when
 they drag down to the next paragraph.
 
+### Tables
+
+The caret goes inside table cells: click into one, type, select, format, and
+**Tab** / **Shift+Tab** walk the cells in reading order.
+
+```cpp
+RichDocPosition cell(tableBlock, /*row*/ 1, /*column*/ 0, /*byteOffset*/ 0);
+editor->GetEditor().SetCaret(cell);
+std::string text = editor->GetEditor().TextAt(cell);
+```
+
+Three rules make cell editing behave the way a word processor does rather than
+the way a naive text model would:
+
+- **Enter inside a cell adds a line to the cell**, it does not split the table's
+  block in two.
+- **Backspace at the start of a cell steps to the previous cell** and deletes
+  nothing — cells cannot be merged by deleting the text between them, so there
+  is nothing sensible to join.
+- **A selection never spans two cells** (nor crosses into or out of one). The
+  moving end is held at the edge of the anchor's container, because a range
+  that spanned cells would describe an edit no table can honour.
+
+**Merged cells are laid out on the grid.** A cell spanning columns is drawn that
+many columns wide and the cells beside it shift past it; a cell spanning rows
+stretches down over them and owns its column in every row it covers. A cell's
+position stays `{row, index-within-row}` — the grid column is geometry only, so
+spans never move a caret.
+
+Search reaches into cells, so **find and replace now cover table content**.
+`AllContainers()` enumerates every container in document order if you need to
+walk the document yourself.
+
 ### Structure
 
 ```cpp
@@ -41568,7 +42888,24 @@ editor->InsertHorizontalRule();
 editor->InsertPageBreak();
 editor->InsertImageFromFile("/path/diagram.png", "Architecture diagram");
 editor->InsertImageFromMemory("chart.png", "image/png", bytes, "Q3 revenue");
+
+// ...or INSIDE the line at the caret, rather than as a paragraph of its own:
+editor->InsertInlineImageFromFile("/path/logo.png", "Logo");
+editor->InsertInlineImageFromMemory("icon.png", "image/png", bytes, "warning");
 ```
+
+**A picture can sit in the text.** A run with `mediaIndex >= 0` *is* a picture -
+a logo mid-sentence, an icon in a heading - and its `text` is a single U+FFFC
+OBJECT REPLACEMENT CHARACTER. That placeholder gives the picture one character's
+worth of the block's text, so the caret steps over it, a selection covers it and
+Backspace deletes it, with no position needing to know it is not a letter. The
+layout reserves a box for it (`TextAttributeFactory::CreateShape`), so the line
+grows to hold it and the text after it flows along.
+
+Readers decide inline-versus-block by what else the paragraph holds: a picture
+alone on a line is a standalone `RichBlockType::Image`, a picture among words is
+a run. Both formats anchor the two the same way in their markup, so the markup
+alone cannot tell them apart.
 
 Images are copied into the document's media store, so the document stays
 self-contained and saves to `.odt`/`.docx` with the picture inside it.
@@ -41588,6 +42925,62 @@ self-contained and saves to `.odt`/`.docx` with the picture inside it.
 | Ctrl+Z / Ctrl+Y / Ctrl+Shift+Z | Undo / redo |
 | Ctrl+B / I / U | Bold, italic, underline |
 | Ctrl+click on a link | `onLinkClicked` (a plain click just places the caret, so links stay editable) |
+
+## Find and replace
+
+```cpp
+RichFindOptions options;
+options.caseSensitive = false;
+options.wholeWord = true;
+editor->SetFindOptions(options);
+
+editor->FindNext("Berlin");        // selects the match and scrolls to it
+editor->FindPrevious("Berlin");
+editor->ReplaceCurrent("Berlin", "Munich");   // only if the selection IS a match
+int replaced = editor->ReplaceAll("Berlin", "Munich");
+int total = editor->CountMatches("Berlin");   // for a "3 of 12" readout
+```
+
+Two things worth knowing:
+
+- **`ReplaceAll` is one undo step**, not one per match, so Ctrl+Z takes the
+  whole replace back.
+- **Replaced text keeps the formatting of the text it replaced.** Replacing a
+  word inside a bold heading leaves it bold — the format is sampled from inside
+  the match before it is deleted, because deleting it would otherwise leave the
+  caret in the preceding run and the insert would adopt *that* formatting.
+
+Search lives in `UCRichDocumentEditor` (`Find`, `FindAll`, `ReplaceAll`), so it
+is testable without a display. Matches never span a block boundary, which is
+what makes each one independently replaceable. Case folding is ASCII, the same
+as `UltraCanvasTextArea`'s search: `report` finds `Report`, but `strasse` does
+not find `STRASSE`.
+
+## Spell checking
+
+```cpp
+editor->SetSpellCheckEnabled(true);
+editor->RunSpellCheck();                     // after changing dictionary
+```
+
+Checking runs on the shared `UltraCanvasSpellChecker` worker thread, over the
+document as one string with blocks joined by `\n` — one job per document rather
+than one per block, so a long document does not flood the queue. Results are
+drained while rendering and their byte offsets map back onto
+`{blockIndex, byteOffset}`; squiggles are drawn only for blocks the viewport has
+laid out.
+
+Right-click offers the suggestions. A host that has its own context menu takes
+the click first and puts them inside it:
+
+```cpp
+editor->onContextMenu = [this](const UCEvent& event) {
+    return ShowMyOwnMenu(event);   // true = consumed, no built-in popup
+};
+```
+
+This is the same contract `UltraCanvasTextArea` offers, and UltraTexter uses it
+so a right-click in a `.docx` tab gives one menu rather than two.
 
 ## Undo
 
@@ -41642,15 +43035,15 @@ This is the shortest path to a faithful `.odt`/`.docx` preview pane.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **Tables render but are not edited in place.** A table block draws with its
-  cells laid out; the caret treats it as one indivisible block. Editing inside
-  cells is the next phase.
+- **A table's own structure is not edited yet.** Merged cells load, save and
+  lay out correctly, but *making* them does not: adding or removing rows and
+  columns, merging and splitting cells, and selecting across several cells at
+  once are not there — and neither is inserting a new table, which is why
+  UltraTexter's Insert Table button stays disabled for these documents.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
   TextArea's Markdown mode and is the intended path.
-- **No spell checking yet** — `UltraCanvasSpellChecker` integrates the same way
-  it does in the TextArea.
 - **No pre-edit (IME composition) display.** Committed text arrives correctly;
   an inline composition string needs an event the framework does not have yet
   (the same limit applies to every text widget today).
@@ -41708,6 +43101,15 @@ directions.
 STL stores unstructured triangles with no units, colours, layers or scene
 graph, so a `Mesh3D` is all there is to read: positions, normals, indices and
 the bounds computed from them.
+
+**Which way is up.** The format states no orientation, but every tool that
+writes it - CAD, slicers, printers - means Z-up, so the loader sets
+`Mesh3D::upAxis = MeshUpAxis::ZUp`. The viewer's camera puts +Y on screen, so
+it rotates such a mesh by -90 degrees about X before posing it; without that a
+model stands on its nose. Only the view rotates - the vertex data, the bounds
+and the extents are the file's own, and `Save()` still round-trips it. A
+`Mesh3D` assembled in code keeps the `MeshUpAxis::YUp` default, and
+`ModelDocumentToMesh3D` sets the axis from whatever the document declared.
 
 ## Displaying a model
 
@@ -53682,7 +55084,7 @@ from an external "Show password" checkbox. See
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
-| Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG, EMF, WMF via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
+| Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG (also `.dwt` / `.dws` / `.sv$`), EMF, WMF, AI via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
 | **Edit** a vector drawing: page, rulers, guides, grid, snapping, selection handles, tool hooks in document coordinates (the model is `VectorStorage::VectorDocument`, the editing layer `DataFormats/UltraCanvasVectorEdit.h`, the node model `UltraCanvasBezierPath.h`) | `UltraCanvasVectorCanvas` | `UltraCanvasVectorCanvas.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
@@ -53726,7 +55128,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
-| List, tree, table, sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasTableView`, `UltraCanvasSpreadsheet` | matching `*.h` |
+| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 
@@ -54353,7 +55755,19 @@ The design is the one in
 ```cpp
 #include "UltraCanvasVectorCanvas.h"
 
+// Sizeless: the parent's layout sizes the canvas. Give it flex-grow (or a
+// grid cell) so it fills the space the rest of the window leaves.
 auto canvas = CreateVectorCanvas("canvas");
+canvas->layoutItem.SetFlexGrow(1).SetFlexShrink(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+// Or, on a page that places its widgets at fixed coordinates, build the
+// canvas WITH its box:
+//   auto canvas = CreateVectorCanvas("canvas", 10, 130, 720, 600);
+// `SetBounds()` on a sizeless canvas is not the same thing: it moves
+// finalBounds without stamping the CSS width/height or position, so the
+// next layout pass re-flows the canvas as a zero-height in-flow child and
+// the drawing area disappears.
+
 canvas->SetDocument(doc);
 canvas->SetSelection(selectionPtr);            // shared with the tools and panels
 canvas->SetShowRulers(true);
@@ -54436,9 +55850,9 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | PDF | `PDFVectorConverter` | – | ✓ | Hand-assembled PDF 1.4: base-14 fonts, ExtGState opacity, dashes, verified xref. Reading via the MuPDF PDF plugin. |
 | EMF | `EMFConverter` | ✓ | ✓ | [MS-EMF] records: GDI paths with real beziers, geometric pens (caps/joins/user-style dashes), `ExtTextOutW` text with GDI anchoring. No alpha in GDI — opacity flattens toward white. The reader parses the GDI object table, path records, immediate polygon/polyline/bezier records and text (`TA_UPDATECP` chains merge back into spans). |
 | WMF | `WMFConverter` | ✓ | ✓ | [MS-WMF] 16-bit records with the placeable header (twips). No bezier record — curves flatten to polylines; dashes approximate as `PS_DASH`. The reader covers the object table, polygon/polyline/rect/ellipse records and TextOut/ExtTextOut. |
-| AI | `AIConverter` | – | ✓ | Modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading is the PDF plugin's job. |
+| AI | `AIConverter` | ✓ | ✓ | Writing: modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading (`UltraCanvasAIReader.cpp`): a `.ai` saved *without* "Create PDF Compatible File" has an empty PDF page and keeps all of its artwork in the private `/AIPrivateData` streams, so a PDF engine renders it blank. The reader decodes those streams (ASCIIHex / ASCII85 / Flate) and interprets Illustrator's art language — path construction, painting with closepath on the lowercase operators, clipping (`W`), compound paths (`*u`/`*U`), groups, named layers, the graphics state, the grey/CMYK/RGB/spot colour operators and the AI9 transparency operator `Xy`. Legacy (v8 and earlier) EPS-based `.ai` files carry the same language in the open and read through the same parser; Illustrator's y-down ruler space and PostScript's y-up space both map onto the document page. Gradients and text are reported, not imported. A PDF-compatible `.ai` has no private data and is declined, so the caller falls back to the PDF plugin. |
 | DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), at physical size when `$INSUNITS` declares a unit and the result is a usable page, otherwise scaled to a sensible point size, since drawing units are arbitrary; the unit and scale are recorded on the document, and layer-table properties (colour, lineweight, linetype, frozen/locked/plot flags) land on the `VectorLayer`s. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
-| DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). |
+| DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). The reader answers for the whole drawing family, not just `.dwg` — see [The DWG family](#the-dwg-family). |
 
 All writers share the same document walk: styles resolve by inheritance down the tree, transforms accumulate and (except in SVG) bake into the emitted coordinates, and path normalisation — every `PathCommandType` down to absolute move/line/cubic segments, SVG arcs via endpoint-to-centre conversion — lives in `DataFormats/UltraCanvasVectorPathOps.h`.
 
@@ -54476,6 +55890,125 @@ std::string dxfText = DWGConverter::DecodeToDxf(dwgBytes);   // DWG -> DXF text
 
 auto fromCad = DXFConverter().Import("plan.dxf");
 auto fromEmf = EMFConverter().Import("clip.emf");
+// null (with a warning) when the .ai keeps its artwork in its PDF page:
+// that file is the PDF plugin's to render.
+auto fromAi  = AIConverter().Import("artwork.ai");
+```
+
+## The DWG family
+
+A drawing does not always arrive named `.dwg`. AutoCAD writes the *same*
+drawing database — same `AC10xx` version header, same object map — to four
+suffixes, and copies it verbatim to a fifth:
+
+| Suffix | What AutoCAD writes | How it is recognised |
+|---|---|---|
+| `.dwg` | the drawing | by extension |
+| `.dwt` | drawing template | by extension |
+| `.dws` | drawing standards | by extension |
+| `.sv$` | automatic save | by extension |
+| `.bak` | backup — a verbatim copy of the drawing | by content |
+
+The first four are advertised extensions: `DWGConverter::GetFileExtensions()`
+lists them, the Vector plugin's `GetSupportedExtensions()` reports them as
+loadable, `GraphicsFormatDetector` files them as `Vector`, and the Filer
+names them (AutoCAD Template / Standards / Autosave). They decode through the
+same native reader as a `.dwg`, so they open, preview and rasterize
+identically.
+
+`.bak` is deliberately not on that list. AutoCAD's backup *is* a drawing, but
+the suffix belongs to no format — editors, package managers and databases all
+write `.bak` files — so claiming every one of them as CAD would be wrong. It
+is settled by content instead: the plugin reads the file's first six bytes and
+takes it only when they carry the `AC10xx` magic. That check is what
+`DWGConverter::ValidateFile()` / `ValidateData()` already do, and the registry
+reaches it because a suffix no plugin advertises falls through to the plugins'
+own `CanHandle()`.
+
+```cpp
+using namespace UltraCanvas::VectorConverter;
+
+DWGConverter::IsDrawingExtension("plan.dwt");            // true  (also .dwg/.dws/.sv$)
+DWGConverter::IsAmbiguousDrawingExtension("plan.bak");   // true  - ask ValidateFile()
+DWGConverter::IsDrawingExtension("plan.dxf");            // false - a different format
+
+UltraCanvasVectorFormatsPlugin::LoadVectorDocument("Plan_1_1_8421.sv$");   // a drawing
+LoadGraphicsFile("Plan.bak");   // a drawing when its header says so, else null
+```
+
+Writing is unchanged: the save list names `.dwg` alone, because the alias
+suffixes are what drawings arrive under, not what a "save as" offers.
+
+## Previews: what the media viewer and the Filer show
+
+Core owns the vector document model and the renderer that draws one, but no
+reader — every reader is in this plugin, which links *against* core. So the
+media viewer's preview pane and the Filer's thumbnails could only show a
+drawing two ways: rasterized by libvips (svg/svgz, and eps/ps where the
+libvips build has a PostScript loader), or as the preview bitmap some formats
+store inside themselves. A DXF or a DWG is neither, so it showed nothing —
+in a build whose Vector plugin had just read the same drawing for the
+FileLoader.
+
+`RegisterVectorFormatsPlugin()` now also installs a **vector preview
+provider** (`UltraCanvasVectorPreview.h`), the same seam
+`UltraCanvasModelPreview.h` is for 3D formats: core asks "turn this path into
+a `VectorDocument`" and "is this one you read", and the plugin answers. With
+it registered:
+
+- `UltraCanvasMediaViewer` opens a drawing in `UltraCanvasVectorElement` — the
+  document itself, sharp at any zoom, not a bitmap of it;
+- the Filer's thumbnail workers render the document at the tile's size
+  (serialized: unlike the other preview producers, drawing a document touches
+  the process-wide font machinery);
+- the Filer's **Display > Thumbnails** and **Display > Detail view** settings
+  pages stop greying the formats out, because `GetPreviewableFormats()` asks
+  the same seam.
+
+```cpp
+RegisterVectorFormatsPlugin();                    // once, at startup
+
+CanPreviewVectorExtension("dwg");                 // true
+LoadVectorPreviewDocument("plan.dxf");            // a VectorDocument
+RenderVectorPreviewPixmap("plan.dwg", 256, 256);  // a UCPixmap for a tile
+```
+
+An application that registers no plugin is unchanged: the seam answers no to
+everything and the old two ways are all there is.
+
+## Registration: automatic, once, for every application
+
+Nothing above happens until the plugin is registered, and that used to be each
+application's job — which is why UltraFiler showed none of these formats while
+carrying every reader for them.
+
+Linking the **`UltraCanvasAllFormats`** object library is now the whole of it:
+every format plugin the build produced registers itself before `main()`, with
+no application code. CMake defines `ULTRACANVAS_HAS_<PLUGIN>` for each plugin
+target it actually built, and the registrar
+(`UltraCanvas/Plugins/UltraCanvasAllFormats.cpp`) calls what those defines
+admit exists. Adding a plugin to the framework reaches every application that
+links the library, instead of every application having to learn its name.
+
+It is an `OBJECT` library on purpose — a linker keeps only the object files of
+a static library that something references, and nothing references a
+registrar, so in a `.a` it would be dropped and the registration would
+silently never happen.
+
+Registration order is ownership order: the dedicated CDR, XAR and EPS viewer
+plugins register *after* this one, because the registry lets the last
+registration win a shared extension and for those formats they are the better
+reader. This plugin keeps what only it reads (DXF, the DWG family, EMF, WMF)
+and remains the only writer, since save dispatch matches on
+`GetSaveExtensions` rather than the extension map.
+
+```cpp
+// An application does this and nothing else:
+//     target_link_libraries(MyApp PRIVATE ${ULTRACANVAS_LIBRARIES}
+//                                         UltraCanvasAllFormats)
+
+AutoRegisteredFormatPlugins();   // {"Vector","Models","CDR","XAR","EPS"}
+RegisterAllFormatPlugins();      // harmless: the automatic pass already ran
 ```
 
 ## The graphics plugin (load and save through the registry)
@@ -54490,7 +56023,9 @@ auto element = LoadGraphicsFile("plan.dxf");   // UltraCanvasVectorElement
 SaveGraphicsFile(element, "plan.svg");         // any of the ten formats
 ```
 
-Loading covers the formats with readers (SVG, XAR, EMF, WMF, DXF, DWG) and
+Loading covers the formats with readers (SVG, XAR, EMF, WMF, DXF and the DWG
+family — `.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is
+a drawing) and
 yields an `UltraCanvasVectorElement` holding the editable `VectorDocument`;
 saving covers the whole matrix from any such element. The
 `IGraphicsPlugin` save interface (`GetSaveExtensions`/`SaveGraphics`) is new
@@ -54516,7 +56051,7 @@ structure — plus LibreOffice; DWG through LibreDWG's dxf2dwg/dwgread when
 installed), and `VectorFormatsPluginTest` (the whole matrix through the
 plugin registry: save all ten formats via `SaveGraphicsFile`, load the
 readable ones back via `LoadGraphicsFile` with geometry/style round-trip
-checks, plus the supported-format inventory). `VectorModelTest` covers the shared model itself: `Matrix3x3` arithmetic and double precision, group/document bounds through nested transforms, hit testing through layer and group transforms, the unit helpers, and a DXF round trip of units and layer properties. `DWGReaderTest` covers the CAD import path: the DXF reader's block machinery on a synthetic drawing (nested, arrayed and mirrored inserts, dimension blocks, inheritance, visibility, geometry-derived extents) and the native DWG decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the framework's own test document converted with dxf2dwg; extra `.dwg` files on its command line are decoded and reported (`DWG_TEST_SVG_DIR` exports them as SVG).
+checks, plus the supported-format inventory). `VectorModelTest` covers the shared model itself: `Matrix3x3` arithmetic and double precision, group/document bounds through nested transforms, hit testing through layer and group transforms, the unit helpers, and a DXF round trip of units and layer properties. `DWGReaderTest` covers the CAD import path: the DXF reader's block machinery on a synthetic drawing (nested, arrayed and mirrored inserts, dimension blocks, inheritance, visibility, geometry-derived extents) and the native DWG decoder on `Tests/DataFormats/cad-test-document.r2000.dwg`, the framework's own test document converted with dxf2dwg; extra `.dwg` files on its command line are decoded and reported (`DWG_TEST_SVG_DIR` exports them as SVG). It also covers the family dispatch above: the fixture's own bytes must load under each of `.dwg`, `.dwt`, `.dws`, `.sv$` and `.bak`, and a `.bak` holding anything else must not be claimed.
 
 ## See Also
 
@@ -54568,7 +56103,7 @@ applies (`VectorSourceInfo::source`) and who does the work
 | `VectorRasterSource` | Formats | How |
 |---|---|---|
 | `ImagePipeline` | `.svg`, `.svgz`, `.pdf`, `.ai`, `.eps`, `.ps` | libvips: `svgload` (librsvg), `pdfload` (poppler/pdfium), the PostScript delegate. Rendered at the resolution that produces the requested size — `PixelFX::FileIO::LoadSvg` / `LoadPdf` underneath. |
-| `GraphicsPlugin` | whatever a registered `IGraphicsPlugin` claims and `GraphicsFormatDetector` files as `Vector` — the [Vector plugin](UltraCanvasVectorConverters.md)'s DXF / DWG / EMF / WMF / XAR, the CDR and XAR viewer plugins | the plugin's element is given the target bounds and rendered into an offscreen `IRenderContext`; the premultiplied ARGB32 pixels are read back and un-premultiplied into the layer. |
+| `GraphicsPlugin` | whatever a registered `IGraphicsPlugin` claims and `GraphicsFormatDetector` files as `Vector` — the [Vector plugin](UltraCanvasVectorConverters.md)'s DXF / DWG (including the drawing family's `.dwt`, `.dws` and `.sv$`) / EMF / WMF / XAR, the CDR and XAR viewer plugins | the plugin's element is given the target bounds and rendered into an offscreen `IRenderContext`; the premultiplied ARGB32 pixels are read back and un-premultiplied into the layer. |
 | `Unsupported` | everything else | nothing in this build reads it; `VectorSourceInfo::error` says so. |
 
 Both halves are **runtime** answers. The libvips half depends on how libvips
@@ -58149,19 +59684,51 @@ recommendation in §6 was followed as written, including the layering fix.
 | The element (block layouts, rendering, input, caret, scrolling, clipboard) | `include/UltraCanvasRichTextEdit.h`, `core/UltraCanvasRichTextEdit.cpp` | Done |
 | Model-level tests, no display needed | `Tests/RichTextEditorTest.cpp` | Done |
 | Element tests against a real render context (Xvfb) | `Tests/RichTextEditElementTest.cpp` | Done |
+| First application: UltraTexter opens `.odt`/`.docx`/`.doc` in the element | `Apps/Texter/UltraCanvasTextEditor.cpp` | Done — see below |
+| Find / replace, in the editing core so it needs no display | `core/UltraCanvasRichDocumentEditor.cpp` | Done |
+| Spell checking, on the shared worker | `core/UltraCanvasRichTextEdit.cpp` | Done |
 
 `RichDocPosition` is `{blockIndex, byteOffset}` as designed; undo is the
 block-span step of §6 with typing coalescing; layouts are built only for blocks
 near the viewport, with the rest carrying an estimated height until they scroll
 in. Every `RichTextRun` field maps onto the attribute named in §3.2's table.
 
+### UltraTexter as the first host
+
+UltraTexter gained a third `DocumentKind` (`RichDocument`) beside `Text` and
+`Pdf`. A word-processing file is handed to the element as a shared
+`UCRichDocument` and saved straight back through `UCWordDocumentIO`, so the
+Markdown detour — `ToMarkdown` on load, `FromMarkdown(GetText())` on save — is
+gone from that path, and with it the lossy round trip §2 described.
+
+The element replaces the text area *inside* the tab's `editorArea` rather than
+replacing the whole tab content (which is what the PDF view does), so the
+formatting toolbar and the search-bar slot above it stay in the tree. The
+toolbar's buttons now go through one `ApplyFormatCommand` dispatcher: in a
+Markdown tab a button inserts markup, in a word-processing tab it calls the
+element's formatting API, and its pressed state comes from `GetFormatState()`
+with `Mixed` shown as not-pressed.
+
+Find, replace and spell checking followed immediately, because they were the
+two things a word-processing tab *lost* by moving off the Markdown detour — the
+only items on the list that were a step backwards rather than a gap that was
+always there. The shared search bar and the editor context menu now drive
+whichever editor the active tab holds.
+
+What the host still does not have follows the element's own limits: go-to-line
+(a word-processing document has paragraphs, not lines — the status bar reports
+the caret's block instead), search inside table cells, and autosave backups (a
+backup is a text file that recovery reopens as a text tab, so there is nothing
+useful to write). Each is skipped explicitly rather than silently operating on
+the detached, empty text area.
+
 Still open from §4 and §7, and stated as limits in the element's documentation
 rather than hidden: in-place table cell editing and interactive image resizing
 (Phase 4), the clipboard MIME flavours and the HTML→`UCRichDocument` importer
 that cross-application rich paste needs (Phase 5 proper — copy/paste *inside*
 the application does keep formatting, through a process-local buffer), typeset
-math runs, spell checking, and the pre-edit/composition event (§4.8), which no
-text widget in the framework has yet.
+math runs, and the pre-edit/composition event (§4.8), which no text widget in
+the framework has yet.
 
 ## 10. References
 
@@ -58636,9 +60203,22 @@ load through the ImageMagick delegate when libvips was built with it.
 | CorelDRAW | `.cdr`, `.cmx` | ✅ ‡ | — | CDR plugin (libcdr) |
 | Xara | `.xar`, `.web` | ✅ ‡ | — | XAR plugin |
 | PostScript / EPS | `.eps`, `.ps` | ✅ † | — | libvips delegate |
+| AutoCAD DXF | `.dxf` | ✅ ‡ | ✅ ‡ | Vector plugin (built-in reader and writer) |
+| AutoCAD DWG | `.dwg`, `.dwt`, `.dws`, `.sv$` | ✅ ‡ | ✅ ‡ § | Vector plugin (native R13–R2018 decoder) |
 
 There is no SVG *writer* in the image pipeline — SVG is load-only. EPS/PS load
 only when libvips was built with a PostScript loader (Ghostscript delegate).
+The Vector plugin writes the whole matrix it reads and more (SVG, XAR, EPS,
+CDR, PDF, EMF, WMF, AI, DXF, DWG) once `RegisterVectorFormatsPlugin()` has
+been called — see
+[UltraCanvasVectorConverters](../../UltraCanvas/UltraCanvasVectorConverters.md).
+
+§ DWG *writing* needs GNU LibreDWG's `dxf2dwg`; reading needs nothing external.
+The four DWG extensions above are one format: AutoCAD writes the same drawing
+database as a drawing, a template, a standards file and an automatic save. A
+`.bak` is one too — it is a verbatim copy of the drawing — but since every
+other program writes `.bak` files as well, it is claimed on its header rather
+than its name, so it is loadable without being an advertised extension.
 
 ### 3D models
 
@@ -61429,8 +63009,10 @@ same default.
 > **Nextcloud / ownCloud** (WebDAV + OCS share links), **generic WebDAV**
 > (browse and upload; links only through a public web-folder URL),
 > **Dropbox**, **OneDrive** and **Google Drive** (OAuth2 + PKCE through the
-> system browser, tokens refreshed automatically) and an **in-memory demo
-> provider**. iCloud Drive cannot mint links from an app at all. Providers
+> system browser, tokens refreshed automatically), **FTP / FTPS / SFTP**
+> (browse, upload, download, and - alone among the providers - delete and
+> rename, so a file manager can carry a server as a drive; no share links)
+> and an **in-memory demo provider**. iCloud Drive cannot mint links from an app at all. Providers
 > can also ship as plug-in libraries. Sources under
 > `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud` (headless)
 > and `UltraCloudUI` (dialogs), header `<UltraCloud/UltraCloud.h>`,
@@ -61468,6 +63050,7 @@ What already existed and stays where it is:
 | Dropbox | `files/upload` up to 150 MB, an upload session (`upload_session/start` → `append_v2` → `finish`) in 8 MiB chunks above | `sharing/create_shared_link_with_settings` (password + expiry on paid plans); an existing link is reused | OAuth2 + PKCE, offline access | `https://www.dropbox.com/scl/fi/…` |
 | OneDrive | Graph `PUT …:/content` up to 4 MB, an upload session in 10 MiB chunks above | Graph `createLink` (anonymous view; password + expiry on personal accounts) | OAuth2 + PKCE, `offline_access` | `https://1drv.ms/…` |
 | Google Drive | multipart `files.create` (or a media update when the name exists) up to 5 MB, a resumable upload in 8 MiB chunks above | `permissions.create` (anyone with the link) + the file's `webViewLink`; no password / expiry | OAuth2 + PKCE, `access_type=offline` | `https://drive.google.com/file/d/<id>/view` |
+| FTP / FTPS / SFTP | `UltraNet_FtpUpload`, missing folders created on the way | — (no FTP request mints a link) | user + password (`CURLOPT_USERNAME` / `CURLOPT_PASSWORD`); implicit TLS on `ftps://`, explicit on `ftpes://` | not possible from an app |
 | iCloud Drive | — | Finder / share sheet only | — | not possible from an app |
 | Demo (in memory) | in process | in process | — | `https://demo.ultra-os.local/s/<n>` |
 
@@ -61491,6 +63074,7 @@ What already existed and stays where it is:
           │           ├── DropboxProvider           Dropbox API v2
           │           ├── OneDriveProvider          Microsoft Graph
           │           └── GoogleDriveProvider       Drive API v3 (paths resolved to ids)
+          ├── FtpProvider                           FTP / FTPS / SFTP over UltraNet FTP
           └── MemoryProvider                        in-process fake
 ```
 
@@ -61596,6 +63180,12 @@ The dialogs (`UltraCloudUI`):
 #include "UltraCloudPickerDialog.h"
 
 UltraCloud::ShowAddAccountDialog(window, cloud, [](const Account& added) { ... });
+
+// Narrowed to one kind of provider, with a title to match - what a host does
+// when it offers "add an FTP drive" and "add a cloud drive" as two commands.
+UltraCloud::ShowAddAccountDialog(window, cloud, onAdded,
+        [](const std::string& id) { return id == "ftp"; },
+        "Add an FTP / SFTP drive");
 UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
     InsertIntoBody(pick.entry.name + ": " + pick.link.url);
 });
@@ -61612,19 +63202,20 @@ providers.
 | Header | Contents |
 |---|---|
 | `UltraCloudTypes.h` | `Result` / `ResultCode`, `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
-| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
+| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
 | `UltraCloudOAuth.h` | `OAuthApp`, `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp`, `OAuthHooks`, `OAuthProviderBase` |
+| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `FileSecretStore`, `VaultSecretStore` (with UltraVault) |
-| `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare) |
+| `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog`, `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (with an optional provider filter and title), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing
@@ -63544,6 +65135,8 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
+│   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
+│   ├── UltraNetCurlDebug.h       (header-only, opt-in protocol trace)
 │   └── UltraNetPlugins.h
 ├── core/UltraNet/                (.cpp implementations of the headers above)
 ├── OS/<Platform>/UltraNetSupport.cpp
@@ -63555,6 +65148,34 @@ UltraCanvas/                      (or wherever the build places it)
 ```
 
 CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
+
+---
+
+## Debugging a mail connection
+
+An account that will not send or fetch is rarely diagnosable from the
+`UltraNetResultCode` alone — the server says why in its reply text, and
+libcurl discards that once it has mapped the exchange to a `CURLcode`. Set
+`ULTRANET_CURL_DEBUG` to put the conversation on stderr:
+
+```
+ULTRANET_CURL_DEBUG=1 ./UltraMail
+```
+
+| Line | Meaning |
+|---|---|
+| `[ultranet] * …` | libcurl's own notes (connection, TLS, auth mechanism chosen) |
+| `[ultranet] > …` | what we sent |
+| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error` |
+
+It is off unless asked for, message bodies are never printed, and the SASL
+exchange is replaced with `<redacted>` — including the bare base64
+continuation lines of `AUTH LOGIN`, which carry the password with no keyword
+on them — so a trace can be pasted into a bug report as it stands. The
+mechanism name is kept, because which step failed is the useful part.
+
+Applies to every plug-in that goes through libcurl (SMTP, IMAP, POP3);
+`ultranet_curldebug::EnableIfRequested()` is one call in the handle setup.
 
 ---
 

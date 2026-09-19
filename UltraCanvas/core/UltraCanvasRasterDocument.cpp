@@ -114,6 +114,7 @@ void UCRasterDocument::BeginStructuralUndo(const std::string& label) {
     pendingStructural.activeLayer = activeLayer;
     pendingStructural.layersBefore = layers;   // shared: ops replace, never mutate
     pendingStructural.selectionBefore = std::make_shared<UCRasterSelection>(selection);
+    structuralSelectionVersion = selection.GetVersion();
     structuralOpen = true;
 }
 
@@ -125,9 +126,19 @@ void UCRasterDocument::EndStructuralUndo() {
     pendingStructural.activeLayerAfter = activeLayer;
     pendingStructural.layersAfter = layers;
     pendingStructural.selectionAfter = std::make_shared<UCRasterSelection>(selection);
+    // A canvas-geometry change re-shapes the selection (CropTo, ScaleImage,
+    // ResizeCanvas and Rotate90 all drop it). That is a selection change like
+    // any other: the committed baseline has to move with it, or the next
+    // CommitSelectionChange() would record a "before" of the old canvas size
+    // and an undo would restore a selection that no longer fits the image -
+    // after which the selection's bounds lie outside the canvas and every
+    // crop to them quietly does nothing.
+    const bool selectionChanged = selection.GetVersion() != structuralSelectionVersion;
+    lastCommittedSelection = pendingStructural.selectionAfter;
     PushUndo(std::move(pendingStructural));
     SetModified(true);
     EmitStructure();
+    if (selectionChanged && onSelectionChanged) onSelectionChanged();
 }
 
 void UCRasterDocument::ApplyStructural(const RasterUndoEntry& e, bool toAfter) {
@@ -138,8 +149,10 @@ void UCRasterDocument::ApplyStructural(const RasterUndoEntry& e, bool toAfter) {
     layers = toAfter ? e.layersAfter : e.layersBefore;
     activeLayer = std::clamp(toAfter ? e.activeLayerAfter : e.activeLayer, 0,
                              std::max(0, static_cast<int>(layers.size()) - 1));
+    // A selection only means anything on the canvas it was made on, so one
+    // recorded at another size is dropped rather than restored.
     const auto& sel = toAfter ? e.selectionAfter : e.selectionBefore;
-    if (sel) selection.Assign(*sel);
+    if (sel && sel->GetWidth() == width && sel->GetHeight() == height) selection.Assign(*sel);
     else selection.Resize(width, height);
     if (sizeChanged) ResetComposite(); else InvalidateComposite();
     EmitStructure();
@@ -651,7 +664,9 @@ void UCRasterDocument::Undo() {
     RasterUndoEntry e = std::move(undoStack.back());
     undoStack.pop_back();
     if (e.structural) ApplyStructural(e, false); else ApplyPixels(e, false);
-    if (e.selectionBefore) lastCommittedSelection = e.selectionBefore;
+    // What was actually restored, which is not the recorded selection when
+    // that one belonged to a canvas of another size.
+    lastCommittedSelection = std::make_shared<UCRasterSelection>(selection);
     redoStack.push_back(std::move(e));
     SetModified(true);
     if (onStateChanged) onStateChanged();
@@ -662,7 +677,7 @@ void UCRasterDocument::Redo() {
     RasterUndoEntry e = std::move(redoStack.back());
     redoStack.pop_back();
     if (e.structural) ApplyStructural(e, true); else ApplyPixels(e, true);
-    if (e.selectionAfter) lastCommittedSelection = e.selectionAfter;
+    lastCommittedSelection = std::make_shared<UCRasterSelection>(selection);
     undoStack.push_back(std::move(e));
     SetModified(true);
     if (onStateChanged) onStateChanged();

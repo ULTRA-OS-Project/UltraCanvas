@@ -1,8 +1,10 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
-// Last Modified: 2026-07-22
+// Last Modified: 2026-09-19
 #include "UltraCanvasListView.h"
+#include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasTooltipManager.h"
 #include <algorithm>
 
 namespace UltraCanvas {
@@ -41,10 +43,50 @@ namespace UltraCanvas {
         scrollOffsetY = 0;
         hoveredRow = -1;
         focusedRow = -1;
+        // A new model means new columns; drop any per-view width overrides so a
+        // stale override can't mis-size a different column set.
+        columnWidthOverrides.clear();
+        userAdjustedColumns = false;
         if (selection) selection->Clear();
         InvalidateRowGeometry();
         UpdateScrollbar();
         RequestRedraw();
+    }
+
+    // ===== COLUMN WIDTHS =====
+    int UltraCanvasListView::GetColumnWidth(int column) const {
+        if (column >= 0 && column < static_cast<int>(columnWidthOverrides.size()) &&
+            columnWidthOverrides[column] >= 0)
+            return columnWidthOverrides[column];
+        return model ? model->GetColumnDef(column).width : 0;
+    }
+
+    void UltraCanvasListView::SetColumnWidth(int column, int width) {
+        if (column < 0) return;
+        static constexpr int kMinColumnWidth = 24;
+        if (width < kMinColumnWidth) width = kMinColumnWidth;
+        if (static_cast<int>(columnWidthOverrides.size()) <= column)
+            columnWidthOverrides.resize(column + 1, -1);
+        if (columnWidthOverrides[column] == width) return;
+        columnWidthOverrides[column] = width;
+        InvalidateRowGeometry();
+        UpdateScrollbar();
+        RequestRedraw();
+    }
+
+    int UltraCanvasListView::ColumnBoundaryAt(int x, int y) const {
+        if (!model || !viewStyle.showHeader || !columnsResizable) return -1;
+        int colCount = model->GetColumnCount();
+        if (colCount < 2) return -1;
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
+        if (y < localContentY || y >= localContentY + viewStyle.headerHeight) return -1;
+        int colX = localContentX;
+        for (int col = 0; col + 1 < colCount; ++col) {
+            colX += GetColumnWidth(col);
+            if (x >= colX - 4 && x <= colX + 4) return col;   // ~4px hot zone
+        }
+        return -1;
     }
 
     IListModel* UltraCanvasListView::GetModel() const {
@@ -136,6 +178,24 @@ namespace UltraCanvas {
 
     bool UltraCanvasListView::GetShowHeader() const {
         return viewStyle.showHeader;
+    }
+
+    void UltraCanvasListView::SetSortIndicator(int column, bool ascending) {
+        if (column < 0) column = -1;
+        if (sortColumn == column && sortAscending == ascending) return;
+        sortColumn = column;
+        sortAscending = ascending;
+        RequestRedraw();
+    }
+
+    void UltraCanvasListView::SetShowItemTooltips(bool enable) {
+        if (showItemTooltips == enable) return;
+        showItemTooltips = enable;
+        if (!showItemTooltips) HideHoverTooltip();
+    }
+
+    bool UltraCanvasListView::GetShowItemTooltips() const {
+        return showItemTooltips;
     }
 
     // ===== SCROLLING =====
@@ -334,7 +394,7 @@ namespace UltraCanvas {
         }
         int colX = viewport.x;
         for (int col = 0; col < colCount; col++) {
-            int colW = model->GetColumnDef(col).width;
+            int colW = GetColumnWidth(col);
             if (x < colX + colW) {
                 if (columnStartX) *columnStartX = colX;
                 return col;
@@ -344,9 +404,52 @@ namespace UltraCanvas {
         return -1;
     }
 
+    int UltraCanvasListView::GetHeaderColumnAt(int x, int y, int* columnStartX) const {
+        if (!model || !viewStyle.showHeader) return -1;
+
+        // The header sits at the top of the content rect and spans its full
+        // width (see RenderHeader), above the rows viewport.
+        int localContentX = GetBorderLeftWidth() + GetPaddingLeft();
+        int localContentY = GetBorderTopWidth() + GetPaddingTop();
+        int crWidth = GetWidth() - GetTotalBorderHorizontal() - GetTotalPaddingHorizontal();
+        if (y < localContentY || y >= localContentY + viewStyle.headerHeight) return -1;
+        if (x < localContentX || x >= localContentX + crWidth) return -1;
+
+        int colX = localContentX;
+        int colCount = model->GetColumnCount();
+        for (int col = 0; col < colCount; col++) {
+            int colW = GetColumnWidth(col);
+            if (x < colX + colW) {
+                if (columnStartX) *columnStartX = colX;
+                return col;
+            }
+            colX += colW;
+        }
+        return -1;
+    }
+
+    std::string UltraCanvasListView::GetTooltipTextAt(int row, int column) const {
+        if (!model) return {};
+        if (row < -1 || row >= model->GetRowCount()) return {};
+        if (column < 0) column = 0;
+
+        if (tooltipProvider) {
+            std::string custom = tooltipProvider(row, column);
+            if (!custom.empty()) return custom;
+        }
+        if (row < 0) {
+            // Header cell
+            return model->GetColumnDef(column).tooltip;
+        }
+        return GetStringValue(model->GetData(ListIndex{row, column}, ListDataRole::ToolTipRole));
+    }
+
     int UltraCanvasListView::GetRowAtY(int y) const {
         if (!model) return -1;
         auto viewport = GetViewportRect();
+        // Above the rows viewport (the header, when shown) is never a row --
+        // without this a scrolled list would report one for header hits.
+        if (y < viewport.y) return -1;
         int relativeY = y - viewport.y + scrollOffsetY;
         if (relativeY < 0 || relativeY >= RowsContentHeight()) return -1;
         int row = ClampRowIndexAtContentY(relativeY);
@@ -417,21 +520,65 @@ namespace UltraCanvas {
         int colCount = model->GetColumnCount();
         for (int col = 0; col < colCount; col++) {
             auto colDef = model->GetColumnDef(col);
+            int colW = GetColumnWidth(col);
             ctx->SetTextAlignment(colDef.alignment);
-            ctx->DrawTextInRect(colDef.title, Rect2Dd(colX + 4, headerRect.y, colDef.width - 8, headerRect.height));
+            ctx->SetTextPaint(viewStyle.headerTextColor);
 
-            // Grid line between columns
-            if (viewStyle.showGridLines && col < colCount - 1) {
+            // The sorted column gives up a strip at the end of its cell to the
+            // direction triangle - after the title for left/centre-aligned
+            // columns, before it for right-aligned ones, so the title keeps
+            // its edge and the two never overlap.
+            Rect2Dd titleRect(colX + 4, headerRect.y, colW - 8, headerRect.height);
+            if (col == sortColumn && viewStyle.sortIndicatorSize > 0) {
+                int strip = viewStyle.sortIndicatorSize + 6;
+                if (strip < colW - 8) {
+                    Rect2Di stripRect(colX + colW - 4 - strip, headerRect.y, strip, headerRect.height);
+                    if (colDef.alignment == TextAlignment::Right) {
+                        stripRect.x = colX + 4;
+                        titleRect.x += strip;
+                    }
+                    titleRect.width -= strip;
+                    RenderSortIndicator(ctx, stripRect);
+                }
+            }
+            ctx->DrawTextInRect(colDef.title, titleRect);
+
+            // Separator between columns: the resize boundary. Drawn for every
+            // interior border (not only when showGridLines) so the draggable
+            // edge is discoverable in the header.
+            if (col < colCount - 1) {
                 ctx->SetStrokePaint(viewStyle.gridLineColor);
-                ctx->DrawLine({colX + colDef.width, headerRect.y}, {colX + colDef.width, headerRect.Bottom()});
+                ctx->DrawLine({colX + colW, headerRect.y}, {colX + colW, headerRect.Bottom()});
             }
 
-            colX += colDef.width;
+            colX += colW;
         }
 
         // Bottom border of header
         ctx->SetStrokePaint(viewStyle.gridLineColor);
         ctx->DrawLine(headerRect.BottomLeft(), headerRect.BottomRight());
+    }
+
+    // The sort direction as geometry rather than a text glyph: a filled
+    // triangle stays crisp at any DPI and takes headerTextColor, whereas a
+    // font's U+25B2/U+25BC would depend on the header font carrying them. Apex
+    // up means ascending, apex down descending, centred in `cell`.
+    void UltraCanvasListView::RenderSortIndicator(IRenderContext* ctx, const Rect2Di& cell) {
+        const double w = viewStyle.sortIndicatorSize;
+        const double h = w * 0.5;
+        const double cx = cell.x + cell.width * 0.5;
+        const double cy = cell.y + cell.height * 0.5;
+        const double left = cx - w * 0.5, right = cx + w * 0.5;
+        const double top = cy - h * 0.5, bottom = cy + h * 0.5;
+
+        std::vector<Point2Dd> triangle;
+        if (sortAscending) {
+            triangle = { Point2Dd(cx, top), Point2Dd(right, bottom), Point2Dd(left, bottom) };
+        } else {
+            triangle = { Point2Dd(left, top), Point2Dd(right, top), Point2Dd(cx, bottom) };
+        }
+        ctx->SetFillPaint(viewStyle.headerTextColor);
+        ctx->FillLinePath(triangle);
     }
 
     void UltraCanvasListView::RenderRows(IRenderContext* ctx, const Rect2Di& contentRect) {
@@ -502,6 +649,7 @@ namespace UltraCanvas {
                 int colX = viewport.x;
                 for (int col = 0; col < colCount; col++) {
                     auto colDef = model->GetColumnDef(col);
+                    int colW = GetColumnWidth(col);
 
                     ListItemStyleOption opt;
                     opt.rect = Rect2Di(viewport.x, rowY, viewport.width, rowH);
@@ -513,22 +661,22 @@ namespace UltraCanvas {
                     opt.column = col;
                     opt.columnCount = colCount;
                     opt.columnX = colX;
-                    opt.columnWidth = colDef.width;
+                    opt.columnWidth = colW;
                     opt.columnAlignment = colDef.alignment;
 
                     ctx->PushState();
-                    ctx->ClipRect({colX, rowY, colDef.width, rowH});
+                    ctx->ClipRect({colX, rowY, colW, rowH});
                     delegate->RenderItem(ctx, model.get(), row, col, opt);
                     ctx->PopState();
 
                     // Grid line between columns
                     if (viewStyle.showGridLines && col < colCount - 1) {
                         ctx->SetStrokePaint(viewStyle.gridLineColor);
-                        ctx->DrawLine({colX + colDef.width, rowY},
-                                      {colX + colDef.width, rowY + rowH});
+                        ctx->DrawLine({colX + colW, rowY},
+                                      {colX + colW, rowY + rowH});
                     }
 
-                    colX += colDef.width;
+                    colX += colW;
                 }
             }
         }
@@ -548,8 +696,87 @@ namespace UltraCanvas {
                 UCEvent localEvent = event;
                 localEvent.pointer = event.pointer - sbB.TopLeft();
                 if (verticalScrollbar->OnEvent(localEvent)) {
+                    if (event.type == UCEventType::MouseMove) {
+                        // The pointer is on the scrollbar, not on a cell, and a
+                        // drag moves the rows under it.
+                        HideHoverTooltip();
+                        hoveredColumn = -1;
+                        hoveredHeaderColumn = -1;
+                    }
                     return true;
                 }
+            }
+        }
+
+        // Interactive column resize (multi-column header). Handled before row
+        // hit-testing so grabbing a border never selects a row. A drag keeps the
+        // mouse captured, so moves/ups arrive even outside the element.
+        if (columnsResizable) {
+            switch (event.type) {
+                case UCEventType::MouseDown: {
+                    int col = Contains(event.pointer)
+                                  ? ColumnBoundaryAt(event.pointer.x, event.pointer.y) : -1;
+                    if (col >= 0) {
+                        resizeCol = col;
+                        resizeStartX = event.pointer.x;
+                        resizeStartW = GetColumnWidth(col);
+                        if (auto* app = UltraCanvasApplication::GetInstance()) app->CaptureMouse(this);
+                        return true;
+                    }
+                    break;
+                }
+                case UCEventType::MouseMove:
+                    if (resizeCol >= 0) {
+                        SetColumnWidth(resizeCol, resizeStartW + (event.pointer.x - resizeStartX));
+                        userAdjustedColumns = true;
+                        return true;
+                    }
+                    // Hover affordance over a resizable border.
+                    SetMouseCursor(
+                        (Contains(event.pointer) &&
+                         ColumnBoundaryAt(event.pointer.x, event.pointer.y) >= 0)
+                            ? UCMouseCursor::SizeWE : UCMouseCursor::Default);
+                    break;
+                case UCEventType::MouseUp:
+                    if (resizeCol >= 0) {
+                        resizeCol = -1;
+                        if (auto* app = UltraCanvasApplication::GetInstance()) app->ReleaseMouse();
+                        return true;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
+        // Header click (press and release in the same header cell). Handled
+        // before row hit-testing: a press on the header is not a click on "no
+        // row" and must not clear the selection. A press on a resize border
+        // was consumed above, so a drag never reads as a click.
+        if (viewStyle.showHeader) {
+            switch (event.type) {
+                case UCEventType::MouseDown:
+                    if (Contains(event.pointer)) {
+                        int col = GetHeaderColumnAt(event.pointer.x, event.pointer.y);
+                        if (col >= 0) {
+                            pressedHeaderColumn = col;
+                            SetFocus(true);
+                            return true;
+                        }
+                    }
+                    break;
+                case UCEventType::MouseUp:
+                    if (pressedHeaderColumn >= 0) {
+                        int col = Contains(event.pointer)
+                                      ? GetHeaderColumnAt(event.pointer.x, event.pointer.y) : -1;
+                        bool clicked = (col == pressedHeaderColumn);
+                        pressedHeaderColumn = -1;
+                        if (clicked && onHeaderClicked) onHeaderClicked(col);
+                        return true;
+                    }
+                    break;
+                default:
+                    break;
             }
         }
 
@@ -560,6 +787,10 @@ namespace UltraCanvas {
                 return HandleMouseMove(event);
             case UCEventType::MouseLeave:
                 if (onCellHovered) onCellHovered(-1, -1, Point2Di(-1, -1));
+                HideHoverTooltip();
+                pressedHeaderColumn = -1;
+                hoveredColumn = -1;
+                hoveredHeaderColumn = -1;
                 if (hoveredRow != -1) {
                     hoveredRow = -1;
                     RequestRedraw();
@@ -625,18 +856,34 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasListView::HandleMouseMove(const UCEvent& event) {
-        int newHovered = Contains(event.pointer) ? GetRowAtY(event.pointer.y) : -1;
+        bool inside = Contains(event.pointer);
+        int newHovered = inside ? GetRowAtY(event.pointer.y) : -1;
+
+        int colX = 0;
+        int newColumn = (newHovered >= 0) ? GetColumnAt(event.pointer.x, &colX) : -1;
+        int newHeaderColumn = (inside && newHovered < 0)
+                                  ? GetHeaderColumnAt(event.pointer.x, event.pointer.y)
+                                  : -1;
+
         if (onCellHovered) {
-            int colX = 0;
-            int col = newHovered >= 0 ? GetColumnAt(event.pointer.x, &colX) : -1;
-            if (newHovered >= 0 && col >= 0) {
+            if (newHovered >= 0 && newColumn >= 0) {
                 auto rowRect = GetRowRect(newHovered);
-                onCellHovered(newHovered, col, Point2Di(event.pointer.x - colX,
-                                                        event.pointer.y - rowRect.y));
+                onCellHovered(newHovered, newColumn, Point2Di(event.pointer.x - colX,
+                                                              event.pointer.y - rowRect.y));
             } else {
                 onCellHovered(-1, -1, Point2Di(-1, -1));
             }
         }
+
+        // A tooltip belongs to one cell (or one header cell), so it is refreshed
+        // whenever the hovered cell changes -- not only on a row change.
+        if (newHovered != hoveredRow || newColumn != hoveredColumn ||
+            newHeaderColumn != hoveredHeaderColumn) {
+            UpdateHoverTooltip(event, newHovered, newColumn, newHeaderColumn);
+        }
+        hoveredColumn = newColumn;
+        hoveredHeaderColumn = newHeaderColumn;
+
         if (newHovered != hoveredRow) {
             hoveredRow = newHovered;
             if (onItemHovered && hoveredRow >= 0) onItemHovered(hoveredRow);
@@ -644,6 +891,31 @@ namespace UltraCanvas {
             return true;
         }
         return false;
+    }
+
+    // ===== TOOLTIPS =====
+
+    void UltraCanvasListView::UpdateHoverTooltip(const UCEvent& event, int row, int column,
+                                                 int headerColumn) {
+        if (!showItemTooltips || !GetWindow()) return;
+
+        std::string tip;
+        if (headerColumn >= 0) {
+            tip = GetTooltipTextAt(-1, headerColumn);
+        } else if (row >= 0) {
+            tip = GetTooltipTextAt(row, column);
+        }
+
+        if (tip.empty()) {
+            HideHoverTooltip();
+            return;
+        }
+        UltraCanvasTooltipManager::UpdateAndShowTooltip(
+                GetWindow(), tip, Point2Di(event.pointerWindow.x, event.pointerWindow.y));
+    }
+
+    void UltraCanvasListView::HideHoverTooltip() {
+        UltraCanvasTooltipManager::HideTooltip();
     }
 
     bool UltraCanvasListView::HandleMouseUp(const UCEvent& /*event*/) {
@@ -661,6 +933,10 @@ namespace UltraCanvas {
     }
 
     bool UltraCanvasListView::HandleMouseWheel(const UCEvent& event) {
+        // Rows move out from under the pointer, so any cell tooltip is stale.
+        HideHoverTooltip();
+        hoveredColumn = -1;
+        hoveredHeaderColumn = -1;
         if (verticalScrollbar->IsVisible()) {
             // Route through the scrollbar so wheel scrolling is smoothly
             // animated; one line step = one row, wheelScrollLines rows/notch.

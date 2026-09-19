@@ -1,3 +1,309 @@
+#### 2026-09-19 *1.44.0*
+- **Split view: two folder displays side by side.** A split-screen button in
+  the navigation row, left of the clock, replaces the folder tree and the one
+  folder display with two displays next to each other: the active tab's on
+  the left, a second display of its own on the right - one that is in no
+  tab, has its own Back / Forward history, and opens on the folder it last
+  showed. A draggable splitter sits between them, and the preview pane, when
+  it opens, takes its width from the right-hand display.
+
+  Each pane has a header row: a **folder-tree button** and the pane's own
+  breadcrumb, which navigates that pane. The tree button docks the folder
+  tree down the left of that display, under its header, and takes it away
+  again (so does Esc). There is one tree, so pressing the other pane's button
+  moves it over; a docked tree follows and navigates the display it sits
+  beside.
+
+  The display clicked last is the active one - its header is tinted - and it
+  is what the toolbars, the search field, the status bar and the preview act
+  on, exactly as they act on the active tab. Clicking a tab makes the
+  left-hand pane active again; the Computer page always opens in the
+  left-hand pane. Files drag and drop between the two displays like between
+  any two displays of the window. Every setting that reaches "every tab" - a
+  changed Display or Handling setting, a vanished volume, a deleted folder -
+  reaches the right-hand display too.
+
+  The switch and the right-hand display's folder are saved with the settings
+  (`view.split`, `view.split.second.folder`), so the next start opens the
+  pair as it was left. Turning the split view off brings the tree pane back
+  as wide as it was.
+
+- The command bar's **Preview** toggle now carries a picture icon: the
+  split-screen icon it used to share is the split view's.
+
+#### 2026-09-19 *1.43.0*
+- **Remote drives are writable: delete, rename and new folder.** A drive added
+  through **+ Drive** could be browsed and nothing more; now the three commands
+  that act on what is *on* the drive work against the server. Deleting asks
+  first, exactly as a local delete does, and a folder goes with `RMD` where a
+  file goes with `DELE` - the display already knows which it is, so no round
+  trip is spent finding out. **F2** renames in place. **New folder** creates one,
+  named after what the folder already holds, and you can rename it once it
+  appears.
+
+  Nothing waits on the server while the window paints: each change is queued,
+  the folder it touched is dropped from the cache, and the display refetches
+  when the answer arrives. A refusal is reported in the server's own words -
+  "550 Permission denied" says what to change where "it did not work" says
+  nothing - and deleting a dozen entries that all fail the same way is one
+  dialog, not a dozen.
+
+  **What a drive can take depends on the drive**, and it says so before you
+  try: FTP, FTPS and SFTP can be changed, while a Nextcloud, WebDAV, Dropbox,
+  OneDrive or Google Drive account is still read-only here and draws its
+  entries with the read-only badge. That follows the provider's own
+  capabilities rather than a list kept in the file manager.
+
+  **Copying files to or from a drive is not in this yet.** A transfer needs the
+  progress window, the conflict questions and the Cancel that copying already
+  has, and that machinery is built on the local filesystem throughout; giving
+  it a second backend is its own change rather than a fourth hook. Duplicate,
+  paste and New > *document* therefore still say a remote drive cannot take
+  them.
+
+  Built on framework 0.8.93's `remoteDelete` / `remoteRename` /
+  `remoteMakeDirectory` hooks and the `CloudService` change verbs added with
+  them.
+
+#### 2026-09-17 *1.42.0*
+- **UltraFiler can now use your desktop's own file icons.** Until now a file
+  with no preview of its own was drawn as a coloured sheet with its extension
+  on it, and a folder as a drawn folder shape - the same picture on every
+  machine, and like nothing else on any of them. **Settings > Display > File
+  icons** now chooses between them:
+
+  - **UltraFiler simple** - the drawn folder and sheet. The default, and what
+    every earlier release showed.
+  - **Host OS icons** - what this system draws for the type: the shell's icons
+    on Windows, Finder's on macOS, the installed icon theme's on Linux and
+    BSD. A PDF gets the document icon, an archive the package icon, a
+    spreadsheet the spreadsheet icon - the same pictures as the rest of the
+    desktop, because they come from the same place.
+
+  It is also in each file display's own **Display > File icons** context menu,
+  beside File extensions.
+
+  What it does not touch: a file that shows a thumbnail of its own content
+  goes on showing it, and a program or shortcut goes on showing the icon it
+  carries inside itself - those are the file's own picture rather than its
+  type's, and Explorer and the Finder prefer them too. A folder you gave an
+  icon with **Extras > Set folder icon**, and the main user folders with icons
+  of their own, keep them either way.
+
+  A file type this system has no icon for keeps the simple one, and so does
+  every icon until its lookup lands, so the window never waits on the desktop
+  and never shows an empty box. On a system with no desktop to ask the choice
+  is greyed out and says why. With host icons on, a folder is drawn with the
+  system's folder icon - so the pictures inside it no longer peek out of it,
+  since there is no drawn folder left to peek out of.
+
+  The setting is saved like every other (`display.file.icons` in the config
+  file). Framework change, see UltraCanvas 0.8.84; the application's own part
+  is the settings page, the config key and the menu wiring.
+
+- **Fixed: the Display settings were ignored by every file display created
+  after start-up.** They are pushed into the displays that exist when the
+  settings file is read - which at start-up is the folder preview alone,
+  because the tabs are built after it. The first tab, every tab opened later,
+  and the History, Favorites and Computer displays therefore browsed with the
+  built-in defaults until the user happened to change a setting, at which
+  point the whole set was pushed in and they jumped. So a saved **Thumbnails**
+  or **Detail view** selection, the **File extensions** switches and
+  **Folder previews** all came back wrong after a restart. Each display is now
+  given the settings as it is wired up, whenever it is created.
+
+  Found while adding File icons above: it was the reason a saved choice of
+  host icons did nothing until the settings window was opened.
+
+#### 2026-09-17 *1.41.0*
+- The per-application plugin list is gone. UltraFiler links
+  `UltraCanvasAllFormats` and every format plugin the build produced registers
+  itself before `main()` - no includes, no defines, no registration calls in
+  `main.cpp`, and nothing to update when a plugin is added to the framework.
+  Needs framework 0.8.83.
+- With the preview tests now asking the graphics registry as well (also
+  0.8.83), the formats only a registered plugin can draw stop being greyed on
+  Display > Thumbnails and Display > Detail view: the CorelDRAW files libcdr
+  parses, `.ccx` and `.cdt` included, which the previous release could
+  register but not show.
+
+#### 2026-09-17 *1.40.0*
+- **"+ Drive": an FTP / SFTP server or a cloud account as a place you can
+  browse.** The navigation row has a new **Drive** button. It offers two
+  kinds - *FTP / SFTP server...* and *Cloud storage...* - because the two are
+  configured quite differently: a server you type a host, a user and a
+  password for, against an account you sign in to through the browser. Either
+  choice opens UltraCloud's shared add-account dialog with only that kind's
+  providers in it, so neither list is padded with the other's.
+
+  What you add appears under a new **Remote Drives** section of the folder
+  tree, between the cloud sync folders and the real drives. The distinction is
+  deliberate: **Cloud Storage** above it lists the folders a sync client has
+  already put on this disk, which work with the network off, while a remote
+  drive is the server itself. Like *Pinned* and *Cloud Storage*, the section
+  stays hidden while there is nothing in it.
+
+  Clicking a drive browses it in the folder display - names, sizes, dates,
+  folders first - with the icons any local file of the same name would get.
+  Up climbs back through the server's folders and steps out to the Computer
+  page at the drive's root; **Refresh** on a remote folder asks the server
+  again rather than repainting what was cached.
+
+  The server is never waited on while the window paints: a folder that has not
+  been fetched yet shows empty for the moment, a worker fetches it, and the
+  display fills itself in when the answer lands. An unreachable server costs
+  that one folder a message, not a frozen file manager.
+
+  **Read-only for now.** Delete, rename, duplicate, paste, new folder and new
+  file all answer that a remote drive can be browsed but not changed, rather
+  than failing obscurely. Uploading and deleting on a drive is the next step.
+
+  Credentials go where the rest of the system keeps secrets - UltraVault, or
+  the per-app obfuscated file in a build without it - and never into the drive
+  list itself. A build made without UltraCloud has the button disabled and
+  says why, rather than offering something it cannot do.
+
+  Built on framework 0.8.82's `isRemotePath` / `remoteListing` hooks and the
+  add-account dialog's new provider filter; UltraFiler's own part is
+  `UltraFilerRemoteDrives` (the drive list, the listing cache and its worker)
+  and `UltraFilerRemotePath.h` (the `ultracloud://<account><path>` scheme).
+#### 2026-09-17 *1.39.2*
+- **Programs and libraries are told apart on sight.** The framework's file
+  display now carries a `Library` category of its own, so `.dll`, `.so` and
+  `.dylib` are steel grey against the dark red of `.exe` and the installers,
+  and the Type column calls `core.dll` a *Dynamic Link Library* instead of a
+  *Library Program*. The whole file-type palette moves with it: hue says which
+  family a file belongs to, brightness says how efficient its format is (AVIF
+  over JPEG over GIF, Opus over MP3, WebM over AVI), and lossless formats sit
+  beside their lossy siblings instead of being a duller shade of them.
+- The History view's *Apps* tab asks the category rather than matching its own
+  list of program extensions — the list existed only because the old category
+  counted libraries as programs.
+#### 2026-09-17 *1.39.1*
+- **The Cloud Storage section no longer gives up after one look.** The folder
+  tree's cloud lookup marks itself busy while it runs so two cannot overlap,
+  but three of its ways out - finding no cloud folders at all, and either kind
+  of failure reading a provider's registry or configuration - forgot to clear
+  that mark. The first such lookup left it set for the rest of the session, and
+  every later one returned at the door without looking.
+
+  On a machine with no sync client installed the very first lookup finds
+  nothing, so this was the normal case: from then on plugging in a drive never
+  re-checked for cloud folders - which is exactly what the re-check exists for,
+  a Google Drive that mounts as its own drive letter. A provider that threw
+  cost the section permanently instead of for that one attempt.
+
+  The mark is now released on every path out of the lookup, and where the
+  results are handed to the window it is released once they have been applied,
+  so a lookup still cannot overlap with the one before it.
+#### 2026-09-17 *1.39.0*
+- **Copying, moving and deleting show their progress.** An operation that is
+  still running two seconds after it started now opens a window with a ring,
+  the percentage, the name of the file being handled and a **Cancel** button -
+  the same window compressing and extracting have had all along. Anything
+  quicker still passes without one, so copying a text file does not flash a
+  dialog at you.
+
+  It covers every way of starting one: **Ctrl+V** and the context menu's
+  Paste, **Delete**, **Duplicate**, dragging files between the panes or from
+  another program, and the folder tree's own **Delete folder** - which until
+  now removed the folder with the window frozen and nothing to look at.
+
+  And UltraFiler no longer stands still while it happens: the work runs in the
+  background, so the file display goes on painting and scrolling while a few
+  gigabytes are on the move. **Cancel** stops it at the next file - what was
+  already copied, moved or deleted stays, and the file the cancel interrupted
+  is cleaned up rather than left half-written.
+
+  Framework change, see UltraCanvas 0.8.77; the application's own part is the
+  folder tree's delete, which now goes through the filer widget so it gets the
+  window and the "cannot delete" dialog like every other delete.
+#### 2026-09-17 *1.38.0*
+- **Deleting a file that needs administrator rights now works, the way it does
+  in Explorer.** A file or folder whose permissions grant deletion only to
+  administrators used to fail with "Access is denied", and the dialog's
+  offers — *Try again* and *Skip* — could not get past that. Now that dialog
+  is **Administrator Permission Needed** with **Delete as administrator**
+  preselected: Windows puts up its consent prompt, and on *Yes* the entry is
+  deleted. Several such entries in one delete are collected and cost one
+  prompt at the end, whatever "do this for all remaining items" was set to;
+  what still cannot be deleted even then (a file owned by TrustedInstaller, one
+  in use by a running program) is listed with the system's reason. Declining
+  the prompt leaves everything in place. Built on framework 0.8.74's
+  `UltraCanvasElevatedFileOperations`; UltraFiler's `main.cpp` runs the
+  elevated helper before any window exists.
+#### 2026-09-17 *1.37.0*
+- The CorelDRAW, Xara and EPS viewer plugins are linked and registered too,
+  after the Vector plugin rather than before it: both read some of the same
+  extensions, the graphics registry's last registration owns them, and for
+  those the dedicated viewers are the better reader - libcdr parses CorelDRAW
+  files no converter here writes, the XAR plugin covers the compressed Xara
+  files the converter's reader does not, and the EPS plugin interprets
+  PostScript instead of looking for a preview bitmap in it. The Vector plugin
+  keeps what only it reads (DXF, the DWG family, EMF, WMF) and stays the only
+  writer, since saving matches on GetSaveExtensions instead.
+- Measured, so as not to overstate it: on a build of this container - where
+  libcdr is absent, so the CDR plugin is not built - registering XAR and EPS
+  changes **nothing** on the Display > Thumbnails and Display > Detail view
+  pages. Their formats were already covered, xar through the Vector plugin's
+  reader and eps/ps through libvips. The registration is what a build WITH
+  libcdr needs to gain cdr/cmx/ccx/cdt in the FileLoader inventory, and what
+  gives `LoadGraphicsFile` and the vector rasterizer a real reader for them.
+  Lighting up the two settings pages for ccx/cmx needs one more thing, which
+  is not in this release: the Filer's and the media viewer's preview tests ask
+  the vector preview seam and the embedded-preview probe, never the graphics
+  registry, so a format only a registered plugin can draw is still greyed.
+
+#### 2026-09-16 *1.36.0*
+- **UltraFiler registered no format plugins at all.** A plugin reads nothing
+  until an application links and registers it, and this one linked only the
+  core library - so the entire Vector matrix (DXF, DWG and the rest) and every
+  3D format but STL previewed as a plain type glyph, greyed themselves out on
+  the Display > Thumbnails and Display > Detail view settings pages, and
+  produced no detail pane when selected. The readers were compiled into the
+  build and sitting idle. Reported as "selecting a DWG file doesn't produce a
+  detailed window section", which is exactly what it was.
+- The Vector and Models plugins are now linked and registered at startup,
+  before the main window, since the settings pages read what the build can
+  show when they are first built. Each is an optional CMake target
+  (`ULTRACANVAS_PLUGIN_VECTOR`, `ULTRACANVAS_PLUGIN_MODELS`), so each is
+  picked up only where it was built and `main.cpp` registers it behind the
+  matching define - a build without them behaves exactly as before.
+- With both registered, 23 formats change from greyed to live on those two
+  pages: dxf, dwg, dwt, dws, sv$, emf, wmf, and sixteen 3D formats (3ds, obj,
+  ply, dae, fbx, x, ms3d, blend, abc, step/stp/p21, x3d/x3dv, wrl/vrml). What
+  stays greyed now stays greyed for a reason this build can name: no PDF
+  plugin, no video or audio backend, no reader for glTF/GLB/3MF, and no
+  picture inside an audio file or a Corel .ccx/.cmx to show.
+- Needs framework 0.8.73, which is where the drawings become showable at all:
+  the vector preview seam, the media viewer's vector view and the Filer's
+  vector thumbnails. The lighter greyed-out colour on the settings pages -
+  the disabled switches used to be drawn darker than the live ones - is from
+  the same release.
+#### 2026-09-17 *1.36.0*
+- **The History view's lists have a length you can set.** *Settings > Extras >
+  History & Favorites* gains **Limit of entries**, a slider from 10 to 1000
+  entries; it ships at 300, the length the lists always had, so nothing changes
+  until it is moved.
+
+  The limit counts **per section**: *Files*, *Folders* and *Apps* each keep that
+  many. That is the point of capping them separately — a morning of opening
+  documents cannot push out the applications you launch once a week.
+
+  Lowering it takes effect **now**, not at the next start: the entries past the
+  new limit are dropped and `history.txt` is rewritten at its new length, and
+  the History view is refreshed if it is the one on screen. A limit that only
+  applied after a restart would, to the person who just moved the slider, look
+  like it had done nothing. Raising it back does not bring the forgotten
+  entries back — they are gone from the file. *Restore default limit* in the
+  bottom bar puts it back to 300.
+
+  The lists themselves were already saved whenever one of them changed and read
+  back at start-up; a shorter limit set while UltraFiler was not running (the
+  config file edited by hand, settings arriving from another machine) is now
+  applied as the file is read, rather than after the first entry happens to be
+  recorded into it.
+
 #### 2026-09-15 *1.35.0*
 - **Settings > Extras > Cache: what UltraFiler is holding, and whether it
   should.** A page beside *Open prompt* and *History & Favorites* with two

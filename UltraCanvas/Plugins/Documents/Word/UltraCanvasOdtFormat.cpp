@@ -16,6 +16,8 @@
 
 #include "tinyxml2.h"
 
+#include <algorithm>
+#include <vector>
 #include <cstring>
 #include <map>
 #include <sstream>
@@ -345,12 +347,33 @@ private:
         if (!image) return false;
         int mediaIndex = LoadPicture(Attr(image, "xlink:href"));
         if (mediaIndex < 0) return false;
+
+        const float widthPt = ParseLengthPt(Attr(frame, "svg:width"));
+        const float heightPt = ParseLengthPt(Attr(frame, "svg:height"));
+        const std::string altText = Attr(frame, "draw:name");
+
+        // text:anchor-type="as-char" is a picture anchored *in* the text, which
+        // belongs in the run stream. Every other anchoring (paragraph, page,
+        // frame) floats and stays a block of its own.
+        if (std::string(Attr(frame, "text:anchor-type")) == "as-char") {
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            run.mediaIndex = mediaIndex;
+            run.imageWidthPt = widthPt;
+            run.imageHeightPt = heightPt;
+            run.imageAltText = altText;
+            run.lineBreakBefore = ctx.pendingLineBreak;
+            ctx.pendingLineBreak = false;
+            ctx.runs.push_back(std::move(run));
+            return true;
+        }
+
         RichDocBlock block;
         block.type = RichBlockType::Image;
         block.mediaIndex = mediaIndex;
-        block.imageWidthPt = ParseLengthPt(Attr(frame, "svg:width"));
-        block.imageHeightPt = ParseLengthPt(Attr(frame, "svg:height"));
-        block.imageAltText = Attr(frame, "draw:name");
+        block.imageWidthPt = widthPt;
+        block.imageHeightPt = heightPt;
+        block.imageAltText = altText;
         ctx.trailingImages.push_back(std::move(block));
         return true;
     }
@@ -468,6 +491,20 @@ private:
         if (block.type == RichBlockType::Paragraph && block.runs.empty()
             && paraProps.bottomBorder) {
             block.type = RichBlockType::HorizontalRule;
+        }
+
+        // A picture on a line of its own is a standalone image, not a run:
+        // ODT anchors both kinds as-char, so what else the paragraph holds is
+        // what tells them apart.
+        RichDocBlock promotedImage;
+        if (block.type == RichBlockType::Paragraph && ctx.textBoxes.empty()
+            && WordFormatInternal::ParagraphIsOneInlineImage(block.runs, promotedImage)) {
+            block.type = RichBlockType::Image;
+            block.runs.clear();
+            block.mediaIndex = promotedImage.mediaIndex;
+            block.imageWidthPt = promotedImage.imageWidthPt;
+            block.imageHeightPt = promotedImage.imageHeightPt;
+            block.imageAltText = promotedImage.imageAltText;
         }
 
         bool emptyPageBreakCarrier = pageBreak && block.runs.empty()
@@ -630,10 +667,15 @@ private:
                 InlineContext ctx;
                 ParseFrame(elem, OdtTextProps{}, "", ctx);
                 if (!ctx.runs.empty()) {
-                    RichDocBlock block;
-                    block.type = RichBlockType::Paragraph;
-                    block.runs = std::move(ctx.runs);
-                    doc_->blocks.push_back(std::move(block));
+                    RichDocBlock promoted;
+                    if (WordFormatInternal::ParagraphIsOneInlineImage(ctx.runs, promoted)) {
+                        doc_->blocks.push_back(std::move(promoted));
+                    } else {
+                        RichDocBlock block;
+                        block.type = RichBlockType::Paragraph;
+                        block.runs = std::move(ctx.runs);
+                        doc_->blocks.push_back(std::move(block));
+                    }
                 }
                 for (auto& image : ctx.trailingImages) {
                     doc_->blocks.push_back(std::move(image));
@@ -897,9 +939,42 @@ private:
         return out;
     }
 
+    // A picture inside a line: the same draw:frame a block image uses, anchored
+    // as-char so it stays in the text rather than becoming its own paragraph.
+    void WriteInlineImage(std::ostringstream& xml, const RichTextRun& run) {
+        if (run.mediaIndex < 0 || run.mediaIndex >= static_cast<int>(doc_->media.size())) {
+            // No such picture: keep the alt text rather than emitting nothing.
+            xml << OdtText(run.imageAltText);
+            return;
+        }
+        float widthPt = run.imageWidthPt;
+        float heightPt = run.imageHeightPt;
+        if (widthPt <= 0.0f || heightPt <= 0.0f) {
+            int w = 0, h = 0;
+            if (UCRichDocument::SniffImagePixelSize(doc_->media[run.mediaIndex].data, w, h)) {
+                widthPt = static_cast<float>(w) * 72.0f / 96.0f;
+                heightPt = static_cast<float>(h) * 72.0f / 96.0f;
+            } else {
+                widthPt = 72.0f;
+                heightPt = 72.0f;
+            }
+        }
+        xml << "<draw:frame draw:name=\""
+            << EscapeXml(run.imageAltText.empty() ? std::string("Image") : run.imageAltText)
+            << "\" text:anchor-type=\"as-char\" svg:width=\"" << widthPt
+            << "pt\" svg:height=\"" << heightPt << "pt\">"
+            << "<draw:image xlink:href=\"" << PictureHref(run.mediaIndex)
+            << "\" xlink:type=\"simple\" xlink:show=\"embed\" xlink:actuate=\"onLoad\"/>"
+            << "</draw:frame>";
+    }
+
     void WriteRuns(std::ostringstream& xml, const std::vector<RichTextRun>& runs) {
         for (const auto& run : runs) {
             if (run.lineBreakBefore) xml << "<text:line-break/>";
+            if (run.IsInlineImage()) {
+                WriteInlineImage(xml, run);
+                continue;
+            }
             std::string styleName = TextStyleNameFor(run);
             std::string body = OdtText(run.text);
             if (!styleName.empty()) {
@@ -962,25 +1037,58 @@ private:
     void WriteTable(std::ostringstream& xml, const RichDocBlock& block, int tableNumber) {
         size_t columnCount = 0;
         for (const auto& row : block.tableRows) {
-            columnCount = std::max(columnCount, row.cells.size());
+            size_t width = 0;
+            for (const auto& cell : row.cells) width += std::max(1, cell.columnSpan);
+            columnCount = std::max(columnCount, width);
         }
+        if (columnCount == 0) return;
         xml << "<table:table table:name=\"Table" << tableNumber << "\">\n"
             << "<table:table-column table:number-columns-repeated=\"" << columnCount << "\"/>\n";
+        // Walk the grid rather than the cell list: a cell spanning rows covers
+        // grid columns in the rows below it, and those columns carry a
+        // <table:covered-table-cell/> instead of a cell of their own. Tracking
+        // that is the only way a row span survives the write — the reader has
+        // always recovered them, so dropping them here lost the merge silently.
+        std::vector<int> rowSpanRemaining(columnCount, 0);
         for (const auto& row : block.tableRows) {
             if (row.header) xml << "<table:table-header-rows>";
             xml << "<table:table-row>";
-            for (const auto& cell : row.cells) {
+
+            size_t cellIndex = 0;
+            for (size_t col = 0; col < columnCount; ) {
+                if (rowSpanRemaining[col] > 0) {
+                    xml << "<table:covered-table-cell/>";
+                    rowSpanRemaining[col]--;
+                    col++;
+                    continue;
+                }
+                if (cellIndex >= row.cells.size()) break;   // a short row
+                const RichTableCell& cell = row.cells[cellIndex++];
+                const int columnSpan = std::max(1, cell.columnSpan);
+                const int rowSpan = std::max(1, cell.rowSpan);
+
                 xml << "<table:table-cell office:value-type=\"string\"";
-                if (cell.columnSpan > 1) {
-                    xml << " table:number-columns-spanned=\"" << cell.columnSpan << "\"";
+                if (columnSpan > 1) {
+                    xml << " table:number-columns-spanned=\"" << columnSpan << "\"";
+                }
+                if (rowSpan > 1) {
+                    xml << " table:number-rows-spanned=\"" << rowSpan << "\"";
                 }
                 xml << "><text:p text:style-name=\"Standard\">";
                 WriteRuns(xml, cell.runs);
                 xml << "</text:p></table:table-cell>";
-                for (int s = 1; s < cell.columnSpan; ++s) {
+                for (int s = 1; s < columnSpan; ++s) {
                     xml << "<table:covered-table-cell/>";
                 }
+                if (rowSpan > 1) {
+                    for (size_t c = col; c < col + static_cast<size_t>(columnSpan)
+                                         && c < columnCount; c++) {
+                        rowSpanRemaining[c] = rowSpan - 1;
+                    }
+                }
+                col += static_cast<size_t>(columnSpan);
             }
+
             xml << "</table:table-row>";
             if (row.header) xml << "</table:table-header-rows>";
             xml << "\n";

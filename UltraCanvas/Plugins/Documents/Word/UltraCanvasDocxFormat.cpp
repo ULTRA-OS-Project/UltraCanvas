@@ -254,17 +254,41 @@ private:
         std::string relId = Attr(blip, "r:embed");
         int mediaIndex = LoadImageByRelId(relId);
         if (mediaIndex < 0) return;
+
+        float widthPt = 0.0f, heightPt = 0.0f;
+        if (auto* extent = FindDescendant(drawing, "wp:extent")) {
+            widthPt = extent->FloatAttribute("cx", 0.0f) / kEmuPerPoint;
+            heightPt = extent->FloatAttribute("cy", 0.0f) / kEmuPerPoint;
+        }
+        std::string altText;
+        if (auto* docPr = FindDescendant(drawing, "wp:docPr")) {
+            altText = Attr(docPr, "descr");
+            if (altText.empty()) altText = Attr(docPr, "name");
+        }
+
+        // <wp:inline> is a picture sitting in the line of text; <wp:anchor> is
+        // one floating with text flowed around it. Only the first belongs in
+        // the run stream - treating both as a trailing paragraph is what used
+        // to pull a logo out of the middle of a sentence.
+        if (drawing->FirstChildElement("wp:inline") != nullptr) {
+            RichTextRun run;
+            run.text = RichTextRun::kObjectReplacement;
+            run.mediaIndex = mediaIndex;
+            run.imageWidthPt = widthPt;
+            run.imageHeightPt = heightPt;
+            run.imageAltText = altText;
+            run.lineBreakBefore = ctx.pendingLineBreak;
+            ctx.pendingLineBreak = false;
+            ctx.runs.push_back(std::move(run));
+            return;
+        }
+
         RichDocBlock block;
         block.type = RichBlockType::Image;
         block.mediaIndex = mediaIndex;
-        if (auto* extent = FindDescendant(drawing, "wp:extent")) {
-            block.imageWidthPt = extent->FloatAttribute("cx", 0.0f) / kEmuPerPoint;
-            block.imageHeightPt = extent->FloatAttribute("cy", 0.0f) / kEmuPerPoint;
-        }
-        if (auto* docPr = FindDescendant(drawing, "wp:docPr")) {
-            block.imageAltText = Attr(docPr, "descr");
-            if (block.imageAltText.empty()) block.imageAltText = Attr(docPr, "name");
-        }
+        block.imageWidthPt = widthPt;
+        block.imageHeightPt = heightPt;
+        block.imageAltText = altText;
         ctx.trailingImages.push_back(std::move(block));
     }
 
@@ -413,6 +437,15 @@ private:
             block.type = RichBlockType::HorizontalRule;
         }
 
+        // A picture on a line of its own is a standalone image, not a run.
+        RichDocBlock promoted;
+        if (block.type == RichBlockType::Paragraph
+            && WordFormatInternal::ParagraphIsOneInlineImage(block.runs, promoted)) {
+            doc_->blocks.push_back(std::move(promoted));
+            for (auto& image : ctx.trailingImages) doc_->blocks.push_back(std::move(image));
+            return;
+        }
+
         bool emptyParagraph = block.runs.empty() && ctx.trailingImages.empty()
                               && block.type == RichBlockType::Paragraph;
         bool imageOnly = block.runs.empty() && !ctx.trailingImages.empty();
@@ -435,20 +468,58 @@ private:
     void ParseTable(tinyxml2::XMLElement* tbl) {
         RichDocBlock block;
         block.type = RichBlockType::Table;
+
+        // A vertically merged cell appears as <w:vMerge w:val="restart"/> once
+        // and then a plain <w:vMerge/> in every row it covers. The model holds
+        // such a cell once, in its starting row, with rowSpan counting the
+        // rows — so the continuations are not cells of their own, they just
+        // grow the span of the cell that opened the merge. openMerge remembers
+        // where that cell lives, keyed by the grid column it occupies.
+        struct OpenMerge { size_t rowIndex; size_t cellIndex; };
+        std::map<size_t, OpenMerge> openMerge;
+
         for (auto* tr = tbl->FirstChildElement("w:tr"); tr;
              tr = tr->NextSiblingElement("w:tr")) {
             RichTableRow row;
             if (auto* trPr = tr->FirstChildElement("w:trPr")) {
                 row.header = trPr->FirstChildElement("w:tblHeader") != nullptr;
             }
+
+            const size_t rowIndex = block.tableRows.size();
+            size_t gridColumn = 0;
             for (auto* tc = tr->FirstChildElement("w:tc"); tc;
                  tc = tc->NextSiblingElement("w:tc")) {
-                RichTableCell cell;
+                int columnSpan = 1;
+                bool mergeRestart = false;
+                bool mergeContinue = false;
                 if (auto* tcPr = tc->FirstChildElement("w:tcPr")) {
                     if (auto* gridSpan = tcPr->FirstChildElement("w:gridSpan")) {
-                        cell.columnSpan = std::max(1, std::atoi(Attr(gridSpan, "w:val")));
+                        columnSpan = std::max(1, std::atoi(Attr(gridSpan, "w:val")));
+                    }
+                    if (auto* vMerge = tcPr->FirstChildElement("w:vMerge")) {
+                        const std::string value = Attr(vMerge, "w:val");
+                        // No value, or "continue", means this cell continues the
+                        // merge above it; only "restart" opens a new one.
+                        mergeRestart = (value == "restart");
+                        mergeContinue = !mergeRestart;
                     }
                 }
+
+                if (mergeContinue) {
+                    auto it = openMerge.find(gridColumn);
+                    if (it != openMerge.end()
+                        && it->second.rowIndex < block.tableRows.size()
+                        && it->second.cellIndex
+                               < block.tableRows[it->second.rowIndex].cells.size()) {
+                        block.tableRows[it->second.rowIndex]
+                            .cells[it->second.cellIndex].rowSpan++;
+                    }
+                    gridColumn += static_cast<size_t>(columnSpan);
+                    continue;   // no cell of its own
+                }
+
+                RichTableCell cell;
+                cell.columnSpan = columnSpan;
                 InlineContext ctx;
                 bool firstParagraph = true;
                 for (auto* p = tc->FirstChildElement("w:p"); p;
@@ -458,6 +529,13 @@ private:
                     ParseInlineContainer(p, "", ctx);
                 }
                 cell.runs = std::move(ctx.runs);
+
+                if (mergeRestart) {
+                    openMerge[gridColumn] = OpenMerge{rowIndex, row.cells.size()};
+                } else {
+                    openMerge.erase(gridColumn);
+                }
+                gridColumn += static_cast<size_t>(columnSpan);
                 row.cells.push_back(std::move(cell));
             }
             block.tableRows.push_back(std::move(row));
@@ -526,6 +604,10 @@ public:
 private:
     UCZipPackageWriter zip_;
     const UCRichDocument* doc_ = nullptr;
+    // Drawing ids only have to be unique within the document. Inline pictures
+    // count from a high base so they cannot collide with the block images,
+    // which number from 1.
+    int inlineDrawingId_ = 100000;
     std::vector<std::string> hyperlinks_;   // index -> URL; rel id = rIdLink{index+1}
     bool usesLists_ = false;
 
@@ -601,9 +683,15 @@ private:
                     << (HyperlinkRelIndex(run.linkTarget) + 1) << "\">";
             }
             xml << "<w:r>";
-            WriteRunProperties(xml, run, isLink);
-            if (run.lineBreakBefore) xml << "<w:br/>";
-            WriteRunText(xml, run.text);
+            if (run.IsInlineImage()) {
+                if (run.lineBreakBefore) xml << "<w:br/>";
+                WriteDrawing(xml, run.mediaIndex, run.imageWidthPt, run.imageHeightPt,
+                             run.imageAltText, ++inlineDrawingId_);
+            } else {
+                WriteRunProperties(xml, run, isLink);
+                if (run.lineBreakBefore) xml << "<w:br/>";
+                WriteRunText(xml, run.text);
+            }
             xml << "</w:r>";
             if (isLink) xml << "</w:hyperlink>";
         }
@@ -655,10 +743,29 @@ private:
         xml << "</w:p>\n";
     }
 
+    // The <w:drawing> element alone. A picture is the same markup whether it
+    // is a paragraph of its own or sits inside a line; only the wrapping differs.
+    void WriteDrawing(std::ostringstream& xml, int mediaIndex, float widthPtIn,
+                      float heightPtIn, const std::string& altText, int drawingId) {
+        if (mediaIndex < 0 || mediaIndex >= static_cast<int>(doc_->media.size())) return;
+        RichDocBlock shim;
+        shim.mediaIndex = mediaIndex;
+        shim.imageWidthPt = widthPtIn;
+        shim.imageHeightPt = heightPtIn;
+        shim.imageAltText = altText;
+        WriteDrawingElement(xml, shim, drawingId);
+    }
+
     void WriteImage(std::ostringstream& xml, const RichDocBlock& block, int drawingId) {
         if (block.mediaIndex < 0 || block.mediaIndex >= static_cast<int>(doc_->media.size())) {
             return;
         }
+        xml << "<w:p><w:r>";
+        WriteDrawingElement(xml, block, drawingId);
+        xml << "</w:r></w:p>\n";
+    }
+
+    void WriteDrawingElement(std::ostringstream& xml, const RichDocBlock& block, int drawingId) {
         float widthPt = block.imageWidthPt;
         float heightPt = block.imageHeightPt;
         if (widthPt <= 0 || heightPt <= 0) {
@@ -676,7 +783,7 @@ private:
         std::string name = block.imageAltText.empty()
             ? "Image " + std::to_string(drawingId) : block.imageAltText;
 
-        xml << "<w:p><w:r><w:drawing>"
+        xml << "<w:drawing>"
             << "<wp:inline distT=\"0\" distB=\"0\" distL=\"0\" distR=\"0\">"
             << "<wp:extent cx=\"" << cx << "\" cy=\"" << cy << "\"/>"
             << "<wp:docPr id=\"" << drawingId << "\" name=\"" << EscapeXml(name) << "\"/>"
@@ -690,7 +797,7 @@ private:
             << "<pic:spPr><a:xfrm><a:off x=\"0\" y=\"0\"/><a:ext cx=\"" << cx
             << "\" cy=\"" << cy << "\"/></a:xfrm>"
             << "<a:prstGeom prst=\"rect\"><a:avLst/></a:prstGeom></pic:spPr>"
-            << "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing></w:r></w:p>\n";
+            << "</pic:pic></a:graphicData></a:graphic></wp:inline></w:drawing>";
     }
 
     void WriteTable(std::ostringstream& xml, const RichDocBlock& block) {
@@ -712,13 +819,41 @@ private:
                "</w:tblBorders></w:tblPr><w:tblGrid>";
         for (size_t c = 0; c < columnCount; ++c) xml << "<w:gridCol/>";
         xml << "</w:tblGrid>\n";
+        // Walk the grid, not the cell list: a row-spanning cell is written once
+        // with <w:vMerge w:val="restart"/>, and every grid position it covers
+        // below needs a real <w:tc> carrying a plain <w:vMerge/>. Word requires
+        // those continuation cells to exist, unlike ODT's covered-cell marker.
+        std::vector<int> rowSpanRemaining(columnCount, 0);
         for (const auto& row : block.tableRows) {
             xml << "<w:tr>";
             if (row.header) xml << "<w:trPr><w:tblHeader/></w:trPr>";
-            for (const auto& cell : row.cells) {
+
+            size_t cellIndex = 0;
+            for (size_t col = 0; col < columnCount; ) {
+                if (rowSpanRemaining[col] > 0) {
+                    xml << "<w:tc><w:tcPr><w:vMerge/></w:tcPr><w:p/></w:tc>";
+                    rowSpanRemaining[col]--;
+                    col++;
+                    continue;
+                }
+                if (cellIndex >= row.cells.size()) break;   // a short row
+                const RichTableCell& cell = row.cells[cellIndex++];
+                const int columnSpan = std::max(1, cell.columnSpan);
+                const int rowSpan = std::max(1, cell.rowSpan);
+                if (rowSpan > 1) {
+                    for (size_t c = col; c < col + static_cast<size_t>(columnSpan)
+                                         && c < columnCount; c++) {
+                        rowSpanRemaining[c] = rowSpan - 1;
+                    }
+                }
+                col += static_cast<size_t>(columnSpan);
+
                 xml << "<w:tc><w:tcPr>";
-                if (cell.columnSpan > 1) {
-                    xml << "<w:gridSpan w:val=\"" << cell.columnSpan << "\"/>";
+                if (columnSpan > 1) {
+                    xml << "<w:gridSpan w:val=\"" << columnSpan << "\"/>";
+                }
+                if (rowSpan > 1) {
+                    xml << "<w:vMerge w:val=\"restart\"/>";
                 }
                 xml << "</w:tcPr><w:p>";
                 std::vector<RichTextRun> runs = cell.runs;

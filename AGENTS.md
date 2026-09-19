@@ -142,12 +142,15 @@ finding.
 ```bash
 # Ubuntu/Debian deps
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev
+    libfreetype6-dev libvips-dev libharfbuzz-dev clang
 # macOS deps
 brew install cmake cairo pango freetype vips harfbuzz
 
 mkdir build && cd build && cmake .. && make
 ```
+
+The project now defaults to Clang on Linux, so install the `clang` package
+alongside the existing deps.
 
 The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
@@ -222,6 +225,30 @@ anywhere else, and never introduce a new literal copy of one:
   it was published, so `Docs/UltraCanvas/CHANGELOG.md` remains the record of
   what shipped in each framework release. Do not backfill it into the app
   files — that would put one change in two places under two numbers.
+- **Your entry must be a NEW top entry with a number nobody else has taken.**
+  Line 1 of a shared file is the most contended line in the repository, and two
+  open pull requests collide there every time, in one of two ways. Either a
+  branch picks the next number, `main` releases past it while the branch waits
+  for review, and it merges carrying a number *lower* than versions already
+  released below it — the product's version then goes backwards. Or two
+  branches write the same `#### <date> *x.y.z*` line, git merges both bullet
+  lists under the one header with no conflict, and two releases share a number
+  while the version never increments — which is also why such a branch's
+  changelog diff never settles no matter how often `main` is merged into it.
+  Both have happened repeatedly; the file still carries sixteen duplicated
+  numbers from before this was checked. So: re-read the top of the changelog
+  just before you push, and if `main` has moved past your number, renumber your
+  entry rather than leaving it — and never add bullets to an entry that is
+  already on `main`. Run `python3 scripts/check_changelog.py --base origin/main`
+  before pushing; CI runs it too.
+- **Do not add a version number to a compile definition that anything but its
+  own consumers see.** `ULTRACANVAS_VERSION` was `PUBLIC` on the core library,
+  so it sat on the compile command line of 621 of the build's 1136 objects
+  although exactly two sources read it — and every changelog edit, in any pull
+  request, rebuilt nearly the whole tree and invalidated every other branch's
+  cache. It is attached to those two sources with
+  `set_source_files_properties` now. A version a new consumer needs goes on
+  that list, not into the target's interface.
 - The packaging scripts (`build-demoapp-appimage.sh`, `package-win.sh`,
   `package-macos.sh`) parse the same line for artefact file names.
 - Only the Windows resource files still hold literals, because windres reads

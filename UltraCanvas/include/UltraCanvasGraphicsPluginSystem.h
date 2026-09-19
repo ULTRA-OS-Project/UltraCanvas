@@ -1,7 +1,7 @@
 // include/UltraCanvasGraphicsPluginSystem.h
 // Complete graphics plugin system with all required components
-// Version: 1.3.0
-// Last Modified: 2026-09-11
+// Version: 1.4.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -101,8 +101,22 @@ namespace UltraCanvas {
                     {"ger", GraphicsFormatType::Vector}, {"ai", GraphicsFormatType::Vector},
                     {"eps", GraphicsFormatType::Vector}, {"ps", GraphicsFormatType::Vector},
                     {"cdr", GraphicsFormatType::Vector}, {"cmx", GraphicsFormatType::Vector},
+                    // The rest of the CorelDRAW family the CDR plugin reads.
+                    // Missing here, they were filed as Unknown, which is what
+                    // the vector rasterizer tests before it will touch a file
+                    // - so a .ccx the plugin could draw perfectly well was
+                    // refused before the plugin was ever asked.
+                    {"ccx", GraphicsFormatType::Vector}, {"cdt", GraphicsFormatType::Vector},
                     {"emf", GraphicsFormatType::Vector}, {"wmf", GraphicsFormatType::Vector},
                     {"dxf", GraphicsFormatType::Vector}, {"dwg", GraphicsFormatType::Vector},
+                    // The DWG drawing database under its other names:
+                    // AutoCAD's template, drawing-standards and automatic-
+                    // save files are .dwg content with a different suffix.
+                    // (.bak is one too when it copies a drawing, but the
+                    // suffix says nothing, so it is settled by content in
+                    // the Vector plugin rather than claimed here.)
+                    {"dwt", GraphicsFormatType::Vector}, {"dws", GraphicsFormatType::Vector},
+                    {"sv$", GraphicsFormatType::Vector},
 
                     // 3D model formats. This table answers "what kind of file
                     // is this", not "does this build have a reader": a .step
@@ -301,9 +315,25 @@ namespace UltraCanvas {
 // ===== GRAPHICS PLUGIN REGISTRY =====
     class UltraCanvasGraphicsPluginRegistry {
     private:
-        static std::vector<std::shared_ptr<IGraphicsPlugin>> plugins;
-        static std::map<std::string, std::shared_ptr<IGraphicsPlugin>> extensionMap;
-        static bool initialized;
+        // Function-local rather than namespace-scope, so they are constructed
+        // on first use instead of at some point during static initialisation.
+        // The plugin libraries register themselves from a static initialiser
+        // (UltraCanvasAllFormats), which can run before any other translation
+        // unit's globals are alive - a registry whose vector had not been
+        // constructed yet would have taken those registrations into a dead
+        // object. Whoever touches the registry first now builds it.
+        static std::vector<std::shared_ptr<IGraphicsPlugin>>& Plugins() {
+            static std::vector<std::shared_ptr<IGraphicsPlugin>> instance;
+            return instance;
+        }
+        static std::map<std::string, std::shared_ptr<IGraphicsPlugin>>& ExtensionMap() {
+            static std::map<std::string, std::shared_ptr<IGraphicsPlugin>> instance;
+            return instance;
+        }
+        static bool& Initialized() {
+            static bool instance = false;
+            return instance;
+        }
 
         static std::string ExtensionOf(const std::string& filePath) {
             size_t dotPos = filePath.find_last_of('.');
@@ -317,8 +347,19 @@ namespace UltraCanvas {
         static std::shared_ptr<IGraphicsPlugin> FindPluginForFile(const std::string& filePath) {
             std::string ext = ExtensionOf(filePath);
             if (ext.empty()) return nullptr;
-            auto it = extensionMap.find(ext);
-            return (it != extensionMap.end()) ? it->second : nullptr;
+            auto it = ExtensionMap().find(ext);
+            if (it != ExtensionMap().end()) return it->second;
+            // A suffix no plugin advertises is not the end of it: some
+            // formats cannot be claimed by name at all. AutoCAD copies a
+            // drawing verbatim to .bak, and so does every text editor and
+            // package manager, so the Vector plugin claims one only after
+            // reading its header. Ask the plugins themselves - CanHandle is
+            // the contract for that - instead of concluding from the map
+            // that nothing can read the file.
+            for (const auto& plugin : Plugins()) {
+                if (plugin && plugin->CanHandle(filePath)) return plugin;
+            }
+            return nullptr;
         }
 
         // Save dispatch matches against GetSaveExtensions, which is
@@ -327,7 +368,7 @@ namespace UltraCanvas {
         static std::shared_ptr<IGraphicsPlugin> FindPluginForSave(const std::string& filePath) {
             std::string ext = ExtensionOf(filePath);
             if (ext.empty()) return nullptr;
-            for (const auto& plugin : plugins) {
+            for (const auto& plugin : Plugins()) {
                 for (const auto& rawExt : plugin->GetSaveExtensions()) {
                     std::string saveExt = rawExt;
                     std::transform(saveExt.begin(), saveExt.end(), saveExt.begin(), ::tolower);
@@ -340,19 +381,19 @@ namespace UltraCanvas {
     public:
         // ===== INITIALIZATION =====
         static bool Initialize() {
-            if (initialized) return true;
+            if (Initialized()) return true;
 
-            plugins.clear();
-            extensionMap.clear();
+            Plugins().clear();
+            ExtensionMap().clear();
 
-            initialized = true;
+            Initialized() = true;
             return true;
         }
 
         static void Shutdown() {
-            plugins.clear();
-            extensionMap.clear();
-            initialized = false;
+            Plugins().clear();
+            ExtensionMap().clear();
+            Initialized() = false;
         }
 
         // ===== PLUGIN MANAGEMENT =====
@@ -360,39 +401,39 @@ namespace UltraCanvas {
             if (!plugin) return;
 
             // Check for duplicates
-            for (const auto& existing : plugins) {
+            for (const auto& existing : Plugins()) {
                 if (existing->GetPluginName() == plugin->GetPluginName()) {
                     return; // Already registered
                 }
             }
 
-            plugins.push_back(plugin);
+            Plugins().push_back(plugin);
 
             // Update extension mapping
             auto extensions = plugin->GetSupportedExtensions();
             for (const auto& ext : extensions) {
                 std::string lowerExt = ext;
                 std::transform(lowerExt.begin(), lowerExt.end(), lowerExt.begin(), ::tolower);
-                extensionMap[lowerExt] = plugin;
+                ExtensionMap()[lowerExt] = plugin;
             }
         }
 
         static void UnregisterPlugin(const std::string& pluginName) {
-            auto it = std::find_if(plugins.begin(), plugins.end(),
+            auto it = std::find_if(Plugins().begin(), Plugins().end(),
                                    [&pluginName](const std::shared_ptr<IGraphicsPlugin>& plugin) {
                                        return plugin->GetPluginName() == pluginName;
                                    });
 
-            if (it != plugins.end()) {
+            if (it != Plugins().end()) {
                 // Remove from extension map
                 auto extensions = (*it)->GetSupportedExtensions();
                 for (const auto& ext : extensions) {
                     std::string lowerExt = ext;
                     std::transform(lowerExt.begin(), lowerExt.end(), lowerExt.begin(), ::tolower);
-                    extensionMap.erase(lowerExt);
+                    ExtensionMap().erase(lowerExt);
                 }
 
-                plugins.erase(it);
+                Plugins().erase(it);
             }
         }
 
@@ -408,7 +449,7 @@ namespace UltraCanvas {
             }
 
             // Add plugin-specific extensions
-            for (const auto& pair : extensionMap) {
+            for (const auto& pair : ExtensionMap()) {
                 if (std::find(extensions.begin(), extensions.end(), pair.first) == extensions.end()) {
                     extensions.push_back(pair.first);
                 }
@@ -475,7 +516,7 @@ namespace UltraCanvas {
         static std::vector<std::string> GetSupportedSaveExtensions() {
             std::set<std::string> seen;
             std::vector<std::string> extensions;
-            for (const auto& plugin : plugins) {
+            for (const auto& plugin : Plugins()) {
                 for (const auto& rawExt : plugin->GetSaveExtensions()) {
                     std::string ext = rawExt;
                     std::transform(ext.begin(), ext.end(), ext.begin(), ::tolower);
@@ -486,7 +527,7 @@ namespace UltraCanvas {
         }
 
         static std::shared_ptr<UltraCanvasUIElement> CreateGraphics(int width, int height, GraphicsFormatType type) {
-            for (const auto& plugin : plugins) {
+            for (const auto& plugin : Plugins()) {
                 auto element = plugin->CreateGraphics(width, height, type);
                 if (element) return element;
             }
@@ -495,11 +536,11 @@ namespace UltraCanvas {
 
         // ===== UTILITY METHODS =====
         static std::vector<std::shared_ptr<IGraphicsPlugin>> GetAllPlugins() {
-            return plugins;
+            return Plugins();
         }
 
         static std::shared_ptr<IGraphicsPlugin> GetPluginByName(const std::string& name) {
-            for (const auto& plugin : plugins) {
+            for (const auto& plugin : Plugins()) {
                 if (plugin->GetPluginName() == name) {
                     return plugin;
                 }
@@ -508,8 +549,8 @@ namespace UltraCanvas {
         }
 
         static void PrintRegisteredPlugins() {
-            debugOutput << "Registered Graphics Plugins (" << plugins.size() << "):" << std::endl;
-            for (const auto& plugin : plugins) {
+            debugOutput << "Registered Graphics Plugins (" << Plugins().size() << "):" << std::endl;
+            for (const auto& plugin : Plugins()) {
                 debugOutput << "- " << plugin->GetPluginName()
                           << " v" << plugin->GetPluginVersion() << std::endl;
 

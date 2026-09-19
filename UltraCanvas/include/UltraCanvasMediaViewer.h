@@ -16,7 +16,10 @@
 // through the OpenGL model viewer (UltraCanvasSTLElement), text / source /
 // markdown files through a read-only UltraCanvasTextArea (syntax highlighting
 // + markdown rendering), e-books (EPUB / FB2 / MOBI / AZW) through
-// UltraCanvasEBookViewer (engine registry), and audio / video through the
+// UltraCanvasEBookViewer (engine registry), vector drawings through
+// UltraCanvasVectorElement (SVG, XAR, EMF, WMF, DXF and the DWG family, read
+// by whichever Vector plugin the application registered - see
+// UltraCanvasVectorPreview.h), and audio / video through the
 // framework's UltraCanvasAudioPlayerElement / UltraCanvasVideoPlayerElement.
 // UltraCanvas Document containers (*.ucd) are recognised too: until the UCD v2
 // engine lands, the viewer shows the container's embedded preview thumbnail
@@ -60,8 +63,8 @@
 // click, plus the checkered swatch (SetTransparencyPaletteVisible turns it
 // off, onTransparentBackgroundChanged reports what was picked).
 //
-// Version: 1.8.0
-// Last Modified: 2026-09-03
+// Version: 1.9.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -502,6 +505,8 @@ private:
     void ZoomFitAction();
     void ZoomPercentAction(double percent);
     void ShowView(MediaKind kind);    // toggle child visibility for the kind
+    // Detach and forget the current plugin-built view, if any.
+    void DropPluginView();
     static bool IsDocumentFile(const std::string& path);   // PDF (and other docs)
     static bool IsSpreadsheetFile(const std::string& path); // ODS / CSV / TSV
     static bool IsModelFile(const std::string& path);       // STL 3D models
@@ -575,6 +580,14 @@ private:
     std::shared_ptr<UltraCanvasUIElement>    textView;      // UltraCanvasTextArea (read-only)
     std::shared_ptr<UltraCanvasUIElement>    bookView;      // UltraCanvasEBookViewer
     std::shared_ptr<UltraCanvasUIElement>    fontView;      // UltraCanvasFontViewer
+    std::shared_ptr<UltraCanvasUIElement>    vectorView;    // UltraCanvasVectorElement
+    // Whatever element a registered graphics plugin builds for the current
+    // file, for the drawings no reader turns into a VectorDocument (the
+    // CorelDRAW files libcdr parses, and anything else a plugin claims).
+    // Rebuilt per file, unlike the fixed views above, because the plugin
+    // decides the type - so it is added as a child on load and dropped on
+    // the next one.
+    std::shared_ptr<UltraCanvasUIElement>    pluginView;
     std::shared_ptr<UltraCanvasUIElement>    videoPlayer;   // UltraCanvasVideoPlayerElement
     std::shared_ptr<UltraCanvasUIElement>    audioPlayer;   // UltraCanvasAudioPlayerElement
     MediaKind activeKind = MediaKind::Image;

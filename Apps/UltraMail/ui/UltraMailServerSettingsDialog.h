@@ -35,6 +35,13 @@ public:
         bool        acceptsPassword = true;// show the password field
         bool        canOAuth = false;      // show the "Sign in with <provider>" button
         std::string providerName;          // OAuth button label, e.g. "Google"
+        // App-wide view option surfaced here (the only "Settings" page): the
+        // current value seeds the checkbox; Save returns it in Result. Same
+        // value regardless of which account's settings are open.
+        bool        showReadingPane = true;
+        // App-wide too: whether UltraMail may download the icons of the known
+        // services in its sender registry into the sender-icon cache.
+        bool        fetchSenderIcons = true;
     };
 
     // What Save hands back. `settings` is always filled; the rest are only
@@ -44,6 +51,8 @@ public:
         std::string     displayName;   // edited name (empty -> caller falls back to the local part)
         std::string     newPassword;   // non-empty only when the user typed one
         bool            reauth = false;// the OAuth "Sign in again" button was used
+        bool            showReadingPane = true;   // the reading-pane checkbox state
+        bool            fetchSenderIcons = true;  // the sender-icon checkbox state
     };
 
     // The login check: run it for `candidate` (off the UI thread - it talks to

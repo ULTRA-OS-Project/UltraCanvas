@@ -89,6 +89,18 @@ Two details worth copying:
   Filer deletes the half-written archive — while a cancelled *extraction*
   keeps what it already wrote, because those are real files the user may want.
 
+## Opening the window late
+
+Packing an archive is never quick, so that window opens with the job. An
+operation that is *usually* over in a blink and only sometimes is not — a copy,
+a move, a delete — should not flash a window at the user for every text file it
+copies. Give it the poll timer straight away but hold the `Show()` call until
+the job has actually been running a while (the Filer waits two seconds, timed
+from the start of the whole operation rather than of the current step), and
+skip it entirely for a job that has already finished by then. Remember that the
+window was due even when `Show()` answers `nullptr` — otherwise the next tick
+asks again, and every tick after it.
+
 ## No severity badge: the ring is centred
 
 A message dialog puts a coloured severity badge (the blue `i`) in its own column

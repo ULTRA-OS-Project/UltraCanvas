@@ -83,11 +83,20 @@ namespace UltraCanvas {
         return 0.0f;
     }
 
+    Color UltraCanvasCheckbox::GetCurrentBoxBorderColor() const {
+        return GetPrimaryState() == ElementState::Disabled
+                       ? visualStyle.boxBorderDisabledColor
+                       : visualStyle.boxBorderColor;
+    }
+
     void UltraCanvasCheckbox::DrawIndicator(IRenderContext* ctx) {
+        // The border greys with the face: leaving it at full strength kept
+        // the heaviest line on a disabled switch, which is what made greyed
+        // switches read as stronger than live ones.
         ctx->DrawFilledRectangle(indicatorRect,
                                  GetCurrentBoxColor(),
                                  visualStyle.borderWidth,
-                                 visualStyle.boxBorderColor,
+                                 GetCurrentBoxBorderColor(),
                                  GetEffectiveCornerRadius());
 
         if (checkState == CheckedState::Checked) {

@@ -1,7 +1,7 @@
 // UltraCanvas/Plugins/Vector/UltraCanvasVectorFormatsPlugin.cpp
 // Implementation of the vector formats graphics plugin - see the header.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-16
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorFormatsPlugin.h"
@@ -11,6 +11,7 @@
 #include "UltraCanvasEPSConverter.h"
 #include "UltraCanvasMetafileConverters.h"
 #include "UltraCanvasXARConverter.h"
+#include "UltraCanvasVectorPreview.h"
 
 #include <algorithm>
 #include <fstream>
@@ -53,7 +54,17 @@ UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(
     if (ext == "wmf") return std::make_unique<WMFConverter>();
     if (ext == "ai") return std::make_unique<AIConverter>();
     if (ext == "dxf") return std::make_unique<DXFConverter>();
-    if (ext == "dwg") return std::make_unique<DWGConverter>();
+    // .dwg and the other names AutoCAD writes the same drawing database
+    // under: .dwt, .dws, .sv$.
+    if (DWGConverter::IsDrawingExtension(ext)) return std::make_unique<DWGConverter>();
+    // A .bak is AutoCAD's verbatim copy of a drawing - but it is also what
+    // every other program calls its backups, so this one is claimed on its
+    // content, not its name: only a file that actually carries the AC10xx
+    // header gets the DWG converter. A bare extension has no file to read
+    // and is declined, which is why .bak is never an advertised extension.
+    if (DWGConverter::IsAmbiguousDrawingExtension(ext) &&
+        DWGConverter().ValidateFile(extensionOrPath))
+        return std::make_unique<DWGConverter>();
     return nullptr;
 }
 
@@ -77,7 +88,11 @@ bool UltraCanvasVectorFormatsPlugin::CanHandle(const std::string& filePath) cons
 }
 
 bool UltraCanvasVectorFormatsPlugin::CanHandle(const GraphicsFileInfo& fileInfo) const {
-    return CanHandle("." + fileInfo.extension);
+    // The path when the info carries one: an extension alone cannot answer
+    // for the formats decided by content (.bak), and the answer here must
+    // match what LoadGraphics() will do with the same file.
+    return CanHandle(fileInfo.filename.empty() ? "." + fileInfo.extension
+                                               : fileInfo.filename);
 }
 
 std::shared_ptr<UltraCanvasUIElement>
@@ -128,6 +143,32 @@ GraphicsFileInfo UltraCanvasVectorFormatsPlugin::GetFileInfo(const std::string& 
 bool UltraCanvasVectorFormatsPlugin::ValidateFile(const std::string& filePath) {
     auto converter = CreateConverterForExtension(filePath);
     return converter && converter->ValidateFile(filePath);
+}
+
+void RegisterVectorFormatsPlugin() {
+    UltraCanvasGraphicsPluginRegistry::RegisterPlugin(
+            std::make_shared<UltraCanvasVectorFormatsPlugin>());
+
+    // The core-side seam. The graphics registry hands back a UI element, which
+    // is the wrong shape for a preview: the media viewer and the Filer want
+    // the document, so they can draw it at whatever size the pane or the tile
+    // happens to be. Core owns the document model and the renderer but not one
+    // reader, so this is where the readers are handed over.
+    VectorPreviewProvider provider;
+    provider.Extensions = []() {
+        return UltraCanvasVectorFormatsPlugin().GetSupportedExtensions();
+    };
+    provider.Load = [](const std::string& path)
+            -> std::shared_ptr<VectorStorage::VectorDocument> {
+        return UltraCanvasVectorFormatsPlugin::LoadVectorDocument(path);
+    };
+    // The formats whose suffix settles nothing: a .bak is a drawing only when
+    // its header says so (UltraCanvasCADConverters.h).
+    provider.ClaimsFile = [](const std::string& path) {
+        auto converter = UltraCanvasVectorFormatsPlugin::CreateConverterForExtension(path);
+        return converter && converter->CanImport();
+    };
+    SetVectorPreviewProvider(std::move(provider));
 }
 
 bool UltraCanvasVectorFormatsPlugin::SaveGraphics(

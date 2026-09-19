@@ -172,14 +172,18 @@ namespace {
         statusLabel->SetBackgroundColor(Color(230, 230, 230, 255));
         container->AddChild(statusLabel);
 
-        // One tile per sample drawing in media/vector/DWG/ and media/vector/DXF/.
-        auto makeTile = [&](const std::string& id, int x, int y, const std::string& folder,
-                            const std::string& fileName, const std::string& caption) {
+        // One tile per sample. The flat drawings live in media/vector/; the one
+        // sample that carries 3D geometry lives with the models in media/3D/
+        // and is read here anyway, because projecting polyface meshes to plan
+        // view is part of what a CAD reader has to do - `root` says which.
+        auto makeTile = [&](const std::string& id, int x, int y, const std::string& root,
+                            const std::string& folder, const std::string& fileName,
+                            const std::string& caption) {
             auto tile = std::make_shared<UltraCanvasContainer>(id, x, y, 300, 240);
             tile->SetBackgroundColor(Colors::White);
             tile->SetBorders(2, Color(180, 180, 180, 255));
 
-            std::string path = NormalizePath(GetResourcesDir() + "media/vector/" + folder + "/" + fileName);
+            std::string path = NormalizePath(GetResourcesDir() + root + folder + "/" + fileName);
             CadLoadResult loaded = LoadCadDocument(path);
 
             auto element = CreateVectorElement(id + "El", 10, 10, 280, 190);
@@ -224,15 +228,15 @@ namespace {
             container->AddChild(tile);
         };
 
-        makeTile("DWGContainer1", 20, 95, "DWG", "Audi-Q5-DWGFree.com_.dwg",
+        makeTile("DWGContainer1", 20, 95, "media/vector/", "DWG", "Audi-Q5-DWGFree.com_.dwg",
                  "DWG: Audi Q5 (R2013, 2D block)");
-        makeTile("DWGContainer2", 340, 95, "DWG", "womans hostel.dwg",
+        makeTile("DWGContainer2", 340, 95, "media/vector/", "DWG", "womans hostel.dwg",
                  "DWG: hostel plans (R2007, blocks, hatches)");
-        makeTile("DWGContainer3", 660, 95, "DWG", "bagno_3d_1.dwg",
-                 "DWG: bathroom (R2013, 3D polyface meshes)");
-        makeTile("DXFContainer1", 20, 340, "DXF", "millennium-falcon.dxf",
+        makeTile("DWGContainer3", 660, 95, "media/3D/", "DWG", "bagno_3d_1.dwg",
+                 "DWG: bathroom (R2013, 3D polyface meshes, projected)");
+        makeTile("DXFContainer1", 20, 340, "media/vector/", "DXF", "millennium-falcon.dxf",
                  "DXF: Millennium Falcon (1015 LWPOLYLINEs, 507 LINEs)");
-        makeTile("DXFContainer2", 340, 340, "DXF", "women-body.dxf",
+        makeTile("DXFContainer2", 340, 340, "media/vector/", "DXF", "women-body.dxf",
                  "DXF: figure study (74 NURBS SPLINEs)");
 
         // ===== INFO PANEL =====

@@ -184,6 +184,8 @@ UltraCanvas/                      (or wherever the build places it)
 │   ├── UltraNetOAuth2.h
 │   ├── UltraNetProxy.h
 │   ├── UltraNetUrl.h
+│   ├── UltraNetMailAddr.h        (header-only, shared by the mail plug-ins)
+│   ├── UltraNetCurlDebug.h       (header-only, opt-in protocol trace)
 │   └── UltraNetPlugins.h
 ├── core/UltraNet/                (.cpp implementations of the headers above)
 ├── OS/<Platform>/UltraNetSupport.cpp
@@ -195,6 +197,34 @@ UltraCanvas/                      (or wherever the build places it)
 ```
 
 CMake target: `UltraNet`. Header include style: `<UltraNet/UltraNet*.h>`.
+
+---
+
+## Debugging a mail connection
+
+An account that will not send or fetch is rarely diagnosable from the
+`UltraNetResultCode` alone — the server says why in its reply text, and
+libcurl discards that once it has mapped the exchange to a `CURLcode`. Set
+`ULTRANET_CURL_DEBUG` to put the conversation on stderr:
+
+```
+ULTRANET_CURL_DEBUG=1 ./UltraMail
+```
+
+| Line | Meaning |
+|---|---|
+| `[ultranet] * …` | libcurl's own notes (connection, TLS, auth mechanism chosen) |
+| `[ultranet] > …` | what we sent |
+| `[ultranet] < …` | what the server answered — `535 5.7.8 Username and Password not accepted`, `555 5.5.2 Syntax error` |
+
+It is off unless asked for, message bodies are never printed, and the SASL
+exchange is replaced with `<redacted>` — including the bare base64
+continuation lines of `AUTH LOGIN`, which carry the password with no keyword
+on them — so a trace can be pasted into a bug report as it stands. The
+mechanism name is kept, because which step failed is the useful part.
+
+Applies to every plug-in that goes through libcurl (SMTP, IMAP, POP3);
+`ultranet_curldebug::EnableIfRequested()` is one call in the handle setup.
 
 ---
 

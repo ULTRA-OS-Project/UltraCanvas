@@ -19,11 +19,13 @@
 - **Model-View-Delegate architecture** — data, painting, and selection are independent
 - **Single-column and multi-column models** with built-in implementations
 - **Optional column headers** with per-column titles, widths, and alignment
+- **Sort indicator** in the sorted column's header (▲ ascending / ▼ descending, drawn as geometry in the header text colour) and a header-click callback to drive it
 - **Single and multi-selection** modes via swappable selection objects
 - **Optional grid lines and alternating row colors**
 - **Built-in vertical scrollbar** with mouse wheel support
 - **Keyboard navigation** (arrow keys, Page Up/Down, Home/End)
 - **Per-row icon support** through `DecorationRole`
+- **Hover tooltips** per cell, per row, and per column header
 - **Custom delegates** for fully bespoke row rendering
 
 ## Header Includes
@@ -75,7 +77,21 @@ void InvalidateRowHeights();
 
 void SetShowHeader(bool show);
 bool GetShowHeader() const;
+
+void SetSortIndicator(int column, bool ascending);   // -1 = none
+void ClearSortIndicator();
+int  GetSortColumn() const;
+bool GetSortAscending() const;
 ```
+
+`SetSortIndicator` marks a column as the one the rows are sorted by: its header
+cell shows a small triangle, apex up for ascending and apex down for descending.
+The triangle is drawn as a filled path in `headerTextColor` (never a text glyph,
+so it does not depend on the header font carrying U+25B2/U+25BC and stays crisp
+at any DPI); `ListViewStyle::sortIndicatorSize` sets its width, and it sits
+after the title in a left- or centre-aligned column and before it in a
+right-aligned one. The view only *shows* the order — sorting the rows is the
+model owner's job, normally from `onHeaderClicked` (see Events / Callbacks).
 
 `SetRowHeight` / `rowHeight` set the single height used by every row. For rows
 of differing height, call `SetVariableRowHeights(true)`: the view then asks the
@@ -110,6 +126,7 @@ struct ListViewStyle {
     Color gridLineColor = Color(220, 220, 220);
 
     float headerFontSize = 10;
+    int sortIndicatorSize = 8;      // width of the ▲/▼ sort triangle (px)
 
     int rowHeight = 24;
     int headerHeight = 26;
@@ -133,6 +150,54 @@ void EnsureRowVisible(int row);
 ```
 
 `EnsureRowVisible` only scrolls when the target row is currently off-screen; `ScrollToRow` always recenters.
+
+### Tooltips
+
+```cpp
+void SetShowItemTooltips(bool enable);   // default: true
+bool GetShowItemTooltips() const;
+
+// Consulted before the model; row == -1 means the header cell of `column`.
+// Return "" to fall back to the model tooltip / ListColumnDef::tooltip.
+std::function<std::string(int row, int column)> tooltipProvider;
+
+// What the hover tooltip would show (row == -1 for a column header); "" if none
+std::string GetTooltipTextAt(int row, int column) const;
+
+// Header column under an element-local point, -1 when outside it
+int GetHeaderColumnAt(int x, int y, int* columnStartX = nullptr) const;
+```
+
+Tooltips are on by default and need no wiring: the view watches the hovered
+cell and asks `UltraCanvasTooltipManager` to show
+
+- the cell's `ToolTipRole` text when the pointer rests on a row — per-cell for
+  a multi-column model, falling back to the row-wide `tooltip`; and
+- `ListColumnDef::tooltip` when the pointer rests on a column header.
+
+The tooltip is refreshed whenever the hovered *cell* changes, so moving sideways
+across a row swaps it, and hidden when the cell has no tooltip, when the pointer
+leaves the list, and when the wheel scrolls rows out from under it.
+
+```cpp
+// Per-column header tooltips
+multiModel->AddColumn(ListColumnDef("Size", 70, TextAlignment::Right,
+                                    "Size on disk, rounded to one decimal"));
+
+// Per-cell tooltips, with a row-wide fallback
+MultiColumnListItem item({"main.cpp", "C++ Source", "2.4 KB", "2025-03-15"});
+item.tooltip = "src/main.cpp";            // used by any cell without its own
+item.SetCellTooltip(2, "2,458 bytes");    // Size column only
+multiModel->AddItem(item);
+
+// Computed tooltips (no data stored in the model)
+listView->tooltipProvider = [](int row, int column) -> std::string {
+    if (row < 0) return {};               // let the header use its ListColumnDef
+    return "Row " + std::to_string(row);
+};
+
+listView->SetShowItemTooltips(false);     // opt out entirely
+```
 
 ## Model Reference
 
@@ -214,13 +279,23 @@ struct ListColumnDef {
     std::string title;
     int width = 100;
     TextAlignment alignment = TextAlignment::Left;
+    std::string tooltip;        // shown when hovering this column's header
+
+    ListColumnDef(const std::string& t, int w = 100,
+                  TextAlignment a = TextAlignment::Left);
+    ListColumnDef(const std::string& t, int w, TextAlignment a,
+                  const std::string& tip);
 };
 
 struct MultiColumnListItem {
     std::vector<std::string> labels;
     std::vector<std::string> iconPaths;
-    std::string tooltip;
+    std::string tooltip;                     // row-wide fallback tooltip
+    std::vector<std::string> cellTooltips;   // optional, per column
     void* userData = nullptr;
+
+    void SetCellTooltip(int column, const std::string& tip);
+    const std::string& GetCellTooltip(int column) const;  // falls back to tooltip
 };
 ```
 
@@ -299,9 +374,32 @@ std::function<void(int row)> onItemDoubleClicked;
 std::function<void(int row)> onItemActivated;
 std::function<void(const std::vector<int>&)> onSelectionChanged;
 std::function<void(int row)> onItemHovered;
+
+// Cell-level (multi-column aware). posInCell is relative to the cell's
+// top-left corner. onCellHovered reports (-1, -1) when the pointer leaves
+// the rows area.
+std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
+std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+
+// A click (press and release in the same cell) on a column header. A press
+// on a resize border starts a drag instead and never reports a click.
+std::function<void(int column)> onHeaderClicked;
 ```
 
-`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click.
+`onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
+
+`onHeaderClicked` is where sorting is wired up: re-order the model by the
+column, toggling the direction when it is already the sort column, then tell
+the view which column is sorted so the header shows it. A header press no
+longer counts as a click on "no row", so it leaves the selection alone.
+
+```cpp
+listView->onHeaderClicked = [view = listView.get(), model](int column) {
+    bool ascending = (view->GetSortColumn() == column) ? !view->GetSortAscending() : true;
+    model->SortBy(column, ascending);          // however your model orders its rows
+    view->SetSortIndicator(column, ascending); // ▲ or ▼ in that header cell
+};
+```
 
 ## Usage Examples
 
@@ -335,18 +433,27 @@ container->AddChild(simpleList);
 
 ```cpp
 auto multiModel = std::make_shared<UltraCanvasMultiColumnListModel>();
-multiModel->AddColumn(ListColumnDef("File Name", 170, TextAlignment::Left));
-multiModel->AddColumn(ListColumnDef("Type",       90, TextAlignment::Left));
-multiModel->AddColumn(ListColumnDef("Size",       70, TextAlignment::Right));
-multiModel->AddColumn(ListColumnDef("Modified",  110, TextAlignment::Left));
+multiModel->AddColumn(ListColumnDef("File Name", 170, TextAlignment::Left,
+                                    "Name of the file on disk"));
+multiModel->AddColumn(ListColumnDef("Type",       90, TextAlignment::Left,
+                                    "File type, derived from the extension"));
+multiModel->AddColumn(ListColumnDef("Size",       70, TextAlignment::Right,
+                                    "Size on disk, rounded to one decimal"));
+multiModel->AddColumn(ListColumnDef("Modified",  110, TextAlignment::Left,
+                                    "Date of the last write, YYYY-MM-DD"));
 
-multiModel->AddItem(MultiColumnListItem({"main.cpp",   "C++ Source",  "2.4 KB",  "2025-03-15"}));
+MultiColumnListItem mainCpp({"main.cpp", "C++ Source", "2.4 KB", "2025-03-15"});
+mainCpp.tooltip = "src/main.cpp";               // any cell without its own
+mainCpp.SetCellTooltip(2, "2,458 bytes");       // Size column
+mainCpp.SetCellTooltip(3, "15 Mar 2025, 09:14");// Modified column
+multiModel->AddItem(mainCpp);
+
 multiModel->AddItem(MultiColumnListItem({"utils.h",    "C++ Header",  "1.1 KB",  "2025-03-14"}));
 multiModel->AddItem(MultiColumnListItem({"README.md",  "Markdown",    "3.8 KB",  "2025-03-10"}));
 multiModel->AddItem(MultiColumnListItem({"Makefile",   "Build Script","0.9 KB",  "2025-02-28"}));
 
 auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 500, 125, 480, 225);
-multiList->SetModel(multiMode);
+multiList->SetModel(multiModel);
 
 ListViewStyle multiStyle;
 multiStyle.headerFontSize = 10;

@@ -14,8 +14,10 @@ same default.
 > **Nextcloud / ownCloud** (WebDAV + OCS share links), **generic WebDAV**
 > (browse and upload; links only through a public web-folder URL),
 > **Dropbox**, **OneDrive** and **Google Drive** (OAuth2 + PKCE through the
-> system browser, tokens refreshed automatically) and an **in-memory demo
-> provider**. iCloud Drive cannot mint links from an app at all. Providers
+> system browser, tokens refreshed automatically), **FTP / FTPS / SFTP**
+> (browse, upload, download, and - alone among the providers - delete and
+> rename, so a file manager can carry a server as a drive; no share links)
+> and an **in-memory demo provider**. iCloud Drive cannot mint links from an app at all. Providers
 > can also ship as plug-in libraries. Sources under
 > `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud` (headless)
 > and `UltraCloudUI` (dialogs), header `<UltraCloud/UltraCloud.h>`,
@@ -53,6 +55,7 @@ What already existed and stays where it is:
 | Dropbox | `files/upload` up to 150 MB, an upload session (`upload_session/start` → `append_v2` → `finish`) in 8 MiB chunks above | `sharing/create_shared_link_with_settings` (password + expiry on paid plans); an existing link is reused | OAuth2 + PKCE, offline access | `https://www.dropbox.com/scl/fi/…` |
 | OneDrive | Graph `PUT …:/content` up to 4 MB, an upload session in 10 MiB chunks above | Graph `createLink` (anonymous view; password + expiry on personal accounts) | OAuth2 + PKCE, `offline_access` | `https://1drv.ms/…` |
 | Google Drive | multipart `files.create` (or a media update when the name exists) up to 5 MB, a resumable upload in 8 MiB chunks above | `permissions.create` (anyone with the link) + the file's `webViewLink`; no password / expiry | OAuth2 + PKCE, `access_type=offline` | `https://drive.google.com/file/d/<id>/view` |
+| FTP / FTPS / SFTP | `UltraNet_FtpUpload`, missing folders created on the way | — (no FTP request mints a link) | user + password (`CURLOPT_USERNAME` / `CURLOPT_PASSWORD`); implicit TLS on `ftps://`, explicit on `ftpes://` | not possible from an app |
 | iCloud Drive | — | Finder / share sheet only | — | not possible from an app |
 | Demo (in memory) | in process | in process | — | `https://demo.ultra-os.local/s/<n>` |
 
@@ -76,6 +79,7 @@ What already existed and stays where it is:
           │           ├── DropboxProvider           Dropbox API v2
           │           ├── OneDriveProvider          Microsoft Graph
           │           └── GoogleDriveProvider       Drive API v3 (paths resolved to ids)
+          ├── FtpProvider                           FTP / FTPS / SFTP over UltraNet FTP
           └── MemoryProvider                        in-process fake
 ```
 
@@ -181,6 +185,12 @@ The dialogs (`UltraCloudUI`):
 #include "UltraCloudPickerDialog.h"
 
 UltraCloud::ShowAddAccountDialog(window, cloud, [](const Account& added) { ... });
+
+// Narrowed to one kind of provider, with a title to match - what a host does
+// when it offers "add an FTP drive" and "add a cloud drive" as two commands.
+UltraCloud::ShowAddAccountDialog(window, cloud, onAdded,
+        [](const std::string& id) { return id == "ftp"; },
+        "Add an FTP / SFTP drive");
 UltraCloud::ShowCloudLinkPicker(window, cloud, [](const CloudLinkPick& pick) {
     InsertIntoBody(pick.entry.name + ": " + pick.link.url);
 });
@@ -197,19 +207,20 @@ providers.
 | Header | Contents |
 |---|---|
 | `UltraCloudTypes.h` | `Result` / `ResultCode`, `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
-| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
+| `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
 | `UltraCloudOAuth.h` | `OAuthApp`, `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp`, `OAuthHooks`, `OAuthProviderBase` |
+| `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `FileSecretStore`, `VaultSecretStore` (with UltraVault) |
-| `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare) |
+| `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |
-| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog`, `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
+| `ui/UltraCloudAccountDialog.h`, `ui/UltraCloudPickerDialog.h` | `ShowAddAccountDialog` (with an optional provider filter and title), `ShowCloudLinkPicker` (the `UltraCloudUI` library) |
 | `ui/UltraCloudUiStyle.h` | The dialogs' shared palette and control styles (`UiStyle::PrimaryButton`, `SecondaryButton`, `StyleInput`, `MakeCaption`, `ListHeader`) — the same look as the ULTRA OS apps that host them |
 
 ## Building and testing

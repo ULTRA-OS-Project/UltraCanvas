@@ -509,6 +509,9 @@ if(TINYXML2_TEST_FOUND)
         ${CMAKE_CURRENT_SOURCE_DIR}/WordFormatsTest.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasZipPackage.cpp
         ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasRichDocument.cpp
+        # The editing core is UI-free, so the edit-then-save round trip an
+        # application performs can be covered here without the UI stack.
+        ${ULTRACANVAS_SRC_DIR}/core/UltraCanvasRichDocumentEditor.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasWordDocumentIO.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasOdtFormat.cpp
         ${ULTRACANVAS_SRC_DIR}/Plugins/Documents/Word/UltraCanvasDocxFormat.cpp
@@ -716,6 +719,55 @@ add_test(
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: SpreadsheetColumnSizingTest")
+
+# ===== LISTVIEW TOOLTIP TEST =====
+# The tooltip text a ListView reads on hover: per-cell tooltips over the
+# row-wide fallback, the header tooltip on ListColumnDef, and the ToolTipRole
+# reads/writes behind both. Exercises the real list models with no UI stack.
+message(STATUS "  Building ListViewTooltipTest...")
+add_executable(ListViewTooltipTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/ListViewTooltipTest.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasListModel.cpp
+)
+target_include_directories(ListViewTooltipTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ListViewTooltipTest PRIVATE cxx_std_20)
+set_target_properties(ListViewTooltipTest PROPERTIES
+    OUTPUT_NAME "ListViewTooltipTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ListViewTooltipTest
+    COMMAND ListViewTooltipTest
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ListViewTooltipTest")
+
+# ===== LIST SORT/FILTER PROXY TEST =====
+# Sorting, filtering and - above all - the row mapping of
+# UltraCanvasListSortFilterProxy, because a proxy row mistaken for a source row
+# is how a sorted table edits the wrong record. Model-level only, no UI stack.
+message(STATUS "  Building ListSortFilterProxyTests...")
+add_executable(ListSortFilterProxyTests
+    ${CMAKE_CURRENT_SOURCE_DIR}/ListSortFilterProxyTests.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasListModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasListSortFilterProxy.cpp
+)
+target_include_directories(ListSortFilterProxyTests PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ListSortFilterProxyTests PRIVATE cxx_std_20)
+set_target_properties(ListSortFilterProxyTests PROPERTIES
+    OUTPUT_NAME "ListSortFilterProxyTests"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ListSortFilterProxyTests
+    COMMAND ListSortFilterProxyTests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ListSortFilterProxyTests")
 
 # ===== CONTOUR GEOMETRY TEST =====
 # Marching-squares isolines (including saddle disambiguation), isoband cell
@@ -1036,7 +1088,7 @@ if(TEST_TINYXML2_FOUND)
     )
     add_test(
         NAME ModelColladaTest
-        COMMAND ModelColladaTest "${ULTRACANVAS_ROOT}/media/3D/COLLADA/E-45-Aircraft.dae"
+        COMMAND ModelColladaTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/COLLADA/E-45-Aircraft.dae"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelColladaTest")
@@ -1109,7 +1161,7 @@ set_target_properties(ModelXFileTest PROPERTIES
 )
 add_test(
     NAME ModelXFileTest
-    COMMAND ModelXFileTest "${ULTRACANVAS_ROOT}/media/3D/XFile/E-45-Aircraft.x"
+    COMMAND ModelXFileTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/XFile/E-45-Aircraft.x"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelXFileTest")
@@ -1141,7 +1193,7 @@ set_target_properties(ModelMS3DTest PROPERTIES
 )
 add_test(
     NAME ModelMS3DTest
-    COMMAND ModelMS3DTest "${ULTRACANVAS_ROOT}/media/3D/MS3D/E-45-Aircraft.ms3d"
+    COMMAND ModelMS3DTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/MS3D/E-45-Aircraft.ms3d"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelMS3DTest")
@@ -1214,7 +1266,7 @@ if(ZLIB_FOUND)
     )
     add_test(
         NAME ModelFbxTest
-        COMMAND ModelFbxTest "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft.fbx"
+        COMMAND ModelFbxTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/FBX/E-45-Aircraft.fbx"
                              "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
@@ -1641,6 +1693,55 @@ set_target_properties(ClassLayoutTest PROPERTIES
 add_test(NAME ClassLayoutTest COMMAND ClassLayoutTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: ClassLayoutTest")
+
+# ===== AUTOMATIC FORMAT REGISTRATION TEST =====
+# Pins that linking UltraCanvasAllFormats is all an application does: the
+# test calls no Register*Plugin() and still finds every built plugin in the
+# registry. Guards the two things that would quietly break it - a static
+# library letting the linker drop the registrar, and a registry constructed
+# after the registration that filled it.
+if(TARGET UltraCanvasAllFormats)
+    message(STATUS "  Building AutoFormatRegistrationTest...")
+    add_executable(AutoFormatRegistrationTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/AutoFormatRegistrationTest.cpp
+    )
+    target_include_directories(AutoFormatRegistrationTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+    )
+    target_compile_features(AutoFormatRegistrationTest PRIVATE cxx_std_20)
+    target_link_libraries(AutoFormatRegistrationTest PRIVATE
+        ${ULTRACANVAS_PLUGIN_TARGETS} UltraCanvasAllFormats UltraCanvas)
+    set_target_properties(AutoFormatRegistrationTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME AutoFormatRegistrationTest COMMAND AutoFormatRegistrationTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: AutoFormatRegistrationTest")
+else()
+    message(STATUS "  AutoFormatRegistrationTest skipped (no format plugins built)")
+endif()
+
+# ===== DISABLED CONTROL CONTRAST TEST =====
+# One rule for every control with a disabled state: the disabled face, border
+# and label must be LIGHTER than the live ones. The defaults had it backwards
+# (Colors::LightGray is darker than Colors::ButtonFace), which drew every
+# greyed switch on a settings page heavier than the live ones around it.
+# Header-only comparisons - no UI stack, no window.
+message(STATUS "  Building DisabledControlContrastTest...")
+add_executable(DisabledControlContrastTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/DisabledControlContrastTest.cpp
+)
+target_include_directories(DisabledControlContrastTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(DisabledControlContrastTest PRIVATE cxx_std_20)
+target_link_libraries(DisabledControlContrastTest PRIVATE UltraCanvas)
+set_target_properties(DisabledControlContrastTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME DisabledControlContrastTest COMMAND DisabledControlContrastTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: DisabledControlContrastTest")
 
 # ===== UML MODEL TEST =====
 # Unit tests for the UML static-structure model, the member-notation grammar,
@@ -2111,6 +2212,10 @@ if(TARGET UltraCanvasCDRPlugin AND TARGET UltraCanvasVectorPlugin)
     target_compile_features(CDRWriterTest PRIVATE cxx_std_20)
     target_link_libraries(CDRWriterTest PRIVATE
         UltraCanvasVectorPlugin UltraCanvasCDRPlugin UltraCanvas)
+    # Exported symbols, so the crash backtrace this test prints can name the
+    # frames in our own painter and not just the ones in libcdr's shared
+    # object. Costs nothing but a slightly larger dynamic symbol table.
+    set_target_properties(CDRWriterTest PROPERTIES ENABLE_EXPORTS ON)
     if(NOT WIN32)
         find_package(PkgConfig QUIET)
         if(PkgConfig_FOUND)
@@ -2353,6 +2458,34 @@ else()
     message(STATUS "  DWGReaderTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# ===== AI READER TEST =====
+# The Adobe Illustrator import path: the two shipped samples in
+# media/vector/AI (CorelDRAW exports whose PDF page is empty and whose
+# artwork is entirely in the /AIPrivateData streams - the case that used to
+# render as a blank page), plus the art language itself on a synthetic
+# legacy file. Extra .ai files on the command line are imported and
+# reported (AI_TEST_SVG_DIR exports them as SVG).
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building AIReaderTest...")
+    add_executable(AIReaderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/AIReaderTest.cpp
+    )
+    target_include_directories(AIReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(AIReaderTest PRIVATE cxx_std_20)
+    target_compile_definitions(AIReaderTest PRIVATE
+        AI_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/AI"
+    )
+    target_link_libraries(AIReaderTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(AIReaderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME AIReaderTest COMMAND AIReaderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: AIReaderTest")
+else()
+    message(STATUS "  AIReaderTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
@@ -2479,6 +2612,28 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER REMOTE PATH TEST =====
+# The path scheme of UltraFiler's remote drives and the timestamps their
+# listings carry (Apps/UltraFiler/UltraFilerRemotePath.h). Header-only and
+# free of UltraCloud, so the test runs on any build - including one without
+# the module the drives themselves need.
+message(STATUS "  Building FilerRemotePathTest...")
+add_executable(FilerRemotePathTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/FilerRemotePathTest.cpp
+)
+target_include_directories(FilerRemotePathTest PRIVATE
+    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
+)
+target_compile_features(FilerRemotePathTest PRIVATE cxx_std_20)
+set_target_properties(FilerRemotePathTest PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME FilerRemotePathTest COMMAND FilerRemotePathTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: FilerRemotePathTest")
+
+message(STATUS "")
+
 # ===== FILER VOLUME SPACE TEST =====
 # The Computer page's drive cards: the used share the pie chart is cut by
 # and the "free of" line under it (Apps/UltraFiler/UltraFilerVolumeSpace.h).
@@ -2521,6 +2676,31 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerFormatListTest")
 else()
     message(STATUS "  FilerFormatListTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER FORMAT COLOUR TEST =====
+# The file-type palette: a family is a hue, brightness is efficiency, and the
+# caption ink belongs to the family rather than to the file. A .dll drawn in
+# the colour of a .exe is how a folder of libraries came to look like a folder
+# of programs.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerFormatColorTest...")
+    add_executable(FilerFormatColorTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerFormatColorTest.cpp
+    )
+    target_include_directories(FilerFormatColorTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerFormatColorTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerFormatColorTest PRIVATE UltraCanvas)
+    set_target_properties(FilerFormatColorTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerFormatColorTest COMMAND FilerFormatColorTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerFormatColorTest")
+else()
+    message(STATUS "  FilerFormatColorTest skipped (UltraCanvas target not present)")
 endif()
 
 message(STATUS "")
@@ -2571,6 +2751,32 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerFolderPreviewTest")
 else()
     message(STATUS "  FilerFolderPreviewTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER HOST ICONS TEST =====
+# Display > File icons: the setting, and the cache key the host icon service
+# answers by - the key that decides whether a folder of four thousand ".txt"
+# files costs one icon lookup or four thousand. The lookups themselves are the
+# host's, so the test asserts that asking is harmless rather than what any one
+# desktop answers; it therefore passes on a build machine with no icon theme.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerHostIconsTest...")
+    add_executable(FilerHostIconsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerHostIconsTest.cpp
+    )
+    target_include_directories(FilerHostIconsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerHostIconsTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerHostIconsTest PRIVATE UltraCanvas)
+    set_target_properties(FilerHostIconsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerHostIconsTest COMMAND FilerHostIconsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerHostIconsTest")
+else()
+    message(STATUS "  FilerHostIconsTest skipped (UltraCanvas target not present)")
 endif()
 
 message(STATUS "")
@@ -3153,4 +3359,33 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: ThumbnailDiskCacheTest")
 else()
     message(STATUS "  ThumbnailDiskCacheTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== DEMO SCROLLING TEXT TEST =====
+# The demo's scrolling text block (Apps/DemoApp/UltraCanvasDemoScrollText.h),
+# which the 3D Graphics pages fill with text of an unpredictable length: the
+# label is measured against the whole text, the container shows its vertical
+# scrollbar only when the text overflows, and either way the first line is at
+# the top of the box rather than centred out of view.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building DemoScrollTextTest...")
+    add_executable(DemoScrollTextTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/DemoScrollTextTest.cpp
+    )
+    target_include_directories(DemoScrollTextTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_ROOT}/Apps/DemoApp
+    )
+    target_compile_features(DemoScrollTextTest PRIVATE cxx_std_20)
+    target_link_libraries(DemoScrollTextTest PRIVATE UltraCanvas)
+    set_target_properties(DemoScrollTextTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME DemoScrollTextTest COMMAND DemoScrollTextTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: DemoScrollTextTest")
+else()
+    message(STATUS "  DemoScrollTextTest skipped (UltraCanvas target not present)")
 endif()

@@ -95,7 +95,7 @@ UltraCanvas/
 -   **Text Rendering:** FreeType, Pango, HarfBuzz
 -   **Image Processing:** libvips
 -   **Utilities:** glib-2.0, tinyxml2, fmt (JSON support is built in via the vendored yyjson engine behind UltraCanvasJSON)
--   **Vector Formats:** converters for SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI, DXF and DWG are implemented in-tree — DWG reading is a native decoder for R13 through R2018 (no external program); DWG *writing* uses GNU LibreDWG's `dxf2dwg` command-line tool (optional, external process — found on PATH or named by `ULTRACANVAS_DXF2DWG`)
+-   **Vector Formats:** converters for SVG, XAR, EPS, CDR, PDF, EMF, WMF, AI, DXF and DWG are implemented in-tree — DWG reading is a native decoder for R13 through R2018 (no external program), and covers the whole drawing family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` that holds a drawing); DWG *writing* uses GNU LibreDWG's `dxf2dwg` command-line tool (optional, external process — found on PATH or named by `ULTRACANVAS_DXF2DWG`)
 
 ----------
 
@@ -108,7 +108,7 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev
+    libfreetype6-dev libvips-dev libharfbuzz-dev clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz

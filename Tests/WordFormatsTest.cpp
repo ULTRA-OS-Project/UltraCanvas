@@ -8,8 +8,10 @@
 // Usage: WordFormatsTest [output-dir]   (default: current directory)
 #include "UltraCanvasRichDocument.h"
 #include "Plugins/Documents/Word/UltraCanvasWordDocumentIO.h"
+#include "UltraCanvasRichDocumentEditor.h"
 #include "UltraCanvasZipPackage.h"
 
+#include <algorithm>
 #include <cassert>
 #include <cstdio>
 #include <filesystem>
@@ -726,6 +728,248 @@ int main(int argc, char** argv) {
             CHECK_MSG(cellText.find("bullet two") != std::string::npos, cellText);
         }
         CHECK(foundTable);
+    }
+
+    // ===== EDIT THEN SAVE =====
+    // The seam an application sits on (UltraTexter opens .odt/.docx in
+    // UltraCanvasRichTextEdit and saves the same document back): a document
+    // that has been edited through UCRichDocumentEditor must still write out
+    // with the formatting the reader recovered, plus the edit.
+    {
+        std::cout << "\n--- Edit then save ---\n";
+
+        auto document = std::make_shared<UCRichDocument>(BuildSampleDocument());
+        const size_t blocksBefore = document->blocks.size();
+        const size_t mediaBefore = document->media.size();
+
+        UCRichDocumentEditor editor;
+        editor.SetDocument(document);
+
+        // Type into the first paragraph and bold what was typed, the way a
+        // user would through the element.
+        int paragraph = -1;
+        for (int i = 0; i < editor.GetBlockCount(); i++) {
+            if (editor.GetBlock(i).type == RichBlockType::Paragraph
+                && editor.BlockTextLength(i) > 0) {
+                paragraph = i;
+                break;
+            }
+        }
+        CHECK(paragraph >= 0);
+        editor.SetCaret({paragraph, 0});
+        editor.InsertText("EDITED ");
+        editor.SetSelection({paragraph, 0}, {paragraph, 6});
+        editor.ToggleBold();
+        editor.SetFontFamily("Georgia");
+        editor.SetFontSize(14.0f);
+        editor.SetTextColor("#CC0000");
+
+        CHECK(editor.GetDocument() == document);
+        CHECK(editor.GetBlockCount() == static_cast<int>(blocksBefore));
+        CHECK_MSG(document->media.size() == mediaBefore, "editing must not touch the media store");
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("edited.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *document, err), err);
+
+            UCRichDocument reloaded;
+            CHECK_MSG(UCWordDocumentIO::Load(path, reloaded, err), err);
+
+            // The edit survived...
+            const std::string plain = reloaded.ToPlainText();
+            CHECK_MSG(plain.find("EDITED ") != std::string::npos, ext);
+
+            // ...as a bold 14 pt Georgia run in red, not as plain text.
+            bool styled = false;
+            for (const auto& b : reloaded.blocks) {
+                for (const auto& r : b.runs) {
+                    if (r.text.find("EDITED") == std::string::npos) continue;
+                    if (r.bold && r.fontFamily == "Georgia"
+                        && r.fontSizePt > 13.0f && r.fontSizePt < 15.0f) {
+                        styled = true;
+                    }
+                }
+            }
+            CHECK_MSG(styled, ext);
+
+            // ...and everything the reader had recovered is still there.
+            CheckModelShape(reloaded, ext);
+        }
+
+        // Undo puts the document back where it started, media included.
+        while (editor.CanUndo()) editor.Undo();
+        CHECK(editor.GetBlockCount() == static_cast<int>(blocksBefore));
+        CHECK(document->media.size() == mediaBefore);
+        CHECK(document->ToPlainText().find("EDITED") == std::string::npos);
+    }
+
+    // ===== MERGED CELLS SURVIVE A ROUND TRIP =====
+    // A table whose cells span columns and rows must come back spanning them.
+    // Spans are structure, not decoration: losing one silently re-flows the
+    // whole table, and the reader already recovers them.
+    {
+        std::cout << "\n--- Merged cells ---\n";
+
+        auto makeCell = [](const std::string& text, int cols, int rows) {
+            RichTableCell cell;
+            RichTextRun run;
+            run.text = text;
+            cell.runs.push_back(run);
+            cell.columnSpan = cols;
+            cell.rowSpan = rows;
+            return cell;
+        };
+
+        UCRichDocument doc;
+        RichDocBlock table;
+        table.type = RichBlockType::Table;
+        {
+            RichTableRow row;                       // one cell across both columns
+            row.cells.push_back(makeCell("banner", 2, 1));
+            table.tableRows.push_back(row);
+        }
+        {
+            RichTableRow row;                       // left cell down both rows
+            row.cells.push_back(makeCell("tall", 1, 2));
+            row.cells.push_back(makeCell("right-top", 1, 1));
+            table.tableRows.push_back(row);
+        }
+        {
+            RichTableRow row;
+            row.cells.push_back(makeCell("right-bottom", 1, 1));
+            table.tableRows.push_back(row);
+        }
+        doc.blocks.push_back(table);
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("spans.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, doc, err), err);
+
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+
+            const RichDocBlock* reloaded = nullptr;
+            for (const auto& b : back.blocks) {
+                if (b.type == RichBlockType::Table) { reloaded = &b; break; }
+            }
+            CHECK_MSG(reloaded != nullptr, ext);
+            if (!reloaded) continue;
+
+            int maxColumnSpan = 0;
+            int maxRowSpan = 0;
+            for (const auto& row : reloaded->tableRows) {
+                for (const auto& cell : row.cells) {
+                    maxColumnSpan = std::max(maxColumnSpan, cell.columnSpan);
+                    maxRowSpan = std::max(maxRowSpan, cell.rowSpan);
+                }
+            }
+            CHECK_MSG(maxColumnSpan == 2, std::string(ext) + " column span lost");
+            CHECK_MSG(maxRowSpan == 2, std::string(ext) + " row span lost");
+        }
+    }
+
+    // ===== AN INLINE PICTURE STAYS IN ITS SENTENCE =====
+    // A logo mid-sentence, an icon in a heading: these are runs, not
+    // paragraphs. Pulling one out into a block of its own re-flows the text
+    // around it and is what used to happen to every image on load.
+    {
+        std::cout << "\n--- Inline images ---\n";
+
+        const std::string imgPath = TmpPath("inline.png");
+        WriteFile(imgPath, kTinyPng, sizeof(kTinyPng));
+
+        UCRichDocument doc;
+        doc.media.push_back(RichDocMedia{
+            "inline.png", "image/png",
+            std::vector<uint8_t>(kTinyPng, kTinyPng + sizeof(kTinyPng))});
+
+        RichDocBlock para;
+        para.type = RichBlockType::Paragraph;
+        RichTextRun before;
+        before.text = "Logo ";
+        RichTextRun picture;
+        picture.text = RichTextRun::kObjectReplacement;
+        picture.mediaIndex = 0;
+        picture.imageWidthPt = 12.0f;
+        picture.imageHeightPt = 12.0f;
+        picture.imageAltText = "the logo";
+        RichTextRun after;
+        after.text = " follows.";
+        para.runs.push_back(before);
+        para.runs.push_back(picture);
+        para.runs.push_back(after);
+        doc.blocks.push_back(para);
+
+        CHECK(doc.blocks.size() == 1);
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("inline.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, doc, err), err);
+
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+
+            // It must still be ONE paragraph: an inline picture turned into a
+            // block is exactly the regression this guards.
+            int paragraphs = 0, imageBlocks = 0;
+            for (const auto& b : back.blocks) {
+                if (b.type == RichBlockType::Paragraph) paragraphs++;
+                if (b.type == RichBlockType::Image) imageBlocks++;
+            }
+            CHECK_MSG(imageBlocks == 0, std::string(ext) + ": picture became its own block");
+            CHECK_MSG(paragraphs == 1, std::string(ext) + ": paragraph count changed");
+
+            // ...with the picture as a run between the two pieces of text.
+            bool foundInline = false;
+            int runIndex = -1, imageRunIndex = -1;
+            for (const auto& b : back.blocks) {
+                if (b.type != RichBlockType::Paragraph) continue;
+                for (const auto& run : b.runs) {
+                    runIndex++;
+                    if (!run.IsInlineImage()) continue;
+                    foundInline = true;
+                    imageRunIndex = runIndex;
+                    CHECK_MSG(run.mediaIndex >= 0
+                              && run.mediaIndex < static_cast<int>(back.media.size()),
+                              std::string(ext) + ": media index lost");
+                }
+            }
+            CHECK_MSG(foundInline, std::string(ext) + ": no inline image run came back");
+            CHECK_MSG(imageRunIndex > 0, std::string(ext) + ": picture is not after the text");
+
+            // The surrounding words are still around it, in order.
+            const std::string plain = back.ToPlainText();
+            CHECK_MSG(plain.find("Logo") != std::string::npos, ext);
+            CHECK_MSG(plain.find("follows.") != std::string::npos, ext);
+            // The placeholder itself must never reach a reader.
+            CHECK_MSG(plain.find(RichTextRun::kObjectReplacement) == std::string::npos,
+                      std::string(ext) + ": U+FFFC leaked into plain text");
+        }
+
+        // A block image must still round-trip as a block, not become inline.
+        {
+            UCRichDocument blockDoc;
+            blockDoc.media = doc.media;
+            RichDocBlock imageBlock;
+            imageBlock.type = RichBlockType::Image;
+            imageBlock.mediaIndex = 0;
+            imageBlock.imageAltText = "standalone";
+            blockDoc.blocks.push_back(imageBlock);
+
+            const std::string path = TmpPath("blockimage.docx");
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, blockDoc, err), err);
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+            bool sawImageBlock = false;
+            for (const auto& b : back.blocks) {
+                if (b.type == RichBlockType::Image) sawImageBlock = true;
+            }
+            CHECK_MSG(sawImageBlock, "a standalone image must stay a block");
+        }
     }
 
     if (failures == 0) {

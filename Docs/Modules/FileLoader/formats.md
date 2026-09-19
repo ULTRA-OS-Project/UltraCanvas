@@ -61,9 +61,22 @@ load through the ImageMagick delegate when libvips was built with it.
 | CorelDRAW | `.cdr`, `.cmx` | ✅ ‡ | — | CDR plugin (libcdr) |
 | Xara | `.xar`, `.web` | ✅ ‡ | — | XAR plugin |
 | PostScript / EPS | `.eps`, `.ps` | ✅ † | — | libvips delegate |
+| AutoCAD DXF | `.dxf` | ✅ ‡ | ✅ ‡ | Vector plugin (built-in reader and writer) |
+| AutoCAD DWG | `.dwg`, `.dwt`, `.dws`, `.sv$` | ✅ ‡ | ✅ ‡ § | Vector plugin (native R13–R2018 decoder) |
 
 There is no SVG *writer* in the image pipeline — SVG is load-only. EPS/PS load
 only when libvips was built with a PostScript loader (Ghostscript delegate).
+The Vector plugin writes the whole matrix it reads and more (SVG, XAR, EPS,
+CDR, PDF, EMF, WMF, AI, DXF, DWG) once `RegisterVectorFormatsPlugin()` has
+been called — see
+[UltraCanvasVectorConverters](../../UltraCanvas/UltraCanvasVectorConverters.md).
+
+§ DWG *writing* needs GNU LibreDWG's `dxf2dwg`; reading needs nothing external.
+The four DWG extensions above are one format: AutoCAD writes the same drawing
+database as a drawing, a template, a standards file and an automatic save. A
+`.bak` is one too — it is a verbatim copy of the drawing — but since every
+other program writes `.bak` files as well, it is claimed on its header rather
+than its name, so it is loadable without being an advertised extension.
 
 ### 3D models
 

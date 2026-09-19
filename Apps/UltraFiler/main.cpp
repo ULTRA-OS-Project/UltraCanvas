@@ -2,8 +2,8 @@
 // UltraFiler - file manager application built on the UltraCanvas framework:
 // folder tree (UltraCanvasTreeView) + folder content (UltraCanvasFilerWidget)
 // + media preview (UltraCanvasMediaViewer) in a Windows Explorer style window.
-// Version: 0.8.0
-// Last Modified: 2026-08-21
+// Version: 0.11.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 #include <cstdlib>
@@ -13,10 +13,16 @@
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasConfig.h"
+#include "UltraCanvasElevatedFileOperations.h"
 #include "UltraCanvasNativeDialogs.h"
 #include "UltraCanvasUtils.h"
 #include "UltraFilerWindow.h"
 #include "UltraFilerSettingsDialog.h"
+
+// Every format plugin this build produced registers itself before main(),
+// because the executable links UltraCanvasAllFormats - no list here, and no
+// list to update when a plugin is added to the framework. See
+// UltraCanvas/Plugins/UltraCanvasAllFormats.h.
 
 #ifdef _WIN32
 #include <windows.h>
@@ -66,6 +72,15 @@ static void PrintUsage(const char* programName) {
 
 // ===== MAIN APPLICATION ENTRY POINT =====
 int main(int argc, char* argv[]) {
+    // Started by our own "Delete as administrator" retry? That is a second
+    // copy of this executable, launched elevated through the UAC prompt with
+    // the helper flag on its command line: it deletes what the user
+    // consented to and exits here, before any window exists. Calling this
+    // is also what lets the Filer widget offer the retry at all.
+    int helperExit = 0;
+    if (ElevatedFileOperations::RunHelperIfRequested(argc, argv, helperExit))
+        return helperExit;
+
     std::string folderToOpen;
 
     for (int i = 1; i < argc; i++) {

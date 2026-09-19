@@ -9,6 +9,7 @@ add_executable(UltraCloudTests
     test_accounts.cpp
     test_secrets.cpp
     test_webdav.cpp
+    test_ftp.cpp
     test_nextcloud.cpp
     test_service.cpp
     test_oauth.cpp

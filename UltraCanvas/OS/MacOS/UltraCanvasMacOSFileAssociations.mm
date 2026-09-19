@@ -220,6 +220,11 @@ bool RefreshGlobalIndex() {
     return true;
 }
 
+// macOS types files by UTI rather than by MIME name, so nothing here can
+// answer this - see FileAssociations::GetMimeType.
+std::string MimeTypeFor(const std::string&) { return {}; }
+std::string MimeGenericIconFor(const std::string&) { return {}; }
+
 std::vector<FileAssociationApp> ResolveFile(const std::string& fileName) {
     std::vector<FileAssociationApp> apps;
 #if defined(ULTRACANVAS_HAS_UTTYPE)

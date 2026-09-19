@@ -1,13 +1,14 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#ff9a3c"/><stop offset="1" stop-color="#e0421b"/>
-    </linearGradient>
-  </defs>
-  <rect x="16" y="16" width="224" height="224" rx="48" fill="url(#bg)"/>
-  <path d="M52 176 C 90 60, 150 220, 204 84" fill="none" stroke="#ffffff" stroke-width="18" stroke-linecap="round"/>
-  <rect x="42" y="166" width="20" height="20" fill="#fff" stroke="#8a2a0e" stroke-width="4"/>
-  <rect x="194" y="74" width="20" height="20" fill="#fff" stroke="#8a2a0e" stroke-width="4"/>
-  <circle cx="90" cy="60" r="10" fill="#8a2a0e"/><circle cx="150" cy="220" r="10" fill="#8a2a0e"/>
-  <path d="M52 176 L90 60 M204 84 L150 220" stroke="#8a2a0e" stroke-width="4" stroke-dasharray="8 6"/>
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!--Generator: Xara Designer (www.xara.com), SVG filter version: 6.7.0.0-->
+<svg fill="none" fill-rule="evenodd" stroke="black" stroke-width="0.501" stroke-linejoin="bevel" stroke-miterlimit="10" font-family="Times New Roman" font-size="16" style="font-variant-ligatures:none" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" version="1.1" overflow="visible" width="56.693pt" height="56.693pt" viewBox="255.119 -637.795 56.693 56.693">
+ <defs>
+	</defs>
+ <g id="Layer 1" transform="scale(1 -1)">
+  <rect x="255.121" y="609.451" width="28.345" height="28.345" fill="#00deed" stroke-linecap="round" stroke-width="0.5" stroke="none" stroke-linejoin="miter"/>
+  <rect x="283.466" y="609.45" width="28.347" height="28.345" fill="#b0fcaf" stroke-linecap="round" stroke-width="0.5" stroke="none" stroke-linejoin="miter"/>
+  <rect x="255.12" y="581.104" width="28.345" height="28.345" fill="#fff057" stroke-linecap="round" stroke-width="0.5" stroke="none" stroke-linejoin="miter"/>
+  <rect x="283.464" y="581.103" width="28.349" height="28.346" fill="#ffabfe" stroke-linecap="round" stroke-width="0.5" stroke="none" stroke-linejoin="miter"/>
+  <text xml:space="preserve" transform="translate(261.152 590.784) scale(1 -1)" kerning="auto" font-size="55.362" font-family="Salina" stroke="none" stroke-width="1.384" stroke-linecap="round" stroke-linejoin="round" fill="#000000"><tspan x="0" y="0">A</tspan></text>
+ </g>
 </svg>

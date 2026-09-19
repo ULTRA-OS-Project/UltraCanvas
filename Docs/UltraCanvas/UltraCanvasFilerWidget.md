@@ -249,6 +249,51 @@ Changing either switch — from the menu or through the setters — fires
 use, so an application persists both from one place (UltraFiler:
 `Settings > Display > File extensions`).
 
+## File icons
+
+What an entry with no picture of its own is drawn with: the widget's own drawn
+icons, or the ones this desktop uses for the type (`Display > File icons`).
+
+```cpp
+if (UltraCanvasFilerWidget::AreHostFileIconsAvailable())
+    filer->SetFileIconStyle(FilerFileIconStyle::HostOperatingSystem);
+```
+
+| Style | What is drawn |
+|---|---|
+| `Simple` (default) | UltraFiler's own icons: the folder shape and the category-coloured sheet with the extension on it. Identical on every platform, and needs nothing installed — what every earlier release drew. |
+| `HostOperatingSystem` | What **this** system draws for the type: the shell's icon on Windows, Finder's on macOS, the installed icon theme's on Linux and BSD, so a folder listing matches the rest of the desktop. |
+
+The setting only governs **type** icons. A file that shows a thumbnail of its
+own content keeps showing it, and a program, shortcut or bundle keeps the icon
+it carries inside itself ([Native application icons](#native-application-icons))
+— those are the file's own picture, and Explorer, Finder and the Linux file
+managers all prefer them too. What changes is the fallback underneath: the
+sheet glyph becomes the desktop's type icon, and the drawn folder shape becomes
+the desktop's folder icon.
+
+A folder the host gave an icon through `folderIconProvider`
+([Folder icons](#folder-icons)) still wins over both — that is an explicit
+choice about one folder. [Folder previews](#folder-previews) are drawn *into*
+the built-in folder shape, so with host icons on there is no shape to draw them
+into and the folder is simply the system's folder icon.
+
+The lookups go through
+[`UltraCanvasHostFileIcons.h`](UltraCanvasHostFileIcons.md) on one background
+thread, and the widget caches what comes back **per type and size**, not per
+file: a folder of four thousand `.txt` files performs one lookup and holds one
+pixmap. Until an answer lands — and on a system that has no icon for the type,
+or no desktop to ask at all — the simple icon is drawn, so the display never
+waits on a lookup and never shows an empty box.
+
+`AreHostFileIconsAvailable()` reports whether there is a desktop to ask
+(false on WebAssembly and Android): a settings page should say so rather than
+offer a choice that changes nothing. `RefreshHostIcons()` throws the resolved
+icons away and asks again, for a host that notices the user changing desktop
+theme. Switching the style fires `onDisplayFormatsChanged`, the same hook the
+other Display switches use, so an application persists it from one place
+(UltraFiler: `Settings > Display > File icons`).
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -297,6 +342,8 @@ Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascen
                   Type        >  all view types
                   File extensions > "Show in names" (checkbox) + None / Bar /
                                  Icon (the thumbnail tile tag)
+                  File icons  >  UltraFiler simple / Host OS icons (only
+                                 where this system has icons to give)
                   Thumbnails  >  Bitmaps / Vector graphics / 3D / PDF / Text /
                                  Docs / Spreadsheets / Videos / Audio / Fonts
                                  (checkboxes, all on; the host may append its
@@ -424,7 +471,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (emf, wmf, dxf, dwg, older RIFF cdr, an EPS written without a preview) has no renderer that works without a window and keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
@@ -523,7 +570,7 @@ for (const FilerFormatInfo& f : UltraCanvasFilerWidget::GetPreviewableFormats())
 
 `thumbnailSupported` answers for the format in **this** build, and it answers
 honestly: false for audio (nothing reads cover art), for the vector formats
-with no renderer and no embedded preview (emf, wmf, dxf, dwg), for PDF without
+with no renderer and no embedded preview (ccx, cmx — and emf, wmf, dxf, dwg and its dwt/dws/sv$ siblings in a build with no Vector plugin registered), for PDF without
 the plugin, for video without a backend, and for the container formats no
 reader here unpacks (xls, epub, mobi, prc, azw, azw3, fb2.zip) — those last
 ones are refused by the text-preview extractor too, so the tile keeps its type
@@ -864,6 +911,85 @@ does.
 Directories are never probed: what holds a folder open is usually a program's
 *working directory*, which no probe here can see.
 
+## Remote folders
+
+The widget can show a folder that is not on this machine — a drive the host
+carries for an FTP / SFTP server or a cloud account — through two hooks. It
+gains no network dependency of its own: it only asks, in the same spirit as
+the VirtualFS branch that lists the inside of an archive.
+
+```cpp
+filer->isRemotePath = [](const std::string& path) {
+    return path.compare(0, 13, "ultracloud://") == 0;
+};
+filer->remoteListing = [drives](const std::string& path,
+                                std::vector<FilerEntry>& out,
+                                std::string& error) {
+    return drives->List(path, out, error);   // from a cache, never blocking
+};
+```
+
+- **`isRemotePath` is asked first**, before the local filesystem is consulted.
+  That is the point of it: handing a remote path to `std::filesystem` would at
+  best fail, and at worst — for a path that looks like a dead network mount —
+  block the UI thread until the OS times out.
+- **`remoteListing` runs on the UI thread**, inside the folder scan. A host
+  that has to go to the network must answer from what it already holds,
+  returning an empty listing while a fetch is in flight, and call `Refresh()`
+  when the answer arrives. Blocking here freezes the window for as long as the
+  server takes.
+- **What an entry needs**: `name`, `path`, `isDirectory`, and for files `size`
+  and `modifiedTime`. The widget derives the extension and the type
+  information itself, so a remote file gets the same icon and category as a
+  local one of the same name.
+- **Returning `false`** with `error` set reports the message the way any
+  listing error is reported; returning `true` with an empty listing means
+  "nothing yet".
+### Changing a remote folder
+
+Three more hooks let the host carry out the changes that act on the drive
+itself. Unlike `remoteListing` they do not answer with the result: the host
+queues the work and refreshes the display once the server has replied, so a
+slow drive never holds the UI thread.
+
+```cpp
+filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
+                               std::string& error) { … };
+filer->remoteRename = [drives](const std::string& path,
+                               const std::string& newName,
+                               std::string& error) { … };
+filer->remoteMakeDirectory = [drives](const std::string& folderPath,
+                                      const std::string& name,
+                                      std::string& error) { … };
+```
+
+- Each returns `true` when the request was **accepted**, not when it finished;
+  `false` with `error` is for what can be refused outright — a drive that
+  cannot be written to, a name that is really a path.
+- **Each entry carries its own `isDirectory`**, which is what lets a backend
+  pick the right call (FTP's `DELE` against `RMD`) without a probe per entry.
+- `remoteRename` takes a **bare name**: a rename in place, never a move.
+- A remote **new folder** cannot go straight into rename mode the way a local
+  one does — the entry does not exist until the server has answered and the
+  refresh has landed. The widget names it from the listing on screen
+  (`UniqueRemoteChildName`) and the user renames it afterwards.
+- **Left unset, the matching command refuses** rather than reaching
+  `std::filesystem` with a path that resolves to nothing, which would fail
+  with an error about a missing file instead of an answer about where it was
+  pointed. That is still what happens for the operations with no hook:
+  duplicate, paste and new file. Copying between the local disk and a drive is
+  a transfer with progress, conflicts and a cancel, and belongs with the paste
+  machinery rather than in a hook like these.
+- The read-only badge is the host's to set: it fills `FilerEntry::isReadOnly`
+  from what the drive can do, so an entry says so before a command is tried.
+
+- **`listingIsRealDirectory` stays false** for a remote listing, which turns
+  off the features that read the local filesystem per entry: the folder
+  previews and the in-use (lock) column.
+
+UltraFiler's remote drives are built on these two hooks; see
+`Apps/UltraFiler/UltraFilerRemoteDrives.h`.
+
 ## Folder listing prefetch
 
 With `SetFolderPrefetchEnabled` (default on), a low-priority worker pre-scans
@@ -1077,6 +1203,92 @@ rule, including a desktop launcher's own `Name=`
 where the home folder is shown as *Home* — what the folder tree's row and the
 folder tab call it too — instead of the account the folder is named after.
 
+## File type colours
+
+Every colour the display gives an entry — the band across the foot of its
+glyph, its TreeMap cell, the folder shape — comes from
+`UltraCanvasFilerWidget::EntryColorOf(entry)`. Three independent channels carry
+three facts, and none of them is the file's name:
+
+- **Hue is the family.** Blue images, green video, yellow-to-orange audio, cyan
+  vector, teal 3D models, purple documents, violet spreadsheets, grey text and
+  code, dark red applications, steel grey libraries, magenta archives, sepia
+  fonts. The media hues are saturated and the working files muted, so a folder
+  of photographs looks unlike a source tree before a single name is read.
+- **Brightness is efficiency.** Inside a family the modern format takes the
+  brightest rung and the legacy one sinks to the dark end. Two formats share a
+  rung when they share a compressor: zip, jar, tgz and gz are all deflate, and
+  colouring them apart would invent a difference the bytes do not have.
+- **A hue tilt separates lossless from lossy**, at the same chroma rather than
+  by dulling it — indigo beside azure for images, pure yellow beside orange for
+  audio. Lossless is a sibling family, not a washed-out version of its lossy
+  neighbour.
+
+| Family | Rungs, most efficient first |
+|---|---|
+| Images, lossy | `avif #2D86EA` · `heic/heif #1672DB` · `webp #1260BA` · `jpg #0F4F98` · `gif #0C3F7A` |
+| Images, lossless | `png #6F79CC` · `qoi #5761C4` · `tif #414DB8` · `ico #363F98` · `bmp #2B337A` |
+| Video | `webm #1CA04B` · `mkv #1A9545` · `mp4 #18883F` · `mov #157938` · `avi #12632E` · `wmv #0F5326` |
+| Audio, lossy | `opus #FFAA54` · `aac/m4a #FF9830` · `m4b #FF8408` · `ogg #F37900` · `mp3 #E27100` |
+| Audio, lossless | `flac #FFDC4D` · *(ALAC #FDCA00)* · `wav #EDBD00` · `aiff #DEB200` |
+| Vector | `svgz #0E93AE` · `svg #0D88A0` · `ai/cdr #0C798E` · `eps/ps/dwg #0A677A` · `dxf/emf/wmf #085666` |
+| 3D models | `glb #26998A` · `3mf #249182` · `stl/fbx #218577` · `ply/3ds #1E776B` · `gltf #1A665C` · `obj/dae #16584F` |
+| Documents | `pdf #A876D4` · `epub #9F69CF` · `odt #975BCB` · `docx #8B49C6` · `doc #7E3AB9` · `rtf #6D33A0` · `md/html/tex #5C2B87` |
+| Spreadsheets | `xlsx #893589` · `ods #A741A7` · `xls #BD57BD` |
+| Text and code | source `#818B98` · config and data `#949DA8` · `txt #ABB1BA` · `log #BABFC7` |
+| Applications | `exe #DC3644` · `appimage #CA2431` · `msi #AE1F2B` · `deb/rpm #911A24` |
+| Libraries | `so #445662` · `dll #506573` · `dylib #5C7384` · `a/lib #688396` |
+| Archives | `7z/zst #842A57` · `xz/lzma #9E3268` · `rar/bz2 #B93A79` · `gz/zip/jar/tgz #C74E8A` · `tar #CF669B` |
+| Fonts | `woff2 #6E4A36` · `woff #81573F` · `otf #946449` · `ttf #A47051` · `ttc/otc #AE7A5B` · legacy `#B48467` |
+
+Folders keep the amber `#F7BE50` they have always had — it is the one icon
+nobody should have to relearn — and a directory is coloured by what it is, so a
+folder called `render.mp4` is not drawn as a video. Anything the format table
+and the plugin inventory both miss is the neutral `#9E9E9E`.
+
+### Programs are not libraries
+
+`.exe` and `.dll` used to be one category, one noun and one colour, which is
+how a folder of system plumbing came to look exactly like a folder of programs.
+They are now `FilerFileCategory::Executable` and `FilerFileCategory::Library`:
+separate colours (dark red against steel grey), separate nouns in the Type
+column (`core.dll` is a *Dynamic Link Library*, not a *Library Program*), and
+separate positions in a sort by type. A host that asks "is this something the
+user launches?" can now trust the category — UltraFiler's History *Apps* tab
+does — instead of carrying its own list of program extensions.
+
+### Caption ink
+
+The TreeMap draws file names on top of these colours, so the ink has to answer
+to them: `EntryCaptionInkOf(entry)` returns white for the dark families and
+near-black for the light ones (audio, text and code, folders, unrecognised
+files). The ink is a property of the **family**, never of the single file:
+every rung of a family clears 3.2:1 against one ink, so no ramp ever switches
+ink halfway down itself — a GIF does not get black text because it happens to
+be the palest blue. Where the ink does change, between families, the change
+itself says which half of the palette you are looking at.
+
+### What the extension cannot say
+
+The colour does not claim to know more than the file name does. `.webp` and
+`.jxl` are both lossy and lossless and are coloured lossy, which is what almost
+every one of them is. `.m4a` holds AAC or ALAC. `.mp4`, `.mkv` and `.mov` name
+a container, not a codec, so an AV1 MKV and an MPEG-2 MKV share a rung until
+something reads the file — the widget already probes audio and video lazily for
+the Length column, and that probe is where a codec-accurate rung would come
+from, filling in behind the extension's shade the way a thumbnail fills in
+behind its glyph.
+
+A host drawing its own file lists can ask for the same colours directly:
+
+```cpp
+const Color band = UltraCanvasFilerWidget::EntryColorOf(entry);
+const Color ink  = UltraCanvasFilerWidget::EntryCaptionInkOf(entry);
+// by extension alone, with the category as the fallback for formats the
+// ladders do not rank (anything a plugin registered):
+const Color c = UltraCanvasFilerWidget::FormatColorOf("avif", FilerFileCategory::Image);
+```
+
 ## Folder icons
 
 Folders are drawn as a colored folder shape. `folderIconProvider(entry)` lets
@@ -1119,6 +1331,12 @@ persists those persists this one the same way.
 ```cpp
 filer->SetFolderPreviewsEnabled(false);   // plain folder shapes only
 ```
+
+They are drawn into the **built-in** folder shape, so they only appear where
+that shape is what a folder is drawn with: a folder with an icon from
+`folderIconProvider` ([Folder icons](#folder-icons)) keeps that icon, and with
+`Display > File icons` on `HostOperatingSystem` ([File icons](#file-icons))
+every folder is the system's folder icon and none of them peek.
 
 What it costs, and where it is drawn:
 
@@ -1220,7 +1438,10 @@ filer->Paste();               // into the current folder, with the conflict
 filer->PasteFilesInto(folder, paths, cut, onDone);  // same paste machinery
                               // aimed at any folder (see below)
 filer->DeleteSelection();     // gated by confirmDelete when set
+filer->DeletePaths(paths, onDone);   // delete without asking again - for a
+                              // host that ran its own confirmation
 filer->DuplicateSelection();  // copy alongside with " (2)" style names
+                              // (the paste machinery, aimed at this folder)
 filer->StartRename(index);    // inline rename editor (Enter commits, Esc cancels)
 filer->CompressSelection();          // .zip alongside (default)
 filer->CompressSelection("tar.gz");  // pick the format via extension
@@ -1229,6 +1450,55 @@ filer->ExtractSelection();           // into sibling folders; a taken folder
 filer->OpenExtractDialog();          // the context menu's extract dialog
 filer->CreateNewDocument({"Text", "txt", ""});
 ```
+
+### Progress window (copy / move / delete)
+
+Copying, moving and deleting run on a **background worker**, and a
+[progress window](UltraCanvasProgressDialog.md) — the ring with the
+percentage, the file being handled and **Cancel** — opens over them **once the
+operation has been running for two seconds**. Anything shorter never shows a
+window at all: a file manager that flashes a dialog for every copied text file
+is worse than one that shows none. (Packing, unpacking and the
+["Delete as administrator" helper run](#delete-problems-locked--failing-entries)
+open theirs immediately instead: none of those is ever the quick case, and the
+last one is waiting on a consent prompt the user has to answer.)
+
+The window is the same for every route into these operations — Ctrl+V, the
+context menu, `Delete`, a drag & drop between panes, `Duplicate`,
+`PasteFilesInto()`, `DeletePaths()` — because they all go through the same two
+queues.
+
+What the ring shows: every entry of the queue is worth an equal slice of it,
+and the bytes copied (or the entries removed) inside an entry move the ring
+within its slice. So a single large file fills the ring smoothly and a
+thousand small ones fill it a step at a time. The size of an entry is counted
+just before it is worked on, never for the whole queue up front — for a move,
+where each entry is one instant rename, walking every tree first would take
+longer than the move.
+
+Files larger than 8 MB are copied in 1 MB chunks so the ring moves *inside*
+the file and **Cancel** does not have to wait for it; smaller files go through
+`std::filesystem::copy_file` in one call, which lets the platform hand the
+copy to the filesystem itself.
+
+**Cancel** stops at the next file. What was already copied, moved or deleted
+stays; the entry the cancel interrupted does not: a half-copied file or folder
+is removed, so nothing partial is left in the listing. The one step that is
+never interrupted is the *second half of a cross-volume move* — once the copy
+is safely on the other volume, the original is removed to the end, because
+stopping there would leave the entry half in both places.
+
+The queues themselves stay on the UI thread, because their conflict and
+problem dialogs are answers only the user can give: the worker walks the queue
+until it reaches an entry that needs one and hands the queue back. The
+progress window closes while such a dialog is up (two modal windows at once is
+nobody's idea of a file manager) and reopens when the work resumes — without a
+second two-second wait, because the delay is measured from the start of the
+whole operation.
+
+The application window stays live throughout: the folder display keeps
+painting and scrolling while a long copy runs. Auto-refresh is held back until the
+operation ends, exactly as it is for an open rename editor or a drag.
 
 ### Activating files — running applications
 
@@ -1316,11 +1586,32 @@ and drops the rest):
   preselected) and a *"Do this for all remaining items"* scope switch.
   A stored try-again-for-all grants each later failing entry one silent
   retry before asking again, so a stubborn entry can never loop forever.
+- A delete that fails with **"Access is denied"** on Windows is the one Explorer
+  answers with its shield button: the entry is deletable, just not by this
+  user. Where the host has wired
+  [`UltraCanvasElevatedFileOperations`](UltraCanvasElevatedFileOperations.md)
+  (UltraFiler has), the dialog is **Administrator Permission Needed** —
+  "Deleting this file needs administrator permission. Windows will ask you to
+  confirm before it is deleted." — with **Delete as administrator**
+  (preselected) / **Try again** / **Skip this file** and the same scope switch.
+  Entries handed to the administrator are collected while the queue runs and go
+  to the elevated helper in **one run at the end**, so the whole delete costs
+  one consent prompt however many entries need it; a "Deleting as
+  Administrator" progress window stands in for the wait, and the widget stays
+  responsive because the helper is waited for off the UI thread. What the
+  helper still could not delete comes back in a **Cannot Delete** dialog with
+  the system's reason per entry; a declined prompt is reported through
+  `onError` and leaves the entries in place. Sharing violations ("in use by
+  another program") are not permission failures and keep the plain dialog,
+  as does a process that already runs as administrator — asking again cannot
+  change the system's answer there.
 
 Entries inside archives are still deleted in one batched archive rewrite
 before the interactive queue; their failures are reported via `onError` as
 before. When modal dialogs are unavailable the delete falls back to the old
-fixed behavior (attempt everything, report failures).
+fixed behavior (attempt everything, report failures). A problem dialog's
+**Cancel** keeps what was already deleted and drops the rest — the entries
+waiting for the administrator retry included.
 
 ### Selection after a delete
 
@@ -1420,6 +1711,11 @@ Extract dialogs all run the work on a background worker behind an
 [`UltraCanvasProgressDialog`](UltraCanvasProgressDialog.md): a ring with the
 percentage, the file being handled, and Cancel. The UI stays live throughout —
 packing a few hundred megabytes no longer freezes the window.
+
+Unlike a copy, move or delete (see
+[Progress window](#progress-window-copy--move--delete)), the window opens
+**immediately** rather than after two seconds: packing and unpacking are never
+over in a blink.
 
 The progress window is opened **without the severity badge**
 (`showIcon = false`), so the ring is horizontally centred in the dialog instead

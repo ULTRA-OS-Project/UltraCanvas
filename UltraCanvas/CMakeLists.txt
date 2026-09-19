@@ -40,7 +40,12 @@ else()
     option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
 endif ()
 option(ULTRACANVAS_PLUGIN_CDR "Build CorelDRAW CDR plugin" ON)
-option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" OFF)
+# ON like the other format plugins: it needs libvips, zlib and tinyxml2, which
+# are core's own dependencies, so it costs no new one. Off by default it took
+# DXF, the DWG family, EMF and WMF out of every default build - including CI's
+# - so a file manager built the ordinary way could not read a drawing however
+# it registered its plugins.
+option(ULTRACANVAS_PLUGIN_VECTOR "Build Vector plugin" ON)
 option(ULTRACANVAS_PLUGIN_XAR "Build XARA plugin" ON)
 option(ULTRACANVAS_PLUGIN_EPS "Build EPS (PostScript) plugin" ON)
 option(ULTRACANVAS_PLUGIN_SVG "Build SVG plugin" OFF)
@@ -419,6 +424,7 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasColumnsTreeView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListModel.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListSortFilterProxy.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListView.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListDelegate.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasListSelection.cpp
@@ -459,6 +465,12 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasAlbum.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFilerWidget.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasNativeFileIcons.cpp
+        # The icon the HOST desktop draws for a file type (Explorer / Finder /
+        # the icon theme), as opposed to the one a file carries itself. The
+        # lookups are per platform and live under OS/<Platform>/, picked up by
+        # the platform glob below; this is the shared cache key plus the no-op
+        # backend for the platforms with no desktop to ask.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasHostFileIcons.cpp
         # Windows shell links (.lnk) and the icon resources they point at,
         # both parsed from the files themselves so a Windows disk shows its
         # shortcuts and programs with their own icons on every platform.
@@ -498,6 +510,10 @@ set(ULTRACANVAS_CORE_SOURCES
         # "Is this file in use by another program" - the question behind
         # every failed overwrite. Platform backend under OS/<Platform>/.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasFileLock.cpp
+        # "Delete as administrator": the UAC relaunch behind a permission
+        # failure. Windows backend under OS/MSWindows/, picked up by the
+        # platform glob; every other platform gets the fallbacks in here.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElevatedFileOperations.cpp
         # Mounted volumes + notification when that set changes. The platform
         # backend lives in OS/<Platform>/UltraCanvas*VolumeMonitor.* and is
         # picked up by the platform glob.
@@ -712,6 +728,13 @@ set(ULTRACANVAS_CORE_SOURCES
         # dependency still runs plugin -> core. See
         # include/UltraCanvasModelPreview.h.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasModelPreview.cpp
+
+        # The same seam for vector drawings: core owns the document model and
+        # the renderer but not one reader, so RegisterVectorFormatsPlugin()
+        # lends it the Vector plugin's. Without it the media viewer and the
+        # Filer could only show a drawing that carried a preview bitmap.
+        # See include/UltraCanvasVectorPreview.h.
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasVectorPreview.cpp
 
         # The software mesh rasterizer: a shaded three-quarter still with no
         # GL anywhere in it. Written for the Filer's thumbnails, which are
@@ -1763,9 +1786,26 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
 # ===== COMPILER SETTINGS =====
 target_compile_features(${ULTRACANVAS_LIB_NAME} PUBLIC cxx_std_20)
 
+# The only two sources that read ULTRACANVAS_VERSION. Both have a fallback for
+# when it is absent (UltraCanvasUtils.cpp defines "0.0.0-dev", and
+# UltraCanvasElementPlugins.cpp guards with #ifdef), so nothing else needs it.
+set_source_files_properties(
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasUtils.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraCanvasElementPlugins.cpp
+    PROPERTIES
+        COMPILE_DEFINITIONS ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
+)
+
+# ULTRACANVAS_VERSION is deliberately NOT here. It changes every time anyone
+# adds a changelog entry, and as a PUBLIC definition on this library it sat on
+# the compile command line of 621 of the build's 1136 objects - every source in
+# the library, every app and every test that links it, FontFileTest included.
+# A changelog-only pull request therefore rebuilt almost the whole tree, and two
+# such pull requests invalidated each other's build caches over a file neither
+# had changed any code in. Only two sources read the macro, so it is attached to
+# those two below and a changelog edit now recompiles two objects.
 target_compile_definitions(${ULTRACANVAS_LIB_NAME}
     PUBLIC
-        ULTRACANVAS_VERSION="${ULTRACANVAS_VERSION}"
         ULTRACANVAS_PLATFORM_${ULTRACANVAS_PLATFORM}=1
         $<$<BOOL:${ULTRACANVAS_HAS_VIPS}>:HAS_LIBVIPS=1>
         $<$<BOOL:${LIBRSVG_FOUND}>:HAS_LIBRSVG=1>
@@ -2620,8 +2660,27 @@ if(ULTRACANVAS_PLUGIN_PDF)
         set(MUPDF_FOUND TRUE)
     else()
         set(MUPDF_FOUND FALSE)
+        # A dependency the machine does not have disables its plugin; it does
+        # not fail the build. MUPDF_FOUND was computed here and then ignored:
+        # the sources, the include directory and ${MUPDF_LIBRARY} were wired
+        # in regardless, so a machine without MuPDF stopped at configure time
+        # with "MUPDF_LIBRARY ... NOTFOUND" and no way forward but installing
+        # it. That is what made an upstream package disappearing (MSYS2
+        # dropped mingw-w64-x86_64-mupdf on 2026-09-17) an unfixable build
+        # outage rather than a build without PDF previews.
+        #
+        # Everything that uses the plugin is already guarded by
+        # ULTRACANVAS_PLUGIN_PDF - UltraCanvasPDFView.cpp and
+        # UltraCanvasPDF_MuPDF.cpp compile to nothing without it, and the
+        # filer's PDF thumbnails fall back to the type glyph - so skipping it
+        # here degrades cleanly.
+        message(STATUS "  [✗] PDF Plugin - DISABLED (MuPDF not found; install "
+                       "libmupdf-dev / <msys_prefix>-mupdf, or pass "
+                       "-DULTRACANVAS_PLUGIN_PDF=OFF to ask for this)")
     endif()
+endif()
 
+if(ULTRACANVAS_PLUGIN_PDF AND MUPDF_FOUND)
     list(APPEND ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDF_MuPDF.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/Documents/UltraCanvasPDFView.cpp
@@ -2666,8 +2725,40 @@ if(ULTRACANVAS_PLUGIN_PDF)
             target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC ${${_extra_lib}})
         endif()
     endforeach()
+    # Keep MuPDF's symbols inside the shared library instead of exporting them.
+    #
+    # MuPDF does not use stock Little-CMS: it bundles the lcms2mt fork, whose
+    # every entry point takes an extra leading context argument. Those objects
+    # come out of libmupdf-third.a with default ELF visibility, so a shared
+    # libUltraCanvas.so re-exports cmsCreateTransform and friends - and because
+    # it is earlier in the global lookup scope than liblcms2.so.2, ANY other
+    # library in the process that calls Little-CMS is silently redirected into
+    # the fork. libcdr does exactly that when it parses a CorelDRAW file: its
+    # six-argument cmsCreateTransform(hInput, ...) lands on the fork's
+    # seven-argument one, every argument shifts by one, and cmsGetColorSpace
+    # dereferences what was meant to be a pixel-format integer. Segmentation
+    # fault inside CDRDocument::parse, in a build where nothing is wrong with
+    # the CDR file or with libcdr.
+    #
+    # This is the same class of bug as the libjpeg version clash noted above,
+    # and it is not fixable the same way: MuPDF does not support building
+    # against a system Little-CMS. Hiding the archives is what fixes it, and
+    # --exclude-libs is the targeted form - it localizes only what these two
+    # archives define, so our own symbols (and the other static archives linked
+    # into the library, uc-yyjson and VirtualFS) stay exported. A whole-library
+    # version script is still not usable here, for the reason given above.
+    #
+    # Only meaningful for an ELF shared object: a static build exports nothing,
+    # and macOS resolves through two-level namespaces, so neither can interpose
+    # this way. Apple's ld does not take --exclude-libs either.
+    if(ULTRACANVAS_BUILD_SHARED AND UNIX AND NOT APPLE)
+        target_link_options(${ULTRACANVAS_LIB_NAME} PRIVATE
+            "-Wl,--exclude-libs,libmupdf.a:libmupdf-third.a")
+    endif()
     message(STATUS "  [✓] PDF Plugin - ENABLED (MuPDF at ${MUPDF_LIBRARY})")
-else()
+elseif(NOT ULTRACANVAS_PLUGIN_PDF)
+    # The MuPDF-not-found case already said so above, so this is only the
+    # option being off.
     message(STATUS "  [−] PDF Plugin - SKIPPED (disabled by option)")
 endif()
 
@@ -2851,6 +2942,61 @@ endif()
 
 # Add more plugins here...
 
+# ===== AUTOMATIC FORMAT REGISTRATION =====
+# One object library that registers every plugin built above, before main().
+# An application links it and gets every format this build can read without
+# writing a line; adding a plugin to the framework reaches every application
+# instead of every application having to learn its name.
+#
+# OBJECT, not STATIC, and that is the whole trick: a linker keeps only the
+# object files of a static library that something references, and nothing
+# references a registrar, so in a .a this would be dropped and the
+# registration would silently never happen. Every object of an OBJECT library
+# is linked in.
+#
+# It compiles against the plugin headers but links nothing itself - the
+# plugin libraries come with ULTRACANVAS_LIBRARIES - so it needs their
+# include directories and a define per plugin that exists.
+add_library(UltraCanvasAllFormats OBJECT
+    ${CMAKE_CURRENT_SOURCE_DIR}/Plugins/UltraCanvasAllFormats.cpp
+)
+target_compile_features(UltraCanvasAllFormats PRIVATE cxx_std_20)
+target_include_directories(UltraCanvasAllFormats
+    PUBLIC
+        ${CMAKE_CURRENT_SOURCE_DIR}/Plugins
+    PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include
+        ${ULTRACANVAS_PLUGIN_INCLUDE_DIRS}
+)
+# The core library's interface include directories (Cairo and friends) reach
+# it the way every plugin gets them, without linking core in.
+target_include_directories(UltraCanvasAllFormats PRIVATE
+    $<TARGET_PROPERTY:${ULTRACANVAS_LIB_NAME},INTERFACE_INCLUDE_DIRECTORIES>
+)
+target_compile_definitions(UltraCanvasAllFormats PRIVATE
+    $<TARGET_PROPERTY:${ULTRACANVAS_LIB_NAME},INTERFACE_COMPILE_DEFINITIONS>
+)
+set(ULTRACANVAS_AUTOFORMAT_PLUGINS "")
+foreach(_plugin VECTOR MODELS CDR XAR EPS)
+    if(_plugin STREQUAL "VECTOR")
+        set(_target UltraCanvasVectorPlugin)
+    elseif(_plugin STREQUAL "MODELS")
+        set(_target UltraCanvasModelsPlugin)
+    else()
+        set(_target UltraCanvas${_plugin}Plugin)
+    endif()
+    if(TARGET ${_target})
+        target_compile_definitions(UltraCanvasAllFormats PRIVATE
+                ULTRACANVAS_HAS_${_plugin}_PLUGIN=1)
+        list(APPEND ULTRACANVAS_AUTOFORMAT_PLUGINS ${_plugin})
+    endif()
+endforeach()
+if(ULTRACANVAS_AUTOFORMAT_PLUGINS)
+    message(STATUS "  [✓] Automatic format registration: ${ULTRACANVAS_AUTOFORMAT_PLUGINS}")
+else()
+    message(STATUS "  [−] Automatic format registration - no format plugins built")
+endif()
+
 # ===== EXPORT VARIABLES TO PARENT =====
 set(ULTRACANVAS_LIBRARY ${ULTRACANVAS_LIB_NAME} PARENT_SCOPE)
 set(ULTRACANVAS_LIBRARIES ${ULTRACANVAS_LIB_NAME} ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
@@ -2861,6 +3007,10 @@ set(ULTRACANVAS_PLUGIN_TARGETS ${ULTRACANVAS_PLUGIN_TARGETS} PARENT_SCOPE)
 # Named individually as well, so an application can link one plugin without
 # taking every other format's code with it (UltraPaint wants the 3D readers).
 set(ULTRACANVAS_MODELS_PLUGIN_TARGET ${ULTRACANVAS_MODELS_PLUGIN_TARGET} PARENT_SCOPE)
+# The automatic registrar: applications link this (as an object library, so
+# $<TARGET_OBJECTS:...> or a plain link both work) to get every built format
+# registered before main().
+set(ULTRACANVAS_ALLFORMATS_TARGET UltraCanvasAllFormats PARENT_SCOPE)
 set(ULTRACANVAS_INCLUDE_DIRS 
     ${CMAKE_CURRENT_SOURCE_DIR}/include
     ${ULTRACANVAS_PLUGIN_INCLUDE_DIRS}

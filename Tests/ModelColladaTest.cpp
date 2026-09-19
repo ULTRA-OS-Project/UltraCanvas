@@ -8,7 +8,9 @@
 // element ordering, n-gons, material binding by symbol, and a file with no
 // visual scene.
 //
-// argv[1] is the .dae. Without it only the synthetic cases run.
+// argv[1] is the .dae - Tests/data/3D/COLLADA, not the demo copy under
+// media/3D, which was completed from the .blend and no longer has the
+// half-hull this suite pins. Without it only the synthetic cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-10

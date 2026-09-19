@@ -830,14 +830,16 @@ namespace UltraCanvas {
                 .AddVariant("spreadsheet", "Sample Data")
                 .AddVariant("spreadsheet", "Open ODS / CSV");
 
-        extendedBuilder.AddItem("listview", "List View", "Item lists with custom rendering",
+        extendedBuilder.AddItem("listview", "List View",
+                                "Model-view-delegate lists: columns, styling, icons, hover tooltips",
                                 ImplementationStatus::FullyImplemented,
                                 [this]() { return CreateListViewExamples(); },
                                 "DemoApp/UltraCanvasListViewExamples.cpp",
                                 "Docs/UltraCanvas/UltraCanvasListViewExamples.md")
                 .AddVariant("listview", "Simple List")
-                .AddVariant("listview", "Icon List")
-                .AddVariant("listview", "Detail View");
+                .AddVariant("listview", "Detail View (columns + header)")
+                .AddVariant("listview", "Styled List")
+                .AddVariant("listview", "Icon List");
 
         // ===== BITMAP ELEMENTS =====
         auto bitmapBuilder = DemoCategoryBuilder(this, DemoCategory::BitmapElements);
@@ -938,7 +940,7 @@ namespace UltraCanvas {
         // ("drawing" / "Drawing Surface" placeholder removed: no
         // UltraCanvasDrawingSurface was ever built, so the page rendered an
         // empty container. The surface that does exist is
-        // UltraCanvasVectorCanvas, registered under Vector Graphics as
+        // UltraCanvasVectorCanvas, registered under Widgets as
         // "vectorcanvas" — draw, select, move, scale, rotate, group, undo.)
 
         // ===== VECTOR ELEMENTS =====
@@ -952,11 +954,6 @@ namespace UltraCanvas {
                 .AddVariant("svg", "SVG File Display")
                 .AddVariant("svg", "Interactive SVG")
                 .AddVariant("svg", "SVG Animations");
-        vectorBuilder.AddItem("vectorcanvas", "Vector Editing", "Edit a vector drawing on an UltraCanvasVectorCanvas: select, move, scale, rotate, draw, undo, group, gradients",
-                              ImplementationStatus::FullyImplemented,
-                              [this]() { return CreateVectorCanvasExamples(); },
-                              "DemoApp/UltraCanvasVectorCanvasExamples.cpp",
-                              "Docs/UltraCanvas/UltraCanvasVectorCanvas.md");
 #ifdef ULTRACANVAS_HAS_CDR_PLUGIN
         vectorBuilder.AddItem("cdrimages", "CDR Images", "CDR (CorelDraw) images display and manipulation",
                               ImplementationStatus::FullyImplemented,
@@ -979,14 +976,23 @@ namespace UltraCanvas {
                               "Docs/UltraCanvas/UltraCanvasEPSExamples.md");
 #endif
 #ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
-        vectorBuilder.AddItem("dwgdrawings", "DWG / DXF Drawings", "AutoCAD drawings decoded natively (R13 to R2018) through the Vector plugin's converter matrix",
+        // CAD as drawings: four of the five samples are flat by construction -
+        // blocks, hatches, LWPOLYLINEs and NURBS splines, every Z at zero - so
+        // they belong here rather than among the 3D models, and they live in
+        // media/vector/{DWG,DXF} to match. The fifth, a DWG of 3D polyface
+        // meshes, stays with the models in media/3D/DWG and is shown here
+        // projected to plan view, which is what a CAD reader does with it.
+        // The DXF that really is geometry has its own "DXF 3D Models" page
+        // under 3D Graphics, read through the Models plugin.
+        vectorBuilder.AddItem("dwgdrawings", "DWG / DXF Drawings",
+                              "AutoCAD drawings decoded natively (R13 to R2018) through the Vector plugin's converter matrix",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateDWGVectorExamples(); },
                               "DemoApp/UltraCanvasDWGExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasVectorConverters.md");
 #endif
-#ifdef ULTRACANVAS_PLUGIN_PDF
-        vectorBuilder.AddItem("aiartwork", "AI Artwork", "Adobe Illustrator .ai artwork - PDF-based files read through the PDF engine, written by the Vector plugin's AIConverter",
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+        vectorBuilder.AddItem("aiartwork", "AI Artwork", "Adobe Illustrator .ai artwork - the Vector plugin's AIConverter reads Illustrator's art language out of the file's private data, with the PDF engine for PDF-compatible files",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateAIVectorExamples(); },
                               "DemoApp/UltraCanvasAIExamples.cpp",
@@ -1682,19 +1688,49 @@ namespace UltraCanvas {
                                   "Docs/UltraCanvas/UltraCanvasSTLElement.md");
 
 #ifdef ULTRACANVAS_HAS_MODELS_PLUGIN
-        // The rest of the 3D matrix. Also outside the GL guard, and for the same
-        // reason: UltraCanvasSTLElement draws a shaded software still without GL,
-        // so the readers stay demonstrable in a build that has no OpenGL at all.
-        graphics3DBuilder.AddItem("modelformats", "3D Model Formats",
-                                  "3DS, COLLADA, FBX, Alembic, DirectX .x, MilkShape and STEP read into one universal ModelDocument, with what each format actually carried",
-                                  ImplementationStatus::FullyImplemented,
-                                  [this]() { return CreateModelFormatsExamples(); },
-                                  "DemoApp/UltraCanvasModelFormatsExamples.cpp",
-                                  "Docs/UltraCanvas/UltraCanvasModelFormats.md")
-                .AddVariant("modelformats", "STEP (exact B-rep)")
-                .AddVariant("modelformats", "MilkShape / 3D Studio")
-                .AddVariant("modelformats", "COLLADA / FBX / Alembic");
+        // The rest of the 3D matrix, one entry per format the way STL has its
+        // own: a visitor looking for "does it read FBX" finds a row called FBX
+        // rather than a single "3D Model Formats" page they have to open and
+        // page through. Each opens the same page filtered to that reader.
+        //
+        // Also outside the GL guard, and for the same reason as STL:
+        // UltraCanvasSTLElement draws a shaded software still without GL, so
+        // the readers stay demonstrable in a build that has no OpenGL at all.
+        struct ModelFormatEntry {
+            const char* id;
+            const char* extension;
+            const char* displayName;
+            const char* description;
+        };
+        // Ordered as the samples are - most compact binary format first.
+        static const ModelFormatEntry kModelFormats[] = {
+                {"stepmodels", "step", "STEP 3D Models",
+                 "ISO 10303 exact B-rep: analytic surfaces closed into solids, tessellated on import because the file carries no mesh"},
+                {"ms3dmodels", "ms3d", "MilkShape 3D Models",
+                 "A game format of packed little-endian structs - groups become meshes and smoothing groups arrive as a bitmask"},
+                {"fbxmodels", "fbx", "FBX 3D Models",
+                 "Autodesk FBX, binary and ASCII, with what the header declared kept in ModelDocument::Metadata"},
+                {"alembicmodels", "abc", "Alembic 3D Models",
+                 "A sampled geometry cache rather than a scene description - this reader takes the first time sample"},
+                {"colladamodels", "dae", "COLLADA 3D Models",
+                 "XML interchange with a real scene graph and materials; compile-time optional, since it needs tinyxml2"},
+                {"3dsmodels", "3ds", "3D Studio Models",
+                 "Chunked binary from 1990s 3D Studio: sixteen-bit indices and a flat object list, so a mesh per object and no hierarchy"},
+                {"xfilemodels", "x", "DirectX .x 3D Models",
+                 "DirectX retained-mode .x - templates declare their own layout, so the parser is driven by the file"},
+                {"dxfmodels", "dxf", "DXF 3D Models",
+                 "AutoCAD DXF carrying 3D geometry - 8110 3DFACE entities read as a mesh, not as a drawing"},
+        };
+        for (const ModelFormatEntry& format : kModelFormats) {
+            const std::string extension = format.extension;
+            graphics3DBuilder.AddItem(format.id, format.displayName, format.description,
+                                      ImplementationStatus::FullyImplemented,
+                                      [this, extension]() { return CreateModelFormatsExamples(extension); },
+                                      "DemoApp/UltraCanvasModelFormatsExamples.cpp",
+                                      "Docs/UltraCanvas/UltraCanvasModelFormats.md");
+        }
 #endif
+
 
         // ===== VIDEO ELEMENTS =====
         auto videoBuilder = DemoCategoryBuilder(this, DemoCategory::VideoElements);
@@ -2006,6 +2042,17 @@ namespace UltraCanvas {
 
         auto widgetsBuilder = DemoCategoryBuilder(this, DemoCategory::Widgets);
 
+        // UltraCanvasVectorCanvas is a widget an application drops into a
+        // window, not a file format, so it lives here rather than under
+        // Vector Graphics (which shows what the vector *readers* produce).
+        widgetsBuilder.AddItem("vectorcanvas", "Vector Editing",
+                               "Edit a vector drawing on an UltraCanvasVectorCanvas: select, move, "
+                               "scale, rotate, draw, undo, group, gradients",
+                               ImplementationStatus::FullyImplemented,
+                               [this]() { return CreateVectorCanvasExamples(); },
+                               "DemoApp/UltraCanvasVectorCanvasExamples.cpp",
+                               "Docs/UltraCanvas/UltraCanvasVectorCanvas.md");
+
         widgetsBuilder.AddItem("menuconfig", "Menu Configurator",
                                "Customise menus: command registry, editable layout, live Apply",
                                ImplementationStatus::FullyImplemented,
@@ -2233,6 +2280,28 @@ namespace UltraCanvas {
             headerContainer->SetDemoTitle("Category: " + node->data.text);
             headerContainer->SetSourceFile("");
             headerContainer->SetDocFile("");        }
+    }
+
+    bool UltraCanvasDemoApplication::SelectDemoItem(const std::string& itemId) {
+        if (demoItems.find(itemId) == demoItems.end()) return false;
+
+        // DisplayDemoItem alone only swaps the page: the tree would keep the
+        // startup selection and the header would still name it, so
+        // `--component listview` opened the ListView page under the title
+        // "Various menu types and styles". Take the same path a click takes.
+        TreeNode* node = categoryTreeView ? categoryTreeView->FindNode(itemId) : nullptr;
+        if (node) {
+            for (TreeNode* ancestor = node->parent; ancestor; ancestor = ancestor->parent) {
+                categoryTreeView->ExpandNode(ancestor);
+            }
+            categoryTreeView->SelectNode(node);
+            OnTreeNodeSelected(node);
+        } else {
+            DisplayDemoItem(itemId);
+            UpdateStatusDisplay(itemId);
+            UpdateHeaderDisplay(itemId);
+        }
+        return true;
     }
 
     void UltraCanvasDemoApplication::DisplayDemoItem(const std::string& itemId) {
