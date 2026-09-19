@@ -1,3 +1,59 @@
+#### 2026-09-19 *0.8.96*
+- **Sorting and filtering for every list in the framework, and a correction.**
+  `UltraCanvasListSortFilterProxy` (`include/UltraCanvasListSortFilterProxy.h`,
+  `core/UltraCanvasListSortFilterProxy.cpp`) is an `IListModel` that wraps
+  another one and presents the same columns with the rows re-ordered and thinned
+  out, so a view is handed the proxy instead of the model and needs no idea that
+  either is happening. Every existing `UltraCanvasListView` caller gains both
+  without changing a line. `Docs/UltraCanvas/UltraCanvasListSortFilterProxy.md`,
+  `Tests/ListSortFilterProxyTests.cpp` (target `ListSortFilterProxyTests`, 78
+  checks).
+  - **The correction first.** 0.8.94 and 0.8.95 below said `UltraCanvasListView` "has
+    no column API at all" and asked for a new data grid to be built. That was
+    wrong, and wrong in the most avoidable way: it came from grepping the
+    view's header for `AddColumn`/`SetColumns` instead of reading the model
+    beside it. ListView *is* the multi-column, virtualised, model-driven table -
+    `IListModel`, `ListColumnDef`, `UltraCanvasMultiColumnListModel`, painting
+    delegates, selection models, a header band, per-cell tooltips, variable row
+    heights, cell-level callbacks and row culling were all already there. What
+    was missing was sorting and filtering, which is what this release adds
+    instead of a second grid. `UltraCanvasTableView`, which the catalogue named,
+    still does not exist; that row now points at the view that does the job.
+  - **Stable sorting**, so equal rows keep their source order and sorting by one
+    column then another is predictable. Per-column kinds - `Auto`, `Text`,
+    `TextCaseSensitive`, `Number`, `Natural` (`Beleg 2` before `Beleg 10`) - or
+    a comparator of your own, which receives source rows.
+  - **`ListDataRole::SortRole`**: a column showing `1.234,56 EUR` or
+    `17.09.2026` returns the amount or the day number here and sorts by that
+    instead of by its formatting. Absent, the proxy falls back to the displayed
+    text.
+  - **Numbers are read without the C locale**, both conventions alike
+    (`1234.56`, `1.234,56`, `-37,28 EUR`, `(1.234,56)`), and deliberately
+    strictly: a letter anywhere means "not a number". The first version skipped
+    `E`, `U` and `R` so `EUR 89,00` would parse - which made `R-202607010` read
+    as **-202607010** and silently reversed a whole column of document numbers.
+    The tests caught it, and now cover it.
+  - **Filtering** by case-insensitive text, over chosen columns or all of them,
+    plus an arbitrary predicate; a row must pass both.
+  - **Row mapping is explicit**, because a proxy row is not a source row:
+    `MapToSource` / `MapFromSource`, and a selection reported by a view is in
+    proxy rows. Forgetting that is how a sorted table deletes the wrong record,
+    so the header, the doc and the tests all say it.
+  - **Attaching never disconnects anything**: the proxy chains the source's
+    existing change handlers rather than replacing them, and restores them when
+    it is destroyed, so a model that outlives its proxy cannot call into freed
+    memory.
+- **`UltraCanvasListView` shows which column is sorted and reports header
+  clicks** - `SetSortingEnabled`, `SetSortIndicator`, `onSortRequested`, and
+  `SetSortProxy` for the common case. The view never sorts anything itself, so a
+  model that is already ordered by a database query keeps working unchanged.
+  Clicking a header sorts ascending, clicking the sorted one turns it round, and
+  the indicator triangle is drawn as geometry (`FillLinePath`) so it stays crisp
+  at any DPI and follows the header's text colour. A header click no longer
+  clears the selection - losing what you had selected because you sorted the
+  table is not what anybody asks for - and the keyboard focus row is dropped on
+  a sort rather than left pointing at whatever record landed on that index.
+
 #### 2026-09-19 *0.8.95*
 - **`UltraCanvasMoney`: an amount that is still right after the arithmetic.**
   `int64_t` minor units plus an ISO 4217 code, header-only
@@ -46,13 +102,11 @@
     plausible wrong number.
 - **The UI element catalogue no longer names an element that does not exist.**
   `Docs/UltraCanvas/UltraCanvasUIElements.md` listed `UltraCanvasTableView`
-  with "matching `*.h`"; there is no such header anywhere in the tree, and
-  `UltraCanvasListView` has no column API at all. The row now names
-  `UltraCanvasColumnsTreeView`, which is what actually draws columns today. A
-  real data grid - sort, filter, badge and checkbox cells, inline editing,
-  virtualisation, footer aggregates - is proposed in
-  `Docs/Research/UltraFIBUDesignProposal.md` §3.3; until it exists the
-  catalogue should send readers to the element that does.
+  with "matching `*.h`"; there is no such header anywhere in the tree. The row
+  now points at the elements that do the job. (It first pointed at
+  `UltraCanvasColumnsTreeView` on the strength of the mistaken reading
+  corrected in 0.8.96; `UltraCanvasListView` is the multi-column table, and the
+  row says so now.)
 
 #### 2026-09-19 *0.8.94*
 - **New design proposal: UltraFIBU, a German double-entry accounting
@@ -69,12 +123,12 @@
   the ELSTER PIN and UltraCrypt the journal's hash chain - while four things
   are missing and each is worth having for its own sake.
   - **`UltraCanvasTableView` does not exist.** The UI catalogue names it and
-    there is no such header; `UltraCanvasListView` has no column API at all,
-    and `UltraCanvasColumnsTreeView` - columns, header band, group rows - has
-    no sort, filter, badge or checkbox cell, inline edit, virtualisation or
-    footer aggregate. The proposal asks for a real `UltraCanvasDataGrid` built
-    on that groundwork, and for the catalogue row to stop sending readers
-    after a file that is not there.
+    there is no such header, so the row sends readers after a file that was
+    never written. (The same bullet originally went on to say that
+    `UltraCanvasListView` "has no column API at all" and to ask for a new data
+    grid. That was wrong - see 0.8.96, which corrects it: ListView *is* the
+    multi-column model-driven table, and what it lacked was sorting and
+    filtering, not columns.)
   - **There is an XML parser and nobody owns it.** Six of this application's
     formats are XML (XRechnung UBL and CII, ZUGFeRD, the ELSTER data types,
     CAMT.053, the GoBD `index.xml`). tinyxml2 is already a core dependency -

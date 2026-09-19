@@ -35,7 +35,7 @@ will want them:**
 
 | Add to framework | Why it cannot live in the app |
 |---|---|
-| `UltraCanvasDataGrid` — a sortable, filterable, groupable, inline-editable multi-column grid | Every screen in this app is a table of thousands of rows. The catalogue promises `UltraCanvasTableView` but **no such header exists** (§3.3); painting a grid inside the app is exactly what AGENTS.md forbids |
+| **Sorting and filtering for `UltraCanvasListView`** — which already is the multi-column, virtualised, model-driven table (§3.3) | Every screen in this app is a table of thousands of rows, and the one thing the existing view could not do was order or narrow them. A *second* grid would have been the wrong answer |
 | `UltraCanvasXML` — an owned XML reader/writer over the **tinyxml2 the framework already links** | XRechnung, ZUGFeRD, ELSTER, CAMT.053 and the GoBD `index.xml` are all XML. tinyxml2 is a core dependency already, but nothing owns it: every caller parses its own way and two of them parse the same file twice (§3.4). No new dependency — a facade |
 | `UltraCanvasMoney` — exact decimal money (integer minor units) with parse/format | An accounting program may not represent 37,28 € as a `double`. The one currency type in the tree (`CurrencyValue`, `UltraCanvasSpreadsheetTypes.h:267`) is a `double` and must not be used for a ledger |
 | `UltraCanvasNumberInput` / currency field, and a minimal string catalogue | The UI is German: comma decimals, `1.234,56 €`, and ~800 labels. Hard-coding literals throughout is what every other app did, and this app is large enough that it hurts |
@@ -202,39 +202,54 @@ phasing in §7.2: XRechnung (pure XML) first, ZUGFeRD when the PDF writer grows
 up. `IPDFDocument` cannot substitute — it opens and edits existing documents
 (`InsertBlankPage`, `ReplaceText`, annotations) and has no content-drawing API.
 
-### 3.3 The data grid the catalogue promises does not exist
+### 3.3 The table already exists; sorting and filtering did not
 
-[`UltraCanvasUIElements.md`](../UltraCanvas/UltraCanvasUIElements.md) lists
-"List, tree, table, sheet | `UltraCanvasListView`, `UltraCanvasTreeView`,
-`UltraCanvasTableView`, `UltraCanvasSpreadsheet` | matching `*.h`". There is **no
-`UltraCanvasTableView.h`** anywhere in the tree, and `UltraCanvasListView` has
-no column API at all. What actually exists for columnar data is
-`UltraCanvasColumnsTreeView` (`include/UltraCanvasColumnsTreeView.h`): columns
-with ids, titles, fixed or flex widths, alignment, an optional resizable header
-band, and full-width group-header rows. That is a genuinely good base — grouping
-a journal by month or by account falls out of it — but it is missing everything
-else a ledger screen needs:
+**Correction to an earlier draft of this document.** This section previously
+claimed that the framework had no data grid and that `UltraCanvasListView` "has
+no column API at all". That was wrong, and it was wrong in the most avoidable
+way: the conclusion came from grepping the view's header for `AddColumn` /
+`SetColumns` instead of reading the model beside it.
 
-- no sort on header click, no multi-key sort;
-- no filter or search model;
-- cells are **text only** — no badge/pill cell (the *Überfällig* chip), no
-  checkbox column (the selection column in the *Rechnungen* screenshot), no
-  icon or per-row colour bar (the green/red markers in *Kontoumsätze*);
-- no inline cell editing;
-- no virtualisation contract for 100 000-row journals;
-- no column-visibility/order persistence, no CSV/clipboard copy of a selection;
-- no footer/aggregate row (the `652,57 €` total in the screenshot).
+What is actually in the tree:
 
-**Recommendation:** add `UltraCanvasDataGrid` to `UltraCanvas/{include,core}`,
-built on the `TreeViewColumn`/group-header work already in
-`UltraCanvasColumnsTreeView` rather than beside it, with a *data-source*
-interface (row count + cell accessor + sort/filter delegate) so a million-row
-journal never has to exist as widgets. This is the same call
-[`ArtCreatorVectorCanvasProposal.md`](ArtCreatorVectorCanvasProposal.md) made
-for the vector canvas, and the same rule AGENTS.md states as a prohibition:
-*"take the element from the catalogue, or add a new one so the next caller finds
-it too."* Every app in `Apps/` would use it. Also fix the catalogue row, which
-currently sends readers looking for a header that is not there.
+- **`UltraCanvasListView` is a multi-column, virtualised, model-driven table.**
+  It has a model interface (`IListModel`: `GetRowCount`, `GetColumnCount`,
+  `GetData`/`SetData` by role), column definitions (`ListColumnDef` — title,
+  width, alignment, header tooltip), a ready-made `UltraCanvasMultiColumnListModel`,
+  painting delegates (`IItemDelegate`, so a cell can be a badge, a bar, a
+  checkbox or anything else), selection models (single and multi), a header
+  band, per-cell tooltips, variable row heights, cell-level click and hover
+  callbacks, keyboard navigation, a scrollbar, and row culling that paints only
+  what is visible.
+- `UltraCanvasTableView`, which the element catalogue named, genuinely does not
+  exist — the catalogue row was simply wrong, and it now points at the view that
+  does the job.
+
+So the gap was never "a grid". Grepping for the *name* of a feature found
+nothing for **sort**, **filter**, **edit** or **footer** across every list
+header, and that is exactly what was missing:
+
+| Missing | Status |
+|---|---|
+| Sorting (header click, indicator, comparators) | **Built** — `UltraCanvasListSortFilterProxy` + `UltraCanvasListView::SetSortingEnabled` / `SetSortProxy` |
+| Filtering (text, per-column, arbitrary predicate) | **Built** — same proxy |
+| Sort-by-value-not-by-text | **Built** — `ListDataRole::SortRole` |
+| Inline cell editing | Still missing in the view; `IListModel::SetData` is there, so this is an editor widget over an existing seam |
+| Footer / aggregate row (the `652,57 €` total in the screenshot) | Still missing |
+
+The proxy is the Qt-proven shape: it *is* an `IListModel` wrapping another one,
+so the view needs no knowledge of either sorting or filtering, and every
+existing `ListView` caller in the repository gains both without changing a line.
+The one thing callers must respect is that a proxy row is not a source row —
+`MapToSource()` exists for that, and a sorted table that deletes the wrong
+record is what forgetting it looks like. See
+[`UltraCanvasListSortFilterProxy.md`](../UltraCanvas/UltraCanvasListSortFilterProxy.md).
+
+**The lesson worth keeping**, because it cost a wrong recommendation in a
+document whose whole job was to survey the tree: *grep for the concept, not for
+one spelling of it, and read the neighbouring header before concluding that
+something is absent.* A second grid built on that mistake would have been
+hundreds of lines duplicating a view that already worked.
 
 ### 3.4 There is an XML parser, and nobody owns it
 
@@ -1158,7 +1173,7 @@ application driver-agnostic meanwhile, so the two tracks only meet at A8.
 | # | Deliverable | Verifiable when |
 |---|---|---|
 | **B4** *(parallel from day one)* | `libpq` PostgreSQL driver for UltraDatabase behind `IDatabaseDriverPlugin`: TLS required, credentials via UltraVault, pooling, the Stage 2 shape its README already specifies + `Tests/UltraDatabase` coverage against a real server | The existing UltraDatabase test suite passes unchanged against PostgreSQL as well as SQLite |
-| **B1** | `UltraCanvasDataGrid` (sort, filter, badge/checkbox/icon cells, inline edit, virtualised data source, footer aggregates, CSV/clipboard copy) + doc + catalogue fix (§3.3) | DemoApp shows 100 000 rows sorted and filtered without stutter |
+| **B1** ✅ | **Sorting and filtering over the existing `UltraCanvasListView`**: `UltraCanvasListSortFilterProxy` (stable sort, comparators, `SortRole`, text/column/predicate filters, source↔proxy mapping), header-click sorting with an indicator, and the catalogue row corrected (§3.3). Inline editing and a footer/aggregate row remain | Done: 78 proxy tests; a column of amounts written `1.234,56` sorts numerically and one of `R-2026070…` document numbers no longer sorts backwards |
 | **B2** | `UltraCanvasXML` over the tinyxml2 the framework already links — a facade, not a new dependency | Round-trips a ZUGFeRD CII file and a CAMT.053 statement |
 | **B3** | `UltraCanvasMoney` + currency/number input element + German formatting helpers | Property tests in `Tests/` |
 | **A1** | Engine skeleton, store + migrations, *Mandant*, **Geschäftsjahr (flexible start)**, chart of accounts (**SKR03 shipped first**, SKR04 beside it, both as data, each account carrying its EÜR line, BWA position **and balance-sheet classification**), *Steuerschlüssel* table, number ranges; master data for **Kunden/Lieferanten with USt-IdNr, address, contact** incl. offline VAT-number checksums; **user table and roles from the first schema** (§10.2), so attribution is unbroken when the server arrives; German UI shell | Create a 1 April fiscal year, import SKR03, enter a supplier, see it in a grid |
