@@ -5,7 +5,7 @@
 // where no backend exists, and a public surface (NetworkMonitor.h) that
 // callers use instead of this. Applications include NetworkMonitor.h.
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
@@ -15,10 +15,12 @@
 #include <memory>
 
 // A platform has a native backend when one of the OS/<Platform> sources is
-// compiled in. Everything else (WASM, Android, the BSDs, and Windows / macOS
-// until their Phase 2 backends land) gets the null factory from the core
-// file, and every NetworkMonitor_ListConnections() reports NotSupported.
-#if defined(__linux__) && !defined(__ANDROID__)
+// compiled in: Linux (procfs + netlink sock_diag), Windows (IP Helper) and
+// macOS (libproc). Everything else (WASM, Android, the BSDs) gets the null
+// factory from the core file, and every NetworkMonitor_ListConnections()
+// reports NotSupported. Keep this list and the source list in
+// UltraCanvas/CMakeLists.txt in step.
+#if defined(_WIN32) || defined(__APPLE__) || (defined(__linux__) && !defined(__ANDROID__))
     #define ULTRACANVAS_NETWORKMONITOR_NATIVE 1
 #endif
 

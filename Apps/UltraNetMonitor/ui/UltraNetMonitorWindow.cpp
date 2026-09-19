@@ -1,5 +1,5 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorWindow.h"
 
@@ -235,6 +235,8 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildConnectionList(
     connectionModel_ = std::make_shared<ConnectionListModel>();
     connectionProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(connectionModel_);
     connectionProxy_->SetColumnSortKind(ConnectionListModel::Pid, ListSortKind::Number);
+    connectionProxy_->SetColumnSortKind(ConnectionListModel::Sent, ListSortKind::Number);
+    connectionProxy_->SetColumnSortKind(ConnectionListModel::Received, ListSortKind::Number);
     connectionView_ = std::make_shared<UltraCanvasListView>("nmConnections", -1, -1, 600, 300);
     connectionView_->SetModel(connectionProxy_);
     connectionView_->SetShowHeader(true);
@@ -303,7 +305,9 @@ void UltraNetMonitorWindow::RefreshStatus() {
                            capabilities_.backendName;
     if (capabilities_.socketTable) {
         subtitle += capabilities_.allUsers ? " · every process"
-                                           : " · this user's processes only (run as root for all)";
+                                           : " · this user's processes only (elevate for all)";
+        subtitle += capabilities_.perConnectionBytes ? " · byte counters"
+                                                     : " · no byte counters on this backend";
     }
     if (subtitleLabel_) subtitleLabel_->SetText(subtitle);
 

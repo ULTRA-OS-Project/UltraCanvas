@@ -1,14 +1,28 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorModels.cpp
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorModels.h"
 
+#include "UltraCanvasHardwareInfo.h"
+
+#include <optional>
 #include <string>
 
 using namespace UltraCanvas;
 
 namespace UltraNetMonitor {
 namespace {
+
+// A counter the backend did not report is a dash, never a zero - the two
+// are different facts. SortRole answers nothing for it, so it sorts last.
+std::string ByteText(const std::optional<uint64_t>& bytes) {
+    return bytes ? UltraCanvasHardwareInfo::FormatBytes(*bytes) : std::string("\u2014");
+}
+
+ListDataValue ByteSortKey(const std::optional<uint64_t>& bytes) {
+    if (!bytes) return {};
+    return static_cast<float>(*bytes);
+}
 
 std::string ProcessName(const std::optional<ProcessIdentity>& process) {
     return process ? process->displayName : std::string("(unattributed)");
@@ -44,6 +58,8 @@ ListDataValue ConnectionListModel::GetData(const ListIndex& index, ListDataRole 
                 case Remote:      return c->IsListening() || c->state == NetworkConnectionState::Unconnected
                                          ? std::string("*") : c->RemoteEndpoint();
                 case State:       return std::string(NetworkMonitor_StateName(c->state));
+                case Sent:        return ByteText(c->bytesSent);
+                case Received:    return ByteText(c->bytesReceived);
                 case User:        return c->process ? c->process->userName
                                          : (c->ownerUid ? std::string("uid ") + std::to_string(*c->ownerUid)
                                                         : std::string());
@@ -52,6 +68,8 @@ ListDataValue ConnectionListModel::GetData(const ListIndex& index, ListDataRole 
         case ListDataRole::SortRole:
             // Numbers sort as numbers; the rest falls back to the text.
             if (index.column == Pid) return static_cast<int>(c->process ? c->process->pid : 0);
+            if (index.column == Sent) return ByteSortKey(c->bytesSent);
+            if (index.column == Received) return ByteSortKey(c->bytesReceived);
             return {};
         case ListDataRole::ToolTipRole:
             if (index.column == Application || index.column == Pid) return ProcessTooltip(c->process);
@@ -73,6 +91,10 @@ ListColumnDef ConnectionListModel::GetColumnDef(int column) const {
         case Remote:      return ListColumnDef("Remote", 200, TextAlignment::Left,
                                                "The other side; * for a listener");
         case State:       return ListColumnDef("State", 110);
+        case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
+                                               "Bytes the peer acknowledged; a dash where the backend has no counter");
+        case Received:    return ListColumnDef("Received", 80, TextAlignment::Right,
+                                               "Bytes received; a dash where the backend has no counter");
         case User:        return ListColumnDef("User", 90);
         default:          return ListColumnDef("", 80);
     }
@@ -105,6 +127,8 @@ ListDataValue ProcessListModel::GetData(const ListIndex& index, ListDataRole rol
                 case Established: return std::to_string(p->establishedCount);
                 case Listening:   return std::to_string(p->listeningCount);
                 case Remotes:     return std::to_string(p->remoteAddresses.size());
+                case Sent:        return ByteText(p->bytesSent);
+                case Received:    return ByteText(p->bytesReceived);
                 default:          return {};
             }
         case ListDataRole::SortRole:
@@ -114,6 +138,8 @@ ListDataValue ProcessListModel::GetData(const ListIndex& index, ListDataRole rol
                 case Established: return p->establishedCount;
                 case Listening:   return p->listeningCount;
                 case Remotes:     return static_cast<int>(p->remoteAddresses.size());
+                case Sent:        return ByteSortKey(p->bytesSent);
+                case Received:    return ByteSortKey(p->bytesReceived);
                 default:          return {};
             }
         case ListDataRole::ToolTipRole:
@@ -150,6 +176,10 @@ ListColumnDef ProcessListModel::GetColumnDef(int column) const {
                                                "Listening and unconnected sockets");
         case Remotes:     return ListColumnDef("Peers", 58, TextAlignment::Right,
                                                "Distinct remote addresses");
+        case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
+                                               "Total over the process's TCP connections; a dash when any is uncounted");
+        case Received:    return ListColumnDef("Received", 80, TextAlignment::Right,
+                                               "Total over the process's TCP connections; a dash when any is uncounted");
         default:          return ListColumnDef("", 60);
     }
 }
