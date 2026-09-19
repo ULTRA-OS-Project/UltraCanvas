@@ -12,6 +12,7 @@
 #if defined(ULTRACANVAS_HAS_CUPS) && (defined(__linux__) || defined(__APPLE__))
 
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinter.h"
+#include "../../include/IODeviceManager/UltraCanvasIODevicePrinterGutenPrint.h"
 #include "../../include/IODeviceManager/UltraCanvasIODeviceManager.h"
 
 #include <cups/cups.h>
@@ -346,6 +347,10 @@ class CupsPrinterDevice : public PrinterDevice {
 public:
     explicit CupsPrinterDevice(const IODeviceInfo& info) : PrinterDevice(info) {
         AddRenderer(std::make_shared<NativePrintRenderer>());
+        // GutenPrint is offered alongside, and answers for itself whether it
+        // knows this model. It emits the printer's own command language, so
+        // it needs a transport that carries a raw job - which this one does.
+        AddRenderer(CreateGutenPrintRenderer());
     }
 
     ~CupsPrinterDevice() override { ReleaseCupsHandles(); }

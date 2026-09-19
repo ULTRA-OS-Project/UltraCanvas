@@ -339,28 +339,79 @@ macOS** is left at its default: it is not on `NSPrintInfo` at all — it lives
 in the `PMPrintSettings` underneath — and claiming a value would be inventing
 one.
 
-### Open decision: linked or subprocess
+### Decided: subprocess, not linked
 
-**libgutenprint is GPL-2.0-or-later. UltraCanvas is MIT.** Linking it means
-the distributed binary is GPL. That is a product decision, not a technical
-one, and it must be made before the GutenPrint renderer is written.
+**libgutenprint is GPL-2.0-or-later. UltraCanvas is MIT.** Linking it would
+make every distributed binary a GPL work. That was a product decision rather
+than a technical one, and it has been taken: **GutenPrint is run, not linked.**
 
-| | Linked (`libgutenprint`) | Subprocess (GutenPrint's own tools) |
+| | Linked (`libgutenprint`) | **Subprocess (chosen)** |
 |---|---|---|
-| Quality / control | Full: every parameter, in-process | Good: whatever the CLI exposes |
-| Licence effect | Distributed binary becomes GPL | None — matches this repo's existing "runtime, not linked" pattern (QEMU, Wine in `Docs/Dependencies.md`) |
+| Quality / control | Full: every parameter, in-process | Good: whatever the tools expose — which is the whole PPD |
+| Licence effect | Distributed binary becomes GPL | None. Matches this repo's existing "runtime, not linked" pattern (QEMU, Wine) |
 | Windows | Needs an MSYS2/MinGW build of the library | Needs the GutenPrint binaries shipped alongside |
-| Failure mode | Link error if absent | Clean: renderer simply not offered |
+| Failure mode | Link error if absent | Clean: the renderer is simply not offered |
 
-**Recommendation:** subprocess, gated on `ULTRACANVAS_HAS_GUTENPRINT`, with
-`Native` as the fallback whenever GutenPrint is absent. It keeps the
-framework MIT and matches how this repository already handles GPL tools. If
-ULTRA OS ships under GPL anyway, linking is the better technical answer and
-nothing else in this design changes — only the renderer's internals.
+GutenPrint ships two programs, and between them they are a complete interface:
 
-Either way `libgutenprint`/GutenPrint must be added to `Docs/Dependencies.md`,
-`master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md` before the renderer
-lands.
+| Program | What it does |
+|---|---|
+| `gutenprint.5.3` | `list` names every model it drives — about 3,500 — each with its IEEE-1284 device id. `cat <uri>` writes that model's PPD. |
+| `rastertogutenprint.5.3` | Reads a page of CUPS raster on standard input, writes the printer's own command language on standard output. |
+
+So the renderer lays the document out, rasterises it, pipes the raster
+through the filter, and the bytes that come back **are** the payload. They are
+a device-native stream, so `ProducesRawStream()` is true and they travel as a
+raw job — `application/vnd.cups-raw` under CUPS, datatype `RAW` through the
+Windows spooler. **Both raw transports already existed, so this added one
+renderer and changed no transport**, which is what the renderer/transport
+split was for.
+
+Four things are worth keeping in mind about the implementation.
+
+**A page is drawn, not converted.** The same `IPrintPageSource` the Windows
+GDI renderer uses — the same wrapped text, the same fitted image, the same
+pagination — is driven against a `RasterPageTarget`, which draws onto an
+off-screen surface instead of onto a printer device context. One layout, two
+destinations; that is what `IPrintPageTarget` being abstract buys. Deciding
+*what* a job contains is shared too, in `MakePageSourceForJob`, so the two
+renderers cannot drift about which file extensions are text.
+
+**GutenPrint is handed RGB and left to separate it.** Its PPDs also offer CMY,
+CMYK and KCMY, but choosing those would mean separating the colour ourselves
+against a specific ink set at a specific resolution — the one thing GutenPrint
+is unambiguously better at than anything written here. The raster it gets is
+RGB (or grey), which is also what its PPDs default to.
+
+**The raster is uncompressed.** The sync word is `RaS3`: version 3,
+big-endian, no run-length encoding. A v2 encoder is the kind of code that is
+wrong in ways which surface on one printer at one resolution; the raster goes
+down a pipe to a filter that reads it immediately, so the size costs nothing
+but a moment of memory.
+
+**Input and output are pumped together.** `RunProcessCaptured` polls the
+child's stdin, stdout and stderr in one loop with non-blocking pipe ends. This
+is not tidiness: `poll()` reporting the pipe writable means *one byte* is
+free, so a blocking 64 KB write parks in the kernel until the child drains it
+— and if the child is meanwhile blocked writing output nobody is reading,
+neither side moves again. That deadlock was hit during development, on the
+first page large enough to fill a pipe buffer, which is to say on every real
+page and never on a small test.
+
+And one thing that is **not** an implementation detail: `RunProcessCaptured`
+takes an argument **list**, and executes the program directly — `execvp`, or
+`CreateProcessW` — so no shell ever sees it. The prototype this module
+replaces built a command line by pasting a device path into a string and
+handing it to `popen()`, which runs a shell. There is nothing to escape here
+because nothing parses.
+
+**Windows.** The renderer is built and offered there on the same terms as
+anywhere else, and the RAW transport carries what it produces. What Windows
+does not have is an installer that puts GutenPrint on the machine, so in
+practice the tools have to be shipped beside the application and pointed at
+with `ULTRACANVAS_GUTENPRINT_DRIVER` / `ULTRACANVAS_GUTENPRINT_FILTER`.
+Absent those, `GetAvailableRenderers()` does not list GutenPrint and `Native`
+takes the job.
 
 ### Enumeration double-counting
 
@@ -423,7 +474,7 @@ compiling, tested and wired into CI before the next starts:
 | 1 ✅ | `IODevice`, `IODeviceManager`, device-generic types, tests |
 | 2 ✅ | `PrinterDevice`, renderer/transport seam, option resolver, CUPS backend (Linux + macOS), tests |
 | 3 ✅ | Windows spooler backend: enumeration, capabilities, status, job queue, RAW transport |
-| 4 | GutenPrint renderer — blocked on the licence decision above. With slices 2 and 3 in, this is one class and no other change on any platform. |
+| 4 ✅ | GutenPrint renderer, run as a subprocess — one renderer class, no transport change, on all three platforms |
 | 5 ✅ | `CameraDevice` + V4L2 (Linux) |
 | 6 ✅ | `ScannerDevice` + SANE (Linux) |
 | 7 ✅ | Hot-plug watching + the udev watcher (Linux) |

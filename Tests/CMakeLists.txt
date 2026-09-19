@@ -3245,6 +3245,10 @@ add_executable(IODevicePrinterTest
     # answer into a job. Its submitting half lives in a separate file so this
     # one names no dialog and no registry, and links here without either.
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrintDialog.cpp
+    # Finding GutenPrint's tools and matching a printer to one of its models.
+    # The renderer that uses them rasterises pages and needs the imaging
+    # stack; this half is string work and links here without it.
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterGutenPrintModels.cpp
 )
 target_include_directories(IODevicePrinterTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}
