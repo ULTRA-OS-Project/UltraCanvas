@@ -421,7 +421,8 @@ jobs:
             -DULTRACANVAS_PLUGIN_XAR=ON \
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
-            -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON 2>&1 | tee configure.log
+            -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
         if: runner.os != 'Windows'
@@ -438,6 +439,7 @@ jobs:
             -DULTRACANVAS_BUILD_NET_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
+            -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
