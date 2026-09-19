@@ -16,8 +16,20 @@ namespace UltraCanvas {
         DisplayRole = 0,        // std::string - primary text
         DecorationRole = 1,     // std::string - icon path
         ToolTipRole = 2,        // std::string - tooltip text
+        // The value a column sorts by, when that is not the text it shows.
+        // A cell displaying "1.234,56 EUR" or "17.09.2026" returns the amount
+        // in minor units or the day number here, and
+        // UltraCanvasListSortFilterProxy sorts by that instead of by the
+        // formatting. Returning nothing (the default) falls back to
+        // DisplayRole.
+        SortRole = 3,
         UserRole = 256          // Starting point for user-defined roles
     };
+
+    // Which way a sorted column runs. Defined here rather than beside the
+    // sorting proxy because the view shows the indicator and the proxy does the
+    // ordering, and neither should have to include the other for an enum.
+    enum class ListSortOrder { Ascending, Descending };
 
     // ===== INDEX =====
 

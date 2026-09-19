@@ -18,6 +18,66 @@ using namespace UltraCloud;
 namespace fs = std::filesystem;
 
 namespace {
+// A provider that records what the service asked of it. The three verbs a
+// drive needs are the point: they were added to ICloudProvider for FTP, and
+// CloudService has to resolve the account and hand them on with the path
+// normalised - which is what this checks, without a server or a real backend.
+class RecordingProvider : public ICloudProvider {
+public:
+    struct Call {
+        std::string verb;
+        std::string path;
+        std::string argument;
+        bool isDirectory = false;
+    };
+    std::vector<Call>* log = nullptr;
+
+    std::string Id() const override { return "recorder"; }
+    std::string DisplayName() const override { return "Recording provider"; }
+    ProviderCapabilities Capabilities() const override {
+        ProviderCapabilities c;
+        c.browse = true; c.upload = true; c.modify = true;
+        c.needsServerUrl = false; c.needsOAuth = false;
+        return c;
+    }
+    Result Verify(const Account&, const Credentials&) override { return Result::Ok(); }
+    Result List(const Account&, const Credentials&, const std::string& path,
+                std::vector<Entry>& out) override {
+        out.clear();
+        if (log) log->push_back({"List", path, {}, false});
+        return Result::Ok();
+    }
+    Result MakeDirectory(const Account&, const Credentials&,
+                         const std::string& path) override {
+        if (log) log->push_back({"MakeDirectory", path, {}, true});
+        return Result::Ok();
+    }
+    Result Upload(const Account&, const Credentials&, const std::string&,
+                  const std::string& remotePath) override {
+        if (log) log->push_back({"Upload", remotePath, {}, false});
+        return Result::Ok();
+    }
+    Result Download(const Account&, const Credentials&, const std::string& remotePath,
+                    const std::string&) override {
+        if (log) log->push_back({"Download", remotePath, {}, false});
+        return Result::Ok();
+    }
+    Result Delete(const Account&, const Credentials&, const std::string& path,
+                  bool isDirectory) override {
+        if (log) log->push_back({"Delete", path, {}, isDirectory});
+        return Result::Ok();
+    }
+    Result Rename(const Account&, const Credentials&, const std::string& path,
+                  const std::string& newName) override {
+        if (log) log->push_back({"Rename", path, newName, false});
+        return Result::Ok();
+    }
+    Result CreateShareLink(const Account&, const Credentials&, const std::string&,
+                           const ShareLinkOptions&, ShareLink&) override {
+        return Result::Error(ResultCode::Unsupported, "no links");
+    }
+};
+
 std::string TempDir(const std::string& tag) {
     fs::path p = fs::temp_directory_path() / ("ultracloud-test-" + tag);
     std::error_code ec;
@@ -137,4 +197,75 @@ TEST(memory_provider_round_trip) {
     REQUIRE_EQ(remote, std::string("/Documents/up.bin"));
     REQUIRE(service.List(a.accountId, "/Documents", docs));
     REQUIRE_EQ(docs.size(), (size_t)2);
+}
+
+
+TEST(service_forwards_the_three_change_verbs) {
+    std::vector<RecordingProvider::Call> log;
+    auto provider = std::make_shared<RecordingProvider>();
+    provider->log = &log;
+    RegisterProvider(provider);
+
+    AccountStore accounts;
+    REQUIRE(accounts.Open("uctest-service-changes", ":memory:"));
+    FileSecretStore secrets(TempDir("service-change-secrets"));
+    CloudService service(accounts, secrets);
+
+    Account a; a.providerId = "recorder"; a.username = "erika";
+    Credentials c; c.password = "pw";
+    REQUIRE(service.AddAccount(a, c, /*verify=*/true));
+
+    // A folder and a file delete differ only in the flag the caller passes,
+    // and that flag has to survive the trip: it is what lets the FTP provider
+    // pick RMD over DELE without asking the server what the entry is.
+    REQUIRE(service.Delete(a.accountId, "/Docs/a.txt", false));
+    REQUIRE(service.Delete(a.accountId, "/Docs/Archive", true));
+    REQUIRE(service.Rename(a.accountId, "/Docs/a.txt", "b.txt"));
+    REQUIRE(service.MakeDirectory(a.accountId, "/Docs/New"));
+
+    // Verify() during AddAccount does not reach any of these, so the log holds
+    // exactly the four calls above, in order.
+    REQUIRE_EQ(log.size(), (size_t)4);
+    REQUIRE_EQ(log[0].verb, std::string("Delete"));
+    REQUIRE_EQ(log[0].path, std::string("/Docs/a.txt"));
+    REQUIRE(!log[0].isDirectory);
+    REQUIRE_EQ(log[1].verb, std::string("Delete"));
+    REQUIRE(log[1].isDirectory);
+    REQUIRE_EQ(log[2].verb, std::string("Rename"));
+    REQUIRE_EQ(log[2].path, std::string("/Docs/a.txt"));
+    REQUIRE_EQ(log[2].argument, std::string("b.txt"));
+    REQUIRE_EQ(log[3].verb, std::string("MakeDirectory"));
+    REQUIRE_EQ(log[3].path, std::string("/Docs/New"));
+
+    // The service normalises the path before the provider sees it, so one
+    // folder cannot arrive spelled two ways.
+    log.clear();
+    REQUIRE(service.Delete(a.accountId, "Docs/x/", false));
+    REQUIRE_EQ(log.size(), (size_t)1);
+    REQUIRE_EQ(log[0].path, std::string("/Docs/x"));
+
+    // An account that does not exist is refused before any provider is asked.
+    log.clear();
+    REQUIRE(service.Delete("no-such-account", "/x", false).code == ResultCode::NotFound);
+    REQUIRE(service.Rename("no-such-account", "/x", "y").code == ResultCode::NotFound);
+    REQUIRE(service.MakeDirectory("no-such-account", "/x").code == ResultCode::NotFound);
+    REQUIRE_EQ(log.size(), (size_t)0);
+}
+
+TEST(providers_without_the_change_verbs_answer_unsupported_through_the_service) {
+    // The verbs are optional on ICloudProvider: a provider that did not
+    // implement them must answer Unsupported through the service too, rather
+    // than appearing to have done something.
+    AccountStore accounts;
+    REQUIRE(accounts.Open("uctest-service-unsupported", ":memory:"));
+    FileSecretStore secrets(TempDir("service-unsupported-secrets"));
+    CloudService service(accounts, secrets);
+    RegisterBuiltInProviders();
+
+    Account a; a.providerId = "memory"; a.username = "erika";
+    Credentials c;
+    REQUIRE(service.AddAccount(a, c, /*verify=*/false));
+
+    REQUIRE(service.Delete(a.accountId, "/x", false).code == ResultCode::Unsupported);
+    REQUIRE(service.Rename(a.accountId, "/x", "y").code == ResultCode::Unsupported);
 }

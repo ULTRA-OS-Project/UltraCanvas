@@ -3,8 +3,8 @@
 // framework's plugin registry, so every vector format is reachable through
 // LoadGraphicsFile / SaveGraphicsFile and the FileLoader format inventory.
 //
-// Loading covers the formats with a reader (SVG, XAR, EMF, WMF, DXF and the
-// DWG family - .dwg, .dwt, .dws, .sv$ and a .bak that carries a drawing)
+// Loading covers the formats with a reader (SVG, XAR, EMF, WMF, AI, DXF and
+// the DWG family - .dwg, .dwt, .dws, .sv$ and a .bak that carries a drawing)
 // and produces an UltraCanvasVectorElement holding the parsed
 // VectorDocument - an editable model, unlike the render-only elements of
 // the dedicated XAR/EPS/CDR plugins. Register this plugin alongside those:
@@ -18,8 +18,8 @@
 // "save as" offers.
 // (*) DWG needs GNU LibreDWG's command-line tools - see
 // UltraCanvasCADConverters.h.
-// Version: 1.1.0
-// Last Modified: 2026-09-16
+// Version: 1.2.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -45,9 +45,11 @@ namespace UltraCanvas {
         // the same drawing database as a .dwg, read by the same converter.
         // A .bak is one too when it is a copy of a drawing, but the suffix
         // is not AutoCAD's to claim, so it is recognised from its content
-        // rather than listed here (UltraCanvasCADConverters.h).
+        // rather than listed here (UltraCanvasCADConverters.h). An .ai is
+        // read for its Illustrator private data; one that instead draws
+        // through its PDF page is declined and belongs to the PDF plugin.
         std::vector<std::string> GetSupportedExtensions() const override {
-            return {"svg", "xar", "emf", "wmf", "dxf", "dwg", "dwt", "dws", "sv$"};
+            return {"svg", "xar", "emf", "wmf", "ai", "dxf", "dwg", "dwt", "dws", "sv$"};
         }
         // The full writer matrix.
         std::vector<std::string> GetSaveExtensions() const override {

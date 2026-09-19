@@ -1,0 +1,91 @@
+# UltraFIBU - Kontenrahmen SKR03 (Startbestand)
+#
+# Semikolon-getrennt, UTF-8. Spalten:
+#   nummer;bezeichnung;typ;steuerschluessel;euer_zeile;bwa_position;bilanz_position
+#
+# WICHTIG: Dies ist ein *Startbestand* der gaengigsten SKR03-Konten, damit eine
+# neue Buchhaltung sofort arbeitsfaehig ist - nicht der vollstaendige
+# Kontenrahmen. Die Nummern und Bezeichnungen sind aus oeffentlich
+# veroeffentlichten SKR03-Listen zusammengestellt und muessen gegen den
+# Kontenrahmen der eigenen Kanzlei geprueft werden; der Kanzlei-Export
+# (DATEV-Format-Kategorie 20, Sachkontenbeschriftungen) ueberschreibt diese
+# Datei und ist immer die verbindliche Quelle.
+#
+# Leere Felder bei euer_zeile / bwa_position / bilanz_position bedeuten
+# "noch nicht zugeordnet" - absichtlich leer statt geraten, weil eine falsche
+# Zuordnung in einem Bericht schlimmer ist als eine fehlende.
+nummer;bezeichnung;typ;steuerschluessel;euer_zeile;bwa_position;bilanz_position
+0027;EDV-Software;aktiv;;;;Immaterielle Vermoegensgegenstaende
+0400;Betriebsausstattung;aktiv;;;;Sachanlagen
+0410;Geschaeftsausstattung;aktiv;;;;Sachanlagen
+0420;Bueroeinrichtung;aktiv;;;;Sachanlagen
+0480;Geringwertige Wirtschaftsgueter;aktiv;;;;Sachanlagen
+0490;Sonstige Betriebsausstattung;aktiv;;;;Sachanlagen
+1000;Kasse;aktiv;;;;Kassenbestand
+1200;Bank;aktiv;;;;Bankguthaben
+1210;Bank 2;aktiv;;;;Bankguthaben
+1360;Geldtransit;aktiv;;;;Sonstige Vermoegensgegenstaende
+1400;Forderungen aus Lieferungen und Leistungen;debitor;;;;Forderungen
+1460;Forderungen gegen Gesellschafter;aktiv;;;;Forderungen
+1570;Abziehbare Vorsteuer;aktiv;;;;Sonstige Vermoegensgegenstaende
+1571;Abziehbare Vorsteuer 7 %;aktiv;VSt7;;;Sonstige Vermoegensgegenstaende
+1576;Abziehbare Vorsteuer 19 %;aktiv;VSt19;;;Sonstige Vermoegensgegenstaende
+1577;Abziehbare Vorsteuer aus innergemeinschaftlichem Erwerb;aktiv;;;;Sonstige Vermoegensgegenstaende
+1578;Abziehbare Vorsteuer nach § 13b UStG;aktiv;;;;Sonstige Vermoegensgegenstaende
+1600;Verbindlichkeiten aus Lieferungen und Leistungen;kreditor;;;;Verbindlichkeiten
+1700;Sonstige Verbindlichkeiten;passiv;;;;Verbindlichkeiten
+1771;Umsatzsteuer 7 %;passiv;USt7;;;Sonstige Verbindlichkeiten
+1776;Umsatzsteuer 19 %;passiv;USt19;;;Sonstige Verbindlichkeiten
+1780;Umsatzsteuer-Vorauszahlungen;passiv;;;;Sonstige Verbindlichkeiten
+1787;Umsatzsteuer nach § 13b UStG;passiv;;;;Sonstige Verbindlichkeiten
+1789;Umsatzsteuer aus innergemeinschaftlichem Erwerb;passiv;;;;Sonstige Verbindlichkeiten
+1790;Umsatzsteuer-Verbindlichkeiten;passiv;;;;Sonstige Verbindlichkeiten
+1800;Privatentnahmen allgemein;eigenkapital;;;;Eigenkapital
+1890;Privateinlagen;eigenkapital;;;;Eigenkapital
+2100;Zinsen und aehnliche Aufwendungen;aufwand;;;Zinsaufwand;
+2110;Zinsaufwendungen fuer kurzfristige Verbindlichkeiten;aufwand;;;Zinsaufwand;
+2650;Sonstige Zinsen und aehnliche Ertraege;ertrag;;;Zinsertrag;
+4100;Loehne und Gehaelter;aufwand;;;Personalkosten;
+4120;Gehaelter;aufwand;;;Personalkosten;
+4130;Gesetzliche soziale Aufwendungen;aufwand;;;Personalkosten;
+4200;Raumkosten;aufwand;;;Raumkosten;
+4210;Miete;aufwand;;;Raumkosten;
+4240;Gas, Strom, Wasser;aufwand;;;Raumkosten;
+4250;Reinigung;aufwand;;;Raumkosten;
+4360;Versicherungen;aufwand;;;Versicherungen/Beitraege;
+4380;Beitraege;aufwand;;;Versicherungen/Beitraege;
+4500;Fahrzeugkosten;aufwand;;;Fahrzeugkosten;
+4530;Laufende Kfz-Betriebskosten;aufwand;;;Fahrzeugkosten;
+4600;Werbe- und Reisekosten;aufwand;;;Werbe-/Reisekosten;
+4610;Werbekosten;aufwand;;;Werbe-/Reisekosten;
+4650;Bewirtungskosten;aufwand;;;Werbe-/Reisekosten;
+4660;Reisekosten Arbeitnehmer;aufwand;;;Werbe-/Reisekosten;
+4800;Reparaturen und Instandhaltung;aufwand;;;Reparatur/Instandhaltung;
+4830;Abschreibungen auf Sachanlagen;aufwand;;;Abschreibungen;
+4855;Sofortabschreibung geringwertiger Wirtschaftsgueter;aufwand;;;Abschreibungen;
+4900;Sonstige betriebliche Aufwendungen;aufwand;;;Sonstige Kosten;
+4910;Porto;aufwand;;;Sonstige Kosten;
+4920;Telefon;aufwand;;;Sonstige Kosten;
+4930;Buerobedarf;aufwand;;;Sonstige Kosten;
+4940;Zeitschriften, Buecher;aufwand;;;Sonstige Kosten;
+4945;Fortbildungskosten;aufwand;;;Sonstige Kosten;
+4950;Rechts- und Beratungskosten;aufwand;;;Sonstige Kosten;
+4957;Abschluss- und Pruefungskosten;aufwand;;;Sonstige Kosten;
+4960;Mieten fuer Einrichtungen;aufwand;;;Sonstige Kosten;
+4970;Nebenkosten des Geldverkehrs;aufwand;;;Sonstige Kosten;
+4980;Sonstiger Betriebsbedarf;aufwand;;;Sonstige Kosten;
+4985;Werkzeuge und Kleingeraete;aufwand;;;Sonstige Kosten;
+8100;Steuerfreie Umsaetze ohne Vorsteuerabzug;ertrag;;;Umsatzerloese;
+8120;Steuerfreie Umsaetze mit Vorsteuerabzug (Ausfuhrlieferungen);ertrag;Ausfuhr;;Umsatzerloese;
+8125;Steuerfreie innergemeinschaftliche Lieferungen;ertrag;IGL;;Umsatzerloese;
+8300;Erloese 7 % USt;ertrag;USt7;;Umsatzerloese;
+8336;Erloese aus im anderen EU-Land steuerpflichtigen Lieferungen;ertrag;OSS;;Umsatzerloese;
+8338;Erloese aus im anderen EU-Land steuerpflichtigen sonstigen Leistungen;ertrag;OSS;;Umsatzerloese;
+8400;Erloese 19 % USt;ertrag;USt19;;Umsatzerloese;
+8500;Provisionserloese;ertrag;USt19;;Umsatzerloese;
+8700;Erloesschmaelerungen;ertrag;USt19;;Umsatzerloese;
+8730;Gewaehrte Skonti;ertrag;USt19;;Umsatzerloese;
+8920;Unentgeltliche Wertabgaben;ertrag;USt19;;Umsatzerloese;
+9000;Saldenvortraege Sachkonten;statistisch;;;;
+9008;Saldenvortraege Debitoren;statistisch;;;;
+9009;Saldenvortraege Kreditoren;statistisch;;;;

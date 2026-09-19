@@ -294,9 +294,13 @@ private:
     // probe: that probe reads the local filesystem, which has nothing to say
     // about a path on a server.
     void AddTreeRemoteDriveNode(const RemoteDrive& drive);
-    // Gives one filer widget the two hooks that let it show a remote folder
-    // (UltraCanvasFilerWidget::isRemotePath / remoteListing).
-    void WireRemoteListing(UltraCanvasFilerWidget* widget);
+    // Gives one filer widget the hooks that let it show a remote folder and
+    // change what is on it (UltraCanvasFilerWidget::isRemotePath,
+    // remoteListing, remoteDelete, remoteRename, remoteMakeDirectory).
+    void WireRemoteDriveHooks(UltraCanvasFilerWidget* widget);
+    // Refreshes whatever display is showing `folderPath`. Used both when a
+    // queued listing arrives and after a change to the drive.
+    void RefreshRemoteFolderDisplays(const std::string& folderPath);
     // Takes one drive row out of the tree and out of the bookkeeping that
     // would otherwise keep it from ever being scanned again.
     void DropDriveNode(const std::string& path);
@@ -826,6 +830,11 @@ private:
     // Node ids (the drives' root paths) of the "Remote Drives" rows, so the
     // section can be rebuilt without walking the whole tree.
     std::vector<std::string> treeRemoteDriveNodeIds;
+    // The last failure reported for a drive operation. Deleting five entries
+    // queues five operations, and five identical "permission denied" dialogs
+    // in a row tell the user nothing the first one did not - so a repeat of
+    // the same message is swallowed. Cleared by any success.
+    std::string lastRemoteOperationError;
     // The volume sizes the Computer page shows (QueueVolumeSpaceQuery):
     // the last answer per mount point, so a re-opened page shows the sizes
     // it already knows while the fresh ones are read; the worker reading

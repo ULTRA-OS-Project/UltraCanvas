@@ -1,3 +1,463 @@
+#### 2026-09-19 *0.8.97*
+- **`UltraCanvasListView` shows which column its rows are sorted by.**
+  `SetSortIndicator(column, ascending)` draws a small triangle in that column's
+  header cell - apex up for ascending, apex down for descending - and
+  `ClearSortIndicator()` / `GetSortColumn()` / `GetSortAscending()` complete
+  the API. The triangle is geometry (`FillLinePath`) in `headerTextColor`, not
+  a text glyph, so it follows the header theme and stays crisp at any DPI
+  instead of depending on the header font carrying U+25B2/U+25BC;
+  `ListViewStyle::sortIndicatorSize` sets its width. It sits after the title in
+  a left- or centre-aligned column and before it in a right-aligned one, and the
+  title's rect shrinks by the same strip so the two never overlap. The view only
+  shows the order; the rows are sorted by whoever owns the model.
+- **`UltraCanvasListView::onHeaderClicked(column)`** fires on a press and
+  release in the same header cell, so a table can sort on header click - the
+  usual handler re-orders the model and calls `SetSortIndicator`. A press on a
+  column's resize border still starts a drag and never reads as a click, and a
+  press on the header no longer reaches the row handler as a click on "no
+  row", which used to clear the selection. DemoApp's multi-column list sorts
+  this way now.
+- **This replaces the view-side sorting API 0.8.96 added**, which had no caller
+  anywhere in the tree: `SetSortingEnabled`, `onSortRequested`, `SetSortProxy`
+  and the `ListSortOrder`-based `SetSortIndicator` are gone, and this entry's
+  API takes their place. 0.8.96 also gated its header-click handling on
+  sorting being enabled, so a header press still cleared the selection with
+  sorting off; `onHeaderClicked` handles the press before row hit-testing and
+  fixes that unconditionally.
+
+  **`UltraCanvasListSortFilterProxy` is untouched** - it never referenced the
+  view, and its 78 checks still pass. It is now driven from `onHeaderClicked`
+  at the call site instead of by the view itself, which is the wiring its
+  header documents:
+
+  ```cpp
+  listView->onHeaderClicked = [listView, proxy](int column) {
+      const bool ascending =
+          !(column == listView->GetSortColumn() && listView->GetSortAscending());
+      proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+                                            : ListSortOrder::Descending);
+      listView->SetSortIndicator(column, ascending);
+  };
+  ```
+
+#### 2026-09-19 *0.8.96*
+- **Sorting and filtering for every list in the framework, and a correction.**
+  `UltraCanvasListSortFilterProxy` (`include/UltraCanvasListSortFilterProxy.h`,
+  `core/UltraCanvasListSortFilterProxy.cpp`) is an `IListModel` that wraps
+  another one and presents the same columns with the rows re-ordered and thinned
+  out, so a view is handed the proxy instead of the model and needs no idea that
+  either is happening. Every existing `UltraCanvasListView` caller gains both
+  without changing a line. `Docs/UltraCanvas/UltraCanvasListSortFilterProxy.md`,
+  `Tests/ListSortFilterProxyTests.cpp` (target `ListSortFilterProxyTests`, 78
+  checks).
+  - **The correction first.** 0.8.94 and 0.8.95 below said `UltraCanvasListView` "has
+    no column API at all" and asked for a new data grid to be built. That was
+    wrong, and wrong in the most avoidable way: it came from grepping the
+    view's header for `AddColumn`/`SetColumns` instead of reading the model
+    beside it. ListView *is* the multi-column, virtualised, model-driven table -
+    `IListModel`, `ListColumnDef`, `UltraCanvasMultiColumnListModel`, painting
+    delegates, selection models, a header band, per-cell tooltips, variable row
+    heights, cell-level callbacks and row culling were all already there. What
+    was missing was sorting and filtering, which is what this release adds
+    instead of a second grid. `UltraCanvasTableView`, which the catalogue named,
+    still does not exist; that row now points at the view that does the job.
+  - **Stable sorting**, so equal rows keep their source order and sorting by one
+    column then another is predictable. Per-column kinds - `Auto`, `Text`,
+    `TextCaseSensitive`, `Number`, `Natural` (`Beleg 2` before `Beleg 10`) - or
+    a comparator of your own, which receives source rows.
+  - **`ListDataRole::SortRole`**: a column showing `1.234,56 EUR` or
+    `17.09.2026` returns the amount or the day number here and sorts by that
+    instead of by its formatting. Absent, the proxy falls back to the displayed
+    text.
+  - **Numbers are read without the C locale**, both conventions alike
+    (`1234.56`, `1.234,56`, `-37,28 EUR`, `(1.234,56)`), and deliberately
+    strictly: a letter anywhere means "not a number". The first version skipped
+    `E`, `U` and `R` so `EUR 89,00` would parse - which made `R-202607010` read
+    as **-202607010** and silently reversed a whole column of document numbers.
+    The tests caught it, and now cover it.
+  - **Filtering** by case-insensitive text, over chosen columns or all of them,
+    plus an arbitrary predicate; a row must pass both.
+  - **Row mapping is explicit**, because a proxy row is not a source row:
+    `MapToSource` / `MapFromSource`, and a selection reported by a view is in
+    proxy rows. Forgetting that is how a sorted table deletes the wrong record,
+    so the header, the doc and the tests all say it.
+  - **Attaching never disconnects anything**: the proxy chains the source's
+    existing change handlers rather than replacing them, and restores them when
+    it is destroyed, so a model that outlives its proxy cannot call into freed
+    memory.
+- **`UltraCanvasListView` shows which column is sorted and reports header
+  clicks** - `SetSortingEnabled`, `SetSortIndicator`, `onSortRequested`, and
+  `SetSortProxy` for the common case. The view never sorts anything itself, so a
+  model that is already ordered by a database query keeps working unchanged.
+  Clicking a header sorts ascending, clicking the sorted one turns it round, and
+  the indicator triangle is drawn as geometry (`FillLinePath`) so it stays crisp
+  at any DPI and follows the header's text colour. A header click no longer
+  clears the selection - losing what you had selected because you sorted the
+  table is not what anybody asks for - and the keyboard focus row is dropped on
+  a sort rather than left pointing at whatever record landed on that index.
+
+#### 2026-09-19 *0.8.95*
+- **`UltraCanvasMoney`: an amount that is still right after the arithmetic.**
+  `int64_t` minor units plus an ISO 4217 code, header-only
+  (`include/UltraCanvasMoney.h`), free of every other UltraCanvas header - so a
+  headless engine, a test target and the UI all use one definition. The
+  framework's only currency type until now was `CurrencyValue`, a `double` in
+  the spreadsheet types; it stays what it is, a cell value, and nothing that
+  keeps a balance should use it. `Docs/UltraCanvas/UltraCanvasMoney.md`,
+  `Tests/MoneyTests.cpp` (target `MoneyTests`, 118 checks).
+  - **Rates are applied exactly.** Every multiply and divide goes through
+    `MoneyMulDiv`, which forms the full 128-bit product in 32-bit limbs and
+    divides it bitwise with *kaufmaennische Rundung* - half away from zero, so
+    2,5 becomes 3 and -2,5 becomes -3, which is the rounding German tax
+    arithmetic does. No `__int128`, no intrinsic, identical on every platform,
+    and overflow is reported rather than wrapped. The carry out of bit 63 is
+    handled explicitly, because the shift-and-subtract loop that ignores it is
+    wrong for divisors above 2^63 and right for every divisor anyone tests
+    with.
+  - **The VAT identities hold by construction.** `TaxOnNet`, `GrossFromNet`,
+    `TaxInGross` and `NetFromGross` take the rate in permille (190 is 19 %, 25
+    is 2,5 %), and `NetFromGross` is defined as the gross minus the contained
+    tax rather than as its own division - which is what keeps
+    `net + tax == gross` true whatever the rounding did. The tests assert both
+    identities across a matrix of rates and amounts, down to one cent at 19 %.
+  - **A split sums to the whole.** `SplitProportionally` distributes by largest
+    remainder, so 100,00 over three positions is 33,34 / 33,33 / 33,33 and a
+    discount spread over invoice lines cannot lose a cent. Negative amounts
+    (credit notes) split with the sign; degenerate input returns nothing rather
+    than something wrong.
+  - **Three text styles, no locale.** German `1.234,56` for the UI, plain
+    `1234.56` for dot-decimal file formats, and `1234,56` for DATEV's
+    comma-decimal CSV columns - chosen by the destination, never inherited from
+    the process. Digits are assembled from the integer, so `LC_NUMERIC` cannot
+    reach them: this is the one numeric type in the tree that cannot acquire
+    the decimal-separator bug the Linux backend's `setlocale(LC_ALL, "")` has
+    already caused twice. Parsing accepts what people and files actually write
+    (grouping, parentheses for negative, a trailing symbol, finer decimals
+    rounded half away from zero), and the two machine styles are deliberately
+    strict - a misplaced grouping separator fails the parse, because an
+    importer that misreads an amount does more damage than one that rejects a
+    line.
+  - Invalidity replaces exceptions and is sticky: a currency mismatch, a failed
+    parse or an overflow yields an invalid amount that propagates through the
+    arithmetic and formats as an empty string, never as `0,00`. One check at
+    the end of a calculation is enough, and a mismatch can never print as a
+    plausible wrong number.
+- **The UI element catalogue no longer names an element that does not exist.**
+  `Docs/UltraCanvas/UltraCanvasUIElements.md` listed `UltraCanvasTableView`
+  with "matching `*.h`"; there is no such header anywhere in the tree. The row
+  now points at the elements that do the job. (It first pointed at
+  `UltraCanvasColumnsTreeView` on the strength of the mistaken reading
+  corrected in 0.8.96; `UltraCanvasListView` is the multi-column table, and the
+  row says so now.)
+
+#### 2026-09-19 *0.8.94*
+- **New design proposal: UltraFIBU, a German double-entry accounting
+  application** (`Docs/Research/UltraFIBUDesignProposal.md`). DATEV import and
+  export, UStVA/ZM submission to ELSTER, One-Stop-Shop reporting, a
+  *Geschaeftsjahr* whose start date is free (1 April is an ordinary row, not a
+  special case), customer and supplier master data with European VAT numbers,
+  a German UI, and two deployment modes - a local SQLite database and a shared
+  server database several users work on. The investigation checks every
+  requirement against the tree rather than against expectation, and the
+  answers are the interesting part: the CSV layer already speaks the DATEV
+  dialect (CP1252, semicolons, quoted fields), `UCZipPackageWriter` gives the
+  containers DATEV XML, ZUGFeRD and the GoBD Z3 medium need, UltraVault holds
+  the ELSTER PIN and UltraCrypt the journal's hash chain - while four things
+  are missing and each is worth having for its own sake.
+  - **`UltraCanvasTableView` does not exist.** The UI catalogue names it and
+    there is no such header, so the row sends readers after a file that was
+    never written. (The same bullet originally went on to say that
+    `UltraCanvasListView` "has no column API at all" and to ask for a new data
+    grid. That was wrong - see 0.8.96, which corrects it: ListView *is* the
+    multi-column model-driven table, and what it lacked was sorting and
+    filtering, not columns.)
+  - **There is an XML parser and nobody owns it.** Six of this application's
+    formats are XML (XRechnung UBL and CII, ZUGFeRD, the ELSTER data types,
+    CAMT.053, the GoBD `index.xml`). tinyxml2 is already a core dependency -
+    COLLADA, the mind-map IO and `UltraCanvasPropertyList` all use it - but
+    there is no facade over it, so every caller parses its own way and
+    `VersioningInvestigation.md` already records one file being parsed twice
+    into two models. `UltraCanvasXML` wraps what is there, the way
+    `UltraCanvasJSON` wraps yyjson; no new dependency.
+  - **There is no money type.** The one currency value in the tree is a
+    `double` in the spreadsheet types, which a ledger may not use; exact
+    integer minor units with explicit *kaufmaennische Rundung* and allocation
+    helpers belongs in the framework. With it, a German number input - and
+    the note that DATEV CSV is comma-decimal, the exact inverse of the
+    dot-decimal file-format rule the framework has already been bitten by
+    twice.
+  - **Multi-user has one answer and it is a driver.** `core/UltraDatabase/`
+    holds the SQLite driver alone and there is no `Plugins/UltraDatabase/`, so
+    server mode waits on the `libpq` driver the module's own Stage 2 plan
+    promises. A shared SQLite file on a network share or a synced folder is
+    not a deployment mode - it is silent loss of a book that must by law be
+    complete.
+  The rest is regulatory reality, sourced and dated: UStVA goes through ERiC,
+  which cannot be vendored here, needs a manufacturer registration and is
+  re-released twice a year - so an interface, a dynamically loaded backend
+  that soft-fails, and an always-available path that writes the XML for manual
+  upload. OSS has no published machine interface at all, only a CSV transport
+  file uploaded by hand, so the design computes and hands over. The BZSt's
+  VAT-number XML-RPC endpoint went obsolete on 30 November 2025 and is now a
+  REST API. A *Geschaeftsjahr* starting 1 April and a UStVA period that is
+  always a calendar month are two calendars over one journal, which is a
+  schema decision and cheap only while it is early.
+  Three scope decisions taken with the owner are recorded in §1.1 and carried
+  through the plan: the *Jahresabschluss* stays in-house (so *Bilanz*/GuV and
+  E-Bilanz become a named later phase, and every account carries a
+  balance-sheet classification from the first chart import), shared-server mode
+  is wanted from day one (so the libpq driver runs beside the first application
+  phase, and users, roles and attribution ship with the very first schema), and
+  SKR03 with *Soll-Versteuerung* are the defaults - each still a per-client
+  setting, because the hard-coded one is the one that cannot be given to a
+  second company. Documentation only; no code.
+
+#### 2026-09-19 *0.8.93*
+- **A remote drive can be changed, not only read.** `UltraCanvasFilerWidget`
+  gained three more host hooks beside `remoteListing` - **`remoteDelete`**,
+  **`remoteRename`** and **`remoteMakeDirectory`** - so the folder display can
+  delete an entry, rename one in place and create a folder on a drive the host
+  carries for an FTP server or a cloud account.
+
+  They differ from the listing hook in what they promise: they answer that the
+  request was *accepted*, not that it finished. The host queues the work and
+  refreshes the display when the server has replied, because a delete over a
+  slow link would otherwise hold the UI thread exactly as a blocking listing
+  would. Each entry handed to `remoteDelete` carries its own `isDirectory`,
+  which is what lets a backend pick FTP's `DELE` over `RMD` without a probe per
+  entry, and `remoteRename` takes a bare name - a rename in place, never a
+  move.
+
+  A remote new folder cannot go straight into rename mode the way a local one
+  does: it does not exist until the server has answered and the refresh has
+  landed. The widget names it from the listing on screen instead, and renaming
+  it afterwards now works.
+
+  The commands with no hook - duplicate, paste, new file - still refuse on a
+  remote folder rather than reaching `std::filesystem` with a path that
+  resolves to nothing. Copying between the local disk and a drive is a
+  transfer with progress, conflicts and a cancel, so it belongs with the paste
+  machinery rather than in a hook of this shape.
+- **`CloudService` forwards the change verbs.** `Delete`, `Rename` and
+  `MakeDirectory` were added to `ICloudProvider` in 0.8.80 for the FTP
+  provider, but the app-facing facade had no way to reach them - so an
+  application could hold an account and still not delete a file on it. All
+  three now resolve the account and its credentials and hand the call on with
+  the path normalised, exactly as `List` does. A provider that never
+  implemented them still answers `Unsupported`, and the suite checks both
+  halves of that.
+
+#### 2026-09-19 *0.8.91*
+- **Illustrator artwork rendered as a blank page.** "Since Illustrator 9 a
+  `.ai` file is a PDF" is only half true, and the demo app's AI Artwork page
+  acted on the wrong half: it handed `.ai` straight to the MuPDF viewer.
+  Illustrator's *Create PDF Compatible File* option decides whether the PDF
+  page carries the artwork at all - with it off (and it is off in what
+  CorelDRAW and several other exporters write) the file is a valid PDF whose
+  page content stream draws nothing, and every path lives in the private
+  `/AIPrivateData` streams instead. Both samples in `media/vector/AI` are of
+  that kind: their page content is 47 bytes that set a transform and a
+  graphics state. A PDF engine renders exactly that, so the page was blank -
+  correctly, and unhelpfully. The online `.ai` viewers this was checked
+  against fail the same way.
+- **New: `UltraCanvas/Plugins/Vector/UltraCanvasAIReader.cpp`** - the import
+  side of `VectorConverter::AIConverter`, which stops being export-only.
+  It finds the `/AIPrivateData` streams in the PDF container, undoes their
+  filter chain (ASCIIHex / ASCII85 / Flate) and interprets Illustrator's art
+  language into a `VectorStorage::VectorDocument`: path construction
+  (`m`, `l`, `c`, `v`, `y`) with closepath on the lowercase paint operators,
+  clipping (`W`), compound paths (`*u`/`*U`) so filled shapes keep their
+  holes, groups, named layers, the graphics state (width, cap, join, miter,
+  dashes, winding rule), every colour operator (grey, CMYK, RGB, spot, and
+  patterns as flat colour) and the AI9 transparency operator `Xy`. Gradients
+  and text are counted and reported through `WarningCallback` rather than
+  dropped silently, as is every operator the parser does not know, so a file
+  that displays wrong says what it needed.
+- Legacy (v8 and earlier) EPS-based `.ai` files carry the same art language
+  in the open and read through the same parser with no container step. The
+  two coordinate spaces - Illustrator's ruler space, origin top-left with y
+  down as negative numbers, and PostScript's bottom-left origin with y up -
+  both map onto the document's y-down page, chosen from the art's own extent.
+- **The demo page now names the route it took.** It reads through the Vector
+  plugin and shows the drawing in an `UltraCanvasVectorElement` (drag to pan,
+  wheel to zoom); a `.ai` that really does draw through its PDF page carries
+  no private data, `AIConverter::Import()` declines it with a warning that
+  says so, and the MuPDF view takes over. That is the file `AIConverter`
+  itself writes, so the fallback is the round trip of the plugin's own
+  output. The page is built wherever the Vector plugin is, rather than only
+  where the PDF plugin is.
+- **`.ai` joins the Vector plugin's readable extensions**, so the reader is
+  not the demo page's alone: `UltraCanvasVectorFormatsPlugin` advertises it,
+  and the vector preview seam it registers means UltraFiler tiles and the
+  media viewer now draw such a file *from the drawing* instead of falling
+  back to whatever bitmap it carries. A PDF-compatible `.ai` is declined as
+  before and keeps its existing route.
+- **`UltraCanvasVectorElement` zoomed by doing nothing, and Fit threw the
+  drawing off the page.** Found while building the page above, and it
+  affected every user of the element (the DWG / DXF page's zoom buttons
+  included). The element owns a view transform - `zoomLevel` and
+  `panOffset` - but then handed `VectorRenderer` a viewport of
+  `finalBounds / zoomLevel`, and the renderer fits and centres the ViewBox
+  into whatever viewport it is given. Expressed in document units that way,
+  the renderer's scale cancelled `zoomLevel` exactly, so zooming changed
+  nothing at all; and its centring landed on top of the centring already in
+  `panOffset`, so the first `ZoomToFit()` that ran with a real box threw the
+  drawing half a viewport to the right. The renderer now gets no viewport
+  and the element's transform is the only one; `ScreenToDocument()`,
+  hit-testing and wheel-zoom anchoring already assumed exactly that, so they
+  become correct too. Culling goes with the viewport, which costs only time -
+  `Render()` already clips to the element's bounds.
+- **A document set before the layout ran was fitted to a zero-sized box.**
+  `SetDocument()` fits immediately, but a page builds its widgets before it
+  has been laid out, so `finalBounds` was still empty and the fit settled on
+  `MinZoom`. The renderer's own fit hid this; with that gone the fit is
+  remembered and redone on the first frame that has a real box.
+- **New: `Tests/AIReaderTest.cpp`** - the two shipped samples must import as
+  real geometry, upright and on the page their header declares (868 and 72
+  stroked paths, beziers intact), which is the check that would have caught
+  this; plus the art language on a synthetic legacy file, and the
+  PDF-compatible case that must be declined rather than imported empty.
+#### 2026-09-19 *0.8.90*
+- **Every 3D model in the demo was drawn standing on its nose.** The viewers'
+  cameras put +Y on screen, but nothing told them which axis a mesh called up,
+  and the formats disagree: STL, STEP, DXF and most CAD are Z-up, glTF and FBX
+  are Y-up. A Z-up mesh handed over unrotated has its length running up the
+  screen, which is why the demo's aeroplanes pointed at the floor.
+  - `Mesh3D` now carries `upAxis` (`MeshUpAxis::YUp` / `ZUp`), and each
+    producer states what it read: `UltraCanvasSTLLoader` sets `ZUp`, the
+    format's universal convention, and `ModelDocumentToMesh3D` takes it from
+    `document.Up`. `Mesh3DToModelDocument` writes it back, so the round trip
+    keeps orientation as well as geometry; a `Mesh3D` built in code keeps the
+    `YUp` default and is unaffected.
+  - `UltraCanvasSTLElement` and `UltraCanvasModelRaster` both rotate a `ZUp`
+    mesh by -90 degrees about X before posing it — the same sense and sign as
+    `ModelDocument::ConvertUpAxis`, and the same in both, so the software still
+    remains the view that was on screen. Only the view rotates: vertex data,
+    bounds and the extents a page reports stay in the file's own frame, so the
+    Model Formats panels still report "Z-up" for a file that says so.
+  - This reached every caller, not just the demo: the media viewer opens `.stl`
+    and the other model formats through the same element, and the Filer's
+    thumbnails go through the same raster.
+- **The 3D Graphics tree listed one "3D Model Formats" page for seven readers.**
+  A visitor asking whether FBX is supported had to open a page and click
+  through a carousel to find out. Each format is now its own entry beside STL
+  — STEP, MilkShape, FBX, Alembic, COLLADA, 3D Studio and DirectX .x —
+  and `CreateModelFormatsExamples(extension)` filters the same page to that
+  reader. A single-sample format shows no Prev/Next buttons rather than two
+  that do nothing.
+- **Four of the aircraft samples were incomplete exports, which read as an
+  importer dropping geometry and was not.** Both meshes in
+  `media/3D/Blend/E-45-Aircraft.blend` carry a Mirror modifier about X=0, and
+  the .dae, .x and binary .fbx had been exported without applying modifiers, so
+  the files held half an aeroplane; the .ms3d held only the glass canopy and no
+  hull at all. Parsing each file directly settles which side the defect was on:
+  OBJ, PLY, 3DS, X3D, VRML, DXF and the *ASCII* FBX all span X −0.973…+0.973,
+  while those four stopped at 0.000 — two exports of the same model from the
+  same scene disagreeing is not something a reader can cause.
+  - Regenerated from that .blend with the modifier applied: the .fbx by
+    Blender's own exporter, the .dae and .x by mirroring each file's geometry
+    in place so the exporter's scene graph, materials and templates survive,
+    and the .ms3d written afresh with both meshes as two groups. All four now
+    span the full 1.946 and match the formats that were already complete.
+  - The .dae needed a second fix: its two mesh nodes hang off the armature's
+    JOINT chain with no skinning controller, so the joint rest transforms were
+    applied on top of placements that already included them — the hull landed
+    3.5 m out and the canopy 5 m behind it, detached. Recomputing both local
+    transforms against the .blend's world matrices brings the document extent
+    to 1.95 × 6.17 × 4.21, the same aeroplane the other formats describe.
+  - The exports as they came out of Blender are kept in `Tests/data/3D/`,
+    because their defects are what four test suites pin. `ModelColladaTest`,
+    `ModelXFileTest`, `ModelMS3DTest` and `ModelFbxTest` assert the half hull
+    and the canopy-only MilkShape deliberately — "a property of the file rather
+    than of the reader … asserting it stops a later change *fixing* the reader
+    to match the others" — and cross-check the files against each other: the
+    MilkShape canopy is "exactly twice the Alembic canopy's 744 faces", and the
+    two FBX exports are one scene "on opposite sides of the mirror-modifier
+    split". Completing the media copies in place would have deleted that net,
+    and the re-exported .fbx carries neither the stacked DiffuseColor textures
+    nor the transparent canopy material the original pins. So `media/3D/` now
+    holds the demo's showcase assets and `Tests/data/3D/` the fixtures, with
+    the four tests pointed at the latter and `Tests/data/3D/README.md` saying
+    which is which.
+  - Still outstanding: `media/3D/Alembic/E-45-Aircraft.abc` is a narrower mesh
+    than its siblings (3297 faces against 3990, X span 1.53 against 1.95).
+    Nothing here writes Alembic — not the framework, whose writers cover 3DS,
+    OBJ, PLY, STEP, COLLADA and X3D, nor Debian's Blender, which ships without
+    the Alembic and COLLADA exporters — so that one is left as found.
+- **The DWG and DXF samples are now filed by what they hold rather than by
+  format.** CAD covers both, so the folders held a mix: `media/vector/DXF`
+  carried `E-45-Aircraft.dxf`'s sibling drawings while the 3D DXF sat in
+  `media/3D`, and nothing said which was which. Counting entities settles each
+  one — the Millennium Falcon is 1015 LWPOLYLINEs and 507 LINEs, the figure
+  study 74 NURBS SPLINEs, the Audi and the hostel plans 2D blocks and hatches,
+  every Z at zero; `E-45-Aircraft.dxf` is 8110 3DFACEs and `bagno_3d_1.dwg`
+  polyface meshes.
+  - The four flat drawings live in `media/vector/{DWG,DXF}` and stay on the
+    "DWG / DXF Drawings" page under Vector Graphics. The two that carry
+    geometry live in `media/3D/{DWG,DXF}`.
+  - New **"DXF 3D Models"** entry under 3D Graphics reads the E-45 DXF through
+    the Models plugin as a mesh — 16220 triangles, extent 1.95 × 6.14 × 4.19,
+    the same aeroplane 3DS describes. A DXF of only 2D entities is refused
+    there with an explanation, which `ModelDXFTest` asserts.
+  - The 3D DWG is still drawn on the drawings page, projected to plan view,
+    because that is what a CAD reader does with polyface meshes — the page now
+    names the file's root per tile rather than assuming one folder.
+
+#### 2026-09-19 *0.8.88*
+- **CI builds and runs the UltraCloud test suite.** It has existed since the
+  module did, and no continuous build had ever compiled it: the option that
+  brings it in (`ULTRACANVAS_BUILD_ULTRACLOUD_TESTS`) defaults to OFF and
+  nothing turned it on, so sixty tests over eleven files - the account store on
+  UltraDatabase, both secret stores, and every provider from WebDAV to the FTP
+  one added in 0.8.80 - were only ever run by hand. A suite nothing runs is a
+  suite that rots: the green tick on a pull request said the module *compiled*,
+  never that it still worked.
+
+  Both configure steps now pass `-DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON`, next
+  to the UltraNet and EmailCleaner suites that were already asked for, so the
+  binary is built on every platform and ctest runs it on Linux with the rest.
+
+  Nothing about the tests themselves changed, and nothing needed to: the whole
+  suite passes as it stands. They are headless by construction - every provider
+  is driven through an injected fake rather than a server - so turning them on
+  adds no network dependency to the build and no flakiness to it either.
+#### 2026-09-19 *0.8.87*
+- **The Linux CI legs build with a compiler that implements the standard the
+  tree is written in.** UltraCanvas is built as C++20 and uses P1091 - capturing
+  a structured binding in a lambda - which Clang implements from 16. Ubuntu
+  22.04 has nothing new enough: its archives stop at `clang-14` and the runner
+  image preinstalls 13, so `apt-get install clang` produced a compiler that
+  rejects the tree. It rejected it, moreover, with
+
+  ```
+  error: 'path' in capture list does not name a variable
+  ```
+
+  which points at the lambda and never mentions the compiler, so each instance
+  read as a bug in the code rather than as one missing language feature. Three
+  of them reached `main` (0.8.86) because GCC had accepted them all along and
+  the failure only appeared when the default compiler changed in 0.8.83.
+
+  - **CI installs Clang from LLVM's own apt repository**, through their
+    maintained `llvm.sh` so the suite name for the distribution is chosen
+    upstream rather than hard-coded in the workflow. The version is one place,
+    `ULTRACANVAS_CLANG_VERSION`, and the step fails immediately with a named
+    reason if that version is not available for the runner's distribution or
+    architecture - rather than twenty minutes later, inside a compile.
+  - **The runner stays on ubuntu-22.04.** Moving to 24.04 would have supplied
+    Clang 16 for free, but this leg is pinned to 22.04 for glibc 2.35, which is
+    what makes the portable Linux bundle portable; 24.04 would raise that floor
+    to 2.39 for everyone who installs it.
+  - **`ULTRACANVAS_MIN_CLANG_MAJOR` makes the requirement explicit.** The root
+    `CMakeLists.txt` now skips a Clang below the floor while choosing a default
+    - so a machine whose `clang` is 14 but which also has `clang-18` configures
+    with the latter instead of failing on the first structured binding - and
+    refuses an explicitly chosen one with a message that names the feature, the
+    compiler it found and the command to fix it.
+
+  Nothing about the build output changes: this decides which compiler runs, not
+  what it produces.
+
 #### 2026-09-19 *0.8.86*
 - **The Linux build is green again under Clang, and a missing MuPDF no longer
   stops a build.** Two independent breakages, both from the move to Clang

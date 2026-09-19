@@ -16,20 +16,53 @@ include(cmake/UltraCanvasVersion.cmake)
 # line, or a value already in the cache all win over this default. Does not touch
 # macOS (Apple Clang already), Android (NDK toolchain), or Windows (the MSYS2
 # CLANG64 environment sets clang as the default compiler itself).
+#
+# ULTRACANVAS_MIN_CLANG_MAJOR is the floor, and it is a real one rather than a
+# preference: the tree uses C++20's P1091 (capturing a structured binding in a
+# lambda), which Clang implements from 16. Clang 15 and earlier reject it with
+# "'x' in capture list does not name a variable" - a diagnostic that points at
+# the lambda and says nothing about the compiler being too old, which is why
+# this is checked here instead of being discovered one file at a time.
+set(ULTRACANVAS_MIN_CLANG_MAJOR 16)
 if(UNIX AND NOT APPLE AND NOT ANDROID
    AND NOT DEFINED ENV{CXX} AND NOT DEFINED CMAKE_CXX_COMPILER)
-    # Prefer the unversioned name (present on CI via the `clang` metapackage and
-    # a stable ccache key), then fall back to versioned binaries `clang-NN` for
-    # dev boxes that install e.g. clang-21 without the unversioned symlink.
-    find_program(_uc_clang   NAMES clang
+    # Unversioned first: it is what CI installs and it keeps the ccache key
+    # stable. Then versioned binaries `clang-NN`, newest first, for dev boxes
+    # that install e.g. clang-21 without the unversioned symlink. Each
+    # candidate is asked its version and skipped when it is below the floor, so
+    # a machine whose `clang` is older than its `clang-NN` still configures
+    # instead of failing on the first structured binding.
+    set(_uc_clang_names clang
         clang-25 clang-24 clang-23 clang-22 clang-21 clang-20 clang-19 clang-18 clang-17 clang-16)
-    find_program(_uc_clangxx NAMES clang++
-        clang++-25 clang++-24 clang++-23 clang++-22 clang++-21 clang++-20 clang++-19 clang++-18 clang++-17 clang++-16)
-    if(_uc_clang AND _uc_clangxx)
-        set(CMAKE_C_COMPILER   "${_uc_clang}"   CACHE FILEPATH "C compiler")
-        set(CMAKE_CXX_COMPILER "${_uc_clangxx}" CACHE FILEPATH "C++ compiler")
-        message(STATUS "Defaulting to Clang on Linux (${_uc_clangxx})")
-    endif()
+    foreach(_uc_name IN LISTS _uc_clang_names)
+        unset(_uc_candidate CACHE)
+        find_program(_uc_candidate NAMES ${_uc_name})
+        if(NOT _uc_candidate)
+            continue()
+        endif()
+        execute_process(COMMAND ${_uc_candidate} -dumpversion
+            OUTPUT_VARIABLE _uc_ver OUTPUT_STRIP_TRAILING_WHITESPACE
+            ERROR_QUIET RESULT_VARIABLE _uc_rc)
+        if(NOT _uc_rc EQUAL 0)
+            continue()
+        endif()
+        if(_uc_ver VERSION_LESS ULTRACANVAS_MIN_CLANG_MAJOR)
+            message(STATUS "Skipping ${_uc_candidate} (Clang ${_uc_ver} < ${ULTRACANVAS_MIN_CLANG_MAJOR})")
+            continue()
+        endif()
+        # Found one new enough; its C++ driver must sit beside it.
+        string(REGEX REPLACE "clang$" "clang++" _uc_cxx_name "${_uc_name}")
+        unset(_uc_candidate_cxx CACHE)
+        find_program(_uc_candidate_cxx NAMES ${_uc_cxx_name})
+        if(_uc_candidate_cxx)
+            set(CMAKE_C_COMPILER   "${_uc_candidate}"     CACHE FILEPATH "C compiler")
+            set(CMAKE_CXX_COMPILER "${_uc_candidate_cxx}" CACHE FILEPATH "C++ compiler")
+            message(STATUS "Defaulting to Clang on Linux (${_uc_candidate_cxx}, version ${_uc_ver})")
+            break()
+        endif()
+    endforeach()
+    unset(_uc_candidate CACHE)
+    unset(_uc_candidate_cxx CACHE)
 endif()
 
 project(UltraCanvasDemoApp
@@ -37,6 +70,25 @@ project(UltraCanvasDemoApp
     DESCRIPTION "UltraCanvas Framework Demo Application"
     LANGUAGES CXX
 )
+
+# The floor again, now that the compiler has actually been probed. The block
+# above only steers the DEFAULT choice, so this is what catches an explicit
+# CC/CXX or -DCMAKE_CXX_COMPILER pointing at a Clang too old for the C++20 this
+# tree is written in. "Clang" here excludes "AppleClang", which numbers its
+# releases separately and whose oldest supported Xcode is already past P1091.
+if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
+   AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS ULTRACANVAS_MIN_CLANG_MAJOR)
+    message(FATAL_ERROR
+        "Clang ${CMAKE_CXX_COMPILER_VERSION} is too old to build UltraCanvas: "
+        "Clang ${ULTRACANVAS_MIN_CLANG_MAJOR} or newer is required.\n"
+        "  Reason: C++20's P1091 (capturing a structured binding in a lambda) "
+        "is used across the tree and Clang 15 and earlier reject it.\n"
+        "  Compiler: ${CMAKE_CXX_COMPILER}\n"
+        "  Fix: install a newer Clang (Ubuntu 22.04 carries nothing newer than "
+        "14 - use https://apt.llvm.org), then point the build at it, e.g.\n"
+        "         CC=clang-19 CXX=clang++-19 cmake -B build\n"
+        "       or configure with -DCMAKE_C_COMPILER=... -DCMAKE_CXX_COMPILER=...")
+endif()
 
 message(STATUS "")
 message(STATUS "========================================")
@@ -277,6 +329,16 @@ endif()
 option(BUILD_ULTRASOCIAL "Build the UltraSocial application" ON)
 if(BUILD_ULTRASOCIAL AND TARGET UltraDatabase)
     add_subdirectory(Apps/UltraSocial)
+endif()
+
+# ===== ULTRAFIBU =====
+# German double-entry accounting: DATEV, UStVA/ELSTER, One-Stop-Shop, a fiscal
+# year with a free start date. Phase A1 builds the headless engine and the
+# ultrafibu CLI on top of it; the German UI follows once the framework has a
+# data grid (Docs/Research/UltraFIBUDesignProposal.md).
+option(BUILD_ULTRAFIBU "Build the UltraFIBU accounting application" ON)
+if(BUILD_ULTRAFIBU AND TARGET UltraDatabase)
+    add_subdirectory(Apps/UltraFIBU)
 endif()
 
 # ===== ULTRACLEANER =====
@@ -740,8 +802,10 @@ if(ULTRACANVAS_BUILD_ULTRAMAIL_TESTS AND TARGET UltraMailEngine)
 endif()
 
 # ===== ULTRACLOUD TESTS =====
-# Headless module tests (account store on UltraDatabase, secret stores, the
-# WebDAV / Nextcloud providers against a fake HTTP function); in-tree framework.
+# Headless module tests: the account store on UltraDatabase, the secret stores,
+# and every provider - WebDAV, Nextcloud, FTP, Dropbox, OneDrive, Google Drive -
+# driven against an injected fake instead of a server, so nothing is contacted.
+# In-tree framework, no external test library. CI turns this ON.
 option(ULTRACANVAS_BUILD_ULTRACLOUD_TESTS "Build the UltraCloud test suite" OFF)
 if(ULTRACANVAS_BUILD_ULTRACLOUD_TESTS AND TARGET UltraCloud)
     enable_testing()
@@ -771,6 +835,19 @@ if(ULTRACANVAS_BUILD_ULTRASOCIAL_TESTS AND TARGET UltraSocialEngine)
     add_subdirectory(Tests/UltraSocial)
     message(STATUS "")
     message(STATUS "── UltraSocial engine test suite enabled (target: UltraSocialEngineTests) ──")
+endif()
+
+# ===== ULTRAFIBU ENGINE TESTS =====
+# Headless engine tests: the calendar, a fiscal year with any start date, the
+# two reporting calendars, VAT-number checking, the data-file readers and the
+# store (numbering, optimistic locking, Festschreibung, roles). Compiles the
+# engine sources directly, so it runs where the UI library cannot be built.
+option(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS "Build the UltraFIBU engine test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAFIBU_TESTS AND TARGET UltraDatabase)
+    enable_testing()
+    add_subdirectory(Tests/UltraFIBU)
+    message(STATUS "")
+    message(STATUS "── UltraFIBU engine test suite enabled (target: UltraFIBUEngineTests) ──")
 endif()
 
 # ===== ULTRACLEANER ENGINE TESTS =====
@@ -1252,6 +1329,20 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME JSONTests COMMAND JSONTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # UltraCanvasMoney unit tests. The subject is header-only and free of every
+    # other UltraCanvas header, so this target compiles one file and links
+    # nothing - which is the point: the money arithmetic an accounting
+    # application depends on is verifiable without the UI stack.
+    add_executable(MoneyTests Tests/MoneyTests.cpp)
+    target_include_directories(MoneyTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/UltraCanvas/include)
+    target_compile_features(MoneyTests PRIVATE cxx_std_20)
+    set_target_properties(MoneyTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME MoneyTests COMMAND MoneyTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # Hardware inventory tests: formatters, identifier masking, the query
