@@ -4,11 +4,12 @@
 // own structs, so UltraCanvasListView renders them and
 // UltraCanvasListSortFilterProxy sorts and filters them; the numeric columns
 // answer SortRole with the number, so "10" sorts after "9".
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "NetworkMonitor/NetworkMonitor.h"
+#include "NetworkMonitor/NetworkMonitorStore.h"
 #include "UltraCanvasListModel.h"
 
 #include <vector>
@@ -53,6 +54,27 @@ public:
 
 private:
     std::vector<UltraCanvas::ProcessTrafficSummary> rows_;
+};
+
+// One row per recorded flow, for the History tab.
+class FlowListModel : public UltraCanvas::IListModel {
+public:
+    enum Column { Application = 0, Pid, Protocol, Local, Remote, State, FirstSeen, LastSeen,
+                  Seen, Sent, Received, ColumnCount };
+
+    int GetRowCount() const override;
+    int GetColumnCount() const override;
+    UltraCanvas::ListDataValue GetData(const UltraCanvas::ListIndex& index,
+                                       UltraCanvas::ListDataRole role) const override;
+    bool SetData(const UltraCanvas::ListIndex&, UltraCanvas::ListDataRole,
+                 const UltraCanvas::ListDataValue&) override { return false; }
+    UltraCanvas::ListColumnDef GetColumnDef(int column) const override;
+
+    void Replace(std::vector<UltraCanvas::RecordedFlow> rows);
+    const UltraCanvas::RecordedFlow* At(int row) const;
+
+private:
+    std::vector<UltraCanvas::RecordedFlow> rows_;
 };
 
 } // namespace UltraNetMonitor

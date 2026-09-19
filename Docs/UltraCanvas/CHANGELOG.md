@@ -1,3 +1,26 @@
+#### 2026-09-19 *0.8.100*
+- **NetworkMonitor records.** `NetworkMonitorStore.h`: an activity store
+  over UltraDatabase (SQLite) that turns snapshots into *flows* — one row per
+  connection across the snapshots that saw it, with first and last sighting,
+  its latest state and counters, and the process behind it, deduplicated —
+  and, past a retention window, into per-day, per-process, per-peer totals so
+  the file stays small on a busy desktop. `NetworkMonitor_OpenStore` /
+  `RecordSnapshot` / `QueryFlows` / `QueryDailyTotals` / `RollUp` /
+  `ApplyRetention` / `Purge` / `StoreStats` / `ExportFlowsCsv`, every one
+  returning `NetworkMonitorResult`, parameter binding only, one transaction
+  per snapshot, and a per-store mutex so a recording thread and a reading
+  thread never share the single SQLite connection at once. The same 5-tuple
+  seen again more than two minutes after its last sighting starts a new flow,
+  so a reused ephemeral port is not glued to an earlier conversation.
+  `":memory:"` keeps a session off disk entirely. Without UltraDatabase in
+  the build the store compiles to stubs that report `NotSupported`, and
+  `NetworkMonitor_StoreAvailable()` says so. Tested end to end on an
+  in-memory store: continuation and its cut-off, every filter, the CSV, the
+  roll-up's accumulation onto an existing day, retention, purge.
+  - `NetworkMonitorResultCode` gains `InvalidArgument` and `StorageError`.
+  - The module links `UltraDatabase` from the block that defines that
+    target, since it comes later in the file than NetworkMonitor's own.
+
 #### 2026-09-19 *0.8.99*
 - **NetworkMonitor on Windows and macOS, and byte counters on Linux** — the
   platform half of the proposal's Phase 2. Windows reads the socket tables

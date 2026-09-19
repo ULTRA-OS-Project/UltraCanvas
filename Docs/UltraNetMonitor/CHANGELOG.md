@@ -1,3 +1,20 @@
+#### 2026-09-19 *0.3*
+- **It remembers.** A *Record* toggle on the toolbar writes every snapshot
+  into the activity store (NetworkMonitor 0.3, framework 0.8.100) at the
+  platform's per-user data path — `%LOCALAPPDATA%\UltraNetMonitor`,
+  `~/Library/Application Support/UltraNetMonitor`, `$XDG_DATA_HOME/UltraNetMonitor`
+  — and a new *History* tab shows what was recorded over the last hour, day,
+  week or month: one row per flow with first and last sighting, how many
+  snapshots saw it, its last state and its latest counters, sortable and
+  filterable like the live lists. *Purge…* asks twice before it deletes.
+  Retention is applied when recording starts and stops and when the window
+  closes: flows older than 30 days become daily totals, and those age out
+  after a year.
+  - **Headless too.** `--record [<db>] [--seconds n] [--interval ms]` records
+    until Ctrl-C; `--history`, `--totals` and `--store-stats` read the store
+    back, `--history --csv <file>` exports it, and `--purge` needs `--yes`.
+    `--capabilities` now says whether this build has a store at all.
+
 #### 2026-09-19 *0.2*
 - **Windows and macOS, and bytes on Linux.** The window and the command
   line now open on all three desktop platforms (NetworkMonitor 0.2, framework
