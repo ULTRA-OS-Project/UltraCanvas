@@ -29,6 +29,7 @@ set(ULTRAFIBU_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUBeleg.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUBuchung.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUDatev.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUBank.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUStore.cpp
     # The invoice print, and the two framework sources its PDF writer
     # needs. Compiled here rather than linked as the Vector plugin for
@@ -51,6 +52,17 @@ target_include_directories(UltraFIBUEngineTests PRIVATE
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include
     ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
 target_link_libraries(UltraFIBUEngineTests PRIVATE UltraDatabase)
+# CAMT.053 is XML. tinyxml2 is already a REQUIRED core dependency, so this is
+# an include path and a library name rather than a new dependency - and it is
+# named here explicitly because this suite deliberately does not link the core
+# library that would otherwise re-export it.
+if(TINYXML2_FOUND)
+    target_include_directories(UltraFIBUEngineTests PRIVATE ${TINYXML2_INCLUDE_DIRS})
+    target_link_libraries(UltraFIBUEngineTests PRIVATE ${TINYXML2_LIBRARIES})
+    if(TINYXML2_LIBRARY_DIRS)
+        target_link_directories(UltraFIBUEngineTests PRIVATE ${TINYXML2_LIBRARY_DIRS})
+    endif()
+endif()
 if(TARGET UltraCrypt)
     target_link_libraries(UltraFIBUEngineTests PRIVATE UltraCrypt)
 endif()

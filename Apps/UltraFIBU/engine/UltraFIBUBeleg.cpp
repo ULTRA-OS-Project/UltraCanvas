@@ -47,6 +47,18 @@ bool IstAusgangsbeleg(BelegArt art) {
     return art == BelegArt::Ausgangsrechnung || art == BelegArt::Ausgangsgutschrift;
 }
 
+bool GeldAbgangBeimAusgleich(BelegArt art) {
+    switch (art) {
+        case BelegArt::Ausgangsrechnung:   return false;  // the customer pays us
+        case BelegArt::Eingangsrechnung:   return true;   // we pay the supplier
+        case BelegArt::Ausgangsgutschrift: return true;   // we refund the customer
+        case BelegArt::Eingangsgutschrift: return false;  // the supplier refunds us
+        case BelegArt::Kassenbeleg:
+        case BelegArt::Sonstiges:          return false;
+    }
+    return false;
+}
+
 std::string BelegStatusToText(BelegStatus status) {
     switch (status) {
         case BelegStatus::Entwurf:          return "entwurf";

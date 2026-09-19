@@ -68,6 +68,8 @@ void PrintUsage() {
         "        --typ <kunde|lieferant|beides>\n"
         "        --ort <ort>  --land <ISO>  --ust-idnr <nr>\n"
         "        --kategorie <inland|eu-unternehmer|eu-privat|drittland>\n"
+        "        --iban <iban> --bic <bic>  für die Zuordnung von\n"
+        "                              Bankumsätzen zu diesem Partner\n"
         "  ustid <nummer>          USt-IdNr. offline prüfen (Format und Prüfziffer)\n"
         "  termine <datei> <jahr>  Abgabetermine der Umsatzsteuer-Voranmeldungen\n"
         "  perioden <datei>        Perioden der Geschäftsjahre\n"
@@ -113,6 +115,31 @@ void PrintUsage() {
         "        --nochmal             eine bereits importierte Datei\n"
         "                              erneut zulassen\n"
         "  datev-importe <datei>   Bisherige DATEV-Importe anzeigen\n"
+        "\n"
+        "Bank:\n"
+        "  bankkonto-neu <datei>   Bankkonto anlegen\n"
+        "        --name <text>         Bezeichnung (Pflicht)\n"
+        "        --konto <nr>          Sachkonto, z. B. 1200 (Pflicht)\n"
+        "        --iban <iban> --bic <bic> --bank <name>\n"
+        "        --profil <datei>      CSV-Profil für diese Bank\n"
+        "  bankkonten <datei>      Bankkonten anzeigen\n"
+        "  bank-import <datei> <bankkonto> <auszug>\n"
+        "                          Kontoauszug einlesen (CAMT.053, MT940\n"
+        "                          oder CSV - das Format wird am Inhalt\n"
+        "                          erkannt). Zeigt nur an, bis\n"
+        "                          --uebernehmen angegeben wird\n"
+        "        --uebernehmen         Umsätze wirklich schreiben\n"
+        "        --profil <datei>      CSV-Profil (sonst das des Kontos)\n"
+        "  bank-importe <datei>    Bisherige Kontoauszüge anzeigen\n"
+        "  umsaetze <datei>        Bankumsätze anzeigen\n"
+        "        --konto <id> --von <datum> --bis <datum>\n"
+        "        --offen               nur noch nicht zugeordnete\n"
+        "        --suche <text>\n"
+        "  zuordnen <datei> <umsatz-id>\n"
+        "                          Vorschläge, welchen Beleg ein Umsatz\n"
+        "                          bezahlt. Bucht nichts\n"
+        "        --buchen <beleg-nr>   einen Vorschlag annehmen und buchen\n"
+        "        --betrag <betrag>     Teilbetrag (Standard: der ganze)\n"
         "\n"
         "Datumsangaben in deutscher (01.04.2026) oder ISO-Schreibweise (2026-04-01).\n",
         ULTRAFIBU_CLI_VERSION);
@@ -426,6 +453,10 @@ int PartnerNeu(int argc, char** argv) {
     partner.ustIdNr   = Option(argc, argv, "--ust-idnr");
     partner.email     = Option(argc, argv, "--email");
     partner.telefon   = Option(argc, argv, "--telefon");
+    // The IBAN is what lets a bank line be matched to this partner when the
+    // payer did not quote an invoice number - which is most of the time.
+    partner.iban      = Option(argc, argv, "--iban");
+    partner.bic       = Option(argc, argv, "--bic");
     if (!PartnerTypFromText(Option(argc, argv, "--typ", "kunde"), partner.typ)) {
         std::printf("Fehler: --typ muss kunde, lieferant oder beides sein.\n");
         return 2;
@@ -1303,6 +1334,321 @@ int DatevImport(int argc, char** argv) {
     return 0;
 }
 
+// ===== BANK =====
+
+int BankkontoNeu(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Bankkonto konto;
+    konto.mandantId   = mandant.id;
+    konto.bezeichnung = Option(argc, argv, "--name");
+    konto.konto       = Option(argc, argv, "--konto");
+    konto.iban        = Option(argc, argv, "--iban");
+    konto.bic         = Option(argc, argv, "--bic");
+    konto.bank        = Option(argc, argv, "--bank");
+    konto.csvProfil   = Option(argc, argv, "--profil");
+    konto.waehrung    = Option(argc, argv, "--waehrung", mandant.waehrung);
+
+    if (konto.bezeichnung.empty() || konto.konto.empty()) {
+        std::printf("Fehler: --name und --konto sind erforderlich.\n"
+                    "Das Sachkonto ist das, auf das die Bewegungen dieses Kontos "
+                    "gebucht werden, z. B. 1200 in SKR03.\n");
+        return 2;
+    }
+    // A G/L account that is not in the chart is almost always a typo, and after
+    // the first import it is a nameless number in the Saldenliste.
+    Konto sachkonto;
+    if (!store.KontoByNummer(mandant.id, konto.konto, sachkonto)) {
+        std::printf("Fehler: Das Sachkonto %s steht nicht im Kontenrahmen.\n",
+                    konto.konto.c_str());
+        return 1;
+    }
+
+    const StoreResult r = store.SaveBankkonto(konto, akteur);
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Bankkonto %lld angelegt: %s, Sachkonto %s (%s)\n",
+                static_cast<long long>(konto.id), konto.bezeichnung.c_str(),
+                konto.konto.c_str(), sachkonto.bezeichnung.c_str());
+    return 0;
+}
+
+int Bankkonten(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::vector<Bankkonto> konten = store.Bankkonten(mandant.id, false);
+    if (konten.empty()) {
+        std::printf("Es ist kein Bankkonto angelegt "
+                    "(ultrafibu bankkonto-neu ... --name \"...\" --konto 1200).\n");
+        return 0;
+    }
+    std::printf("%4s  %-28s %-24s %-6s %-10s %s\n",
+                "Id", "Bezeichnung", "IBAN", "Konto", "eingelesen", "Währung");
+    for (const Bankkonto& k : konten) {
+        std::printf("%4lld  %-28s %-24s %-6s %-10s %s%s\n",
+                    static_cast<long long>(k.id), k.bezeichnung.substr(0, 28).c_str(),
+                    k.iban.c_str(), k.konto.c_str(),
+                    k.letzterImportBis.Valid()
+                        ? FormatDateGerman(k.letzterImportBis).c_str() : "-",
+                    k.waehrung.c_str(), k.aktiv ? "" : "  (inaktiv)");
+    }
+    return 0;
+}
+
+int BankImport(int argc, char** argv) {
+    const std::string datei     = Positional(argc, argv, 0);
+    const std::string kontoText = Positional(argc, argv, 1);
+    const std::string auszug    = Positional(argc, argv, 2);
+    if (auszug.empty()) {
+        std::printf("Fehler: Aufruf ist "
+                    "ultrafibu bank-import <datei> <bankkonto-id> <auszug>\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Bankkonto konto;
+    if (!store.BankkontoById(std::atoll(kontoText.c_str()), konto) &&
+        !store.BankkontoByIban(mandant.id, kontoText, konto)) {
+        std::printf("Fehler: Das Bankkonto \"%s\" gibt es nicht "
+                    "(ultrafibu bankkonten %s).\n", kontoText.c_str(), datei.c_str());
+        return 1;
+    }
+
+    CsvBankProfil profil;
+    const std::string profilName =
+        Option(argc, argv, "--profil",
+               konto.csvProfil.empty() ? "Bankprofil-Standard.csv" : konto.csvProfil);
+    std::string profilFehler;
+    const std::string profilPfad = BankProfilPfad(profilName);
+    if (!profilPfad.empty()) profil.Laden(profilPfad, profilFehler);
+
+    const BankLeseBericht bericht =
+        LiesBankdatei(auszug, profil, konto.iban, konto.waehrung);
+    std::printf("Format: %s\n", BankFormatToText(bericht.format).c_str());
+    if (!bericht.ok) {
+        std::printf("Fehler: %s\n", bericht.fehler.c_str());
+        for (const std::string& z : bericht.fehlerZeilen)
+            std::printf("  FEHLER: %s\n", z.c_str());
+        return 1;
+    }
+
+    for (const Bankauszug& a : bericht.auszuege) {
+        std::printf("Auszug %s, %s, %s - %s\n",
+                    a.auszugsnummer.empty() ? "(ohne Nummer)" : a.auszugsnummer.c_str(),
+                    a.iban.empty() ? "(ohne IBAN)" : a.iban.c_str(),
+                    FormatDateGerman(a.von).c_str(), FormatDateGerman(a.bis).c_str());
+        if (a.saldenGelesen) {
+            Money differenz;
+            const bool stimmt = a.Stimmt(differenz);
+            std::printf("  Anfangssaldo %s, Endsaldo %s - %s\n",
+                        a.anfangssaldo.ToString().c_str(), a.endsaldo.ToString().c_str(),
+                        stimmt ? "geht auf"
+                               : ("STIMMT NICHT, Differenz " +
+                                  differenz.ToString()).c_str());
+        }
+    }
+    std::printf("%d Buchung(en) gelesen, %d übernehmbar, %d übersprungen, "
+                "%d vorgemerkt\n",
+                bericht.gelesen, bericht.uebernommen, bericht.uebersprungen,
+                bericht.vorgemerkt);
+    for (const std::string& z : bericht.fehlerZeilen)
+        std::printf("  FEHLER: %s\n", z.c_str());
+    for (const std::string& w : bericht.warnungen)
+        std::printf("  ACHTUNG: %s\n", w.c_str());
+
+    if (!HasOption(argc, argv, "--uebernehmen")) {
+        // A first look at a bank's file never writes - and on a CSV, whose
+        // column mapping is a guess until somebody checks it, seeing the first
+        // rows as the profile reads them IS the check.
+        std::printf("\nSo werden die ersten Zeilen gelesen:\n");
+        std::printf("%-10s %14s  %-24s %s\n", "Datum", "Betrag", "Gegenseite",
+                    "Verwendungszweck");
+        int gezeigt = 0;
+        for (const Bankauszug& a : bericht.auszuege) {
+            for (const Bankumsatz& u : a.umsaetze) {
+                if (gezeigt++ >= 8) break;
+                std::printf("%-10s %14s  %-24s %s\n",
+                            FormatDateGerman(u.buchungstag).c_str(),
+                            u.betrag.ToString().c_str(),
+                            u.gegenName.substr(0, 24).c_str(),
+                            u.verwendungszweck.substr(0, 48).c_str());
+            }
+        }
+        std::printf("\nEs wurde nichts geschrieben. Zum Übernehmen mit "
+                    "--uebernehmen wiederholen.\n");
+        return 0;
+    }
+
+    int neu = 0, bekannt = 0;
+    const StoreResult r =
+        store.ImportiereBankauszug(konto.id, bericht, auszug, akteur, neu, bekannt);
+    if (!r) { std::printf("\nFehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("\n%d Umsatz/Umsätze neu übernommen", neu);
+    if (bekannt > 0)
+        std::printf(", %d bereits vorhanden und übersprungen", bekannt);
+    std::printf(".\n");
+    if (neu > 0)
+        std::printf("Nächster Schritt: ultrafibu umsaetze %s --offen\n", datei.c_str());
+    return 0;
+}
+
+int BankImporte(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::vector<Store::BankImportEintrag> liste = store.BankImporte(mandant.id);
+    if (liste.empty()) { std::printf("Es wurde noch kein Auszug eingelesen.\n"); return 0; }
+    std::printf("%-30s %-8s %-10s %-10s %5s %5s  %s\n",
+                "Datei", "Format", "von", "bis", "neu", "bek.", "Benutzer");
+    for (const Store::BankImportEintrag& e : liste)
+        std::printf("%-30s %-8s %-10s %-10s %5d %5d  %s\n",
+                    e.dateiname.substr(0, 30).c_str(), e.format.c_str(),
+                    FormatDateGerman(e.von).c_str(), FormatDateGerman(e.bis).c_str(),
+                    e.neu, e.bekannt, e.benutzer.c_str());
+    return 0;
+}
+
+int Umsaetze(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    Store::UmsatzFilter filter;
+    filter.mandantId = mandant.id;
+    const std::string konto = Option(argc, argv, "--konto");
+    if (!konto.empty()) filter.bankkontoId = std::atoll(konto.c_str());
+    const std::string vonText = Option(argc, argv, "--von");
+    const std::string bisText = Option(argc, argv, "--bis");
+    if (!vonText.empty() && !TryParseDateGerman(vonText, filter.von)) {
+        std::printf("Fehler: \"%s\" ist kein Datum.\n", vonText.c_str());
+        return 2;
+    }
+    if (!bisText.empty() && !TryParseDateGerman(bisText, filter.bis)) {
+        std::printf("Fehler: \"%s\" ist kein Datum.\n", bisText.c_str());
+        return 2;
+    }
+    filter.nurOffene = HasOption(argc, argv, "--offen");
+    filter.suche = Option(argc, argv, "--suche");
+
+    const std::vector<Bankumsatz> liste = store.Umsaetze(filter);
+    if (liste.empty()) { std::printf("Keine Umsätze.\n"); return 0; }
+
+    std::printf("%6s %-10s %14s  %-22s %s\n",
+                "Id", "Datum", "Betrag", "Gegenseite", "Verwendungszweck");
+    int64_t summe = 0;
+    for (const Bankumsatz& u : liste) {
+        std::printf("%6lld %-10s %14s  %-22s %s\n",
+                    static_cast<long long>(u.id),
+                    FormatDateGerman(u.buchungstag).c_str(),
+                    u.betrag.ToString().c_str(),
+                    u.gegenName.substr(0, 22).c_str(),
+                    u.verwendungszweck.substr(0, 44).c_str());
+        summe += u.betrag.Minor();
+    }
+    std::printf("%6s %-10s %14s\n", "", "Summe",
+                Money::FromMinor(summe, mandant.waehrung).ToString().c_str());
+    if (filter.nurOffene)
+        std::printf("\nZuordnen: ultrafibu zuordnen %s <id>\n", datei.c_str());
+    return 0;
+}
+
+int Zuordnen(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    const std::string idText = Positional(argc, argv, 1);
+    if (idText.empty()) {
+        std::printf("Fehler: Aufruf ist ultrafibu zuordnen <datei> <umsatz-id>\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    const int64_t umsatzId = std::atoll(idText.c_str());
+    Bankumsatz umsatz;
+    if (!store.UmsatzById(umsatzId, umsatz)) {
+        std::printf("Fehler: Den Bankumsatz %lld gibt es nicht.\n",
+                    static_cast<long long>(umsatzId));
+        return 1;
+    }
+
+    std::printf("Umsatz %lld: %s, %s\n  %s\n  %s\n",
+                static_cast<long long>(umsatz.id),
+                FormatDateGerman(umsatz.buchungstag).c_str(),
+                umsatz.betrag.ToString().c_str(),
+                umsatz.gegenName.empty() ? "(ohne Namen)" : umsatz.gegenName.c_str(),
+                umsatz.verwendungszweck.c_str());
+    const Money offen = store.OffenerBetrag(umsatzId);
+    std::printf("  offen: %s\n", offen.ToString().c_str());
+
+    for (const Store::BankZuordnung& z : store.Zuordnungen(umsatzId))
+        std::printf("  bereits zugeordnet: %s an %s\n",
+                    z.betrag.ToString().c_str(), z.belegnummer.c_str());
+
+    // ---- accept a proposal ----
+    const std::string buchen = Option(argc, argv, "--buchen");
+    if (!buchen.empty()) {
+        Beleg beleg;
+        if (!store.BelegByNummer(mandant.id, buchen, beleg)) {
+            std::printf("\nFehler: Den Beleg %s gibt es nicht.\n", buchen.c_str());
+            return 1;
+        }
+        Money betrag = Money::FromMinor(offen.Minor() < 0 ? -offen.Minor() : offen.Minor(),
+                                        umsatz.betrag.Currency());
+        const std::string betragText = Option(argc, argv, "--betrag");
+        if (!betragText.empty() &&
+            !Money::TryParse(betragText, betrag, umsatz.betrag.Currency())) {
+            std::printf("\nFehler: \"%s\" ist kein Betrag.\n", betragText.c_str());
+            return 2;
+        }
+        const Money rest = beleg.brutto - beleg.bezahlt;
+        if (betrag.Minor() > rest.Minor()) betrag = rest;
+
+        const StoreResult r = store.ZuordnungBuchen(umsatzId, beleg.id, betrag, akteur);
+        if (!r) { std::printf("\nFehler: %s\n", r.fehler.c_str()); return 1; }
+        std::printf("\n%s auf %s gebucht.\n", betrag.ToString().c_str(),
+                    beleg.nummer.c_str());
+        return 0;
+    }
+
+    // ---- propose ----
+    const std::vector<Zuordnungsvorschlag> vorschlaege =
+        store.Zuordnungsvorschlaege(umsatzId);
+    if (vorschlaege.empty()) {
+        std::printf("\nKein passender offener Beleg gefunden.\n");
+        return 0;
+    }
+    std::printf("\nVorschläge (es wird nichts gebucht):\n");
+    for (const Zuordnungsvorschlag& v : vorschlaege) {
+        std::printf("  %-16s %14s  %-14s %d Punkte%s\n",
+                    v.belegnummer.c_str(), v.betrag.ToString().c_str(),
+                    ZuordnungGueteToText(v.guete).c_str(), v.punkte,
+                    v.teilzahlung ? "  (Teilzahlung)" : "");
+        for (const std::string& grund : v.gruende)
+            std::printf("      %s\n", grund.c_str());
+    }
+    std::printf("\nAnnehmen: ultrafibu zuordnen %s %lld --buchen %s\n",
+                datei.c_str(), static_cast<long long>(umsatzId),
+                vorschlaege.front().belegnummer.c_str());
+    return 0;
+}
+
 int DatevImporte(int argc, char** argv) {
     const std::string datei = Positional(argc, argv, 0);
     Store store;
@@ -1355,6 +1701,12 @@ int main(int argc, char** argv) {
     if (befehl == "datev-pruefen") return DatevPruefen(argc, argv);
     if (befehl == "datev-import")  return DatevImport(argc, argv);
     if (befehl == "datev-importe") return DatevImporte(argc, argv);
+    if (befehl == "bankkonto-neu") return BankkontoNeu(argc, argv);
+    if (befehl == "bankkonten")    return Bankkonten(argc, argv);
+    if (befehl == "bank-import")   return BankImport(argc, argv);
+    if (befehl == "bank-importe")  return BankImporte(argc, argv);
+    if (befehl == "umsaetze")      return Umsaetze(argc, argv);
+    if (befehl == "zuordnen")      return Zuordnen(argc, argv);
 
     std::printf("Unbekannter Befehl: %s\n\n", befehl.c_str());
     PrintUsage();

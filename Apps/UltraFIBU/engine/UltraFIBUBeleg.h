@@ -59,6 +59,19 @@ std::string BelegArtLabel(BelegArt art);        // German label for the UI
 // side: an Ausgangsgutschrift is still a document to a customer.
 bool IstAusgangsbeleg(BelegArt art);
 
+// True when settling this document means money **leaving** the bank account.
+//
+// Deliberately not the same question as IstAusgangsbeleg, and the difference is
+// the credit notes: an Ausgangsgutschrift is a document to a customer, so
+// IstAusgangsbeleg is true - but paying it out is money leaving, because we are
+// refunding them. A bank matcher that used the party side instead of the money
+// side would offer every refund against every incoming payment.
+//
+// Kassenbeleg and Sonstiges are answered as money in, which is what the Eingang
+// half of their names implies; neither should reach a bank matcher in the first
+// place, because cash does not arrive on a statement.
+bool GeldAbgangBeimAusgleich(BelegArt art);
+
 // Where the document stands. `Entwurf` is the only status in which it may still
 // be changed; everything else has postings behind it.
 enum class BelegStatus {

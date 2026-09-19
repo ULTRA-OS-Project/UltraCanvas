@@ -91,6 +91,15 @@ ultrafibu datev-import  buch.db ./von-der-kanzlei/EXTF_Buchungsstapel_202606.csv
 ultrafibu datev-import  buch.db ./von-der-kanzlei/EXTF_Buchungsstapel_202606.csv --uebernehmen
 ultrafibu datev-importe buch.db
 
+# Bank: reading a statement, and assigning what it pays
+ultrafibu bankkonto-neu buch.db --name "Geschäftskonto" --konto 1200 \
+          --iban DE02120300000000202051
+ultrafibu bank-import   buch.db 1 ./auszug.xml        # CAMT.053, MT940 or CSV
+ultrafibu bank-import   buch.db 1 ./auszug.xml --uebernehmen
+ultrafibu umsaetze      buch.db --offen
+ultrafibu zuordnen      buch.db 7                     # proposals; books nothing
+ultrafibu zuordnen      buch.db 7 --buchen R-202606001
+
 ultrafibu festschreiben buch.db 30.06.2026 --ja
 ultrafibu pruefen buch.db                # the journal's hash chain
 ```
@@ -183,6 +192,36 @@ and the reason appears in the status line.
   again. When *no* posting got a split, the import says so outright — otherwise
   a gross amount on a revenue account is a mystery that takes a long time to
   solve.
+- **A bank statement checks itself, and the import uses that.** CAMT.053
+  carries an opening balance, a closing balance and the entries between them,
+  and `opening + entries = closing` has to hold. It is the one assertion that
+  catches a dropped entry, a doubled entry and an inverted sign at once, and a
+  statement that fails it is **refused** rather than imported into a wrong bank
+  balance. A CSV export carries no balances and therefore cannot do this — the
+  import says so, because "this one import was never verified" is not something
+  to leave for somebody to work out later.
+- **The counterparty changes side with the direction.** On money in the other
+  party is the CAMT `Dbtr`; on money out it is the `Cdtr`. A reader that always
+  took one of them would write *our own name* as the payee on half the
+  statement — and that half stays silently wrong, because the amounts still add
+  up. A test breaks exactly this and asserts the fixture reads "Wir Selbst".
+- **The same statement twice changes nothing — checked per line, not per
+  file.** The overlapping download is the normal case: a user who fetches "the
+  last 30 days" every week hands over the same lines four times. The key is the
+  bank's own reference, or, where a file gives none, one derived from the
+  entry **including its position** — two identical lines on one day are
+  possible, and a key that could not tell them apart would swallow a payment
+  with no error anywhere.
+- **Assignment proposes; it never posts.** A wrong automatic posting inside a
+  frozen period can only be undone by a Storno, so one confirmation is cheaper
+  than confidence. *Certain* means the remittance names the document **and**
+  the amount agrees; the amount alone is not, because two invoices can cost the
+  same. Confirming goes through `ZahlungErfassen` — a bank assignment is a
+  *reason* to record a payment, not a second way of recording one.
+- **The money side and the party side are different questions.** An
+  *Ausgangsgutschrift* is a document we issued **and** money going out, so the
+  matcher asks `GeldAbgangBeimAusgleich()` rather than `IstAusgangsbeleg()`.
+  Using the party side would offer every refund against every incoming payment.
 - **A Buchungsstapel is always one calendar month.** The Belegdatum field is
   `TTMM` with no year; DATEV infers it from the Wirtschaftsjahr. A month not
   wholly inside the fiscal year is refused rather than mis-booked, which for a

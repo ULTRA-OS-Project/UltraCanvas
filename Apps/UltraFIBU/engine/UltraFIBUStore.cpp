@@ -307,6 +307,76 @@ const char* const kSchemaV3 =
     "  von TEXT, bis TEXT);"
     "CREATE INDEX ix_datev_import ON datev_import(mandant_id, datei_hash);";
 
+// Schema 4 is the bank: the accounts, the statement lines, and which document
+// each line pays.
+//
+// The UNIQUE on (bankkonto_id, referenz) is the whole idempotency story in one
+// constraint. A reference is the bank's own, unique within an account but not
+// between accounts, so the account is part of the key. It is a backstop rather
+// than the mechanism - the import checks first so it can *count* what it
+// skipped - but a constraint that cannot be argued with is what makes the rule
+// true even if a future caller forgets to check.
+const char* const kSchemaV4 =
+    "CREATE TABLE bankkonto("
+    "  id BIGINT PRIMARY KEY,"
+    "  mandant_id BIGINT NOT NULL,"
+    "  bezeichnung TEXT NOT NULL,"
+    "  iban TEXT, bic TEXT, bank TEXT,"
+    "  konto TEXT NOT NULL,"
+    "  waehrung TEXT DEFAULT 'EUR',"
+    "  csv_profil TEXT,"
+    "  aktiv INTEGER DEFAULT 1,"
+    "  letzter_import_bis TEXT,"
+    "  version BIGINT DEFAULT 1);"
+    "CREATE INDEX ix_bankkonto_mandant ON bankkonto(mandant_id, aktiv);"
+
+    "CREATE TABLE bankumsatz("
+    "  id BIGINT PRIMARY KEY,"
+    "  bankkonto_id BIGINT NOT NULL,"
+    "  mandant_id BIGINT NOT NULL,"
+    "  buchungstag TEXT NOT NULL,"
+    "  valuta TEXT,"
+    "  betrag BIGINT NOT NULL,"
+    "  waehrung TEXT DEFAULT 'EUR',"
+    "  gegen_iban TEXT, gegen_bic TEXT, gegen_name TEXT,"
+    "  verwendungszweck TEXT,"
+    "  e2e_ref TEXT, mandatsreferenz TEXT, glaeubiger_id TEXT,"
+    "  buchungstext TEXT,"
+    "  referenz TEXT NOT NULL,"
+    "  teilbuchungen INTEGER DEFAULT 0,"
+    "  import_id BIGINT DEFAULT 0,"
+    "  importiert_am BIGINT DEFAULT 0,"
+    "  CONSTRAINT uq_bankumsatz_ref UNIQUE (bankkonto_id, referenz));"
+    "CREATE INDEX ix_bankumsatz_konto ON bankumsatz(bankkonto_id, buchungstag);"
+    "CREATE INDEX ix_bankumsatz_mandant ON bankumsatz(mandant_id, buchungstag);"
+
+    "CREATE TABLE zuordnung("
+    "  id BIGINT PRIMARY KEY,"
+    "  bankumsatz_id BIGINT NOT NULL,"
+    "  beleg_id BIGINT NOT NULL,"
+    "  betrag BIGINT NOT NULL,"
+    "  waehrung TEXT DEFAULT 'EUR',"
+    "  zahlung_id BIGINT DEFAULT 0,"
+    "  erfasst_von BIGINT DEFAULT 0,"
+    "  erfasst_am BIGINT DEFAULT 0);"
+    "CREATE INDEX ix_zuordnung_umsatz ON zuordnung(bankumsatz_id);"
+    "CREATE INDEX ix_zuordnung_beleg ON zuordnung(beleg_id);"
+
+    "CREATE TABLE bank_import("
+    "  id BIGINT PRIMARY KEY,"
+    "  mandant_id BIGINT NOT NULL,"
+    "  bankkonto_id BIGINT NOT NULL,"
+    "  dateiname TEXT,"
+    "  datei_hash TEXT,"
+    "  format TEXT,"
+    "  zeitpunkt BIGINT NOT NULL,"
+    "  benutzer TEXT,"
+    "  gelesen INTEGER DEFAULT 0,"
+    "  neu INTEGER DEFAULT 0,"
+    "  bekannt INTEGER DEFAULT 0,"
+    "  von TEXT, bis TEXT);"
+    "CREATE INDEX ix_bank_import ON bank_import(mandant_id, zeitpunkt);";
+
 } // namespace
 
 // ===== BELEGE UND BUCHUNGEN =====
@@ -628,7 +698,8 @@ StoreResult Store::Open(const std::string& connectionName, const std::string& da
     const std::vector<UltraDbMigration> steps = {
         { 1, "UltraFIBU Stammdaten", kSchemaV1 },
         { 2, "UltraFIBU Belege und Buchungen", kSchemaV2 },
-        { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 }
+        { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 },
+        { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 }
     };
     const UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
     if (!migrated) {
@@ -3062,6 +3133,503 @@ HashKettenPruefung Store::PruefeHashKette(int64_t mandantId) const {
         erwarteteNummer++;
     }
     return ergebnis;
+}
+
+// ===== BANK =====
+
+namespace {
+
+Bankkonto BankkontoAusZeile(const UltraDbRow& row) {
+    Bankkonto k;
+    k.id          = row["id"].AsInt64();
+    k.mandantId   = row["mandant_id"].AsInt64();
+    k.bezeichnung = row["bezeichnung"].AsString();
+    k.iban        = row["iban"].AsString();
+    k.bic         = row["bic"].AsString();
+    k.bank        = row["bank"].AsString();
+    k.konto       = row["konto"].AsString();
+    k.waehrung    = row["waehrung"].AsString();
+    if (k.waehrung.empty()) k.waehrung = "EUR";
+    k.csvProfil   = row["csv_profil"].AsString();
+    k.aktiv       = row["aktiv"].AsInt() != 0;
+    k.letzterImportBis = DateFrom(row["letzter_import_bis"]);
+    k.version     = row["version"].AsInt64();
+    return k;
+}
+
+Bankumsatz UmsatzAusZeile(const UltraDbRow& row) {
+    Bankumsatz u;
+    u.id              = row["id"].AsInt64();
+    u.bankkontoId     = row["bankkonto_id"].AsInt64();
+    u.buchungstag     = DateFrom(row["buchungstag"]);
+    u.valuta          = DateFrom(row["valuta"]);
+    const std::string waehrung =
+        row["waehrung"].AsString().empty() ? "EUR" : row["waehrung"].AsString();
+    u.betrag          = MoneyFrom(row["betrag"], waehrung);
+    u.gegenIban       = row["gegen_iban"].AsString();
+    u.gegenBic        = row["gegen_bic"].AsString();
+    u.gegenName       = row["gegen_name"].AsString();
+    u.verwendungszweck = row["verwendungszweck"].AsString();
+    u.endToEndId      = row["e2e_ref"].AsString();
+    u.mandatsreferenz = row["mandatsreferenz"].AsString();
+    u.glaeubigerId    = row["glaeubiger_id"].AsString();
+    u.buchungstext    = row["buchungstext"].AsString();
+    u.referenz        = row["referenz"].AsString();
+    u.teilbuchungen   = row["teilbuchungen"].AsInt();
+    return u;
+}
+
+const char* const kUmsatzSpalten =
+    "id, bankkonto_id, mandant_id, buchungstag, valuta, betrag, waehrung,"
+    " gegen_iban, gegen_bic, gegen_name, verwendungszweck, e2e_ref,"
+    " mandatsreferenz, glaeubiger_id, buchungstext, referenz, teilbuchungen";
+
+} // namespace
+
+StoreResult Store::SaveBankkonto(Bankkonto& konto, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Stammdaten ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+    if (!konto.Valid())
+        return StoreResult::Fail("Ein Bankkonto braucht eine Bezeichnung und ein "
+                                 "Sachkonto, auf das seine Bewegungen gebucht werden.");
+
+    // Two bank accounts with one IBAN would make every import ambiguous, and
+    // the ambiguity would only show as lines landing on the wrong account.
+    if (!konto.iban.empty()) {
+        Bankkonto vorhanden;
+        if (BankkontoByIban(konto.mandantId, konto.iban, vorhanden) &&
+            vorhanden.id != konto.id) {
+            return StoreResult::Fail("Die IBAN " + konto.iban +
+                                     " gehört bereits zum Bankkonto \"" +
+                                     vorhanden.bezeichnung + "\".");
+        }
+    }
+
+    if (konto.id == 0) {
+        const StoreResult id = NextSequenceValue("bankkonto", konto.id);
+        if (!id) return id;
+        const StoreResult r = Exec(
+            "INSERT INTO bankkonto(id, mandant_id, bezeichnung, iban, bic, bank,"
+            " konto, waehrung, csv_profil, aktiv, letzter_import_bis, version)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,1)",
+            { konto.id, konto.mandantId, konto.bezeichnung, konto.iban, konto.bic,
+              konto.bank, konto.konto, konto.waehrung, konto.csvProfil,
+              konto.aktiv ? 1 : 0, konto.letzterImportBis.ToIso() },
+            "Bankkonto anlegen");
+        if (!r) return r;
+        konto.version = 1;
+        WriteAudit(akteur, "bankkonto", konto.id, "insert", konto.bezeichnung);
+        return StoreResult::Ok();
+    }
+
+    const StoreResult r = Exec(
+        "UPDATE bankkonto SET bezeichnung = ?, iban = ?, bic = ?, bank = ?,"
+        " konto = ?, waehrung = ?, csv_profil = ?, aktiv = ?,"
+        " letzter_import_bis = ?, version = version + 1"
+        " WHERE id = ? AND version = ?",
+        { konto.bezeichnung, konto.iban, konto.bic, konto.bank, konto.konto,
+          konto.waehrung, konto.csvProfil, konto.aktiv ? 1 : 0,
+          konto.letzterImportBis.ToIso(), konto.id, konto.version },
+        "Bankkonto speichern");
+    if (!r) return r;
+    ++konto.version;
+    WriteAudit(akteur, "bankkonto", konto.id, "update", konto.bezeichnung);
+    return StoreResult::Ok();
+}
+
+std::vector<Bankkonto> Store::Bankkonten(int64_t mandantId, bool nurAktive) const {
+    std::vector<Bankkonto> liste;
+    UltraDbResultSet rs;
+    const std::string sql =
+        std::string("SELECT id, mandant_id, bezeichnung, iban, bic, bank, konto,"
+                    " waehrung, csv_profil, aktiv, letzter_import_bis, version"
+                    " FROM bankkonto WHERE mandant_id = ?") +
+        (nurAktive ? " AND aktiv = 1" : "") + " ORDER BY bezeichnung";
+    if (!Query(sql, { mandantId }, rs)) return liste;
+    for (const UltraDbRow& row : rs) liste.push_back(BankkontoAusZeile(row));
+    return liste;
+}
+
+bool Store::BankkontoById(int64_t id, Bankkonto& out) const {
+    UltraDbRow row;
+    if (!QueryOne("SELECT id, mandant_id, bezeichnung, iban, bic, bank, konto,"
+                  " waehrung, csv_profil, aktiv, letzter_import_bis, version"
+                  " FROM bankkonto WHERE id = ?", { id }, row))
+        return false;
+    out = BankkontoAusZeile(row);
+    return true;
+}
+
+bool Store::BankkontoByIban(int64_t mandantId, const std::string& iban,
+                            Bankkonto& out) const {
+    if (iban.empty()) return false;
+    UltraDbRow row;
+    if (!QueryOne("SELECT id, mandant_id, bezeichnung, iban, bic, bank, konto,"
+                  " waehrung, csv_profil, aktiv, letzter_import_bis, version"
+                  " FROM bankkonto WHERE mandant_id = ? AND iban = ?",
+                  { mandantId, iban }, row))
+        return false;
+    out = BankkontoAusZeile(row);
+    return true;
+}
+
+StoreResult Store::ImportiereBankauszug(int64_t bankkontoId,
+                                        const BankLeseBericht& bericht,
+                                        const std::string& dateiname,
+                                        const Akteur& akteur,
+                                        int& outNeu, int& outBekannt) {
+    outNeu = 0;
+    outBekannt = 0;
+    if (!akteur.Darf(Recht::Buchen))
+        return StoreResult::Fail("Diese Rolle darf keine Umsätze einlesen.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+    if (!bericht.ok)
+        return StoreResult::Fail("Die Datei enthält keine übernehmbaren Umsätze.");
+
+    Bankkonto konto;
+    if (!BankkontoById(bankkontoId, konto))
+        return StoreResult::Fail("Das Bankkonto gibt es nicht.");
+
+    // A statement for a different IBAN than the account it is being read into
+    // is refused rather than warned about: the lines would be right, the
+    // account would be wrong, and nothing afterwards would look odd.
+    for (const Bankauszug& auszug : bericht.auszuege) {
+        if (auszug.iban.empty() || konto.iban.empty()) continue;
+        if (auszug.iban != konto.iban) {
+            return StoreResult::Fail(
+                "Die Datei gehört zur IBAN " + auszug.iban + ", das Bankkonto \"" +
+                konto.bezeichnung + "\" zur IBAN " + konto.iban +
+                ". Es wurde nichts eingelesen.");
+        }
+    }
+    // A statement that does not add up has been read wrong. Importing it would
+    // put a wrong bank balance in the books, and a wrong bank balance is found
+    // by the next reconciliation at the earliest.
+    for (const Bankauszug& auszug : bericht.auszuege) {
+        Money differenz;
+        if (auszug.saldenGelesen && !auszug.Stimmt(differenz)) {
+            return StoreResult::Fail(
+                "Auszug " + auszug.auszugsnummer + " geht nicht auf: es fehlen " +
+                differenz.ToString() + " zwischen Anfangssaldo, Buchungen und "
+                "Endsaldo. Die Datei wurde nicht eingelesen.");
+        }
+    }
+
+    UltraDbResult error;
+    UltraDbHandle tx = UltraDb_Begin(connection_, &error);
+    if (tx == UltraDbInvalidHandle)
+        return StoreResult::Fail("Transaktion konnte nicht gestartet werden: " +
+                                 error.message);
+    std::string fehler;
+    auto abbrechen = [&](const std::string& text) {
+        UltraDb_Rollback(tx);
+        return StoreResult::Fail(text + (fehler.empty() ? "" : ": " + fehler));
+    };
+
+    int64_t importId = 0;
+    if (!NextSequenzInTx(tx, "bank_import", importId, fehler))
+        return abbrechen("Die Importnummer konnte nicht vergeben werden");
+
+    const int64_t jetzt = NowSeconds();
+    Date von, bis;
+    int gelesen = 0;
+
+    for (const Bankauszug& auszug : bericht.auszuege) {
+        for (const Bankumsatz& umsatz : auszug.umsaetze) {
+            ++gelesen;
+            if (!umsatz.Valid()) continue;
+
+            // **The idempotency check, per line.** A user who downloads "the
+            // last 30 days" every week hands over the same lines four times;
+            // skipping the known ones is what makes that harmless.
+            UltraDbResultSet vorhanden;
+            UltraDb_QueryInTx(
+                tx, "SELECT id FROM bankumsatz WHERE bankkonto_id = ? AND referenz = ?",
+                { bankkontoId, umsatz.referenz }, vorhanden);
+            if (!vorhanden.Empty()) {
+                ++outBekannt;
+                continue;
+            }
+
+            int64_t id = 0;
+            if (!NextSequenzInTx(tx, "bankumsatz", id, fehler))
+                return abbrechen("Eine Umsatznummer konnte nicht vergeben werden");
+
+            const UltraDbResult r = UltraDb_ExecInTx(
+                tx,
+                "INSERT INTO bankumsatz(id, bankkonto_id, mandant_id, buchungstag,"
+                " valuta, betrag, waehrung, gegen_iban, gegen_bic, gegen_name,"
+                " verwendungszweck, e2e_ref, mandatsreferenz, glaeubiger_id,"
+                " buchungstext, referenz, teilbuchungen, import_id, importiert_am)"
+                " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                { id, bankkontoId, konto.mandantId, umsatz.buchungstag.ToIso(),
+                  umsatz.valuta.ToIso(), umsatz.betrag.Minor(),
+                  umsatz.betrag.Currency(), umsatz.gegenIban, umsatz.gegenBic,
+                  umsatz.gegenName, umsatz.verwendungszweck, umsatz.endToEndId,
+                  umsatz.mandatsreferenz, umsatz.glaeubigerId, umsatz.buchungstext,
+                  umsatz.referenz, umsatz.teilbuchungen, importId, jetzt });
+            if (!r) { fehler = r.message; return abbrechen("Ein Umsatz konnte nicht geschrieben werden"); }
+            ++outNeu;
+
+            if (!von.Valid() || umsatz.buchungstag < von) von = umsatz.buchungstag;
+            if (!bis.Valid() || bis < umsatz.buchungstag) bis = umsatz.buchungstag;
+        }
+    }
+
+    const UltraDbResult protokoll = UltraDb_ExecInTx(
+        tx,
+        "INSERT INTO bank_import(id, mandant_id, bankkonto_id, dateiname, datei_hash,"
+        " format, zeitpunkt, benutzer, gelesen, neu, bekannt, von, bis)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        { importId, konto.mandantId, bankkontoId, dateiname, bericht.dateiHash,
+          BankFormatToText(bericht.format), jetzt, akteur.anmeldename, gelesen,
+          outNeu, outBekannt, von.ToIso(), bis.ToIso() });
+    if (!protokoll) { fehler = protokoll.message; return abbrechen("Der Import konnte nicht protokolliert werden"); }
+
+    // How far the statements have been read, so the next import knows where it
+    // should start and a gap is visible rather than assumed away.
+    if (bis.Valid() && (!konto.letzterImportBis.Valid() || konto.letzterImportBis < bis)) {
+        UltraDb_ExecInTx(tx, "UPDATE bankkonto SET letzter_import_bis = ? WHERE id = ?",
+                            { bis.ToIso(), bankkontoId });
+    }
+
+    if (!AuditInTx(tx, akteur, "bank_import", importId, "insert",
+                   dateiname + ", " + Number(outNeu) + " neu, " +
+                   Number(outBekannt) + " bereits vorhanden", fehler))
+        return abbrechen("Der Import konnte nicht protokolliert werden");
+
+    const UltraDbResult commit = UltraDb_Commit(tx);
+    if (!commit)
+        return StoreResult::Fail("Der Import konnte nicht abgeschlossen werden: " +
+                                 commit.message);
+    return StoreResult::Ok();
+}
+
+std::vector<Store::BankImportEintrag> Store::BankImporte(int64_t mandantId) const {
+    std::vector<BankImportEintrag> liste;
+    UltraDbResultSet rs;
+    if (!Query("SELECT id, bankkonto_id, dateiname, datei_hash, format, zeitpunkt,"
+               " benutzer, gelesen, neu, bekannt, von, bis FROM bank_import"
+               " WHERE mandant_id = ? ORDER BY zeitpunkt DESC", { mandantId }, rs))
+        return liste;
+    for (const UltraDbRow& row : rs) {
+        BankImportEintrag e;
+        e.id          = row["id"].AsInt64();
+        e.bankkontoId = row["bankkonto_id"].AsInt64();
+        e.dateiname   = row["dateiname"].AsString();
+        e.dateiHash   = row["datei_hash"].AsString();
+        e.format      = row["format"].AsString();
+        e.zeitpunkt   = row["zeitpunkt"].AsInt64();
+        e.benutzer    = row["benutzer"].AsString();
+        e.gelesen     = row["gelesen"].AsInt();
+        e.neu         = row["neu"].AsInt();
+        e.bekannt     = row["bekannt"].AsInt();
+        e.von         = DateFrom(row["von"]);
+        e.bis         = DateFrom(row["bis"]);
+        liste.push_back(e);
+    }
+    return liste;
+}
+
+std::vector<Bankumsatz> Store::Umsaetze(const UmsatzFilter& filter) const {
+    std::vector<Bankumsatz> liste;
+    std::string sql = std::string("SELECT ") + kUmsatzSpalten + " FROM bankumsatz WHERE 1=1";
+    UltraDbParams params;
+    if (filter.bankkontoId != 0) { sql += " AND bankkonto_id = ?"; params.push_back(filter.bankkontoId); }
+    if (filter.mandantId != 0)   { sql += " AND mandant_id = ?";   params.push_back(filter.mandantId); }
+    if (filter.von.Valid())      { sql += " AND buchungstag >= ?"; params.push_back(filter.von.ToIso()); }
+    if (filter.bis.Valid())      { sql += " AND buchungstag <= ?"; params.push_back(filter.bis.ToIso()); }
+    if (!filter.suche.empty()) {
+        sql += " AND (gegen_name LIKE ? OR verwendungszweck LIKE ? OR referenz LIKE ?)";
+        const std::string muster = "%" + filter.suche + "%";
+        params.push_back(muster); params.push_back(muster); params.push_back(muster);
+    }
+    if (filter.nurOffene) {
+        // Unassigned means: nothing assigned, or less assigned than arrived.
+        // The second half is what keeps a part payment visible until the rest
+        // of it is dealt with.
+        sql += " AND (SELECT COALESCE(SUM(ABS(betrag)), 0) FROM zuordnung"
+               " WHERE zuordnung.bankumsatz_id = bankumsatz.id) < ABS(bankumsatz.betrag)";
+    }
+    sql += " ORDER BY buchungstag, id";
+    if (filter.limit > 0) sql += " LIMIT " + Number(static_cast<int64_t>(filter.limit));
+
+    UltraDbResultSet rs;
+    if (!Query(sql, params, rs)) return liste;
+    for (const UltraDbRow& row : rs) liste.push_back(UmsatzAusZeile(row));
+    return liste;
+}
+
+bool Store::UmsatzById(int64_t id, Bankumsatz& out) const {
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kUmsatzSpalten +
+                  " FROM bankumsatz WHERE id = ?", { id }, row))
+        return false;
+    out = UmsatzAusZeile(row);
+    return true;
+}
+
+Money Store::OffenerBetrag(int64_t bankumsatzId) const {
+    Bankumsatz umsatz;
+    if (!UmsatzById(bankumsatzId, umsatz)) return Money::Invalid();
+    int64_t zugeordnet = 0;
+    UltraDbResultSet rs;
+    if (Query("SELECT betrag FROM zuordnung WHERE bankumsatz_id = ?", { bankumsatzId }, rs))
+        for (const UltraDbRow& row : rs) {
+            const int64_t b = row["betrag"].AsInt64();
+            zugeordnet += (b < 0 ? -b : b);
+        }
+    const int64_t gesamt = umsatz.betrag.Minor() < 0 ? -umsatz.betrag.Minor()
+                                                     : umsatz.betrag.Minor();
+    const int64_t rest = gesamt - zugeordnet;
+    // The sign follows the line, so "open" on an outgoing payment stays
+    // negative and cannot be confused with money in.
+    return Money::FromMinor(umsatz.betrag.Minor() < 0 ? -rest : rest,
+                            umsatz.betrag.Currency());
+}
+
+std::vector<Zuordnungsvorschlag> Store::Zuordnungsvorschlaege(int64_t bankumsatzId) const {
+    std::vector<Zuordnungsvorschlag> leer;
+    Bankumsatz umsatz;
+    if (!UmsatzById(bankumsatzId, umsatz)) return leer;
+    Bankkonto konto;
+    if (!BankkontoById(umsatz.bankkontoId, konto)) return leer;
+
+    // Only what is still open on the line can be assigned, so the candidates
+    // are scored against the remainder rather than the original amount.
+    const Money offen = OffenerBetrag(bankumsatzId);
+    if (!offen.Valid() || offen.Minor() == 0) return leer;
+    Bankumsatz rest = umsatz;
+    rest.betrag = offen;
+
+    BelegFilter filter;
+    filter.mandantId = konto.mandantId;
+    filter.nurOffene = true;
+    const std::vector<Beleg> belege = BelegListe(filter);
+
+    std::vector<ZuordnungKandidat> kandidaten;
+    kandidaten.reserve(belege.size());
+    for (const Beleg& b : belege) {
+        ZuordnungKandidat k;
+        k.belegId       = b.id;
+        k.belegnummer   = b.nummer;
+        k.externeNummer = b.externeNummer;
+        k.belegdatum    = b.datum;
+        k.brutto        = b.brutto;
+        k.offen         = b.brutto - b.bezahlt;
+        k.geldAbgang    = GeldAbgangBeimAusgleich(b.art);
+        k.partnerId     = b.partnerId;
+        k.partnerName   = b.partnerName;
+        Partner partner;
+        if (b.partnerId != 0 && PartnerById(b.partnerId, partner)) {
+            k.partnerIban = partner.iban;
+            if (k.partnerName.empty()) k.partnerName = partner.name;
+        }
+        kandidaten.push_back(std::move(k));
+    }
+    return SchlageZuordnungVor(rest, kandidaten);
+}
+
+StoreResult Store::ZuordnungBuchen(int64_t bankumsatzId, int64_t belegId,
+                                   const Money& betrag, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::Buchen))
+        return StoreResult::Fail("Diese Rolle darf nicht buchen.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    Bankumsatz umsatz;
+    if (!UmsatzById(bankumsatzId, umsatz))
+        return StoreResult::Fail("Den Bankumsatz gibt es nicht.");
+    Bankkonto konto;
+    if (!BankkontoById(umsatz.bankkontoId, konto))
+        return StoreResult::Fail("Das Bankkonto des Umsatzes gibt es nicht.");
+    Beleg beleg;
+    if (!BelegById(belegId, beleg))
+        return StoreResult::Fail("Den Beleg gibt es nicht.");
+
+    const int64_t wunsch = betrag.Minor() < 0 ? -betrag.Minor() : betrag.Minor();
+    if (wunsch <= 0)
+        return StoreResult::Fail("Ein zugeordneter Betrag muss größer als null sein.");
+
+    // More than the line carries cannot be assigned from it. Without this, one
+    // bank line could pay three invoices that together cost more than arrived,
+    // and every document involved would look settled.
+    const Money offen = OffenerBetrag(bankumsatzId);
+    const int64_t offenBetrag = offen.Minor() < 0 ? -offen.Minor() : offen.Minor();
+    if (wunsch > offenBetrag) {
+        return StoreResult::Fail(
+            "Auf dem Bankumsatz sind nur noch " +
+            Money::FromMinor(offenBetrag, umsatz.betrag.Currency()).ToString() +
+            " offen, zugeordnet werden sollen " + betrag.ToString() + ".");
+    }
+
+    // **The direction has to agree.** Money that arrived cannot pay an invoice
+    // we received. The matcher already refuses these, but a caller can assign
+    // by hand, and the store is where the rule has to hold.
+    const bool geldEin = umsatz.betrag.Minor() > 0;
+    if (GeldAbgangBeimAusgleich(beleg.art) == geldEin) {
+        return StoreResult::Fail(
+            geldEin ? "Auf dem Konto ist Geld eingegangen; eine Eingangsrechnung "
+                      "wird damit nicht bezahlt."
+                    : "Vom Konto ist Geld abgegangen; eine Ausgangsrechnung wird "
+                      "damit nicht bezahlt.");
+    }
+
+    // The payment goes through the existing path, which already knows about
+    // over-payment, frozen periods, the document's new status and the hash
+    // chain. A second payment path would drift from this one.
+    const Money zahlbetrag = Money::FromMinor(wunsch, umsatz.betrag.Currency());
+    const std::string notiz =
+        "Bankumsatz " + FormatDateGerman(umsatz.buchungstag) +
+        (umsatz.gegenName.empty() ? "" : ", " + umsatz.gegenName);
+    const StoreResult gebucht = ZahlungErfassen(belegId, umsatz.buchungstag, zahlbetrag,
+                                                konto.konto, notiz, akteur);
+    if (!gebucht) return gebucht;
+
+    // Which payment row it produced, so the assignment points at it.
+    int64_t zahlungId = 0;
+    for (const Zahlung& z : Zahlungen(belegId))
+        if (z.id > zahlungId) zahlungId = z.id;
+
+    int64_t id = 0;
+    const StoreResult neueId = NextSequenceValue("zuordnung", id);
+    if (!neueId) return neueId;
+    const StoreResult r = Exec(
+        "INSERT INTO zuordnung(id, bankumsatz_id, beleg_id, betrag, waehrung,"
+        " zahlung_id, erfasst_von, erfasst_am) VALUES(?,?,?,?,?,?,?,?)",
+        { id, bankumsatzId, belegId, wunsch, umsatz.betrag.Currency(), zahlungId,
+          akteur.benutzerId, NowSeconds() },
+        "Zuordnung speichern");
+    if (!r) return r;
+    WriteAudit(akteur, "zuordnung", id, "insert",
+               "Bankumsatz " + Number(bankumsatzId) + " -> Beleg " + beleg.nummer +
+               ", " + zahlbetrag.ToString());
+    return StoreResult::Ok();
+}
+
+std::vector<Store::BankZuordnung> Store::Zuordnungen(int64_t bankumsatzId) const {
+    std::vector<BankZuordnung> liste;
+    UltraDbResultSet rs;
+    if (!Query("SELECT z.id, z.bankumsatz_id, z.beleg_id, z.betrag, z.waehrung,"
+               " z.zahlung_id, z.erfasst_von, z.erfasst_am, b.nummer AS nummer"
+               " FROM zuordnung z LEFT JOIN beleg b ON b.id = z.beleg_id"
+               " WHERE z.bankumsatz_id = ? ORDER BY z.id", { bankumsatzId }, rs))
+        return liste;
+    for (const UltraDbRow& row : rs) {
+        BankZuordnung z;
+        z.id           = row["id"].AsInt64();
+        z.bankumsatzId = row["bankumsatz_id"].AsInt64();
+        z.belegId      = row["beleg_id"].AsInt64();
+        const std::string waehrung =
+            row["waehrung"].AsString().empty() ? "EUR" : row["waehrung"].AsString();
+        z.betrag       = MoneyFrom(row["betrag"], waehrung);
+        z.zahlungId    = row["zahlung_id"].AsInt64();
+        z.belegnummer  = row["nummer"].AsString();
+        z.erfasstVon   = row["erfasst_von"].AsInt64();
+        z.erfasstAm    = row["erfasst_am"].AsInt64();
+        liste.push_back(z);
+    }
+    return liste;
 }
 
 // ===== DATEV-IMPORT =====

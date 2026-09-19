@@ -22,6 +22,7 @@ set(ULTRAFIBU_ENGINE_SOURCES
     engine/UltraFIBUBeleg.cpp
     engine/UltraFIBUBuchung.cpp
     engine/UltraFIBUDatev.cpp
+    engine/UltraFIBUBank.cpp
     engine/UltraFIBUStore.cpp
 )
 
@@ -39,6 +40,19 @@ target_include_directories(UltraFIBUEngine PUBLIC
 target_link_libraries(UltraFIBUEngine PUBLIC UltraDatabase)
 if(TARGET UltraCrypt)
     target_link_libraries(UltraFIBUEngine PUBLIC UltraCrypt)
+endif()
+
+# CAMT.053 is XML, and tinyxml2 is already a REQUIRED core dependency
+# (UltraCanvas/CMakeLists.txt pkg_check_modules TINYXML2) - so the bank reader
+# needs no new dependency, only the include path named explicitly rather than
+# inherited. Explicitly, because the core library is what re-exports it and the
+# engine is built to stay usable without a rendering stack.
+if(TINYXML2_FOUND)
+    target_include_directories(UltraFIBUEngine PRIVATE ${TINYXML2_INCLUDE_DIRS})
+    target_link_libraries(UltraFIBUEngine PUBLIC ${TINYXML2_LIBRARIES})
+    if(TINYXML2_LIBRARY_DIRS)
+        target_link_directories(UltraFIBUEngine PUBLIC ${TINYXML2_LIBRARY_DIRS})
+    endif()
 endif()
 
 # UltraCanvasJSON (the VIES / BZSt responses) lives in the core library, so it

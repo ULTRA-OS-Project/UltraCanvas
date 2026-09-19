@@ -29,6 +29,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraFIBUBank.h"
 #include "UltraFIBUBeleg.h"
 #include "UltraFIBUBuchung.h"
 #include "UltraFIBUDatev.h"
@@ -78,7 +79,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert that the database matches the
     // code without a literal that has to be chased.
-    static constexpr int kSchemaVersion = 3;
+    static constexpr int kSchemaVersion = 4;
 
     Store() = default;
     ~Store() = default;
@@ -337,6 +338,93 @@ public:
     // Mandant.
     bool DatevDateiSchonImportiert(int64_t mandantId, const std::string& dateiHash,
                                    DatevImportEintrag& out) const;
+
+    // ---- Bank ---------------------------------------------------------------
+
+    // A bank account, and the G/L account its movements post to. `konto` is
+    // what ties the two worlds together: every posting a bank line eventually
+    // produces goes to that account, so it is part of the master data rather
+    // than typed per import.
+    StoreResult SaveBankkonto(Bankkonto& konto, const Akteur& akteur);
+    std::vector<Bankkonto> Bankkonten(int64_t mandantId, bool nurAktive = true) const;
+    bool BankkontoById(int64_t id, Bankkonto& out) const;
+    bool BankkontoByIban(int64_t mandantId, const std::string& iban, Bankkonto& out) const;
+
+    struct BankImportEintrag {
+        int64_t     id = 0;
+        int64_t     bankkontoId = 0;
+        std::string dateiname;
+        std::string dateiHash;
+        std::string format;
+        int64_t     zeitpunkt = 0;
+        std::string benutzer;
+        int         gelesen = 0;
+        int         neu     = 0;
+        int         bekannt = 0;      // already present, so skipped
+        Date        von;
+        Date        bis;
+    };
+
+    // Write the lines a statement was read into.
+    //
+    // **Importing the same statement twice must change nothing**, and that is
+    // enforced per line rather than per file: a line whose reference is already
+    // present is skipped and counted in `outBekannt`. Per line rather than per
+    // file because the overlapping statement is the normal case - a user who
+    // downloads "the last 30 days" every week hands over the same lines four
+    // times, and a file-level check would either reject the whole download or
+    // duplicate three weeks of it.
+    //
+    // Nothing is posted here. A bank line is a fact about the account; which
+    // document it pays is a separate decision, and one that a wrong guess makes
+    // expensive (§9.3).
+    StoreResult ImportiereBankauszug(int64_t bankkontoId, const BankLeseBericht& bericht,
+                                     const std::string& dateiname, const Akteur& akteur,
+                                     int& outNeu, int& outBekannt);
+
+    std::vector<BankImportEintrag> BankImporte(int64_t mandantId) const;
+
+    struct UmsatzFilter {
+        int64_t bankkontoId = 0;       // 0: every account of the Mandant
+        int64_t mandantId = 0;
+        Date    von, bis;
+        bool    nurOffene = false;     // not yet assigned to any document
+        std::string suche;             // name, remittance, reference
+        size_t  limit = 0;
+    };
+    std::vector<Bankumsatz> Umsaetze(const UmsatzFilter& filter) const;
+    bool UmsatzById(int64_t id, Bankumsatz& out) const;
+
+    // What is still unassigned on a line: the amount minus everything already
+    // assigned to a document. Zero means the line is done.
+    Money OffenerBetrag(int64_t bankumsatzId) const;
+
+    // The open documents a bank line could be paying, scored. A proposal only -
+    // see SchlageZuordnungVor in UltraFIBUBank.h for why nothing posts here.
+    std::vector<Zuordnungsvorschlag> Zuordnungsvorschlaege(int64_t bankumsatzId) const;
+
+    struct BankZuordnung {
+        int64_t     id = 0;
+        int64_t     bankumsatzId = 0;
+        int64_t     belegId = 0;
+        std::string belegnummer;
+        Money       betrag;
+        int64_t     zahlungId = 0;
+        int64_t     erfasstVon = 0;
+        int64_t     erfasstAm = 0;
+    };
+
+    // Confirm an assignment: record it and book the payment.
+    //
+    // The posting itself goes through ZahlungErfassen, which already knows
+    // about over-payment, frozen periods, the document's new status and the
+    // hash chain. A bank assignment is a *reason* to record a payment, not a
+    // second way of recording one - two payment paths would drift apart, and
+    // the one that drifted would be the one nobody tested.
+    StoreResult ZuordnungBuchen(int64_t bankumsatzId, int64_t belegId,
+                                const Money& betrag, const Akteur& akteur);
+
+    std::vector<BankZuordnung> Zuordnungen(int64_t bankumsatzId) const;
 
     // ---- Journal -----------------------------------------------------------
 

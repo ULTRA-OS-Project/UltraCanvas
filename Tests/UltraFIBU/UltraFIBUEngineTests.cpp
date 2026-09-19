@@ -35,6 +35,7 @@
 #include "UltraFIBUDate.h"
 #include "UltraFIBUGeschaeftsjahr.h"
 #include "UltraFIBUKontenrahmen.h"
+#include "UltraFIBUBank.h"
 #include "UltraFIBUDatev.h"
 #include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUStore.h"
@@ -2779,6 +2780,901 @@ static void TestDatevRundlauf() {
     std::remove(exportiert.datei.c_str());
 }
 
+// ===== BANK: READING A STATEMENT =====
+//
+// Each of the four format properties in UltraFIBUBank.h produces a
+// plausible-looking wrong bank balance when it is got wrong, so each one is
+// asserted here rather than trusted: the unsigned amount plus its direction
+// flag, the dot/comma split between CAMT and MT940, the counterparty that
+// changes side with the direction, and the identity the statement carries
+// inside itself.
+
+static std::string Cp1252Datei(const std::string& utf8) {
+    bool verlust = false;
+    return NachCp1252(utf8, verlust);
+}
+
+// A CAMT.053 statement built from parts, so a test can change exactly one
+// thing - a sign, a balance, a namespace prefix - and see what it costs.
+static std::string BaueCamt(const std::string& eintraege,
+                            const std::string& anfang = "1000.00",
+                            const std::string& ende = "1971.00",
+                            const std::string& praefix = "") {
+    const std::string p = praefix.empty() ? "" : praefix + ":";
+    const std::string xmlns =
+        praefix.empty() ? " xmlns=\"urn:iso:std:iso:20022:tech:xsd:camt.053.001.02\""
+                        : " xmlns:" + praefix +
+                          "=\"urn:iso:std:iso:20022:tech:xsd:camt.053.001.02\"";
+    return
+        "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+        "<" + p + "Document" + xmlns + ">\n"
+        "<" + p + "BkToCstmrStmt>\n"
+        "<" + p + "Stmt>\n"
+        "<" + p + "Id>AUSZUG-6</" + p + "Id>\n"
+        "<" + p + "ElctrncSeqNb>6</" + p + "ElctrncSeqNb>\n"
+        "<" + p + "Acct><" + p + "Id><" + p + "IBAN>DE02120300000000202051</" + p +
+        "IBAN></" + p + "Id><" + p + "Ccy>EUR</" + p + "Ccy></" + p + "Acct>\n"
+        "<" + p + "Bal><" + p + "Tp><" + p + "CdOrPrtry><" + p + "Cd>OPBD</" + p +
+        "Cd></" + p + "CdOrPrtry></" + p + "Tp><" + p + "Amt Ccy=\"EUR\">" + anfang +
+        "</" + p + "Amt><" + p + "CdtDbtInd>CRDT</" + p + "CdtDbtInd>"
+        "<" + p + "Dt><" + p + "Dt>2026-06-01</" + p + "Dt></" + p + "Dt></" + p + "Bal>\n"
+        "<" + p + "Bal><" + p + "Tp><" + p + "CdOrPrtry><" + p + "Cd>CLBD</" + p +
+        "Cd></" + p + "CdOrPrtry></" + p + "Tp><" + p + "Amt Ccy=\"EUR\">" + ende +
+        "</" + p + "Amt><" + p + "CdtDbtInd>CRDT</" + p + "CdtDbtInd>"
+        "<" + p + "Dt><" + p + "Dt>2026-06-30</" + p + "Dt></" + p + "Dt></" + p + "Bal>\n"
+        + eintraege +
+        "</" + p + "Stmt>\n</" + p + "BkToCstmrStmt>\n</" + p + "Document>\n";
+}
+
+static std::string CamtEintrag(const std::string& betrag, const std::string& richtung,
+                               const std::string& tag, const std::string& referenz,
+                               const std::string& details,
+                               const std::string& status = "BOOK",
+                               const std::string& praefix = "") {
+    const std::string p = praefix.empty() ? "" : praefix + ":";
+    return
+        "<" + p + "Ntry><" + p + "Amt Ccy=\"EUR\">" + betrag + "</" + p + "Amt>"
+        "<" + p + "CdtDbtInd>" + richtung + "</" + p + "CdtDbtInd>"
+        "<" + p + "Sts>" + status + "</" + p + "Sts>"
+        "<" + p + "BookgDt><" + p + "Dt>" + tag + "</" + p + "Dt></" + p + "BookgDt>" +
+        (referenz.empty() ? "" : "<" + p + "AcctSvcrRef>" + referenz + "</" + p + "AcctSvcrRef>") +
+        "<" + p + "NtryDtls><" + p + "TxDtls>" + details +
+        "</" + p + "TxDtls></" + p + "NtryDtls></" + p + "Ntry>\n";
+}
+
+static void TestBankLesen() {
+    std::printf("Bank: Kontoauszüge lesen\n");
+
+    // --- the SEPA tag packing, on its own ---
+    // A German bank packs several fields into one remittance line. The human
+    // part is what follows SVWZ+; taking the whole string instead leaves a
+    // Verwendungszweck full of machine text that no document number search
+    // and no human reading survives well.
+    {
+        const SepaTags tags = ZerlegeSepaTags(
+            "EREF+E2E-9911 MREF+MANDAT-1 CRED+DE98ZZZ09999999999 "
+            "SVWZ+Rechnung R-202606001 vom 15.06.2026 ABWA+Muster GmbH");
+        CheckText(tags.endToEndId, "E2E-9911", "EREF is the end-to-end reference");
+        CheckText(tags.mandatsreferenz, "MANDAT-1", "MREF is the mandate");
+        CheckText(tags.glaeubigerId, "DE98ZZZ09999999999", "CRED is the creditor id");
+        CheckText(tags.verwendungszweck, "Rechnung R-202606001 vom 15.06.2026",
+                  "and SVWZ is the part a human wrote - which is the only part "
+                  "worth showing and searching");
+        CheckText(tags.abweichenderName, "Muster GmbH", "ABWA is the differing name");
+
+        // The ordinary case: somebody typed a sentence, no tags at all.
+        const SepaTags schlicht = ZerlegeSepaTags("Rechnung 4711");
+        CheckText(schlicht.verwendungszweck, "Rechnung 4711",
+                  "an untagged remittance is taken whole");
+        Check(schlicht.endToEndId.empty(), "and invents no reference");
+
+        // NONREF is a bank saying there was none.
+        const SepaTags ohne = ZerlegeSepaTags("EREF+NOTPROVIDED SVWZ+Miete");
+        Check(ohne.endToEndId.empty(),
+              "NOTPROVIDED is a bank saying there is no reference, not a reference");
+        CheckText(ohne.verwendungszweck, "Miete", "and the remittance still reads");
+    }
+
+    // --- CAMT.053 ---
+    const std::string gutschrift = CamtEintrag(
+        "1190.00", "CRDT", "2026-06-15", "BANKREF-0001",
+        "<Refs><EndToEndId>E2E-9911</EndToEndId></Refs>"
+        "<RltdPties><Dbtr><Nm>Muster GmbH</Nm></Dbtr>"
+        "<DbtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id></DbtrAcct>"
+        "<Cdtr><Nm>Wir Selbst</Nm></Cdtr>"
+        "<CdtrAcct><Id><IBAN>DE02120300000000202051</IBAN></Id></CdtrAcct></RltdPties>"
+        "<RmtInf><Ustrd>SVWZ+Rechnung R-202606001</Ustrd>"
+        "<Ustrd>vom 15.06.2026</Ustrd></RmtInf>");
+    const std::string lastschrift = CamtEintrag(
+        "219.00", "DBIT", "2026-06-20", "BANKREF-0002",
+        "<RltdPties><Dbtr><Nm>Wir Selbst</Nm></Dbtr>"
+        "<Cdtr><Nm>Schmidt KG</Nm></Cdtr>"
+        "<CdtrAcct><Id><IBAN>DE75512108001245126199</IBAN></Id></CdtrAcct></RltdPties>"
+        "<RmtInf><Ustrd>Ihre Rechnung 4711</Ustrd></RmtInf>");
+
+    SchreibeDatei("camt-gut.xml", BaueCamt(gutschrift + lastschrift));
+    const BankLeseBericht camt = LiesCamt053("camt-gut.xml");
+    Check(camt.ok, "a CAMT.053 statement reads");
+    CheckInt(static_cast<int64_t>(camt.auszuege.size()), 1, "one statement");
+    CheckInt(camt.uebernommen, 2, "with both entries");
+
+    if (!camt.auszuege.empty() && camt.auszuege[0].umsaetze.size() == 2) {
+        const Bankauszug& a = camt.auszuege[0];
+        CheckText(a.iban, "DE02120300000000202051", "the account IBAN is read");
+        CheckText(a.auszugsnummer, "6", "and the statement number");
+        Check(a.von == Date(2026, 6, 1) && a.bis == Date(2026, 6, 30), "and the period");
+
+        // **The self-check.** 1.000,00 + 1.190,00 - 219,00 = 1.971,00.
+        Money differenz;
+        Check(a.Stimmt(differenz),
+              "the statement adds up: opening plus every entry is the closing "
+              "balance - the one identity that catches a dropped entry, a "
+              "doubled entry and an inverted sign at once");
+        CheckInt(differenz.Minor(), 0, "with no difference");
+        CheckInt(a.anfangssaldo.Minor(), 100000, "the opening balance is 1.000,00");
+        CheckInt(a.endsaldo.Minor(), 197100, "the closing balance 1.971,00");
+
+        const Bankumsatz& ein = a.umsaetze[0];
+        const Bankumsatz& aus = a.umsaetze[1];
+
+        // **Unsigned amount plus a direction flag.** CRDT is money in, DBIT is
+        // money out; the sign is applied once, on the way in.
+        CheckInt(ein.betrag.Minor(), 119000, "CRDT 1190.00 is +1.190,00");
+        CheckInt(aus.betrag.Minor(), -21900, "DBIT 219.00 is -219,00");
+        Check(ein.Eingang(), "the credit is money in");
+        Check(!aus.Eingang(), "the debit is money out");
+
+        // **The decimal separator is a dot in CAMT**, and is not the process
+        // locale's business.
+        CheckInt(ein.betrag.Minor(), 119000,
+                 "a dot-decimal amount is read as 1.190,00 and not as 1,19");
+
+        // **The counterparty changes side with the direction.** Taking the
+        // debtor always would name us on our own outgoing payment.
+        CheckText(ein.gegenName, "Muster GmbH",
+                  "on money in, the other party is the debtor");
+        CheckText(ein.gegenIban, "DE89370400440532013000", "with the debtor's IBAN");
+        CheckText(aus.gegenName, "Schmidt KG",
+                  "on money out, the other party is the creditor - the same "
+                  "field would otherwise name us on our own payment");
+        CheckText(aus.gegenIban, "DE75512108001245126199", "with the creditor's IBAN");
+
+        // Several <Ustrd> are one remittance split at 140 characters.
+        CheckText(ein.verwendungszweck, "Rechnung R-202606001 vom 15.06.2026",
+                  "the repeated Ustrd lines are joined and the SVWZ tag removed");
+        CheckText(ein.endToEndId, "E2E-9911", "the end-to-end reference is read");
+        CheckText(ein.referenz, "BANKREF-0001",
+                  "and the bank's own reference is the idempotency key");
+        CheckText(ein.buchungstag.ToIso(), "2026-06-15", "the booking date");
+    }
+
+    // --- a namespace prefix ---
+    // tinyxml2 does not strip prefixes, so <ns:Ntry> and <Ntry> are different
+    // names to it. Whether a German bank writes one is not predictable.
+    SchreibeDatei("camt-ns.xml",
+                  BaueCamt(CamtEintrag("1190.00", "CRDT", "2026-06-15", "R1",
+                                       "<ns:RmtInf><ns:Ustrd>Test</ns:Ustrd></ns:RmtInf>",
+                                       "BOOK", "ns") +
+                           CamtEintrag("219.00", "DBIT", "2026-06-20", "R2", "", "BOOK", "ns"),
+                           "1000.00", "1971.00", "ns"));
+    const BankLeseBericht mitNs = LiesCamt053("camt-ns.xml");
+    Check(mitNs.ok, "a namespace prefix on every element does not stop the reader");
+    CheckInt(mitNs.uebernommen, 2, "and all entries are still found");
+
+    // --- a pending entry ---
+    // PDNG has not hit the account. Importing it and then having the bank drop
+    // it leaves a difference nobody can explain.
+    SchreibeDatei("camt-pdng.xml",
+                  BaueCamt(gutschrift + lastschrift +
+                           CamtEintrag("500.00", "CRDT", "2026-06-30", "BANKREF-0003",
+                                       "<RmtInf><Ustrd>Noch offen</Ustrd></RmtInf>",
+                                       "PDNG")));
+    const BankLeseBericht mitPdng = LiesCamt053("camt-pdng.xml");
+    CheckInt(mitPdng.gelesen, 3, "three entries are seen");
+    CheckInt(mitPdng.uebernommen, 2, "two are booked and taken");
+    CheckInt(mitPdng.vorgemerkt, 1, "the pending one is held back");
+    if (!mitPdng.auszuege.empty()) {
+        Money differenz;
+        Check(mitPdng.auszuege[0].Stimmt(differenz),
+              "and the statement still adds up - which is exactly why the "
+              "pending entry must not be counted");
+    }
+
+    // --- a statement that does not add up ---
+    SchreibeDatei("camt-schief.xml", BaueCamt(gutschrift + lastschrift, "1000.00", "9999.00"));
+    const BankLeseBericht schief = LiesCamt053("camt-schief.xml");
+    bool meldetDifferenz = false;
+    for (const std::string& w : schief.warnungen)
+        if (w.find("geht nicht auf") != std::string::npos) meldetDifferenz = true;
+    Check(meldetDifferenz,
+          "a statement whose balances do not match its entries is reported, not "
+          "imported quietly");
+
+    // --- two identical lines on one day ---
+    // The subtle one. With no bank reference the key is derived, and a key
+    // that could not tell two identical lines apart would silently drop the
+    // second - a payment that vanishes with no error anywhere.
+    const std::string zweimal =
+        CamtEintrag("50.00", "CRDT", "2026-06-10", "",
+                    "<RmtInf><Ustrd>Kleinbetrag</Ustrd></RmtInf>") +
+        CamtEintrag("50.00", "CRDT", "2026-06-10", "",
+                    "<RmtInf><Ustrd>Kleinbetrag</Ustrd></RmtInf>");
+    SchreibeDatei("camt-doppelt.xml", BaueCamt(zweimal, "1000.00", "1100.00"));
+    const BankLeseBericht doppelt = LiesCamt053("camt-doppelt.xml");
+    CheckInt(doppelt.uebernommen, 2, "two identical lines on one day stay two lines");
+    if (doppelt.auszuege.size() == 1 && doppelt.auszuege[0].umsaetze.size() == 2) {
+        Check(doppelt.auszuege[0].umsaetze[0].referenz !=
+              doppelt.auszuege[0].umsaetze[1].referenz,
+              "with different derived references - a key that could not tell "
+              "them apart would drop one payment and report nothing");
+        Money differenz;
+        Check(doppelt.auszuege[0].Stimmt(differenz),
+              "and both are counted in the balance");
+    }
+
+    // --- files that are not what they claim ---
+    SchreibeDatei("camt-kein.xml", "<?xml version=\"1.0\"?><Andere><X/></Andere>");
+    const BankLeseBericht keinCamt = LiesCamt053("camt-kein.xml");
+    Check(!keinCamt.ok, "an XML file that is not CAMT.053 is refused");
+    Check(keinCamt.fehler.find("BkToCstmrStmt") != std::string::npos,
+          "and the refusal names what was missing");
+    SchreibeDatei("camt-kaputt.xml", "<Document><unclosed>");
+    Check(!LiesCamt053("camt-kaputt.xml").ok, "broken XML is refused");
+    Check(!LiesCamt053("gibtesnicht.xml").ok, "a missing file is reported");
+
+    std::remove("camt-gut.xml");
+    std::remove("camt-ns.xml");
+    std::remove("camt-pdng.xml");
+    std::remove("camt-schief.xml");
+    std::remove("camt-doppelt.xml");
+    std::remove("camt-kein.xml");
+    std::remove("camt-kaputt.xml");
+}
+
+// ===== BANK: MT940 AND CSV =====
+
+static void TestBankMt940UndCsv() {
+    std::printf("Bank: MT940 und CSV\n");
+
+    // --- MT940 ---
+    // The archive format. Comma decimals, a C/D marker, ?NN subfields, and
+    // CP1252 - each of which differs from CAMT in a way that silently breaks
+    // a reader written for the other.
+    const std::string mt940 =
+        ":20:STARTUMS\r\n"
+        ":25:DE02120300000000202051/EUR\r\n"
+        ":28C:00006/001\r\n"
+        ":60F:C260601EUR1000,00\r\n"
+        ":61:2606150615C1190,00NTRFE2E-9911//BANKREF-0001\r\n"
+        ":86:166?00SEPA-GUTSCHRIFT?20EREF+E2E-9911 SVWZ+Rechnung R-2?21"
+        "02606001 vom 15.06.2026?30GENODEF1S02?31DE89370400440532013000"
+        "?32M\xc3\xbcller GmbH &?33 S\xc3\xb6hne\r\n"
+        ":61:2606200620D219,00NTRFNONREF//BANKREF-0002\r\n"
+        ":86:116?00SEPA-UEBERWEISUNG?20Ihre Rechnung 4711"
+        "?31DE75512108001245126199?32Schmidt KG\r\n"
+        ":62F:C260630EUR1971,00\r\n"
+        "-\r\n";
+    SchreibeDatei("mt940.sta", Cp1252Datei(mt940));
+    const BankLeseBericht mt = LiesMt940("mt940.sta");
+    Check(mt.ok, "an MT940 statement reads");
+    CheckInt(mt.uebernommen, 2, "with both entries");
+
+    if (!mt.auszuege.empty() && mt.auszuege[0].umsaetze.size() == 2) {
+        const Bankauszug& a = mt.auszuege[0];
+        CheckText(a.iban, "DE02120300000000202051", "the IBAN comes from :25:");
+        CheckText(a.auszugsnummer, "00006/001", "the statement number from :28C:");
+
+        Money differenz;
+        Check(a.Stimmt(differenz),
+              "and the same identity holds here: :60F: plus the entries is :62F:");
+
+        const Bankumsatz& ein = a.umsaetze[0];
+        const Bankumsatz& aus = a.umsaetze[1];
+        // **MT940 decimals are commas**, where CAMT's are dots. A reader that
+        // used one style for both turns 1190,00 into 1,19 or drops it.
+        CheckInt(ein.betrag.Minor(), 119000, "a comma-decimal amount is 1.190,00");
+        CheckInt(aus.betrag.Minor(), -21900, "and the D marker makes it money out");
+        Check(ein.buchungstag == Date(2026, 6, 15), "the booking date is read");
+        Check(ein.valuta == Date(2026, 6, 15), "and the value date");
+
+        // ?20..?29 is one remittance split across subfields; ?32/?33 is one
+        // name split in half. Taking only the first of either truncates.
+        CheckText(ein.verwendungszweck, "Rechnung R-202606001 vom 15.06.2026",
+                  "?20 and ?21 are joined and the SEPA tags unpacked");
+        CheckText(ein.gegenName, "Müller GmbH & Söhne",
+                  "?32 and ?33 are joined - and CP1252 umlauts survive, which "
+                  "is what a payer's name has to do to match a partner");
+        CheckText(ein.gegenIban, "DE89370400440532013000", "?31 is the IBAN");
+        CheckText(ein.gegenBic, "GENODEF1S02", "?30 the BIC");
+        CheckText(ein.buchungstext, "SEPA-GUTSCHRIFT", "?00 the bank's own wording");
+        CheckText(ein.referenz, "BANKREF-0001", "the bank reference after // is the key");
+    }
+
+    // A reversal (RC/RD) runs the other way: a returned direct debit reduces
+    // the balance where the original increased it.
+    const std::string storno =
+        ":20:X\r\n:25:DE02120300000000202051\r\n:28C:1\r\n"
+        ":60F:C260601EUR1000,00\r\n"
+        ":61:2606150615RC100,00NTRFNONREF//REV-1\r\n"
+        ":86:105?00RUECKLASTSCHRIFT?20Ruecklauf\r\n"
+        ":62F:C260630EUR900,00\r\n-\r\n";
+    SchreibeDatei("mt940-storno.sta", Cp1252Datei(storno));
+    const BankLeseBericht rev = LiesMt940("mt940-storno.sta");
+    Check(rev.ok, "a reversal entry reads");
+    if (rev.ok && !rev.auszuege.empty() && !rev.auszuege[0].umsaetze.size() == 0) {
+        CheckInt(rev.auszuege[0].umsaetze[0].betrag.Minor(), -10000,
+                 "RC is a reversed credit and therefore money out - the "
+                 "opposite of the C it contains");
+        Money differenz;
+        Check(rev.auszuege[0].Stimmt(differenz),
+              "and the balances agree, which is what proves the sign");
+    }
+
+    Check(!LiesMt940("gibtesnicht.sta").ok, "a missing MT940 file is reported");
+    SchreibeDatei("mt940-leer.sta", "kein mt940\r\n");
+    Check(!LiesMt940("mt940-leer.sta").ok, "a file with no MT940 fields is refused");
+
+    // --- CSV through a profile ---
+    SchreibeDatei("profil.txt",
+                  "name = Test\n"
+                  "trenner = ;\n"
+                  "kopfzeilen = 1\n"
+                  "datumsformat = TT.MM.JJJJ\n"
+                  "dezimaltrenner = ,\n"
+                  "buchungstag = 1\n"
+                  "valuta = 2\n"
+                  "gegen_name = 3\n"
+                  "verwendungszweck = 4\n"
+                  "betrag = 5\n"
+                  "gegen_iban = 6\n");
+    CsvBankProfil profil;
+    std::string profilFehler;
+    Check(profil.Laden("profil.txt", profilFehler), "a CSV profile loads");
+    CheckInt(profil.spalteBuchungstag, 0,
+             "and its 1-based column numbers become 0-based indices");
+    CheckInt(profil.spalteBetrag, 4, "the amount column too");
+
+    const std::string csv =
+        "Buchungstag;Valuta;Name;Verwendungszweck;Betrag;IBAN\r\n"
+        "15.06.2026;15.06.2026;M\xc3\xbcller GmbH;SVWZ+Rechnung R-202606001;1190,00;"
+        "DE89370400440532013000\r\n"
+        "20.06.2026;20.06.2026;Schmidt KG;Ihre Rechnung 4711;-219,00;\r\n"
+        "keindatum;;X;Y;1,00;\r\n";
+    SchreibeDatei("auszug.csv", Cp1252Datei(csv));
+    const BankLeseBericht csvBericht =
+        LiesBankCsv("auszug.csv", profil, "DE02120300000000202051", "EUR");
+    Check(csvBericht.ok, "a CSV statement reads through its profile");
+    CheckInt(csvBericht.gelesen, 3, "three data lines");
+    CheckInt(csvBericht.uebernommen, 2, "two usable");
+    CheckInt(csvBericht.uebersprungen, 1, "and the unreadable one is skipped");
+    CheckInt(static_cast<int64_t>(csvBericht.fehlerZeilen.size()), 1,
+             "and reported by line number");
+    if (!csvBericht.auszuege.empty() && csvBericht.auszuege[0].umsaetze.size() == 2) {
+        const Bankumsatz& u = csvBericht.auszuege[0].umsaetze[0];
+        CheckInt(u.betrag.Minor(), 119000, "a signed comma amount reads");
+        CheckInt(csvBericht.auszuege[0].umsaetze[1].betrag.Minor(), -21900,
+                 "including its minus sign");
+        CheckText(u.gegenName, "Müller GmbH", "and CP1252 names survive");
+        CheckText(u.verwendungszweck, "Rechnung R-202606001",
+                  "with the SEPA tags unpacked the same way");
+    }
+    // A CSV carries no balances, so it cannot check itself - and that is said
+    // rather than left for somebody to discover after a month goes missing.
+    bool sagtOhneSalden = false;
+    for (const std::string& w : csvBericht.warnungen)
+        if (w.find("keine Salden") != std::string::npos) sagtOhneSalden = true;
+    Check(sagtOhneSalden,
+          "and the import says a CSV cannot verify itself, unlike CAMT.053");
+
+    // Two amount columns instead of one signed one - the other common layout.
+    SchreibeDatei("profil2.txt",
+                  "trenner = ;\nkopfzeilen = 1\nbuchungstag = 1\n"
+                  "gegen_name = 2\nsoll = 3\nhaben = 4\n");
+    CsvBankProfil profil2;
+    Check(profil2.Laden("profil2.txt", profilFehler),
+          "a profile with separate Soll and Haben columns loads");
+    SchreibeDatei("auszug2.csv",
+                  "Tag;Name;Soll;Haben\r\n"
+                  "15.06.2026;Kunde;;1190,00\r\n"
+                  "20.06.2026;Lieferant;219,00;\r\n");
+    const BankLeseBericht zwei =
+        LiesBankCsv("auszug2.csv", profil2, "DE02120300000000202051", "EUR");
+    Check(zwei.ok, "and reads");
+    if (zwei.ok && !zwei.auszuege.empty() && zwei.auszuege[0].umsaetze.size() == 2) {
+        CheckInt(zwei.auszuege[0].umsaetze[0].betrag.Minor(), 119000,
+                 "the Haben column is money in");
+        CheckInt(zwei.auszuege[0].umsaetze[1].betrag.Minor(), -21900,
+                 "and the Soll column money out, unsigned in the file");
+    }
+
+    // A profile without a date or an amount cannot map anything, and saying so
+    // beats importing a column of zeros.
+    SchreibeDatei("profil-leer.txt", "trenner = ;\n");
+    CsvBankProfil leer;
+    Check(!leer.Laden("profil-leer.txt", profilFehler),
+          "a profile with no date column is refused");
+    Check(!profilFehler.empty(), "with a reason that names what is missing");
+
+    // --- picking the reader by content ---
+    // A bank that names a CAMT file ".txt" is not an unusual bank.
+    SchreibeDatei("getarnt.txt", BaueCamt(
+        CamtEintrag("1190.00", "CRDT", "2026-06-15", "R1", "") +
+        CamtEintrag("219.00", "DBIT", "2026-06-20", "R2", "")));
+    const BankLeseBericht getarnt =
+        LiesBankdatei("getarnt.txt", profil, "DE02120300000000202051", "EUR");
+    Check(getarnt.format == BankFormat::Camt053,
+          "the reader is chosen by content, not by the file extension");
+    SchreibeDatei("getarnt2.xml", Cp1252Datei(mt940));
+    Check(LiesBankdatei("getarnt2.xml", profil, "", "EUR").format == BankFormat::Mt940,
+          "and an MT940 named .xml is still read as MT940");
+
+    std::remove("mt940.sta");
+    std::remove("mt940-storno.sta");
+    std::remove("mt940-leer.sta");
+    std::remove("profil.txt");
+    std::remove("profil2.txt");
+    std::remove("profil-leer.txt");
+    std::remove("auszug.csv");
+    std::remove("auszug2.csv");
+    std::remove("getarnt.txt");
+    std::remove("getarnt2.xml");
+}
+
+// ===== BANK: THE MATCHER =====
+//
+// The matcher only ever proposes. What is tested here is therefore not "does it
+// find the right document" alone but "does it refuse to be confident when it
+// should not be" - because a proposal accepted too readily becomes a posting,
+// and a wrong posting inside a frozen period can only be fixed by a Storno.
+
+static Bankumsatz BaueUmsatz(int64_t minor, const std::string& zweck,
+                             const std::string& name = std::string(),
+                             const std::string& iban = std::string(),
+                             const Date& tag = Date(2026, 6, 20)) {
+    Bankumsatz u;
+    u.buchungstag      = tag;
+    u.valuta           = tag;
+    u.betrag           = Money::FromMinor(minor, "EUR");
+    u.verwendungszweck = zweck;
+    u.gegenName        = name;
+    u.gegenIban        = iban;
+    u.referenz         = "REF";
+    return u;
+}
+
+static ZuordnungKandidat BaueKandidat(int64_t id, const std::string& nummer,
+                                      int64_t offenMinor, bool geldAbgang,
+                                      const std::string& partner = "Muster GmbH",
+                                      const std::string& iban = std::string(),
+                                      const Date& datum = Date(2026, 6, 15)) {
+    ZuordnungKandidat k;
+    k.belegId     = id;
+    k.belegnummer = nummer;
+    k.belegdatum  = datum;
+    k.offen       = Money::FromMinor(offenMinor, "EUR");
+    k.brutto      = k.offen;
+    k.geldAbgang  = geldAbgang;
+    k.partnerName = partner;
+    k.partnerIban = iban;
+    return k;
+}
+
+static void TestBankZuordnung() {
+    std::printf("Bank: automatische Zuordnung\n");
+
+    // --- the number in the remittance ---
+    {
+        const Bankumsatz ein = BaueUmsatz(119000, "Rechnung R-202606001 vom 15.06.");
+        std::vector<ZuordnungKandidat> kandidaten;
+        kandidaten.push_back(BaueKandidat(1, "R-202606001", 119000, false));
+        kandidaten.push_back(BaueKandidat(2, "R-202606002", 119000, false));
+
+        const std::vector<Zuordnungsvorschlag> v = SchlageZuordnungVor(ein, kandidaten);
+        Check(v.size() >= 1, "a payment quoting an invoice number finds it");
+        if (!v.empty()) {
+            CheckText(v[0].belegnummer, "R-202606001", "and puts it first");
+            Check(v[0].guete == ZuordnungGuete::Sicher,
+                  "certain: the payer named the document AND the amount agrees");
+            CheckInt(v[0].betrag.Minor(), 119000, "the whole amount would be assigned");
+            Check(!v[0].teilzahlung, "and it is not a part payment");
+            Check(!v[0].gruende.empty(), "with reasons a human can judge");
+        }
+        // The second invoice costs the same but was not named. It may still be
+        // offered - it cannot be certain.
+        for (const Zuordnungsvorschlag& vs : v)
+            if (vs.belegnummer == "R-202606002")
+                Check(vs.guete != ZuordnungGuete::Sicher,
+                      "an invoice with the same amount that nobody named is "
+                      "never certain - that is exactly the case where guessing "
+                      "puts the money on the wrong customer");
+    }
+
+    // --- the amount alone is not certainty ---
+    {
+        const Bankumsatz ein = BaueUmsatz(119000, "Zahlung", "Muster GmbH",
+                                          "DE89370400440532013000");
+        std::vector<ZuordnungKandidat> k;
+        k.push_back(BaueKandidat(1, "R-202606001", 119000, false, "Muster GmbH",
+                                 "DE89370400440532013000"));
+        const std::vector<Zuordnungsvorschlag> v = SchlageZuordnungVor(ein, k);
+        Check(v.size() == 1, "amount plus IBAN finds the invoice");
+        if (!v.empty()) {
+            Check(v[0].guete == ZuordnungGuete::Wahrscheinlich,
+                  "as probable, not certain - nobody wrote the number down");
+            bool nenntIban = false;
+            for (const std::string& g : v[0].gruende)
+                if (g.find("IBAN") != std::string::npos) nenntIban = true;
+            Check(nenntIban, "and the IBAN is given as a reason");
+        }
+    }
+
+    // --- direction is a precondition, not a score ---
+    {
+        // Money arriving cannot pay an invoice we received, however well
+        // everything else matches.
+        const Bankumsatz ein = BaueUmsatz(119000, "Rechnung R-202606001");
+        std::vector<ZuordnungKandidat> k;
+        k.push_back(BaueKandidat(1, "R-202606001", 119000, /*geldAbgang*/ true));
+        Check(SchlageZuordnungVor(ein, k).empty(),
+              "money coming in is never offered against a document that would "
+              "be settled by money going out - a perfect match on the wrong "
+              "side is not a weak match, it is not a match");
+
+        const Bankumsatz aus = BaueUmsatz(-119000, "Rechnung R-202606001");
+        Check(SchlageZuordnungVor(aus, k).size() == 1,
+              "and the same document is found by the payment that does settle it");
+    }
+
+    // --- a credit note reverses the money but not the party ---
+    // This is why the matcher asks "does settling it take money out" rather
+    // than "did we issue it": an Ausgangsgutschrift is a document to a
+    // customer AND money leaving.
+    {
+        Check(GeldAbgangBeimAusgleich(BelegArt::Ausgangsrechnung) == false,
+              "a sales invoice is settled by money coming in");
+        Check(GeldAbgangBeimAusgleich(BelegArt::Eingangsrechnung) == true,
+              "a purchase invoice by money going out");
+        Check(GeldAbgangBeimAusgleich(BelegArt::Ausgangsgutschrift) == true,
+              "a credit note to a customer is money going out, although it is "
+              "a document we issued - the party side and the money side differ");
+        Check(GeldAbgangBeimAusgleich(BelegArt::Eingangsgutschrift) == false,
+              "and a supplier's credit note is money coming in");
+        Check(IstAusgangsbeleg(BelegArt::Ausgangsgutschrift) == true,
+              "while the party side still calls it ours - which is why the "
+              "matcher cannot use IstAusgangsbeleg");
+    }
+
+    // --- a short number is not evidence ---
+    {
+        // "1" occurs in almost every remittance line. A matcher that treated
+        // that as a hit would propose the same document for everything.
+        const Bankumsatz ein = BaueUmsatz(50000, "Zahlung fuer 15 Stueck am 1.6.");
+        std::vector<ZuordnungKandidat> k;
+        k.push_back(BaueKandidat(1, "1", 99999, false));
+        const std::vector<Zuordnungsvorschlag> v = SchlageZuordnungVor(ein, k);
+        for (const Zuordnungsvorschlag& vs : v)
+            Check(vs.guete != ZuordnungGuete::Sicher,
+                  "a one-character document number is never a confident match");
+        CheckText(NormalisiereNummer("R-2026/06 001"), "R202606001",
+                  "normalising keeps only letters and digits, so the slashes "
+                  "and spaces a payer adds do not prevent a match");
+        CheckText(NormalisiereNummer("r-202606001"), "R202606001",
+                  "and upper-cases, so a payer's spacing and case do not matter");
+    }
+
+    // --- a part payment ---
+    {
+        const Bankumsatz ein = BaueUmsatz(50000, "Rechnung R-202606001 Teilzahlung");
+        std::vector<ZuordnungKandidat> k;
+        k.push_back(BaueKandidat(1, "R-202606001", 119000, false));
+        const std::vector<Zuordnungsvorschlag> v = SchlageZuordnungVor(ein, k);
+        Check(v.size() == 1, "less money than is open still finds the invoice");
+        if (!v.empty()) {
+            Check(v[0].teilzahlung, "and is marked as a part payment");
+            CheckInt(v[0].betrag.Minor(), 50000,
+                     "assigning only what arrived, not what is open");
+            Check(v[0].guete != ZuordnungGuete::Sicher,
+                  "and is not certain, because the amount does not settle it");
+        }
+    }
+
+    // --- more money than is open ---
+    {
+        const Bankumsatz ein = BaueUmsatz(200000, "Rechnung R-202606001");
+        std::vector<ZuordnungKandidat> k;
+        k.push_back(BaueKandidat(1, "R-202606001", 119000, false));
+        const std::vector<Zuordnungsvorschlag> v = SchlageZuordnungVor(ein, k);
+        if (!v.empty()) {
+            CheckInt(v[0].betrag.Minor(), 119000,
+                     "never more than is open would be assigned");
+            Check(v[0].guete != ZuordnungGuete::Sicher,
+                  "and an overpayment is not a confident match");
+        }
+    }
+
+    // --- a payment before the invoice ---
+    {
+        const Bankumsatz frueh = BaueUmsatz(119000, "Anzahlung", "Muster GmbH",
+                                            "DE89370400440532013000",
+                                            Date(2026, 1, 10));
+        std::vector<ZuordnungKandidat> k;
+        k.push_back(BaueKandidat(1, "R-202606001", 119000, false, "Muster GmbH",
+                                 "DE89370400440532013000", Date(2026, 6, 15)));
+        const std::vector<Zuordnungsvorschlag> v = SchlageZuordnungVor(frueh, k);
+        for (const Zuordnungsvorschlag& vs : v) {
+            bool nenntDatum = false;
+            for (const std::string& g : vs.gruende)
+                if (g.find("vor dem Belegdatum") != std::string::npos) nenntDatum = true;
+            Check(nenntDatum, "a payment dated before the invoice is flagged as such");
+        }
+    }
+
+    // --- nothing to offer ---
+    {
+        const Bankumsatz ein = BaueUmsatz(119000, "Miete Juni");
+        std::vector<ZuordnungKandidat> k;
+        k.push_back(BaueKandidat(1, "R-202606001", 4200, false, "Ganz Anders",
+                                 "DE11111111111111111111"));
+        Check(SchlageZuordnungVor(ein, k).empty(),
+              "an unrelated payment produces no proposal rather than a bad one");
+        Check(SchlageZuordnungVor(ein, {}).empty(), "and no candidates give none");
+    }
+
+    // A line with no amount cannot be matched to anything.
+    {
+        Bankumsatz null = BaueUmsatz(0, "Nichts");
+        std::vector<ZuordnungKandidat> k;
+        k.push_back(BaueKandidat(1, "R-202606001", 119000, false));
+        Check(SchlageZuordnungVor(null, k).empty(), "a zero line is never matched");
+    }
+}
+
+// ===== BANK: THE IMPORT AS IT REACHES THE LEDGER =====
+//
+// Two things are checked against a real database here, because neither can be
+// argued for in a comment: that the same statement read twice changes nothing,
+// and that confirming an assignment goes through the one payment path that
+// already knows about over-payment, frozen periods and the hash chain.
+
+static void TestBankImportInDenBestand() {
+    std::printf("Bank: Import und Zuordnung im Bestand\n");
+
+    Store store;
+    if (!CheckStore(store.Open("fibu-bank", ":memory:"),
+                    "a database for the bank tests opens")) {
+        std::printf("    skipping the bank store tests\n");
+        return;
+    }
+    CheckInt(store.SchemaVersion(), Store::kSchemaVersion,
+             "and is migrated to the schema the code expects");
+
+    Akteur setup;
+    Benutzer admin;
+    admin.anmeldename = "chef";
+    CheckStore(store.SaveBenutzer(admin, setup), "an administrator exists");
+    Akteur akteur;
+    akteur.benutzerId  = admin.id;
+    akteur.anmeldename = admin.anmeldename;
+    akteur.rolle       = admin.rolle;
+
+    Mandant mandant;
+    mandant.name = "Beispiel GmbH";
+    CheckStore(store.SaveMandant(mandant, akteur), "a company exists");
+    Geschaeftsjahr jahr;
+    jahr.mandantId   = mandant.id;
+    jahr.beginn      = Date(2026, 4, 1);
+    jahr.ende        = Date(2027, 3, 31);
+    jahr.bezeichnung = jahr.DefaultBezeichnung();
+    CheckStore(store.SaveGeschaeftsjahr(jahr, akteur), "with a 1 April fiscal year");
+
+    std::vector<Konto> konten;
+    auto konto = [&](const std::string& nummer, const std::string& text, KontoTyp typ) {
+        Konto k;
+        k.mandantId = mandant.id; k.nummer = nummer; k.bezeichnung = text; k.typ = typ;
+        konten.push_back(k);
+    };
+    konto("1200", "Bank", KontoTyp::Aktiv);
+    konto("1776", "Umsatzsteuer 19 %", KontoTyp::Passiv);
+    konto("8400", "Erloese 19 % USt", KontoTyp::Ertrag);
+    int geschrieben = 0;
+    CheckStore(store.ImportKonten(mandant.id, konten, akteur, geschrieben),
+               "the accounts exist");
+    std::vector<Steuerschluessel> keys;
+    Steuerschluessel ust19;
+    ust19.mandantId = mandant.id; ust19.schluessel = "USt19"; ust19.bezeichnung = "USt 19";
+    ust19.satzPromille = 190; ust19.kontoSteuer = "1776"; ust19.gueltigVon = Date(2026, 1, 1);
+    keys.push_back(ust19);
+    CheckStore(store.ImportSteuerschluessel(mandant.id, keys, akteur, geschrieben),
+               "and the tax key");
+    Nummernkreis kreis;
+    kreis.mandantId = mandant.id;
+    kreis.kreis     = "rechnung";
+    kreis.praefix   = "R-";
+    CheckStore(store.SaveNummernkreis(kreis, akteur), "and a number range");
+
+    // --- the bank account ---
+    Bankkonto bank;
+    bank.mandantId   = mandant.id;
+    bank.bezeichnung = "Geschäftskonto";
+    bank.iban        = "DE02120300000000202051";
+    bank.konto       = "1200";
+    CheckStore(store.SaveBankkonto(bank, akteur), "a bank account is created");
+    Check(bank.id != 0, "and gets an id");
+
+    // One IBAN belongs to one account. Two would make every import ambiguous,
+    // and the ambiguity would only show as lines landing on the wrong account.
+    Bankkonto doppelt;
+    doppelt.mandantId   = mandant.id;
+    doppelt.bezeichnung = "Noch eins";
+    doppelt.iban        = bank.iban;
+    doppelt.konto       = "1200";
+    CheckRefused(store.SaveBankkonto(doppelt, akteur),
+                 "a second account with the same IBAN is refused");
+
+    // --- a customer and a posted invoice for the bank line to pay ---
+    Partner kunde;
+    kunde.mandantId = mandant.id;
+    kunde.name      = "Muster GmbH";
+    kunde.typ       = PartnerTyp::Kunde;
+    kunde.iban      = "DE89370400440532013000";
+    kunde.konto     = "10000";
+    CheckStore(store.SavePartner(kunde, akteur), "a customer exists");
+
+    Beleg rechnung;
+    rechnung.mandantId = mandant.id;
+    rechnung.art       = BelegArt::Ausgangsrechnung;
+    rechnung.partnerId = kunde.id;
+    rechnung.datum     = Date(2026, 6, 15);
+    rechnung.waehrung  = "EUR";
+    rechnung.partnerKonto = kunde.konto;
+    rechnung.partnerName  = kunde.name;
+    {
+        BelegPosition pos;
+        pos.bezeichnung     = "Beratung";
+        pos.konto           = "8400";
+        pos.steuerschluessel = "USt19";
+        pos.mengeTausendstel = 1000;
+        pos.einzelpreis     = Money::FromMinor(100000, "EUR");
+        rechnung.positionen.push_back(pos);
+    }
+    CheckStore(store.SaveBeleg(rechnung, "rechnung", akteur), "an invoice is drafted");
+    CheckStore(store.Buchen(rechnung, akteur), "and posted");
+    CheckInt(rechnung.brutto.Minor(), 119000, "for 1.190,00 gross");
+
+    // --- importing a statement ---
+    const std::string eintraege =
+        CamtEintrag("1190.00", "CRDT", "2026-06-20", "BANKREF-0001",
+                    "<RltdPties><Dbtr><Nm>Muster GmbH</Nm></Dbtr>"
+                    "<DbtrAcct><Id><IBAN>DE89370400440532013000</IBAN></Id>"
+                    "</DbtrAcct></RltdPties>"
+                    "<RmtInf><Ustrd>SVWZ+Rechnung " + rechnung.nummer + "</Ustrd></RmtInf>") +
+        CamtEintrag("219.00", "DBIT", "2026-06-25", "BANKREF-0002",
+                    "<RmtInf><Ustrd>Buerobedarf</Ustrd></RmtInf>");
+    SchreibeDatei("bank-juni.xml", BaueCamt(eintraege, "1000.00", "1971.00"));
+
+    const BankLeseBericht bericht = LiesCamt053("bank-juni.xml");
+    Check(bericht.ok, "the statement reads");
+    int neu = 0, bekannt = 0;
+    CheckStore(store.ImportiereBankauszug(bank.id, bericht, "bank-juni.xml", akteur,
+                                          neu, bekannt),
+               "and imports");
+    CheckInt(neu, 2, "both lines are new");
+    CheckInt(bekannt, 0, "none was known");
+
+    Store::UmsatzFilter filter;
+    filter.mandantId = mandant.id;
+    CheckInt(static_cast<int64_t>(store.Umsaetze(filter).size()), 2,
+             "and the account now holds two lines");
+
+    // **The same file again changes nothing.** This is the single most common
+    // way a bookkeeping system acquires duplicates.
+    int neu2 = 0, bekannt2 = 0;
+    CheckStore(store.ImportiereBankauszug(bank.id, bericht, "bank-juni.xml", akteur,
+                                          neu2, bekannt2),
+               "importing the same statement again is allowed");
+    CheckInt(neu2, 0, "but writes nothing");
+    CheckInt(bekannt2, 2, "because both lines are already there");
+    CheckInt(static_cast<int64_t>(store.Umsaetze(filter).size()), 2,
+             "so the account still holds two lines and not four");
+
+    // The overlapping download - "the last 30 days", every week - is the case
+    // that per-file checking would get wrong in both directions.
+    const std::string ueberlappend =
+        CamtEintrag("219.00", "DBIT", "2026-06-25", "BANKREF-0002",
+                    "<RmtInf><Ustrd>Buerobedarf</Ustrd></RmtInf>") +
+        CamtEintrag("50.00", "CRDT", "2026-06-28", "BANKREF-0003",
+                    "<RmtInf><Ustrd>Neu</Ustrd></RmtInf>");
+    SchreibeDatei("bank-juni-2.xml", BaueCamt(ueberlappend, "2190.00", "2021.00"));
+    const BankLeseBericht zweiter = LiesCamt053("bank-juni-2.xml");
+    int neu3 = 0, bekannt3 = 0;
+    CheckStore(store.ImportiereBankauszug(bank.id, zweiter, "bank-juni-2.xml", akteur,
+                                          neu3, bekannt3),
+               "an overlapping statement imports");
+    CheckInt(neu3, 1, "taking only the line that is new");
+    CheckInt(bekannt3, 1, "and skipping the one already there");
+
+    // --- what is refused ---
+    SchreibeDatei("bank-fremd.xml", BaueCamt(
+        CamtEintrag("100.00", "CRDT", "2026-06-20", "X1", ""), "0.00", "100.00"));
+    BankLeseBericht fremd = LiesCamt053("bank-fremd.xml");
+    if (!fremd.auszuege.empty()) fremd.auszuege[0].iban = "DE99999999999999999999";
+    int a = 0, b = 0;
+    CheckRefused(store.ImportiereBankauszug(bank.id, fremd, "bank-fremd.xml", akteur, a, b),
+                 "a statement for a different IBAN is refused - the lines would "
+                 "be right and the account wrong, and nothing would look odd");
+
+    BankLeseBericht schief = LiesCamt053("bank-juni.xml");
+    if (!schief.auszuege.empty())
+        schief.auszuege[0].endsaldo = Money::FromMinor(999999, "EUR");
+    CheckRefused(store.ImportiereBankauszug(bank.id, schief, "schief.xml", akteur, a, b),
+                 "a statement that does not add up is refused rather than "
+                 "imported into a wrong bank balance");
+
+    // --- the proposal ---
+    std::vector<Bankumsatz> offene;
+    filter.nurOffene = true;
+    offene = store.Umsaetze(filter);
+    CheckInt(static_cast<int64_t>(offene.size()), 3, "three lines are unassigned");
+
+    int64_t gutschriftId = 0;
+    for (const Bankumsatz& u : store.Umsaetze(Store::UmsatzFilter{bank.id, mandant.id}))
+        if (u.referenz == "BANKREF-0001") gutschriftId = u.id;
+    Check(gutschriftId != 0, "the incoming payment is found");
+
+    const std::vector<Zuordnungsvorschlag> vorschlaege =
+        store.Zuordnungsvorschlaege(gutschriftId);
+    Check(!vorschlaege.empty(), "and the matcher proposes the invoice it names");
+    if (!vorschlaege.empty()) {
+        CheckText(vorschlaege[0].belegnummer, rechnung.nummer, "the right one");
+        Check(vorschlaege[0].guete == ZuordnungGuete::Sicher,
+              "with certainty, because the remittance names it and the amount agrees");
+    }
+    // **Proposing posts nothing.** That is the whole point of a proposal.
+    CheckInt(static_cast<int64_t>(store.Zahlungen(rechnung.id).size()), 0,
+             "and proposing has not booked anything");
+
+    // --- confirming ---
+    CheckStore(store.ZuordnungBuchen(gutschriftId, rechnung.id,
+                                     Money::FromMinor(119000, "EUR"), akteur),
+               "confirming the assignment books it");
+    Beleg bezahlt;
+    Check(store.BelegById(rechnung.id, bezahlt), "the invoice reads back");
+    CheckInt(bezahlt.bezahlt.Minor(), 119000, "as paid in full");
+    Check(bezahlt.status == BelegStatus::Bezahlt, "and its status says so");
+    CheckInt(static_cast<int64_t>(store.Zahlungen(rechnung.id).size()), 1,
+             "through the ordinary payment path - one payment, not a second "
+             "mechanism that would drift from it");
+    CheckInt(static_cast<int64_t>(store.Zuordnungen(gutschriftId).size()), 1,
+             "and the assignment is recorded");
+    CheckInt(store.OffenerBetrag(gutschriftId).Minor(), 0,
+             "the bank line has nothing left to assign");
+    Check(store.Buchungskreisdifferenz(mandant.id).IsZero(),
+          "the ledger still balances");
+    Check(store.PruefeHashKette(mandant.id).ok, "and the hash chain is intact");
+
+    filter.nurOffene = true;
+    CheckInt(static_cast<int64_t>(store.Umsaetze(filter).size()), 2,
+             "and the assigned line drops out of the open list");
+
+    // --- what an assignment refuses ---
+    CheckRefused(store.ZuordnungBuchen(gutschriftId, rechnung.id,
+                                       Money::FromMinor(1000, "EUR"), akteur),
+                 "nothing more can be assigned from a line that is used up");
+
+    int64_t lastschriftId = 0;
+    for (const Bankumsatz& u : store.Umsaetze(Store::UmsatzFilter{bank.id, mandant.id}))
+        if (u.referenz == "BANKREF-0002") lastschriftId = u.id;
+    Check(lastschriftId != 0, "the outgoing payment is found");
+    CheckRefused(store.ZuordnungBuchen(lastschriftId, rechnung.id,
+                                       Money::FromMinor(1000, "EUR"), akteur),
+                 "money going out cannot pay an invoice we issued - the rule "
+                 "holds in the store, not only in the matcher that proposes");
+
+    std::remove("bank-juni.xml");
+    std::remove("bank-juni-2.xml");
+    std::remove("bank-fremd.xml");
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -2794,6 +3690,10 @@ int main() {
     TestDatevImport();
     TestDatevImportInDenBestand();
     TestDatevRundlauf();
+    TestBankLesen();
+    TestBankMt940UndCsv();
+    TestBankZuordnung();
+    TestBankImportInDenBestand();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

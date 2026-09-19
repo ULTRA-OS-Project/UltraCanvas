@@ -1,3 +1,81 @@
+#### 2026-09-19 *0.7.0*
+- **Bankimport: Kontoauszüge lesen und Zahlungen zuordnen.**
+  `Apps/UltraFIBU/engine/UltraFIBUBank.{h,cpp}`, Schema v4 (`bankkonto`,
+  `bankumsatz`, `zuordnung`, `bank_import`), die Befehle `bankkonto-neu`,
+  `bankkonten`, `bank-import`, `bank-importe`, `umsaetze` und `zuordnen`,
+  164 weitere Prüfungen (997 insgesamt). Die Importhälfte von Phase A4.
+- **Drei Leser, eine Form.** **CAMT.053** (ISO 20022, XML) ist die richtige
+  Datei - die deutschen Banken haben MT940 im November 2025 abgelöst. **MT940**
+  bleibt für das Archiv: das Format hört an dem Tag auf, neu zu entstehen,
+  aber die Jahre davor liegen darin. **CSV** für Banken, die nichts anderes
+  anbieten; dessen Spaltenzuordnung ist eine **Datendatei**
+  (`data/Bankprofil-Standard.csv`), dieselbe Entscheidung wie beim
+  DATEV-Format und aus demselben Grund. Welcher Leser drankommt, entscheidet
+  der **Inhalt** der Datei, nicht ihre Endung.
+- **Vier Eigenschaften der Formate sind eingebaut, nicht später entdeckt** -
+  jede ergibt sonst einen plausibel aussehenden, falschen Kontostand:
+  - **Der Betrag ist vorzeichenlos, die Richtung ein eigenes Feld**
+    (`CdtDbtInd` CRDT/DBIT bei CAMT, C/D bei MT940). Das Vorzeichen wird
+    genau einmal gesetzt, beim Lesen. MT940 kennt zusätzlich **RC/RD**: eine
+    Rücklastschrift läuft andersherum als das C, das in ihr steht.
+  - **CAMT rechnet mit Punkt, MT940 mit Komma**, und keines von beiden geht
+    die Locale des Prozesses etwas an.
+  - **Die Gegenseite wechselt mit der Richtung.** Bei Geldeingang ist sie der
+    *Debtor*, bei Geldausgang der *Creditor*. Ein Leser, der immer denselben
+    nimmt, schreibt auf der halben Datei **uns selbst** als Zahlungsempfänger
+    - und diese Hälfte ist still falsch, weil die Beträge weiter aufgehen.
+  - **Ein Auszug prüft sich selbst.** Er bringt Anfangssaldo, Endsaldo und
+    alle Buchungen mit, und `Anfangssaldo + Buchungen = Endsaldo` muss
+    aufgehen. Das ist die eine Prüfung, die eine verlorene Buchung, eine
+    doppelte Buchung und ein gedrehtes Vorzeichen auf einmal fängt. Geht ein
+    Auszug nicht auf, wird er **nicht** eingelesen.
+- **Dieselbe Datei zweimal ändert nichts**, und zwar **je Zeile** statt je
+  Datei. Der überlappende Download ist der Normalfall - wer wöchentlich "die
+  letzten 30 Tage" herunterlädt, liefert dieselben Zeilen viermal ab. Eine
+  Prüfung auf Dateiebene müsste den ganzen Download ablehnen oder drei Wochen
+  verdoppeln. Der Schlüssel ist die Bankreferenz (`AcctSvcrRef`), und wo die
+  Datei keine mitbringt, ein abgeleiteter - **einschließlich der Position im
+  Auszug**, weil zwei identische Zeilen an einem Tag möglich sind und ein
+  Schlüssel, der sie nicht unterscheiden kann, eine Zahlung spurlos
+  verschluckt.
+- **Vorgemerkte Buchungen (`PDNG`) werden nicht übernommen.** Sie haben das
+  Konto noch nicht berührt und können sich noch ändern oder verschwinden;
+  eine übernommene und später von der Bank fallengelassene Buchung ist eine
+  Differenz, die hinterher niemand erklären kann.
+- **SEPA-Tags werden ausgepackt.** Deutsche Banken pressen mehrere Felder in
+  eine Zeile (`EREF+… MREF+… SVWZ+…`); der von Hand geschriebene Teil ist
+  der nach `SVWZ+`. Mehrere `<Ustrd>` gehören zu **einem** Verwendungszweck,
+  der bei 140 Zeichen geteilt wurde, und bei MT940 gilt dasselbe für `?20`
+  bis `?29` und für den in `?32`/`?33` zerlegten Namen.
+- **Die automatische Zuordnung schlägt vor und bucht nichts.** Ein falscher
+  automatischer Beleg in einem festgeschriebenen Zeitraum lässt sich nur
+  durch Storno beheben, also ist eine Bestätigung billiger als eine
+  Selbstsicherheit. **Sicher** heißt: die Belegnummer steht im
+  Verwendungszweck **und** der Betrag stimmt - der Betrag allein ist es
+  nicht, weil zwei Rechnungen gleich viel kosten können.
+- **Die Richtung ist Voraussetzung, keine Punktzahl.** Eingehendes Geld kann
+  keine Eingangsrechnung bezahlen. Dabei fragt der Abgleich, ob der Ausgleich
+  Geld **abfließen** lässt, und nicht, ob wir den Beleg ausgestellt haben:
+  eine **Ausgangsgutschrift** ist beides zugleich - unser Beleg und Geld, das
+  hinausgeht (`GeldAbgangBeimAusgleich()`).
+- **Eine zu kurze Belegnummer gilt nicht als Fund.** Nummern werden auf
+  Buchstaben und Ziffern reduziert und in Großschreibung verglichen, damit
+  Schreibweise und Leerzeichen des Zahlenden nichts ausmachen - aber eine
+  Nummer mit weniger als vier Zeichen wird gar nicht erst gesucht: "1" steht
+  in fast jedem Verwendungszweck und würde einen Beleg auf alles passen
+  lassen.
+- **Bestätigen bucht über `ZahlungErfassen`**, den Weg, der Überzahlung,
+  festgeschriebene Zeiträume, den Belegstatus und die Prüfsummenkette schon
+  kennt. Eine Zuordnung ist ein *Grund*, eine Zahlung zu buchen, und kein
+  zweiter Weg, sie zu buchen - zwei Wege driften auseinander, und der
+  ungetestete gewinnt.
+- **`partner-neu` kennt jetzt `--iban` und `--bic`.** Ohne sie war die
+  IBAN-Regel des Abgleichs nicht benutzbar, und die Option wurde vorher
+  stillschweigend verworfen.
+- **Ansehen schreibt nicht.** `bank-import` ist ohne `--uebernehmen` ein
+  Trockenlauf und zeigt die ersten Zeilen so, wie das Profil sie liest - bei
+  CSV ist genau das die Prüfung der Spaltenzuordnung.
+
 #### 2026-09-19 *0.6.0*
 - **DATEV-Import: der Buchungsstapel zurück ins Hauptbuch.**
   `LeseBuchungsstapel()` in `Apps/UltraFIBU/engine/UltraFIBUDatev.{h,cpp}`,
