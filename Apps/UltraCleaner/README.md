@@ -21,6 +21,7 @@ Full documentation, including the complete rule table and the safety model:
 | `ui/UltraCleanerWindow.*` | The main window: toolbar, detail table, worker-thread plumbing |
 | `ui/UltraCleanerCategoryPanel.*` | The category rows (checkbox + size badge) |
 | `main.cpp` | GUI bootstrap, and the `--scan` / `--clean` / `--rules` command line |
+| `UltraCleaner.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/UltraCleaner.png` / `.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme, which is how the application menu and UltraFiler find the app and its icon |
 
 The engine is headless — `std::filesystem` plus the Windows shell APIs for
 the recycle bin, no UltraCanvas dependency — so it links into the command
