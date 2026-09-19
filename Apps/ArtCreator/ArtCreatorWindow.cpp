@@ -2,8 +2,8 @@
 // ArtCreator main window: menus, toolbars, palette, canvas, panels, status
 // bar, shortcuts, file open / save through the Vector plugin's converters,
 // and every command.
-// Version: 1.0.0
-// Last Modified: 2026-09-15
+// Version: 1.1.0
+// Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 
 #include "ArtCreatorWindow.h"
@@ -468,6 +468,14 @@ void ArtCreatorWindow::BuildRightPanel() {
     optionsPanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
     rightPanel->AddChild(optionsPanel);
 
+    // ----- line gallery -----
+    rightPanel->AddChild(PanelTitle("ac-line-title", "Line"));
+    linePanel = std::make_shared<UltraCanvasContainer>("ac-line", 0, 0, kRightInner, 0);
+    linePanel->layout.SetFlexColumn().SetFlexGap(3).SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    linePanel->layoutItem.SetFlexGrow(0).SetFlexShrink(0).SetAlignSelf(CSSLayout::AlignSelf::Start);
+    rightPanel->AddChild(linePanel);
+    RebuildLinePanel();
+
     // ----- layers -----
     rightPanel->AddChild(PanelTitle("ac-layers-title", "Layers"));
     layersPanel = std::make_shared<UltraCanvasContainer>("ac-layers", 0, 0, kRightInner, 0);
@@ -700,6 +708,7 @@ void ArtCreatorWindow::OnDocumentChanged() {
 
 void ArtCreatorWindow::OnSelectionChanged() {
     SyncColourPanelFromSelection();
+    SyncLinePanelFromSelection();
     if (auto* t = ActiveTool()) t->OnSelectionChanged(toolContext);
     UpdateStatus();
 }
@@ -801,10 +810,10 @@ void ArtCreatorWindow::CmdSave() {
 void ArtCreatorWindow::CmdSaveAs() {
     if (!document) return;
     FileDialogOptions opts;
-    std::string def = documentPath.empty() ? "untitled.svg" : FileNameOf(documentPath);
+    std::string def = documentPath.empty() ? "untitled.xar" : FileNameOf(documentPath);
     opts.SetTitle("Save drawing as")
-        .AddFilter("SVG (keeps everything)", std::vector<std::string>{ "svg" })
-        .AddFilter("Xara XAR", std::vector<std::string>{ "xar" })
+        .AddFilter("Xara XAR (keeps effects)", std::vector<std::string>{ "xar" })
+        .AddFilter("SVG (shapes, fills, text)", std::vector<std::string>{ "svg" })
         .AddFilter("DXF", std::vector<std::string>{ "dxf" })
         .AddFilter("EMF", std::vector<std::string>{ "emf" })
         .AddFilter("WMF", std::vector<std::string>{ "wmf" })
@@ -814,7 +823,7 @@ void ArtCreatorWindow::CmdSaveAs() {
     UltraCanvasFileLoader::SaveFileDialog(opts, [this](DialogResult r, const std::string& path) {
         if (r != DialogResult::OK || path.empty()) return;
         std::string p = path;
-        if (fs::path(p).extension().empty()) p += ".svg";
+        if (fs::path(p).extension().empty()) p += ".xar";
         SaveToPath(p);
     });
 }
@@ -1101,6 +1110,66 @@ void ArtCreatorWindow::RebuildToolOptions() {
     for (const auto& c : optionsPanel->GetChildren()) h += c->GetHeight() + 3;
     optionsPanel->SetBounds(Rect2Df(0, 0, kRightInner, h));
     rightPanel->RequestRedraw();
+}
+
+// The Line panel: arrowheads, a width profile and a brush for new lines
+// and for the selection.
+void ArtCreatorWindow::RebuildLinePanel() {
+    if (!linePanel) return;
+    using namespace ArtOptionWidgets;
+    linePanel->ClearChildren();
+    ArtToolOptions& o = toolOptions;
+    AddSliderRow(*linePanel, "ac-ln-width", "Width", 0, 40, o.strokeWidth, 0.5f, false, [this, &o](float v) {
+        o.strokeWidth = v;
+        if (selection->Empty()) return;
+        auto ids = selection->Ids();
+        history.Record("Line Width", [&]() {
+            for (auto& e : selection->Elements()) {
+                if (!e->Style.Stroke.has_value()) { StrokeData st; st.Fill = lineColour; e->Style.Stroke = st; }
+                e->Style.Stroke->Width = v;
+            }
+        }, true);
+        Reselect(ids);
+    });
+    AddDropdown(*linePanel, "ac-ln-start", "Start", ArtLineGallery::ArrowheadNames(), o.lineStartArrow,
+                [this, &o](int i) { o.lineStartArrow = i; ApplyLineGallery("Start Arrowhead"); });
+    AddDropdown(*linePanel, "ac-ln-end", "End", ArtLineGallery::ArrowheadNames(), o.lineEndArrow,
+                [this, &o](int i) { o.lineEndArrow = i; ApplyLineGallery("End Arrowhead"); });
+    AddSliderRow(*linePanel, "ac-ln-arrow", "Arrow size", 0.5f, 4.0f, o.lineArrowScale, 0.25f, false,
+                 [this, &o](float v) { o.lineArrowScale = v; ApplyLineGallery("Arrowhead Size"); });
+    AddDropdown(*linePanel, "ac-ln-profile", "Profile", ArtLineGallery::ProfileNames(), o.lineProfile,
+                [this, &o](int i) { o.lineProfile = i; ApplyLineGallery("Width Profile"); });
+    AddDropdown(*linePanel, "ac-ln-brush", "Brush", ArtLineGallery::BrushNames(), o.lineBrush,
+                [this, &o](int i) { o.lineBrush = i; ApplyLineGallery("Brush"); });
+    float h = 0;
+    for (const auto& c : linePanel->GetChildren()) h += c->GetHeight() + 3;
+    linePanel->SetBounds(Rect2Df(0, 0, kRightInner, h));
+    rightPanel->RequestRedraw();
+}
+
+void ArtCreatorWindow::ApplyLineGallery(const std::string& label) {
+    if (syncingColours || selection->Empty()) return;
+    auto ids = selection->Ids();
+    history.Record(label, [&]() {
+        for (auto& e : selection->Elements()) {
+            if (!e) continue;
+            if (!e->Style.Stroke.has_value()) { StrokeData st; st.Fill = lineColour; st.Width = toolOptions.strokeWidth; e->Style.Stroke = st; }
+            ArtLineGallery::ApplyToStroke(*e->Style.Stroke, toolOptions);
+        }
+    }, true);
+    Reselect(ids);
+}
+
+void ArtCreatorWindow::SyncLinePanelFromSelection() {
+    if (!linePanel || selection->Count() != 1) return;
+    auto e = selection->First();
+    if (!e || !e->Style.Stroke.has_value()) return;
+    const bool wasSyncing = syncingColours;
+    syncingColours = true;
+    toolOptions.strokeWidth = e->Style.Stroke->Width;
+    ArtLineGallery::ReadFromStroke(*e->Style.Stroke, toolOptions);
+    RebuildLinePanel();
+    syncingColours = wasSyncing;
 }
 
 void ArtCreatorWindow::RebuildLayerPanel() {
