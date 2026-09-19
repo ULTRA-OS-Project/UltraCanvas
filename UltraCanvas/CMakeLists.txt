@@ -2035,6 +2035,27 @@ target_compile_features(UltraVault PUBLIC cxx_std_20)
 set_target_properties(UltraVault PROPERTIES POSITION_INDEPENDENT_CODE ON)
 target_link_libraries(UltraVault PUBLIC UltraCrypt)
 
+# System-wide network activity (Docs/Modules/NetworkMonitor/README.md): the
+# operating system's socket table with process attribution. UI-free like
+# UltraCrypt, so the command line and the test suite link it headless. The
+# platform backend is chosen here; core/NetworkMonitor/NetworkMonitorCore.cpp
+# supplies the null backend on every platform that has none yet, and the
+# native define in include/NetworkMonitor/NetworkMonitorBackend.h must agree
+# with this list.
+set(_uc_networkmonitor_sources
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorProcfs.cpp)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    list(APPEND _uc_networkmonitor_sources
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp)
+endif()
+add_library(NetworkMonitor STATIC ${_uc_networkmonitor_sources})
+target_include_directories(NetworkMonitor PUBLIC
+    $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+    $<INSTALL_INTERFACE:include/ultracanvas>)
+target_compile_features(NetworkMonitor PUBLIC cxx_std_20)
+set_target_properties(NetworkMonitor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
 if(ULTRACANVAS_ENABLE_NET)
     find_package(Threads REQUIRED)
 
