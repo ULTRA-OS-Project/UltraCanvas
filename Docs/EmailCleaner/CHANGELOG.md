@@ -1,3 +1,22 @@
+#### 2026-09-19 *0.3.1*
+- **EmailCleaner has an icon.** The trash can with the red @
+  (`media/appicon/EmailCleaner.svg`) is drawn everywhere the app is shown: the
+  window and the taskbar entry that follows it (`SetDefaultWindowIcon` and the
+  `UCAPP_ICON_PATH` fallback), the icon compiled into the Windows `.exe`, and
+  the launcher in an application menu and in a filer. Until now the app set no
+  icon at all, so every one of those surfaces wore the generic UltraCanvas or
+  executable glyph. The PNG the fixed-size consumers read is rendered from the
+  SVG (padded to a square on a transparent background; the drawing is
+  243 x 257 units), so the scalable and the fixed-size icon agree at every
+  size.
+- **EmailCleaner has a desktop entry.** `Apps/EmailCleaner/EmailCleaner.desktop`
+  is installed to `share/applications`, with the PNG and the SVG installed to
+  `share/icons/hicolor/256x256/apps` and `share/icons/hicolor/scalable/apps`.
+  `Icon=EmailCleaner` is an icon *name* resolved through the installed themes,
+  and UltraFiler finds an application's icon by reading its desktop entry, so
+  without one the new artwork would show in the window and nowhere else. The
+  entry carries no MIME type and no field code: `main()` takes no arguments.
+
 #### 2026-08-31 *0.3.0*
 - **Your verdict beats the classifier's.** **This is fine** and **This is spam**
   on the actions strip record what you say about the selected sender or domain,
