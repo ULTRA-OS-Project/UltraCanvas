@@ -242,6 +242,33 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     }
 
+    // The sender badge's icons: UltraMail only ever asks the services in its
+    // own registry (Facebook, LinkedIn, Apple, …) for an icon, once each, and
+    // never asks anyone about a stranger's domain — but downloading nothing at
+    // all is still a choice the user gets to make.
+    std::shared_ptr<UltraCanvasCheckbox> senderIconCheck;
+    if (account.edit) {
+        auto row = CreateContainer("srvIconRow", 0, 0, 0, Theme::kControlHeight);
+        row->layout.SetFlexRow()
+                   .SetFlexGap(Theme::kInnerGap)
+                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        auto label = Theme::MakeLine("srvIconLbl", "", Theme::kControlHeight,
+                                     Theme::kSizeBody, Theme::kTextSecondary);
+        label->SetElementSize(Size2Df(kLabelWidth, Theme::kControlHeight));
+        row->AddChild(label);
+        senderIconCheck = UltraCanvasCheckbox::CreateCheckbox(
+            "srvSenderIcons", 0, 0, 0, Theme::kControlHeight,
+            "Download icons of known senders", account.fetchSenderIcons);
+        senderIconCheck->SetFontSize(Theme::kSizeBody);
+        senderIconCheck->SetTooltip(
+            "Fetches the icon of each service in UltraMail's known-sender list "
+            "once, into the sender-icon cache. No other domain is ever looked up.");
+        row->AddChild(senderIconCheck);
+        senderIconCheck->layoutItem.SetFlexGrow(1);
+        content->AddChild(row);
+        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    }
+
     auto note = Theme::MakeLine("srvNote",
         "Ports are usually 993 (IMAP, SSL/TLS) or 143 (STARTTLS), and 465 (SMTP, "
         "SSL/TLS) or 587 (STARTTLS). Most providers list them under \"mail program "
@@ -282,7 +309,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     // something is missing. Fills the servers plus, on the settings page, the
     // edited display name and any typed new password.
     auto collect = [imap, smtp, user, status, email, nameInput, passInput, prefill,
-                    readingPaneCheck](Result& out) {
+                    readingPaneCheck, senderIconCheck](Result& out) {
         DiscoveryResult& r = out.settings;
         r = DiscoveryResult{};
         r.imap.host = Trim(imap.host->GetText());
@@ -302,7 +329,8 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
         r.displayName = prefill.displayName;
         out.displayName = nameInput ? Trim(nameInput->GetText()) : std::string();
         out.newPassword = passInput ? passInput->GetText() : std::string();  // not trimmed
-        out.showReadingPane = readingPaneCheck ? readingPaneCheck->IsChecked() : true;
+        out.showReadingPane  = readingPaneCheck ? readingPaneCheck->IsChecked() : true;
+        out.fetchSenderIcons = senderIconCheck ? senderIconCheck->IsChecked() : true;
 
         if (r.imap.host.empty())      { status->SetText("Enter the incoming (IMAP) server."); return false; }
         if (r.imap.port == 0)         { status->SetText("The incoming port must be a number from 1 to 65535."); return false; }

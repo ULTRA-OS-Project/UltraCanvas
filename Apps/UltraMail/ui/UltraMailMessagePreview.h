@@ -3,8 +3,9 @@
 // the body (HTML rendered natively through HTMLReader / CSSLayout, plain text
 // in a read-only text area) and the attachment strip. Fed one envelope at a
 // time from the mail view's list; the cached .eml body is decoded on show.
-// Version: 0.3.0
-// Last Modified: 2026-09-09
+// Version: 0.4.0 - the sender badge replaces the initial avatar, and a warning
+//                  strip above the body says why a message looks like a scam.
+// Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -16,6 +17,7 @@
 
 #include "UltraMailAttachmentStrip.h"
 #include "UltraMailComposer.h"   // SourceMessage
+#include "UltraMailSenderBadge.h"
 #include "UltraMailTypes.h"
 
 #include <functional>
@@ -32,6 +34,15 @@ class MessagePreview {
 public:
     void SetMailDir(std::string dir) { mailDir_ = std::move(dir); }
     void SetAccounts(std::vector<Account> accounts) { accounts_ = std::move(accounts); }
+
+    // The store the pane reads a message's scan verdict from — and writes it
+    // back to when it scans a body for the first time.
+    void SetStore(LocalStore* store) { store_ = store; }
+    // The address book and the icon cache behind the sender badge.
+    void SetContacts(ContactIndex contacts) { badges_.SetContacts(std::move(contacts)); }
+    void SetIconCache(const SenderIconCache* cache) { badges_.SetIconCache(cache); }
+    // Whether the folder being read is the account's junk mailbox.
+    void SetJunkFolder(bool junk) { junkFolder_ = junk; }
 
     // Build the pane (a flex column). Call once; add the result to a parent.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
@@ -53,15 +64,31 @@ public:
     std::function<void(const SourceMessage&, const std::string& selfName,
                        const std::string& selfAddr)> onReply;
 
+    // Raised when a body was scanned for the first time (the verdict has been
+    // stored already): the message list refreshes that row's badge.
+    std::function<void(const MessageEnvelope&, const MessageSecurity&)> onSecurityScanned;
+
 private:
     // Render a body into bodyHost_: HTML through the HTMLReader element
     // builder (CSSLayout engine), plain text into a read-only text area.
     void RenderBody(const std::string& body, bool isHtml);
 
+    // The stored verdict for a message, scanning (and storing) the cached body
+    // the first time it is read. `raw` is the .eml text, empty when it has not
+    // been downloaded yet.
+    MessageSecurity SecurityFor(const MessageEnvelope& env, const std::string& raw);
+
+    // Fill (and show) the warning strip above the body, or hide it when the
+    // message raised nothing.
+    void ShowSecurityWarning(const SenderStatus& status, const MessageSecurity& security);
+
     std::string          mailDir_;
     std::vector<Account> accounts_;
     std::string          curAccount_;
     bool                 hasMessage_ = false;
+    bool                 junkFolder_ = false;
+    LocalStore*          store_ = nullptr;
+    SenderBadgeResolver  badges_;
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> root_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     subject_;
@@ -70,7 +97,10 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     date_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> header_;       // avatar · from/to · date · Reply
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> rule_;         // divider above the body
-    std::shared_ptr<UltraCanvas::UltraCanvasContainer> avatarHost_;   // sender initial
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> avatarHost_;   // sender badge
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> warning_;     // scam / spam strip
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningTitle_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     warningText_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> bodyHost_;
     AttachmentStrip attachmentStrip_;
     SourceMessage   current_;   // the shown message, for Reply
