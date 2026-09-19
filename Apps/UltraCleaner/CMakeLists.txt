@@ -116,5 +116,37 @@ target_compile_definitions(UltraCleaner PRIVATE
 # Embed the application manifest + version info (Windows only).
 ultracanvas_embed_windows_manifest(UltraCleaner)
 
+# The app icon, in one place for every consumer of it. main.cpp asks for this
+# same file by name; UCAPP_ICON_PATH is the fallback the core applies when an
+# app sets no icon of its own (UltraCanvasApplicationBase::Initialize), so the
+# two agreeing is what keeps a window from ever coming up unbranded. The PNG
+# is rendered from media/appicon/UltraCleaner.svg, the scalable half of the pair.
+target_compile_definitions(UltraCleaner PRIVATE
+    UCAPP_ICON_PATH="media/appicon/UltraCleaner.png")
+
+# Embed the app icon in the .exe (Windows only). This is the icon Explorer and
+# the Windows taskbar read off the binary itself — neither of them looks at
+# _NET_WM_ICON or at a desktop entry.
+ultracanvas_embed_app_icon(UltraCleaner
+    "${CMAKE_SOURCE_DIR}/media/appicon/UltraCleaner.png")
+
+# The freedesktop shortcut and the icon it names. `Icon=UltraCleaner` in the
+# .desktop is resolved through the installed icon themes, so the files have to
+# land in one: this is what lets UltraFiler (and the application menu, and a
+# taskbar that matches windows to desktop entries) show UltraCleaner's own icon
+# for the app rather than a generic executable glyph.
+if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+    # Exec=UltraCleaner / TryExec=UltraCleaner are resolved against PATH, so the
+    # entry is only true if the binary is installed with it.
+    install(TARGETS UltraCleaner RUNTIME DESTINATION bin)
+    install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/UltraCleaner.desktop
+            DESTINATION share/applications)
+    install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraCleaner.png
+            DESTINATION share/icons/hicolor/256x256/apps)
+    install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraCleaner.svg
+            DESTINATION share/icons/hicolor/scalable/apps)
+    message(STATUS "  UltraCleaner desktop entry: share/applications/UltraCleaner.desktop")
+endif()
+
 message(STATUS "  [✓] UltraCleaner GUI app - ENABLED (target: UltraCleaner)")
 message(STATUS "      Version ${ULTRACLEANER_VERSION} (Docs/UltraCleaner/CHANGELOG.md)")

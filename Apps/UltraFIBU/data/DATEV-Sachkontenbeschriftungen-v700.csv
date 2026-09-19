@@ -1,0 +1,14 @@
+# UltraFIBU - Spaltendefinition DATEV-Format "Kontenbeschriftungen"
+# Kennzeichen EXTF, Versionsnummer 700, Format-Kategorie 20, Formatversion 3
+#
+# Kurz und damit weniger riskant als der Buchungsstapel, aber ebenfalls NICHT
+# an einer echten DATEV-Datei geprueft. Pruefung mit
+#   ultrafibu datev-pruefen <echte_EXTF_Datei.csv>
+# Format wie bei DATEV-Buchungsstapel-v700.csv: nummer;name;typ
+#
+# Sprach-ID: "de-DE" ist die deutsche Beschriftung. DATEV kennt je Konto
+# mehrere Sprachen; wir schreiben nur die deutsche.
+#
+1;Konto;zahl
+2;Kontenbeschriftung;text
+3;Sprach-ID;text

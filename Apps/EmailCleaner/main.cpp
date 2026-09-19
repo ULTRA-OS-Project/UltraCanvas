@@ -7,6 +7,8 @@
 #include "ui/EmailCleanerApp.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"   // GetResourcesDir
+#include "UltraCanvasUtils.h"    // NormalizePath
 
 #include <cstdlib>
 #include <string>
@@ -28,6 +30,12 @@ int main() {
     UltraCanvas::UltraCanvasApplication app;
     if (!app.Initialize("EmailCleaner"))
         return EXIT_FAILURE;
+    // One icon, everywhere the app is drawn: the window and the taskbar entry
+    // that follows it read this file; the .ico embedded in the Windows binary
+    // and the desktop entry's theme icon are rendered from the same
+    // media/appicon/EmailCleaner.svg (see CMakeLists.txt).
+    app.SetDefaultWindowIcon(UltraCanvas::NormalizePath(
+        UltraCanvas::GetResourcesDir() + "media/appicon/EmailCleaner.png"));
 
     // The mail itself lives in UltraMail's data directory; EMAILCLEANER_MAIL_DIR
     // points elsewhere when the two apps are not sharing a home (a second

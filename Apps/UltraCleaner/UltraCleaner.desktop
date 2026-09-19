@@ -1,0 +1,32 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraCleaner. It puts the cleaner in the
+# application menu and — the reason it matters beyond that — gives every
+# desktop-aware program a name for its icon: `Icon=UltraCleaner` is an icon
+# *name*, resolved through the installed icon themes, and the project's
+# install rules put media/appicon/UltraCleaner.png into
+# share/icons/hicolor/256x256/apps and media/appicon/UltraCleaner.svg into
+# share/icons/hicolor/scalable/apps so the lookup lands on them. That is the
+# route UltraFiler takes for an application (UltraCanvasNativeFileIcons.cpp ->
+# FindDesktopIconFile). The window and taskbar icon come from the same PNG by
+# a different route — main.cpp hands it to SetDefaultWindowIcon.
+#
+# %f: main() takes one bare path and opens the window on that folder as a
+# photo album, so a folder handed over by a file manager arrives the same way
+# `UltraCleaner ~/Pictures` does. No MimeType= is claimed: the cleaner is not
+# a general folder handler, it is a launcher that can be given a folder.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=UltraCleaner
+GenericName=System Cleaner
+Comment=Remove the temporary files, caches, logs and leftovers the system leaves behind, and find duplicate photos
+Exec=UltraCleaner %f
+TryExec=UltraCleaner
+Icon=UltraCleaner
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraCleaner
+Categories=System;Utility;FileTools;
+Keywords=clean;cleaner;cache;temporary;junk;trash;disk;space;duplicate;photos;

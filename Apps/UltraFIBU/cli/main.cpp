@@ -4,14 +4,20 @@
 // Everything the engine can do today, without waiting for the UI: set up a
 // company with a fiscal year that starts on any date, import a chart of
 // accounts and a set of tax keys, keep customers and suppliers with their
-// European VAT numbers, check a VAT number, list the filing deadlines and
-// freeze a period.
+// European VAT numbers, check a VAT number, list the filing deadlines, write
+// and post documents, reverse them, record payments, read the journal and the
+// Summen- und Saldenliste, freeze a period and verify the journal's hash
+// chain.
 //
 // The output is German, like the application it belongs to. It is also the
 // engine's first real caller, which is what keeps the engine honest about
 // being usable without a window.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "UltraFIBUBeleg.h"
+#include "UltraFIBUDatev.h"
+#include "UltraFIBURechnungPdf.h"
+#include "UltraFIBUBuchung.h"
 #include "UltraFIBUGeschaeftsjahr.h"
 #include "UltraFIBUKontenrahmen.h"
 #include "UltraFIBUStore.h"
@@ -44,6 +50,16 @@ void PrintUsage() {
         "        --benutzer <name>     Anmeldename des ersten Benutzers (Standard: admin)\n"
         "        --skr <SKR03|SKR04>   Kontenrahmen (Standard: SKR03)\n"
         "        --ust-idnr <nr>       Eigene USt-IdNr.\n"
+        "        --strasse <s> --plz <plz> --ort <ort> --land <ISO>\n"
+        "        --steuernummer <nr>   Steuernummer des Finanzamts\n"
+        "        --telefon <nr> --email <adr> --web <url>\n"
+        "        --iban <iban> --bic <bic> --bank <name>\n"
+        "        --beraternummer <nr> --mandantennummer <nr>\n"
+        "                              von der Kanzlei; ohne sie lehnt\n"
+        "                              DATEV den Import ab\n"
+        "                              Anschrift und Steuernummer sind\n"
+        "                              Pflichtangaben auf jeder Rechnung\n"
+        "                              (§ 14 UStG).\n"
         "  info <datei>            Mandant, Geschäftsjahre und Bestände anzeigen\n"
         "  konten <datei>          Kontenrahmen anzeigen\n"
         "  partner <datei> [suche] Kunden und Lieferanten anzeigen\n"
@@ -52,12 +68,78 @@ void PrintUsage() {
         "        --typ <kunde|lieferant|beides>\n"
         "        --ort <ort>  --land <ISO>  --ust-idnr <nr>\n"
         "        --kategorie <inland|eu-unternehmer|eu-privat|drittland>\n"
+        "        --iban <iban> --bic <bic>  für die Zuordnung von\n"
+        "                              Bankumsätzen zu diesem Partner\n"
         "  ustid <nummer>          USt-IdNr. offline prüfen (Format und Prüfziffer)\n"
         "  termine <datei> <jahr>  Abgabetermine der Umsatzsteuer-Voranmeldungen\n"
         "  perioden <datei>        Perioden der Geschäftsjahre\n"
         "  festschreiben <datei> <datum> [--ja]\n"
         "                          Buchungen bis zu diesem Tag unveränderbar machen\n"
         "  protokoll <datei>       Änderungsprotokoll (GoBD) anzeigen\n"
+        "\n"
+        "Belege und Buchungen:\n"
+        "  beleg-neu <datei>       Beleg erfassen (Entwurf)\n"
+        "        --art <ausgangsrechnung|eingangsrechnung|\n"
+        "               ausgangsgutschrift|eingangsgutschrift|kassenbeleg>\n"
+        "        --datum <datum>       Belegdatum (Pflicht)\n"
+        "        --partner <konto|name>  Kunde oder Lieferant (Pflicht)\n"
+        "        --position \"Text;Menge;Preis;Konto;Steuerschlüssel\"\n"
+        "                              mehrfach angebbar (Pflicht)\n"
+        "        --extern <nr> --text <text> --faellig <datum> --kreis <name>\n"
+        "  belege <datei> [suche]  Belege anzeigen\n"
+        "        --offen  --ueberfaellig --stichtag <datum>  --art <art>\n"
+        "  buchen <datei> <nummer> Entwurf buchen - danach unveränderbar\n"
+        "  storno <datei> <nummer> Gebuchten Beleg stornieren\n"
+        "        --datum <datum>       Datum der Stornobuchung (Pflicht)\n"
+        "        --grund <text>  --kreis <name>  --ja\n"
+        "  zahlung <datei> <nummer>  Zahlung auf einen Beleg buchen\n"
+        "        --betrag <betrag>  --datum <datum>  [--konto <geldkonto>]\n"
+        "  journal <datei>         Buchungsjournal  [--von] [--bis]\n"
+        "  salden <datei>          Summen- und Saldenliste  [--von] [--bis]\n"
+        "  pruefen <datei>         Prüfsummenkette des Journals prüfen\n"
+        "  rechnung-pdf <datei> <nummer>  Beleg als PDF drucken\n"
+        "        --datei <pfad>        Zieldatei (Standard: <Nummer>.pdf)\n"
+        "        --zahlungshinweis <text>  --fusszeile <text>\n"
+        "\n"
+        "DATEV:\n"
+        "  datev-export <datei>    Buchungsstapel im DATEV-Format schreiben\n"
+        "        --monat <JJJJ-MM>     genau ein Kalendermonat (Pflicht)\n"
+        "        --konten              statt dessen die Kontenbeschriftungen\n"
+        "        --ziel <verzeichnis>  Zielverzeichnis (Standard: .)\n"
+        "  datev-pruefen <EXTF.csv>  Spaltendefinition gegen eine echte\n"
+        "                          DATEV-Datei prüfen\n"
+        "  datev-import <datei> <EXTF.csv>\n"
+        "                          Buchungsstapel einlesen; zeigt nur an,\n"
+        "                          bis --uebernehmen angegeben wird\n"
+        "        --uebernehmen         Buchungen wirklich schreiben\n"
+        "        --nochmal             eine bereits importierte Datei\n"
+        "                              erneut zulassen\n"
+        "  datev-importe <datei>   Bisherige DATEV-Importe anzeigen\n"
+        "\n"
+        "Bank:\n"
+        "  bankkonto-neu <datei>   Bankkonto anlegen\n"
+        "        --name <text>         Bezeichnung (Pflicht)\n"
+        "        --konto <nr>          Sachkonto, z. B. 1200 (Pflicht)\n"
+        "        --iban <iban> --bic <bic> --bank <name>\n"
+        "        --profil <datei>      CSV-Profil für diese Bank\n"
+        "  bankkonten <datei>      Bankkonten anzeigen\n"
+        "  bank-import <datei> <bankkonto> <auszug>\n"
+        "                          Kontoauszug einlesen (CAMT.053, MT940\n"
+        "                          oder CSV - das Format wird am Inhalt\n"
+        "                          erkannt). Zeigt nur an, bis\n"
+        "                          --uebernehmen angegeben wird\n"
+        "        --uebernehmen         Umsätze wirklich schreiben\n"
+        "        --profil <datei>      CSV-Profil (sonst das des Kontos)\n"
+        "  bank-importe <datei>    Bisherige Kontoauszüge anzeigen\n"
+        "  umsaetze <datei>        Bankumsätze anzeigen\n"
+        "        --konto <id> --von <datum> --bis <datum>\n"
+        "        --offen               nur noch nicht zugeordnete\n"
+        "        --suche <text>\n"
+        "  zuordnen <datei> <umsatz-id>\n"
+        "                          Vorschläge, welchen Beleg ein Umsatz\n"
+        "                          bezahlt. Bucht nichts\n"
+        "        --buchen <beleg-nr>   einen Vorschlag annehmen und buchen\n"
+        "        --betrag <betrag>     Teilbetrag (Standard: der ganze)\n"
         "\n"
         "Datumsangaben in deutscher (01.04.2026) oder ISO-Schreibweise (2026-04-01).\n",
         ULTRAFIBU_CLI_VERSION);
@@ -176,6 +258,26 @@ int Einrichten(int argc, char** argv) {
     mandant.ustIdNr = Option(argc, argv, "--ust-idnr");
     mandant.ort     = Option(argc, argv, "--ort");
     mandant.land    = Option(argc, argv, "--land", "DE");
+    // The company's own address and tax number are not decoration: without
+    // them a printed invoice is deficient under § 14 UStG and its recipient
+    // cannot deduct the input tax. They are settable here so a file can be set
+    // up complete in one go; "ultrafibu rechnung-pdf" names whatever is still
+    // missing.
+    mandant.strasse      = Option(argc, argv, "--strasse");
+    mandant.plz          = Option(argc, argv, "--plz");
+    mandant.steuernummer = Option(argc, argv, "--steuernummer");
+    mandant.telefon      = Option(argc, argv, "--telefon");
+    mandant.email        = Option(argc, argv, "--email");
+    mandant.webseite     = Option(argc, argv, "--web");
+    mandant.iban         = Option(argc, argv, "--iban");
+    mandant.bic          = Option(argc, argv, "--bic");
+    mandant.bank         = Option(argc, argv, "--bank");
+    mandant.rechtsform   = Option(argc, argv, "--rechtsform");
+    // Assigned by the Kanzlei. Without them a DATEV import is refused
+    // there, so they belong in the same setup step as everything else
+    // that has to be right before the first export.
+    mandant.beraternummer   = Option(argc, argv, "--beraternummer");
+    mandant.mandantennummer = Option(argc, argv, "--mandantennummer");
     const StoreResult mandantSaved = store.SaveMandant(mandant, akteur);
     if (!mandantSaved) { std::printf("Fehler: %s\n", mandantSaved.fehler.c_str()); return 1; }
 
@@ -351,6 +453,10 @@ int PartnerNeu(int argc, char** argv) {
     partner.ustIdNr   = Option(argc, argv, "--ust-idnr");
     partner.email     = Option(argc, argv, "--email");
     partner.telefon   = Option(argc, argv, "--telefon");
+    // The IBAN is what lets a bank line be matched to this partner when the
+    // payer did not quote an invoice number - which is most of the time.
+    partner.iban      = Option(argc, argv, "--iban");
+    partner.bic       = Option(argc, argv, "--bic");
     if (!PartnerTypFromText(Option(argc, argv, "--typ", "kunde"), partner.typ)) {
         std::printf("Fehler: --typ muss kunde, lieferant oder beides sein.\n");
         return 2;
@@ -516,6 +622,1054 @@ int Protokoll(int argc, char** argv) {
     return 0;
 }
 
+// ===== BELEGE UND BUCHUNGEN =====
+
+// A --position argument: "Bezeichnung;Menge;Einzelpreis;Konto;Steuerschluessel".
+// Semicolon-separated because that is what the DATEV and Kontenrahmen files
+// use and what a German keyboard reaches without a shift. The amount is read
+// with the Money parser, so both 1234.56 and 1.234,56 are accepted.
+bool ParsePosition(const std::string& text, BelegPosition& out, std::string& fehler) {
+    std::vector<std::string> teile;
+    std::string aktuell;
+    for (char c : text) {
+        if (c == ';') { teile.push_back(aktuell); aktuell.clear(); }
+        else aktuell.push_back(c);
+    }
+    teile.push_back(aktuell);
+    if (teile.size() < 5) {
+        fehler = "Eine Position braucht fünf Felder: "
+                 "Bezeichnung;Menge;Einzelpreis;Konto;Steuerschlüssel";
+        return false;
+    }
+
+    out.bezeichnung = teile[0];
+
+    // The quantity is held in thousandths. Reading it through Money and taking
+    // its minor units would give hundredths, so it is read as a Money with two
+    // decimals and scaled - which keeps 0,25 hours exact and never involves a
+    // double.
+    Money menge;
+    if (!Money::TryParse(teile[1], menge) || menge.Minor() == 0) {
+        fehler = "\"" + teile[1] + "\" ist keine Menge.";
+        return false;
+    }
+    out.mengeTausendstel = menge.Minor() * 10;
+
+    Money preis;
+    if (!Money::TryParse(teile[2], preis)) {
+        fehler = "\"" + teile[2] + "\" ist kein Betrag.";
+        return false;
+    }
+    out.einzelpreis = preis;
+    out.konto            = teile[3];
+    out.steuerschluessel = teile[4];
+    if (teile.size() > 5) out.kostenstelle = teile[5];
+    return true;
+}
+
+// Find a partner by account number, by exact name, or by a unique substring of
+// the name - so the command line can say --partner "Muster" instead of 10001.
+bool FindePartner(const Store& store, int64_t mandantId, const std::string& suche,
+                  Partner& out) {
+    if (suche.empty()) return false;
+    if (store.PartnerByKonto(mandantId, suche, out)) return true;
+
+    const std::vector<Partner> treffer =
+        store.PartnerListe(mandantId, PartnerTyp::Beides, suche);
+    if (treffer.size() == 1) { out = treffer[0]; return true; }
+    if (treffer.size() > 1) {
+        for (const Partner& p : treffer) {
+            if (p.name == suche) { out = p; return true; }
+        }
+        std::printf("Fehler: \"%s\" passt auf %d Partner. Bitte das Konto angeben:\n",
+                    suche.c_str(), static_cast<int>(treffer.size()));
+        for (const Partner& p : treffer)
+            std::printf("  %-8s %s\n", p.konto.c_str(), p.name.c_str());
+    }
+    return false;
+}
+
+int BelegNeu(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Beleg beleg;
+    beleg.mandantId = mandant.id;
+
+    const std::string artText = Option(argc, argv, "--art", "ausgangsrechnung");
+    if (!BelegArtFromText(artText, beleg.art)) {
+        std::printf("Fehler: \"%s\" ist keine Belegart. Möglich sind: "
+                    "ausgangsrechnung, eingangsrechnung, ausgangsgutschrift, "
+                    "eingangsgutschrift, kassenbeleg, sonstiges.\n", artText.c_str());
+        return 2;
+    }
+
+    const std::string datumText = Option(argc, argv, "--datum");
+    if (datumText.empty() || !TryParseDateGerman(datumText, beleg.datum)) {
+        std::printf("Fehler: --datum fehlt oder ist kein Datum.\n");
+        return 2;
+    }
+
+    const std::string partnerSuche = Option(argc, argv, "--partner");
+    Partner partner;
+    if (!FindePartner(store, mandant.id, partnerSuche, partner)) {
+        if (!partnerSuche.empty())
+            std::printf("Fehler: Kein Partner gefunden für \"%s\".\n", partnerSuche.c_str());
+        else
+            std::printf("Fehler: --partner fehlt (Kontonummer oder Name).\n");
+        return 2;
+    }
+    beleg.partnerId    = partner.id;
+    beleg.partnerKonto = partner.konto;
+    beleg.partnerName  = partner.name;
+
+    beleg.externeNummer = Option(argc, argv, "--extern");
+    beleg.buchungstext  = Option(argc, argv, "--text");
+    const std::string faellig = Option(argc, argv, "--faellig");
+    if (!faellig.empty()) TryParseDateGerman(faellig, beleg.faelligAm);
+
+    // Every --position on the command line, in the order they were given.
+    for (int i = 1; i < argc - 1; ++i) {
+        if (std::string("--position") != argv[i]) continue;
+        BelegPosition pos;
+        std::string fehler;
+        if (!ParsePosition(argv[i + 1], pos, fehler)) {
+            std::printf("Fehler: %s\n", fehler.c_str());
+            return 2;
+        }
+        beleg.positionen.push_back(pos);
+    }
+    if (beleg.positionen.empty()) {
+        std::printf("Fehler: Mindestens eine --position wird gebraucht:\n"
+                    "  --position \"Beratung;10;100,00;8400;USt19\"\n");
+        return 2;
+    }
+
+    const std::string kreis = Option(argc, argv, "--kreis", "rechnung");
+    const StoreResult saved = store.SaveBeleg(beleg, kreis, akteur);
+    if (!saved) { std::printf("Fehler: %s\n", saved.fehler.c_str()); return 1; }
+
+    std::printf("Beleg %s angelegt (%s, %s).\n", beleg.nummer.c_str(),
+                BelegArtLabel(beleg.art).c_str(), beleg.partnerName.c_str());
+    for (const BelegPosition& pos : beleg.positionen)
+        std::printf("  %-30s %12s netto  %s %s\n", pos.bezeichnung.c_str(),
+                    pos.netto.ToString().c_str(), pos.konto.c_str(),
+                    pos.steuerschluessel.c_str());
+    std::printf("  %-30s %12s netto\n", "Summe", beleg.netto.ToString().c_str());
+    std::printf("  %-30s %12s\n", "Umsatzsteuer", beleg.steuer.ToString().c_str());
+    std::printf("  %-30s %12s brutto\n", "Gesamt", beleg.brutto.ToString().c_str());
+    if (beleg.faelligAm.Valid())
+        std::printf("  Fällig am %s\n", FormatDateGerman(beleg.faelligAm).c_str());
+    std::printf("\nMit \"ultrafibu buchen %s %s\" wird daraus eine Buchung.\n",
+                datei.c_str(), beleg.nummer.c_str());
+    return 0;
+}
+
+int BelegeZeigen(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    Store::BelegFilter filter;
+    filter.mandantId = mandant.id;
+    filter.suche     = Positional(argc, argv, 1);
+    filter.nurOffene = HasOption(argc, argv, "--offen");
+    if (HasOption(argc, argv, "--ueberfaellig")) {
+        filter.nurUeberfaellig = true;
+        const std::string heute = Option(argc, argv, "--stichtag");
+        if (!heute.empty() && !TryParseDateGerman(heute, filter.heute)) {
+            std::printf("Fehler: \"%s\" ist kein Datum.\n", heute.c_str());
+            return 2;
+        }
+        if (!filter.heute.Valid()) {
+            std::printf("Fehler: --ueberfaellig braucht --stichtag <datum>.\n"
+                        "Ein Bericht, der von der Uhr abhängt, lässt sich nicht "
+                        "wiederholen.\n");
+            return 2;
+        }
+    }
+    const std::string artText = Option(argc, argv, "--art");
+    if (!artText.empty()) {
+        if (!BelegArtFromText(artText, filter.art)) {
+            std::printf("Fehler: \"%s\" ist keine Belegart.\n", artText.c_str());
+            return 2;
+        }
+        filter.artGesetzt = true;
+    }
+
+    const std::vector<Beleg> belege = store.BelegListe(filter);
+    if (belege.empty()) { std::printf("Keine Belege gefunden.\n"); return 0; }
+
+    std::printf("%-14s %-10s %-24s %13s %13s  %s\n",
+                "Nummer", "Datum", "Partner", "Brutto", "Offen", "Status");
+    Money summeOffen = Money::Zero(mandant.waehrung);
+    for (const Beleg& b : belege) {
+        std::printf("%-14s %-10s %-24s %13s %13s  %s\n",
+                    b.nummer.c_str(), FormatDateGerman(b.datum).c_str(),
+                    b.partnerName.substr(0, 24).c_str(),
+                    b.brutto.ToString().c_str(), b.Offen().ToString().c_str(),
+                    BelegStatusLabel(b.status).c_str());
+        if (b.Offen().Valid()) summeOffen = summeOffen + b.Offen();
+    }
+    std::printf("\n%d Beleg(e), offen %s\n", static_cast<int>(belege.size()),
+                summeOffen.ToString().c_str());
+    return 0;
+}
+
+int BelegBuchen(int argc, char** argv) {
+    const std::string datei  = Positional(argc, argv, 0);
+    const std::string nummer = Positional(argc, argv, 1);
+    if (nummer.empty()) {
+        std::printf("Fehler: Belegnummer fehlt.\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Beleg beleg;
+    if (!store.BelegByNummer(mandant.id, nummer, beleg)) {
+        std::printf("Fehler: Beleg \"%s\" nicht gefunden.\n", nummer.c_str());
+        return 1;
+    }
+    const StoreResult posted = store.Buchen(beleg, akteur);
+    if (!posted) { std::printf("Fehler: %s\n", posted.fehler.c_str()); return 1; }
+
+    std::printf("Beleg %s gebucht:\n", beleg.nummer.c_str());
+    for (const Buchung& b : store.BuchungenZuBeleg(beleg.id)) {
+        std::printf("  %-8s %s %12s an %-8s", b.konto.c_str(),
+                    SollHabenToText(b.sollHaben).c_str(), b.umsatz.ToString().c_str(),
+                    b.gegenkonto.c_str());
+        if (!b.steuer.IsZero())
+            std::printf("  (davon %s USt auf %s)", b.steuer.ToString().c_str(),
+                        b.steuerkonto.c_str());
+        std::printf("\n");
+    }
+    return 0;
+}
+
+int BelegStornieren(int argc, char** argv) {
+    const std::string datei  = Positional(argc, argv, 0);
+    const std::string nummer = Positional(argc, argv, 1);
+    const std::string datumText = Option(argc, argv, "--datum");
+    if (nummer.empty() || datumText.empty()) {
+        std::printf("Fehler: Belegnummer und --datum <stornodatum> sind erforderlich.\n");
+        return 2;
+    }
+    Date stornoDatum;
+    if (!TryParseDateGerman(datumText, stornoDatum)) {
+        std::printf("Fehler: \"%s\" ist kein Datum.\n", datumText.c_str());
+        return 2;
+    }
+
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Beleg original;
+    if (!store.BelegByNummer(mandant.id, nummer, original)) {
+        std::printf("Fehler: Beleg \"%s\" nicht gefunden.\n", nummer.c_str());
+        return 1;
+    }
+    if (!HasOption(argc, argv, "--ja")) {
+        std::printf("Beleg %s (%s, %s) wird storniert.\n", original.nummer.c_str(),
+                    FormatDateGerman(original.datum).c_str(),
+                    original.brutto.ToString().c_str());
+        std::printf("Dabei entsteht ein neuer Beleg mit umgekehrten Buchungen zum %s.\n",
+                    FormatDateGerman(stornoDatum).c_str());
+        std::printf("Eine Stornierung lässt sich nicht zurücknehmen.\n"
+                    "Zum Ausführen mit --ja wiederholen.\n");
+        return 0;
+    }
+
+    Beleg storno;
+    const StoreResult done = store.StorniereBeleg(
+        original.id, stornoDatum, Option(argc, argv, "--grund"),
+        Option(argc, argv, "--kreis", "rechnung"), akteur, storno);
+    if (!done) { std::printf("Fehler: %s\n", done.fehler.c_str()); return 1; }
+
+    std::printf("Beleg %s storniert durch %s (%s).\n", original.nummer.c_str(),
+                storno.nummer.c_str(), storno.brutto.ToString().c_str());
+    return 0;
+}
+
+int ZahlungBuchen(int argc, char** argv) {
+    const std::string datei  = Positional(argc, argv, 0);
+    const std::string nummer = Positional(argc, argv, 1);
+    const std::string betragText = Option(argc, argv, "--betrag");
+    const std::string datumText  = Option(argc, argv, "--datum");
+    const std::string geldkonto  = Option(argc, argv, "--konto", "1200");
+    if (nummer.empty() || betragText.empty() || datumText.empty()) {
+        std::printf("Fehler: Belegnummer, --betrag und --datum sind erforderlich.\n");
+        return 2;
+    }
+    Money betrag;
+    if (!Money::TryParse(betragText, betrag)) {
+        std::printf("Fehler: \"%s\" ist kein Betrag.\n", betragText.c_str());
+        return 2;
+    }
+    Date datum;
+    if (!TryParseDateGerman(datumText, datum)) {
+        std::printf("Fehler: \"%s\" ist kein Datum.\n", datumText.c_str());
+        return 2;
+    }
+
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Beleg beleg;
+    if (!store.BelegByNummer(mandant.id, nummer, beleg)) {
+        std::printf("Fehler: Beleg \"%s\" nicht gefunden.\n", nummer.c_str());
+        return 1;
+    }
+    const StoreResult done = store.ZahlungErfassen(
+        beleg.id, datum, betrag, geldkonto, Option(argc, argv, "--text"), akteur);
+    if (!done) { std::printf("Fehler: %s\n", done.fehler.c_str()); return 1; }
+
+    Beleg danach;
+    store.BelegById(beleg.id, danach);
+    std::printf("Zahlung %s auf %s gebucht. Beleg %s ist jetzt %s",
+                betrag.ToString().c_str(), geldkonto.c_str(), danach.nummer.c_str(),
+                BelegStatusLabel(danach.status).c_str());
+    if (!danach.Offen().IsZero())
+        std::printf(", offen bleiben %s", danach.Offen().ToString().c_str());
+    std::printf(".\n");
+    return 0;
+}
+
+int JournalZeigen(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    Date von, bis;
+    const std::string vonText = Option(argc, argv, "--von");
+    const std::string bisText = Option(argc, argv, "--bis");
+    if (!vonText.empty() && !TryParseDateGerman(vonText, von)) {
+        std::printf("Fehler: \"%s\" ist kein Datum.\n", vonText.c_str());
+        return 2;
+    }
+    if (!bisText.empty() && !TryParseDateGerman(bisText, bis)) {
+        std::printf("Fehler: \"%s\" ist kein Datum.\n", bisText.c_str());
+        return 2;
+    }
+
+    const std::vector<Buchung> journal = store.Journal(mandant.id, von, bis);
+    if (journal.empty()) { std::printf("Keine Buchungen im Zeitraum.\n"); return 0; }
+
+    std::printf("%5s %-10s %-14s %13s %-2s %-8s %-8s %10s  %s\n",
+                "Nr.", "Datum", "Beleg", "Umsatz", "S/H", "Konto", "Gegenkto",
+                "Steuer", "Text");
+    for (const Buchung& b : journal) {
+        std::printf("%5lld %-10s %-14s %13s %-2s  %-8s %-8s %10s  %s%s\n",
+                    static_cast<long long>(b.laufendeNummer),
+                    FormatDateGerman(b.belegdatum).c_str(),
+                    b.belegfeld1.substr(0, 14).c_str(),
+                    b.umsatz.ToString().c_str(),
+                    SollHabenToText(b.sollHaben).c_str(),
+                    b.konto.c_str(), b.gegenkonto.c_str(),
+                    b.steuer.IsZero() ? "" : b.steuer.ToString().c_str(),
+                    b.buchungstext.substr(0, 30).c_str(),
+                    b.IstStorniert() ? "  [storniert]" : (b.IstStorno() ? "  [Storno]" : ""));
+    }
+    std::printf("\n%d Buchung(en).\n", static_cast<int>(journal.size()));
+    return 0;
+}
+
+int SaldenZeigen(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    Date von, bis;
+    const std::string vonText = Option(argc, argv, "--von");
+    const std::string bisText = Option(argc, argv, "--bis");
+    if (!vonText.empty()) TryParseDateGerman(vonText, von);
+    if (!bisText.empty()) TryParseDateGerman(bisText, bis);
+
+    const std::vector<Store::KontoSaldo> salden = store.SummenUndSalden(mandant.id, von, bis);
+    if (salden.empty()) { std::printf("Keine Buchungen im Zeitraum.\n"); return 0; }
+
+    std::printf("%-8s %-34s %13s %13s %13s\n",
+                "Konto", "Bezeichnung", "Soll", "Haben", "Saldo");
+    Money summeSoll  = Money::Zero(mandant.waehrung);
+    Money summeHaben = Money::Zero(mandant.waehrung);
+    for (const Store::KontoSaldo& k : salden) {
+        std::printf("%-8s %-34s %13s %13s %13s\n", k.konto.c_str(),
+                    k.bezeichnung.substr(0, 34).c_str(), k.soll.ToString().c_str(),
+                    k.haben.ToString().c_str(), k.saldo.ToString().c_str());
+        summeSoll  = summeSoll  + k.soll;
+        summeHaben = summeHaben + k.haben;
+    }
+    std::printf("%-8s %-34s %13s %13s\n", "", "Summe", summeSoll.ToString().c_str(),
+                summeHaben.ToString().c_str());
+
+    // The one line that says whether the ledger is a ledger.
+    const Money differenz = store.Buchungskreisdifferenz(mandant.id, von, bis);
+    if (differenz.IsZero())
+        std::printf("\nSoll und Haben gleichen sich aus.\n");
+    else
+        std::printf("\nACHTUNG: Soll und Haben weichen um %s voneinander ab.\n",
+                    differenz.ToString().c_str());
+    return 0;
+}
+
+int KettePruefen(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const HashKettenPruefung ergebnis = store.PruefeHashKette(mandant.id);
+    std::printf("%lld Buchung(en) geprüft.\n",
+                static_cast<long long>(ergebnis.geprueft));
+    if (ergebnis.ok) {
+        std::printf("Die Prüfsummenkette des Journals ist unversehrt.\n"
+                    "\nHinweis: Das ist ein Nachweis der Unveränderbarkeit im Sinne\n"
+                    "der GoBD, keine qualifizierte elektronische Signatur.\n");
+        return 0;
+    }
+    std::printf("FEHLER: %s\n", ergebnis.fehler.c_str());
+    if (ergebnis.ersteFehlerhafteNummer > 0)
+        std::printf("Betroffen ist die laufende Nummer %lld (Buchung %lld).\n",
+                    static_cast<long long>(ergebnis.ersteFehlerhafteNummer),
+                    static_cast<long long>(ergebnis.ersteFehlerhafteId));
+    return 1;
+}
+
+int RechnungDrucken(int argc, char** argv) {
+    const std::string datei  = Positional(argc, argv, 0);
+    const std::string nummer = Positional(argc, argv, 1);
+    if (nummer.empty()) {
+        std::printf("Fehler: Belegnummer fehlt.\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    Beleg beleg;
+    if (!store.BelegByNummer(mandant.id, nummer, beleg)) {
+        std::printf("Fehler: Beleg \"%s\" nicht gefunden.\n", nummer.c_str());
+        return 1;
+    }
+
+    Partner empfaenger;
+    if (beleg.partnerId != 0 && !store.PartnerById(beleg.partnerId, empfaenger)) {
+        std::printf("Fehler: Der Partner des Belegs wurde nicht gefunden.\n");
+        return 1;
+    }
+
+    std::string ziel = Option(argc, argv, "--datei");
+    if (ziel.empty()) ziel = beleg.nummer + ".pdf";
+
+    // The tax keys as they stood on the Belegdatum, so a zero-rated line names
+    // the right exemption even after the table has moved on.
+    const std::vector<Steuerschluessel> schluessel =
+        store.SteuerschluesselListe(mandant.id, beleg.datum);
+
+    RechnungLayout layout;
+    layout.fusszeileZusatz = Option(argc, argv, "--fusszeile");
+    const std::string hinweis = Option(argc, argv, "--zahlungshinweis");
+    if (!hinweis.empty()) layout.zahlungshinweis = hinweis;
+
+    const RechnungPdfErgebnis ergebnis =
+        SchreibeRechnungPdf(mandant, beleg, empfaenger, schluessel, ziel, layout);
+    if (!ergebnis.ok) {
+        std::printf("Fehler: %s\n", ergebnis.fehler.c_str());
+        return 1;
+    }
+
+    std::printf("%s %s nach \"%s\" geschrieben (%s).\n", BelegArtLabel(beleg.art).c_str(),
+                beleg.nummer.c_str(), ziel.c_str(), beleg.brutto.ToString().c_str());
+
+    // A deficient invoice is the recipient's problem as much as ours: without
+    // the mandatory fields they cannot deduct the input tax. So this is a
+    // warning on the way out, not a footnote in a log.
+    if (!ergebnis.VollstaendigNachUStG()) {
+        std::printf("\nACHTUNG: Der Rechnung fehlen Pflichtangaben nach § 14 UStG.\n"
+                    "Der Empfänger kann daraus keinen Vorsteuerabzug geltend machen.\n");
+        for (const std::string& fehlt : ergebnis.fehlendePflichtangaben)
+            std::printf("  - %s\n", fehlt.c_str());
+        return 1;
+    }
+    return 0;
+}
+
+// ===== DATEV =====
+
+bool LadeDatevDefinition(const std::string& dateiname, DatevDefinition& out) {
+    const std::string pfad = DatevDefinitionPfad(dateiname);
+    std::string fehler;
+    if (!out.Laden(pfad, fehler)) {
+        std::printf("Fehler: %s\n", fehler.c_str());
+        return false;
+    }
+    return true;
+}
+
+void ZeigeDatevErgebnis(const DatevErgebnis& ergebnis) {
+    std::printf("\"%s\" geschrieben, %d Zeile(n).\n", ergebnis.datei.c_str(),
+                ergebnis.zeilen);
+    for (const std::string& warnung : ergebnis.warnungen)
+        std::printf("  ACHTUNG: %s\n", warnung.c_str());
+}
+
+int DatevExport(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    const std::string ziel = Option(argc, argv, "--ziel", ".");
+
+    // Kontenbeschriftungen: the whole chart, not tied to a month.
+    if (HasOption(argc, argv, "--konten")) {
+        DatevDefinition definition;
+        if (!LadeDatevDefinition("DATEV-Sachkontenbeschriftungen-v700.csv", definition))
+            return 1;
+        std::vector<Geschaeftsjahr> jahre = store.Geschaeftsjahre(mandant.id);
+        if (jahre.empty()) {
+            std::printf("Fehler: Es ist kein Geschäftsjahr angelegt.\n");
+            return 1;
+        }
+        const DatevErgebnis ergebnis = SchreibeKontenbeschriftungen(
+            mandant, jahre.back(), store.Konten(mandant.id), definition, ziel,
+            akteur.anmeldename);
+        if (!ergebnis.ok) { std::printf("Fehler: %s\n", ergebnis.fehler.c_str()); return 1; }
+        ZeigeDatevErgebnis(ergebnis);
+        return ergebnis.warnungen.empty() ? 0 : 1;
+    }
+
+    // A Buchungsstapel is always one calendar month: the Belegdatum field
+    // carries no year, so a stack that spans one would be mis-booked.
+    const std::string monatText = Option(argc, argv, "--monat");
+    if (monatText.empty()) {
+        std::printf("Fehler: --monat <JJJJ-MM> fehlt.\n"
+                    "Ein Buchungsstapel umfasst immer genau einen Kalendermonat:\n"
+                    "das Feld Belegdatum trägt nur TTMM, das Jahr leitet DATEV aus\n"
+                    "dem Wirtschaftsjahr ab. Für alle Monate: --alle\n");
+        return 2;
+    }
+
+    int jahrZahl = 0, monatZahl = 0;
+    if (monatText.size() >= 7 && monatText[4] == '-') {
+        jahrZahl  = std::atoi(monatText.substr(0, 4).c_str());
+        monatZahl = std::atoi(monatText.substr(5, 2).c_str());
+    }
+    if (jahrZahl < 1900 || monatZahl < 1 || monatZahl > 12) {
+        std::printf("Fehler: \"%s\" ist kein Monat (erwartet JJJJ-MM).\n",
+                    monatText.c_str());
+        return 2;
+    }
+
+    Geschaeftsjahr jahr;
+    if (!store.GeschaeftsjahrAt(mandant.id, Date(jahrZahl, monatZahl, 1), jahr)) {
+        std::printf("Fehler: Zum %02d/%d ist kein Geschäftsjahr angelegt.\n",
+                    monatZahl, jahrZahl);
+        return 1;
+    }
+
+    DatevDefinition definition;
+    if (!LadeDatevDefinition("DATEV-Buchungsstapel-v700.csv", definition)) return 1;
+
+    const DatevErgebnis ergebnis = SchreibeBuchungsstapel(
+        mandant, jahr, store.Journal(mandant.id), definition, jahrZahl, monatZahl,
+        ziel, akteur.anmeldename);
+    if (!ergebnis.ok) { std::printf("Fehler: %s\n", ergebnis.fehler.c_str()); return 1; }
+    ZeigeDatevErgebnis(ergebnis);
+    return ergebnis.warnungen.empty() ? 0 : 1;
+}
+
+int DatevPruefen(int argc, char** argv) {
+    const std::string datevDatei = Positional(argc, argv, 0);
+    if (datevDatei.empty()) {
+        std::printf("Fehler: Keine DATEV-Datei angegeben.\n"
+                    "Aufruf: ultrafibu datev-pruefen <EXTF_Datei.csv>\n");
+        return 2;
+    }
+
+    // Which definition to compare against follows from the file's own
+    // Format-Kategorie, so the user does not have to know it.
+    DatevDefinition stapel;
+    if (!LadeDatevDefinition("DATEV-Buchungsstapel-v700.csv", stapel)) return 1;
+    DatevPruefung pruefung = PruefeDateiGegenDefinition(datevDatei, stapel);
+
+    if (pruefung.fehler.empty() && pruefung.kategorie == 20) {
+        DatevDefinition konten;
+        if (!LadeDatevDefinition("DATEV-Sachkontenbeschriftungen-v700.csv", konten))
+            return 1;
+        pruefung = PruefeDateiGegenDefinition(datevDatei, konten);
+    }
+
+    if (!pruefung.fehler.empty()) {
+        std::printf("Fehler: %s\n", pruefung.fehler.c_str());
+        return 1;
+    }
+
+    std::printf("%s, Version %d, Kategorie %d, Formatversion %d\n",
+                pruefung.kennzeichen.c_str(), pruefung.versionsnummer,
+                pruefung.kategorie, pruefung.formatversion);
+    std::printf("Spalten in der Datei: %d, in der Definition: %d\n",
+                static_cast<int>(pruefung.spaltenInDatei),
+                static_cast<int>(pruefung.spaltenInDefinition));
+
+    if (pruefung.ok) {
+        std::printf("\nDie Spaltendefinition stimmt mit dieser Datei überein.\n");
+        return 0;
+    }
+    std::printf("\n%d Abweichung(en):\n",
+                static_cast<int>(pruefung.abweichungen.size()));
+    for (const std::string& abweichung : pruefung.abweichungen)
+        std::printf("  %s\n", abweichung.c_str());
+    std::printf("\nBitte die Definition in data/ entsprechend korrigieren. Der\n"
+                "Export schreibt über den Spaltennamen, die Werte wandern also mit.\n");
+    return 1;
+}
+
+int DatevImport(int argc, char** argv) {
+    const std::string datei      = Positional(argc, argv, 0);
+    const std::string datevDatei = Positional(argc, argv, 1);
+    if (datevDatei.empty()) {
+        std::printf("Fehler: Keine DATEV-Datei angegeben.\n"
+                    "Aufruf: ultrafibu datev-import <datei> <EXTF_Datei.csv>\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    std::vector<Geschaeftsjahr> jahre = store.Geschaeftsjahre(mandant.id);
+    if (jahre.empty()) {
+        std::printf("Fehler: Es ist kein Geschäftsjahr angelegt.\n");
+        return 1;
+    }
+
+    const DatevImportBericht bericht = LeseBuchungsstapel(
+        datevDatei, mandant, jahre.back(),
+        store.SteuerschluesselListe(mandant.id));
+
+    std::printf("%s, Version %d, Kategorie %d\n", bericht.kennzeichen.c_str(),
+                bericht.versionsnummer, bericht.kategorie);
+    if (!bericht.fehler.empty() && !bericht.ok) {
+        std::printf("Fehler: %s\n", bericht.fehler.c_str());
+        return 1;
+    }
+    std::printf("Berater %s, Mandant %s, Wirtschaftsjahr ab %s\n",
+                bericht.beraternummer.c_str(), bericht.mandantennummer.c_str(),
+                FormatDateGerman(bericht.wjBeginn).c_str());
+    std::printf("Zeitraum %s - %s, \"%s\"\n",
+                FormatDateGerman(bericht.von).c_str(),
+                FormatDateGerman(bericht.bis).c_str(),
+                bericht.bezeichnung.c_str());
+    std::printf("%d Zeile(n) gelesen, %d übernehmbar, %d übersprungen, "
+                "%d mit Steueraufteilung\n",
+                bericht.gelesen, bericht.uebernommen, bericht.uebersprungen,
+                bericht.mitSteuer);
+
+    for (const std::string& zeile : bericht.fehlerZeilen)
+        std::printf("  FEHLER: %s\n", zeile.c_str());
+    for (const std::string& warnung : bericht.warnungen)
+        std::printf("  ACHTUNG: %s\n", warnung.c_str());
+
+    // A Sachkonto that is in the file and not in the chart is usually a wrong
+    // account rather than a missing one, and after the import it is only a
+    // nameless number in the Saldenliste. Said here, while nothing is written
+    // yet, it is one line to check.
+    {
+        const std::vector<std::string> fehlend =
+            UnbekannteSachkonten(bericht, store.Konten(mandant.id));
+        if (!fehlend.empty()) {
+            std::string liste;
+            for (const std::string& konto : fehlend) {
+                if (!liste.empty()) liste += ", ";
+                liste += konto;
+            }
+            std::printf("  ACHTUNG: Diese Sachkonten stehen in der Datei, aber "
+                        "nicht im Kontenrahmen: %s. Sie erscheinen nach dem "
+                        "Import ohne Bezeichnung in der Saldenliste.\n",
+                        liste.c_str());
+        }
+    }
+
+    // A first look at somebody else's file should never write. Importing is
+    // the explicit second step.
+    if (!HasOption(argc, argv, "--uebernehmen")) {
+        std::printf("\nEs wurde nichts geschrieben. Zum Übernehmen mit "
+                    "--uebernehmen wiederholen.\n");
+        return bericht.ok ? 0 : 1;
+    }
+
+    int geschrieben = 0;
+    const StoreResult importiert = store.ImportiereDatevStapel(
+        bericht, datevDatei, akteur, HasOption(argc, argv, "--nochmal"), geschrieben);
+    if (!importiert) {
+        std::printf("\nFehler: %s\n", importiert.fehler.c_str());
+        return 1;
+    }
+    std::printf("\n%d Buchung(en) übernommen.\n", geschrieben);
+    return 0;
+}
+
+// ===== BANK =====
+
+int BankkontoNeu(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Bankkonto konto;
+    konto.mandantId   = mandant.id;
+    konto.bezeichnung = Option(argc, argv, "--name");
+    konto.konto       = Option(argc, argv, "--konto");
+    konto.iban        = Option(argc, argv, "--iban");
+    konto.bic         = Option(argc, argv, "--bic");
+    konto.bank        = Option(argc, argv, "--bank");
+    konto.csvProfil   = Option(argc, argv, "--profil");
+    konto.waehrung    = Option(argc, argv, "--waehrung", mandant.waehrung);
+
+    if (konto.bezeichnung.empty() || konto.konto.empty()) {
+        std::printf("Fehler: --name und --konto sind erforderlich.\n"
+                    "Das Sachkonto ist das, auf das die Bewegungen dieses Kontos "
+                    "gebucht werden, z. B. 1200 in SKR03.\n");
+        return 2;
+    }
+    // A G/L account that is not in the chart is almost always a typo, and after
+    // the first import it is a nameless number in the Saldenliste.
+    Konto sachkonto;
+    if (!store.KontoByNummer(mandant.id, konto.konto, sachkonto)) {
+        std::printf("Fehler: Das Sachkonto %s steht nicht im Kontenrahmen.\n",
+                    konto.konto.c_str());
+        return 1;
+    }
+
+    const StoreResult r = store.SaveBankkonto(konto, akteur);
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Bankkonto %lld angelegt: %s, Sachkonto %s (%s)\n",
+                static_cast<long long>(konto.id), konto.bezeichnung.c_str(),
+                konto.konto.c_str(), sachkonto.bezeichnung.c_str());
+    return 0;
+}
+
+int Bankkonten(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::vector<Bankkonto> konten = store.Bankkonten(mandant.id, false);
+    if (konten.empty()) {
+        std::printf("Es ist kein Bankkonto angelegt "
+                    "(ultrafibu bankkonto-neu ... --name \"...\" --konto 1200).\n");
+        return 0;
+    }
+    std::printf("%4s  %-28s %-24s %-6s %-10s %s\n",
+                "Id", "Bezeichnung", "IBAN", "Konto", "eingelesen", "Währung");
+    for (const Bankkonto& k : konten) {
+        std::printf("%4lld  %-28s %-24s %-6s %-10s %s%s\n",
+                    static_cast<long long>(k.id), k.bezeichnung.substr(0, 28).c_str(),
+                    k.iban.c_str(), k.konto.c_str(),
+                    k.letzterImportBis.Valid()
+                        ? FormatDateGerman(k.letzterImportBis).c_str() : "-",
+                    k.waehrung.c_str(), k.aktiv ? "" : "  (inaktiv)");
+    }
+    return 0;
+}
+
+int BankImport(int argc, char** argv) {
+    const std::string datei     = Positional(argc, argv, 0);
+    const std::string kontoText = Positional(argc, argv, 1);
+    const std::string auszug    = Positional(argc, argv, 2);
+    if (auszug.empty()) {
+        std::printf("Fehler: Aufruf ist "
+                    "ultrafibu bank-import <datei> <bankkonto-id> <auszug>\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Bankkonto konto;
+    if (!store.BankkontoById(std::atoll(kontoText.c_str()), konto) &&
+        !store.BankkontoByIban(mandant.id, kontoText, konto)) {
+        std::printf("Fehler: Das Bankkonto \"%s\" gibt es nicht "
+                    "(ultrafibu bankkonten %s).\n", kontoText.c_str(), datei.c_str());
+        return 1;
+    }
+
+    CsvBankProfil profil;
+    const std::string profilName =
+        Option(argc, argv, "--profil",
+               konto.csvProfil.empty() ? "Bankprofil-Standard.csv" : konto.csvProfil);
+    std::string profilFehler;
+    const std::string profilPfad = BankProfilPfad(profilName);
+    if (!profilPfad.empty()) profil.Laden(profilPfad, profilFehler);
+
+    const BankLeseBericht bericht =
+        LiesBankdatei(auszug, profil, konto.iban, konto.waehrung);
+    std::printf("Format: %s\n", BankFormatToText(bericht.format).c_str());
+    if (!bericht.ok) {
+        std::printf("Fehler: %s\n", bericht.fehler.c_str());
+        for (const std::string& z : bericht.fehlerZeilen)
+            std::printf("  FEHLER: %s\n", z.c_str());
+        return 1;
+    }
+
+    for (const Bankauszug& a : bericht.auszuege) {
+        std::printf("Auszug %s, %s, %s - %s\n",
+                    a.auszugsnummer.empty() ? "(ohne Nummer)" : a.auszugsnummer.c_str(),
+                    a.iban.empty() ? "(ohne IBAN)" : a.iban.c_str(),
+                    FormatDateGerman(a.von).c_str(), FormatDateGerman(a.bis).c_str());
+        if (a.saldenGelesen) {
+            Money differenz;
+            const bool stimmt = a.Stimmt(differenz);
+            std::printf("  Anfangssaldo %s, Endsaldo %s - %s\n",
+                        a.anfangssaldo.ToString().c_str(), a.endsaldo.ToString().c_str(),
+                        stimmt ? "geht auf"
+                               : ("STIMMT NICHT, Differenz " +
+                                  differenz.ToString()).c_str());
+        }
+    }
+    std::printf("%d Buchung(en) gelesen, %d übernehmbar, %d übersprungen, "
+                "%d vorgemerkt\n",
+                bericht.gelesen, bericht.uebernommen, bericht.uebersprungen,
+                bericht.vorgemerkt);
+    for (const std::string& z : bericht.fehlerZeilen)
+        std::printf("  FEHLER: %s\n", z.c_str());
+    for (const std::string& w : bericht.warnungen)
+        std::printf("  ACHTUNG: %s\n", w.c_str());
+
+    if (!HasOption(argc, argv, "--uebernehmen")) {
+        // A first look at a bank's file never writes - and on a CSV, whose
+        // column mapping is a guess until somebody checks it, seeing the first
+        // rows as the profile reads them IS the check.
+        std::printf("\nSo werden die ersten Zeilen gelesen:\n");
+        std::printf("%-10s %14s  %-24s %s\n", "Datum", "Betrag", "Gegenseite",
+                    "Verwendungszweck");
+        int gezeigt = 0;
+        for (const Bankauszug& a : bericht.auszuege) {
+            for (const Bankumsatz& u : a.umsaetze) {
+                if (gezeigt++ >= 8) break;
+                std::printf("%-10s %14s  %-24s %s\n",
+                            FormatDateGerman(u.buchungstag).c_str(),
+                            u.betrag.ToString().c_str(),
+                            u.gegenName.substr(0, 24).c_str(),
+                            u.verwendungszweck.substr(0, 48).c_str());
+            }
+        }
+        std::printf("\nEs wurde nichts geschrieben. Zum Übernehmen mit "
+                    "--uebernehmen wiederholen.\n");
+        return 0;
+    }
+
+    int neu = 0, bekannt = 0;
+    const StoreResult r =
+        store.ImportiereBankauszug(konto.id, bericht, auszug, akteur, neu, bekannt);
+    if (!r) { std::printf("\nFehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("\n%d Umsatz/Umsätze neu übernommen", neu);
+    if (bekannt > 0)
+        std::printf(", %d bereits vorhanden und übersprungen", bekannt);
+    std::printf(".\n");
+    if (neu > 0)
+        std::printf("Nächster Schritt: ultrafibu umsaetze %s --offen\n", datei.c_str());
+    return 0;
+}
+
+int BankImporte(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::vector<Store::BankImportEintrag> liste = store.BankImporte(mandant.id);
+    if (liste.empty()) { std::printf("Es wurde noch kein Auszug eingelesen.\n"); return 0; }
+    std::printf("%-30s %-8s %-10s %-10s %5s %5s  %s\n",
+                "Datei", "Format", "von", "bis", "neu", "bek.", "Benutzer");
+    for (const Store::BankImportEintrag& e : liste)
+        std::printf("%-30s %-8s %-10s %-10s %5d %5d  %s\n",
+                    e.dateiname.substr(0, 30).c_str(), e.format.c_str(),
+                    FormatDateGerman(e.von).c_str(), FormatDateGerman(e.bis).c_str(),
+                    e.neu, e.bekannt, e.benutzer.c_str());
+    return 0;
+}
+
+int Umsaetze(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    Store::UmsatzFilter filter;
+    filter.mandantId = mandant.id;
+    const std::string konto = Option(argc, argv, "--konto");
+    if (!konto.empty()) filter.bankkontoId = std::atoll(konto.c_str());
+    const std::string vonText = Option(argc, argv, "--von");
+    const std::string bisText = Option(argc, argv, "--bis");
+    if (!vonText.empty() && !TryParseDateGerman(vonText, filter.von)) {
+        std::printf("Fehler: \"%s\" ist kein Datum.\n", vonText.c_str());
+        return 2;
+    }
+    if (!bisText.empty() && !TryParseDateGerman(bisText, filter.bis)) {
+        std::printf("Fehler: \"%s\" ist kein Datum.\n", bisText.c_str());
+        return 2;
+    }
+    filter.nurOffene = HasOption(argc, argv, "--offen");
+    filter.suche = Option(argc, argv, "--suche");
+
+    const std::vector<Bankumsatz> liste = store.Umsaetze(filter);
+    if (liste.empty()) { std::printf("Keine Umsätze.\n"); return 0; }
+
+    std::printf("%6s %-10s %14s  %-22s %s\n",
+                "Id", "Datum", "Betrag", "Gegenseite", "Verwendungszweck");
+    int64_t summe = 0;
+    for (const Bankumsatz& u : liste) {
+        std::printf("%6lld %-10s %14s  %-22s %s\n",
+                    static_cast<long long>(u.id),
+                    FormatDateGerman(u.buchungstag).c_str(),
+                    u.betrag.ToString().c_str(),
+                    u.gegenName.substr(0, 22).c_str(),
+                    u.verwendungszweck.substr(0, 44).c_str());
+        summe += u.betrag.Minor();
+    }
+    std::printf("%6s %-10s %14s\n", "", "Summe",
+                Money::FromMinor(summe, mandant.waehrung).ToString().c_str());
+    if (filter.nurOffene)
+        std::printf("\nZuordnen: ultrafibu zuordnen %s <id>\n", datei.c_str());
+    return 0;
+}
+
+int Zuordnen(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    const std::string idText = Positional(argc, argv, 1);
+    if (idText.empty()) {
+        std::printf("Fehler: Aufruf ist ultrafibu zuordnen <datei> <umsatz-id>\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    const int64_t umsatzId = std::atoll(idText.c_str());
+    Bankumsatz umsatz;
+    if (!store.UmsatzById(umsatzId, umsatz)) {
+        std::printf("Fehler: Den Bankumsatz %lld gibt es nicht.\n",
+                    static_cast<long long>(umsatzId));
+        return 1;
+    }
+
+    std::printf("Umsatz %lld: %s, %s\n  %s\n  %s\n",
+                static_cast<long long>(umsatz.id),
+                FormatDateGerman(umsatz.buchungstag).c_str(),
+                umsatz.betrag.ToString().c_str(),
+                umsatz.gegenName.empty() ? "(ohne Namen)" : umsatz.gegenName.c_str(),
+                umsatz.verwendungszweck.c_str());
+    const Money offen = store.OffenerBetrag(umsatzId);
+    std::printf("  offen: %s\n", offen.ToString().c_str());
+
+    for (const Store::BankZuordnung& z : store.Zuordnungen(umsatzId))
+        std::printf("  bereits zugeordnet: %s an %s\n",
+                    z.betrag.ToString().c_str(), z.belegnummer.c_str());
+
+    // ---- accept a proposal ----
+    const std::string buchen = Option(argc, argv, "--buchen");
+    if (!buchen.empty()) {
+        Beleg beleg;
+        if (!store.BelegByNummer(mandant.id, buchen, beleg)) {
+            std::printf("\nFehler: Den Beleg %s gibt es nicht.\n", buchen.c_str());
+            return 1;
+        }
+        Money betrag = Money::FromMinor(offen.Minor() < 0 ? -offen.Minor() : offen.Minor(),
+                                        umsatz.betrag.Currency());
+        const std::string betragText = Option(argc, argv, "--betrag");
+        if (!betragText.empty() &&
+            !Money::TryParse(betragText, betrag, umsatz.betrag.Currency())) {
+            std::printf("\nFehler: \"%s\" ist kein Betrag.\n", betragText.c_str());
+            return 2;
+        }
+        const Money rest = beleg.brutto - beleg.bezahlt;
+        if (betrag.Minor() > rest.Minor()) betrag = rest;
+
+        const StoreResult r = store.ZuordnungBuchen(umsatzId, beleg.id, betrag, akteur);
+        if (!r) { std::printf("\nFehler: %s\n", r.fehler.c_str()); return 1; }
+        std::printf("\n%s auf %s gebucht.\n", betrag.ToString().c_str(),
+                    beleg.nummer.c_str());
+        return 0;
+    }
+
+    // ---- propose ----
+    const std::vector<Zuordnungsvorschlag> vorschlaege =
+        store.Zuordnungsvorschlaege(umsatzId);
+    if (vorschlaege.empty()) {
+        std::printf("\nKein passender offener Beleg gefunden.\n");
+        return 0;
+    }
+    std::printf("\nVorschläge (es wird nichts gebucht):\n");
+    for (const Zuordnungsvorschlag& v : vorschlaege) {
+        std::printf("  %-16s %14s  %-14s %d Punkte%s\n",
+                    v.belegnummer.c_str(), v.betrag.ToString().c_str(),
+                    ZuordnungGueteToText(v.guete).c_str(), v.punkte,
+                    v.teilzahlung ? "  (Teilzahlung)" : "");
+        for (const std::string& grund : v.gruende)
+            std::printf("      %s\n", grund.c_str());
+    }
+    std::printf("\nAnnehmen: ultrafibu zuordnen %s %lld --buchen %s\n",
+                datei.c_str(), static_cast<long long>(umsatzId),
+                vorschlaege.front().belegnummer.c_str());
+    return 0;
+}
+
+int DatevImporte(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::vector<Store::DatevImportEintrag> liste = store.DatevImporte(mandant.id);
+    if (liste.empty()) { std::printf("Es wurde noch nichts importiert.\n"); return 0; }
+    std::printf("%-30s %-10s %-10s %8s  %s\n", "Datei", "von", "bis", "Zeilen",
+                "Benutzer");
+    for (const Store::DatevImportEintrag& eintrag : liste) {
+        std::printf("%-30s %-10s %-10s %8d  %s\n",
+                    eintrag.dateiname.substr(0, 30).c_str(),
+                    FormatDateGerman(eintrag.von).c_str(),
+                    FormatDateGerman(eintrag.bis).c_str(),
+                    eintrag.zeilen, eintrag.benutzer.c_str());
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -534,6 +1688,25 @@ int main(int argc, char** argv) {
     if (befehl == "perioden")      return Perioden(argc, argv);
     if (befehl == "festschreiben") return Festschreiben(argc, argv);
     if (befehl == "protokoll")     return Protokoll(argc, argv);
+    if (befehl == "beleg-neu")     return BelegNeu(argc, argv);
+    if (befehl == "belege")        return BelegeZeigen(argc, argv);
+    if (befehl == "buchen")        return BelegBuchen(argc, argv);
+    if (befehl == "storno")        return BelegStornieren(argc, argv);
+    if (befehl == "zahlung")       return ZahlungBuchen(argc, argv);
+    if (befehl == "journal")       return JournalZeigen(argc, argv);
+    if (befehl == "salden")        return SaldenZeigen(argc, argv);
+    if (befehl == "pruefen")       return KettePruefen(argc, argv);
+    if (befehl == "rechnung-pdf")  return RechnungDrucken(argc, argv);
+    if (befehl == "datev-export")  return DatevExport(argc, argv);
+    if (befehl == "datev-pruefen") return DatevPruefen(argc, argv);
+    if (befehl == "datev-import")  return DatevImport(argc, argv);
+    if (befehl == "datev-importe") return DatevImporte(argc, argv);
+    if (befehl == "bankkonto-neu") return BankkontoNeu(argc, argv);
+    if (befehl == "bankkonten")    return Bankkonten(argc, argv);
+    if (befehl == "bank-import")   return BankImport(argc, argv);
+    if (befehl == "bank-importe")  return BankImporte(argc, argv);
+    if (befehl == "umsaetze")      return Umsaetze(argc, argv);
+    if (befehl == "zuordnen")      return Zuordnen(argc, argv);
 
     std::printf("Unbekannter Befehl: %s\n\n", befehl.c_str());
     PrintUsage();
