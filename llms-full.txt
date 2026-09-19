@@ -4766,95 +4766,116 @@ FILE: Docs/UltraCanvas/UltraCanvasAIExamples.md
 
 ## Overview
 
-An `.ai` file needs no reader of its own. Since **Illustrator 9** the format
-*is* PDF: the page content is ordinary PDF, and Illustrator's own editing data
-rides along in an extra stream (`AIPrivateData`) that every other PDF consumer
-ignores. Both samples shipped under `media/vector/AI/` are exactly that —
-`%PDF-1.5`, one page, `AIPrivateData` present.
+Since **Illustrator 9** an `.ai` file is a PDF — but that alone does not make
+it readable by a PDF viewer. Illustrator's **"Create PDF Compatible File"**
+option decides whether the PDF page carries the artwork at all:
 
-So UltraCanvas reads `.ai` through the **MuPDF-backed PDF engine**, the same
-path the PDF Documents page uses, and writes it through the Vector plugin's
-`VectorConverter::AIConverter`, which is **export-only**.
+| Saved with PDF compatibility | What the file contains | What renders it |
+|---|---|---|
+| **On** | A normal PDF page that draws the artwork, *plus* the private `AIPrivateData` streams Illustrator edits from | Any PDF engine |
+| **Off** | A valid PDF whose page content stream draws **nothing** — the artwork exists only in `AIPrivateData` | The private data has to be read |
+
+Both samples under `media/vector/AI/` are the second kind (CorelDRAW exports;
+several other applications write them too). Their page content stream is 47
+bytes that set a transform and a graphics state and draw nothing, so a PDF
+viewer correctly renders a blank page — which is what UltraCanvas, and the
+online `.ai` viewers this was checked against, used to show.
+
+So UltraCanvas reads `.ai` through the Vector plugin's
+`VectorConverter::AIConverter`, which goes after the private data, and falls
+back to the PDF engine for a file whose artwork really is in its page.
 
 | Direction | Component | Notes |
 |---|---|---|
-| Read | `UltraCanvasPDFView` / `PDFEngineFactory` (`ULTRACANVAS_PLUGIN_PDF`) | Modern PDF-based `.ai`; paths, clips, transparency groups, gradients, embedded fonts and images render as in any PDF |
-| Write | `VectorConverter::AIConverter` (Vector plugin) | Emits the plugin's PDF output under the `.ai` extension — valid for Illustrator and every PDF consumer |
-
-Legacy (v8 and earlier) `.ai` files are EPS/PostScript-based. `AIConverter::ValidateData()`
-recognizes them (`%!PS` as well as `%PDF-`), but the writer does not produce them.
+| Read | `VectorConverter::AIConverter` (`UltraCanvasAIReader.cpp`) | Decodes the `/AIPrivateData` streams and interprets Illustrator's art language into a `VectorStorage::VectorDocument` |
+| Read (fallback) | `UltraCanvasPDFView` / `PDFEngineFactory` (`ULTRACANVAS_PLUGIN_PDF`) | A PDF-compatible `.ai` carries no private data; `AIConverter` declines it and the PDF engine renders the page |
+| Write | `VectorConverter::AIConverter` | Export-only: emits the plugin's PDF output under the `.ai` extension — valid for Illustrator and every PDF consumer |
 
 **Demo source:** `Apps/DemoApp/UltraCanvasAIExamples.cpp`
+**Reader:** `UltraCanvas/Plugins/Vector/UltraCanvasAIReader.cpp`
+**Test:** `Tests/AIReaderTest.cpp`
 **Demo page:** Vector Elements → *AI Artwork*
 **Namespace:** `UltraCanvas`
 
-## Why the `.ai` extension needs no special case
-
-`UltraCanvasPDFView::LoadFromPath()` reads a document that fits in memory
-(anything up to `GetMaxInMemoryBytes()`, 256 MB by default) into a buffer and
-hands it to MuPDF as `"application/pdf"` — the format is stated outright rather
-than sniffed from the file name. A `.ai` file therefore opens with no extension
-mapping and no conversion step:
+## Reading an `.ai`
 
 ```cpp
-auto view = CreatePDFView("AIView", 0, 0, 0, 0);
-view->onError = [](const std::string& msg) { /* report */ };
+#include "UltraCanvasMetafileConverters.h"
+#include "UltraCanvasVectorElement.h"
 
-const std::string path = NormalizePath(GetResourcesDir() + "media/vector/AI/turtle.ai");
-if (view->LoadFromPath(path)) {
+VectorConverter::AIConverter converter;
+VectorConverter::ConversionOptions options;
+options.WarningCallback = [](const std::string& message) { /* report */ };
+
+auto document = converter.Import(
+        NormalizePath(GetResourcesDir() + "media/vector/AI/turtle.ai"), options);
+
+if (document) {
+    auto view = CreateVectorElement("AIView", 0, 0, 800, 600);
+    view->SetDocument(document);
     view->ZoomToFit();
 }
 ```
 
-The streaming fallback (used for a document too large to hold in memory) goes
-through MuPDF's own format detection, which recognizes the `%PDF-` header
-regardless of the extension — so both load paths handle `.ai`. Verified against
-both shipped samples: each opens with one page through `OpenInMemory()` and
-through `Open()`.
+`Import()` returns null for a `.ai` that holds no private artwork, with a
+warning that says so — that is the signal to hand the file to the PDF engine
+rather than an error. `UltraCanvasVectorFormatsPlugin::LoadVectorDocument()`
+and `CreateConverterForExtension("ai")` reach the same converter.
+
+### What the reader understands
+
+The art language is the same PostScript-flavoured operator set that legacy
+(v8 and earlier) EPS-based `.ai` files carry in the open, so a legacy file
+reads through the same parser with no container step.
+
+| Area | Operators | Notes |
+|---|---|---|
+| Path construction | `m`, `l`/`L`, `c`/`C`, `v`/`V`, `y`/`Y` | The case distinction marks a corner or smooth anchor — editing information; both draw the same segment. `v` and `y` are the shorthands whose control point coincides with an endpoint |
+| Painting | `n`/`N`, `f`/`F`, `s`/`S`, `b`/`B` | The lowercase form closes the subpath first |
+| Clipping | `W` | Clips the rest of the enclosing group; becomes a `VectorClipPath` definition and a group carrying it |
+| Compound paths | `*u` … `*U` | All subpaths become one object, so a filled shape keeps its holes |
+| Structure | `u`/`U`, `Lb`/`Ln`/`LB` | Groups and named layers |
+| Graphics state | `w`, `J`, `j`, `M`, `d`, `XR` | Width, cap, join, miter limit, dashes, winding rule |
+| Colour | `g`/`G`, `k`/`K`, `Xa`/`XA`, `x`/`X`, `Xx`/`XX`, `p`/`P` | Grey, CMYK, RGB, spot (converted to its CMYK equivalent) and patterns (flat colour) |
+| Transparency | `Xy` | The AI9 operator; blend mode and opacity survive, isolation and knockout do not |
+| Gradients, text | `Bd`…`BB`, `To`…`TE` | Not imported; reported through `WarningCallback` rather than dropped silently, and the paths around them still come through |
+
+Anything else is counted and listed in one summary warning, so a file that
+displays wrong says which operators it needed.
+
+### Coordinates
+
+Illustrator's ruler space puts the origin at the **top-left** of the artboard
+with y running down as negative numbers; a legacy EPS-based `.ai` uses
+PostScript's **bottom-left** origin with y running up. Both map onto the
+document's y-down page, and the reader picks between them from the art's own
+extent. The page size comes from `%AI5_ArtSize`, falling back to
+`%%BoundingBox`.
 
 ## Example: the demo page
 
-The page is a flex column — title, format note, toolbar, viewer, status row,
-notes panel — with a dropdown that switches between the shipped samples.
+The page is a flex column — title, format note, toolbar, viewer stage, status
+row, notes panel. The stage holds both viewers and shows whichever route the
+file took, so the toolbar's zoom buttons drive the active one:
 
 ```cpp
-auto root = std::make_shared<UltraCanvasContainer>("AIExamples", 0, 0, 1000, 780);
-root->layout.SetFlexColumn().SetFlexGap(8)
-            .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-root->SetPadding(10, 12, 10, 12);
+auto vectorView = CreateVectorElement("AIVectorView", 0, 0, 0, 0);
+VectorElementOptions options = vectorView->GetOptions();
+options.InteractionMode = VectorInteractionMode::PanZoom;
+options.BackgroundColor = Colors::White;
+vectorView->SetOptions(options);
 
-auto view = CreatePDFView("AIView", 0, 0, 0, 0);
-view->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-std::weak_ptr<UltraCanvasPDFView> viewWeak = view;
-
-// Page counter and zoom read-out, wired before the first load so the
-// initial document is reflected too.
-view->onPageChanged = [pageLabel](int cur, int total) {
-    pageLabel->SetText("Page " + std::to_string(cur) + " / " + std::to_string(total));
-};
-view->onZoomChanged = [zoomLabel](float percent) {
-    zoomLabel->SetText(std::to_string(static_cast<int>(std::lround(percent))) + "%");
-};
-
-auto sampleDropdown = CreateDropdown("AISample", 0, 0, 220, 30);
-sampleDropdown->AddItem("turtle.ai");
-sampleDropdown->AddItem("mandalorian-star-wars.ai");
-sampleDropdown->SetSelectedIndex(0, false);
-sampleDropdown->onSelectionChanged = [viewWeak](int index, const DropdownItem& item) {
-    if (auto v = viewWeak.lock()) {
-        v->LoadFromPath(NormalizePath(GetResourcesDir() + "media/vector/AI/" + item.text));
-        v->ZoomToFit();
-    }
-};
+AILoadResult loaded = LoadAIDocument(path);
+if (loaded.document) {
+    vectorView->SetDocument(loaded.document);
+    vectorView->ZoomToFit();          // route: Vector plugin
+} else {
+    pdfView->LoadFromPath(path);      // route: PDF engine
+}
 ```
 
-Navigation and zoom are the `UltraCanvasPDFView` methods —
-`GoToPrevPage()` / `GoToNextPage()`, `ZoomIn()` / `ZoomOut()`,
-`ZoomToFit()` / `ZoomToWidth()` / `ZoomActualSize()` — so text selection,
-search and image extraction are available on `.ai` artwork exactly as they are
-on a `.pdf`. See
-[`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) for the full viewer API.
+The page is built when the Vector plugin is (`ULTRACANVAS_HAS_VECTOR_PLUGIN`);
+the PDF fallback compiles in only where `ULTRACANVAS_PLUGIN_PDF` is also set.
 
 ## Writing `.ai`
 
@@ -4864,9 +4885,9 @@ on a `.pdf`. See
 UltraCanvasVectorFormatsPlugin::SaveVectorDocument(document, "artwork.ai");
 ```
 
-`UltraCanvasVectorFormatsPlugin::CreateConverterForExtension("ai")` returns an
-`AIConverter`. Its `CanImport()` is `false` — reading is the PDF engine's job,
-as above — so `LoadVectorDocument("artwork.ai")` returns null by design.
+The writer produces a PDF-compatible file — which is the kind the PDF engine
+renders — so a document written by UltraCanvas and read back takes the
+fallback route, not the private-data one.
 
 ## Shipped samples
 
@@ -4874,14 +4895,15 @@ as above — so `LoadVectorDocument("artwork.ai")` returns null by design.
 
 | File | Notes |
 |---|---|
-| `turtle.ai` | 319 KB, `%PDF-1.5`, one page, `AIPrivateData` present |
-| `mandalorian-star-wars.ai` | 74 KB, `%PDF-1.5`, one page, `AIPrivateData` present |
+| `turtle.ai` | 319 KB, `%PDF-1.5`, empty page, 868 stroked paths in the private data |
+| `mandalorian-star-wars.ai` | 74 KB, `%PDF-1.5`, empty page, 72 stroked paths in the private data |
 
 ## See also
 
-- [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the viewer this page is built on
 - [`UltraCanvasVectorConverters.md`](UltraCanvasVectorConverters.md) — the converter matrix `AIConverter` belongs to
-- [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, which is what a legacy `.ai` would need
+- [`UltraCanvasVectorRaster.md`](UltraCanvasVectorRaster.md) — the `UltraCanvasVectorElement` viewer
+- [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the PDF viewer used for the fallback route
+- [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, a separate engine for `.eps`
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -19801,7 +19823,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
@@ -20275,12 +20297,44 @@ filer->remoteListing = [drives](const std::string& path,
 - **Returning `false`** with `error` set reports the message the way any
   listing error is reported; returning `true` with an empty listing means
   "nothing yet".
-- **Writing is refused.** Every command that would write into the displayed
-  folder — delete, duplicate, rename, paste, new folder, new file — answers
-  with a message instead when the listing is remote, because the widget has no
-  way to change one. Without that the command would reach `std::filesystem`
-  with a path that resolves to nothing and fail with an error about a missing
-  file rather than an answer about where it was pointed.
+### Changing a remote folder
+
+Three more hooks let the host carry out the changes that act on the drive
+itself. Unlike `remoteListing` they do not answer with the result: the host
+queues the work and refreshes the display once the server has replied, so a
+slow drive never holds the UI thread.
+
+```cpp
+filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
+                               std::string& error) { … };
+filer->remoteRename = [drives](const std::string& path,
+                               const std::string& newName,
+                               std::string& error) { … };
+filer->remoteMakeDirectory = [drives](const std::string& folderPath,
+                                      const std::string& name,
+                                      std::string& error) { … };
+```
+
+- Each returns `true` when the request was **accepted**, not when it finished;
+  `false` with `error` is for what can be refused outright — a drive that
+  cannot be written to, a name that is really a path.
+- **Each entry carries its own `isDirectory`**, which is what lets a backend
+  pick the right call (FTP's `DELE` against `RMD`) without a probe per entry.
+- `remoteRename` takes a **bare name**: a rename in place, never a move.
+- A remote **new folder** cannot go straight into rename mode the way a local
+  one does — the entry does not exist until the server has answered and the
+  refresh has landed. The widget names it from the listing on screen
+  (`UniqueRemoteChildName`) and the user renames it afterwards.
+- **Left unset, the matching command refuses** rather than reaching
+  `std::filesystem` with a path that resolves to nothing, which would fail
+  with an error about a missing file instead of an answer about where it was
+  pointed. That is still what happens for the operations with no hook:
+  duplicate, paste and new file. Copying between the local disk and a drive is
+  a transfer with progress, conflicts and a cancel, and belongs with the paste
+  machinery rather than in a hook like these.
+- The read-only badge is the host's to set: it fills `FilerEntry::isReadOnly`
+  from what the drive can do, so an entry says so before a command is tried.
+
 - **`listingIsRealDirectory` stays false** for a remote listing, which turns
   off the features that read the local filesystem per entry: the folder
   previews and the in-use (lock) column.
@@ -25282,7 +25336,7 @@ graph->SetDateFormatter([](int64_t when) { return MyRelativeTime(when); });
 
 Rows are aligned by construction, so selection and scrolling are shared with the
 graph - no synchronisation to wire up. To pair an external
-`UltraCanvasTableView` instead, use the row-alignment API:
+multi-column `UltraCanvasListView` instead, use the row-alignment API:
 
 ```cpp
 const int    rows    = graph->GetRowCount();
@@ -30698,6 +30752,162 @@ Events flow through the standard UltraCanvas event system:
   - Animation system
 
 ==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasListSortFilterProxy.md
+==============================================================================
+
+# UltraCanvasListSortFilterProxy
+
+**Sorting and filtering for any `IListModel`, without touching the model that
+holds the data.** The proxy *is* an `IListModel`: it wraps a source model and
+presents the same columns with the rows re-ordered and thinned out, so a view is
+handed the proxy instead of the model and needs no idea that either is
+happening.
+
+- Header: `UltraCanvas/include/UltraCanvasListSortFilterProxy.h`
+- Implementation: `UltraCanvas/core/UltraCanvasListSortFilterProxy.cpp`
+- Tests: `Tests/ListSortFilterProxyTests.cpp` (target `ListSortFilterProxyTests`)
+- Works with: [`UltraCanvasListView`](UltraCanvasListViewExamples.md), which
+  already renders, virtualises, selects and navigates whatever model it is given
+
+```cpp
+auto rows  = std::make_shared<UltraCanvasMultiColumnListModel>();
+rows->SetColumns({ ListColumnDef("Rechnung", 120),
+                   ListColumnDef("Kunde", 200),
+                   ListColumnDef("Betrag", 100, TextAlignment::Right) });
+rows->AddItem(MultiColumnListItem{{ "R-202607010", "Bear Fruit Ltd.", "189,34" }});
+
+auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(rows);
+
+auto view = CreateListView("invoices", 0, 0, 800, 400);
+view->SetModel(proxy);
+view->SetShowHeader(true);
+proxy->SetFilterText("olpe");       // this filters
+
+// Header clicks sort, with an indicator. The view shows the order but never
+// decides it, so the two lines that do it live here rather than inside the view.
+view->onHeaderClicked = [view, proxy](int column) {
+    const bool ascending = !(column == view->GetSortColumn() && view->GetSortAscending());
+    proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+                                          : ListSortOrder::Descending);
+    view->SetSortIndicator(column, ascending);
+};
+```
+
+## The two things a caller has to know
+
+**1. A proxy row is not a source row.** Anything that identifies a record — a
+database id, an index into your own vector — goes through `MapToSource()` /
+`MapFromSource()`. The selection a view reports is in *proxy* rows, and
+forgetting to map it is how a sorted table deletes the wrong record.
+
+```cpp
+for (int proxyRow : view->GetSelection()->GetSelectedRows()) {
+    const int sourceRow = proxy->MapToSource(proxyRow);   // ← never skip this
+    store.Delete(records[sourceRow].id);
+}
+```
+
+**2. Sorting is stable.** Rows that compare equal keep the order the source gave
+them, so sorting by one column and then another leaves a predictable result
+instead of an arbitrary one.
+
+## Sorting
+
+```cpp
+proxy->SortByColumn(2, ListSortOrder::Descending);
+proxy->ClearSort();                       // back to source order
+proxy->SetColumnSortKind(0, ListSortKind::Natural);
+proxy->SetColumnComparator(3, myComparator);
+```
+
+| `ListSortKind` | What it does |
+|---|---|
+| `Auto` (default) | numeric when both values parse as numbers, otherwise case-insensitive text |
+| `Text` | case-insensitive |
+| `TextCaseSensitive` | byte order |
+| `Number` | `1234.56` and `1.234,56 €` alike; anything that is not a number sorts last |
+| `Natural` | text with embedded numbers: `Beleg 2` before `Beleg 10` |
+
+`TryReadNumber` reads both decimal conventions — `1234.56`, `1.234,56`,
+`-37,28 €`, `(1.234,56)` — **without touching the C locale**, so a
+comma-decimal desktop cannot change how a column sorts. It is deliberately
+strict: a letter anywhere means "not a number". An earlier version skipped `E`,
+`U` and `R` so that `EUR 89,00` would read as a number, and that made
+`R-202607010` parse as **−202607010**, silently reversing a column of document
+numbers. Text that is not unambiguously a number is compared as text instead.
+
+An empty cell sorts after the filled ones in ascending order (and therefore
+before them in descending order — the proxy inverts the whole comparison rather
+than asking comparators to know which direction they are used in).
+
+### `SortRole`: sort by the value, display the formatting
+
+A column showing `1.234,56 €` or `17.09.2026` should sort by the amount or the
+date, not by the text. The model returns the sort key from
+`ListDataRole::SortRole`; the proxy prefers it and falls back to `DisplayRole`
+when there is none:
+
+```cpp
+ListDataValue GetData(const ListIndex& index, ListDataRole role) const override {
+    if (role == ListDataRole::DisplayRole) return FormatGerman(rows[index.row].datum);
+    if (role == ListDataRole::SortRole)    return rows[index.row].datum.ToEpochDay();
+    return {};
+}
+```
+
+A custom comparator (`SetColumnComparator`) wins over both, and receives
+**source** rows.
+
+## Filtering
+
+```cpp
+proxy->SetFilterText("bratislava");              // case-insensitive substring
+proxy->SetFilterColumns({ 0, 1 });               // over these columns ({} = all)
+proxy->SetFilterPredicate([](const IListModel& m, int sourceRow) {
+    return AmountOf(m, sourceRow) >= 200.0;      // and an arbitrary rule
+});
+proxy->ClearFilter();
+```
+
+The text filter and the predicate are **both** applied: a row has to pass each.
+
+## Change notification
+
+Attaching a proxy listens to the source's `onDataChanged` / `onRowChanged` /
+`onRowInserted` / `onRowRemoved` and rebuilds when they fire. Any handler the
+source already carried is **kept and called afterwards**, so putting a proxy in
+front of a model never silently disconnects something else — and destroying the
+proxy restores them, so a model that outlives its proxy does not call into freed
+memory.
+
+`SetDynamic(false)` defers rebuilding during a bulk load; `Invalidate()` forces
+one.
+
+## The view side
+
+`UltraCanvasListView` shows *which* column is sorted and reports header clicks;
+it never sorts anything itself, so a model that is already ordered — by a
+database query, say — keeps working unchanged.
+
+```cpp
+view->onHeaderClicked = [&](int column) { /* sort your way */ };
+view->SetSortIndicator(2, /*ascending=*/false);
+```
+
+The four lines in the example above wire the common case: clicking a header
+sorts that column ascending, clicking the sorted one turns it round, and the
+indicator follows. Sorting moves every row, so the keyboard focus row is dropped on a sort rather
+than left pointing at whatever record landed on that index; the *selection* is
+the caller's to map.
+
+## What this is not
+
+It does not add inline cell editing or a footer/aggregate row to the view — a
+custom `IItemDelegate` already paints anything a cell needs (badges, checkboxes,
+bars), and editing goes through `IListModel::SetData`, which the proxy forwards
+to the right source row.
+
+==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 ==============================================================================
 
@@ -30722,6 +30932,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 - **Model-View-Delegate architecture** — data, painting, and selection are independent
 - **Single-column and multi-column models** with built-in implementations
 - **Optional column headers** with per-column titles, widths, and alignment
+- **Sort indicator** in the sorted column's header (▲ ascending / ▼ descending, drawn as geometry in the header text colour) and a header-click callback to drive it
 - **Single and multi-selection** modes via swappable selection objects
 - **Optional grid lines and alternating row colors**
 - **Built-in vertical scrollbar** with mouse wheel support
@@ -30779,7 +30990,21 @@ void InvalidateRowHeights();
 
 void SetShowHeader(bool show);
 bool GetShowHeader() const;
+
+void SetSortIndicator(int column, bool ascending);   // -1 = none
+void ClearSortIndicator();
+int  GetSortColumn() const;
+bool GetSortAscending() const;
 ```
+
+`SetSortIndicator` marks a column as the one the rows are sorted by: its header
+cell shows a small triangle, apex up for ascending and apex down for descending.
+The triangle is drawn as a filled path in `headerTextColor` (never a text glyph,
+so it does not depend on the header font carrying U+25B2/U+25BC and stays crisp
+at any DPI); `ListViewStyle::sortIndicatorSize` sets its width, and it sits
+after the title in a left- or centre-aligned column and before it in a
+right-aligned one. The view only *shows* the order — sorting the rows is the
+model owner's job, normally from `onHeaderClicked` (see Events / Callbacks).
 
 `SetRowHeight` / `rowHeight` set the single height used by every row. For rows
 of differing height, call `SetVariableRowHeights(true)`: the view then asks the
@@ -30814,6 +31039,7 @@ struct ListViewStyle {
     Color gridLineColor = Color(220, 220, 220);
 
     float headerFontSize = 10;
+    int sortIndicatorSize = 8;      // width of the ▲/▼ sort triangle (px)
 
     int rowHeight = 24;
     int headerHeight = 26;
@@ -31067,9 +31293,26 @@ std::function<void(int row)> onItemHovered;
 // the rows area.
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+
+// A click (press and release in the same cell) on a column header. A press
+// on a resize border starts a drag instead and never reports a click.
+std::function<void(int column)> onHeaderClicked;
 ```
 
 `onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
+
+`onHeaderClicked` is where sorting is wired up: re-order the model by the
+column, toggling the direction when it is already the sort column, then tell
+the view which column is sorted so the header shows it. A header press no
+longer counts as a click on "no row", so it leaves the selection alone.
+
+```cpp
+listView->onHeaderClicked = [view = listView.get(), model](int column) {
+    bool ascending = (view->GetSortColumn() == column) ? !view->GetSortAscending() : true;
+    model->SortBy(column, ascending);          // however your model orders its rows
+    view->SetSortIndicator(column, ascending); // ▲ or ▼ in that header cell
+};
+```
 
 ## Usage Examples
 
@@ -32225,7 +32468,7 @@ viewer in a top-level window.
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
 | `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
-| `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF and XAR once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
+| `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
@@ -34243,6 +34486,21 @@ The element is named for STL but takes a `Mesh3D` and knows nothing about where
 it came from: a mouse-orbited GL view on a build with
 `-DULTRACANVAS_ENABLE_GL=ON`, and a shaded software still otherwise.
 
+**The flatten carries the up axis across.** `Mesh3D::upAxis` is set from
+`document.Up`, and the viewers rotate a `ZUp` mesh by -90 degrees about X
+before posing it, because their cameras put +Y on screen. Without that a
+Z-up file — STEP, DXF, 3D Studio, most CAD — is drawn standing on its nose,
+which is how every 3D page in the demo used to look. Only the viewers rotate:
+the vertex data, the bounds and the extents a page reports stay in the file's
+own frame, so a reader still reports "Z-up" for a file that says so. A
+`Mesh3D` built by hand keeps the `YUp` default, and `Mesh3DToModelDocument`
+writes the axis back, so the round trip preserves orientation as well as
+geometry.
+
+To move the geometry itself rather than the view — for a writer, or to
+normalise a scene — ask the reader for it with
+`ConversionOptions::ForceUpAxis`, or call `ModelDocument::ConvertUpAxis`.
+
 Code that only needs "turn this path into a mesh" should use the core seam
 `UltraCanvasModelPreview.h` (`CanPreviewModelExtension`,
 `LoadModelPreviewMesh`) instead of calling this plugin. Core cannot call a
@@ -34493,6 +34751,178 @@ dock or taskbar becomes. See `Apps/UltraPaint/UltraPaintWindow.cpp`
   for drawings, which need only a size
 - [UltraCanvasFormLayout](UltraCanvasFormLayout.md) — the caption grid its
   fields are laid out in
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasMoney.md
+==============================================================================
+
+# UltraCanvasMoney
+
+**Exact monetary amounts: an integer count of minor units plus an ISO 4217
+code.** Header-only (`UltraCanvas/include/UltraCanvasMoney.h`), free of every
+other UltraCanvas header, so a headless engine, a test target and the UI can all
+use it. Tests: `Tests/MoneyTests.cpp` (target `MoneyTests`).
+
+```cpp
+#include "UltraCanvasMoney.h"
+using UltraCanvas::Money;
+
+Money net = Money::FromMinor(3728);           // 37,28 EUR
+Money tax = net.TaxOnNet(190);                // 19 % -> 7,08 EUR
+Money gross = net.GrossFromNet(190);          // 44,36 EUR — and net + tax == gross, exactly
+
+std::string label = gross.ToStringWithSymbol();          // "44,36 €"
+std::string csv   = gross.ToString(UltraCanvas::MoneyStyle::Datev);  // "44,36"
+std::string json  = gross.ToString(UltraCanvas::MoneyStyle::Plain);  // "44.36"
+```
+
+## Why not a double
+
+`double` cannot hold 0,01 exactly, so a ledger built on it drifts: totals that
+disagree with the sum of their rows, a VAT split that is a cent off, a
+reconciliation that never closes. `Money` stores `int64_t` minor units — cents
+for EUR, whole yen for JPY, millimes for TND — and never converts to floating
+point, not even while parsing or formatting. `CurrencyValue` in
+`UltraCanvasSpreadsheetTypes.h` *is* a `double`; it is a spreadsheet cell value
+and must not be used for accounting.
+
+The range at two decimals is ±92 000 000 000 000 000,00 — every overflow past
+that is reported, never wrapped.
+
+## Construction
+
+| Call | Meaning |
+|---|---|
+| `Money()` | zero, currency unset — a *neutral* zero that adds to any currency |
+| `Money::FromMinor(3728)` | 37,28 EUR |
+| `Money::FromMajor(1234)` | 1.234,00 EUR |
+| `Money::FromMinor(1234, "JPY")` | ¥1.234 (a zero-decimal currency) |
+| `Money::Zero("USD")`, `Money::Invalid()` | zero / the invalid value |
+
+`MoneyDecimals(code)` gives a currency's scale: 2 by default, 0 for JPY, KRW,
+HUF and the rest of the zero-decimal list, 3 for the dinar-class currencies.
+
+## Validity instead of exceptions
+
+An amount is **invalid** when it came out of a failed parse, a currency
+mismatch or an overflow, and invalidity is **sticky** — it propagates through
+arithmetic, so one `Valid()` check at the end of a calculation is enough. An
+invalid amount formats as an **empty string**, never as `0,00`, so it cannot be
+mistaken for zero in a report.
+
+```cpp
+Money total = eur + usd;      // invalid: a mismatch is a bug, not a conversion
+total += eur;                 // still invalid
+if (!total.Valid()) { /* report it */ }
+```
+
+Comparison compares like with like: across currencies an amount is not less,
+not greater and not equal.
+
+## Arithmetic
+
+| Call | Meaning |
+|---|---|
+| `a + b`, `a - b`, `-a`, `a += b` | same-currency addition and subtraction |
+| `a.Times(7)` | quantity: seven of `a` |
+| `a.ScaledBy(10967, 10000)` | an exact rate as a fraction (here 1,0967) |
+| `a.Permille(25)` | 2,5 % of `a` — permille, because German VAT keys and Skonto rates need one decimal |
+| `MoneySum(list)` | the sum of a list, invalid if any element is |
+
+Every multiplication and division goes through `MoneyMulDiv`, which forms the
+full 128-bit product in 32-bit limbs and divides it with **kaufmännische
+Rundung** (half away from zero: 2,5 → 3 and −2,5 → −3) — the rounding German tax
+arithmetic uses. No compiler intrinsic and no `__int128` is needed, so it
+behaves identically on every platform.
+
+## German VAT
+
+```cpp
+net.TaxOnNet(190)        // tax on a net amount:      net * 190/1000
+net.GrossFromNet(190)    // gross from net:           net * 1190/1000
+gross.TaxInGross(190)    // tax contained in a gross: gross * 190/1190
+gross.NetFromGross(190)  // net from gross:           gross - TaxInGross(190)
+```
+
+`permille` is thousandths: 190 is 19 %, 70 is 7 %, 0 is 0 %, 25 is 2,5 %.
+
+Two identities hold for every rate and amount, and the tests assert them across
+a matrix of both: **`net + TaxOnNet == GrossFromNet`**, and
+**`NetFromGross + TaxInGross == gross`**. `NetFromGross` is deliberately
+defined as *gross minus the contained tax* rather than as its own division, so
+the second identity survives whatever the rounding did.
+
+## Splitting so the parts sum to the whole
+
+```cpp
+auto thirds = Money::FromMinor(10000).SplitEvenly(3);   // 33,34 / 33,33 / 33,33
+auto share  = Money::FromMinor(1000).SplitProportionally({ 7000, 3000 });  // 7,00 / 3,00
+```
+
+Largest-remainder distribution: the truncated shares go out first, then the
+leftover minor units go to the largest remainders. **The parts always sum back
+to the original amount** — that is the property that stops a discount spread
+over invoice positions from losing a cent, and it is tested over a matrix of
+amounts (including negative ones, for credit notes) and weight sets. Degenerate
+input (no weights, a negative weight, zero parts, an invalid amount) yields an
+empty vector rather than a wrong distribution.
+
+## Text: three styles, no locale
+
+```cpp
+enum class MoneyStyle { German, Plain, Datev };
+```
+
+| Style | Writes | For |
+|---|---|---|
+| `German` | `1.234,56` | UI labels, printed documents |
+| `Plain` | `1234.56` | dot-decimal file formats, JSON, SQL text |
+| `Datev` | `1234,56` | DATEV CSV amount columns (comma decimal, no grouping) |
+
+**The style is chosen by the destination, never inherited from the process
+locale.** Digits are assembled from the integer value — no stream, no `printf`,
+no `std::to_string(double)` — so `LC_NUMERIC` cannot reach them. That matters in
+this framework specifically: the Linux backend calls `setlocale(LC_ALL, "")` for
+XIM, which has twice turned dot-decimal file output into comma-decimal output
+(see the numbers rule in [AGENTS.md](../../AGENTS.md)). `Money` cannot have that
+bug, in either direction.
+
+`ToStringWithSymbol()` appends `€`, `$`, `£` or the ISO code.
+
+### Parsing
+
+```cpp
+Money m;
+Money::TryParse("1.234,56", m);                              // 123456 minor
+Money::TryParse("1234.56", m);                               // 123456 — a lone dot two digits from the end is decimal
+Money::TryParse("1.234", m);                                 // 123400 — three digits behind it, so grouping
+Money::TryParse("(37,28)", m);                               // -3728  — parentheses are negative
+Money::TryParse("652,57 €", m);                              // 65257  — symbols and ISO codes are ignored
+Money::TryParse("1,005", m);                                 // 101    — finer input rounds half away from zero
+Money::TryParse("1234.56", m, "EUR", MoneyStyle::Datev);     // false  — malformed for that style
+```
+
+Which separator is the decimal one:
+
+- **both present** → the rightmost one;
+- **one present** → `German` reads `,` as decimal and a lone `.` as decimal too
+  *unless* it stands exactly three digits from the end (so `1.234` is 1234);
+  `Plain` reads `.` as decimal, `Datev` reads `,` as decimal;
+- **the machine styles are strict**: in `Plain` and `Datev`, a grouping
+  separator standing anywhere but three digits from the end means the field is
+  malformed and the parse fails. An importer that misreads an amount does more
+  damage than one that rejects a line.
+
+Format-then-parse is the identity in every style; the tests assert it over a
+range of values.
+
+## Where this is used
+
+`Apps/UltraFIBU` (the German accounting application — see
+[`Docs/Research/UltraFIBUDesignProposal.md`](../Research/UltraFIBUDesignProposal.md))
+uses it for every amount it stores, computes, prints, exports to DATEV and
+reports to the tax authority. Anything else that holds a price, a total or a
+balance should use it too.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasNestedAreaChartExamples.md
@@ -42675,6 +43105,15 @@ directions.
 STL stores unstructured triangles with no units, colours, layers or scene
 graph, so a `Mesh3D` is all there is to read: positions, normals, indices and
 the bounds computed from them.
+
+**Which way is up.** The format states no orientation, but every tool that
+writes it - CAD, slicers, printers - means Z-up, so the loader sets
+`Mesh3D::upAxis = MeshUpAxis::ZUp`. The viewer's camera puts +Y on screen, so
+it rotates such a mesh by -90 degrees about X before posing it; without that a
+model stands on its nose. Only the view rotates - the vertex data, the bounds
+and the extents are the file's own, and `Save()` still round-trips it. A
+`Mesh3D` assembled in code keeps the `MeshUpAxis::YUp` default, and
+`ModelDocumentToMesh3D` sets the axis from whatever the document declared.
 
 ## Displaying a model
 
@@ -54649,7 +55088,7 @@ from an external "Show password" checkbox. See
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
-| Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG (also `.dwt` / `.dws` / `.sv$`), EMF, WMF via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
+| Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG (also `.dwt` / `.dws` / `.sv$`), EMF, WMF, AI via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
 | **Edit** a vector drawing: page, rulers, guides, grid, snapping, selection handles, tool hooks in document coordinates (the model is `VectorStorage::VectorDocument`, the editing layer `DataFormats/UltraCanvasVectorEdit.h`, the node model `UltraCanvasBezierPath.h`) | `UltraCanvasVectorCanvas` | `UltraCanvasVectorCanvas.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
@@ -54693,7 +55132,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
-| List, tree, table, sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasTableView`, `UltraCanvasSpreadsheet` | matching `*.h` |
+| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 
@@ -55415,7 +55854,7 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | PDF | `PDFVectorConverter` | – | ✓ | Hand-assembled PDF 1.4: base-14 fonts, ExtGState opacity, dashes, verified xref. Reading via the MuPDF PDF plugin. |
 | EMF | `EMFConverter` | ✓ | ✓ | [MS-EMF] records: GDI paths with real beziers, geometric pens (caps/joins/user-style dashes), `ExtTextOutW` text with GDI anchoring. No alpha in GDI — opacity flattens toward white. The reader parses the GDI object table, path records, immediate polygon/polyline/bezier records and text (`TA_UPDATECP` chains merge back into spans). |
 | WMF | `WMFConverter` | ✓ | ✓ | [MS-WMF] 16-bit records with the placeable header (twips). No bezier record — curves flatten to polylines; dashes approximate as `PS_DASH`. The reader covers the object table, polygon/polyline/rect/ellipse records and TextOut/ExtTextOut. |
-| AI | `AIConverter` | – | ✓ | Modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading is the PDF plugin's job. |
+| AI | `AIConverter` | ✓ | ✓ | Writing: modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading (`UltraCanvasAIReader.cpp`): a `.ai` saved *without* "Create PDF Compatible File" has an empty PDF page and keeps all of its artwork in the private `/AIPrivateData` streams, so a PDF engine renders it blank. The reader decodes those streams (ASCIIHex / ASCII85 / Flate) and interprets Illustrator's art language — path construction, painting with closepath on the lowercase operators, clipping (`W`), compound paths (`*u`/`*U`), groups, named layers, the graphics state, the grey/CMYK/RGB/spot colour operators and the AI9 transparency operator `Xy`. Legacy (v8 and earlier) EPS-based `.ai` files carry the same language in the open and read through the same parser; Illustrator's y-down ruler space and PostScript's y-up space both map onto the document page. Gradients and text are reported, not imported. A PDF-compatible `.ai` has no private data and is declined, so the caller falls back to the PDF plugin. |
 | DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), at physical size when `$INSUNITS` declares a unit and the result is a usable page, otherwise scaled to a sensible point size, since drawing units are arbitrary; the unit and scale are recorded on the document, and layer-table properties (colour, lineweight, linetype, frozen/locked/plot flags) land on the `VectorLayer`s. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
 | DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). The reader answers for the whole drawing family, not just `.dwg` — see [The DWG family](#the-dwg-family). |
 
@@ -55455,6 +55894,9 @@ std::string dxfText = DWGConverter::DecodeToDxf(dwgBytes);   // DWG -> DXF text
 
 auto fromCad = DXFConverter().Import("plan.dxf");
 auto fromEmf = EMFConverter().Import("clip.emf");
+// null (with a warning) when the .ai keeps its artwork in its PDF page:
+// that file is the PDF plugin's to render.
+auto fromAi  = AIConverter().Import("artwork.ai");
 ```
 
 ## The DWG family
@@ -60653,6 +61095,7 @@ absent.
 | **GutenPrint renderer** | ✅ run as a subprocess, never linked, so the framework stays MIT. Matches a printer to one of GutenPrint's ~3,500 models, gets that model's PPD from GutenPrint's own driver program, rasterises the page and pipes it through `rastertogutenprint`. Produces a device-native stream, so it travels as a raw job on all three platforms. |
 | GutenPrint: colour separation to CMYK/KCMY | ❌ deliberately. GutenPrint is handed RGB and does its own separation against the ink set, which is better than anything we would do. Listed so the choice is visible, not because it is missing. |
 | GutenPrint: shipping the tools on Windows | ❌ the renderer works there and the RAW transport carries it, but nothing installs GutenPrint on Windows. Needs the binaries packaged beside the application and `ULTRACANVAS_GUTENPRINT_DRIVER`/`_FILTER` pointed at them. |
+| GutenPrint: streaming a long document | ❌ the whole rasterised document is held in memory before the filter runs, because `RunProcessCaptured` takes its input as one block. A page of RGB at 360 dpi is ~36 MB, so this suits letters and photographs and would not suit a book. Fixed by teaching the process runner to pull input a block at a time, after which one page need exist at once. |
 | GutenPrint: per-model options beyond the PPD defaults | 🔨 media, resolution, colour mode and page size reach the raster header; the cartridge and inkset parameters in `IOPrintOptions` are resolved but not yet passed through as PPD options. |
 | Windows spooler backend: enumeration, capabilities, status, job queue | ✅ |
 | Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
@@ -62825,7 +63268,7 @@ providers.
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
 | `UltraCloudSecrets.h` | `ISecretStore`, `FileSecretStore`, `VaultSecretStore` (with UltraVault) |
-| `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare) |
+| `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
 | `UltraCloudMemory.h` | `MemoryProvider` (+ `Seed` / `Clear`) |

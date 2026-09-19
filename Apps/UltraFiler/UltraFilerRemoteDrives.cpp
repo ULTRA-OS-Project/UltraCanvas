@@ -206,11 +206,116 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
     // a second scan of the same folder joins this fetch instead of queueing
     // another - the folder display scans more than once per navigation.
     cache_[path] = CacheEntry{CacheState::Loading, {}, {}};
-    queue_.push_back(path);
+    Job job;
+    job.isListing = true;
+    job.path = path;
+    queue_.push_back(std::move(job));
     EnsureWorker();
     lk.unlock();
     cond_.notify_one();
     return true;
+}
+
+bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
+                                    const std::string& path,
+                                    const std::string& argument,
+                                    bool isDirectory,
+                                    std::string& error) {
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(path, accountId, remotePath)) {
+        error = "not a remote drive: " + path;
+        return false;
+    }
+    if (!Available()) {
+        error = "this build of UltraFiler carries no cloud support";
+        return false;
+    }
+
+    // A name is a name: one carrying a separator would be a move, which none
+    // of these three do, and which the provider would either refuse or - worse
+    // - carry out somewhere the user did not look.
+    if (operation != RemoteOperation::Delete) {
+        if (argument.empty()) {
+            error = "no name given";
+            return false;
+        }
+        if (argument.find('/') != std::string::npos ||
+            argument.find('\\') != std::string::npos) {
+            error = "a name cannot contain a path separator";
+            return false;
+        }
+    }
+    // The drive's own root is not ours to delete or rename; creating inside it
+    // is fine.
+    if (operation != RemoteOperation::MakeDirectory && remotePath == "/") {
+        error = "this is the drive itself, not something on it";
+        return false;
+    }
+
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        const RemoteDrive* drive = nullptr;
+        for (const RemoteDrive& d : drives_) {
+            if (d.accountId == accountId) { drive = &d; break; }
+        }
+        if (!drive) {
+            error = "this drive is no longer configured";
+            return false;
+        }
+        // Asked before the request is queued rather than after the server has
+        // said no: a Nextcloud or Dropbox drive can be browsed and uploaded to
+        // but not changed in place, and the answer is the same every time.
+        if (!drive->canModify) {
+            error = "this kind of drive cannot be changed from here";
+            return false;
+        }
+
+        Job job;
+        job.isListing = false;
+        job.path = path;
+        job.operation = operation;
+        job.argument = argument;
+        job.isDirectory = isDirectory;
+        queue_.push_back(std::move(job));
+        EnsureWorker();
+    }
+    cond_.notify_one();
+    return true;
+}
+
+void UltraFilerRemoteDrives::RunOperation(const Job& job) {
+#ifndef ULTRAFILER_HAS_ULTRACLOUD
+    std::lock_guard<std::mutex> lk(mutex_);
+    lastOperationError_ = "this build of UltraFiler carries no cloud support";
+#else
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(job.path, accountId, remotePath)) return;
+
+    UltraCloud::Result r = UltraCloud::Result::Ok();
+    switch (job.operation) {
+        case RemoteOperation::Delete:
+            r = impl_->service->Delete(accountId, remotePath, job.isDirectory);
+            break;
+        case RemoteOperation::Rename:
+            r = impl_->service->Rename(accountId, remotePath, job.argument);
+            break;
+        case RemoteOperation::MakeDirectory: {
+            // The provider takes the full path of the folder to create, so the
+            // name is appended to the folder it goes in.
+            const std::string parent = remotePath == "/" ? std::string()
+                                                         : remotePath;
+            r = impl_->service->MakeDirectory(accountId, parent + "/" + job.argument);
+            break;
+        }
+    }
+
+    std::lock_guard<std::mutex> lk(mutex_);
+    // The provider's own words where there are any: "550 Permission denied"
+    // tells the user what to change, "the operation failed" tells them nothing.
+    lastOperationError_ = r.IsOk() ? std::string()
+                        : r.message.empty() ? "the server refused this"
+                                            : r.message;
+#endif
 }
 
 void UltraFilerRemoteDrives::Invalidate(const std::string& path) {
@@ -252,25 +357,55 @@ void UltraFilerRemoteDrives::EnsureWorker() {
 
 void UltraFilerRemoteDrives::WorkerMain() {
     for (;;) {
-        std::string path;
+        Job job;
         {
             std::unique_lock<std::mutex> lk(mutex_);
             cond_.wait(lk, [this]() { return shutdown_ || !queue_.empty(); });
             if (shutdown_) return;
-            path = std::move(queue_.front());
+            job = std::move(queue_.front());
             queue_.pop_front();
         }
+
         // An exception leaving a std::thread ends the process, and a provider
-        // is network code: whatever it throws costs this one listing.
+        // is network code: whatever it throws costs this one job and no more.
+        // A change reports its failure through operationError so the UI hears
+        // the same thing whether the provider refused or threw.
+        std::string operationError;
         try {
-            FetchListing(path);
+            if (job.isListing) FetchListing(job.path);
+            else               RunOperation(job);
         } catch (const std::exception& e) {
-            std::lock_guard<std::mutex> lk(mutex_);
-            cache_[path] = CacheEntry{CacheState::Failed, {},
-                                      std::string("listing failed: ") + e.what()};
+            if (job.isListing) {
+                std::lock_guard<std::mutex> lk(mutex_);
+                cache_[job.path] = CacheEntry{CacheState::Failed, {},
+                                              std::string("listing failed: ") + e.what()};
+            } else {
+                operationError = std::string("the operation failed: ") + e.what();
+            }
         } catch (...) {
+            if (job.isListing) {
+                std::lock_guard<std::mutex> lk(mutex_);
+                cache_[job.path] = CacheEntry{CacheState::Failed, {}, "listing failed"};
+            } else {
+                operationError = "the operation failed";
+            }
+        }
+
+        // A change that got as far as the server invalidates the folder it
+        // touched, so the refresh below refetches instead of repainting what
+        // the cache still holds. Done even on failure: a half-applied change
+        // is exactly when the cached listing is least trustworthy.
+        std::string changedFolder;
+        if (!job.isListing) {
+            changedFolder = job.operation == RemoteOperation::MakeDirectory
+                    ? job.path                       // the folder created in
+                    : RemoteFilerParent(job.path);   // the entry's own folder
+            if (changedFolder.empty()) changedFolder = job.path;
             std::lock_guard<std::mutex> lk(mutex_);
-            cache_[path] = CacheEntry{CacheState::Failed, {}, "listing failed"};
+            cache_.erase(changedFolder);
+            if (operationError.empty() && !lastOperationError_.empty())
+                operationError = lastOperationError_;
+            lastOperationError_.clear();
         }
 
         // Tell the window on the UI thread. Posted rather than called: this is
@@ -278,9 +413,16 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // the UI thread.
         if (UltraCanvasApplicationBase* app = UltraCanvasApplicationBase::GetCurrent()) {
             auto alive = alive_;
-            app->PostToUIThread([this, alive, path]() {
+            const bool listing = job.isListing;
+            const std::string path = job.path;
+            app->PostToUIThread([this, alive, listing, path, changedFolder,
+                                 operationError]() {
                 if (!alive->load()) return;   // owner destroyed meanwhile
-                if (onListingArrived) onListingArrived(path);
+                if (listing) {
+                    if (onListingArrived) onListingArrived(path);
+                } else if (onOperationFinished) {
+                    onOperationFinished(changedFolder, operationError);
+                }
             });
         }
     }
@@ -294,6 +436,16 @@ void UltraFilerRemoteDrives::FetchListing(const std::string& path) {
 #else
     std::string accountId, remotePath;
     if (!SplitRemoteFilerPath(path, accountId, remotePath)) return;
+
+    // Whether this drive can be changed decides the read-only badge on every
+    // entry of it, so it is read once here rather than per entry.
+    bool canModify = false;
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        for (const RemoteDrive& d : drives_) {
+            if (d.accountId == accountId) { canModify = d.canModify; break; }
+        }
+    }
 
     std::vector<UltraCloud::Entry> entries;
     const UltraCloud::Result r =
@@ -317,9 +469,11 @@ void UltraFilerRemoteDrives::FetchListing(const std::string& path) {
             f.isDirectory = e.isDirectory;
             f.size = e.isDirectory ? 0 : static_cast<uint64_t>(e.size < 0 ? 0 : e.size);
             f.modifiedTime = ParseRemoteFilerTime(e.modified);
-            // Nothing on a remote drive is writable through this build yet,
-            // and the display draws the read-only badge from this.
-            f.isReadOnly = true;
+            // The display draws its read-only badge from this, so it has to
+            // follow what the drive can actually do: an FTP drive can be
+            // changed, a Nextcloud or Dropbox one cannot (yet) and says so on
+            // every entry rather than only when a command is tried.
+            f.isReadOnly = !canModify;
             result.entries.push_back(std::move(f));
         }
     }

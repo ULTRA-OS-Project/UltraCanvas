@@ -104,6 +104,30 @@ Result CloudService::List(const std::string& accountId, const std::string& path,
     return p->List(a, c, NormalizePath(path), out);
 }
 
+Result CloudService::Delete(const std::string& accountId, const std::string& path,
+                            bool isDirectory) {
+    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
+    Result r = Resolve(accountId, a, c, p);
+    if (!r) return r;
+    return p->Delete(a, c, NormalizePath(path), isDirectory);
+}
+
+Result CloudService::Rename(const std::string& accountId, const std::string& path,
+                            const std::string& newName) {
+    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
+    Result r = Resolve(accountId, a, c, p);
+    if (!r) return r;
+    return p->Rename(a, c, NormalizePath(path), newName);
+}
+
+Result CloudService::MakeDirectory(const std::string& accountId,
+                                   const std::string& path) {
+    Account a; Credentials c; std::shared_ptr<ICloudProvider> p;
+    Result r = Resolve(accountId, a, c, p);
+    if (!r) return r;
+    return p->MakeDirectory(a, c, NormalizePath(path));
+}
+
 Result CloudService::Upload(const std::string& accountId, const std::string& localPath,
                             const std::string& remotePath) {
     Account a; Credentials c; std::shared_ptr<ICloudProvider> p;

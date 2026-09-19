@@ -101,6 +101,25 @@ namespace UltraCanvas {
         }
     };
 
+// ===== WHICH WAY IS UP =====
+// A mesh carries no orientation of its own, but the file it came from had one,
+// and the two conventions in use disagree by 90 degrees: STL, STEP, DXF and
+// most CAD are Z-up; glTF, FBX and the viewers here are Y-up. The viewers'
+// cameras look down -Z with +Y on screen, so a Z-up mesh handed over unrotated
+// stands on its nose - which is exactly how every model in the demo used to be
+// drawn. Each producer states what it read and the viewers correct for it.
+    enum class MeshUpAxis {
+        YUp,    // +Y is up: glTF, FBX, MilkShape, and the viewers' own frame
+        ZUp     // +Z is up: STL, STEP, DXF, 3D Studio and most CAD
+    };
+
+// Rotates a model-space point so the mesh's own up axis points along +Y.
+// Z-up to Y-up is -90 degrees about X, the same sense and sign as
+// ModelDocument::ConvertUpAxis, so the two agree on what "corrected" means.
+    inline Vec3 ToViewerUp(const Vec3& v, MeshUpAxis axis) {
+        return axis == MeshUpAxis::ZUp ? Vec3{v.x, v.z, -v.y} : v;
+    }
+
 // ===== TRIANGLE MESH =====
 // Flat representation: positions/normals are parallel arrays, three consecutive
 // entries (i, i+1, i+2) form one triangle when indices are sequential. STL has
@@ -111,6 +130,10 @@ namespace UltraCanvas {
         std::vector<Vec3> normals;       // per-vertex normals (parallel to positions)
         std::vector<uint32_t> indices;   // 3 indices per triangle
         BoundingBox3D bounds;
+        // Which axis of `positions` points up. The vertex data is left exactly
+        // as the file had it - only the viewers rotate - so bounds, extents and
+        // saved copies still describe the model in its own frame.
+        MeshUpAxis upAxis = MeshUpAxis::YUp;
 
         bool Empty() const { return positions.empty() || indices.empty(); }
         size_t VertexCount() const { return positions.size(); }
@@ -122,6 +145,7 @@ namespace UltraCanvas {
             normals.clear();
             indices.clear();
             bounds = BoundingBox3D{};
+            upAxis = MeshUpAxis::YUp;
         }
 
         void ComputeBounds() {

@@ -814,7 +814,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     folderPreview = CreateFilerWidget("ufl-folder-preview", 0, 0, 0, 0);
     // Selecting a folder on a remote drive previews it like a local one;
     // without this the pane would ask the local filesystem and show nothing.
-    WireRemoteListing(folderPreview.get());
+    WireRemoteDriveHooks(folderPreview.get());
     // Created before settings.Load(); ApplySettings() right after it applies
     // the Display > Home folder mode here.
     FilerStyle folderPreviewStyle = folderPreview->GetStyle();
@@ -1891,7 +1891,7 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     folderTree->RequestRedraw();
 }
 
-void UltraFilerWindow::WireRemoteListing(UltraCanvasFilerWidget* widget) {
+void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
     if (!widget) return;
     // Recognising a remote path costs a string comparison and is asked before
     // any std::filesystem call, which is the point: a path on a server must
@@ -1908,6 +1908,50 @@ void UltraFilerWindow::WireRemoteListing(UltraCanvasFilerWidget* widget) {
                                    std::string& error) {
         return remoteDrives->List(path, out, error);
     };
+
+    // The three changes a drive can take. Each is queued and answered at once;
+    // what the server said arrives through onOperationFinished.
+    widget->remoteDelete = [this](const std::vector<FilerEntry>& victims,
+                                  std::string& error) {
+        // One operation per entry, because the provider verb is per entry -
+        // and the queue keeps them in order, so the refresh that follows the
+        // last one shows the result of all of them.
+        bool anyQueued = false;
+        for (const FilerEntry& e : victims) {
+            std::string one;
+            if (remoteDrives->Submit(RemoteOperation::Delete, e.path, std::string(),
+                                     e.isDirectory, one)) {
+                anyQueued = true;
+            } else if (error.empty()) {
+                error = one;   // the first refusal is the one worth showing
+            }
+        }
+        return anyQueued;
+    };
+    widget->remoteRename = [this](const std::string& path,
+                                  const std::string& newName,
+                                  std::string& error) {
+        // The entry's own kind does not matter to a rename; false is fine.
+        return remoteDrives->Submit(RemoteOperation::Rename, path, newName,
+                                    false, error);
+    };
+    widget->remoteMakeDirectory = [this](const std::string& folderPath,
+                                         const std::string& name,
+                                         std::string& error) {
+        return remoteDrives->Submit(RemoteOperation::MakeDirectory, folderPath,
+                                    name, true, error);
+    };
+}
+
+void UltraFilerWindow::RefreshRemoteFolderDisplays(const std::string& folderPath) {
+    if (folderPath.empty()) return;
+    for (auto& tab : tabStates) {
+        if (tab->filer && !tab->filer->IsShowingFileList() &&
+            tab->filer->GetPath() == folderPath)
+            tab->filer->Refresh();
+    }
+    if (folderPreview && folderPreview->GetPath() == folderPath)
+        folderPreview->Refresh();
 }
 
 void UltraFilerWindow::RunSearch(const std::string& query) {
@@ -2576,13 +2620,22 @@ void UltraFilerWindow::BuildFolderTree() {
     // display is asked again, and this time the cache answers.
     remoteDrives->onListingArrived = [this](const std::string& path) {
         // Only the display actually showing that folder needs redoing.
-        for (auto& tab : tabStates) {
-            if (tab->filer && !tab->filer->IsShowingFileList() &&
-                tab->filer->GetPath() == path)
-                tab->filer->Refresh();
+        RefreshRemoteFolderDisplays(path);
+    };
+    // A change to a drive finished: the folder it touched has already been
+    // dropped from the cache, so refreshing it refetches from the server.
+    remoteDrives->onOperationFinished = [this](const std::string& folderPath,
+                                               const std::string& message) {
+        RefreshRemoteFolderDisplays(folderPath);
+        if (message.empty()) {
+            lastRemoteOperationError.clear();
+            return;
         }
-        if (folderPreview && folderPreview->GetPath() == path)
-            folderPreview->Refresh();
+        // Deleting several entries queues several operations; the same refusal
+        // repeated once per entry is one dialog's worth of information.
+        if (message == lastRemoteOperationError) return;
+        lastRemoteOperationError = message;
+        UltraCanvasAlert::Error(message, "Remote drive", nullptr, window.get());
     };
     if (std::string driveError; !remoteDrives->Reload(driveError)) {
         debugOutput << "UltraFiler: remote drives unavailable: "
@@ -3480,7 +3533,7 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
 
 void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     // What lets this display show a remote drive at all.
-    WireRemoteListing(tab->filer.get());
+    WireRemoteDriveHooks(tab->filer.get());
     tab->filer->onPathChanged = [this, tab](const std::string& path) {
         HandlePathChanged(tab, path);
     };
