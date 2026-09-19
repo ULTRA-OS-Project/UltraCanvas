@@ -1,4 +1,4 @@
-#### 2026-09-19 *0.8.99*
+#### 2026-09-19 *0.9.1*
 - **LaTeX Documents, XAR Images and EPS Images read as fully implemented in the
   demo tree.** All three carried the blue "partially implemented" icon because
   each one's own documentation opened with that phrase - but the phrase was
@@ -17,6 +17,36 @@
   `XARFeatherNode`, `XARLiveEffectNode`) are parsed but not painted, and EPS
   keeps its *Known gaps* section untouched. Nothing was promoted that is not
   implemented; only the leading verdict changed.
+
+#### 2026-09-19 *0.8.99*
+- **NetworkMonitor on Windows and macOS, and byte counters on Linux** — the
+  platform half of the proposal's Phase 2. Windows reads the socket tables
+  from IP Helper (`GetExtendedTcpTable` / `GetExtendedUdpTable` with the
+  owner-PID classes, so the PID arrives with the row), the executable from
+  `QueryFullProcessImageNameW` and the user from the process token; macOS
+  enumerates every process's descriptors through libproc
+  (`PROC_PIDLISTFDS` / `PROC_PIDFDSOCKETINFO`), which is how `lsof -i` does it
+  and means a process the monitor may not inspect contributes no sockets at
+  all — the capabilities say so. Linux now asks netlink `sock_diag` first: one
+  round trip per table instead of parsing `/proc/net`, and for TCP the
+  `tcp_info` with `tcpi_bytes_acked` / `tcpi_bytes_received`, which fill
+  `NetworkConnection::bytesSent` / `bytesReceived` and set
+  `perConnectionBytes` in the capabilities; where the kernel refuses (a
+  sandbox, no `udp_diag`) the backend falls back to the file, per table, and
+  says so. The address formatter moved out of the procfs parser into
+  `NetworkMonitorAddress.h` so all three backends print a peer identically.
+  `Tests/NetworkMonitorTests.cpp` now opens a connection across the loopback,
+  moves 64 KiB over it and asserts both ends come back attributed to the
+  test's PID with counters at least that large where the backend has them;
+  the socket code compiles on Winsock too.
+  - **The backends are compiled once, into the module.** The core library's
+    platform glob had been picking up `UltraCanvas<Platform>NetworkMonitor.cpp`
+    as well, so each backend sat in both `libUltraCanvas` and
+    `libNetworkMonitor`. A static core tolerated that, a shared one on Linux
+    deferred the module's symbols to load time, and the Windows DLL refused
+    to link (`undefined symbol: NetworkMonitorAddress::FormatIPv4`). They are
+    now dropped from the core's sources the way the UltraNet platform files
+    are.
 
 #### 2026-09-19 *0.8.98*
 - **NetworkMonitor: a module that reads the operating system's socket table
