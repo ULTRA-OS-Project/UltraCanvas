@@ -425,6 +425,12 @@ bool RefreshGlobalIndex() {
     return true;
 }
 
+// Windows associates by extension through the registry and keeps no MIME
+// database, so there is no type name to report - see
+// FileAssociations::GetMimeType.
+std::string MimeTypeFor(const std::string&) { return {}; }
+std::string MimeGenericIconFor(const std::string&) { return {}; }
+
 std::vector<FileAssociationApp> ResolveFile(const std::string& fileName) {
     const std::wstring extension = ExtensionOf(fileName);
     if (extension.empty()) return {};   // no extension, no association

@@ -3,6 +3,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraMailSyncEngine.h"
 
+#include "UltraMailThreatScan.h"
+
 #include <cstdio>
 #include <cstring>
 #include <filesystem>
@@ -132,6 +134,7 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
         lf.accountId = accountId;
         lf.name = f.name;
         lf.role = FolderRoleFromString(f.role);
+        lf.selectable = f.selectable;   // \Noselect containers (e.g. "[Gmail]")
         if (store_.UpsertFolder(lf)) out.stats.folders++;
     }
     return out;
@@ -211,6 +214,18 @@ std::string SyncEngine::WriteBody(const std::string& accountId, const std::strin
     if (!os) return std::string();
     os.write(raw.data(), static_cast<std::streamsize>(raw.size()));
     if (!os) return std::string();
+
+    // A body is scanned exactly once — here, where it has just been downloaded
+    // and is already in memory. The verdict goes into the index, so the message
+    // list can colour its sender badge without re-reading a single .eml file,
+    // and a phishing mail is marked before it is ever opened.
+    const ThreatReport report = ScanRawMessage(raw);
+    MessageSecurity security;
+    security.level  = report.level;
+    security.score  = report.score;
+    security.bulk   = report.bulk;
+    security.reason = report.Summary();
+    store_.SetSecurity(accountId, folder, uid, security);
     return path;
 }
 

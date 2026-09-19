@@ -49,4 +49,20 @@ void SyncService::SyncInBackground(const std::string& accountId, const std::stri
     }).detach();
 }
 
+void SyncService::SyncFolderInBackground(const std::string& accountId, const std::string& folder,
+                                         const std::string& serverUrl,
+                                         const UltraNetMailOptions& options, PrepareFn prepare,
+                                         std::function<void(SyncOutcome)> onDone,
+                                         ProgressFn onProgress) {
+    std::thread([this, accountId, folder, serverUrl, opts = options, prepare = std::move(prepare),
+                 onDone = std::move(onDone), onProgress = std::move(onProgress)]() mutable {
+        UltraNetResult prepared = prepare ? prepare(opts) : UltraNetResult::Ok();
+        SyncOutcome result = prepared
+            ? engine_.SyncMessages(accountId, folder, serverUrl, opts,
+                                   /*fetchBodies=*/true, onProgress)
+            : SyncOutcome::Fail(prepared.message);
+        if (onDone) onDone(result);
+    }).detach();
+}
+
 } // namespace UltraMail
