@@ -292,6 +292,21 @@ const char* const kSchemaV2 =
     "  erfasst_am BIGINT DEFAULT 0);"
     "CREATE INDEX ix_zahlung_beleg ON zahlung(beleg_id, datum);";
 
+// Schema 3 records which DATEV files have been imported. Without it the same
+// Buchungsstapel imported twice would silently double a month, and the only
+// evidence would be a balance that is exactly wrong by one stack.
+const char* const kSchemaV3 =
+    "CREATE TABLE datev_import("
+    "  id BIGINT PRIMARY KEY,"
+    "  mandant_id BIGINT NOT NULL,"
+    "  dateiname TEXT,"
+    "  datei_hash TEXT NOT NULL,"
+    "  zeitpunkt BIGINT NOT NULL,"
+    "  benutzer TEXT,"
+    "  zeilen INTEGER DEFAULT 0,"
+    "  von TEXT, bis TEXT);"
+    "CREATE INDEX ix_datev_import ON datev_import(mandant_id, datei_hash);";
+
 } // namespace
 
 // ===== BELEGE UND BUCHUNGEN =====
@@ -612,7 +627,8 @@ StoreResult Store::Open(const std::string& connectionName, const std::string& da
 
     const std::vector<UltraDbMigration> steps = {
         { 1, "UltraFIBU Stammdaten", kSchemaV1 },
-        { 2, "UltraFIBU Belege und Buchungen", kSchemaV2 }
+        { 2, "UltraFIBU Belege und Buchungen", kSchemaV2 },
+        { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 }
     };
     const UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
     if (!migrated) {
@@ -3046,6 +3062,166 @@ HashKettenPruefung Store::PruefeHashKette(int64_t mandantId) const {
         erwarteteNummer++;
     }
     return ergebnis;
+}
+
+// ===== DATEV-IMPORT =====
+
+bool Store::DatevDateiSchonImportiert(int64_t mandantId, const std::string& dateiHash,
+                                      DatevImportEintrag& out) const {
+    if (dateiHash.empty()) return false;
+    UltraDbRow row;
+    if (!QueryOne("SELECT id, dateiname, datei_hash, zeitpunkt, benutzer, zeilen,"
+                  " von, bis FROM datev_import WHERE mandant_id = ? AND datei_hash = ?"
+                  " ORDER BY zeitpunkt DESC LIMIT 1",
+                  { mandantId, dateiHash }, row))
+        return false;
+    out.id        = row["id"].AsInt64();
+    out.dateiname = row["dateiname"].AsString();
+    out.dateiHash = row["datei_hash"].AsString();
+    out.zeitpunkt = row["zeitpunkt"].AsInt64();
+    out.benutzer  = row["benutzer"].AsString();
+    out.zeilen    = row["zeilen"].AsInt();
+    out.von       = DateFrom(row["von"]);
+    out.bis       = DateFrom(row["bis"]);
+    return true;
+}
+
+std::vector<Store::DatevImportEintrag> Store::DatevImporte(int64_t mandantId) const {
+    std::vector<DatevImportEintrag> liste;
+    UltraDbResultSet rs;
+    if (!Query("SELECT id, dateiname, datei_hash, zeitpunkt, benutzer, zeilen,"
+               " von, bis FROM datev_import WHERE mandant_id = ?"
+               " ORDER BY zeitpunkt DESC", { mandantId }, rs))
+        return liste;
+    for (const UltraDbRow& row : rs) {
+        DatevImportEintrag eintrag;
+        eintrag.id        = row["id"].AsInt64();
+        eintrag.dateiname = row["dateiname"].AsString();
+        eintrag.dateiHash = row["datei_hash"].AsString();
+        eintrag.zeitpunkt = row["zeitpunkt"].AsInt64();
+        eintrag.benutzer  = row["benutzer"].AsString();
+        eintrag.zeilen    = row["zeilen"].AsInt();
+        eintrag.von       = DateFrom(row["von"]);
+        eintrag.bis       = DateFrom(row["bis"]);
+        liste.push_back(eintrag);
+    }
+    return liste;
+}
+
+StoreResult Store::ImportiereDatevStapel(const DatevImportBericht& bericht,
+                                         const std::string& dateiname,
+                                         const Akteur& akteur, bool nochmal,
+                                         int& outGeschrieben) {
+    outGeschrieben = 0;
+    if (!akteur.Darf(Recht::Buchen))
+        return StoreResult::Fail("Diese Rolle darf nicht buchen.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+    if (!bericht.ok || bericht.zeilen.empty())
+        return StoreResult::Fail("Der Import enthält keine übernehmbaren Buchungen.");
+
+    const int64_t mandantId = bericht.zeilen.front().buchung.mandantId;
+
+    // The same stack twice would double a month, and the only evidence would be
+    // a balance wrong by exactly one stack.
+    if (!nochmal) {
+        DatevImportEintrag frueher;
+        if (DatevDateiSchonImportiert(mandantId, bericht.dateiHash, frueher)) {
+            return StoreResult::Fail(
+                "Diese Datei wurde bereits importiert (\"" + frueher.dateiname +
+                "\", " + Number(frueher.zeilen) + " Buchungen). Ein zweiter Import "
+                "würde den Zeitraum verdoppeln. Wenn er wirklich wiederholt werden "
+                "soll, mit --nochmal.");
+        }
+    }
+
+    // Everything is checked before anything is written: a half-imported stack
+    // is worse than none, and the two things that can stop a posting - a
+    // frozen period and a missing Geschaeftsjahr - are knowable up front.
+    std::vector<Buchung> fertig;
+    fertig.reserve(bericht.zeilen.size());
+    for (const DatevImportZeile& zeile : bericht.zeilen) {
+        Buchung b = zeile.buchung;
+        Geschaeftsjahr jahr;
+        if (!GeschaeftsjahrAt(b.mandantId, b.belegdatum, jahr)) {
+            return StoreResult::Fail(
+                "Zeile " + Number(zeile.zeileNr) + ": Zum " +
+                FormatDateGerman(b.belegdatum) + " ist kein Geschäftsjahr angelegt. "
+                "Es wurde nichts importiert.");
+        }
+        if (!jahr.AcceptsPostings()) {
+            return StoreResult::Fail(
+                "Zeile " + Number(zeile.zeileNr) + ": Das Geschäftsjahr \"" +
+                jahr.bezeichnung + "\" ist abgeschlossen. Es wurde nichts importiert.");
+        }
+        if (jahr.IsFrozen(b.belegdatum)) {
+            WriteAudit(akteur, "datev_import", 0, "abgelehnt",
+                       "Import in festgeschriebenen Zeitraum, " +
+                       b.belegdatum.ToIso());
+            return StoreResult::Fail(
+                "Zeile " + Number(zeile.zeileNr) + ": Bis " +
+                FormatDateGerman(jahr.festschreibungBis) + " ist festgeschrieben, "
+                "die Buchung ist auf den " + FormatDateGerman(b.belegdatum) +
+                " datiert. Es wurde nichts importiert.");
+        }
+        b.geschaeftsjahrId = jahr.id;
+        b.periode          = jahr.PeriodOf(b.belegdatum);
+        b.erfasstVon       = akteur.benutzerId;
+        b.erfasstVonName   = akteur.anmeldename;
+        b.erfasstAm        = NowSeconds();
+        b.festgeschrieben  = false;
+        b.storniertDurch   = 0;
+        if (!b.Valid()) {
+            return StoreResult::Fail(
+                "Zeile " + Number(zeile.zeileNr) +
+                ": Die Buchung ist unvollständig. Es wurde nichts importiert.");
+        }
+        fertig.push_back(std::move(b));
+    }
+
+    UltraDbResult error;
+    UltraDbHandle tx = UltraDb_Begin(connection_, &error);
+    if (tx == UltraDbInvalidHandle)
+        return StoreResult::Fail("Transaktion konnte nicht gestartet werden: " +
+                                 error.message);
+
+    std::string fehler;
+    auto abbrechen = [&](const std::string& text) {
+        UltraDb_Rollback(tx);
+        return StoreResult::Fail(text + (fehler.empty() ? "" : ": " + fehler));
+    };
+
+    // Imported postings go on the same append-only path as every other one, so
+    // they take their place in the hash chain and a later PruefeHashKette
+    // covers them too.
+    for (Buchung& b : fertig) {
+        if (!InsertBuchungInTx(tx, b, fehler))
+            return abbrechen("Eine importierte Buchung konnte nicht geschrieben werden");
+    }
+
+    int64_t importId = 0;
+    if (!NextSequenzInTx(tx, "datev_import", importId, fehler))
+        return abbrechen("Der Importeintrag konnte nicht angelegt werden");
+    const UltraDbResult protokoll = UltraDb_ExecInTx(
+        tx,
+        "INSERT INTO datev_import(id, mandant_id, dateiname, datei_hash, zeitpunkt,"
+        " benutzer, zeilen, von, bis) VALUES(?,?,?,?,?,?,?,?,?)",
+        { importId, mandantId, dateiname, bericht.dateiHash, NowSeconds(),
+          akteur.anmeldename, static_cast<int>(fertig.size()),
+          DateValue(bericht.von), DateValue(bericht.bis) });
+    if (!protokoll) { fehler = protokoll.message; return abbrechen("Der Importeintrag konnte nicht angelegt werden"); }
+
+    if (!AuditInTx(tx, akteur, "datev_import", importId, "importieren",
+                   dateiname + ", " + Number(static_cast<int64_t>(fertig.size())) +
+                   " Buchung(en), " + FormatDateGerman(bericht.von) + " - " +
+                   FormatDateGerman(bericht.bis), fehler))
+        return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
+
+    const UltraDbResult commit = UltraDb_Commit(tx);
+    if (!commit)
+        return StoreResult::Fail("Der Import wurde nicht bestätigt: " + commit.message);
+
+    outGeschrieben = static_cast<int>(fertig.size());
+    return StoreResult::Ok();
 }
 
 // ===== SALDEN =====

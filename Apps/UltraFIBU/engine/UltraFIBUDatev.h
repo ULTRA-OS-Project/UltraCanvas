@@ -148,6 +148,89 @@ struct DatevPruefung {
 DatevPruefung PruefeDateiGegenDefinition(const std::string& dateipfad,
                                          const DatevDefinition& definition);
 
+
+// ===== IMPORT =====
+//
+// **The importer does not depend on the guessed column order.** A real DATEV
+// file carries its own column line, and this reads the values by the names
+// that file gives - so the uncertainty that hangs over the export
+// (`data/DATEV-Buchungsstapel-v700.csv`) does not apply here at all. What the
+// importer needs is only that the columns it looks for exist under the names
+// the format uses; anything else in the file is carried past untouched.
+
+// One posting read out of a file, with where it came from so a problem can be
+// pointed at a line rather than described in the abstract.
+struct DatevImportZeile {
+    int         zeileNr = 0;      // 1-based line number in the file
+    Buchung     buchung;
+    std::string buSchluessel;     // verbatim, even when it cannot be mapped
+    std::string hinweis;          // why this row is doubtful, if it is
+};
+
+struct DatevImportBericht {
+    bool        ok = false;
+    std::string fehler;
+
+    // What the file says about itself.
+    std::string kennzeichen;
+    int         versionsnummer = 0;
+    int         kategorie      = 0;
+    int         formatversion  = 0;
+    std::string beraternummer;
+    std::string mandantennummer;
+    Date        wjBeginn;
+    Date        von;
+    Date        bis;
+    int         sachkontenlaenge = 0;
+    std::string bezeichnung;
+    bool        festgeschrieben = false;
+
+    int gelesen       = 0;    // data lines seen
+    int uebernommen   = 0;    // rows that became a posting
+    int uebersprungen = 0;    // rows that could not be read
+    // How many of the imported postings carry a tax split. The difference
+    // between this and `uebernommen` is not an error - a payment has no tax -
+    // but it is the number that explains why a revenue account shows its gross
+    // amount after an import, so it is reported rather than left to be noticed.
+    int mitSteuer     = 0;
+
+    // Anything that changes what the ledger will contain, in German.
+    std::vector<std::string> warnungen;
+    // One sentence per unreadable line, each naming its line number.
+    std::vector<std::string> fehlerZeilen;
+
+    // SHA-256 of the file, so the same stack cannot be imported twice by
+    // accident - which would silently double a month.
+    std::string dateiHash;
+
+    std::vector<DatevImportZeile> zeilen;
+};
+
+// Read a Buchungsstapel without writing anything. Every problem is collected
+// rather than thrown, because the first useful thing to do with a Kanzlei's
+// file is look at what it contains.
+//
+// `steuerschluessel` is used only to translate a DATEV BU-Schlüssel back into
+// our own key, through the `datevBu` column. Where that mapping is missing the
+// posting is still imported - with its BU key preserved verbatim and the whole
+// amount unsplit - and a warning says so: inventing a tax split from a key we
+// cannot read would be worse than not splitting it.
+DatevImportBericht LeseBuchungsstapel(const std::string& dateipfad,
+                                      const Mandant& mandant,
+                                      const Geschaeftsjahr& jahr,
+                                      const std::vector<Steuerschluessel>& steuerschluessel);
+
+// The Sachkonten a read stack posts to that the chart of accounts does not
+// have. Personenkonten are deliberately left out: a Debitor or Kreditor belongs
+// to a partner and is never in the chart, so listing those would bury the one
+// case that matters - a Sachkonto that is in the file and nowhere else, which
+// after the import shows up in the Saldenliste as a bare number with no name
+// and is usually a wrong account rather than a missing one. The file's own
+// Sachkontenlaenge decides which is which, because it is the file's convention
+// that produced the numbers.
+std::vector<std::string> UnbekannteSachkonten(const DatevImportBericht& bericht,
+                                              const std::vector<Konto>& konten);
+
 // UTF-8 to CP1252, which is the encoding DATEV files are written in. Exposed
 // because it is the one transformation that silently corrupts a whole file if
 // it is skipped, so the tests check it directly. Characters outside CP1252

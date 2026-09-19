@@ -1,3 +1,64 @@
+#### 2026-09-19 *0.6.0*
+- **DATEV-Import: der Buchungsstapel zurück ins Hauptbuch.**
+  `LeseBuchungsstapel()` in `Apps/UltraFIBU/engine/UltraFIBUDatev.{h,cpp}`,
+  Schema v3 mit `Store::ImportiereDatevStapel()`, `ultrafibu datev-import` und
+  `ultrafibu datev-importe`, 126 weitere Prüfungen (833 insgesamt).
+- **Der Import hängt nicht an der geratenen Spaltenreihenfolge.** Eine echte
+  DATEV-Datei benennt ihre Spalten selbst, und gelesen wird über diese Namen.
+  Die Unsicherheit, die über `data/DATEV-Buchungsstapel-v700.csv` und dem
+  Export steht, gilt hier also gar nicht.
+- **Das Jahr hinter TTMM kommt aus dem Zeitraum der Datei.** Beide in Frage
+  kommenden Jahre werden probiert, und das genommen, das im Zeitraum liegt; ein
+  Datum, das in keines passt, wird gemeldet statt geraten. Ein Stapel ohne
+  Zeitraum in der Kopfzeile wird abgelehnt, weil TTMM ohne ihn nicht auflösbar
+  ist.
+- **Zwei Regeln schützen das Hauptbuch, und beide sind gegen eine echte
+  Datenbank geprüft:**
+  - **Entweder ganz oder gar nicht.** Geschäftsjahr, Abschluss und
+    Festschreibung werden für *alle* Zeilen geprüft, bevor eine einzige
+    geschrieben wird. Der Test legt die gute Zeile absichtlich vor die
+    gesperrte: ein Import, der beim Schreiben prüft, hätte die erste längst
+    übernommen und ein halb gefülltes Hauptbuch hinterlassen.
+  - **Dieselbe Datei nicht zweimal.** Der Stapel wird über seinen SHA-256
+    erkannt; ein zweiter Import verdoppelt einen Monat und fällt nur als
+    falscher Saldo auf. `--nochmal` gibt es trotzdem, für den einen echten Fall:
+    ein rückgängig gemachter Import, der wiederholt werden muss.
+- **Importierte Buchungen sind gewöhnliche Buchungen.** Sie laufen über denselben
+  append-only-Pfad, reihen sich in die Prüfsummenkette ein und werden von
+  `ultrafibu pruefen` mit abgedeckt. Festgeschrieben werden sie hier und nicht
+  durch ein Kennzeichen in einer fremden Datei.
+- **Der BU-Schlüssel wird zurückübersetzt, wo die Zuordnung existiert - und
+  nicht erfunden, wo sie fehlt.** Aus `data/Steuerschluessel.csv`, Spalte
+  `datev_bu`. Fehlt sie, wird der Betrag ungeteilt übernommen, der
+  BU-Schlüssel bleibt wörtlich erhalten und die Warnung **nennt die
+  Schlüssel**, um die es geht - die Zuordnung lässt sich nachtragen und die
+  Datei erneut einlesen.
+- **Warum ein Erlöskonto nach dem Import brutto dasteht, steht im Bericht.**
+  `mitSteuer` zählt die Buchungen mit Steueraufteilung; ist es null, sagt der
+  Import das ausdrücklich und nennt die noch leere Spalte `datev_bu` als
+  wahrscheinliche Ursache. Ohne diesen Satz ist ein Bruttobetrag auf 8400 ein
+  Rätsel, das lange dauert.
+- **Sachkonten aus der Datei, die der Kontenrahmen nicht hat**, werden vor dem
+  Schreiben genannt (`UnbekannteSachkonten()`). Personenkonten bleiben dabei
+  außen vor: ein Debitor gehört zu einem Partner und steht nie im
+  Kontenrahmen, ihn zu melden würde den einen Fall zudecken, der zählt - ein
+  falsch getipptes Sachkonto, das hinterher nur als Nummer ohne Bezeichnung in
+  der Saldenliste auftaucht.
+- **Ansehen schreibt nicht.** `ultrafibu datev-import` ist ohne
+  `--uebernehmen` ein Trockenlauf: erst der Bericht über eine fremde Datei,
+  dann die Entscheidung. `ultrafibu datev-importe` zeigt, was wann von wem
+  eingelesen wurde.
+- **Der Rundlauf ist jetzt ein Test, keine Absicht.** Ein Stapel wird
+  geschrieben, wieder eingelesen und Buchung für Buchung verglichen - Datum,
+  Betrag, Soll/Haben, Konten, Buchungstext, Steueraufteilung. Der Vorschlag
+  nennt das den einen Test, der Vorzeichen-, Soll/Haben-, Komma- und
+  TTMM-Fehler auf einmal fängt, und er hat recht: jeder davon ergibt eine
+  völlig plausibel aussehende Datei. Ein absichtlich vertauschtes
+  Soll/Haben-Kennzeichen im Export wird von genau diesem Test gemeldet.
+- **Unlesbare Zeilen werden gemeldet, nicht stillschweigend übergangen** - jede
+  mit ihrer Zeilennummer, und zusammengefasst als Warnung, damit die Zahl unter
+  den übernommenen Buchungen nicht als vollständig gelesen wird.
+
 #### 2026-09-19 *0.5.0*
 - **DATEV-Export: der Buchungsstapel.** `Apps/UltraFIBU/engine/UltraFIBUDatev.{h,cpp}`,
   `ultrafibu datev-export` und `ultrafibu datev-pruefen`, 49 weitere Prüfungen

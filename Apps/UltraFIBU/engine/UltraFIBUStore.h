@@ -31,6 +31,7 @@
 
 #include "UltraFIBUBeleg.h"
 #include "UltraFIBUBuchung.h"
+#include "UltraFIBUDatev.h"
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNrOnline.h"
 
@@ -77,7 +78,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert that the database matches the
     // code without a literal that has to be chased.
-    static constexpr int kSchemaVersion = 2;
+    static constexpr int kSchemaVersion = 3;
 
     Store() = default;
     ~Store() = default;
@@ -300,6 +301,42 @@ public:
         int64_t     erfasstAm = 0;
     };
     std::vector<Zahlung> Zahlungen(int64_t belegId) const;
+
+
+    // ---- DATEV-Import ------------------------------------------------------
+
+    // Write the postings a DATEV file was read into, in one transaction, on the
+    // same append-only path as every other posting - so they take their place
+    // in the hash chain and a later check covers them too.
+    //
+    // Refused when: the role may not post; the file was imported before (the
+    // same SHA-256 - importing a stack twice would silently double a month);
+    // a posting falls in a frozen period; or any posting falls outside a
+    // Geschaeftsjahr. The whole file is checked before anything is written,
+    // because a half-imported stack is worse than none.
+    //
+    // `nochmal` overrides only the duplicate check, for the case where a file
+    // genuinely has to be re-imported after its first import was reversed.
+    StoreResult ImportiereDatevStapel(const DatevImportBericht& bericht,
+                                      const std::string& dateiname,
+                                      const Akteur& akteur, bool nochmal,
+                                      int& outGeschrieben);
+
+    struct DatevImportEintrag {
+        int64_t     id = 0;
+        std::string dateiname;
+        std::string dateiHash;
+        int64_t     zeitpunkt = 0;
+        std::string benutzer;
+        int         zeilen = 0;
+        Date        von;
+        Date        bis;
+    };
+    std::vector<DatevImportEintrag> DatevImporte(int64_t mandantId) const;
+    // True when a file with this hash has already been imported for this
+    // Mandant.
+    bool DatevDateiSchonImportiert(int64_t mandantId, const std::string& dateiHash,
+                                   DatevImportEintrag& out) const;
 
     // ---- Journal -----------------------------------------------------------
 

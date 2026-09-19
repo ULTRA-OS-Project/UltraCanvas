@@ -106,6 +106,13 @@ void PrintUsage() {
         "        --ziel <verzeichnis>  Zielverzeichnis (Standard: .)\n"
         "  datev-pruefen <EXTF.csv>  Spaltendefinition gegen eine echte\n"
         "                          DATEV-Datei prüfen\n"
+        "  datev-import <datei> <EXTF.csv>\n"
+        "                          Buchungsstapel einlesen; zeigt nur an,\n"
+        "                          bis --uebernehmen angegeben wird\n"
+        "        --uebernehmen         Buchungen wirklich schreiben\n"
+        "        --nochmal             eine bereits importierte Datei\n"
+        "                              erneut zulassen\n"
+        "  datev-importe <datei>   Bisherige DATEV-Importe anzeigen\n"
         "\n"
         "Datumsangaben in deutscher (01.04.2026) oder ISO-Schreibweise (2026-04-01).\n",
         ULTRAFIBU_CLI_VERSION);
@@ -1210,6 +1217,113 @@ int DatevPruefen(int argc, char** argv) {
     return 1;
 }
 
+int DatevImport(int argc, char** argv) {
+    const std::string datei      = Positional(argc, argv, 0);
+    const std::string datevDatei = Positional(argc, argv, 1);
+    if (datevDatei.empty()) {
+        std::printf("Fehler: Keine DATEV-Datei angegeben.\n"
+                    "Aufruf: ultrafibu datev-import <datei> <EXTF_Datei.csv>\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    std::vector<Geschaeftsjahr> jahre = store.Geschaeftsjahre(mandant.id);
+    if (jahre.empty()) {
+        std::printf("Fehler: Es ist kein Geschäftsjahr angelegt.\n");
+        return 1;
+    }
+
+    const DatevImportBericht bericht = LeseBuchungsstapel(
+        datevDatei, mandant, jahre.back(),
+        store.SteuerschluesselListe(mandant.id));
+
+    std::printf("%s, Version %d, Kategorie %d\n", bericht.kennzeichen.c_str(),
+                bericht.versionsnummer, bericht.kategorie);
+    if (!bericht.fehler.empty() && !bericht.ok) {
+        std::printf("Fehler: %s\n", bericht.fehler.c_str());
+        return 1;
+    }
+    std::printf("Berater %s, Mandant %s, Wirtschaftsjahr ab %s\n",
+                bericht.beraternummer.c_str(), bericht.mandantennummer.c_str(),
+                FormatDateGerman(bericht.wjBeginn).c_str());
+    std::printf("Zeitraum %s - %s, \"%s\"\n",
+                FormatDateGerman(bericht.von).c_str(),
+                FormatDateGerman(bericht.bis).c_str(),
+                bericht.bezeichnung.c_str());
+    std::printf("%d Zeile(n) gelesen, %d übernehmbar, %d übersprungen, "
+                "%d mit Steueraufteilung\n",
+                bericht.gelesen, bericht.uebernommen, bericht.uebersprungen,
+                bericht.mitSteuer);
+
+    for (const std::string& zeile : bericht.fehlerZeilen)
+        std::printf("  FEHLER: %s\n", zeile.c_str());
+    for (const std::string& warnung : bericht.warnungen)
+        std::printf("  ACHTUNG: %s\n", warnung.c_str());
+
+    // A Sachkonto that is in the file and not in the chart is usually a wrong
+    // account rather than a missing one, and after the import it is only a
+    // nameless number in the Saldenliste. Said here, while nothing is written
+    // yet, it is one line to check.
+    {
+        const std::vector<std::string> fehlend =
+            UnbekannteSachkonten(bericht, store.Konten(mandant.id));
+        if (!fehlend.empty()) {
+            std::string liste;
+            for (const std::string& konto : fehlend) {
+                if (!liste.empty()) liste += ", ";
+                liste += konto;
+            }
+            std::printf("  ACHTUNG: Diese Sachkonten stehen in der Datei, aber "
+                        "nicht im Kontenrahmen: %s. Sie erscheinen nach dem "
+                        "Import ohne Bezeichnung in der Saldenliste.\n",
+                        liste.c_str());
+        }
+    }
+
+    // A first look at somebody else's file should never write. Importing is
+    // the explicit second step.
+    if (!HasOption(argc, argv, "--uebernehmen")) {
+        std::printf("\nEs wurde nichts geschrieben. Zum Übernehmen mit "
+                    "--uebernehmen wiederholen.\n");
+        return bericht.ok ? 0 : 1;
+    }
+
+    int geschrieben = 0;
+    const StoreResult importiert = store.ImportiereDatevStapel(
+        bericht, datevDatei, akteur, HasOption(argc, argv, "--nochmal"), geschrieben);
+    if (!importiert) {
+        std::printf("\nFehler: %s\n", importiert.fehler.c_str());
+        return 1;
+    }
+    std::printf("\n%d Buchung(en) übernommen.\n", geschrieben);
+    return 0;
+}
+
+int DatevImporte(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::vector<Store::DatevImportEintrag> liste = store.DatevImporte(mandant.id);
+    if (liste.empty()) { std::printf("Es wurde noch nichts importiert.\n"); return 0; }
+    std::printf("%-30s %-10s %-10s %8s  %s\n", "Datei", "von", "bis", "Zeilen",
+                "Benutzer");
+    for (const Store::DatevImportEintrag& eintrag : liste) {
+        std::printf("%-30s %-10s %-10s %8d  %s\n",
+                    eintrag.dateiname.substr(0, 30).c_str(),
+                    FormatDateGerman(eintrag.von).c_str(),
+                    FormatDateGerman(eintrag.bis).c_str(),
+                    eintrag.zeilen, eintrag.benutzer.c_str());
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1239,6 +1353,8 @@ int main(int argc, char** argv) {
     if (befehl == "rechnung-pdf")  return RechnungDrucken(argc, argv);
     if (befehl == "datev-export")  return DatevExport(argc, argv);
     if (befehl == "datev-pruefen") return DatevPruefen(argc, argv);
+    if (befehl == "datev-import")  return DatevImport(argc, argv);
+    if (befehl == "datev-importe") return DatevImporte(argc, argv);
 
     std::printf("Unbekannter Befehl: %s\n\n", befehl.c_str());
     PrintUsage();

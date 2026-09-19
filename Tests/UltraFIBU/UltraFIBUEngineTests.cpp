@@ -2157,6 +2157,628 @@ static void TestDatev() {
     std::remove(juni.datei.c_str());
 }
 
+
+// ===== DATEV-IMPORT =====
+//
+// The importer has one structural advantage over the exporter and it is worth
+// stating: **a real DATEV file names its own columns**, so reading it does not
+// depend on the reconstructed column order at all. What is tested here is
+// therefore the reading itself - the year inference behind TTMM, the unsigned
+// Umsatz, the BU-Schlüssel mapping in both its outcomes - and the two things
+// that protect the ledger: no partial import, and no accidental second one.
+
+static void SchreibeDatei(const std::string& pfad, const std::string& inhalt) {
+    std::FILE* f = std::fopen(pfad.c_str(), "wb");
+    std::fwrite(inhalt.data(), 1, inhalt.size(), f);
+    std::fclose(f);
+}
+
+// The fixtures are written the way a DATEV file really arrives: CP1252, not
+// UTF-8. Reading them back through the importer is therefore also a test of
+// the encoding, which is the one mistake that corrupts a whole file silently.
+static std::string Cp1252(const std::string& utf8) {
+    bool verlust = false;
+    return NachCp1252(utf8, verlust);
+}
+
+static void TestDatevImport() {
+    std::printf("DATEV-Import\n");
+
+    Mandant mandant;
+    mandant.id              = 1;
+    mandant.name            = "Beispiel GmbH";
+    mandant.waehrung        = "EUR";
+    mandant.mandantennummer = "456";
+    Geschaeftsjahr jahr;
+    jahr.beginn      = Date(2026, 4, 1);
+    jahr.ende        = Date(2027, 3, 31);
+    jahr.bezeichnung = "2026/2027";
+
+    // A minimal but real-shaped file: the two preamble lines, a column line
+    // naming only the columns that matter, and rows. The importer finds the
+    // values by those names, which is the whole point.
+    const std::string kopf =
+        "\"EXTF\";700;21;\"Buchungsstapel\";13;20260701120000000;;\"SV\";\"kanzlei\";;"
+        "1001;456;20260401;4;20260601;20260630;\"Juni 2026\";\"\";1;;;;;;\"EUR\";0\r\n";
+    const std::string spalten =
+        "\"Umsatz (ohne Soll/Haben-Kz)\";\"Soll/Haben-Kennzeichen\";\"WKZ Umsatz\";"
+        "\"Konto\";\"Gegenkonto (ohne BU-Schlüssel)\";\"BU-Schlüssel\";\"Belegdatum\";"
+        "\"Belegfeld 1\";\"Buchungstext\";\"Festschreibung\"\r\n";
+
+    const std::string gut =
+        kopf + spalten +
+        "1190,00;\"S\";\"EUR\";10000;8400;\"\";1506;\"R-1\";\"Beratung; Müller\";0\r\n"
+        "500,00;\"S\";\"EUR\";1200;10000;\"\";2006;\"R-1\";\"Zahlung\";0\r\n";
+
+    const std::string pfad = "import-gut.csv";
+    SchreibeDatei(pfad, Cp1252(gut));
+
+    std::vector<Steuerschluessel> keine;
+    DatevImportBericht bericht = LeseBuchungsstapel(pfad, mandant, jahr, keine);
+    Check(bericht.ok, "a well-formed Buchungsstapel reads");
+    CheckText(bericht.kennzeichen, "EXTF", "the header is EXTF");
+    CheckInt(bericht.kategorie, 21, "category 21");
+    CheckText(bericht.beraternummer, "1001", "the Beraternummer is read");
+    CheckText(bericht.mandantennummer, "456", "and the Mandantennummer");
+    Check(bericht.wjBeginn == Date(2026, 4, 1),
+          "the Wirtschaftsjahr start is read - a 1 April year, not a January default");
+    Check(bericht.von == Date(2026, 6, 1) && bericht.bis == Date(2026, 6, 30),
+          "and the period");
+    CheckInt(bericht.gelesen, 2, "two data lines");
+    CheckInt(bericht.uebernommen, 2, "both usable");
+    CheckInt(bericht.uebersprungen, 0, "none skipped");
+    Check(!bericht.dateiHash.empty(), "the file is fingerprinted for the duplicate check");
+
+    if (bericht.zeilen.size() == 2) {
+        const Buchung& erste = bericht.zeilen[0].buchung;
+        // TTMM carries no year; it comes from the header's period.
+        Check(erste.belegdatum == Date(2026, 6, 15),
+              "1506 became 15 June 2026 - the year came from the file's period");
+        CheckInt(erste.umsatz.Minor(), 119000, "the amount is read as 1.190,00");
+        Check(erste.sollHaben == SollHaben::Soll, "with S on the Konto");
+        CheckText(erste.konto, "10000", "Konto");
+        CheckText(erste.gegenkonto, "8400", "Gegenkonto");
+        CheckText(erste.buchungstext, "Beratung; Müller",
+                  "a Buchungstext containing the separator survives the quoting, "
+                  "and the umlaut survives CP1252");
+        Check(erste.steuerSeite == SteuerSeite::Keine,
+              "with no tax split, because the row carries no BU-Schlüssel");
+        CheckInt(erste.netto.Minor(), 119000, "so the whole amount is the net side");
+    }
+    CheckInt(bericht.mitSteuer, 0, "no posting got a tax split");
+    bool warntUeberSteuer = false;
+    for (const std::string& w : bericht.warnungen)
+        if (w.find("Steueraufteilung") != std::string::npos) warntUeberSteuer = true;
+    Check(warntUeberSteuer,
+          "and that is said out loud - otherwise a gross revenue account after an "
+          "import is a mystery");
+
+    // --- the BU-Schlüssel mapping, when it exists ---
+    std::vector<Steuerschluessel> mitMapping;
+    {
+        Steuerschluessel key;
+        key.schluessel   = "USt19";
+        key.satzPromille = 190;
+        key.datevBu      = "3";
+        key.kontoSteuer  = "1776";
+        key.gueltigVon   = Date(2026, 1, 1);
+        mitMapping.push_back(key);
+    }
+    const std::string mitBu =
+        kopf + spalten +
+        "1190,00;\"S\";\"EUR\";10000;8400;\"3\";1506;\"R-1\";\"Beratung\";0\r\n";
+    SchreibeDatei("import-bu.csv", Cp1252(mitBu));
+    const DatevImportBericht mitBericht =
+        LeseBuchungsstapel("import-bu.csv", mandant, jahr, mitMapping);
+    Check(mitBericht.ok, "a row with a mappable BU-Schlüssel reads");
+    CheckInt(mitBericht.mitSteuer, 1, "and gets a tax split");
+    if (!mitBericht.zeilen.empty()) {
+        const Buchung& b = mitBericht.zeilen[0].buchung;
+        CheckText(b.steuerschluessel, "USt19", "mapped back to our own key");
+        CheckInt(b.steuer.Minor(), 19000,
+                 "19 % out of 1.190,00 gross is 190,00 - the same split the "
+                 "posting path does");
+        CheckInt(b.netto.Minor(), 100000, "leaving 1.000,00 net");
+        CheckText(b.steuerkonto, "1776", "on the key's tax account");
+        CheckText(b.buSchluessel, "3", "and the DATEV key is kept verbatim");
+    }
+
+    // An unmappable BU key is imported unsplit, with a warning, rather than
+    // guessed at.
+    const std::string fremdBu =
+        kopf + spalten +
+        "1190,00;\"S\";\"EUR\";10000;8400;\"9\";1506;\"R-1\";\"Beratung\";0\r\n";
+    SchreibeDatei("import-fremdbu.csv", Cp1252(fremdBu));
+    const DatevImportBericht fremdBericht =
+        LeseBuchungsstapel("import-fremdbu.csv", mandant, jahr, mitMapping);
+    Check(fremdBericht.ok, "an unknown BU-Schlüssel does not stop the import");
+    CheckInt(fremdBericht.mitSteuer, 0, "but produces no invented tax split");
+    if (!fremdBericht.zeilen.empty())
+        CheckText(fremdBericht.zeilen[0].buchung.buSchluessel, "9",
+                  "and the key is kept so the mapping can be added later");
+    bool nenntBu = false, nenntDenSchluessel = false;
+    for (const std::string& w : fremdBericht.warnungen) {
+        if (w.find("datev_bu") != std::string::npos) nenntBu = true;
+        // Counting unmapped keys is not enough: the row to fill in is the one
+        // for *this* key, and finding it otherwise means reading the file.
+        if (w.find("datev_bu") != std::string::npos &&
+            w.find(": 9.") != std::string::npos) nenntDenSchluessel = true;
+    }
+    Check(nenntBu, "the warning names where the mapping belongs");
+    Check(nenntDenSchluessel, "and which key it belongs for");
+
+    // --- the unsigned rule ---
+    // DATEV's Umsatz is never signed. A file from elsewhere that carries one
+    // must not double up with the Soll/Haben flag.
+    const std::string negativ =
+        kopf + spalten +
+        "-1190,00;\"H\";\"EUR\";10000;8400;\"\";1506;\"R-1\";\"Negativ\";0\r\n";
+    SchreibeDatei("import-negativ.csv", Cp1252(negativ));
+    const DatevImportBericht negBericht =
+        LeseBuchungsstapel("import-negativ.csv", mandant, jahr, keine);
+    if (negBericht.ok && !negBericht.zeilen.empty()) {
+        CheckInt(negBericht.zeilen[0].buchung.umsatz.Minor(), 119000,
+                 "a signed amount is taken as its magnitude");
+        Check(negBericht.zeilen[0].buchung.sollHaben == SollHaben::Haben,
+              "and the direction stays the one the S/H column gives");
+    }
+
+    // --- rows that cannot be read are named, not silently dropped ---
+    const std::string kaputt =
+        kopf + spalten +
+        "1190,00;\"S\";\"EUR\";10000;8400;\"\";1506;\"R-1\";\"Gut\";0\r\n"
+        "keinbetrag;\"S\";\"EUR\";10000;8400;\"\";1606;\"R-2\";\"Kaputt\";0\r\n"
+        "500,00;\"X\";\"EUR\";1200;10000;\"\";1706;\"R-3\";\"Falsches SH\";0\r\n"
+        "500,00;\"S\";\"EUR\";1200;1200;\"\";1806;\"R-4\";\"Gleiches Konto\";0\r\n"
+        "500,00;\"S\";\"EUR\";1200;10000;\"\";3112;\"R-5\";\"Falscher Monat\";0\r\n";
+    SchreibeDatei("import-kaputt.csv", Cp1252(kaputt));
+    const DatevImportBericht kaputtBericht =
+        LeseBuchungsstapel("import-kaputt.csv", mandant, jahr, keine);
+    CheckInt(kaputtBericht.gelesen, 5, "five data lines seen");
+    CheckInt(kaputtBericht.uebernommen, 1, "one usable");
+    CheckInt(kaputtBericht.uebersprungen, 4, "four skipped");
+    CheckInt(static_cast<int64_t>(kaputtBericht.fehlerZeilen.size()), 4,
+             "each skipped line is reported");
+    bool nenntZeile = false;
+    for (const std::string& z : kaputtBericht.fehlerZeilen)
+        if (z.find("Zeile 4") != std::string::npos) nenntZeile = true;
+    Check(nenntZeile, "by its line number, so it can be looked at");
+
+    // --- files that are not what they claim ---
+    SchreibeDatei("import-fremd.csv", "\"IRGENDWAS\";1\r\n\"a\";\"b\"\r\n");
+    Check(!LeseBuchungsstapel("import-fremd.csv", mandant, jahr, keine).ok,
+          "a file that is not DATEV is refused");
+    SchreibeDatei("import-kategorie.csv",
+                  "\"EXTF\";700;16;\"Debitoren\";5;;;;;;1001;456;20260401;4;"
+                  "20260601;20260630;\"x\"\r\n\"Konto\"\r\n");
+    const DatevImportBericht falscheKat =
+        LeseBuchungsstapel("import-kategorie.csv", mandant, jahr, keine);
+    Check(!falscheKat.ok, "category 16 is refused - only 21 can be read");
+    Check(falscheKat.fehler.find("21") != std::string::npos,
+          "and the refusal says which category is supported");
+    Check(!LeseBuchungsstapel("gibtesnicht.csv", mandant, jahr, keine).ok,
+          "a missing file is reported rather than crashing");
+
+    // A file belonging to another Mandant is a warning, not a silent merge:
+    // mixing two companies' books cannot be undone by deleting rows.
+    Mandant anderer = mandant;
+    anderer.mandantennummer = "999";
+    const DatevImportBericht fremderMandant =
+        LeseBuchungsstapel(pfad, anderer, jahr, keine);
+    bool warntMandant = false;
+    for (const std::string& w : fremderMandant.warnungen)
+        if (w.find("Mandant") != std::string::npos) warntMandant = true;
+    Check(warntMandant, "a file from a different Mandant is flagged");
+
+    // --- accounts the file names and the chart does not have ---
+    // The Personenkonto is the interesting half: 10000 is five digits under a
+    // Sachkontenlaenge of four, so it belongs to a customer and is never in the
+    // chart. Reporting it would bury 8400, which is the one worth looking at.
+    {
+        std::vector<Konto> chart;
+        Konto bank;
+        bank.nummer = "1200";
+        bank.bezeichnung = "Bank";
+        chart.push_back(bank);
+        const std::vector<std::string> fehlend = UnbekannteSachkonten(bericht, chart);
+        CheckInt(static_cast<int64_t>(fehlend.size()), 1,
+                 "one account in the file is missing from the chart");
+        if (!fehlend.empty())
+            CheckText(fehlend[0], "8400", "the Sachkonto, named so it can be added");
+        bool nenntPersonenkonto = false;
+        for (const std::string& k : fehlend) if (k == "10000") nenntPersonenkonto = true;
+        Check(!nenntPersonenkonto,
+              "and not the Personenkonto, which belongs to a customer and is "
+              "never in the chart");
+    }
+
+    std::remove(pfad.c_str());
+    std::remove("import-bu.csv");
+    std::remove("import-fremdbu.csv");
+    std::remove("import-negativ.csv");
+    std::remove("import-kaputt.csv");
+    std::remove("import-fremd.csv");
+    std::remove("import-kategorie.csv");
+}
+
+// ===== THE IMPORT AS IT REACHES THE LEDGER =====
+//
+// Reading a file correctly is half of it. The other half is what the store
+// does with the result, and it is the half that can cost money: a stack
+// imported twice doubles a month and the only evidence is a balance wrong by
+// exactly one stack, while a stack that stops halfway leaves a ledger that
+// does not balance and no record of where it stopped. Both are checked here
+// against a real database rather than argued about in a comment.
+static void TestDatevImportInDenBestand() {
+    std::printf("DATEV-Import in den Bestand\n");
+
+    Store store;
+    if (!CheckStore(store.Open("fibu-import", ":memory:"),
+                    "a database for the import tests opens")) {
+        std::printf("    skipping the import-into-store tests\n");
+        return;
+    }
+
+    Akteur setup;
+    Benutzer admin;
+    admin.anmeldename = "chef";
+    CheckStore(store.SaveBenutzer(admin, setup), "an administrator exists");
+    Akteur akteur;
+    akteur.benutzerId  = admin.id;
+    akteur.anmeldename = admin.anmeldename;
+    akteur.rolle       = admin.rolle;
+
+    Mandant mandant;
+    mandant.name            = "Beispiel GmbH";
+    mandant.mandantennummer = "456";
+    CheckStore(store.SaveMandant(mandant, akteur), "a company exists");
+
+    Geschaeftsjahr jahr;
+    jahr.mandantId   = mandant.id;
+    jahr.beginn      = Date(2026, 4, 1);
+    jahr.ende        = Date(2027, 3, 31);
+    jahr.bezeichnung = jahr.DefaultBezeichnung();
+    CheckStore(store.SaveGeschaeftsjahr(jahr, akteur),
+               "with the 1 April fiscal year the import has to land in");
+
+    std::vector<Konto> konten;
+    auto konto = [&](const std::string& nummer, const std::string& text, KontoTyp typ) {
+        Konto k;
+        k.mandantId   = mandant.id;
+        k.nummer      = nummer;
+        k.bezeichnung = text;
+        k.typ         = typ;
+        konten.push_back(k);
+    };
+    konto("1200", "Bank", KontoTyp::Aktiv);
+    konto("1776", "Umsatzsteuer 19 %", KontoTyp::Passiv);
+    konto("8400", "Erloese 19 % USt", KontoTyp::Ertrag);
+    konto("10000", "Kunde", KontoTyp::Aktiv);
+    int geschrieben = 0;
+    CheckStore(store.ImportKonten(mandant.id, konten, akteur, geschrieben),
+               "the accounts the stack posts to exist");
+
+    std::vector<Steuerschluessel> keys;
+    Steuerschluessel ust19;
+    ust19.mandantId    = mandant.id;
+    ust19.schluessel   = "USt19";
+    ust19.bezeichnung  = "Umsatzsteuer 19 %";
+    ust19.satzPromille = 190;
+    ust19.datevBu      = "3";
+    ust19.kontoSteuer  = "1776";
+    ust19.gueltigVon   = Date(2026, 1, 1);
+    keys.push_back(ust19);
+    CheckStore(store.ImportSteuerschluessel(mandant.id, keys, akteur, geschrieben),
+               "and the tax key the BU-Schluessel maps to");
+
+    Mandant gespeichert;
+    Check(store.LoadMandant(mandant.id, gespeichert), "the company reads back");
+
+    const std::string kopf =
+        "\"EXTF\";700;21;\"Buchungsstapel\";13;20260701120000000;;\"SV\";\"kanzlei\";;"
+        "1001;456;20260401;4;20260601;20260630;\"Juni 2026\";\"\";1;;;;;;\"EUR\";0\r\n";
+    const std::string spalten =
+        "\"Umsatz (ohne Soll/Haben-Kz)\";\"Soll/Haben-Kennzeichen\";\"WKZ Umsatz\";"
+        "\"Konto\";\"Gegenkonto (ohne BU-Schlüssel)\";\"BU-Schlüssel\";\"Belegdatum\";"
+        "\"Belegfeld 1\";\"Buchungstext\";\"Festschreibung\"\r\n";
+
+    // One invoice with its VAT and one payment against it - the smallest stack
+    // that still has to balance once the automatic tax posting is expanded.
+    const std::string stapel =
+        kopf + spalten +
+        "1190,00;\"S\";\"EUR\";10000;8400;\"3\";1506;\"R-1\";\"Beratung\";0\r\n"
+        "500,00;\"S\";\"EUR\";1200;10000;\"\";2006;\"R-1\";\"Zahlung\";0\r\n";
+    SchreibeDatei("stapel-juni.csv", Cp1252(stapel));
+
+    const DatevImportBericht bericht =
+        LeseBuchungsstapel("stapel-juni.csv", gespeichert, jahr, keys);
+    Check(bericht.ok, "the stack reads");
+    CheckInt(bericht.uebernommen, 2, "with both postings");
+    CheckInt(bericht.mitSteuer, 1, "one of which carries the tax split");
+
+    int uebernommen = 0;
+    CheckStore(store.ImportiereDatevStapel(bericht, "stapel-juni.csv", akteur, false,
+                                           uebernommen),
+               "and it imports");
+    CheckInt(uebernommen, 2, "writing both postings");
+    CheckInt(static_cast<int64_t>(store.Journal(mandant.id).size()), 2,
+             "which is what the journal now holds");
+
+    // The point of the tax split is that the ledger balances only if it
+    // happened: 1.190,00 gross has to arrive as 1.000,00 revenue plus 190,00
+    // VAT, not as 1.190,00 of revenue.
+    Check(store.Buchungskreisdifferenz(mandant.id).IsZero(),
+          "the imported ledger balances - Soll equals Haben");
+    auto saldo = [&](const std::string& nummer) -> Store::KontoSaldo {
+        for (const Store::KontoSaldo& s : store.SummenUndSalden(mandant.id))
+            if (s.konto == nummer) return s;
+        return Store::KontoSaldo();
+    };
+    CheckInt(saldo("8400").haben.Minor(), 100000,
+             "the revenue account carries the net 1.000,00, not the gross");
+    CheckInt(saldo("1776").haben.Minor(), 19000, "and the VAT account the 190,00");
+    CheckInt(saldo("10000").soll.Minor(), 119000, "the customer owes 1.190,00");
+    CheckInt(saldo("10000").haben.Minor(), 50000, "and has paid 500,00");
+    CheckInt(saldo("1200").soll.Minor(), 50000, "which is on the bank");
+
+    // Imported rows are ordinary postings: they join the chain, so the same
+    // check that catches an edited row catches an edited imported one.
+    Check(store.PruefeHashKette(mandant.id).ok,
+          "the hash chain is intact across the import");
+
+    // --- the second import ---
+    const std::vector<Store::DatevImportEintrag> importe = store.DatevImporte(mandant.id);
+    CheckInt(static_cast<int64_t>(importe.size()), 1, "the import is recorded");
+    if (!importe.empty()) {
+        CheckText(importe[0].dateiname, "stapel-juni.csv", "with the file it came from");
+        CheckInt(importe[0].zeilen, 2, "and how many postings it brought");
+    }
+    Store::DatevImportEintrag frueher;
+    Check(store.DatevDateiSchonImportiert(mandant.id, bericht.dateiHash, frueher),
+          "the file is recognised by its hash");
+
+    int nochmalGeschrieben = 0;
+    const StoreResult zweiter = store.ImportiereDatevStapel(
+        bericht, "stapel-juni-kopie.csv", akteur, false, nochmalGeschrieben);
+    CheckRefused(zweiter,
+                 "importing the same file again is refused - a doubled month is "
+                 "invisible in the ledger and shows up only as a wrong balance");
+    Check(zweiter.fehler.find("bereits importiert") != std::string::npos,
+          "and the refusal says why");
+    CheckInt(nochmalGeschrieben, 0, "nothing was written");
+    CheckInt(static_cast<int64_t>(store.Journal(mandant.id).size()), 2,
+             "the journal is unchanged");
+
+    // The override exists for the one case that is real: a first import that
+    // was reversed and has to be redone.
+    CheckStore(store.ImportiereDatevStapel(bericht, "stapel-juni.csv", akteur, true,
+                                           nochmalGeschrieben),
+               "--nochmal overrides the duplicate check, because a reversed import "
+               "has to be repeatable");
+    CheckInt(nochmalGeschrieben, 2, "and then it does write");
+    CheckInt(static_cast<int64_t>(store.Journal(mandant.id).size()), 4,
+             "doubling the month, which is exactly why it is not the default");
+
+    // --- all or nothing ---
+    // A second company, so the freeze below does not have to fight the rows
+    // already imported above.
+    Store zweiteStore;
+    if (CheckStore(zweiteStore.Open("fibu-import2", ":memory:"),
+                   "a second database for the all-or-nothing test opens")) {
+        Akteur setup2;
+        Benutzer admin2;
+        admin2.anmeldename = "chef";
+        zweiteStore.SaveBenutzer(admin2, setup2);
+        Akteur akteur2;
+        akteur2.benutzerId  = admin2.id;
+        akteur2.anmeldename = admin2.anmeldename;
+        akteur2.rolle       = admin2.rolle;
+
+        Mandant m2;
+        m2.name            = "Beispiel GmbH";
+        m2.mandantennummer = "456";
+        zweiteStore.SaveMandant(m2, akteur2);
+        Geschaeftsjahr j2;
+        j2.mandantId   = m2.id;
+        j2.beginn      = Date(2026, 4, 1);
+        j2.ende        = Date(2027, 3, 31);
+        j2.bezeichnung = j2.DefaultBezeichnung();
+        zweiteStore.SaveGeschaeftsjahr(j2, akteur2);
+        int g2 = 0;
+        for (Konto& k : konten) { k.id = 0; k.mandantId = m2.id; }
+        zweiteStore.ImportKonten(m2.id, konten, akteur2, g2);
+        for (Steuerschluessel& k : keys) { k.id = 0; k.mandantId = m2.id; }
+        zweiteStore.ImportSteuerschluessel(m2.id, keys, akteur2, g2);
+
+        CheckStore(zweiteStore.Festschreiben(j2.id, Date(2026, 6, 10), akteur2),
+                   "everything up to 10 June is frozen");
+        Geschaeftsjahr j2neu;
+        Check(zweiteStore.GeschaeftsjahrById(j2.id, j2neu) &&
+              j2neu.IsFrozen(Date(2026, 6, 5)),
+              "so a 5 June date is closed to new postings");
+
+        Mandant m2gespeichert;
+        zweiteStore.LoadMandant(m2.id, m2gespeichert);
+
+        // The good row comes first on purpose. An importer that wrote as it
+        // went would have committed it before reaching the frozen one, and the
+        // ledger would end up with half a stack and a failure message.
+        const std::string halb =
+            kopf + spalten +
+            "1190,00;\"S\";\"EUR\";10000;8400;\"3\";1506;\"R-1\";\"Nach der Sperre\";0\r\n"
+            "238,00;\"S\";\"EUR\";10000;8400;\"3\";0506;\"R-2\";\"Vor der Sperre\";0\r\n";
+        SchreibeDatei("stapel-halb.csv", Cp1252(halb));
+        const DatevImportBericht halbBericht =
+            LeseBuchungsstapel("stapel-halb.csv", m2gespeichert, j2neu, keys);
+        Check(halbBericht.ok && halbBericht.uebernommen == 2,
+              "both rows read out of the file");
+
+        int halbGeschrieben = 0;
+        const StoreResult verweigert = zweiteStore.ImportiereDatevStapel(
+            halbBericht, "stapel-halb.csv", akteur2, false, halbGeschrieben);
+        CheckRefused(verweigert, "a posting inside the frozen period stops the import");
+        Check(verweigert.fehler.find("nichts importiert") != std::string::npos,
+              "and the message says that nothing at all was written");
+        CheckInt(halbGeschrieben, 0, "which is true of the counter");
+        CheckInt(static_cast<int64_t>(zweiteStore.Journal(m2.id).size()), 0,
+                 "and true of the journal - the good row was not written either, "
+                 "because half a stack is worse than none");
+        CheckInt(static_cast<int64_t>(zweiteStore.DatevImporte(m2.id).size()), 0,
+                 "and no import was recorded, so the file can be re-offered once "
+                 "the freeze date is right");
+        std::remove("stapel-halb.csv");
+    }
+
+    std::remove("stapel-juni.csv");
+}
+
+// ===== EXPORT AND BACK =====
+//
+// The design proposal calls this the one test that catches a sign mistake, a
+// Soll/Haben mistake, a comma-decimal mistake and a TTMM mistake at once, and
+// it is right: each of those produces a file that looks entirely plausible and
+// a ledger that is wrong. Writing a stack and reading it back compares the
+// only thing that matters - the postings - instead of comparing text with an
+// expectation that was written by the same understanding that wrote the code.
+static void TestDatevRundlauf() {
+    std::printf("DATEV-Rundlauf (Export und zurück)\n");
+
+    DatevDefinition definition;
+    std::string fehler;
+    const std::string defPfad = DatevDefinitionPfad("DATEV-Buchungsstapel-v700.csv");
+    if (defPfad.empty() || !definition.Laden(defPfad, fehler)) {
+        std::printf("    note: column definition not available, skipping\n");
+        return;
+    }
+
+    Mandant mandant;
+    mandant.id              = 1;
+    mandant.name            = "Beispiel GmbH";
+    mandant.waehrung        = "EUR";
+    mandant.beraternummer   = "1001";
+    mandant.mandantennummer = "456";
+    Geschaeftsjahr jahr;
+    jahr.beginn           = Date(2026, 4, 1);
+    jahr.ende             = Date(2027, 3, 31);
+    jahr.bezeichnung      = "2026/2027";
+    jahr.sachkontenlaenge = 4;
+
+    // The mapping has to exist in both directions for a tax split to survive a
+    // round trip. That it is still empty in the shipped file is exactly what
+    // makes a real round trip lossy today, and the test says so by supplying
+    // the mapping itself rather than pretending the file has one.
+    std::vector<Steuerschluessel> keys;
+    Steuerschluessel ust19;
+    ust19.schluessel   = "USt19";
+    ust19.satzPromille = 190;
+    ust19.datevBu      = "3";
+    ust19.kontoSteuer  = "1776";
+    ust19.gueltigVon   = Date(2026, 1, 1);
+    keys.push_back(ust19);
+
+    std::vector<Buchung> original;
+    auto buchung = [&](const Date& datum, const std::string& konto,
+                       const std::string& gegenkonto, int64_t minor, SollHaben sh,
+                       const std::string& text, const std::string& bu) {
+        Buchung b;
+        b.mandantId    = 1;
+        b.belegdatum   = datum;
+        b.konto        = konto;
+        b.gegenkonto   = gegenkonto;
+        b.umsatz       = Money::FromMinor(minor, "EUR");
+        b.sollHaben    = sh;
+        b.buchungstext = text;
+        b.belegfeld1   = "R-1";
+        b.waehrung     = "EUR";
+        b.buSchluessel = bu;
+        if (!bu.empty()) {
+            b.steuerschluessel = "USt19";
+            b.satzPromille     = 190;
+            b.steuerSeite      = SteuerSeite::Gegenkonto;
+            b.steuer           = b.umsatz.TaxInGross(190);
+            b.netto            = b.umsatz - b.steuer;
+            b.steuerkonto      = "1776";
+        } else {
+            b.netto = b.umsatz;
+            b.steuer = Money::Zero("EUR");
+        }
+        original.push_back(b);
+    };
+    // Deliberately chosen: an amount over a thousand (a thousands separator in
+    // the file would make it unreadable), a Haben row as well as a Soll row so
+    // a swapped flag cannot pass, the first and the last day of the month so a
+    // TTMM slip lands outside the period, and an umlaut plus the separator
+    // itself inside a Buchungstext.
+    buchung(Date(2026, 6, 1),  "10000", "8400", 119000, SollHaben::Soll,
+            "Beratung Müller & Söhne", "3");
+    buchung(Date(2026, 6, 15), "1200",  "10000", 50000, SollHaben::Soll,
+            "Zahlung; Teilbetrag", "");
+    buchung(Date(2026, 6, 30), "8400",  "10000",  4280, SollHaben::Haben,
+            "Gutschrift Straße 1", "");
+
+    const DatevErgebnis exportiert = SchreibeBuchungsstapel(
+        mandant, jahr, original, definition, 2026, 6, ".", "test");
+    Check(exportiert.ok, "June exports");
+    if (!exportiert.ok) {
+        std::printf("    %s\n", exportiert.fehler.c_str());
+        return;
+    }
+    CheckInt(exportiert.zeilen, 3, "with all three postings");
+
+    const DatevImportBericht zurueck =
+        LeseBuchungsstapel(exportiert.datei, mandant, jahr, keys);
+    Check(zurueck.ok, "and reads back in");
+    CheckInt(zurueck.gelesen, 3, "three data lines");
+    CheckInt(zurueck.uebernommen, 3, "all three usable");
+    CheckInt(zurueck.uebersprungen, 0, "none lost");
+    CheckInt(static_cast<int64_t>(zurueck.fehlerZeilen.size()), 0,
+             "and nothing unreadable");
+    CheckInt(zurueck.mitSteuer, 1,
+             "the one row with a BU-Schlüssel gets its split back");
+
+    if (zurueck.zeilen.size() == original.size()) {
+        for (size_t i = 0; i < original.size(); ++i) {
+            const Buchung& hin  = original[i];
+            const Buchung& rueck = zurueck.zeilen[i].buchung;
+            const std::string wo = " (Buchung " + std::to_string(i + 1) + ")";
+            Check(rueck.belegdatum == hin.belegdatum,
+                  "the Belegdatum survives TTMM and comes back with its year" + wo);
+            CheckInt(rueck.umsatz.Minor(), hin.umsatz.Minor(),
+                     "the amount comes back to the cent" + wo);
+            Check(rueck.umsatz.Minor() > 0, "and unsigned, as the format wants" + wo);
+            Check(rueck.sollHaben == hin.sollHaben,
+                  "the Soll/Haben side is unchanged - a swap here reverses the "
+                  "posting and still balances" + wo);
+            CheckText(rueck.konto, hin.konto, "Konto" + wo);
+            CheckText(rueck.gegenkonto, hin.gegenkonto, "Gegenkonto" + wo);
+            CheckText(rueck.buchungstext, hin.buchungstext,
+                      "and the Buchungstext, separator, umlaut and all" + wo);
+            CheckText(rueck.belegfeld1, hin.belegfeld1, "Belegfeld 1" + wo);
+        }
+
+        // The split is not just present, it is the same one.
+        const Buchung& mitSteuer = zurueck.zeilen[0].buchung;
+        CheckText(mitSteuer.steuerschluessel, "USt19",
+                  "the BU-Schlüssel maps back to the key it came from");
+        CheckInt(mitSteuer.steuer.Minor(), original[0].steuer.Minor(),
+                 "with the same tax amount");
+        CheckInt(mitSteuer.netto.Minor(), original[0].netto.Minor(),
+                 "and the same net");
+        CheckText(mitSteuer.steuerkonto, "1776", "on the same tax account");
+    }
+
+    // The exported file is what a Kanzlei receives: no sign anywhere, and the
+    // amounts written with a comma. Both are checked in the export tests; here
+    // the point is that the reader agrees with the writer about them.
+    Check(zurueck.von == Date(2026, 6, 1) && zurueck.bis == Date(2026, 6, 30),
+          "the period the writer put in the header is the one the reader uses "
+          "to resolve TTMM");
+    Check(zurueck.wjBeginn == Date(2026, 4, 1),
+          "and the 1 April Wirtschaftsjahr survives the round trip");
+
+    std::remove(exportiert.datei.c_str());
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -2169,6 +2791,9 @@ int main() {
     TestBelegeUndBuchungen();
     TestRechnungPdf();
     TestDatev();
+    TestDatevImport();
+    TestDatevImportInDenBestand();
+    TestDatevRundlauf();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

@@ -86,6 +86,11 @@ ultrafibu datev-export buch.db --monat 2026-06 --ziel ./datev
 ultrafibu datev-export buch.db --konten --ziel ./datev
 ultrafibu datev-pruefen ./datev/EXTF_Buchungsstapel_202606.csv
 
+# DATEV import: looking is the default, writing is the second step
+ultrafibu datev-import  buch.db ./von-der-kanzlei/EXTF_Buchungsstapel_202606.csv
+ultrafibu datev-import  buch.db ./von-der-kanzlei/EXTF_Buchungsstapel_202606.csv --uebernehmen
+ultrafibu datev-importe buch.db
+
 ultrafibu festschreiben buch.db 30.06.2026 --ja
 ultrafibu pruefen buch.db                # the journal's hash chain
 ```
@@ -161,6 +166,23 @@ and the reason appears in the status line.
   `ultrafibu datev-pruefen <real file>` compares the definition against a real
   DATEV export and names the position of every difference — one command, not a
   rewrite.
+- **The importer does not depend on that guessed order at all.** A real DATEV
+  file names its own columns, and `LeseBuchungsstapel` reads the values by
+  those names. The uncertainty that hangs over the export does not reach the
+  import.
+- **An import is all of the stack or none of it.** The fiscal year, the
+  year-end and the Festschreibung are checked for every row before any row is
+  written, because half an imported stack is worse than none and leaves no
+  record of where it stopped. The same file cannot be imported twice by
+  accident either — it is recognised by its SHA-256, and a doubled month shows
+  up only as a balance that is wrong by exactly one stack.
+- **A BU-Schlüssel we cannot map produces no tax split**, rather than an
+  invented one in a tax account. The amount comes in whole, the DATEV key is
+  kept verbatim, and the warning names the keys concerned so the `datev_bu`
+  column in `data/Steuerschluessel.csv` can be filled in and the file read
+  again. When *no* posting got a split, the import says so outright — otherwise
+  a gross amount on a revenue account is a mystery that takes a long time to
+  solve.
 - **A Buchungsstapel is always one calendar month.** The Belegdatum field is
   `TTMM` with no year; DATEV infers it from the Wirtschaftsjahr. A month not
   wholly inside the fiscal year is refused rather than mis-booked, which for a

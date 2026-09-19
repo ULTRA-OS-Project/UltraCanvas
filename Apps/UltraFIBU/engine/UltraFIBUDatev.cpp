@@ -7,6 +7,9 @@
 
 #include "UltraFIBUKontenrahmen.h"
 
+#include <UltraCrypt/UltraCryptCore.h>
+
+#include <algorithm>
 #include <cstdio>
 #include <ctime>
 
@@ -595,6 +598,393 @@ DatevErgebnis SchreibeKontenbeschriftungen(const Mandant& mandant,
             "Einzelne Zeichen lassen sich nicht in CP1252 darstellen und wurden "
             "durch \"?\" ersetzt.");
     return ergebnis;
+}
+
+
+// ===== IMPORT =====
+
+namespace {
+
+// A DATEV amount: comma decimal, no grouping, and never signed - but a file
+// from somewhere else may carry a sign anyway, so it is read and the magnitude
+// kept, with the direction left to the Soll/Haben column where it belongs.
+bool LiesBetrag(const std::string& text, const std::string& waehrung, Money& out) {
+    if (text.empty()) return false;
+    return Money::TryParse(text, out, waehrung, UltraCanvas::MoneyStyle::Datev);
+}
+
+// TTMM plus the year the file's period implies. A stack may span a
+// Wirtschaftsjahr, so both candidate years are tried and the one that lands
+// inside the period wins; a date that fits neither is reported rather than
+// guessed, because guessing puts a posting in the wrong year.
+bool LiesBelegdatum(const std::string& ttmm, const Date& von, const Date& bis,
+                    Date& out) {
+    if (ttmm.size() != 3 && ttmm.size() != 4) return false;
+    std::string gepolstert = ttmm;
+    while (gepolstert.size() < 4) gepolstert.insert(gepolstert.begin(), '0');
+    for (char c : gepolstert) if (c < '0' || c > '9') return false;
+
+    const int tag   = (gepolstert[0] - '0') * 10 + (gepolstert[1] - '0');
+    const int monat = (gepolstert[2] - '0') * 10 + (gepolstert[3] - '0');
+    if (monat < 1 || monat > 12 || tag < 1) return false;
+
+    const int jahre[2] = { von.Valid() ? von.year : 0, bis.Valid() ? bis.year : 0 };
+    for (int jahr : jahre) {
+        if (jahr == 0) continue;
+        const Date kandidat(jahr, monat, tag);
+        if (!kandidat.Valid()) continue;
+        if (von.Valid() && kandidat < von) continue;
+        if (bis.Valid() && kandidat > bis) continue;
+        out = kandidat;
+        return true;
+    }
+    return false;
+}
+
+std::string Trimme(const std::string& text) {
+    size_t a = 0, b = text.size();
+    while (a < b && (text[a] == ' ' || text[a] == '\t')) ++a;
+    while (b > a && (text[b - 1] == ' ' || text[b - 1] == '\t')) --b;
+    return text.substr(a, b - a);
+}
+
+} // namespace
+
+DatevImportBericht LeseBuchungsstapel(
+        const std::string& dateipfad, const Mandant& mandant,
+        const Geschaeftsjahr& jahr,
+        const std::vector<Steuerschluessel>& steuerschluessel) {
+    DatevImportBericht bericht;
+
+    std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
+    if (datei == nullptr) {
+        bericht.fehler = "Die Datei \"" + dateipfad + "\" ist nicht lesbar.";
+        return bericht;
+    }
+    std::string roh;
+    char puffer[8192];
+    size_t gelesen = 0;
+    while ((gelesen = std::fread(puffer, 1, sizeof(puffer), datei)) > 0)
+        roh.append(puffer, gelesen);
+    std::fclose(datei);
+
+    if (roh.empty()) {
+        bericht.fehler = "Die Datei \"" + dateipfad + "\" ist leer.";
+        return bericht;
+    }
+
+    // The same stack imported twice would silently double a month, so the file
+    // is fingerprinted and the store refuses a repeat.
+    {
+        std::vector<uint8_t> digest;
+        if (UltraCrypt_Hash(UltraCryptHashAlgorithm::SHA256, roh.data(), roh.size(),
+                            digest))
+            bericht.dateiHash = UltraCrypt_ToHex(digest);
+    }
+
+    const std::string inhalt = VonCp1252(roh);
+
+    // Split into lines once; a Buchungsstapel is small enough that this is
+    // simpler than a streaming parser and the line numbers stay honest.
+    std::vector<std::string> zeilen;
+    size_t start = 0;
+    while (start <= inhalt.size()) {
+        size_t ende = inhalt.find('\n', start);
+        if (ende == std::string::npos) ende = inhalt.size();
+        std::string zeile = inhalt.substr(start, ende - start);
+        if (!zeile.empty() && zeile.back() == '\r') zeile.pop_back();
+        zeilen.push_back(zeile);
+        if (ende == inhalt.size()) break;
+        start = ende + 1;
+    }
+
+    if (zeilen.size() < 2) {
+        bericht.fehler = "Die Datei hat weniger als zwei Zeilen - eine DATEV-Datei "
+                         "besteht aus Kopfzeile, Spaltenzeile und Daten.";
+        return bericht;
+    }
+
+    // ---- the header ----
+    const std::vector<std::string> kopf = ZerlegeCsvZeile(zeilen[0]);
+    auto kopfFeld = [&](size_t index) -> std::string {
+        return index < kopf.size() ? Trimme(kopf[index]) : std::string();
+    };
+    bericht.kennzeichen    = kopfFeld(0);
+    bericht.versionsnummer = std::atoi(kopfFeld(1).c_str());
+    bericht.kategorie      = std::atoi(kopfFeld(2).c_str());
+    bericht.formatversion  = std::atoi(kopfFeld(4).c_str());
+    bericht.beraternummer  = kopfFeld(10);
+    bericht.mandantennummer = kopfFeld(11);
+    Date::TryParseIso(kopfFeld(12), bericht.wjBeginn);
+    bericht.sachkontenlaenge = std::atoi(kopfFeld(13).c_str());
+    Date::TryParseIso(kopfFeld(14), bericht.von);
+    Date::TryParseIso(kopfFeld(15), bericht.bis);
+    bericht.bezeichnung      = kopfFeld(16);
+    bericht.festgeschrieben  = kopfFeld(25) == "1";
+
+    if (bericht.kennzeichen != "EXTF" && bericht.kennzeichen != "DTVF") {
+        bericht.fehler = "Die Datei beginnt mit \"" + bericht.kennzeichen +
+                         "\" statt EXTF oder DTVF - das ist keine DATEV-Datei.";
+        return bericht;
+    }
+    if (bericht.kategorie != 21) {
+        bericht.fehler = "Die Datei ist Format-Kategorie " +
+                         Zahl(bericht.kategorie) +
+                         ", eingelesen werden kann nur 21 (Buchungsstapel).";
+        return bericht;
+    }
+    if (!bericht.von.Valid() || !bericht.bis.Valid()) {
+        bericht.fehler = "Der Kopfzeile fehlt der Zeitraum (Datum von/bis). Ohne "
+                         "ihn lässt sich das Jahr des Belegdatums nicht bestimmen, "
+                         "weil dort nur TTMM steht.";
+        return bericht;
+    }
+
+    // Mixing two companies' books is the one import mistake that cannot be
+    // undone by deleting rows, so a differing Mandantennummer is a warning
+    // the user has to read.
+    if (!mandant.mandantennummer.empty() && !bericht.mandantennummer.empty() &&
+        mandant.mandantennummer != bericht.mandantennummer) {
+        bericht.warnungen.push_back(
+            "Die Datei gehört zu Mandant " + bericht.mandantennummer +
+            ", diese Buchhaltung zu Mandant " + mandant.mandantennummer + ".");
+    }
+    if (bericht.wjBeginn.Valid() && jahr.beginn.Valid() &&
+        bericht.wjBeginn != jahr.beginn) {
+        bericht.warnungen.push_back(
+            "Das Wirtschaftsjahr der Datei beginnt am " +
+            FormatDateGerman(bericht.wjBeginn) + ", das Geschäftsjahr hier am " +
+            FormatDateGerman(jahr.beginn) + ".");
+    }
+
+    // ---- the column line ----
+    // This is what makes the importer independent of our own guessed column
+    // order: the file says where its values are.
+    const std::vector<std::string> spalten = ZerlegeCsvZeile(zeilen[1]);
+    auto spalteIndex = [&](const std::string& name) -> int {
+        for (size_t i = 0; i < spalten.size(); ++i)
+            if (Trimme(spalten[i]) == name) return static_cast<int>(i);
+        return -1;
+    };
+
+    const int iUmsatz     = spalteIndex("Umsatz (ohne Soll/Haben-Kz)");
+    const int iSollHaben  = spalteIndex("Soll/Haben-Kennzeichen");
+    const int iKonto      = spalteIndex("Konto");
+    const int iGegenkonto = spalteIndex("Gegenkonto (ohne BU-Schlüssel)");
+    if (iUmsatz < 0 || iSollHaben < 0 || iKonto < 0 || iGegenkonto < 0) {
+        bericht.fehler =
+            "In der Spaltenzeile fehlen Pflichtspalten (Umsatz, "
+            "Soll/Haben-Kennzeichen, Konto, Gegenkonto). Gefunden wurden " +
+            Zahl(static_cast<int64_t>(spalten.size())) + " Spalten.";
+        return bericht;
+    }
+    const int iWkz        = spalteIndex("WKZ Umsatz");
+    const int iBu         = spalteIndex("BU-Schlüssel");
+    const int iBelegdatum = spalteIndex("Belegdatum");
+    const int iBeleg1     = spalteIndex("Belegfeld 1");
+    const int iBeleg2     = spalteIndex("Belegfeld 2");
+    const int iText       = spalteIndex("Buchungstext");
+    const int iKost1      = spalteIndex("KOST1 - Kostenstelle");
+    const int iKost2      = spalteIndex("KOST2 - Kostenstelle");
+    const int iFest       = spalteIndex("Festschreibung");
+
+    if (iBelegdatum < 0)
+        bericht.warnungen.push_back(
+            "Die Datei hat keine Spalte \"Belegdatum\"; alle Buchungen werden auf "
+            "den Beginn des Zeitraums datiert.");
+
+    // ---- the rows ----
+    int ohneBuZuordnung = 0;
+    // Which DATEV keys could not be mapped. Counting them is not enough: the
+    // user has to fill in `datev_bu` for exactly these, and looking them up
+    // means reading the whole file otherwise.
+    std::vector<std::string> unbekannteBu;
+    for (size_t nr = 2; nr < zeilen.size(); ++nr) {
+        const std::string& zeile = zeilen[nr];
+        if (Trimme(zeile).empty()) continue;
+        ++bericht.gelesen;
+        const int zeilenNummer = static_cast<int>(nr) + 1;
+
+        const std::vector<std::string> felder = ZerlegeCsvZeile(zeile);
+        auto feld = [&](int index) -> std::string {
+            return (index >= 0 && index < static_cast<int>(felder.size()))
+                       ? Trimme(felder[static_cast<size_t>(index)]) : std::string();
+        };
+
+        const std::string waehrung =
+            feld(iWkz).empty() ? mandant.waehrung : feld(iWkz);
+
+        Money umsatz;
+        if (!LiesBetrag(feld(iUmsatz), waehrung, umsatz)) {
+            bericht.fehlerZeilen.push_back(
+                "Zeile " + Zahl(zeilenNummer) + ": \"" + feld(iUmsatz) +
+                "\" ist kein Betrag.");
+            ++bericht.uebersprungen;
+            continue;
+        }
+
+        SollHaben sollHaben = SollHaben::Soll;
+        if (!SollHabenFromText(feld(iSollHaben), sollHaben)) {
+            bericht.fehlerZeilen.push_back(
+                "Zeile " + Zahl(zeilenNummer) + ": \"" + feld(iSollHaben) +
+                "\" ist kein Soll-/Haben-Kennzeichen.");
+            ++bericht.uebersprungen;
+            continue;
+        }
+
+        const std::string konto      = feld(iKonto);
+        const std::string gegenkonto = feld(iGegenkonto);
+        if (konto.empty() || gegenkonto.empty() || konto == gegenkonto) {
+            bericht.fehlerZeilen.push_back(
+                "Zeile " + Zahl(zeilenNummer) + ": Konto \"" + konto +
+                "\" und Gegenkonto \"" + gegenkonto +
+                "\" müssen gesetzt und verschieden sein.");
+            ++bericht.uebersprungen;
+            continue;
+        }
+
+        Date belegdatum = bericht.von;
+        if (iBelegdatum >= 0 &&
+            !LiesBelegdatum(feld(iBelegdatum), bericht.von, bericht.bis, belegdatum)) {
+            bericht.fehlerZeilen.push_back(
+                "Zeile " + Zahl(zeilenNummer) + ": Belegdatum \"" +
+                feld(iBelegdatum) + "\" passt nicht in den Zeitraum " +
+                FormatDateGerman(bericht.von) + " - " +
+                FormatDateGerman(bericht.bis) + ".");
+            ++bericht.uebersprungen;
+            continue;
+        }
+
+        DatevImportZeile eintrag;
+        eintrag.zeileNr = zeilenNummer;
+        eintrag.buSchluessel = feld(iBu);
+
+        Buchung& b = eintrag.buchung;
+        b.mandantId  = mandant.id;
+        b.belegdatum = belegdatum;
+        // The magnitude only: DATEV's Umsatz is unsigned and the direction is
+        // the flag, so a sign that slipped into the file is dropped rather
+        // than doubled up with it.
+        b.umsatz     = Money::FromMinor(umsatz.Minor() < 0 ? -umsatz.Minor()
+                                                           : umsatz.Minor(), waehrung);
+        b.sollHaben  = sollHaben;
+        b.konto      = konto;
+        b.gegenkonto = gegenkonto;
+        b.buSchluessel     = eintrag.buSchluessel;
+        b.belegfeld1 = feld(iBeleg1);
+        b.belegfeld2 = feld(iBeleg2);
+        b.buchungstext = feld(iText);
+        b.kost1      = feld(iKost1);
+        b.kost2      = feld(iKost2);
+        b.waehrung   = waehrung;
+        b.festgeschrieben = false;   // set by Festschreiben(), never by an import
+
+        // Translate the BU-Schlüssel back into our own key where the mapping
+        // exists. Where it does not, the amount stays unsplit and the BU key is
+        // kept verbatim: inventing a tax split out of a key we cannot read
+        // would put invented figures in a tax account.
+        b.steuerSeite = SteuerSeite::Keine;
+        b.netto  = b.umsatz;
+        b.steuer = Money::Zero(waehrung);
+        if (!eintrag.buSchluessel.empty()) {
+            bool zugeordnet = false;
+            for (const Steuerschluessel& key : steuerschluessel) {
+                if (key.datevBu.empty() || key.datevBu != eintrag.buSchluessel) continue;
+                if (!key.GueltigAm(belegdatum)) continue;
+                b.steuerschluessel = key.schluessel;
+                b.satzPromille     = key.satzPromille;
+                if (key.satzPromille != 0 && !key.kontoSteuer.empty()) {
+                    // The row's Umsatz is gross under a tax key, so the split
+                    // is the same one the posting path does.
+                    b.steuerSeite = SteuerSeite::Gegenkonto;
+                    b.steuer      = b.umsatz.TaxInGross(key.satzPromille);
+                    b.netto       = b.umsatz - b.steuer;
+                    b.steuerkonto = key.kontoSteuer;
+                }
+                zugeordnet = true;
+                break;
+            }
+            if (!zugeordnet) {
+                ++ohneBuZuordnung;
+                if (std::find(unbekannteBu.begin(), unbekannteBu.end(),
+                              eintrag.buSchluessel) == unbekannteBu.end())
+                    unbekannteBu.push_back(eintrag.buSchluessel);
+            }
+        }
+
+        if (iFest >= 0 && feld(iFest) == "1")
+            eintrag.hinweis = "in der Datei als festgeschrieben gekennzeichnet";
+
+        if (b.steuerSeite != SteuerSeite::Keine) ++bericht.mitSteuer;
+        bericht.zeilen.push_back(std::move(eintrag));
+        ++bericht.uebernommen;
+    }
+
+    if (ohneBuZuordnung > 0) {
+        std::string liste;
+        for (const std::string& bu : unbekannteBu) {
+            if (!liste.empty()) liste += ", ";
+            liste += bu;
+        }
+        bericht.warnungen.push_back(
+            Zahl(ohneBuZuordnung) + " Buchung(en) tragen einen DATEV-BU-Schlüssel, "
+            "für den es in data/Steuerschluessel.csv (Spalte datev_bu) keine "
+            "Zuordnung gibt: " + liste +
+            ". Sie werden mit dem vollen Betrag und ohne Steueraufteilung "
+            "übernommen; der BU-Schlüssel bleibt erhalten, die Zuordnung kann "
+            "also nachgetragen und die Datei erneut eingelesen werden.");
+    }
+    if (bericht.uebernommen > 0 && bericht.mitSteuer == 0) {
+        // Every posting arrived without a tax split. On a stack that really is
+        // tax-free that is right; on one that is not, the revenue accounts now
+        // carry their gross amounts and the tax accounts are empty, and a user
+        // who does not know why would take a long time to find out.
+        bericht.warnungen.push_back(
+            "Keine einzige Buchung hat eine Steueraufteilung bekommen. Die "
+            "Beträge stehen damit brutto auf den Erlös- und Aufwandskonten und "
+            "die Steuerkonten bleiben leer. Ursache ist fast immer die noch "
+            "leere Spalte datev_bu in data/Steuerschluessel.csv.");
+    }
+    if (bericht.festgeschrieben) {
+        bericht.warnungen.push_back(
+            "Der Stapel ist in der Datei als festgeschrieben gekennzeichnet. "
+            "Die Buchungen werden hier trotzdem offen übernommen - "
+            "festgeschrieben wird mit \"ultrafibu festschreiben\", damit das "
+            "Datum hier und nicht in einer fremden Datei entsteht.");
+    }
+    if (!bericht.fehlerZeilen.empty()) {
+        bericht.warnungen.push_back(
+            Zahl(static_cast<int64_t>(bericht.fehlerZeilen.size())) +
+            " Zeile(n) konnten nicht gelesen werden und fehlen im Import.");
+    }
+
+    bericht.ok = bericht.uebernommen > 0;
+    if (!bericht.ok && bericht.fehler.empty())
+        bericht.fehler = "Die Datei enthält keine lesbare Buchung.";
+    return bericht;
+}
+
+std::vector<std::string> UnbekannteSachkonten(const DatevImportBericht& bericht,
+                                              const std::vector<Konto>& konten) {
+    std::vector<std::string> fehlend;
+    // 0 would make every account look like a Personenkonto and report nothing,
+    // which is the wrong way round for a missing header field.
+    const size_t laenge = bericht.sachkontenlaenge > 0
+                              ? static_cast<size_t>(bericht.sachkontenlaenge) : 4;
+
+    auto pruefe = [&](const std::string& konto) {
+        if (konto.empty() || konto.size() != laenge) return;   // Personenkonto
+        for (const Konto& k : konten) if (k.nummer == konto) return;
+        if (std::find(fehlend.begin(), fehlend.end(), konto) == fehlend.end())
+            fehlend.push_back(konto);
+    };
+    for (const DatevImportZeile& zeile : bericht.zeilen) {
+        pruefe(zeile.buchung.konto);
+        pruefe(zeile.buchung.gegenkonto);
+        pruefe(zeile.buchung.steuerkonto);
+    }
+    std::sort(fehlend.begin(), fehlend.end());
+    return fehlend;
 }
 
 // ===== CHECKING A REAL FILE =====
