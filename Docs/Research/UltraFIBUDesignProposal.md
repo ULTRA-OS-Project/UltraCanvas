@@ -200,7 +200,7 @@ emitter. Two things had to be established first and both held — the writer and
 headless, and one defect had to be fixed on the way: the escaper declared
 `/WinAnsiEncoding` but replaced every code point above U+00FF with `?`, so the
 **euro sign** — WinAnsi 0x80, outside Latin-1 — printed as a question mark
-(framework 0.8.98). Right alignment is computed from the base-14 advance widths
+(framework 0.8.99). Right alignment is computed from the base-14 advance widths
 rather than left to the writer's average-glyph approximation, since a money
 column cannot be approximate. The writer still emits **one page**, so an invoice
 with more positions than fit is refused rather than truncated; multi-page output

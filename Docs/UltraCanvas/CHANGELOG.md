@@ -1,4 +1,4 @@
-#### 2026-09-19 *0.8.98*
+#### 2026-09-19 *0.8.99*
 - **The PDF writer can write a euro sign.** `UltraCanvasPDFVectorConverter`
   declares `/WinAnsiEncoding` on its base-14 fonts, but its string escaper only
   passed code points up to U+00FF and replaced everything above with `?`.
@@ -19,8 +19,30 @@
 - **`ULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON` in CI** (`.github/workflows/build.yml`),
   beside the Net, UltraCloud and EmailCleaner suites that were already there.
   UltraFIBU's was the one application suite CI never built, so its checks - now
-  658 of them, including the encoding fix above - ran nowhere. It is a headless
+  833 of them, including the encoding fix above - ran nowhere. It is a headless
   suite with no UI dependency, which is why it can simply be switched on.
+
+#### 2026-09-19 *0.8.98*
+- **NetworkMonitor: a module that reads the operating system's socket table
+  and names the process behind every connection.** The Phase 1 of
+  `Docs/Modules/NetworkMonitor/NetworkMonitorProposal.md`: `NetworkMonitor_ListConnections`
+  returns every TCP and UDP socket, IPv4 and IPv6, with its
+  endpoints, state, owning UID and — where the monitor may inspect the
+  process — its PID, executable, name and user; `NetworkMonitor_SummarizeByProcess`
+  rolls that up per application. It is deliberately not
+  part of UltraNet, which only ever sees its own process's traffic: this is
+  the view `ss -p` gives, as a library. Linux backend from `/proc/net/*` and
+  the `/proc/<pid>/fd` walk; the `IFolderWatchBackend` pattern — an interface
+  per platform, a null factory everywhere else — so Windows and macOS are
+  one source each. Where there is no backend every snapshot says
+  `NotSupported`, never an empty table that looks like a quiet machine, and
+  `NetworkMonitor_GetCapabilities()` says whether every process or only this
+  user's can be attributed. The `/proc/net` parser lives in the core, pure,
+  so `Tests/NetworkMonitorTests.cpp` drives it from fixture text on every
+  platform and, on Linux, opens a loopback listener and asserts it comes back
+  attributed to the test's own PID. `Docs/Modules/NetworkMonitor/README.md`;
+  first consumer is UltraNetMonitor (`Apps/UltraNetMonitor`, its own
+  changelog).
 
 #### 2026-09-19 *0.8.97*
 - **`UltraCanvasListView` shows which column its rows are sorted by.**
