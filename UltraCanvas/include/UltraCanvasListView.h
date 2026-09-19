@@ -18,6 +18,7 @@
 
 namespace UltraCanvas {
 
+
     // ===== VIEW STYLE =====
 
     struct ListViewStyle {
@@ -223,6 +224,7 @@ namespace UltraCanvas {
         int hoveredColumn = -1;
         int hoveredHeaderColumn = -1;
         int focusedRow = -1;
+
         bool showItemTooltips = true;
 
         // Column resizing. columnWidthOverrides[col] >= 0 overrides the model's
@@ -261,6 +263,9 @@ namespace UltraCanvas {
         int ClampRowIndexAtContentY(int contentY) const;  // row at a content Y
         void RebuildRowGeometryIfNeeded() const;
         void InvalidateRowGeometry();
+
+        // Act on a click in the header band: cycle the sort of that column and
+        // tell whoever is listening.
 
         // Rendering
         void RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect);

@@ -2,6 +2,7 @@
 // Model-View-Delegate ListView widget implementation
 // Last Modified: 2026-09-19
 #include "UltraCanvasListView.h"
+#include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
 #include <algorithm>
