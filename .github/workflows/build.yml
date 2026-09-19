@@ -110,6 +110,9 @@ jobs:
       # reinstalls the toolchain each run, so an mtime check would treat an
       # identical compiler as a different one and miss on every object.
       CCACHE_COMPILERCHECK: content
+      # The Clang the Linux legs build with. See the install step below for
+      # why it does not come from the distribution.
+      ULTRACANVAS_CLANG_VERSION: "19"
 
     steps:
       - name: Checkout repository
@@ -215,7 +218,9 @@ jobs:
           # identical on Ubuntu ports, so the only architecture-dependent bit
           # is the multiarch libdir the from-source builds install into.
           sudo apt-get update
-          sudo apt-get install -y cmake pkg-config build-essential ccache clang
+          # No `clang` here on purpose: jammy's is 14, below this project's
+          # floor, and it is installed from LLVM's own repository just below.
+          sudo apt-get install -y cmake pkg-config build-essential ccache
           # dpkg-architecture comes with dpkg-dev (pulled in by build-essential
           # above), so this is resolved only after that install.
           MULTIARCH=$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
@@ -302,6 +307,45 @@ jobs:
           CARES_VER=1.34.5
           curl -fsSL "https://github.com/c-ares/c-ares/releases/download/v${CARES_VER}/c-ares-${CARES_VER}.tar.gz" | tar xz
           ( cd "c-ares-${CARES_VER}" && ./configure --prefix=/usr --libdir="/usr/lib/$MULTIARCH" && make -j"$(nproc)" && sudo make install )
+
+      # ===== Linux: the C++20 compiler =====
+      # UltraCanvas is built as C++20 and uses P1091 (capturing a structured
+      # binding in a lambda), which Clang implements from 16. Ubuntu 22.04 has
+      # nothing new enough: its archives stop at clang-14 and the runner image
+      # preinstalls 13, so `apt-get install clang` yields a compiler that
+      # rejects the tree - and does it with "'x' in capture list does not name
+      # a variable", which points at the lambda and never mentions the
+      # compiler. The Clang therefore comes from LLVM's own apt repository,
+      # installed through their maintained llvm.sh so the suite name for this
+      # distribution is chosen by upstream rather than hard-coded here.
+      #
+      # The runner is deliberately NOT moved to ubuntu-24.04, which does ship
+      # Clang 16: this leg is pinned to 22.04 for glibc 2.35, which is what
+      # makes the portable Linux bundle portable, and 24.04 would raise that
+      # floor to 2.39 for everyone who installs it.
+      - name: Install Clang (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -euo pipefail
+          V="${ULTRACANVAS_CLANG_VERSION}"
+          wget -qO /tmp/llvm.sh https://apt.llvm.org/llvm.sh
+          chmod +x /tmp/llvm.sh
+          sudo /tmp/llvm.sh "$V"
+          # Fail here, loudly, rather than twenty minutes into a compile: if the
+          # repository did not carry this version for this distribution or
+          # architecture, that is the thing to report, not whatever the build
+          # would have said next.
+          if ! command -v "clang++-$V" >/dev/null 2>&1; then
+            echo "::error::clang++-$V was not installed. apt.llvm.org may not" \
+                 "carry Clang $V for $(lsb_release -cs) on $(uname -m)." \
+                 "Pick a version it does carry via ULTRACANVAS_CLANG_VERSION."
+            exit 1
+          fi
+          echo "Using $(clang++-$V --version | head -1)"
+          # CC/CXX win over the root CMakeLists' own Clang search, so this is
+          # the single place the CI compiler is decided.
+          echo "CC=clang-$V"    >> "$GITHUB_ENV"
+          echo "CXX=clang++-$V" >> "$GITHUB_ENV"
 
       # ===== Rust toolchain — Vectorizer plugin (raster→SVG via VTracer) =====
       # Windows installs MSYS2's native rust package above (gnu/gnullvm ABI,

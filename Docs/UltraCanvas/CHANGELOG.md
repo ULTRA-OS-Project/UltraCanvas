@@ -16,6 +16,43 @@
   suite passes as it stands. They are headless by construction - every provider
   is driven through an injected fake rather than a server - so turning them on
   adds no network dependency to the build and no flakiness to it either.
+#### 2026-09-19 *0.8.87*
+- **The Linux CI legs build with a compiler that implements the standard the
+  tree is written in.** UltraCanvas is built as C++20 and uses P1091 - capturing
+  a structured binding in a lambda - which Clang implements from 16. Ubuntu
+  22.04 has nothing new enough: its archives stop at `clang-14` and the runner
+  image preinstalls 13, so `apt-get install clang` produced a compiler that
+  rejects the tree. It rejected it, moreover, with
+
+  ```
+  error: 'path' in capture list does not name a variable
+  ```
+
+  which points at the lambda and never mentions the compiler, so each instance
+  read as a bug in the code rather than as one missing language feature. Three
+  of them reached `main` (0.8.86) because GCC had accepted them all along and
+  the failure only appeared when the default compiler changed in 0.8.83.
+
+  - **CI installs Clang from LLVM's own apt repository**, through their
+    maintained `llvm.sh` so the suite name for the distribution is chosen
+    upstream rather than hard-coded in the workflow. The version is one place,
+    `ULTRACANVAS_CLANG_VERSION`, and the step fails immediately with a named
+    reason if that version is not available for the runner's distribution or
+    architecture - rather than twenty minutes later, inside a compile.
+  - **The runner stays on ubuntu-22.04.** Moving to 24.04 would have supplied
+    Clang 16 for free, but this leg is pinned to 22.04 for glibc 2.35, which is
+    what makes the portable Linux bundle portable; 24.04 would raise that floor
+    to 2.39 for everyone who installs it.
+  - **`ULTRACANVAS_MIN_CLANG_MAJOR` makes the requirement explicit.** The root
+    `CMakeLists.txt` now skips a Clang below the floor while choosing a default
+    - so a machine whose `clang` is 14 but which also has `clang-18` configures
+    with the latter instead of failing on the first structured binding - and
+    refuses an explicitly chosen one with a message that names the feature, the
+    compiler it found and the command to fix it.
+
+  Nothing about the build output changes: this decides which compiler runs, not
+  what it produces.
+
 #### 2026-09-19 *0.8.86*
 - **The Linux build is green again under Clang, and a missing MuPDF no longer
   stops a build.** Two independent breakages, both from the move to Clang
