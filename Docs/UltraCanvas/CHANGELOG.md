@@ -1,4 +1,4 @@
-#### 2026-09-19 *0.9.1*
+#### 2026-09-19 *0.9.4*
 - **Driverless network scanning, on all three platforms, from one file.**
   eSCL — Apple calls it AirScan, Mopria calls it Mopria Scan — is what a
   network scanner speaks when nobody has installed a driver for it. It is
