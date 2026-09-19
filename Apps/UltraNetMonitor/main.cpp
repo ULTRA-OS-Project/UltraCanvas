@@ -6,8 +6,12 @@
 // Two ways in. Without arguments it opens the UltraCanvas window. With
 // --list / --by-app / --capabilities it prints one snapshot and exits, which
 // is what makes it usable over ssh and checkable in CI.
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
+// Before the window header: on Linux that one reaches X11, whose `None`
+// macro would otherwise break HardwareQuery::None in this header.
+#include "UltraCanvasHardwareInfo.h"
+
 #include "ui/UltraNetMonitorWindow.h"
 
 #include "NetworkMonitor/NetworkMonitor.h"
@@ -63,8 +67,9 @@ void PrintUsage(const char* programName) {
         "  -v, --version     Show version information\n"
         "  -h, --help        Show this message\n"
         "\n"
-        "Not running as root, only this user's processes can be attributed;\n"
-        "other users' sockets are still listed, as (unattributed).\n",
+        "Not elevated, only this user's processes can be attributed; on Linux\n"
+        "and Windows other users' sockets are still listed, as (unattributed).\n"
+        "Byte counters come from netlink sock_diag on Linux; elsewhere a dash.\n",
         programName);
 }
 
@@ -79,6 +84,10 @@ void PrintCapabilities(const NetworkMonitorCapabilities& caps) {
     for (const auto& note : caps.notes) std::printf("  note: %s\n", note.c_str());
 }
 
+std::string ByteText(const std::optional<uint64_t>& bytes) {
+    return bytes ? UltraCanvasHardwareInfo::FormatBytes(*bytes) : std::string("-");
+}
+
 int RunHeadless(bool byApp, const NetworkMonitorOptions& options) {
     std::vector<NetworkConnection> connections;
     const NetworkMonitorResult result = NetworkMonitor_ListConnections(connections, options);
@@ -89,19 +98,20 @@ int RunHeadless(bool byApp, const NetworkMonitorOptions& options) {
 
     if (byApp) {
         const auto groups = NetworkMonitor_SummarizeByProcess(connections);
-        std::printf("%-24s %7s %6s %6s %6s %6s\n",
-                    "APPLICATION", "PID", "CONNS", "ESTAB", "LISTEN", "PEERS");
+        std::printf("%-24s %7s %6s %6s %6s %6s %9s %9s\n",
+                    "APPLICATION", "PID", "CONNS", "ESTAB", "LISTEN", "PEERS", "SENT", "RECV");
         for (const auto& g : groups) {
-            std::printf("%-24.24s %7s %6d %6d %6d %6zu\n",
+            std::printf("%-24.24s %7s %6d %6d %6d %6zu %9s %9s\n",
                         g.process.displayName.c_str(),
                         g.attributed ? std::to_string(g.process.pid).c_str() : "-",
                         g.connectionCount, g.establishedCount, g.listeningCount,
-                        g.remoteAddresses.size());
+                        g.remoteAddresses.size(),
+                        ByteText(g.bytesSent).c_str(), ByteText(g.bytesReceived).c_str());
         }
         std::printf("\n%zu connections in %zu applications\n", connections.size(), groups.size());
     } else {
-        std::printf("%-6s %-42s %-42s %-11s %-20s %s\n",
-                    "PROTO", "LOCAL", "REMOTE", "STATE", "APPLICATION", "USER");
+        std::printf("%-6s %-42s %-42s %-11s %9s %9s %-20s %s\n",
+                    "PROTO", "LOCAL", "REMOTE", "STATE", "SENT", "RECV", "APPLICATION", "USER");
         for (const auto& c : connections) {
             const bool unbound = c.IsListening() || c.state == NetworkConnectionState::Unconnected;
             const std::string app = c.process
@@ -109,20 +119,23 @@ int RunHeadless(bool byApp, const NetworkMonitorOptions& options) {
                 : std::string("(unattributed)");
             const std::string user = c.process ? c.process->userName
                 : (c.ownerUid ? "uid " + std::to_string(*c.ownerUid) : std::string());
-            std::printf("%-4s%-2s %-42s %-42s %-11s %-20.20s %s\n",
+            std::printf("%-4s%-2s %-42s %-42s %-11s %9s %9s %-20.20s %s\n",
                         NetworkMonitor_TransportName(c.transport),
                         c.family == NetworkAddressFamily::IPv6 ? "6" : "",
                         c.LocalEndpoint().c_str(),
                         unbound ? "*" : c.RemoteEndpoint().c_str(),
-                        NetworkMonitor_StateName(c.state), app.c_str(), user.c_str());
+                        NetworkMonitor_StateName(c.state),
+                        ByteText(c.bytesSent).c_str(), ByteText(c.bytesReceived).c_str(),
+                        app.c_str(), user.c_str());
         }
         std::printf("\n%zu connections\n", connections.size());
     }
 
     const NetworkMonitorCapabilities caps = NetworkMonitor_GetCapabilities();
     for (const auto& note : caps.notes) {
-        if (note.find("could not be inspected") != std::string::npos ||
-            note.find("Not running as root") != std::string::npos) {
+        if (note.find("could not be") != std::string::npos ||
+            note.find("Not running as root") != std::string::npos ||
+            note.find("Not elevated") != std::string::npos) {
             std::printf("%s\n", note.c_str());
         }
     }
@@ -163,6 +176,12 @@ int main(int argc, char* argv[]) {
     }
 
     if (capabilities) {
+        // Some capabilities (byte counters, unreadable-process counts) are
+        // only known once a snapshot has been taken, so take one first.
+        if (NetworkMonitor_IsAvailable()) {
+            std::vector<NetworkConnection> probe;
+            NetworkMonitor_ListConnections(probe, options);
+        }
         PrintCapabilities(NetworkMonitor_GetCapabilities());
         if (!list && !byApp) return EXIT_SUCCESS;
     }

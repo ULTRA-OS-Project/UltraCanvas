@@ -1,3 +1,15 @@
+#### 2026-09-19 *0.2*
+- **Windows and macOS, and bytes on Linux.** The window and the command
+  line now open on all three desktop platforms (NetworkMonitor 0.2, framework
+  0.8.99): IP Helper on Windows, libproc on macOS. Two new columns, *Sent*
+  and *Received*, on both lists and in `--list` / `--by-app`, filled on Linux
+  from netlink `sock_diag` and shown as a dash — never a zero — where a
+  backend collects no counter; the subtitle says which. Sorting the byte
+  columns sorts by the number, with the uncounted rows last.
+  - The usage text and the notes after `--list` now speak of "elevated"
+    rather than "root", since the Windows backend reports the same limit in
+    its own terms.
+
 #### 2026-09-19 *0.1*
 - **First build: the connection table, live, with the process behind each
   socket.** UltraNetMonitor is the application on top of the NetworkMonitor

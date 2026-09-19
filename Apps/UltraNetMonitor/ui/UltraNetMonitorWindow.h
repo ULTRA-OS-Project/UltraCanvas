@@ -10,7 +10,7 @@
 // is I/O, and it must never stall a repaint); the result is parked in one
 // slot that a UI timer applies on the main thread - the same shape
 // UltraCleaner uses for its scanner.
-// Version: 0.1.0
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 

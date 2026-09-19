@@ -1,22 +1,28 @@
 // OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp
-// Linux backend for NetworkMonitor: the socket table from
-// /proc/net/{tcp,tcp6,udp,udp6}, and process attribution by walking every
-// /proc/<pid>/fd/ for links of the form "socket:[<inode>]" - the join that
-// `ss -p` and `netstat -p` perform. No daemon, no helper, no extra library,
-// so it works on a minimal system and inside a container.
+// Linux backend for NetworkMonitor. The socket table comes from netlink
+// sock_diag (inet_diag) where the kernel allows it - one round trip per
+// table, and for TCP the per-socket tcp_info with its byte counters - and
+// from /proc/net/{tcp,tcp6,udp,udp6} otherwise (a seccomp profile that
+// blocks netlink, a kernel without udp_diag). Either way, process
+// attribution is the walk of every /proc/<pid>/fd/ for links of the form
+// "socket:[<inode>]" - the join `ss -p` performs. Netlink reports the inode
+// and UID but never the PID, so the walk stays. No daemon, no helper, no
+// extra library.
 //
 // What it cannot see, it says: a process owned by another user has an
 // unreadable fd directory unless the monitor runs as root, and every such
 // process is counted and reported through the capabilities' notes rather
 // than silently left out of the table.
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
+#include "NetworkMonitor/NetworkMonitorAddress.h"
 #include "NetworkMonitor/NetworkMonitorBackend.h"
 #include "NetworkMonitor/NetworkMonitorProcfs.h"
 
 #include <cerrno>
+#include <cstddef>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -24,10 +30,19 @@
 #include <sstream>
 #include <unordered_map>
 
+#include <arpa/inet.h>
 #include <dirent.h>
+#include <netinet/in.h>
 #include <pwd.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+#include <linux/inet_diag.h>
+#include <linux/netlink.h>
+#include <linux/rtnetlink.h>
+#include <linux/sock_diag.h>
+#include <linux/tcp.h>
 
 namespace UltraCanvas {
 namespace {
@@ -83,17 +98,126 @@ std::string UserNameForUid(uint32_t uid, std::unordered_map<uint32_t, std::strin
     return name;
 }
 
+// ===== NETLINK sock_diag =====
+
+struct DiagRequest {
+    nlmsghdr header;
+    inet_diag_req_v2 request;
+};
+
+// Dumps one (family, protocol) table through NETLINK_SOCK_DIAG. Returns
+// false, with errno in `error`, when the kernel refuses - the caller then
+// reads the procfs file instead. `sawByteCounters` reports whether at least
+// one TCP socket carried a tcp_info long enough to hold the byte counters
+// (kernel 4.1+), which is what "byte counters available" means.
+bool DumpTable(int family, int protocol, NetworkTransport transport,
+               NetworkAddressFamily addressFamily,
+               std::vector<NetworkConnection>& out, int& error, bool& sawByteCounters) {
+    const int fd = ::socket(AF_NETLINK, SOCK_RAW | SOCK_CLOEXEC, NETLINK_SOCK_DIAG);
+    if (fd < 0) { error = errno; return false; }
+
+    DiagRequest message{};
+    message.header.nlmsg_len = sizeof message;
+    message.header.nlmsg_type = SOCK_DIAG_BY_FAMILY;
+    message.header.nlmsg_flags = NLM_F_REQUEST | NLM_F_DUMP;
+    message.header.nlmsg_seq = 1;
+    message.request.sdiag_family = static_cast<__u8>(family);
+    message.request.sdiag_protocol = static_cast<__u8>(protocol);
+    message.request.idiag_states = ~0u;
+    if (protocol == IPPROTO_TCP) message.request.idiag_ext = 1u << (INET_DIAG_INFO - 1);
+
+    if (::send(fd, &message, sizeof message, 0) < 0) {
+        error = errno;
+        ::close(fd);
+        return false;
+    }
+
+    std::vector<unsigned char> buffer(64 * 1024);
+    const std::size_t firstNew = out.size();
+    bool done = false;
+    while (!done) {
+        const ssize_t received = ::recv(fd, buffer.data(), buffer.size(), 0);
+        if (received < 0) {
+            if (errno == EINTR) continue;
+            error = errno;
+            ::close(fd);
+            out.resize(firstNew);
+            return false;
+        }
+        if (received == 0) break;
+
+        auto* header = reinterpret_cast<nlmsghdr*>(buffer.data());
+        int remaining = static_cast<int>(received);
+        for (; NLMSG_OK(header, remaining); header = NLMSG_NEXT(header, remaining)) {
+            if (header->nlmsg_type == NLMSG_DONE) { done = true; break; }
+            if (header->nlmsg_type == NLMSG_ERROR) {
+                const auto* failure = reinterpret_cast<const nlmsgerr*>(NLMSG_DATA(header));
+                error = failure ? -failure->error : EIO;
+                ::close(fd);
+                out.resize(firstNew);
+                return false;
+            }
+            if (header->nlmsg_type != SOCK_DIAG_BY_FAMILY) continue;
+            const auto* diag = reinterpret_cast<const inet_diag_msg*>(NLMSG_DATA(header));
+
+            NetworkConnection connection;
+            connection.transport = transport;
+            connection.family = addressFamily;
+            const auto* source = reinterpret_cast<const unsigned char*>(diag->id.idiag_src);
+            const auto* destination = reinterpret_cast<const unsigned char*>(diag->id.idiag_dst);
+            if (addressFamily == NetworkAddressFamily::IPv4) {
+                connection.localAddress = NetworkMonitorAddress::FormatIPv4(source);
+                connection.remoteAddress = NetworkMonitorAddress::FormatIPv4(destination);
+            } else {
+                connection.localAddress = NetworkMonitorAddress::FormatIPv6(source);
+                connection.remoteAddress = NetworkMonitorAddress::FormatIPv6(destination);
+            }
+            connection.localPort = ntohs(diag->id.idiag_sport);
+            connection.remotePort = ntohs(diag->id.idiag_dport);
+            connection.state = NetworkMonitorProcfs::StateFromCode(diag->idiag_state, transport);
+            connection.ownerUid = diag->idiag_uid;
+            connection.socketInode = diag->idiag_inode;
+
+            // Attributes follow the fixed part. INET_DIAG_INFO is a tcp_info,
+            // possibly shorter than ours on an older kernel: copy what came.
+            const auto* attribute = reinterpret_cast<const rtattr*>(
+                reinterpret_cast<const unsigned char*>(diag) + NLMSG_ALIGN(sizeof *diag));
+            int attributeLength = static_cast<int>(header->nlmsg_len) -
+                                  static_cast<int>(NLMSG_LENGTH(sizeof *diag));
+            for (; RTA_OK(attribute, attributeLength); attribute = RTA_NEXT(attribute, attributeLength)) {
+                if (attribute->rta_type != INET_DIAG_INFO) continue;
+                const std::size_t needed = offsetof(tcp_info, tcpi_bytes_received) + sizeof(__u64);
+                if (RTA_PAYLOAD(attribute) < needed) break;
+                tcp_info info{};
+                std::memcpy(&info, RTA_DATA(attribute),
+                            RTA_PAYLOAD(attribute) < sizeof info ? RTA_PAYLOAD(attribute) : sizeof info);
+                // tcpi_bytes_acked is what the peer has acknowledged, i.e.
+                // what was sent and arrived; it counts the SYN as one byte.
+                connection.bytesSent = info.tcpi_bytes_acked;
+                connection.bytesReceived = info.tcpi_bytes_received;
+                sawByteCounters = true;
+                break;
+            }
+            out.push_back(std::move(connection));
+        }
+    }
+    ::close(fd);
+    error = 0;
+    return true;
+}
+
 // ===== THE BACKEND =====
 
 class LinuxNetworkMonitorBackend : public INetworkMonitorBackend {
 public:
     NetworkMonitorCapabilities Capabilities() const override {
         NetworkMonitorCapabilities caps;
-        caps.backendName = "procfs";
+        caps.backendName = lastUsedNetlink_ ? "procfs+sock_diag" : "procfs";
         caps.socketTable = ::access("/proc/net/tcp", R_OK) == 0 ||
                            ::access("/proc/net/tcp6", R_OK) == 0;
         caps.processAttribution = caps.socketTable && ::access("/proc/self/fd", R_OK) == 0;
         caps.allUsers = ::geteuid() == 0;
+        caps.perConnectionBytes = lastSawByteCounters_;
         if (!caps.socketTable) {
             caps.notes.push_back("/proc/net is not readable here; no socket table.");
         } else if (!caps.allUsers) {
@@ -105,38 +229,67 @@ public:
                                      " processes could not be inspected in the last snapshot.");
             }
         }
-        caps.notes.push_back("Byte counters and connection events are not collected "
-                             "by the procfs backend (Phase 2).");
+        if (lastSawByteCounters_) {
+            caps.notes.push_back("TCP byte counters from netlink sock_diag (tcp_info); UDP "
+                                 "sockets carry none.");
+        } else if (!lastNetlinkError_.empty()) {
+            caps.notes.push_back("netlink sock_diag unavailable (" + lastNetlinkError_ +
+                                 "); reading /proc/net without byte counters.");
+        } else {
+            caps.notes.push_back("Byte counters appear after the first snapshot when the "
+                                 "kernel allows netlink sock_diag.");
+        }
+        caps.notes.push_back("Connection events are not collected by this backend (Phase 3).");
         return caps;
     }
 
     NetworkMonitorResult Snapshot(std::vector<NetworkConnection>& out,
                                   bool resolveProcesses) override {
         out.clear();
-        struct Table { const char* path; NetworkTransport transport; NetworkAddressFamily family; };
+        struct Table {
+            const char* path; int family; int protocol;
+            NetworkTransport transport; NetworkAddressFamily addressFamily;
+        };
         static const Table kTables[] = {
-            { "/proc/net/tcp",  NetworkTransport::Tcp, NetworkAddressFamily::IPv4 },
-            { "/proc/net/tcp6", NetworkTransport::Tcp, NetworkAddressFamily::IPv6 },
-            { "/proc/net/udp",  NetworkTransport::Udp, NetworkAddressFamily::IPv4 },
-            { "/proc/net/udp6", NetworkTransport::Udp, NetworkAddressFamily::IPv6 },
+            { "/proc/net/tcp",  AF_INET,  IPPROTO_TCP, NetworkTransport::Tcp, NetworkAddressFamily::IPv4 },
+            { "/proc/net/tcp6", AF_INET6, IPPROTO_TCP, NetworkTransport::Tcp, NetworkAddressFamily::IPv6 },
+            { "/proc/net/udp",  AF_INET,  IPPROTO_UDP, NetworkTransport::Udp, NetworkAddressFamily::IPv4 },
+            { "/proc/net/udp6", AF_INET6, IPPROTO_UDP, NetworkTransport::Udp, NetworkAddressFamily::IPv6 },
         };
 
         int readable = 0;
         int lastError = 0;
+        bool usedNetlink = false;
+        bool sawByteCounters = false;
+        std::string netlinkError;
         for (const Table& table : kTables) {
+            int error = 0;
+            if (DumpTable(table.family, table.protocol, table.transport, table.addressFamily,
+                          out, error, sawByteCounters)) {
+                ++readable;
+                usedNetlink = true;
+                continue;
+            }
+            // ENOENT / EOPNOTSUPP: no diag module for this protocol; EPERM /
+            // EACCES: a sandbox forbids netlink. Either way the file still works.
+            if (netlinkError.empty() && table.protocol == IPPROTO_TCP) {
+                netlinkError = std::strerror(error);
+            }
             std::string text;
-            int err = 0;
             // A kernel without IPv6 has no tcp6/udp6; that is not a failure.
-            if (!ReadWholeFile(table.path, text, err)) { lastError = err; continue; }
+            if (!ReadWholeFile(table.path, text, error)) { lastError = error; continue; }
             ++readable;
-            NetworkMonitorProcfs::ParseTable(text, table.transport, table.family, out);
+            NetworkMonitorProcfs::ParseTable(text, table.transport, table.addressFamily, out);
         }
+        lastUsedNetlink_ = usedNetlink;
+        lastSawByteCounters_ = sawByteCounters;
+        lastNetlinkError_ = netlinkError;
         if (readable == 0) {
             const bool denied = lastError == EACCES || lastError == EPERM;
             return NetworkMonitorResult::Error(
                 denied ? NetworkMonitorResultCode::PermissionDenied
                        : NetworkMonitorResultCode::IoError,
-                std::string("Could not read /proc/net: ") + std::strerror(lastError));
+                std::string("Could not read the socket table: ") + std::strerror(lastError));
         }
 
         if (resolveProcesses) AttributeProcesses(out);
@@ -221,6 +374,9 @@ private:
     std::unordered_map<uint32_t, ProcessIdentity> identities_;
     std::unordered_map<uint32_t, std::string> userNames_;
     int lastUnreadableProcesses_ = 0;
+    bool lastUsedNetlink_ = false;
+    bool lastSawByteCounters_ = false;
+    std::string lastNetlinkError_;
 };
 
 } // namespace
