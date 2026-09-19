@@ -1,6 +1,6 @@
 #!/bin/bash
 # package-win.sh - Build and create a standalone Windows distribution with all required DLLs
-# Run from MSYS2 MinGW64 shell after building the project
+# Run from an MSYS2 CLANG64 (x86_64) or CLANGARM64 (arm64) shell after building the project
 #
 # Usage:
 #   ./package-win.sh [--no-sign] [package-name.zip]
@@ -28,7 +28,7 @@ if [ -z "$VERSION" ]; then
     echo "Error: could not parse version from $UC_CHANGELOG (expected '#### YYYY-MM-DD *x.y.z*')" >&2
     exit 1
 fi
-# MSYS2 environment root: /mingw64 (Intel, MINGW64) or /clangarm64
+# MSYS2 environment root: /clang64 (Intel, CLANG64) or /clangarm64
 # (ARM64, CLANGARM64). MSYSTEM_PREFIX is set by every MSYS2 login shell.
 MSYS_PREFIX="${MSYSTEM_PREFIX:-/mingw64}"
 MINGW_BIN="$MSYS_PREFIX/bin"

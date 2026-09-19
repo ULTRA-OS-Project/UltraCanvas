@@ -85,6 +85,9 @@ struct Folder {
     FolderRole  role = FolderRole::Normal;
     int64_t     uidValidity = 0;
     int64_t     uidNext = 0;
+    // False for \Noselect container folders (e.g. Gmail's "[Gmail]"): they hold
+    // no mail and are elided from the folder tree (their children are promoted).
+    bool        selectable = true;
 };
 
 // The header-level view of a message kept in the index (bodies stay in .eml

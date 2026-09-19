@@ -116,6 +116,21 @@ namespace UltraCanvas {
         void SetShowHeader(bool show);
         bool GetShowHeader() const;
 
+        // Per-view column widths (multi-column). A column's width normally comes
+        // from the model (ListColumnDef::width); SetColumnWidth overrides it for
+        // this view only — used by interactive resize and by callers that fit a
+        // column to the viewport. GetColumnWidth returns the effective width.
+        void SetColumnWidth(int column, int width);
+        int  GetColumnWidth(int column) const;
+
+        // Interactive column resizing by dragging the header column borders
+        // (on by default; needs the header shown and >= 2 columns).
+        void SetColumnsResizable(bool resizable) { columnsResizable = resizable; }
+        bool GetColumnsResizable() const { return columnsResizable; }
+        // True once the user has dragged a column border, so a caller's auto-fit
+        // can stop overriding the user's chosen widths.
+        bool ColumnsUserAdjusted() const { return userAdjustedColumns; }
+
         // Hover tooltips. On by default: resting the pointer on a row shows the
         // cell's ToolTipRole text (per-cell, falling back to the row tooltip),
         // and resting it on a column header shows that column's
@@ -136,6 +151,10 @@ namespace UltraCanvas {
         // hidden or the point is outside it). columnStartX receives the
         // column's element-local left edge.
         int GetHeaderColumnAt(int x, int y, int* columnStartX = nullptr) const;
+
+        // Column index whose right border is under an element-local point in the
+        // header band (within ~4px), for resize hit-testing; -1 otherwise.
+        int ColumnBoundaryAt(int x, int y) const;
 
         // Tooltip text for a cell (row >= 0) or a column header (row == -1),
         // as the hover tooltip would show it. Empty when there is none.
@@ -184,6 +203,16 @@ namespace UltraCanvas {
         int hoveredHeaderColumn = -1;
         int focusedRow = -1;
         bool showItemTooltips = true;
+
+        // Column resizing. columnWidthOverrides[col] >= 0 overrides the model's
+        // width for this view (index = column; entries default to -1 = use the
+        // model). resizeCol >= 0 while a header border is being dragged.
+        std::vector<int> columnWidthOverrides;
+        bool columnsResizable = true;
+        bool userAdjustedColumns = false;
+        int  resizeCol = -1;
+        int  resizeStartX = 0;
+        int  resizeStartW = 0;
 
         // Internal methods
         void CreateScrollbar();

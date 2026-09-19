@@ -132,6 +132,7 @@ SyncOutcome SyncEngine::SyncFolders(const std::string& accountId,
         lf.accountId = accountId;
         lf.name = f.name;
         lf.role = FolderRoleFromString(f.role);
+        lf.selectable = f.selectable;   // \Noselect containers (e.g. "[Gmail]")
         if (store_.UpsertFolder(lf)) out.stats.folders++;
     }
     return out;

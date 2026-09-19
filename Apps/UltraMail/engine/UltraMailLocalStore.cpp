@@ -121,6 +121,10 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           "ALTER TABLE accounts ADD COLUMN smtp_username TEXT DEFAULT '';"
           "ALTER TABLE accounts ADD COLUMN smtp_oauth INTEGER DEFAULT 0;"
           "ALTER TABLE accounts ADD COLUMN provider_name TEXT DEFAULT '';" },
+        { 3, "folder selectable flag",
+          // \Noselect container folders (e.g. Gmail's "[Gmail]"). Existing rows
+          // default to selectable; the next folder sync fills in the real value.
+          "ALTER TABLE folders ADD COLUMN selectable INTEGER DEFAULT 1;" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -200,12 +204,13 @@ UltraDbResult LocalStore::RemoveAccount(const std::string& accountId) {
 
 UltraDbResult LocalStore::UpsertFolder(const Folder& f) {
     return UltraDb_Exec(connection_,
-        "INSERT INTO folders(account_id, name, role, uidvalidity, uidnext) "
-        "VALUES(?, ?, ?, ?, ?) "
+        "INSERT INTO folders(account_id, name, role, uidvalidity, uidnext, selectable) "
+        "VALUES(?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id, name) DO UPDATE SET "
         "role=excluded.role, uidvalidity=excluded.uidvalidity, "
-        "uidnext=excluded.uidnext",
-        { f.accountId, f.name, ToString(f.role), f.uidValidity, f.uidNext });
+        "uidnext=excluded.uidnext, selectable=excluded.selectable",
+        { f.accountId, f.name, ToString(f.role), f.uidValidity, f.uidNext,
+          static_cast<int64_t>(f.selectable ? 1 : 0) });
 }
 
 UltraDbResult LocalStore::ListFolders(const std::string& accountId,
@@ -213,7 +218,7 @@ UltraDbResult LocalStore::ListFolders(const std::string& accountId,
     out.clear();
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
-        "SELECT account_id, name, role, uidvalidity, uidnext FROM folders "
+        "SELECT account_id, name, role, uidvalidity, uidnext, selectable FROM folders "
         "WHERE account_id=? ORDER BY name", { accountId }, rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -223,6 +228,7 @@ UltraDbResult LocalStore::ListFolders(const std::string& accountId,
         f.role        = FolderRoleFromString(row["role"].AsString());
         f.uidValidity = row["uidvalidity"].AsInt64();
         f.uidNext     = row["uidnext"].AsInt64();
+        f.selectable  = row["selectable"].AsInt64() != 0;
         out.push_back(std::move(f));
     }
     return UltraDbResult::Ok();

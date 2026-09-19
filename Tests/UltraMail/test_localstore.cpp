@@ -117,6 +117,30 @@ TEST(folders_roundtrip) {
     REQUIRE_EQ(fs.size(), (size_t)2);
 }
 
+TEST(folders_persist_selectable_flag) {
+    LocalStore s = FreshStore("selectable");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    // A \Noselect container (e.g. Gmail's "[Gmail]") and a real folder under it.
+    Folder container; container.accountId = "erika"; container.name = "[Gmail]";
+    container.role = FolderRole::Normal; container.selectable = false;
+    REQUIRE(s.UpsertFolder(container).success);
+    Folder sent; sent.accountId = "erika"; sent.name = "[Gmail]/Sent Mail";
+    sent.role = FolderRole::Sent; sent.selectable = true;
+    REQUIRE(s.UpsertFolder(sent).success);
+
+    std::vector<Folder> fs;
+    REQUIRE(s.ListFolders("erika", fs).success);
+    bool sawContainer = false, sawSent = false, sawInbox = false;
+    for (const auto& f : fs) {
+        if (f.name == "[Gmail]")           { sawContainer = true; REQUIRE(!f.selectable); }
+        if (f.name == "[Gmail]/Sent Mail") { sawSent = true;      REQUIRE(f.selectable); }
+        if (f.name == "INBOX")             { sawInbox = true;     REQUIRE(f.selectable); }
+    }
+    REQUIRE(sawContainer);
+    REQUIRE(sawSent);
+    REQUIRE(sawInbox);
+}
+
 TEST(messages_list_recent_first) {
     LocalStore s = FreshStore("msglist");
     AddAccountWithInbox(s, "erika", "erika@example.com", "erika");

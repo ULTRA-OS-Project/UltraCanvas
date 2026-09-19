@@ -43,6 +43,17 @@ public:
                           std::function<void(SyncOutcome)> onDone,
                           ProgressFn onProgress = {});
 
+    // Sync one folder's messages (envelopes + bodies) on a detached worker,
+    // skipping the folder LIST — the folder set is already known from the last
+    // full sync. `prepare` runs first (e.g. refresh an OAuth2 token). onDone and
+    // onProgress fire on the worker thread; marshal to the UI before touching a
+    // widget. This backs the lazy per-folder load when a folder is first opened.
+    void SyncFolderInBackground(const std::string& accountId, const std::string& folder,
+                                const std::string& serverUrl,
+                                const UltraNetMailOptions& options, PrepareFn prepare,
+                                std::function<void(SyncOutcome)> onDone,
+                                ProgressFn onProgress = {});
+
 private:
     SyncEngine engine_;
 };
