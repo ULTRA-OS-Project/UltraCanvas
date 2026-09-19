@@ -19,6 +19,7 @@
 - **Model-View-Delegate architecture** — data, painting, and selection are independent
 - **Single-column and multi-column models** with built-in implementations
 - **Optional column headers** with per-column titles, widths, and alignment
+- **Sort indicator** in the sorted column's header (▲ ascending / ▼ descending, drawn as geometry in the header text colour) and a header-click callback to drive it
 - **Single and multi-selection** modes via swappable selection objects
 - **Optional grid lines and alternating row colors**
 - **Built-in vertical scrollbar** with mouse wheel support
@@ -76,7 +77,21 @@ void InvalidateRowHeights();
 
 void SetShowHeader(bool show);
 bool GetShowHeader() const;
+
+void SetSortIndicator(int column, bool ascending);   // -1 = none
+void ClearSortIndicator();
+int  GetSortColumn() const;
+bool GetSortAscending() const;
 ```
+
+`SetSortIndicator` marks a column as the one the rows are sorted by: its header
+cell shows a small triangle, apex up for ascending and apex down for descending.
+The triangle is drawn as a filled path in `headerTextColor` (never a text glyph,
+so it does not depend on the header font carrying U+25B2/U+25BC and stays crisp
+at any DPI); `ListViewStyle::sortIndicatorSize` sets its width, and it sits
+after the title in a left- or centre-aligned column and before it in a
+right-aligned one. The view only *shows* the order — sorting the rows is the
+model owner's job, normally from `onHeaderClicked` (see Events / Callbacks).
 
 `SetRowHeight` / `rowHeight` set the single height used by every row. For rows
 of differing height, call `SetVariableRowHeights(true)`: the view then asks the
@@ -111,6 +126,7 @@ struct ListViewStyle {
     Color gridLineColor = Color(220, 220, 220);
 
     float headerFontSize = 10;
+    int sortIndicatorSize = 8;      // width of the ▲/▼ sort triangle (px)
 
     int rowHeight = 24;
     int headerHeight = 26;
@@ -364,9 +380,26 @@ std::function<void(int row)> onItemHovered;
 // the rows area.
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+
+// A click (press and release in the same cell) on a column header. A press
+// on a resize border starts a drag instead and never reports a click.
+std::function<void(int column)> onHeaderClicked;
 ```
 
 `onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
+
+`onHeaderClicked` is where sorting is wired up: re-order the model by the
+column, toggling the direction when it is already the sort column, then tell
+the view which column is sorted so the header shows it. A header press no
+longer counts as a click on "no row", so it leaves the selection alone.
+
+```cpp
+listView->onHeaderClicked = [view = listView.get(), model](int column) {
+    bool ascending = (view->GetSortColumn() == column) ? !view->GetSortAscending() : true;
+    model->SortBy(column, ascending);          // however your model orders its rows
+    view->SetSortIndicator(column, ascending); // ▲ or ▼ in that header cell
+};
+```
 
 ## Usage Examples
 

@@ -24,9 +24,16 @@ auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(rows);
 auto view = CreateListView("invoices", 0, 0, 800, 400);
 view->SetModel(proxy);
 view->SetShowHeader(true);
-view->SetSortProxy(proxy);          // header clicks now sort, with an indicator
+proxy->SetFilterText("olpe");       // this filters
 
-proxy->SetFilterText("olpe");       // and this filters
+// Header clicks sort, with an indicator. The view shows the order but never
+// decides it, so the two lines that do it live here rather than inside the view.
+view->onHeaderClicked = [view, proxy](int column) {
+    const bool ascending = !(column == view->GetSortColumn() && view->GetSortAscending());
+    proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+                                          : ListSortOrder::Descending);
+    view->SetSortIndicator(column, ascending);
+};
 ```
 
 ## The two things a caller has to know
@@ -126,14 +133,13 @@ it never sorts anything itself, so a model that is already ordered — by a
 database query, say — keeps working unchanged.
 
 ```cpp
-view->SetSortingEnabled(true);
-view->onSortRequested = [&](int column, ListSortOrder order) { /* sort your way */ };
-view->SetSortIndicator(2, ListSortOrder::Descending);
+view->onHeaderClicked = [&](int column) { /* sort your way */ };
+view->SetSortIndicator(2, /*ascending=*/false);
 ```
 
-`SetSortProxy(proxy)` wires the common case: clicking a header sorts that column
-ascending, clicking the sorted one turns it round, and the indicator follows.
-Sorting moves every row, so the keyboard focus row is dropped on a sort rather
+The four lines in the example above wire the common case: clicking a header
+sorts that column ascending, clicking the sorted one turns it round, and the
+indicator follows. Sorting moves every row, so the keyboard focus row is dropped on a sort rather
 than left pointing at whatever record landed on that index; the *selection* is
 the caller's to map.
 

@@ -1,6 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Last Modified: 2026-07-22
+// Last Modified: 2026-09-19
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -18,7 +18,6 @@
 
 namespace UltraCanvas {
 
-    class UltraCanvasListSortFilterProxy;   // SetSortProxy, defined in its own header
 
     // ===== VIEW STYLE =====
 
@@ -29,6 +28,10 @@ namespace UltraCanvas {
         Color gridLineColor = Color(220, 220, 220);
 
         float headerFontSize = 10;
+        // Width (px) of the sort-direction triangle drawn in the sorted
+        // column's header cell (see SetSortIndicator). It is half as tall as it
+        // is wide and painted in headerTextColor.
+        int sortIndicatorSize = 8;
 
         int rowHeight = 24;
         int headerHeight = 26;
@@ -61,6 +64,13 @@ namespace UltraCanvas {
         // left the rows area.
         std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
         std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+
+        // A click (press and release in the same cell) on a column header, when
+        // the header is shown. Fires after a press that did not start a column
+        // resize. The usual handler re-sorts the model by `column`, toggling the
+        // direction when it is already the sort column, then calls
+        // SetSortIndicator so the header shows the new order.
+        std::function<void(int column)> onHeaderClicked;
 
         // Optional tooltip source, consulted before the model's ToolTipRole.
         // Called with the hovered cell; row == -1 means the pointer is over the
@@ -118,6 +128,16 @@ namespace UltraCanvas {
         void SetShowHeader(bool show);
         bool GetShowHeader() const;
 
+        // Sort indicator: a small triangle in the header cell of `column`,
+        // apex up for ascending, apex down for descending, drawn in
+        // headerTextColor so it follows the header theme. The view only shows
+        // it; ordering the rows is the model's / caller's job (see
+        // onHeaderClicked). -1 (the default) shows none.
+        void SetSortIndicator(int column, bool ascending);
+        void ClearSortIndicator() { SetSortIndicator(-1, true); }
+        int  GetSortColumn() const { return sortColumn; }
+        bool GetSortAscending() const { return sortAscending; }
+
         // Per-view column widths (multi-column). A column's width normally comes
         // from the model (ListColumnDef::width); SetColumnWidth overrides it for
         // this view only — used by interactive resize and by callers that fit a
@@ -139,34 +159,6 @@ namespace UltraCanvas {
         // ListColumnDef::tooltip. `tooltipProvider` overrides both.
         void SetShowItemTooltips(bool enable);
         bool GetShowItemTooltips() const;
-
-        // === Sorting ===
-        // The view does not sort: it shows which column is sorted and which way,
-        // and reports a click on a header. The ordering itself belongs to the
-        // model - UltraCanvasListSortFilterProxy is the one that does it - so a
-        // model that is already sorted, or sorted by a database query, keeps
-        // working unchanged.
-        //
-        // With sorting enabled, clicking a header sorts that column ascending,
-        // and clicking the sorted one again turns it round.
-        void SetSortingEnabled(bool enabled);
-        bool GetSortingEnabled() const;
-
-        // Which column shows the indicator. -1 (the default) shows none.
-        void SetSortIndicator(int column, ListSortOrder order = ListSortOrder::Ascending);
-        void ClearSortIndicator();
-        int  GetSortIndicatorColumn() const;
-        ListSortOrder GetSortIndicatorOrder() const;
-
-        // Called when a header click asks for a sort. Set this to sort the data
-        // however the application stores it.
-        std::function<void(int column, ListSortOrder order)> onSortRequested;
-
-        // The common case wired up: the view drives this proxy and keeps its
-        // own indicator in step. Pass nullptr to unhook it. Sorting is enabled
-        // by this call, since a sort proxy with no way to ask for a sort is not
-        // what anybody means by attaching one.
-        void SetSortProxy(std::shared_ptr<UltraCanvasListSortFilterProxy> proxy);
 
         // === Scrolling ===
         void ScrollToRow(int row);
@@ -233,11 +225,6 @@ namespace UltraCanvas {
         int hoveredHeaderColumn = -1;
         int focusedRow = -1;
 
-        // Sorting: display state only (see SetSortingEnabled).
-        bool sortingEnabled = false;
-        int sortIndicatorColumn = -1;
-        ListSortOrder sortIndicatorOrder = ListSortOrder::Ascending;
-        std::weak_ptr<UltraCanvasListSortFilterProxy> sortProxy;
         bool showItemTooltips = true;
 
         // Column resizing. columnWidthOverrides[col] >= 0 overrides the model's
@@ -249,6 +236,13 @@ namespace UltraCanvas {
         int  resizeCol = -1;
         int  resizeStartX = 0;
         int  resizeStartW = 0;
+
+        // Sort indicator (SetSortIndicator); sortColumn == -1 shows none.
+        int  sortColumn = -1;
+        bool sortAscending = true;
+        // Header column under the last press, so a release in the same cell
+        // counts as a click (onHeaderClicked); -1 when no header press is live.
+        int  pressedHeaderColumn = -1;
 
         // Internal methods
         void CreateScrollbar();
@@ -272,10 +266,10 @@ namespace UltraCanvas {
 
         // Act on a click in the header band: cycle the sort of that column and
         // tell whoever is listening.
-        bool HandleHeaderClick(int column);
 
         // Rendering
         void RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect);
+        void RenderSortIndicator(IRenderContext* ctx, const Rect2Di& cell);
         void RenderRows(IRenderContext* ctx, const Rect2Di& contentRect);
 
         // Tooltips

@@ -25332,7 +25332,7 @@ graph->SetDateFormatter([](int64_t when) { return MyRelativeTime(when); });
 
 Rows are aligned by construction, so selection and scrolling are shared with the
 graph - no synchronisation to wire up. To pair an external
-`UltraCanvasTableView` instead, use the row-alignment API:
+multi-column `UltraCanvasListView` instead, use the row-alignment API:
 
 ```cpp
 const int    rows    = graph->GetRowCount();
@@ -30777,9 +30777,16 @@ auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(rows);
 auto view = CreateListView("invoices", 0, 0, 800, 400);
 view->SetModel(proxy);
 view->SetShowHeader(true);
-view->SetSortProxy(proxy);          // header clicks now sort, with an indicator
+proxy->SetFilterText("olpe");       // this filters
 
-proxy->SetFilterText("olpe");       // and this filters
+// Header clicks sort, with an indicator. The view shows the order but never
+// decides it, so the two lines that do it live here rather than inside the view.
+view->onHeaderClicked = [view, proxy](int column) {
+    const bool ascending = !(column == view->GetSortColumn() && view->GetSortAscending());
+    proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+                                          : ListSortOrder::Descending);
+    view->SetSortIndicator(column, ascending);
+};
 ```
 
 ## The two things a caller has to know
@@ -30879,14 +30886,13 @@ it never sorts anything itself, so a model that is already ordered — by a
 database query, say — keeps working unchanged.
 
 ```cpp
-view->SetSortingEnabled(true);
-view->onSortRequested = [&](int column, ListSortOrder order) { /* sort your way */ };
-view->SetSortIndicator(2, ListSortOrder::Descending);
+view->onHeaderClicked = [&](int column) { /* sort your way */ };
+view->SetSortIndicator(2, /*ascending=*/false);
 ```
 
-`SetSortProxy(proxy)` wires the common case: clicking a header sorts that column
-ascending, clicking the sorted one turns it round, and the indicator follows.
-Sorting moves every row, so the keyboard focus row is dropped on a sort rather
+The four lines in the example above wire the common case: clicking a header
+sorts that column ascending, clicking the sorted one turns it round, and the
+indicator follows. Sorting moves every row, so the keyboard focus row is dropped on a sort rather
 than left pointing at whatever record landed on that index; the *selection* is
 the caller's to map.
 
@@ -30922,6 +30928,7 @@ FILE: Docs/UltraCanvas/UltraCanvasListViewExamples.md
 - **Model-View-Delegate architecture** — data, painting, and selection are independent
 - **Single-column and multi-column models** with built-in implementations
 - **Optional column headers** with per-column titles, widths, and alignment
+- **Sort indicator** in the sorted column's header (▲ ascending / ▼ descending, drawn as geometry in the header text colour) and a header-click callback to drive it
 - **Single and multi-selection** modes via swappable selection objects
 - **Optional grid lines and alternating row colors**
 - **Built-in vertical scrollbar** with mouse wheel support
@@ -30979,7 +30986,21 @@ void InvalidateRowHeights();
 
 void SetShowHeader(bool show);
 bool GetShowHeader() const;
+
+void SetSortIndicator(int column, bool ascending);   // -1 = none
+void ClearSortIndicator();
+int  GetSortColumn() const;
+bool GetSortAscending() const;
 ```
+
+`SetSortIndicator` marks a column as the one the rows are sorted by: its header
+cell shows a small triangle, apex up for ascending and apex down for descending.
+The triangle is drawn as a filled path in `headerTextColor` (never a text glyph,
+so it does not depend on the header font carrying U+25B2/U+25BC and stays crisp
+at any DPI); `ListViewStyle::sortIndicatorSize` sets its width, and it sits
+after the title in a left- or centre-aligned column and before it in a
+right-aligned one. The view only *shows* the order — sorting the rows is the
+model owner's job, normally from `onHeaderClicked` (see Events / Callbacks).
 
 `SetRowHeight` / `rowHeight` set the single height used by every row. For rows
 of differing height, call `SetVariableRowHeights(true)`: the view then asks the
@@ -31014,6 +31035,7 @@ struct ListViewStyle {
     Color gridLineColor = Color(220, 220, 220);
 
     float headerFontSize = 10;
+    int sortIndicatorSize = 8;      // width of the ▲/▼ sort triangle (px)
 
     int rowHeight = 24;
     int headerHeight = 26;
@@ -31267,9 +31289,26 @@ std::function<void(int row)> onItemHovered;
 // the rows area.
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
 std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+
+// A click (press and release in the same cell) on a column header. A press
+// on a resize border starts a drag instead and never reports a click.
+std::function<void(int column)> onHeaderClicked;
 ```
 
 `onSelectionChanged` fires whenever the selection set changes (single or multi-select). `onItemActivated` fires on Enter or double-click. Both `onItemClicked` and `onCellClicked` fire on a click, the cell-level one second.
+
+`onHeaderClicked` is where sorting is wired up: re-order the model by the
+column, toggling the direction when it is already the sort column, then tell
+the view which column is sorted so the header shows it. A header press no
+longer counts as a click on "no row", so it leaves the selection alone.
+
+```cpp
+listView->onHeaderClicked = [view = listView.get(), model](int column) {
+    bool ascending = (view->GetSortColumn() == column) ? !view->GetSortAscending() : true;
+    model->SortBy(column, ascending);          // however your model orders its rows
+    view->SetSortIndicator(column, ascending); // ▲ or ▼ in that header cell
+};
+```
 
 ## Usage Examples
 
@@ -55089,7 +55128,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
-| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
+| List **or table** — `UltraCanvasListView` is the multi-column, virtualised, model-driven one (`IListModel` + `ListColumnDef` + delegates; `SetShowHeader(true)` gives resizable columns, header tooltips and a sort indicator; sort and filter it with [`UltraCanvasListSortFilterProxy`](UltraCanvasListSortFilterProxy.md)); tree; multi-column tree; sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasColumnsTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 

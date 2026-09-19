@@ -1,3 +1,45 @@
+#### 2026-09-19 *0.8.97*
+- **`UltraCanvasListView` shows which column its rows are sorted by.**
+  `SetSortIndicator(column, ascending)` draws a small triangle in that column's
+  header cell - apex up for ascending, apex down for descending - and
+  `ClearSortIndicator()` / `GetSortColumn()` / `GetSortAscending()` complete
+  the API. The triangle is geometry (`FillLinePath`) in `headerTextColor`, not
+  a text glyph, so it follows the header theme and stays crisp at any DPI
+  instead of depending on the header font carrying U+25B2/U+25BC;
+  `ListViewStyle::sortIndicatorSize` sets its width. It sits after the title in
+  a left- or centre-aligned column and before it in a right-aligned one, and the
+  title's rect shrinks by the same strip so the two never overlap. The view only
+  shows the order; the rows are sorted by whoever owns the model.
+- **`UltraCanvasListView::onHeaderClicked(column)`** fires on a press and
+  release in the same header cell, so a table can sort on header click - the
+  usual handler re-orders the model and calls `SetSortIndicator`. A press on a
+  column's resize border still starts a drag and never reads as a click, and a
+  press on the header no longer reaches the row handler as a click on "no
+  row", which used to clear the selection. DemoApp's multi-column list sorts
+  this way now.
+- **This replaces the view-side sorting API 0.8.96 added**, which had no caller
+  anywhere in the tree: `SetSortingEnabled`, `onSortRequested`, `SetSortProxy`
+  and the `ListSortOrder`-based `SetSortIndicator` are gone, and this entry's
+  API takes their place. 0.8.96 also gated its header-click handling on
+  sorting being enabled, so a header press still cleared the selection with
+  sorting off; `onHeaderClicked` handles the press before row hit-testing and
+  fixes that unconditionally.
+
+  **`UltraCanvasListSortFilterProxy` is untouched** - it never referenced the
+  view, and its 78 checks still pass. It is now driven from `onHeaderClicked`
+  at the call site instead of by the view itself, which is the wiring its
+  header documents:
+
+  ```cpp
+  listView->onHeaderClicked = [listView, proxy](int column) {
+      const bool ascending =
+          !(column == listView->GetSortColumn() && listView->GetSortAscending());
+      proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+                                            : ListSortOrder::Descending);
+      listView->SetSortIndicator(column, ascending);
+  };
+  ```
+
 #### 2026-09-19 *0.8.96*
 - **Sorting and filtering for every list in the framework, and a correction.**
   `UltraCanvasListSortFilterProxy` (`include/UltraCanvasListSortFilterProxy.h`,

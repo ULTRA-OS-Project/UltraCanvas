@@ -231,7 +231,7 @@ header, and that is exactly what was missing:
 
 | Missing | Status |
 |---|---|
-| Sorting (header click, indicator, comparators) | **Built** — `UltraCanvasListSortFilterProxy` + `UltraCanvasListView::SetSortingEnabled` / `SetSortProxy` |
+| Sorting (header click, indicator, comparators) | **Built** — `UltraCanvasListSortFilterProxy` + `UltraCanvasListView::onHeaderClicked` / `SetSortIndicator` |
 | Filtering (text, per-column, arbitrary predicate) | **Built** — same proxy |
 | Sort-by-value-not-by-text | **Built** — `ListDataRole::SortRole` |
 | Inline cell editing | Still missing in the view; `IListModel::SetData` is there, so this is an editor widget over an existing seam |

@@ -189,7 +189,7 @@ public:
     // on the graph.
     Point2Dd GetCommitScreenPosition(const std::string& sha) const;
 
-    // Row alignment, so an external UltraCanvasTableView can be paired instead.
+    // Row alignment, so an external multi-column UltraCanvasListView can be paired instead.
     double GetRowScreenPosition(int row) const;    // Along-axis position in element space
     double GetRowSpacing() const { return style.rowSpacing * zoomLevel; }
     int    GetRowAtScreenPosition(double position) const;

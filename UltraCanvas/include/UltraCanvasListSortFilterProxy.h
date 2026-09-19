@@ -11,8 +11,18 @@
 //     auto rows  = std::make_shared<UltraCanvasMultiColumnListModel>();
 //     auto proxy = std::make_shared<UltraCanvasListSortFilterProxy>(rows);
 //     listView->SetModel(proxy);
-//     listView->SetSortingEnabled(true);          // header clicks sort
-//     proxy->SetFilterText("olpe");               // and this filters
+//     proxy->SetFilterText("olpe");               // this filters
+//
+// Header-click sorting is wired at the call site, because the view shows the
+// order but never decides it (UltraCanvasListView::onHeaderClicked):
+//
+//     listView->onHeaderClicked = [listView, proxy](int column) {
+//         const bool ascending =
+//             !(column == listView->GetSortColumn() && listView->GetSortAscending());
+//         proxy->SortByColumn(column, ascending ? ListSortOrder::Ascending
+//                                               : ListSortOrder::Descending);
+//         listView->SetSortIndicator(column, ascending);
+//     };
 //
 // Two things callers have to know, and the API makes both explicit:
 //
