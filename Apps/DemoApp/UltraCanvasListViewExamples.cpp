@@ -3,6 +3,8 @@
 
 #include "UltraCanvasDemo.h"
 #include "UltraCanvasListView.h"
+#include "UltraCanvasTextUtils.h"
+#include <algorithm>
 
 namespace UltraCanvas {
 
@@ -129,14 +131,36 @@ namespace UltraCanvas {
             {{"CHANGELOG.md", "Markdown", "12.3 KB", "2025-03-15"}, "Docs/CHANGELOG.md",
              "Markdown document", "12,595 bytes", "15 Mar 2025, 09:41"},
         };
-        for (const auto& row : fileRows) {
-            MultiColumnListItem item(row.cells);
-            item.tooltip = row.path;                    // row-wide fallback
-            item.SetCellTooltip(1, row.typeTip);
-            item.SetCellTooltip(2, row.bytes);
-            item.SetCellTooltip(3, row.modifiedTip);    // column 0 uses the path
-            multiModel->AddItem(item);
-        }
+        // Rows are (re)filled from `fileRows` in the current sort order: the
+        // view shows which column is sorted (SetSortIndicator); ordering the
+        // rows stays with the model's owner.
+        auto fillRows = [multiModel, fileRows](int sortColumn, bool ascending) {
+            std::vector<FileRow> rows = fileRows;
+            if (sortColumn >= 0) {
+                auto key = [sortColumn](const FileRow& r) -> double {
+                    float kb = 0;   // "2.4 KB" sorts by its number, not its text
+                    return TryParseFloat(r.cells[sortColumn], kb) ? kb : 0;
+                };
+                std::stable_sort(rows.begin(), rows.end(),
+                    [&](const FileRow& a, const FileRow& b) {
+                        bool less = (sortColumn == 2) ? key(a) < key(b)
+                                                      : a.cells[sortColumn] < b.cells[sortColumn];
+                        bool greater = (sortColumn == 2) ? key(b) < key(a)
+                                                         : b.cells[sortColumn] < a.cells[sortColumn];
+                        return ascending ? less : greater;
+                    });
+            }
+            multiModel->Clear();
+            for (const auto& row : rows) {
+                MultiColumnListItem item(row.cells);
+                item.tooltip = row.path;                    // row-wide fallback
+                item.SetCellTooltip(1, row.typeTip);
+                item.SetCellTooltip(2, row.bytes);
+                item.SetCellTooltip(3, row.modifiedTip);    // column 0 uses the path
+                multiModel->AddItem(item);
+            }
+        };
+        fillRows(-1, true);
 
         auto multiList = std::make_shared<UltraCanvasListView>("MultiColumnListView", 500, 125, 480, 225);
         multiList->SetModel(multiModel);
@@ -174,6 +198,20 @@ namespace UltraCanvas {
             }
             statusLabel->SetText("Multi-Column: " + std::to_string(rows.size()) +
                                  " items selected\nRows: [" + rowList + "]");
+        };
+
+        // Clicking a header sorts by that column; clicking it again flips the
+        // direction. The triangle in the header cell follows SetSortIndicator.
+        std::weak_ptr<UltraCanvasListView> multiListWeak = multiList;
+        multiList->onHeaderClicked = [multiListWeak, multiModel, fillRows, statusLabel](int column) {
+            auto view = multiListWeak.lock();
+            if (!view) return;
+            bool ascending = (view->GetSortColumn() == column) ? !view->GetSortAscending() : true;
+            view->ResetSelection();
+            fillRows(column, ascending);
+            view->SetSortIndicator(column, ascending);
+            statusLabel->SetText("Multi-Column: sorted by " + multiModel->GetColumnDef(column).title +
+                                 (ascending ? " (ascending)" : " (descending)"));
         };
 
         container->AddChild(multiList);

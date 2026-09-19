@@ -1,6 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
-// Last Modified: 2026-07-22
+// Last Modified: 2026-09-19
 #include "UltraCanvasListView.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasApplication.h"
@@ -178,6 +178,14 @@ namespace UltraCanvas {
 
     bool UltraCanvasListView::GetShowHeader() const {
         return viewStyle.showHeader;
+    }
+
+    void UltraCanvasListView::SetSortIndicator(int column, bool ascending) {
+        if (column < 0) column = -1;
+        if (sortColumn == column && sortAscending == ascending) return;
+        sortColumn = column;
+        sortAscending = ascending;
+        RequestRedraw();
     }
 
     void UltraCanvasListView::SetShowItemTooltips(bool enable) {
@@ -490,60 +498,6 @@ namespace UltraCanvas {
         }
     }
 
-    // ===== SORTING (display and interaction only) =====
-
-    void UltraCanvasListView::SetSortingEnabled(bool enabled) {
-        if (sortingEnabled == enabled) return;
-        sortingEnabled = enabled;
-        RequestRedraw();
-    }
-
-    bool UltraCanvasListView::GetSortingEnabled() const { return sortingEnabled; }
-
-    void UltraCanvasListView::SetSortIndicator(int column, ListSortOrder order) {
-        sortIndicatorColumn = column < 0 ? -1 : column;
-        sortIndicatorOrder = order;
-        RequestRedraw();
-    }
-
-    void UltraCanvasListView::ClearSortIndicator() { SetSortIndicator(-1); }
-
-    int UltraCanvasListView::GetSortIndicatorColumn() const { return sortIndicatorColumn; }
-
-    ListSortOrder UltraCanvasListView::GetSortIndicatorOrder() const { return sortIndicatorOrder; }
-
-    void UltraCanvasListView::SetSortProxy(std::shared_ptr<UltraCanvasListSortFilterProxy> proxy) {
-        sortProxy = proxy;
-        if (!proxy) return;
-        SetSortingEnabled(true);
-        // Adopt whatever the proxy is already sorted by, so attaching one that
-        // has a sort does not make the header disagree with the rows.
-        SetSortIndicator(proxy->GetSortColumn(), proxy->GetSortOrder());
-    }
-
-    bool UltraCanvasListView::HandleHeaderClick(int column) {
-        if (!sortingEnabled || column < 0) return false;
-        if (!model || column >= model->GetColumnCount()) return false;
-
-        // The same column turns round; a different one starts ascending.
-        ListSortOrder order = ListSortOrder::Ascending;
-        if (column == sortIndicatorColumn && sortIndicatorOrder == ListSortOrder::Ascending)
-            order = ListSortOrder::Descending;
-
-        SetSortIndicator(column, order);
-
-        if (auto proxy = sortProxy.lock()) proxy->SortByColumn(column, order);
-        if (onSortRequested) onSortRequested(column, order);
-
-        // Sorting moves every row, so a row index that meant something a moment
-        // ago now points at a different record: the keyboard focus row is
-        // dropped rather than left pointing somewhere arbitrary. The selection
-        // is the caller's to map (UltraCanvasListSortFilterProxy::MapToSource).
-        focusedRow = -1;
-        RequestRedraw();
-        return true;
-    }
-
     void UltraCanvasListView::RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect) {
         if (!model) return;
 
@@ -570,30 +524,24 @@ namespace UltraCanvas {
             ctx->SetTextAlignment(colDef.alignment);
             ctx->SetTextPaint(viewStyle.headerTextColor);
 
-            // The sorted column keeps room at its right edge for the arrow, so
-            // a long title is elided before it rather than drawn underneath it.
-            // The width is the *current* one, so the indicator follows a column
-            // the user has resized.
-            const bool sorted = (col == sortIndicatorColumn);
-            const int indicatorWidth = sorted ? 12 : 0;
-            ctx->DrawTextInRect(colDef.title,
-                                Rect2Dd(colX + 4, headerRect.y,
-                                        colW - 8 - indicatorWidth, headerRect.height));
-
-            if (sorted) {
-                // A small solid triangle: up for ascending, down for descending.
-                const double cx = colX + colW - 9.0;
-                const double cy = headerRect.y + headerRect.height * 0.5;
-                const double half = 3.5;
-                std::vector<Point2Dd> arrow;
-                if (sortIndicatorOrder == ListSortOrder::Ascending) {
-                    arrow = { { cx, cy - half }, { cx + half, cy + half }, { cx - half, cy + half } };
-                } else {
-                    arrow = { { cx, cy + half }, { cx + half, cy - half }, { cx - half, cy - half } };
+            // The sorted column gives up a strip at the end of its cell to the
+            // direction triangle - after the title for left/centre-aligned
+            // columns, before it for right-aligned ones, so the title keeps
+            // its edge and the two never overlap.
+            Rect2Dd titleRect(colX + 4, headerRect.y, colW - 8, headerRect.height);
+            if (col == sortColumn && viewStyle.sortIndicatorSize > 0) {
+                int strip = viewStyle.sortIndicatorSize + 6;
+                if (strip < colW - 8) {
+                    Rect2Di stripRect(colX + colW - 4 - strip, headerRect.y, strip, headerRect.height);
+                    if (colDef.alignment == TextAlignment::Right) {
+                        stripRect.x = colX + 4;
+                        titleRect.x += strip;
+                    }
+                    titleRect.width -= strip;
+                    RenderSortIndicator(ctx, stripRect);
                 }
-                ctx->SetFillPaint(viewStyle.headerTextColor);
-                ctx->FillLinePath(arrow);
             }
+            ctx->DrawTextInRect(colDef.title, titleRect);
 
             // Separator between columns: the resize boundary. Drawn for every
             // interior border (not only when showGridLines) so the draggable
@@ -609,6 +557,28 @@ namespace UltraCanvas {
         // Bottom border of header
         ctx->SetStrokePaint(viewStyle.gridLineColor);
         ctx->DrawLine(headerRect.BottomLeft(), headerRect.BottomRight());
+    }
+
+    // The sort direction as geometry rather than a text glyph: a filled
+    // triangle stays crisp at any DPI and takes headerTextColor, whereas a
+    // font's U+25B2/U+25BC would depend on the header font carrying them. Apex
+    // up means ascending, apex down descending, centred in `cell`.
+    void UltraCanvasListView::RenderSortIndicator(IRenderContext* ctx, const Rect2Di& cell) {
+        const double w = viewStyle.sortIndicatorSize;
+        const double h = w * 0.5;
+        const double cx = cell.x + cell.width * 0.5;
+        const double cy = cell.y + cell.height * 0.5;
+        const double left = cx - w * 0.5, right = cx + w * 0.5;
+        const double top = cy - h * 0.5, bottom = cy + h * 0.5;
+
+        std::vector<Point2Dd> triangle;
+        if (sortAscending) {
+            triangle = { Point2Dd(cx, top), Point2Dd(right, bottom), Point2Dd(left, bottom) };
+        } else {
+            triangle = { Point2Dd(left, top), Point2Dd(right, top), Point2Dd(cx, bottom) };
+        }
+        ctx->SetFillPaint(viewStyle.headerTextColor);
+        ctx->FillLinePath(triangle);
     }
 
     void UltraCanvasListView::RenderRows(IRenderContext* ctx, const Rect2Di& contentRect) {
@@ -779,6 +749,37 @@ namespace UltraCanvas {
             }
         }
 
+        // Header click (press and release in the same header cell). Handled
+        // before row hit-testing: a press on the header is not a click on "no
+        // row" and must not clear the selection. A press on a resize border
+        // was consumed above, so a drag never reads as a click.
+        if (viewStyle.showHeader) {
+            switch (event.type) {
+                case UCEventType::MouseDown:
+                    if (Contains(event.pointer)) {
+                        int col = GetHeaderColumnAt(event.pointer.x, event.pointer.y);
+                        if (col >= 0) {
+                            pressedHeaderColumn = col;
+                            SetFocus(true);
+                            return true;
+                        }
+                    }
+                    break;
+                case UCEventType::MouseUp:
+                    if (pressedHeaderColumn >= 0) {
+                        int col = Contains(event.pointer)
+                                      ? GetHeaderColumnAt(event.pointer.x, event.pointer.y) : -1;
+                        bool clicked = (col == pressedHeaderColumn);
+                        pressedHeaderColumn = -1;
+                        if (clicked && onHeaderClicked) onHeaderClicked(col);
+                        return true;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
         switch (event.type) {
             case UCEventType::MouseDown:
                 return HandleMouseDown(event);
@@ -787,6 +788,7 @@ namespace UltraCanvas {
             case UCEventType::MouseLeave:
                 if (onCellHovered) onCellHovered(-1, -1, Point2Di(-1, -1));
                 HideHoverTooltip();
+                pressedHeaderColumn = -1;
                 hoveredColumn = -1;
                 hoveredHeaderColumn = -1;
                 if (hoveredRow != -1) {
@@ -815,13 +817,6 @@ namespace UltraCanvas {
 
         int row = GetRowAtY(event.pointer.y);
         if (row < 0) {
-            // A click in the header band sorts instead of clearing the
-            // selection - losing what you had selected because you sorted the
-            // table is not what anybody asks for.
-            if (viewStyle.showHeader && sortingEnabled) {
-                const int headerColumn = GetHeaderColumnAt(event.pointer.x, event.pointer.y);
-                if (headerColumn >= 0) return HandleHeaderClick(headerColumn);
-            }
             if (selection) selection->Clear();
             focusedRow = -1;
             RequestRedraw();
