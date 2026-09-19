@@ -227,6 +227,18 @@ private:
     void RefreshPaneBreadcrumbs();
     // Marks the active pane's header, and the tree buttons' pressed state.
     void StyleSplitHeaders();
+    // The two panes' minimum widths: a display's minimum, plus the tree's
+    // width for the pane the tree is docked in.
+    void ApplySplitPaneMinSizes();
+    // What ApplySplitPaneMinSizes gives `pane` (kFilerMinWidth while the
+    // split view is off): the preview pane's sizing leaves each display at
+    // least this.
+    int FolderPaneMinWidth(const UltraCanvasContainer* pane) const;
+    // Takes `amount` pixels (negative: gives them) out of the listed panes
+    // of `sizes`, each in proportion to its width - the preview pane's width
+    // comes out of the displays this way and goes back the same way.
+    static void TakeFromPanes(std::vector<int>& sizes,
+                              const std::vector<size_t>& panes, int amount);
     // Whether the folder tree mirrors the active display right now: always
     // while it has its own pane, and while docked beside the active one in
     // the split view. A tree docked beside the OTHER pane keeps following
