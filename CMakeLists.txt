@@ -1096,6 +1096,27 @@ if (BUILD_ULTRAVIEWER_APP)
     # opens arbitrary paths, so narrow Win32/CRT calls must read them as UTF-8.
     ultracanvas_embed_windows_manifest(UltraViewer)
 
+    # The freedesktop shortcut. This is what registers UltraViewer with the
+    # desktop as a handler for the media it displays — and so what makes a
+    # file opened from a filer, or dropped on its icon in a dock or taskbar,
+    # arrive as an argument, the same path `UltraViewer photo.jpg` takes.
+    # It is also what gives UltraFiler a name for the viewer's icon.
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+        # Exec=UltraViewer / TryExec=UltraViewer are resolved against PATH, so
+        # the entry is only true if the binary is installed with it.
+        install(TARGETS UltraViewer RUNTIME DESTINATION bin)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraViewer/UltraViewer.desktop
+                DESTINATION share/applications)
+        # Icon=UltraViewer is an icon *name*: it is resolved through the
+        # installed themes, so the files have to land in one. The PNG is
+        # rendered from the SVG, so both sizes carry the same artwork.
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraViewer.png
+                DESTINATION share/icons/hicolor/256x256/apps)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraViewer.svg
+                DESTINATION share/icons/hicolor/scalable/apps)
+        message(STATUS "  UltraViewer desktop entry: share/applications/UltraViewer.desktop")
+    endif()
+
     message(STATUS "  UltraViewer executable: UltraViewer")
 endif()
 
