@@ -2702,6 +2702,32 @@ endif()
 
 message(STATUS "")
 
+# ===== FILER HOST ICONS TEST =====
+# Display > File icons: the setting, and the cache key the host icon service
+# answers by - the key that decides whether a folder of four thousand ".txt"
+# files costs one icon lookup or four thousand. The lookups themselves are the
+# host's, so the test asserts that asking is harmless rather than what any one
+# desktop answers; it therefore passes on a build machine with no icon theme.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerHostIconsTest...")
+    add_executable(FilerHostIconsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerHostIconsTest.cpp
+    )
+    target_include_directories(FilerHostIconsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerHostIconsTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerHostIconsTest PRIVATE UltraCanvas)
+    set_target_properties(FilerHostIconsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerHostIconsTest COMMAND FilerHostIconsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerHostIconsTest")
+else()
+    message(STATUS "  FilerHostIconsTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
 # ===== SHELL LINK TEST =====
 # Reading a Windows shortcut (.lnk) on any platform: what it points at, the
 # icon it names, and how its Windows path maps onto the host filesystem. The

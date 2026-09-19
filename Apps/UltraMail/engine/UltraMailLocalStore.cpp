@@ -121,6 +121,25 @@ UltraDbResult LocalStore::Open(const std::string& connectionName,
           "ALTER TABLE accounts ADD COLUMN smtp_username TEXT DEFAULT '';"
           "ALTER TABLE accounts ADD COLUMN smtp_oauth INTEGER DEFAULT 0;"
           "ALTER TABLE accounts ADD COLUMN provider_name TEXT DEFAULT '';" },
+        { 3, "folder selectable flag",
+          // \Noselect container folders (e.g. Gmail's "[Gmail]"). Existing rows
+          // default to selectable; the next folder sync fills in the real value.
+          "ALTER TABLE folders ADD COLUMN selectable INTEGER DEFAULT 1;" },
+        { 4, "sender security verdicts",
+          // The content scan's verdict per message. Its own table (rather than
+          // columns on `messages`) because an envelope upsert runs on every
+          // header sync, long before a body exists to scan — a column would be
+          // reset to "unscanned" on every one of them.
+          "CREATE TABLE message_security("
+          "  account_id TEXT NOT NULL,"
+          "  folder TEXT NOT NULL,"
+          "  uid INTEGER NOT NULL,"
+          "  level TEXT DEFAULT 'unscanned',"
+          "  score INTEGER DEFAULT 0,"
+          "  bulk INTEGER DEFAULT 0,"
+          "  reason TEXT DEFAULT '',"
+          "  scanned_at INTEGER DEFAULT 0,"
+          "  PRIMARY KEY(account_id, folder, uid));" },
     };
     return UltraDb_Migrate(connection_, steps);
 }
@@ -191,6 +210,7 @@ UltraDbResult LocalStore::RemoveAccount(const std::string& accountId) {
     if (tx == UltraDbInvalidHandle)
         return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
     UltraDb_ExecInTx(tx, "DELETE FROM messages WHERE account_id=?", { accountId });
+    UltraDb_ExecInTx(tx, "DELETE FROM message_security WHERE account_id=?", { accountId });
     UltraDb_ExecInTx(tx, "DELETE FROM folders WHERE account_id=?", { accountId });
     UltraDb_ExecInTx(tx, "DELETE FROM accounts WHERE account_id=?", { accountId });
     return UltraDb_Commit(tx);
@@ -200,12 +220,13 @@ UltraDbResult LocalStore::RemoveAccount(const std::string& accountId) {
 
 UltraDbResult LocalStore::UpsertFolder(const Folder& f) {
     return UltraDb_Exec(connection_,
-        "INSERT INTO folders(account_id, name, role, uidvalidity, uidnext) "
-        "VALUES(?, ?, ?, ?, ?) "
+        "INSERT INTO folders(account_id, name, role, uidvalidity, uidnext, selectable) "
+        "VALUES(?, ?, ?, ?, ?, ?) "
         "ON CONFLICT(account_id, name) DO UPDATE SET "
         "role=excluded.role, uidvalidity=excluded.uidvalidity, "
-        "uidnext=excluded.uidnext",
-        { f.accountId, f.name, ToString(f.role), f.uidValidity, f.uidNext });
+        "uidnext=excluded.uidnext, selectable=excluded.selectable",
+        { f.accountId, f.name, ToString(f.role), f.uidValidity, f.uidNext,
+          static_cast<int64_t>(f.selectable ? 1 : 0) });
 }
 
 UltraDbResult LocalStore::ListFolders(const std::string& accountId,
@@ -213,7 +234,7 @@ UltraDbResult LocalStore::ListFolders(const std::string& accountId,
     out.clear();
     UltraDbResultSet rs;
     UltraDbResult q = UltraDb_Query(connection_,
-        "SELECT account_id, name, role, uidvalidity, uidnext FROM folders "
+        "SELECT account_id, name, role, uidvalidity, uidnext, selectable FROM folders "
         "WHERE account_id=? ORDER BY name", { accountId }, rs);
     if (!q) return q;
     for (const auto& row : rs) {
@@ -223,6 +244,7 @@ UltraDbResult LocalStore::ListFolders(const std::string& accountId,
         f.role        = FolderRoleFromString(row["role"].AsString());
         f.uidValidity = row["uidvalidity"].AsInt64();
         f.uidNext     = row["uidnext"].AsInt64();
+        f.selectable  = row["selectable"].AsInt64() != 0;
         out.push_back(std::move(f));
     }
     return UltraDbResult::Ok();
@@ -337,6 +359,68 @@ UltraDbResult LocalStore::SetFlags(const std::string& accountId,
         "UPDATE messages SET flags=?, needs_answer=? "
         "WHERE account_id=? AND folder=? AND uid=?",
         { updated, needsAnswer ? 1 : 0, accountId, folder, uid });
+}
+
+// ---- Sender security verdicts ----------------------------------------------
+
+UltraDbResult LocalStore::SetSecurity(const std::string& accountId,
+                                      const std::string& folder, int64_t uid,
+                                      const MessageSecurity& sec) {
+    const int64_t when = sec.scannedAt > 0 ? sec.scannedAt
+                                           : static_cast<int64_t>(std::time(nullptr));
+    return UltraDb_Exec(connection_,
+        "INSERT INTO message_security(account_id, folder, uid, level, score, bulk, "
+        "  reason, scanned_at) VALUES(?, ?, ?, ?, ?, ?, ?, ?) "
+        "ON CONFLICT(account_id, folder, uid) DO UPDATE SET "
+        "level=excluded.level, score=excluded.score, bulk=excluded.bulk, "
+        "reason=excluded.reason, scanned_at=excluded.scanned_at",
+        { accountId, folder, uid, ToString(sec.level),
+          static_cast<int64_t>(sec.score), static_cast<int64_t>(sec.bulk ? 1 : 0),
+          sec.reason, when });
+}
+
+namespace {
+
+MessageSecurity RowToSecurity(const UltraDbRow& row) {
+    MessageSecurity sec;
+    sec.level     = ThreatLevelFromString(row["level"].AsString());
+    sec.score     = static_cast<int>(row["score"].AsInt64());
+    sec.bulk      = row["bulk"].AsInt64() != 0;
+    sec.reason    = row["reason"].AsString();
+    sec.scannedAt = row["scanned_at"].AsInt64();
+    return sec;
+}
+
+const char* kSecurityColumns = "uid, level, score, bulk, reason, scanned_at";
+
+} // namespace
+
+UltraDbResult LocalStore::GetSecurity(const std::string& accountId,
+                                      const std::string& folder, int64_t uid,
+                                      MessageSecurity& out) const {
+    out = MessageSecurity{};
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        std::string("SELECT ") + kSecurityColumns +
+        " FROM message_security WHERE account_id=? AND folder=? AND uid=?",
+        { accountId, folder, uid }, rs);
+    if (!q) return q;
+    if (!rs.Empty()) out = RowToSecurity(rs.Row(0));
+    return UltraDbResult::Ok();
+}
+
+UltraDbResult LocalStore::ListSecurity(const std::string& accountId,
+                                       const std::string& folder,
+                                       std::map<int64_t, MessageSecurity>& out) const {
+    out.clear();
+    UltraDbResultSet rs;
+    UltraDbResult q = UltraDb_Query(connection_,
+        std::string("SELECT ") + kSecurityColumns +
+        " FROM message_security WHERE account_id=? AND folder=?",
+        { accountId, folder }, rs);
+    if (!q) return q;
+    for (const auto& row : rs) out[row["uid"].AsInt64()] = RowToSecurity(row);
+    return UltraDbResult::Ok();
 }
 
 // ---- Rollups ---------------------------------------------------------------

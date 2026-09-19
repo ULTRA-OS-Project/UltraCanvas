@@ -323,6 +323,11 @@ the backing implementation can be replaced without affecting callers.
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also
     be a `.desktop` file, whose own command is what then runs).
+  - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
+    file (matched by name, never by reading it) and the generic icon name
+    that type falls back to (`application/pdf` → `x-office-document`). Both
+    empty on Windows and macOS, which keep no MIME database; exposed because
+    the icon-naming rules of `UltraCanvasHostFileIcons` need them.
   - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
     for an "Other application…" picker (the picker UI lives with the caller).
   - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
@@ -445,6 +450,28 @@ the backing implementation can be replaced without affecting callers.
   Used by `LoadNativeFileIconPixmap` (`UltraCanvasNativeFileIcons.h`) off
   Windows, and as the fallback for a file the shell declines on it.
   See `Docs/UltraCanvas/UltraCanvasIconResource.md`.
+
+- **UltraCanvasHostFileIcons** (`UltraCanvasHostFileIcons.h`) — the icon the
+  HOST desktop draws for a file of a given TYPE: what Explorer puts on a
+  `.txt`, Finder on a `.pdf`, the icon theme on a folder. The type-wide
+  counterpart of `UltraCanvasNativeFileIcons`, which answers the other
+  question — what icon a file carries INSIDE itself — and is asked first.
+  Shared key plus the no-op backend in `core/UltraCanvasHostFileIcons.cpp`;
+  the lookups per platform under `OS/<Platform>/` (Linux/BSD: the file's MIME
+  type from `UltraCanvasFileAssociations`, then the icon-naming-spec names
+  through `UltraCanvasDesktopEntry`'s theme resolver; Windows: the shell's
+  system image list via `SHGetFileInfoW` + `SHGetImageList`; macOS:
+  NSWorkspace). WebAssembly and Android report unavailable. Public surface:
+  - `HostFileIconsAvailable` — is there a desktop to ask on this build?
+  - `HostFileIconKey(path, isDirectory)` — the cache key files of one kind
+    share, so a folder of four thousand `.txt` files costs ONE lookup; pure
+    string work, no file access.
+  - `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` — the icon as a
+    `UCPixmap`, or null (no icon for the type, or no desktop): blocking, for
+    a worker thread holding a `NativeFileIconThreadScope`.
+  - `RefreshHostFileIcons` — forget the lookups after a theme change.
+  Used by `UltraCanvasFilerWidget` under Display > File icons > Host OS icons.
+  See `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`.
 
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a

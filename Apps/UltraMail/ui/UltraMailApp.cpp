@@ -31,6 +31,7 @@
 #include "UltraCanvasUtils.h"
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetHttp.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>
 
@@ -93,6 +94,13 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     dataDir_  = dataDir;
     cacheDir_ = dataDir + "/cache";
     mailDir_  = dataDir + "/mail";
+    // App-wide view preferences (e.g. the reading pane). A missing file keeps
+    // the defaults; it is written the first time the user changes a setting.
+    prefsPath_ = dataDir + "/preferences.ini";
+    prefs_.Load(prefsPath_);
+    // The sender-icon cache (the badge left of every subject line) lives under
+    // the cache directory; it is safe to point at it before the folder exists.
+    ConfigureSenderIcons();
     // The credential vault stays locked until the user supplies the master
     // password; nothing reads or writes a secret before then.
     vault_ = CredentialVault(dataDir + "/vault");
@@ -314,9 +322,34 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                const std::string& selfAddr) {
         OpenComposer(Composer::Reply(src, selfName, selfAddr, /*replyAll=*/false));
     };
+    // The folder tree switched to a folder under a different account: adopt that
+    // account (and highlight its tile) without re-showing its inbox, so the
+    // tree's chosen folder stays open.
+    mailView_.onSelectAccount = [this](const std::string& accountId) {
+        selectedAccount_ = accountId;
+        store_.ListAccounts(accounts_);
+        store_.GetAccountStatus(status_);
+        accountBar_.Rebuild(accounts_, status_, selectedAccount_);
+    };
+    // A folder was opened: only the inbox is fetched up front, so lazily sync a
+    // folder the first time it is opened and has nothing stored yet.
+    mailView_.onOpenFolder = [this](const std::string& accountId, const std::string& folder) {
+        const std::string key = accountId + "\n" + folder;
+        if (lazilySynced_.count(key)) return;
+        std::vector<MessageEnvelope> existing;
+        store_.ListMessages(accountId, folder, 1, existing);
+        if (!existing.empty()) { lazilySynced_.insert(key); return; }
+        // Can't fetch right now (no plug-in / vault locked): leave it unmarked so
+        // opening it again retries once the prerequisites are met.
+        if (!ImapPlugin() || !vault_.IsUnlocked()) return;
+        lazilySynced_.insert(key);
+        SyncFolder(accountId, folder);
+    };
     auto mail = mailView_.Build();
     accountView_->AddChild(mail);
     mail->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    // Apply the remembered reading-pane choice (default on; a rebuild only when off).
+    mailView_.SetReadingPane(prefs_.showReadingPane);
 
     return accountView_;
 }
@@ -342,6 +375,10 @@ void UltraMailApp::HandleReload() {
     // master password; the sync runs once the vault is open (not on Cancel).
     EnsureVaultUnlocked([this, target]() {
         SyncAccount(target);
+        // Reload also refreshes the folder in view when it is not the inbox (the
+        // account sync covers the inbox); other folders are lazily fetched.
+        const std::string folder = mailView_.CurrentFolder();
+        if (!folder.empty() && folder != "INBOX") SyncFolder(target, folder);
         Refresh();
     });
 }
@@ -654,8 +691,11 @@ void UltraMailApp::CollectContacts(const std::string& accountId, const std::stri
     if (!contacts_.IsOpen()) return;
     std::vector<MessageEnvelope> msgs;
     store_.ListMessages(accountId, folder, 0, msgs);
+    // CollectSender, not Collect: a sender in the known-sender registry is
+    // filed under Services as a business contact (with the service's name as
+    // the organization), everything else lands in Other as before.
     for (const auto& m : msgs)
-        ContactCollector::Collect(contacts_, m.fromName, m.fromAddr, ContactSection::Other);
+        ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr);
 }
 
 void UltraMailApp::StartBackgroundSync() {
@@ -704,6 +744,70 @@ void UltraMailApp::SyncAccount(const std::string& accountId) {
         SyncAccounts({sa}, /*userInitiated=*/true);
         return;
     }
+}
+
+void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& folder) {
+    IMailboxProtocolPlugin* imap = ImapPlugin();
+    if (!imap || !vault_.IsUnlocked()) return;
+
+    const Account* account = nullptr;
+    for (const auto& a : accounts_) if (a.accountId == accountId) account = &a;
+    if (!account) return;
+
+    const DiscoveryResult settings = SettingsFor(*account);
+    const std::string serverUrl =
+        settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
+    if (serverUrl.empty() || !settings.found) return;
+    if (vault_.MethodFor(accountId) == SignInMethod::None) return;
+
+    UltraNetMailOptions opts;
+    opts.useTls      = settings.imap.security != MailSecurity::Plain;
+    opts.implicitTls = settings.imap.security == MailSecurity::SslTls;
+    const std::string email    = account->email;
+    const std::string who      = email.empty() ? accountId : email;
+    const std::string username = settings.imap.username.empty() ? email : settings.imap.username;
+    const std::string provider = OAuthProviderFor(settings);
+    opts.credentials.username  = username;
+
+    auto svc = std::make_shared<SyncService>(store_, *imap, mailDir_);
+    if (++syncsInFlight_ == 1 && reloadButton_) reloadButton_->SetText("Reloading…");
+    auto progressBuf = std::make_shared<std::vector<MessageEnvelope>>();
+    svc->SyncFolderInBackground(accountId, folder, serverUrl, opts,
+        [this, accountId, username, provider](UltraNetMailOptions& o) {
+            return ResolveCredentials(accountId, username, provider, o.credentials);
+        },
+        [this, svc, accountId, who](SyncOutcome outcome) {
+            auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+            if (!app) return;
+            app->PostToUIThread([this, accountId, who, outcome]() {
+                if (--syncsInFlight_ <= 0) {
+                    syncsInFlight_ = 0;
+                    if (reloadButton_) reloadButton_->SetText("Reload");
+                }
+                if (!outcome) {
+                    if (!syncErrorReported_) {
+                        syncErrorReported_ = true;
+                        AlertError(window_ ? window_.get() : nullptr,
+                                   "That folder could not be fetched for " + who + ".",
+                                   outcome.message);
+                    }
+                    return;
+                }
+                syncErrorReported_ = false;
+                Refresh();   // re-query the store; the open folder now shows its mail
+            });
+        },
+        [this, accountId, progressBuf](const MessageEnvelope& m) {
+            progressBuf->push_back(m);
+            if (progressBuf->size() < 20) return;
+            auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+            if (!app) { progressBuf->clear(); return; }
+            auto batch = std::make_shared<std::vector<MessageEnvelope>>();
+            batch->swap(*progressBuf);
+            app->PostToUIThread([this, accountId, batch]() {
+                if (accountId == selectedAccount_) mailView_.AppendMessages(accountId, *batch);
+            });
+        });
 }
 
 void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
@@ -816,6 +920,10 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                               // one worker touches progressBuf, so no lock is
                               // needed; each flush hands a fresh batch to the UI.
                               [this, aid, progressBuf](const MessageEnvelope& m) {
+            // On the worker thread, so this is where a known service's icon is
+            // fetched: once per brand, never for an address that is not in the
+            // registry, and not at all when the user turned downloads off.
+            senderIcons_.EnsureIconForAddress(m.fromAddr);
             progressBuf->push_back(m);
             std::fprintf(stderr, "[UMSTREAM] onProgress uid=%lld buf=%zu aid=%s\n",
                          (long long)m.uid, progressBuf->size(), aid.c_str());
@@ -834,6 +942,33 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         });
         scheduler_.MarkSynced(acc.accountId, now);
     }
+}
+
+void UltraMailApp::ConfigureSenderIcons() {
+    senderIcons_.SetRoot(cacheDir_ + "/sender-icons");
+    senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+    // One HTTPS GET, TLS verified (UltraNet's default), with a short timeout:
+    // an icon is never worth holding a sync open for. Only the URLs in the
+    // known-sender registry are ever passed here.
+    senderIcons_.SetFetcher([](const std::string& url, std::vector<uint8_t>& out) {
+        UltraNetHttpOptions options = UltraNetHttpOptions::Default();
+        options.timeoutMs        = 10000;
+        options.connectTimeoutMs = 5000;
+        options.followRedirects  = true;
+        options.maxReceiveSize   = 512 * 1024;   // an icon, not a page
+        UltraNetResponse response;
+        if (!UltraNet_HttpGet(url, response, options)) return false;
+        if (!response.IsSuccess() || response.body.empty()) return false;
+        out = response.body;
+        return true;
+    });
+    mailView_.SetIconCache(&senderIcons_);
+}
+
+void UltraMailApp::RefreshContactIndex() {
+    ContactIndex index;
+    if (contacts_.IsOpen()) BuildContactIndex(contacts_, index);
+    mailView_.SetContacts(std::move(index));
 }
 
 void UltraMailApp::OpenContacts() {
@@ -984,6 +1119,11 @@ void UltraMailApp::Refresh() {
     bool selectedExists = false;
     for (const auto& a : accounts_) if (a.accountId == selectedAccount_) selectedExists = true;
     if (!selectedExists) selectedAccount_ = accounts_.empty() ? "" : accounts_.front().accountId;
+
+    // The badge's colours come from the address book, which the auto-collector
+    // and the contact manager both write to — so re-read it here, where every
+    // path that can have changed it ends up.
+    RefreshContactIndex();
 
     accountBar_.Rebuild(accounts_, status_, selectedAccount_);
     mailView_.SetAccounts(accounts_);
@@ -1240,6 +1380,8 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.canOAuth        = !provider.empty();
         fields.providerName    = provider.empty() ? std::string()
                                                    : OAuthProviderDisplayName(provider);
+        fields.showReadingPane  = prefs_.showReadingPane;
+        fields.fetchSenderIcons = prefs_.fetchSenderIcons;
 
         // The login check uses the typed new password when present, else the
         // account's stored credentials. It only runs on the password path; the
@@ -1264,6 +1406,18 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
             "before the changes are saved.",
             current,
             [this, account, provider](const ServerSettingsDialog::Result& r) {
+                // The reading-pane checkbox is an app-wide view option; apply and
+                // remember it regardless of the server/credential outcome below.
+                if (r.showReadingPane != prefs_.showReadingPane) {
+                    prefs_.showReadingPane = r.showReadingPane;
+                    prefs_.Save(prefsPath_);
+                    mailView_.SetReadingPane(prefs_.showReadingPane);
+                }
+                if (r.fetchSenderIcons != prefs_.fetchSenderIcons) {
+                    prefs_.fetchSenderIcons = r.fetchSenderIcons;
+                    prefs_.Save(prefsPath_);
+                    senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+                }
                 Account updated = account;
                 AutoDiscovery::ApplyTo(updated, r.settings);
                 updated.displayName =

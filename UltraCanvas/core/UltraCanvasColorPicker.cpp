@@ -172,6 +172,36 @@ namespace UltraCanvas {
     // ===================================================================
     // Layout
     // ===================================================================
+    float UltraCanvasColorPicker::ControlsHeight() const {
+        const float gap = Scaled(style.rowGap);
+        const float rh = Scaled(style.rowHeight);
+        const float tabH = Scaled(style.tabHeight);
+        const int nRows = 3 + (showAlpha ? 1 : 0);
+        const float rowsH = SlidersVisible() ? nRows * (rh + gap) : 0.0f;
+        const float headerH = slidersCollapsible ? (rh + gap) : 0.0f;
+        const float previewRowH = 2.0f * rh + gap;       // swatches / hex block
+        const float tabsH = (modeSelector == ColorPickerModeSelector::TabBar)
+                            ? (tabH + gap) : 0.0f;
+        return previewRowH + gap + tabsH + headerH + rowsH;
+    }
+
+    float UltraCanvasColorPicker::PreferredHeightForWidth(float width) const {
+        const float pad = Scaled(style.padding);
+        const float gap = Scaled(style.rowGap);
+        const float innerW = std::max(40.0f, width - 2.0f * pad);
+        // What RecalculateLayout() hands the wheel is
+        //   wheelAreaH = H - pad - ControlsHeight() - gap - pad,
+        // and the ring takes the smaller of that and the inner width. Turn it
+        // around: the height at which the ring gets the whole inner width.
+        float wheelAreaH = 0.0f;
+        if (showColorWheel) {
+            wheelAreaH = (wheelStyle == ColorPickerWheelStyle::Ring)
+                         ? innerW
+                         : std::max(40.0f, innerW * 0.75f) + gap + Scaled(style.hueBarHeight);
+        }
+        return pad + wheelAreaH + gap + ControlsHeight() + pad;
+    }
+
     void UltraCanvasColorPicker::RecalculateLayout() {
         const float W = GetWidth();
         const float H = GetHeight();
@@ -188,12 +218,8 @@ namespace UltraCanvas {
         const float tabH = Scaled(style.tabHeight);
 
         const int nRows = 3 + (showAlpha ? 1 : 0);
-        const float rowsH = SlidersVisible() ? nRows * (rh + gap) : 0.0f;
-        const float headerH = slidersCollapsible ? (rh + gap) : 0.0f;
         const float previewRowH = 2.0f * rh + gap;       // swatches / hex block
-        const float tabsH = (modeSelector == ColorPickerModeSelector::TabBar)
-                            ? (tabH + gap) : 0.0f;
-        const float bottomH = previewRowH + gap + tabsH + headerH + rowsH;
+        const float bottomH = ControlsHeight();
 
         // --- Optional colour wheel occupies the space above the controls ---
         float cursorY = pad;

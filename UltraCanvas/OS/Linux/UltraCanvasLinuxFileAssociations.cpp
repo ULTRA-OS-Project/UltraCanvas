@@ -106,6 +106,12 @@ namespace {
         std::unordered_map<std::string, std::string> literalToMime;
         // MIME subclassing ("text/x-python" → "text/plain").
         std::unordered_map<std::string, std::vector<std::string>> mimeParents;
+        // The generic icon a type falls back to when the theme has no icon
+        // of its own for it ("application/pdf" → "x-office-document"). Only
+        // the exceptions are listed; everything else falls back to the
+        // "<media>-x-generic" of its media type, which is a rule rather than
+        // a row and so is applied by the caller.
+        std::unordered_map<std::string, std::string> mimeGenericIcons;
 
         std::unordered_map<std::string, DesktopEntry> apps;   // by desktop id
 
@@ -169,6 +175,24 @@ namespace {
         std::string child, parent;
         while (in >> child >> parent)
             index.mimeParents[child].push_back(parent);
+    }
+
+    // shared-mime-info generic-icons: "mime/type:icon-name" per line.
+    void ParseGenericIcons(GlobalIndex& index, const std::string& path) {
+        NoteSource(index, path);
+        std::ifstream in(path);
+        if (!in.is_open()) return;
+        std::string line;
+        while (std::getline(in, line)) {
+            const size_t colon = line.find(':');
+            if (colon == std::string::npos || colon == 0 ||
+                colon + 1 >= line.size())
+                continue;
+            // First directory wins, as everywhere else in the chain: the
+            // user's own database overrides the system one.
+            index.mimeGenericIcons.emplace(line.substr(0, colon),
+                                           Trim(line.substr(colon + 1)));
+        }
     }
 
     // One "mime/type=app1.desktop;app2.desktop;" association line.
@@ -301,6 +325,7 @@ namespace {
         for (const std::string& d : dataDirs) {
             ParseGlobs2(index, d + "/mime/globs2");
             ParseSubclasses(index, d + "/mime/subclasses");
+            ParseGenericIcons(index, d + "/mime/generic-icons");
         }
 
         // mimeapps.list chain, most specific first (the AddAssociations
@@ -480,6 +505,21 @@ std::vector<FileAssociationApp> ResolveFile(const std::string& fileName) {
     const std::string name = slash == std::string::npos
                              ? fileName : fileName.substr(slash + 1);
     return ResolveByMime(MimeTypeForName(name));
+}
+
+std::string MimeGenericIconFor(const std::string& mime) {
+    EnsureIndex();
+    auto it = g_index.mimeGenericIcons.find(mime);
+    return it == g_index.mimeGenericIcons.end() ? std::string() : it->second;
+}
+
+std::string MimeTypeFor(const std::string& fileName) {
+    EnsureIndex();
+    // The caller passes a bare name; the globs are matched against exactly
+    // that. What the icon rules need is the type this system would name, so
+    // the "application/octet-stream" MimeTypeForName falls back to is handed
+    // over as it stands rather than turned into "unknown".
+    return MimeTypeForName(fileName);
 }
 
 bool LaunchDefault(const std::vector<std::string>& paths, std::string& outError) {
