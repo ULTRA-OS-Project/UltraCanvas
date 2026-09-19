@@ -174,11 +174,12 @@ int main(int argc, char** argv) {
             auto c = xar->GetCapabilities();
             Check(c.SupportsLayers && c.SupportsGroups && c.SupportsText,
                   "xar: layers, groups and text are written");
-            Check(c.MaxGradientStops == 2, "xar: gradients keep two stops");
-            Check(!c.SupportsBlendModes && !c.SupportsFilters && !c.SupportsMasking &&
-                  !c.SupportsClipping && !c.SupportsDropShadow && !c.SupportsPages &&
-                  !c.SupportsConicalGradient && !c.SupportsVariableStrokeWidth,
-                  "xar: effects, pages and conical fills are not claimed");
+            Check(c.MaxGradientStops > 2, "xar: multistage fills keep every stop");
+            Check(c.SupportsDropShadow && c.SupportsNonDestructiveEffects && c.SupportsBlendModes &&
+                  c.SupportsConicalGradient && c.SupportsVariableStrokeWidth,
+                  "xar: shadows, feathers, transparency mixes, conical fills and width profiles are written");
+            Check(!c.SupportsFilters && !c.SupportsMasking && !c.SupportsClipping && !c.SupportsPages,
+                  "xar: filters, masks, clipping and pages are not claimed");
         }
     }
 
