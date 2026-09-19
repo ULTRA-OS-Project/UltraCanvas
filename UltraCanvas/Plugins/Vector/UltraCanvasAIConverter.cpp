@@ -6,10 +6,13 @@
 // with Illustrator's private editing data attached as an optional stream,
 // and any PDF without that stream is still a valid .ai that Illustrator
 // (and every PDF consumer) opens. This writer therefore produces the
-// Vector plugin's PDF output under the .ai extension. Legacy (v8 and
-// older) EPS-based .ai files are recognized by validation but not written.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Vector plugin's PDF output under the .ai extension - a file whose
+// artwork is in its PDF page, so it reads back through the PDF engine
+// rather than through the private-data reader. Legacy (v8 and older)
+// EPS-based .ai files are recognized by validation and read by
+// UltraCanvasAIReader.cpp, but are not written.
+// Version: 1.1.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasMetafileConverters.h"

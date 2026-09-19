@@ -28,7 +28,7 @@
   paste and New > *document* therefore still say a remote drive cannot take
   them.
 
-  Built on framework 0.8.89's `remoteDelete` / `remoteRename` /
+  Built on framework 0.8.93's `remoteDelete` / `remoteRename` /
   `remoteMakeDirectory` hooks and the `CloudService` change verbs added with
   them.
 

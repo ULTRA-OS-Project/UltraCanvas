@@ -1,7 +1,11 @@
 // UltraCanvasVectorElement.cpp
 // UI Element for Vector Document Display and Interaction
-// Version: 2.0.0
-// Last Modified: 2025-01-20
+//
+// The element owns the view transform - zoomLevel and panOffset - and
+// VectorRenderer must therefore be given no viewport of its own, or its
+// fit-to-viewport transform overrides this one (see RenderDocument).
+// Version: 2.1.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorElement.h"
@@ -26,6 +30,7 @@ namespace UltraCanvas {
         document = doc;
         state.IsDirty = true;
         ClearError();
+        fitPending = true;
         ZoomToFit();
         if (onLoad) onLoad(true, "Document loaded");
     }
@@ -36,6 +41,7 @@ namespace UltraCanvas {
         hoveredElementId.clear();
         zoomLevel = 1.0f;
         panOffset = {0, 0};
+        fitPending = false;
         state.IsDirty = true;
         ClearError();
     }
@@ -59,7 +65,17 @@ namespace UltraCanvas {
         Rect2Dd docBounds = document->GetBoundingBox();
         if (docBounds.width <= 0 || docBounds.height <= 0) return;
 
-        auto bounds = GetBounds();
+        // A document is usually set while the page is still being built, so
+        // the layout has not given this element a box yet and there is
+        // nothing to fit to. Fitting to a zero box would leave the drawing
+        // at MinZoom; the fit is remembered instead and redone from Render()
+        // once the box is real.
+        if (finalBounds.width <= 0 || finalBounds.height <= 0) {
+            fitPending = true;
+            return;
+        }
+        fitPending = false;
+
         float scaleX = finalBounds.width / docBounds.width;
         float scaleY = finalBounds.height / docBounds.height;
         float scale = std::min(scaleX, scaleY) * 0.9f;
@@ -186,6 +202,11 @@ namespace UltraCanvas {
         if (!IsVisible()) return;
         auto bounds = GetBounds();
 
+        // The first frame after a document arrives is where the element
+        // finally knows its size, so a fit asked for before the layout ran
+        // happens here.
+        if (fitPending && document) ZoomToFit();
+
         ctx->PushState();
         ctx->ClipRect(bounds);
 
@@ -223,8 +244,19 @@ namespace UltraCanvas {
 
         VectorRenderOptions renderOpts;
         renderOpts.EnableAntialiasing = options.EnableAntialiasing;
-        renderOpts.ViewportBounds = {0, 0, finalBounds.width / zoomLevel, finalBounds.height / zoomLevel};
-        renderOpts.ClipToViewport = true;
+        // The view transform is this element's: zoomLevel and panOffset, set
+        // just above. VectorRenderer applies a fit-to-viewport of its own
+        // when it is given a viewport, and the two fought: expressing the
+        // viewport in document units (finalBounds / zoomLevel) made the
+        // renderer's scale cancel zoomLevel exactly - so zooming changed
+        // nothing - and its centring of the ViewBox came on top of the
+        // centring already in panOffset, which threw the drawing half a
+        // viewport to the right whenever ZoomToFit ran with a real box. An
+        // empty viewport leaves the transform to this element. It also turns
+        // off culling (IsInViewport passes everything), which costs only
+        // time: Render() already clips to this element's bounds.
+        renderOpts.ViewportBounds = {0, 0, 0, 0};
+        renderOpts.ClipToViewport = false;
         renderer->SetOptions(renderOpts);
         renderer->RenderDocument(ctx, *document);
 

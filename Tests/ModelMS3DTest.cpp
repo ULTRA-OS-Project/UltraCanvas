@@ -16,7 +16,9 @@
 // hierarchy, the two skinning records, the smoothing-group bitmask, the
 // optional versioned tail and the refusals.
 //
-// argv[1] is the .ms3d. Without it only the synthetic cases run.
+// argv[1] is the .ms3d - Tests/data/3D/MS3D, not the demo copy under
+// media/3D, which was given the hull it never had. Without it only the
+// synthetic cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-11

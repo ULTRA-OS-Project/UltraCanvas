@@ -1,4 +1,4 @@
-#### 2026-09-19 *0.8.89*
+#### 2026-09-19 *0.8.93*
 - **A remote drive can be changed, not only read.** `UltraCanvasFilerWidget`
   gained three more host hooks beside `remoteListing` - **`remoteDelete`**,
   **`remoteRename`** and **`remoteMakeDirectory`** - so the folder display can
@@ -32,6 +32,181 @@
   the path normalised, exactly as `List` does. A provider that never
   implemented them still answers `Unsupported`, and the suite checks both
   halves of that.
+
+#### 2026-09-19 *0.8.91*
+- **Illustrator artwork rendered as a blank page.** "Since Illustrator 9 a
+  `.ai` file is a PDF" is only half true, and the demo app's AI Artwork page
+  acted on the wrong half: it handed `.ai` straight to the MuPDF viewer.
+  Illustrator's *Create PDF Compatible File* option decides whether the PDF
+  page carries the artwork at all - with it off (and it is off in what
+  CorelDRAW and several other exporters write) the file is a valid PDF whose
+  page content stream draws nothing, and every path lives in the private
+  `/AIPrivateData` streams instead. Both samples in `media/vector/AI` are of
+  that kind: their page content is 47 bytes that set a transform and a
+  graphics state. A PDF engine renders exactly that, so the page was blank -
+  correctly, and unhelpfully. The online `.ai` viewers this was checked
+  against fail the same way.
+- **New: `UltraCanvas/Plugins/Vector/UltraCanvasAIReader.cpp`** - the import
+  side of `VectorConverter::AIConverter`, which stops being export-only.
+  It finds the `/AIPrivateData` streams in the PDF container, undoes their
+  filter chain (ASCIIHex / ASCII85 / Flate) and interprets Illustrator's art
+  language into a `VectorStorage::VectorDocument`: path construction
+  (`m`, `l`, `c`, `v`, `y`) with closepath on the lowercase paint operators,
+  clipping (`W`), compound paths (`*u`/`*U`) so filled shapes keep their
+  holes, groups, named layers, the graphics state (width, cap, join, miter,
+  dashes, winding rule), every colour operator (grey, CMYK, RGB, spot, and
+  patterns as flat colour) and the AI9 transparency operator `Xy`. Gradients
+  and text are counted and reported through `WarningCallback` rather than
+  dropped silently, as is every operator the parser does not know, so a file
+  that displays wrong says what it needed.
+- Legacy (v8 and earlier) EPS-based `.ai` files carry the same art language
+  in the open and read through the same parser with no container step. The
+  two coordinate spaces - Illustrator's ruler space, origin top-left with y
+  down as negative numbers, and PostScript's bottom-left origin with y up -
+  both map onto the document's y-down page, chosen from the art's own extent.
+- **The demo page now names the route it took.** It reads through the Vector
+  plugin and shows the drawing in an `UltraCanvasVectorElement` (drag to pan,
+  wheel to zoom); a `.ai` that really does draw through its PDF page carries
+  no private data, `AIConverter::Import()` declines it with a warning that
+  says so, and the MuPDF view takes over. That is the file `AIConverter`
+  itself writes, so the fallback is the round trip of the plugin's own
+  output. The page is built wherever the Vector plugin is, rather than only
+  where the PDF plugin is.
+- **`.ai` joins the Vector plugin's readable extensions**, so the reader is
+  not the demo page's alone: `UltraCanvasVectorFormatsPlugin` advertises it,
+  and the vector preview seam it registers means UltraFiler tiles and the
+  media viewer now draw such a file *from the drawing* instead of falling
+  back to whatever bitmap it carries. A PDF-compatible `.ai` is declined as
+  before and keeps its existing route.
+- **`UltraCanvasVectorElement` zoomed by doing nothing, and Fit threw the
+  drawing off the page.** Found while building the page above, and it
+  affected every user of the element (the DWG / DXF page's zoom buttons
+  included). The element owns a view transform - `zoomLevel` and
+  `panOffset` - but then handed `VectorRenderer` a viewport of
+  `finalBounds / zoomLevel`, and the renderer fits and centres the ViewBox
+  into whatever viewport it is given. Expressed in document units that way,
+  the renderer's scale cancelled `zoomLevel` exactly, so zooming changed
+  nothing at all; and its centring landed on top of the centring already in
+  `panOffset`, so the first `ZoomToFit()` that ran with a real box threw the
+  drawing half a viewport to the right. The renderer now gets no viewport
+  and the element's transform is the only one; `ScreenToDocument()`,
+  hit-testing and wheel-zoom anchoring already assumed exactly that, so they
+  become correct too. Culling goes with the viewport, which costs only time -
+  `Render()` already clips to the element's bounds.
+- **A document set before the layout ran was fitted to a zero-sized box.**
+  `SetDocument()` fits immediately, but a page builds its widgets before it
+  has been laid out, so `finalBounds` was still empty and the fit settled on
+  `MinZoom`. The renderer's own fit hid this; with that gone the fit is
+  remembered and redone on the first frame that has a real box.
+- **New: `Tests/AIReaderTest.cpp`** - the two shipped samples must import as
+  real geometry, upright and on the page their header declares (868 and 72
+  stroked paths, beziers intact), which is the check that would have caught
+  this; plus the art language on a synthetic legacy file, and the
+  PDF-compatible case that must be declined rather than imported empty.
+#### 2026-09-19 *0.8.90*
+- **Every 3D model in the demo was drawn standing on its nose.** The viewers'
+  cameras put +Y on screen, but nothing told them which axis a mesh called up,
+  and the formats disagree: STL, STEP, DXF and most CAD are Z-up, glTF and FBX
+  are Y-up. A Z-up mesh handed over unrotated has its length running up the
+  screen, which is why the demo's aeroplanes pointed at the floor.
+  - `Mesh3D` now carries `upAxis` (`MeshUpAxis::YUp` / `ZUp`), and each
+    producer states what it read: `UltraCanvasSTLLoader` sets `ZUp`, the
+    format's universal convention, and `ModelDocumentToMesh3D` takes it from
+    `document.Up`. `Mesh3DToModelDocument` writes it back, so the round trip
+    keeps orientation as well as geometry; a `Mesh3D` built in code keeps the
+    `YUp` default and is unaffected.
+  - `UltraCanvasSTLElement` and `UltraCanvasModelRaster` both rotate a `ZUp`
+    mesh by -90 degrees about X before posing it — the same sense and sign as
+    `ModelDocument::ConvertUpAxis`, and the same in both, so the software still
+    remains the view that was on screen. Only the view rotates: vertex data,
+    bounds and the extents a page reports stay in the file's own frame, so the
+    Model Formats panels still report "Z-up" for a file that says so.
+  - This reached every caller, not just the demo: the media viewer opens `.stl`
+    and the other model formats through the same element, and the Filer's
+    thumbnails go through the same raster.
+- **The 3D Graphics tree listed one "3D Model Formats" page for seven readers.**
+  A visitor asking whether FBX is supported had to open a page and click
+  through a carousel to find out. Each format is now its own entry beside STL
+  — STEP, MilkShape, FBX, Alembic, COLLADA, 3D Studio and DirectX .x —
+  and `CreateModelFormatsExamples(extension)` filters the same page to that
+  reader. A single-sample format shows no Prev/Next buttons rather than two
+  that do nothing.
+- **Four of the aircraft samples were incomplete exports, which read as an
+  importer dropping geometry and was not.** Both meshes in
+  `media/3D/Blend/E-45-Aircraft.blend` carry a Mirror modifier about X=0, and
+  the .dae, .x and binary .fbx had been exported without applying modifiers, so
+  the files held half an aeroplane; the .ms3d held only the glass canopy and no
+  hull at all. Parsing each file directly settles which side the defect was on:
+  OBJ, PLY, 3DS, X3D, VRML, DXF and the *ASCII* FBX all span X −0.973…+0.973,
+  while those four stopped at 0.000 — two exports of the same model from the
+  same scene disagreeing is not something a reader can cause.
+  - Regenerated from that .blend with the modifier applied: the .fbx by
+    Blender's own exporter, the .dae and .x by mirroring each file's geometry
+    in place so the exporter's scene graph, materials and templates survive,
+    and the .ms3d written afresh with both meshes as two groups. All four now
+    span the full 1.946 and match the formats that were already complete.
+  - The .dae needed a second fix: its two mesh nodes hang off the armature's
+    JOINT chain with no skinning controller, so the joint rest transforms were
+    applied on top of placements that already included them — the hull landed
+    3.5 m out and the canopy 5 m behind it, detached. Recomputing both local
+    transforms against the .blend's world matrices brings the document extent
+    to 1.95 × 6.17 × 4.21, the same aeroplane the other formats describe.
+  - The exports as they came out of Blender are kept in `Tests/data/3D/`,
+    because their defects are what four test suites pin. `ModelColladaTest`,
+    `ModelXFileTest`, `ModelMS3DTest` and `ModelFbxTest` assert the half hull
+    and the canopy-only MilkShape deliberately — "a property of the file rather
+    than of the reader … asserting it stops a later change *fixing* the reader
+    to match the others" — and cross-check the files against each other: the
+    MilkShape canopy is "exactly twice the Alembic canopy's 744 faces", and the
+    two FBX exports are one scene "on opposite sides of the mirror-modifier
+    split". Completing the media copies in place would have deleted that net,
+    and the re-exported .fbx carries neither the stacked DiffuseColor textures
+    nor the transparent canopy material the original pins. So `media/3D/` now
+    holds the demo's showcase assets and `Tests/data/3D/` the fixtures, with
+    the four tests pointed at the latter and `Tests/data/3D/README.md` saying
+    which is which.
+  - Still outstanding: `media/3D/Alembic/E-45-Aircraft.abc` is a narrower mesh
+    than its siblings (3297 faces against 3990, X span 1.53 against 1.95).
+    Nothing here writes Alembic — not the framework, whose writers cover 3DS,
+    OBJ, PLY, STEP, COLLADA and X3D, nor Debian's Blender, which ships without
+    the Alembic and COLLADA exporters — so that one is left as found.
+- **The DWG and DXF samples are now filed by what they hold rather than by
+  format.** CAD covers both, so the folders held a mix: `media/vector/DXF`
+  carried `E-45-Aircraft.dxf`'s sibling drawings while the 3D DXF sat in
+  `media/3D`, and nothing said which was which. Counting entities settles each
+  one — the Millennium Falcon is 1015 LWPOLYLINEs and 507 LINEs, the figure
+  study 74 NURBS SPLINEs, the Audi and the hostel plans 2D blocks and hatches,
+  every Z at zero; `E-45-Aircraft.dxf` is 8110 3DFACEs and `bagno_3d_1.dwg`
+  polyface meshes.
+  - The four flat drawings live in `media/vector/{DWG,DXF}` and stay on the
+    "DWG / DXF Drawings" page under Vector Graphics. The two that carry
+    geometry live in `media/3D/{DWG,DXF}`.
+  - New **"DXF 3D Models"** entry under 3D Graphics reads the E-45 DXF through
+    the Models plugin as a mesh — 16220 triangles, extent 1.95 × 6.14 × 4.19,
+    the same aeroplane 3DS describes. A DXF of only 2D entities is refused
+    there with an explanation, which `ModelDXFTest` asserts.
+  - The 3D DWG is still drawn on the drawings page, projected to plan view,
+    because that is what a CAD reader does with polyface meshes — the page now
+    names the file's root per tile rather than assuming one folder.
+
+#### 2026-09-19 *0.8.88*
+- **CI builds and runs the UltraCloud test suite.** It has existed since the
+  module did, and no continuous build had ever compiled it: the option that
+  brings it in (`ULTRACANVAS_BUILD_ULTRACLOUD_TESTS`) defaults to OFF and
+  nothing turned it on, so sixty tests over eleven files - the account store on
+  UltraDatabase, both secret stores, and every provider from WebDAV to the FTP
+  one added in 0.8.80 - were only ever run by hand. A suite nothing runs is a
+  suite that rots: the green tick on a pull request said the module *compiled*,
+  never that it still worked.
+
+  Both configure steps now pass `-DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON`, next
+  to the UltraNet and EmailCleaner suites that were already asked for, so the
+  binary is built on every platform and ctest runs it on Linux with the rest.
+
+  Nothing about the tests themselves changed, and nothing needed to: the whole
+  suite passes as it stands. They are headless by construction - every provider
+  is driven through an injected fake rather than a server - so turning them on
+  adds no network dependency to the build and no flakiness to it either.
 #### 2026-09-19 *0.8.87*
 - **The Linux CI legs build with a compiler that implements the standard the
   tree is written in.** UltraCanvas is built as C++20 and uses P1091 - capturing
