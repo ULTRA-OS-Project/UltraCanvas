@@ -99,7 +99,14 @@ public:
     // A renderer answers yes to at most one of these.
     virtual bool ProducesPageSource() const { return false; }
 
-    virtual IODeviceResult Render(const IOPrintJob& job,
+    // `printer` is which device this is for, and a renderer that emits the
+    // device's own command language cannot work without it: GutenPrint has to
+    // know the model before it can produce a byte. It is passed rather than
+    // remembered from SupportsPrinter() because a renderer is shared between
+    // the devices that register it, so state left over from the last question
+    // would be the wrong printer's.
+    virtual IODeviceResult Render(const IODeviceInfo& printer,
+                                  const IOPrintJob& job,
                                   const IOPrinterCapabilities& capabilities,
                                   IOPrintPayload& payload) = 0;
 };
@@ -158,7 +165,8 @@ public:
     IOPrintRenderer GetKind() const override { return IOPrintRenderer::Native; }
     bool IsAvailable() const override { return true; }
     bool SupportsPrinter(const IODeviceInfo& printer) const override;
-    IODeviceResult Render(const IOPrintJob& job,
+    IODeviceResult Render(const IODeviceInfo& printer,
+                          const IOPrintJob& job,
                           const IOPrinterCapabilities& capabilities,
                           IOPrintPayload& payload) override;
 };

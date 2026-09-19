@@ -577,6 +577,11 @@ set(ULTRACANVAS_CORE_SOURCES
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterPage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrintDialog.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrintDialogSubmit.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterRaster.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterRasterTarget.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterJobSource.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterGutenPrintModels.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODevicePrinterGutenPrint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCameraTypes.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceCamera.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
@@ -971,6 +976,38 @@ if(ULTRACANVAS_CUPS_FOUND)
 else()
     message(STATUS "  [-] CUPS - not found (no printer backend on this build)")
     set(ULTRACANVAS_HAS_CUPS FALSE)
+endif()
+
+# ===== IODEVICEMANAGER: GUTENPRINT RENDERER (optional, all platforms) =====
+# GutenPrint is RUN, NOT LINKED, and that is a licensing decision rather than
+# a technical one: libgutenprint is GPL-2.0-or-later and UltraCanvas is MIT,
+# so linking it would make every distributed binary GPL. GutenPrint ships its
+# own programs - a CUPS driver interface that lists models and emits PPDs, and
+# a filter that turns a page of raster into the printer's own command language
+# - and running a program creates no such obligation. This repository already
+# treats QEMU and Wine the same way.
+#
+# So there is nothing to link and no header to find: detection only records
+# whether the tools are present at BUILD time, for the status line. The
+# renderer looks for them again at RUN time, because the machine that builds
+# and the machine that prints are routinely not the same one, and it is simply
+# not offered when they are absent.
+find_program(ULTRACANVAS_GUTENPRINT_DRIVER_EXE
+    NAMES gutenprint.5.3 gutenprint.5.2
+    PATHS /usr/lib/cups/driver /usr/libexec/cups/driver /usr/lib64/cups/driver
+          /usr/local/lib/cups/driver /opt/homebrew/lib/cups/driver
+    NO_DEFAULT_PATH)
+find_program(ULTRACANVAS_GUTENPRINT_FILTER_EXE
+    NAMES rastertogutenprint.5.3 rastertogutenprint.5.2
+    PATHS /usr/lib/cups/filter /usr/libexec/cups/filter /usr/lib64/cups/filter
+          /usr/local/lib/cups/filter /opt/homebrew/lib/cups/filter
+    NO_DEFAULT_PATH)
+
+if(ULTRACANVAS_GUTENPRINT_DRIVER_EXE AND ULTRACANVAS_GUTENPRINT_FILTER_EXE)
+    message(STATUS "  GutenPrint: ${ULTRACANVAS_GUTENPRINT_FILTER_EXE} - renderer will be offered")
+else()
+    message(STATUS "  [-] GutenPrint - tools not installed here (the renderer is "
+                   "still built; it looks again at run time)")
 endif()
 
 # ===== IODEVICEMANAGER: SANE SCANNER BACKEND (optional, Linux) =====

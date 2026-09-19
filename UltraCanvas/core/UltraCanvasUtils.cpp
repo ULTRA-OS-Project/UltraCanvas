@@ -26,9 +26,16 @@
 #if !defined(_WIN32) && !defined(_WIN64)
 #include <cerrno>
 #include <cstring>
+#include <csignal>    // blocking SIGPIPE around RunProcessCaptured's writes
+#include <fcntl.h>    // O_NONBLOCK on the pipe ends we keep
+#include <poll.h>     // pumping the child's pipes without deadlocking
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
+
+#if defined(_WIN32) || defined(_WIN64)
+#include <thread>     // draining the child's pipes while we write its input
 #endif
 
 #include "UltraCanvasUtils.h"
@@ -596,6 +603,409 @@ namespace UltraCanvas {
         int status = 0;
         ::waitpid(pid, &status, 0);
         return true;
+#endif
+    }
+
+    // ========================================================================
+    // RUNNING A CHILD PROCESS AND KEEPING WHAT IT SAYS
+    // ========================================================================
+
+    namespace {
+
+#if !defined(_WIN32) && !defined(_WIN64)
+
+    // Blocks SIGPIPE for this thread only, and drains one if it arrives.
+    //
+    // Writing to a pipe whose reader has exited raises SIGPIPE, whose default
+    // action is to kill the process - so a filter that exits early on a bad
+    // page would take the whole application down with it. Blocking it turns
+    // that into an ordinary EPIPE from write().
+    //
+    // Per-thread rather than process-wide: signal(SIGPIPE, SIG_IGN) would
+    // change behaviour for every other thread and outlive this call, which a
+    // library has no business doing to its host.
+    class SigPipeBlocker {
+    public:
+        SigPipeBlocker() {
+            sigset_t blocked;
+            sigemptyset(&blocked);
+            sigaddset(&blocked, SIGPIPE);
+            active = pthread_sigmask(SIG_BLOCK, &blocked, &previous) == 0;
+            // Already blocked by the caller: leave their disposition alone,
+            // and do not drain a signal that may be theirs.
+            wasBlockedBefore = active && sigismember(&previous, SIGPIPE) == 1;
+        }
+
+        // Called when a write reports EPIPE, which is the only way this code
+        // provokes a SIGPIPE.
+        void NotePipeClosed() { provoked = true; }
+
+        ~SigPipeBlocker() {
+            if (!active) return;
+
+            // Drain only a SIGPIPE we know we caused, so it is not delivered
+            // the moment the mask is restored.
+            //
+            // Gated on having actually seen EPIPE, rather than on asking
+            // sigpending() what is waiting, and the difference matters in a
+            // threaded program. A SIGPIPE raised by write() is directed at
+            // the calling thread, so if we saw EPIPE the signal is pending
+            // for *this* thread and nothing else can take it - sigwait
+            // returns immediately. Deciding from sigpending() would also
+            // match a process-directed SIGPIPE meant for somebody else, and
+            // if that one were consumed elsewhere between the question and
+            // the answer, sigwait would block forever.
+            //
+            // sigwait rather than sigtimedwait because macOS does not
+            // implement sigtimedwait at all.
+            if (provoked && !wasBlockedBefore) {
+                sigset_t waitFor;
+                sigemptyset(&waitFor);
+                sigaddset(&waitFor, SIGPIPE);
+                int signo = 0;
+                (void)sigwait(&waitFor, &signo);
+            }
+            pthread_sigmask(SIG_SETMASK, &previous, nullptr);
+        }
+
+        SigPipeBlocker(const SigPipeBlocker&) = delete;
+        SigPipeBlocker& operator=(const SigPipeBlocker&) = delete;
+
+    private:
+        sigset_t previous{};
+        bool active = false;
+        bool wasBlockedBefore = false;
+        bool provoked = false;
+    };
+
+    void CloseIfOpen(int& fd) {
+        if (fd >= 0) { ::close(fd); fd = -1; }
+    }
+
+#endif
+
+    }  // namespace
+
+    ProcessOutput RunProcessCaptured(
+            const std::vector<std::string>& argv,
+            const std::vector<unsigned char>& input,
+            const std::vector<std::pair<std::string, std::string>>& extraEnvironment) {
+
+        ProcessOutput result;
+        if (argv.empty() || argv[0].empty()) {
+            result.error = "No program to run.";
+            return result;
+        }
+
+#if defined(_WIN32) || defined(_WIN64)
+        SECURITY_ATTRIBUTES inheritable = {};
+        inheritable.nLength = sizeof(inheritable);
+        inheritable.bInheritHandle = TRUE;
+
+        HANDLE inRead = nullptr, inWrite = nullptr;
+        HANDLE outRead = nullptr, outWrite = nullptr;
+        HANDLE errRead = nullptr, errWrite = nullptr;
+
+        auto closeAll = [&]() {
+            for (HANDLE* h : {&inRead, &inWrite, &outRead, &outWrite, &errRead, &errWrite}) {
+                if (*h) { CloseHandle(*h); *h = nullptr; }
+            }
+        };
+
+        if (!CreatePipe(&inRead, &inWrite, &inheritable, 0) ||
+            !CreatePipe(&outRead, &outWrite, &inheritable, 0) ||
+            !CreatePipe(&errRead, &errWrite, &inheritable, 0)) {
+            closeAll();
+            result.error = "Could not create pipes for \"" + argv[0] + "\".";
+            return result;
+        }
+
+        // Our ends must not reach the child, or the child holds a writer open
+        // and our reads never see end-of-file.
+        SetHandleInformation(inWrite, HANDLE_FLAG_INHERIT, 0);
+        SetHandleInformation(outRead, HANDLE_FLAG_INHERIT, 0);
+        SetHandleInformation(errRead, HANDLE_FLAG_INHERIT, 0);
+
+        // Same quoting rule as LaunchDetachedProcess: CreateProcessW takes one
+        // command line, so the list has to be re-joined - but by us, to the
+        // documented rule, rather than by a shell with its own ideas.
+        std::wstring cmdLine;
+        for (const std::string& a : argv) {
+            if (!cmdLine.empty()) cmdLine += L' ';
+            const std::wstring w = Utf8ToWide(a);
+            if (!w.empty() && w.find_first_of(L" \t\"") == std::wstring::npos) {
+                cmdLine += w;
+                continue;
+            }
+            cmdLine += L'"';
+            size_t backslashes = 0;
+            for (wchar_t c : w) {
+                if (c == L'\\') { ++backslashes; continue; }
+                if (c == L'"') cmdLine.append(backslashes * 2 + 1, L'\\');
+                else cmdLine.append(backslashes, L'\\');
+                backslashes = 0;
+                cmdLine += c;
+            }
+            cmdLine.append(backslashes * 2, L'\\');
+            cmdLine += L'"';
+        }
+
+        // A child environment block: the parent's, with the extras replacing
+        // any variable of the same name.
+        std::wstring environmentBlock;
+        {
+            std::vector<std::wstring> entries;
+            if (LPWCH parentEnv = GetEnvironmentStringsW()) {
+                for (LPWCH scan = parentEnv; *scan; ) {
+                    std::wstring entry(scan);
+                    scan += entry.size() + 1;
+                    const size_t eq = entry.find(L'=');
+                    // A leading '=' marks Windows' per-drive current
+                    // directories ("=C:=C:\\dir"); they are kept verbatim.
+                    bool replaced = false;
+                    if (eq != std::wstring::npos && eq != 0) {
+                        const std::wstring name = entry.substr(0, eq);
+                        for (const auto& extra : extraEnvironment) {
+                            if (_wcsicmp(name.c_str(), Utf8ToWide(extra.first).c_str()) == 0) {
+                                replaced = true;
+                                break;
+                            }
+                        }
+                    }
+                    if (!replaced) entries.push_back(entry);
+                }
+                FreeEnvironmentStringsW(parentEnv);
+            }
+            for (const auto& extra : extraEnvironment) {
+                entries.push_back(Utf8ToWide(extra.first) + L'=' + Utf8ToWide(extra.second));
+            }
+            for (const std::wstring& entry : entries) {
+                environmentBlock += entry;
+                environmentBlock.push_back(L'\0');
+            }
+            environmentBlock.push_back(L'\0');
+        }
+
+        STARTUPINFOW si = {};
+        si.cb = sizeof(si);
+        si.dwFlags = STARTF_USESTDHANDLES;
+        si.hStdInput = inRead;
+        si.hStdOutput = outWrite;
+        si.hStdError = errWrite;
+
+        PROCESS_INFORMATION pi = {};
+        std::vector<wchar_t> mutableCmd(cmdLine.begin(), cmdLine.end());
+        mutableCmd.push_back(L'\0');
+
+        const BOOL launched = CreateProcessW(
+                nullptr, mutableCmd.data(), nullptr, nullptr, TRUE,
+                CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT,
+                environmentBlock.data(), nullptr, &si, &pi);
+
+        // The child owns its ends now; holding ours open would keep the
+        // pipes from ever reporting end-of-file.
+        CloseHandle(inRead);  inRead = nullptr;
+        CloseHandle(outWrite); outWrite = nullptr;
+        CloseHandle(errWrite); errWrite = nullptr;
+
+        if (!launched) {
+            closeAll();
+            result.error = "Could not start \"" + argv[0] + "\".";
+            return result;
+        }
+        result.started = true;
+
+        // Read on threads while this one writes: a filter that emits as it
+        // consumes would otherwise fill its output pipe and stop reading,
+        // and both sides would wait for the other forever.
+        std::vector<unsigned char> capturedOut;
+        std::string capturedErr;
+        std::thread outReader([&]() {
+            char buffer[64 * 1024];
+            DWORD got = 0;
+            while (ReadFile(outRead, buffer, sizeof(buffer), &got, nullptr) && got > 0)
+                capturedOut.insert(capturedOut.end(), buffer, buffer + got);
+        });
+        std::thread errReader([&]() {
+            char buffer[8 * 1024];
+            DWORD got = 0;
+            while (ReadFile(errRead, buffer, sizeof(buffer), &got, nullptr) && got > 0)
+                capturedErr.append(buffer, got);
+        });
+
+        size_t written = 0;
+        while (written < input.size()) {
+            DWORD wrote = 0;
+            const DWORD chunk = static_cast<DWORD>(
+                    std::min<size_t>(64 * 1024, input.size() - written));
+            if (!WriteFile(inWrite, input.data() + written, chunk, &wrote, nullptr) || wrote == 0)
+                break;   // the child stopped reading; its exit code explains why
+            written += wrote;
+        }
+        CloseHandle(inWrite); inWrite = nullptr;
+
+        outReader.join();
+        errReader.join();
+        WaitForSingleObject(pi.hProcess, INFINITE);
+
+        DWORD code = 0;
+        GetExitCodeProcess(pi.hProcess, &code);
+        result.exitCode = static_cast<int>(code);
+        result.standardOutput = std::move(capturedOut);
+        result.standardError = std::move(capturedErr);
+
+        CloseHandle(pi.hThread);
+        CloseHandle(pi.hProcess);
+        closeAll();
+        return result;
+#else
+        int inPipe[2] = {-1, -1}, outPipe[2] = {-1, -1}, errPipe[2] = {-1, -1};
+        if (::pipe(inPipe) != 0) {
+            result.error = std::string("Could not create a pipe: ") + std::strerror(errno);
+            return result;
+        }
+        if (::pipe(outPipe) != 0 || ::pipe(errPipe) != 0) {
+            for (int fd : {inPipe[0], inPipe[1], outPipe[0], outPipe[1], errPipe[0], errPipe[1]})
+                if (fd >= 0) ::close(fd);
+            result.error = std::string("Could not create a pipe: ") + std::strerror(errno);
+            return result;
+        }
+
+        const pid_t pid = ::fork();
+        if (pid < 0) {
+            for (int fd : {inPipe[0], inPipe[1], outPipe[0], outPipe[1], errPipe[0], errPipe[1]})
+                ::close(fd);
+            result.error = std::string("Could not start \"") + argv[0] + "\": " +
+                           std::strerror(errno);
+            return result;
+        }
+
+        if (pid == 0) {
+            // Child. Only async-signal-safe work from here to execvp: the
+            // strings below were all built before the fork.
+            ::dup2(inPipe[0], STDIN_FILENO);
+            ::dup2(outPipe[1], STDOUT_FILENO);
+            ::dup2(errPipe[1], STDERR_FILENO);
+            for (int fd : {inPipe[0], inPipe[1], outPipe[0], outPipe[1], errPipe[0], errPipe[1]})
+                ::close(fd);
+
+            for (const auto& extra : extraEnvironment)
+                ::setenv(extra.first.c_str(), extra.second.c_str(), 1);
+
+            std::vector<char*> args;
+            args.reserve(argv.size() + 1);
+            for (const std::string& a : argv)
+                args.push_back(const_cast<char*>(a.c_str()));
+            args.push_back(nullptr);
+
+            // execvp, not system() or popen(): the arguments go to the
+            // program as they are, and no shell is between us and it.
+            ::execvp(args[0], args.data());
+            ::_exit(127);   // conventional "command not found"
+        }
+
+        CloseIfOpen(inPipe[0]);
+        CloseIfOpen(outPipe[1]);
+        CloseIfOpen(errPipe[1]);
+
+        // Non-blocking, and this is load-bearing rather than tidiness.
+        //
+        // poll() reporting POLLOUT means one byte of pipe buffer is free, not
+        // 64K. A *blocking* write of a full buffer then parks inside the
+        // kernel until the child has consumed all of it - and if the child is
+        // meanwhile blocked writing its own output, because we are not
+        // draining it while we sit in that write, neither side can move.
+        // Both processes end up in anon_pipe_write and the job never
+        // finishes. Non-blocking turns that into a short count and lets the
+        // loop go round to read.
+        for (int fd : {inPipe[1], outPipe[0], errPipe[0]}) {
+            if (fd >= 0) {
+                const int flags = ::fcntl(fd, F_GETFL, 0);
+                if (flags >= 0) ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+            }
+        }
+
+        SigPipeBlocker noSigPipe;
+
+        size_t written = 0;
+        if (input.empty()) CloseIfOpen(inPipe[1]);
+
+        char buffer[64 * 1024];
+        while (inPipe[1] >= 0 || outPipe[0] >= 0 || errPipe[0] >= 0) {
+            pollfd fds[3];
+            int count = 0;
+            const int inIndex  = inPipe[1]  >= 0 ? count++ : -1;
+            if (inIndex  >= 0) fds[inIndex]  = {inPipe[1],  POLLOUT, 0};
+            const int outIndex = outPipe[0] >= 0 ? count++ : -1;
+            if (outIndex >= 0) fds[outIndex] = {outPipe[0], POLLIN, 0};
+            const int errIndex = errPipe[0] >= 0 ? count++ : -1;
+            if (errIndex >= 0) fds[errIndex] = {errPipe[0], POLLIN, 0};
+
+            const int ready = ::poll(fds, static_cast<nfds_t>(count), -1);
+            if (ready < 0) {
+                if (errno == EINTR) continue;
+                break;
+            }
+
+            if (inIndex >= 0 && (fds[inIndex].revents & (POLLOUT | POLLERR | POLLHUP))) {
+                if (fds[inIndex].revents & (POLLERR | POLLHUP)) {
+                    CloseIfOpen(inPipe[1]);   // the child stopped reading
+                } else {
+                    const size_t remaining = input.size() - written;
+                    const ssize_t wrote = ::write(inPipe[1], input.data() + written,
+                                                  std::min<size_t>(remaining, sizeof(buffer)));
+                    if (wrote > 0) {
+                        written += static_cast<size_t>(wrote);
+                        if (written == input.size()) CloseIfOpen(inPipe[1]);
+                    } else if (wrote < 0 && errno != EINTR && errno != EAGAIN) {
+                        if (errno == EPIPE) noSigPipe.NotePipeClosed();
+                        CloseIfOpen(inPipe[1]);
+                    }
+                }
+            }
+
+            if (outIndex >= 0 && (fds[outIndex].revents & (POLLIN | POLLERR | POLLHUP))) {
+                const ssize_t got = ::read(outPipe[0], buffer, sizeof(buffer));
+                if (got > 0) {
+                    result.standardOutput.insert(result.standardOutput.end(),
+                                                 buffer, buffer + got);
+                } else if (got == 0 || (errno != EINTR && errno != EAGAIN)) {
+                    CloseIfOpen(outPipe[0]);
+                }
+            }
+
+            if (errIndex >= 0 && (fds[errIndex].revents & (POLLIN | POLLERR | POLLHUP))) {
+                const ssize_t got = ::read(errPipe[0], buffer, sizeof(buffer));
+                if (got > 0) {
+                    result.standardError.append(buffer, static_cast<size_t>(got));
+                } else if (got == 0 || (errno != EINTR && errno != EAGAIN)) {
+                    CloseIfOpen(errPipe[0]);
+                }
+            }
+        }
+
+        CloseIfOpen(inPipe[1]);
+        CloseIfOpen(outPipe[0]);
+        CloseIfOpen(errPipe[0]);
+
+        int status = 0;
+        while (::waitpid(pid, &status, 0) < 0 && errno == EINTR) {
+        }
+
+        result.started = true;
+        if (WIFEXITED(status)) {
+            result.exitCode = WEXITSTATUS(status);
+            if (result.exitCode == 127) {
+                result.started = false;
+                result.error = "\"" + argv[0] + "\" could not be run (not found, "
+                               "or not executable).";
+            }
+        } else if (WIFSIGNALED(status)) {
+            result.exitCode = -1;
+            result.error = "\"" + argv[0] + "\" was killed by signal " +
+                           std::to_string(WTERMSIG(status)) + ".";
+        }
+        return result;
 #endif
     }
 
