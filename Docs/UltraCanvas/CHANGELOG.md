@@ -84,6 +84,24 @@
     because that is what a CAD reader does with polyface meshes — the page now
     names the file's root per tile rather than assuming one folder.
 
+#### 2026-09-19 *0.8.88*
+- **CI builds and runs the UltraCloud test suite.** It has existed since the
+  module did, and no continuous build had ever compiled it: the option that
+  brings it in (`ULTRACANVAS_BUILD_ULTRACLOUD_TESTS`) defaults to OFF and
+  nothing turned it on, so sixty tests over eleven files - the account store on
+  UltraDatabase, both secret stores, and every provider from WebDAV to the FTP
+  one added in 0.8.80 - were only ever run by hand. A suite nothing runs is a
+  suite that rots: the green tick on a pull request said the module *compiled*,
+  never that it still worked.
+
+  Both configure steps now pass `-DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON`, next
+  to the UltraNet and EmailCleaner suites that were already asked for, so the
+  binary is built on every platform and ctest runs it on Linux with the rest.
+
+  Nothing about the tests themselves changed, and nothing needed to: the whole
+  suite passes as it stands. They are headless by construction - every provider
+  is driven through an injected fake rather than a server - so turning them on
+  adds no network dependency to the build and no flakiness to it either.
 #### 2026-09-19 *0.8.87*
 - **The Linux CI legs build with a compiler that implements the standard the
   tree is written in.** UltraCanvas is built as C++20 and uses P1091 - capturing
