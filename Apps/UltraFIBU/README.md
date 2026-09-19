@@ -19,6 +19,7 @@ European VAT numbers, and a German user interface.
 |---|---|
 | `engine/` | The headless engine — no UI, no SQL outside the store, unit-tested (`UltraFIBUEngine`) |
 | `cli/` | `ultrafibu`, the command line over that engine |
+| `report/` | The printed invoice (`UltraFIBUReport`) — builds a VectorDocument for the framework's PDF writer |
 | `data/` | The chart of accounts and the tax keys, as data files |
 | `ui/` | The German UI (empty; the screens build on `UltraCanvasListView` and its sorting proxy) |
 | `../../Tests/UltraFIBU/` | The engine test suite |
@@ -78,9 +79,17 @@ ultrafibu salden  buch.db                # and whether Soll and Haben agree
 ultrafibu storno  buch.db R-202606001 --datum 25.07.2026 \
           --grund "Falsche Menge" --ja
 
+ultrafibu rechnung-pdf buch.db R-202606001 --datei rechnung.pdf
+
 ultrafibu festschreiben buch.db 30.06.2026 --ja
 ultrafibu pruefen buch.db                # the journal's hash chain
 ```
+
+`rechnung-pdf` exits non-zero and names every field § 14 UStG wants that is
+not filled in — both addresses, the Steuernummer or USt-IdNr., the date of
+supply, the rate per line, the customer's VAT number on an intra-community
+supply. An invoice missing them is legally deficient and its recipient cannot
+deduct the input tax, so it is a warning on the way out rather than a footnote.
 
 Once a period is frozen, a document dated into it, a posting into it, a
 reversal into it and a payment into it are each refused with the date and the
@@ -118,6 +127,18 @@ binary.
   owe 19,00 €, not the 18,99 € that rounding each line first would give; the
   single figure is then shared back over the lines so the invoice's tax column
   still adds up to its total.
+- **The invoice PDF reuses the framework's PDF writer**, it does not contain
+  one. `PDFVectorConverter` writes the file; `report/` only builds the
+  `VectorDocument` it consumes. The two sources that writer needs were checked
+  and reference nothing outside `VectorStorage`, so an invoice can be produced
+  on a headless server — which is where an accounting system runs.
+- **§ 14 UStG decides what is on the page**, and what is missing is named
+  rather than quietly left off. A zero-rated line states its exemption, because
+  the statute requires the invoice to say why no tax was charged.
+- **ZUGFeRD is not this.** It is a PDF/A-3 carrying the CII XML as an embedded
+  file, and it needs embedded subset fonts, an output intent and XMP metadata
+  the writer does not do yet. XRechnung — pure XML, no PDF — is the route to a
+  real e-invoice meanwhile, and that is phase A7.
 - **Reversing an invoice does not reverse its payment.** The money arrived, and
   a bank balance that disagrees with the bank statement is worse than an
   unmatched credit. What is left is a credit on the customer — which is the

@@ -1,3 +1,56 @@
+#### 2026-09-19 *0.3.0*
+- **Die Rechnung als PDF.** `Apps/UltraFIBU/report/UltraFIBURechnungPdf.{h,cpp}`,
+  the target `UltraFIBUReport`, `ultrafibu rechnung-pdf`, and 32 further checks
+  (658 in total). Phase A2's remaining half, minus the screens.
+- **There is no PDF writer in it.** The framework already has one -
+  `UltraCanvas::VectorConverter::PDFVectorConverter`, which writes a
+  self-contained PDF 1.4 from a `VectorStorage::VectorDocument`. This module
+  builds that document and hands it over. Writing a second emitter beside the
+  existing one would have been the same mistake as building a second data grid
+  beside `UltraCanvasListView`, and this time the tree was checked first: both
+  sources the writer needs reference nothing outside `VectorStorage`, so an
+  invoice can still be produced on a server with no display, no pango and no
+  vips. The build compiles those two files directly rather than linking the
+  Vector plugin, because the plugin links the UltraCanvas core and would drag
+  the whole rendering stack in behind it.
+- **§ 14 UStG decides the content, not taste.** `PruefePflichtangaben` checks
+  every mandatory field - both addresses in full, the supplier's Steuernummer
+  or USt-IdNr., the date of issue, the sequential number, quantity and
+  description, the date of supply, the base and rate per tax rate, and the
+  recipient's USt-IdNr. when the supply is an intra-community one. What is
+  missing is **named**, in German, and `ultrafibu rechnung-pdf` exits non-zero
+  for it: an invoice missing these is legally deficient and its recipient
+  cannot deduct the input tax from it, which is the customer's problem as much
+  as ours.
+- **A zero-rated line names its exemption**, which § 14 Abs. 4 Nr. 8 requires:
+  innergemeinschaftliche Lieferung, Ausfuhr, § 13b reverse charge, One-Stop-Shop,
+  § 19 Kleinunternehmer and nicht steuerbar each have their wording, taken from
+  the Steuerschlüssel valid on the Belegdatum rather than from today's table.
+- **The VAT summary is per rate**, one line per tax key in the order the
+  positions introduced them - so the invoice and the journal read the same way
+  round. A Gutschrift says "Gutschrift" and a reversal says "Stornorechnung",
+  because a credit note that looks like an invoice is how a customer pays twice.
+- **Amounts line up.** Nothing is embedded, so the writer approximates centre
+  and right anchoring from an average glyph width - which a money column cannot
+  be. Right alignment is therefore computed here from the base-14 Helvetica
+  advance widths: every digit is 556/1000 em, which is exactly the property a
+  column of amounts depends on, and the test pins it.
+- **Three layout faults found by looking at the rendered page**, not by reading
+  the code: the Leistungsdatum value printed straight through its own label, the
+  ENTWURF mark was drawn across the opening paragraph, and the standard sentence
+  about the date of supply sat in a field where it belonged in a note. A meta
+  value too wide for its row now takes the next line, the document's state is a
+  line under the heading instead of a watermark, and the sentence moved under
+  the total where a German invoice puts it.
+- **An invoice that does not fit one page is refused**, with the reason. The
+  framework's writer emits a single page (proposal §3.2); dropping the last
+  positions off the bottom of an invoice is a failure nobody notices until the
+  customer pays the wrong amount, and shrinking the type until it fits produces
+  something nobody can read. Multi-page output is the writer's to grow.
+- **`ultrafibu einrichten` can now record the company's own address, tax
+  number, telephone, e-mail, IBAN, BIC and bank** - the fields § 14 asks for,
+  which until now could not be entered at all.
+
 #### 2026-09-19 *0.2.0*
 - **Belege und Buchungen: the documents and the journal they produce.** Phase
   A2 of `Docs/Research/UltraFIBUDesignProposal.md`, minus the invoice PDF and

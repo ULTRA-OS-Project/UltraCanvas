@@ -15,6 +15,7 @@
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUBeleg.h"
+#include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUBuchung.h"
 #include "UltraFIBUGeschaeftsjahr.h"
 #include "UltraFIBUKontenrahmen.h"
@@ -48,6 +49,13 @@ void PrintUsage() {
         "        --benutzer <name>     Anmeldename des ersten Benutzers (Standard: admin)\n"
         "        --skr <SKR03|SKR04>   Kontenrahmen (Standard: SKR03)\n"
         "        --ust-idnr <nr>       Eigene USt-IdNr.\n"
+        "        --strasse <s> --plz <plz> --ort <ort> --land <ISO>\n"
+        "        --steuernummer <nr>   Steuernummer des Finanzamts\n"
+        "        --telefon <nr> --email <adr> --web <url>\n"
+        "        --iban <iban> --bic <bic> --bank <name>\n"
+        "                              Anschrift und Steuernummer sind\n"
+        "                              Pflichtangaben auf jeder Rechnung\n"
+        "                              (§ 14 UStG).\n"
         "  info <datei>            Mandant, Geschäftsjahre und Bestände anzeigen\n"
         "  konten <datei>          Kontenrahmen anzeigen\n"
         "  partner <datei> [suche] Kunden und Lieferanten anzeigen\n"
@@ -83,6 +91,9 @@ void PrintUsage() {
         "  journal <datei>         Buchungsjournal  [--von] [--bis]\n"
         "  salden <datei>          Summen- und Saldenliste  [--von] [--bis]\n"
         "  pruefen <datei>         Prüfsummenkette des Journals prüfen\n"
+        "  rechnung-pdf <datei> <nummer>  Beleg als PDF drucken\n"
+        "        --datei <pfad>        Zieldatei (Standard: <Nummer>.pdf)\n"
+        "        --zahlungshinweis <text>  --fusszeile <text>\n"
         "\n"
         "Datumsangaben in deutscher (01.04.2026) oder ISO-Schreibweise (2026-04-01).\n",
         ULTRAFIBU_CLI_VERSION);
@@ -201,6 +212,21 @@ int Einrichten(int argc, char** argv) {
     mandant.ustIdNr = Option(argc, argv, "--ust-idnr");
     mandant.ort     = Option(argc, argv, "--ort");
     mandant.land    = Option(argc, argv, "--land", "DE");
+    // The company's own address and tax number are not decoration: without
+    // them a printed invoice is deficient under § 14 UStG and its recipient
+    // cannot deduct the input tax. They are settable here so a file can be set
+    // up complete in one go; "ultrafibu rechnung-pdf" names whatever is still
+    // missing.
+    mandant.strasse      = Option(argc, argv, "--strasse");
+    mandant.plz          = Option(argc, argv, "--plz");
+    mandant.steuernummer = Option(argc, argv, "--steuernummer");
+    mandant.telefon      = Option(argc, argv, "--telefon");
+    mandant.email        = Option(argc, argv, "--email");
+    mandant.webseite     = Option(argc, argv, "--web");
+    mandant.iban         = Option(argc, argv, "--iban");
+    mandant.bic          = Option(argc, argv, "--bic");
+    mandant.bank         = Option(argc, argv, "--bank");
+    mandant.rechtsform   = Option(argc, argv, "--rechtsform");
     const StoreResult mandantSaved = store.SaveMandant(mandant, akteur);
     if (!mandantSaved) { std::printf("Fehler: %s\n", mandantSaved.fehler.c_str()); return 1; }
 
@@ -974,6 +1000,66 @@ int KettePruefen(int argc, char** argv) {
     return 1;
 }
 
+int RechnungDrucken(int argc, char** argv) {
+    const std::string datei  = Positional(argc, argv, 0);
+    const std::string nummer = Positional(argc, argv, 1);
+    if (nummer.empty()) {
+        std::printf("Fehler: Belegnummer fehlt.\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    Beleg beleg;
+    if (!store.BelegByNummer(mandant.id, nummer, beleg)) {
+        std::printf("Fehler: Beleg \"%s\" nicht gefunden.\n", nummer.c_str());
+        return 1;
+    }
+
+    Partner empfaenger;
+    if (beleg.partnerId != 0 && !store.PartnerById(beleg.partnerId, empfaenger)) {
+        std::printf("Fehler: Der Partner des Belegs wurde nicht gefunden.\n");
+        return 1;
+    }
+
+    std::string ziel = Option(argc, argv, "--datei");
+    if (ziel.empty()) ziel = beleg.nummer + ".pdf";
+
+    // The tax keys as they stood on the Belegdatum, so a zero-rated line names
+    // the right exemption even after the table has moved on.
+    const std::vector<Steuerschluessel> schluessel =
+        store.SteuerschluesselListe(mandant.id, beleg.datum);
+
+    RechnungLayout layout;
+    layout.fusszeileZusatz = Option(argc, argv, "--fusszeile");
+    const std::string hinweis = Option(argc, argv, "--zahlungshinweis");
+    if (!hinweis.empty()) layout.zahlungshinweis = hinweis;
+
+    const RechnungPdfErgebnis ergebnis =
+        SchreibeRechnungPdf(mandant, beleg, empfaenger, schluessel, ziel, layout);
+    if (!ergebnis.ok) {
+        std::printf("Fehler: %s\n", ergebnis.fehler.c_str());
+        return 1;
+    }
+
+    std::printf("%s %s nach \"%s\" geschrieben (%s).\n", BelegArtLabel(beleg.art).c_str(),
+                beleg.nummer.c_str(), ziel.c_str(), beleg.brutto.ToString().c_str());
+
+    // A deficient invoice is the recipient's problem as much as ours: without
+    // the mandatory fields they cannot deduct the input tax. So this is a
+    // warning on the way out, not a footnote in a log.
+    if (!ergebnis.VollstaendigNachUStG()) {
+        std::printf("\nACHTUNG: Der Rechnung fehlen Pflichtangaben nach § 14 UStG.\n"
+                    "Der Empfänger kann daraus keinen Vorsteuerabzug geltend machen.\n");
+        for (const std::string& fehlt : ergebnis.fehlendePflichtangaben)
+            std::printf("  - %s\n", fehlt.c_str());
+        return 1;
+    }
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -1000,6 +1086,7 @@ int main(int argc, char** argv) {
     if (befehl == "journal")       return JournalZeigen(argc, argv);
     if (befehl == "salden")        return SaldenZeigen(argc, argv);
     if (befehl == "pruefen")       return KettePruefen(argc, argv);
+    if (befehl == "rechnung-pdf")  return RechnungDrucken(argc, argv);
 
     std::printf("Unbekannter Befehl: %s\n\n", befehl.c_str());
     PrintUsage();

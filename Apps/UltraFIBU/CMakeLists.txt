@@ -49,6 +49,36 @@ endif()
 
 message(STATUS "  [✓] UltraFIBU engine - ENABLED (target: UltraFIBUEngine)")
 
+# ── UltraFIBUReport: the printed invoice ───────────────────────────────────
+# There is no PDF writer in here. The framework's PDFVectorConverter writes the
+# file; this target only builds the VectorDocument it consumes.
+#
+# It compiles the two sources that writer needs directly, rather than linking
+# the Vector plugin, for one specific reason: the plugin links the UltraCanvas
+# core library, and that would drag the whole rendering stack - pango, vips, a
+# display - into a target whose entire point is that an invoice can be produced
+# on a headless server. Both files were checked and reference nothing outside
+# VectorStorage, so this is a real separation and not a hopeful one. It is the
+# same pattern Tests/UltraFIBU already uses for the engine sources.
+set(ULTRAFIBU_REPORT_SOURCES
+    report/UltraFIBURechnungPdf.cpp
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/core/DataFormats/UltraCanvasVectorStorage.cpp
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp
+)
+
+add_library(UltraFIBUReport STATIC ${ULTRAFIBU_REPORT_SOURCES})
+set_target_properties(UltraFIBUReport PROPERTIES
+    POSITION_INDEPENDENT_CODE ON
+    OUTPUT_NAME "ultrafibu_report")
+target_compile_features(UltraFIBUReport PUBLIC cxx_std_20)
+target_include_directories(UltraFIBUReport PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/report
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/include
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector)
+target_link_libraries(UltraFIBUReport PUBLIC UltraFIBUEngine)
+
+message(STATUS "  [✓] UltraFIBU Rechnungsdruck - ENABLED (target: UltraFIBUReport)")
+
 # ── The shipped data files ───────────────────────────────────────────────────
 # The chart of accounts and the tax keys are data, not code. They are copied
 # next to the binaries so a build tree behaves like an installation; the
@@ -72,7 +102,7 @@ add_dependencies(UltraFIBUEngine UltraFIBUData)
 # filing deadlines, freeze a period.
 add_executable(ultrafibu cli/main.cpp)
 target_compile_features(ultrafibu PRIVATE cxx_std_20)
-target_link_libraries(ultrafibu PRIVATE UltraFIBUEngine)
+target_link_libraries(ultrafibu PRIVATE UltraFIBUEngine UltraFIBUReport)
 # The version comes from the first line of Docs/UltraFIBU/CHANGELOG.md through
 # cmake/UltraCanvasVersion.cmake - never a literal in the source. Attached to
 # this one source rather than to the target's interface, so a changelog edit

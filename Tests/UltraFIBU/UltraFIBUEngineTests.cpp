@@ -35,6 +35,7 @@
 #include "UltraFIBUDate.h"
 #include "UltraFIBUGeschaeftsjahr.h"
 #include "UltraFIBUKontenrahmen.h"
+#include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUStore.h"
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNr.h"
@@ -1698,6 +1699,225 @@ static void TestBelegeUndBuchungen() {
     store.Close();
 }
 
+
+// ===== DER RECHNUNGSDRUCK =====
+//
+// What is worth testing about a printed invoice, as opposed to what it looks
+// like:
+//
+//  - **§ 14 UStG is checked, not assumed.** An invoice missing the supplier's
+//    tax number is legally deficient and its recipient cannot deduct the input
+//    tax, so every mandatory field is named when it is absent.
+//  - **The euro sign survives.** WinAnsi puts it at 0x80, outside Latin-1, and
+//    the PDF writer used to replace it with '?'. An invoice reading
+//    "1.232,80 ?" is not an invoice, so the produced file is searched for the
+//    byte itself.
+//  - **Amounts line up**, which with no embedded font means the width table has
+//    to be right where it matters: every digit in Helvetica is 556/1000 em.
+//  - **A document that does not fit is refused**, not silently truncated.
+//    Losing a position off the bottom of an invoice is the one failure nobody
+//    would notice until the customer paid the wrong amount.
+
+static std::string LiesDatei(const std::string& pfad) {
+    std::FILE* f = std::fopen(pfad.c_str(), "rb");
+    if (f == nullptr) return std::string();
+    std::string inhalt;
+    char puffer[4096];
+    size_t gelesen = 0;
+    while ((gelesen = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
+        inhalt.append(puffer, gelesen);
+    std::fclose(f);
+    return inhalt;
+}
+
+static void TestRechnungPdf() {
+    std::printf("Rechnungsdruck (PDF)\n");
+
+    // --- the width table, where it matters ---
+    // Ten digits at 10 pt must be exactly 55.6 pt: Helvetica's digits are all
+    // 556/1000 em, which is the property a money column depends on.
+    const double zehnZiffern = TextBreite("0123456789", 10.0, false);
+    Check(zehnZiffern > 55.59 && zehnZiffern < 55.61,
+          "ten digits are exactly 55,6 pt wide at 10 pt");
+    Check(TextBreite("1111111111", 10.0, false) == TextBreite("9876543210", 10.0, false),
+          "and every digit is the same width, whatever the digits are");
+    Check(TextBreite("0", 20.0, false) == 2.0 * TextBreite("0", 10.0, false),
+          "width scales with the font size");
+    // An umlaut is one character, not two bytes.
+    Check(TextBreite("ü", 10.0, false) < TextBreite("uu", 10.0, false),
+          "a UTF-8 umlaut counts as one glyph, not as its two bytes");
+    CheckInt(static_cast<int64_t>(TextBreite("", 10.0, false)), 0,
+             "an empty string is zero wide");
+
+    // --- § 14 UStG ---
+    Mandant mandant;
+    mandant.name = "Beispiel GmbH";
+    Partner kunde;
+    kunde.name = "Muster AG";
+    Beleg beleg;
+    beleg.datum  = Date(2026, 6, 15);
+    beleg.nummer = "R-2026-0001";
+    {
+        BelegPosition pos;
+        pos.bezeichnung = "Beratung";
+        pos.einzelpreis = Money::FromMinor(100000, "EUR");
+        pos.konto       = "8400";
+        pos.steuerschluessel = "USt19";
+        pos.satzPromille = 190;
+        beleg.positionen.push_back(pos);
+    }
+    beleg.Summieren();
+
+    std::vector<std::string> fehlt = PruefePflichtangaben(mandant, beleg, kunde);
+    bool nenntSteuernummer = false, nenntStrasse = false;
+    for (const std::string& f : fehlt) {
+        if (f.find("Steuernummer") != std::string::npos) nenntSteuernummer = true;
+        if (f.find("Straße des leistenden") != std::string::npos) nenntStrasse = true;
+    }
+    Check(nenntSteuernummer,
+          "a missing Steuernummer and USt-IdNr. is reported - without one the "
+          "recipient cannot deduct the input tax");
+    Check(nenntStrasse, "and so is a missing address of the supplier");
+
+    mandant.strasse      = "Industriestraße 14";
+    mandant.plz          = "57462";
+    mandant.ort          = "Olpe";
+    mandant.steuernummer = "338/5744/1234";
+    mandant.iban         = "DE02120300000000202051";
+    kunde.strasse = "Domkloster 4";
+    kunde.plz     = "50667";
+    kunde.ort     = "Köln";
+    kunde.konto   = "10000";
+    beleg.leistungVon = Date(2026, 6, 10);
+
+    fehlt = PruefePflichtangaben(mandant, beleg, kunde);
+    Check(fehlt.empty(), "a complete invoice reports nothing missing");
+
+    // An EU business customer without a VAT number cannot be zero-rated, and
+    // the number has to be on the invoice.
+    Partner euKunde = kunde;
+    euKunde.steuerkategorie = Steuerkategorie::EuUnternehmer;
+    euKunde.land = "SK";
+    const std::vector<std::string> euFehlt = PruefePflichtangaben(mandant, beleg, euKunde);
+    bool nenntUstId = false;
+    for (const std::string& f : euFehlt)
+        if (f.find("USt-IdNr. des Leistungsempf") != std::string::npos) nenntUstId = true;
+    Check(nenntUstId,
+          "an EU business customer with no USt-IdNr. is reported - that number "
+          "is what makes the supply zero-rated");
+
+    // --- the file itself ---
+    std::vector<Steuerschluessel> schluessel;
+    {
+        Steuerschluessel key;
+        key.schluessel   = "USt19";
+        key.art          = SteuerArt::Inland;
+        key.satzPromille = 190;
+        schluessel.push_back(key);
+    }
+
+    const std::string pfad = "rechnungstest.pdf";
+    std::remove(pfad.c_str());
+    RechnungPdfErgebnis ergebnis =
+        SchreibeRechnungPdf(mandant, beleg, kunde, schluessel, pfad);
+    Check(ergebnis.ok, "the invoice is written");
+    Check(ergebnis.VollstaendigNachUStG(), "and is complete under § 14 UStG");
+
+    const std::string pdf = LiesDatei(pfad);
+    Check(pdf.size() > 1000, "the file has content");
+    Check(pdf.compare(0, 5, "%PDF-") == 0, "and is a PDF");
+    Check(pdf.find("%%EOF") != std::string::npos, "that is terminated");
+    Check(pdf.find("R-2026-0001") != std::string::npos,
+          "the invoice number is in it");
+    Check(pdf.find("1.190,00") != std::string::npos,
+          "and so is the gross total, in German notation");
+    Check(pdf.find("Industriestra") != std::string::npos,
+          "and the supplier's address, which § 14 requires");
+    Check(pdf.find("338/5744/1234") != std::string::npos,
+          "and the Steuernummer");
+
+    // The euro sign, as the byte WinAnsi actually uses. Before the encoding fix
+    // this was '?' and nothing in the pipeline complained.
+    Check(pdf.find('\x80') != std::string::npos,
+          "the euro sign is written as WinAnsi 0x80, not replaced with '?'");
+    // The umlauts of a German address, as Latin-1 bytes.
+    Check(pdf.find('\xDF') != std::string::npos, "sharp s survives as 0xDF");
+    Check(pdf.find('\xF6') != std::string::npos, "o-umlaut survives as 0xF6");
+
+    // --- the draft mark ---
+    Check(pdf.find("ENTWURF") != std::string::npos,
+          "an unposted document says on its face that it is a draft");
+    Beleg gebucht = beleg;
+    gebucht.status = BelegStatus::Gebucht;
+    const std::string pfadGebucht = "rechnungstest_gebucht.pdf";
+    std::remove(pfadGebucht.c_str());
+    Check(SchreibeRechnungPdf(mandant, gebucht, kunde, schluessel, pfadGebucht).ok,
+          "a posted invoice is written");
+    const std::string pdfGebucht = LiesDatei(pfadGebucht);
+    Check(pdfGebucht.find("ENTWURF") == std::string::npos,
+          "and carries no draft mark");
+
+    // --- the exemption note ---
+    Beleg igl = beleg;
+    igl.positionen[0].steuerschluessel = "IGL";
+    igl.positionen[0].satzPromille = 0;
+    igl.Summieren();
+    std::vector<Steuerschluessel> iglKeys;
+    {
+        Steuerschluessel key;
+        key.schluessel = "IGL";
+        key.art        = SteuerArt::IgLieferung;
+        iglKeys.push_back(key);
+    }
+    const std::string pfadIgl = "rechnungstest_igl.pdf";
+    std::remove(pfadIgl.c_str());
+    Check(SchreibeRechnungPdf(mandant, igl, euKunde, iglKeys, pfadIgl).ok,
+          "a zero-rated invoice is written");
+    const std::string pdfIgl = LiesDatei(pfadIgl);
+    Check(pdfIgl.find("6a UStG") != std::string::npos,
+          "a zero-rated line names its exemption, which § 14 Abs. 4 Nr. 8 requires");
+    CheckInt(igl.steuer.Minor(), 0, "and carries no tax");
+
+    // --- too many positions ---
+    // The framework's PDF writer emits one page. Refusing is the only honest
+    // answer; an invoice quietly missing its last four lines is worse than no
+    // invoice at all.
+    Beleg lang = beleg;
+    lang.positionen.clear();
+    for (int i = 0; i < 80; ++i) {
+        BelegPosition pos;
+        pos.bezeichnung = "Position " + std::to_string(i + 1);
+        pos.einzelpreis = Money::FromMinor(1000, "EUR");
+        pos.konto       = "8400";
+        pos.steuerschluessel = "USt19";
+        pos.satzPromille = 190;
+        lang.positionen.push_back(pos);
+    }
+    lang.Summieren();
+    const std::string pfadLang = "rechnungstest_lang.pdf";
+    std::remove(pfadLang.c_str());
+    const RechnungPdfErgebnis zuLang =
+        SchreibeRechnungPdf(mandant, lang, kunde, schluessel, pfadLang);
+    Check(!zuLang.ok, "an invoice that does not fit one page is refused");
+    Check(zuLang.fehler.find("Seite") != std::string::npos,
+          "and the refusal says why, in German");
+    Check(LiesDatei(pfadLang).empty(),
+          "and no half-finished file is left behind");
+
+    // --- the obvious refusals ---
+    Check(!SchreibeRechnungPdf(mandant, beleg, kunde, schluessel, "").ok,
+          "an empty file name is refused");
+    Beleg leer = beleg;
+    leer.positionen.clear();
+    Check(!SchreibeRechnungPdf(mandant, leer, kunde, schluessel, "leer.pdf").ok,
+          "and so is a document without positions");
+
+    std::remove(pfad.c_str());
+    std::remove(pfadGebucht.c_str());
+    std::remove(pfadIgl.c_str());
+    std::remove(pfadLang.c_str());
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -1708,6 +1928,7 @@ int main() {
     TestBestaetigung();
     TestStore();
     TestBelegeUndBuchungen();
+    TestRechnungPdf();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
