@@ -55,7 +55,7 @@
   Deciding from `sigpending()` instead would also match a process-directed
   SIGPIPE meant for another thread, and if that one were consumed elsewhere
   in between, the wait would never return.
-- `Tests/ProcessRunnerTest` (POSIX): 17 assertions over the three ways a
+- `Tests/ProcessRunnerTest` (POSIX): 16 assertions over the three ways a
   process runner goes wrong and only at scale - 64 MB written into a closed
   pipe without dying, 64 MB through a filter reading and writing at once
   without deadlocking, and shell metacharacters reaching the program as text.
