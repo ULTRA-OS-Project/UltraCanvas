@@ -32,6 +32,12 @@ and **UltraDatabase** (local store) modules.
 > people you correspond with. When mail cannot be fetched — no IMAP plug-in, no
 > known server for the address, no stored password, a rejected login — Reload
 > and the first sync say so instead of doing nothing.
+> Every message row carries a **sender badge** left of its subject — the
+> service's icon for a known sender, otherwise the sender's initial, framed in
+> the colour of the verdict (contact / business contact / new / advertisement /
+> spam / scam) — and each downloaded body is **scanned for phishing markers**
+> once, where it is cached, with the verdict kept in the local store. See
+> [`Docs/UltraMail/SenderBadges.md`](../../Docs/UltraMail/SenderBadges.md).
 > HTML message bodies are **rendered natively** in the preview through the
 > HTMLReader element builder over the UltraCanvas **CSSLayout** engine (block +
 > inline layout, headings, lists, links, colors — no web view); plain-text

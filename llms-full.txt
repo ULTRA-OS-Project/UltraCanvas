@@ -118,7 +118,7 @@ Install the required dependencies for your platform:
 ```bash
 # Ubuntu/Debian
 sudo apt install build-essential cmake libcairo2-dev libpango1.0-dev \
-    libfreetype6-dev libvips-dev libharfbuzz-dev
+    libfreetype6-dev libvips-dev libharfbuzz-dev clang
 
 # macOS
 brew install cmake cairo pango freetype vips harfbuzz
@@ -495,6 +495,11 @@ the backing implementation can be replaced without affecting callers.
     `OpenWithApplicationPath` — detached launches (default handler /
     enumerated app / user-picked executable; on Linux/BSD that path may also
     be a `.desktop` file, whose own command is what then runs).
+  - `GetMimeType` / `GetMimeGenericIcon` — the freedesktop MIME name of a
+    file (matched by name, never by reading it) and the generic icon name
+    that type falls back to (`application/pdf` → `x-office-document`). Both
+    empty on Windows and macOS, which keep no MIME database; exposed because
+    the icon-naming rules of `UltraCanvasHostFileIcons` need them.
   - `GetApplicationFilter` / `GetApplicationsDirectory` — file-dialog setup
     for an "Other application…" picker (the picker UI lives with the caller).
   - `PrewarmAsync` / `PrewarmExtensionsAsync` — background-worker warm-up;
@@ -617,6 +622,28 @@ the backing implementation can be replaced without affecting callers.
   Used by `LoadNativeFileIconPixmap` (`UltraCanvasNativeFileIcons.h`) off
   Windows, and as the fallback for a file the shell declines on it.
   See `Docs/UltraCanvas/UltraCanvasIconResource.md`.
+
+- **UltraCanvasHostFileIcons** (`UltraCanvasHostFileIcons.h`) — the icon the
+  HOST desktop draws for a file of a given TYPE: what Explorer puts on a
+  `.txt`, Finder on a `.pdf`, the icon theme on a folder. The type-wide
+  counterpart of `UltraCanvasNativeFileIcons`, which answers the other
+  question — what icon a file carries INSIDE itself — and is asked first.
+  Shared key plus the no-op backend in `core/UltraCanvasHostFileIcons.cpp`;
+  the lookups per platform under `OS/<Platform>/` (Linux/BSD: the file's MIME
+  type from `UltraCanvasFileAssociations`, then the icon-naming-spec names
+  through `UltraCanvasDesktopEntry`'s theme resolver; Windows: the shell's
+  system image list via `SHGetFileInfoW` + `SHGetImageList`; macOS:
+  NSWorkspace). WebAssembly and Android report unavailable. Public surface:
+  - `HostFileIconsAvailable` — is there a desktop to ask on this build?
+  - `HostFileIconKey(path, isDirectory)` — the cache key files of one kind
+    share, so a folder of four thousand `.txt` files costs ONE lookup; pure
+    string work, no file access.
+  - `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` — the icon as a
+    `UCPixmap`, or null (no icon for the type, or no desktop): blocking, for
+    a worker thread holding a `NativeFileIconThreadScope`.
+  - `RefreshHostFileIcons` — forget the lookups after a theme change.
+  Used by `UltraCanvasFilerWidget` under Display > File icons > Host OS icons.
+  See `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`.
 
 - **UltraCanvasFontFile** (`UltraCanvasFontFile.h`) — reads a font definition
   file (ttf / ttc / otf / otc / woff / woff2 / Type 1 / bdf / pcf / fon) as a
@@ -19043,6 +19070,21 @@ struct FileAssociationApp {
   candidate list answers a different question, since it also carries the
   applications that merely offer to open the type. Cache-served like the
   list.
+- `GetMimeType(path)` — the freedesktop MIME name the system knows this file
+  by (`text/plain`, `application/zip`), matched by file name — the extension,
+  or a literal name like `makefile` — and never by reading the file.
+- `GetMimeGenericIcon(mime)` — the **generic** icon name that type falls back
+  to when nothing has an icon for the type itself: `application/pdf` is drawn
+  as `x-office-document`, a tarball as `package-x-generic`. The type database
+  carries these as exceptions to the rule that a type falls back to its media
+  type's generic icon (`image/*` → `image-x-generic`), so `""` means "the rule
+  applies", not "no icon".
+
+  Both are empty on Windows and macOS, which associate by extension and by
+  UTI and keep no MIME database to ask. They are therefore a Linux/BSD service
+  in practice, exposed because the freedesktop icon-naming rules need them —
+  see [`UltraCanvasHostFileIcons.md`](UltraCanvasHostFileIcons.md), which is
+  what asks.
 - `OpenWithDefaultApplication(paths, outError)` — Explorer / Finder
   double-click semantics. A selection spanning several types launches each
   type's default handler once with its files. On Windows a file type with no
@@ -19533,6 +19575,51 @@ Changing either switch — from the menu or through the setters — fires
 use, so an application persists both from one place (UltraFiler:
 `Settings > Display > File extensions`).
 
+## File icons
+
+What an entry with no picture of its own is drawn with: the widget's own drawn
+icons, or the ones this desktop uses for the type (`Display > File icons`).
+
+```cpp
+if (UltraCanvasFilerWidget::AreHostFileIconsAvailable())
+    filer->SetFileIconStyle(FilerFileIconStyle::HostOperatingSystem);
+```
+
+| Style | What is drawn |
+|---|---|
+| `Simple` (default) | UltraFiler's own icons: the folder shape and the category-coloured sheet with the extension on it. Identical on every platform, and needs nothing installed — what every earlier release drew. |
+| `HostOperatingSystem` | What **this** system draws for the type: the shell's icon on Windows, Finder's on macOS, the installed icon theme's on Linux and BSD, so a folder listing matches the rest of the desktop. |
+
+The setting only governs **type** icons. A file that shows a thumbnail of its
+own content keeps showing it, and a program, shortcut or bundle keeps the icon
+it carries inside itself ([Native application icons](#native-application-icons))
+— those are the file's own picture, and Explorer, Finder and the Linux file
+managers all prefer them too. What changes is the fallback underneath: the
+sheet glyph becomes the desktop's type icon, and the drawn folder shape becomes
+the desktop's folder icon.
+
+A folder the host gave an icon through `folderIconProvider`
+([Folder icons](#folder-icons)) still wins over both — that is an explicit
+choice about one folder. [Folder previews](#folder-previews) are drawn *into*
+the built-in folder shape, so with host icons on there is no shape to draw them
+into and the folder is simply the system's folder icon.
+
+The lookups go through
+[`UltraCanvasHostFileIcons.h`](UltraCanvasHostFileIcons.md) on one background
+thread, and the widget caches what comes back **per type and size**, not per
+file: a folder of four thousand `.txt` files performs one lookup and holds one
+pixmap. Until an answer lands — and on a system that has no icon for the type,
+or no desktop to ask at all — the simple icon is drawn, so the display never
+waits on a lookup and never shows an empty box.
+
+`AreHostFileIconsAvailable()` reports whether there is a desktop to ask
+(false on WebAssembly and Android): a settings page should say so rather than
+offer a choice that changes nothing. `RefreshHostIcons()` throws the resolved
+icons away and asks again, for a host that notices the user changing desktop
+theme. Switching the style fires `onDisplayFormatsChanged`, the same hook the
+other Display switches use, so an application persists it from one place
+(UltraFiler: `Settings > Display > File icons`).
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -19581,6 +19668,8 @@ Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascen
                   Type        >  all view types
                   File extensions > "Show in names" (checkbox) + None / Bar /
                                  Icon (the thumbnail tile tag)
+                  File icons  >  UltraFiler simple / Host OS icons (only
+                                 where this system has icons to give)
                   Thumbnails  >  Bitmaps / Vector graphics / 3D / PDF / Text /
                                  Docs / Spreadsheets / Videos / Audio / Fonts
                                  (checkboxes, all on; the host may append its
@@ -20536,6 +20625,12 @@ persists those persists this one the same way.
 ```cpp
 filer->SetFolderPreviewsEnabled(false);   // plain folder shapes only
 ```
+
+They are drawn into the **built-in** folder shape, so they only appear where
+that shape is what a folder is drawn with: a folder with an icon from
+`folderIconProvider` ([Folder icons](#folder-icons)) keeps that icon, and with
+`Display > File icons` on `HostOperatingSystem` ([File icons](#file-icons))
+every folder is the system's folder icon and none of them peek.
 
 What it costs, and where it is drawn:
 
@@ -23151,12 +23246,17 @@ coordinate, and a longer caption widens the column instead of clipping.
 
 | Call | What it makes |
 |---|---|
-| `CreateFormGrid(id, rowGap, columnGap)` | The grid: columns `[auto, 1fr]`, items centred vertically, stretched into its parent. Add it to the window or section. |
+| `CreateFormGrid(id, rowGap, columnGap)` | The grid: columns `[auto, 1fr]`, items centred vertically, stretched into its parent, and never scrolling. Add it to the window or section. |
 | `AddFormRow(grid, id, "Caption:", control)` | A row. Returns the caption label, so a caller that hides rows can hide the caption with them. |
 | `AddFormRow(grid, caption, control)` | The same with a caption the caller built (to restyle it, or to keep a pointer). |
 | `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
 | `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
 | `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+
+The grid does not scroll: whatever needs to, the pane or dialog around it
+does. A grid left on the container default would raise a scrollbar for a row
+a pixel taller than its track, and the bar - plus the second one its own width
+brings on - covers that row.
 
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
@@ -26756,6 +26856,143 @@ default. Hovering a hexagon shows its cell index and value.
 - The geometry math (`MakeHexLayout`, `HexCenter`, `HexNearestCell`) is
   dependency-free and unit-tested (grid fit, centre round-trip, point binning).
 - Cells whose value is `NaN` (transparent NaN colour) are skipped.
+
+==============================================================================
+FILE: Docs/UltraCanvas/UltraCanvasHostFileIcons.md
+==============================================================================
+
+# UltraCanvasHostFileIcons — the icons the host desktop draws
+
+`UltraCanvasHostFileIcons.h` answers one question: **what does the system this
+application is running on draw for a file of this kind?** The picture Explorer
+puts on a `.txt`, the one Finder puts on a `.pdf`, the one the Linux icon theme
+puts on a folder. A file display that asks it looks like the rest of the
+desktop instead of like a second file manager.
+
+It is the type-wide half of a pair, and the two are easy to confuse:
+
+| Module | Question | Where the answer lives |
+|---|---|---|
+| `UltraCanvasNativeFileIcons` | what icon does **this file** carry? | inside the file — a `.exe`'s resources, an `.ico`, the icon a `.lnk` or `.desktop` names, a bundle's `.icns` |
+| `UltraCanvasHostFileIcons` | what does **this system** draw for this **kind** of file? | the host's shell or icon theme — nothing in the file to read |
+
+So a program is drawn as itself on every platform (the native module reads the
+picture out of the file, which is why a Windows disk mounted on Linux still
+shows its programs correctly), while a `.txt` is drawn as *this* desktop draws
+a text file, and looks different on a different desktop. A caller asks the
+native module first and this one for everything else.
+
+```cpp
+#include "UltraCanvasHostFileIcons.h"
+
+if (UltraCanvas::HostFileIconsAvailable()) {
+    // The key files of this kind share — ask once per key, not once per file.
+    const std::string key = UltraCanvas::HostFileIconKey(path, isDirectory);
+    // Blocking: on a worker thread, holding a NativeFileIconThreadScope.
+    auto pixmap = UltraCanvas::LoadHostFileIconPixmap(path, isDirectory, 48);
+}
+```
+
+| Function | Answers |
+|---|---|
+| `HostFileIconsAvailable()` | is there a desktop to ask on this build at all? |
+| `HostFileIconKey(path, isDirectory)` | what the answer depends on — the cache key, pure string work |
+| `LoadHostFileIconPixmap(path, isDirectory, desiredSize)` | the icon as a `UCPixmap`, or null |
+| `RefreshHostFileIcons()` | forget the lookups — after a theme change |
+
+## The key is the whole design
+
+A host icon belongs to a **type**, not to a file, and `HostFileIconKey` is
+what says which type. That one string decides the cost of the feature:
+
+- key two kinds the same, and a folder draws one of them with the other's
+  icon;
+- key them too finely, and a folder of four thousand `.txt` files performs
+  four thousand icon-theme lookups instead of one.
+
+The keys:
+
+| What | Key | Why |
+|---|---|---|
+| a directory | `dir` | every folder is one icon |
+| a file that carries its own icon | `file:<path>` | not a type at all — two programs must never share an icon |
+| a name with no extension | `name:<lowercased name>` | the freedesktop database matches `makefile` and `README` by name |
+| everything else | `ext:<suffix chain>` | `archive.tar.gz` keys as `tar.gz`, not `gz` — a tarball and a gzip file are different types and are drawn differently |
+
+The suffix chain runs from the **first** dot, which is the finest distinction
+the type databases make. A leading dot is part of the name (`.bashrc` is a
+name, not a `bashrc` file).
+
+## The three backends
+
+**Linux / BSD** — `OS/Linux/UltraCanvasLinuxHostFileIcons.cpp`. Two steps,
+neither of which is this module's own work:
+
+1. the file's MIME type, from `FileAssociations::GetMimeType` — the
+   shared-mime-info globs the "Open with" menu is already built from, so the
+   framework keeps exactly one reader of that database;
+2. the icon **names** that type is drawn under, per the icon-naming
+   specification, looked up in the installed themes by
+   `FindDesktopIconFile` — the same resolver a `.desktop` entry's `Icon=`
+   goes through.
+
+The names are tried in order, most specific first:
+
+| Order | Name | Example for `archive.tar.gz` |
+|---|---|---|
+| 1 | the MIME name with its slash replaced | `application-x-compressed-tar` |
+| 2 | the generic icon the type database names (`FileAssociations::GetMimeGenericIcon`) | `package-x-generic` |
+| 3 | the generic icon of the media type | `application-x-generic` |
+| 4 | `application-x-generic`, then `unknown` | — |
+
+Step 2 is what makes a PDF an office document and a tarball a package: no
+theme ships an icon for each of the two thousand known types, and
+`mime/generic-icons` is the database saying which picture each belongs under.
+A machine with no icon theme installed answers nothing at every step, and the
+caller draws its own icon.
+
+**Windows** — `OS/MSWindows/UltraCanvasWindowsHostFileIcons.cpp`. The shell's
+system image list, which is the list Explorer itself draws from, indexed by
+`SHGetFileInfoW` with `SHGFI_USEFILEATTRIBUTES`: the type is decided from the
+file **name**, so the shell answers from the registry without opening — or
+even finding — the file, and a path on a disconnected volume still gets its
+icon. The smallest image list that will not be scaled up is used, down to the
+plain associated icon where a locked-down shell refuses the lists. A
+transparent border is trimmed off what comes back: the jumbo list is a 256×256
+canvas, and a type whose icon exists only at 48 sits in the middle of it with
+empty space all round, which drawn into a tile would be a postage stamp.
+
+**macOS** — `OS/MacOS/UltraCanvasMacOSHostFileIcons.mm`. `NSWorkspace`, asked
+for the content type the extension names rather than for the file, so one
+lookup serves every file of a kind. Where the content-type API is not
+available the path itself is asked, which also picks up a file's custom icon —
+what Finder shows there too. Drawing an `NSImage` into a bitmap is the one
+piece of AppKit rendering that is safe off the main thread, which is where a
+file display calls this from.
+
+**WebAssembly and Android** report unavailable: there is no desktop to ask, so
+`LoadHostFileIconPixmap` returns null and a caller keeps its own icons.
+
+## Threading
+
+`LoadHostFileIconPixmap` blocks — it reads icon themes or calls the shell —
+and belongs on a worker thread. Hold a
+`NativeFileIconThreadScope` for the life of
+that thread: on Windows the shell expects the calling thread to have joined a
+COM apartment, and a thread that has not can fail an extraction that works
+perfectly well elsewhere. Elsewhere the scope is an empty object.
+
+Null is not a failure. It is the ordinary answer on a machine with no icon for
+the type, and callers must draw something of their own for it — the filer
+widget falls back to its built-in icons, so the display is never empty and
+never blocks on a lookup.
+
+## Who uses it
+
+`UltraCanvasFilerWidget`, under **Display > File icons > Host OS icons** (see
+[`UltraCanvasFilerWidget.md`](UltraCanvasFilerWidget.md)). The widget holds
+its own cache keyed by `HostFileIconKey` plus the icon size, resolved on one
+background thread, and draws its simple icons until an answer lands.
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasIconResource.md
@@ -36834,13 +37071,20 @@ Two kinds of history entry keep memory in check:
 
 `SetUndoMemoryLimit()` bounds the history; the oldest entries go first.
 
+A selection belongs to the canvas it was made on. The whole-image geometry
+operations (`CropTo`, `ScaleImage`, `ResizeCanvas`, `Rotate90`) re-shape it,
+which is a selection change like any other: they fire `onSelectionChanged()`
+and move the history's committed baseline with them. Undo and redo drop a
+recorded selection whose size does not match the canvas being restored,
+rather than installing a mask of the wrong shape.
+
 ### Notifications
 
 | Callback | Fired when |
 |---|---|
 | `onPixelsChanged(rect)` | pixels of `rect` changed (a stroke calls it per dab) |
 | `onStructureChanged()` | layer list, attributes, active layer or canvas size changed |
-| `onSelectionChanged()` | the selection changed |
+| `onSelectionChanged()` | the selection changed, including when a canvas-geometry change dropped it |
 | `onStateChanged()` | modified flag or undo / redo availability changed |
 
 `UltraCanvasPaintSurface::SetDocument()` installs the first three; a host

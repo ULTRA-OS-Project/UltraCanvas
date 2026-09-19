@@ -4,13 +4,14 @@
 // (~/.config/UltraFiler/config.ini on Linux, %APPDATA%\UltraFiler\config.ini
 // on Windows, ~/Library/Application Support/UltraFiler/config.ini on macOS).
 // Settings are applied live by the settings dialog and saved on every change.
-// Version: 1.12.0
+// Version: 1.13.0
 // Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
-#include "UltraCanvasFilerWidget.h"   // FilerPreviewType, FilerExtensionBadge
+#include "UltraCanvasFilerWidget.h"   // FilerPreviewType, FilerExtensionBadge,
+                                     // FilerFileIconStyle
 
 #include <algorithm>
 #include <cstdint>
@@ -111,6 +112,16 @@ public:
     // which is the display every earlier release had.
     bool showFileExtensions = true;
     FilerExtensionBadge extensionBadge = FilerExtensionBadge::NoneBadge;
+
+    // Display > File icons: whose icons an entry with no picture of its own
+    // is drawn with - UltraFiler's own drawn folder shape and coloured sheet,
+    // or the icon this desktop uses for the type (the shell's on Windows,
+    // Finder's on macOS, the icon theme's on Linux/BSD). The simple icons by
+    // default: they are what every earlier release drew, they look the same
+    // on every platform, and they need nothing installed. Files that show a
+    // thumbnail of their own content, and programs and shortcuts that carry
+    // an icon inside them, are drawn the same way under both.
+    FilerFileIconStyle fileIconStyle = FilerFileIconStyle::Simple;
 
     // Display > Files: whether the file display lists what the platform
     // calls hidden - the dot names everywhere, plus the hidden attribute on
@@ -321,6 +332,8 @@ public:
                     (it->second == "true" || it->second == "1" || it->second == "yes");
         it = kv.find("display.extensions.badge");
         if (it != kv.end()) extensionBadge = ParseExtensionBadge(it->second);
+        it = kv.find("display.file.icons");
+        if (it != kv.end()) fileIconStyle = ParseFileIconStyle(it->second);
         it = kv.find("display.files.show.hidden");
         if (it != kv.end())
             showHiddenFiles =
@@ -405,6 +418,8 @@ public:
              << (showFileExtensions ? "true" : "false") << "\n";
         file << "display.extensions.badge = "
              << FormatExtensionBadge(extensionBadge) << "\n";
+        file << "display.file.icons = "
+             << FormatFileIconStyle(fileIconStyle) << "\n";
         file << "display.files.show.hidden = "
              << (showHiddenFiles ? "true" : "false") << "\n";
         file << "display.ignored.builtin = "
@@ -454,6 +469,22 @@ public:
         if (value == "bar")  return FilerExtensionBadge::Bar;
         if (value == "icon") return FilerExtensionBadge::Icon;
         return FilerExtensionBadge::NoneBadge;
+    }
+
+    // ===== WHOSE FILE ICONS THE DISPLAY DRAWS =====
+    // Named, like every other choice in the file. An unknown value - a file
+    // written by a later release that has a third style - reads back as the
+    // simple icons, which every build can draw.
+    static std::string FormatFileIconStyle(FilerFileIconStyle style) {
+        switch (style) {
+            case FilerFileIconStyle::HostOperatingSystem: return "host";
+            default:                                      return "simple";
+        }
+    }
+
+    static FilerFileIconStyle ParseFileIconStyle(const std::string& text) {
+        return Trim(text) == "host" ? FilerFileIconStyle::HostOperatingSystem
+                                    : FilerFileIconStyle::Simple;
     }
 
     // ===== THE DROP CONFIRMATION =====

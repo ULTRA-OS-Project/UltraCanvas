@@ -42,7 +42,7 @@
   non-JSON answer, a partly confirmed qualified enquiry, and the cases that are
   refused before a request is made.
 - **Money is never a double**, anywhere: amounts are `UltraCanvasMoney`
-  (framework 0.8.85), and a Steuerschlüssel computes its tax through it.
+  (framework 0.8.92), and a Steuerschlüssel computes its tax through it.
 - **The chart of accounts and the tax keys are data, not code.** `data/SKR03.csv`
   ships 74 of the most-used SKR03 accounts - each with its BWA position and its
   balance-sheet classification, because the Jahresabschluss is in scope -

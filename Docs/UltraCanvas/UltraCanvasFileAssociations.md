@@ -50,6 +50,21 @@ struct FileAssociationApp {
   candidate list answers a different question, since it also carries the
   applications that merely offer to open the type. Cache-served like the
   list.
+- `GetMimeType(path)` — the freedesktop MIME name the system knows this file
+  by (`text/plain`, `application/zip`), matched by file name — the extension,
+  or a literal name like `makefile` — and never by reading the file.
+- `GetMimeGenericIcon(mime)` — the **generic** icon name that type falls back
+  to when nothing has an icon for the type itself: `application/pdf` is drawn
+  as `x-office-document`, a tarball as `package-x-generic`. The type database
+  carries these as exceptions to the rule that a type falls back to its media
+  type's generic icon (`image/*` → `image-x-generic`), so `""` means "the rule
+  applies", not "no icon".
+
+  Both are empty on Windows and macOS, which associate by extension and by
+  UTI and keep no MIME database to ask. They are therefore a Linux/BSD service
+  in practice, exposed because the freedesktop icon-naming rules need them —
+  see [`UltraCanvasHostFileIcons.md`](UltraCanvasHostFileIcons.md), which is
+  what asks.
 - `OpenWithDefaultApplication(paths, outError)` — Explorer / Finder
   double-click semantics. A selection spanning several types launches each
   type's default handler once with its files. On Windows a file type with no

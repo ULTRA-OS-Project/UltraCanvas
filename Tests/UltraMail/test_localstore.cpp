@@ -117,6 +117,30 @@ TEST(folders_roundtrip) {
     REQUIRE_EQ(fs.size(), (size_t)2);
 }
 
+TEST(folders_persist_selectable_flag) {
+    LocalStore s = FreshStore("selectable");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+    // A \Noselect container (e.g. Gmail's "[Gmail]") and a real folder under it.
+    Folder container; container.accountId = "erika"; container.name = "[Gmail]";
+    container.role = FolderRole::Normal; container.selectable = false;
+    REQUIRE(s.UpsertFolder(container).success);
+    Folder sent; sent.accountId = "erika"; sent.name = "[Gmail]/Sent Mail";
+    sent.role = FolderRole::Sent; sent.selectable = true;
+    REQUIRE(s.UpsertFolder(sent).success);
+
+    std::vector<Folder> fs;
+    REQUIRE(s.ListFolders("erika", fs).success);
+    bool sawContainer = false, sawSent = false, sawInbox = false;
+    for (const auto& f : fs) {
+        if (f.name == "[Gmail]")           { sawContainer = true; REQUIRE(!f.selectable); }
+        if (f.name == "[Gmail]/Sent Mail") { sawSent = true;      REQUIRE(f.selectable); }
+        if (f.name == "INBOX")             { sawInbox = true;     REQUIRE(f.selectable); }
+    }
+    REQUIRE(sawContainer);
+    REQUIRE(sawSent);
+    REQUIRE(sawInbox);
+}
+
 TEST(messages_list_recent_first) {
     LocalStore s = FreshStore("msglist");
     AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
@@ -257,4 +281,51 @@ TEST(upsert_is_idempotent) {
     s.ListMessages("erika", "INBOX", 0, msgs);
     REQUIRE_EQ(msgs.size(), (size_t)1);   // no duplicate
     REQUIRE_EQ(NeedsFor(s, "erika"), 1);
+}
+
+TEST(security_verdicts_round_trip_and_survive_envelope_upserts) {
+    LocalStore s = FreshStore("security");
+    AddAccountWithInbox(s, "erika", "erika@example.com", "erika");
+
+    MessageEnvelope m;
+    m.accountId = "erika"; m.folder = "INBOX"; m.uid = 7;
+    m.fromAddr = "service@paypa1-secure.example"; m.subject = "Your account is locked";
+    REQUIRE(s.UpsertMessage(m).success);
+
+    // Nothing stored yet reads as "unscanned", not as "clean".
+    MessageSecurity none;
+    REQUIRE(s.GetSecurity("erika", "INBOX", 7, none).success);
+    REQUIRE(!none.Scanned());
+    REQUIRE(none.level == ThreatLevel::Unscanned);
+
+    MessageSecurity sec;
+    sec.level  = ThreatLevel::Scam;
+    sec.score  = 60;
+    sec.reason = "A link reads \"paypal.com\" but goes to 198.51.100.7.";
+    REQUIRE(s.SetSecurity("erika", "INBOX", 7, sec).success);
+
+    MessageSecurity read;
+    REQUIRE(s.GetSecurity("erika", "INBOX", 7, read).success);
+    REQUIRE(read.level == ThreatLevel::Scam);
+    REQUIRE_EQ(read.score, 60);
+    REQUIRE_EQ(read.reason, sec.reason);
+    REQUIRE(read.scannedAt > 0);
+
+    // The reason the verdict lives in its own table: a later header sync
+    // re-upserts the envelope, and the scan must not be reset by it.
+    m.flags = Flag_Seen;
+    REQUIRE(s.UpsertMessage(m).success);
+    REQUIRE(s.GetSecurity("erika", "INBOX", 7, read).success);
+    REQUIRE(read.level == ThreatLevel::Scam);
+
+    // The message list reads a whole folder's verdicts in one query.
+    std::map<int64_t, MessageSecurity> all;
+    REQUIRE(s.ListSecurity("erika", "INBOX", all).success);
+    REQUIRE_EQ(all.size(), (size_t)1);
+    REQUIRE(all[7].level == ThreatLevel::Scam);
+
+    // Removing the account takes its verdicts with it.
+    REQUIRE(s.RemoveAccount("erika").success);
+    REQUIRE(s.ListSecurity("erika", "INBOX", all).success);
+    REQUIRE(all.empty());
 }

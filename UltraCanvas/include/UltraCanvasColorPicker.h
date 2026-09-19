@@ -253,6 +253,14 @@ namespace UltraCanvas {
         void SetShowAlpha(bool show);
         bool GetShowAlpha() const { return showAlpha; }
 
+        // The height at which a picker `width` wide draws its hue ring at the
+        // full width the padding leaves - the biggest the wheel can be. Below
+        // it the wheel shrinks to whatever vertical space is left over, so a
+        // host that wants the largest wheel sizes the picker from this.
+        // Answers for the picker as configured: call it after the UI scale,
+        // the wheel style and the alpha / slider options are set.
+        float PreferredHeightForWidth(float width) const;
+
         const ColorPickerStyle& GetStyle() const { return style; }
         void SetStyle(const ColorPickerStyle& s) { style = s; layoutValid = false; RequestRedraw(); }
 
@@ -398,6 +406,9 @@ namespace UltraCanvas {
         void RecalculateLayout();
         float Scaled(float v) const { return v * std::max(0.1f, style.uiScale); }
         bool SlidersVisible() const { return !slidersCollapsible || slidersExpanded; }
+        // Height of everything below the wheel: swatches / hex, the mode tabs
+        // and the channel sliders.
+        float ControlsHeight() const;
 
         // ----- Rendering helpers -----
         void RenderHueRing(IRenderContext* ctx);
