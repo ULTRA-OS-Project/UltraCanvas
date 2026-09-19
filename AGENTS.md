@@ -14,6 +14,7 @@ UltraCanvas is a modular, cross-platform **C++20 UI and rendering framework**
 | UltraCanvas | UI widgets, layout, rendering, events | `UltraCanvas/{include,core,libspecific,OS/<Platform>,Plugins}` |
 | UltraAI | Provider-agnostic AI capabilities (LLM, STT, TTS, image/video/music gen, …) | `UltraAI/` |
 | UltraNet | Networking (HTTP, WebSocket, FTP, TCP/UDP, TLS, DNS) | `UltraCanvas/core/UltraNet`, `Docs/Modules/UltraNet` |
+| NetworkMonitor | System-wide socket table with the owning process (not UltraNet: observes other processes) | `UltraCanvas/{include,core}/NetworkMonitor`, `Docs/Modules/NetworkMonitor` |
 | FileLoader | Universal file load/save/convert facade | `Docs/Modules/FileLoader` |
 | VirtualFS | Virtual filesystem and compression | `VirtualFS/` |
 | File-type plugins | Charts, diagrams, vector, documents, video, … | `UltraCanvas/Plugins/` |
@@ -184,6 +185,7 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraCleaner/CHANGELOG.md` | UltraCleaner |
 | `Docs/UltraFiler/CHANGELOG.md` | UltraFiler |
 | `Docs/UltraMail/CHANGELOG.md` | UltraMail |
+| `Docs/UltraNetMonitor/CHANGELOG.md` | UltraNetMonitor |
 | `Docs/UltraPaint/CHANGELOG.md` | UltraPaint |
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |

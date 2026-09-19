@@ -1,0 +1,200 @@
+// core/NetworkMonitor/NetworkMonitorCore.cpp
+// The platform-independent half of NetworkMonitor: the public functions,
+// the option filters (applied here so every backend filters identically),
+// the per-process roll-up, the display names, and the null backend for
+// platforms that have none yet.
+//
+// Version: 0.1.0
+// Last Modified: 2026-09-19
+// Author: UltraCanvas Framework / ULTRA OS
+#include "NetworkMonitor/NetworkMonitor.h"
+#include "NetworkMonitor/NetworkMonitorBackend.h"
+
+#include <algorithm>
+#include <map>
+#include <memory>
+#include <mutex>
+#include <set>
+
+namespace UltraCanvas {
+
+#ifndef ULTRACANVAS_NETWORKMONITOR_NATIVE
+// No backend on this platform. Capabilities read as all-false and every
+// snapshot reports NotSupported, so a caller can say so instead of showing
+// an empty table that looks like a quiet machine.
+std::unique_ptr<INetworkMonitorBackend> CreateNativeNetworkMonitorBackend() {
+    return nullptr;
+}
+#endif
+
+namespace {
+
+// One backend per process, created on first use. Backends cache the process
+// identities they have resolved, which is why there is one rather than one
+// per call.
+INetworkMonitorBackend* Backend() {
+    static std::unique_ptr<INetworkMonitorBackend> backend;
+    static std::once_flag once;
+    std::call_once(once, [] { backend = CreateNativeNetworkMonitorBackend(); });
+    return backend.get();
+}
+
+bool PassesFilters(const NetworkConnection& connection, const NetworkMonitorOptions& options) {
+    if (!options.includeListening &&
+        (connection.state == NetworkConnectionState::Listening ||
+         connection.state == NetworkConnectionState::Unconnected)) {
+        return false;
+    }
+    if (!options.includeLoopback && connection.IsLoopback()) return false;
+    return true;
+}
+
+bool IsWildcard(const std::string& address) {
+    return address.empty() || address == "0.0.0.0" || address == "::";
+}
+
+} // namespace
+
+// ===== NetworkConnection =====
+
+bool NetworkConnection::IsLoopback() const {
+    // 127.0.0.0/8, ::1, and the IPv4-mapped form a dual-stack socket reports.
+    auto loopback = [](const std::string& address) {
+        return address.rfind("127.", 0) == 0 || address == "::1" ||
+               address.rfind("::ffff:127.", 0) == 0;
+    };
+    return loopback(localAddress) || loopback(remoteAddress);
+}
+
+std::string NetworkConnection::LocalEndpoint() const {
+    return NetworkMonitor_FormatEndpoint(localAddress, localPort);
+}
+
+std::string NetworkConnection::RemoteEndpoint() const {
+    return NetworkMonitor_FormatEndpoint(remoteAddress, remotePort);
+}
+
+// ===== PUBLIC FUNCTIONS =====
+
+NetworkMonitorCapabilities NetworkMonitor_GetCapabilities() {
+    if (INetworkMonitorBackend* backend = Backend()) return backend->Capabilities();
+    NetworkMonitorCapabilities none;
+    none.backendName = "none";
+    none.notes.push_back("No NetworkMonitor backend for this platform in this build.");
+    return none;
+}
+
+bool NetworkMonitor_IsAvailable() {
+    return Backend() != nullptr;
+}
+
+NetworkMonitorResult NetworkMonitor_ListConnections(std::vector<NetworkConnection>& out,
+                                                    const NetworkMonitorOptions& options) {
+    out.clear();
+    INetworkMonitorBackend* backend = Backend();
+    if (!backend) {
+        return NetworkMonitorResult::Error(NetworkMonitorResultCode::NotSupported,
+                                           "No NetworkMonitor backend for this platform.");
+    }
+    std::vector<NetworkConnection> all;
+    const NetworkMonitorResult result = backend->Snapshot(all, options.resolveProcesses);
+    if (!result) return result;
+
+    out.reserve(all.size());
+    for (auto& connection : all) {
+        if (PassesFilters(connection, options)) out.push_back(std::move(connection));
+    }
+    return NetworkMonitorResult::Ok();
+}
+
+std::vector<ProcessTrafficSummary> NetworkMonitor_SummarizeByProcess(
+    const std::vector<NetworkConnection>& connections) {
+    struct Group {
+        ProcessTrafficSummary summary;
+        std::set<std::string> remotes;
+        bool allSentKnown = true;
+        bool allReceivedKnown = true;
+        uint64_t sent = 0;
+        uint64_t received = 0;
+    };
+    // Keyed by PID; 0 collects everything the backend could not attribute.
+    std::map<uint32_t, Group> groups;
+
+    for (const auto& connection : connections) {
+        const uint32_t pid = connection.process ? connection.process->pid : 0;
+        Group& group = groups[pid];
+        if (group.summary.connectionCount == 0) {
+            if (connection.process) {
+                group.summary.process = *connection.process;
+                group.summary.attributed = true;
+            } else {
+                group.summary.process.displayName = "(unattributed)";
+                group.summary.attributed = false;
+            }
+        }
+        ++group.summary.connectionCount;
+        if (connection.state == NetworkConnectionState::Established) ++group.summary.establishedCount;
+        if (connection.state == NetworkConnectionState::Listening ||
+            connection.state == NetworkConnectionState::Unconnected) {
+            ++group.summary.listeningCount;
+        }
+        if (!IsWildcard(connection.remoteAddress)) group.remotes.insert(connection.remoteAddress);
+        if (connection.bytesSent) group.sent += *connection.bytesSent; else group.allSentKnown = false;
+        if (connection.bytesReceived) group.received += *connection.bytesReceived; else group.allReceivedKnown = false;
+    }
+
+    std::vector<ProcessTrafficSummary> result;
+    result.reserve(groups.size());
+    for (auto& [pid, group] : groups) {
+        group.summary.remoteAddresses.assign(group.remotes.begin(), group.remotes.end());
+        if (group.allSentKnown) group.summary.bytesSent = group.sent;
+        if (group.allReceivedKnown) group.summary.bytesReceived = group.received;
+        result.push_back(std::move(group.summary));
+    }
+    std::sort(result.begin(), result.end(),
+              [](const ProcessTrafficSummary& a, const ProcessTrafficSummary& b) {
+                  if (a.connectionCount != b.connectionCount) return a.connectionCount > b.connectionCount;
+                  return a.process.displayName < b.process.displayName;
+              });
+    return result;
+}
+
+const char* NetworkMonitor_TransportName(NetworkTransport transport) {
+    switch (transport) {
+        case NetworkTransport::Tcp: return "TCP";
+        case NetworkTransport::Udp: return "UDP";
+        default:                    return "other";
+    }
+}
+
+const char* NetworkMonitor_StateName(NetworkConnectionState state) {
+    switch (state) {
+        case NetworkConnectionState::Listening:   return "LISTEN";
+        case NetworkConnectionState::SynSent:     return "SYN_SENT";
+        case NetworkConnectionState::SynReceived: return "SYN_RECV";
+        case NetworkConnectionState::Established: return "ESTABLISHED";
+        case NetworkConnectionState::FinWait1:    return "FIN_WAIT1";
+        case NetworkConnectionState::FinWait2:    return "FIN_WAIT2";
+        case NetworkConnectionState::CloseWait:   return "CLOSE_WAIT";
+        case NetworkConnectionState::Closing:     return "CLOSING";
+        case NetworkConnectionState::LastAck:     return "LAST_ACK";
+        case NetworkConnectionState::TimeWait:    return "TIME_WAIT";
+        case NetworkConnectionState::Closed:      return "CLOSED";
+        case NetworkConnectionState::Unconnected: return "UNCONN";
+        default:                                  return "UNKNOWN";
+    }
+}
+
+std::string NetworkMonitor_FormatEndpoint(const std::string& address, uint16_t port) {
+    std::string text;
+    if (address.empty()) {
+        text = "*";
+    } else if (address.find(':') != std::string::npos) {
+        text = "[" + address + "]";
+    } else {
+        text = address;
+    }
+    return text + ":" + std::to_string(port);
+}
+
+} // namespace UltraCanvas
