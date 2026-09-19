@@ -1,3 +1,22 @@
+#### 2026-09-19 *0.9.9*
+- **LaTeX Documents, XAR Images and EPS Images read as fully implemented in the
+  demo tree.** All three carried the blue "partially implemented" icon because
+  each one's own documentation opened with that phrase - but the phrase was
+  about *format coverage*, not about the demo pages or the elements behind
+  them, which are finished and drive their shipped sample corpora
+  (`media/vector/XAR`, `media/vector/EPS`, `media/LaTex`). The tree's icon
+  answers "can I use this?", and for all three the answer is yes.
+- **The three documents now say the same thing as the tree.**
+  `UltraCanvasXARExamples.md` and `UltraCanvasEPSExamples.md` opened with "XAR
+  support is partially implemented" / "EPS support is partially implemented",
+  and the demo's documentation button on those very pages opens those files -
+  so a reader met a green tick and a "partially implemented" in two clicks.
+  Both overviews now lead with what the plugin does, and every per-format gap
+  is kept, moved to where a reader hits it when it matters: XAR's effect nodes
+  (`XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`,
+  `XARFeatherNode`, `XARLiveEffectNode`) are parsed but not painted, and EPS
+  keeps its *Known gaps* section untouched. Nothing was promoted that is not
+  implemented; only the leading verdict changed.
 #### 2026-09-19 *0.9.7*
 - **Xara-class effects in the vector model, renderer and XAR converter** -
   phase 4 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`; the
