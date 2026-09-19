@@ -468,7 +468,10 @@ public:
     CropTool() : PaintTool(PaintToolId::Crop, "Crop", "crop.svg", 'C',
                            "Drag the area to keep, then press Enter (Escape cancels)") {}
     void OnPress(PaintToolContext&, const PaintPointerEvent& e) override {
-        dragging = true; x0 = x1 = e.x; y0 = y1 = e.y; hasRect = false;
+        // The rectangle already dragged survives the press: the first click
+        // of a double-click is a press, and dropping it here left nothing for
+        // OnDoubleClick to apply. A drag replaces it, Escape cancels it.
+        dragging = true; x0 = x1 = e.x; y0 = y1 = e.y;
     }
     void OnDrag(PaintToolContext& ctx, const PaintPointerEvent& e) override {
         if (!dragging) return;
@@ -489,6 +492,11 @@ public:
         return false;
     }
     void Deactivate(PaintToolContext& ctx) override { hasRect = false; dragging = false; ctx.surface->Refresh(); }
+    bool ApplyPendingCrop(PaintToolContext& ctx) override {
+        if (!hasRect) return false;
+        Commit(ctx);
+        return true;
+    }
     void DrawOverlay(PaintToolContext& tc, IRenderContext* ctx, const PaintViewTransform& v) override {
         if (!hasRect) return;
         auto doc = tc.getDocument();

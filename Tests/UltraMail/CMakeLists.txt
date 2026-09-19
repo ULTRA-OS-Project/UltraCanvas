@@ -8,6 +8,8 @@ set(ULTRAMAIL_TEST_SOURCES
     test_localstore.cpp
     test_attachments.cpp
     test_contacts.cpp
+    test_senderidentity.cpp
+    test_threatscan.cpp
     test_syncengine.cpp
     test_discovery.cpp
     test_composer.cpp

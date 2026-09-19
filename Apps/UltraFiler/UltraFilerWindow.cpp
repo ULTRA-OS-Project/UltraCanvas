@@ -48,8 +48,15 @@
 // onFolderModified re-syncs that folder's rows with the disk
 // (RefreshTreeFolder), so a folder created, renamed, deleted or moved by a cut
 // and paste is in the tree where it is on disk, without a restart.
-// Version: 1.20.0
-// Last Modified: 2026-09-13
+// The navigation row's split-screen button (left of the clock) turns on the
+// split view: the tree pane leaves the split and a second folder display
+// joins it to the right of the active tab's, each under a header row of a
+// folder-tree button and its own breadcrumb. The tree button docks the one
+// folder tree down the left of that display; the display clicked last is
+// the one the toolbars, the status bar and the preview act on. The right-hand
+// display and the switch itself are remembered in the settings.
+// Version: 1.21.0
+// Last Modified: 2026-09-19
 // Author: UltraCanvas Framework
 
 #include "UltraFilerWindow.h"
@@ -146,6 +153,10 @@ namespace {
     // Split-pane minimum widths (px): the folder display and the detail
     // (preview) pane never get narrower than these.
     constexpr int kFilerMinWidth   = 360;
+    // The split view's two folder displays share what the tree and the
+    // folder pane had, so each may be narrower than the single display -
+    // though never narrower than a few medium thumbnails across.
+    constexpr int kSplitPaneMinWidth = 240;
     // Height of the folder tab strip at the top of the window (one tab high -
     // the strip carries no content area of its own).
     constexpr int kTabStripHeight  = 30;
@@ -752,8 +763,14 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
             SetComputerPageVisible(false);
             return true;
         }
-        if (!previewShown) return false;
         if (filer && filer->WantsEscapeKey()) return false;
+        // A tree docked into a split-view pane is the most transient thing
+        // on screen: it goes before the preview does.
+        if (splitViewShown && treeDockShown) {
+            SetTreeDockVisible(false, treeDockSide);
+            return true;
+        }
+        if (!previewShown) return false;
         // The folder preview's own interactions (a rename, a drag) keep
         // their cancel key too.
         if (previewShowsFolder && folderPreview && folderPreview->WantsEscapeKey())
@@ -761,6 +778,28 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
         SetPreviewEnabled(false);
         return true;
     }, { UCEventType::KeyDown });
+
+    // Split view: the pane the mouse goes down in becomes the active display
+    // - its header, its breadcrumb, its docked tree and its display alike -
+    // and a click on the tab strip means the left-hand one. A click into a
+    // popup (a breadcrumb dropdown, a context menu) changes nothing: the
+    // menu may well hang over the other pane, and what it does belongs to
+    // the pane it was opened from. The filter only observes; the click goes
+    // on to whatever was clicked.
+    window->InstallEventFilter("ufl-split-activate",
+            [this](const UCEvent& e) -> bool {
+        if (!splitViewShown || !rightPane || !filerPane) return false;
+        if (window->GetActivePopupElement()) return false;
+        const Point2Df p(static_cast<float>(e.pointerWindow.x),
+                         static_cast<float>(e.pointerWindow.y));
+        if (rightPane->GetBoundsInWindow().Contains(p)) {
+            ActivateSplitSide(SplitSide::Right);
+        } else if (filerPane->GetBoundsInWindow().Contains(p) ||
+                   (tabbedContainer && tabbedContainer->GetBoundsInWindow().Contains(p))) {
+            ActivateSplitSide(SplitSide::Left);
+        }
+        return false;
+    }, { UCEventType::MouseDown });
 
     // A letter typed anywhere in the window — outside a text field — walks
     // the visible folder listing Explorer-style: the first entry starting
@@ -814,7 +853,7 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
     folderPreview = CreateFilerWidget("ufl-folder-preview", 0, 0, 0, 0);
     // Selecting a folder on a remote drive previews it like a local one;
     // without this the pane would ask the local filesystem and show nothing.
-    WireRemoteListing(folderPreview.get());
+    WireRemoteDriveHooks(folderPreview.get());
     // Created before settings.Load(); ApplySettings() right after it applies
     // the Display > Home folder mode here.
     FilerStyle folderPreviewStyle = folderPreview->GetStyle();
@@ -928,6 +967,10 @@ bool UltraFilerWindow::Initialize(const std::string& startFolder) {
 
     AddNewTab(start, true);
 
+    // The split view comes back the way it was left, with the right-hand
+    // display on the folder it last showed.
+    if (settings.splitView) SetSplitViewVisible(true);
+
     return true;
 }
 
@@ -1034,7 +1077,7 @@ void UltraFilerWindow::RefreshVisibleListing() {
 
 std::vector<UltraCanvasFilerWidget*> UltraFilerWindow::AllFilers() const {
     std::vector<UltraCanvasFilerWidget*> out;
-    for (const auto& state : tabStates)
+    for (const FilerTabState* state : FolderDisplayStates())
         if (state->filer) out.push_back(state->filer.get());
     if (folderPreview) out.push_back(folderPreview.get());
     for (const auto& f : historyFilers)   if (f) out.push_back(f.get());
@@ -1052,6 +1095,8 @@ void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
     // The same hook reports the Display > File extensions switches.
     settings.showFileExtensions = source->AreFileExtensionsInNames();
     settings.extensionBadge     = source->GetExtensionBadge();
+    // And Display > File icons.
+    settings.fileIconStyle = source->GetFileIconStyle();
     // And Display > Folder previews.
     settings.folderPreviews = source->AreFolderPreviewsEnabled();
     settings.Save();
@@ -1112,6 +1157,16 @@ void UltraFilerWindow::WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target
     target->onDisplayFormatsChanged = [this, target]() {
         AdoptDisplayFormats(target);
     };
+    // And the settings themselves, right away. Every file display of the
+    // window is wired through here, and they are created at very different
+    // moments: the folder preview before the settings file is even read, the
+    // first tab after, and the History / Favorites / Computer displays only
+    // when one of those views is first opened. ApplySettings() reaches the
+    // ones that exist when it runs - which at start-up is the folder preview
+    // alone, since the tabs are built after it - so a display that arrives
+    // later has to be given them as it is wired, or it browses with the
+    // defaults until the user happens to change a setting.
+    ApplyDisplaySettingsTo(target);
 }
 
 void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
@@ -1128,6 +1183,9 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     // the tag the thumbnail tiles carry.
     target->SetFileExtensionsInNames(settings.showFileExtensions);
     target->SetExtensionBadge(settings.extensionBadge);
+    // Display > File icons: UltraFiler's own drawn icons, or the ones this
+    // desktop draws for the type.
+    target->SetFileIconStyle(settings.fileIconStyle);
     // Display > Folder previews: the first pictures inside a folder on its
     // icon.
     target->SetFolderPreviewsEnabled(settings.folderPreviews);
@@ -1152,7 +1210,7 @@ void UltraFilerWindow::ApplySettings() {
     // for tabs that were already open when it changed. The folder preview
     // accepts drops too, so it follows the same setting. Display > Files in
     // use rides along, for the same reason and to the same displays.
-    for (auto& state : tabStates) {
+    for (FilerTabState* state : FolderDisplayStates()) {
         if (!state->filer) continue;
         state->filer->SetDropOnFolderCopies(settings.dropOnFolderCopies);
         state->filer->SetDropConfirmation(settings.dropConfirmation);
@@ -1172,7 +1230,7 @@ void UltraFilerWindow::ApplySettings() {
             settings.thumbnailDiskCache);
     if (compressedThumbnailsApplied != settings.compressedThumbnails) {
         compressedThumbnailsApplied = settings.compressedThumbnails;
-        for (auto& state : tabStates)
+        for (FilerTabState* state : FolderDisplayStates())
             if (state->filer)
                 state->filer->SetCompressedThumbnails(
                         settings.compressedThumbnails);
@@ -1185,7 +1243,7 @@ void UltraFilerWindow::ApplySettings() {
     // next time any other setting is touched.
     if (hiddenFilesApplied != settings.showHiddenFiles) {
         hiddenFilesApplied = settings.showHiddenFiles;
-        for (auto& state : tabStates)
+        for (FilerTabState* state : FolderDisplayStates())
             if (state->filer)
                 state->filer->SetShowHiddenFiles(settings.showHiddenFiles);
         if (folderPreview)
@@ -1200,7 +1258,7 @@ void UltraFilerWindow::ApplySettings() {
     const std::string curatedPath = curatedHome ? home : std::string();
     std::vector<std::string> curatedFolders =
             curatedHome ? HomeCurationPaths() : std::vector<std::string>();
-    for (auto& state : tabStates)
+    for (FilerTabState* state : FolderDisplayStates())
         if (state->filer)
             state->filer->SetCuratedHomeFolder(curatedPath, curatedFolders);
     if (folderPreview)
@@ -1216,7 +1274,7 @@ void UltraFilerWindow::ApplySettings() {
             settings.EffectiveIgnorePatterns();
     const std::string ignoreScope =
             settings.ignoreOnlyInHomeFolder ? home : std::string();
-    for (auto& state : tabStates)
+    for (FilerTabState* state : FolderDisplayStates())
         if (state->filer)
             state->filer->SetIgnoredNamePatterns(ignorePatterns, ignoreScope);
     if (folderPreview)
@@ -1294,7 +1352,7 @@ void UltraFilerWindow::OpenSettingsDialog(UltraFilerSettingsDialog::Page page) {
         // Every display, not just the one in front: "Empty cache" means the
         // cache, and a tab left open in the background holding a hundred
         // megabytes of thumbnails would make the button look like it lied.
-        for (auto& state : tabStates)
+        for (FilerTabState* state : FolderDisplayStates())
             if (state->filer) state->filer->ClearThumbnailMemoryCache();
         if (folderPreview) folderPreview->ClearThumbnailMemoryCache();
     };
@@ -1643,6 +1701,15 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildNavigationRow() {
     row->AddChild(upButton);
     row->AddChild(refresh);
 
+    // The split screen: two folder displays side by side in place of the
+    // tree and the one display, each with a tree button and a breadcrumb of
+    // its own (SetSplitViewVisible). Pressed while on.
+    splitViewButton = MakeToolButton("ufl-split-view", "", "split-screen.svg", 30,
+            [this]() { SetSplitViewVisible(!splitViewShown); });
+    splitViewButton->SetTooltip("Split view: two folder displays side by side");
+    StyleToggleButton(splitViewButton.get(), splitViewShown);
+    row->AddChild(splitViewButton);
+
     // The clock: shows the History view (Files / Folders / Apps) in place of
     // the folder tree and folder display, and hides it again.
     historyButton = MakeToolButton("ufl-history", "", "clock-five.svg", 30,
@@ -1876,7 +1943,7 @@ void UltraFilerWindow::RefreshRemoteDriveNodes() {
     folderTree->RequestRedraw();
 }
 
-void UltraFilerWindow::WireRemoteListing(UltraCanvasFilerWidget* widget) {
+void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
     if (!widget) return;
     // Recognising a remote path costs a string comparison and is asked before
     // any std::filesystem call, which is the point: a path on a server must
@@ -1893,6 +1960,50 @@ void UltraFilerWindow::WireRemoteListing(UltraCanvasFilerWidget* widget) {
                                    std::string& error) {
         return remoteDrives->List(path, out, error);
     };
+
+    // The three changes a drive can take. Each is queued and answered at once;
+    // what the server said arrives through onOperationFinished.
+    widget->remoteDelete = [this](const std::vector<FilerEntry>& victims,
+                                  std::string& error) {
+        // One operation per entry, because the provider verb is per entry -
+        // and the queue keeps them in order, so the refresh that follows the
+        // last one shows the result of all of them.
+        bool anyQueued = false;
+        for (const FilerEntry& e : victims) {
+            std::string one;
+            if (remoteDrives->Submit(RemoteOperation::Delete, e.path, std::string(),
+                                     e.isDirectory, one)) {
+                anyQueued = true;
+            } else if (error.empty()) {
+                error = one;   // the first refusal is the one worth showing
+            }
+        }
+        return anyQueued;
+    };
+    widget->remoteRename = [this](const std::string& path,
+                                  const std::string& newName,
+                                  std::string& error) {
+        // The entry's own kind does not matter to a rename; false is fine.
+        return remoteDrives->Submit(RemoteOperation::Rename, path, newName,
+                                    false, error);
+    };
+    widget->remoteMakeDirectory = [this](const std::string& folderPath,
+                                         const std::string& name,
+                                         std::string& error) {
+        return remoteDrives->Submit(RemoteOperation::MakeDirectory, folderPath,
+                                    name, true, error);
+    };
+}
+
+void UltraFilerWindow::RefreshRemoteFolderDisplays(const std::string& folderPath) {
+    if (folderPath.empty()) return;
+    for (FilerTabState* tab : FolderDisplayStates()) {
+        if (tab->filer && !tab->filer->IsShowingFileList() &&
+            tab->filer->GetPath() == folderPath)
+            tab->filer->Refresh();
+    }
+    if (folderPreview && folderPreview->GetPath() == folderPath)
+        folderPreview->Refresh();
 }
 
 void UltraFilerWindow::RunSearch(const std::string& query) {
@@ -2458,7 +2569,9 @@ std::shared_ptr<UltraCanvasContainer> UltraFilerWindow::BuildCommandBar() {
     videoModeDropdown->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
     row->AddChild(videoModeDropdown);
 
-    previewButton = MakeToolButton("ufl-preview-toggle", "Preview", "split-screen.svg", 0,
+    // A picture, not the split screen: that icon is the navigation row's
+    // split view now, and two buttons with one icon would read as one thing.
+    previewButton = MakeToolButton("ufl-preview-toggle", "Preview", "image.svg", 0,
             [this]() { SetPreviewEnabled(!previewEnabled); });
     StyleToggleButton(previewButton.get(), previewEnabled);
     row->AddChild(previewButton);
@@ -2561,13 +2674,22 @@ void UltraFilerWindow::BuildFolderTree() {
     // display is asked again, and this time the cache answers.
     remoteDrives->onListingArrived = [this](const std::string& path) {
         // Only the display actually showing that folder needs redoing.
-        for (auto& tab : tabStates) {
-            if (tab->filer && !tab->filer->IsShowingFileList() &&
-                tab->filer->GetPath() == path)
-                tab->filer->Refresh();
+        RefreshRemoteFolderDisplays(path);
+    };
+    // A change to a drive finished: the folder it touched has already been
+    // dropped from the cache, so refreshing it refetches from the server.
+    remoteDrives->onOperationFinished = [this](const std::string& folderPath,
+                                               const std::string& message) {
+        RefreshRemoteFolderDisplays(folderPath);
+        if (message.empty()) {
+            lastRemoteOperationError.clear();
+            return;
         }
-        if (folderPreview && folderPreview->GetPath() == path)
-            folderPreview->Refresh();
+        // Deleting several entries queues several operations; the same refusal
+        // repeated once per entry is one dialog's worth of information.
+        if (message == lastRemoteOperationError) return;
+        lastRemoteOperationError = message;
+        UltraCanvasAlert::Error(message, "Remote drive", nullptr, window.get());
     };
     if (std::string driveError; !remoteDrives->Reload(driveError)) {
         debugOutput << "UltraFiler: remote drives unavailable: "
@@ -2749,7 +2871,7 @@ void UltraFilerWindow::DropDriveNode(const std::string& path) {
     // going up, because its parent is gone too.
     const std::string home = UserHomeDir();
     bool moved = false;
-    for (auto& state : tabStates) {
+    for (FilerTabState* state : FolderDisplayStates()) {
         if (!state->filer) continue;
         if (!IsPathInside(state->filer->GetPath(), path)) continue;
         if (!home.empty()) state->filer->SetPath(home);
@@ -2913,7 +3035,7 @@ void UltraFilerWindow::HandleFolderModified(const std::string& folder,
     // A folder cut away in one tab and pasted in another changed both folders,
     // and only the pasting widget knows it: without this the tab the folder
     // came from went on listing it until it was navigated away from.
-    for (auto& state : tabStates) {
+    for (FilerTabState* state : FolderDisplayStates()) {
         UltraCanvasFilerWidget* tabFiler = state->filer.get();
         if (!tabFiler || tabFiler == source) continue;
         if (tabFiler->IsShowingFileList()) continue;   // search results: not a folder
@@ -3320,7 +3442,7 @@ void UltraFilerWindow::ConfirmDeleteTreeFolder(const std::string& path) {
             RefreshPinnedTreeNodes();
             // Tabs that were inside the deleted folder move to its parent;
             // tabs showing the parent re-list it without the deleted entry.
-            for (auto& state : tabStates) {
+            for (FilerTabState* state : FolderDisplayStates()) {
                 if (!state->filer) continue;
                 const std::string shown = state->filer->GetPath();
                 if (IsPathInside(shown, path)) state->filer->SetPath(parent);
@@ -3405,8 +3527,23 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
     // Favorites views.
     if (activate) ShowBrowsingView();
 
+    std::unique_ptr<FilerTabState> state =
+            CreateFolderDisplayState(std::to_string(++tabCounter));
+    FilerTabState* raw = state.get();
+    tabStates.push_back(std::move(state));
+
+    const int index = tabbedContainer->AddTab(TabTitleForPath(path), raw->page);
+    tabbedContainer->SetTabIcon(index, TabIconForPath(path));
+    if (activate) {
+        // Fires onTabChange, which points `filer` at the new tab.
+        tabbedContainer->SetActiveTab(index);
+    }
+    raw->filer->SetPath(path);
+}
+
+std::unique_ptr<UltraFilerWindow::FilerTabState>
+UltraFilerWindow::CreateFolderDisplayState(const std::string& suffix) {
     auto state = std::make_unique<FilerTabState>();
-    const std::string suffix = std::to_string(++tabCounter);
 
     state->page = MakeLayoutBox("ufl-tab-page-" + suffix);
     state->page->layout.SetFlexColumn()
@@ -3450,22 +3587,13 @@ void UltraFilerWindow::AddNewTab(const std::string& path, bool activate) {
                             .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     state->page->AddChild(state->filer);
 
-    FilerTabState* raw = state.get();
-    tabStates.push_back(std::move(state));
-    WireFilerCallbacks(raw);
-
-    const int index = tabbedContainer->AddTab(TabTitleForPath(path), raw->page);
-    tabbedContainer->SetTabIcon(index, TabIconForPath(path));
-    if (activate) {
-        // Fires onTabChange, which points `filer` at the new tab.
-        tabbedContainer->SetActiveTab(index);
-    }
-    raw->filer->SetPath(path);
+    WireFilerCallbacks(state.get());
+    return state;
 }
 
 void UltraFilerWindow::WireFilerCallbacks(FilerTabState* tab) {
     // What lets this display show a remote drive at all.
-    WireRemoteListing(tab->filer.get());
+    WireRemoteDriveHooks(tab->filer.get());
     tab->filer->onPathChanged = [this, tab](const std::string& path) {
         HandlePathChanged(tab, path);
     };
@@ -3634,6 +3762,9 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
     if (index < 0 || index >= (int)tabStates.size()) return;
     FilerTabState* tab = tabStates[index].get();
     if (!tab->filer) return;
+    // A tab is the left-hand pane of the split view: picking one makes that
+    // pane the active display.
+    activeSplitSide = SplitSide::Left;
     // A scan fills one tab's display; moving to another tab ends it, keeping
     // whatever it found on the tab it was searching.
     if (searchTab && searchTab != tab) {
@@ -3642,6 +3773,14 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
         searchQueryText.clear();
     }
     filer = tab->filer;
+    SyncControlsToActiveDisplay();
+    StyleSplitHeaders();
+    RefreshPaneBreadcrumbs();
+}
+
+void UltraFilerWindow::SyncControlsToActiveDisplay() {
+    FilerTabState* tab = ActiveTabState();
+    if (!tab || !filer) return;
 
     const std::string path = filer->GetPath();
     if (!path.empty()) RebuildBreadcrumb(path);
@@ -3655,7 +3794,7 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
     }
     UpdateScanButton();
     UpdateNavButtons();
-    if (!path.empty()) SyncTreeSelection(path);
+    if (!path.empty() && TreeFollowsActiveDisplay()) SyncTreeSelection(path);
     UpdateStatusBar();
     UpdateWindowTitle();
 
@@ -3686,10 +3825,24 @@ void UltraFilerWindow::HandleTabSwitched(int index) {
 }
 
 UltraFilerWindow::FilerTabState* UltraFilerWindow::ActiveTabState() const {
+    if (splitViewShown && activeSplitSide == SplitSide::Right && secondPane)
+        return secondPane.get();
+    return TabStripActiveState();
+}
+
+UltraFilerWindow::FilerTabState* UltraFilerWindow::TabStripActiveState() const {
     if (!tabbedContainer) return nullptr;
     const int index = tabbedContainer->GetActiveTab();
     if (index < 0 || index >= (int)tabStates.size()) return nullptr;
     return tabStates[index].get();
+}
+
+std::vector<UltraFilerWindow::FilerTabState*> UltraFilerWindow::FolderDisplayStates() const {
+    std::vector<FilerTabState*> out;
+    out.reserve(tabStates.size() + 1);
+    for (const auto& state : tabStates) out.push_back(state.get());
+    if (secondPane) out.push_back(secondPane.get());
+    return out;
 }
 
 bool UltraFilerWindow::IsActiveTab(const FilerTabState* tab) const {
@@ -3718,28 +3871,34 @@ void UltraFilerWindow::BuildSplitLayout() {
     split->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                      .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
-    auto treePane = split->AddPane(1.0);
+    treePane = split->AddPane(1.0);
     split->SetPaneMinSize(0, 170);
     // The tree keeps an absolute width: 280px at startup, then whatever the
     // user drags the splitter to. Maximizing or resizing the window changes
     // only the folder display's share — the tree stays as wide as it is.
-    split->SetPaneFixedSize(0, 280);
+    split->SetPaneFixedSize(0, treePaneWidth);
     treePane->layout.SetFlexColumn()
                     .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     folderTree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                           .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
     treePane->AddChild(folderTree);
 
-    auto filerPane = split->AddPane(1.0);
+    filerPane = split->AddPane(1.0);
     split->SetPaneMinSize(1, kFilerMinWidth);
     filerPane->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    BuildSplitViewPanes();
+    // The split view's header over the left-hand display: hidden until the
+    // split view is on. It is added first so it sits on top of the display.
+    filerPane->AddChild(leftPaneHeader);
     // The tab strip itself is the window's top bar; this pane shows the page
     // of whichever tab is active - or, while the tree's Computer entry is
-    // open, the Computer page in its place.
-    filerPane->AddChild(tabContentHost);
+    // open, the Computer page in its place. Both sit in a row, so the split
+    // view can dock the folder tree to their left.
+    leftPaneBody->AddChild(tabContentHost);
     BuildComputerPage();
-    filerPane->AddChild(computerPane);
+    leftPaneBody->AddChild(computerPane);
+    filerPane->AddChild(leftPaneBody);
 
     preview->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
@@ -4255,6 +4414,10 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
     }
     computerShown = visible;
     if (visible) {
+        // The page lives in the left-hand pane of the split view, and is what
+        // the toolbars describe while it is up - so that pane is the active
+        // one from here on.
+        ActivateSplitSide(SplitSide::Left);
         RefreshComputerPage();
         tabContentHost->SetVisible(false);
         computerPane->SetVisible(true);
@@ -4274,9 +4437,10 @@ void UltraFilerWindow::SetComputerPageVisible(bool visible) {
         const std::string path = filer ? filer->GetPath() : std::string();
         if (!path.empty()) {
             RebuildBreadcrumb(path);
-            SyncTreeSelection(path);
+            if (TreeFollowsActiveDisplay()) SyncTreeSelection(path);
         }
     }
+    RefreshPaneBreadcrumbs();
     UpdateNavButtons();
     UpdateStatusBar();
     UpdateWindowTitle();
@@ -4467,19 +4631,28 @@ void UltraFilerWindow::ApplyVolumeSpaces(const std::vector<VolumeSpace>& spaces)
 }
 
 void UltraFilerWindow::RebuildBreadcrumb(const std::string& path) {
-    if (!breadcrumb) return;
+    FillFolderBreadcrumb(breadcrumb.get(), path,
+                         [this](const std::string& folder) { NavigateTo(folder); });
+}
+
+void UltraFilerWindow::FillFolderBreadcrumb(
+        UltraCanvasBreadcrumb* crumb, const std::string& path,
+        std::function<void(const std::string&)> onNavigate) {
+    if (!crumb) return;
     FolderBreadcrumbOptions options;
     // The strip's leading "Computer" opens the Computer page - the same
     // place the tree's Computer entry opens - rather than the drive root,
     // which the node next to it already is.
     options.onComputerClick = [this]() { SetComputerPageVisible(true); };
-    BuildFolderBreadcrumb(breadcrumb.get(), path,
-                          [this](const std::string& folder) { NavigateTo(folder); },
-                          options);
+    BuildFolderBreadcrumb(crumb, path, std::move(onNavigate), options);
 }
 
 void UltraFilerWindow::ShowComputerBreadcrumb() {
-    if (!breadcrumb) return;
+    FillComputerBreadcrumb(breadcrumb.get());
+}
+
+void UltraFilerWindow::FillComputerBreadcrumb(UltraCanvasBreadcrumb* crumb) {
+    if (!crumb) return;
     BreadcrumbItem computer("__computer__", "Computer");
     computer.tooltip = "Computer";
     // The drives stay one click away, as they are on every other strip.
@@ -4492,7 +4665,7 @@ void UltraFilerWindow::ShowComputerBreadcrumb() {
             out.emplace_back(d, [this, d]() { NavigateTo(d); });
         return out;
     };
-    breadcrumb->SetItems({computer});
+    crumb->SetItems({computer});
 }
 
 // ===== NAVIGATION =====
@@ -4590,6 +4763,23 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
     // brought forward.
     ApplyFolderView(tab, path);
 
+    // The split view's pane headers follow their own displays whether or
+    // not those are the active one; the right-hand display's folder is what
+    // the next start opens it on.
+    if (tab == secondPane.get()) {
+        if (settings.splitSecondFolder != path) {
+            settings.splitSecondFolder = path;
+            settings.Save();
+        }
+    }
+    if (splitViewShown && (tab == secondPane.get() || tab == TabStripActiveState()))
+        RefreshPaneBreadcrumbs();
+    // A tree docked beside this display follows it, active or not.
+    if (splitViewShown && treeDockShown && !IsActiveTab(tab) &&
+        tab == (treeDockSide == SplitSide::Right ? secondPane.get()
+                                                 : TabStripActiveState()))
+        SyncTreeSelection(path);
+
     if (!IsActiveTab(tab)) return;
 
     if (searchInput) searchInput->SetText("");
@@ -4597,7 +4787,7 @@ void UltraFilerWindow::HandlePathChanged(FilerTabState* tab, const std::string& 
 
     RebuildBreadcrumb(path);
     UpdateNavButtons();
-    SyncTreeSelection(path);
+    if (TreeFollowsActiveDisplay()) SyncTreeSelection(path);
     UpdateStatusBar();
     // Entering a folder clears the selection - fold the preview away.
     UpdatePreviewPane();
@@ -4740,7 +4930,7 @@ void UltraFilerWindow::SetPreviewEnabled(bool enabled) {
 }
 
 void UltraFilerWindow::ApplyPreviewSelectionPolicy() {
-    for (auto& state : tabStates)
+    for (FilerTabState* state : FolderDisplayStates())
         if (state->filer) state->filer->SetSelectNextAfterDelete(previewEnabled);
 }
 
@@ -4861,9 +5051,16 @@ void UltraFilerWindow::UpdatePreviewPane() {
             // Pane sizing is weight-proportional, so plain AddPane would
             // shrink every pane — visibly moving the tree | filer splitter.
             // Capture the arranged widths first and hand the preview its
-            // width from the filer pane only; the tree keeps its position.
-            const int treeW  = static_cast<int>(split->GetPane(0)->GetWidth());
-            const int filerW = static_cast<int>(split->GetPane(1)->GetWidth());
+            // width from the folder display beside it only - the last pane
+            // (the tab's display, or the split view's right-hand one); the
+            // tree, and the other display, keep their positions.
+            std::vector<int> sizes;
+            bool arranged = true;
+            for (size_t i = 0; i < split->PaneCount(); ++i) {
+                const int w = static_cast<int>(split->GetPane(i)->GetWidth());
+                if (w <= 0) arranged = false;
+                sizes.push_back(w);
+            }
 
             previewShown = true;
             previewShowsFolder = wantFolder;
@@ -4874,17 +5071,31 @@ void UltraFilerWindow::UpdatePreviewPane() {
             if (wantFolder) AttachFolderPreview();
             else            previewPane->AddChild(preview);
 
-            if (treeW > 0 && filerW > 0) {
-                // The new split line takes its thickness from the filer side
-                // too, so the three sizes sum to exactly the available axis.
+            if (arranged && !sizes.empty()) {
+                // The new split line takes its thickness from the donors
+                // too, so the sizes sum to exactly the available axis. The
+                // donors are the weighted panes - the one display, or the
+                // split view's two, each giving in proportion to its width;
+                // the tree pane is fixed and keeps what it has.
                 const int line = split->EffectiveSplitterThickness();
+                std::vector<size_t> donors;
+                int donorSum = 0, donorMin = 0;
+                for (size_t i = 0; i < sizes.size(); ++i) {
+                    if (split->GetPaneFixedSize(i) > 0) continue;
+                    donors.push_back(i);
+                    donorSum += sizes[i];
+                    donorMin += FolderPaneMinWidth(split->GetPane(i).get());
+                }
                 int previewW = previewPaneWidth > 0
                         ? previewPaneWidth
-                        : static_cast<int>(std::lround(filerW * 1.4 / 4.1));
+                        : static_cast<int>(std::lround(donorSum * 1.4 / 4.1));
                 previewW = std::max(previewW, kPreviewMinWidth);
-                previewW = std::min(previewW, filerW - line - kFilerMinWidth);
-                if (previewW >= kPreviewMinWidth)
-                    split->SetPaneSizes({treeW, filerW - line - previewW, previewW});
+                previewW = std::min(previewW, donorSum - line - donorMin);
+                if (previewW >= kPreviewMinWidth && donorSum > 0) {
+                    TakeFromPanes(sizes, donors, line + previewW);
+                    sizes.push_back(previewW);
+                    split->SetPaneSizes(sizes);
+                }
                 // else: too narrow for both minimums - let the weight
                 // distribution and the min-size clamps sort it out.
             }
@@ -4916,8 +5127,13 @@ void UltraFilerWindow::UpdatePreviewPane() {
     } else if (previewShown) {
         // Nothing to preview - give the folder display the whole width.
         previewShown = false;
-        const int treeW  = static_cast<int>(split->GetPane(0)->GetWidth());
-        const int filerW = static_cast<int>(split->GetPane(1)->GetWidth());
+        std::vector<int> sizes;
+        bool arranged = true;
+        for (size_t i = 0; i + 1 < split->PaneCount(); ++i) {
+            const int w = static_cast<int>(split->GetPane(i)->GetWidth());
+            if (w <= 0) arranged = false;
+            sizes.push_back(w);
+        }
         const int prevW  = static_cast<int>(previewPane->GetWidth());
         if (prevW > 0) previewPaneWidth = prevW;   // restored on reopen
         if (previewShowsFolder) {
@@ -4933,13 +5149,360 @@ void UltraFilerWindow::UpdatePreviewPane() {
         }
         split->RemovePane(previewPane.get());
         previewPane.reset();
-        // Return the preview's width (and its split line) to the filer pane
-        // only, keeping the tree | filer splitter where the user put it.
-        if (treeW > 0 && filerW > 0 && prevW > 0) {
+        // Return the preview's width (and its split line) to the displays it
+        // came from, in proportion, keeping the tree pane where the user put
+        // it.
+        if (arranged && !sizes.empty() && prevW > 0) {
             const int line = split->EffectiveSplitterThickness();
-            split->SetPaneSizes({treeW, filerW + line + prevW});
+            std::vector<size_t> takers;
+            for (size_t i = 0; i < sizes.size(); ++i)
+                if (split->GetPaneFixedSize(i) == 0) takers.push_back(i);
+            if (takers.empty()) takers.push_back(sizes.size() - 1);
+            TakeFromPanes(sizes, takers, -(line + prevW));
+            split->SetPaneSizes(sizes);
         }
     }
+}
+
+int UltraFilerWindow::FolderPaneMinWidth(const UltraCanvasContainer* pane) const {
+    if (!splitViewShown) return kFilerMinWidth;
+    int min = kSplitPaneMinWidth;
+    if (treeDockShown &&
+        pane == (treeDockSide == SplitSide::Right ? rightPane.get() : filerPane.get()))
+        min += treePaneWidth;
+    return min;
+}
+
+void UltraFilerWindow::TakeFromPanes(std::vector<int>& sizes,
+                                     const std::vector<size_t>& panes, int amount) {
+    if (panes.empty()) return;
+    double sum = 0.0;
+    for (size_t i : panes) sum += std::max(0, sizes[i]);
+    if (sum <= 0.0) return;
+    // Each pane's share, rounded; the last one absorbs the rounding so the
+    // sizes still add up to exactly the axis.
+    int taken = 0;
+    for (size_t k = 0; k + 1 < panes.size(); ++k) {
+        const int share = static_cast<int>(std::lround(amount * sizes[panes[k]] / sum));
+        sizes[panes[k]] -= share;
+        taken += share;
+    }
+    sizes[panes.back()] -= amount - taken;
+}
+
+// ===== SPLIT VIEW (two folder displays side by side) =====
+
+void UltraFilerWindow::BuildSplitViewPanes() {
+    // One header row per pane: the tree button, then that display's own
+    // breadcrumb. The active pane's header is tinted (StyleSplitHeaders).
+    auto makeHeader = [this](const std::string& suffix, SplitSide side,
+                             std::shared_ptr<UltraCanvasButton>& button,
+                             std::shared_ptr<UltraCanvasBreadcrumb>& crumb) {
+        auto header = MakeToolRow("ufl-pane-header-" + suffix);
+        header->SetPadding(3, 6, 3, 6);
+        button = MakeToolButton("ufl-pane-tree-" + suffix, "", "treeview.svg", 30,
+                [this, side]() {
+            // The button belongs to this pane: it makes the pane the active
+            // display and docks the tree beside it, or takes the tree away
+            // when it is already there.
+            ActivateSplitSide(side);
+            const bool here = treeDockShown && treeDockSide == side;
+            SetTreeDockVisible(!here, side);
+        });
+        button->SetTooltip("Folder tree");
+        StyleToggleButton(button.get(), false);
+        header->AddChild(button);
+        crumb = std::make_shared<UltraCanvasBreadcrumb>("ufl-pane-breadcrumb-" + suffix,
+                                                        0, 0, 0, 28);
+        crumb->SetStyle(MakePathBreadcrumbStyle());
+        crumb->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                         .SetAlignSelf(CSSLayout::AlignSelf::Center);
+        header->AddChild(crumb);
+        return header;
+    };
+    auto makeBody = [](const std::string& suffix) {
+        auto body = MakeLayoutBox("ufl-pane-body-" + suffix);
+        body->layout.SetFlexRow()
+                    .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        body->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                        .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return body;
+    };
+
+    leftPaneHeader = makeHeader("left", SplitSide::Left, leftTreeButton, leftPaneBreadcrumb);
+    leftPaneHeader->SetVisible(false);
+    leftPaneBody = makeBody("left");
+
+    // The right-hand pane's content: its header, and under it the body that
+    // holds the second display (and the tree, while docked there). The box
+    // itself is put into the split's pane when the split view goes on.
+    rightPaneBox = MakeLayoutBox("ufl-pane-box-right");
+    rightPaneBox->layout.SetFlexColumn()
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    rightPaneBox->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                            .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    rightPaneHeader = makeHeader("right", SplitSide::Right, rightTreeButton, rightPaneBreadcrumb);
+    rightPaneBody = makeBody("right");
+    rightPaneBox->AddChild(rightPaneHeader);
+    rightPaneBox->AddChild(rightPaneBody);
+
+    // The second display: everything a tab's display is, in no tab. Its
+    // folder is set when the split view first shows it.
+    secondPane = CreateFolderDisplayState("split");
+    rightPaneBody->AddChild(secondPane->page);
+}
+
+void UltraFilerWindow::SetSplitViewVisible(bool visible) {
+    if (visible == splitViewShown || !split || !filerPane || !secondPane) return;
+    // The split has to be on screen for the change to mean anything - and
+    // showing a second folder is showing a folder.
+    ShowBrowsingView();
+    // The sizes as they are, before the panes change: what the two displays
+    // share out between them, or what the tree pane gets back.
+    std::vector<int> sizes;
+    bool arranged = true;
+    for (size_t i = 0; i < split->PaneCount(); ++i) {
+        const int w = static_cast<int>(split->GetPane(i)->GetWidth());
+        if (w <= 0) arranged = false;
+        sizes.push_back(w);
+    }
+    const int folderIndex = split->GetPaneIndex(filerPane.get());
+    if (folderIndex < 0) return;
+
+    splitViewShown = visible;
+    StyleToggleButton(splitViewButton.get(), splitViewShown);
+
+    if (visible) {
+        // The tree leaves its pane (parked hidden beside the left display
+        // until a tree button docks it) and the pane leaves the split.
+        if (treePane) {
+            const int treeW = static_cast<int>(treePane->GetWidth());
+            if (treeW > 0) treePaneWidth = treeW;
+            treeDockShown = false;
+            folderTree->SetVisible(false);
+            leftPaneBody->AddChild(folderTree);
+            split->RemovePane(treePane.get());
+            treePane.reset();
+        }
+        const int leftIndex = split->GetPaneIndex(filerPane.get());
+        split->SetPaneMinSize(static_cast<size_t>(leftIndex), kSplitPaneMinWidth);
+        // The right-hand pane joins right after the left one - before the
+        // preview pane, when that is up.
+        rightPane = split->InsertPane(static_cast<size_t>(leftIndex) + 1, 1.0);
+        split->SetPaneMinSize(static_cast<size_t>(leftIndex) + 1, kSplitPaneMinWidth);
+        rightPane->layout.SetFlexColumn()
+                         .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        rightPane->AddChild(rightPaneBox);
+        leftPaneHeader->SetVisible(true);
+
+        // The two displays share what the tree pane and the folder pane
+        // had (the tree's split line went, the new one came: a wash).
+        if (arranged && sizes.size() > static_cast<size_t>(folderIndex)) {
+            std::vector<int> next;
+            int shared = sizes[folderIndex];
+            if (folderIndex > 0) shared += sizes[folderIndex - 1];
+            const int left = shared / 2;
+            for (int i = 0; i < folderIndex - 1; ++i) next.push_back(sizes[i]);
+            next.push_back(left);
+            next.push_back(shared - left);
+            for (size_t i = folderIndex + 1; i < sizes.size(); ++i) next.push_back(sizes[i]);
+            split->SetPaneSizes(next);
+        } else {
+            split->SetPaneWeight(static_cast<size_t>(leftIndex), 1.0);
+            split->SetPaneWeight(static_cast<size_t>(leftIndex) + 1, 1.0);
+        }
+
+        // The right-hand display opens where it was last, or, the first
+        // time, on the folder the active display shows.
+        if (secondPane->filer->GetPath().empty()) {
+            std::string start = settings.splitSecondFolder;
+            std::error_code ec;
+            if (start.empty() || (!IsRemoteFilerPath(start) &&
+                                  (!fs::is_directory(start, ec) || ec)))
+                start = filer ? filer->GetPath() : std::string();
+            if (start.empty()) start = UserHomeDir();
+            secondPane->filer->SetPath(start);
+        }
+        StyleSplitHeaders();
+        RefreshPaneBreadcrumbs();
+    } else {
+        // The tree comes out of whichever pane it was docked in (it is
+        // re-homed below), the right-hand pane leaves, and the tree pane
+        // comes back in front.
+        treeDockShown = false;
+        // The left-hand display is the active one again.
+        ActivateSplitSide(SplitSide::Left);
+        leftPaneHeader->SetVisible(false);
+        int rightW = 0;
+        if (rightPane) {
+            rightW = static_cast<int>(rightPane->GetWidth());
+            rightPane->RemoveChild(rightPaneBox);
+            split->RemovePane(rightPane.get());
+            rightPane.reset();
+        }
+        const int leftIndex = split->GetPaneIndex(filerPane.get());
+        if (leftIndex >= 0)
+            split->SetPaneMinSize(static_cast<size_t>(leftIndex), kFilerMinWidth);
+
+        treePane = split->InsertPane(0, 1.0);
+        split->SetPaneMinSize(0, 170);
+        treePane->layout.SetFlexColumn()
+                        .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+        folderTree->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
+                              .SetFlexBasis(CSSLayout::Dimension::Auto())
+                              .SetFlexOrder(0)
+                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        treePane->AddChild(folderTree);
+        folderTree->SetVisible(true);
+
+        // The tree pane takes its old width out of the two displays' share;
+        // the folder display keeps at least its minimum.
+        const int leftW = (arranged && folderIndex < static_cast<int>(sizes.size()))
+                ? sizes[folderIndex] : 0;
+        if (arranged && leftW > 0 && rightW > 0) {
+            const int line = split->EffectiveSplitterThickness();
+            const int shared = leftW + line + rightW;
+            int treeW = std::min(treePaneWidth, shared - line - kFilerMinWidth);
+            treeW = std::max(treeW, 170);
+            std::vector<int> next;
+            next.push_back(treeW);
+            next.push_back(shared - line - treeW);
+            for (size_t i = folderIndex + 2; i < sizes.size(); ++i) next.push_back(sizes[i]);
+            split->SetPaneFixedSize(0, treeW);
+            split->SetPaneSizes(next);
+        } else {
+            split->SetPaneFixedSize(0, treePaneWidth);
+        }
+        // The tree describes the active display again.
+        if (filer && !filer->GetPath().empty() && !computerShown)
+            SyncTreeSelection(filer->GetPath());
+        StyleSplitHeaders();
+    }
+
+    if (settings.splitView != splitViewShown) {
+        settings.splitView = splitViewShown;
+        settings.Save();
+    }
+    UpdateNavButtons();
+    UpdateStatusBar();
+    UpdateWindowTitle();
+    UpdatePreviewPane();
+}
+
+void UltraFilerWindow::ActivateSplitSide(SplitSide side) {
+    if (!splitViewShown) side = SplitSide::Left;
+    FilerTabState* target = side == SplitSide::Right ? secondPane.get()
+                                                     : TabStripActiveState();
+    if (!target || !target->filer) return;
+    const bool changed = side != activeSplitSide || filer != target->filer;
+    if (!changed) return;
+    // The Computer page is the left-hand pane's; making the right-hand one
+    // the active display leaves it, as showing any folder does.
+    if (side == SplitSide::Right && computerShown) SetComputerPageVisible(false);
+    activeSplitSide = side;
+    // A scan fills one display; a change of the active display ends it,
+    // keeping whatever it found where it was found.
+    if (searchTab && searchTab != target) {
+        StopSubfolderSearch();
+        searchStatus.clear();
+        searchQueryText.clear();
+    }
+    filer = target->filer;
+    SyncControlsToActiveDisplay();
+    StyleSplitHeaders();
+}
+
+void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
+    if (!splitViewShown || !folderTree || !leftPaneBody || !rightPaneBody) return;
+    if (visible) {
+        // Into the body row of that pane, in front of its display: the tree
+        // has a width of its own and the display takes the rest.
+        auto& body = side == SplitSide::Right ? rightPaneBody : leftPaneBody;
+        body->AddChild(folderTree);
+        folderTree->layoutItem.SetFlexGrow(0).SetFlexShrink(0)
+                              .SetFlexBasis(CSSLayout::Dimension::Px(
+                                      static_cast<float>(treePaneWidth)))
+                              .SetFlexOrder(-1)
+                              .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        folderTree->SetVisible(true);
+        treeDockShown = true;
+        treeDockSide = side;
+        // It mirrors the display it sits beside.
+        const FilerTabState* beside = side == SplitSide::Right ? secondPane.get()
+                                                               : TabStripActiveState();
+        if (side == SplitSide::Left && computerShown) {
+            if (TreeNode* node = folderTree->FindNode(kComputerNodeId)) {
+                syncingTree = true;
+                folderTree->SelectNode(node);
+                syncingTree = false;
+            }
+        } else if (beside && beside->filer && !beside->filer->GetPath().empty()) {
+            SyncTreeSelection(beside->filer->GetPath());
+        }
+    } else {
+        folderTree->SetVisible(false);
+        treeDockShown = false;
+    }
+    ApplySplitPaneMinSizes();
+    StyleSplitHeaders();
+}
+
+void UltraFilerWindow::ApplySplitPaneMinSizes() {
+    if (!splitViewShown || !split || !filerPane || !rightPane) return;
+    // A pane with the tree docked in it needs the tree's width on top of
+    // its display's minimum, or the preview pane - which takes its width
+    // from the pane beside it - would squeeze that display to a sliver.
+    const int leftIndex  = split->GetPaneIndex(filerPane.get());
+    const int rightIndex = split->GetPaneIndex(rightPane.get());
+    if (leftIndex < 0 || rightIndex < 0) return;
+    const int treeExtra = treeDockShown ? treePaneWidth : 0;
+    split->SetPaneMinSize(static_cast<size_t>(leftIndex), kSplitPaneMinWidth +
+            (treeDockShown && treeDockSide == SplitSide::Left ? treeExtra : 0));
+    split->SetPaneMinSize(static_cast<size_t>(rightIndex), kSplitPaneMinWidth +
+            (treeDockShown && treeDockSide == SplitSide::Right ? treeExtra : 0));
+}
+
+bool UltraFilerWindow::TreeFollowsActiveDisplay() const {
+    if (!splitViewShown) return true;
+    return treeDockShown && treeDockSide == activeSplitSide;
+}
+
+void UltraFilerWindow::RefreshPaneBreadcrumbs() {
+    if (!splitViewShown || !leftPaneBreadcrumb || !rightPaneBreadcrumb) return;
+    // Left: the tab strip's active display - "Computer" while that page is
+    // up in its place. A click navigates that pane, active or not.
+    if (computerShown) {
+        FillComputerBreadcrumb(leftPaneBreadcrumb.get());
+    } else if (const FilerTabState* tab = TabStripActiveState();
+               tab && tab->filer && !tab->filer->GetPath().empty()) {
+        FillFolderBreadcrumb(leftPaneBreadcrumb.get(), tab->filer->GetPath(),
+                             [this](const std::string& folder) {
+            ActivateSplitSide(SplitSide::Left);
+            NavigateTo(folder);
+        });
+    }
+    if (secondPane && secondPane->filer && !secondPane->filer->GetPath().empty()) {
+        FillFolderBreadcrumb(rightPaneBreadcrumb.get(), secondPane->filer->GetPath(),
+                             [this](const std::string& folder) {
+            ActivateSplitSide(SplitSide::Right);
+            NavigateTo(folder);
+        });
+    }
+}
+
+void UltraFilerWindow::StyleSplitHeaders() {
+    if (!leftPaneHeader || !rightPaneHeader) return;
+    const Color active(224, 236, 250, 255);
+    const Color idle(243, 243, 246, 255);
+    const bool rightActive = splitViewShown && activeSplitSide == SplitSide::Right;
+    leftPaneHeader->SetBackgroundColor(rightActive ? idle : active);
+    rightPaneHeader->SetBackgroundColor(rightActive ? active : idle);
+    StyleToggleButton(leftTreeButton.get(),
+                      treeDockShown && treeDockSide == SplitSide::Left);
+    StyleToggleButton(rightTreeButton.get(),
+                      treeDockShown && treeDockSide == SplitSide::Right);
+    leftPaneHeader->RequestRedraw();
+    rightPaneHeader->RequestRedraw();
 }
 
 } // namespace UltraCanvas

@@ -108,6 +108,7 @@ namespace {
     constexpr const char* kPagePdfInventory = "display/pdf-inventory";
     constexpr const char* kPageThumbnails = "display/thumbnails";
     constexpr const char* kPageFileExtensions = "display/file-extensions";
+    constexpr const char* kPageFileIcons = "display/file-icons";
     constexpr const char* kPageFilesInUse = "display/files-in-use";
     constexpr const char* kPageDetailView = "display/detail-view";
     constexpr const char* kPageHandling = "handling";
@@ -175,6 +176,9 @@ namespace {
         std::vector<std::pair<FilerExtensionBadge,
                               std::shared_ptr<UltraCanvasRadio>>> badgeRadios;
         UltraCanvasRadioGroup                extensionBadgeGroup;
+        std::vector<std::pair<FilerFileIconStyle,
+                              std::shared_ptr<UltraCanvasRadio>>> fileIconRadios;
+        UltraCanvasRadioGroup                fileIconGroup;
 
         // Display > Thumbnails / Display > Detail view: the kind checkboxes
         // and the per-format ones of each page, kept so the two "Everything
@@ -1157,6 +1161,81 @@ namespace {
                 "The tag is drawn over the foot of the icon, so no tile grows "
                 "for it, and a folder - or a name whose tail is a version "
                 "rather than a type - never gets one.");
+        return parts.page;
+    }
+
+    // ===== DISPLAY > FILE ICONS =====
+    const char* FileIconStyleDescription(FilerFileIconStyle style) {
+        switch (style) {
+            case FilerFileIconStyle::HostOperatingSystem:
+                return "Host OS icons - what this desktop draws for the type";
+            default:
+                return "UltraFiler simple - the drawn folder and sheet icons";
+        }
+    }
+
+    std::shared_ptr<UltraCanvasContainer> BuildFileIconsPage(DialogState* d) {
+        PageParts parts = MakePage("ufl-set-page-file-icons", "File icons",
+                "Whose icons the file display draws for a file that shows no "
+                "picture of its own:");
+
+        const bool hostAvailable =
+                UltraCanvasFilerWidget::AreHostFileIconsAvailable();
+
+        d->fileIconRadios.clear();
+        for (FilerFileIconStyle style :
+             UltraCanvasFilerWidget::AllFileIconStyles()) {
+            auto radio = MakeChoice(
+                    std::string("ufl-set-file-icons-") +
+                            (style == FilerFileIconStyle::HostOperatingSystem
+                                     ? "host" : "simple"),
+                    FileIconStyleDescription(style),
+                    d->settings->fileIconStyle == style);
+            // Nothing to take icons from on this system: the choice is shown
+            // so the page still says what the setting is, and greyed so it
+            // does not promise a display it cannot produce.
+            if (!hostAvailable &&
+                style == FilerFileIconStyle::HostOperatingSystem)
+                radio->SetDisabled(true);
+            d->fileIconGroup.AddRadioButton(radio);
+            d->fileIconRadios.emplace_back(style, radio);
+            parts.body->AddChild(radio);
+        }
+        d->fileIconGroup.onSelectionChanged =
+                [d](std::shared_ptr<UltraCanvasRadio> selected) {
+            if (!selected || !d->settings) return;
+            for (const auto& [style, radio] : d->fileIconRadios) {
+                if (radio != selected) continue;
+                d->settings->fileIconStyle = style;
+                ApplyAndSave(d);
+                return;
+            }
+        };
+
+        if (!hostAvailable) {
+            parts.body->AddChild(MakeText("ufl-set-file-icons-unsupported",
+                    "This system has no desktop to take icons from, so the "
+                    "simple icons are all there is to draw here.",
+                    kTextWidth, kTextFontSize, kNoteTextColor));
+        }
+
+        AddNote(parts, "ufl-set-file-icons-note1",
+                "Host icons come from the shell on Windows, from Finder on "
+                "macOS and from the installed icon theme on Linux and BSD, so "
+                "a folder listing looks like the rest of the desktop rather "
+                "than like a second file manager.");
+        AddNote(parts, "ufl-set-file-icons-note2",
+                "Either way, a file that shows a thumbnail of its own content "
+                "keeps showing it, and a program or shortcut keeps the icon "
+                "it carries inside itself - those are the file's own picture, "
+                "not its type's.");
+        AddNote(parts, "ufl-set-file-icons-note3",
+                "A type this system has no icon for keeps the simple one, and "
+                "so does every icon until its lookup lands: the display never "
+                "waits for the host and never shows an empty box. With host "
+                "icons on, a folder is drawn with the system's folder icon, "
+                "so the pictures inside it (Display > Thumbnails) no longer "
+                "peek out of it.");
         return parts.page;
     }
 
@@ -2180,6 +2259,7 @@ namespace {
         AddTreeNode(d, kPageDisplay, kPageFiles, "Files");
         AddTreeNode(d, kPageDisplay, kPageIgnoredFiles, "Ignored files");
         AddTreeNode(d, kPageDisplay, kPageFileExtensions, "File extensions");
+        AddTreeNode(d, kPageDisplay, kPageFileIcons, "File icons");
         AddTreeNode(d, kPageDisplay, kPageFilesInUse, "Files in use");
         AddTreeNode(d, kPageDisplay, kPagePdfInventory, "PDF Inventory");
         AddTreeNode(d, kPageDisplay, kPageThumbnails, "Thumbnails");
@@ -2214,6 +2294,7 @@ namespace {
         AddPage(d, kPageFiles, BuildFilesPage(d));
         AddPage(d, kPageIgnoredFiles, BuildIgnoredFilesPage(d));
         AddPage(d, kPageFileExtensions, BuildFileExtensionsPage(d));
+        AddPage(d, kPageFileIcons, BuildFileIconsPage(d));
         AddPage(d, kPageFilesInUse, BuildFilesInUsePage(d));
         AddPage(d, kPagePdfInventory, BuildPdfInventoryPage(d));
         AddPage(d, kPageThumbnails,

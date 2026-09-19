@@ -1,6 +1,6 @@
 // include/UltraCanvasListView.h
 // Model-View-Delegate ListView widget
-// Last Modified: 2026-07-22
+// Last Modified: 2026-09-19
 #pragma once
 
 #include "UltraCanvasCommonTypes.h"
@@ -18,6 +18,7 @@
 
 namespace UltraCanvas {
 
+
     // ===== VIEW STYLE =====
 
     struct ListViewStyle {
@@ -27,6 +28,10 @@ namespace UltraCanvas {
         Color gridLineColor = Color(220, 220, 220);
 
         float headerFontSize = 10;
+        // Width (px) of the sort-direction triangle drawn in the sorted
+        // column's header cell (see SetSortIndicator). It is half as tall as it
+        // is wide and painted in headerTextColor.
+        int sortIndicatorSize = 8;
 
         int rowHeight = 24;
         int headerHeight = 26;
@@ -59,6 +64,13 @@ namespace UltraCanvas {
         // left the rows area.
         std::function<void(int row, int column, const Point2Di& posInCell)> onCellClicked;
         std::function<void(int row, int column, const Point2Di& posInCell)> onCellHovered;
+
+        // A click (press and release in the same cell) on a column header, when
+        // the header is shown. Fires after a press that did not start a column
+        // resize. The usual handler re-sorts the model by `column`, toggling the
+        // direction when it is already the sort column, then calls
+        // SetSortIndicator so the header shows the new order.
+        std::function<void(int column)> onHeaderClicked;
 
         // Optional tooltip source, consulted before the model's ToolTipRole.
         // Called with the hovered cell; row == -1 means the pointer is over the
@@ -116,6 +128,31 @@ namespace UltraCanvas {
         void SetShowHeader(bool show);
         bool GetShowHeader() const;
 
+        // Sort indicator: a small triangle in the header cell of `column`,
+        // apex up for ascending, apex down for descending, drawn in
+        // headerTextColor so it follows the header theme. The view only shows
+        // it; ordering the rows is the model's / caller's job (see
+        // onHeaderClicked). -1 (the default) shows none.
+        void SetSortIndicator(int column, bool ascending);
+        void ClearSortIndicator() { SetSortIndicator(-1, true); }
+        int  GetSortColumn() const { return sortColumn; }
+        bool GetSortAscending() const { return sortAscending; }
+
+        // Per-view column widths (multi-column). A column's width normally comes
+        // from the model (ListColumnDef::width); SetColumnWidth overrides it for
+        // this view only — used by interactive resize and by callers that fit a
+        // column to the viewport. GetColumnWidth returns the effective width.
+        void SetColumnWidth(int column, int width);
+        int  GetColumnWidth(int column) const;
+
+        // Interactive column resizing by dragging the header column borders
+        // (on by default; needs the header shown and >= 2 columns).
+        void SetColumnsResizable(bool resizable) { columnsResizable = resizable; }
+        bool GetColumnsResizable() const { return columnsResizable; }
+        // True once the user has dragged a column border, so a caller's auto-fit
+        // can stop overriding the user's chosen widths.
+        bool ColumnsUserAdjusted() const { return userAdjustedColumns; }
+
         // Hover tooltips. On by default: resting the pointer on a row shows the
         // cell's ToolTipRole text (per-cell, falling back to the row tooltip),
         // and resting it on a column header shows that column's
@@ -136,6 +173,10 @@ namespace UltraCanvas {
         // hidden or the point is outside it). columnStartX receives the
         // column's element-local left edge.
         int GetHeaderColumnAt(int x, int y, int* columnStartX = nullptr) const;
+
+        // Column index whose right border is under an element-local point in the
+        // header band (within ~4px), for resize hit-testing; -1 otherwise.
+        int ColumnBoundaryAt(int x, int y) const;
 
         // Tooltip text for a cell (row >= 0) or a column header (row == -1),
         // as the hover tooltip would show it. Empty when there is none.
@@ -183,7 +224,25 @@ namespace UltraCanvas {
         int hoveredColumn = -1;
         int hoveredHeaderColumn = -1;
         int focusedRow = -1;
+
         bool showItemTooltips = true;
+
+        // Column resizing. columnWidthOverrides[col] >= 0 overrides the model's
+        // width for this view (index = column; entries default to -1 = use the
+        // model). resizeCol >= 0 while a header border is being dragged.
+        std::vector<int> columnWidthOverrides;
+        bool columnsResizable = true;
+        bool userAdjustedColumns = false;
+        int  resizeCol = -1;
+        int  resizeStartX = 0;
+        int  resizeStartW = 0;
+
+        // Sort indicator (SetSortIndicator); sortColumn == -1 shows none.
+        int  sortColumn = -1;
+        bool sortAscending = true;
+        // Header column under the last press, so a release in the same cell
+        // counts as a click (onHeaderClicked); -1 when no header press is live.
+        int  pressedHeaderColumn = -1;
 
         // Internal methods
         void CreateScrollbar();
@@ -205,8 +264,12 @@ namespace UltraCanvas {
         void RebuildRowGeometryIfNeeded() const;
         void InvalidateRowGeometry();
 
+        // Act on a click in the header band: cycle the sort of that column and
+        // tell whoever is listening.
+
         // Rendering
         void RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect);
+        void RenderSortIndicator(IRenderContext* ctx, const Rect2Di& cell);
         void RenderRows(IRenderContext* ctx, const Rect2Di& contentRect);
 
         // Tooltips

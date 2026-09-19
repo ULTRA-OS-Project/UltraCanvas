@@ -5,18 +5,24 @@
 //   WMFConverter - legacy Windows Metafile ([MS-WMF]), 16-bit records with
 //                  a placeable (Aldus) header; WMF has no bezier record, so
 //                  curves flatten to polylines.
-//   AIConverter  - Adobe Illustrator. Modern .ai files are PDF-based (a PDF
-//                  with Illustrator's private data attached), so this writer
-//                  produces the Vector plugin's PDF output under the .ai
-//                  extension - valid for Illustrator and every PDF consumer.
+//   AIConverter  - Adobe Illustrator. Writing: modern .ai files are
+//                  PDF-based (a PDF with Illustrator's private data
+//                  attached), so this writer produces the Vector plugin's
+//                  PDF output under the .ai extension - valid for
+//                  Illustrator and every PDF consumer. Reading
+//                  (UltraCanvasAIReader.cpp): Illustrator's art language,
+//                  taken from the /AIPrivateData streams of a PDF-based
+//                  file or read directly from a legacy (v8 and earlier)
+//                  EPS-based one. That path is what a .ai written without
+//                  "Create PDF Compatible File" needs: its PDF page is
+//                  empty and only the private data holds the artwork.
 //
 // EMF and WMF read back through the record parsers in
-// UltraCanvasEMFReader.cpp / UltraCanvasWMFReader.cpp; AI stays
-// export-only (PDF-based .ai files are the MuPDF PDF plugin's to read).
+// UltraCanvasEMFReader.cpp / UltraCanvasWMFReader.cpp.
 // GDI metafiles have no alpha channel, so opacity flattens toward the
 // white page with a warning on export (as in the EPS writer).
-// Version: 1.1.0
-// Last Modified: 2026-08-26
+// Version: 1.2.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,9 +35,9 @@ namespace UltraCanvas {
         // and in UltraCanvasCADConverters.h: file/stream plumbing around
         // ExportToString on the export side, and file/stream imports that
         // funnel into ImportFromString on the import side — so a converter
-        // that has a reader (DXF, DWG, EMF, WMF) overrides only
-        // ImportFromString and CanImport, while pure writers (AI) inherit
-        // the warn-and-null default.
+        // that has a reader (DXF, DWG, EMF, WMF, AI) overrides only
+        // ImportFromString and CanImport, while pure writers inherit the
+        // warn-and-null default.
         class ExportOnlyConverter : public IVectorFormatConverter {
         public:
             bool CanImport() const override { return false; }
@@ -109,6 +115,15 @@ namespace UltraCanvas {
                 return "application/postscript";   // the registered .ai type
             }
             FormatCapabilities GetCapabilities() const override;
+
+            // Reading is the art language in the private data
+            // (UltraCanvasAIReader.cpp); a .ai whose artwork really is in
+            // its PDF page carries no private data and is declined here so
+            // the caller falls back to the PDF engine.
+            bool CanImport() const override { return true; }
+            std::shared_ptr<VectorStorage::VectorDocument> ImportFromString(
+                    const std::string& data,
+                    const ConversionOptions& options = ConversionOptions()) override;
 
             std::string ExportToString(
                     const VectorStorage::VectorDocument& document,

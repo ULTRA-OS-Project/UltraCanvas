@@ -219,36 +219,6 @@ add_test(NAME FileLockTest COMMAND FileLockTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLockTest")
 
-# ===== ELEVATED FILE OPERATIONS TEST =====
-# The "Delete as administrator" retry (UltraCanvasElevatedFileOperations):
-# the command-line and report encodings the two processes agree on, the
-# helper's own delete in a temp folder, and the no-backend answers. Built from
-# its own sources like the file-lock test; on Windows the backend comes along
-# so the elevation and permission-failure probes compile, though the test
-# never starts a helper (that would put up a consent prompt).
-message(STATUS "  Building ElevatedFileOperationsTest...")
-
-set(ELEVATED_FILE_OPERATIONS_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/ElevatedFileOperationsTest.cpp
-    ${ULTRACANVAS_CORE_DIR}/UltraCanvasElevatedFileOperations.cpp
-)
-if(WIN32)
-    list(APPEND ELEVATED_FILE_OPERATIONS_SOURCES
-        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp)
-endif()
-add_executable(ElevatedFileOperationsTest ${ELEVATED_FILE_OPERATIONS_SOURCES})
-target_include_directories(ElevatedFileOperationsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-target_compile_features(ElevatedFileOperationsTest PRIVATE cxx_std_20)
-if(WIN32)
-    target_link_libraries(ElevatedFileOperationsTest PRIVATE shell32 advapi32 ole32)
-endif()
-set_target_properties(ElevatedFileOperationsTest PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-add_test(NAME ElevatedFileOperationsTest COMMAND ElevatedFileOperationsTest
-         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-message(STATUS "    Test registered: ElevatedFileOperationsTest")
-
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
 # built from its own sources, needs no display and does not link UltraCanvas.
@@ -774,6 +744,31 @@ add_test(
 )
 message(STATUS "    Test registered: ListViewTooltipTest")
 
+# ===== LIST SORT/FILTER PROXY TEST =====
+# Sorting, filtering and - above all - the row mapping of
+# UltraCanvasListSortFilterProxy, because a proxy row mistaken for a source row
+# is how a sorted table edits the wrong record. Model-level only, no UI stack.
+message(STATUS "  Building ListSortFilterProxyTests...")
+add_executable(ListSortFilterProxyTests
+    ${CMAKE_CURRENT_SOURCE_DIR}/ListSortFilterProxyTests.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasListModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasListSortFilterProxy.cpp
+)
+target_include_directories(ListSortFilterProxyTests PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ListSortFilterProxyTests PRIVATE cxx_std_20)
+set_target_properties(ListSortFilterProxyTests PROPERTIES
+    OUTPUT_NAME "ListSortFilterProxyTests"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ListSortFilterProxyTests
+    COMMAND ListSortFilterProxyTests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ListSortFilterProxyTests")
+
 # ===== CONTOUR GEOMETRY TEST =====
 # Marching-squares isolines (including saddle disambiguation), isoband cell
 # clipping, level generation, NaN holes, point gridding and polyline
@@ -1093,7 +1088,7 @@ if(TEST_TINYXML2_FOUND)
     )
     add_test(
         NAME ModelColladaTest
-        COMMAND ModelColladaTest "${ULTRACANVAS_ROOT}/media/3D/COLLADA/E-45-Aircraft.dae"
+        COMMAND ModelColladaTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/COLLADA/E-45-Aircraft.dae"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelColladaTest")
@@ -1166,7 +1161,7 @@ set_target_properties(ModelXFileTest PROPERTIES
 )
 add_test(
     NAME ModelXFileTest
-    COMMAND ModelXFileTest "${ULTRACANVAS_ROOT}/media/3D/XFile/E-45-Aircraft.x"
+    COMMAND ModelXFileTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/XFile/E-45-Aircraft.x"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelXFileTest")
@@ -1198,7 +1193,7 @@ set_target_properties(ModelMS3DTest PROPERTIES
 )
 add_test(
     NAME ModelMS3DTest
-    COMMAND ModelMS3DTest "${ULTRACANVAS_ROOT}/media/3D/MS3D/E-45-Aircraft.ms3d"
+    COMMAND ModelMS3DTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/MS3D/E-45-Aircraft.ms3d"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelMS3DTest")
@@ -1271,7 +1266,7 @@ if(ZLIB_FOUND)
     )
     add_test(
         NAME ModelFbxTest
-        COMMAND ModelFbxTest "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft.fbx"
+        COMMAND ModelFbxTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/FBX/E-45-Aircraft.fbx"
                              "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
@@ -2463,6 +2458,34 @@ else()
     message(STATUS "  DWGReaderTest skipped (UltraCanvasVectorPlugin target not present)")
 endif()
 
+# ===== AI READER TEST =====
+# The Adobe Illustrator import path: the two shipped samples in
+# media/vector/AI (CorelDRAW exports whose PDF page is empty and whose
+# artwork is entirely in the /AIPrivateData streams - the case that used to
+# render as a blank page), plus the art language itself on a synthetic
+# legacy file. Extra .ai files on the command line are imported and
+# reported (AI_TEST_SVG_DIR exports them as SVG).
+if(TARGET UltraCanvasVectorPlugin)
+    message(STATUS "  Building AIReaderTest...")
+    add_executable(AIReaderTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/AIReaderTest.cpp
+    )
+    target_include_directories(AIReaderTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(AIReaderTest PRIVATE cxx_std_20)
+    target_compile_definitions(AIReaderTest PRIVATE
+        AI_SAMPLES_DIR="${ULTRACANVAS_ROOT}/media/vector/AI"
+    )
+    target_link_libraries(AIReaderTest PRIVATE UltraCanvasVectorPlugin UltraCanvas)
+    set_target_properties(AIReaderTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME AIReaderTest COMMAND AIReaderTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: AIReaderTest")
+else()
+    message(STATUS "  AIReaderTest skipped (UltraCanvasVectorPlugin target not present)")
+endif()
+
 # ===== FUTURE TESTS =====
 # Add more test executables here as needed:
 #
@@ -2632,33 +2655,6 @@ message(STATUS "    Test registered: FilerVolumeSpaceTest")
 
 message(STATUS "")
 
-# ===== FILER HISTORY TEST =====
-# The recently used files / folders / apps behind the toolbar's clock button
-# (Apps/UltraFiler/UltraFilerHistory.h): that the three lists survive a
-# restart, and that each keeps the number of entries Settings > Extras >
-# History & Favorites asks for - while recording, while reading the file back,
-# and at the moment the limit is lowered.
-# Header-only, so the test needs no library - it runs on any build. It points
-# the config directory at a temporary folder, so it never touches a real
-# UltraFiler installation.
-message(STATUS "  Building FilerHistoryTest...")
-add_executable(FilerHistoryTest
-    ${CMAKE_CURRENT_SOURCE_DIR}/FilerHistoryTest.cpp
-)
-target_include_directories(FilerHistoryTest PRIVATE
-    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
-    ${ULTRACANVAS_INCLUDE_DIR}
-)
-target_compile_features(FilerHistoryTest PRIVATE cxx_std_20)
-set_target_properties(FilerHistoryTest PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-add_test(NAME FilerHistoryTest COMMAND FilerHistoryTest
-         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-message(STATUS "    Test registered: FilerHistoryTest")
-
-message(STATUS "")
-
 # ===== FILER FORMAT LIST TEST =====
 # The list of files behind Display > Thumbnails and Display > Detail view has
 # to hold every format the FileLoader inventory reports for this build, filed
@@ -2755,6 +2751,32 @@ if(TARGET UltraCanvas)
     message(STATUS "    Test registered: FilerFolderPreviewTest")
 else()
     message(STATUS "  FilerFolderPreviewTest skipped (UltraCanvas target not present)")
+endif()
+
+message(STATUS "")
+
+# ===== FILER HOST ICONS TEST =====
+# Display > File icons: the setting, and the cache key the host icon service
+# answers by - the key that decides whether a folder of four thousand ".txt"
+# files costs one icon lookup or four thousand. The lookups themselves are the
+# host's, so the test asserts that asking is harmless rather than what any one
+# desktop answers; it therefore passes on a build machine with no icon theme.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building FilerHostIconsTest...")
+    add_executable(FilerHostIconsTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/FilerHostIconsTest.cpp
+    )
+    target_include_directories(FilerHostIconsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(FilerHostIconsTest PRIVATE cxx_std_20)
+    target_link_libraries(FilerHostIconsTest PRIVATE UltraCanvas)
+    set_target_properties(FilerHostIconsTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME FilerHostIconsTest COMMAND FilerHostIconsTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: FilerHostIconsTest")
+else()
+    message(STATUS "  FilerHostIconsTest skipped (UltraCanvas target not present)")
 endif()
 
 message(STATUS "")

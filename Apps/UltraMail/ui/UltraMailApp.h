@@ -18,9 +18,13 @@
 #include "UltraMailPassphraseDialog.h"
 #include "UltraMailServerSettingsDialog.h"
 
+#include "UltraMailPreferences.h"
+
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
 #include "UltraMailContactStore.h"
+#include "UltraMailSenderIconCache.h"
+#include "UltraMailSenderTrust.h"
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailCredentialVault.h"
@@ -34,6 +38,7 @@
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -140,6 +145,16 @@ private:
     // Where the Save-As dialog starts: Downloads, else home, else ".".
     static std::string DefaultSaveDirectory();
 
+    // Point the sender-icon cache at its folder under the cache directory, give
+    // it the HTTPS fetcher it downloads a known service's icon with, and apply
+    // the user's "download icons of known senders" preference. Called once at
+    // startup and again whenever that preference changes.
+    void ConfigureSenderIcons();
+    // Re-read the address book into the index the sender badge classifies with,
+    // and hand it to the mail view. Cheap enough to run on every Refresh(), and
+    // that is what keeps a newly added contact's mail turning green.
+    void RefreshContactIndex();
+
     // Open the contact manager in its own window.
     void OpenContacts();
     // Seed a few contacts across sections (demo only).
@@ -181,6 +196,11 @@ private:
     void RunSyncs(bool force);
     // Sync one account now — the first sync right after it was added.
     void SyncAccount(const std::string& accountId);
+    // Fetch one folder's messages now (envelopes + bodies), on a worker. Backs
+    // the lazy load when a non-inbox folder is first opened and the Reload of a
+    // folder other than the inbox. No-op without the IMAP plug-in / an unlocked
+    // vault / known servers.
+    void SyncFolder(const std::string& accountId, const std::string& folder);
     // Run the given accounts through the SyncService on worker threads and
     // report the outcome on the UI thread. `userInitiated` syncs (Reload, a new
     // account) always say why nothing was fetched; timer syncs say so once.
@@ -204,6 +224,10 @@ private:
 
     LocalStore store_;
     ContactStore contacts_;
+    // Icons of the known services in the sender registry, under
+    // <cacheDir>/sender-icons. Read by the badge on the UI thread, filled by
+    // the sync worker; the class is internally locked for exactly that.
+    SenderIconCache senderIcons_;
     OutboxStore outbox_;
     // Cloud storage (UltraCloud): accounts + secrets behind the composer's
     // "Attach cloud link". Per-app store for now (see the module README).
@@ -219,6 +243,15 @@ private:
     // Set once a background sync has alerted, so a broken server does not raise
     // an alert on every timer tick.
     bool syncErrorReported_ = false;
+
+    // App-wide view preferences (reading pane on/off), remembered between runs
+    // in preferences.ini under the data directory.
+    Preferences prefs_;
+    std::string prefsPath_;
+    // (accountId + "\n" + folder) that have been lazily fetched (or already had
+    // messages) this session, so opening a folder does not re-hit the server on
+    // every click.
+    std::set<std::string> lazilySynced_;
 
     std::string dataDir_;
     std::string cacheDir_;

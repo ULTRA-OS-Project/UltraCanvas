@@ -1,3 +1,120 @@
+#### 2026-09-19 *1.44.0*
+- **Split view: two folder displays side by side.** A split-screen button in
+  the navigation row, left of the clock, replaces the folder tree and the one
+  folder display with two displays next to each other: the active tab's on
+  the left, a second display of its own on the right - one that is in no
+  tab, has its own Back / Forward history, and opens on the folder it last
+  showed. A draggable splitter sits between them, and the preview pane, when
+  it opens, takes its width from the right-hand display.
+
+  Each pane has a header row: a **folder-tree button** and the pane's own
+  breadcrumb, which navigates that pane. The tree button docks the folder
+  tree down the left of that display, under its header, and takes it away
+  again (so does Esc). There is one tree, so pressing the other pane's button
+  moves it over; a docked tree follows and navigates the display it sits
+  beside.
+
+  The display clicked last is the active one - its header is tinted - and it
+  is what the toolbars, the search field, the status bar and the preview act
+  on, exactly as they act on the active tab. Clicking a tab makes the
+  left-hand pane active again; the Computer page always opens in the
+  left-hand pane. Files drag and drop between the two displays like between
+  any two displays of the window. Every setting that reaches "every tab" - a
+  changed Display or Handling setting, a vanished volume, a deleted folder -
+  reaches the right-hand display too.
+
+  The switch and the right-hand display's folder are saved with the settings
+  (`view.split`, `view.split.second.folder`), so the next start opens the
+  pair as it was left. Turning the split view off brings the tree pane back
+  as wide as it was.
+
+- The command bar's **Preview** toggle now carries a picture icon: the
+  split-screen icon it used to share is the split view's.
+
+#### 2026-09-19 *1.43.0*
+- **Remote drives are writable: delete, rename and new folder.** A drive added
+  through **+ Drive** could be browsed and nothing more; now the three commands
+  that act on what is *on* the drive work against the server. Deleting asks
+  first, exactly as a local delete does, and a folder goes with `RMD` where a
+  file goes with `DELE` - the display already knows which it is, so no round
+  trip is spent finding out. **F2** renames in place. **New folder** creates one,
+  named after what the folder already holds, and you can rename it once it
+  appears.
+
+  Nothing waits on the server while the window paints: each change is queued,
+  the folder it touched is dropped from the cache, and the display refetches
+  when the answer arrives. A refusal is reported in the server's own words -
+  "550 Permission denied" says what to change where "it did not work" says
+  nothing - and deleting a dozen entries that all fail the same way is one
+  dialog, not a dozen.
+
+  **What a drive can take depends on the drive**, and it says so before you
+  try: FTP, FTPS and SFTP can be changed, while a Nextcloud, WebDAV, Dropbox,
+  OneDrive or Google Drive account is still read-only here and draws its
+  entries with the read-only badge. That follows the provider's own
+  capabilities rather than a list kept in the file manager.
+
+  **Copying files to or from a drive is not in this yet.** A transfer needs the
+  progress window, the conflict questions and the Cancel that copying already
+  has, and that machinery is built on the local filesystem throughout; giving
+  it a second backend is its own change rather than a fourth hook. Duplicate,
+  paste and New > *document* therefore still say a remote drive cannot take
+  them.
+
+  Built on framework 0.8.93's `remoteDelete` / `remoteRename` /
+  `remoteMakeDirectory` hooks and the `CloudService` change verbs added with
+  them.
+
+#### 2026-09-17 *1.42.0*
+- **UltraFiler can now use your desktop's own file icons.** Until now a file
+  with no preview of its own was drawn as a coloured sheet with its extension
+  on it, and a folder as a drawn folder shape - the same picture on every
+  machine, and like nothing else on any of them. **Settings > Display > File
+  icons** now chooses between them:
+
+  - **UltraFiler simple** - the drawn folder and sheet. The default, and what
+    every earlier release showed.
+  - **Host OS icons** - what this system draws for the type: the shell's icons
+    on Windows, Finder's on macOS, the installed icon theme's on Linux and
+    BSD. A PDF gets the document icon, an archive the package icon, a
+    spreadsheet the spreadsheet icon - the same pictures as the rest of the
+    desktop, because they come from the same place.
+
+  It is also in each file display's own **Display > File icons** context menu,
+  beside File extensions.
+
+  What it does not touch: a file that shows a thumbnail of its own content
+  goes on showing it, and a program or shortcut goes on showing the icon it
+  carries inside itself - those are the file's own picture rather than its
+  type's, and Explorer and the Finder prefer them too. A folder you gave an
+  icon with **Extras > Set folder icon**, and the main user folders with icons
+  of their own, keep them either way.
+
+  A file type this system has no icon for keeps the simple one, and so does
+  every icon until its lookup lands, so the window never waits on the desktop
+  and never shows an empty box. On a system with no desktop to ask the choice
+  is greyed out and says why. With host icons on, a folder is drawn with the
+  system's folder icon - so the pictures inside it no longer peek out of it,
+  since there is no drawn folder left to peek out of.
+
+  The setting is saved like every other (`display.file.icons` in the config
+  file). Framework change, see UltraCanvas 0.8.84; the application's own part
+  is the settings page, the config key and the menu wiring.
+
+- **Fixed: the Display settings were ignored by every file display created
+  after start-up.** They are pushed into the displays that exist when the
+  settings file is read - which at start-up is the folder preview alone,
+  because the tabs are built after it. The first tab, every tab opened later,
+  and the History, Favorites and Computer displays therefore browsed with the
+  built-in defaults until the user happened to change a setting, at which
+  point the whole set was pushed in and they jumped. So a saved **Thumbnails**
+  or **Detail view** selection, the **File extensions** switches and
+  **Folder previews** all came back wrong after a restart. Each display is now
+  given the settings as it is wired up, whenever it is created.
+
+  Found while adding File icons above: it was the reason a saved choice of
+  host icons did nothing until the settings window was opened.
+
 #### 2026-09-17 *1.41.0*
 - The per-application plugin list is gone. UltraFiler links
   `UltraCanvasAllFormats` and every format plugin the build produced registers

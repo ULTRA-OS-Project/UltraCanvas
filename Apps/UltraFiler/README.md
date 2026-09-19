@@ -12,6 +12,7 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
 | Folder content (center pane) | one `UltraCanvasFilerWidget` per tab, the active one shown in the tab strip's content host — details / list / thumbnail grids / size bars / treemap views, full file context menu, clipboard and drag & drop interop |
 | Detail / preview (right pane) | `UltraCanvasMediaViewer` for a selected file — images, video, audio, PDFs, spreadsheets, 3D models and text files — and a second small-thumbnail `UltraCanvasFilerWidget` showing the content of a selected folder; the two share the pane |
 | Path bar | `UltraCanvasBreadcrumb` via the shared `BuildFolderBreadcrumb` helper |
+| Split view (two displays side by side) | a second `UltraCanvasFilerWidget` in a pane of the same `UltraCanvasSplitPane`, each display under a header row of a folder-tree `UltraCanvasButton` and its own `UltraCanvasBreadcrumb`; the one folder tree docks into whichever pane's button was pressed |
 | Search field | a container holding an `UltraCanvasTextInput` — driving `UltraCanvasFilerWidget::SetNameFilter()` as-you-type — and the in-field **Scan sub folder** `UltraCanvasButton`, which starts the background sub-folder scan whose matches arrive through `ShowFileList()` / `AppendToFileList()` |
 | History view | `UltraCanvasTabbedContainer` (Files / Folders / Apps) hosting one small-thumbnail `UltraCanvasFilerWidget` per tab, fed with `ShowFileList()` from `UltraFilerHistory` |
 | Favorites view | the same tabbed layout, fed with `ShowFileList()` from `UltraFilerFavorites` (the pinned paths) |
@@ -40,9 +41,31 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   view settings; tabs can be reordered by dragging and closed (the last one
   stays open). The strip stays visible while the History or Favorites view
   replaces the folder display, so clicking a tab returns to browsing it.
-- **Navigation:** Back / Forward history (per tab), Up, Refresh, clickable
-  breadcrumb path (each segment's dropdown lists sibling folders), folder
-  tree with lazy expansion, and the History toggle (see below).
+- **Navigation:** Back / Forward history (per tab), Up, Refresh, the Split
+  view toggle (see below), clickable breadcrumb path (each segment's dropdown
+  lists sibling folders), folder tree with lazy expansion, and the History
+  toggle (see below).
+- **Split view:** the split-screen button in the navigation row (left of the
+  clock) shows **two folder displays side by side** in place of the folder
+  tree and the single display: the active tab's display on the left and a
+  second display on the right, which has a Back / Forward history of its own
+  and is in no tab. The two share the width the tree and the display had,
+  with a draggable splitter between them. Each pane carries a **header row**
+  of a folder-tree button and the pane's own breadcrumb, which navigates that
+  pane. The **tree button** docks the folder tree down the left of that
+  display, under its header, and takes it away again (also **Esc**); there is
+  one tree, so pressing the other pane's button moves it over. A docked tree
+  follows and navigates the display it sits beside. **The display clicked
+  last is the active one** — its header is tinted — and it is what the
+  navigation row, the command bar, the search field, the status bar and the
+  preview pane act on, exactly as they act on the active tab; clicking a tab
+  makes the left-hand pane active again, and the Computer page always opens
+  in the left-hand pane. Files drag and drop between the two displays like
+  between any two displays of the window. The right-hand display's folder
+  and the switch itself are saved with the settings (`view.split`,
+  `view.split.second.folder`), so the next start opens the pair as it was
+  left. Pressing the button again brings the tree pane back as wide as it
+  was.
 - **Search:** typing in the field filters the shown folder **as-you-type**
   (case-insensitive name filter, no disk walk; the status bar notes the
   filter). A **Scan sub folder** button appears *inside* the search field as
@@ -308,6 +331,7 @@ to the running application immediately and is saved to the config file
 | Display > Home folder | What the Home folder shows, in the folder tree and the file display alike: **Show all content**, or **Show only predefined folders** (Desktop, Documents, Downloads, Music, Pictures, Videos, resolved through the platform). Defaults: curated on Windows — a profile there carries a dozen system folders — show all on Linux and macOS |
 | Display > Files | **Show hidden files** — whether the file displays list what the platform calls hidden: a dot name everywhere, the hidden attribute on Windows (`NTUSER.DAT`, the profile junctions), the hidden flag on macOS. Off by default, as every file manager ships. It is what each folder display *starts* with: one display can still be switched on its own (its **Display > Hidden files** context-menu entry, or the Home folder's **Show hidden files** button) without changing the setting. Showing hidden files also shows the Home folder whole, whatever *Display > Home folder* says; the folder tree leaves hidden folders out either way |
 | Display > Ignored files | **Hide known clutter files** — the built-in pattern list (`Sti_Trace.log`, `desktop.ini`, `Thumbs.db`, `ehthumbs.db`, `ntuser.dat*`, `ntuser.ini`, `.DS_Store`, `._*`, `.Trash-*`, `.directory`), each switchable on its own — plus **own patterns** typed into the field below it (globs: `*` any run, `?` one character, matched ignoring case), and whether they apply **only in the Home folder** (the default) or **in every folder**. This is what leaves out the clutter no hidden-file setting can reach, because the system gave it an ordinary unhidden name. Nothing is moved or deleted: an ignored file is only left out of the display, a search still finds it, and *Show hidden files* brings it back |
+| Display > File icons | Whose icons the file display draws for a file that shows no picture of its own: **UltraFiler simple** — the drawn folder shape and the coloured sheet with the extension on it, the default and what every earlier release drew — or **Host OS icons**, what this desktop draws for the type (the shell's icons on Windows, Finder's on macOS, the installed icon theme's on Linux and BSD), so a folder listing looks like the rest of the desktop. Either way a file that shows a thumbnail of its own content keeps showing it, and a program or shortcut keeps the icon it carries inside itself. A type this system has no icon for keeps the simple one, and so does every icon until its lookup lands — the display never waits for the host. With host icons on, a folder is drawn with the system's folder icon, so the pictures inside it no longer peek out of it |
 | Display > PDF Inventory | **PDF-Inventory thumbnails width** — how wide the page thumbnails beside a PDF shown in the preview are: a fixed width in pixels (a slider from 32 to 120 px, 56 px by default) or a share of the preview's own width (5–40 %, 25 % by default), so the inventory grows with the window. Moving either slider selects its mode |
 | Handling > Drag & Drop | **Drop on folder** — whether dragging files onto a folder of the file display moves them (the default) or copies them. Ctrl at the drop always copies, Shift always moves. **Confirmation** — whether the drop asks before it is carried out: **Always**, **Only when files are moved** (the default) or **None**. The question names how many entries are about to be moved or copied and into which folder; files dragged in from another program are copies, so only *Always* asks about those |
 | Handling > Opening files | **Double-click (or Enter) on a file** — **Start the registered program**, the way Explorer and the Finder do (the default on Windows), or **Show it in the preview**, keeping the file inside UltraFiler (the default on Linux and macOS). A file type this system has no program for is previewed either way, so the setting never turns a double-click into nothing happening; a file that cannot be previewed always goes to the system, and the context menu's *Open with* starts a program whichever is set |

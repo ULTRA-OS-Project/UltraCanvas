@@ -252,6 +252,9 @@ private:
     // open structural edit
     bool structuralOpen = false;
     RasterUndoEntry pendingStructural;
+    // The selection's version when the structural edit opened: a geometry
+    // change re-shapes the selection, and the views have to hear about it.
+    uint64_t structuralSelectionVersion = 0;
 
     std::deque<RasterUndoEntry> undoStack;
     std::deque<RasterUndoEntry> redoStack;

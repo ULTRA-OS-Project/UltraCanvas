@@ -885,8 +885,16 @@ bool UltraCanvasRequirementDiagram::BuildAvoidingPath(const RequirementRelation&
         case NodeFace::Right:  goalPoint.x += stub; break;
     }
 
-    const auto [startX, startY] = toCell(startPoint);
-    const auto [goalX, goalY] = toCell(goalPoint);
+    const auto startCell = toCell(startPoint);
+    const auto goalCell  = toCell(goalPoint);
+    // Named variables rather than structured bindings: the heuristic lambda
+    // below reads the goal cell, and a lambda may not capture a structured
+    // binding before C++20's P1091 - which the Clang the oldest supported
+    // Linux runner ships (14) does not implement.
+    const auto startX = startCell.first;
+    const auto startY = startCell.second;
+    const auto goalX  = goalCell.first;
+    const auto goalY  = goalCell.second;
     const size_t startIndex = static_cast<size_t>(startY) * columns + startX;
     const size_t goalIndex = static_cast<size_t>(goalY) * columns + goalX;
     // The stubs themselves must be walkable, whatever the clearance says.
