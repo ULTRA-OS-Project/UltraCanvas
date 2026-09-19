@@ -353,6 +353,17 @@ if(BUILD_ULTRACLEANER)
     add_subdirectory(Apps/UltraCleaner)
 endif()
 
+# ===== ULTRANETMONITOR =====
+# Shows which processes hold which network connections, live, from the
+# operating system's socket table (the NetworkMonitor module). Headless
+# --list / --by-app modes for the command line, plus the GUI.
+option(BUILD_ULTRANETMONITOR "Build the UltraNetMonitor application" ON)
+if(BUILD_ULTRANETMONITOR)
+    message(STATUS "")
+    message(STATUS "── Building UltraNetMonitor ──")
+    add_subdirectory(Apps/UltraNetMonitor)
+endif()
+
 # At this point, the following variables are available from UltraCanvas/CMakeLists.txt:
 #   ULTRACANVAS_LIBRARY        - Main library target name
 #   ULTRACANVAS_LIBRARIES      - All libraries (core + plugins)
@@ -1386,6 +1397,20 @@ if (BUILD_TESTS)
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     add_test(NAME HardwareInfoTests COMMAND HardwareInfoTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # NetworkMonitor unit tests: the /proc/net parser against fixture text,
+    # the per-process roll-up, endpoint formatting, and - where this platform
+    # has a backend - that a socket the test opens appears in the snapshot
+    # attributed to the test's own PID. Links only NetworkMonitor, so it runs
+    # headless.
+    add_executable(NetworkMonitorTests Tests/NetworkMonitorTests.cpp)
+    target_link_libraries(NetworkMonitorTests PRIVATE NetworkMonitor)
+    target_compile_features(NetworkMonitorTests PRIVATE cxx_std_20)
+    set_target_properties(NetworkMonitorTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME NetworkMonitorTests COMMAND NetworkMonitorTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraCrypt unit tests: published vectors (FIPS 180-4, RFC 4231), AEAD
