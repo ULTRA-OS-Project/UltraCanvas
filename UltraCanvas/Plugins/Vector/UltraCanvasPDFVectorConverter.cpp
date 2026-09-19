@@ -15,8 +15,8 @@
 // back to the blend of their end stops (no shading dictionaries yet), and
 // centre/right text anchoring is approximated from an average glyph width
 // (exact metrics would need embedded font programs) - each warned.
-// Version: 1.0.0
-// Last Modified: 2026-08-26
+// Version: 1.1.0
+// Last Modified: 2026-09-19
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorConverter.h"
@@ -218,9 +218,48 @@ private:
                " " + op;
     }
 
+    // WinAnsiEncoding is CP1252, which agrees with Latin-1 from 0xA0 up but
+    // fills 0x80..0x9F - Latin-1's unused C1 control block - with 27 printable
+    // characters that live far away in Unicode. The euro sign is one of them,
+    // at 0x80, and an invoice that prints "1.234,56 ?" because of it is not an
+    // invoice. Anything not in this table and above 0xFF is genuinely outside
+    // the encoding and still becomes '?'.
+    static bool WinAnsiHighByte(uint32_t cp, unsigned char& out) {
+        switch (cp) {
+            case 0x20AC: out = 0x80; return true;   // EURO SIGN
+            case 0x201A: out = 0x82; return true;   // single low-9 quotation
+            case 0x0192: out = 0x83; return true;   // florin
+            case 0x201E: out = 0x84; return true;   // double low-9 quotation
+            case 0x2026: out = 0x85; return true;   // ellipsis
+            case 0x2020: out = 0x86; return true;   // dagger
+            case 0x2021: out = 0x87; return true;   // double dagger
+            case 0x02C6: out = 0x88; return true;   // modifier circumflex
+            case 0x2030: out = 0x89; return true;   // per mille
+            case 0x0160: out = 0x8A; return true;   // S with caron
+            case 0x2039: out = 0x8B; return true;   // single left angle quote
+            case 0x0152: out = 0x8C; return true;   // OE ligature
+            case 0x017D: out = 0x8E; return true;   // Z with caron
+            case 0x2018: out = 0x91; return true;   // left single quote
+            case 0x2019: out = 0x92; return true;   // right single quote
+            case 0x201C: out = 0x93; return true;   // left double quote
+            case 0x201D: out = 0x94; return true;   // right double quote
+            case 0x2022: out = 0x95; return true;   // bullet
+            case 0x2013: out = 0x96; return true;   // en dash
+            case 0x2014: out = 0x97; return true;   // em dash
+            case 0x02DC: out = 0x98; return true;   // small tilde
+            case 0x2122: out = 0x99; return true;   // trade mark
+            case 0x0161: out = 0x9A; return true;   // s with caron
+            case 0x203A: out = 0x9B; return true;   // single right angle quote
+            case 0x0153: out = 0x9C; return true;   // oe ligature
+            case 0x017E: out = 0x9E; return true;   // z with caron
+            case 0x0178: out = 0x9F; return true;   // Y with diaeresis
+            default: return false;
+        }
+    }
+
     std::string EscapeString(const std::string& utf8) {
-        // WinAnsi is close enough to Latin-1 for the base-14 fonts; code
-        // points beyond it become '?'.
+        // WinAnsi agrees with Latin-1 from 0xA0 up; 0x80..0x9F is CP1252's own
+        // block (see WinAnsiHighByte) and anything else beyond becomes '?'.
         std::string out;
         size_t i = 0, n = utf8.size();
         while (i < n) {
@@ -234,10 +273,16 @@ private:
                 cp = (cp << 6) | (static_cast<uint8_t>(utf8[i + 1 + k]) & 0x3F);
             }
             i += 1 + extra;
-            if (cp > 0xFF) {
+            unsigned char winAnsi = 0;
+            if (WinAnsiHighByte(cp, winAnsi)) {
+                cp = winAnsi;
+            } else if (cp > 0xFF || (cp >= 0x80 && cp <= 0x9F)) {
+                // Above Latin-1, or one of the C1 control positions that
+                // WinAnsi leaves undefined - neither has a glyph in a base-14
+                // font.
                 if (!warnedNonLatin) {
                     warnedNonLatin = true;
-                    warn("PDF export: characters outside Latin-1 are replaced "
+                    warn("PDF export: characters outside WinAnsi are replaced "
                          "with '?' (the base-14 fonts are WinAnsi encoded)");
                 }
                 cp = '?';

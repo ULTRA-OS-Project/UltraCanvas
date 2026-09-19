@@ -26,7 +26,19 @@ set(ULTRAFIBU_TEST_SOURCES
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUUstIdNr.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUUstIdNrOnline.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUKontenrahmen.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUBeleg.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUBuchung.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUDatev.cpp
+    ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUBank.cpp
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine/UltraFIBUStore.cpp
+    # The invoice print, and the two framework sources its PDF writer
+    # needs. Compiled here rather than linked as the Vector plugin for
+    # the same reason the engine sources are: the plugin pulls in the
+    # UltraCanvas core and with it the whole rendering stack, and this
+    # suite has to run where that cannot be built.
+    ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/report/UltraFIBURechnungPdf.cpp
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/core/DataFormats/UltraCanvasVectorStorage.cpp
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp
     ${CMAKE_SOURCE_DIR}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp
     ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson/yyjson.c
 )
@@ -35,9 +47,22 @@ add_executable(UltraFIBUEngineTests ${ULTRAFIBU_TEST_SOURCES})
 target_compile_features(UltraFIBUEngineTests PRIVATE cxx_std_20)
 target_include_directories(UltraFIBUEngineTests PRIVATE
     ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/engine
+    ${CMAKE_SOURCE_DIR}/Apps/UltraFIBU/report
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/Vector
     ${CMAKE_SOURCE_DIR}/UltraCanvas/include
     ${CMAKE_SOURCE_DIR}/UltraCanvas/third_party/yyjson)
 target_link_libraries(UltraFIBUEngineTests PRIVATE UltraDatabase)
+# CAMT.053 is XML. tinyxml2 is already a REQUIRED core dependency, so this is
+# an include path and a library name rather than a new dependency - and it is
+# named here explicitly because this suite deliberately does not link the core
+# library that would otherwise re-export it.
+if(TINYXML2_FOUND)
+    target_include_directories(UltraFIBUEngineTests PRIVATE ${TINYXML2_INCLUDE_DIRS})
+    target_link_libraries(UltraFIBUEngineTests PRIVATE ${TINYXML2_LIBRARIES})
+    if(TINYXML2_LIBRARY_DIRS)
+        target_link_directories(UltraFIBUEngineTests PRIVATE ${TINYXML2_LIBRARY_DIRS})
+    endif()
+endif()
 if(TARGET UltraCrypt)
     target_link_libraries(UltraFIBUEngineTests PRIVATE UltraCrypt)
 endif()

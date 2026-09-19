@@ -193,6 +193,19 @@ opacity. It is export-only and its own header records the limits — no embedded
 font programs (so centre/right text anchoring is *approximated from an average
 glyph width*), and gradients collapse to a blend of their end stops.
 
+**Built (0.3.0).** That writer now produces the invoice: `Apps/UltraFIBU/report/`
+builds a `VectorDocument` and hands it over, rather than adding a second
+emitter. Two things had to be established first and both held — the writer and
+`VectorStorage` reference nothing outside `VectorStorage`, so the invoice stays
+headless, and one defect had to be fixed on the way: the escaper declared
+`/WinAnsiEncoding` but replaced every code point above U+00FF with `?`, so the
+**euro sign** — WinAnsi 0x80, outside Latin-1 — printed as a question mark
+(framework 0.9.3). Right alignment is computed from the base-14 advance widths
+rather than left to the writer's average-glyph approximation, since a money
+column cannot be approximate. The writer still emits **one page**, so an invoice
+with more positions than fit is refused rather than truncated; multi-page output
+is the next thing that writer needs.
+
 For an invoice PDF that is enough to start: base-14 Helvetica is legal on an
 invoice. It is **not** enough for **ZUGFeRD**, which is a PDF/A-3 file with the
 CII XML as an embedded file — PDF/A-3 requires embedded, subset fonts, an output
@@ -1145,7 +1158,7 @@ Tests/UltraFIBU/              # ctest, gated by ULTRACANVAS_BUILD_FIBU_TESTS
 
 | Test | Why |
 |---|---|
-| **DATEV round-trip**: export a stack, re-import it, compare the journal | The one test that catches sign/`Soll-Haben`, comma-decimal and `TTMM` mistakes at once |
+| **DATEV round-trip** ✅: export a stack, re-import it, compare the journal | The one test that catches sign/`Soll-Haben`, comma-decimal and `TTMM` mistakes at once. In place as `TestDatevRundlauf`; a deliberately swapped `Soll/Haben` flag in the exporter is reported by it |
 | **Golden files** for every generated artefact (DATEV CSV, UStVA XML, XRechnung, OSS CSV, `index.xml`) | Byte-comparison against a reviewed fixture; a diff in CI is the earliest possible warning |
 | **Fiscal-calendar property tests**: 1 January, **1 April**, 1 July years, a *Rumpfwirtschaftsjahr*, a leap February | The flexible *Geschäftsjahr* is the requirement most likely to be broken by an innocent change elsewhere |
 | **Money property tests**: rounding at .005, 19 % and 7 % splits, discount allocation summing to the total, currency conversion | Half-up rounding and allocation are the arithmetic the tax office will re-do |
@@ -1177,9 +1190,9 @@ application driver-agnostic meanwhile, so the two tracks only meet at A8.
 | **B2** | `UltraCanvasXML` over the tinyxml2 the framework already links — a facade, not a new dependency | Round-trips a ZUGFeRD CII file and a CAMT.053 statement |
 | **B3** | `UltraCanvasMoney` + currency/number input element + German formatting helpers | Property tests in `Tests/` |
 | **A1** | Engine skeleton, store + migrations, *Mandant*, **Geschäftsjahr (flexible start)**, chart of accounts (**SKR03 shipped first**, SKR04 beside it, both as data, each account carrying its EÜR line, BWA position **and balance-sheet classification**), *Steuerschlüssel* table, number ranges; master data for **Kunden/Lieferanten with USt-IdNr, address, contact** incl. offline VAT-number checksums; **user table and roles from the first schema** (§10.2), so attribution is unbroken when the server arrives; German UI shell | Create a 1 April fiscal year, import SKR03, enter a supplier, see it in a grid |
-| **A2** | Documents and the journal: outgoing invoice editor + PDF, incoming receipts with file attachment, postings, *Storno*, **Festschreibung**, hash chain, audit trail, journal view | A month of postings, frozen, with a *Storno* and a verified hash chain |
-| **A3** | **DATEV**: export and import of categories 21 / 16 / 20, monthly stacks, `WJ-Beginn` from the *Geschäftsjahr*, round-trip test against the user's real files | The user's *Kanzlei* imports a stack without errors — the real acceptance test |
-| **A4** | Bank: CAMT.053 / MT940 / CSV import, assignment with learning rules; reports: journal, *Summen- und Saldenliste*, **EÜR**, **BWA**, Cashflow, and the UStVA figures on screen | Figures reconcile against the user's existing bookkeeping for one closed month |
+| **A2** *(engine ✅, PDF ✅, screens ✅ read-only)* | Documents and the journal: `Beleg`/`BelegPosition`/`Buchung`, posting with the automatic tax split, *Storno*, payments, **Festschreibung** reaching the rows, the hash chain and its verifier, the Summen- und Saldenliste, file attachment with a SHA-256, and nine `ultrafibu` commands. **Still open: the document editor, and multi-page PDF output** | Done for the engine: a month entered, posted, paid, partly reversed, frozen and verified — 126 checks, including three lines of 33,33 EUR at 19 % owing 19,00 and a row edited with plain SQL being caught |
+| **A3** *(export ✅ and import ✅ for category 21, 20 ✅; 16 open)* | **DATEV**: `EXTF` Buchungsstapel and Kontenbeschriftungen, one file per calendar month, `WJ-Beginn` from the *Geschäftsjahr*, CP1252/CRLF, unsigned `Umsatz`, and `datev-pruefen` to check the shipped column definition against a real file. **Import reads a stack by the column names the file itself carries**, so it does not depend on that definition; it is all-or-nothing, refuses the same file twice by its hash, and imported rows join the hash chain. **Still open: category 16 (Debitoren/Kreditoren, ~240 columns, not guessed) and the `datev_bu` mapping, which is what a round-trip currently loses** | The user's *Kanzlei* imports a stack without errors — the real acceptance test, which needs their file |
+| **A4** *(import ✅ and assignment ✅; learning rules and the reports open)* | Bank: CAMT.053 / MT940 / CSV import, assignment with learning rules; reports: journal, *Summen- und Saldenliste*, **EÜR**, **BWA**, Cashflow, and the UStVA figures on screen. **Import reads all three formats, picks the reader by content, is idempotent per line, and refuses a statement whose balances do not match its entries. Assignment scores candidates and proposes; confirming books through `ZahlungErfassen`. Still open: the per-partner learning rules, EÜR, BWA and Cashflow** | Figures reconcile against the user's existing bookkeeping for one closed month |
 | **A5** | **ELSTER**: UStVA XML for manual upload, ERiC backend behind it, *Dauerfristverlängerung*, **ZM**, submission log with *Transferticket* | A test-period submission accepted by ERiC validation |
 | **A6** | **OSS/IOSS**: per-country ledger, quarterly figures, BOP CSV, §3c threshold monitor, Kz 45 linkage; BZSt eVatR REST qualified confirmation with stored proof | A quarter's OSS figures matching a hand calculation; a stored confirmation record |
 | **A7** | **E-Rechnung**: read XRechnung (UBL+CII) and ZUGFeRD; write XRechnung; DATEV XML document package (§4.2) | A received ZUGFeRD invoice becomes a proposed *Beleg*; an issued XRechnung passes the KoSIT validator |
@@ -1188,7 +1201,10 @@ application driver-agnostic meanwhile, so the two tracks only meet at A8.
 | **A10** | **Jahresabschluss**: *Bilanz* and GuV from the balance-sheet classification, then **E-Bilanz** — the XBRL taxonomy submission ERiC validates with its `checkBilanz_<taxonomy>` plugin (§2) | A balance sheet that balances, and an E-Bilanz accepted by ERiC validation for a test period |
 | **later** | ZUGFeRD *output* (PDF/A-3 in the PDF writer), FinTS 3.0 fetching (after product registration), OCR-assisted receipt capture | — |
 
-A1–A3 is the smallest set that replaces a spreadsheet and keeps the *Kanzlei*
+A2's engine, its invoice PDF and its four screens are in. What remains of it is
+the document editor - entering an invoice with its positions, which needs a form
+rather than a table - and multi-page PDF output in the framework's writer
+(§3.2). A1–A3 is the smallest set that replaces a spreadsheet and keeps the *Kanzlei*
 happy; A4–A5 is the point at which the application files its own VAT; A6 covers
 the OSS obligation; A8 is the multi-user requirement, gated only on B4 running
 beside it from the start; A10 is where the *Kanzlei*'s last remaining job comes

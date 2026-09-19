@@ -1,0 +1,62 @@
+# UltraFIBU - Spaltenzuordnung fuer CSV-Kontoauszuege
+#
+# ============================================================================
+# WICHTIG - SPALTENNUMMERN MUESSEN AN DER ECHTEN DATEI GEPRUEFT WERDEN.
+# ============================================================================
+# Anders als CAMT.053 hat CSV keine festgelegte Form: jede Bank exportiert
+# andere Spalten in anderer Reihenfolge. Diese Datei ist deshalb eine
+# DATENDATEI und kein C++-Quelltext - eine andere Bank ist eine neue Datei
+# hier, kein neues Programm.
+#
+# SO WIRD SIE GEPRUEFT:
+#   ultrafibu bank-import <datei> <bankkonto> <auszug.csv>
+# Ohne --uebernehmen wird nichts geschrieben; stattdessen werden die ersten
+# Zeilen so angezeigt, wie das Profil sie liest. Stimmen Datum, Betrag,
+# Name und Verwendungszweck, ist die Zuordnung richtig. Stimmen sie nicht,
+# hier korrigieren und erneut aufrufen.
+#
+# WARUM CSV DIE SCHLECHTESTE WAHL IST:
+# Ein CSV-Auszug enthaelt keine Salden. CAMT.053 bringt Anfangssaldo,
+# Endsaldo und alle Buchungen mit, und der Import rechnet nach, ob
+# Anfangssaldo + Buchungen = Endsaldo ergibt - damit faellt eine verlorene
+# oder doppelte Zeile sofort auf. Bei CSV ist diese Pruefung unmoeglich.
+# Wenn die Bank CAMT.053 anbietet, ist das die richtige Datei.
+#
+# FORMAT:  schluessel = wert
+# Spaltennummern sind 1-basiert; "-" bedeutet "gibt es in dieser Datei nicht".
+#
+#   trenner          Feldtrenner, ein Zeichen (Standard ;)
+#   kopfzeilen       Wie viele Zeilen am Anfang uebersprungen werden
+#   datumsformat     TT.MM.JJJJ | TT.MM.JJ | JJJJ-MM-TT
+#   dezimaltrenner   , oder .
+#   encoding         cp1252 (Standard) oder utf8
+#
+# Betrag entweder als EINE vorzeichenbehaftete Spalte:
+#   betrag = 5
+# oder als ZWEI Spalten (Soll = Abgang, Haben = Eingang):
+#   soll = 5
+#   haben = 6
+# oder als Betrag plus getrennte Richtungsspalte:
+#   betrag = 5
+#   richtung = 6
+#   richtung_eingang = H
+#
+name = Standard (generisch)
+trenner = ;
+kopfzeilen = 1
+datumsformat = TT.MM.JJJJ
+dezimaltrenner = ,
+encoding = cp1252
+
+buchungstag = 1
+valuta = 2
+gegen_name = 3
+verwendungszweck = 4
+betrag = 5
+waehrung = 6
+gegen_iban = 7
+gegen_bic = 8
+buchungstext = 9
+soll = -
+haben = -
+richtung = -
