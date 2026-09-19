@@ -1,7 +1,7 @@
 // UltraCanvasVectorElement.h
 // UI Element for Vector Document Display and Interaction
-// Version: 2.0.0
-// Last Modified: 2025-01-20
+// Version: 2.1.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -65,6 +65,9 @@ namespace UltraCanvas {
         float zoomAnchorDocX = 0.0f, zoomAnchorDocY = 0.0f;
         float zoomAnchorX = 0.0f, zoomAnchorY = 0.0f;
         VectorStorage::Matrix3x3 viewTransform;
+        // A document set before the layout has sized this element cannot be
+        // fitted yet; the fit waits for the first frame that has a real box.
+        bool fitPending = false;
         bool isPanning = false;
         Point2Di lastMousePos{0, 0};
         std::string selectedElementId;

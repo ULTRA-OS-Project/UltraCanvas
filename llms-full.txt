@@ -4762,95 +4762,116 @@ FILE: Docs/UltraCanvas/UltraCanvasAIExamples.md
 
 ## Overview
 
-An `.ai` file needs no reader of its own. Since **Illustrator 9** the format
-*is* PDF: the page content is ordinary PDF, and Illustrator's own editing data
-rides along in an extra stream (`AIPrivateData`) that every other PDF consumer
-ignores. Both samples shipped under `media/vector/AI/` are exactly that —
-`%PDF-1.5`, one page, `AIPrivateData` present.
+Since **Illustrator 9** an `.ai` file is a PDF — but that alone does not make
+it readable by a PDF viewer. Illustrator's **"Create PDF Compatible File"**
+option decides whether the PDF page carries the artwork at all:
 
-So UltraCanvas reads `.ai` through the **MuPDF-backed PDF engine**, the same
-path the PDF Documents page uses, and writes it through the Vector plugin's
-`VectorConverter::AIConverter`, which is **export-only**.
+| Saved with PDF compatibility | What the file contains | What renders it |
+|---|---|---|
+| **On** | A normal PDF page that draws the artwork, *plus* the private `AIPrivateData` streams Illustrator edits from | Any PDF engine |
+| **Off** | A valid PDF whose page content stream draws **nothing** — the artwork exists only in `AIPrivateData` | The private data has to be read |
+
+Both samples under `media/vector/AI/` are the second kind (CorelDRAW exports;
+several other applications write them too). Their page content stream is 47
+bytes that set a transform and a graphics state and draw nothing, so a PDF
+viewer correctly renders a blank page — which is what UltraCanvas, and the
+online `.ai` viewers this was checked against, used to show.
+
+So UltraCanvas reads `.ai` through the Vector plugin's
+`VectorConverter::AIConverter`, which goes after the private data, and falls
+back to the PDF engine for a file whose artwork really is in its page.
 
 | Direction | Component | Notes |
 |---|---|---|
-| Read | `UltraCanvasPDFView` / `PDFEngineFactory` (`ULTRACANVAS_PLUGIN_PDF`) | Modern PDF-based `.ai`; paths, clips, transparency groups, gradients, embedded fonts and images render as in any PDF |
-| Write | `VectorConverter::AIConverter` (Vector plugin) | Emits the plugin's PDF output under the `.ai` extension — valid for Illustrator and every PDF consumer |
-
-Legacy (v8 and earlier) `.ai` files are EPS/PostScript-based. `AIConverter::ValidateData()`
-recognizes them (`%!PS` as well as `%PDF-`), but the writer does not produce them.
+| Read | `VectorConverter::AIConverter` (`UltraCanvasAIReader.cpp`) | Decodes the `/AIPrivateData` streams and interprets Illustrator's art language into a `VectorStorage::VectorDocument` |
+| Read (fallback) | `UltraCanvasPDFView` / `PDFEngineFactory` (`ULTRACANVAS_PLUGIN_PDF`) | A PDF-compatible `.ai` carries no private data; `AIConverter` declines it and the PDF engine renders the page |
+| Write | `VectorConverter::AIConverter` | Export-only: emits the plugin's PDF output under the `.ai` extension — valid for Illustrator and every PDF consumer |
 
 **Demo source:** `Apps/DemoApp/UltraCanvasAIExamples.cpp`
+**Reader:** `UltraCanvas/Plugins/Vector/UltraCanvasAIReader.cpp`
+**Test:** `Tests/AIReaderTest.cpp`
 **Demo page:** Vector Elements → *AI Artwork*
 **Namespace:** `UltraCanvas`
 
-## Why the `.ai` extension needs no special case
-
-`UltraCanvasPDFView::LoadFromPath()` reads a document that fits in memory
-(anything up to `GetMaxInMemoryBytes()`, 256 MB by default) into a buffer and
-hands it to MuPDF as `"application/pdf"` — the format is stated outright rather
-than sniffed from the file name. A `.ai` file therefore opens with no extension
-mapping and no conversion step:
+## Reading an `.ai`
 
 ```cpp
-auto view = CreatePDFView("AIView", 0, 0, 0, 0);
-view->onError = [](const std::string& msg) { /* report */ };
+#include "UltraCanvasMetafileConverters.h"
+#include "UltraCanvasVectorElement.h"
 
-const std::string path = NormalizePath(GetResourcesDir() + "media/vector/AI/turtle.ai");
-if (view->LoadFromPath(path)) {
+VectorConverter::AIConverter converter;
+VectorConverter::ConversionOptions options;
+options.WarningCallback = [](const std::string& message) { /* report */ };
+
+auto document = converter.Import(
+        NormalizePath(GetResourcesDir() + "media/vector/AI/turtle.ai"), options);
+
+if (document) {
+    auto view = CreateVectorElement("AIView", 0, 0, 800, 600);
+    view->SetDocument(document);
     view->ZoomToFit();
 }
 ```
 
-The streaming fallback (used for a document too large to hold in memory) goes
-through MuPDF's own format detection, which recognizes the `%PDF-` header
-regardless of the extension — so both load paths handle `.ai`. Verified against
-both shipped samples: each opens with one page through `OpenInMemory()` and
-through `Open()`.
+`Import()` returns null for a `.ai` that holds no private artwork, with a
+warning that says so — that is the signal to hand the file to the PDF engine
+rather than an error. `UltraCanvasVectorFormatsPlugin::LoadVectorDocument()`
+and `CreateConverterForExtension("ai")` reach the same converter.
+
+### What the reader understands
+
+The art language is the same PostScript-flavoured operator set that legacy
+(v8 and earlier) EPS-based `.ai` files carry in the open, so a legacy file
+reads through the same parser with no container step.
+
+| Area | Operators | Notes |
+|---|---|---|
+| Path construction | `m`, `l`/`L`, `c`/`C`, `v`/`V`, `y`/`Y` | The case distinction marks a corner or smooth anchor — editing information; both draw the same segment. `v` and `y` are the shorthands whose control point coincides with an endpoint |
+| Painting | `n`/`N`, `f`/`F`, `s`/`S`, `b`/`B` | The lowercase form closes the subpath first |
+| Clipping | `W` | Clips the rest of the enclosing group; becomes a `VectorClipPath` definition and a group carrying it |
+| Compound paths | `*u` … `*U` | All subpaths become one object, so a filled shape keeps its holes |
+| Structure | `u`/`U`, `Lb`/`Ln`/`LB` | Groups and named layers |
+| Graphics state | `w`, `J`, `j`, `M`, `d`, `XR` | Width, cap, join, miter limit, dashes, winding rule |
+| Colour | `g`/`G`, `k`/`K`, `Xa`/`XA`, `x`/`X`, `Xx`/`XX`, `p`/`P` | Grey, CMYK, RGB, spot (converted to its CMYK equivalent) and patterns (flat colour) |
+| Transparency | `Xy` | The AI9 operator; blend mode and opacity survive, isolation and knockout do not |
+| Gradients, text | `Bd`…`BB`, `To`…`TE` | Not imported; reported through `WarningCallback` rather than dropped silently, and the paths around them still come through |
+
+Anything else is counted and listed in one summary warning, so a file that
+displays wrong says which operators it needed.
+
+### Coordinates
+
+Illustrator's ruler space puts the origin at the **top-left** of the artboard
+with y running down as negative numbers; a legacy EPS-based `.ai` uses
+PostScript's **bottom-left** origin with y running up. Both map onto the
+document's y-down page, and the reader picks between them from the art's own
+extent. The page size comes from `%AI5_ArtSize`, falling back to
+`%%BoundingBox`.
 
 ## Example: the demo page
 
-The page is a flex column — title, format note, toolbar, viewer, status row,
-notes panel — with a dropdown that switches between the shipped samples.
+The page is a flex column — title, format note, toolbar, viewer stage, status
+row, notes panel. The stage holds both viewers and shows whichever route the
+file took, so the toolbar's zoom buttons drive the active one:
 
 ```cpp
-auto root = std::make_shared<UltraCanvasContainer>("AIExamples", 0, 0, 1000, 780);
-root->layout.SetFlexColumn().SetFlexGap(8)
-            .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-root->SetPadding(10, 12, 10, 12);
+auto vectorView = CreateVectorElement("AIVectorView", 0, 0, 0, 0);
+VectorElementOptions options = vectorView->GetOptions();
+options.InteractionMode = VectorInteractionMode::PanZoom;
+options.BackgroundColor = Colors::White;
+vectorView->SetOptions(options);
 
-auto view = CreatePDFView("AIView", 0, 0, 0, 0);
-view->layoutItem.SetFlexGrow(1).SetFlexShrink(1)
-                .SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-std::weak_ptr<UltraCanvasPDFView> viewWeak = view;
-
-// Page counter and zoom read-out, wired before the first load so the
-// initial document is reflected too.
-view->onPageChanged = [pageLabel](int cur, int total) {
-    pageLabel->SetText("Page " + std::to_string(cur) + " / " + std::to_string(total));
-};
-view->onZoomChanged = [zoomLabel](float percent) {
-    zoomLabel->SetText(std::to_string(static_cast<int>(std::lround(percent))) + "%");
-};
-
-auto sampleDropdown = CreateDropdown("AISample", 0, 0, 220, 30);
-sampleDropdown->AddItem("turtle.ai");
-sampleDropdown->AddItem("mandalorian-star-wars.ai");
-sampleDropdown->SetSelectedIndex(0, false);
-sampleDropdown->onSelectionChanged = [viewWeak](int index, const DropdownItem& item) {
-    if (auto v = viewWeak.lock()) {
-        v->LoadFromPath(NormalizePath(GetResourcesDir() + "media/vector/AI/" + item.text));
-        v->ZoomToFit();
-    }
-};
+AILoadResult loaded = LoadAIDocument(path);
+if (loaded.document) {
+    vectorView->SetDocument(loaded.document);
+    vectorView->ZoomToFit();          // route: Vector plugin
+} else {
+    pdfView->LoadFromPath(path);      // route: PDF engine
+}
 ```
 
-Navigation and zoom are the `UltraCanvasPDFView` methods —
-`GoToPrevPage()` / `GoToNextPage()`, `ZoomIn()` / `ZoomOut()`,
-`ZoomToFit()` / `ZoomToWidth()` / `ZoomActualSize()` — so text selection,
-search and image extraction are available on `.ai` artwork exactly as they are
-on a `.pdf`. See
-[`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) for the full viewer API.
+The page is built when the Vector plugin is (`ULTRACANVAS_HAS_VECTOR_PLUGIN`);
+the PDF fallback compiles in only where `ULTRACANVAS_PLUGIN_PDF` is also set.
 
 ## Writing `.ai`
 
@@ -4860,9 +4881,9 @@ on a `.pdf`. See
 UltraCanvasVectorFormatsPlugin::SaveVectorDocument(document, "artwork.ai");
 ```
 
-`UltraCanvasVectorFormatsPlugin::CreateConverterForExtension("ai")` returns an
-`AIConverter`. Its `CanImport()` is `false` — reading is the PDF engine's job,
-as above — so `LoadVectorDocument("artwork.ai")` returns null by design.
+The writer produces a PDF-compatible file — which is the kind the PDF engine
+renders — so a document written by UltraCanvas and read back takes the
+fallback route, not the private-data one.
 
 ## Shipped samples
 
@@ -4870,14 +4891,15 @@ as above — so `LoadVectorDocument("artwork.ai")` returns null by design.
 
 | File | Notes |
 |---|---|
-| `turtle.ai` | 319 KB, `%PDF-1.5`, one page, `AIPrivateData` present |
-| `mandalorian-star-wars.ai` | 74 KB, `%PDF-1.5`, one page, `AIPrivateData` present |
+| `turtle.ai` | 319 KB, `%PDF-1.5`, empty page, 868 stroked paths in the private data |
+| `mandalorian-star-wars.ai` | 74 KB, `%PDF-1.5`, empty page, 72 stroked paths in the private data |
 
 ## See also
 
-- [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the viewer this page is built on
 - [`UltraCanvasVectorConverters.md`](UltraCanvasVectorConverters.md) — the converter matrix `AIConverter` belongs to
-- [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, which is what a legacy `.ai` would need
+- [`UltraCanvasVectorRaster.md`](UltraCanvasVectorRaster.md) — the `UltraCanvasVectorElement` viewer
+- [`UltraCanvasPDFExamples.md`](UltraCanvasPDFExamples.md) — the PDF viewer used for the fallback route
+- [`UltraCanvasEPSExamples.md`](UltraCanvasEPSExamples.md) — the PostScript interpreter, a separate engine for `.eps`
 
 ==============================================================================
 FILE: Docs/UltraCanvas/UltraCanvasAdjacencyDiagramExamples.md
@@ -19797,7 +19819,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
@@ -32221,7 +32243,7 @@ viewer in a top-level window.
 | `Document` | PDF | `UltraCanvasPDFView` (MuPDF, `ULTRACANVAS_PLUGIN_PDF`) |
 | `Sheet` | ODS, CSV, TSV | `UltraCanvasSpreadsheet` |
 | `Model` | STL always; OBJ, PLY, 3DS, COLLADA, FBX, X3D/VRML, Alembic, MilkShape 3D, DirectX `.x`, `.blend` and STEP once the application has called `RegisterModelFormatsPlugin()` | `UltraCanvasSTLElement` — an OpenGL viewer where GL is enabled, and otherwise a **software-rendered still** of the mesh (the same shaded three-quarter view the Filer thumbnails with, from `UltraCanvasModelRaster.h`) rather than a text placeholder |
-| `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF and XAR once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
+| `Vector` | SVG/SVGZ and EPS/PS arrive as `Image` (the pipeline rasterizes them). Everything else is a drawing: DXF, the DWG family (`.dwg`, `.dwt`, `.dws`, `.sv$`, and a `.bak` whose header says it is one), EMF, WMF, XAR and `.ai` (from its Illustrator private data) once the application has called `RegisterVectorFormatsPlugin()` | `UltraCanvasVectorElement` — the `VectorDocument` itself, sharp at any zoom, read through the [vector preview seam](UltraCanvasVectorConverters.md#previews-what-the-media-viewer-and-the-filer-show). A drawing this build has no reader for falls back to the **preview bitmap the file carries inside itself** (Xara, CorelDRAW, an EPS written with one) on the image surface, and says so when there is not even that |
 | `Text` | txt, md, json, xml, source code, tex, … | Read-only `UltraCanvasTextArea` (syntax highlighting, markdown; a `.tex` is imported by the [LaTeX document reader](UltraCanvasLaTeXDocumentReader.md) and shown as the rendered document, formulas typeset) |
 | `Book` | EPUB, FB2, MOBI, PRC, AZW, AZW3 | `UltraCanvasEBookViewer` (chapter toolbar, TOC, reflowing content) |
 | `Font` | TTF, TTC, OTF, OTC, WOFF, WOFF2, PFA/PFB (Type 1), BDF, PCF, FON/FNT | `UltraCanvasFontViewer` (scrolling glyph grid, range picker) |
@@ -54669,7 +54691,7 @@ from an external "Show password" checkbox. See
 | Show an image (file, memory, SVG, animation) | `UltraCanvasImageElement` | `UltraCanvasImageElement.h` |
 | Zoomable / pannable image | `UltraCanvasZoomPanImage` | `UltraCanvasImageViewer.h` |
 | **Edit** a bitmap: layers, selection, brushes, zoom / pan with pixel grid (the model is `UCRasterDocument`, the brushes `UltraCanvasBrushEngine.h`) | `UltraCanvasPaintSurface` | `UltraCanvasPaintSurface.h` |
-| Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG (also `.dwt` / `.dws` / `.sv$`), EMF, WMF via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
+| Show a vector drawing (`VectorStorage::VectorDocument` — SVG, XAR, DXF, DWG (also `.dwt` / `.dws` / `.sv$`), EMF, WMF, AI via the Vector plugin) with zoom / pan | `UltraCanvasVectorElement` | `UltraCanvasVectorElement.h` |
 | **Edit** a vector drawing: page, rulers, guides, grid, snapping, selection handles, tool hooks in document coordinates (the model is `VectorStorage::VectorDocument`, the editing layer `DataFormats/UltraCanvasVectorEdit.h`, the node model `UltraCanvasBezierPath.h`) | `UltraCanvasVectorCanvas` | `UltraCanvasVectorCanvas.h` |
 | Any media file — image, video, audio, PDF, text, spreadsheet, eBook, font | `UltraCanvasMediaViewer` | `UltraCanvasMediaViewer.h` |
 | Video / audio playback | `UltraCanvasVideoPlayerElement`, `UltraCanvasAudioPlayerElement` | matching `*.h` |
@@ -55435,7 +55457,7 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | PDF | `PDFVectorConverter` | – | ✓ | Hand-assembled PDF 1.4: base-14 fonts, ExtGState opacity, dashes, verified xref. Reading via the MuPDF PDF plugin. |
 | EMF | `EMFConverter` | ✓ | ✓ | [MS-EMF] records: GDI paths with real beziers, geometric pens (caps/joins/user-style dashes), `ExtTextOutW` text with GDI anchoring. No alpha in GDI — opacity flattens toward white. The reader parses the GDI object table, path records, immediate polygon/polyline/bezier records and text (`TA_UPDATECP` chains merge back into spans). |
 | WMF | `WMFConverter` | ✓ | ✓ | [MS-WMF] 16-bit records with the placeable header (twips). No bezier record — curves flatten to polylines; dashes approximate as `PS_DASH`. The reader covers the object table, polygon/polyline/rect/ellipse records and TextOut/ExtTextOut. |
-| AI | `AIConverter` | – | ✓ | Modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading is the PDF plugin's job. |
+| AI | `AIConverter` | ✓ | ✓ | Writing: modern `.ai` is PDF-based, so the output is the PDF writer's under the `.ai` extension — valid for Illustrator and every PDF consumer. Reading (`UltraCanvasAIReader.cpp`): a `.ai` saved *without* "Create PDF Compatible File" has an empty PDF page and keeps all of its artwork in the private `/AIPrivateData` streams, so a PDF engine renders it blank. The reader decodes those streams (ASCIIHex / ASCII85 / Flate) and interprets Illustrator's art language — path construction, painting with closepath on the lowercase operators, clipping (`W`), compound paths (`*u`/`*U`), groups, named layers, the graphics state, the grey/CMYK/RGB/spot colour operators and the AI9 transparency operator `Xy`. Legacy (v8 and earlier) EPS-based `.ai` files carry the same language in the open and read through the same parser; Illustrator's y-down ruler space and PostScript's y-up space both map onto the document page. Gradients and text are reported, not imported. A PDF-compatible `.ai` has no private data and is declined, so the caller falls back to the PDF plugin. |
 | DXF | `DXFConverter` | ✓ | ✓ | R2000 tagged ASCII per Autodesk's public reference. Layers map to real DXF layers, fills become solid HATCH entities with exact spline boundary edges, strokes become LWPOLYLINE/SPLINE (exact piecewise-bezier NURBS) with lineweights and dash linetypes, true colour + full-palette nearest-ACI fallback. Opacity is reported, not written. The reader parses LINE/CIRCLE/ARC/ELLIPSE/LWPOLYLINE (bulges)/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/3DFACE/LEADER/TEXT/ATTRIB/MTEXT with the LAYER/LTYPE/STYLE tables, plus the BLOCKS section: INSERT/MINSERT expand nested, scaled, rotated, arrayed and mirrored (OCS extrusion) blocks with "0"-layer and ByBlock inheritance, and DIMENSION draws through its rendered block. Off/frozen layers, invisible entities and paper-space entities (when model space has content) are not imported. The page is the drawing's real extents (block content included, reconciled with `$EXTMIN`/`$EXTMAX`), at physical size when `$INSUNITS` declares a unit and the result is a usable page, otherwise scaled to a sensible point size, since drawing units are arbitrary; the unit and scale are recorded on the document, and layer-table properties (colour, lineweight, linetype, frozen/locked/plot flags) land on the `VectorLayer`s. Piecewise-bezier splines reproduce exactly, general NURBS sample via de Boor. |
 | DWG | `DWGConverter` | ✓ | ✓* | Reading is native: `UltraCanvasDWGDecoder` decodes the R13–R2018 drawing database (AC1012–AC1032: bit-coded objects, the R2004+ encrypted header and LZ77-compressed pages, the R2007 Reed-Solomon pages, object map, CLASSES, block definitions) and renders it as DXF for the DXF reader — LINE/POINT/CIRCLE/ARC/ELLIPSE/LWPOLYLINE/POLYLINE (2D, 3D, polyface and polygon meshes)/SPLINE/HATCH/SOLID/TRACE/3DFACE/TEXT/ATTRIB/MTEXT/LEADER/INSERT+MINSERT/DIMENSION with the LAYER/LTYPE/STYLE tables, true colours, lineweights and visibility; 3D solids, images, proxies, tables and multileaders are reported and skipped. `DWGConverter::DecodeToDxf()` exposes the conversion. Writing delegates to GNU LibreDWG's `dxf2dwg` (`ULTRACANVAS_DXF2DWG` or PATH) — DWG has no public specification and the only open implementation is GPL, so it stays an optional external process; without it the export warns and declines (use DXF, AutoCAD's own exchange format). `dwg2dxf` is only a fallback for files the native decoder declines (pre-R13 drawings). The reader answers for the whole drawing family, not just `.dwg` — see [The DWG family](#the-dwg-family). |
 
@@ -55475,6 +55497,9 @@ std::string dxfText = DWGConverter::DecodeToDxf(dwgBytes);   // DWG -> DXF text
 
 auto fromCad = DXFConverter().Import("plan.dxf");
 auto fromEmf = EMFConverter().Import("clip.emf");
+// null (with a warning) when the .ai keeps its artwork in its PDF page:
+// that file is the PDF plugin's to render.
+auto fromAi  = AIConverter().Import("artwork.ai");
 ```
 
 ## The DWG family

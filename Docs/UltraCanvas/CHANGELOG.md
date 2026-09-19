@@ -1,3 +1,73 @@
+#### 2026-09-19 *0.8.91*
+- **Illustrator artwork rendered as a blank page.** "Since Illustrator 9 a
+  `.ai` file is a PDF" is only half true, and the demo app's AI Artwork page
+  acted on the wrong half: it handed `.ai` straight to the MuPDF viewer.
+  Illustrator's *Create PDF Compatible File* option decides whether the PDF
+  page carries the artwork at all - with it off (and it is off in what
+  CorelDRAW and several other exporters write) the file is a valid PDF whose
+  page content stream draws nothing, and every path lives in the private
+  `/AIPrivateData` streams instead. Both samples in `media/vector/AI` are of
+  that kind: their page content is 47 bytes that set a transform and a
+  graphics state. A PDF engine renders exactly that, so the page was blank -
+  correctly, and unhelpfully. The online `.ai` viewers this was checked
+  against fail the same way.
+- **New: `UltraCanvas/Plugins/Vector/UltraCanvasAIReader.cpp`** - the import
+  side of `VectorConverter::AIConverter`, which stops being export-only.
+  It finds the `/AIPrivateData` streams in the PDF container, undoes their
+  filter chain (ASCIIHex / ASCII85 / Flate) and interprets Illustrator's art
+  language into a `VectorStorage::VectorDocument`: path construction
+  (`m`, `l`, `c`, `v`, `y`) with closepath on the lowercase paint operators,
+  clipping (`W`), compound paths (`*u`/`*U`) so filled shapes keep their
+  holes, groups, named layers, the graphics state (width, cap, join, miter,
+  dashes, winding rule), every colour operator (grey, CMYK, RGB, spot, and
+  patterns as flat colour) and the AI9 transparency operator `Xy`. Gradients
+  and text are counted and reported through `WarningCallback` rather than
+  dropped silently, as is every operator the parser does not know, so a file
+  that displays wrong says what it needed.
+- Legacy (v8 and earlier) EPS-based `.ai` files carry the same art language
+  in the open and read through the same parser with no container step. The
+  two coordinate spaces - Illustrator's ruler space, origin top-left with y
+  down as negative numbers, and PostScript's bottom-left origin with y up -
+  both map onto the document's y-down page, chosen from the art's own extent.
+- **The demo page now names the route it took.** It reads through the Vector
+  plugin and shows the drawing in an `UltraCanvasVectorElement` (drag to pan,
+  wheel to zoom); a `.ai` that really does draw through its PDF page carries
+  no private data, `AIConverter::Import()` declines it with a warning that
+  says so, and the MuPDF view takes over. That is the file `AIConverter`
+  itself writes, so the fallback is the round trip of the plugin's own
+  output. The page is built wherever the Vector plugin is, rather than only
+  where the PDF plugin is.
+- **`.ai` joins the Vector plugin's readable extensions**, so the reader is
+  not the demo page's alone: `UltraCanvasVectorFormatsPlugin` advertises it,
+  and the vector preview seam it registers means UltraFiler tiles and the
+  media viewer now draw such a file *from the drawing* instead of falling
+  back to whatever bitmap it carries. A PDF-compatible `.ai` is declined as
+  before and keeps its existing route.
+- **`UltraCanvasVectorElement` zoomed by doing nothing, and Fit threw the
+  drawing off the page.** Found while building the page above, and it
+  affected every user of the element (the DWG / DXF page's zoom buttons
+  included). The element owns a view transform - `zoomLevel` and
+  `panOffset` - but then handed `VectorRenderer` a viewport of
+  `finalBounds / zoomLevel`, and the renderer fits and centres the ViewBox
+  into whatever viewport it is given. Expressed in document units that way,
+  the renderer's scale cancelled `zoomLevel` exactly, so zooming changed
+  nothing at all; and its centring landed on top of the centring already in
+  `panOffset`, so the first `ZoomToFit()` that ran with a real box threw the
+  drawing half a viewport to the right. The renderer now gets no viewport
+  and the element's transform is the only one; `ScreenToDocument()`,
+  hit-testing and wheel-zoom anchoring already assumed exactly that, so they
+  become correct too. Culling goes with the viewport, which costs only time -
+  `Render()` already clips to the element's bounds.
+- **A document set before the layout ran was fitted to a zero-sized box.**
+  `SetDocument()` fits immediately, but a page builds its widgets before it
+  has been laid out, so `finalBounds` was still empty and the fit settled on
+  `MinZoom`. The renderer's own fit hid this; with that gone the fit is
+  remembered and redone on the first frame that has a real box.
+- **New: `Tests/AIReaderTest.cpp`** - the two shipped samples must import as
+  real geometry, upright and on the page their header declares (868 and 72
+  stroked paths, beziers intact), which is the check that would have caught
+  this; plus the art language on a synthetic legacy file, and the
+  PDF-compatible case that must be declined rather than imported empty.
 #### 2026-09-19 *0.8.90*
 - **Every 3D model in the demo was drawn standing on its nose.** The viewers'
   cameras put +Y on screen, but nothing told them which axis a mesh called up,

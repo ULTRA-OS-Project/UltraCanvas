@@ -991,8 +991,8 @@ namespace UltraCanvas {
                               "DemoApp/UltraCanvasDWGExamples.cpp",
                               "Docs/UltraCanvas/UltraCanvasVectorConverters.md");
 #endif
-#ifdef ULTRACANVAS_PLUGIN_PDF
-        vectorBuilder.AddItem("aiartwork", "AI Artwork", "Adobe Illustrator .ai artwork - PDF-based files read through the PDF engine, written by the Vector plugin's AIConverter",
+#ifdef ULTRACANVAS_HAS_VECTOR_PLUGIN
+        vectorBuilder.AddItem("aiartwork", "AI Artwork", "Adobe Illustrator .ai artwork - the Vector plugin's AIConverter reads Illustrator's art language out of the file's private data, with the PDF engine for PDF-compatible files",
                               ImplementationStatus::FullyImplemented,
                               [this]() { return CreateAIVectorExamples(); },
                               "DemoApp/UltraCanvasAIExamples.cpp",
