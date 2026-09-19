@@ -6,8 +6,8 @@
 // All functions here may block on filesystem I/O; the core keeps them off the
 // UI thread. They are called under the core's backend mutex — never from two
 // threads at once — so implementations need no locking of their own.
-// Version: 1.1.0
-// Last Modified: 2026-09-04
+// Version: 1.2.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -29,6 +29,19 @@ namespace UltraCanvas {
         // Ordered candidates for one representative file name (matched by its
         // extension / full name), default application first and flagged.
         std::vector<FileAssociationApp> ResolveFile(const std::string& fileName);
+
+        // The freedesktop MIME name of one file name, or "" where the
+        // platform keeps no MIME database — see FileAssociations::GetMimeType
+        // for what that means and who asks. `fileName` is a bare file name,
+        // never a path: the freedesktop globs match on the name alone, and a
+        // directory component with a dot in it would otherwise be read as a
+        // suffix.
+        std::string MimeTypeFor(const std::string& fileName);
+
+        // The generic icon name the type database gives a MIME type, or ""
+        // when it names none (or the platform has no such database). See
+        // FileAssociations::GetMimeGenericIcon.
+        std::string MimeGenericIconFor(const std::string& mime);
 
         // Launchers. All detach the started application from this process.
         bool LaunchDefault(const std::vector<std::string>& paths,

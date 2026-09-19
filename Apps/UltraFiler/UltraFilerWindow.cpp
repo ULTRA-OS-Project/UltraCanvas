@@ -1052,6 +1052,8 @@ void UltraFilerWindow::AdoptDisplayFormats(UltraCanvasFilerWidget* source) {
     // The same hook reports the Display > File extensions switches.
     settings.showFileExtensions = source->AreFileExtensionsInNames();
     settings.extensionBadge     = source->GetExtensionBadge();
+    // And Display > File icons.
+    settings.fileIconStyle = source->GetFileIconStyle();
     // And Display > Folder previews.
     settings.folderPreviews = source->AreFolderPreviewsEnabled();
     settings.Save();
@@ -1112,6 +1114,16 @@ void UltraFilerWindow::WireDisplayFormatCallbacks(UltraCanvasFilerWidget* target
     target->onDisplayFormatsChanged = [this, target]() {
         AdoptDisplayFormats(target);
     };
+    // And the settings themselves, right away. Every file display of the
+    // window is wired through here, and they are created at very different
+    // moments: the folder preview before the settings file is even read, the
+    // first tab after, and the History / Favorites / Computer displays only
+    // when one of those views is first opened. ApplySettings() reaches the
+    // ones that exist when it runs - which at start-up is the folder preview
+    // alone, since the tabs are built after it - so a display that arrives
+    // later has to be given them as it is wired, or it browses with the
+    // defaults until the user happens to change a setting.
+    ApplyDisplaySettingsTo(target);
 }
 
 void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
@@ -1128,6 +1140,9 @@ void UltraFilerWindow::ApplyDisplaySettingsTo(UltraCanvasFilerWidget* target) {
     // the tag the thumbnail tiles carry.
     target->SetFileExtensionsInNames(settings.showFileExtensions);
     target->SetExtensionBadge(settings.extensionBadge);
+    // Display > File icons: UltraFiler's own drawn icons, or the ones this
+    // desktop draws for the type.
+    target->SetFileIconStyle(settings.fileIconStyle);
     // Display > Folder previews: the first pictures inside a folder on its
     // icon.
     target->SetFolderPreviewsEnabled(settings.folderPreviews);

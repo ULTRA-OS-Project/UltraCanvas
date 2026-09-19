@@ -10,8 +10,8 @@
 // handlers Explorer's own "Open with" lists) and macOS (NSWorkspace /
 // Launch Services, macOS 12+). WebAssembly has no application registry and
 // reports no candidates.
-// Version: 1.2.0
-// Last Modified: 2026-09-12
+// Version: 1.3.0
+// Last Modified: 2026-09-17
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -52,6 +52,31 @@ namespace UltraCanvas {
         // registered for. Cache read like GetApplicationsForFiles, and false
         // on the platforms without an enumeration backend.
         bool HasDefaultApplication(const std::string& path);
+
+        // The type name the system knows this file by, as a freedesktop MIME
+        // name ("text/plain", "image/png", "application/zip"). Matched by
+        // file name — the extension, or a literal name like "makefile" — and
+        // never by reading the file, so it costs no I/O beyond the
+        // association database this service already keeps and is safe to ask
+        // for a path that is not on this machine.
+        //
+        // "" where the platform keeps no MIME database of its own: Windows
+        // and macOS associate by extension and by UTI respectively, and
+        // neither can be asked this question. It is therefore a Linux/BSD
+        // service in practice — what the freedesktop icon-naming rules need
+        // (see UltraCanvasHostFileIcons.h), not a portable type test. Cache
+        // read like the calls above once the index is warm.
+        std::string GetMimeType(const std::string& path);
+
+        // The GENERIC icon name a type falls back to when nothing on this
+        // system has an icon for the type itself: "application/pdf" is drawn
+        // as "x-office-document", a tarball as "package-x-generic". The
+        // freedesktop type database carries these as exceptions to the rule
+        // that a type falls back to the generic icon of its media type
+        // ("image/*" to "image-x-generic"), so "" means "the rule applies",
+        // not "no icon" - see UltraCanvasHostFileIcons.h, which is what asks.
+        // "" on the platforms with no MIME database, like GetMimeType.
+        std::string GetMimeGenericIcon(const std::string& mime);
 
         // Launch with the OS default application (Explorer / Finder
         // double-click semantics), detached: closing the caller never takes
