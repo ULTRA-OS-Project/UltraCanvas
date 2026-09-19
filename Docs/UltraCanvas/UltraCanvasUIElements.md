@@ -125,7 +125,7 @@ Positioning inside a container is the CSS layout engine's job (`layout` /
 | Editable menu configuration | `UltraCanvasMenuConfigWidget` | `UltraCanvasMenuConfigWidget.h` |
 | Path bar | `UltraCanvasBreadcrumb` | `UltraCanvasBreadcrumb.h` |
 | Page selector | `UltraCanvasPagination` | `UltraCanvasPagination.h` |
-| List, tree, table, sheet | `UltraCanvasListView`, `UltraCanvasTreeView`, `UltraCanvasTableView`, `UltraCanvasSpreadsheet` | matching `*.h` |
+| List, tree, table, sheet | `UltraCanvasListView` (a multi-column model with `SetShowHeader(true)` is the table: resizable columns, header tooltips, a sort indicator), `UltraCanvasTreeView`, `UltraCanvasSpreadsheet` | matching `*.h` |
 | Folder contents / file browsing | `UltraCanvasFilerWidget` | `UltraCanvasFilerWidget.h` |
 | System information (CPU, GPU, NPU, memory, drives, network, USB, Bluetooth) | `UltraCanvasHardwareInfoPanel` | `UltraCanvasHardwareInfoPanel.h` |
 

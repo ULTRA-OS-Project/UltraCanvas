@@ -539,7 +539,7 @@ graph->SetDateFormatter([](int64_t when) { return MyRelativeTime(when); });
 
 Rows are aligned by construction, so selection and scrolling are shared with the
 graph - no synchronisation to wire up. To pair an external
-`UltraCanvasTableView` instead, use the row-alignment API:
+multi-column `UltraCanvasListView` instead, use the row-alignment API:
 
 ```cpp
 const int    rows    = graph->GetRowCount();
