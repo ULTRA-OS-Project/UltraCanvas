@@ -23,6 +23,8 @@
 #include "UltraMailLocalStore.h"
 #include "UltraMailMimeCodec.h"
 #include "UltraMailContactStore.h"
+#include "UltraMailSenderIconCache.h"
+#include "UltraMailSenderTrust.h"
 #include "UltraMailOutbox.h"
 #include "UltraMailSyncScheduler.h"
 #include "UltraMailCredentialVault.h"
@@ -143,6 +145,16 @@ private:
     // Where the Save-As dialog starts: Downloads, else home, else ".".
     static std::string DefaultSaveDirectory();
 
+    // Point the sender-icon cache at its folder under the cache directory, give
+    // it the HTTPS fetcher it downloads a known service's icon with, and apply
+    // the user's "download icons of known senders" preference. Called once at
+    // startup and again whenever that preference changes.
+    void ConfigureSenderIcons();
+    // Re-read the address book into the index the sender badge classifies with,
+    // and hand it to the mail view. Cheap enough to run on every Refresh(), and
+    // that is what keeps a newly added contact's mail turning green.
+    void RefreshContactIndex();
+
     // Open the contact manager in its own window.
     void OpenContacts();
     // Seed a few contacts across sections (demo only).
@@ -212,6 +224,10 @@ private:
 
     LocalStore store_;
     ContactStore contacts_;
+    // Icons of the known services in the sender registry, under
+    // <cacheDir>/sender-icons. Read by the badge on the UI thread, filled by
+    // the sync worker; the class is internally locked for exactly that.
+    SenderIconCache senderIcons_;
     OutboxStore outbox_;
     // Cloud storage (UltraCloud): accounts + secrets behind the composer's
     // "Attach cloud link". Per-app store for now (see the module README).

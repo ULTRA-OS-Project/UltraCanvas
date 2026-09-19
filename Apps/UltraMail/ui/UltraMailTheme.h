@@ -8,8 +8,8 @@
 // Nothing here paints anything. These are values handed to catalogue elements
 // through their own SetStyle / SetTextColor / SetBorders APIs, per the
 // framework rule that applications never hand-roll a widget.
-// Version: 0.2.0 - type scale and metrics matched to UltraFiler's 9pt UI font
-// Last Modified: 2026-09-09
+// Version: 0.3.0 - sender-badge colours (kTrust*) and the badge metric
+// Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -60,6 +60,23 @@ inline const UltraCanvas::Color kUnreadText     { 21, 128,  61};
 inline const UltraCanvas::Color kWaitingTint    {255, 237, 213};
 inline const UltraCanvas::Color kWaitingText    {194,  65,  12};
 
+// Sender-badge colours. The badge left of a subject line says, at a glance,
+// who a message is from: a filled tile for someone the address book knows, an
+// outlined one for a stranger, in a colour that gets warmer the less the
+// message can be trusted. The hues are the ones the rest of the app already
+// uses for the same ideas (green = good, blue = business/known, orange =
+// waiting/caution, red = stop).
+inline const UltraCanvas::Color kTrustFriend       { 22, 163,  74};   // address book, private
+inline const UltraCanvas::Color kTrustFriendSoft   {220, 252, 231};
+inline const UltraCanvas::Color kTrustBusiness     { 37,  99, 235};   // address book, work
+inline const UltraCanvas::Color kTrustBusinessSoft {219, 234, 254};
+inline const UltraCanvas::Color kTrustNew          { 30,  35,  45};   // unknown sender
+inline const UltraCanvas::Color kTrustAdvert       { 30,  58, 138};   // bulk / marketing
+inline const UltraCanvas::Color kTrustSpam         {234,  88,  12};   // likely spam
+inline const UltraCanvas::Color kTrustSpamSoft     {255, 237, 213};
+inline const UltraCanvas::Color kTrustScam         {220,  38,  38};   // likely scam / phishing
+inline const UltraCanvas::Color kTrustScamSoft     {254, 226, 226};
+
 // ---------------------------------------------------------------------------
 // Type
 // ---------------------------------------------------------------------------
@@ -82,6 +99,7 @@ constexpr float kControlRadius = 5.0f;
 constexpr float kControlHeight = 24.0f;   // buttons and inputs (UltraFiler: 22)
 constexpr float kToolbarHeight = 28.0f;
 constexpr float kAvatarSize    = 28.0f;   // the provider / contact initial square
+constexpr float kBadgeSize     = 18.0f;   // the sender badge in a message-list row
 
 // ---------------------------------------------------------------------------
 // Element styles

@@ -43,7 +43,8 @@ bool Preferences::Load(const std::string& path) {
         if (eq == std::string::npos) continue;
         const std::string key   = Trim(trimmed.substr(0, eq));
         const std::string value = trimmed.substr(eq + 1);
-        if (key == "reading_pane") showReadingPane = ParseBool(value);
+        if (key == "reading_pane")       showReadingPane  = ParseBool(value);
+        if (key == "fetch_sender_icons") fetchSenderIcons = ParseBool(value);
     }
     return true;
 }
@@ -53,6 +54,7 @@ bool Preferences::Save(const std::string& path) const {
     if (!file.is_open()) return false;
     file << "# UltraMail preferences — view options remembered between runs.\n";
     file << "reading_pane = " << (showReadingPane ? "true" : "false") << "\n";
+    file << "fetch_sender_icons = " << (fetchSenderIcons ? "true" : "false") << "\n";
     return static_cast<bool>(file);
 }
 

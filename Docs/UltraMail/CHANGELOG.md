@@ -1,3 +1,71 @@
+#### 2026-09-19 *0.10.0*
+- **A sender badge left of every subject line.** The message list gained a
+  narrow column between From and Subject, and the reading pane's avatar became
+  the same square: the service's own icon where the address belongs to one, the
+  sender's initial where it does not, inside a frame that says who the sender
+  is — filled green for an address book contact under Family/Friends/Leisure,
+  filled blue for one under Work/Services, a black outline for a sender never
+  seen before, dark blue for bulk mail, orange for likely spam and red for a
+  likely scam. Two rules decide: known beats guessed (a contact stays a contact
+  even when the mail is bulk), and danger beats known (a message whose links
+  lie is a scam even from a known address — an address book entry says who an
+  address belongs to, not that *this* message came from them). The colour is
+  never the only place a verdict is said: the badge's tooltip spells out the
+  class, the service and every reason, and the reading pane adds a warning
+  strip above the body of anything suspicious. Nothing is hidden, moved or
+  deleted. New: `UltraMailSenderTrust`, `UltraMailSenderBadge`, the `kTrust*`
+  colours in `UltraMailTheme.h`.
+- **A cache folder of known senders' icons.** `<dataDir>/cache/sender-icons`
+  now holds one icon per entry of a curated registry of ~30 services —
+  Facebook, Instagram, WhatsApp, LinkedIn, X, Claude, OpenAI, the Google and
+  Apple services, Microsoft, GitHub, Amazon, PayPal, Stripe, eBay, Netflix,
+  Spotify, Dropbox, Slack, Discord, Telegram, Reddit, TikTok, Zoom, Booking,
+  Airbnb, DHL, UPS, FedEx — fetched once each, on the sync worker, over a
+  TLS-verified HTTPS GET, with the file extension sniffed from the bytes and a
+  failure remembered for a week rather than retried every sync. Two boundaries
+  are deliberate: **only the registry is ever fetched** (UltraMail never asks
+  the internet about a stranger's domain, which would tell a third party who
+  writes to the user), and **the fetch is injected**, so the engine keeps no
+  network dependency and the suite drives the cache with a fake. A new
+  Settings checkbox, *Download icons of known senders*
+  (`fetch_sender_icons` in `preferences.ini`), turns downloading off; icons
+  already cached keep being shown, and a missing icon is a normal state — the
+  badge falls back to the initial in the brand's own colour.
+- **A brand is matched on the registrable domain, never on a name.**
+  `amazon.secure-login.ru` is not Amazon and is not handed Amazon's icon, and —
+  as asked — a Google *service* domain is Google while an ordinary `gmail.com`
+  address is just a person (the same holds for `icloud.com`, `gmx.net` and the
+  other mailbox providers). `UltraMailSenderBrands` carries the table, the
+  registrable-domain reduction and the "does this domain really belong to the
+  brand it claims?" test the phishing scan is built on.
+- **UltraMail now says when a message's links do not go where they say.**
+  `UltraMailThreatScan` reads every link and button out of an HTML or plain
+  text body and weighs seventeen signals: anchor text naming one site while the
+  href goes to another, `http://paypal.com@203.0.113.9/` userinfo hiding the
+  real host, numeric-address and punycode targets, a brand's name worn in front
+  of a foreign domain, a sender claiming a brand its address does not own,
+  credential language plus a link off the sender's domain, `spf`/`dkim`/`dmarc`
+  failures, a Reply-To pointing elsewhere, sign-in links over plain HTTP, URL
+  shorteners, and an attachment that is a program — `Invoice_2026.pdf.exe`
+  weighs more than a plainly named `setup.exe`, because the disguise *is* the
+  attack. 45 points is a scam, 22 is suspicious, bulk markers alone are an
+  advertisement. It is just as deliberately quiet about ordinary mail: a
+  personal message, a tracking link on the sender's own domain and a genuine
+  brand newsletter all come out clean.
+- **Each body is scanned once, where it is downloaded.** The verdict (level,
+  score, reasons) is stored by `LocalStore` in a new `message_security` table —
+  schema 4 — keyed by account/folder/UID. It is a separate table rather than
+  columns on `messages` because an envelope upsert runs on every header sync,
+  long before a body exists to scan, and would reset the verdict each time. So
+  the list colours a whole folder's badges from one query, a phishing mail is
+  marked before it is ever opened, and a message cached by an older build is
+  scanned the first time it is read.
+- Docs: [`Docs/UltraMail/SenderBadges.md`](SenderBadges.md) — the colours, the
+  registry, the cache and the full rule table. Tests:
+  `Tests/UltraMail/test_senderidentity.cpp` and `test_threatscan.cpp`, plus the
+  stored-verdict and scan-on-download cases in `test_localstore.cpp` and
+  `test_syncengine.cpp`.
+
 #### 2026-09-15 *0.9.5*
 - **"Add email account" accepts a name like `Fröhling`.** Typing one into the
   wizard's Your name field (or a passphrase with an umlaut into Password) used

@@ -1,4 +1,7 @@
 // Apps/UltraMail/ui/UltraMailMailView.cpp
+// Version: 0.5.0 - a sender-badge column left of Subject, painted by the list
+//                  delegate; the folder's stored scan verdicts are read once
+//                  per list, and a row re-badges when the pane scans its body.
 // Version: 0.4.0 - folder sidebar (per-account roots), UltraCanvasListView
 //                  message list with a read/unread colour delegate, and a
 //                  reading-pane toggle (side-by-side, or Gmail open-in-place).
@@ -24,6 +27,7 @@ namespace UltraMail {
 namespace {
 
 constexpr int kFromWidth    = 160;
+constexpr int kBadgeWidth   = 26;   // the sender badge column, left of Subject
 constexpr int kSubjectMin   = 140;
 constexpr int kDateWidth    = 88;
 constexpr int kRowHeight    = 22;
@@ -131,29 +135,34 @@ public:
 
 private:
     void FitColumns() {
-        if (!model || model->GetColumnCount() < 3) return;
+        if (!model || model->GetColumnCount() < 4) return;
         if (ColumnsUserAdjusted()) return;   // once dragged, keep the user's widths
         const int w = static_cast<int>(GetWidth());
         if (w <= 0) return;
-        // Subject fills the width left by From/Date (their effective widths),
-        // leaving room for the vertical scrollbar. Uses the per-view override so
-        // it composes with interactive resize instead of rewriting the model.
-        int subj = w - GetColumnWidth(0) - GetColumnWidth(2) - 20;
+        // Subject fills the width left by From/badge/Date (their effective
+        // widths), leaving room for the vertical scrollbar. Uses the per-view
+        // override so it composes with interactive resize instead of rewriting
+        // the model.
+        int subj = w - GetColumnWidth(0) - GetColumnWidth(1) - GetColumnWidth(3) - 20;
         if (subj < kSubjectMin) subj = kSubjectMin;
-        if (GetColumnWidth(1) == subj) return;   // no change: no churn
-        SetColumnWidth(1, subj);
+        if (GetColumnWidth(2) == subj) return;   // no change: no churn
+        SetColumnWidth(2, subj);
     }
 };
 
 // ---------------------------------------------------------------------------
 // The row delegate: draws each cell's text in the read/unread colour (the
 // glyphs — ● unread, ↩ waiting for a reply — are already in the From cell's
-// text). Selection/hover backgrounds are painted by the view from its style.
-// It reads MailView::rowStates_ through a pointer to that (stable) vector.
+// text), and the sender badge in the badge column. Selection/hover backgrounds
+// are painted by the view from its style. It reads MailView::rowStates_ and
+// rowBadges_ through pointers to those (stable) vectors.
 // ---------------------------------------------------------------------------
 class MessageColorDelegate : public IItemDelegate {
 public:
     const std::vector<MailRowState>* states = nullptr;
+    const std::vector<SenderBadge>*  badges = nullptr;
+    int   badgeColumn = -1;
+    float badgeSide   = 18.0f;
     Color unreadColor;
     Color readColor;
     float fontSize   = 9.0f;
@@ -164,6 +173,21 @@ public:
                     int row, int column,
                     const ListItemStyleOption& option) override {
         if (!ctx || !model) return;
+
+        // The badge column carries no text: it is the sender badge, centred in
+        // its cell (see UltraMailSenderBadge.h for what the colours mean).
+        if (column == badgeColumn) {
+            if (!badges || row < 0 || row >= static_cast<int>(badges->size())) return;
+            const double side = badgeSide < option.rect.height ? badgeSide
+                                                               : option.rect.height - 2;
+            if (side <= 0) return;
+            DrawSenderBadge(ctx, Rect2Dd(option.columnX + (option.columnWidth - side) / 2.0,
+                                         option.rect.y + (option.rect.height - side) / 2.0,
+                                         side, side),
+                            (*badges)[row]);
+            return;
+        }
+
         ListIndex idx{row, column};
         std::string text = GetStringValue(model->GetData(idx, ListDataRole::DisplayRole));
         if (text.empty()) return;
@@ -249,6 +273,12 @@ void MailView::BuildListBox() {
     model_ = std::make_shared<UltraCanvasMultiColumnListModel>();
     model_->SetColumns({
         ListColumnDef("From",    kFromWidth,  TextAlignment::Left),
+        // The sender badge, immediately left of the subject: who the message is
+        // from, before a word of it is read. Titled with a bullet rather than a
+        // word so the 26px column keeps its header readable.
+        ListColumnDef("\xE2\x97\x8F", kBadgeWidth, TextAlignment::Center,
+                      "Sender: green = contact, blue = business contact, black = new, "
+                      "dark blue = advertisement, orange = spam, red = likely scam"),
         ListColumnDef("Subject", kSubjectMin, TextAlignment::Left),
         ListColumnDef("Date",    kDateWidth,  TextAlignment::Left),
     });
@@ -274,6 +304,9 @@ void MailView::BuildListBox() {
 
     auto d = std::make_shared<MessageColorDelegate>();
     d->states      = &rowStates_;
+    d->badges      = &rowBadges_;
+    d->badgeColumn = 1;
+    d->badgeSide   = Theme::kBadgeSize;
     d->unreadColor = Theme::kTextPrimary;
     d->readColor   = Theme::kTextSecondary;
     d->fontSize    = Theme::kSizeBody;
@@ -302,6 +335,11 @@ void MailView::BuildMessageBox() {
     preview_.onReply = [this](const SourceMessage& src, const std::string& n,
                               const std::string& a) {
         if (onReply) onReply(src, n, a);
+    };
+    // A body read for the first time is also scanned for the first time: the
+    // row's badge stops being "unscanned" the moment the pane knows better.
+    preview_.onSecurityScanned = [this](const MessageEnvelope& m, const MessageSecurity& s) {
+        RefreshRowBadge(m, s);
     };
     FillWith(messageBox_, preview_.Build());
 }
@@ -380,6 +418,47 @@ void MailView::SetReadingPane(bool on) {
 void MailView::SetAccounts(std::vector<Account> accounts) {
     accounts_ = accounts;
     preview_.SetAccounts(std::move(accounts));
+}
+
+void MailView::SetContacts(ContactIndex contacts) {
+    badges_.SetContacts(contacts);
+    preview_.SetContacts(std::move(contacts));
+}
+
+void MailView::SetIconCache(const SenderIconCache* cache) {
+    badges_.SetIconCache(cache);
+    preview_.SetIconCache(cache);
+}
+
+bool MailView::CurrentFolderIsJunk() const {
+    if (!store_ || curAccount_.empty()) return false;
+    std::vector<Folder> folders;
+    store_->ListFolders(curAccount_, folders);
+    for (const auto& f : folders)
+        if (f.name == curFolder_) return f.role == FolderRole::Junk;
+    return false;
+}
+
+void MailView::RefreshRowBadge(const MessageEnvelope& message,
+                               const MessageSecurity& security) {
+    if (!model_ || message.accountId != curAccount_ || message.folder != curFolder_) return;
+    security_[message.uid] = security;
+    for (std::size_t row = 0; row < messages_.size(); ++row) {
+        if (messages_[row].uid != message.uid) continue;
+        if (row >= rowBadges_.size()) break;
+        rowBadges_[row] = BadgeFor(messages_[row]);
+        // Writing the cell tooltip also notifies the view, which redraws the row.
+        model_->SetData(ListIndex{static_cast<int>(row), 1}, ListDataRole::ToolTipRole,
+                        rowBadges_[row].tooltip);
+        break;
+    }
+}
+
+SenderBadge MailView::BadgeFor(const MessageEnvelope& m) const {
+    MessageSecurity sec;
+    const auto it = security_.find(m.uid);
+    if (it != security_.end()) sec = it->second;
+    return badges_.Resolve(m, sec, curFolderIsJunk_);
 }
 
 void MailView::RebuildFolderTree() {
@@ -507,12 +586,18 @@ void MailView::AddMessageRow(const MessageEnvelope& m,
     // State glyphs in front of the sender: ● unread, ↩ waiting for a reply.
     std::string state = std::string(isUnread ? "\xE2\x97\x8F " : "")
                       + (isWaiting ? "\xE2\x86\xA9 " : "");
-    MultiColumnListItem item({ state + sender, subject, FormatListDate(m.date) });
+    const SenderBadge badge = BadgeFor(m);
+
+    MultiColumnListItem item({ state + sender, "", subject, FormatListDate(m.date) });
     item.tooltip = sender + " <" + m.fromAddr + ">"
                  + (isUnread ? " — unread" : "") + (isWaiting ? " — waiting for reply" : "")
                  + "\n" + FormatShortDate(m.date);
+    // The badge cell explains itself rather than repeating the row tooltip:
+    // what the sender is, and — when the content scan found something — why.
+    item.SetCellTooltip(1, badge.tooltip);
     model_->AddItem(item);
     rowStates_.push_back({ isUnread, isWaiting });
+    rowBadges_.push_back(badge);
 }
 
 void MailView::UpdateListTitle() {
@@ -530,6 +615,8 @@ void MailView::RebuildList() {
     if (!list_ || !model_) return;
     messages_.clear();
     rowStates_.clear();
+    rowBadges_.clear();
+    security_.clear();
     shownUnread_ = 0;
     model_->Clear();
     list_->ResetSelection();
@@ -540,6 +627,12 @@ void MailView::RebuildList() {
         if (!readingPane_) ShowListInPlace();
         return;
     }
+
+    // The badge's two inputs that come from the store: whether this folder is
+    // the junk mailbox, and the content-scan verdicts of the messages in it.
+    curFolderIsJunk_ = CurrentFolderIsJunk();
+    preview_.SetJunkFolder(curFolderIsJunk_);
+    store_->ListSecurity(curAccount_, curFolder_, security_);
 
     store_->ListMessages(curAccount_, curFolder_, 0, messages_);
     std::vector<MessageEnvelope> waiting;

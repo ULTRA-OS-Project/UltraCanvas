@@ -4,6 +4,8 @@
 // mailboxes beneath) and, on the right, the content area — either the message
 // list beside the message preview (reading pane on) or the list alone with the
 // clicked message opening in its place (reading pane off). Driven by LocalStore.
+// Version: 0.5.0 - sender-badge column between From and Subject (address book,
+//                  known-sender registry and the stored content-scan verdict).
 // Version: 0.4.0 - folder sidebar, UltraCanvasListView message list, reading-
 //                  pane toggle, per-folder view with lazy sync hook.
 // Author: UltraCanvas Framework / ULTRA OS
@@ -18,6 +20,7 @@
 #include "UltraCanvasButton.h"
 
 #include "UltraMailMessagePreview.h"
+#include "UltraMailSenderBadge.h"
 #include "UltraMailLocalStore.h"
 
 #include <cstddef>
@@ -41,11 +44,18 @@ struct MailRowState {
 
 class MailView {
 public:
-    void SetStore(LocalStore* store) { store_ = store; }
+    void SetStore(LocalStore* store) { store_ = store; preview_.SetStore(store); }
     void SetMailDir(std::string dir) { preview_.SetMailDir(std::move(dir)); }
     // Keep the account list (drives the folder tree) and forward it to the
     // preview (which resolves the "self" address for replies).
     void SetAccounts(std::vector<Account> accounts);
+
+    // The address book behind the sender badge: who is a contact, and in which
+    // section. Re-set it after the address book changes; the next Reload()
+    // draws the new colours.
+    void SetContacts(ContactIndex contacts);
+    // The sender-icon cache the badge reads brand icons from (not owned).
+    void SetIconCache(const SenderIconCache* cache);
 
     // Build the mail area. Call once; add the result to a parent.
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> Build();
@@ -108,6 +118,15 @@ private:
     // Message list ----------------------------------------------------------
     void RebuildList();
     void AddMessageRow(const MessageEnvelope& m, const std::set<int64_t>& waitingUids);
+    // The badge for one message, from the address book, the brand registry and
+    // the stored content-scan verdict.
+    SenderBadge BadgeFor(const MessageEnvelope& m) const;
+    // True when the folder on screen is the account's junk/spam mailbox (a
+    // message sitting in it is spam by the server's own verdict).
+    bool CurrentFolderIsJunk() const;
+    // Re-draw one row's badge after the reading pane scanned that message's
+    // body for the first time.
+    void RefreshRowBadge(const MessageEnvelope& message, const MessageSecurity& security);
     void UpdateListTitle();
     void SelectRow(int row);
 
@@ -117,6 +136,12 @@ private:
     std::string                  curFolder_ = "INBOX";
     std::vector<MessageEnvelope> messages_;    // list rows, in list order
     std::vector<MailRowState>    rowStates_;    // parallel to messages_ / list rows
+    std::vector<SenderBadge>     rowBadges_;    // parallel to messages_ / list rows
+    // The stored scan verdicts of the folder on screen, by UID — one query per
+    // list rather than one per row.
+    std::map<int64_t, MessageSecurity> security_;
+    SenderBadgeResolver          badges_;
+    bool                         curFolderIsJunk_ = false;
     int                          shownUnread_ = 0;
     bool                         readingPane_ = true;
     bool                         suppressTreeCallback_ = false;

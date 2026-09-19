@@ -31,6 +31,7 @@
 #include "UltraCanvasUtils.h"
 
 #include <UltraNet/UltraNetCore.h>
+#include <UltraNet/UltraNetHttp.h>
 #include <UltraNet/UltraNetPlugins.h>
 #include <UltraNet/UltraNetMime.h>
 
@@ -97,6 +98,9 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // the defaults; it is written the first time the user changes a setting.
     prefsPath_ = dataDir + "/preferences.ini";
     prefs_.Load(prefsPath_);
+    // The sender-icon cache (the badge left of every subject line) lives under
+    // the cache directory; it is safe to point at it before the folder exists.
+    ConfigureSenderIcons();
     // The credential vault stays locked until the user supplies the master
     // password; nothing reads or writes a secret before then.
     vault_ = CredentialVault(dataDir + "/vault");
@@ -913,6 +917,10 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
                               // one worker touches progressBuf, so no lock is
                               // needed; each flush hands a fresh batch to the UI.
                               [this, aid, progressBuf](const MessageEnvelope& m) {
+            // On the worker thread, so this is where a known service's icon is
+            // fetched: once per brand, never for an address that is not in the
+            // registry, and not at all when the user turned downloads off.
+            senderIcons_.EnsureIconForAddress(m.fromAddr);
             progressBuf->push_back(m);
             std::fprintf(stderr, "[UMSTREAM] onProgress uid=%lld buf=%zu aid=%s\n",
                          (long long)m.uid, progressBuf->size(), aid.c_str());
@@ -931,6 +939,33 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
         });
         scheduler_.MarkSynced(acc.accountId, now);
     }
+}
+
+void UltraMailApp::ConfigureSenderIcons() {
+    senderIcons_.SetRoot(cacheDir_ + "/sender-icons");
+    senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
+    // One HTTPS GET, TLS verified (UltraNet's default), with a short timeout:
+    // an icon is never worth holding a sync open for. Only the URLs in the
+    // known-sender registry are ever passed here.
+    senderIcons_.SetFetcher([](const std::string& url, std::vector<uint8_t>& out) {
+        UltraNetHttpOptions options = UltraNetHttpOptions::Default();
+        options.timeoutMs        = 10000;
+        options.connectTimeoutMs = 5000;
+        options.followRedirects  = true;
+        options.maxReceiveSize   = 512 * 1024;   // an icon, not a page
+        UltraNetResponse response;
+        if (!UltraNet_HttpGet(url, response, options)) return false;
+        if (!response.IsSuccess() || response.body.empty()) return false;
+        out = response.body;
+        return true;
+    });
+    mailView_.SetIconCache(&senderIcons_);
+}
+
+void UltraMailApp::RefreshContactIndex() {
+    ContactIndex index;
+    if (contacts_.IsOpen()) BuildContactIndex(contacts_, index);
+    mailView_.SetContacts(std::move(index));
 }
 
 void UltraMailApp::OpenContacts() {
@@ -1081,6 +1116,11 @@ void UltraMailApp::Refresh() {
     bool selectedExists = false;
     for (const auto& a : accounts_) if (a.accountId == selectedAccount_) selectedExists = true;
     if (!selectedExists) selectedAccount_ = accounts_.empty() ? "" : accounts_.front().accountId;
+
+    // The badge's colours come from the address book, which the auto-collector
+    // and the contact manager both write to — so re-read it here, where every
+    // path that can have changed it ends up.
+    RefreshContactIndex();
 
     accountBar_.Rebuild(accounts_, status_, selectedAccount_);
     mailView_.SetAccounts(accounts_);
@@ -1337,7 +1377,8 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
         fields.canOAuth        = !provider.empty();
         fields.providerName    = provider.empty() ? std::string()
                                                    : OAuthProviderDisplayName(provider);
-        fields.showReadingPane = prefs_.showReadingPane;
+        fields.showReadingPane  = prefs_.showReadingPane;
+        fields.fetchSenderIcons = prefs_.fetchSenderIcons;
 
         // The login check uses the typed new password when present, else the
         // account's stored credentials. It only runs on the password path; the
@@ -1368,6 +1409,11 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
                     prefs_.showReadingPane = r.showReadingPane;
                     prefs_.Save(prefsPath_);
                     mailView_.SetReadingPane(prefs_.showReadingPane);
+                }
+                if (r.fetchSenderIcons != prefs_.fetchSenderIcons) {
+                    prefs_.fetchSenderIcons = r.fetchSenderIcons;
+                    prefs_.Save(prefsPath_);
+                    senderIcons_.SetNetworkEnabled(prefs_.fetchSenderIcons);
                 }
                 Account updated = account;
                 AutoDiscovery::ApplyTo(updated, r.settings);

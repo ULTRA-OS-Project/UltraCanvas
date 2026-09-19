@@ -4,7 +4,7 @@
 // the other per-user files under the data directory (preferences.ini), the
 // same way oauth.ini lives there. Not per-account server settings — those stay
 // on the Account in the local store.
-// Version: 0.1.0
+// Version: 0.2.0 - fetchSenderIcons (download the known senders' icons)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -20,6 +20,12 @@ struct Preferences {
     // list takes the whole content area and a clicked message opens in its
     // place (Gmail-style).
     bool showReadingPane = true;
+
+    // Whether UltraMail may download the icons of the services in its known-
+    // sender registry into the sender-icon cache. Only those (a fixed list),
+    // and only once each — never a lookup of a stranger's domain. Off means
+    // the badge shows the sender's monogram in the brand's colour instead.
+    bool fetchSenderIcons = true;
 
     // Read `path`; missing file or keys keep the defaults. Returns false only
     // when the file exists but could not be opened.
