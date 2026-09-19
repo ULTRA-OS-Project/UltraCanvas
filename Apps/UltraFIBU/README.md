@@ -19,8 +19,9 @@ European VAT numbers, and a German user interface.
 |---|---|
 | `engine/` | The headless engine — no UI, no SQL outside the store, unit-tested (`UltraFIBUEngine`) |
 | `cli/` | `ultrafibu`, the command line over that engine |
+| `report/` | The printed invoice (`UltraFIBUReport`) — builds a VectorDocument for the framework's PDF writer |
 | `data/` | The chart of accounts and the tax keys, as data files |
-| `ui/` | The German UI (empty until the data grid exists) |
+| `ui/` | The German screens (`ultrafibu-ui`) — Belege, Journal, Summen und Salden, Partner |
 | `../../Tests/UltraFIBU/` | The engine test suite |
 
 ## Build
@@ -53,12 +54,71 @@ ultrafibu partner buch.db bratislava
 
 ultrafibu ustid DE136695976     # offline: format and check digit
 ultrafibu termine buch.db 2026  # UStVA deadlines, with the weekend shift
-ultrafibu festschreiben buch.db 30.06.2026 --ja
 ultrafibu protokoll buch.db     # who did what, when (GoBD)
 ```
 
+### A document, posted, paid, reversed
+
+```bash
+# A draft. Positions are "Text;Menge;Einzelpreis;Konto;Steuerschlüssel".
+ultrafibu beleg-neu buch.db --datum 15.06.2026 --partner "olonda s.r.o." \
+          --position "Beratung;10;100,00;8400;USt19" \
+          --position "Fachbuch;2;20,00;8300;USt7"
+#   Summe 1.040,00 netto / USt 192,80 / Gesamt 1.232,80 brutto
+
+ultrafibu buchen buch.db R-202606001     # from here it is immutable
+#   10000  S  1.190,00 an 8400  (davon 190,00 USt auf 1776)
+#   10000  S     42,80 an 8300  (davon   2,80 USt auf 1771)
+
+ultrafibu zahlung buch.db R-202606001 --betrag 1.232,80 --datum 01.07.2026
+ultrafibu belege  buch.db --offen
+ultrafibu belege  buch.db --ueberfaellig --stichtag 31.07.2026
+ultrafibu journal buch.db --von 01.06.2026 --bis 30.06.2026
+ultrafibu salden  buch.db                # and whether Soll and Haben agree
+
+ultrafibu storno  buch.db R-202606001 --datum 25.07.2026 \
+          --grund "Falsche Menge" --ja
+
+ultrafibu rechnung-pdf buch.db R-202606001 --datei rechnung.pdf
+
+ultrafibu festschreiben buch.db 30.06.2026 --ja
+ultrafibu pruefen buch.db                # the journal's hash chain
+```
+
+`rechnung-pdf` exits non-zero and names every field § 14 UStG wants that is
+not filled in — both addresses, the Steuernummer or USt-IdNr., the date of
+supply, the rate per line, the customer's VAT number on an intra-community
+supply. An invoice missing them is legally deficient and its recipient cannot
+deduct the input tax, so it is a warning on the way out rather than a footnote.
+
+Once a period is frozen, a document dated into it, a posting into it, a
+reversal into it and a payment into it are each refused with the date and the
+reason — the check is in the store, not in the front end.
+
 `ULTRAFIBU_DATA_DIR` points at the data files when they are not beside the
 binary.
+
+### The screens
+
+```bash
+ultrafibu-ui buch.db
+```
+
+Four tabs over the same file the CLI writes: **Belege**, **Journal**, **Summen
+und Salden** and **Partner**. Each is a table you can sort by clicking a column
+and narrow by typing; amounts sort by their value and dates by their day, not
+by how they read as text. The summary line under each table describes the rows
+actually showing, so filtering to one customer gives that customer's open
+total and says it is filtered.
+
+The journal re-checks the hash chain and the double entry every time it loads
+and reports both in its summary line.
+
+Two buttons write: **Beleg buchen** posts the selected draft, and **Rechnung
+als PDF** prints it. Everything else is read-only — entering a document is
+`ultrafibu beleg-neu` until the position editor exists. Both buttons go through
+the store, so a frozen period or an already-posted document is refused there
+and the reason appears in the status line.
 
 ## The decisions worth knowing
 
@@ -74,7 +134,37 @@ binary.
 - **Immutability is a schema property.** *Festschreibung* only moves forward,
   corrections are a *Storno*, and every write and every refusal is in the audit
   trail with a real user against it — which is why users exist from the first
-  schema and not from the day the server arrives.
+  schema and not from the day the server arrives. Over the journal sits a
+  SHA-256 hash chain, and `ultrafibu pruefen` is the thing that checks it: a
+  chain nothing verifies is decoration. It is tamper *evidence*, which is what
+  the GoBD ask of a bookkeeping system, and not a qualified signature.
+- **A document produces postings, never the other way round.** A draft can be
+  edited freely; from `buchen` onwards the store refuses every change to it. The
+  journal row keeps DATEV's shape — positive `Umsatz` with a Soll-/Haben flag,
+  `Konto`, `Gegenkonto`, BU-Schlüssel — and records beside it what the automatic
+  tax posting was, because a Saldenliste has to show a tax account nobody typed
+  and because the rate that applied on the *Belegdatum* is history rather than
+  configuration.
+- **Tax is computed per rate, not per position.** Three lines of 33,33 € at 19 %
+  owe 19,00 €, not the 18,99 € that rounding each line first would give; the
+  single figure is then shared back over the lines so the invoice's tax column
+  still adds up to its total.
+- **The invoice PDF reuses the framework's PDF writer**, it does not contain
+  one. `PDFVectorConverter` writes the file; `report/` only builds the
+  `VectorDocument` it consumes. The two sources that writer needs were checked
+  and reference nothing outside `VectorStorage`, so an invoice can be produced
+  on a headless server — which is where an accounting system runs.
+- **§ 14 UStG decides what is on the page**, and what is missing is named
+  rather than quietly left off. A zero-rated line states its exemption, because
+  the statute requires the invoice to say why no tax was charged.
+- **ZUGFeRD is not this.** It is a PDF/A-3 carrying the CII XML as an embedded
+  file, and it needs embedded subset fonts, an output intent and XMP metadata
+  the writer does not do yet. XRechnung — pure XML, no PDF — is the route to a
+  real e-invoice meanwhile, and that is phase A7.
+- **Reversing an invoice does not reverse its payment.** The money arrived, and
+  a bank balance that disagrees with the bank statement is worse than an
+  unmatched credit. What is left is a credit on the customer — which is the
+  truth, and the start of a refund.
 - **One schema, two storage modes.** Local SQLite or a shared PostgreSQL
   database, chosen by one configuration field. The server driver is
   UltraDatabase Stage 2 and not built yet; `OpenServer` says so rather than

@@ -1,3 +1,27 @@
+#### 2026-09-19 *0.8.98*
+- **The PDF writer can write a euro sign.** `UltraCanvasPDFVectorConverter`
+  declares `/WinAnsiEncoding` on its base-14 fonts, but its string escaper only
+  passed code points up to U+00FF and replaced everything above with `?`.
+  WinAnsi is CP1252, which agrees with Latin-1 from 0xA0 up but fills
+  0x80..0x9F - Latin-1's unused C1 control block - with 27 printable characters
+  that live far away in Unicode. **The euro sign is one of them, at 0x80**, and
+  so are the typographic quotes, the en and em dash, the bullet, the ellipsis
+  and the per-mille sign. A German invoice reading `1.234,56 ?` is not an
+  invoice, and nothing in the pipeline complained.
+  - Those 27 code points now map to their WinAnsi bytes; anything genuinely
+    outside the encoding still becomes `?` with the same one-time warning.
+  - The C1 control positions U+0080..U+009F, which WinAnsi leaves undefined,
+    now become `?` as well instead of being emitted as raw bytes with no glyph.
+  - Covered by `Tests/UltraFIBU/UltraFIBUEngineTests.cpp`, which asserts that a
+    produced invoice contains the byte 0x80 rather than a question mark. The
+    plugin's own `PDFVectorWriterTest` could not carry it: that test needs the
+    image raster subsystem and so cannot run on a headless machine.
+- **`ULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON` in CI** (`.github/workflows/build.yml`),
+  beside the Net, UltraCloud and EmailCleaner suites that were already there.
+  UltraFIBU's was the one application suite CI never built, so its checks - now
+  658 of them, including the encoding fix above - ran nowhere. It is a headless
+  suite with no UI dependency, which is why it can simply be switched on.
+
 #### 2026-09-19 *0.8.97*
 - **`UltraCanvasListView` shows which column its rows are sorted by.**
   `SetSortIndicator(column, ascending)` draws a small triangle in that column's
