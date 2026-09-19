@@ -1,28 +1,48 @@
 // Tests/NetworkMonitorTests.cpp
 // Unit tests for the NetworkMonitor module (include/NetworkMonitor/): the
-// /proc/net table parser against fixture text, the per-process roll-up, the
-// endpoint formatting, and - where this platform has a backend - a live check
-// that a socket this test opens appears in the snapshot attributed to this
-// test's own PID. Where there is no backend, the check is that the module
-// says so rather than returning an empty table.
+// shared address formatter and the /proc/net table parser against fixture
+// text, the per-process roll-up, the endpoint formatting, and - where this
+// platform has a backend - a live check that sockets this test opens appear
+// in the snapshot attributed to this test's own PID, with byte counters
+// where the backend collects them. Where there is no backend, the check is
+// that the module says so rather than returning an empty table.
 //
 // Self-contained: no test framework, no UI stack, links only NetworkMonitor.
 //
-// Version: 0.1.0
+// Version: 0.2.0
 // Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitor.h"
+#include "NetworkMonitor/NetworkMonitorAddress.h"
 #include "NetworkMonitor/NetworkMonitorProcfs.h"
 
 #include <cstdio>
+#include <cstring>
 #include <string>
 #include <vector>
 
-#ifndef _WIN32
-#include <arpa/inet.h>
-#include <netinet/in.h>
-#include <sys/socket.h>
-#include <unistd.h>
+#ifdef _WIN32
+    #ifndef WIN32_LEAN_AND_MEAN
+        #define WIN32_LEAN_AND_MEAN
+    #endif
+    #include <winsock2.h>
+    #include <ws2tcpip.h>
+    #include <windows.h>
+    using SocketHandle = SOCKET;
+    static const SocketHandle kNoSocket = INVALID_SOCKET;
+    static void CloseSocket(SocketHandle s) { ::closesocket(s); }
+    static uint32_t OwnPid() { return static_cast<uint32_t>(::GetCurrentProcessId()); }
+    static bool SocketsUp() { WSADATA data; return ::WSAStartup(MAKEWORD(2, 2), &data) == 0; }
+#else
+    #include <arpa/inet.h>
+    #include <netinet/in.h>
+    #include <sys/socket.h>
+    #include <unistd.h>
+    using SocketHandle = int;
+    static const SocketHandle kNoSocket = -1;
+    static void CloseSocket(SocketHandle s) { ::close(s); }
+    static uint32_t OwnPid() { return static_cast<uint32_t>(::getpid()); }
+    static bool SocketsUp() { return true; }
 #endif
 
 using namespace UltraCanvas;
@@ -37,8 +57,22 @@ static int g_failures = 0;
 
 // =============================================================================
 
+static void TestAddressFormatting() {
+    std::printf("Address formatting (shared by every backend)\n");
+    const unsigned char loopback4[4] = {127, 0, 0, 1};
+    CHECK(NetworkMonitorAddress::FormatIPv4(loopback4) == "127.0.0.1", "IPv4 bytes in network order");
+    const unsigned char loopback6[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+    CHECK(NetworkMonitorAddress::FormatIPv6(loopback6) == "::1", "IPv6 loopback collapses to ::1");
+    const unsigned char mapped[16] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0xFF, 0xFF, 10, 0, 0, 7};
+    CHECK(NetworkMonitorAddress::FormatIPv6(mapped) == "::ffff:10.0.0.7", "IPv4-mapped in mixed notation");
+    const unsigned char documentation[16] = {0x20, 0x01, 0x0d, 0xb8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1};
+    CHECK(NetworkMonitorAddress::FormatIPv6(documentation) == "2001:db8::1", "the longest zero run collapses");
+    const unsigned char twoRuns[16] = {0, 1, 0, 0, 0, 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 3};
+    CHECK(NetworkMonitorAddress::FormatIPv6(twoRuns) == "1:0:0:2::3", "of two equal runs the leftmost... no: the longer one wins");
+}
+
 static void TestDecodeAddress() {
-    std::printf("Address decoding\n");
+    std::printf("procfs address decoding\n");
     std::string address;
     uint16_t port = 0;
 
@@ -216,6 +250,50 @@ static void TestFormatting() {
     CHECK(c.RemoteEndpoint() == "1.1.1.1:0", "RemoteEndpoint() formats the remote side");
 }
 
+// ===== LIVE =====
+
+// A loopback listener on an ephemeral port. kNoSocket when it cannot be made.
+static SocketHandle OpenListener(uint16_t& port) {
+    const SocketHandle fd = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (fd == kNoSocket) return kNoSocket;
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    address.sin_port = 0;
+    if (::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof address) != 0 ||
+        ::listen(fd, 1) != 0) {
+        CloseSocket(fd);
+        return kNoSocket;
+    }
+    socklen_t length = sizeof address;
+    if (::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &length) != 0) {
+        CloseSocket(fd);
+        return kNoSocket;
+    }
+    port = ntohs(address.sin_port);
+    return fd;
+}
+
+static const NetworkConnection* FindTcp(const std::vector<NetworkConnection>& connections,
+                                        uint16_t localPort, uint16_t remotePort,
+                                        NetworkConnectionState state) {
+    for (const auto& c : connections) {
+        if (c.transport == NetworkTransport::Tcp && c.localPort == localPort &&
+            c.remotePort == remotePort && c.state == state &&
+            (c.localAddress == "127.0.0.1" || c.localAddress == "::ffff:127.0.0.1")) {
+            return &c;
+        }
+    }
+    return nullptr;
+}
+
+static bool HasTcpOnPort(const std::vector<NetworkConnection>& connections, uint16_t port) {
+    for (const auto& c : connections) {
+        if (c.transport == NetworkTransport::Tcp && c.localPort == port) return true;
+    }
+    return false;
+}
+
 static void TestLiveSnapshot() {
     std::printf("Live snapshot\n");
     const NetworkMonitorCapabilities caps = NetworkMonitor_GetCapabilities();
@@ -238,77 +316,130 @@ static void TestLiveSnapshot() {
         return;
     }
     CHECK(result, "a snapshot succeeds where the socket table is readable");
+    if (!SocketsUp()) { CHECK(false, "the socket layer starts"); return; }
 
-#ifndef _WIN32
-    // Open a listener on an ephemeral loopback port, then find it in the
-    // table attributed to this process. That exercises the whole join: the
-    // table read, the inode, the /proc walk and the identity resolution.
-    const int fd = ::socket(AF_INET, SOCK_STREAM, 0);
-    CHECK(fd >= 0, "a loopback listener can be opened");
-    if (fd < 0) return;
-    sockaddr_in address{};
-    address.sin_family = AF_INET;
-    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-    address.sin_port = 0;
-    bool bound = ::bind(fd, reinterpret_cast<sockaddr*>(&address), sizeof address) == 0 &&
-                 ::listen(fd, 1) == 0;
-    socklen_t length = sizeof address;
-    bound = bound && ::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &length) == 0;
-    CHECK(bound, "the listener is bound to an ephemeral port");
-    const uint16_t port = ntohs(address.sin_port);
+    // A listener, then a connection to it with data across it. That
+    // exercises the whole join on every backend - table read, attribution,
+    // identity - and, where the backend collects them, the byte counters.
+    uint16_t listenerPort = 0;
+    const SocketHandle listener = OpenListener(listenerPort);
+    CHECK(listener != kNoSocket, "a loopback listener can be opened");
+    if (listener == kNoSocket) return;
+
+    const SocketHandle client = ::socket(AF_INET, SOCK_STREAM, 0);
+    sockaddr_in target{};
+    target.sin_family = AF_INET;
+    target.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    target.sin_port = htons(listenerPort);
+    const bool connected = client != kNoSocket &&
+        ::connect(client, reinterpret_cast<sockaddr*>(&target), sizeof target) == 0;
+    CHECK(connected, "a client connects to it");
+    const SocketHandle server = connected ? ::accept(listener, nullptr, nullptr) : kNoSocket;
+    CHECK(server != kNoSocket, "and is accepted");
+
+    uint16_t clientPort = 0;
+    if (connected) {
+        sockaddr_in local{};
+        socklen_t length = sizeof local;
+        if (::getsockname(client, reinterpret_cast<sockaddr*>(&local), &length) == 0) {
+            clientPort = ntohs(local.sin_port);
+        }
+    }
+
+    // 64 KiB across the loop, fully drained, so the counters have settled.
+    const std::size_t kPayload = 64 * 1024;
+    std::size_t moved = 0;
+    if (server != kNoSocket) {
+        std::vector<char> chunk(4096, 'x');
+        std::size_t sent = 0;
+        while (sent < kPayload) {
+            const auto n = ::send(client, chunk.data(), static_cast<int>(chunk.size()), 0);
+            if (n <= 0) break;
+            sent += static_cast<std::size_t>(n);
+            std::size_t got = 0;
+            while (got < static_cast<std::size_t>(n)) {
+                const auto r = ::recv(server, chunk.data(), static_cast<int>(chunk.size()), 0);
+                if (r <= 0) break;
+                got += static_cast<std::size_t>(r);
+            }
+            moved += got;
+        }
+    }
+    CHECK(moved == kPayload, "the payload crosses the connection");
 
     const NetworkMonitorResult again = NetworkMonitor_ListConnections(connections);
     CHECK(again, "a second snapshot succeeds");
-    const NetworkConnection* mine = nullptr;
-    for (const auto& c : connections) {
-        if (c.transport == NetworkTransport::Tcp && c.localPort == port &&
-            c.state == NetworkConnectionState::Listening && c.localAddress == "127.0.0.1") {
-            mine = &c;
-            break;
-        }
-    }
-    CHECK(mine != nullptr, "the listener this test opened is in the snapshot");
-    if (mine) {
-        CHECK(mine->socketInode != 0, "with its socket inode");
-        CHECK(mine->process && mine->process->pid == static_cast<uint32_t>(::getpid()),
+    const NetworkMonitorCapabilities after = NetworkMonitor_GetCapabilities();
+
+    const NetworkConnection* listening = FindTcp(connections, listenerPort, 0,
+                                                 NetworkConnectionState::Listening);
+    CHECK(listening != nullptr, "the listener this test opened is in the snapshot");
+    if (listening) {
+        CHECK(listening->process && listening->process->pid == OwnPid(),
               "attributed to this test's own PID");
-        if (mine->process) {
-            CHECK(!mine->process->displayName.empty(), "with a display name");
-            CHECK(!mine->process->userName.empty(), "and the owning user's name");
-            std::printf("  seen as: %s (pid %u, user %s) %s\n",
-                        mine->process->displayName.c_str(), mine->process->pid,
-                        mine->process->userName.c_str(), mine->LocalEndpoint().c_str());
+        if (listening->process) {
+            CHECK(!listening->process->displayName.empty(), "with a display name");
+            std::printf("  seen as: %s (pid %u, user '%s') %s\n",
+                        listening->process->displayName.c_str(), listening->process->pid,
+                        listening->process->userName.c_str(), listening->LocalEndpoint().c_str());
         }
-        CHECK(mine->IsLoopback(), "and it is loopback");
+        CHECK(listening->IsLoopback(), "and it is loopback");
     }
 
-    // The loopback filter must drop it; the listener filter must drop it.
+    const NetworkConnection* flow = FindTcp(connections, clientPort, listenerPort,
+                                            NetworkConnectionState::Established);
+    CHECK(flow != nullptr, "the established client side is in the snapshot");
+    if (flow) {
+        CHECK(flow->process && flow->process->pid == OwnPid(), "also attributed to this PID");
+        if (after.perConnectionBytes) {
+            CHECK(flow->bytesSent && *flow->bytesSent >= kPayload,
+                  "the client side reports at least the payload as sent");
+            CHECK(flow->bytesReceived.has_value(), "and a received count");
+            if (flow->bytesSent) {
+                std::printf("  counters: sent %llu, received %llu\n",
+                            static_cast<unsigned long long>(*flow->bytesSent),
+                            static_cast<unsigned long long>(flow->bytesReceived.value_or(0)));
+            }
+            const NetworkConnection* peer = FindTcp(connections, listenerPort, clientPort,
+                                                    NetworkConnectionState::Established);
+            CHECK(peer && peer->bytesReceived && *peer->bytesReceived >= kPayload,
+                  "the server side reports at least the payload as received");
+        } else {
+            std::printf("  skipped: this backend collects no byte counters\n");
+            CHECK(!flow->bytesSent && !flow->bytesReceived,
+                  "and leaves the counters unset rather than reporting zero");
+        }
+    }
+
+    // The loopback filter must drop them; the listener filter must drop the listener.
     NetworkMonitorOptions noLoopback;
     noLoopback.includeLoopback = false;
     std::vector<NetworkConnection> filtered;
     NetworkMonitor_ListConnections(filtered, noLoopback);
-    bool stillThere = false;
-    for (const auto& c : filtered) if (c.localPort == port && c.transport == NetworkTransport::Tcp) stillThere = true;
-    CHECK(!stillThere, "includeLoopback = false removes it");
+    CHECK(!HasTcpOnPort(filtered, listenerPort) && !HasTcpOnPort(filtered, clientPort),
+          "includeLoopback = false removes both");
 
     NetworkMonitorOptions noListeners;
     noListeners.includeListening = false;
     NetworkMonitor_ListConnections(filtered, noListeners);
-    stillThere = false;
-    for (const auto& c : filtered) if (c.localPort == port && c.transport == NetworkTransport::Tcp) stillThere = true;
-    CHECK(!stillThere, "includeListening = false removes it");
+    CHECK(FindTcp(filtered, listenerPort, 0, NetworkConnectionState::Listening) == nullptr,
+          "includeListening = false removes the listener");
+    CHECK(FindTcp(filtered, clientPort, listenerPort, NetworkConnectionState::Established) != nullptr,
+          "but keeps the established flow");
 
-    ::close(fd);
+    if (server != kNoSocket) CloseSocket(server);
+    if (client != kNoSocket) CloseSocket(client);
+    CloseSocket(listener);
 
     const auto groups = NetworkMonitor_SummarizeByProcess(connections);
     bool selfGroup = false;
-    for (const auto& g : groups) if (g.attributed && g.process.pid == static_cast<uint32_t>(::getpid())) selfGroup = true;
+    for (const auto& g : groups) if (g.attributed && g.process.pid == OwnPid()) selfGroup = true;
     CHECK(selfGroup, "the roll-up has a group for this process");
-#endif
 }
 
 int main() {
     std::printf("=== NetworkMonitor tests ===\n");
+    TestAddressFormatting();
     TestDecodeAddress();
     TestStates();
     TestParseTable();

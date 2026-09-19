@@ -1497,11 +1497,13 @@ process's traffic; NetworkMonitor observes other processes' sockets, which is
 an OS question, and has no dependency on UltraNet. It observes and records;
 it never blocks, filters or modifies traffic, and never terminates TLS.
 
-**Implementation status:** Phase 1 — Linux (`/proc/net/{tcp,tcp6,udp,udp6}`
-plus the `/proc/<pid>/fd` walk for attribution), polling only. Windows
-(`GetExtendedTcpTable`, ETW) and macOS (`libproc`) are Phase 2; byte
-counters, connection events, domain names and file-transfer correlation are
-Phases 2–3. Where there is no backend the module reports `NotSupported`.
+**Implementation status:** Phase 2 (platforms). Linux — netlink `sock_diag`
+with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
+`/proc/<pid>/fd` walk for attribution; Windows — IP Helper
+(`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
+macOS — libproc, per process. All polling. Connection events (ETW, eBPF),
+domain names, persistence and file-transfer correlation are still to come.
+Where there is no backend the module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,

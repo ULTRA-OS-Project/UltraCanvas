@@ -2044,10 +2044,17 @@ target_link_libraries(UltraVault PUBLIC UltraCrypt)
 # with this list.
 set(_uc_networkmonitor_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorAddress.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorProcfs.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp)
+elseif(WIN32)
+    list(APPEND _uc_networkmonitor_sources
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp)
+elseif(APPLE)
+    list(APPEND _uc_networkmonitor_sources
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)
 endif()
 add_library(NetworkMonitor STATIC ${_uc_networkmonitor_sources})
 target_include_directories(NetworkMonitor PUBLIC
@@ -2055,6 +2062,13 @@ target_include_directories(NetworkMonitor PUBLIC
     $<INSTALL_INTERFACE:include/ultracanvas>)
 target_compile_features(NetworkMonitor PUBLIC cxx_std_20)
 set_target_properties(NetworkMonitor PROPERTIES POSITION_INDEPENDENT_CODE ON)
+if(WIN32)
+    # IP Helper for the socket tables, Winsock for ntohs, advapi32 for the
+    # owning user's name from the process token. Same header hygiene as the
+    # core library, since this target does not inherit it.
+    target_link_libraries(NetworkMonitor PUBLIC iphlpapi ws2_32 advapi32)
+    target_compile_definitions(NetworkMonitor PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+endif()
 
 if(ULTRACANVAS_ENABLE_NET)
     find_package(Threads REQUIRED)
