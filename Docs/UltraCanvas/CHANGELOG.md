@@ -1,3 +1,23 @@
+#### 2026-09-19 *0.8.94*
+- **`UltraCanvasListView` shows which column its rows are sorted by.**
+  `SetSortIndicator(column, ascending)` draws a small triangle in that column's
+  header cell - apex up for ascending, apex down for descending - and
+  `ClearSortIndicator()` / `GetSortColumn()` / `GetSortAscending()` complete
+  the API. The triangle is geometry (`FillLinePath`) in `headerTextColor`, not
+  a text glyph, so it follows the header theme and stays crisp at any DPI
+  instead of depending on the header font carrying U+25B2/U+25BC;
+  `ListViewStyle::sortIndicatorSize` sets its width. It sits after the title in
+  a left- or centre-aligned column and before it in a right-aligned one, and the
+  title's rect shrinks by the same strip so the two never overlap. The view only
+  shows the order; the rows are sorted by whoever owns the model.
+- **`UltraCanvasListView::onHeaderClicked(column)`** fires on a press and
+  release in the same header cell, so a table can sort on header click - the
+  usual handler re-orders the model and calls `SetSortIndicator`. A press on a
+  column's resize border still starts a drag and never reads as a click, and a
+  press on the header no longer reaches the row handler as a click on "no
+  row", which used to clear the selection. DemoApp's multi-column list sorts
+  this way now.
+
 #### 2026-09-19 *0.8.93*
 - **A remote drive can be changed, not only read.** `UltraCanvasFilerWidget`
   gained three more host hooks beside `remoteListing` - **`remoteDelete`**,

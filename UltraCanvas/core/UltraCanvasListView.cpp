@@ -1,6 +1,6 @@
 // core/UltraCanvasListView.cpp
 // Model-View-Delegate ListView widget implementation
-// Last Modified: 2026-07-22
+// Last Modified: 2026-09-19
 #include "UltraCanvasListView.h"
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasTooltipManager.h"
@@ -177,6 +177,14 @@ namespace UltraCanvas {
 
     bool UltraCanvasListView::GetShowHeader() const {
         return viewStyle.showHeader;
+    }
+
+    void UltraCanvasListView::SetSortIndicator(int column, bool ascending) {
+        if (column < 0) column = -1;
+        if (sortColumn == column && sortAscending == ascending) return;
+        sortColumn = column;
+        sortAscending = ascending;
+        RequestRedraw();
     }
 
     void UltraCanvasListView::SetShowItemTooltips(bool enable) {
@@ -514,7 +522,25 @@ namespace UltraCanvas {
             int colW = GetColumnWidth(col);
             ctx->SetTextAlignment(colDef.alignment);
             ctx->SetTextPaint(viewStyle.headerTextColor);
-            ctx->DrawTextInRect(colDef.title, Rect2Dd(colX + 4, headerRect.y, colW - 8, headerRect.height));
+
+            // The sorted column gives up a strip at the end of its cell to the
+            // direction triangle - after the title for left/centre-aligned
+            // columns, before it for right-aligned ones, so the title keeps
+            // its edge and the two never overlap.
+            Rect2Dd titleRect(colX + 4, headerRect.y, colW - 8, headerRect.height);
+            if (col == sortColumn && viewStyle.sortIndicatorSize > 0) {
+                int strip = viewStyle.sortIndicatorSize + 6;
+                if (strip < colW - 8) {
+                    Rect2Di stripRect(colX + colW - 4 - strip, headerRect.y, strip, headerRect.height);
+                    if (colDef.alignment == TextAlignment::Right) {
+                        stripRect.x = colX + 4;
+                        titleRect.x += strip;
+                    }
+                    titleRect.width -= strip;
+                    RenderSortIndicator(ctx, stripRect);
+                }
+            }
+            ctx->DrawTextInRect(colDef.title, titleRect);
 
             // Separator between columns: the resize boundary. Drawn for every
             // interior border (not only when showGridLines) so the draggable
@@ -530,6 +556,28 @@ namespace UltraCanvas {
         // Bottom border of header
         ctx->SetStrokePaint(viewStyle.gridLineColor);
         ctx->DrawLine(headerRect.BottomLeft(), headerRect.BottomRight());
+    }
+
+    // The sort direction as geometry rather than a text glyph: a filled
+    // triangle stays crisp at any DPI and takes headerTextColor, whereas a
+    // font's U+25B2/U+25BC would depend on the header font carrying them. Apex
+    // up means ascending, apex down descending, centred in `cell`.
+    void UltraCanvasListView::RenderSortIndicator(IRenderContext* ctx, const Rect2Di& cell) {
+        const double w = viewStyle.sortIndicatorSize;
+        const double h = w * 0.5;
+        const double cx = cell.x + cell.width * 0.5;
+        const double cy = cell.y + cell.height * 0.5;
+        const double left = cx - w * 0.5, right = cx + w * 0.5;
+        const double top = cy - h * 0.5, bottom = cy + h * 0.5;
+
+        std::vector<Point2Dd> triangle;
+        if (sortAscending) {
+            triangle = { Point2Dd(cx, top), Point2Dd(right, bottom), Point2Dd(left, bottom) };
+        } else {
+            triangle = { Point2Dd(left, top), Point2Dd(right, top), Point2Dd(cx, bottom) };
+        }
+        ctx->SetFillPaint(viewStyle.headerTextColor);
+        ctx->FillLinePath(triangle);
     }
 
     void UltraCanvasListView::RenderRows(IRenderContext* ctx, const Rect2Di& contentRect) {
@@ -700,6 +748,37 @@ namespace UltraCanvas {
             }
         }
 
+        // Header click (press and release in the same header cell). Handled
+        // before row hit-testing: a press on the header is not a click on "no
+        // row" and must not clear the selection. A press on a resize border
+        // was consumed above, so a drag never reads as a click.
+        if (viewStyle.showHeader) {
+            switch (event.type) {
+                case UCEventType::MouseDown:
+                    if (Contains(event.pointer)) {
+                        int col = GetHeaderColumnAt(event.pointer.x, event.pointer.y);
+                        if (col >= 0) {
+                            pressedHeaderColumn = col;
+                            SetFocus(true);
+                            return true;
+                        }
+                    }
+                    break;
+                case UCEventType::MouseUp:
+                    if (pressedHeaderColumn >= 0) {
+                        int col = Contains(event.pointer)
+                                      ? GetHeaderColumnAt(event.pointer.x, event.pointer.y) : -1;
+                        bool clicked = (col == pressedHeaderColumn);
+                        pressedHeaderColumn = -1;
+                        if (clicked && onHeaderClicked) onHeaderClicked(col);
+                        return true;
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+
         switch (event.type) {
             case UCEventType::MouseDown:
                 return HandleMouseDown(event);
@@ -708,6 +787,7 @@ namespace UltraCanvas {
             case UCEventType::MouseLeave:
                 if (onCellHovered) onCellHovered(-1, -1, Point2Di(-1, -1));
                 HideHoverTooltip();
+                pressedHeaderColumn = -1;
                 hoveredColumn = -1;
                 hoveredHeaderColumn = -1;
                 if (hoveredRow != -1) {
