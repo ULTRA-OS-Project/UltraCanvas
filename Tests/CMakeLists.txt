@@ -3099,6 +3099,28 @@ else()
     message(STATUS "  OffscreenRenderTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== VECTOR RENDER SCALE TEST =====
+# VectorRenderer and the vector preview seam: a drawing is fitted to its box
+# exactly once, and a singular transform is skipped instead of latching an
+# error state on a context the rest of the frame is still drawing into.
+if(TARGET UltraCanvas)
+    message(STATUS "  Building VectorRenderScaleTest...")
+    add_executable(VectorRenderScaleTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/VectorRenderScaleTest.cpp
+    )
+    target_include_directories(VectorRenderScaleTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
+    target_compile_features(VectorRenderScaleTest PRIVATE cxx_std_20)
+    target_link_libraries(VectorRenderScaleTest PRIVATE UltraCanvas)
+    set_target_properties(VectorRenderScaleTest PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME VectorRenderScaleTest COMMAND VectorRenderScaleTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: VectorRenderScaleTest")
+else()
+    message(STATUS "  VectorRenderScaleTest skipped (UltraCanvas target not present)")
+endif()
+
 # ===== VECTOR RASTERIZER TEST =====
 # UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
 # into a raster layer at a chosen pixel size (the path a bitmap editor takes

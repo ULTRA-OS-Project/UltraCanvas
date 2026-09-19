@@ -106,6 +106,7 @@ namespace UltraCanvas {
         void ApplyFill(const FillData& fill, const Rect2Dd& bounds, float opacity);
         void ApplyStroke(const StrokeData& stroke, const Rect2Dd& bounds, float opacity);
         void ApplyTransform(const Matrix3x3& transform);
+        static bool IsSingular(const VectorStorage::Matrix3x3 &t);
 
         void SetupGradient(const GradientData& gradient, const Rect2Dd& bounds, float opacity, bool forStroke);
         std::shared_ptr<IPaintPattern> MakeLinearGradient(const LinearGradientData& grad, const Rect2Dd& bounds, float opacity);

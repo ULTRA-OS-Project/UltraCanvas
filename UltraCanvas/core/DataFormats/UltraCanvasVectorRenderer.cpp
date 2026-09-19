@@ -129,6 +129,22 @@ namespace UltraCanvas {
             return;
         }
 
+        // A singular transform - determinant zero - flattens the element onto
+        // a line or a point, so there is nothing to show. Skipping it is not
+        // just an optimisation: a non-invertible matrix is an error to the
+        // render context, and cairo answers one by putting the whole context
+        // into a permanent error state, after which every later drawing
+        // operation is silently discarded. That is not confined to this
+        // element or even this document - the context belongs to the window,
+        // so one such transform blanks everything drawn after it in the
+        // frame, including sibling widgets. A CAD drawing reaches this
+        // through a 3D entity whose projection to plan view collapses an
+        // axis (media/3D/DWG/bagno_3d_1.dwg does exactly that).
+        if (element.Transform.has_value() && IsSingular(element.Transform.value())) {
+            stats.ElementsCulled++;
+            return;
+        }
+
         ctx->PushState();
         if (element.Transform.has_value()) ApplyTransform(element.Transform.value());
         ApplyStyle(element.Style);
@@ -404,7 +420,19 @@ namespace UltraCanvas {
         if (!stroke.DashArray.empty()) ctx->SetLineDash(UCDashPattern(stroke.DashArray, stroke.DashOffset));
     }
 
+    // True for a matrix that collapses the plane onto a line or a point.
+    // The tolerance is on the determinant of the 2x2 linear part, which is
+    // the area scale factor: anything at or below it maps a unit square to
+    // no area at all.
+    bool VectorRenderer::IsSingular(const Matrix3x3 &t) {
+        return std::abs(t.Determinant()) <= 1e-12;
+    }
+
     void VectorRenderer::ApplyTransform(const Matrix3x3 &t) {
+        // Never hand the context a matrix it cannot invert; see RenderElement
+        // for what one costs. Callers that can skip the element outright do,
+        // and this is the backstop for the rest (clip-path children, uses).
+        if (IsSingular(t)) return;
         ctx->Transform(t.m[0][0], t.m[1][0], t.m[0][1], t.m[1][1], t.m[0][2], t.m[1][2]);
     }
 

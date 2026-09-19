@@ -17,9 +17,8 @@ namespace UltraCanvas {
     using namespace VectorStorage;
 
     UltraCanvasVectorElement::UltraCanvasVectorElement(const std::string& identifier, int x, int y, int width, int height)
-            : UltraCanvasUIElement(identifier) {
-        SetPosition(x, y);
-        SetSize(width, height);
+            : UltraCanvasUIElement(identifier, static_cast<float>(x), static_cast<float>(y),
+                                   static_cast<float>(width), static_cast<float>(height)) {
         renderer = std::make_unique<VectorRenderer>();
         viewTransform = Matrix3x3::Identity();
     }
@@ -46,8 +45,32 @@ namespace UltraCanvas {
         ClearError();
     }
 
+    float UltraCanvasVectorElement::FitZoom() const {
+        if (!document) return 0.0f;
+        const Rect2Dd docBounds = document->GetBoundingBox();
+        if (docBounds.width <= 0 || docBounds.height <= 0) return 0.0f;
+        if (finalBounds.width <= 0 || finalBounds.height <= 0) return 0.0f;
+        return std::min(finalBounds.width / docBounds.width,
+                        finalBounds.height / docBounds.height) * 0.9f;
+    }
+
+    // options.MinZoom is a floor for zooming out by hand, not a limit on what
+    // the widget can show. A drawing's zoom is a ratio between its own units
+    // and pixels, and nothing says those units are pixel-sized: a CAD plan
+    // measured in millimetres is ten thousand of them across, so it fits a
+    // thumbnail at 0.02 - well under the 0.1 default. Clamping there drew the
+    // sheet five times too large, and since a plan's linework sits in one
+    // corner of a mostly empty sheet, the widget showed blank paper. Where
+    // the fit is the smaller number it is the real floor, for the wheel and
+    // the zoom buttons too, so a fitted drawing can still be zoomed out to
+    // where it started.
+    float UltraCanvasVectorElement::MinZoomLimit() const {
+        const float fit = FitZoom();
+        return fit > 0.0f ? std::min(options.MinZoom, fit) : options.MinZoom;
+    }
+
     void UltraCanvasVectorElement::SetZoom(float zoom) {
-        zoom = std::clamp(zoom, options.MinZoom, options.MaxZoom);
+        zoom = std::clamp(zoom, MinZoomLimit(), options.MaxZoom);
         if (std::abs(zoom - zoomLevel) > 0.001f) {
             zoomLevel = zoom;
             UpdateViewTransform();
@@ -76,11 +99,7 @@ namespace UltraCanvas {
         }
         fitPending = false;
 
-        float scaleX = finalBounds.width / docBounds.width;
-        float scaleY = finalBounds.height / docBounds.height;
-        float scale = std::min(scaleX, scaleY) * 0.9f;
-
-        zoomLevel = std::clamp(scale, options.MinZoom, options.MaxZoom);
+        zoomLevel = std::clamp(FitZoom(), MinZoomLimit(), options.MaxZoom);
         panOffset.x = (finalBounds.width - docBounds.width * zoomLevel) / 2 - docBounds.x * zoomLevel;
         panOffset.y = (finalBounds.height - docBounds.height * zoomLevel) / 2 - docBounds.y * zoomLevel;
         UpdateViewTransform();
@@ -361,7 +380,7 @@ namespace UltraCanvas {
             }
             zoomAnim.AnimateBy(event.wheelDelta > 0 ? options.ZoomStep
                                                     : -options.ZoomStep,
-                               options.MinZoom, options.MaxZoom);
+                               MinZoomLimit(), options.MaxZoom);
             return true;
         }
         return false;
@@ -370,7 +389,7 @@ namespace UltraCanvas {
     // One eased step of a wheel zoom: set the level, then re-solve the pan that
     // keeps the gesture's anchor document point under the cursor.
     void UltraCanvasVectorElement::ApplyZoomLevelAtAnchor(float newZoom) {
-        zoomLevel = std::clamp(newZoom, options.MinZoom, options.MaxZoom);
+        zoomLevel = std::clamp(newZoom, MinZoomLimit(), options.MaxZoom);
         panOffset.x = zoomAnchorX - zoomAnchorDocX * zoomLevel;
         panOffset.y = zoomAnchorY - zoomAnchorDocY * zoomLevel;
 

@@ -1,3 +1,44 @@
+#### 2026-09-19 *0.9.0*
+- **The DWG/DXF demo page drew nothing, for three unrelated reasons** — all
+  five sample tiles came up empty, and each fix is worth having on its own.
+  - `UltraCanvasVectorElement`'s five-argument constructor set its geometry
+    through `SetPosition()` / `SetSize()`, which move `finalBounds` without
+    stamping the CSS box the layout engine reads. Every viewer built that way
+    laid out at zero size, so `Render()` was never called. It now passes the
+    geometry to the `UltraCanvasUIElement` base constructor, like every other
+    widget.
+  - A **singular transform put the whole render context into a permanent
+    error state**. `bagno_3d_1.dwg` carries a polyface mesh whose projection
+    to plan view collapses an axis, giving a matrix with determinant zero;
+    cairo answers a non-invertible matrix by latching an error status, after
+    which every later drawing operation on that context is silently
+    discarded. The context belongs to the window, so one such transform
+    blanked everything drawn after it in the frame - the sibling tiles and
+    the page's info panels included. `VectorRenderer` now skips an element
+    whose transform is singular (it would flatten to nothing anyway) and
+    `ApplyTransform()` refuses one as a backstop.
+  - `VectorElementOptions::MinZoom` clamped **ZoomToFit**. A drawing's zoom is
+    a ratio between its own units and pixels, and a CAD plan measured in
+    millimetres is ten thousand of them across, so `womans hostel.dwg` fits a
+    280x190 tile at 0.018 - well under the 0.1 default. Clamped there it drew
+    five times too large, and since a plan's linework sits in one corner of a
+    mostly empty sheet, the tile showed blank paper. The floor is now the
+    smaller of `MinZoom` and the fit, for the wheel and the zoom buttons too,
+    so a fitted drawing can still be zoomed back out to where it started.
+- **Vector thumbnails were drawn at the square of their fit scale** —
+  `RenderVectorDocumentPixmap()` fitted the drawing onto the context and then
+  passed the same factor as `VectorRenderOptions::PixelRatio`, which
+  `RenderDocument()` scales by again. A drawing that should have filled a
+  tenth of the box filled a hundredth; a large-unit one arrived as a few
+  specks in the corner. This is the seam the Filer's tiles and the media
+  viewer's preview pane both go through, for every vector format, not just
+  CAD. The fit stays on the context, where it was applied first.
+- `Tests/VectorRenderScaleTest.cpp` guards the two renderer-side rules
+  against the shapes that broke them: a full-bleed document fills its box at
+  10, 100 and 10000 units (the double fit was invisible at the first two -
+  squaring a fit above 1 still overflows the box - and left four pixels at
+  the third), and an element drawn after a singular one still paints in full.
+
 #### 2026-09-19 *0.8.99*
 - **NetworkMonitor on Windows and macOS, and byte counters on Linux** — the
   platform half of the proposal's Phase 2. Windows reads the socket tables

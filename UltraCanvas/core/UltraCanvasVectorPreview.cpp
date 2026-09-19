@@ -151,7 +151,12 @@ std::shared_ptr<UCPixmap> RenderVectorDocumentPixmap(
     VectorRenderer renderer;
     VectorRenderOptions options;
     options.ViewportBounds = Rect2Dd(0, 0, dw, dh);
-    options.PixelRatio = static_cast<float>(fit);
+    // The fit belongs on the context, above, and nowhere else: the renderer
+    // scales by PixelRatio on top of whatever transform it is handed, so
+    // passing the fit here applied it a second time and the drawing came out
+    // at fit squared - a tenth of the box became a hundredth, which for a
+    // large-unit drawing is a few specks in the corner. `scale` is already in
+    // pw and ph, and so in `fit`.
     renderer.SetOptions(options);
     renderer.RenderDocument(ctx.get(), document);
     ctx->PopState();

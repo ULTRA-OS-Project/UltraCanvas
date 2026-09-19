@@ -151,6 +151,11 @@ namespace UltraCanvas {
         bool HandleMouseMove(const UCEvent& event);
         bool HandleMouseWheel(const UCEvent& event);
         void ApplyZoomLevelAtAnchor(float newZoom);
+        // The zoom ZoomToFit() would pick for the current document and box,
+        // or 0 when there is nothing to fit, and the floor every zoom is
+        // clamped against - which is not always options.MinZoom.
+        float FitZoom() const;
+        float MinZoomLimit() const;
         void SetError(const std::string& message);
         void ClearError();
         std::string HitTest(int x, int y) const;
