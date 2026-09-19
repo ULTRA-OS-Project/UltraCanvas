@@ -25,14 +25,34 @@
 
 namespace UltraMail {
 
+// What a service is, for the badge tooltip and for the address book: a brand
+// the user hears from is a business relationship, and knowing what kind of one
+// is what makes a collected contact worth reading later.
+enum class BrandCategory {
+    Social = 0,
+    Messaging,
+    Crowdfunding,   // Kickstarter, Indiegogo, GoFundMe …
+    CreatorSupport, // Patreon, Buy Me a Coffee, Ko-fi, Liberapay …
+    Shopping,
+    Payment,
+    Technology,
+    Media,
+    Travel,
+    Delivery
+};
+
+std::string ToString(BrandCategory category);      // stable identifier
+std::string DisplayName(BrandCategory category);   // "Crowdfunding platform", …
+
 // One entry of the registry. `id` doubles as the icon file's base name in the
 // sender-icon cache, and `accentRgb` is the brand colour the monogram tile
 // falls back to until (or unless) the real icon is cached.
 struct SenderBrand {
-    std::string id;         // "facebook"
-    std::string name;       // "Facebook"
-    std::string iconUrl;    // official icon, fetched into the cache on first sight
-    uint32_t    accentRgb = 0x5B6470;   // 0xRRGGBB
+    std::string   id;         // "facebook"
+    std::string   name;       // "Facebook"
+    std::string   iconUrl;    // the site's own favicon, fetched on first sight
+    uint32_t      accentRgb = 0x5B6470;   // 0xRRGGBB
+    BrandCategory category  = BrandCategory::Technology;
 };
 
 // ---------------------------------------------------------------------------

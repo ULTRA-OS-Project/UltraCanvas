@@ -114,6 +114,8 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
         status.brandId        = brand->id;
         status.brandName      = brand->name;
         status.brandAccentRgb = brand->accentRgb;
+        status.brandCategory  = brand->category;
+        status.knownService   = true;
     }
 
     ContactSection section = ContactSection::Other;
@@ -142,6 +144,9 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
         return status;
     }
 
+    // Bulk mail is called what it is even when it comes from a known service:
+    // a campaign newsletter really is advertising, and saying so is the point
+    // of the dark-blue badge.
     if (who.level == ThreatLevel::Advertisement || who.bulk) {
         status.cls = SenderClass::Advertisement;
         status.reason = status.brandName.empty()
@@ -150,10 +155,22 @@ SenderStatus ClassifySender(const SenderIdentity& who, const ContactIndex& conta
         return status;
     }
 
+    // A service in the known-sender registry is a business relationship in its
+    // own right — the crowdfunding platform a project was backed on, the shop
+    // an order came from — so it reads as a business contact even before the
+    // address book has caught up. (ContactCollector files it there too, which
+    // is what makes the registry a source of new business contacts rather than
+    // only a source of icons.)
+    if (status.knownService) {
+        status.cls    = SenderClass::Business;
+        status.reason = status.brandName + " \xE2\x80\x94 " +
+                        DisplayName(status.brandCategory) +
+                        ", not yet in your address book.";
+        return status;
+    }
+
     status.cls = SenderClass::New;
-    status.reason = status.brandName.empty()
-        ? "New sender — this address is not in your address book."
-        : status.brandName + " — a known service, but not in your address book.";
+    status.reason = "New sender — this address is not in your address book.";
     return status;
 }
 

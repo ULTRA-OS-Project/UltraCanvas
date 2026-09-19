@@ -1,3 +1,28 @@
+#### 2026-09-19 *0.10.1*
+- **Crowdfunding and creator-support platforms are known senders.** Kickstarter,
+  Indiegogo, GoFundMe, Startnext, Crowd Supply, Patreon, Buy Me a Coffee, Ko-fi,
+  Liberapay, Open Collective, Gumroad and Substack join the registry, along with
+  Pinterest, Tumblr, Mastodon, Twitch, Vimeo and Etsy. Each carries its own
+  site's favicon URL, which is exactly what the sender-icon cache fetches — one
+  request per service, once, on the sync worker — so their mail arrives wearing
+  the platform's own mark.
+- **Registry entries now carry a category** (`BrandCategory`: social, messaging,
+  crowdfunding, creator support, shopping, payment, technology, media, travel,
+  delivery). The badge tooltip names it — "Kickstarter (Crowdfunding platform)" —
+  and a collected contact's note records it.
+- **The registry is a source of new business contacts, not only of icons.**
+  A sender that belongs to a known service now reads as a **business contact**
+  (blue) even before the address book has caught up, and the auto-collector
+  (`ContactCollector::CollectSender`) files it under **Services** with the
+  service's name as the contact's organization and a note saying what kind of
+  service it is. Ordinary addresses still land in Other, a personal mailbox is
+  never a service however large its provider, and **an existing contact is never
+  modified or reclassified** — an address the user filed under Friends stays
+  there. Bulk mail keeps its own badge: a campaign newsletter from a known
+  platform is still an advertisement (dark blue), because that is what the
+  dark-blue badge is for; a pledge receipt or order confirmation from the same
+  service carries no bulk markers and reads blue.
+
 #### 2026-09-19 *0.10.0*
 - **A sender badge left of every subject line.** The message list gained a
   narrow column between From and Subject, and the reading pane's avatar became

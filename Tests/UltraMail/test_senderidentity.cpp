@@ -84,6 +84,42 @@ TEST(brand_lookup_matches_service_domains) {
     REQUIRE_EQ(amazon->id, std::string("amazon"));
 }
 
+TEST(crowdfunding_and_creator_platforms_are_in_the_registry) {
+    struct Case { const char* address; const char* id; BrandCategory category; };
+    const Case cases[] = {
+        { "no-reply@kickstarter.com",  "kickstarter",  BrandCategory::Crowdfunding },
+        { "hello@indiegogo.com",       "indiegogo",    BrandCategory::Crowdfunding },
+        { "notice@gofundme.com",       "gofundme",     BrandCategory::Crowdfunding },
+        { "team@startnext.com",        "startnext",    BrandCategory::Crowdfunding },
+        { "orders@crowdsupply.com",    "crowdsupply",  BrandCategory::Crowdfunding },
+        { "bot@patreon.com",           "patreon",      BrandCategory::CreatorSupport },
+        { "no-reply@buymeacoffee.com", "buymeacoffee", BrandCategory::CreatorSupport },
+        { "support@ko-fi.com",         "kofi",         BrandCategory::CreatorSupport },
+        { "news@liberapay.com",        "liberapay",    BrandCategory::CreatorSupport },
+        { "hi@opencollective.com",     "opencollective", BrandCategory::CreatorSupport },
+        { "pins@pinterest.com",        "pinterest",    BrandCategory::Social },
+        { "posts@tumblr.com",          "tumblr",       BrandCategory::Social },
+    };
+    for (const auto& c : cases) {
+        const SenderBrand* brand = BrandForAddress(c.address);
+        REQUIRE(brand != nullptr);
+        REQUIRE_EQ(brand->id, std::string(c.id));
+        REQUIRE(brand->category == c.category);
+        // Each carries the site's own favicon, which is what the cache fetches.
+        REQUIRE(brand->iconUrl.find("https://") == 0);
+    }
+    // Country domains of a label-matched network.
+    REQUIRE(BrandForAddress("pins@pinterest.de") != nullptr);
+}
+
+TEST(brand_category_names_round_trip) {
+    for (const auto& brand : KnownBrands()) {
+        REQUIRE(!ToString(brand.category).empty());
+        REQUIRE(!DisplayName(brand.category).empty());
+        REQUIRE(!brand.iconUrl.empty());   // every entry can fill the icon cache
+    }
+}
+
 TEST(personal_mailbox_domains_are_not_brands) {
     // The user's requirement in one test: Google's *services* are Google, an
     // ordinary gmail.com address is just a person.
@@ -183,14 +219,33 @@ TEST(junk_folder_marks_an_unknown_sender_as_spam) {
     REQUIRE(ClassifySender(who, index).cls == SenderClass::Spam);
 }
 
-TEST(a_known_service_carries_its_brand_into_the_badge) {
+TEST(a_known_service_is_a_business_contact_even_before_the_address_book) {
     ContactIndex index;
     SenderIdentity who;
-    who.address = "notify@linkedin.com";
+    who.address = "no-reply@kickstarter.com";
     const SenderStatus status = ClassifySender(who, index);
-    REQUIRE_EQ(status.brandId, std::string("linkedin"));
-    REQUIRE_EQ(status.brandName, std::string("LinkedIn"));
-    REQUIRE(status.cls == SenderClass::New);   // known service, still not a contact
+    REQUIRE_EQ(status.brandId, std::string("kickstarter"));
+    REQUIRE_EQ(status.brandName, std::string("Kickstarter"));
+    REQUIRE(status.knownService);
+    REQUIRE(status.cls == SenderClass::Business);
+    REQUIRE(status.reason.find("Crowdfunding platform") != std::string::npos);
+
+    // A stranger's domain is still just a new sender.
+    who.address = "someone@unknown-domain.example";
+    REQUIRE(ClassifySender(who, index).cls == SenderClass::New);
+}
+
+TEST(a_known_services_bulk_mail_is_still_an_advertisement) {
+    // The dark-blue badge exists to say "this is marketing"; a campaign
+    // newsletter does not stop being one because it comes from a service the
+    // registry knows.
+    ContactIndex index;
+    SenderIdentity who;
+    who.address = "news@kickstarter.com";
+    who.bulk    = true;
+    const SenderStatus status = ClassifySender(who, index);
+    REQUIRE(status.cls == SenderClass::Advertisement);
+    REQUIRE(status.knownService);
 }
 
 // ---------------------------------------------------------------------------

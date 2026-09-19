@@ -100,7 +100,9 @@ SenderBadge SenderBadgeResolver::Resolve(const MessageEnvelope& message,
     // The tooltip is the whole story: what the sender is, then — when the scan
     // had something to say — why.
     std::string tip = DisplayName(status.cls);
-    if (!status.brandName.empty()) tip += " \xC2\xB7 " + status.brandName;   // " · "
+    if (!status.brandName.empty())
+        tip += " \xC2\xB7 " + status.brandName + " (" +
+               DisplayName(status.brandCategory) + ")";   // " · Kickstarter (…)"
     if (!status.reason.empty())    tip += "\n" + status.reason;
     if (!security.reason.empty())  tip += "\n" + security.reason;
     badge.tooltip = tip;

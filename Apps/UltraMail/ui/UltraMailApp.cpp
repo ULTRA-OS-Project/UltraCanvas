@@ -691,8 +691,11 @@ void UltraMailApp::CollectContacts(const std::string& accountId, const std::stri
     if (!contacts_.IsOpen()) return;
     std::vector<MessageEnvelope> msgs;
     store_.ListMessages(accountId, folder, 0, msgs);
+    // CollectSender, not Collect: a sender in the known-sender registry is
+    // filed under Services as a business contact (with the service's name as
+    // the organization), everything else lands in Other as before.
     for (const auto& m : msgs)
-        ContactCollector::Collect(contacts_, m.fromName, m.fromAddr, ContactSection::Other);
+        ContactCollector::CollectSender(contacts_, m.fromName, m.fromAddr);
 }
 
 void UltraMailApp::StartBackgroundSync() {

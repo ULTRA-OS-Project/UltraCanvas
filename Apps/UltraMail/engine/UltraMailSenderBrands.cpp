@@ -68,74 +68,135 @@ struct BrandRule {
 
 const std::vector<BrandRule>& Rules() {
     static const std::vector<BrandRule> rules = {
-        { {"facebook",  "Facebook",  "https://www.facebook.com/favicon.ico",  0x1877F2},
+        { {"facebook",  "Facebook",  "https://www.facebook.com/favicon.ico",  0x1877F2, BrandCategory::Social},
           {"facebook.com", "facebookmail.com", "fb.com", "meta.com"}, {},
           {"facebook", "meta"} },
-        { {"instagram", "Instagram", "https://www.instagram.com/favicon.ico", 0xE1306C},
+        { {"instagram", "Instagram", "https://www.instagram.com/favicon.ico", 0xE1306C, BrandCategory::Social},
           {"instagram.com", "mail.instagram.com"}, {}, {"instagram"} },
-        { {"whatsapp",  "WhatsApp",  "https://www.whatsapp.com/favicon.ico",  0x25D366},
+        { {"whatsapp",  "WhatsApp",  "https://www.whatsapp.com/favicon.ico",  0x25D366, BrandCategory::Messaging},
           {"whatsapp.com"}, {}, {"whatsapp"} },
-        { {"linkedin",  "LinkedIn",  "https://www.linkedin.com/favicon.ico",  0x0A66C2},
+        { {"linkedin",  "LinkedIn",  "https://www.linkedin.com/favicon.ico",  0x0A66C2, BrandCategory::Social},
           {"linkedin.com"}, {}, {"linkedin"} },
-        { {"x",         "X",         "https://abs.twimg.com/favicons/twitter.3.ico", 0x111111},
+        { {"x",         "X",         "https://abs.twimg.com/favicons/twitter.3.ico", 0x111111, BrandCategory::Social},
           {"twitter.com", "x.com"}, {}, {"twitter"} },
-        { {"claude",    "Claude",    "https://claude.ai/favicon.ico",         0xD97757},
+        { {"claude",    "Claude",    "https://claude.ai/favicon.ico",         0xD97757, BrandCategory::Technology},
           {"anthropic.com", "claude.ai", "claude.com"}, {}, {"anthropic", "claude"} },
-        { {"openai",    "OpenAI",    "https://openai.com/favicon.ico",        0x10A37F},
+        { {"openai",    "OpenAI",    "https://openai.com/favicon.ico",        0x10A37F, BrandCategory::Technology},
           {"openai.com", "chatgpt.com"}, {}, {"openai", "chatgpt"} },
-        { {"google",    "Google",    "https://www.google.com/favicon.ico",    0x4285F4},
+        { {"google",    "Google",    "https://www.google.com/favicon.ico",    0x4285F4, BrandCategory::Technology},
           {"googleapis.com", "googleusercontent.com", "google-analytics.com",
            "withgoogle.com", "firebase.com", "android.com"},
           {"google"}, {"google"} },
-        { {"youtube",   "YouTube",   "https://www.youtube.com/favicon.ico",   0xFF0000},
+        { {"youtube",   "YouTube",   "https://www.youtube.com/favicon.ico",   0xFF0000, BrandCategory::Media},
           {"youtube.com", "youtu.be"}, {}, {"youtube"} },
-        { {"apple",     "Apple",     "https://www.apple.com/favicon.ico",     0x555555},
+        { {"apple",     "Apple",     "https://www.apple.com/favicon.ico",     0x555555, BrandCategory::Technology},
           {"apple.com", "itunes.com", "apple.news"}, {},
           {"apple", "itunes", "appleid"} },
-        { {"microsoft", "Microsoft", "https://www.microsoft.com/favicon.ico", 0x0078D4},
+        { {"microsoft", "Microsoft", "https://www.microsoft.com/favicon.ico", 0x0078D4, BrandCategory::Technology},
           {"microsoft.com", "microsoftonline.com", "office.com", "office365.com",
            "sharepointonline.com", "azure.com", "windows.com", "skype.com",
            "xbox.com", "bing.com"}, {},
           {"microsoft", "onedrive", "sharepoint", "outlook", "office"} },
-        { {"github",    "GitHub",    "https://github.com/favicon.ico",        0x24292F},
+        { {"github",    "GitHub",    "https://github.com/favicon.ico",        0x24292F, BrandCategory::Technology},
           {"github.com"}, {}, {"github"} },
-        { {"amazon",    "Amazon",    "https://www.amazon.com/favicon.ico",    0xFF9900},
+        { {"amazon",    "Amazon",    "https://www.amazon.com/favicon.ico",    0xFF9900, BrandCategory::Shopping},
           {"amazon.com", "primevideo.com", "audible.com", "aws.amazon.com"},
           {"amazon"}, {"amazon", "prime"} },
-        { {"paypal",    "PayPal",    "https://www.paypal.com/favicon.ico",    0x003087},
+        { {"paypal",    "PayPal",    "https://www.paypal.com/favicon.ico",    0x003087, BrandCategory::Payment},
           {"paypal.com", "paypal-communication.com"}, {}, {"paypal"} },
-        { {"stripe",    "Stripe",    "https://stripe.com/favicon.ico",        0x635BFF},
+        { {"stripe",    "Stripe",    "https://stripe.com/favicon.ico",        0x635BFF, BrandCategory::Payment},
           {"stripe.com"}, {}, {"stripe"} },
-        { {"ebay",      "eBay",      "https://www.ebay.com/favicon.ico",      0xE53238},
+        { {"ebay",      "eBay",      "https://www.ebay.com/favicon.ico",      0xE53238, BrandCategory::Shopping},
           {}, {"ebay"}, {"ebay"} },
-        { {"netflix",   "Netflix",   "https://www.netflix.com/favicon.ico",   0xE50914},
+        { {"netflix",   "Netflix",   "https://www.netflix.com/favicon.ico",   0xE50914, BrandCategory::Media},
           {"netflix.com"}, {}, {"netflix"} },
-        { {"spotify",   "Spotify",   "https://www.spotify.com/favicon.ico",   0x1DB954},
+        { {"spotify",   "Spotify",   "https://www.spotify.com/favicon.ico",   0x1DB954, BrandCategory::Media},
           {"spotify.com", "spotifymail.com"}, {}, {"spotify"} },
-        { {"dropbox",   "Dropbox",   "https://www.dropbox.com/favicon.ico",   0x0061FF},
+        { {"dropbox",   "Dropbox",   "https://www.dropbox.com/favicon.ico",   0x0061FF, BrandCategory::Technology},
           {"dropbox.com", "dropboxmail.com"}, {}, {"dropbox"} },
-        { {"slack",     "Slack",     "https://slack.com/favicon.ico",         0x4A154B},
+        { {"slack",     "Slack",     "https://slack.com/favicon.ico",         0x4A154B, BrandCategory::Messaging},
           {"slack.com", "slack-mail.com"}, {}, {"slack"} },
-        { {"discord",   "Discord",   "https://discord.com/assets/favicon.ico",0x5865F2},
+        { {"discord",   "Discord",   "https://discord.com/assets/favicon.ico",0x5865F2, BrandCategory::Messaging},
           {"discord.com", "discordapp.com"}, {}, {"discord"} },
-        { {"telegram",  "Telegram",  "https://telegram.org/favicon.ico",      0x26A5E4},
+        { {"telegram",  "Telegram",  "https://telegram.org/favicon.ico",      0x26A5E4, BrandCategory::Messaging},
           {"telegram.org"}, {}, {"telegram"} },
-        { {"reddit",    "Reddit",    "https://www.reddit.com/favicon.ico",    0xFF4500},
+        { {"reddit",    "Reddit",    "https://www.reddit.com/favicon.ico",    0xFF4500, BrandCategory::Social},
           {"reddit.com", "redditmail.com"}, {}, {"reddit"} },
-        { {"tiktok",    "TikTok",    "https://www.tiktok.com/favicon.ico",    0x111111},
+        { {"tiktok",    "TikTok",    "https://www.tiktok.com/favicon.ico",    0x111111, BrandCategory::Social},
           {"tiktok.com"}, {}, {"tiktok"} },
-        { {"zoom",      "Zoom",      "https://zoom.us/favicon.ico",           0x2D8CFF},
+        { {"zoom",      "Zoom",      "https://zoom.us/favicon.ico",           0x2D8CFF, BrandCategory::Technology},
           {"zoom.us"}, {}, {"zoom"} },
-        { {"booking",   "Booking",   "https://www.booking.com/favicon.ico",   0x003580},
+        { {"booking",   "Booking",   "https://www.booking.com/favicon.ico",   0x003580, BrandCategory::Travel},
           {"booking.com"}, {}, {"booking"} },
-        { {"airbnb",    "Airbnb",    "https://www.airbnb.com/favicon.ico",    0xFF5A5F},
+        { {"airbnb",    "Airbnb",    "https://www.airbnb.com/favicon.ico",    0xFF5A5F, BrandCategory::Travel},
           {"airbnb.com"}, {}, {"airbnb"} },
-        { {"dhl",       "DHL",       "https://www.dhl.com/favicon.ico",       0xD40511},
+        { {"dhl",       "DHL",       "https://www.dhl.com/favicon.ico",       0xD40511, BrandCategory::Delivery},
           {}, {"dhl"}, {"dhl"} },
-        { {"ups",       "UPS",       "https://www.ups.com/favicon.ico",       0x351C15},
+        { {"ups",       "UPS",       "https://www.ups.com/favicon.ico",       0x351C15, BrandCategory::Delivery},
           {"ups.com"}, {}, {"ups"} },
-        { {"fedex",     "FedEx",     "https://www.fedex.com/favicon.ico",     0x4D148C},
+        { {"fedex",     "FedEx",     "https://www.fedex.com/favicon.ico",     0x4D148C, BrandCategory::Delivery},
           {"fedex.com"}, {}, {"fedex"} },
+
+        // ── Crowdfunding and creator support ────────────────────────────────
+        // A backed project or a supported creator is a business relationship
+        // the user keeps: these are among the entries most worth collecting
+        // into the address book (see ContactCollector::CollectSender).
+        { {"kickstarter", "Kickstarter", "https://www.kickstarter.com/favicon.ico", 0x05CE78,
+           BrandCategory::Crowdfunding},
+          {"kickstarter.com"}, {}, {"kickstarter"} },
+        { {"indiegogo", "Indiegogo", "https://www.indiegogo.com/favicon.ico", 0xEB1478,
+           BrandCategory::Crowdfunding},
+          {"indiegogo.com"}, {}, {"indiegogo"} },
+        { {"gofundme", "GoFundMe", "https://www.gofundme.com/favicon.ico", 0x02A95C,
+           BrandCategory::Crowdfunding},
+          {"gofundme.com"}, {}, {"gofundme"} },
+        { {"startnext", "Startnext", "https://www.startnext.com/favicon.ico", 0x27ADE3,
+           BrandCategory::Crowdfunding},
+          {"startnext.com", "startnext.de"}, {}, {"startnext"} },
+        { {"crowdsupply", "Crowd Supply", "https://www.crowdsupply.com/favicon.ico", 0x1B4E6B,
+           BrandCategory::Crowdfunding},
+          {"crowdsupply.com"}, {}, {"crowd supply", "crowdsupply"} },
+        { {"patreon", "Patreon", "https://www.patreon.com/favicon.ico", 0xFF424D,
+           BrandCategory::CreatorSupport},
+          {"patreon.com"}, {}, {"patreon"} },
+        { {"buymeacoffee", "Buy Me a Coffee", "https://buymeacoffee.com/favicon.ico", 0xFFDD00,
+           BrandCategory::CreatorSupport},
+          {"buymeacoffee.com"}, {}, {"buy me a coffee", "buymeacoffee"} },
+        { {"kofi", "Ko-fi", "https://ko-fi.com/favicon.ico", 0xFF5E5B,
+           BrandCategory::CreatorSupport},
+          {"ko-fi.com"}, {}, {"ko-fi", "kofi"} },
+        { {"liberapay", "Liberapay", "https://liberapay.com/favicon.ico", 0xF6C915,
+           BrandCategory::CreatorSupport},
+          {"liberapay.com"}, {}, {"liberapay"} },
+        { {"opencollective", "Open Collective", "https://opencollective.com/favicon.ico", 0x3385FF,
+           BrandCategory::CreatorSupport},
+          {"opencollective.com"}, {}, {"open collective", "opencollective"} },
+        { {"gumroad", "Gumroad", "https://gumroad.com/favicon.ico", 0xFF90E8,
+           BrandCategory::CreatorSupport},
+          {"gumroad.com"}, {}, {"gumroad"} },
+        { {"substack", "Substack", "https://substack.com/favicon.ico", 0xFF6719,
+           BrandCategory::CreatorSupport},
+          {"substack.com"}, {}, {"substack"} },
+
+        // ── More social networks ────────────────────────────────────────────
+        { {"pinterest", "Pinterest", "https://www.pinterest.com/favicon.ico", 0xE60023,
+           BrandCategory::Social},
+          {"pinterest.com", "pinterestmail.com"}, {"pinterest"}, {"pinterest"} },
+        { {"tumblr", "Tumblr", "https://www.tumblr.com/favicon.ico", 0x36465D,
+           BrandCategory::Social},
+          {"tumblr.com", "tumblr.net"}, {}, {"tumblr"} },
+        { {"mastodon", "Mastodon", "https://joinmastodon.org/favicon.ico", 0x6364FF,
+           BrandCategory::Social},
+          {"joinmastodon.org", "mastodon.social"}, {}, {"mastodon"} },
+        { {"twitch", "Twitch", "https://www.twitch.tv/favicon.ico", 0x9146FF,
+           BrandCategory::Media},
+          {"twitch.tv"}, {}, {"twitch"} },
+        { {"vimeo", "Vimeo", "https://vimeo.com/favicon.ico", 0x1AB7EA,
+           BrandCategory::Media},
+          {"vimeo.com"}, {}, {"vimeo"} },
+        { {"etsy", "Etsy", "https://www.etsy.com/favicon.ico", 0xF1641E,
+           BrandCategory::Shopping},
+          {}, {"etsy"}, {"etsy"} },
     };
     return rules;
 }
@@ -156,6 +217,38 @@ bool ContainsWord(const std::string& haystackLower, const std::string& wordLower
 }
 
 } // namespace
+
+std::string ToString(BrandCategory category) {
+    switch (category) {
+        case BrandCategory::Social:         return "social";
+        case BrandCategory::Messaging:      return "messaging";
+        case BrandCategory::Crowdfunding:   return "crowdfunding";
+        case BrandCategory::CreatorSupport: return "creator-support";
+        case BrandCategory::Shopping:       return "shopping";
+        case BrandCategory::Payment:        return "payment";
+        case BrandCategory::Technology:     return "technology";
+        case BrandCategory::Media:          return "media";
+        case BrandCategory::Travel:         return "travel";
+        case BrandCategory::Delivery:       return "delivery";
+    }
+    return "technology";
+}
+
+std::string DisplayName(BrandCategory category) {
+    switch (category) {
+        case BrandCategory::Social:         return "Social network";
+        case BrandCategory::Messaging:      return "Messaging service";
+        case BrandCategory::Crowdfunding:   return "Crowdfunding platform";
+        case BrandCategory::CreatorSupport: return "Creator support platform";
+        case BrandCategory::Shopping:       return "Online shop";
+        case BrandCategory::Payment:        return "Payment service";
+        case BrandCategory::Technology:     return "Online service";
+        case BrandCategory::Media:          return "Media service";
+        case BrandCategory::Travel:         return "Travel service";
+        case BrandCategory::Delivery:       return "Parcel carrier";
+    }
+    return "Online service";
+}
 
 std::string DomainOfAddress(const std::string& address) {
     // Take the angle-addr when there is one, then everything after the last '@'.

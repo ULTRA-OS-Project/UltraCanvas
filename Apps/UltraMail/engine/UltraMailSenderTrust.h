@@ -14,6 +14,7 @@
 #pragma once
 
 #include "UltraMailContacts.h"
+#include "UltraMailSenderBrands.h"
 #include "UltraMailThreatScan.h"
 
 #include <cstdint>
@@ -81,6 +82,8 @@ struct SenderStatus {
     std::string    brandId;
     std::string    brandName;
     uint32_t       brandAccentRgb = 0x5B6470;
+    BrandCategory  brandCategory  = BrandCategory::Technology;
+    bool           knownService   = false;   // the address is in the registry
 
     // One sentence for the tooltip; the scan's own reasons are appended by the
     // caller, which has them from the store.
