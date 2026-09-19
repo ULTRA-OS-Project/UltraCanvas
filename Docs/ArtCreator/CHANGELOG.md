@@ -1,3 +1,33 @@
+#### 2026-09-19 *0.3.0*
+- **Depth, phase 5 of the proposal (first slice).** Four tools after
+  Feather in the palette and three commands, on the framework's new
+  containers, effects and polygon booleans (UltraCanvas 0.8.99):
+  - **Contour (C)**: click a shape for a contour; drag right for an
+    outward width, left for an inward one; steps, the colour run (fade,
+    rainbow, alt rainbow, constant) and the colour - from the line or the
+    fill colour - in the options.
+  - **Bevel (J)**: click a shape for a bevel and drag right for a wider
+    rim; Xara's fifteen profiles, the light's angle and tilt, contrast
+    and inner / outer in the options.
+  - **Blend (B)**: drag from one shape to another to blend them; dragging
+    from or onto a blend adds the shape to it; steps and the colour run
+    in the options.
+  - **Mould (M)**: click a shape (or the selection it belongs to) to put
+    it in an envelope or a perspective, then drag the corner squares and
+    an envelope's curve handles; reset the shape or remove the mould.
+  - **Arrange > Combine shapes**: Add, Subtract, Intersect and Slice, as
+    in Xara (the front shape subtracts from or slices the others and is
+    removed; Add and Intersect keep the back shape's style).
+  - **Arrange > Apply ClipView (Ctrl+K)**: the front shape of the
+    selection becomes the keyhole the others show through; **Remove
+    ClipView, Blend or Mould** (and Ungroup) dissolve them again.
+- **XAR carries all of it.** Clip views, contours, blends, moulds and
+  bevels are saved as Xara's own controller records and read back as
+  themselves; a Xara drawing's own ones open as editable objects.
+- Not in this release (the rest of phase 5): text on path and text areas,
+  pages and spreads, the colour gallery with linked shades, symbols, the
+  photo tool, live effects, trace-to-vector, editable brushes.
+
 #### 2026-09-18 *0.2.0*
 - **Xara-class effects, phase 4 of the proposal.** Three additions to the
   palette and one panel, all on the framework's new model fields

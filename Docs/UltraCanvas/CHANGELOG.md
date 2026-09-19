@@ -1,3 +1,67 @@
+#### 2026-09-19 *0.8.99*
+- **Depth for the vector model: booleans, ClipView, contour, blend, mould,
+  bevel** - phase 5 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`
+  (its first slice); the application half is ArtCreator 0.3.0.
+  - *Geometry* (`DataFormats/UltraCanvasVectorGeometry.h`, core): polygon
+    booleans over paths flattened to polygons - `PolygonBoolean` /
+    `PathBoolean` (union, subtract, intersect, exclude, each input with
+    its own fill rule; a union with nothing normalises a self-crossing
+    path) and `SlicePath` - as a planar-map clipper: every edge is split
+    at every crossing, each piece classified by the winding numbers on
+    its two sides, the separating pieces linked into consistently wound
+    rings. `OffsetPolygons` / `OffsetPath` grow or shrink a set with
+    round, mitre or bevel joins through the same clipper. `FlattenToPolygons`,
+    `PolygonsToPath`, `PolygonSetArea`, `WindingNumber`,
+    `PolygonSetContains`.
+  - *Model*: three container kinds, all `VectorGroup`s (`IsGroupType`):
+    `VectorClipView` (its first `Keyholes` children clip the rest and are
+    not drawn), `VectorBlend` (`Steps` shapes interpolated between each
+    pair of children, a `ColourBlendKind` run - fade, rainbow, alt
+    rainbow, constant - the one-to-one, antialiased and tangential flags
+    and Xara's profiles) and `VectorMould` (`Envelope` or `Perspective`:
+    the children warped from `SourceBounds` into a four-sided `Shape`
+    that starts at the source's top-left corner; `Warp`, `ShapeCorners`,
+    `IdentityShape`). Two effects on `VectorElement::Effects`:
+    `ContourEffect` (`Steps` rings `Width` out - or in, when negative -
+    coloured from the fill to `Colour`) and `BevelEffect` (Xara's fifteen
+    `BevelKind` profiles, `Indent`, `LightAngle`, `Tilt`, `Contrast`,
+    `Outer`).
+  - *Renderer*: a ClipView clips to its keyholes' union; a blend draws
+    each child and the resampled, start-matched intermediates with their
+    colours, strokes and opacity run; a mould warps every outline through
+    a Coons patch or a projective map (text and images move to their
+    moulded anchor); contour rings come from the offsetter (outward
+    behind the object, inward over it; cached with the geometry); the
+    bevel lights a distance transform of the silhouette shaped by the
+    profile, inner or outer, as highlight and shadow masks (cached like
+    the effect rasters; `EffectCacheSize` counts all three caches).
+  - *Editing layer*: `CombineShapes` (Xara's Combine Shapes: `Add`,
+    `Intersect` give one shape with the back shape's style; `Subtract`
+    and `Slice` cut each shape with the front one, which is removed).
+    `UngroupElements` dissolves the new containers too.
+  - *XAR*: the plugin gives the five controllers real container nodes and
+    parses their fields as Xara's own source writes them (the previous
+    reader skipped the controller records, so their contents nested under
+    the preceding object): `TAG_CLIPVIEWCONTROLLER` with the keyholes
+    before the `TAG_CLIPVIEW` marker; `TAG_CONTOURCONTROLLER` (steps,
+    width, blend type with the inset flag, four profile doubles) with its
+    `TAG_CONTOUR` node carrying the contour colour; `TAG_BLENDPROFILES` +
+    `TAG_BLEND` (steps, flags) with `TAG_BLENDER` / `TAG_BLENDERADDITIONAL`
+    between the blended objects; `TAG_MOULD_ENVELOPE` / `_PERSPECTIVE`
+    (threshold) with the `TAG_MOULD_PATH` shape and the `TAG_MOULD_BOUNDS`
+    + `TAG_MOULD_GROUP` sources; the 24-byte `TAG_BEVEL` with its
+    `TAG_BEVELINK` node. The converter reads them into the model (the
+    mould shape re-ordered from Xara's bottom-left start) and writes them
+    back the same way, the moulded results as plain warped paths so any
+    reader shows them; Xara regenerates contour steps, blend steps and
+    bevels from the controllers on load. Not verified against a Designer
+    export: the repo's Xara samples carry none of these records.
+  - *Tests*: `VectorEditTest` checks the booleans (areas, ring counts,
+    containment, a holed square), the three joins, insets and the four
+    combine operations; `VectorModelTest` checks each container and
+    effect in pixels; `XARWriterTest` round-trips one of each through the
+    plugin and the converter.
+
 #### 2026-09-19 *0.8.98*
 - **Xara-class effects in the vector model, renderer and XAR converter** -
   phase 4 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`; the
