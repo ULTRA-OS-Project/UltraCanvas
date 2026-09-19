@@ -54,3 +54,8 @@ Configured by the root CMakeLists (`BUILD_ULTRAVIEWER_APP`, default ON):
 ```bash
 mkdir build && cd build && cmake .. && make UltraViewer
 ```
+
+On Linux, `make install` also places `UltraViewer.desktop` in
+`share/applications` and the app icon (`media/appicon/UltraViewer.png` /
+`.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme, which is
+how the application menu and UltraFiler find the viewer and its icon.
