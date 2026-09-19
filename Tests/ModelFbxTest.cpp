@@ -14,7 +14,11 @@
 // malformed-file refusals is reachable from one Blender export. A container
 // nothing exercises is a liability.
 //
-// argv[1] is the .fbx. Without it only the synthetic cases run.
+// argv[1] is the binary .fbx - Tests/data/3D/FBX, not the demo copy under
+// media/3D, which was re-exported complete and so no longer sits on the far
+// side of the mirror-modifier split from the ASCII one. argv[2] is that
+// ASCII export, which is unchanged and still read from media/3D/FBX.
+// Without them only the synthetic cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-11

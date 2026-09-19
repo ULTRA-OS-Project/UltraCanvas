@@ -437,7 +437,15 @@ namespace UltraCanvas {
         // Alembic, DirectX .x, MilkShape and STEP, read through the Models
         // plugin's dispatch into one ModelDocument. Guarded because the plugin
         // is an option; the STL page above is not, since its loader is in core.
-        std::shared_ptr<UltraCanvasUIElement> CreateModelFormatsExamples();
+        //
+        // One page per format, the way STL has its own: `extension` names the
+        // format to show ("3ds", "dae", "step", ...) and the page carries only
+        // that format's samples. An empty extension keeps the original
+        // all-formats survey, which nothing registers but the code stays
+        // honest about.
+        std::shared_ptr<UltraCanvasUIElement> CreateModelFormatsExamples(
+                const std::string& extension = ""
+        );
 #endif
 #ifdef ULTRACANVAS_HAS_OCR_PLUGIN
         std::shared_ptr<UltraCanvasUIElement> CreateOCRExamples();

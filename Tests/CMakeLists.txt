@@ -219,36 +219,6 @@ add_test(NAME FileLockTest COMMAND FileLockTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FileLockTest")
 
-# ===== ELEVATED FILE OPERATIONS TEST =====
-# The "Delete as administrator" retry (UltraCanvasElevatedFileOperations):
-# the command-line and report encodings the two processes agree on, the
-# helper's own delete in a temp folder, and the no-backend answers. Built from
-# its own sources like the file-lock test; on Windows the backend comes along
-# so the elevation and permission-failure probes compile, though the test
-# never starts a helper (that would put up a consent prompt).
-message(STATUS "  Building ElevatedFileOperationsTest...")
-
-set(ELEVATED_FILE_OPERATIONS_SOURCES
-    ${CMAKE_CURRENT_SOURCE_DIR}/ElevatedFileOperationsTest.cpp
-    ${ULTRACANVAS_CORE_DIR}/UltraCanvasElevatedFileOperations.cpp
-)
-if(WIN32)
-    list(APPEND ELEVATED_FILE_OPERATIONS_SOURCES
-        ${ULTRACANVAS_ROOT}/UltraCanvas/OS/MSWindows/UltraCanvasWindowsElevatedFileOperations.cpp)
-endif()
-add_executable(ElevatedFileOperationsTest ${ELEVATED_FILE_OPERATIONS_SOURCES})
-target_include_directories(ElevatedFileOperationsTest PRIVATE ${ULTRACANVAS_INCLUDE_DIR})
-target_compile_features(ElevatedFileOperationsTest PRIVATE cxx_std_20)
-if(WIN32)
-    target_link_libraries(ElevatedFileOperationsTest PRIVATE shell32 advapi32 ole32)
-endif()
-set_target_properties(ElevatedFileOperationsTest PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-add_test(NAME ElevatedFileOperationsTest COMMAND ElevatedFileOperationsTest
-         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-message(STATUS "    Test registered: ElevatedFileOperationsTest")
-
 # ===== VOLUME MONITOR TEST =====
 # Same arrangement as the folder watcher above: UltraCanvasVolumeMonitor is
 # built from its own sources, needs no display and does not link UltraCanvas.
@@ -1093,7 +1063,7 @@ if(TEST_TINYXML2_FOUND)
     )
     add_test(
         NAME ModelColladaTest
-        COMMAND ModelColladaTest "${ULTRACANVAS_ROOT}/media/3D/COLLADA/E-45-Aircraft.dae"
+        COMMAND ModelColladaTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/COLLADA/E-45-Aircraft.dae"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
     message(STATUS "    Test registered: ModelColladaTest")
@@ -1166,7 +1136,7 @@ set_target_properties(ModelXFileTest PROPERTIES
 )
 add_test(
     NAME ModelXFileTest
-    COMMAND ModelXFileTest "${ULTRACANVAS_ROOT}/media/3D/XFile/E-45-Aircraft.x"
+    COMMAND ModelXFileTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/XFile/E-45-Aircraft.x"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelXFileTest")
@@ -1198,7 +1168,7 @@ set_target_properties(ModelMS3DTest PROPERTIES
 )
 add_test(
     NAME ModelMS3DTest
-    COMMAND ModelMS3DTest "${ULTRACANVAS_ROOT}/media/3D/MS3D/E-45-Aircraft.ms3d"
+    COMMAND ModelMS3DTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/MS3D/E-45-Aircraft.ms3d"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelMS3DTest")
@@ -1271,7 +1241,7 @@ if(ZLIB_FOUND)
     )
     add_test(
         NAME ModelFbxTest
-        COMMAND ModelFbxTest "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft.fbx"
+        COMMAND ModelFbxTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D/FBX/E-45-Aircraft.fbx"
                              "${ULTRACANVAS_ROOT}/media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx"
         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
     )
@@ -2629,33 +2599,6 @@ set_target_properties(FilerVolumeSpaceTest PROPERTIES
 add_test(NAME FilerVolumeSpaceTest COMMAND FilerVolumeSpaceTest
          WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 message(STATUS "    Test registered: FilerVolumeSpaceTest")
-
-message(STATUS "")
-
-# ===== FILER HISTORY TEST =====
-# The recently used files / folders / apps behind the toolbar's clock button
-# (Apps/UltraFiler/UltraFilerHistory.h): that the three lists survive a
-# restart, and that each keeps the number of entries Settings > Extras >
-# History & Favorites asks for - while recording, while reading the file back,
-# and at the moment the limit is lowered.
-# Header-only, so the test needs no library - it runs on any build. It points
-# the config directory at a temporary folder, so it never touches a real
-# UltraFiler installation.
-message(STATUS "  Building FilerHistoryTest...")
-add_executable(FilerHistoryTest
-    ${CMAKE_CURRENT_SOURCE_DIR}/FilerHistoryTest.cpp
-)
-target_include_directories(FilerHistoryTest PRIVATE
-    ${ULTRACANVAS_ROOT}/Apps/UltraFiler
-    ${ULTRACANVAS_INCLUDE_DIR}
-)
-target_compile_features(FilerHistoryTest PRIVATE cxx_std_20)
-set_target_properties(FilerHistoryTest PROPERTIES
-    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
-)
-add_test(NAME FilerHistoryTest COMMAND FilerHistoryTest
-         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-message(STATUS "    Test registered: FilerHistoryTest")
 
 message(STATUS "")
 

@@ -208,6 +208,7 @@ std::shared_ptr<UCPixmap> RenderMeshPreviewPixmap(const Mesh3D& source,
     const float cp = std::cos(kPitch), sp = std::sin(kPitch);
 
     const Vec3 center = normalized.center;
+    const MeshUpAxis mesh3DUpAxis = normalized.mesh->upAxis;
     // 0.92 leaves a hair of margin so the silhouette never touches the
     // tile edge; the rotated bounding sphere fits in either direction.
     const float unit = 0.92f * 0.5f * static_cast<float>(std::min(pw, ph)) / normalized.radius;
@@ -216,7 +217,9 @@ std::shared_ptr<UCPixmap> RenderMeshPreviewPixmap(const Mesh3D& source,
     // Screen space: y grows downwards, so the model's up axis is negated.
     // Depth is the rotated z (bigger = closer).
     auto project = [&](const Vec3& position, Projected& out) {
-        const Vec3 v = position - center;
+        // Upright first, exactly as the GL viewer does it, or a Z-up mesh
+        // thumbnails on its nose while the live view stands it up.
+        const Vec3 v = ToViewerUp(position - center, mesh3DUpAxis);
         const float x1 =  v.x * cy + v.z * sy;
         const float z1 = -v.x * sy + v.z * cy;
         out.rotated = Vec3{x1, v.y * cp - z1 * sp, v.y * sp + z1 * cp};
@@ -251,10 +254,13 @@ std::shared_ptr<UCPixmap> RenderMeshPixmap(const Mesh3D& source, int w, int h,
     const float aspect = ph > 0 ? static_cast<float>(pw) / static_cast<float>(ph) : 1.0f;
     const float invRadius = normalized.radius > 1e-6f ? 1.0f / normalized.radius : 1.0f;
     const Vec3 center = normalized.center;
+    const MeshUpAxis mesh3DUpAxis = normalized.mesh->upAxis;
     const float ox = pw * 0.5f, oy = ph * 0.5f;
 
     auto project = [&](const Vec3& position, Projected& out) {
-        const Vec3 unitSpace = (position - center) * invRadius;
+        // The still has to be the view that was on screen, so it stands the
+        // mesh up on the same axis the GL viewer does before posing it.
+        const Vec3 unitSpace = ToViewerUp(position - center, mesh3DUpAxis) * invRadius;
         out.rotated = RotateByPose(unitSpace, pose.yaw, pose.pitch);
         // Camera space: the eye sits at +Z looking down -Z, so everything in
         // front of it has a negative z once translated.

@@ -1,3 +1,89 @@
+#### 2026-09-19 *0.8.90*
+- **Every 3D model in the demo was drawn standing on its nose.** The viewers'
+  cameras put +Y on screen, but nothing told them which axis a mesh called up,
+  and the formats disagree: STL, STEP, DXF and most CAD are Z-up, glTF and FBX
+  are Y-up. A Z-up mesh handed over unrotated has its length running up the
+  screen, which is why the demo's aeroplanes pointed at the floor.
+  - `Mesh3D` now carries `upAxis` (`MeshUpAxis::YUp` / `ZUp`), and each
+    producer states what it read: `UltraCanvasSTLLoader` sets `ZUp`, the
+    format's universal convention, and `ModelDocumentToMesh3D` takes it from
+    `document.Up`. `Mesh3DToModelDocument` writes it back, so the round trip
+    keeps orientation as well as geometry; a `Mesh3D` built in code keeps the
+    `YUp` default and is unaffected.
+  - `UltraCanvasSTLElement` and `UltraCanvasModelRaster` both rotate a `ZUp`
+    mesh by -90 degrees about X before posing it — the same sense and sign as
+    `ModelDocument::ConvertUpAxis`, and the same in both, so the software still
+    remains the view that was on screen. Only the view rotates: vertex data,
+    bounds and the extents a page reports stay in the file's own frame, so the
+    Model Formats panels still report "Z-up" for a file that says so.
+  - This reached every caller, not just the demo: the media viewer opens `.stl`
+    and the other model formats through the same element, and the Filer's
+    thumbnails go through the same raster.
+- **The 3D Graphics tree listed one "3D Model Formats" page for seven readers.**
+  A visitor asking whether FBX is supported had to open a page and click
+  through a carousel to find out. Each format is now its own entry beside STL
+  — STEP, MilkShape, FBX, Alembic, COLLADA, 3D Studio and DirectX .x —
+  and `CreateModelFormatsExamples(extension)` filters the same page to that
+  reader. A single-sample format shows no Prev/Next buttons rather than two
+  that do nothing.
+- **Four of the aircraft samples were incomplete exports, which read as an
+  importer dropping geometry and was not.** Both meshes in
+  `media/3D/Blend/E-45-Aircraft.blend` carry a Mirror modifier about X=0, and
+  the .dae, .x and binary .fbx had been exported without applying modifiers, so
+  the files held half an aeroplane; the .ms3d held only the glass canopy and no
+  hull at all. Parsing each file directly settles which side the defect was on:
+  OBJ, PLY, 3DS, X3D, VRML, DXF and the *ASCII* FBX all span X −0.973…+0.973,
+  while those four stopped at 0.000 — two exports of the same model from the
+  same scene disagreeing is not something a reader can cause.
+  - Regenerated from that .blend with the modifier applied: the .fbx by
+    Blender's own exporter, the .dae and .x by mirroring each file's geometry
+    in place so the exporter's scene graph, materials and templates survive,
+    and the .ms3d written afresh with both meshes as two groups. All four now
+    span the full 1.946 and match the formats that were already complete.
+  - The .dae needed a second fix: its two mesh nodes hang off the armature's
+    JOINT chain with no skinning controller, so the joint rest transforms were
+    applied on top of placements that already included them — the hull landed
+    3.5 m out and the canopy 5 m behind it, detached. Recomputing both local
+    transforms against the .blend's world matrices brings the document extent
+    to 1.95 × 6.17 × 4.21, the same aeroplane the other formats describe.
+  - The exports as they came out of Blender are kept in `Tests/data/3D/`,
+    because their defects are what four test suites pin. `ModelColladaTest`,
+    `ModelXFileTest`, `ModelMS3DTest` and `ModelFbxTest` assert the half hull
+    and the canopy-only MilkShape deliberately — "a property of the file rather
+    than of the reader … asserting it stops a later change *fixing* the reader
+    to match the others" — and cross-check the files against each other: the
+    MilkShape canopy is "exactly twice the Alembic canopy's 744 faces", and the
+    two FBX exports are one scene "on opposite sides of the mirror-modifier
+    split". Completing the media copies in place would have deleted that net,
+    and the re-exported .fbx carries neither the stacked DiffuseColor textures
+    nor the transparent canopy material the original pins. So `media/3D/` now
+    holds the demo's showcase assets and `Tests/data/3D/` the fixtures, with
+    the four tests pointed at the latter and `Tests/data/3D/README.md` saying
+    which is which.
+  - Still outstanding: `media/3D/Alembic/E-45-Aircraft.abc` is a narrower mesh
+    than its siblings (3297 faces against 3990, X span 1.53 against 1.95).
+    Nothing here writes Alembic — not the framework, whose writers cover 3DS,
+    OBJ, PLY, STEP, COLLADA and X3D, nor Debian's Blender, which ships without
+    the Alembic and COLLADA exporters — so that one is left as found.
+- **The DWG and DXF samples are now filed by what they hold rather than by
+  format.** CAD covers both, so the folders held a mix: `media/vector/DXF`
+  carried `E-45-Aircraft.dxf`'s sibling drawings while the 3D DXF sat in
+  `media/3D`, and nothing said which was which. Counting entities settles each
+  one — the Millennium Falcon is 1015 LWPOLYLINEs and 507 LINEs, the figure
+  study 74 NURBS SPLINEs, the Audi and the hostel plans 2D blocks and hatches,
+  every Z at zero; `E-45-Aircraft.dxf` is 8110 3DFACEs and `bagno_3d_1.dwg`
+  polyface meshes.
+  - The four flat drawings live in `media/vector/{DWG,DXF}` and stay on the
+    "DWG / DXF Drawings" page under Vector Graphics. The two that carry
+    geometry live in `media/3D/{DWG,DXF}`.
+  - New **"DXF 3D Models"** entry under 3D Graphics reads the E-45 DXF through
+    the Models plugin as a mesh — 16220 triangles, extent 1.95 × 6.14 × 4.19,
+    the same aeroplane 3DS describes. A DXF of only 2D entities is refused
+    there with an explanation, which `ModelDXFTest` asserts.
+  - The 3D DWG is still drawn on the drawings page, projected to plan view,
+    because that is what a CAD reader does with polyface meshes — the page now
+    names the file's root per tile rather than assuming one folder.
+
 #### 2026-09-19 *0.8.88*
 - **CI builds and runs the UltraCloud test suite.** It has existed since the
   module did, and no continuous build had ever compiled it: the option that
