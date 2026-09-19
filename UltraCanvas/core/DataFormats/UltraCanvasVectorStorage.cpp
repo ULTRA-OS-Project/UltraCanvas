@@ -869,6 +869,200 @@ std::shared_ptr<VectorElement> VectorSymbol::Clone() const {
 }
 
 
+// VectorClipView
+
+namespace {
+    template <class G>
+    std::shared_ptr<G> CloneGroupAs(const G& src) {
+        auto clone = std::make_shared<G>(src);
+        clone->Parent.reset();
+        clone->Children.clear();
+        for (const auto& child : src.Children) {
+            if (!child) continue;
+            auto childClone = child->Clone();
+            childClone->Parent = clone;
+            clone->Children.push_back(childClone);
+        }
+        return clone;
+    }
+    Rect2Dd PathDataBounds(const PathData& pd) {
+        Rect2Dd b{0, 0, 0, 0};
+        bool any = false;
+        for (const FlatSubpath& sub : FlattenPathData(pd))
+            for (const auto& p : sub.Points) {
+                if (!any) { b = Rect2Dd(p.x, p.y, 0, 0); any = true; continue; }
+                const double x0 = std::min(b.x, p.x), y0 = std::min(b.y, p.y);
+                const double x1 = std::max(b.x + b.width, p.x), y1 = std::max(b.y + b.height, p.y);
+                b = Rect2Dd(x0, y0, x1 - x0, y1 - y0);
+            }
+        return b;
+    }
+}
+
+Rect2Dd VectorClipView::GetBoundingBox() const {
+    Rect2Dd bbox{0, 0, 0, 0};
+    for (const auto& k : KeyholeShapes()) if (k) bbox = UnionBounds(bbox, k->GetBoundingBox());
+    if (Transform.has_value() && !IsEmptyBounds(bbox)) bbox = Transform->Transform(bbox);
+    return bbox;
+}
+
+std::shared_ptr<VectorElement> VectorClipView::Clone() const { return CloneGroupAs(*this); }
+
+std::vector<std::shared_ptr<VectorElement>> VectorClipView::KeyholeShapes() const {
+    std::vector<std::shared_ptr<VectorElement>> out;
+    const int n = std::max(0, std::min(Keyholes, static_cast<int>(Children.size())));
+    out.assign(Children.begin(), Children.begin() + n);
+    return out;
+}
+
+std::vector<std::shared_ptr<VectorElement>> VectorClipView::Contents() const {
+    std::vector<std::shared_ptr<VectorElement>> out;
+    const int n = std::max(0, std::min(Keyholes, static_cast<int>(Children.size())));
+    out.assign(Children.begin() + n, Children.end());
+    return out;
+}
+
+// VectorBlend
+
+std::shared_ptr<VectorElement> VectorBlend::Clone() const { return CloneGroupAs(*this); }
+
+// VectorMould
+
+Rect2Dd VectorMould::GetBoundingBox() const {
+    Rect2Dd bbox = PathDataBounds(Shape);
+    if (IsEmptyBounds(bbox)) bbox = VectorGroup::GetBoundingBox();
+    else if (Transform.has_value()) bbox = Transform->Transform(bbox);
+    return bbox;
+}
+
+std::shared_ptr<VectorElement> VectorMould::Clone() const { return CloneGroupAs(*this); }
+
+Rect2Dd VectorMould::EffectiveSourceBounds() const {
+    if (SourceBounds.width > 0 && SourceBounds.height > 0) return SourceBounds;
+    Rect2Dd bbox{0, 0, 0, 0};
+    for (const auto& child : Children) if (child) bbox = UnionBounds(bbox, child->GetBoundingBox());
+    return bbox;
+}
+
+PathData VectorMould::IdentityShape(MouldKind kind, const Rect2Dd& b) {
+    const Point2Dd c[4] = {Point2Dd(b.x, b.y), Point2Dd(b.x + b.width, b.y),
+                           Point2Dd(b.x + b.width, b.y + b.height), Point2Dd(b.x, b.y + b.height)};
+    PathData pd;
+    PathCommand m; m.Type = PathCommandType::MoveTo; m.Parameters = {static_cast<float>(c[0].x), static_cast<float>(c[0].y)};
+    pd.commands.push_back(m);
+    for (int i = 0; i < 4; ++i) {
+        const Point2Dd& a = c[i];
+        const Point2Dd& z = c[(i + 1) % 4];
+        PathCommand cmd;
+        if (kind == MouldKind::Envelope) {
+            cmd.Type = PathCommandType::CurveTo;
+            cmd.Parameters = {static_cast<float>(a.x + (z.x - a.x) / 3), static_cast<float>(a.y + (z.y - a.y) / 3),
+                              static_cast<float>(a.x + 2 * (z.x - a.x) / 3), static_cast<float>(a.y + 2 * (z.y - a.y) / 3),
+                              static_cast<float>(z.x), static_cast<float>(z.y)};
+        } else {
+            cmd.Type = PathCommandType::LineTo;
+            cmd.Parameters = {static_cast<float>(z.x), static_cast<float>(z.y)};
+        }
+        pd.commands.push_back(cmd);
+    }
+    PathCommand close; close.Type = PathCommandType::ClosePath;
+    pd.commands.push_back(close);
+    pd.Closed = true;
+    return pd;
+}
+
+namespace {
+    // The shape's four sides as cubics (a line side has its controls on
+    // the line), in order: top, right, bottom, left.
+    struct MouldSide { Point2Dd p0, p1, p2, p3; };
+    bool MouldSides(const PathData& shape, MouldSide sides[4]) {
+        int n = 0;
+        Point2Dd cur(0, 0), start(0, 0);
+        for (const auto& c : shape.commands) {
+            const auto& p = c.Parameters;
+            switch (c.Type) {
+                case PathCommandType::MoveTo:
+                    if (p.size() >= 2) { cur = start = Point2Dd(p[0], p[1]); }
+                    break;
+                case PathCommandType::LineTo:
+                    if (p.size() >= 2 && n < 4) {
+                        const Point2Dd z(p[0], p[1]);
+                        sides[n++] = {cur, Point2Dd(cur.x + (z.x - cur.x) / 3, cur.y + (z.y - cur.y) / 3),
+                                      Point2Dd(cur.x + 2 * (z.x - cur.x) / 3, cur.y + 2 * (z.y - cur.y) / 3), z};
+                        cur = z;
+                    }
+                    break;
+                case PathCommandType::CurveTo:
+                    if (p.size() >= 6 && n < 4) {
+                        sides[n++] = {cur, Point2Dd(p[0], p[1]), Point2Dd(p[2], p[3]), Point2Dd(p[4], p[5])};
+                        cur = Point2Dd(p[4], p[5]);
+                    }
+                    break;
+                case PathCommandType::ClosePath:
+                    if (n == 3) {
+                        sides[n++] = {cur, Point2Dd(cur.x + (start.x - cur.x) / 3, cur.y + (start.y - cur.y) / 3),
+                                      Point2Dd(cur.x + 2 * (start.x - cur.x) / 3, cur.y + 2 * (start.y - cur.y) / 3), start};
+                    }
+                    break;
+                default:
+                    break;
+            }
+        }
+        return n == 4;
+    }
+    Point2Dd Bez(const MouldSide& s, double t) {
+        const double u = 1 - t;
+        const double a = u * u * u, b = 3 * u * u * t, c = 3 * u * t * t, d = t * t * t;
+        return Point2Dd(a * s.p0.x + b * s.p1.x + c * s.p2.x + d * s.p3.x,
+                        a * s.p0.y + b * s.p1.y + c * s.p2.y + d * s.p3.y);
+    }
+}
+
+bool VectorMould::ShapeCorners(Point2Dd corners[4]) const {
+    MouldSide sides[4];
+    if (!MouldSides(Shape, sides)) return false;
+    for (int i = 0; i < 4; ++i) corners[i] = sides[i].p0;
+    return true;
+}
+
+Point2Dd VectorMould::Warp(const Point2Dd& p) const {
+    MouldSide sides[4];
+    if (!MouldSides(Shape, sides)) return p;
+    const Rect2Dd src = EffectiveSourceBounds();
+    if (src.width <= 0 || src.height <= 0) return p;
+    const double u = std::min(1.5, std::max(-0.5, (p.x - src.x) / src.width));
+    const double v = std::min(1.5, std::max(-0.5, (p.y - src.y) / src.height));
+    const Point2Dd P00 = sides[0].p0, P10 = sides[1].p0, P11 = sides[2].p0, P01 = sides[3].p0;
+    if (Kind == MouldKind::Perspective) {
+        // Projective map of the unit square onto the four corners.
+        const double dx1 = P10.x - P11.x, dx2 = P01.x - P11.x, dx3 = P00.x - P10.x + P11.x - P01.x;
+        const double dy1 = P10.y - P11.y, dy2 = P01.y - P11.y, dy3 = P00.y - P10.y + P11.y - P01.y;
+        double g = 0, h = 0;
+        const double den = dx1 * dy2 - dx2 * dy1;
+        if (std::fabs(den) > 1e-12) {
+            g = (dx3 * dy2 - dx2 * dy3) / den;
+            h = (dx1 * dy3 - dx3 * dy1) / den;
+        }
+        const double a = P10.x - P00.x + g * P10.x, b = P01.x - P00.x + h * P01.x, c = P00.x;
+        const double d = P10.y - P00.y + g * P10.y, e = P01.y - P00.y + h * P01.y, f = P00.y;
+        const double w = g * u + h * v + 1;
+        if (std::fabs(w) < 1e-12) return p;
+        return Point2Dd((a * u + b * v + c) / w, (d * u + e * v + f) / w);
+    }
+    // Coons patch: top and bottom run left to right, left and right run
+    // top to bottom (the shape's right side runs down, its bottom and
+    // left sides run backwards).
+    const Point2Dd top = Bez(sides[0], u);
+    const Point2Dd right = Bez(sides[1], v);
+    const Point2Dd bottom = Bez(sides[2], 1 - u);
+    const Point2Dd left = Bez(sides[3], 1 - v);
+    const double x = (1 - v) * top.x + v * bottom.x + (1 - u) * left.x + u * right.x -
+                     ((1 - u) * (1 - v) * P00.x + u * (1 - v) * P10.x + u * v * P11.x + (1 - u) * v * P01.x);
+    const double y = (1 - v) * top.y + v * bottom.y + (1 - u) * left.y + u * right.y -
+                     ((1 - u) * (1 - v) * P00.y + u * (1 - v) * P10.y + u * v * P11.y + (1 - u) * v * P01.y);
+    return Point2Dd(x, y);
+}
+
 // VectorUse
 Rect2Dd VectorUse::GetBoundingBox() const {
     Rect2Dd bbox{Position.x, Position.y, Size.width, Size.height};
