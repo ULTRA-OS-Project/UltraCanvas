@@ -429,7 +429,14 @@ namespace UltraCanvas {
             std::string GetMimeType() const override { return "application/x-xara"; }
 
             FormatCapabilities GetCapabilities() const override;
+            // Reading goes through the XAR plugin's XARDocument (compressed
+            // files, every fill / transparency record, effects); without
+            // that plugin the converter only writes.
+#ifdef ULTRACANVAS_HAS_XAR_PLUGIN
             bool CanImport() const override { return true; }
+#else
+            bool CanImport() const override { return false; }
+#endif
             bool CanExport() const override { return true; }
 
             // Import methods

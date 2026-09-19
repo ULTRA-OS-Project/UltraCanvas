@@ -1,7 +1,7 @@
 // Plugins/Vector/XAR/UltraCanvasXARPlugin.cpp
 // Xara XAR vector graphics format plugin implementation for UltraCanvas
-// Version: 2.1.0
-// Last Modified: 2026-08-26
+// Version: 2.3.0
+// Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasXARPlugin.h"
@@ -1512,8 +1512,8 @@ namespace UltraCanvas {
             case XARTag::TAG_DASHSTYLE: ParseDashStyleRecord(record); break;
             case XARTag::TAG_DEFINEDASH: ParseDefineDashRecord(record, false); break;
             case XARTag::TAG_DEFINEDASH_SCALED: ParseDefineDashRecord(record, true); break;
-            case XARTag::TAG_ARROWHEAD: ParseArrowRecord(record, false); break;
-            case XARTag::TAG_ARROWTAIL: ParseArrowRecord(record, true); break;
+            case XARTag::TAG_ARROWHEAD: ParseArrowRecord(record, true); break;
+            case XARTag::TAG_ARROWTAIL: ParseArrowRecord(record, false); break;
             case XARTag::TAG_DEFINEARROW: ParseDefineArrowRecord(record); break;
             case XARTag::TAG_WINDINGRULE: ParseWindingRuleRecord(record); break;
 
@@ -1620,6 +1620,9 @@ namespace UltraCanvas {
             case XARTag::TAG_TEXT_EXTRA_ATM_FONT_DEF:
                 ParseFontDefRecord(record, false); break;
 
+            // Per-object user data
+            case XARTag::TAG_USERVALUE: ParseUserValueRecord(record); break;
+
             // Effects
             case XARTag::TAG_SHADOWCONTROLLER: ParseShadowRecord(record); break;
             case XARTag::TAG_SHADOW:
@@ -1716,7 +1719,6 @@ namespace UltraCanvas {
             case XARTag::TAG_OVERPRINTFILLOFF:
             case XARTag::TAG_PRINTONALLPLATESON:
             case XARTag::TAG_PRINTONALLPLATESOFF:
-            case XARTag::TAG_USERVALUE:
             case XARTag::TAG_EXPORT_HINT:
             case XARTag::TAG_WEBADDRESS:
             case XARTag::TAG_WEBADDRESS_BOUNDINGBOX:
@@ -2238,6 +2240,18 @@ namespace UltraCanvas {
             f->featherRadius = ReadInt32(d, off);
         }
         AttachNode(f);
+    }
+
+    // TAG_USERVALUE: STRING key, STRING value (UTF-16, each terminated),
+    // an attribute of the object whose scope it sits in. Verified against
+    // Designer output ("SmartGroup\\Id" = "1" in the repo's samples).
+    void XARDocument::ParseUserValueRecord(const XARRecord& record) {
+        if (record.data.size() < 4) return;
+        const uint8_t* d = record.data.data();
+        size_t off = 0;
+        std::string key = ReadUTF16String(d, off, record.data.size() - off);
+        std::string value = off < record.data.size() ? ReadUTF16String(d, off, record.data.size() - off) : std::string();
+        if (auto node = CurrentNode()) node->userValues[key] = value;
     }
 
     void XARDocument::ParseLiveEffectRecord(const XARRecord& record) {
@@ -2936,19 +2950,36 @@ namespace UltraCanvas {
         dashes[currentSequenceNumber] = std::move(dd);
     }
 
+    // INT32 reference, FIXED16 width scale, FIXED16 height scale (12 bytes;
+    // Xara's AttrStartArrow::WritePreChildrenWeb). A 4-byte record carries
+    // the reference alone and keeps the default scale.
     void XARDocument::ParseArrowRecord(const XARRecord& record, bool isStart) {
         if (record.data.size() < 4) return;
         const uint8_t* d = record.data.data();
         size_t off = 0;
         int32_t ref = ReadInt32(d, off);
-        if (isStart) currentContext.line.startArrowRef = ref;
-        else currentContext.line.endArrowRef = ref;
+        float w = 3.0f, h = 3.0f;
+        if (record.data.size() >= 12) {
+            w = static_cast<float>(ReadInt32(d, off)) / 65536.0f;
+            h = static_cast<float>(ReadInt32(d, off)) / 65536.0f;
+        }
+        if (isStart) {
+            currentContext.line.startArrowRef = ref;
+            currentContext.line.startArrowWidthScale = w;
+            currentContext.line.startArrowHeightScale = h;
+        } else {
+            currentContext.line.endArrowRef = ref;
+            currentContext.line.endArrowWidthScale = w;
+            currentContext.line.endArrowHeightScale = h;
+        }
     }
 
     void XARDocument::ParseDefineArrowRecord(const XARRecord&) {
         XARArrowDefinition ad;
         ad.sequenceNumber = currentSequenceNumber;
-        // Full arrow definition rendering is out of scope; store an empty stub.
+        // Xara defines this tag but neither writes nor reads it (its
+        // arrowheads are the eight stock ones), so no layout is known;
+        // store an empty stub under its sequence number.
         arrows[currentSequenceNumber] = std::move(ad);
     }
 

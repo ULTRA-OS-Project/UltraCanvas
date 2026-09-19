@@ -14,6 +14,8 @@
 #include <stack>
 #include <memory>
 #include <chrono>
+#include <unordered_map>
+#include <vector>
 
 namespace UltraCanvas {
 
@@ -36,6 +38,9 @@ namespace UltraCanvas {
     using VectorStorage::RadialGradientData;
     using VectorStorage::PathData;
     using VectorStorage::Matrix3x3;
+    using VectorStorage::ShadowEffect;
+    using VectorStorage::TransparencyData;
+    using VectorStorage::ArrowheadData;
 
 // ===== RENDER OPTIONS =====
 
@@ -76,7 +81,11 @@ namespace UltraCanvas {
         void SetOptions(const VectorRenderOptions& opts) { options = opts; }
         const VectorRenderOptions& GetOptions() const { return options; }
         const VectorRenderStats& GetStats() const { return stats; }
+        // Drops the per-object rasters that shadows and feathers keep
+        // between frames (an element's raster is also replaced when its
+        // geometry, blur or the zoom changes).
         void ClearCaches();
+        size_t EffectCacheSize() const { return effectCache.size(); }
 
     private:
         IRenderContext* ctx = nullptr;
@@ -112,6 +121,32 @@ namespace UltraCanvas {
         std::shared_ptr<IPaintPattern> MakeRadialGradient(const RadialGradientData& grad, const Rect2Dd& bounds, float opacity);
 
         void BuildPath(const PathData& pathData);
+
+        // ----- effects -----
+        // A raster of the element's silhouette (fill, stroke, text, image
+        // extents; groups recursively), blurred by the requested penumbra,
+        // as premultiplied black with the coverage in alpha. `rect` is
+        // where the raster sits in the element's own space.
+        struct EffectRaster {
+            std::shared_ptr<UCPixmap> alpha;
+            Rect2Dd rect;
+            size_t key = 0;
+        };
+        std::unordered_map<const VectorElement*, EffectRaster> effectCache;
+        bool silhouetteMode = false;   // painting black into an offscreen raster
+        void DrawElementBody(const VectorElement& element);
+        void RenderWithEffects(const VectorElement& element);
+        void RenderShadow(const VectorElement& element, const ShadowEffect& shadow);
+        const EffectRaster* SilhouetteOf(const VectorElement& element, float blur);
+        std::shared_ptr<IPaintPattern> TransparencyMask(const TransparencyData& t);
+
+        // ----- line gallery -----
+        void RenderLineGallery(const VectorElement& element, const StrokeData& stroke, const Rect2Dd& bounds, float opacity);
+        void SetGalleryPaint(const StrokeData& stroke, const Rect2Dd& bounds, float opacity);
+        void DrawArrowhead(const ArrowheadData& arrow, const Point2Dd& tip, const Point2Dd& dir, const StrokeData& stroke);
+        void FillVariableWidth(const std::vector<Point2Dd>& pts, bool closed, const StrokeData& stroke);
+        void StampBrush(const std::vector<Point2Dd>& pts, const StrokeData& stroke);
+
         bool IsVisible(const VectorElement& element) const;
         bool IsInViewport(const Rect2Dd& bounds) const;
         void RenderDebugBounds(const Rect2Dd& bounds);

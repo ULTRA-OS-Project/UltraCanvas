@@ -1,4 +1,4 @@
-#### 2026-09-19 *0.9.6*
+#### 2026-09-19 *0.9.9*
 - **LaTeX Documents, XAR Images and EPS Images read as fully implemented in the
   demo tree.** All three carried the blue "partially implemented" icon because
   each one's own documentation opened with that phrase - but the phrase was
@@ -17,6 +17,76 @@
   `XARFeatherNode`, `XARLiveEffectNode`) are parsed but not painted, and EPS
   keeps its *Known gaps* section untouched. Nothing was promoted that is not
   implemented; only the leading verdict changed.
+#### 2026-09-19 *0.9.7*
+- **Xara-class effects in the vector model, renderer and XAR converter** -
+  phase 4 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`; the
+  application half is ArtCreator 0.2.0.
+  - *Model* (`DataFormats/UltraCanvasVectorStorage.h`):
+    `VectorElement::Effects` carries an optional `ShadowEffect` (wall,
+    floor or glow: offset, penumbra, colour, darkness) and `FeatherEffect`
+    (radius). `VectorStyle::Transparency` is a Xara-style level ramp
+    (flat, linear, radial, conical; level 0 opaque, 1 clear) with a mix
+    (stained glass, bleach, contrast, saturation, darken, lighten,
+    brightness, luminosity, hue) beside the flat `Opacity`. `StrokeData`
+    gains the line gallery: `StartArrow` / `EndArrow` (fourteen kinds:
+    six gallery shapes with the tip on the line's end, and Xara's eight
+    stock arrowheads - straight, angled, rounded, spot, diamond, feather,
+    feather 2, hollow diamond - with Xara's own geometry and placement,
+    taken from its source, where Scale 1 is Xara's default size;
+    `IsXaraArrowhead`), a `WidthProfile` of samples along the path and a
+    vector `Brush` stamped along it. `BuildOutlinePath`, `FlattenPathData`,
+    `PathEndpoints`, `ArrowheadOutline` and `VariableWidthOutline` are the
+    shared geometry (the editing layer's `OutlineOf` delegates;
+    `PathOps::SegsToPathData` is public).
+  - *Renderer*: an element with effects renders through groups. The shadow
+    and the feather come from a raster of the element's silhouette, drawn
+    black offscreen at the device scale, blurred with three box passes and
+    cached per object (`ClearCaches`, `EffectCacheSize`; replaced when the
+    geometry, blur or zoom changes). A shadow paints it as a colour mask
+    at its offset, squashed and sheared for floor shadows; a feather masks
+    the element's group with it; a transparency ramp masks the group with
+    an alpha gradient and paints it with the mix's blend operator.
+    Arrowheads, width bands and brush stamps come from the outline.
+  - *XAR converter*: reads through the XAR plugin's `XARDocument` - the
+    spec-verified parser, compressed files included - translated into
+    the model, replacing the converter's own uncompressed-only reader
+    and the older dead one; without `ULTRACANVAS_PLUGIN_XAR` it only
+    writes. Multistage fills, conical fills, transparency ramps with their
+    mixes, line transparency, shadow controllers and feather attributes
+    round trip; bounding-box gradient units resolve against the object.
+    The line gallery round-trips too: Xara's stock arrowheads are
+    written as `TAG_ARROWHEAD` (the path's start) / `TAG_ARROWTAIL` (its
+    end) line attributes exactly as Xara's own source writes them - an
+    INT32 stock reference (-2 straight .. -9 hollow diamond) and two
+    FIXED16 scales (Xara's arrow size, 3 by default, so the model's Scale
+    times 3) - and read back as the same kinds at the same size; every
+    other arrowhead, a width profile and a brush are baked into plain
+    shapes - the brush as one group per stamped copy, exactly what the
+    renderer draws - under a group that carries a `TAG_USERVALUE`
+    (`UltraCanvas.LineGallery`) describing the stroke, so Xara shows the
+    shapes, keeps the value, and the converter rebuilds the stroke from
+    it on the way back (the brush stamp is the first copy, un-placed).
+    `TAG_DEFINEARROW` is a tag Xara defines but never writes or reads; a
+    positive reference is read as the straight arrow and reported. What
+    the reader cannot represent is counted in one warning. The Vector
+    plugin
+    links the XAR plugin publicly when it is built, and the capability
+    flags say what is written.
+  - *Tests*: `VectorModelTest` renders every effect and checks pixels,
+    the ramp and profile interpolation and the raster cache;
+    `XARWriterTest` round-trips a four-stop gradient with a bleach ramp
+    and a wall shadow, a feathered circle, an arrowed line, a tapered
+    polyline, a bar-tailed line with a doubled native head and a brushed
+    line through the plugin's reader and back through the converter,
+    checking the strokes come back as strokes; `VectorFormatsPluginTest`
+    pins the new flags.
+  - *XAR plugin*: `TAG_USERVALUE` records are parsed (two UTF-16 strings)
+    into `XARNode::userValues` instead of being skipped. Arrowhead
+    records read their full 12 bytes into `XARLineAttribute` - the
+    reference (default 0, none) and the width / height scales (default
+    3) - and `TAG_ARROWHEAD` now lands on the start of the path and
+    `TAG_ARROWTAIL` on its end, as Xara's `AttrStartArrow` /
+    `AttrEndArrow` write them (they were swapped).
 #### 2026-09-19 *0.9.3*
 - **The PDF writer can write a euro sign.** `UltraCanvasPDFVectorConverter`
   declares `/WinAnsiEncoding` on its base-14 fonts, but its string escaper only
