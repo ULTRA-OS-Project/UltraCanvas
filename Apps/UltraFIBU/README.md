@@ -20,7 +20,7 @@ European VAT numbers, and a German user interface.
 | `engine/` | The headless engine — no UI, no SQL outside the store, unit-tested (`UltraFIBUEngine`) |
 | `cli/` | `ultrafibu`, the command line over that engine |
 | `data/` | The chart of accounts and the tax keys, as data files |
-| `ui/` | The German UI (empty until the data grid exists) |
+| `ui/` | The German UI (empty; the screens build on `UltraCanvasListView` and its sorting proxy) |
 | `../../Tests/UltraFIBU/` | The engine test suite |
 
 ## Build
@@ -53,9 +53,38 @@ ultrafibu partner buch.db bratislava
 
 ultrafibu ustid DE136695976     # offline: format and check digit
 ultrafibu termine buch.db 2026  # UStVA deadlines, with the weekend shift
-ultrafibu festschreiben buch.db 30.06.2026 --ja
 ultrafibu protokoll buch.db     # who did what, when (GoBD)
 ```
+
+### A document, posted, paid, reversed
+
+```bash
+# A draft. Positions are "Text;Menge;Einzelpreis;Konto;Steuerschlüssel".
+ultrafibu beleg-neu buch.db --datum 15.06.2026 --partner "olonda s.r.o." \
+          --position "Beratung;10;100,00;8400;USt19" \
+          --position "Fachbuch;2;20,00;8300;USt7"
+#   Summe 1.040,00 netto / USt 192,80 / Gesamt 1.232,80 brutto
+
+ultrafibu buchen buch.db R-202606001     # from here it is immutable
+#   10000  S  1.190,00 an 8400  (davon 190,00 USt auf 1776)
+#   10000  S     42,80 an 8300  (davon   2,80 USt auf 1771)
+
+ultrafibu zahlung buch.db R-202606001 --betrag 1.232,80 --datum 01.07.2026
+ultrafibu belege  buch.db --offen
+ultrafibu belege  buch.db --ueberfaellig --stichtag 31.07.2026
+ultrafibu journal buch.db --von 01.06.2026 --bis 30.06.2026
+ultrafibu salden  buch.db                # and whether Soll and Haben agree
+
+ultrafibu storno  buch.db R-202606001 --datum 25.07.2026 \
+          --grund "Falsche Menge" --ja
+
+ultrafibu festschreiben buch.db 30.06.2026 --ja
+ultrafibu pruefen buch.db                # the journal's hash chain
+```
+
+Once a period is frozen, a document dated into it, a posting into it, a
+reversal into it and a payment into it are each refused with the date and the
+reason — the check is in the store, not in the front end.
 
 `ULTRAFIBU_DATA_DIR` points at the data files when they are not beside the
 binary.
@@ -74,7 +103,25 @@ binary.
 - **Immutability is a schema property.** *Festschreibung* only moves forward,
   corrections are a *Storno*, and every write and every refusal is in the audit
   trail with a real user against it — which is why users exist from the first
-  schema and not from the day the server arrives.
+  schema and not from the day the server arrives. Over the journal sits a
+  SHA-256 hash chain, and `ultrafibu pruefen` is the thing that checks it: a
+  chain nothing verifies is decoration. It is tamper *evidence*, which is what
+  the GoBD ask of a bookkeeping system, and not a qualified signature.
+- **A document produces postings, never the other way round.** A draft can be
+  edited freely; from `buchen` onwards the store refuses every change to it. The
+  journal row keeps DATEV's shape — positive `Umsatz` with a Soll-/Haben flag,
+  `Konto`, `Gegenkonto`, BU-Schlüssel — and records beside it what the automatic
+  tax posting was, because a Saldenliste has to show a tax account nobody typed
+  and because the rate that applied on the *Belegdatum* is history rather than
+  configuration.
+- **Tax is computed per rate, not per position.** Three lines of 33,33 € at 19 %
+  owe 19,00 €, not the 18,99 € that rounding each line first would give; the
+  single figure is then shared back over the lines so the invoice's tax column
+  still adds up to its total.
+- **Reversing an invoice does not reverse its payment.** The money arrived, and
+  a bank balance that disagrees with the bank statement is worse than an
+  unmatched credit. What is left is a credit on the customer — which is the
+  truth, and the start of a refund.
 - **One schema, two storage modes.** Local SQLite or a shared PostgreSQL
   database, chosen by one configuration field. The server driver is
   UltraDatabase Stage 2 and not built yet; `OpenServer` says so rather than

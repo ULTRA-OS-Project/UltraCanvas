@@ -29,6 +29,8 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
+#include "UltraFIBUBeleg.h"
+#include "UltraFIBUBuchung.h"
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNrOnline.h"
 
@@ -75,7 +77,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert that the database matches the
     // code without a literal that has to be chased.
-    static constexpr int kSchemaVersion = 1;
+    static constexpr int kSchemaVersion = 2;
 
     Store() = default;
     ~Store() = default;
@@ -198,6 +200,155 @@ public:
     // 70000. Never hard-coded for one width - the range follows the setting.
     StoreResult NextPersonenkonto(int64_t mandantId, PartnerTyp typ,
                                   int sachkontenlaenge, std::string& out) const;
+
+
+    // ---- Belege (documents) ------------------------------------------------
+
+    // Which documents to list. Every field is optional; a default-constructed
+    // filter with only the Mandant set returns everything. Exists as a struct
+    // rather than eight overloads because the Rechnungen screen combines them
+    // freely and a query builder that takes a struct stays one query.
+    struct BelegFilter {
+        int64_t     mandantId = 0;
+        bool        artGesetzt = false;
+        BelegArt    art = BelegArt::Ausgangsrechnung;
+        bool        statusGesetzt = false;
+        BelegStatus status = BelegStatus::Gebucht;
+        int64_t     partnerId = 0;          // 0: any
+        Date        von;                    // Belegdatum range, either end optional
+        Date        bis;
+        std::string suche;                  // number, external number, partner name
+        bool        nurOffene = false;      // posted and not fully paid
+        bool        nurUeberfaellig = false;// nurOffene plus faellig_am before `heute`
+        Date        heute;                  // "now" for nurUeberfaellig; never a clock
+                                            // call inside a query, so a report is
+                                            // reproducible and a test is not flaky
+        size_t      limit = 0;              // 0: no limit
+    };
+
+    // Insert or update a draft. Refuses a document that has been posted: from
+    // Buchen() onwards a change is a Storno, which is the GoBD rule and is
+    // enforced here rather than in the UI. Allocates the document number from
+    // the Nummernkreis named by `kreis` when the document has none, costs the
+    // positions against the Steuerschluessel table, and writes positions and
+    // header in one transaction.
+    StoreResult SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteur& akteur);
+
+    // A document with its positions.
+    bool BelegById(int64_t id, Beleg& out) const;
+    bool BelegByNummer(int64_t mandantId, const std::string& nummer, Beleg& out) const;
+    // Headers only - a list of two thousand invoices does not need their lines,
+    // and loading them is what makes such a list slow.
+    std::vector<Beleg> BelegListe(const BelegFilter& filter) const;
+    std::vector<BelegPosition> BelegPositionen(int64_t belegId) const;
+
+    // Only a draft can be deleted. A posted document is reversed, never removed:
+    // a gap in the document numbers is what an auditor asks about first.
+    StoreResult DeleteBeleg(int64_t id, const Akteur& akteur);
+
+    // Attach the original file and record its SHA-256. The hash is what turns
+    // "this is the invoice we received" from a claim into something checkable;
+    // PruefeBelegDatei re-reads the file and compares.
+    StoreResult BelegDateiAnhaengen(int64_t belegId, const std::string& dateiPfad,
+                                    const Akteur& akteur);
+    // True when the attached file still hashes to what was recorded. `fehler`
+    // says which of the three failure modes it was: no file recorded, file
+    // missing now, or contents changed.
+    bool PruefeBelegDatei(const Beleg& beleg, std::string& fehler) const;
+
+    // ---- Buchen (posting) --------------------------------------------------
+
+    // Turn a draft into journal rows: one posting per (account, tax key) group,
+    // the person account against the revenue/expense account, the tax recorded
+    // as the automatic posting it is. Sets the document to Gebucht. Everything -
+    // the number allocation, the postings, the chain links and the status -
+    // happens in one transaction, so a half-posted invoice cannot exist.
+    StoreResult Buchen(Beleg& beleg, const Akteur& akteur);
+
+    // Reverse a posted document: a new document of the same art with the
+    // amounts negated, its own number from `kreis`, postings with Soll and
+    // Haben exchanged, and both documents pointing at each other. The reversal
+    // is dated `stornoDatum`, which must be an open period - reversing into a
+    // frozen month is exactly what Festschreibung forbids.
+    //
+    // **Payments already recorded against the document are not reversed.** The
+    // money arrived; reversing the bank leg would make the bank balance
+    // disagree with the bank statement. What is left afterwards is a credit on
+    // the person account - the customer paid for an invoice that no longer
+    // exists - which is the true position and the starting point for a refund.
+    StoreResult StorniereBeleg(int64_t belegId, const Date& stornoDatum,
+                               const std::string& grund, const std::string& kreis,
+                               const Akteur& akteur, Beleg& outStorno);
+
+    // Record a payment against a posted document: the posting (money account
+    // against the person account) plus the document's new paid total and
+    // status. Over-payment is refused rather than silently tolerated, because
+    // the usual cause is the same payment entered twice.
+    StoreResult ZahlungErfassen(int64_t belegId, const Date& datum, const Money& betrag,
+                                const std::string& geldkonto, const std::string& notiz,
+                                const Akteur& akteur);
+
+    struct Zahlung {
+        int64_t     id = 0;
+        int64_t     belegId = 0;
+        Date        datum;
+        Money       betrag;
+        std::string geldkonto;
+        int64_t     buchungId = 0;
+        std::string notiz;
+        int64_t     erfasstVon = 0;
+        int64_t     erfasstAm = 0;
+    };
+    std::vector<Zahlung> Zahlungen(int64_t belegId) const;
+
+    // ---- Journal -----------------------------------------------------------
+
+    // A posting entered directly, without a document - an accrual, an opening
+    // balance, a correction the Kanzlei asked for. Insert only: there is no
+    // update, by design.
+    StoreResult BuchungErfassen(Buchung& buchung, const Akteur& akteur);
+
+    // The reversing row: same amounts, Soll and Haben exchanged, dated
+    // `stornoDatum`. Refuses to reverse a row twice.
+    StoreResult StorniereBuchung(int64_t buchungId, const Date& stornoDatum,
+                                 const Akteur& akteur, Buchung& outStorno);
+
+    bool BuchungById(int64_t id, Buchung& out) const;
+    // The journal in Belegdatum order, then chain order - which is the order it
+    // was written and the only stable one for equal dates.
+    std::vector<Buchung> Journal(int64_t mandantId, const Date& von = Date(),
+                                 const Date& bis = Date()) const;
+    std::vector<Buchung> BuchungenZuBeleg(int64_t belegId) const;
+
+    // Walk the Mandant's chain from the first row and re-compute every hash.
+    // This is the check that makes the chain worth having: without it the
+    // hashes are decoration.
+    HashKettenPruefung PruefeHashKette(int64_t mandantId) const;
+
+    // ---- Salden ------------------------------------------------------------
+
+    // One line of a Summen- und Saldenliste.
+    struct KontoSaldo {
+        std::string konto;
+        std::string bezeichnung;
+        Money       soll;
+        Money       haben;
+        Money       saldo;          // soll - haben
+    };
+
+    // Debit and credit totals per account over a date range, with the automatic
+    // tax postings expanded: a posting of 119,00 with a 19 % key contributes
+    // 119,00 to the person account, 100,00 to the revenue account and 19,00 to
+    // the tax account - which is what makes the list balance. Reversed postings
+    // and their Storno rows are both included, because both happened.
+    std::vector<KontoSaldo> SummenUndSalden(int64_t mandantId, const Date& von = Date(),
+                                            const Date& bis = Date()) const;
+
+    // Sum of soll minus sum of haben over every account in the range. Zero on a
+    // consistent ledger - the one-line check that double entry still holds, and
+    // the assertion every test in this area ends with.
+    Money Buchungskreisdifferenz(int64_t mandantId, const Date& von = Date(),
+                                 const Date& bis = Date()) const;
 
     // ---- Benutzer ----------------------------------------------------------
 

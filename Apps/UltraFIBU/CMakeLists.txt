@@ -1,8 +1,9 @@
 # Apps/UltraFIBU/CMakeLists.txt
 # UltraFIBU - German double-entry accounting (Finanzbuchhaltung). Phase A1
 # builds the headless engine (calendar, fiscal year, master data, store) and a
-# command-line front end on top of it; the German UI follows once the framework
-# has the data grid it needs (Docs/Research/UltraFIBUDesignProposal.md §3.3).
+# command-line front end on top of it; phase A2 adds the documents, the journal,
+# Storno, Festschreibung and the hash chain over the journal. The German UI
+# follows on UltraCanvasListView with its sorting proxy.
 # Version: 0.1.0
 # Author: UltraCanvas Framework / ULTRA OS
 
@@ -18,6 +19,8 @@ set(ULTRAFIBU_ENGINE_SOURCES
     engine/UltraFIBUUstIdNr.cpp
     engine/UltraFIBUUstIdNrOnline.cpp
     engine/UltraFIBUKontenrahmen.cpp
+    engine/UltraFIBUBeleg.cpp
+    engine/UltraFIBUBuchung.cpp
     engine/UltraFIBUStore.cpp
 )
 

@@ -20,7 +20,16 @@
 //  - **person-account ranges derived from the Sachkontenlaenge**, never
 //    hard-coded;
 //  - the shipped SKR03 and Steuerschluessel files load, and the tax keys carry
-//    no UStVA Kennzahl that has not been verified.
+//    no UStVA Kennzahl that has not been verified;
+//  - **tax computed per rate rather than per position**, so three lines of
+//    33,33 EUR at 19 % owe 19,00 and not 18,99;
+//  - a posted invoice **balances** once the automatic tax posting is expanded,
+//    and still balances after a payment and after a Storno;
+//  - **the journal is append-only**: a posted document refuses every change and
+//    is corrected by a reversal with Soll and Haben exchanged;
+//  - **the hash chain detects a row edited or deleted behind the application's
+//    back** - the test does both with plain SQL, because a chain nothing checks
+//    is decoration.
 //
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUDate.h"
@@ -32,6 +41,10 @@
 #include "UltraFIBUUstIdNrOnline.h"
 
 #include <UltraCrypt/UltraCryptCore.h>
+// The hash-chain test edits a posting the way somebody with the database
+// file and a SQL prompt would - which is the only way to prove the chain
+// notices. Nothing else in the engine writes SQL outside the store.
+#include <UltraDatabase/UltraDatabaseQuery.h>
 
 #include <cstdio>
 #include <set>
@@ -1121,6 +1134,570 @@ static void TestStore() {
     Check(!store.IsOpen(), "the store closes");
 }
 
+
+// ===== BELEGE UND BUCHUNGEN =====
+//
+// What this covers, and why each one is a requirement rather than an
+// implementation detail:
+//
+//  - **tax is computed per rate, not per position** - three lines of 33,33 EUR
+//    at 19 % owe 19,00 EUR, not 18,99, and the per-line shares must add back up
+//    to that figure;
+//  - a posted invoice **balances**: the sum of every debit equals the sum of
+//    every credit, once the automatic tax posting is expanded;
+//  - **the journal is append-only**: a posted document refuses to be saved and
+//    is corrected by a Storno that reverses Soll and Haben;
+//  - **a frozen period refuses everything** - posting, reversing into it, and
+//    paying into it;
+//  - **the hash chain detects a row that was edited behind the application's
+//    back, and a row that was deleted** - the chain is only worth having if
+//    something actually checks it;
+//  - **roles are enforced in the store**: an Erfasser may write a document and
+//    may not post it.
+
+static void TestBelegeUndBuchungen() {
+    std::printf("Belege und Buchungen\n");
+
+    Store store;
+    if (!CheckStore(store.Open("fibu-beleg", ":memory:"), "a second in-memory database opens")) {
+        std::printf("    skipping the document and journal tests\n");
+        return;
+    }
+
+    // --- the ground the documents stand on ---
+    Akteur setup;
+    Benutzer admin;
+    admin.anmeldename = "chef";
+    CheckStore(store.SaveBenutzer(admin, setup), "an administrator exists");
+    Akteur akteur;
+    akteur.benutzerId  = admin.id;
+    akteur.anmeldename = admin.anmeldename;
+    akteur.rolle       = admin.rolle;
+
+    Mandant mandant;
+    mandant.name = "Beispiel GmbH";
+    CheckStore(store.SaveMandant(mandant, akteur), "a company exists");
+
+    // A fiscal year starting 1 April, because that is the one the request named
+    // and because a document dated in March belongs to the *previous* one.
+    Geschaeftsjahr jahr;
+    jahr.mandantId = mandant.id;
+    jahr.beginn    = Date(2026, 4, 1);
+    jahr.ende      = Date(2027, 3, 31);
+    jahr.bezeichnung = jahr.DefaultBezeichnung();
+    CheckStore(store.SaveGeschaeftsjahr(jahr, akteur), "a 1 April fiscal year exists");
+
+    std::vector<Konto> konten;
+    auto konto = [&](const std::string& nummer, const std::string& text, KontoTyp typ) {
+        Konto k;
+        k.mandantId   = mandant.id;
+        k.nummer      = nummer;
+        k.bezeichnung = text;
+        k.typ         = typ;
+        konten.push_back(k);
+    };
+    konto("1200", "Bank", KontoTyp::Aktiv);
+    konto("1576", "Abziehbare Vorsteuer 19 %", KontoTyp::Aktiv);
+    konto("1776", "Umsatzsteuer 19 %", KontoTyp::Passiv);
+    konto("1771", "Umsatzsteuer 7 %", KontoTyp::Passiv);
+    konto("4930", "Buerobedarf", KontoTyp::Aufwand);
+    konto("8300", "Erloese 7 % USt", KontoTyp::Ertrag);
+    konto("8400", "Erloese 19 % USt", KontoTyp::Ertrag);
+    int geschrieben = 0;
+    CheckStore(store.ImportKonten(mandant.id, konten, akteur, geschrieben),
+               "the accounts the tests post to exist");
+
+    std::vector<Steuerschluessel> keys;
+    auto key = [&](const std::string& name, int satz, const std::string& steuerkonto,
+                   bool vorsteuer) {
+        Steuerschluessel k;
+        k.mandantId   = mandant.id;
+        k.schluessel  = name;
+        k.bezeichnung = name;
+        k.satzPromille = satz;
+        k.kontoSteuer = steuerkonto;
+        k.vorsteuer   = vorsteuer;
+        k.gueltigVon  = Date(2026, 1, 1);
+        keys.push_back(k);
+    };
+    key("USt19", 190, "1776", false);
+    key("USt7",   70, "1771", false);
+    key("USt0",    0, "",     false);
+    key("VSt19", 190, "1576", true);
+    CheckStore(store.ImportSteuerschluessel(mandant.id, keys, akteur, geschrieben),
+               "the tax keys the tests use exist");
+
+    Nummernkreis kreis;
+    kreis.mandantId = mandant.id;
+    kreis.kreis     = "rechnung";
+    kreis.praefix   = "R-{JJJJ}-";
+    kreis.stellen   = 4;
+    CheckStore(store.SaveNummernkreis(kreis, akteur), "an invoice number range exists");
+
+    Partner kunde;
+    kunde.mandantId = mandant.id;
+    kunde.typ       = PartnerTyp::Kunde;
+    kunde.name      = "Muster AG";
+    kunde.ort       = "Hamburg";
+    kunde.zahlungsfristTage = 14;
+    CheckStore(store.SavePartner(kunde, akteur), "a customer exists");
+    Check(!kunde.konto.empty(), "and was given a Debitorenkonto");
+
+    // --- costing: per rate, not per position ---
+    //
+    // Three lines of 33,33 EUR at 19 %. Rounded per line the tax is 6,33 three
+    // times over, which is 18,99; the amount actually owed on 99,99 is 19,00.
+    // Getting this wrong is a cent per invoice that nothing downstream
+    // reconciles, and it is why the tax is taken from the group.
+    Beleg dreissig;
+    dreissig.mandantId = mandant.id;
+    dreissig.art       = BelegArt::Ausgangsrechnung;
+    dreissig.datum     = Date(2026, 5, 4);
+    dreissig.partnerId = kunde.id;
+    dreissig.partnerKonto = kunde.konto;
+    dreissig.partnerName  = kunde.name;
+    for (int i = 0; i < 3; ++i) {
+        BelegPosition pos;
+        pos.bezeichnung = "Position";
+        pos.einzelpreis = Money::FromMinor(3333, "EUR");
+        pos.konto       = "8400";
+        pos.steuerschluessel = "USt19";
+        dreissig.positionen.push_back(pos);
+    }
+    CheckStore(store.SaveBeleg(dreissig, "rechnung", akteur),
+               "an invoice of three equal lines saves");
+    CheckInt(dreissig.netto.Minor(),  9999, "its net is 99,99 EUR");
+    CheckInt(dreissig.steuer.Minor(),  1900,
+             "its tax is 19,00 EUR - taken from the group, not 18,99 from three rounded lines");
+    CheckInt(dreissig.brutto.Minor(), 11899, "and its gross is 118,99 EUR");
+    int64_t summeAnteile = 0;
+    for (const BelegPosition& pos : dreissig.positionen) summeAnteile += pos.steuer.Minor();
+    CheckInt(summeAnteile, dreissig.steuer.Minor(),
+             "the per-line tax shares add back up to the invoice tax exactly");
+    CheckText(dreissig.nummer, "R-2026-0001", "the number came from the Nummernkreis");
+    Check(dreissig.faelligAm == Date(2026, 5, 18),
+          "and the due date came from the customer's 14-day terms");
+    Check(dreissig.status == BelegStatus::Entwurf, "a new document is a draft");
+
+    // --- a mixed-rate invoice, posted ---
+    Beleg rechnung;
+    rechnung.mandantId    = mandant.id;
+    rechnung.art          = BelegArt::Ausgangsrechnung;
+    rechnung.datum        = Date(2026, 6, 15);
+    rechnung.partnerId    = kunde.id;
+    rechnung.partnerKonto = kunde.konto;
+    rechnung.partnerName  = kunde.name;
+    rechnung.buchungstext = "Beratung und Buch";
+    {
+        BelegPosition beratung;
+        beratung.bezeichnung = "Beratung";
+        beratung.mengeTausendstel = 10000;             // 10 hours
+        beratung.einheit     = "Std";
+        beratung.einzelpreis = Money::FromMinor(10000, "EUR");   // 100,00 / hour
+        beratung.konto       = "8400";
+        beratung.steuerschluessel = "USt19";
+        rechnung.positionen.push_back(beratung);
+
+        BelegPosition buch;
+        buch.bezeichnung = "Fachbuch";
+        buch.mengeTausendstel = 2000;                  // 2 copies
+        buch.einzelpreis = Money::FromMinor(2000, "EUR");         // 20,00 each
+        buch.konto       = "8300";
+        buch.steuerschluessel = "USt7";
+        rechnung.positionen.push_back(buch);
+    }
+    CheckStore(store.SaveBeleg(rechnung, "rechnung", akteur), "a mixed-rate invoice saves");
+    CheckInt(rechnung.netto.Minor(), 104000, "net 1.040,00 EUR");
+    CheckInt(rechnung.steuer.Minor(), 19280, "tax 192,80 EUR = 190,00 at 19 % plus 2,80 at 7 %");
+    CheckInt(rechnung.brutto.Minor(), 123280, "gross 1.232,80 EUR");
+
+    CheckStore(store.Buchen(rechnung, akteur), "it posts");
+    Check(rechnung.status == BelegStatus::Gebucht, "and is then no longer a draft");
+
+    const std::vector<Buchung> buchungen = store.BuchungenZuBeleg(rechnung.id);
+    CheckInt(static_cast<int64_t>(buchungen.size()), 2,
+             "it produced two postings - one per tax key, not one per line");
+    bool sawNineteen = false, sawSeven = false;
+    for (const Buchung& b : buchungen) {
+        CheckText(b.konto, kunde.konto, "the Debitorenkonto carries the gross side");
+        Check(b.sollHaben == SollHaben::Soll,
+              "a receivable is a debit on the person account");
+        Check(!b.umsatz.IsNegative(), "and the Umsatz is never negative");
+        Check(b.steuerSeite == SteuerSeite::Gegenkonto,
+              "the revenue account is the net side");
+        CheckText(b.belegfeld1, rechnung.nummer, "the document number is in Belegfeld 1");
+        CheckInt(b.periode, 3, "June is period 3 of a year starting 1 April");
+        Check(b.belegdatum == rechnung.datum,
+              "and the Belegdatum is the document's, for the UStVA calendar");
+        CheckInt(b.netto.Minor() + b.steuer.Minor(), b.umsatz.Minor(),
+                 "net and tax sum to the posting's Umsatz");
+        if (b.gegenkonto == "8400") {
+            sawNineteen = true;
+            CheckInt(b.netto.Minor(),  100000, "19 % leg: net 1.000,00");
+            CheckInt(b.steuer.Minor(),  19000, "19 % leg: tax 190,00");
+            CheckText(b.steuerkonto, "1776", "and it posts the tax to 1776");
+            CheckInt(b.satzPromille, 190, "the rate is stored with the row, not looked up later");
+        }
+        if (b.gegenkonto == "8300") {
+            sawSeven = true;
+            CheckInt(b.netto.Minor(), 4000, "7 % leg: net 40,00");
+            CheckInt(b.steuer.Minor(), 280, "7 % leg: tax 2,80");
+            CheckText(b.steuerkonto, "1771", "and it posts the tax to 1771");
+        }
+    }
+    Check(sawNineteen && sawSeven, "both rates are in the journal");
+
+    // The one property that makes it a ledger.
+    Check(store.Buchungskreisdifferenz(mandant.id).IsZero(),
+          "every debit has its credit: the ledger balances");
+
+    // The expanded Saldenliste is where the automatic tax posting becomes
+    // visible - the tax account is never typed, so if the expansion is wrong
+    // nothing else would show it.
+    const std::vector<Store::KontoSaldo> salden = store.SummenUndSalden(mandant.id);
+    bool sawUst = false, sawDebitor = false;
+    for (const Store::KontoSaldo& k : salden) {
+        if (k.konto == "1776") {
+            sawUst = true;
+            CheckInt(k.haben.Minor(), 19000, "1776 carries the 19 % output tax");
+            CheckText(k.bezeichnung, "Umsatzsteuer 19 %", "and is named from the chart");
+        }
+        if (k.konto == kunde.konto) {
+            sawDebitor = true;
+            CheckInt(k.soll.Minor(), 123280, "the customer owes the gross 1.232,80");
+        }
+    }
+    Check(sawUst, "the tax account appears in the Saldenliste although nobody posted to it");
+    Check(sawDebitor, "and so does the customer account");
+
+    // --- a posted document is immutable ---
+    rechnung.notiz = "nachtraeglich geaendert";
+    CheckRefused(store.SaveBeleg(rechnung, "rechnung", akteur),
+                 "a posted document refuses to be changed - a correction is a Storno");
+    CheckRefused(store.DeleteBeleg(rechnung.id, akteur),
+                 "and refuses to be deleted, because a gap in the numbers is what an audit asks about");
+    CheckRefused(store.Buchen(rechnung, akteur), "and refuses to be posted twice");
+
+    // --- an incoming invoice, the other direction ---
+    Partner lieferant;
+    lieferant.mandantId = mandant.id;
+    lieferant.typ       = PartnerTyp::Lieferant;
+    lieferant.name      = "Bueroland GmbH";
+    CheckStore(store.SavePartner(lieferant, akteur), "a supplier exists");
+
+    Beleg eingang;
+    eingang.mandantId    = mandant.id;
+    eingang.art          = BelegArt::Eingangsrechnung;
+    eingang.datum        = Date(2026, 6, 20);
+    eingang.partnerId    = lieferant.id;
+    eingang.partnerKonto = lieferant.konto;
+    eingang.partnerName  = lieferant.name;
+    eingang.externeNummer = "RE-2026-8891";
+    {
+        BelegPosition pos;
+        pos.bezeichnung = "Papier";
+        pos.einzelpreis = Money::FromMinor(5000, "EUR");
+        pos.konto       = "4930";
+        pos.steuerschluessel = "VSt19";
+        eingang.positionen.push_back(pos);
+    }
+    CheckStore(store.SaveBeleg(eingang, "rechnung", akteur), "an incoming invoice saves");
+    CheckStore(store.Buchen(eingang, akteur), "and posts");
+    const std::vector<Buchung> eingangBuchungen = store.BuchungenZuBeleg(eingang.id);
+    CheckInt(static_cast<int64_t>(eingangBuchungen.size()), 1, "as one posting");
+    if (!eingangBuchungen.empty()) {
+        Check(eingangBuchungen[0].sollHaben == SollHaben::Haben,
+              "a payable is a credit on the person account - the opposite of a receivable");
+        CheckText(eingangBuchungen[0].steuerkonto, "1576",
+                  "and the input tax goes to 1576, not to an output-tax account");
+    }
+    Check(store.Buchungskreisdifferenz(mandant.id).IsZero(),
+          "the ledger still balances with both directions in it");
+
+    // --- payments ---
+    CheckRefused(store.ZahlungErfassen(rechnung.id, Date(2026, 7, 1),
+                                       Money::FromMinor(200000, "EUR"), "1200", "", akteur),
+                 "a payment larger than the invoice is refused - the usual cause is entering it twice");
+    CheckStore(store.ZahlungErfassen(rechnung.id, Date(2026, 7, 1),
+                                     Money::FromMinor(23280, "EUR"), "1200", "Anzahlung", akteur),
+               "a part payment is accepted");
+    Beleg nachZahlung;
+    Check(store.BelegById(rechnung.id, nachZahlung), "the invoice reads back");
+    Check(nachZahlung.status == BelegStatus::TeilweiseBezahlt, "and is partly paid");
+    CheckInt(nachZahlung.Offen().Minor(), 100000, "1.000,00 EUR remain open");
+
+    CheckStore(store.ZahlungErfassen(rechnung.id, Date(2026, 7, 20),
+                                     Money::FromMinor(100000, "EUR"), "1200", "", akteur),
+               "the rest is accepted");
+    Check(store.BelegById(rechnung.id, nachZahlung), "the invoice reads back again");
+    Check(nachZahlung.status == BelegStatus::Bezahlt, "and is now settled");
+    Check(nachZahlung.Offen().IsZero(), "with nothing open");
+    CheckInt(static_cast<int64_t>(store.Zahlungen(rechnung.id).size()), 2,
+             "both payments are recorded");
+    Check(store.Buchungskreisdifferenz(mandant.id).IsZero(),
+          "and the ledger balances after the payments");
+
+    // --- Storno ---
+    Beleg storno;
+    CheckStore(store.StorniereBeleg(eingang.id, Date(2026, 7, 25), "Falsche Menge",
+                                    "rechnung", akteur, storno),
+               "a posted document can be reversed");
+    CheckInt(storno.brutto.Minor(), -eingang.brutto.Minor(),
+             "the reversing document carries the negated total");
+    Check(storno.stornoVon == eingang.id, "and points at what it reverses");
+
+    Beleg storniert;
+    Check(store.BelegById(eingang.id, storniert), "the original reads back");
+    Check(storniert.status == BelegStatus::Storniert, "and is marked storniert");
+    Check(storniert.storniertDurch == storno.id, "pointing back at the reversal");
+
+    const std::vector<Buchung> stornoBuchungen = store.BuchungenZuBeleg(storno.id);
+    CheckInt(static_cast<int64_t>(stornoBuchungen.size()),
+             static_cast<int64_t>(eingangBuchungen.size()),
+             "the reversal has one posting per original posting");
+    if (!stornoBuchungen.empty() && !eingangBuchungen.empty()) {
+        CheckInt(stornoBuchungen[0].umsatz.Minor(), eingangBuchungen[0].umsatz.Minor(),
+                 "with the same amount, never a negative one");
+        Check(stornoBuchungen[0].sollHaben != eingangBuchungen[0].sollHaben,
+              "and Soll and Haben exchanged - which is what a Storno is");
+        Check(stornoBuchungen[0].belegdatum == Date(2026, 7, 25),
+              "dated when the reversal was made, not when the original was");
+    }
+    Buchung ursprung;
+    if (!eingangBuchungen.empty() && store.BuchungById(eingangBuchungen[0].id, ursprung))
+        Check(ursprung.IstStorniert(), "the original posting knows it was reversed");
+    Check(store.Buchungskreisdifferenz(mandant.id).IsZero(),
+          "and the ledger balances after the reversal");
+    CheckRefused(store.StorniereBeleg(eingang.id, Date(2026, 7, 26), "", "rechnung",
+                                      akteur, storno),
+                 "reversing the same document twice is refused");
+
+    // --- reversing a document that has been paid ---
+    //
+    // The money arrived and is in the bank. Reversing the invoice must not
+    // reverse the bank leg, or the bank balance stops agreeing with the bank
+    // statement - the one figure in a bookkeeping system that is checked
+    // against the outside world. What must remain is a credit on the customer:
+    // they paid for an invoice that no longer exists and are owed the money.
+    Money bankVorher = Money::Zero("EUR");
+    for (const Store::KontoSaldo& k : store.SummenUndSalden(mandant.id))
+        if (k.konto == "1200") bankVorher = k.saldo;
+    CheckInt(bankVorher.Minor(), 123280, "the bank holds the full payment before the reversal");
+
+    Beleg stornoBezahlt;
+    CheckStore(store.StorniereBeleg(rechnung.id, Date(2026, 8, 10), "Falsch berechnet",
+                                    "rechnung", akteur, stornoBezahlt),
+               "a paid invoice can be reversed");
+
+    Money bankNachher = Money::Zero("EUR");
+    Money kundeNachher = Money::Zero("EUR");
+    for (const Store::KontoSaldo& k : store.SummenUndSalden(mandant.id)) {
+        if (k.konto == "1200")        bankNachher  = k.saldo;
+        if (k.konto == kunde.konto)   kundeNachher = k.saldo;
+    }
+    CheckInt(bankNachher.Minor(), bankVorher.Minor(),
+             "the bank is untouched by the reversal - the payment really happened");
+    CheckInt(kundeNachher.Minor(), -123280,
+             "and the customer is left in credit by what they paid");
+    Check(store.Buchungskreisdifferenz(mandant.id).IsZero(),
+          "the ledger still balances with an unmatched payment in it");
+
+    bool zahlungGegenbucht = false;
+    for (const Buchung& b : store.BuchungenZuBeleg(stornoBezahlt.id))
+        if (b.konto == "1200") zahlungGegenbucht = true;
+    Check(!zahlungGegenbucht,
+          "no reversal posting touched the money account");
+
+    // --- the hash chain, intact ---
+    HashKettenPruefung pruefung = store.PruefeHashKette(mandant.id);
+    Check(pruefung.ok, "the journal's hash chain verifies");
+    Check(pruefung.geprueft > 0, "and it actually looked at rows");
+
+    // --- Festschreibung ---
+    CheckStore(store.Festschreiben(jahr.id, Date(2026, 6, 30), akteur),
+               "everything up to 30 June can be frozen");
+    Beleg gefroren;
+    Check(store.BelegById(rechnung.id, gefroren), "the June invoice reads back");
+    Check(gefroren.festgeschrieben,
+          "and is marked festgeschrieben, as DATEV's own stack would be");
+    const std::vector<Buchung> juni = store.Journal(mandant.id, Date(2026, 6, 1),
+                                                    Date(2026, 6, 30));
+    bool alleGefroren = !juni.empty();
+    for (const Buchung& b : juni) if (!b.festgeschrieben) alleGefroren = false;
+    Check(alleGefroren, "and so is every posting in the frozen period");
+
+    Beleg zuSpaet;
+    zuSpaet.mandantId    = mandant.id;
+    zuSpaet.art          = BelegArt::Ausgangsrechnung;
+    zuSpaet.datum        = Date(2026, 6, 10);           // inside the frozen period
+    zuSpaet.partnerId    = kunde.id;
+    zuSpaet.partnerKonto = kunde.konto;
+    zuSpaet.partnerName  = kunde.name;
+    {
+        BelegPosition pos;
+        pos.bezeichnung = "Nachtrag";
+        pos.einzelpreis = Money::FromMinor(10000, "EUR");
+        pos.konto       = "8400";
+        pos.steuerschluessel = "USt19";
+        zuSpaet.positionen.push_back(pos);
+    }
+    CheckRefused(store.SaveBeleg(zuSpaet, "rechnung", akteur),
+                 "a document dated into a frozen period is refused");
+
+    Buchung freieBuchung;
+    freieBuchung.mandantId  = mandant.id;
+    freieBuchung.belegdatum = Date(2026, 6, 5);
+    freieBuchung.konto      = "4930";
+    freieBuchung.gegenkonto = "1200";
+    freieBuchung.umsatz     = Money::FromMinor(5000, "EUR");
+    freieBuchung.sollHaben  = SollHaben::Soll;
+    CheckRefused(store.BuchungErfassen(freieBuchung, akteur),
+                 "and so is a posting dated into it");
+
+    // The same posting after the frozen date is fine - freezing closes a
+    // period, it does not close the books.
+    freieBuchung.belegdatum = Date(2026, 8, 5);
+    CheckStore(store.BuchungErfassen(freieBuchung, akteur),
+               "a posting after the frozen date is accepted");
+    Check(freieBuchung.laufendeNummer > 0, "it took its place in the chain");
+    Check(!freieBuchung.hash.empty(), "and carries a hash");
+    Check(store.Buchungskreisdifferenz(mandant.id).IsZero(),
+          "a free-standing posting balances too");
+
+    Buchung negativ;
+    negativ.mandantId  = mandant.id;
+    negativ.belegdatum = Date(2026, 8, 6);
+    negativ.konto      = "4930";
+    negativ.gegenkonto = "1200";
+    negativ.umsatz     = Money::FromMinor(-5000, "EUR");
+    negativ.sollHaben  = SollHaben::Soll;
+    CheckRefused(store.BuchungErfassen(negativ, akteur),
+                 "a negative Umsatz is refused - the direction is the Soll/Haben flag");
+
+    Buchung gleich;
+    gleich.mandantId  = mandant.id;
+    gleich.belegdatum = Date(2026, 8, 6);
+    gleich.konto      = "1200";
+    gleich.gegenkonto = "1200";
+    gleich.umsatz     = Money::FromMinor(5000, "EUR");
+    CheckRefused(store.BuchungErfassen(gleich, akteur),
+                 "and so is a posting from an account to itself");
+
+    // --- roles ---
+    Benutzer erfasser;
+    erfasser.anmeldename = "eva";
+    erfasser.rolle       = BenutzerRolle::Erfasser;
+    CheckStore(store.SaveBenutzer(erfasser, akteur), "an Erfasser exists");
+    Akteur nurErfassen;
+    nurErfassen.benutzerId  = erfasser.id;
+    nurErfassen.anmeldename = erfasser.anmeldename;
+    nurErfassen.rolle       = erfasser.rolle;
+
+    Beleg vonErfasser;
+    vonErfasser.mandantId    = mandant.id;
+    vonErfasser.art          = BelegArt::Ausgangsrechnung;
+    vonErfasser.datum        = Date(2026, 8, 3);
+    vonErfasser.partnerId    = kunde.id;
+    vonErfasser.partnerKonto = kunde.konto;
+    vonErfasser.partnerName  = kunde.name;
+    {
+        BelegPosition pos;
+        pos.bezeichnung = "Vorbereitet";
+        pos.einzelpreis = Money::FromMinor(25000, "EUR");
+        pos.konto       = "8400";
+        pos.steuerschluessel = "USt19";
+        vonErfasser.positionen.push_back(pos);
+    }
+    CheckStore(store.SaveBeleg(vonErfasser, "rechnung", nurErfassen),
+               "an Erfasser may write a document");
+    CheckRefused(store.Buchen(vonErfasser, nurErfassen),
+                 "but may not post it - the role is enforced in the store, not in the UI");
+    CheckRefused(store.Festschreiben(jahr.id, Date(2026, 7, 31), nurErfassen),
+                 "and may not freeze a period");
+
+    // --- an unknown tax key is an error, never a zero rate ---
+    Beleg falsch;
+    falsch.mandantId    = mandant.id;
+    falsch.art          = BelegArt::Ausgangsrechnung;
+    falsch.datum        = Date(2026, 8, 4);
+    falsch.partnerId    = kunde.id;
+    falsch.partnerKonto = kunde.konto;
+    falsch.partnerName  = kunde.name;
+    {
+        BelegPosition pos;
+        pos.bezeichnung = "Unbekannt besteuert";
+        pos.einzelpreis = Money::FromMinor(10000, "EUR");
+        pos.konto       = "8400";
+        pos.steuerschluessel = "GIBTESNICHT";
+        falsch.positionen.push_back(pos);
+    }
+    CheckRefused(store.SaveBeleg(falsch, "rechnung", akteur),
+                 "an unknown tax key is refused rather than silently taxed at zero");
+
+    // --- searching and filtering, which is what the Rechnungen screen does ---
+    Store::BelegFilter filter;
+    filter.mandantId = mandant.id;
+    filter.nurOffene = true;
+    const std::vector<Beleg> offene = store.BelegListe(filter);
+    for (const Beleg& b : offene)
+        Check(b.status == BelegStatus::Gebucht || b.status == BelegStatus::TeilweiseBezahlt,
+              "the open list contains only unsettled posted documents");
+
+    Store::BelegFilter suche;
+    suche.mandantId = mandant.id;
+    suche.suche     = "muster";                 // lower case, the name is "Muster AG"
+    Check(!store.BelegListe(suche).empty(),
+          "searching by partner name is case-insensitive");
+
+    Store::BelegFilter zeitraum;
+    zeitraum.mandantId = mandant.id;
+    zeitraum.von = Date(2026, 6, 1);
+    zeitraum.bis = Date(2026, 6, 30);
+    const std::vector<Beleg> juniBelege = store.BelegListe(zeitraum);
+    bool nurJuni = !juniBelege.empty();
+    for (const Beleg& b : juniBelege)
+        if (b.datum < zeitraum.von || b.datum > zeitraum.bis) nurJuni = false;
+    Check(nurJuni, "and a date range returns only that range");
+
+    // --- the chain catches what SQL did behind the application's back ---
+    //
+    // This is the test that makes the hash chain worth its cost. The UPDATE
+    // below is exactly what somebody with the database file and sqlite3 would
+    // do, and it is invisible to every other check in this file.
+    pruefung = store.PruefeHashKette(mandant.id);
+    Check(pruefung.ok, "the chain still verifies before it is tampered with");
+
+    const std::vector<Buchung> alle = store.Journal(mandant.id);
+    Check(!alle.empty(), "there are postings to tamper with");
+    if (!alle.empty()) {
+        const Buchung ziel = alle[alle.size() / 2];
+        const UltraDbResult veraendert = UltraDb_Exec(
+            store.ConnectionName(), "UPDATE buchung SET umsatz = umsatz + 100 WHERE id = ?",
+            { ziel.id });
+        Check(static_cast<bool>(veraendert), "an amount is edited directly in the database");
+
+        pruefung = store.PruefeHashKette(mandant.id);
+        Check(!pruefung.ok, "and the chain notices");
+        CheckInt(pruefung.ersteFehlerhafteId, ziel.id,
+                 "naming the row that was changed");
+        Check(!pruefung.fehler.empty(), "with a sentence fit to show a user");
+
+        // Put it back, so the deletion test below starts from a sound chain.
+        UltraDb_Exec(store.ConnectionName(),
+                     "UPDATE buchung SET umsatz = umsatz - 100 WHERE id = ?", { ziel.id });
+        pruefung = store.PruefeHashKette(mandant.id);
+        Check(pruefung.ok, "restoring the amount restores the chain");
+
+        const UltraDbResult geloescht = UltraDb_Exec(
+            store.ConnectionName(), "DELETE FROM buchung WHERE id = ?", { ziel.id });
+        Check(static_cast<bool>(geloescht), "a posting is deleted directly in the database");
+        pruefung = store.PruefeHashKette(mandant.id);
+        Check(!pruefung.ok, "and the gap in the running numbers is detected too");
+    }
+
+    store.Close();
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -1130,6 +1707,7 @@ int main() {
     TestDatenDateien();
     TestBestaetigung();
     TestStore();
+    TestBelegeUndBuchungen();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

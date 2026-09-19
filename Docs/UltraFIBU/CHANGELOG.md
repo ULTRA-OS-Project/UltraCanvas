@@ -1,3 +1,79 @@
+#### 2026-09-19 *0.2.0*
+- **Belege und Buchungen: the documents and the journal they produce.** Phase
+  A2 of `Docs/Research/UltraFIBUDesignProposal.md`, minus the invoice PDF and
+  the screens. `UltraFIBUBeleg.{h,cpp}`, `UltraFIBUBuchung.{h,cpp}`, schema
+  version 2 (`beleg`, `beleg_position`, `buchung`, `zahlung`), nine new
+  commands in `ultrafibu`, and 126 further checks in
+  `Tests/UltraFIBU/UltraFIBUEngineTests.cpp` (626 in total).
+- **A document produces postings; it is never derived from them.** A `Beleg`
+  has positions, a partner, a currency, a file, a status and a payment history;
+  a `Buchung` has two accounts and an amount. While a document is a draft it can
+  be edited and re-priced freely. `Buchen()` turns it into journal rows, and
+  from that moment the store refuses every change to it - a correction is a
+  Storno, which is what the GoBD require and what `SaveBeleg` answers with
+  rather than leaving it to the UI.
+- **The journal row is DATEV-shaped**: `umsatz` (always positive) with a
+  Soll-/Haben-Kennzeichen, a `konto`, a `gegenkonto` and a BU-Schlüssel - the
+  shape the Buchungsstapel exports and the Kanzlei reads. In that shape the tax
+  is not a third row: one account is net, the other gross, and the difference is
+  an automatic posting to a tax account nobody types. The row therefore also
+  records what that automatic posting was - `netto`, `steuer`, `steuerkonto`,
+  `satzPromille` and which side was the net one - because a Saldenliste has to
+  show the tax account, because the rate that applied on the Belegdatum is
+  history rather than configuration, and because rounding happened once and
+  re-deriving it later can differ by a cent.
+- **Tax is computed per rate, not per position.** Three lines of 33,33 EUR at
+  19 % owe **19,00 EUR**; rounding each line first gives 18,99. The one tax
+  figure is then distributed back over the lines by largest remainder, so the
+  invoice's tax column adds up to its tax total - the property the recipient's
+  own system checks. The test asserts both numbers, so the difference cannot be
+  optimised away by accident.
+- **Storno is a reversal, never a deletion or a negative amount.** A new
+  document with the amounts negated and its own number, postings with Soll and
+  Haben exchanged at the *same* positive amounts, both documents and both
+  postings pointing at each other, dated into an open period while the original
+  may sit in a frozen one. Reversing the same document twice is refused.
+  - **A payment already recorded is not reversed with it.** The money arrived;
+    reversing the bank leg would make the bank balance disagree with the bank
+    statement, which is the one figure in a bookkeeping system that is checked
+    against the outside world. What remains is a credit on the person account -
+    the customer paid for an invoice that no longer exists and is owed the
+    money - which is the true position and the start of a refund. This was
+    wrong in the first version of the code and is now pinned by a test that
+    asserts the bank is untouched.
+- **A hash chain over the journal, and something that checks it.**
+  `hash = SHA-256(prevHash ‖ KanonischeForm(buchung))` over a length-prefixed
+  canonical form, so a Buchungstext containing a semicolon cannot imitate a
+  field separator. `PruefeHashKette` walks the chain from the first row and
+  re-computes every link; the tests edit an amount and then delete a row with
+  plain SQL - exactly what somebody with the database file would do - and assert
+  that both are detected, the first by the hash and the second by the gap in the
+  running numbers. It is tamper *evidence*, not a qualified signature, and the
+  CLI says so.
+- **Festschreibung now reaches the rows.** Freezing a period sets the date on
+  the Geschäftsjahr *and* marks every posting and posted document in it, in one
+  transaction. Afterwards the store refuses a document dated into the period, a
+  posting dated into it, a reversal dated into it and a payment dated into it -
+  each with the date it is refusing and why.
+- **Payments and the overdue list.** `ZahlungErfassen` posts the money account
+  against the person account and carries the document from Offen through
+  Teilweise bezahlt to Bezahlt; an over-payment is refused, because the usual
+  cause is the same payment entered twice. The due date is derived once from the
+  partner's terms and then stored, so changing a customer's terms next year does
+  not move when last year's invoices were due. `BelegFilter` covers the
+  Rechnungen screen - open, overdue, by kind, by partner, by date range, by
+  search text - and takes the cut-off date as a parameter rather than reading
+  the clock, so a report is reproducible and a test is not flaky.
+- **`SummenUndSalden` expands the automatic tax posting** into the leg it always
+  was, which is what makes the list balance, and names a Personenkonto after its
+  partner since it is not in the chart of accounts.
+  `Buchungskreisdifferenz` is the one-line answer to whether the ledger is still
+  a ledger; every test in this area ends with it, and so does `ultrafibu salden`.
+- **Nine commands**: `beleg-neu`, `belege`, `buchen`, `storno`, `zahlung`,
+  `journal`, `salden`, `pruefen`, beside the existing ones. A whole month can be
+  entered, posted, paid, partly reversed, frozen and verified without a window -
+  which is what keeps the engine honest about being headless.
+
 #### 2026-09-18 *0.1.0*
 - **UltraFIBU exists: the engine a German bookkeeping program is built on, and
   a command line that already uses it.** Phase A1 of
