@@ -4,7 +4,7 @@
 
 The `UltraCanvasXARElement` is a UI element that loads and renders **Xara vector graphics** (`.xar`, `.web`, `.wix`) inside an UltraCanvas window. It is part of the `UltraCanvasXARPlugin`, which parses the binary Xara record stream (per the Xara Format Specification, Appendix A) into an in-memory tree of `XARNode` objects — spreads, layers, groups, paths, regular shapes (rectangles, ellipses, polygons), text stories, bitmaps and effect nodes — and then plays that tree back through the standard `IRenderContext`. Coordinates are stored internally in millipoints (1/72000 inch) and converted to pixels at render time.
 
-XAR support is **partially implemented**. Parsing of the document structure and the core renderable nodes (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) is in place, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. Higher-level effect nodes such as `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows all three shipped samples from `media/vector/XAR/` (`Midget.xar`, `Apple5.xar`, `Backside.xar`) with a fullscreen viewer, page navigation and zoom.
+XAR support is **implemented**: the document structure and every core renderable node (paths, rectangles, ellipses, polygons, groups, layers, text stories, bitmaps) parse and render, along with flat / gradient / bitmap / contone fills, soft shadows, line attributes, transparency and the attribute stack. The one documented gap is at the top end of the format — the higher-level effect nodes `XARBlendNode`, `XARMouldNode`, `XARBevelNode`, `XARContourNode`, `XARFeatherNode` and `XARLiveEffectNode` are parsed into the tree but have limited or no visual rendering, so a file that leans on them draws its geometry without the effect rather than failing to open. The element exposes a multi-page API (`GetPageCount` / `GetCurrentPage` / `SetCurrentPage` / `onPageChanged` — one page per spread) and viewport handling with a uniform `scale` plus an aspect-ratio flag; there is **no `CDRFitMode`-style fit-mode enum**. The demo's XAR page (`DemoApp/UltraCanvasXARExamples.cpp`) shows all three shipped samples from `media/vector/XAR/` (`Midget.xar`, `Apple5.xar`, `Backside.xar`) with a fullscreen viewer, page navigation and zoom.
 
 **Version:** 1.0.0  
 **Header:** `Plugins/Vector/XAR/UltraCanvasXARPlugin.h`  
@@ -195,9 +195,10 @@ public:
 
 #### Parse Diagnostics & Triage
 
-XAR support is **not feature-complete**: some files display partially or
-incorrectly. `GetDiagnostics()` is how such a file is triaged after a load
-(successful or not):
+The format is larger than any one reader covers, so a file can still display
+partially or incorrectly — the effect nodes above are the usual reason.
+`GetDiagnostics()` is how such a file is triaged after a load (successful or
+not):
 
 - `unhandledTags` — record types the parser consumed without acting on. A
   file that leans on one of these needs the matching record handler
