@@ -249,6 +249,51 @@ Changing either switch — from the menu or through the setters — fires
 use, so an application persists both from one place (UltraFiler:
 `Settings > Display > File extensions`).
 
+## File icons
+
+What an entry with no picture of its own is drawn with: the widget's own drawn
+icons, or the ones this desktop uses for the type (`Display > File icons`).
+
+```cpp
+if (UltraCanvasFilerWidget::AreHostFileIconsAvailable())
+    filer->SetFileIconStyle(FilerFileIconStyle::HostOperatingSystem);
+```
+
+| Style | What is drawn |
+|---|---|
+| `Simple` (default) | UltraFiler's own icons: the folder shape and the category-coloured sheet with the extension on it. Identical on every platform, and needs nothing installed — what every earlier release drew. |
+| `HostOperatingSystem` | What **this** system draws for the type: the shell's icon on Windows, Finder's on macOS, the installed icon theme's on Linux and BSD, so a folder listing matches the rest of the desktop. |
+
+The setting only governs **type** icons. A file that shows a thumbnail of its
+own content keeps showing it, and a program, shortcut or bundle keeps the icon
+it carries inside itself ([Native application icons](#native-application-icons))
+— those are the file's own picture, and Explorer, Finder and the Linux file
+managers all prefer them too. What changes is the fallback underneath: the
+sheet glyph becomes the desktop's type icon, and the drawn folder shape becomes
+the desktop's folder icon.
+
+A folder the host gave an icon through `folderIconProvider`
+([Folder icons](#folder-icons)) still wins over both — that is an explicit
+choice about one folder. [Folder previews](#folder-previews) are drawn *into*
+the built-in folder shape, so with host icons on there is no shape to draw them
+into and the folder is simply the system's folder icon.
+
+The lookups go through
+[`UltraCanvasHostFileIcons.h`](UltraCanvasHostFileIcons.md) on one background
+thread, and the widget caches what comes back **per type and size**, not per
+file: a folder of four thousand `.txt` files performs one lookup and holds one
+pixmap. Until an answer lands — and on a system that has no icon for the type,
+or no desktop to ask at all — the simple icon is drawn, so the display never
+waits on a lookup and never shows an empty box.
+
+`AreHostFileIconsAvailable()` reports whether there is a desktop to ask
+(false on WebAssembly and Android): a settings page should say so rather than
+offer a choice that changes nothing. `RefreshHostIcons()` throws the resolved
+icons away and asks again, for a host that notices the user changing desktop
+theme. Switching the style fires `onDisplayFormatsChanged`, the same hook the
+other Display switches use, so an application persists it from one place
+(UltraFiler: `Settings > Display > File icons`).
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -297,6 +342,8 @@ Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascen
                   Type        >  all view types
                   File extensions > "Show in names" (checkbox) + None / Bar /
                                  Icon (the thumbnail tile tag)
+                  File icons  >  UltraFiler simple / Host OS icons (only
+                                 where this system has icons to give)
                   Thumbnails  >  Bitmaps / Vector graphics / 3D / PDF / Text /
                                  Docs / Spreadsheets / Videos / Audio / Fonts
                                  (checkboxes, all on; the host may append its
@@ -1284,6 +1331,12 @@ persists those persists this one the same way.
 ```cpp
 filer->SetFolderPreviewsEnabled(false);   // plain folder shapes only
 ```
+
+They are drawn into the **built-in** folder shape, so they only appear where
+that shape is what a folder is drawn with: a folder with an icon from
+`folderIconProvider` ([Folder icons](#folder-icons)) keeps that icon, and with
+`Display > File icons` on `HostOperatingSystem` ([File icons](#file-icons))
+every folder is the system's folder icon and none of them peek.
 
 What it costs, and where it is drawn:
 

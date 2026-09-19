@@ -1,4 +1,4 @@
-#### 2026-09-17 *1.42.0*
+#### 2026-09-19 *1.43.0*
 - **Remote drives are writable: delete, rename and new folder.** A drive added
   through **+ Drive** could be browsed and nothing more; now the three commands
   that act on what is *on* the drive work against the server. Deleting asks
@@ -28,9 +28,60 @@
   paste and New > *document* therefore still say a remote drive cannot take
   them.
 
-  Built on framework 0.8.85's `remoteDelete` / `remoteRename` /
+  Built on framework 0.8.89's `remoteDelete` / `remoteRename` /
   `remoteMakeDirectory` hooks and the `CloudService` change verbs added with
   them.
+
+#### 2026-09-17 *1.42.0*
+- **UltraFiler can now use your desktop's own file icons.** Until now a file
+  with no preview of its own was drawn as a coloured sheet with its extension
+  on it, and a folder as a drawn folder shape - the same picture on every
+  machine, and like nothing else on any of them. **Settings > Display > File
+  icons** now chooses between them:
+
+  - **UltraFiler simple** - the drawn folder and sheet. The default, and what
+    every earlier release showed.
+  - **Host OS icons** - what this system draws for the type: the shell's icons
+    on Windows, Finder's on macOS, the installed icon theme's on Linux and
+    BSD. A PDF gets the document icon, an archive the package icon, a
+    spreadsheet the spreadsheet icon - the same pictures as the rest of the
+    desktop, because they come from the same place.
+
+  It is also in each file display's own **Display > File icons** context menu,
+  beside File extensions.
+
+  What it does not touch: a file that shows a thumbnail of its own content
+  goes on showing it, and a program or shortcut goes on showing the icon it
+  carries inside itself - those are the file's own picture rather than its
+  type's, and Explorer and the Finder prefer them too. A folder you gave an
+  icon with **Extras > Set folder icon**, and the main user folders with icons
+  of their own, keep them either way.
+
+  A file type this system has no icon for keeps the simple one, and so does
+  every icon until its lookup lands, so the window never waits on the desktop
+  and never shows an empty box. On a system with no desktop to ask the choice
+  is greyed out and says why. With host icons on, a folder is drawn with the
+  system's folder icon - so the pictures inside it no longer peek out of it,
+  since there is no drawn folder left to peek out of.
+
+  The setting is saved like every other (`display.file.icons` in the config
+  file). Framework change, see UltraCanvas 0.8.84; the application's own part
+  is the settings page, the config key and the menu wiring.
+
+- **Fixed: the Display settings were ignored by every file display created
+  after start-up.** They are pushed into the displays that exist when the
+  settings file is read - which at start-up is the folder preview alone,
+  because the tabs are built after it. The first tab, every tab opened later,
+  and the History, Favorites and Computer displays therefore browsed with the
+  built-in defaults until the user happened to change a setting, at which
+  point the whole set was pushed in and they jumped. So a saved **Thumbnails**
+  or **Detail view** selection, the **File extensions** switches and
+  **Folder previews** all came back wrong after a restart. Each display is now
+  given the settings as it is wired up, whenever it is created.
+
+  Found while adding File icons above: it was the reason a saved choice of
+  host icons did nothing until the settings window was opened.
+
 #### 2026-09-17 *1.41.0*
 - The per-application plugin list is gone. UltraFiler links
   `UltraCanvasAllFormats` and every format plugin the build produced registers

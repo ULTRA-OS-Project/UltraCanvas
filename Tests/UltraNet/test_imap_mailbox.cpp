@@ -8,6 +8,7 @@
 
 #include <UltraNet/UltraNetCore.h>
 #include <UltraNet/UltraNetPlugins.h>
+#include <UltraNet/UltraNetMime.h>   // UltraNet_ImapUtf7Decode
 
 // Pure parsers live in the plug-in's header — include it directly.
 #include "../../UltraCanvas/Plugins/UltraNet/imap/ImapParse.h"
@@ -74,6 +75,24 @@ TEST(imap_parse_list_response_with_roles) {
     REQUIRE(!folders[2].selectable);                        // \Noselect
 
     REQUIRE_EQ(folders[3].role, std::string("all"));        // \All attribute
+}
+
+TEST(imap_modified_utf7_decode) {
+    // Plain ASCII passes through unchanged (fast path, no '&').
+    REQUIRE_EQ(UltraNet_ImapUtf7Decode("INBOX"), std::string("INBOX"));
+    REQUIRE_EQ(UltraNet_ImapUtf7Decode("[Gmail]/Sent Mail"),
+               std::string("[Gmail]/Sent Mail"));
+
+    // "&-" is a literal ampersand.
+    REQUIRE_EQ(UltraNet_ImapUtf7Decode("&-"), std::string("&"));
+
+    // "&<mbase64>-" decodes UTF-16BE code units to UTF-8.
+    REQUIRE_EQ(UltraNet_ImapUtf7Decode("&AOk-"), std::string("\xC3\xA9"));       // é U+00E9
+    REQUIRE_EQ(UltraNet_ImapUtf7Decode("&IKw-"), std::string("\xE2\x82\xAC"));   // € U+20AC
+    REQUIRE_EQ(UltraNet_ImapUtf7Decode("Test&AOk-"), std::string("Test\xC3\xA9"));
+
+    // Malformed (unterminated shift) is returned unchanged — never worse than raw.
+    REQUIRE_EQ(UltraNet_ImapUtf7Decode("&AOk"), std::string("&AOk"));
 }
 
 TEST(imap_detect_role_name_fallback) {

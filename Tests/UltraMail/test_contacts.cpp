@@ -6,6 +6,7 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "test_framework.h"
 
+#include "UltraMailContactCollector.h"
 #include "UltraMailContactStore.h"
 
 #include <string>
@@ -145,4 +146,65 @@ TEST(remove_deletes_contact_and_children) {
     REQUIRE_EQ(CountFor(s, ContactSection::Friends), 0);
     Contact got;
     REQUIRE(s.Get(c.id, got).code == UltraDbResultCode::NotFound);
+}
+
+// --- Auto-collection --------------------------------------------------------
+
+TEST(collect_sender_files_a_known_service_as_a_business_contact) {
+    ContactStore s = FreshStore("collect-brand");
+
+    // A crowdfunding platform the user backed a project on: the registry knows
+    // the domain, so the contact is filed under Services with the service as
+    // its organization rather than as a loose address in Other.
+    REQUIRE(ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com"));
+
+    std::vector<Contact> services;
+    REQUIRE(s.ListBySection(ContactSection::Services, services).success);
+    REQUIRE_EQ(services.size(), (size_t)1);
+    REQUIRE_EQ(services.front().organization, std::string("Kickstarter"));
+    REQUIRE(services.front().notes.find("Crowdfunding platform") != std::string::npos);
+    REQUIRE_EQ(services.front().PrimaryEmail(), std::string("no-reply@kickstarter.com"));
+
+    // A robot display name is replaced by the service's own name only when it
+    // is missing; a real one is kept.
+    REQUIRE(ContactCollector::CollectSender(s, "", "hello@buymeacoffee.com"));
+    REQUIRE(s.ListBySection(ContactSection::Services, services).success);
+    bool named = false;
+    for (const auto& c : services)
+        if (c.PrimaryEmail() == "hello@buymeacoffee.com")
+            named = (c.displayName == "Buy Me a Coffee");
+    REQUIRE(named);
+}
+
+TEST(collect_sender_leaves_ordinary_addresses_in_other) {
+    ContactStore s = FreshStore("collect-other");
+    REQUIRE(ContactCollector::CollectSender(s, "Anna Schmidt", "anna@example.com"));
+
+    std::vector<Contact> other;
+    REQUIRE(s.ListBySection(ContactSection::Other, other).success);
+    REQUIRE_EQ(other.size(), (size_t)1);
+    REQUIRE_EQ(other.front().displayName, std::string("Anna Schmidt"));
+    REQUIRE(other.front().organization.empty());
+
+    // A personal mailbox is not a service, however big the provider is.
+    REQUIRE(ContactCollector::CollectSender(s, "Uncle Bob", "bob@gmail.com"));
+    REQUIRE(s.ListBySection(ContactSection::Other, other).success);
+    REQUIRE_EQ(other.size(), (size_t)2);
+
+    std::vector<Contact> services;
+    REQUIRE(s.ListBySection(ContactSection::Services, services).success);
+    REQUIRE(services.empty());
+}
+
+TEST(collect_sender_never_reclassifies_an_existing_contact) {
+    ContactStore s = FreshStore("collect-existing");
+    // The user filed this address under Friends themselves; a later collect of
+    // the same address must not move it into Services.
+    Contact mine = MakeContact("My Kickstarter account", ContactSection::Friends,
+                               "no-reply@kickstarter.com");
+    REQUIRE(s.Save(mine).success);
+
+    REQUIRE(!ContactCollector::CollectSender(s, "Kickstarter", "no-reply@kickstarter.com"));
+    REQUIRE_EQ(CountFor(s, ContactSection::Friends), 1);
+    REQUIRE_EQ(CountFor(s, ContactSection::Services), 0);
 }
