@@ -47,6 +47,18 @@
   The raster is uncompressed (`RaS3`) because it travels down a pipe to a
   filter that reads it immediately, and a run-length encoder is wrong in ways
   that surface on one printer at one resolution.
+- **macOS does not implement `sigtimedwait`.** The SIGPIPE drain used it and
+  broke the macOS build; it uses `sigwait` now, and only when a write has
+  actually reported `EPIPE`. That second part is not tidiness: a SIGPIPE from
+  `write()` is directed at the calling thread, so having seen `EPIPE` proves
+  there is one pending for *this* thread and `sigwait` returns at once.
+  Deciding from `sigpending()` instead would also match a process-directed
+  SIGPIPE meant for another thread, and if that one were consumed elsewhere
+  in between, the wait would never return.
+- `Tests/ProcessRunnerTest` (POSIX): 17 assertions over the three ways a
+  process runner goes wrong and only at scale - 64 MB written into a closed
+  pipe without dying, 64 MB through a filter reading and writing at once
+  without deadlocking, and shell metacharacters reaching the program as text.
 - `Tests/IODevicePrinterTest`: 173 assertions, up from 157. Parsing
   GutenPrint's listing and matching a printer to a model are string work with
   no tools installed, so they live in a translation unit the tests link and

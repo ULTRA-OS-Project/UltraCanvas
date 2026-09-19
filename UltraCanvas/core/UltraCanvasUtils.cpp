@@ -636,22 +636,34 @@ namespace UltraCanvas {
             wasBlockedBefore = active && sigismember(&previous, SIGPIPE) == 1;
         }
 
+        // Called when a write reports EPIPE, which is the only way this code
+        // provokes a SIGPIPE.
+        void NotePipeClosed() { provoked = true; }
+
         ~SigPipeBlocker() {
             if (!active) return;
-            if (!wasBlockedBefore) {
-                // Discard a SIGPIPE this call provoked, so it is not
-                // delivered the moment the mask is restored.
-                sigset_t pending;
-                sigemptyset(&pending);
-                if (sigpending(&pending) == 0 && sigismember(&pending, SIGPIPE) == 1) {
-                    sigset_t wait;
-                    sigemptyset(&wait);
-                    sigaddset(&wait, SIGPIPE);
-                    int signo = 0;
-                    const timespec zero{0, 0};
-                    (void)sigtimedwait(&wait, nullptr, &zero);
-                    (void)signo;
-                }
+
+            // Drain only a SIGPIPE we know we caused, so it is not delivered
+            // the moment the mask is restored.
+            //
+            // Gated on having actually seen EPIPE, rather than on asking
+            // sigpending() what is waiting, and the difference matters in a
+            // threaded program. A SIGPIPE raised by write() is directed at
+            // the calling thread, so if we saw EPIPE the signal is pending
+            // for *this* thread and nothing else can take it - sigwait
+            // returns immediately. Deciding from sigpending() would also
+            // match a process-directed SIGPIPE meant for somebody else, and
+            // if that one were consumed elsewhere between the question and
+            // the answer, sigwait would block forever.
+            //
+            // sigwait rather than sigtimedwait because macOS does not
+            // implement sigtimedwait at all.
+            if (provoked && !wasBlockedBefore) {
+                sigset_t waitFor;
+                sigemptyset(&waitFor);
+                sigaddset(&waitFor, SIGPIPE);
+                int signo = 0;
+                (void)sigwait(&waitFor, &signo);
             }
             pthread_sigmask(SIG_SETMASK, &previous, nullptr);
         }
@@ -663,6 +675,7 @@ namespace UltraCanvas {
         sigset_t previous{};
         bool active = false;
         bool wasBlockedBefore = false;
+        bool provoked = false;
     };
 
     void CloseIfOpen(int& fd) {
@@ -945,6 +958,7 @@ namespace UltraCanvas {
                         written += static_cast<size_t>(wrote);
                         if (written == input.size()) CloseIfOpen(inPipe[1]);
                     } else if (wrote < 0 && errno != EINTR && errno != EAGAIN) {
+                        if (errno == EPIPE) noSigPipe.NotePipeClosed();
                         CloseIfOpen(inPipe[1]);
                     }
                 }
