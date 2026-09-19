@@ -1,0 +1,32 @@
+# UltraFIBU - Steuerschluessel (Startbestand, gueltig ab 2026-01-01)
+#
+# Semikolon-getrennt, UTF-8. Spalten:
+#   schluessel;bezeichnung;art;satz_promille;land;vorsteuer;datev_bu;kz_bemessung;kz_steuer;konto_umsatz;konto_steuer;gueltig_von;gueltig_bis
+#
+# satz_promille: 190 = 19 %, 70 = 7 %, 0 = 0 %. Promille, damit auch 2,5 %
+# ohne Gleitkomma darstellbar ist.
+#
+# UStVA-KENNZAHLEN: nur die belegt gepruefen Kennzahlen sind eingetragen
+# (81, 86, 87, 41, 66, 45). Alle uebrigen Felder sind ABSICHTLICH LEER und
+# muessen aus dem BMF-Vordruckmuster des jeweiligen Jahres ergaenzt werden -
+# das Formular aendert sich jaehrlich (2026 ist z. B. die Kennzahl 43 fuer
+# SAFE-Lieferungen neu hinzugekommen). Eine geratene Kennzahl fuehrt zu einer
+# falschen Voranmeldung; ein leeres Feld faellt beim Erstellen der Meldung auf.
+#
+# DATEV-BU-Schluessel sind ebenfalls leer, bis sie am echten Buchungsstapel
+# der Kanzlei geprueft sind.
+schluessel;bezeichnung;art;satz_promille;land;vorsteuer;datev_bu;kz_bemessung;kz_steuer;konto_umsatz;konto_steuer;gueltig_von;gueltig_bis
+USt19;Umsatzsteuer 19 %;inland;190;DE;0;;81;;8400;1776;2026-01-01;
+USt7;Umsatzsteuer 7 %;inland;70;DE;0;;86;;8300;1771;2026-01-01;
+USt0;Umsatzsteuerfrei 0 %;inland;0;DE;0;;87;;8100;;2026-01-01;
+VSt19;Vorsteuer 19 %;inland;190;DE;1;;;66;;1576;2026-01-01;
+VSt7;Vorsteuer 7 %;inland;70;DE;1;;;66;;1571;2026-01-01;
+IGL;Innergemeinschaftliche Lieferung (steuerfrei, § 4 Nr. 1b UStG);ig-lieferung;0;;0;;41;;8125;;2026-01-01;
+IGE19;Innergemeinschaftlicher Erwerb 19 %;ig-erwerb;190;;0;;;;;1789;2026-01-01;
+IGE7;Innergemeinschaftlicher Erwerb 7 %;ig-erwerb;70;;0;;;;;1789;2026-01-01;
+RC13b;Leistungsempfaenger schuldet die Steuer (§ 13b UStG);reverse-charge-13b;190;;0;;;;;1787;2026-01-01;
+Ausfuhr;Ausfuhrlieferung Drittland (steuerfrei, § 4 Nr. 1a UStG);drittland;0;;0;;;;8120;;2026-01-01;
+Drittland0;Drittland-Eingangsbeleg, keine abziehbare Vorsteuer;drittland;0;;1;;;;;;2026-01-01;
+NichtStb;Nicht steuerbarer Umsatz (Leistungsort nicht im Inland);nicht-steuerbar;0;;0;;45;;;;2026-01-01;
+OSS;Im EU-Zielland steuerpflichtig (One-Stop-Shop);oss;0;;0;;45;;8338;;2026-01-01;
+KU19;Kleinunternehmer, keine Umsatzsteuer (§ 19 UStG);kleinunternehmer;0;DE;0;;;;8100;;2026-01-01;

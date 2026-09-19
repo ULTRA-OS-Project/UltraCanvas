@@ -18,6 +18,8 @@
 
 namespace UltraCanvas {
 
+    class UltraCanvasListSortFilterProxy;   // SetSortProxy, defined in its own header
+
     // ===== VIEW STYLE =====
 
     struct ListViewStyle {
@@ -138,6 +140,34 @@ namespace UltraCanvas {
         void SetShowItemTooltips(bool enable);
         bool GetShowItemTooltips() const;
 
+        // === Sorting ===
+        // The view does not sort: it shows which column is sorted and which way,
+        // and reports a click on a header. The ordering itself belongs to the
+        // model - UltraCanvasListSortFilterProxy is the one that does it - so a
+        // model that is already sorted, or sorted by a database query, keeps
+        // working unchanged.
+        //
+        // With sorting enabled, clicking a header sorts that column ascending,
+        // and clicking the sorted one again turns it round.
+        void SetSortingEnabled(bool enabled);
+        bool GetSortingEnabled() const;
+
+        // Which column shows the indicator. -1 (the default) shows none.
+        void SetSortIndicator(int column, ListSortOrder order = ListSortOrder::Ascending);
+        void ClearSortIndicator();
+        int  GetSortIndicatorColumn() const;
+        ListSortOrder GetSortIndicatorOrder() const;
+
+        // Called when a header click asks for a sort. Set this to sort the data
+        // however the application stores it.
+        std::function<void(int column, ListSortOrder order)> onSortRequested;
+
+        // The common case wired up: the view drives this proxy and keeps its
+        // own indicator in step. Pass nullptr to unhook it. Sorting is enabled
+        // by this call, since a sort proxy with no way to ask for a sort is not
+        // what anybody means by attaching one.
+        void SetSortProxy(std::shared_ptr<UltraCanvasListSortFilterProxy> proxy);
+
         // === Scrolling ===
         void ScrollToRow(int row);
         void EnsureRowVisible(int row);
@@ -202,6 +232,12 @@ namespace UltraCanvas {
         int hoveredColumn = -1;
         int hoveredHeaderColumn = -1;
         int focusedRow = -1;
+
+        // Sorting: display state only (see SetSortingEnabled).
+        bool sortingEnabled = false;
+        int sortIndicatorColumn = -1;
+        ListSortOrder sortIndicatorOrder = ListSortOrder::Ascending;
+        std::weak_ptr<UltraCanvasListSortFilterProxy> sortProxy;
         bool showItemTooltips = true;
 
         // Column resizing. columnWidthOverrides[col] >= 0 overrides the model's
@@ -233,6 +269,10 @@ namespace UltraCanvas {
         int ClampRowIndexAtContentY(int contentY) const;  // row at a content Y
         void RebuildRowGeometryIfNeeded() const;
         void InvalidateRowGeometry();
+
+        // Act on a click in the header band: cycle the sort of that column and
+        // tell whoever is listening.
+        bool HandleHeaderClick(int column);
 
         // Rendering
         void RenderHeader(IRenderContext* ctx, const Rect2Di& contentRect);

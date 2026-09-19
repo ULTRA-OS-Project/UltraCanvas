@@ -1,3 +1,175 @@
+#### 2026-09-19 *0.8.96*
+- **Sorting and filtering for every list in the framework, and a correction.**
+  `UltraCanvasListSortFilterProxy` (`include/UltraCanvasListSortFilterProxy.h`,
+  `core/UltraCanvasListSortFilterProxy.cpp`) is an `IListModel` that wraps
+  another one and presents the same columns with the rows re-ordered and thinned
+  out, so a view is handed the proxy instead of the model and needs no idea that
+  either is happening. Every existing `UltraCanvasListView` caller gains both
+  without changing a line. `Docs/UltraCanvas/UltraCanvasListSortFilterProxy.md`,
+  `Tests/ListSortFilterProxyTests.cpp` (target `ListSortFilterProxyTests`, 78
+  checks).
+  - **The correction first.** 0.8.94 and 0.8.95 below said `UltraCanvasListView` "has
+    no column API at all" and asked for a new data grid to be built. That was
+    wrong, and wrong in the most avoidable way: it came from grepping the
+    view's header for `AddColumn`/`SetColumns` instead of reading the model
+    beside it. ListView *is* the multi-column, virtualised, model-driven table -
+    `IListModel`, `ListColumnDef`, `UltraCanvasMultiColumnListModel`, painting
+    delegates, selection models, a header band, per-cell tooltips, variable row
+    heights, cell-level callbacks and row culling were all already there. What
+    was missing was sorting and filtering, which is what this release adds
+    instead of a second grid. `UltraCanvasTableView`, which the catalogue named,
+    still does not exist; that row now points at the view that does the job.
+  - **Stable sorting**, so equal rows keep their source order and sorting by one
+    column then another is predictable. Per-column kinds - `Auto`, `Text`,
+    `TextCaseSensitive`, `Number`, `Natural` (`Beleg 2` before `Beleg 10`) - or
+    a comparator of your own, which receives source rows.
+  - **`ListDataRole::SortRole`**: a column showing `1.234,56 EUR` or
+    `17.09.2026` returns the amount or the day number here and sorts by that
+    instead of by its formatting. Absent, the proxy falls back to the displayed
+    text.
+  - **Numbers are read without the C locale**, both conventions alike
+    (`1234.56`, `1.234,56`, `-37,28 EUR`, `(1.234,56)`), and deliberately
+    strictly: a letter anywhere means "not a number". The first version skipped
+    `E`, `U` and `R` so `EUR 89,00` would parse - which made `R-202607010` read
+    as **-202607010** and silently reversed a whole column of document numbers.
+    The tests caught it, and now cover it.
+  - **Filtering** by case-insensitive text, over chosen columns or all of them,
+    plus an arbitrary predicate; a row must pass both.
+  - **Row mapping is explicit**, because a proxy row is not a source row:
+    `MapToSource` / `MapFromSource`, and a selection reported by a view is in
+    proxy rows. Forgetting that is how a sorted table deletes the wrong record,
+    so the header, the doc and the tests all say it.
+  - **Attaching never disconnects anything**: the proxy chains the source's
+    existing change handlers rather than replacing them, and restores them when
+    it is destroyed, so a model that outlives its proxy cannot call into freed
+    memory.
+- **`UltraCanvasListView` shows which column is sorted and reports header
+  clicks** - `SetSortingEnabled`, `SetSortIndicator`, `onSortRequested`, and
+  `SetSortProxy` for the common case. The view never sorts anything itself, so a
+  model that is already ordered by a database query keeps working unchanged.
+  Clicking a header sorts ascending, clicking the sorted one turns it round, and
+  the indicator triangle is drawn as geometry (`FillLinePath`) so it stays crisp
+  at any DPI and follows the header's text colour. A header click no longer
+  clears the selection - losing what you had selected because you sorted the
+  table is not what anybody asks for - and the keyboard focus row is dropped on
+  a sort rather than left pointing at whatever record landed on that index.
+
+#### 2026-09-19 *0.8.95*
+- **`UltraCanvasMoney`: an amount that is still right after the arithmetic.**
+  `int64_t` minor units plus an ISO 4217 code, header-only
+  (`include/UltraCanvasMoney.h`), free of every other UltraCanvas header - so a
+  headless engine, a test target and the UI all use one definition. The
+  framework's only currency type until now was `CurrencyValue`, a `double` in
+  the spreadsheet types; it stays what it is, a cell value, and nothing that
+  keeps a balance should use it. `Docs/UltraCanvas/UltraCanvasMoney.md`,
+  `Tests/MoneyTests.cpp` (target `MoneyTests`, 118 checks).
+  - **Rates are applied exactly.** Every multiply and divide goes through
+    `MoneyMulDiv`, which forms the full 128-bit product in 32-bit limbs and
+    divides it bitwise with *kaufmaennische Rundung* - half away from zero, so
+    2,5 becomes 3 and -2,5 becomes -3, which is the rounding German tax
+    arithmetic does. No `__int128`, no intrinsic, identical on every platform,
+    and overflow is reported rather than wrapped. The carry out of bit 63 is
+    handled explicitly, because the shift-and-subtract loop that ignores it is
+    wrong for divisors above 2^63 and right for every divisor anyone tests
+    with.
+  - **The VAT identities hold by construction.** `TaxOnNet`, `GrossFromNet`,
+    `TaxInGross` and `NetFromGross` take the rate in permille (190 is 19 %, 25
+    is 2,5 %), and `NetFromGross` is defined as the gross minus the contained
+    tax rather than as its own division - which is what keeps
+    `net + tax == gross` true whatever the rounding did. The tests assert both
+    identities across a matrix of rates and amounts, down to one cent at 19 %.
+  - **A split sums to the whole.** `SplitProportionally` distributes by largest
+    remainder, so 100,00 over three positions is 33,34 / 33,33 / 33,33 and a
+    discount spread over invoice lines cannot lose a cent. Negative amounts
+    (credit notes) split with the sign; degenerate input returns nothing rather
+    than something wrong.
+  - **Three text styles, no locale.** German `1.234,56` for the UI, plain
+    `1234.56` for dot-decimal file formats, and `1234,56` for DATEV's
+    comma-decimal CSV columns - chosen by the destination, never inherited from
+    the process. Digits are assembled from the integer, so `LC_NUMERIC` cannot
+    reach them: this is the one numeric type in the tree that cannot acquire
+    the decimal-separator bug the Linux backend's `setlocale(LC_ALL, "")` has
+    already caused twice. Parsing accepts what people and files actually write
+    (grouping, parentheses for negative, a trailing symbol, finer decimals
+    rounded half away from zero), and the two machine styles are deliberately
+    strict - a misplaced grouping separator fails the parse, because an
+    importer that misreads an amount does more damage than one that rejects a
+    line.
+  - Invalidity replaces exceptions and is sticky: a currency mismatch, a failed
+    parse or an overflow yields an invalid amount that propagates through the
+    arithmetic and formats as an empty string, never as `0,00`. One check at
+    the end of a calculation is enough, and a mismatch can never print as a
+    plausible wrong number.
+- **The UI element catalogue no longer names an element that does not exist.**
+  `Docs/UltraCanvas/UltraCanvasUIElements.md` listed `UltraCanvasTableView`
+  with "matching `*.h`"; there is no such header anywhere in the tree. The row
+  now points at the elements that do the job. (It first pointed at
+  `UltraCanvasColumnsTreeView` on the strength of the mistaken reading
+  corrected in 0.8.96; `UltraCanvasListView` is the multi-column table, and the
+  row says so now.)
+
+#### 2026-09-19 *0.8.94*
+- **New design proposal: UltraFIBU, a German double-entry accounting
+  application** (`Docs/Research/UltraFIBUDesignProposal.md`). DATEV import and
+  export, UStVA/ZM submission to ELSTER, One-Stop-Shop reporting, a
+  *Geschaeftsjahr* whose start date is free (1 April is an ordinary row, not a
+  special case), customer and supplier master data with European VAT numbers,
+  a German UI, and two deployment modes - a local SQLite database and a shared
+  server database several users work on. The investigation checks every
+  requirement against the tree rather than against expectation, and the
+  answers are the interesting part: the CSV layer already speaks the DATEV
+  dialect (CP1252, semicolons, quoted fields), `UCZipPackageWriter` gives the
+  containers DATEV XML, ZUGFeRD and the GoBD Z3 medium need, UltraVault holds
+  the ELSTER PIN and UltraCrypt the journal's hash chain - while four things
+  are missing and each is worth having for its own sake.
+  - **`UltraCanvasTableView` does not exist.** The UI catalogue names it and
+    there is no such header, so the row sends readers after a file that was
+    never written. (The same bullet originally went on to say that
+    `UltraCanvasListView` "has no column API at all" and to ask for a new data
+    grid. That was wrong - see 0.8.96, which corrects it: ListView *is* the
+    multi-column model-driven table, and what it lacked was sorting and
+    filtering, not columns.)
+  - **There is an XML parser and nobody owns it.** Six of this application's
+    formats are XML (XRechnung UBL and CII, ZUGFeRD, the ELSTER data types,
+    CAMT.053, the GoBD `index.xml`). tinyxml2 is already a core dependency -
+    COLLADA, the mind-map IO and `UltraCanvasPropertyList` all use it - but
+    there is no facade over it, so every caller parses its own way and
+    `VersioningInvestigation.md` already records one file being parsed twice
+    into two models. `UltraCanvasXML` wraps what is there, the way
+    `UltraCanvasJSON` wraps yyjson; no new dependency.
+  - **There is no money type.** The one currency value in the tree is a
+    `double` in the spreadsheet types, which a ledger may not use; exact
+    integer minor units with explicit *kaufmaennische Rundung* and allocation
+    helpers belongs in the framework. With it, a German number input - and
+    the note that DATEV CSV is comma-decimal, the exact inverse of the
+    dot-decimal file-format rule the framework has already been bitten by
+    twice.
+  - **Multi-user has one answer and it is a driver.** `core/UltraDatabase/`
+    holds the SQLite driver alone and there is no `Plugins/UltraDatabase/`, so
+    server mode waits on the `libpq` driver the module's own Stage 2 plan
+    promises. A shared SQLite file on a network share or a synced folder is
+    not a deployment mode - it is silent loss of a book that must by law be
+    complete.
+  The rest is regulatory reality, sourced and dated: UStVA goes through ERiC,
+  which cannot be vendored here, needs a manufacturer registration and is
+  re-released twice a year - so an interface, a dynamically loaded backend
+  that soft-fails, and an always-available path that writes the XML for manual
+  upload. OSS has no published machine interface at all, only a CSV transport
+  file uploaded by hand, so the design computes and hands over. The BZSt's
+  VAT-number XML-RPC endpoint went obsolete on 30 November 2025 and is now a
+  REST API. A *Geschaeftsjahr* starting 1 April and a UStVA period that is
+  always a calendar month are two calendars over one journal, which is a
+  schema decision and cheap only while it is early.
+  Three scope decisions taken with the owner are recorded in §1.1 and carried
+  through the plan: the *Jahresabschluss* stays in-house (so *Bilanz*/GuV and
+  E-Bilanz become a named later phase, and every account carries a
+  balance-sheet classification from the first chart import), shared-server mode
+  is wanted from day one (so the libpq driver runs beside the first application
+  phase, and users, roles and attribution ship with the very first schema), and
+  SKR03 with *Soll-Versteuerung* are the defaults - each still a per-client
+  setting, because the hard-coded one is the one that cannot be given to a
+  second company. Documentation only; no code.
+
 #### 2026-09-19 *0.8.93*
 - **A remote drive can be changed, not only read.** `UltraCanvasFilerWidget`
   gained three more host hooks beside `remoteListing` - **`remoteDelete`**,

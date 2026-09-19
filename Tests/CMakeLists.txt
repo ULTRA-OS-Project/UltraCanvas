@@ -744,6 +744,31 @@ add_test(
 )
 message(STATUS "    Test registered: ListViewTooltipTest")
 
+# ===== LIST SORT/FILTER PROXY TEST =====
+# Sorting, filtering and - above all - the row mapping of
+# UltraCanvasListSortFilterProxy, because a proxy row mistaken for a source row
+# is how a sorted table edits the wrong record. Model-level only, no UI stack.
+message(STATUS "  Building ListSortFilterProxyTests...")
+add_executable(ListSortFilterProxyTests
+    ${CMAKE_CURRENT_SOURCE_DIR}/ListSortFilterProxyTests.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasListModel.cpp
+    ${ULTRACANVAS_ROOT}/UltraCanvas/core/UltraCanvasListSortFilterProxy.cpp
+)
+target_include_directories(ListSortFilterProxyTests PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+)
+target_compile_features(ListSortFilterProxyTests PRIVATE cxx_std_20)
+set_target_properties(ListSortFilterProxyTests PROPERTIES
+    OUTPUT_NAME "ListSortFilterProxyTests"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(
+    NAME ListSortFilterProxyTests
+    COMMAND ListSortFilterProxyTests
+    WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+message(STATUS "    Test registered: ListSortFilterProxyTests")
+
 # ===== CONTOUR GEOMETRY TEST =====
 # Marching-squares isolines (including saddle disambiguation), isoband cell
 # clipping, level generation, NaN holes, point gridding and polyline
