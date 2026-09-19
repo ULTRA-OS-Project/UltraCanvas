@@ -33,6 +33,15 @@ STL stores unstructured triangles with no units, colours, layers or scene
 graph, so a `Mesh3D` is all there is to read: positions, normals, indices and
 the bounds computed from them.
 
+**Which way is up.** The format states no orientation, but every tool that
+writes it - CAD, slicers, printers - means Z-up, so the loader sets
+`Mesh3D::upAxis = MeshUpAxis::ZUp`. The viewer's camera puts +Y on screen, so
+it rotates such a mesh by -90 degrees about X before posing it; without that a
+model stands on its nose. Only the view rotates - the vertex data, the bounds
+and the extents are the file's own, and `Save()` still round-trips it. A
+`Mesh3D` assembled in code keeps the `MeshUpAxis::YUp` default, and
+`ModelDocumentToMesh3D` sets the axis from whatever the document declared.
+
 ## Displaying a model
 
 ```cpp

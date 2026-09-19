@@ -1,4 +1,4 @@
-#### 2026-09-18 *0.8.85*
+#### 2026-09-19 *0.8.95*
 - **`UltraCanvasMoney`: an amount that is still right after the arithmetic.**
   `int64_t` minor units plus an ISO 4217 code, header-only
   (`include/UltraCanvasMoney.h`), free of every other UltraCanvas header - so a
@@ -54,7 +54,7 @@
   `Docs/Research/UltraFIBUDesignProposal.md` §3.3; until it exists the
   catalogue should send readers to the element that does.
 
-#### 2026-09-18 *0.8.84*
+#### 2026-09-19 *0.8.94*
 - **New design proposal: UltraFIBU, a German double-entry accounting
   application** (`Docs/Research/UltraFIBUDesignProposal.md`). DATEV import and
   export, UStVA/ZM submission to ELSTER, One-Stop-Shop reporting, a
@@ -116,6 +116,374 @@
   setting, because the hard-coded one is the one that cannot be given to a
   second company. Documentation only; no code.
 
+#### 2026-09-19 *0.8.93*
+- **A remote drive can be changed, not only read.** `UltraCanvasFilerWidget`
+  gained three more host hooks beside `remoteListing` - **`remoteDelete`**,
+  **`remoteRename`** and **`remoteMakeDirectory`** - so the folder display can
+  delete an entry, rename one in place and create a folder on a drive the host
+  carries for an FTP server or a cloud account.
+
+  They differ from the listing hook in what they promise: they answer that the
+  request was *accepted*, not that it finished. The host queues the work and
+  refreshes the display when the server has replied, because a delete over a
+  slow link would otherwise hold the UI thread exactly as a blocking listing
+  would. Each entry handed to `remoteDelete` carries its own `isDirectory`,
+  which is what lets a backend pick FTP's `DELE` over `RMD` without a probe per
+  entry, and `remoteRename` takes a bare name - a rename in place, never a
+  move.
+
+  A remote new folder cannot go straight into rename mode the way a local one
+  does: it does not exist until the server has answered and the refresh has
+  landed. The widget names it from the listing on screen instead, and renaming
+  it afterwards now works.
+
+  The commands with no hook - duplicate, paste, new file - still refuse on a
+  remote folder rather than reaching `std::filesystem` with a path that
+  resolves to nothing. Copying between the local disk and a drive is a
+  transfer with progress, conflicts and a cancel, so it belongs with the paste
+  machinery rather than in a hook of this shape.
+- **`CloudService` forwards the change verbs.** `Delete`, `Rename` and
+  `MakeDirectory` were added to `ICloudProvider` in 0.8.80 for the FTP
+  provider, but the app-facing facade had no way to reach them - so an
+  application could hold an account and still not delete a file on it. All
+  three now resolve the account and its credentials and hand the call on with
+  the path normalised, exactly as `List` does. A provider that never
+  implemented them still answers `Unsupported`, and the suite checks both
+  halves of that.
+
+#### 2026-09-19 *0.8.91*
+- **Illustrator artwork rendered as a blank page.** "Since Illustrator 9 a
+  `.ai` file is a PDF" is only half true, and the demo app's AI Artwork page
+  acted on the wrong half: it handed `.ai` straight to the MuPDF viewer.
+  Illustrator's *Create PDF Compatible File* option decides whether the PDF
+  page carries the artwork at all - with it off (and it is off in what
+  CorelDRAW and several other exporters write) the file is a valid PDF whose
+  page content stream draws nothing, and every path lives in the private
+  `/AIPrivateData` streams instead. Both samples in `media/vector/AI` are of
+  that kind: their page content is 47 bytes that set a transform and a
+  graphics state. A PDF engine renders exactly that, so the page was blank -
+  correctly, and unhelpfully. The online `.ai` viewers this was checked
+  against fail the same way.
+- **New: `UltraCanvas/Plugins/Vector/UltraCanvasAIReader.cpp`** - the import
+  side of `VectorConverter::AIConverter`, which stops being export-only.
+  It finds the `/AIPrivateData` streams in the PDF container, undoes their
+  filter chain (ASCIIHex / ASCII85 / Flate) and interprets Illustrator's art
+  language into a `VectorStorage::VectorDocument`: path construction
+  (`m`, `l`, `c`, `v`, `y`) with closepath on the lowercase paint operators,
+  clipping (`W`), compound paths (`*u`/`*U`) so filled shapes keep their
+  holes, groups, named layers, the graphics state (width, cap, join, miter,
+  dashes, winding rule), every colour operator (grey, CMYK, RGB, spot, and
+  patterns as flat colour) and the AI9 transparency operator `Xy`. Gradients
+  and text are counted and reported through `WarningCallback` rather than
+  dropped silently, as is every operator the parser does not know, so a file
+  that displays wrong says what it needed.
+- Legacy (v8 and earlier) EPS-based `.ai` files carry the same art language
+  in the open and read through the same parser with no container step. The
+  two coordinate spaces - Illustrator's ruler space, origin top-left with y
+  down as negative numbers, and PostScript's bottom-left origin with y up -
+  both map onto the document's y-down page, chosen from the art's own extent.
+- **The demo page now names the route it took.** It reads through the Vector
+  plugin and shows the drawing in an `UltraCanvasVectorElement` (drag to pan,
+  wheel to zoom); a `.ai` that really does draw through its PDF page carries
+  no private data, `AIConverter::Import()` declines it with a warning that
+  says so, and the MuPDF view takes over. That is the file `AIConverter`
+  itself writes, so the fallback is the round trip of the plugin's own
+  output. The page is built wherever the Vector plugin is, rather than only
+  where the PDF plugin is.
+- **`.ai` joins the Vector plugin's readable extensions**, so the reader is
+  not the demo page's alone: `UltraCanvasVectorFormatsPlugin` advertises it,
+  and the vector preview seam it registers means UltraFiler tiles and the
+  media viewer now draw such a file *from the drawing* instead of falling
+  back to whatever bitmap it carries. A PDF-compatible `.ai` is declined as
+  before and keeps its existing route.
+- **`UltraCanvasVectorElement` zoomed by doing nothing, and Fit threw the
+  drawing off the page.** Found while building the page above, and it
+  affected every user of the element (the DWG / DXF page's zoom buttons
+  included). The element owns a view transform - `zoomLevel` and
+  `panOffset` - but then handed `VectorRenderer` a viewport of
+  `finalBounds / zoomLevel`, and the renderer fits and centres the ViewBox
+  into whatever viewport it is given. Expressed in document units that way,
+  the renderer's scale cancelled `zoomLevel` exactly, so zooming changed
+  nothing at all; and its centring landed on top of the centring already in
+  `panOffset`, so the first `ZoomToFit()` that ran with a real box threw the
+  drawing half a viewport to the right. The renderer now gets no viewport
+  and the element's transform is the only one; `ScreenToDocument()`,
+  hit-testing and wheel-zoom anchoring already assumed exactly that, so they
+  become correct too. Culling goes with the viewport, which costs only time -
+  `Render()` already clips to the element's bounds.
+- **A document set before the layout ran was fitted to a zero-sized box.**
+  `SetDocument()` fits immediately, but a page builds its widgets before it
+  has been laid out, so `finalBounds` was still empty and the fit settled on
+  `MinZoom`. The renderer's own fit hid this; with that gone the fit is
+  remembered and redone on the first frame that has a real box.
+- **New: `Tests/AIReaderTest.cpp`** - the two shipped samples must import as
+  real geometry, upright and on the page their header declares (868 and 72
+  stroked paths, beziers intact), which is the check that would have caught
+  this; plus the art language on a synthetic legacy file, and the
+  PDF-compatible case that must be declined rather than imported empty.
+#### 2026-09-19 *0.8.90*
+- **Every 3D model in the demo was drawn standing on its nose.** The viewers'
+  cameras put +Y on screen, but nothing told them which axis a mesh called up,
+  and the formats disagree: STL, STEP, DXF and most CAD are Z-up, glTF and FBX
+  are Y-up. A Z-up mesh handed over unrotated has its length running up the
+  screen, which is why the demo's aeroplanes pointed at the floor.
+  - `Mesh3D` now carries `upAxis` (`MeshUpAxis::YUp` / `ZUp`), and each
+    producer states what it read: `UltraCanvasSTLLoader` sets `ZUp`, the
+    format's universal convention, and `ModelDocumentToMesh3D` takes it from
+    `document.Up`. `Mesh3DToModelDocument` writes it back, so the round trip
+    keeps orientation as well as geometry; a `Mesh3D` built in code keeps the
+    `YUp` default and is unaffected.
+  - `UltraCanvasSTLElement` and `UltraCanvasModelRaster` both rotate a `ZUp`
+    mesh by -90 degrees about X before posing it — the same sense and sign as
+    `ModelDocument::ConvertUpAxis`, and the same in both, so the software still
+    remains the view that was on screen. Only the view rotates: vertex data,
+    bounds and the extents a page reports stay in the file's own frame, so the
+    Model Formats panels still report "Z-up" for a file that says so.
+  - This reached every caller, not just the demo: the media viewer opens `.stl`
+    and the other model formats through the same element, and the Filer's
+    thumbnails go through the same raster.
+- **The 3D Graphics tree listed one "3D Model Formats" page for seven readers.**
+  A visitor asking whether FBX is supported had to open a page and click
+  through a carousel to find out. Each format is now its own entry beside STL
+  — STEP, MilkShape, FBX, Alembic, COLLADA, 3D Studio and DirectX .x —
+  and `CreateModelFormatsExamples(extension)` filters the same page to that
+  reader. A single-sample format shows no Prev/Next buttons rather than two
+  that do nothing.
+- **Four of the aircraft samples were incomplete exports, which read as an
+  importer dropping geometry and was not.** Both meshes in
+  `media/3D/Blend/E-45-Aircraft.blend` carry a Mirror modifier about X=0, and
+  the .dae, .x and binary .fbx had been exported without applying modifiers, so
+  the files held half an aeroplane; the .ms3d held only the glass canopy and no
+  hull at all. Parsing each file directly settles which side the defect was on:
+  OBJ, PLY, 3DS, X3D, VRML, DXF and the *ASCII* FBX all span X −0.973…+0.973,
+  while those four stopped at 0.000 — two exports of the same model from the
+  same scene disagreeing is not something a reader can cause.
+  - Regenerated from that .blend with the modifier applied: the .fbx by
+    Blender's own exporter, the .dae and .x by mirroring each file's geometry
+    in place so the exporter's scene graph, materials and templates survive,
+    and the .ms3d written afresh with both meshes as two groups. All four now
+    span the full 1.946 and match the formats that were already complete.
+  - The .dae needed a second fix: its two mesh nodes hang off the armature's
+    JOINT chain with no skinning controller, so the joint rest transforms were
+    applied on top of placements that already included them — the hull landed
+    3.5 m out and the canopy 5 m behind it, detached. Recomputing both local
+    transforms against the .blend's world matrices brings the document extent
+    to 1.95 × 6.17 × 4.21, the same aeroplane the other formats describe.
+  - The exports as they came out of Blender are kept in `Tests/data/3D/`,
+    because their defects are what four test suites pin. `ModelColladaTest`,
+    `ModelXFileTest`, `ModelMS3DTest` and `ModelFbxTest` assert the half hull
+    and the canopy-only MilkShape deliberately — "a property of the file rather
+    than of the reader … asserting it stops a later change *fixing* the reader
+    to match the others" — and cross-check the files against each other: the
+    MilkShape canopy is "exactly twice the Alembic canopy's 744 faces", and the
+    two FBX exports are one scene "on opposite sides of the mirror-modifier
+    split". Completing the media copies in place would have deleted that net,
+    and the re-exported .fbx carries neither the stacked DiffuseColor textures
+    nor the transparent canopy material the original pins. So `media/3D/` now
+    holds the demo's showcase assets and `Tests/data/3D/` the fixtures, with
+    the four tests pointed at the latter and `Tests/data/3D/README.md` saying
+    which is which.
+  - Still outstanding: `media/3D/Alembic/E-45-Aircraft.abc` is a narrower mesh
+    than its siblings (3297 faces against 3990, X span 1.53 against 1.95).
+    Nothing here writes Alembic — not the framework, whose writers cover 3DS,
+    OBJ, PLY, STEP, COLLADA and X3D, nor Debian's Blender, which ships without
+    the Alembic and COLLADA exporters — so that one is left as found.
+- **The DWG and DXF samples are now filed by what they hold rather than by
+  format.** CAD covers both, so the folders held a mix: `media/vector/DXF`
+  carried `E-45-Aircraft.dxf`'s sibling drawings while the 3D DXF sat in
+  `media/3D`, and nothing said which was which. Counting entities settles each
+  one — the Millennium Falcon is 1015 LWPOLYLINEs and 507 LINEs, the figure
+  study 74 NURBS SPLINEs, the Audi and the hostel plans 2D blocks and hatches,
+  every Z at zero; `E-45-Aircraft.dxf` is 8110 3DFACEs and `bagno_3d_1.dwg`
+  polyface meshes.
+  - The four flat drawings live in `media/vector/{DWG,DXF}` and stay on the
+    "DWG / DXF Drawings" page under Vector Graphics. The two that carry
+    geometry live in `media/3D/{DWG,DXF}`.
+  - New **"DXF 3D Models"** entry under 3D Graphics reads the E-45 DXF through
+    the Models plugin as a mesh — 16220 triangles, extent 1.95 × 6.14 × 4.19,
+    the same aeroplane 3DS describes. A DXF of only 2D entities is refused
+    there with an explanation, which `ModelDXFTest` asserts.
+  - The 3D DWG is still drawn on the drawings page, projected to plan view,
+    because that is what a CAD reader does with polyface meshes — the page now
+    names the file's root per tile rather than assuming one folder.
+
+#### 2026-09-19 *0.8.88*
+- **CI builds and runs the UltraCloud test suite.** It has existed since the
+  module did, and no continuous build had ever compiled it: the option that
+  brings it in (`ULTRACANVAS_BUILD_ULTRACLOUD_TESTS`) defaults to OFF and
+  nothing turned it on, so sixty tests over eleven files - the account store on
+  UltraDatabase, both secret stores, and every provider from WebDAV to the FTP
+  one added in 0.8.80 - were only ever run by hand. A suite nothing runs is a
+  suite that rots: the green tick on a pull request said the module *compiled*,
+  never that it still worked.
+
+  Both configure steps now pass `-DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON`, next
+  to the UltraNet and EmailCleaner suites that were already asked for, so the
+  binary is built on every platform and ctest runs it on Linux with the rest.
+
+  Nothing about the tests themselves changed, and nothing needed to: the whole
+  suite passes as it stands. They are headless by construction - every provider
+  is driven through an injected fake rather than a server - so turning them on
+  adds no network dependency to the build and no flakiness to it either.
+#### 2026-09-19 *0.8.87*
+- **The Linux CI legs build with a compiler that implements the standard the
+  tree is written in.** UltraCanvas is built as C++20 and uses P1091 - capturing
+  a structured binding in a lambda - which Clang implements from 16. Ubuntu
+  22.04 has nothing new enough: its archives stop at `clang-14` and the runner
+  image preinstalls 13, so `apt-get install clang` produced a compiler that
+  rejects the tree. It rejected it, moreover, with
+
+  ```
+  error: 'path' in capture list does not name a variable
+  ```
+
+  which points at the lambda and never mentions the compiler, so each instance
+  read as a bug in the code rather than as one missing language feature. Three
+  of them reached `main` (0.8.86) because GCC had accepted them all along and
+  the failure only appeared when the default compiler changed in 0.8.83.
+
+  - **CI installs Clang from LLVM's own apt repository**, through their
+    maintained `llvm.sh` so the suite name for the distribution is chosen
+    upstream rather than hard-coded in the workflow. The version is one place,
+    `ULTRACANVAS_CLANG_VERSION`, and the step fails immediately with a named
+    reason if that version is not available for the runner's distribution or
+    architecture - rather than twenty minutes later, inside a compile.
+  - **The runner stays on ubuntu-22.04.** Moving to 24.04 would have supplied
+    Clang 16 for free, but this leg is pinned to 22.04 for glibc 2.35, which is
+    what makes the portable Linux bundle portable; 24.04 would raise that floor
+    to 2.39 for everyone who installs it.
+  - **`ULTRACANVAS_MIN_CLANG_MAJOR` makes the requirement explicit.** The root
+    `CMakeLists.txt` now skips a Clang below the floor while choosing a default
+    - so a machine whose `clang` is 14 but which also has `clang-18` configures
+    with the latter instead of failing on the first structured binding - and
+    refuses an explicitly chosen one with a message that names the feature, the
+    compiler it found and the command to fix it.
+
+  Nothing about the build output changes: this decides which compiler runs, not
+  what it produces.
+
+#### 2026-09-19 *0.8.86*
+- **The Linux build is green again under Clang, and a missing MuPDF no longer
+  stops a build.** Two independent breakages, both from the move to Clang
+  (0.8.83's "Migrate from GCC to Clang"), and both of which left `main` red.
+
+  - **Three files captured a structured binding in a lambda.** Legal only
+    since C++20's P1091, and **Clang 14 - which is what `apt install clang`
+    gives on the `ubuntu-22.04` runner - does not implement it**:
+
+    ```
+    UltraCanvasBreadcrumb.cpp:1722: error: 'path' in capture list does not name a variable
+    UltraCanvasBreadcrumb.cpp:1723: error: reference to local binding 'path' declared in enclosing function
+    ```
+
+    GCC accepted all three, so they only surfaced when the compiler changed.
+    Each now binds the pair to a named variable before the lambda, which every
+    compiler accepts at every standard:
+    `UltraCanvasBreadcrumb.cpp` (the sub-folder menu's navigate callback),
+    `UltraCanvasRequirementDiagramLayout.cpp` (the A* heuristic's goal cell)
+    and `UltraCanvasWordCloudDiagram.cpp` (the bigram reducer).
+
+    Only the first was visible on CI: the build stops at the first error, so
+    fixing it alone would have turned the next file red on the following run.
+    All three were found by building the tree with Clang 14 locally.
+
+  - **A missing MuPDF is now a skipped plugin, not a configure error.**
+    `MUPDF_FOUND` was computed and then ignored - the sources, the include
+    directory and `${MUPDF_LIBRARY}` were wired in whether or not MuPDF was
+    there - so a machine without it stopped at configure time with
+    `MUPDF_LIBRARY ... NOTFOUND` and no way forward but installing it. That is
+    what turned an upstream package disappearing (MSYS2 dropped
+    `mingw-w64-x86_64-mupdf` on 2026-09-17, taking every Windows build in the
+    repository with it) into an unfixable outage rather than a build without
+    PDF previews.
+
+    Everything downstream was already guarded by `ULTRACANVAS_PLUGIN_PDF`:
+    `UltraCanvasPDFView.cpp` and `UltraCanvasPDF_MuPDF.cpp` compile to nothing
+    without it, and the filer's PDF thumbnails fall back to the type glyph. So
+    the plugin now simply reports itself disabled and the build continues.
+    Verified by hiding the MuPDF headers and building the framework through to
+    a linked library. `-DULTRACANVAS_PLUGIN_PDF=OFF` remains the way to ask for
+    this deliberately, and is unchanged.
+
+  Both halves were validated against the CI compiler rather than the local
+  one: Clang 14 installed alongside, pointed at libstdc++ 12, and the whole
+  framework built with it. The original error reproduces byte for byte on
+  Clang 14 and compiles under Clang 14, Clang 18 and GCC after the fix.
+
+#### 2026-09-17 *0.8.84*
+- **A file display can now draw the icons the host desktop draws.** The filer
+  widget has always painted its own: the folder shape and the category-coloured
+  sheet with the extension on it. They look the same everywhere and need
+  nothing installed, but they also look like nothing else on the machine - a
+  `.pdf` in an UltraCanvas file display and the same `.pdf` in Explorer, Finder
+  or Files were two different pictures. `Display > File icons` now chooses:
+
+  ```cpp
+  filer->SetFileIconStyle(FilerFileIconStyle::HostOperatingSystem);
+  ```
+
+  - **New module `UltraCanvasHostFileIcons`** (`include/UltraCanvasHostFileIcons.h`,
+    `core/UltraCanvasHostFileIcons.cpp` plus one backend per platform) answers
+    "what does THIS system draw for a file of this KIND?". It is the
+    type-wide counterpart of `UltraCanvasNativeFileIcons`, which answers the
+    other question - what icon a file carries INSIDE itself - and the two are
+    deliberately separate: a program is drawn as itself on every platform
+    because its picture is in the file, while a `.txt` is drawn as this
+    desktop draws a text file, and looks different on another one.
+  - **The key is the design.** `HostFileIconKey()` says what an answer depends
+    on, and files of one kind share it: a folder of four thousand `.txt` files
+    resolves ONE icon and holds ONE pixmap. A compound suffix keys as itself
+    (`archive.tar.gz` is a tarball, not a gzip file), an extension-less name
+    keys by its name (the freedesktop database knows `makefile`), and a file
+    that carries its own icon keys per file so two programs can never share
+    one.
+  - **Linux / BSD** resolve the file's MIME type through
+    `UltraCanvasFileAssociations` - the shared-mime-info globs the "Open with"
+    menu is already built from, so the framework still has exactly one reader
+    of that database - and then the icon-naming-specification names through
+    `UltraCanvasDesktopEntry`'s theme resolver. Two new calls carry what those
+    rules need: `FileAssociations::GetMimeType()` (the MIME name of a file,
+    matched by name, never by reading it) and
+    `FileAssociations::GetMimeGenericIcon()` (the generic icon the type
+    database names for a type - `application/pdf` is drawn as
+    `x-office-document`, a tarball as `package-x-generic`). Both are empty on
+    Windows and macOS, which associate by extension and by UTI and keep no
+    MIME database to ask. Without the second one every archive and every
+    office document falls back to "some file", which is not what the desktop
+    shows.
+  - **Windows** takes the icon from the shell's system image list - the list
+    Explorer itself draws from - indexed by `SHGetFileInfoW` with
+    `SHGFI_USEFILEATTRIBUTES`, so the type is decided from the file NAME and
+    the shell answers without opening, or even finding, the file. A
+    transparent border is trimmed off what comes back: the jumbo list is a
+    256x256 canvas and a type whose icon exists only at 48 sits in the middle
+    of it with empty space all round, which drawn into a tile would be a
+    postage stamp.
+  - **macOS** asks `NSWorkspace` for the content type the extension names
+    rather than for the file, so one lookup serves every file of a kind.
+    WebAssembly and Android report unavailable, and a caller keeps its own
+    icons.
+  - **Nothing waits for it.** The widget resolves on one background thread and
+    draws its simple icons until an answer lands - and keeps drawing them for
+    a type this system has no icon for, so a machine with no icon theme
+    installed loses nothing and a lookup never reaches the frame.
+  - **What the setting does NOT change**: a file that thumbnails as its own
+    content still shows the thumbnail, and a program, shortcut or bundle still
+    shows the icon inside it. Explorer, Finder and the Linux file managers all
+    prefer those too; the type icon is what they fall back to. A folder with
+    an icon from `folderIconProvider` also still wins. Folder previews are
+    drawn INTO the built-in folder shape, so with host icons on there is no
+    shape to draw them into and a folder is simply the system's folder icon.
+  - `AreHostFileIconsAvailable()` reports whether there is a desktop to ask, so
+    a settings page can say so instead of offering a switch that changes
+    nothing; `RefreshHostIcons()` drops what was resolved, for a host that
+    notices the user changing theme. Switching fires `onDisplayFormatsChanged`
+    like the other Display switches. Default is unchanged -
+    `FilerFileIconStyle::Simple` is what every earlier release drew.
+  - New `Tests/FilerHostIconsTest`; docs in
+    `Docs/UltraCanvas/UltraCanvasHostFileIcons.md`, with the widget's side in
+    `UltraCanvasFilerWidget.md` and the two new association calls in
+    `UltraCanvasFileAssociations.md`.
 #### 2026-09-17 *0.8.83*
 - **A format plugin read nothing until an application named it.** Registration
   was per-application boilerplate, so UltraFiler registered none and every

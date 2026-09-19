@@ -84,6 +84,12 @@ Mesh3D ModelDocumentToMesh3D(const ModelDocument& document) {
         }
     }
 
+    // The document knows which way it was modelled; the viewers need to be
+    // told, or a Z-up file (STEP, DXF, 3D Studio) is drawn standing on its
+    // nose. Carried as a label rather than baked into the vertices, so the
+    // extents this page reports stay the ones the file declared.
+    out.upAxis = (document.Up == UpAxis::ZUp) ? MeshUpAxis::ZUp : MeshUpAxis::YUp;
+
     out.ComputeBounds();
     if (!HasAnyNormals(document)) out.RecomputeNormals();
     return out;
@@ -118,7 +124,11 @@ ModelDocument Mesh3DToModelDocument(const Mesh3D& mesh) {
     modelMesh.Name = mesh.name;
     modelMesh.Primitives.push_back(std::move(prim));
 
-    return ModelDocument::FromSingleMesh(std::move(modelMesh), mesh.name);
+    ModelDocument document = ModelDocument::FromSingleMesh(std::move(modelMesh), mesh.name);
+    // Back out the way it came in, so Mesh3D -> document -> Mesh3D keeps the
+    // orientation as well as the geometry.
+    document.Up = (mesh.upAxis == MeshUpAxis::ZUp) ? UpAxis::ZUp : UpAxis::YUp;
+    return document;
 }
 
 } // namespace UltraCanvas

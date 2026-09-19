@@ -249,6 +249,51 @@ Changing either switch — from the menu or through the setters — fires
 use, so an application persists both from one place (UltraFiler:
 `Settings > Display > File extensions`).
 
+## File icons
+
+What an entry with no picture of its own is drawn with: the widget's own drawn
+icons, or the ones this desktop uses for the type (`Display > File icons`).
+
+```cpp
+if (UltraCanvasFilerWidget::AreHostFileIconsAvailable())
+    filer->SetFileIconStyle(FilerFileIconStyle::HostOperatingSystem);
+```
+
+| Style | What is drawn |
+|---|---|
+| `Simple` (default) | UltraFiler's own icons: the folder shape and the category-coloured sheet with the extension on it. Identical on every platform, and needs nothing installed — what every earlier release drew. |
+| `HostOperatingSystem` | What **this** system draws for the type: the shell's icon on Windows, Finder's on macOS, the installed icon theme's on Linux and BSD, so a folder listing matches the rest of the desktop. |
+
+The setting only governs **type** icons. A file that shows a thumbnail of its
+own content keeps showing it, and a program, shortcut or bundle keeps the icon
+it carries inside itself ([Native application icons](#native-application-icons))
+— those are the file's own picture, and Explorer, Finder and the Linux file
+managers all prefer them too. What changes is the fallback underneath: the
+sheet glyph becomes the desktop's type icon, and the drawn folder shape becomes
+the desktop's folder icon.
+
+A folder the host gave an icon through `folderIconProvider`
+([Folder icons](#folder-icons)) still wins over both — that is an explicit
+choice about one folder. [Folder previews](#folder-previews) are drawn *into*
+the built-in folder shape, so with host icons on there is no shape to draw them
+into and the folder is simply the system's folder icon.
+
+The lookups go through
+[`UltraCanvasHostFileIcons.h`](UltraCanvasHostFileIcons.md) on one background
+thread, and the widget caches what comes back **per type and size**, not per
+file: a folder of four thousand `.txt` files performs one lookup and holds one
+pixmap. Until an answer lands — and on a system that has no icon for the type,
+or no desktop to ask at all — the simple icon is drawn, so the display never
+waits on a lookup and never shows an empty box.
+
+`AreHostFileIconsAvailable()` reports whether there is a desktop to ask
+(false on WebAssembly and Android): a settings page should say so rather than
+offer a choice that changes nothing. `RefreshHostIcons()` throws the resolved
+icons away and asks again, for a host that notices the user changing desktop
+theme. Switching the style fires `onDisplayFormatsChanged`, the same hook the
+other Display switches use, so an application persists it from one place
+(UltraFiler: `Settings > Display > File icons`).
+
 ## Name tooltips
 
 Names that do not fit the space they are drawn in are ellipsized; hovering such
@@ -297,6 +342,8 @@ Display        >  Sort        >  Name / Size / Type / Modified / Created + Ascen
                   Type        >  all view types
                   File extensions > "Show in names" (checkbox) + None / Bar /
                                  Icon (the thumbnail tile tag)
+                  File icons  >  UltraFiler simple / Host OS icons (only
+                                 where this system has icons to give)
                   Thumbnails  >  Bitmaps / Vector graphics / 3D / PDF / Text /
                                  Docs / Spreadsheets / Videos / Audio / Fonts
                                  (checkboxes, all on; the host may append its
@@ -424,7 +471,7 @@ if (filer->DetailViewEnabledFor(entry)) { /* open the pane */ }
 | `FilerPreviewType` | Menu label | Applies to | What is shown |
 |---|---|---|---|
 | `Bitmaps` | Bitmaps | png, jpeg, gif, webp, avif, heif, tiff, qoi, ico, bmp | the image, decoded through the shared `UCImage` cache |
-| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps, older ai) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai` is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
+| `VectorGraphics` | Vector graphics | svg, svgz, eps, epsf, ps, ai, cdr, cdt, cmx, ccx, xar, web, wix, emf, wmf, dxf, dwg, dwt, dws, sv$ | svg / svgz rasterize through the built-in SVG renderer and eps / ps through libvips where that build has a PostScript loader; the formats a registered Vector plugin reads (dxf and the DWG family — dwg, dwt, dws, sv$ — plus emf, wmf, xar, and an ai whose artwork is in its Illustrator private data) are **drawn from the drawing itself**, read through the vector preview seam and rendered at the tile's size; Xara (xar, web, wix), the ZIP-based CorelDRAW documents (cdr, cdt from X4 on) and the PostScript formats (eps, epsf, ps) show the **preview bitmap the file carries inside itself** — see [Embedded preview bitmaps](#embedded-preview-bitmaps) — and a PDF-compatible `.ai`, which the vector reader declines because its artwork is in its PDF page, is rendered as the PDF it is. The rest (ccx, cmx, older RIFF cdr, an EPS written without a preview, and everything in an application that registered no Vector plugin) keeps its glyph |
 | `Models3D` | 3D | stl always; obj, ply, 3ds, dae, fbx, x3d/x3dv/wrl/vrml, abc, ms3d, x, blend, step/stp/p21 once `RegisterModelFormatsPlugin()` has been called (plus 3mf, gltf, glb as a file category, with no reader yet) | a shaded three-quarter view of the mesh, rasterized in software — no GL context is involved, the preview projects and shades the triangles itself. A model above `kModelPreviewTriangleCap` triangles keeps its glyph rather than stalling a worker, and so does one in a format this build has no reader for |
 | `PDF` | PDF | pdf | the first page, rendered by the PDF plugin (`ULTRACANVAS_PLUGIN_PDF`) and outlined as a sheet of paper |
 | `Text` | Text | txt, log, ini, conf, json, xml, yaml, and source files | a miniature page holding the first lines of the file |
@@ -898,12 +945,44 @@ filer->remoteListing = [drives](const std::string& path,
 - **Returning `false`** with `error` set reports the message the way any
   listing error is reported; returning `true` with an empty listing means
   "nothing yet".
-- **Writing is refused.** Every command that would write into the displayed
-  folder — delete, duplicate, rename, paste, new folder, new file — answers
-  with a message instead when the listing is remote, because the widget has no
-  way to change one. Without that the command would reach `std::filesystem`
-  with a path that resolves to nothing and fail with an error about a missing
-  file rather than an answer about where it was pointed.
+### Changing a remote folder
+
+Three more hooks let the host carry out the changes that act on the drive
+itself. Unlike `remoteListing` they do not answer with the result: the host
+queues the work and refreshes the display once the server has replied, so a
+slow drive never holds the UI thread.
+
+```cpp
+filer->remoteDelete = [drives](const std::vector<FilerEntry>& victims,
+                               std::string& error) { … };
+filer->remoteRename = [drives](const std::string& path,
+                               const std::string& newName,
+                               std::string& error) { … };
+filer->remoteMakeDirectory = [drives](const std::string& folderPath,
+                                      const std::string& name,
+                                      std::string& error) { … };
+```
+
+- Each returns `true` when the request was **accepted**, not when it finished;
+  `false` with `error` is for what can be refused outright — a drive that
+  cannot be written to, a name that is really a path.
+- **Each entry carries its own `isDirectory`**, which is what lets a backend
+  pick the right call (FTP's `DELE` against `RMD`) without a probe per entry.
+- `remoteRename` takes a **bare name**: a rename in place, never a move.
+- A remote **new folder** cannot go straight into rename mode the way a local
+  one does — the entry does not exist until the server has answered and the
+  refresh has landed. The widget names it from the listing on screen
+  (`UniqueRemoteChildName`) and the user renames it afterwards.
+- **Left unset, the matching command refuses** rather than reaching
+  `std::filesystem` with a path that resolves to nothing, which would fail
+  with an error about a missing file instead of an answer about where it was
+  pointed. That is still what happens for the operations with no hook:
+  duplicate, paste and new file. Copying between the local disk and a drive is
+  a transfer with progress, conflicts and a cancel, and belongs with the paste
+  machinery rather than in a hook like these.
+- The read-only badge is the host's to set: it fills `FilerEntry::isReadOnly`
+  from what the drive can do, so an entry says so before a command is tried.
+
 - **`listingIsRealDirectory` stays false** for a remote listing, which turns
   off the features that read the local filesystem per entry: the folder
   previews and the in-use (lock) column.
@@ -1252,6 +1331,12 @@ persists those persists this one the same way.
 ```cpp
 filer->SetFolderPreviewsEnabled(false);   // plain folder shapes only
 ```
+
+They are drawn into the **built-in** folder shape, so they only appear where
+that shape is what a folder is drawn with: a folder with an icon from
+`folderIconProvider` ([Folder icons](#folder-icons)) keeps that icon, and with
+`Display > File icons` on `HostOperatingSystem` ([File icons](#file-icons))
+every folder is the system's folder icon and none of them peek.
 
 What it costs, and where it is drawn:
 

@@ -135,11 +135,16 @@ bool UltraCanvasSTLLoader::LoadFromMemory(const std::vector<uint8_t>& data, Mesh
         return false;
     }
 
-    if (LooksLikeBinary(data)) {
-        return ParseBinary(data, outMesh, outError);
-    }
-    std::string text(reinterpret_cast<const char*>(data.data()), data.size());
-    return ParseAscii(text, outMesh, outError);
+    // STL states no orientation, but the format's convention - and every tool
+    // that writes it, from CAD to slicers - is Z-up. Saying so lets the viewers
+    // stand the model on its feet instead of its nose; the vertex data itself
+    // is untouched, so Save() still round-trips the file byte for byte.
+    const bool ok = LooksLikeBinary(data)
+            ? ParseBinary(data, outMesh, outError)
+            : ParseAscii(std::string(reinterpret_cast<const char*>(data.data()), data.size()),
+                         outMesh, outError);
+    if (ok) outMesh.upAxis = MeshUpAxis::ZUp;
+    return ok;
 }
 
 bool UltraCanvasSTLLoader::ParseBinary(const std::vector<uint8_t>& data, Mesh3D& outMesh,

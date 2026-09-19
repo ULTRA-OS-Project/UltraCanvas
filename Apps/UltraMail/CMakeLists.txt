@@ -20,6 +20,10 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailAttachmentCache.cpp
     engine/UltraMailContacts.cpp
     engine/UltraMailContactStore.cpp
+    engine/UltraMailSenderBrands.cpp
+    engine/UltraMailSenderIconCache.cpp
+    engine/UltraMailSenderTrust.cpp
+    engine/UltraMailThreatScan.cpp
     engine/UltraMailSyncEngine.cpp
     engine/UltraMailDiscovery.cpp
     engine/UltraMailCredentialVault.cpp
@@ -166,9 +170,11 @@ endif()
 set(ULTRAMAIL_UI_SOURCES
     ui/UltraMailApp.cpp
     ui/UltraMailAlerts.cpp
+    ui/UltraMailPreferences.cpp
     ui/UltraMailStartPage.cpp
     ui/UltraMailAccountBar.cpp
     ui/UltraMailMessagePreview.cpp
+    ui/UltraMailSenderBadge.cpp
     ui/UltraMailMailView.cpp
     ui/UltraMailAccountWizard.cpp
     ui/UltraMailAttachmentStrip.cpp

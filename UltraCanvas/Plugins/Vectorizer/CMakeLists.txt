@@ -52,14 +52,14 @@ if(WIN32 AND NOT DEFINED Rust_COMPILER)
         message(STATUS "  Vectorizer: native Rust toolchain -> ${_UC_NATIVE_CARGO}")
     else()
         message(FATAL_ERROR
-            "The Vectorizer plugin needs a NATIVE Windows Rust toolchain matching the MinGW "
+            "The Vectorizer plugin needs a NATIVE Windows Rust toolchain matching the Clang (CLANG64) "
             "compiler, but only the MSYS2 POSIX rust (in .../usr/bin) appears to be installed. "
             "That toolchain aborts the build with 'failed to join paths from $LD_LIBRARY_PATH' "
             "because it treats the ':' in Windows paths as a path separator.\n"
             "Install a native toolchain, then re-run CMake:\n"
-            "  * from the MSYS2 MINGW64 shell:  pacman -S mingw-w64-x86_64-rust\n"
-            "  * or via rustup:  rustup toolchain install stable-x86_64-pc-windows-gnu\n"
-            "                    rustup default        stable-x86_64-pc-windows-gnu\n"
+            "  * from the MSYS2 CLANG64 shell:  pacman -S mingw-w64-clang-x86_64-rust\n"
+            "  * or via rustup:  rustup toolchain install stable-x86_64-pc-windows-gnullvm\n"
+            "                    rustup default        stable-x86_64-pc-windows-gnullvm\n"
             "If it lives elsewhere, point CMake at it:  -DRust_COMPILER=<path-to-rustc.exe>\n"
             "Or disable this plugin:  cmake -DULTRACANVAS_PLUGIN_VECTORIZER=OFF ...")
     endif()

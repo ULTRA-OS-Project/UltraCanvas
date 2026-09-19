@@ -39,6 +39,17 @@ public:
     std::shared_ptr<ICloudProvider> ProviderFor(const Account& account) const;
 
     Result List(const std::string& accountId, const std::string& path, std::vector<Entry>& out);
+    // ---- Changing what is there ---------------------------------------------
+    // Forwarded to the provider, which answers Unsupported unless it can do
+    // it (ProviderCapabilities::modify). `isDirectory` is what the caller
+    // already knows from the Entry; `newName` is a bare name, so Rename never
+    // moves an entry to another folder.
+    Result Delete(const std::string& accountId, const std::string& path,
+                  bool isDirectory);
+    Result Rename(const std::string& accountId, const std::string& path,
+                  const std::string& newName);
+    Result MakeDirectory(const std::string& accountId, const std::string& path);
+
     Result Upload(const std::string& accountId, const std::string& localPath,
                   const std::string& remotePath);
     Result CreateShareLink(const std::string& accountId, const std::string& remotePath,

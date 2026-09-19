@@ -69,6 +69,7 @@
 #include "UltraCanvasEmbeddedPreview.h"
 #include "UltraCanvasFontFile.h"
 #include "UltraCanvasNativeFileIcons.h"
+#include "UltraCanvasHostFileIcons.h"
 #include "UltraCanvasDesktopEntry.h"
 #include "UltraCanvasMacBundle.h"
 #include "UltraCanvasShellLink.h"
@@ -2191,6 +2192,7 @@ namespace UltraCanvas {
         HideDragOverlay();          // its renderer captures `this`
         thumbAlive->store(false);   // neutralize queued cross-thread redraws
         StopThumbnailWorkers();
+        StopHostIconWorker();
         StopFolderWatchTimer();     // its callback captures `this`
         folderWatcher.Stop();       // joins its thread; its callback too
         // A pack / unpack still running: ask it to stop, then wait for it. The
@@ -2947,6 +2949,27 @@ namespace UltraCanvas {
             std::string s = infoProvider(e);
             if (!s.empty()) e.info = s;
         }
+    }
+
+    bool UltraCanvasFilerWidget::ShowingRemoteFolder() const {
+        return !fileListMode && !currentPath.empty() &&
+               isRemotePath && isRemotePath(currentPath);
+    }
+
+    std::string UltraCanvasFilerWidget::UniqueRemoteChildName(
+            const std::string& base) const {
+        auto taken = [this](const std::string& name) {
+            for (const FilerEntry& e : entries) {
+                if (e.name == name) return true;
+            }
+            return false;
+        };
+        if (!taken(base)) return base;
+        for (int n = 2; n < 1000; ++n) {
+            const std::string candidate = base + " (" + std::to_string(n) + ")";
+            if (!taken(candidate)) return candidate;
+        }
+        return base;   // a thousand of them: let the server object
     }
 
     bool UltraCanvasFilerWidget::RefuseWriteHere(const char* what) {
@@ -3787,6 +3810,49 @@ namespace UltraCanvas {
             FilerExtensionBadge::Icon,
         };
         return all;
+    }
+
+    void UltraCanvasFilerWidget::SetFileIconStyle(FilerFileIconStyle style) {
+        if (fileIconStyle == style) return;
+        fileIconStyle = style;
+        // Switching back to the simple icons frees what the host answered;
+        // switching to them resolves the visible types on the next frames.
+        DropHostIconCache();
+        // Only what is painted inside the icon boxes changes - the boxes
+        // themselves keep their geometry, so nothing is relaid out.
+        RequestRedraw();
+        NotifyDisplayFormatsChanged();
+    }
+
+    bool UltraCanvasFilerWidget::AreHostFileIconsAvailable() {
+        return HostFileIconsAvailable();
+    }
+
+    const char* UltraCanvasFilerWidget::FileIconStyleLabel(
+            FilerFileIconStyle style) {
+        switch (style) {
+            case FilerFileIconStyle::HostOperatingSystem:
+                return "Host OS icons";
+            default:
+                return "UltraFiler simple";
+        }
+    }
+
+    const std::vector<FilerFileIconStyle>&
+    UltraCanvasFilerWidget::AllFileIconStyles() {
+        static const std::vector<FilerFileIconStyle> all = {
+            FilerFileIconStyle::Simple,
+            FilerFileIconStyle::HostOperatingSystem,
+        };
+        return all;
+    }
+
+    void UltraCanvasFilerWidget::RefreshHostIcons() {
+        // The host's own lookups first - the theme it resolved names
+        // against may be a different theme now - then what we held of them.
+        RefreshHostFileIcons();
+        DropHostIconCache();
+        RequestRedraw();
     }
 
     std::string UltraCanvasFilerWidget::ExtensionTagOf(const FilerEntry& e) {
@@ -5162,7 +5228,10 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::DeleteSelection() {
-        if (RefuseWriteHere("delete")) return;
+        // No guard here: a remote delete is supported when the host wired
+        // remoteDelete, and PerformDeletion - which every route to a delete
+        // passes through, the confirmation dialog and a host's own
+        // confirmDelete veto alike - is where the two part company.
         DeleteEntries(GetSelectedEntries());
     }
 
@@ -5232,6 +5301,22 @@ namespace UltraCanvas {
     void UltraCanvasFilerWidget::PerformDeletion(
             const std::vector<FilerEntry>& victims,
             std::function<void(bool changed)> onDone) {
+        // A remote drive's entries are the host's to remove: the queue below
+        // works in std::filesystem terms and would simply find nothing there.
+        // The host accepts the request at once and refreshes the display when
+        // the server has answered.
+        if (ShowingRemoteFolder()) {
+            std::string error;
+            if (!remoteDelete) {
+                ReportError("Cannot delete on this drive.");
+            } else if (!remoteDelete(victims, error)) {
+                ReportError(error.empty() ? "Cannot delete on this drive." : error);
+            }
+            // No local change either way, so the caller hears "nothing moved";
+            // what did happen arrives with the refresh.
+            if (onDone) onDone(false);
+            return;
+        }
         // One delete (and its dialogs) at a time, and one file operation at a
         // time: a delete started while a paste is still running would share
         // the progress session with it and report into the wrong window.
@@ -5860,7 +5945,17 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::StartRename(size_t entryIndex) {
-        if (RefuseWriteHere("rename")) return;
+        // On a remote drive the editor opens only if the host can actually
+        // carry the rename out; otherwise refuse now rather than let someone
+        // type a new name that goes nowhere.
+        if (ShowingRemoteFolder()) {
+            if (!remoteRename) {
+                ReportError("Cannot rename on this drive.");
+                return;
+            }
+        } else if (RefuseWriteHere("rename")) {
+            return;
+        }
         if (entryIndex >= entries.size()) return;
         CancelPendingRename();   // the editor opens now; drop any armed click
         if (renamingIndex >= 0) CancelRename();   // only one editor at a time
@@ -5936,6 +6031,20 @@ namespace UltraCanvas {
         DestroyRenameInput(restoreFocus);
         if (newName.empty() || newName == oldName ||
             newName.find('/') != std::string::npos) {
+            RequestRedraw();
+            return;
+        }
+        // A remote drive: the name goes to the host, and the "does the target
+        // already exist" question goes with it. Asking std::filesystem here
+        // would be asking the local disk about a path on a server, and the
+        // replace dialog below has nothing it could act on either.
+        if (ShowingRemoteFolder()) {
+            std::string error;
+            if (!remoteRename) {
+                ReportError("Cannot rename on this drive.");
+            } else if (!remoteRename(oldPath, newName, error)) {
+                ReportError(error.empty() ? "Cannot rename on this drive." : error);
+            }
             RequestRedraw();
             return;
         }
@@ -7530,6 +7639,24 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasFilerWidget::CreateNewFolder() {
+        // On a remote drive the folder is the host's to create. The name is
+        // picked from the listing on screen rather than by asking a
+        // filesystem, and the entry cannot be put straight into rename mode
+        // the way the local one is: it does not exist until the server has
+        // answered and the refresh has landed. Renaming it afterwards works.
+        if (ShowingRemoteFolder()) {
+            if (!remoteMakeDirectory) {
+                ReportError("Cannot create a folder on this drive.");
+                return;
+            }
+            std::string error;
+            const std::string name = UniqueRemoteChildName("New folder");
+            if (!remoteMakeDirectory(currentPath, name, error)) {
+                ReportError(error.empty() ? "Cannot create a folder on this drive."
+                                          : error);
+            }
+            return;
+        }
         if (RefuseWriteHere("create a folder")) return;
         // Same as CreateNewDocument: the fresh folder must be visible in the
         // folder display, so the search-result display and the name filter
@@ -10048,6 +10175,178 @@ namespace UltraCanvas {
         }
     }
 
+    // ===== HOST OPERATING-SYSTEM FILE ICONS =====
+    // Display > File icons = HostOperatingSystem. What the desktop draws for
+    // a file TYPE, resolved on a worker and held per type rather than per
+    // file, so a folder of four thousand ".txt" files costs one lookup.
+
+    int UltraCanvasFilerWidget::HostIconEdgeFor(const Rect2Di& rect,
+                                               float deviceScale) {
+        // The sizes the icon sources themselves keep (16 / 24 / 32 / 48 / 64
+        // / 128 / 256). Resolving at the box's exact pixel height instead
+        // would re-resolve every type each time a window is dragged wider,
+        // and would ask a theme for sizes it does not have anyway.
+        static const int kEdges[] = { 16, 24, 32, 48, 64, 128, 256 };
+        // The DEVICE pixels the icon will be drawn with: on a HiDPI display
+        // an icon resolved at the logical size is drawn at twice its own
+        // resolution, which is exactly the blur this size chain exists to
+        // avoid.
+        const double scale = deviceScale > 0.0f ? deviceScale : 1.0;
+        const int want = std::max(1, static_cast<int>(std::lround(
+                std::min(rect.width, rect.height) * scale)));
+        for (int edge : kEdges)
+            if (edge >= want) return edge;
+        return kEdges[std::size(kEdges) - 1];
+    }
+
+    std::shared_ptr<UCPixmap> UltraCanvasFilerWidget::AcquireHostIcon(
+            const FilerEntry& e, const Rect2Di& rect, float deviceScale) {
+        if (fileIconStyle != FilerFileIconStyle::HostOperatingSystem)
+            return nullptr;
+        if (!HostFileIconsAvailable() || e.path.empty()) return nullptr;
+        // A bundle is a directory that is drawn as an application, and it
+        // carries its own icon: that is the native module's job, not a type
+        // lookup. It never reaches here (ThumbSourceFor claims it first);
+        // asking for the folder icon on its behalf would be wrong if it did.
+        const bool directory = e.isDirectory && !e.isBundle;
+        const int edge = HostIconEdgeFor(rect, deviceScale);
+        const std::string key = HostFileIconKey(e.path, directory) + "|" +
+                                std::to_string(edge);
+
+        std::lock_guard<std::mutex> lk(hostIconMutex);
+        auto it = hostIconSlots.find(key);
+        if (it != hostIconSlots.end()) {
+            // Drawn now, so it is the last thing an eviction should drop.
+            it->second.tick = ++hostIconTick;
+            if (it->second.state == ThumbState::Ready) return it->second.pixmap;
+            return nullptr;   // pending, or this system has no icon for it
+        }
+        // First ask for this type: queue it and draw the simple icon in the
+        // meantime. The frame never waits for a lookup.
+        HostIconSlot& slot = hostIconSlots[key];
+        slot.state = ThumbState::Pending;
+        slot.tick = ++hostIconTick;
+        HostIconRequest request;
+        request.key = key;
+        request.path = e.path;
+        request.isDirectory = directory;
+        request.edge = edge;
+        request.generation = hostIconGeneration;
+        hostIconQueue.push_back(std::move(request));
+        StartHostIconWorkerLocked();
+        hostIconCond.notify_one();
+        return nullptr;
+    }
+
+    void UltraCanvasFilerWidget::StartHostIconWorkerLocked() {
+        if (hostIconWorker.joinable() || hostIconShutdown) return;
+        hostIconWorker = std::thread([this]() { HostIconWorkerMain(); });
+    }
+
+    void UltraCanvasFilerWidget::StopHostIconWorker() {
+        {
+            std::lock_guard<std::mutex> lk(hostIconMutex);
+            hostIconShutdown = true;
+            hostIconQueue.clear();
+        }
+        hostIconCond.notify_all();
+        if (hostIconWorker.joinable()) hostIconWorker.join();
+    }
+
+    void UltraCanvasFilerWidget::HostIconWorkerMain() {
+        // The Windows shell wants the calling thread in a COM apartment, and
+        // held for the life of the thread rather than per lookup - the same
+        // setup the thumbnail workers hold for extracting application icons.
+        NativeFileIconThreadScope hostIconScope;
+        for (;;) {
+            HostIconRequest request;
+            {
+                std::unique_lock<std::mutex> lk(hostIconMutex);
+                hostIconCond.wait(lk, [this]() {
+                    return hostIconShutdown || !hostIconQueue.empty();
+                });
+                if (hostIconShutdown) return;
+                request = std::move(hostIconQueue.front());
+                hostIconQueue.pop_front();
+            }
+
+            // Outside the lock: a theme lookup reads directories, and a shell
+            // call is a shell call.
+            std::shared_ptr<UCPixmap> pixmap;
+            RunGuarded("host file icon", request.path, [&]() {
+                pixmap = LoadHostFileIconPixmap(request.path,
+                                                request.isDirectory,
+                                                request.edge);
+            });
+
+            {
+                std::lock_guard<std::mutex> lk(hostIconMutex);
+                if (hostIconShutdown) return;
+                // The cache was dropped while this ran (the setting changed,
+                // the theme changed): the answer is for a cache that no
+                // longer exists - and under a theme that may no longer be the
+                // one in use - so it goes nowhere.
+                if (request.generation != hostIconGeneration) continue;
+                auto it = hostIconSlots.find(request.key);
+                if (it == hostIconSlots.end()) continue;
+                if (pixmap) {
+                    it->second.bytes =
+                            static_cast<size_t>(std::max(0, pixmap->GetRawWidth())) *
+                            static_cast<size_t>(std::max(0, pixmap->GetRawHeight())) * 4;
+                    hostIconBytes += it->second.bytes;
+                    it->second.pixmap = std::move(pixmap);
+                    it->second.state = ThumbState::Ready;
+                    EvictHostIconsLocked(request.key);
+                } else {
+                    // No icon for this type on this system. Retried once: a
+                    // theme is read from disk, and the first read of a folder
+                    // can fail for the same transient reasons any other can.
+                    // After that the type keeps the simple icon and is never
+                    // asked about again.
+                    if (++it->second.attempts < 2) {
+                        HostIconRequest retry = request;
+                        hostIconQueue.push_back(std::move(retry));
+                        hostIconCond.notify_one();
+                        continue;
+                    }
+                    it->second.state = ThumbState::Failed;
+                }
+            }
+            PostThumbnailRedraw();
+        }
+    }
+
+    void UltraCanvasFilerWidget::EvictHostIconsLocked(const std::string& keepKey) {
+        if (hostIconBytes <= kHostIconBudget) return;
+        // Least recently drawn first, so what is on screen survives. Only
+        // finished slots are droppable: a pending one has a lookup in flight
+        // that would land in a slot that is no longer there.
+        std::vector<std::pair<uint64_t, std::string>> droppable;
+        droppable.reserve(hostIconSlots.size());
+        for (const auto& [key, slot] : hostIconSlots) {
+            if (key == keepKey || slot.state != ThumbState::Ready) continue;
+            droppable.emplace_back(slot.tick, key);
+        }
+        std::sort(droppable.begin(), droppable.end());
+        for (const auto& [tick, key] : droppable) {
+            if (hostIconBytes <= kHostIconBudget) break;
+            auto it = hostIconSlots.find(key);
+            if (it == hostIconSlots.end()) continue;
+            hostIconBytes -= std::min(hostIconBytes, it->second.bytes);
+            hostIconSlots.erase(it);
+        }
+    }
+
+    void UltraCanvasFilerWidget::DropHostIconCache() {
+        std::lock_guard<std::mutex> lk(hostIconMutex);
+        hostIconSlots.clear();
+        hostIconQueue.clear();
+        hostIconBytes = 0;
+        // Anything already in flight belongs to the cache just thrown away.
+        ++hostIconGeneration;
+    }
+
+
     void UltraCanvasFilerWidget::PostThumbnailRedraw() {
         // Coalesced: one queued UI task repaints however many thumbnails
         // finished before it ran.
@@ -10138,6 +10437,17 @@ namespace UltraCanvas {
                     return;
                 }
             }
+            // Display > File icons = Host OS: this desktop's folder icon,
+            // which is the point of the setting - a listing that matches the
+            // rest of the desktop. It therefore wins over the folder previews
+            // below: those are drawn INTO the built-in folder shape, and
+            // there is no shape to draw them into here. Null while the
+            // lookup is still running, and on a system with no icon to give,
+            // so both fall through to what the widget draws itself.
+            if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
+                ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
+                return;
+            }
             // Display > Folder previews: the first pictures inside the folder
             // peeking out of it. Only once the listing has landed and found
             // some - a folder with nothing to show, or one still being
@@ -10156,6 +10466,17 @@ namespace UltraCanvas {
             ctx->SetFillPaint(body);
             ctx->FillRoundedRectangle(Rect2Dd(rect.x, rect.y + tabH,
                                               rect.width, rect.height - tabH), 2);
+            return;
+        }
+
+        // Display > File icons = Host OS: what this desktop draws for the
+        // type. Asked here rather than before the thumbnail above because a
+        // file with a picture of its own shows the picture on every desktop -
+        // Explorer, Finder and the Linux file managers all do that, and the
+        // type icon is what they fall back to. Null while the lookup runs, or
+        // where the system has no icon for the type: the sheet below.
+        if (auto hostIcon = AcquireHostIcon(e, rect, ctx->GetDeviceScale())) {
+            ctx->DrawPixmap(*hostIcon, Rect2Dd(rect), ImageFitMode::Contain);
             return;
         }
 
@@ -12739,11 +13060,28 @@ namespace UltraCanvas {
                         [this, b]() { SetExtensionBadge(b); }));
             }
 
+            // File icons > the widget's own drawn icons, or the ones this
+            // desktop uses for the type. Only offered where there is a
+            // desktop to take them from: on a platform without one the second
+            // choice would draw exactly what the first does.
+            std::vector<MenuItemData> fileIconItems;
+            if (AreHostFileIconsAvailable()) {
+                for (FilerFileIconStyle s : AllFileIconStyles()) {
+                    fileIconItems.push_back(MenuItemData::Radio(
+                            FileIconStyleLabel(s), 5, fileIconStyle == s,
+                            [this, s]() { SetFileIconStyle(s); }));
+                }
+            }
+
             std::vector<MenuItemData> displayItems;
             displayItems.push_back(MenuItemData::Submenu("Sort", sortItems));
             displayItems.push_back(MenuItemData::Submenu("Type", typeItems));
             displayItems.push_back(MenuItemData::Submenu("File extensions",
                                                          extensionItems));
+            if (!fileIconItems.empty()) {
+                displayItems.push_back(MenuItemData::Submenu("File icons",
+                                                             fileIconItems));
+            }
             displayItems.push_back(MenuItemData::Submenu("Thumbnails", thumbnailItems));
             displayItems.push_back(MenuItemData::Submenu("Detail view", detailViewItems));
             displayItems.push_back(MenuItemData::Submenu("Dataset", datasetItems));

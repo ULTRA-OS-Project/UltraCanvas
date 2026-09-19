@@ -156,7 +156,13 @@ void UltraCanvasWordCloudElement::SetWordsFromText(const std::string& text,
                 bigrams[tokens[i] + " " + tokens[i + 1]]++;
             }
         }
-        for (const auto& [bigram, count] : bigrams) {
+        // Named variables rather than a structured binding: the reduce lambda
+        // below reads `count`, and a lambda may not capture a structured
+        // binding before C++20's P1091 (unimplemented by Clang 14, which the
+        // oldest supported Linux runner ships).
+        for (const auto& bigramEntry : bigrams) {
+            const std::string& bigram = bigramEntry.first;
+            const auto count = bigramEntry.second;
             if (count < options.minBigramCount) continue;
             counts[bigram] = count;
             size_t space = bigram.find(' ');

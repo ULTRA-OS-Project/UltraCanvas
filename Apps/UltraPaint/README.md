@@ -32,7 +32,7 @@ editor is [`Docs/UltraPaint/FeatureGapAnalysis.md`](../../Docs/UltraPaint/Featur
 | Rectangle / Ellipse Select | R / E | Shift adds, Alt subtracts, Shift+Alt intersects, Ctrl constrains; feather in the options |
 | Lasso | L | Free-hand outline |
 | Magic Wand | W | Tolerance, contiguous / global, sample merged |
-| Crop | C | Drag, then Enter (Escape cancels) |
+| Crop | C | Drag, then Enter, double-click or *Image > Crop to Selection* (Escape cancels) |
 | Eyedropper | I | Left = foreground, right = background; point or averaged sample, merged or layer |
 | Pencil | N | Hard, aliased pixels |
 | Paintbrush | B | Size, hardness, opacity, flow, spacing, round / square, pressure |
@@ -58,7 +58,9 @@ them; the wheel zooms about the pointer, `Ctrl+0` fits, `Ctrl+1` is 100 %.
   Options (the framework's format dialog), Quit.
 - **Edit:** Undo / Redo, Cut, Copy, Copy Merged, Paste as New Layer, Paste
   as New Image, Delete, Fill with Foreground / Background.
-- **Image:** Scale Image, Canvas Size (with anchor), Crop to Selection,
+- **Image:** Scale Image, Canvas Size (with anchor), Crop to Selection
+  (applies the Crop tool's rectangle when that tool is holding one,
+  otherwise crops to the selection),
   Flip, Rotate, Flatten.
 - **Layer:** New, Duplicate, Delete, Merge Down, Move Up / Down,
   Properties (name, opacity, blend mode, visibility, lock).
