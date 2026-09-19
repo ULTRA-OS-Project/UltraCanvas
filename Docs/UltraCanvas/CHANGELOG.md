@@ -19,6 +19,14 @@
   moves 64 KiB over it and asserts both ends come back attributed to the
   test's PID with counters at least that large where the backend has them;
   the socket code compiles on Winsock too.
+  - **The backends are compiled once, into the module.** The core library's
+    platform glob had been picking up `UltraCanvas<Platform>NetworkMonitor.cpp`
+    as well, so each backend sat in both `libUltraCanvas` and
+    `libNetworkMonitor`. A static core tolerated that, a shared one on Linux
+    deferred the module's symbols to load time, and the Windows DLL refused
+    to link (`undefined symbol: NetworkMonitorAddress::FormatIPv4`). They are
+    now dropped from the core's sources the way the UltraNet platform files
+    are.
 
 #### 2026-09-19 *0.8.98*
 - **NetworkMonitor: a module that reads the operating system's socket table

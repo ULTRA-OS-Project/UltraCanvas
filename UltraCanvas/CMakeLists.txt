@@ -1137,6 +1137,22 @@ if(_ultracanvas_ultranet_platform_srcs)
     list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_ultranet_platform_srcs})
 endif()
 
+# Same for the NetworkMonitor backends (UltraCanvas<Platform>NetworkMonitor):
+# they belong to the NetworkMonitor static library below and reference its
+# core (NetworkMonitorAddress, NetworkMonitorProcfs). Left in the platform
+# glob they were compiled into the core too, which a static libultracanvas
+# tolerated and a shared one on Linux deferred to load time - and a Windows
+# DLL refused outright: "undefined symbol:
+# UltraCanvas::NetworkMonitorAddress::FormatIPv4". Compile them exactly once,
+# into NetworkMonitor, which the applications link.
+file(GLOB _ultracanvas_networkmonitor_platform_srcs
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor.mm
+)
+if(_ultracanvas_networkmonitor_platform_srcs)
+    list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_networkmonitor_platform_srcs})
+endif()
+
 # The platform-dir glob above also matches the GL context managers
 # (GLContextManager{EGL,GLX,WGL,CGL}_*). Those are compiled ONLY when
 # ULTRACANVAS_ENABLE_GL is on (they are re-added explicitly, guarded, in the GL
