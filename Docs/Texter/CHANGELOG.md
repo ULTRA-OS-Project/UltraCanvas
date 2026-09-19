@@ -1,3 +1,16 @@
+#### 2026-09-19 *1.47*
+- **Insert Table works in a word-processing document.** The toolbar button was
+  greyed out there because there was nothing behind it; it now inserts a real
+  2x2 table with a header row and puts the cursor in the first cell, the same
+  thing it means in a Markdown tab.
+- **A Table submenu on the right-click menu**, offered only when the cursor is
+  in one: insert a row above or below, a column left or right, delete the row
+  or column the cursor is in (named, so "Delete Row 2 of 5" says which), merge
+  with the cell to the right or below, and split a merged cell back up. Merging
+  keeps the text from both cells.
+- Anything that cannot be done right now is greyed rather than hidden: Split
+  Cell where nothing is merged, Merge With Cell Right in the last column.
+
 #### 2026-09-17 *1.46*
 - **Pictures inside a line of text stay there.** A logo in the middle of a
   sentence, an icon in a heading or a signature beside a sign-off used to be

@@ -870,6 +870,79 @@ int main(int argc, char** argv) {
         }
     }
 
+    // ===== A TABLE BUILT IN THE EDITOR SURVIVES A SAVE =====
+    // The structural operations write spans; the writers have to put those on
+    // the wire. Building the table the way a user does - insert, then merge -
+    // is what catches a mismatch between what the editor produces and what the
+    // writers were tested against.
+    {
+        std::cout << "\n--- Editor-built tables ---\n";
+
+        auto document = std::make_shared<UCRichDocument>();
+        document->blocks.push_back(RichDocBlock{});
+        UCRichDocumentEditor editor(document);
+
+        const int t = editor.InsertTable(3, 3, /*headerRow=*/true);
+        CHECK(t >= 0);
+        const char* text[3][3] = {{"h1", "h2", "h3"},
+                                  {"a", "b", "c"},
+                                  {"d", "e", "f"}};
+        for (int r = 0; r < 3; r++) {
+            for (int c = 0; c < 3; c++) {
+                editor.SetCaret(RichDocPosition(t, r, c, 0));
+                editor.InsertText(text[r][c]);
+            }
+        }
+        // A banner across the top row, and a cell reaching down the left.
+        CHECK(editor.MergeTableCells(t, 0, 0, 2, 0));
+        CHECK(editor.MergeTableCells(t, 1, 0, 0, 1));
+
+        for (const char* ext : {"odt", "docx"}) {
+            const std::string path = TmpPath(std::string("built.") + ext);
+            std::string err;
+            CHECK_MSG(UCWordDocumentIO::Save(path, *document, err), err);
+
+            UCRichDocument back;
+            CHECK_MSG(UCWordDocumentIO::Load(path, back, err), err);
+
+            const RichDocBlock* reloaded = nullptr;
+            for (const auto& b : back.blocks) {
+                if (b.type == RichBlockType::Table) { reloaded = &b; break; }
+            }
+            CHECK_MSG(reloaded != nullptr, ext);
+            if (!reloaded) continue;
+
+            // The grid the reader rebuilds must be the grid the editor wrote:
+            // same size, same cell in every slot.
+            const RichTableGrid original = editor.TableGrid(t);
+            const RichTableGrid reread = BuildTableGrid(*reloaded);
+            CHECK_MSG(reread.rowCount == original.rowCount,
+                      std::string(ext) + " row count changed");
+            CHECK_MSG(reread.columnCount == original.columnCount,
+                      std::string(ext) + " column count changed");
+
+            const RichDocBlock& source = editor.GetBlock(t);
+            bool sameShape = true;
+            for (int r = 0; r < original.rowCount && sameShape; r++) {
+                for (int c = 0; c < original.columnCount; c++) {
+                    const RichTableGridSlot& a = original.At(r, c);
+                    const RichTableGridSlot& b = reread.At(r, c);
+                    if (a.Occupied() != b.Occupied() || a.origin != b.origin) {
+                        sameShape = false;
+                        break;
+                    }
+                    if (!a.Occupied()) continue;
+                    const std::string wrote = UCRichDocument::ConcatenateRunText(
+                        source.tableRows[a.row].cells[a.cellIndex].runs);
+                    const std::string read = UCRichDocument::ConcatenateRunText(
+                        reloaded->tableRows[b.row].cells[b.cellIndex].runs);
+                    if (wrote != read) { sameShape = false; break; }
+                }
+            }
+            CHECK_MSG(sameShape, std::string(ext) + " grid shape or cell text changed");
+        }
+    }
+
     // ===== AN INLINE PICTURE STAYS IN ITS SENTENCE =====
     // A logo mid-sentence, an icon in a heading: these are runs, not
     // paragraphs. Pulling one out into a block of its own re-flows the text
