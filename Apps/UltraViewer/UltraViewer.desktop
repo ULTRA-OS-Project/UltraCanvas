@@ -1,0 +1,32 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraViewer. It puts the viewer in the
+# application menu and registers it with the desktop as a handler for the
+# media it displays — so a file opened from a filer, or dropped on its icon in
+# a dock or taskbar, arrives as an argument (%F), the same path main() takes
+# for `UltraViewer photo.jpg`.
+#
+# `Icon=UltraViewer` is an icon *name*, resolved through the installed icon
+# themes; the project's install rules put media/appicon/UltraViewer.png into
+# share/icons/hicolor/256x256/apps and media/appicon/UltraViewer.svg into
+# share/icons/hicolor/scalable/apps so the lookup lands on them. That is the
+# route UltraFiler takes for an application: it reads the desktop entry and
+# resolves the name (UltraCanvasNativeFileIcons.cpp -> FindDesktopIconFile).
+# The window and taskbar icon come from the same PNG by a different route —
+# main.cpp hands it to SetDefaultWindowIcon.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=UltraViewer
+GenericName=Media Viewer
+Comment=View images, vector graphics, video, audio, PDF, e-books, spreadsheets, 3D models and text
+Exec=UltraViewer %F
+TryExec=UltraViewer
+Icon=UltraViewer
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraViewer
+Categories=AudioVideo;Graphics;Viewer;Player;
+Keywords=viewer;image;photo;picture;video;audio;player;pdf;ebook;epub;svg;stl;slideshow;
+MimeType=image/png;image/jpeg;image/gif;image/bmp;image/webp;image/tiff;image/heif;image/heic;image/avif;image/jxl;image/x-tga;image/vnd.adobe.photoshop;image/x-exr;image/svg+xml;image/svg+xml-compressed;image/x-xpixmap;image/x-xbitmap;video/mp4;video/x-matroska;video/webm;video/quicktime;video/x-msvideo;video/mpeg;video/ogg;audio/mpeg;audio/x-wav;audio/wav;audio/flac;audio/ogg;audio/opus;audio/mp4;audio/x-m4a;audio/aac;application/pdf;application/epub+zip;application/x-fictionbook+xml;application/x-mobipocket-ebook;application/vnd.amazon.ebook;application/vnd.amazon.mobi8-ebook;application/vnd.oasis.opendocument.spreadsheet;text/csv;text/tab-separated-values;model/stl;model/x.stl-ascii;model/x.stl-binary;text/plain;text/markdown;application/json;application/xml;inode/directory;

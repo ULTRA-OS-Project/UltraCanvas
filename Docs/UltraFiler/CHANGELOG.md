@@ -1,3 +1,36 @@
+#### 2026-09-19 *1.44.0*
+- **Split view: two folder displays side by side.** A split-screen button in
+  the navigation row, left of the clock, replaces the folder tree and the one
+  folder display with two displays next to each other: the active tab's on
+  the left, a second display of its own on the right - one that is in no
+  tab, has its own Back / Forward history, and opens on the folder it last
+  showed. A draggable splitter sits between them, and the preview pane, when
+  it opens, takes its width from the right-hand display.
+
+  Each pane has a header row: a **folder-tree button** and the pane's own
+  breadcrumb, which navigates that pane. The tree button docks the folder
+  tree down the left of that display, under its header, and takes it away
+  again (so does Esc). There is one tree, so pressing the other pane's button
+  moves it over; a docked tree follows and navigates the display it sits
+  beside.
+
+  The display clicked last is the active one - its header is tinted - and it
+  is what the toolbars, the search field, the status bar and the preview act
+  on, exactly as they act on the active tab. Clicking a tab makes the
+  left-hand pane active again; the Computer page always opens in the
+  left-hand pane. Files drag and drop between the two displays like between
+  any two displays of the window. Every setting that reaches "every tab" - a
+  changed Display or Handling setting, a vanished volume, a deleted folder -
+  reaches the right-hand display too.
+
+  The switch and the right-hand display's folder are saved with the settings
+  (`view.split`, `view.split.second.folder`), so the next start opens the
+  pair as it was left. Turning the split view off brings the tree pane back
+  as wide as it was.
+
+- The command bar's **Preview** toggle now carries a picture icon: the
+  split-screen icon it used to share is the split view's.
+
 #### 2026-09-19 *1.43.0*
 - **Remote drives are writable: delete, rename and new folder.** A drive added
   through **+ Drive** could be browsed and nothing more; now the three commands
