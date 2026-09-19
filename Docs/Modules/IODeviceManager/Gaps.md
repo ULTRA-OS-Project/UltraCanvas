@@ -63,7 +63,10 @@ backend now exist; the other four protocols do not.
 | WIA (Windows) | ❌ |
 | TWAIN (Windows) | ❌ |
 | ICA (macOS) | ❌ |
-| eSCL / AirScan driverless network scanning | ❌ |
+| **eSCL / AirScan driverless network scanning** | ✅ one backend for Linux, macOS and Windows, because eSCL is plain HTTP and XML. Reads `ScannerCapabilities`, posts a `ScanJobs` document, collects pages from `NextDocument` and cancels with `DELETE`. Lives in `core/`, not under `OS/`, and sits alongside SANE rather than replacing it. |
+| eSCL: discovery on Windows | ❌ the scanning works there, but `Plugins/UltraNet/mdns`'s Windows browse is a stub — a raw `DnsQuery_W` for PTR records that returns no host, port or TXT. Until that is finished, a Windows scanner is reached by naming it in `ULTRACANVAS_ESCL_SCANNERS`. Finishing it (`DnsServiceBrowse`) would also serve IPP driverless printing, which needs the same discovery. |
+| eSCL: PDF pages | ❌ JPEG and PNG are decoded; a scanner asked for `application/pdf` would need the PDF plugin to rasterise it. The backend asks for an image format it can decode rather than accepting one it cannot. |
+| eSCL: HTTPS with a self-signed certificate | ❌ `_uscans._tcp` is browsed and an `https://` base URL is built, but scanners generally present self-signed certificates and nothing yet opts into accepting them. |
 | Multi-page ADF, capability detection | ✅ |
 | Preview mode | ❌ detected but not exposed |
 

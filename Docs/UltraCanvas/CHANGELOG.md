@@ -1,3 +1,45 @@
+#### 2026-09-19 *0.8.99*
+- **Driverless network scanning, on all three platforms, from one file.**
+  eSCL — Apple calls it AirScan, Mopria calls it Mopria Scan — is what a
+  network scanner speaks when nobody has installed a driver for it. It is
+  plain HTTP and XML, which is exactly why it was built before WIA, TWAIN or
+  ICA: each of those is one platform's work for one platform's scanners,
+  while this is one file in `core/` that serves Linux, macOS and Windows
+  alike. It sits alongside SANE rather than replacing it — a USB scanner
+  still needs a driver, a network one needs none, and the manager merges the
+  two enumerators.
+- **The empty-feeder rule was already right.** eSCL says "no more pages" with
+  a 404 from `NextDocument`; this module says it with `DeviceNotFound` from
+  `DoScanPage()`, which `ScanPages()` reads as the end of a run rather than a
+  failure — and only once a page has arrived, so a 404 on the very first page
+  stays the error it is, because a job that produced nothing was a bad job
+  and not an empty tray. The two were designed apart and agree exactly.
+- **A job covers a run, not a page**, so one is opened only when none is. A
+  flatbed's job is closed as soon as its single page arrives: left open, the
+  next scan would fetch from a spent job and read its 404 as an empty feeder
+  on a device that has no feeder.
+- **`ScanCapabilities::Supports()` cannot be used to build a capability
+  list**, and finding that out cost a bug. It answers "would this be
+  accepted", and an empty list means the backend has not enumerated yet — so
+  it says yes to everything. Using it to deduplicate while filling the list
+  drops the first entry, after which the list is still empty and so drops
+  every entry. Worse, the tests written against `Supports()` then pass on an
+  empty list. The parser uses `std::find` on the vector and the tests assert
+  against the vectors.
+- Two translation units, as the printer path has: the units, the colour-mode
+  names, the capability document and the job URL are pure data and live in
+  `...ESCLProtocol.cpp`, which the tests link without UltraNet or the image
+  stack. eSCL measures in three-hundredths of an inch against this module's
+  hundredths of a millimetre, and the conversion rounds to nearest both ways,
+  because a scan area is derived from a paper size and handed straight back —
+  truncating twice leaves A4 a millimetre short.
+- The capability XML is namespace-prefixed and the prefix is the vendor's
+  choice: one scanner writes `scan:ColorMode`, another `escl:ColorMode`.
+  tinyxml2 does not strip prefixes, so every lookup matches the local name
+  after the last colon — covered by a test that reparses the same document
+  with every prefix changed.
+- `Tests/IODeviceScannerESCLTest`: 62 assertions, none needing a scanner.
+
 #### 2026-09-19 *0.8.98*
 - **NetworkMonitor: a module that reads the operating system's socket table
   and names the process behind every connection.** The Phase 1 of
