@@ -33,11 +33,26 @@ if(NOT TARGET UltraMessage)
     target_include_directories(uc-yyjson PUBLIC ${_um_root}/UltraCanvas/third_party/yyjson)
 
     file(GLOB _um_sources ${_um_root}/UltraCanvas/core/UltraMessage/*.cpp)
+    set(_um_gio_found FALSE)
+    if(UNIX AND NOT APPLE)
+        pkg_check_modules(UM_GIO QUIET gio-2.0)
+        if(UM_GIO_FOUND)
+            set(_um_gio_found TRUE)
+            list(APPEND _um_sources
+                ${_um_root}/UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
+        endif()
+    endif()
     add_library(UltraMessage STATIC
         ${_um_sources}
         ${_um_root}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp)
     target_include_directories(UltraMessage PUBLIC ${_um_root}/UltraCanvas/include)
     target_link_libraries(UltraMessage PUBLIC UltraDatabase Threads::Threads PRIVATE uc-yyjson)
+    if(_um_gio_found)
+        target_include_directories(UltraMessage PUBLIC ${UM_GIO_INCLUDE_DIRS})
+        target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
+        target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
+    endif()
 
     add_executable(ultramsg ${_um_root}/Apps/UltraMessageCli/main.cpp)
     target_link_libraries(ultramsg PRIVATE UltraMessage)
@@ -46,9 +61,12 @@ else()
     set(_um_output_dir ${CMAKE_BINARY_DIR}/bin)
 endif()
 
+# test_adapters.cpp compiles to nothing without ULTRAMESSAGE_HAVE_GIO, which
+# the UltraMessage target exports wherever the notification adapter is built.
 set(ULTRAMESSAGE_TEST_SOURCES
     test_main.cpp
     test_ultramessage.cpp
+    test_adapters.cpp
 )
 
 add_executable(UltraMessageTests ${ULTRAMESSAGE_TEST_SOURCES})

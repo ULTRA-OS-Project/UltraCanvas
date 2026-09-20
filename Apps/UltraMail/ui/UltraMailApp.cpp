@@ -140,6 +140,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
 
     store_.ListAccounts(accounts_);
     store_.GetAccountStatus(status_);
+    for (const auto& a : accounts_) feed_.SetAccount(a.accountId, a.email, a.displayName);
     return true;
 }
 
@@ -798,6 +799,7 @@ void UltraMailApp::SyncFolder(const std::string& accountId, const std::string& f
             });
         },
         [this, accountId, progressBuf](const MessageEnvelope& m) {
+            feed_.Publish(m);   // worker thread; the publisher filters and rate-limits
             progressBuf->push_back(m);
             if (progressBuf->size() < 20) return;
             auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
@@ -924,6 +926,7 @@ void UltraMailApp::SyncAccounts(const std::vector<ScheduledAccount>& targets,
             // fetched: once per brand, never for an address that is not in the
             // registry, and not at all when the user turned downloads off.
             senderIcons_.EnsureIconForAddress(m.fromAddr);
+            feed_.Publish(m);   // the desktop feed learns of new mail as it arrives
             progressBuf->push_back(m);
             std::fprintf(stderr, "[UMSTREAM] onProgress uid=%lld buf=%zu aid=%s\n",
                          (long long)m.uid, progressBuf->size(), aid.c_str());
@@ -1114,6 +1117,7 @@ std::string UltraMailApp::DefaultSaveDirectory() {
 void UltraMailApp::Refresh() {
     store_.ListAccounts(accounts_);
     store_.GetAccountStatus(status_);
+    for (const auto& a : accounts_) feed_.SetAccount(a.accountId, a.email, a.displayName);
 
     // Keep the selection on an existing account (default: the first one).
     bool selectedExists = false;

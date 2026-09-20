@@ -2695,7 +2695,21 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageBroker.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageEndpoint.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageHelpers.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageAdapters.cpp
     )
+    # Phase 2 feed adapters (§9). The freedesktop notification adapter mirrors
+    # org.freedesktop.Notifications toasts into the feed over GDBus; it is
+    # built wherever gio-2.0 is available (Linux, the BSDs) and skipped
+    # elsewhere, in which case the broker simply lists no adapters.
+    set(_um_gio_found FALSE)
+    if(UNIX AND NOT APPLE AND NOT EMSCRIPTEN)
+        pkg_check_modules(UM_GIO QUIET gio-2.0)
+        if(UM_GIO_FOUND)
+            set(_um_gio_found TRUE)
+            list(APPEND ULTRAMESSAGE_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
+        endif()
+    endif()
     # UltraCanvasJSON lives in the core library. With a STATIC core, compile
     # it into this archive too so UltraMessage links without the widget layer
     # (a static-library duplicate the linker resolves to one copy); with a
@@ -2722,7 +2736,17 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         target_link_libraries(UltraMessage PRIVATE uc-yyjson)
     endif()
     target_compile_definitions(UltraMessage PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
-    message(STATUS "  [✓] UltraMessage - ENABLED")
+    if(_um_gio_found)
+        # PUBLIC on purpose: the test suite drives the adapter over D-Bus
+        # itself and takes gio and the switch from this target.
+        target_include_directories(UltraMessage PUBLIC ${UM_GIO_INCLUDE_DIRS})
+        target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
+        target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
+        message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter via gio ${UM_GIO_VERSION})")
+    else()
+        message(STATUS "  [✓] UltraMessage - ENABLED (no gio: no notification adapter)")
+    endif()
 elseif(ULTRACANVAS_ENABLE_ULTRAMESSAGE)
     message(STATUS "  [−] UltraMessage - DISABLED (needs UltraDatabase)")
 else()

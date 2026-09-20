@@ -1,3 +1,35 @@
+#### 2026-09-20 *0.9.16*
+- **New: UltraMessage Phase 2, first slice — adapters and the first feeds**
+  (`Docs/Modules/UltraMessage/README.md` §3.6, `Masterfile_modules.md` §13).
+  The broker hosts *adapters*: broker-side plugins (`Internal::IAdapter`,
+  `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h`) that publish under
+  their own verified identity and receive the feed's
+  `system.notification.action` / `.dismissed` back. API
+  `UltraMsg_ListAdapters`, `UltraMsg_EnableAdapter`, `UltraMsg_GetAdapterState`
+  with `UltraMsgAdapterInfo` / `UltraMsgAdapterState` (status, message,
+  remedy, mode); the switch is persisted in the journal (`adapters` table,
+  schema v2); `ultramsg adapters [enable|disable <name>]`.
+- **New: `freedesktop-notifications` adapter** (Linux,
+  `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp`,
+  GDBus, built where `gio-2.0` is found): serves `org.freedesktop.Notifications`
+  (`Notify`, `CloseNotification`, `GetCapabilities`, `GetServerInformation`,
+  `ActionInvoked` / `NotificationClosed` back to the application) so every
+  desktop application's toast becomes a `system.notification`; where GNOME,
+  Plasma or dunst own the name it reads the same calls passively in monitor
+  mode (`BecomeMonitor`), reporting `needs-permission` when the bus refuses.
+  `im.received` toasts are mirrored to `messaging.message`, `email*` ones to
+  `mail.message`, each with `mirrorOf`.
+- **New: UltraMail publishes new mail to the feed** —
+  `UltraMail::FeedPublisher` (`Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`):
+  the sync workers hand it every stored envelope and it posts `mail.message`
+  as `org.ultraos.ultramail` for unread, recent (7 days) mail, at most 100
+  per account per ten minutes. A no-op in a build without `UltraMessage`.
+- **Tests:** `Tests/UltraMessage` grows to 32 cases; on Linux the suite
+  starts a private `dbus-daemon --session` and drives the adapter over real
+  D-Bus (serving, mirrors, replace/close, actions signalled back, the switch,
+  monitor mode with a rival owner). `Tests/UltraMail` gains the publisher's
+  filter and rate-limit tests. The Linux CI row installs `dbus`.
+
 #### 2026-09-20 *0.9.15*
 - **New: UltraMessage Phase 1 — the message channel is built**
   (`Masterfile_modules.md` §13, design `Docs/Research/UltraMessageDesignProposal.md`,

@@ -1,9 +1,11 @@
 # UltraMessage — The Message Channel
 
-**Status:** Phase 1 implemented (channel and journal); Phases 2–4 in the proposal.
-**Version:** 0.1.0
+**Status:** Phase 1 implemented (channel and journal); Phase 2 started —
+adapter framework, the Linux `freedesktop-notifications` adapter and
+UltraMail publishing to the feed. The rest of Phases 2–4 is in the proposal.
+**Version:** 0.2.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-09-19
+**Last Modified:** 2026-09-20
 
 UltraMessage is the message channel of the ULTRA OS stack: one API through
 which applications send structured messages to each other, receive what other
@@ -39,8 +41,11 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | Broker: sessions, routing, bounce, request/reply, control RPC | `UltraCanvas/core/UltraMessage/UltraMessageBroker.cpp` |
 | Journal on UltraDatabase | `UltraCanvas/core/UltraMessage/UltraMessageJournal.cpp` |
 | Endpoint client and the API implementation | `UltraCanvas/core/UltraMessage/UltraMessageEndpoint.cpp` |
+| Adapter interface (`IAdapter`, `IAdapterHost`) and registry | `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h`, `UltraMessageAdapters.cpp` |
+| `freedesktop-notifications` adapter (GDBus) | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp` |
+| UltraMail → `mail.message` | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
-| Tests (24 cases) | `Tests/UltraMessage/` |
+| Tests (32 cases; the adapter ones on a private D-Bus session) | `Tests/UltraMessage/` |
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
@@ -176,6 +181,57 @@ own under a vendor prefix (`com.example.myapp.*`). Their names are in
 | `app.command.list` / `.invoke` / `.echo` | no | the Phase 3 command surface; the topics exist, the consent and manifests do not yet |
 | `file.changed`, `clipboard.changed` | no | |
 
+### 3.6 Adapters
+
+`UltraMsg_ListAdapters`, `UltraMsg_EnableAdapter`, `UltraMsg_GetAdapterState`.
+An adapter is a broker-side plugin (`Internal::IAdapter` in
+`core/UltraMessage/UltraMessageAdapter.h`) that bridges a platform channel onto
+the bus: it publishes under its own identity
+(`org.ultraos.ultramessage.adapter.<name>`, verified) through the host the
+broker hands it, and receives back the `system.notification.action` /
+`.dismissed` messages the feed posts about notifications it produced. The
+broker starts every adapter of its build when it starts, stops them when it
+stops, and keeps the on/off switch in the journal (`adapters` table), so
+`UltraMsg_EnableAdapter(ep, name, false)` holds across restarts.
+`UltraMsgAdapterInfo` lists name, description, platform, the switch and the
+`UltraMsgAdapterState`: `status` (`disabled`, `starting`, `running`,
+`needs-permission`, `unavailable`, `error`), a `message`, a `remedy` where the
+user can do something, and a `mode` the adapter defines.
+
+**`freedesktop-notifications`** (Linux, built where `gio-2.0` is found; the
+`UltraMessage` target exports `ULTRAMESSAGE_HAVE_GIO` then). It owns
+`org.freedesktop.Notifications` on the session bus and serves `Notify`,
+`CloseNotification`, `GetCapabilities` and `GetServerInformation` — mode
+`server`: every desktop application's toast becomes a `system.notification`
+(`appName`, `appId` from the `desktop-entry` hint, `category`, `summary`,
+`body`, `urgency`, `actions[]`, `origin: "freedesktop"`, plus `adapter`,
+`nativeId` and `senderPid`); a `replaces_id` becomes a replace of the earlier
+message; `CloseNotification` publishes `system.notification.dismissed`; a
+`system.notification.action` from the feed raises `ActionInvoked` and
+`NotificationClosed` towards the application. Where another server already
+owns the name (GNOME Shell, Plasma, dunst) the adapter takes **monitor mode**
+(`org.freedesktop.DBus.Monitoring.BecomeMonitor` on a private connection):
+the same `Notify` calls are read passively (`origin: "freedesktop-monitor"`,
+no `nativeId`), and actions are not available; when the bus refuses
+monitoring the state is `needs-permission` with the remedy. Toasts with
+category `im.received` are additionally mirrored to `messaging.message`
+(service from the desktop entry or app name, conversation and sender from the
+summary, text from the body), `email*` ones to `mail.message` (sender from the
+summary, subject from the body's first line); each mirror carries `mirrorOf`
+with the notification's id. Note for a session without any notification
+daemon: the adapter then *is* the server and, until the message centre
+renders toasts, nothing pops up on screen — the feed and `ultramsg tail` show
+them; `ultramsg adapters disable freedesktop-notifications` hands the name
+back.
+
+**UltraMail** publishes new mail itself (`UltraMail::FeedPublisher`,
+`Apps/UltraMail/engine/`): the sync workers pass every stored envelope to it,
+and it posts a `mail.message` (endpoint `org.ultraos.ultramail`) for the ones
+that are news — unread, not deleted or draft, dated within the last 7 days —
+at most 100 per account per ten minutes so an initial sync never floods the
+feed. Built with the engine wherever `UltraMessage` is (`ULTRAMAIL_HAVE_ULTRAMESSAGE`);
+without it the publisher compiles to a no-op.
+
 ## 4. The C++ layer
 
 `UltraMessage::Endpoint` (`Connect`, `Subscribe`, `Post`, `PostRecorded`,
@@ -199,6 +255,7 @@ ultramsg post <topic> [json-body] [--to <app>] [--conversation <id>] [--persiste
 ultramsg tail [pattern] [--json]        follow the bus
 ultramsg query [--topic <pattern>] [--unread] [--text <s>] [--service <s>] [--limit <n>] [--json]
 ultramsg conversations | endpoints | info
+ultramsg adapters [enable <name> | disable <name>]     the broker's adapters, their state, the switch
 ultramsg mark-read <id>... | dismiss <id>... | delete <id>...
 ultramsg export <path> [--topic <pattern>]
 ```
@@ -241,7 +298,12 @@ cmake -S Tests/UltraMessage -B build-um && cmake --build build-um && build-um/Ul
 
 The suite hosts an in-process broker on a private bus path (`/tmp/ultramsg-test-<pid>/bus.sock`,
 a per-process pipe name on Windows) and drives it over the real transport with
-several endpoints; the journal is in memory. CI enables the suite on every
+several endpoints; the journal is in memory. On Linux `test_main.cpp` also
+starts a private `dbus-daemon --session` (its address goes to
+`DBUS_SESSION_BUS_ADDRESS` for the test process only) so the adapter tests
+drive the freedesktop adapter over real D-Bus — a client sending `Notify`, a
+rival owning the name to force monitor mode — without touching the user's
+bus; without `dbus-daemon` those tests skip. CI enables the suite on every
 platform and runs it on Linux.
 
 ## 9. Not in this phase
@@ -253,8 +315,9 @@ platform and runs it on Linux.
   host the broker permanently, which removes the case there.
 - **FTS5** for text search.
 - **The spool** for attachments over 1 MiB (a file path is passed instead).
-- **Adapters** (Phase 2: freedesktop notifications, the Windows listener,
-  Apple Mail, UltraMail publishing, Telegram) and the `UltraCanvasMessageCenter`
-  element.
+- **The other Phase 2 adapters** (the Windows notification listener, Apple
+  Mail, Telegram) and the `UltraCanvasMessageCenter` element; the adapter
+  framework, `freedesktop-notifications` and UltraMail publishing are built
+  (§3.6).
 - **Commands** (Phase 3: `RegisterCommand` / `ListCommands` / `Invoke`,
   manifests, consent) — the `app.command.*` topics are reserved for them.

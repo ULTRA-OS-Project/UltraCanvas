@@ -35,13 +35,22 @@ struct Failure {
     std::string message;
 };
 
+// Thrown by a test whose precondition the machine lacks (no D-Bus daemon,
+// no display); reported, never counted as a failure.
+struct Skip {
+    std::string reason;
+};
+
 inline int RunAll() {
-    int passed = 0, failed = 0;
+    int passed = 0, failed = 0, skipped = 0;
     for (auto& t : Registry()) {
         try {
             t.fn();
             std::printf("  [PASS] %s\n", t.name.c_str());
             ++passed;
+        } catch (const Skip& s) {
+            std::printf("  [SKIP] %s\n         %s\n", t.name.c_str(), s.reason.c_str());
+            ++skipped;
         } catch (const Failure& f) {
             std::printf("  [FAIL] %s\n         %s\n", t.name.c_str(), f.message.c_str());
             ++failed;
@@ -51,7 +60,7 @@ inline int RunAll() {
             ++failed;
         }
     }
-    std::printf("\nUltraMessage tests: %d passed, %d failed\n", passed, failed);
+    std::printf("\nUltraMessage tests: %d passed, %d failed, %d skipped\n", passed, failed, skipped);
     return failed == 0 ? 0 : 1;
 }
 

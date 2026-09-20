@@ -35,6 +35,7 @@ set(ULTRAMAIL_ENGINE_SOURCES
     engine/UltraMailSyncService.cpp
     engine/UltraMailSyncScheduler.cpp
     engine/UltraMailContactCollector.cpp
+    engine/UltraMailFeedPublisher.cpp
 )
 
 # ── Built-in OAuth client credentials (compiled-in fallback) ─────────────────
@@ -125,6 +126,12 @@ target_link_libraries(UltraMailEngine PUBLIC UltraDatabase)
 # UltraCrypt), not in a format of UltraMail's own.
 if(TARGET UltraVault)
     target_link_libraries(UltraMailEngine PUBLIC UltraVault)
+endif()
+# New mail goes to the desktop feed over UltraMessage (mail.message); the
+# publisher compiles to a no-op when the module is not in the build.
+if(TARGET UltraMessage)
+    target_link_libraries(UltraMailEngine PUBLIC UltraMessage)
+    target_compile_definitions(UltraMailEngine PUBLIC ULTRAMAIL_HAVE_ULTRAMESSAGE=1)
 endif()
 # UltraNet provides the MIME/HTTP/Base64 helpers the engine builds on.
 # With a STATIC UltraCanvas we link the UltraNet archive directly. With a SHARED
