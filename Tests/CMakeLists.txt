@@ -3130,6 +3130,30 @@ else()
     message(STATUS "  ProcessRunnerTest skipped (POSIX only)")
 endif()
 
+# ===== mDNS NAME TEST =====
+# The DNS-SD name arithmetic the Windows mDNS backend has to do for itself:
+# Avahi and Bonjour hand back the instance, type and domain already separated,
+# Win32 hands back one escaped wire name. Splitting that on '.' works until a
+# device is named "Lab.Scanner", so the splitting, the unescaping and the TXT
+# and address formatting live in their own translation unit and are tested on
+# every platform, not only the one that needs them.
+message(STATUS "  Building MdnsNamesTest...")
+add_executable(MdnsNamesTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/MdnsNamesTest.cpp
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/UltraNet/mdns/MdnsNames.cpp
+)
+target_include_directories(MdnsNamesTest PRIVATE
+    ${CMAKE_SOURCE_DIR}/UltraCanvas/Plugins/UltraNet/mdns
+)
+target_compile_features(MdnsNamesTest PRIVATE cxx_std_20)
+set_target_properties(MdnsNamesTest PROPERTIES
+    OUTPUT_NAME "MdnsNamesTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME MdnsNamesTest COMMAND MdnsNamesTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: MdnsNamesTest")
+
 # ===== eSCL PROTOCOL TEST =====
 # eSCL is driverless network scanning - plain HTTP and XML, so one backend
 # serves every platform. The two things easiest to get wrong in it are pure

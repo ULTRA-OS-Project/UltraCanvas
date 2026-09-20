@@ -663,14 +663,25 @@ empty and so drops every entry. The parser uses `std::find` on the vector.
 This is not hypothetical: the first version did exactly that, collected
 nothing, and the tests built on `Supports()` passed anyway.
 
-**Discovery is the one part that is not uniform.** `_uscan._tcp` is browsed
-through UltraNet's mDNS plugin, which is complete on Linux (Avahi) and macOS
-(Bonjour) and a stub on Windows — a raw `DnsQuery_W` for PTR records that
-returns no host, port or TXT. So on Windows a scanner is named outright,
-through `ULTRACANVAS_ESCL_SCANNERS`, which is also how any scanner on another
-subnet is reached, since mDNS does not cross routers. The gap is recorded in
-`Gaps.md`; closing it would serve IPP driverless printing too, which needs the
-same discovery.
+**Discovery is uniform now, but it was not free.** `_uscan._tcp` is browsed
+through UltraNet's mDNS plugin, which is Avahi on Linux, Bonjour on macOS and
+Win32 DNS-SD on Windows. The Windows branch was a stub until 0.9.14 — a raw
+`DnsQuery_W` for PTR records, which names the services and cannot say where
+any of them is. That is worth stating precisely, because it looked like
+working discovery: entries came back, and every one was dropped by the
+consumer for having no host.
+
+Browsing is only half of DNS-SD. A browse answers *what is out there*; a
+separate resolve answers *where*, and only the second one produces something
+a caller can connect to. Avahi and Bonjour make that a callback pair and hand
+back the instance, type, domain, host, port and TXT already parsed. Win32
+gives `DnsServiceBrowse` and `DnsServiceResolve` and hands back one escaped
+wire name, so the backend does the parsing: see
+`Plugins/UltraNet/mdns/MdnsNames.h`, which holds that arithmetic with no
+platform in it so `Tests/MdnsNamesTest` can drive it anywhere.
+
+Naming a scanner outright with `ULTRACANVAS_ESCL_SCANNERS` remains the way to
+reach one on another subnet, since mDNS does not cross routers.
 
 ---
 
