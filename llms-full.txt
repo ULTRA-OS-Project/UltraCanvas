@@ -34510,7 +34510,7 @@ more often than a model, so the Vector plugin's reader stays the default for
 it. A caller that wants the 3D entities asks for the converter by name —
 `CreateConverterForExtension(".dxf")` does answer.
 
-## Two things that surprise people
+## Three things that surprise people
 
 **A STEP file contains no triangles.** It carries trimmed NURBS and analytic
 surfaces with the topology that closes them into solids, in
@@ -34520,6 +34520,16 @@ surfaces with the topology that closes them into solids, in
 `ConversionOptions::Tessellation`. A converter writing STEP to IGES wants it
 off, because tessellating and discarding is exactly the loss the B-rep
 structure exists to prevent.
+
+**A matrix is not just sixteen numbers.** Formats disagree on whether a
+transform multiplies a row vector or a column vector, and the translation sits
+in the last row of the one and the last column of the other. Alembic is
+row-vector and row-major; `ModelStorage::Matrix4x4` is column-vector and
+column-major. Those two disagreements cancel, so the correct conversion is the
+sixteen doubles copied straight across — reordering them "to transpose" moves
+the translation into the bottom row, where `DecomposeTRS` never looks and a
+child object silently lands at its parent's origin. Every reader here states
+which convention its format uses at the point of conversion, for that reason.
 
 **Readers do not rescale geometry.** A millimetre drawing stays in
 millimetres. What the file declared is recorded in `SourceUnit` /

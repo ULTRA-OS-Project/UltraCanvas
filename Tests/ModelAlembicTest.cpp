@@ -2,12 +2,17 @@
 // The Alembic reader: the Ogawa container, Alembic's object and property
 // model, and AbcGeom on top of them.
 //
-// The sample is media/3D/Alembic/E-45-Aircraft.abc — the same aircraft the
-// 3DS, OBJ, DXF and COLLADA suites read, exported from the same .blend by
-// Blender in 2017. That makes the cross-format comparisons here worth more
-// than any single-format assertion: the Alembic and the COLLADA were both
-// exported without applying the mirror modifier, and this suite pins that
-// difference rather than letting a future change quietly "fix" it.
+// The sample is Tests/data/3D/Alembic/E-45-Aircraft.abc — the same aircraft
+// the 3DS, OBJ, DXF and COLLADA suites read, exported from the same .blend by
+// Blender in 2017, and kept here as Blender wrote it. That makes the
+// cross-format comparisons here worth more than any single-format assertion:
+// the Alembic and the COLLADA were both exported without applying the mirror
+// modifier, and this suite pins that difference rather than letting a future
+// change quietly "fix" it.
+//
+// The demo copy under media/3D is a different file: it was completed from the
+// .blend so the 3D pages show a whole aircraft, and TestTheDemoCopy() below
+// asserts that it is whole — the two sets of assertions guard each other.
 //
 // The one assertion to read carefully is the winding. Alembic winds a face's
 // indices the opposite way from the outward-normal convention, and the file
@@ -15,7 +20,8 @@
 // agree with the one the file stored" is an independent check of a decision
 // that is otherwise invisible until a model renders inside out.
 //
-// argv[1] is media/3D. Without it only the container cases run.
+// argv[1] is Tests/data/3D, argv[2] media/3D. Without them only the container
+// cases run.
 //
 // Version: 1.0.0
 // Last Modified: 2026-09-10
@@ -107,10 +113,10 @@ static void TestMetadataStrings() {
 
 // ===== THE SAMPLE =====
 
-static void TestSample(const std::string& mediaRoot) {
+static void TestSample(const std::string& fixtureRoot) {
     std::printf("The E-45 aircraft, as Blender exported it to Alembic\n");
     const std::string path =
-            (std::filesystem::path(mediaRoot) / "Alembic/E-45-Aircraft.abc").string();
+            (std::filesystem::path(fixtureRoot) / "Alembic/E-45-Aircraft.abc").string();
 
     std::vector<std::string> warnings;
     ConversionOptions options;
@@ -141,6 +147,21 @@ static void TestSample(const std::string& mediaRoot) {
     Check(roots == 1, "under one root");
     Check(!document->Nodes.empty() && document->Nodes[0].Name == "Armature",
           "which is the armature the transforms hang from");
+
+    // The canopy hangs off a transform that lifts it onto the hull's back.
+    // Alembic's matrix is row-vector and ModelStorage's column-vector, and
+    // getting that mapping wrong puts the translation in the bottom row where
+    // nothing looks for it — the canopy then sits at the origin, sunk into the
+    // fuselage, which is what this reader used to do with every Alembic.
+    const ModelNode* canopy = nullptr;
+    for (const ModelNode& node : document->Nodes)
+        if (node.Name == "Cube_004") canopy = &node;
+    Check(canopy != nullptr, "the canopy's own transform node is read");
+    if (canopy) {
+        CheckNear(canopy->Translation.y, 1.5256, 1e-3,
+                  "carrying the offset the file gives it up the hull");
+        CheckNear(canopy->Translation.z, 0.1015, 1e-3, "and along it");
+    }
 
     // --- the geometry ---
     Check(document->TotalFaceCount() == 1681, "1681 faces in total");
@@ -212,10 +233,11 @@ static void TestSample(const std::string& mediaRoot) {
 
 // The interesting comparison, and the reason this file is in the repository:
 // the same aircraft, exported twice from one .blend, is not the same model.
-static void TestAgainstTheObjExport(const std::string& mediaRoot) {
+static void TestAgainstTheObjExport(const std::string& fixtureRoot,
+                                    const std::string& mediaRoot) {
     std::printf("The same aircraft, against the OBJ export\n");
     const std::string alembicPath =
-            (std::filesystem::path(mediaRoot) / "Alembic/E-45-Aircraft.abc").string();
+            (std::filesystem::path(fixtureRoot) / "Alembic/E-45-Aircraft.abc").string();
     const std::string objPath =
             (std::filesystem::path(mediaRoot) / "OBJ/E-45-Aircraft.obj").string();
     if (!std::filesystem::exists(objPath)) {
@@ -253,14 +275,110 @@ static void TestAgainstTheObjExport(const std::string& mediaRoot) {
               "the length along Z does match, so it is the same aircraft, not a different one");
 }
 
+// ===== THE DEMO COPY =====
+
+// media/3D/Alembic/E-45-Aircraft.abc is the file the 3D pages show, and it is
+// not the file above: the hull's mirror modifier was applied and the archive
+// rewritten around the completed mesh, so it carries a whole aeroplane. The
+// numbers are the OBJ export's, which is the point — the same scene, exported
+// twice, now agrees with itself.
+static void TestTheDemoCopy(const std::string& mediaRoot) {
+    std::printf("The demo's copy, completed from the .blend\n");
+    const std::string path =
+            (std::filesystem::path(mediaRoot) / "Alembic/E-45-Aircraft.abc").string();
+    const std::string objPath =
+            (std::filesystem::path(mediaRoot) / "OBJ/E-45-Aircraft.obj").string();
+    if (!std::filesystem::exists(path)) {
+        std::printf("  (skipped: the demo copy is not present)\n");
+        return;
+    }
+
+    std::vector<std::string> warnings;
+    ConversionOptions options;
+    options.WarningCallback = [&warnings](const std::string& m) { warnings.push_back(m); };
+
+    AlembicConverter converter;
+    auto document = converter.Import(path, options);
+    Check(document != nullptr, "the rewritten archive reads");
+    if (!document) return;
+    for (const std::string& warning : warnings) std::printf("      warn: %s\n", warning.c_str());
+    Check(warnings.empty(), "with nothing to report — the container survived the rewrite");
+
+    Check(document->Nodes.size() == 5 && document->Meshes.size() == 2,
+          "the same five nodes and two meshes: only the hull's geometry changed");
+
+    const Bounds3D bounds = document->ComputeBounds();
+    std::printf("      X [%.4f, %.4f]  %zu faces\n", bounds.Min.x, bounds.Max.x,
+                document->TotalFaceCount());
+    Check(std::fabs(bounds.Min.x + bounds.Max.x) < bounds.Size().x * 0.05,
+          "the hull now runs to both sides of zero — the mirror modifier is applied");
+    Check(document->TotalFaceCount() == 8110,
+          "8110 faces, the OBJ export's count, because the same modifier stack was evaluated");
+
+    // Face-varying normals and UVs have to stay one per corner across the
+    // rewrite: a mismatch would be silent until something shaded or textured.
+    for (const ModelMesh& mesh : document->Meshes)
+        for (const MeshPrimitive& prim : mesh.Primitives) {
+            Check(prim.Normals.size() == prim.Positions.size(),
+                  "every vertex still carries a normal from the file");
+            const VertexAttribute* uv = prim.FindAttribute(AttributeSemantic::TexCoord, 0);
+            Check(uv != nullptr && uv->Count() == prim.Positions.size(),
+                  "and a texture coordinate resolved through the uv index array");
+        }
+
+    // The winding survived too — checked the way TestSample checks it, against
+    // the file's own normals and the sign of the enclosed volume.
+    size_t agree = 0, disagree = 0;
+    double volume = 0.0;
+    for (const ModelMesh& mesh : document->Meshes)
+        for (const MeshPrimitive& prim : mesh.Primitives)
+            for (size_t f = 0; f < prim.FaceCount(); ++f) {
+                const std::vector<uint32_t> face = prim.Face(f);
+                if (face.size() < 3) continue;
+                std::vector<Vec3d> points;
+                for (uint32_t corner : face) points.push_back(prim.Positions[corner]);
+                const Vec3d computed = NewellNormal(points);
+                const Vec3f& stored = prim.Normals[face[0]];
+                const double dot = computed.x * stored.x + computed.y * stored.y +
+                                   computed.z * stored.z;
+                if (dot > 0.0) ++agree; else if (dot < 0.0) ++disagree;
+                for (size_t k = 1; k + 1 < points.size(); ++k)
+                    volume += points[0].Dot(points[k].Cross(points[k + 1])) / 6.0;
+            }
+    Check(agree > disagree * 50, "each face still winds the way its normal says");
+    Check(volume > 0.0, "and the aircraft is not inside out");
+
+    // Against the OBJ: the same aircraft in every axis. Within a percent
+    // rather than exactly, because the OBJ came out of Blender in 2017 and
+    // this mesh out of Blender 4.0 — the same modifier stack, subdivided by
+    // different releases, which moves a limit surface by a fraction of a
+    // millimetre per vertex.
+    if (!std::filesystem::exists(objPath)) return;
+    ConversionOptions quiet;
+    OBJConverter objConverter;
+    auto obj = objConverter.Import(objPath, quiet);
+    if (!obj) return;
+    const Bounds3D objBounds = obj->ComputeBounds();
+    Check(obj->TotalFaceCount() == document->TotalFaceCount(),
+          "face for face the OBJ export's mesh");
+    CheckNear(bounds.Size().x, objBounds.Size().x, objBounds.Size().x * 0.01,
+              "the same width as the OBJ");
+    CheckNear(bounds.Size().y, objBounds.Size().y, objBounds.Size().y * 0.01,
+              "the same height");
+    CheckNear(bounds.Size().z, objBounds.Size().z, objBounds.Size().z * 0.01,
+              "and the same length");
+}
+
 int main(int argc, char** argv) {
     TestSignatures();
     TestMetadataStrings();
-    if (argc > 1) {
-        TestSample(argv[1]);
-        TestAgainstTheObjExport(argv[1]);
-    } else {
-        std::printf("Sample: skipped (pass the media/3D path to run it)\n");
+    if (argc > 1) TestSample(argv[1]);
+    if (argc > 2) {
+        TestAgainstTheObjExport(argv[1], argv[2]);
+        TestTheDemoCopy(argv[2]);
+    }
+    if (argc < 3) {
+        std::printf("Sample: partly skipped (pass Tests/data/3D and media/3D to run it all)\n");
     }
 
     std::printf("\n%s (%d failure%s)\n", failures ? "FAILED" : "ALL PASSED",
