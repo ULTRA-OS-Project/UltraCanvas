@@ -60845,7 +60845,7 @@ compiling, tested and wired into CI before the next starts:
 | 8a ✅ | The OS print dialog wired to `PrinterDevice` on Linux, Windows and macOS, so the settings it collects reach the queue; page ranges carried end to end |
 | 9 | Windows and macOS backends for camera and scanner |
 | 10 | Hot-plug watchers for Windows and macOS; the permission model |
-| 11 | IPP / eSCL driverless, network cameras |
+| 11 🔨 | eSCL driverless scanning ✅ (all three platforms; Windows discovery still open); IPP driverless and network cameras to come |
 
 Slices 2 and 3 ship the switch and both transports. Adding GutenPrint is then
 a renderer class and nothing else: no change to `PrinterDevice`, and no change
@@ -60969,6 +60969,71 @@ one place rather than at every call site. `sane_init`/`sane_exit` are
 process-global and not reference-counted by the library, so the count is kept
 in the backend: a second scanner opening must not re-init, and the first one
 closing must not tear the library out from under the others.
+
+### eSCL backend — one file, every platform
+
+eSCL (Apple calls it AirScan, Mopria calls it Mopria Scan) is what a network
+scanner speaks when nobody has installed a driver for it. It is plain HTTP and
+XML, and that is exactly why it was built before WIA, TWAIN or ICA: **each of
+those is one platform's work for one platform's scanners, while this is one
+file in `core/` that serves Linux, macOS and Windows alike.**
+
+Four calls are the whole protocol:
+
+| Call | What it does |
+|---|---|
+| `GET {base}/ScannerCapabilities` | what the scanner can do |
+| `POST {base}/ScanJobs` | start a run; the reply's `Location` names the job |
+| `GET {job}/NextDocument` | the next page — or **404 when there are no more** |
+| `DELETE {job}` | cancel |
+
+**That 404 is the protocol's way of saying the feeder is empty**, and it lands
+exactly on the rule this module already had: `DoScanPage()` returns
+`DeviceNotFound`, and `ScanPages()` reads that as the end of a run rather than
+a failure — but only once a page has arrived, so a 404 on the very first page
+stays the error it is. A job that produced nothing was a bad job, not an empty
+tray. The two protocols were designed apart and agree exactly, which is a good
+sign the rule was the right one.
+
+A job covers a *run*, not a page, so one is opened only when none is and the
+page fetch is what repeats. A flatbed's job is closed as soon as its one page
+arrives: left open, the next `Scan()` would fetch from a spent job and read
+its 404 as an empty feeder on a device with no feeder.
+
+Two translation units, for the same reason the printer path has them. The
+protocol arithmetic — units, colour-mode names, the capability document, the
+job URL — is pure data and lives in `...ESCLProtocol.cpp`, which the tests
+link without UltraNet or the image stack. What needs a network is next door.
+
+Three things are worth knowing about the data:
+
+**The units are not the module's.** eSCL measures scan regions in
+three-hundredths of an inch; everything here is hundredths of a millimetre.
+The conversion rounds to nearest in both directions, because a scan area is
+derived from a paper size and handed straight back, and truncating twice
+leaves A4 a millimetre short.
+
+**The XML is namespace-prefixed and the prefix is the vendor's choice.** One
+scanner writes `scan:ColorMode`, another `escl:ColorMode`; the PWG-derived
+elements carry `pwg:` or `sm:`. tinyxml2 does not strip prefixes, so every
+lookup matches the local name after the last colon.
+
+**`ScanCapabilities::Supports()` cannot be used to build a capability list.**
+It answers "would this be accepted", and an empty list means *the backend has
+not enumerated yet* — so it says yes to everything. Using it to deduplicate
+while filling the list drops the first entry, after which the list is still
+empty and so drops every entry. The parser uses `std::find` on the vector.
+This is not hypothetical: the first version did exactly that, collected
+nothing, and the tests built on `Supports()` passed anyway.
+
+**Discovery is the one part that is not uniform.** `_uscan._tcp` is browsed
+through UltraNet's mDNS plugin, which is complete on Linux (Avahi) and macOS
+(Bonjour) and a stub on Windows — a raw `DnsQuery_W` for PTR records that
+returns no host, port or TXT. So on Windows a scanner is named outright,
+through `ULTRACANVAS_ESCL_SCANNERS`, which is also how any scanner on another
+subnet is reached, since mDNS does not cross routers. The gap is recorded in
+`Gaps.md`; closing it would serve IPP driverless printing too, which needs the
+same discovery.
 
 ---
 
@@ -61111,7 +61176,10 @@ backend now exist; the other four protocols do not.
 | WIA (Windows) | ❌ |
 | TWAIN (Windows) | ❌ |
 | ICA (macOS) | ❌ |
-| eSCL / AirScan driverless network scanning | ❌ |
+| **eSCL / AirScan driverless network scanning** | ✅ one backend for Linux, macOS and Windows, because eSCL is plain HTTP and XML. Reads `ScannerCapabilities`, posts a `ScanJobs` document, collects pages from `NextDocument` and cancels with `DELETE`. Lives in `core/`, not under `OS/`, and sits alongside SANE rather than replacing it. |
+| eSCL: discovery on Windows | ❌ the scanning works there, but `Plugins/UltraNet/mdns`'s Windows browse is a stub — a raw `DnsQuery_W` for PTR records that returns no host, port or TXT. Until that is finished, a Windows scanner is reached by naming it in `ULTRACANVAS_ESCL_SCANNERS`. Finishing it (`DnsServiceBrowse`) would also serve IPP driverless printing, which needs the same discovery. |
+| eSCL: PDF pages | ❌ JPEG and PNG are decoded; a scanner asked for `application/pdf` would need the PDF plugin to rasterise it. The backend asks for an image format it can decode rather than accepting one it cannot. |
+| eSCL: HTTPS with a self-signed certificate | ❌ `_uscans._tcp` is browsed and an `https://` base URL is built, but scanners generally present self-signed certificates and nothing yet opts into accepting them. |
 | Multi-page ADF, capability detection | ✅ |
 | Preview mode | ❌ detected but not exposed |
 
