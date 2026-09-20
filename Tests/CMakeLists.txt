@@ -3099,6 +3099,67 @@ else()
     message(STATUS "  OffscreenRenderTest skipped (UltraCanvas target not present)")
 endif()
 
+# ===== PROCESS RUNNER TEST =====
+# RunProcessCaptured: the pipe behaviour that only misbehaves at scale - a
+# child that stops reading (SIGPIPE would kill us), a filter reading and
+# writing at once (a blocking write would deadlock both sides), and arguments
+# passed as a list so a shell never parses them.
+#
+# POSIX only: it runs real programs (/bin/true, /bin/cat) because the point is
+# the kernel's pipe behaviour, which a mock would not reproduce.
+if(UNIX)
+    message(STATUS "  Building ProcessRunnerTest...")
+    add_executable(ProcessRunnerTest
+        ${CMAKE_CURRENT_SOURCE_DIR}/ProcessRunnerTest.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasUtils.cpp
+        ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
+    )
+    target_include_directories(ProcessRunnerTest PRIVATE
+        ${ULTRACANVAS_INCLUDE_DIR}
+        ${ULTRACANVAS_CORE_DIR}
+    )
+    target_compile_features(ProcessRunnerTest PRIVATE cxx_std_20)
+    set_target_properties(ProcessRunnerTest PROPERTIES
+        OUTPUT_NAME "ProcessRunnerTest"
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME ProcessRunnerTest COMMAND ProcessRunnerTest
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+    message(STATUS "    Test registered: ProcessRunnerTest")
+else()
+    message(STATUS "  ProcessRunnerTest skipped (POSIX only)")
+endif()
+
+# ===== eSCL PROTOCOL TEST =====
+# eSCL is driverless network scanning - plain HTTP and XML, so one backend
+# serves every platform. The two things easiest to get wrong in it are pure
+# data and need no scanner: the units (eSCL measures in three-hundredths of
+# an inch, this module in hundredths of a millimetre) and the capability
+# document, whose elements are namespace-prefixed with prefixes the vendor
+# picks. Both live in their own translation unit so this links without
+# UltraNet or the image stack.
+message(STATUS "  Building IODeviceScannerESCLTest...")
+add_executable(IODeviceScannerESCLTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceScannerESCLTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerESCLProtocol.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+)
+target_include_directories(IODeviceScannerESCLTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+    ${TINYXML2_INCLUDE_DIRS}
+)
+target_link_libraries(IODeviceScannerESCLTest PRIVATE ${TINYXML2_LIBRARIES})
+target_link_directories(IODeviceScannerESCLTest PRIVATE ${TINYXML2_LIBRARY_DIRS})
+target_compile_features(IODeviceScannerESCLTest PRIVATE cxx_std_20)
+set_target_properties(IODeviceScannerESCLTest PROPERTIES
+    OUTPUT_NAME "IODeviceScannerESCLTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME IODeviceScannerESCLTest COMMAND IODeviceScannerESCLTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: IODeviceScannerESCLTest")
+
 # ===== VECTOR RASTERIZER TEST =====
 # UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
 # into a raster layer at a chosen pixel size (the path a bitmap editor takes
@@ -3241,6 +3302,15 @@ add_executable(IODevicePrinterTest
     # answer into a job. Its submitting half lives in a separate file so this
     # one names no dialog and no registry, and links here without either.
     ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrintDialog.cpp
+    # Finding GutenPrint's tools and matching a printer to one of its models.
+    # The renderer that uses them rasterises pages and needs the imaging
+    # stack; this half is string work and links here without it.
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODevicePrinterGutenPrintModels.cpp
+    # Finding the tools asks the filesystem whether they are there, through
+    # PathFromUtf8 - which exists so that a path a user's own files live under
+    # opens on Windows too, whatever the active code page.
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasUtils.cpp
+    ${ULTRACANVAS_CORE_DIR}/UltraCanvasTextUtils.cpp
 )
 target_include_directories(IODevicePrinterTest PRIVATE
     ${ULTRACANVAS_INCLUDE_DIR}

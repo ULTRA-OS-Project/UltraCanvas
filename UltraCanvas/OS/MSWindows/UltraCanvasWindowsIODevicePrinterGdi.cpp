@@ -22,8 +22,7 @@
 #include "UltraCanvasWindowsIODevicePrinterGdi.h"
 
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinterPage.h"
-#include "../../include/UltraCanvasRasterDocument.h"
-#include "../../include/UltraCanvasRasterLayer.h"
+#include "../../include/IODeviceManager/UltraCanvasIODevicePrinterJobSource.h"
 #include "../../include/UltraCanvasUtils.h"
 
 #include <windows.h>
@@ -74,22 +73,7 @@ std::string GdiErrorText(DWORD error) {
     return message;
 }
 
-std::string LowerExtension(const std::string& path) {
-    const size_t dot = path.find_last_of('.');
-    if (dot == std::string::npos) {
-        return std::string();
-    }
-    std::string ext = path.substr(dot + 1);
-    for (char& c : ext) {
-        c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-    }
-    return ext;
-}
 
-bool StartsWith(const std::string& text, const char* prefix) {
-    const size_t length = std::char_traits<char>::length(prefix);
-    return text.size() >= length && text.compare(0, length, prefix) == 0;
-}
 
 // ============================================================================
 // DEVMODE
@@ -436,121 +420,19 @@ public:
 
     bool ProducesPageSource() const override { return true; }
 
-    IODeviceResult Render(const IOPrintJob& job,
+    IODeviceResult Render(const IODeviceInfo& printer,
+                          const IOPrintJob& job,
                           const IOPrinterCapabilities& capabilities,
                           IOPrintPayload& payload) override {
+        (void)printer;      // the spooler transport opens the device, not this
         (void)capabilities;
 
-        const std::string type = ResolveType(job);
-        if (type.empty()) {
-            return IODeviceResult::Error(
-                IODeviceResultCode::InvalidArgument,
-                "The job says nothing about its type, and its name carries no "
-                "extension to infer one from");
-        }
-
-        if (type == "text") {
-            return RenderText(job, payload);
-        }
-        if (type == "image") {
-            return RenderImage(job, payload);
-        }
-
-        return IODeviceResult::Error(
-            IODeviceResultCode::NotSupported,
-            "The Windows GDI renderer prints images and plain text; '" + type +
-                "' needs a renderer that can paginate it. Printing it as a "
-                "device-native stream (GutenPrint) is unaffected.");
-    }
-
-private:
-    // Uses the declared MIME type when there is one and the file extension
-    // when there is not, because PrintFile() sets no MIME type and asking
-    // every caller to is how a print button ends up refusing valid files.
-    static std::string ResolveType(const IOPrintJob& job) {
-        if (!job.mimeType.empty()) {
-            if (StartsWith(job.mimeType, "image/")) {
-                return "image";
-            }
-            if (StartsWith(job.mimeType, "text/plain")) {
-                return "text";
-            }
-            return job.mimeType;
-        }
-
-        const std::string extension = LowerExtension(job.filePath);
-        if (extension.empty()) {
-            return std::string();
-        }
-        if (extension == "txt" || extension == "log" || extension == "md") {
-            return "text";
-        }
-        if (extension == "png" || extension == "jpg" || extension == "jpeg" ||
-            extension == "bmp" || extension == "gif" || extension == "tif" ||
-            extension == "tiff" || extension == "webp" || extension == "qoi") {
-            return "image";
-        }
-        return extension;
-    }
-
-    static IODeviceResult RenderText(const IOPrintJob& job,
-                                     IOPrintPayload& payload) {
-        std::string text;
-        if (!job.data.empty()) {
-            text.assign(job.data.begin(), job.data.end());
-        } else {
-            FILE* file = nullptr;
-            if (_wfopen_s(&file, Utf8ToWide(job.filePath).c_str(), L"rb") != 0 ||
-                !file) {
-                return IODeviceResult::Error(
-                    IODeviceResultCode::IOError,
-                    "Could not open '" + job.filePath + "' to print it");
-            }
-            char buffer[8192];
-            size_t read = 0;
-            while ((read = std::fread(buffer, 1, sizeof(buffer), file)) > 0) {
-                text.append(buffer, read);
-            }
-            std::fclose(file);
-        }
-
-        payload.pages = std::make_shared<TextPageSource>(std::move(text));
-        payload.contentType = "text/plain";
-        return IODeviceResult::Ok();
-    }
-
-    static IODeviceResult RenderImage(const IOPrintJob& job,
-                                      IOPrintPayload& payload) {
-        if (job.filePath.empty()) {
-            // Decoding from memory would mean writing the bytes out and
-            // reading them back, since the document loader is path-based.
-            // Saying so beats doing it silently behind the caller's back.
-            return IODeviceResult::Error(
-                IODeviceResultCode::NotImplemented,
-                "Printing an image from memory is not wired up yet; print it "
-                "from a file");
-        }
-
-        UCRasterDocument document;
-        std::string error;
-        if (!document.LoadFromFile(job.filePath, error)) {
-            return IODeviceResult::Error(
-                IODeviceResultCode::MediaError,
-                "Could not decode '" + job.filePath + "': " +
-                    (error.empty() ? std::string("unsupported image") : error));
-        }
-
-        std::shared_ptr<UCRasterLayer> layer = document.GetLayer(0);
-        if (!layer || !layer->IsValid()) {
-            return IODeviceResult::Error(
-                IODeviceResultCode::MediaError,
-                "'" + job.filePath + "' decoded to nothing printable");
-        }
-
-        payload.pages = std::make_shared<ImagePageSource>(
-            layer->Data(), layer->GetWidth(), layer->GetHeight());
-        payload.contentType = "image/x-raster";
-        return IODeviceResult::Ok();
+        // What a job contains, and which page source lays it out, is the same
+        // question here and for the GutenPrint renderer - neither answer has
+        // anything to do with where the pages end up - so it is answered once,
+        // in core, rather than in two files that would drift about which
+        // extensions count as text.
+        return MakePageSourceForJob(job, payload.pages, payload.contentType);
     }
 };
 

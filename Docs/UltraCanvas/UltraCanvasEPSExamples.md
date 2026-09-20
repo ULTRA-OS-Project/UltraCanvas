@@ -6,7 +6,7 @@ The `UltraCanvasEPSElement` is a UI element that loads and renders **Encapsulate
 
 EPS files are PostScript *programs*: real-world files (Illustrator, CorelDRAW, ghostscript, cairo, …) define their own procedures in a prolog and draw through them, so a fixed operator table cannot render them. The plugin therefore embeds a **PostScript-subset interpreter** — scanner, operand / dictionary / execution stacks, procedures, control flow, and the graphics, path, text and image operators — and plays the program back through the standard `IRenderContext`. There is no external dependency beyond zlib (for `FlateDecode` image data).
 
-EPS support is **partially implemented**: the interpreter covers the level-1/2 core that drawing programs actually emit; see *Known gaps* below for the approximations. Renderings of the shipped samples agree with ghostscript to within antialiasing differences.
+EPS support is **implemented**: the interpreter covers the level-1/2 core that drawing programs actually emit, and renderings of the shipped samples agree with ghostscript to within antialiasing differences. A handful of constructs outside that core are approximated rather than refused — they are listed under *Known gaps* below, and `EPSDocument::GetDiagnostics()` names every one a given file actually hit.
 
 **Version:** 1.0.0
 **Header:** `Plugins/Vector/EPS/UltraCanvasEPSPlugin.h`

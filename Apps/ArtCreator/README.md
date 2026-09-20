@@ -50,13 +50,22 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 | Q | Quick Shape | Drag from the centre; polygon or star, sides and inner radius |
 | T | Text | Click; a dialog asks for the text, font, size, bold, italic |
 | G | Fill | Drag across a shape for a linear (or radial) gradient from the fill colour; drag the gradient's ends to adjust; flat / no fill buttons |
-| Y | Transparency | Click a shape and drag right, or the slider |
+| Y | Transparency | Click a shape and drag right for a flat level, or drag across it for a linear / radial / conical ramp; the mix (stained glass, bleach, contrast, ...) and the level are in the options |
+| W | Shadow | Click a shape for a wall shadow and drag it into place; kind (wall / floor / glow), blur, darkness and colour in the options |
+| K | Feather | Click a shape to fade its edges, drag right for a wider fade; radius in the options |
 | Z | Zoom | Click to zoom in, shift-click out, drag a rectangle to fill the view with it |
 | H | Push | Drag the view (space + drag does the same with any tool) |
 
 The wheel zooms about the pointer, shift + wheel pans, `+` / `-`, Ctrl+0
 fits the page, Ctrl+1 is 100 %. Drag a guide out of a ruler; alt-drag a
 guide to move it; drop it back on a ruler to delete it.
+
+The **Line** panel on the right holds the line gallery: the width, an
+arrowhead for each end (triangle, open arrow, circle, square, diamond,
+bar, and Xara's eight stock arrowheads drawn with Xara's own shapes and
+sizes) and their size, a width profile (taper to either end, both, bulge)
+and a brush (dots, dashes, hearts stamped along the path). It applies to
+the selection and to every line drawn afterwards.
 
 ## Menus and shortcuts
 
@@ -76,11 +85,15 @@ guide to move it; drop it back on a ruler to delete it.
 
 ## Files
 
-Opens SVG, XAR, EMF, WMF, DXF and DWG; saves SVG (keeps everything the
-model holds), XAR, DXF, EMF, WMF; exports PDF, AI, EPS and CDR too. What a
-reader or writer had to drop is reported in the status bar. Without the
-Vector plugin (`-DULTRACANVAS_PLUGIN_VECTOR=ON`) the editor draws but has
-no file formats.
+Opens SVG, XAR (compressed too, through the XAR plugin's reader), EMF,
+WMF, DXF and DWG; saves XAR (the native format: shapes, fills with every
+stop, text, transparency ramps and mixes, shadows and feathers all round
+trip; Xara's own arrowheads as Xara arrowheads, the rest of the line
+gallery as plain shapes that read back as strokes), SVG (shapes, fills,
+text - no effects), DXF, EMF, WMF; exports PDF, AI, EPS and CDR too. What
+a reader or writer had to drop is reported in the status bar. Without
+the Vector plugin (`-DULTRACANVAS_PLUGIN_VECTOR=ON`) the editor draws but
+has no file formats.
 
 ## Source map
 
@@ -88,7 +101,7 @@ no file formats.
 |---|---|
 | `main.cpp` | Bootstrap, arguments, plugin registration, the first window |
 | `ArtCreatorWindow.{h,cpp}` | Window composition, the open-window registry, menus, panels, status bar, shortcuts, file open / save, every command |
-| `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 13 tools, the option-widget helpers |
+| `ArtCreatorTools.{h,cpp}` | The `ArtTool` base, the 15 tools, the line gallery's named choices, the option-widget helpers |
 | `ArtCreatorDialogs.{h,cpp}` | New Drawing / Document Setup and Text |
 | `ArtCreator.desktop` | The freedesktop launcher |
 | `../../media/icons/artcreator/` | Tool and command icons; `../../media/appicon/ArtCreator.{png,svg}` the app icon |

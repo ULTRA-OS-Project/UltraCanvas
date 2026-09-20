@@ -1,4 +1,4 @@
-#### 2026-09-19 *1.47*
+#### 2026-09-20 *1.47*
 - **Insert Table works in a word-processing document.** The toolbar button was
   greyed out there because there was nothing behind it; it now inserts a real
   2x2 table with a header row and puts the cursor in the first cell, the same

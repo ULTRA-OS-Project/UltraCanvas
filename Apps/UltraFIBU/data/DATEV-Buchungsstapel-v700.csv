@@ -1,0 +1,146 @@
+# UltraFIBU - Spaltendefinition DATEV-Format "Buchungsstapel"
+# Kennzeichen EXTF, Versionsnummer 700, Format-Kategorie 21, Formatversion 13
+#
+# ============================================================================
+# WICHTIG - DIESE DATEI IST NOCH NICHT AN EINER ECHTEN DATEV-DATEI GEPRUEFT.
+# ============================================================================
+# Die Spaltenreihenfolge des Buchungsstapels ist von DATEV vorgegeben und
+# steht in deren Formatbeschreibung. Diese Datei ist die beste Rekonstruktion,
+# die ohne das Original moeglich war. Sie ist bewusst eine DATENDATEI und kein
+# C++-Quelltext: eine Korrektur ist damit eine Zeilenaenderung hier und kein
+# neues Programm.
+#
+# SO WIRD SIE GEPRUEFT:
+#   ultrafibu datev-pruefen <echte_EXTF_Datei.csv>
+# Der Befehl liest die Kopfzeile einer echten DATEV-Datei und meldet jede
+# Abweichung - fehlende, zusaetzliche und verschobene Spalten - mit Position.
+# Danach hier korrigieren und erneut pruefen. Der Export schreibt die Werte
+# ueber den Spaltennamen, nicht ueber die Position, also wandern sie beim
+# Korrigieren automatisch mit.
+#
+# Format:  nummer;name;typ
+#   typ = text   -> wird in Anfuehrungszeichen geschrieben
+#         zahl   -> ohne Anfuehrungszeichen
+#         betrag -> ohne Anfuehrungszeichen, Komma als Dezimaltrenner
+#         datum  -> ohne Anfuehrungszeichen (TTMM bzw. TTMMJJJJ)
+#
+1;Umsatz (ohne Soll/Haben-Kz);betrag
+2;Soll/Haben-Kennzeichen;text
+3;WKZ Umsatz;text
+4;Kurs;betrag
+5;Basis-Umsatz;betrag
+6;WKZ Basis-Umsatz;text
+7;Konto;zahl
+8;Gegenkonto (ohne BU-Schlüssel);zahl
+9;BU-Schlüssel;text
+10;Belegdatum;datum
+11;Belegfeld 1;text
+12;Belegfeld 2;text
+13;Skonto;betrag
+14;Buchungstext;text
+15;Postensperre;zahl
+16;Diverse Adressnummer;text
+17;Geschäftspartnerbank;zahl
+18;Sachverhalt;zahl
+19;Zinssperre;zahl
+20;Beleglink;text
+21;Beleginfo - Art 1;text
+22;Beleginfo - Inhalt 1;text
+23;Beleginfo - Art 2;text
+24;Beleginfo - Inhalt 2;text
+25;Beleginfo - Art 3;text
+26;Beleginfo - Inhalt 3;text
+27;Beleginfo - Art 4;text
+28;Beleginfo - Inhalt 4;text
+29;Beleginfo - Art 5;text
+30;Beleginfo - Inhalt 5;text
+31;Beleginfo - Art 6;text
+32;Beleginfo - Inhalt 6;text
+33;Beleginfo - Art 7;text
+34;Beleginfo - Inhalt 7;text
+35;Beleginfo - Art 8;text
+36;Beleginfo - Inhalt 8;text
+37;KOST1 - Kostenstelle;text
+38;KOST2 - Kostenstelle;text
+39;KOST-Menge;betrag
+40;EU-Land u. UStID (Bestimmung);text
+41;EU-Steuersatz (Bestimmung);betrag
+42;Abw. Versteuerungsart;text
+43;Sachverhalt L+L;zahl
+44;Funktionsergänzung L+L;zahl
+45;BU 49 Hauptfunktionstyp;zahl
+46;BU 49 Hauptfunktionsnummer;zahl
+47;BU 49 Funktionsergänzung;zahl
+48;Zusatzinformation - Art 1;text
+49;Zusatzinformation- Inhalt 1;text
+50;Zusatzinformation - Art 2;text
+51;Zusatzinformation- Inhalt 2;text
+52;Zusatzinformation - Art 3;text
+53;Zusatzinformation- Inhalt 3;text
+54;Zusatzinformation - Art 4;text
+55;Zusatzinformation- Inhalt 4;text
+56;Zusatzinformation - Art 5;text
+57;Zusatzinformation- Inhalt 5;text
+58;Zusatzinformation - Art 6;text
+59;Zusatzinformation- Inhalt 6;text
+60;Zusatzinformation - Art 7;text
+61;Zusatzinformation- Inhalt 7;text
+62;Zusatzinformation - Art 8;text
+63;Zusatzinformation- Inhalt 8;text
+64;Zusatzinformation - Art 9;text
+65;Zusatzinformation- Inhalt 9;text
+66;Zusatzinformation - Art 10;text
+67;Zusatzinformation- Inhalt 10;text
+68;Zusatzinformation - Art 11;text
+69;Zusatzinformation- Inhalt 11;text
+70;Zusatzinformation - Art 12;text
+71;Zusatzinformation- Inhalt 12;text
+72;Zusatzinformation - Art 13;text
+73;Zusatzinformation- Inhalt 13;text
+74;Zusatzinformation - Art 14;text
+75;Zusatzinformation- Inhalt 14;text
+76;Zusatzinformation - Art 15;text
+77;Zusatzinformation- Inhalt 15;text
+78;Zusatzinformation - Art 16;text
+79;Zusatzinformation- Inhalt 16;text
+80;Zusatzinformation - Art 17;text
+81;Zusatzinformation- Inhalt 17;text
+82;Zusatzinformation - Art 18;text
+83;Zusatzinformation- Inhalt 18;text
+84;Zusatzinformation - Art 19;text
+85;Zusatzinformation- Inhalt 19;text
+86;Zusatzinformation - Art 20;text
+87;Zusatzinformation- Inhalt 20;text
+88;Stück;zahl
+89;Gewicht;betrag
+90;Zahlweise;zahl
+91;Forderungsart;text
+92;Veranlagungsjahr;zahl
+93;Zugeordnete Fälligkeit;datum
+94;Skontotyp;zahl
+95;Auftragsnummer;text
+96;Buchungstyp;text
+97;USt-Schlüssel (Anzahlungen);zahl
+98;EU-Land (Anzahlungen);text
+99;Sachverhalt L+L (Anzahlungen);zahl
+100;EU-Steuersatz (Anzahlungen);betrag
+101;Erlöskonto (Anzahlungen);zahl
+102;Herkunft-Kz;text
+103;Buchungs GUID;text
+104;KOST-Datum;datum
+105;SEPA-Mandatsreferenz;text
+106;Skontosperre;zahl
+107;Gesellschaftername;text
+108;Beteiligtennummer;zahl
+109;Identifikationsnummer;text
+110;Zeichnernummer;text
+111;Postensperre bis;datum
+112;Bezeichnung SoBil-Sachverhalt;text
+113;Kennzeichen SoBil-Buchung;zahl
+114;Festschreibung;zahl
+115;Leistungsdatum;datum
+116;Datum Zuord. Steuerperiode;datum
+117;Fälligkeit;datum
+118;Generalumkehr (GU);text
+119;Steuersatz;betrag
+120;Land;text

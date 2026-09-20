@@ -1,3 +1,48 @@
+#### 2026-09-18 *0.2.0*
+- **Xara-class effects, phase 4 of the proposal.** Three additions to the
+  palette and one panel, all on the framework's new model fields
+  (`VectorElement::Effects`, `VectorStyle::Transparency`, the line
+  gallery on `StrokeData`) and its raster effect cache:
+  - **Shadow (W)**: click a shape for a wall shadow and drag it into
+    place; the options set the kind (wall, floor - squashed and sheared
+    from the bottom edge - or glow), the penumbra, the darkness, the
+    colour from the line colour, or remove it.
+  - **Feather (K)**: click a shape to fade its edges, drag right for a
+    wider fade; radius in the options.
+  - **Transparency (Y)** grew shapes and mixes: drag across a shape for a
+    linear, radial or conical ramp (its ends are shown and the far level
+    is the slider), and pick the mix - stained glass, bleach, contrast,
+    saturation, darken, lighten, brightness, luminosity, hue - which the
+    renderer paints as the matching blend mode. Flat transparency with
+    the normal mix stays plain opacity.
+  - **Line panel**: width, an arrowhead for each end (triangle, open
+    arrow, circle, square, diamond, bar, and Xara's eight stock
+    arrowheads - straight, angled, rounded, spot, diamond, feather,
+    feather 2, hollow diamond - drawn with Xara's own shapes and sizes)
+    and their size, a width profile
+    (taper to either end, both, bulge) and a brush (dots, dashes, hearts
+    stamped along the path, in the line colour). It applies to the
+    selection and to every line, rectangle, ellipse and path drawn
+    afterwards.
+- **XAR is the native format.** Save As offers XAR first and names new
+  drawings `untitled.xar`: shadows, feathers, transparency ramps with
+  their mixes and gradients with every stop round trip through it (the
+  framework's XAR converter now reads through the XAR plugin's parser,
+  so compressed Xara files open too). SVG remains for shapes, fills and
+  text without the effects. The line gallery round-trips as well:
+  Xara's stock arrowheads are saved as Xara arrowheads with their size
+  (and a Xara drawing's arrowheads open as the same kinds at the same
+  size, at either end); the other arrowheads,
+  width profiles and brushes are saved as plain shapes - the brush as its
+  stamped copies - marked with a Xara user value, so Xara shows them as
+  drawn and ArtCreator reads them back as the stroke they were.
+- **The app icon is the uploaded artwork.** `media/appicon/ArtCreator.svg`
+  is the four-tile "A"; the PNG the window icon, the desktop entry and
+  the Windows `.exe` icon are made from is re-rendered from it.
+- Not in this release (phase 5 of the proposal): bevel, contour, blend,
+  mould, ClipView, path booleans, text on path, pages, editable brushes,
+  a live-effects gallery.
+
 #### 2026-09-15 *0.1.0*
 - **First release of ArtCreator, a vector drawing editor of the Xara
   Designer / ArtWorks class on the UltraCanvas framework's vector editing
