@@ -43,6 +43,7 @@
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNr.h"
 #include "UltraFIBUUstIdNrOnline.h"
+#include "UltraFIBUOss.h"
 #include "UltraFIBUUstva.h"
 
 #include <UltraCrypt/UltraCryptCore.h>
@@ -4423,6 +4424,375 @@ static void TestBelegImport() {
     RaeumeArchivAuf(store.BelegArchivPfad());
 }
 
+// ===== ONE-STOP-SHOP =====
+//
+// OSS is VAT owed to other member states and forwarded by the BZSt. A figure
+// missing from a return is another country's money not paid, and there is no
+// machine interface downstream to catch it - the file is uploaded by hand. So
+// what is tested here is mostly the refusals and the reconciliation.
+
+static Buchung OssBuchung(const Date& datum, const std::string& key,
+                          int64_t nettoMinor, int satzPromille, SollHaben seite,
+                          int64_t id = 0) {
+    Buchung b;
+    b.id               = id;
+    b.mandantId        = 1;
+    b.belegdatum       = datum;
+    b.steuerschluessel = key;
+    b.satzPromille     = satzPromille;
+    b.netto            = Money::FromMinor(nettoMinor, "EUR");
+    b.steuer           = b.netto.TaxOnNet(satzPromille);
+    b.umsatz           = b.netto + b.steuer;
+    b.sollHaben        = seite;
+    b.konto            = "10000";
+    b.gegenkonto       = "8338";
+    b.waehrung         = "EUR";
+    return b;
+}
+
+static Steuerschluessel OssKey(const std::string& name, const std::string& land,
+                               int satz, const std::string& kzBemessung = "45") {
+    Steuerschluessel k;
+    k.schluessel   = name;
+    k.bezeichnung  = name;
+    k.art          = SteuerArt::Oss;
+    k.land         = land;
+    k.satzPromille = satz;
+    k.kzBemessung  = kzBemessung;
+    k.gueltigVon   = Date(2026, 1, 1);
+    return k;
+}
+
+static void TestOss() {
+    std::printf("One-Stop-Shop\n");
+
+    // --- the member states' rates are a check, not a source ---
+    {
+        SchreibeDatei("saetze-test.csv",
+                      "land;art;satz_promille;gueltig_von;gueltig_bis;geprueft;quelle\n"
+                      "AT;standard;200;2021-07-01;;ja;geprueft\n"
+                      "FR;standard;200;2021-07-01;;nein;\n");
+        EuSteuersaetze saetze;
+        std::string fehler;
+        Check(saetze.Laden("saetze-test.csv", fehler), "the rate table loads");
+        int satz = 0;
+        Check(saetze.Standardsatz("AT", Date(2026, 2, 15), satz) && satz == 200,
+              "a verified rate is available for comparison");
+        Check(!saetze.Standardsatz("FR", Date(2026, 2, 15), satz),
+              "an UNVERIFIED rate is not - reporting a correct invoice as wrong "
+              "because of a guessed rate would train the user to ignore the "
+              "warning, and then it is worth nothing when it is right");
+        Check(!saetze.Standardsatz("AT", Date(2020, 1, 1), satz),
+              "and a rate is not used before it was in force");
+        Check(saetze.Kennt("FR"), "an unverified country is still listed - the file "
+                                  "records which cases exist");
+        std::remove("saetze-test.csv");
+    }
+
+    // --- periods ---
+    {
+        Date von, bis;
+        Check(OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "Q1", von, bis) &&
+              von == Date(2026, 1, 1) && bis == Date(2026, 3, 31),
+              "OSS Q1 is January to March");
+        Check(OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "Q4", von, bis) &&
+              bis == Date(2026, 12, 31), "and Q4 ends on 31 December");
+        Check(!OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "Q5", von, bis),
+              "there is no fifth quarter");
+        Check(!OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "02", von, bis),
+              "and OSS is not monthly");
+        // IOSS is the same shape with a monthly period.
+        Check(OssZeitraumGrenzen(OssVerfahren::Ioss, 2026, "02", von, bis) &&
+              von == Date(2026, 2, 1) && bis == Date(2026, 2, 28),
+              "IOSS is monthly, and February 2026 ends on the 28th");
+    }
+
+    EuSteuersaetze saetze;
+    {
+        SchreibeDatei("saetze-oss.csv",
+                      "land;art;satz_promille;gueltig_von;gueltig_bis;geprueft;quelle\n"
+                      "AT;standard;200;2021-07-01;;ja;geprueft\n"
+                      "FR;standard;200;2021-07-01;;ja;geprueft\n"
+                      "IT;standard;220;2021-07-01;;nein;\n");
+        std::string fehler;
+        Check(saetze.Laden("saetze-oss.csv", fehler), "the test rates load");
+        std::remove("saetze-oss.csv");
+    }
+
+    std::vector<Steuerschluessel> keys;
+    keys.push_back(OssKey("OSS-AT-20", "AT", 200));
+    keys.push_back(OssKey("OSS-FR-20", "FR", 200));
+    keys.push_back(OssKey("OSS-AT-19", "AT", 190));      // the wrong rate charged
+    keys.push_back(OssKey("OSS-IT-22", "IT", 220));      // rate not verified
+    keys.push_back(OssKey("OSS", "", 0));                // no country at all
+    {
+        // A domestic key, to prove it stays out of the OSS return.
+        Steuerschluessel inland;
+        inland.schluessel   = "USt19";
+        inland.art          = SteuerArt::Inland;
+        inland.satzPromille = 190;
+        inland.kzBemessung  = "81";
+        inland.gueltigVon   = Date(2026, 1, 1);
+        keys.push_back(inland);
+    }
+
+    Date von, bis;
+    OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "Q1", von, bis);
+
+    // --- an ordinary quarter ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 2, 10), "OSS-AT-20", 50000, 200,
+                                     SollHaben::Soll, 2));
+        journal.push_back(OssBuchung(Date(2026, 2, 15), "OSS-FR-20", 30000, 200,
+                                     SollHaben::Soll, 3));
+        // Domestic turnover is not OSS turnover.
+        journal.push_back(OssBuchung(Date(2026, 2, 20), "USt19", 900000, 190,
+                                     SollHaben::Soll, 4));
+        // And a sale outside the quarter.
+        journal.push_back(OssBuchung(Date(2026, 4, 1), "OSS-AT-20", 700000, 200,
+                                     SollHaben::Soll, 5));
+
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        Check(b.ok, "a quarter computes");
+        Check(b.Vollstaendig(), "and is complete");
+        CheckInt(static_cast<int64_t>(b.posten.size()), 2,
+                 "two lines: one per country and rate");
+        CheckInt(b.SteuerFuer("AT").Minor(), 30000,
+                 "Austria's VAT is 20 % of 1.500,00");
+        CheckInt(b.SteuerFuer("FR").Minor(), 6000, "and France's 20 % of 300,00");
+        CheckInt(b.summeBemessung.Minor(), 180000,
+                 "the base is 1.800,00 - domestic turnover is not OSS turnover "
+                 "and the April sale is not this quarter");
+        CheckInt(b.summeSteuer.Minor(), 36000, "and the tax 360,00");
+        if (!b.posten.empty()) {
+            Check(b.posten[0].satzGeprueft,
+                  "the rate was checked against the country's own");
+            Check(b.posten[0].satzHinweis.empty(), "and agreed");
+            CheckInt(static_cast<int64_t>(b.posten[0].buchungIds.size()), 2,
+                     "and the line names the postings behind it");
+        }
+    }
+
+    // --- a Storno subtracts here too ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 1, 25), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Haben, 2));
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        CheckInt(b.summeSteuer.Minor(), 0,
+                 "a cancelled OSS sale owes nothing - a reversal that added would "
+                 "declare another state's VAT twice");
+    }
+
+    // --- THE REFUSAL: turnover with no destination country ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 2, 1), "OSS", 200000, 0,
+                                     SollHaben::Soll, 2));
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        Check(!b.Vollstaendig(),
+              "a tax key with no country makes the return incomplete - 'VAT owed "
+              "somewhere in the EU' is not a filing");
+        CheckInt(static_cast<int64_t>(b.luecken.size()), 1, "one key is unusable");
+        if (!b.luecken.empty())
+            Check(b.luecken[0].grund.find("Zielland") != std::string::npos,
+                  "and the reason says what is missing and how to fix it");
+
+        const OssDateiErgebnis r = SchreibeBopDatei(b, "DE123456789", ".");
+        Check(!r.ok,
+              "and the transport file is refused - what would be left out is "
+              "another member state's money");
+        Check(r.fehler.find("OSS") != std::string::npos,
+              "with the key named");
+    }
+
+    // --- the rate check, in both outcomes ---
+    {
+        // 19 % charged where Austria levies 20 %.
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-19", 100000, 190,
+                                     SollHaben::Soll, 1));
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        Check(b.ok && !b.posten.empty(), "the sale is still reported");
+        if (!b.posten.empty()) {
+            CheckInt(b.posten[0].steuer.Minor(), 19000,
+                     "**at the rate that was actually charged** - the return must "
+                     "match the invoice, even when the invoice was wrong");
+            Check(!b.posten[0].satzHinweis.empty(),
+                  "but the mismatch is reported: the invoice is the thing to fix");
+            Check(b.posten[0].satzHinweis.find("20") != std::string::npos,
+                  "naming what the country actually levies");
+        }
+
+        // A country whose rate is not verified: no comparison, and it says so.
+        std::vector<Buchung> italien;
+        italien.push_back(OssBuchung(Date(2026, 1, 20), "OSS-IT-22", 100000, 220,
+                                     SollHaben::Soll, 1));
+        const OssBerechnung it = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                             italien, keys, saetze);
+        if (!it.posten.empty()) {
+            Check(!it.posten[0].satzGeprueft,
+                  "an unverified country rate is not used for comparison");
+            Check(!it.posten[0].satzHinweis.empty(),
+                  "and the return says the rate could not be confirmed - which is "
+                  "a different statement from 'the rate is right'");
+        }
+    }
+
+    // --- the reconciliation against the UStVA ---
+    // Both come from the same journal by different paths, so disagreeing means
+    // one of two returns about to be filed is wrong.
+    {
+        UstvaMapping mapping;
+        {
+            SchreibeDatei("kz-oss.csv",
+                          "kennzahl;art;satz_promille;geprueft;bezeichnung\n"
+                          "45;frei;0;ja;Nicht steuerbare Umsaetze\n"
+                          "81;bemessung;190;ja;Umsaetze 19 %\n"
+                          "83;berechnet;0;ja;Zahllast\n");
+            std::string fehler;
+            Check(mapping.Laden("kz-oss.csv", fehler), "a mapping with Kz 45 loads");
+            std::remove("kz-oss.csv");
+        }
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 2, 15), "OSS-FR-20", 30000, 200,
+                                     SollHaben::Soll, 2));
+
+        const OssBerechnung oss = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                              journal, keys, saetze);
+        const UstvaBerechnung ustva =
+            BerechneUstva(1, 2026, "41", von, bis, journal, keys, mapping);
+        const OssUstvaAbgleich a = PruefeGegenUstva(oss, ustva);
+        Check(a.stimmt,
+              "OSS turnover and UStVA Kz 45 agree - the same money by two paths");
+        CheckInt(a.ossBemessung.Minor(), 130000, "1.300,00 on the OSS side");
+        CheckInt(a.ustvaKz45.Minor(), 130000, "and the same in Kz 45");
+
+        // Now break it: a key that reports to OSS but carries no Kz 45.
+        std::vector<Steuerschluessel> schief = keys;
+        for (Steuerschluessel& k : schief)
+            if (k.schluessel == "OSS-FR-20") k.kzBemessung.clear();
+        const OssBerechnung oss2 = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                               journal, schief, saetze);
+        const UstvaBerechnung ustva2 =
+            BerechneUstva(1, 2026, "41", von, bis, journal, schief, mapping);
+        const OssUstvaAbgleich a2 = PruefeGegenUstva(oss2, ustva2);
+        Check(!a2.stimmt,
+              "a key that reports to OSS but not to Kz 45 makes the two disagree, "
+              "and the reconciliation says so before either is filed");
+        CheckInt(a2.differenz.Minor(), 30000, "naming the amount that differs");
+    }
+
+    // --- the § 3c threshold ---
+    {
+        std::vector<Buchung> journal;
+        // Well under.
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        SchwellenStand stand = PruefeLieferschwelle(2026, journal, keys);
+        CheckInt(stand.summe.Minor(), 100000, "the running total is 1.000,00");
+        Check(!stand.ueberschritten, "the threshold is not crossed");
+        Check(!stand.nahe, "and it is not close");
+
+        // Close: 8.500 of 10.000.
+        journal.push_back(OssBuchung(Date(2026, 3, 1), "OSS-AT-20", 750000, 200,
+                                     SollHaben::Soll, 2));
+        stand = PruefeLieferschwelle(2026, journal, keys);
+        Check(stand.nahe,
+              "at 85 % the warning comes early - crossing it unnoticed means every "
+              "later invoice carries the wrong VAT");
+        Check(!stand.ueberschritten, "but it is not crossed yet");
+
+        // Over, and it matters exactly when.
+        journal.push_back(OssBuchung(Date(2026, 5, 4), "OSS-AT-20", 300000, 200,
+                                     SollHaben::Soll, 3));
+        stand = PruefeLieferschwelle(2026, journal, keys);
+        Check(stand.ueberschritten, "now it is crossed");
+        Check(stand.ueberschrittenAm == Date(2026, 5, 4),
+              "on the day of the invoice that crossed it - from that invoice on, "
+              "the destination country's rate is compulsory");
+        bool nenntDatum = false;
+        for (const std::string& h : stand.hinweise)
+            if (h.find("04.05.2026") != std::string::npos) nenntDatum = true;
+        Check(nenntDatum, "and the date is in the message");
+
+        // The limitation is stated rather than hidden.
+        bool nenntGrenze = false;
+        for (const std::string& h : stand.hinweise)
+            if (h.find("Inlandsschlüssel") != std::string::npos) nenntGrenze = true;
+        Check(nenntGrenze,
+              "and so is what the count cannot see - EU consumer sales still "
+              "booked on a domestic key count towards the threshold too");
+    }
+
+    // --- the transport file ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 2, 15), "OSS-FR-20", 30000, 200,
+                                     SollHaben::Soll, 2));
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        const OssDateiErgebnis r = SchreibeBopDatei(b, "DE123456789", ".");
+        Check(r.ok, "the transport file is written");
+        Check(!r.hash.empty(), "and hashed");
+
+        std::string inhalt;
+        {
+            std::FILE* f = std::fopen(r.datei.c_str(), "rb");
+            if (f) {
+                char puffer[8192]; size_t n = 0;
+                while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
+                    inhalt.append(puffer, n);
+                std::fclose(f);
+            }
+        }
+        Check(inhalt.find("AT;20;STANDARD;1000.00;200.00") != std::string::npos,
+              "with a line per country and rate, dot-decimal - not the process "
+              "locale's comma");
+        Check(inhalt.find("FR;20;STANDARD;300.00;60.00") != std::string::npos,
+              "and one for France");
+        // The file admits what has not been checked, in itself.
+        Check(inhalt.find("NICHT an einem echten") != std::string::npos,
+              "and states that its column layout is unverified - the BZSt "
+              "publishes the import function but not its specification");
+        bool warntAufbau = false;
+        for (const std::string& w : r.warnungen)
+            if (w.find("Spaltenaufbau") != std::string::npos) warntAufbau = true;
+        Check(warntAufbau, "which is said out loud as well");
+
+        Check(!SchreibeBopDatei(b, "", ".").ok,
+              "without an own VAT number the BZSt will not take it, so it is "
+              "refused here first");
+        std::remove(r.datei.c_str());
+    }
+
+    // --- nothing to report ---
+    {
+        std::vector<Buchung> leer;
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            leer, keys, saetze);
+        Check(b.ok, "a quarter with no EU sales still computes");
+        Check(b.posten.empty(), "with no lines");
+        Check(!SchreibeBopDatei(b, "DE123456789", ".").ok,
+              "and no file is written for an empty return");
+    }
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -4445,6 +4815,7 @@ int main() {
     TestUstva();
     TestBelegArchiv();
     TestBelegImport();
+    TestOss();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

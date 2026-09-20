@@ -14,6 +14,7 @@
 // being usable without a window.
 // Version: 0.1.0
 // Author: UltraCanvas Framework / ULTRA OS
+#include "UltraFIBUOss.h"
 #include "UltraFIBUBeleg.h"
 #include "UltraFIBUDatev.h"
 #include "UltraFIBURechnungPdf.h"
@@ -137,6 +138,13 @@ void PrintUsage() {
         "        --ziel <verzeichnis>  Zielverzeichnis (Standard: .)\n"
         "        --echtfall            echte Abgabe statt Testübermittlung\n"
         "        --berichtigt          berichtigte Anmeldung (Kz 10)\n"
+        "  oss <datei>             One-Stop-Shop-Meldung berechnen\n"
+        "        --jahr <JJJJ> --quartal <Q1..Q4>\n"
+        "        --ioss --monat <MM>   statt dessen IOSS, monatlich\n"
+        "        --datei               BOP-Transportdatei schreiben\n"
+        "        --ziel <verzeichnis>\n"
+        "  lieferschwelle <datei>  Stand der 10.000-EUR-Schwelle (§ 3c UStG)\n"
+        "        --jahr <JJJJ>\n"
         "  meldungen <datei>       Abgegebene Meldungen anzeigen\n"
         "  meldung-quittung <datei> <id>\n"
         "                          Transferticket nach dem Upload eintragen\n"
@@ -1599,6 +1607,129 @@ int UstvaXml(int argc, char** argv) {
     return 0;
 }
 
+int Oss(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const bool ioss = HasOption(argc, argv, "--ioss");
+    const OssVerfahren verfahren = ioss ? OssVerfahren::Ioss : OssVerfahren::Oss;
+    const int jahr = std::atoi(Option(argc, argv, "--jahr").c_str());
+    const std::string zeitraum = ioss ? Option(argc, argv, "--monat")
+                                      : Option(argc, argv, "--quartal");
+    if (jahr == 0 || zeitraum.empty()) {
+        std::printf("Fehler: --jahr und %s sind erforderlich.\n",
+                    ioss ? "--monat <MM>" : "--quartal <Q1..Q4>");
+        return 2;
+    }
+    Date von, bis;
+    if (!OssZeitraumGrenzen(verfahren, jahr, zeitraum, von, bis)) {
+        std::printf("Fehler: \"%s\" ist kein %s.\n", zeitraum.c_str(),
+                    ioss ? "Monat (01-12)" : "Quartal (Q1-Q4)");
+        return 2;
+    }
+
+    EuSteuersaetze saetze;
+    {
+        const std::string pfad = EuSteuersaetzePfad();
+        std::string fehler;
+        if (pfad.empty() || !saetze.Laden(pfad, fehler))
+            std::printf("Hinweis: die EU-Steuersätze sind nicht geladen (%s); die "
+                        "berechneten Sätze können nicht geprüft werden.\n",
+                        fehler.empty() ? "Datei nicht gefunden" : fehler.c_str());
+    }
+
+    const OssBerechnung b = BerechneOss(verfahren, mandant.id, jahr, zeitraum, von, bis,
+                                        store.Journal(mandant.id, von, bis),
+                                        store.SteuerschluesselListe(mandant.id), saetze);
+    if (!b.ok) { std::printf("Fehler: %s\n", b.fehler.c_str()); return 1; }
+
+    std::printf("%s-Meldung %d/%s (%s - %s)\n\n",
+                ioss ? "IOSS" : "OSS", jahr, zeitraum.c_str(),
+                FormatDateGerman(von).c_str(), FormatDateGerman(bis).c_str());
+    if (b.posten.empty()) {
+        std::printf("Kein OSS-Umsatz im Zeitraum.\n");
+    } else {
+        std::printf("%-6s %8s %18s %18s %s\n", "Land", "Satz", "Bemessung",
+                    "Steuer", "Satz geprüft");
+        for (const OssPosten& p : b.posten) {
+            char satz[16];
+            std::snprintf(satz, sizeof(satz), "%d,%d %%", p.satzPromille / 10,
+                          p.satzPromille % 10);
+            std::printf("%-6s %8s %18s %18s %s\n", p.land.c_str(), satz,
+                        p.bemessung.ToString().c_str(), p.steuer.ToString().c_str(),
+                        p.satzGeprueft ? (p.satzHinweis.empty() ? "ja" : "ABWEICHUNG")
+                                       : "-");
+        }
+        std::printf("%-6s %8s %18s %18s\n", "Summe", "",
+                    b.summeBemessung.ToString().c_str(), b.summeSteuer.ToString().c_str());
+    }
+
+    // The reconciliation that matters: the same turnover must appear in UStVA
+    // Kz 45, and the two come from the same journal by different paths.
+    if (!ioss) {
+        UstvaMapping mapping;
+        const std::string mp = UstvaMappingPfad(jahr);
+        std::string mf;
+        if (!mp.empty() && mapping.Laden(mp, mf)) {
+            const std::string ustvaZeitraum =
+                UstvaZeitraumCode(zeitraum[1] - '0', true);
+            const UstvaBerechnung u =
+                store.BerechneUstvaFuer(mandant.id, jahr, ustvaZeitraum, mapping);
+            if (u.ok) {
+                const OssUstvaAbgleich a = PruefeGegenUstva(b, u);
+                std::printf("\n  %s %s\n", a.stimmt ? "OK:" : "ACHTUNG:",
+                            a.hinweis.c_str());
+            }
+        }
+    }
+
+    for (const std::string& w : b.warnungen) std::printf("\n  ACHTUNG: %s\n", w.c_str());
+    if (!b.luecken.empty()) {
+        std::printf("\nNicht meldbar:\n");
+        for (const OssLuecke& l : b.luecken)
+            std::printf("  %-14s %16s Steuer, %d Buchung(en)\n      %s\n",
+                        l.steuerschluessel.c_str(), l.steuer.ToString().c_str(),
+                        l.buchungen, l.grund.c_str());
+    }
+
+    if (HasOption(argc, argv, "--datei")) {
+        const OssDateiErgebnis r =
+            SchreibeBopDatei(b, mandant.ustIdNr, Option(argc, argv, "--ziel", "."));
+        if (!r.ok) { std::printf("\nFehler: %s\n", r.fehler.c_str()); return 1; }
+        std::printf("\nGeschrieben: %s\nSHA-256:     %s\n",
+                    r.datei.c_str(), r.hash.c_str());
+        for (const std::string& w : r.warnungen)
+            std::printf("  ACHTUNG: %s\n", w.c_str());
+    }
+    return b.Vollstaendig() ? 0 : 1;
+}
+
+int Lieferschwelle(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const int jahr = std::atoi(Option(argc, argv, "--jahr").c_str());
+    if (jahr == 0) { std::printf("Fehler: --jahr <JJJJ> ist erforderlich.\n"); return 2; }
+
+    const SchwellenStand stand = PruefeLieferschwelle(
+        jahr, store.Journal(mandant.id, Date(jahr, 1, 1), Date(jahr, 12, 31)),
+        store.SteuerschluesselListe(mandant.id));
+
+    std::printf("Lieferschwelle § 3c UStG, %d\n\n", jahr);
+    std::printf("  EU-Umsatz (OSS-Schlüssel)  %16s\n", stand.summe.ToString().c_str());
+    std::printf("  Schwelle                   %16s\n", stand.schwelle.ToString().c_str());
+    std::printf("  Status                     %16s\n",
+                stand.ueberschritten ? "ÜBERSCHRITTEN"
+                                     : (stand.nahe ? "nahe" : "darunter"));
+    for (const std::string& h : stand.hinweise) std::printf("\n  %s\n", h.c_str());
+    return 0;
+}
+
 int Meldungen(int argc, char** argv) {
     Store store;
     if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
@@ -2018,6 +2149,8 @@ int main(int argc, char** argv) {
     if (befehl == "datev-import")  return DatevImport(argc, argv);
     if (befehl == "datev-importe") return DatevImporte(argc, argv);
     if (befehl == "beleg-import")     return BelegImport(argc, argv);
+    if (befehl == "oss")              return Oss(argc, argv);
+    if (befehl == "lieferschwelle")   return Lieferschwelle(argc, argv);
     if (befehl == "ustva")            return Ustva(argc, argv);
     if (befehl == "ustva-xml")        return UstvaXml(argc, argv);
     if (befehl == "meldungen")        return Meldungen(argc, argv);

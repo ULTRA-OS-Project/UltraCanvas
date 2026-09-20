@@ -1,3 +1,51 @@
+#### 2026-09-20 *0.10.0*
+- **One-Stop-Shop: die Quartalsmeldung fuer Steuer, die anderen
+  Mitgliedstaaten zusteht.** `Apps/UltraFIBU/engine/UltraFIBUOss.{h,cpp}`,
+  `data/EU-Steuersaetze.csv`, die Befehle `ultrafibu oss` und
+  `ultrafibu lieferschwelle`, 58 weitere Pruefungen (1187 insgesamt).
+  Phase A6; IOSS ist dasselbe mit monatlichem Zeitraum und laeuft ueber
+  dieselben Typen statt ueber eine Kopie.
+- **Es gibt keine Maschinenschnittstelle.** Das BZSt nimmt OSS-Meldungen
+  ueber Mein BOP entgegen, und der einzige Massenweg dorthin ist eine
+  CSV-Transportdatei, die von Hand hochgeladen wird. Die ehrliche Form ist
+  deshalb: rechnen, erzeugen, uebergeben - und bei den ersten beiden genau
+  sein, weil danach nichts mehr prueft.
+- **Gemeldet wird der Satz, der berechnet wurde - auch wenn er falsch war.**
+  Der Satz steht im Steuerschluessel, mit dem die Rechnung gebucht wurde;
+  `data/EU-Steuersaetze.csv` ist eine **Pruefung dagegen**, nie ein Ersatz.
+  Wuerde die Meldung stillschweigend einen anderen Betrag ausweisen als die
+  Rechnung, staenden Buch, Rechnung und Meldung an drei verschiedenen
+  Stellen. Weicht der berechnete Satz vom Satz des Ziellandes ab, wird das
+  gemeldet: zu korrigieren ist die Rechnung.
+- **Ein ungeprueffter Satz wird nicht zum Vergleich herangezogen.** Keiner
+  der 26 Saetze in der mitgelieferten Datei steht auf "ja" - sie konnten
+  hier an keiner amtlichen Quelle geprueft werden. Ein geratener Satz, der
+  eine richtige Rechnung als falsch meldet, wuerde dazu erziehen, die
+  Warnung zu ignorieren, und waere an dem Tag wertlos, an dem sie stimmt.
+- **Ohne Zielland keine Meldung.** Ein OSS-Steuerschluessel ohne Land haelt
+  die Meldung an: "Steuer, die irgendwo in der EU geschuldet wird" ist keine
+  Abgabe, und ein geratenes Land schickt das Geld eines anderen Staates an
+  die falsche Stelle. Je Zielland ein eigener Schluessel, z. B. `OSS-AT-20`.
+- **Die Meldung prueft sich gegen die UStVA.** OSS-Umsatz gehoert in
+  Kennzahl 45 - nur Bemessungsgrundlage, keine Steuer, keine Wirkung auf die
+  Zahllast. Beide Zahlen kommen aus demselben Journal auf verschiedenen
+  Wegen; gehen sie auseinander, ist eine der beiden Meldungen falsch, und
+  das gehoert vor die Abgabe. Beim Ausprobieren hat genau diese Pruefung
+  sofort angeschlagen, weil ein neu angelegter Landesschluessel die
+  Kennzahl 45 noch nicht trug.
+- **Die Lieferschwelle wird beobachtet, bevor sie reisst** (§ 3c UStG,
+  10.000 EUR EU-weit). Ab 80 % kommt die Warnung, und beim Ueberschreiten
+  nennt sie **den Tag und die Rechnung**: ab dieser Rechnung ist im Zielland
+  zu versteuern, sofort und nicht ab dem naechsten Quartal. Was die Zaehlung
+  nicht sieht - EU-Privatverkaeufe, die noch auf einem Inlandsschluessel
+  gebucht sind - steht dabei, statt verschwiegen zu werden.
+- **Der Spaltenaufbau der BOP-Datei ist nicht veroeffentlicht.** Das BZSt
+  bietet die Importfunktion an, aber nicht ihre Spezifikation. Die erzeugte
+  Datei traegt diesen Hinweis in sich selbst - dieselbe Haltung wie bei der
+  DATEV-Spaltendefinition. Die Zahlen darin stammen unmittelbar aus dem
+  Journal; zu pruefen ist die Anordnung, an einer echten Exportdatei.
+- Ein Storno zieht auch hier ab, und Inlandsumsatz bleibt draussen.
+
 #### 2026-09-20 *0.9.0*
 - **Belege als PDF hochladen - per Knopf oder per Drag & Drop, mehrere auf
   einmal.** `Apps/UltraFIBU/engine/UltraFIBUBelegArchiv.{h,cpp}`,
