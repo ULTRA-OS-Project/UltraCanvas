@@ -24,8 +24,12 @@
 #include <cstdio>
 #include <filesystem>
 
+// ARTCREATOR_VERSION comes from the build alone: CMake reads the first
+// line of Docs/ArtCreator/CHANGELOG.md (cmake/UltraCanvasVersion.cmake)
+// and passes it as a compile definition. No fallback here, so a build
+// that lost it fails instead of reporting a wrong number.
 #ifndef ARTCREATOR_VERSION
-#define ARTCREATOR_VERSION "0.0.0"
+#error "ARTCREATOR_VERSION is not defined: build ArtCreator through the top-level CMakeLists.txt"
 #endif
 
 namespace fs = std::filesystem;
