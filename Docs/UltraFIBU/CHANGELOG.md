@@ -1,3 +1,58 @@
+#### 2026-09-20 *0.8.0*
+- **Umsatzsteuer-Voranmeldung: berechnen, pruefen, als ELSTER-XML abgeben.**
+  `Apps/UltraFIBU/engine/UltraFIBUUstva.{h,cpp}`, Schema v5 (`meldung`),
+  `data/UStVA-Kennzahlen-2026.csv`, die Befehle `ustva`, `ustva-xml`,
+  `meldungen` und `meldung-quittung`. Die Abgabe-Haelfte von Phase A5.
+- **Die Kennzahlen-Zuordnung ist eine Datendatei je Jahr.** Das BMF gibt den
+  Vordruck jaehrlich neu heraus - 2026 ist die Kennzahl 43 dazugekommen -,
+  also waere eine Zuordnung in C++ jedes Jahr ein neues Programm. Die Datei
+  sagt ausserdem je Kennzahl, ob sie **geprueft** ist.
+- **Ein Betrag, der nirgendwohin gehoert, haelt die Meldung an.** Traegt eine
+  Buchung einen Steuerschluessel ohne Kennzahl - oder mit einer, die noch
+  nicht am BMF-Vordruckmuster geprueft ist -, dann wird die Datei **nicht**
+  geschrieben. Eine Voranmeldung, die diesen Umsatz weglaesst, meldet zu wenig
+  und sieht dabei voellig in Ordnung aus. Das ist der schlimmste Ausgang, und
+  deshalb ist Verweigern hier billiger als Weitermachen. Die Meldung nennt den
+  Schluessel und den Betrag, der gefehlt haette.
+- **Die Meldung prueft sich gegen die Buecher.** Zu jeder Kennzahl mit
+  Bemessungsgrundlage wird die Steuer aus dem Satz nachgerechnet und gegen die
+  tatsaechlich gebuchte gehalten. Ein, zwei Cent sind Rundung; mehr heisst,
+  dass in den Buechern ein anderer Satz steht als im Formular - und dass die
+  beiden auseinanderlaufen, darf nicht das Finanzamt zuerst merken.
+- **Ein Storno zieht ab.** Eine Rueckbuchung liegt auf der anderen Seite und
+  mindert den Umsatz; addierte sie, wuerde ein korrigierter Monat den Umsatz
+  doppelt melden. Bei der Vorsteuer ist die "normale" Seite die andere, weil
+  eine Eingangsrechnung anders herum bucht - beides ist geprueft.
+- **Jede Zahl nennt ihre Buchungen.** Die Frage, woher ein Betrag kommt, wird
+  Monate spaeter gestellt; `ustva --details` beantwortet sie aus der Meldung
+  selbst statt aus einer Nachrechnung.
+- **Eine Testuebermittlung sagt, dass sie eine ist.** Ohne Testmerker wird eine
+  Probe echt abgegeben, mit Testmerker kommt eine echte Abgabe nie an - beides
+  faellt hinterher nicht auf. Deshalb ist der Testmerker die Vorgabe und die
+  echte Abgabe braucht `--echtfall`.
+- **Was abgegeben wurde, bleibt nachweisbar.** Schema v5 haelt die Kennzahlen
+  **wie abgegeben** (nicht als Verweis ins Journal, das sich weiterbewegt),
+  den SHA-256 der geschriebenen Datei und das Transferticket. Eine bereits
+  eingereichte Meldung wird nicht ueberschrieben: eine Aenderung ist eine
+  berichtigte Meldung, dieselbe Regel wie beim Storno.
+- **Zwei Transportwege, und der immer funktionierende braucht nichts.**
+  `ElsterDateiTransport` schreibt die XML-Datei fuer den Upload in Mein ELSTER.
+  **ERiC liegt nicht in diesem Repository und wird es nie**: die
+  Ueberlassungsbedingungen erlauben das nicht. `ElsterEricTransport` sucht die
+  Bibliothek an einem konfigurierten Pfad und sagt genau, was fehlt - und
+  ruft ERiC bewusst noch nicht auf, weil dessen C-Schnittstelle hier nur aus
+  Sekundaerquellen bekannt ist. Eine geratene Schnittstelle wuerde vor einer
+  Finanzbehoerde scheitern.
+- **Der ELSTER-Rahmen sagt in sich selbst, dass er ungeprueft ist.** Die
+  amtlichen Schemata liegen im ERiC-SDK, das hier nicht vorliegt; die
+  geschriebene Datei traegt diesen Hinweis als Kommentar. Die Zahlen darin
+  stammen unmittelbar aus dem Journal und sind nachvollziehbar.
+- **Betragsformate nach Formular:** Bemessungsgrundlagen in vollen Euro und
+  **abgeschnitten**, nicht gerundet - Aufrunden wuerde Umsatz melden, den es
+  nicht gab; Steuerbetraege auf den Cent mit Punkt als Dezimaltrenner.
+- **`einrichten` kennt jetzt `--finanzamt-nr`.** Ohne die Finanzamtsnummer
+  weiss ELSTER nicht, wohin die Anmeldung geht.
+
 #### 2026-09-19 *0.7.0*
 - **Bankimport: Kontoauszüge lesen und Zahlungen zuordnen.**
   `Apps/UltraFIBU/engine/UltraFIBUBank.{h,cpp}`, Schema v4 (`bankkonto`,

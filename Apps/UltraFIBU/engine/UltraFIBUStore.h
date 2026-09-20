@@ -35,6 +35,7 @@
 #include "UltraFIBUDatev.h"
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNrOnline.h"
+#include "UltraFIBUUstva.h"
 
 #include <UltraDatabase/UltraDatabaseCore.h>
 #include <UltraDatabase/UltraDatabaseValue.h>
@@ -79,7 +80,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert that the database matches the
     // code without a literal that has to be chased.
-    static constexpr int kSchemaVersion = 4;
+    static constexpr int kSchemaVersion = 5;
 
     Store() = default;
     ~Store() = default;
@@ -425,6 +426,59 @@ public:
                                 const Money& betrag, const Akteur& akteur);
 
     std::vector<BankZuordnung> Zuordnungen(int64_t bankumsatzId) const;
+
+    // ---- Steuermeldungen ----------------------------------------------------
+
+    // Where a return stands. A submitted one is never edited: a correction is a
+    // new *berichtigte* return, the same rule as Storno on a posting and for
+    // the same reason - what was filed has to stay provable afterwards.
+    enum class MeldungStatus { Entwurf, Erzeugt, Eingereicht, Bestaetigt };
+
+    struct Meldung {
+        int64_t       id = 0;
+        int64_t       mandantId = 0;
+        std::string   art;              // "ustva" | "zm" | "oss" | "dfv"
+        int           jahr = 0;
+        std::string   zeitraum;         // "01".."12", "41".."44"
+        MeldungStatus status = MeldungStatus::Entwurf;
+        Money         zahllast;
+        // The figures as filed, so the return can be reproduced exactly even
+        // after the journal has moved on. A recomputation is not evidence of
+        // what was sent; this is.
+        std::string   kennzahlenJson;
+        std::string   datei;
+        std::string   xmlHash;          // SHA-256 of exactly what was written
+        std::string   transferticket;   // what ELSTER gives back on acceptance
+        bool          berichtigt = false;
+        bool          echtfall = false;
+        int64_t       erzeugtAm = 0;
+        int64_t       eingereichtAm = 0;
+        std::string   benutzer;
+    };
+
+    // Pull the journal and the tax keys for a period and compute the return.
+    // Convenience only - the computation itself is a pure function in
+    // UltraFIBUUstva.h and is tested there without a database.
+    UstvaBerechnung BerechneUstvaFuer(int64_t mandantId, int jahr,
+                                      const std::string& zeitraum,
+                                      const UstvaMapping& mapping) const;
+
+    // Record a generated return. Refuses to replace one that has already been
+    // submitted: that is what `berichtigt` is for.
+    StoreResult MeldungEintragen(Meldung& meldung, const Akteur& akteur);
+
+    // Record the Transferticket after a manual upload. This is the step that
+    // turns "we produced a file" into "it was filed", and it is the only
+    // evidence of the latter.
+    StoreResult MeldungQuittung(int64_t meldungId, const std::string& transferticket,
+                                const Date& eingereichtAm, const Akteur& akteur);
+
+    std::vector<Meldung> Meldungen(int64_t mandantId, const std::string& art = "") const;
+    bool MeldungById(int64_t id, Meldung& out) const;
+    // The return already filed for a period, if there is one - what makes a
+    // second one a correction rather than a duplicate.
+    bool MeldungFuerZeitraum(int64_t mandantId, const std::string& art, int jahr,
+                             const std::string& zeitraum, Meldung& out) const;
 
     // ---- Journal -----------------------------------------------------------
 

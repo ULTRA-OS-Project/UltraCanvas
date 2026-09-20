@@ -54,6 +54,9 @@ void PrintUsage() {
         "        --steuernummer <nr>   Steuernummer des Finanzamts\n"
         "        --telefon <nr> --email <adr> --web <url>\n"
         "        --iban <iban> --bic <bic> --bank <name>\n"
+        "        --finanzamt-nr <nr>   vierstellige Finanzamtsnummer;\n"
+        "                              ohne sie weiß ELSTER nicht, wohin\n"
+        "                              die Voranmeldung geht\n"
         "        --beraternummer <nr> --mandantennummer <nr>\n"
         "                              von der Kanzlei; ohne sie lehnt\n"
         "                              DATEV den Import ab\n"
@@ -115,6 +118,22 @@ void PrintUsage() {
         "        --nochmal             eine bereits importierte Datei\n"
         "                              erneut zulassen\n"
         "  datev-importe <datei>   Bisherige DATEV-Importe anzeigen\n"
+        "\n"
+        "Steuer:\n"
+        "  ustva <datei>           Umsatzsteuer-Voranmeldung berechnen\n"
+        "        --jahr <JJJJ>         (Pflicht)\n"
+        "        --zeitraum <ZZ>       01-12 Monat, 41-44 Quartal (Pflicht)\n"
+        "        --details             die Buchungen je Kennzahl zeigen\n"
+        "  ustva-xml <datei>       Voranmeldung als ELSTER-XML schreiben\n"
+        "        --jahr <JJJJ> --zeitraum <ZZ>\n"
+        "        --ziel <verzeichnis>  Zielverzeichnis (Standard: .)\n"
+        "        --echtfall            echte Abgabe statt Testübermittlung\n"
+        "        --berichtigt          berichtigte Anmeldung (Kz 10)\n"
+        "  meldungen <datei>       Abgegebene Meldungen anzeigen\n"
+        "  meldung-quittung <datei> <id>\n"
+        "                          Transferticket nach dem Upload eintragen\n"
+        "        --ticket <nr>         (Pflicht)\n"
+        "        --datum <datum>       Tag der Abgabe\n"
         "\n"
         "Bank:\n"
         "  bankkonto-neu <datei>   Bankkonto anlegen\n"
@@ -266,6 +285,7 @@ int Einrichten(int argc, char** argv) {
     mandant.strasse      = Option(argc, argv, "--strasse");
     mandant.plz          = Option(argc, argv, "--plz");
     mandant.steuernummer = Option(argc, argv, "--steuernummer");
+    mandant.finanzamtNummer = Option(argc, argv, "--finanzamt-nr");
     mandant.telefon      = Option(argc, argv, "--telefon");
     mandant.email        = Option(argc, argv, "--email");
     mandant.webseite     = Option(argc, argv, "--web");
@@ -1334,6 +1354,214 @@ int DatevImport(int argc, char** argv) {
     return 0;
 }
 
+// ===== STEUER =====
+
+// Load the year's Kennzahl mapping, saying plainly what is missing when it is
+// not there: a return computed against no mapping would be all zeros and look
+// like a quiet month.
+bool LadeUstvaMapping(int jahr, UstvaMapping& mapping) {
+    const std::string pfad = UstvaMappingPfad(jahr);
+    if (pfad.empty()) {
+        std::printf("Fehler: Für %d gibt es keine Kennzahlen-Datei "
+                    "(data/UStVA-Kennzahlen-%d.csv).\n"
+                    "Das Formular ändert sich jährlich; die Datei des Jahres "
+                    "muss vorliegen.\n", jahr, jahr);
+        return false;
+    }
+    std::string fehler;
+    if (!mapping.Laden(pfad, fehler)) {
+        std::printf("Fehler: %s\n", fehler.c_str());
+        return false;
+    }
+    return true;
+}
+
+void ZeigeUstva(const UstvaBerechnung& b, bool details) {
+    std::printf("Umsatzsteuer-Voranmeldung %d/%s (%s - %s)\n",
+                b.jahr, b.zeitraum.c_str(),
+                FormatDateGerman(b.von).c_str(), FormatDateGerman(b.bis).c_str());
+
+    std::printf("\n%-6s %-52s %16s\n", "Kz", "Bezeichnung", "Betrag");
+    std::vector<const KennzahlBetrag*> zeilen;
+    for (const auto& e : b.kennzahlen)
+        if (!e.second.code.empty()) zeilen.push_back(&e.second);
+    std::sort(zeilen.begin(), zeilen.end(),
+              [](const KennzahlBetrag* x, const KennzahlBetrag* y) {
+                  return std::atoi(x->code.c_str()) < std::atoi(y->code.c_str());
+              });
+    for (const KennzahlBetrag* kb : zeilen) {
+        if (kb->betrag.Minor() == 0 && kb->code != "83") continue;
+        std::printf("%-6s %-52s %16s\n", kb->code.c_str(),
+                    KennzahlArtToText(kb->art).c_str(), kb->betrag.ToString().c_str());
+        if (details && !kb->buchungIds.empty()) {
+            std::printf("       aus %d Buchung(en):", kb->buchungen);
+            for (size_t i = 0; i < kb->buchungIds.size() && i < 12; ++i)
+                std::printf(" %lld", static_cast<long long>(kb->buchungIds[i]));
+            if (kb->buchungIds.size() > 12) std::printf(" ...");
+            std::printf("\n");
+        }
+    }
+
+    std::printf("\n  Umsatzsteuer   %16s\n", b.summeSteuer.ToString().c_str());
+    std::printf("  Vorsteuer      %16s\n", b.summeVorsteuer.ToString().c_str());
+    std::printf("  Kz 83          %16s  %s\n", b.zahllast.ToString().c_str(),
+                b.zahllast.Minor() >= 0 ? "(zu zahlen)" : "(Erstattung)");
+
+    for (const std::string& a : b.abweichungen)
+        std::printf("\n  ABWEICHUNG: %s\n", a.c_str());
+    for (const std::string& w : b.warnungen)
+        std::printf("\n  %s\n", w.c_str());
+
+    if (!b.luecken.empty()) {
+        std::printf("\nNicht zugeordnet - die Meldung ist damit unvollständig:\n");
+        for (const UstvaLuecke& l : b.luecken) {
+            std::printf("  %-12s %14s netto, %12s Steuer, %d Buchung(en)\n",
+                        l.steuerschluessel.c_str(), l.netto.ToString().c_str(),
+                        l.steuer.ToString().c_str(), l.buchungen);
+            std::printf("      %s\n", l.grund.c_str());
+        }
+    }
+}
+
+int Ustva(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const int jahr = std::atoi(Option(argc, argv, "--jahr").c_str());
+    const std::string zeitraum = Option(argc, argv, "--zeitraum");
+    if (jahr == 0 || zeitraum.empty()) {
+        std::printf("Fehler: --jahr und --zeitraum sind erforderlich.\n"
+                    "Zeitraum: 01-12 für einen Monat, 41-44 für ein Quartal.\n");
+        return 2;
+    }
+    UstvaMapping mapping;
+    if (!LadeUstvaMapping(jahr, mapping)) return 1;
+
+    const UstvaBerechnung b = store.BerechneUstvaFuer(mandant.id, jahr, zeitraum, mapping);
+    if (!b.ok) { std::printf("Fehler: %s\n", b.fehler.c_str()); return 1; }
+    ZeigeUstva(b, HasOption(argc, argv, "--details"));
+    return b.Vollstaendig() ? 0 : 1;
+}
+
+int UstvaXml(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    const int jahr = std::atoi(Option(argc, argv, "--jahr").c_str());
+    const std::string zeitraum = Option(argc, argv, "--zeitraum");
+    if (jahr == 0 || zeitraum.empty()) {
+        std::printf("Fehler: --jahr und --zeitraum sind erforderlich.\n");
+        return 2;
+    }
+    UstvaMapping mapping;
+    if (!LadeUstvaMapping(jahr, mapping)) return 1;
+
+    const UstvaBerechnung b = store.BerechneUstvaFuer(mandant.id, jahr, zeitraum, mapping);
+    if (!b.ok) { std::printf("Fehler: %s\n", b.fehler.c_str()); return 1; }
+    ZeigeUstva(b, false);
+
+    ElsterKopf kopf;
+    kopf.steuernummer    = mandant.steuernummer;
+    kopf.finanzamtNummer = mandant.finanzamtNummer;
+    kopf.name            = mandant.name;
+    kopf.strasse         = mandant.strasse;
+    kopf.plz             = mandant.plz;
+    kopf.ort             = mandant.ort;
+    kopf.produktVersion  = ULTRAFIBU_CLI_VERSION;
+    kopf.echtfall        = HasOption(argc, argv, "--echtfall");
+    kopf.berichtigt      = HasOption(argc, argv, "--berichtigt");
+    TryParseDateGerman(Option(argc, argv, "--erstellt"), kopf.erstellt);
+    if (!kopf.erstellt.Valid()) kopf.erstellt = b.bis;
+
+    const ElsterErgebnis r =
+        SchreibeUstvaXml(b, kopf, Option(argc, argv, "--ziel", "."));
+    if (!r.ok) { std::printf("\nFehler: %s\n", r.fehler.c_str()); return 1; }
+
+    std::printf("\nGeschrieben: %s\n", r.datei.c_str());
+    std::printf("SHA-256:     %s\n", r.xmlHash.c_str());
+    for (const std::string& w : r.warnungen) std::printf("  ACHTUNG: %s\n", w.c_str());
+
+    Store::Meldung meldung;
+    meldung.mandantId  = mandant.id;
+    meldung.art        = "ustva";
+    meldung.jahr       = jahr;
+    meldung.zeitraum   = zeitraum;
+    meldung.status     = Store::MeldungStatus::Erzeugt;
+    meldung.zahllast   = b.zahllast;
+    meldung.datei      = r.datei;
+    meldung.xmlHash    = r.xmlHash;
+    meldung.berichtigt = kopf.berichtigt;
+    meldung.echtfall   = kopf.echtfall;
+    meldung.kennzahlenJson = KennzahlenJson(b);
+    const StoreResult eingetragen = store.MeldungEintragen(meldung, akteur);
+    if (!eingetragen) {
+        std::printf("\nHinweis: %s\n", eingetragen.fehler.c_str());
+        return 1;
+    }
+    std::printf("\nAls Meldung %lld protokolliert. Nach dem Upload in Mein ELSTER:\n"
+                "  ultrafibu meldung-quittung %s %lld --ticket <Transferticket>\n",
+                static_cast<long long>(meldung.id), datei.c_str(),
+                static_cast<long long>(meldung.id));
+    return 0;
+}
+
+int Meldungen(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::vector<Store::Meldung> liste = store.Meldungen(mandant.id);
+    if (liste.empty()) { std::printf("Es wurde noch keine Meldung erzeugt.\n"); return 0; }
+    std::printf("%5s %-7s %-9s %14s %-12s %-24s %s\n",
+                "Id", "Art", "Zeitraum", "Zahllast", "Status", "Transferticket", "Datei");
+    for (const Store::Meldung& m : liste) {
+        const char* status =
+            m.status == Store::MeldungStatus::Eingereicht ? "eingereicht" :
+            m.status == Store::MeldungStatus::Bestaetigt  ? "bestätigt"   :
+            m.status == Store::MeldungStatus::Erzeugt     ? "erzeugt"     : "entwurf";
+        std::printf("%5lld %-7s %4d/%-4s %14s %-12s %-24s %s%s\n",
+                    static_cast<long long>(m.id), m.art.c_str(), m.jahr,
+                    m.zeitraum.c_str(), m.zahllast.ToString().c_str(), status,
+                    m.transferticket.empty() ? "-" : m.transferticket.c_str(),
+                    m.datei.c_str(), m.echtfall ? "" : "  (Test)");
+    }
+    return 0;
+}
+
+int MeldungQuittung(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    const std::string idText = Positional(argc, argv, 1);
+    const std::string ticket = Option(argc, argv, "--ticket");
+    if (idText.empty() || ticket.empty()) {
+        std::printf("Fehler: Aufruf ist ultrafibu meldung-quittung <datei> <id> "
+                    "--ticket <Transferticket>\n"
+                    "Das Transferticket steht in der Quittung von Mein ELSTER "
+                    "und ist der Nachweis, dass die Meldung angekommen ist.\n");
+        return 2;
+    }
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    Date abgabe;
+    TryParseDateGerman(Option(argc, argv, "--datum"), abgabe);
+
+    const StoreResult r = store.MeldungQuittung(std::atoll(idText.c_str()), ticket,
+                                                abgabe, akteur);
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Transferticket %s eingetragen.\n", ticket.c_str());
+    return 0;
+}
+
 // ===== BANK =====
 
 int BankkontoNeu(int argc, char** argv) {
@@ -1701,6 +1929,10 @@ int main(int argc, char** argv) {
     if (befehl == "datev-pruefen") return DatevPruefen(argc, argv);
     if (befehl == "datev-import")  return DatevImport(argc, argv);
     if (befehl == "datev-importe") return DatevImporte(argc, argv);
+    if (befehl == "ustva")            return Ustva(argc, argv);
+    if (befehl == "ustva-xml")        return UstvaXml(argc, argv);
+    if (befehl == "meldungen")        return Meldungen(argc, argv);
+    if (befehl == "meldung-quittung") return MeldungQuittung(argc, argv);
     if (befehl == "bankkonto-neu") return BankkontoNeu(argc, argv);
     if (befehl == "bankkonten")    return Bankkonten(argc, argv);
     if (befehl == "bank-import")   return BankImport(argc, argv);

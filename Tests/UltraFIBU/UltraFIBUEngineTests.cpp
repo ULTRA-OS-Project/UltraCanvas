@@ -42,6 +42,7 @@
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNr.h"
 #include "UltraFIBUUstIdNrOnline.h"
+#include "UltraFIBUUstva.h"
 
 #include <UltraCrypt/UltraCryptCore.h>
 // The hash-chain test edits a posting the way somebody with the database
@@ -51,6 +52,7 @@
 
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -3675,6 +3677,448 @@ static void TestBankImportInDenBestand() {
     std::remove("bank-fremd.xml");
 }
 
+// ===== UStVA =====
+//
+// The first output of this program that goes to a tax authority, so what is
+// tested is not only "does it add up" but "does it refuse when it cannot add
+// up honestly". A return that silently omits a turnover is worse than no
+// return: it is an under-declaration and the file looks perfectly valid.
+
+static std::string SchreibeKennzahlen(const std::string& zeilen) {
+    const std::string pfad = "kz-test.csv";
+    SchreibeDatei(pfad, "# test\nkennzahl;art;satz_promille;geprueft;bezeichnung\n" + zeilen);
+    return pfad;
+}
+
+// A journal row as the posting path produces one: gross on the person account,
+// the net and tax recorded beside it as the automatic posting they are.
+static Buchung UmsatzBuchung(const Date& datum, const std::string& key,
+                             int64_t nettoMinor, int satzPromille,
+                             SollHaben seite, int64_t id = 0) {
+    Buchung b;
+    b.id               = id;
+    b.mandantId        = 1;
+    b.belegdatum       = datum;
+    b.steuerschluessel = key;
+    b.satzPromille     = satzPromille;
+    b.netto            = Money::FromMinor(nettoMinor, "EUR");
+    b.steuer           = b.netto.TaxOnNet(satzPromille);
+    b.umsatz           = b.netto + b.steuer;
+    b.sollHaben        = seite;
+    b.konto            = "10000";
+    b.gegenkonto       = "8400";
+    b.waehrung         = "EUR";
+    return b;
+}
+
+static Steuerschluessel BaueKey(const std::string& name, int satz, bool vorsteuer,
+                                const std::string& kzBemessung,
+                                const std::string& kzSteuer = std::string()) {
+    Steuerschluessel k;
+    k.schluessel   = name;
+    k.bezeichnung  = name;
+    k.satzPromille = satz;
+    k.vorsteuer    = vorsteuer;
+    k.kzBemessung  = kzBemessung;
+    k.kzSteuer     = kzSteuer;
+    k.gueltigVon   = Date(2026, 1, 1);
+    return k;
+}
+
+static void TestUstva() {
+    std::printf("Umsatzsteuer-Voranmeldung\n");
+
+    // --- the mapping is data, and it records what has been verified ---
+    {
+        UstvaMapping mapping;
+        std::string fehler;
+        const std::string pfad = SchreibeKennzahlen(
+            "81;bemessung;190;ja;Umsaetze 19 %\n"
+            "86;bemessung;70;ja;Umsaetze 7 %\n"
+            "66;vorsteuer;0;ja;Vorsteuer\n"
+            "89;bemessung;190;nein;Innergemeinschaftliche Erwerbe 19 %\n"
+            "83;berechnet;0;ja;Zahllast\n");
+        Check(mapping.Laden(pfad, fehler), "a Kennzahl mapping loads from data");
+        CheckInt(static_cast<int64_t>(mapping.Anzahl()), 5, "with all its lines");
+
+        UstvaKennzahl kz;
+        Check(mapping.Finde("81", kz), "Kz 81 is found");
+        Check(kz.art == KennzahlArt::Bemessung, "as a Bemessungsgrundlage");
+        CheckInt(kz.satzPromille, 190, "at 19 %");
+        Check(kz.geprueft, "and marked verified");
+        Check(mapping.Finde("89", kz) && !kz.geprueft,
+              "while Kz 89 is present but NOT verified - the file records that "
+              "the case exists and is not yet answered, which is not the same "
+              "as the case being absent");
+        Check(!mapping.Finde("99", kz), "an unknown Kennzahl is not found");
+        std::remove(pfad.c_str());
+    }
+
+    // --- periods ---
+    {
+        CheckText(UstvaZeitraumCode(6, false), "06", "June is 06");
+        CheckText(UstvaZeitraumCode(12, false), "12", "December is 12");
+        CheckText(UstvaZeitraumCode(1, true), "41", "Q1 is 41");
+        CheckText(UstvaZeitraumCode(4, true), "44", "Q4 is 44");
+        Check(UstvaZeitraumCode(13, false).empty(), "there is no month 13");
+        Check(UstvaZeitraumCode(5, true).empty(), "and no fifth quarter");
+
+        Date von, bis;
+        Check(UstvaZeitraumGrenzen(2026, "06", von, bis) &&
+              von == Date(2026, 6, 1) && bis == Date(2026, 6, 30),
+              "June runs to the 30th");
+        Check(UstvaZeitraumGrenzen(2026, "02", von, bis) && bis == Date(2026, 2, 28),
+              "February 2026 to the 28th");
+        Check(UstvaZeitraumGrenzen(2028, "02", von, bis) && bis == Date(2028, 2, 29),
+              "and a leap February to the 29th");
+        Check(UstvaZeitraumGrenzen(2026, "41", von, bis) &&
+              von == Date(2026, 1, 1) && bis == Date(2026, 3, 31),
+              "Q1 is January to March");
+        Check(UstvaZeitraumGrenzen(2026, "44", von, bis) &&
+              von == Date(2026, 10, 1) && bis == Date(2026, 12, 31),
+              "and Q4 October to December");
+        Check(!UstvaZeitraumGrenzen(2026, "99", von, bis), "99 is not a period");
+    }
+
+    // --- the ordinary month ---
+    UstvaMapping mapping;
+    {
+        std::string fehler;
+        const std::string pfad = SchreibeKennzahlen(
+            "81;bemessung;190;ja;Umsaetze 19 %\n"
+            "86;bemessung;70;ja;Umsaetze 7 %\n"
+            "41;frei;0;ja;Innergemeinschaftliche Lieferungen\n"
+            "66;vorsteuer;0;ja;Vorsteuer\n"
+            "89;bemessung;190;nein;Innergemeinschaftliche Erwerbe\n"
+            "83;berechnet;0;ja;Zahllast\n");
+        Check(mapping.Laden(pfad, fehler), "the test mapping loads");
+        std::remove(pfad.c_str());
+    }
+    std::vector<Steuerschluessel> keys;
+    keys.push_back(BaueKey("USt19", 190, false, "81"));
+    keys.push_back(BaueKey("USt7",   70, false, "86"));
+    keys.push_back(BaueKey("VSt19", 190, true,  "", "66"));
+    keys.push_back(BaueKey("IGL",     0, false, "41"));
+    keys.push_back(BaueKey("IGE19", 190, false, "89"));     // mapped, NOT verified
+    keys.push_back(BaueKey("RC13b", 190, false, ""));       // no Kennzahl at all
+
+    Date von, bis;
+    UstvaZeitraumGrenzen(2026, "06", von, bis);
+
+    {
+        std::vector<Buchung> journal;
+        // 1.000,00 at 19 % and 500,00 at 7 %, both sales.
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 15), "USt7", 50000, 70,
+                                        SollHaben::Soll, 2));
+        // A purchase invoice: input tax. The person account is credited.
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 20), "VSt19", 20000, 190,
+                                        SollHaben::Haben, 3));
+        // A payment: no tax key, and therefore not in the return at all.
+        Buchung zahlung;
+        zahlung.id = 4; zahlung.mandantId = 1;
+        zahlung.belegdatum = Date(2026, 6, 25);
+        zahlung.umsatz = Money::FromMinor(119000, "EUR");
+        zahlung.sollHaben = SollHaben::Soll;
+        zahlung.konto = "1200"; zahlung.gegenkonto = "10000";
+        journal.push_back(zahlung);
+        // A posting outside the period must not be counted.
+        journal.push_back(UmsatzBuchung(Date(2026, 7, 1), "USt19", 999900, 190,
+                                        SollHaben::Soll, 5));
+
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(b.ok, "a month computes");
+        Check(b.Vollstaendig(), "and is complete - every key has a verified Kennzahl");
+        CheckInt(b.Betrag("81").Minor(), 100000, "Kz 81 carries the 19 % net base");
+        CheckInt(b.Betrag("86").Minor(), 50000, "Kz 86 the 7 % base");
+        CheckInt(b.Betrag("66").Minor(), 3800,
+                 "Kz 66 the input tax, 19 % of 200,00");
+
+        // 190,00 + 35,00 output tax, less 38,00 input tax.
+        CheckInt(b.summeSteuer.Minor(), 22500, "output tax is 190,00 + 35,00");
+        CheckInt(b.summeVorsteuer.Minor(), 3800, "input tax is 38,00");
+        CheckInt(b.zahllast.Minor(), 18700, "so Kz 83 is 187,00 to pay");
+        CheckInt(b.Betrag("83").Minor(), 18700, "and Kz 83 says the same");
+
+        // Traceability: the figure names the postings it came from, because
+        // the question arrives months later.
+        const auto kz81 = b.kennzahlen.find("81");
+        Check(kz81 != b.kennzahlen.end() && kz81->second.buchungIds.size() == 1 &&
+              kz81->second.buchungIds[0] == 1,
+              "and each Kennzahl names the journal rows behind it");
+
+        // The payment is reported as untouched rather than silently ignored.
+        bool nenntOhneSchluessel = false;
+        for (const std::string& w : b.warnungen)
+            if (w.find("keinen Steuerschlüssel") != std::string::npos)
+                nenntOhneSchluessel = true;
+        Check(nenntOhneSchluessel,
+              "postings with no tax key are counted and explained, not just dropped");
+
+        // Same inputs, same figures - a return has to be reproducible when it
+        // is questioned a year later.
+        const UstvaBerechnung wieder = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                     keys, mapping);
+        CheckInt(wieder.zahllast.Minor(), b.zahllast.Minor(),
+                 "computing the same period twice gives the same figures - no "
+                 "clock, no locale, no database in the calculation");
+    }
+
+    // --- a Storno subtracts ---
+    // The one that silently doubles a month if it is wrong: a reversal booked
+    // on the other side must reduce the turnover, not add to it.
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 12), "USt19", 100000, 190,
+                                        SollHaben::Haben, 2));   // the Storno
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        CheckInt(b.Betrag("81").Minor(), 0,
+                 "an invoice and its Storno cancel to nothing - a reversal that "
+                 "added instead would declare the turnover twice");
+        CheckInt(b.zahllast.Minor(), 0, "and nothing is owed");
+
+        // An input-tax reversal runs the other way round, because a purchase
+        // invoice posts on the opposite side to begin with.
+        std::vector<Buchung> einkauf;
+        einkauf.push_back(UmsatzBuchung(Date(2026, 6, 10), "VSt19", 100000, 190,
+                                        SollHaben::Haben, 1));
+        einkauf.push_back(UmsatzBuchung(Date(2026, 6, 12), "VSt19", 100000, 190,
+                                        SollHaben::Soll, 2));
+        const UstvaBerechnung e = BerechneUstva(1, 2026, "06", von, bis, einkauf,
+                                                keys, mapping);
+        CheckInt(e.Betrag("66").Minor(), 0,
+                 "and a reversed purchase invoice cancels its input tax, which "
+                 "is the opposite side from a sale");
+    }
+
+    // --- zero-rated turnover is declared but owes nothing ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "IGL", 250000, 0,
+                                        SollHaben::Soll, 1));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        CheckInt(b.Betrag("41").Minor(), 250000,
+                 "an intra-community supply is declared in Kz 41");
+        CheckInt(b.zahllast.Minor(), 0,
+                 "and owes nothing - it is turnover the form wants to see, not tax");
+    }
+
+    // --- THE SAFETY PROPERTY: an amount with nowhere to go stops the return ---
+    {
+        // RC13b has no Kennzahl at all in data/Steuerschluessel.csv.
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 11), "RC13b", 400000, 190,
+                                        SollHaben::Soll, 2));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(b.ok, "the computation still runs");
+        Check(!b.Vollstaendig(),
+              "but the return is NOT complete - 4.000,00 of turnover has no "
+              "Kennzahl, and a form leaving it out declares too little");
+        CheckInt(static_cast<int64_t>(b.luecken.size()), 1, "one key is unmapped");
+        if (!b.luecken.empty()) {
+            CheckText(b.luecken[0].steuerschluessel, "RC13b", "and it is named");
+            CheckInt(b.luecken[0].netto.Minor(), 400000,
+                     "with the amount that would have gone missing");
+        }
+
+        ElsterKopf kopf;
+        kopf.steuernummer = "1121081508150";
+        kopf.finanzamtNummer = "1121";
+        kopf.name = "Beispiel GmbH";
+        kopf.erstellt = Date(2026, 7, 10);
+        const ElsterErgebnis r = SchreibeUstvaXml(b, kopf, ".");
+        Check(!r.ok,
+              "and writing the XML is REFUSED - the file would look perfectly "
+              "valid while under-declaring, which is the worst possible outcome");
+        Check(r.fehler.find("RC13b") != std::string::npos,
+              "the refusal names the key that is missing");
+    }
+
+    // An unverified Kennzahl blocks just as hard as a missing one. A guessed
+    // Kennzahl produces a wrong return, and wrong is not better than absent.
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "IGE19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(!b.Vollstaendig(),
+              "a Kennzahl that exists but is not verified also stops the return");
+        if (!b.luecken.empty())
+            Check(b.luecken[0].grund.find("geprüft") != std::string::npos,
+                  "and the reason says it has not been checked against the form");
+        CheckInt(b.Betrag("89").Minor(), 0,
+                 "nothing was declared on the unverified Kennzahl");
+    }
+
+    // --- the books and the form must agree ---
+    {
+        // A posting whose booked tax does not match the rate its Kennzahl
+        // carries: 19 % declared, 7 % actually booked.
+        Buchung falsch = UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                       SollHaben::Soll, 1);
+        falsch.steuer = Money::FromMinor(7000, "EUR");     // 7 % where 19 % is due
+        std::vector<Buchung> journal{ falsch };
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(!b.abweichungen.empty(),
+              "tax booked at a different rate from the Kennzahl is reported - "
+              "the return and the books disagreeing is exactly what must not be "
+              "found by the Finanzamt first");
+        if (!b.abweichungen.empty())
+            Check(b.abweichungen[0].find("81") != std::string::npos,
+                  "naming the Kennzahl concerned");
+
+        // Ordinary rounding must NOT trip it, or the warning becomes noise and
+        // gets ignored on the day it matters.
+        Buchung gerundet = UmsatzBuchung(Date(2026, 6, 10), "USt19", 3333, 190,
+                                         SollHaben::Soll, 1);
+        std::vector<Buchung> klein{ gerundet };
+        const UstvaBerechnung r = BerechneUstva(1, 2026, "06", von, bis, klein,
+                                                keys, mapping);
+        Check(r.abweichungen.empty(),
+              "while a cent of rounding does not - a warning that cries wolf is "
+              "worse than none");
+    }
+
+    // --- the ELSTER file ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 123456, 190,
+                                        SollHaben::Soll, 1));
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 20), "VSt19", 20000, 190,
+                                        SollHaben::Haben, 2));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(b.Vollstaendig(), "a clean month is complete");
+
+        ElsterKopf kopf;
+        kopf.steuernummer    = "1121081508150";
+        kopf.finanzamtNummer = "1121";
+        kopf.name            = "Beispiel GmbH & Söhne";
+        kopf.strasse         = "Hauptstraße 1";
+        kopf.plz             = "80331";
+        kopf.ort             = "München";
+        kopf.produktVersion  = "0.8.0";
+        kopf.erstellt        = Date(2026, 7, 10);
+
+        const ElsterErgebnis r = SchreibeUstvaXml(b, kopf, ".");
+        Check(r.ok, "the ELSTER file is written");
+        Check(!r.xmlHash.empty(),
+              "and hashed - what was filed has to stay provable afterwards");
+
+        std::string inhalt;
+        {
+            std::FILE* f = std::fopen(r.datei.c_str(), "rb");
+            Check(f != nullptr, "the file exists");
+            if (f) {
+                char puffer[8192]; size_t n = 0;
+                while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
+                    inhalt.append(puffer, n);
+                std::fclose(f);
+            }
+        }
+        Check(inhalt.find("<DatenArt>UStVA</DatenArt>") != std::string::npos,
+              "it declares itself a UStVA");
+        Check(inhalt.find("<Jahr>2026</Jahr>") != std::string::npos, "for 2026");
+        Check(inhalt.find("<Zeitraum>06</Zeitraum>") != std::string::npos, "for June");
+        Check(inhalt.find("<Steuernummer>1121081508150</Steuernummer>") != std::string::npos,
+              "with the Steuernummer");
+
+        // **A Bemessungsgrundlage goes in whole euros, truncated.** 1.234,56
+        // must arrive as 1234, not 1235: rounding up declares turnover that did
+        // not happen.
+        Check(inhalt.find("<Kz81>1234</Kz81>") != std::string::npos,
+              "the base is whole euros, truncated - rounding up would declare "
+              "turnover that did not happen");
+        // A tax amount keeps its cents, with a dot.
+        Check(inhalt.find("<Kz66>38.00</Kz66>") != std::string::npos,
+              "a tax amount keeps its cents and uses a dot, not a German comma");
+
+        // **A test submission must say so.** Without the Testmerker it is filed
+        // for real; neither mistake is visible afterwards.
+        Check(inhalt.find("<Testmerker>700000004</Testmerker>") != std::string::npos,
+              "a return is a test submission unless it is explicitly not - the "
+              "default must never be the one that files for real");
+        bool sagtTest = false;
+        for (const std::string& w : r.warnungen)
+            if (w.find("Test") != std::string::npos) sagtTest = true;
+        Check(sagtTest, "and that is said out loud, not only written in the file");
+
+        // The file admits what has not been checked, inside itself.
+        Check(inhalt.find("NICHT gegen das amtliche Schema geprueft") != std::string::npos,
+              "the file states that its ELSTER envelope is unverified - the "
+              "schemas ship inside the ERiC SDK, which is not in this repository");
+
+        kopf.echtfall = true;
+        const ElsterErgebnis echt = SchreibeUstvaXml(b, kopf, ".");
+        Check(echt.ok, "a real submission writes too");
+        std::string echtInhalt;
+        {
+            std::FILE* f = std::fopen(echt.datei.c_str(), "rb");
+            if (f) {
+                char puffer[8192]; size_t n = 0;
+                while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
+                    echtInhalt.append(puffer, n);
+                std::fclose(f);
+            }
+        }
+        Check(echtInhalt.find("<Testmerker>") == std::string::npos,
+              "and then carries no Testmerker");
+        Check(echt.xmlHash != r.xmlHash,
+              "the two differ, so their hashes differ - which is what makes the "
+              "stored hash evidence of a particular file");
+
+        std::remove(r.datei.c_str());
+    }
+
+    // --- what ELSTER refuses to accept, refused here first ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        ElsterKopf ohneNummer;
+        ohneNummer.finanzamtNummer = "1121";
+        ohneNummer.erstellt = Date(2026, 7, 10);
+        Check(!SchreibeUstvaXml(b, ohneNummer, ".").ok,
+              "without a Steuernummer the file is refused here rather than by "
+              "ELSTER after the upload");
+        ElsterKopf ohneAmt;
+        ohneAmt.steuernummer = "1121081508150";
+        ohneAmt.erstellt = Date(2026, 7, 10);
+        Check(!SchreibeUstvaXml(b, ohneAmt, ".").ok,
+              "and without a Finanzamt there is nowhere to send it");
+    }
+
+    // --- the transports ---
+    {
+        std::unique_ptr<IElsterTransport> datei = ElsterDateiTransport();
+        std::string warum;
+        Check(datei->Verfuegbar(warum),
+              "the file transport always works - it needs nothing installed");
+
+        std::unique_ptr<IElsterTransport> eric = ElsterEricTransport("");
+        Check(!eric->Verfuegbar(warum),
+              "the ERiC transport reports unavailable without a directory");
+        Check(!warum.empty(), "and says why rather than failing silently");
+        std::unique_ptr<IElsterTransport> eric2 = ElsterEricTransport("/gibt/es/nicht");
+        Check(!eric2->Verfuegbar(warum), "and unavailable when ERiC is not there");
+        Check(warum.find("ERiC") != std::string::npos,
+              "naming what has to be installed separately - it may not ship here");
+    }
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -3694,6 +4138,7 @@ int main() {
     TestBankMt940UndCsv();
     TestBankZuordnung();
     TestBankImportInDenBestand();
+    TestUstva();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

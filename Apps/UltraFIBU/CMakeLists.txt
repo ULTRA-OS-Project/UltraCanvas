@@ -23,6 +23,7 @@ set(ULTRAFIBU_ENGINE_SOURCES
     engine/UltraFIBUBuchung.cpp
     engine/UltraFIBUDatev.cpp
     engine/UltraFIBUBank.cpp
+    engine/UltraFIBUUstva.cpp
     engine/UltraFIBUStore.cpp
 )
 

@@ -377,6 +377,33 @@ const char* const kSchemaV4 =
     "  von TEXT, bis TEXT);"
     "CREATE INDEX ix_bank_import ON bank_import(mandant_id, zeitpunkt);";
 
+// Schema 5 is the submission log: every return this program produced, the hash
+// of exactly what was written, and the Transferticket that proves it arrived.
+//
+// `kennzahlen_json` holds the figures AS FILED rather than a reference to the
+// journal. Recomputing a return two years later does not prove what was sent -
+// the journal may legitimately have moved on - and "what was sent" is the only
+// question that gets asked when a figure is disputed.
+const char* const kSchemaV5 =
+    "CREATE TABLE meldung("
+    "  id BIGINT PRIMARY KEY,"
+    "  mandant_id BIGINT NOT NULL,"
+    "  art TEXT NOT NULL,"
+    "  jahr INTEGER NOT NULL,"
+    "  zeitraum TEXT NOT NULL,"
+    "  status TEXT NOT NULL,"
+    "  zahllast BIGINT DEFAULT 0,"
+    "  kennzahlen_json TEXT,"
+    "  datei TEXT,"
+    "  xml_hash TEXT,"
+    "  transferticket TEXT,"
+    "  berichtigt INTEGER DEFAULT 0,"
+    "  echtfall INTEGER DEFAULT 0,"
+    "  erzeugt_am BIGINT DEFAULT 0,"
+    "  eingereicht_am BIGINT DEFAULT 0,"
+    "  benutzer TEXT);"
+    "CREATE INDEX ix_meldung ON meldung(mandant_id, art, jahr, zeitraum);";
+
 } // namespace
 
 // ===== BELEGE UND BUCHUNGEN =====
@@ -699,7 +726,8 @@ StoreResult Store::Open(const std::string& connectionName, const std::string& da
         { 1, "UltraFIBU Stammdaten", kSchemaV1 },
         { 2, "UltraFIBU Belege und Buchungen", kSchemaV2 },
         { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 },
-        { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 }
+        { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 },
+        { 5, "UltraFIBU Steuermeldungen", kSchemaV5 }
     };
     const UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
     if (!migrated) {
@@ -3630,6 +3658,198 @@ std::vector<Store::BankZuordnung> Store::Zuordnungen(int64_t bankumsatzId) const
         liste.push_back(z);
     }
     return liste;
+}
+
+// ===== STEUERMELDUNGEN =====
+
+namespace {
+
+std::string MeldungStatusToText(Store::MeldungStatus status) {
+    switch (status) {
+        case Store::MeldungStatus::Entwurf:     return "entwurf";
+        case Store::MeldungStatus::Erzeugt:     return "erzeugt";
+        case Store::MeldungStatus::Eingereicht: return "eingereicht";
+        case Store::MeldungStatus::Bestaetigt:  return "bestaetigt";
+    }
+    return "entwurf";
+}
+
+Store::MeldungStatus MeldungStatusFromText(const std::string& text) {
+    if (text == "erzeugt")     return Store::MeldungStatus::Erzeugt;
+    if (text == "eingereicht") return Store::MeldungStatus::Eingereicht;
+    if (text == "bestaetigt")  return Store::MeldungStatus::Bestaetigt;
+    return Store::MeldungStatus::Entwurf;
+}
+
+Store::Meldung MeldungAusZeile(const UltraDbRow& row) {
+    Store::Meldung m;
+    m.id             = row["id"].AsInt64();
+    m.mandantId      = row["mandant_id"].AsInt64();
+    m.art            = row["art"].AsString();
+    m.jahr           = row["jahr"].AsInt();
+    m.zeitraum       = row["zeitraum"].AsString();
+    m.status         = MeldungStatusFromText(row["status"].AsString());
+    m.zahllast       = MoneyFrom(row["zahllast"], "EUR");
+    m.kennzahlenJson = row["kennzahlen_json"].AsString();
+    m.datei          = row["datei"].AsString();
+    m.xmlHash        = row["xml_hash"].AsString();
+    m.transferticket = row["transferticket"].AsString();
+    m.berichtigt     = row["berichtigt"].AsInt() != 0;
+    m.echtfall       = row["echtfall"].AsInt() != 0;
+    m.erzeugtAm      = row["erzeugt_am"].AsInt64();
+    m.eingereichtAm  = row["eingereicht_am"].AsInt64();
+    m.benutzer       = row["benutzer"].AsString();
+    return m;
+}
+
+const char* const kMeldungSpalten =
+    "id, mandant_id, art, jahr, zeitraum, status, zahllast, kennzahlen_json,"
+    " datei, xml_hash, transferticket, berichtigt, echtfall, erzeugt_am,"
+    " eingereicht_am, benutzer";
+
+} // namespace
+
+UstvaBerechnung Store::BerechneUstvaFuer(int64_t mandantId, int jahr,
+                                         const std::string& zeitraum,
+                                         const UstvaMapping& mapping) const {
+    UstvaBerechnung leer;
+    Date von, bis;
+    if (!UstvaZeitraumGrenzen(jahr, zeitraum, von, bis)) {
+        leer.fehler = "\"" + zeitraum + "\" ist kein Voranmeldungszeitraum "
+                      "(01-12 für einen Monat, 41-44 für ein Quartal).";
+        return leer;
+    }
+    return BerechneUstva(mandantId, jahr, zeitraum, von, bis,
+                         Journal(mandantId, von, bis),
+                         SteuerschluesselListe(mandantId), mapping);
+}
+
+StoreResult Store::MeldungEintragen(Meldung& meldung, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::SteuerMelden))
+        return StoreResult::Fail("Diese Rolle darf keine Steuermeldungen abgeben.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+    if (meldung.art.empty() || meldung.zeitraum.empty() || meldung.jahr == 0)
+        return StoreResult::Fail("Der Meldung fehlen Art, Jahr oder Zeitraum.");
+
+    // **A filed return is never replaced.** What was sent has to stay provable,
+    // and the mechanism for changing it is a berichtigte Meldung - the same
+    // rule as Storno on a posting.
+    Meldung vorhanden;
+    if (MeldungFuerZeitraum(meldung.mandantId, meldung.art, meldung.jahr,
+                            meldung.zeitraum, vorhanden) &&
+        vorhanden.id != meldung.id) {
+        if (!vorhanden.transferticket.empty() && !meldung.berichtigt) {
+            return StoreResult::Fail(
+                "Für " + meldung.art + " " + Number(meldung.jahr) + "/" +
+                meldung.zeitraum + " wurde bereits eine Meldung eingereicht "
+                "(Transferticket " + vorhanden.transferticket + "). Eine Änderung "
+                "ist eine berichtigte Meldung, keine zweite Erstmeldung.");
+        }
+    }
+
+    const int64_t jetzt = NowSeconds();
+    if (meldung.id == 0) {
+        const StoreResult id = NextSequenceValue("meldung", meldung.id);
+        if (!id) return id;
+        meldung.erzeugtAm = jetzt;
+        meldung.benutzer  = akteur.anmeldename;
+        const StoreResult r = Exec(
+            "INSERT INTO meldung(id, mandant_id, art, jahr, zeitraum, status,"
+            " zahllast, kennzahlen_json, datei, xml_hash, transferticket,"
+            " berichtigt, echtfall, erzeugt_am, eingereicht_am, benutzer)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            { meldung.id, meldung.mandantId, meldung.art, meldung.jahr,
+              meldung.zeitraum, MeldungStatusToText(meldung.status),
+              meldung.zahllast.Minor(), meldung.kennzahlenJson, meldung.datei,
+              meldung.xmlHash, meldung.transferticket, meldung.berichtigt ? 1 : 0,
+              meldung.echtfall ? 1 : 0, meldung.erzeugtAm, meldung.eingereichtAm,
+              meldung.benutzer },
+            "Meldung eintragen");
+        if (!r) return r;
+        WriteAudit(akteur, "meldung", meldung.id, "insert",
+                   meldung.art + " " + Number(meldung.jahr) + "/" + meldung.zeitraum +
+                   ", " + meldung.zahllast.ToString());
+        return StoreResult::Ok();
+    }
+
+    Meldung alt;
+    if (MeldungById(meldung.id, alt) && !alt.transferticket.empty()) {
+        return StoreResult::Fail(
+            "Diese Meldung wurde bereits eingereicht (Transferticket " +
+            alt.transferticket + ") und kann nicht mehr geändert werden.");
+    }
+    const StoreResult r = Exec(
+        "UPDATE meldung SET status = ?, zahllast = ?, kennzahlen_json = ?,"
+        " datei = ?, xml_hash = ?, berichtigt = ?, echtfall = ? WHERE id = ?",
+        { MeldungStatusToText(meldung.status), meldung.zahllast.Minor(),
+          meldung.kennzahlenJson, meldung.datei, meldung.xmlHash,
+          meldung.berichtigt ? 1 : 0, meldung.echtfall ? 1 : 0, meldung.id },
+        "Meldung speichern");
+    if (!r) return r;
+    WriteAudit(akteur, "meldung", meldung.id, "update", meldung.art);
+    return StoreResult::Ok();
+}
+
+StoreResult Store::MeldungQuittung(int64_t meldungId, const std::string& transferticket,
+                                   const Date& eingereichtAm, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::SteuerMelden))
+        return StoreResult::Fail("Diese Rolle darf keine Steuermeldungen abgeben.");
+    if (transferticket.empty())
+        return StoreResult::Fail("Ohne Transferticket ist nicht belegt, dass die "
+                                 "Meldung angekommen ist.");
+    Meldung m;
+    if (!MeldungById(meldungId, m))
+        return StoreResult::Fail("Diese Meldung gibt es nicht.");
+    if (!m.transferticket.empty())
+        return StoreResult::Fail(
+            "Für diese Meldung ist bereits das Transferticket " + m.transferticket +
+            " eingetragen.");
+
+    const StoreResult r = Exec(
+        "UPDATE meldung SET transferticket = ?, status = ?, eingereicht_am = ?"
+        " WHERE id = ?",
+        { transferticket, MeldungStatusToText(MeldungStatus::Eingereicht),
+          eingereichtAm.Valid() ? eingereichtAm.ToEpochDay() * 86400 : NowSeconds(),
+          meldungId },
+        "Transferticket eintragen");
+    if (!r) return r;
+    WriteAudit(akteur, "meldung", meldungId, "eingereicht", transferticket);
+    return StoreResult::Ok();
+}
+
+std::vector<Store::Meldung> Store::Meldungen(int64_t mandantId,
+                                             const std::string& art) const {
+    std::vector<Meldung> liste;
+    std::string sql = std::string("SELECT ") + kMeldungSpalten +
+                      " FROM meldung WHERE mandant_id = ?";
+    UltraDbParams params{ mandantId };
+    if (!art.empty()) { sql += " AND art = ?"; params.push_back(art); }
+    sql += " ORDER BY jahr DESC, zeitraum DESC, id DESC";
+    UltraDbResultSet rs;
+    if (!Query(sql, params, rs)) return liste;
+    for (const UltraDbRow& row : rs) liste.push_back(MeldungAusZeile(row));
+    return liste;
+}
+
+bool Store::MeldungById(int64_t id, Meldung& out) const {
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kMeldungSpalten +
+                  " FROM meldung WHERE id = ?", { id }, row))
+        return false;
+    out = MeldungAusZeile(row);
+    return true;
+}
+
+bool Store::MeldungFuerZeitraum(int64_t mandantId, const std::string& art, int jahr,
+                                const std::string& zeitraum, Meldung& out) const {
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kMeldungSpalten +
+                  " FROM meldung WHERE mandant_id = ? AND art = ? AND jahr = ?"
+                  " AND zeitraum = ? ORDER BY id DESC LIMIT 1",
+                  { mandantId, art, jahr, zeitraum }, row))
+        return false;
+    out = MeldungAusZeile(row);
+    return true;
 }
 
 // ===== DATEV-IMPORT =====
