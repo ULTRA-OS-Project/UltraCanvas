@@ -77,6 +77,7 @@ private:
         std::shared_ptr<UltraCanvas::UltraCanvasTextInput> menge;
         std::shared_ptr<UltraCanvas::UltraCanvasTextInput> einheit;
         std::shared_ptr<UltraCanvas::UltraCanvasTextInput> preis;
+        std::shared_ptr<UltraCanvas::UltraCanvasTextInput> rabatt;
         std::shared_ptr<UltraCanvas::UltraCanvasTextInput> konto;
         std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  steuer;
         // The sentence explaining the selected key. See the header comment:
@@ -100,6 +101,12 @@ private:
     bool BelegAusFormular(Beleg& out, std::string& fehler) const;
     void Speichern();
     void FormularLeeren();
+    // Everything on the form that depends on which direction the document
+    // runs in. Called from Bauen() and again from Neu(), because the form is
+    // built once and reused for both directions - and when it was only applied
+    // at build time, an Eingangsrechnung came up labelled "Kunde", defaulted to
+    // net prices, and had no field for the tax the supplier's document states.
+    void RichtungAnwenden();
 
     Store&   store_;
     Mandant  mandant_;
@@ -114,8 +121,21 @@ private:
 
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> wurzel_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     titel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     partnerLabel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     externLabel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     steuerLautLabel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel>     steuerLautHinweis_;
     std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  partnerWahl_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>     partnerInfo_;
+    // Brutto or Netto. The switch that decides whether "6,55" means the amount
+    // on the receipt or that amount plus tax.
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  preisart_;
+    // Which § 14 Abs. 4 Nr. 6 fact the dates below state.
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown>  leistungsart_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> leistungBis_;
+    // The tax as the supplier's document states it. Left empty the program
+    // computes; filled, the document's own figure wins.
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> steuerLaut_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> datum_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> leistungsdatum_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> externeNummer_;

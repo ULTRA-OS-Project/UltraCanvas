@@ -150,77 +150,105 @@ bool Beleg::Summieren() {
         return true;
     }
 
-    // 1. Each position's own net. One rounding per line, and it is the figure
-    //    the printed invoice shows, so it must be decided before anything is
+    // 1. Each line's own amount, rounded once. Whether that amount is net or
+    //    gross is what `preiseSindBrutto` says; either way it is the figure the
+    //    user typed times the quantity, less the line discount, and it is what
+    //    the printed document shows - so it is decided before anything is
     //    summed.
-    for (BelegPosition& pos : positionen) {
-        pos.netto = pos.NettoBetrag();
-        if (!pos.netto.Valid()) return false;
+    std::vector<Money> zeilenbetrag(positionen.size());
+    for (size_t i = 0; i < positionen.size(); ++i) {
+        zeilenbetrag[i] = positionen[i].NettoBetrag();
+        if (!zeilenbetrag[i].Valid()) return false;
     }
 
-    // 2. Tax per rate, from the summed net of that rate - not per position.
-    //    Grouping by the key rather than by the rate keeps two keys that happen
-    //    to share 19 % (domestic revenue and a reverse-charge key, say) apart,
-    //    because they post to different accounts and belong in different UStVA
-    //    boxes.
+    // 2. Grouped by key rather than by rate, so two keys that happen to share
+    //    19 % - domestic revenue and a reverse-charge key, say - stay apart:
+    //    they post to different accounts and different UStVA boxes.
     const std::vector<std::string> keys = SteuerschluesselDesBelegs(*this);
+
+    // A stated tax belongs to one rate. Splitting one figure across several
+    // would be a guess, and a guessed split lands in the UStVA.
+    if (steuerVorgegeben && keys.size() != 1) return false;
 
     Money summeNetto  = Money::Zero(waehrung);
     Money summeSteuer = Money::Zero(waehrung);
 
     for (const std::string& key : keys) {
-        // The positions under this key, their summed net, and the rate. The
-        // rate is taken from the first position of the group; a mismatch
-        // within one key is a data error, and it is caught rather than
-        // averaged.
         std::vector<size_t> indices;
-        Money gruppeNetto = Money::Zero(waehrung);
+        Money gruppeBetrag = Money::Zero(waehrung);
         int   satz = -1;
 
         for (size_t i = 0; i < positionen.size(); ++i) {
             const BelegPosition& pos = positionen[i];
             if (pos.steuerschluessel != key) continue;
+            // The rate comes from the first line of the group; a mismatch
+            // inside one key is a data error and is caught, not averaged.
             if (satz < 0) satz = pos.satzPromille;
             else if (satz != pos.satzPromille) return false;
             indices.push_back(i);
-            gruppeNetto = gruppeNetto + pos.netto;
-            if (!gruppeNetto.Valid()) return false;
+            gruppeBetrag = gruppeBetrag + zeilenbetrag[i];
+            if (!gruppeBetrag.Valid()) return false;
         }
         if (satz < 0) return false;
 
-        const Money gruppeSteuer = gruppeNetto.TaxOnNet(satz);
-        if (!gruppeSteuer.Valid()) return false;
+        // 3. The group's three figures. In gross mode the typed total is the
+        //    gross and the net is derived from it, which is the only way the
+        //    document can still add up to the number on the receipt.
+        Money gruppeNetto, gruppeSteuer;
+        if (preiseSindBrutto) {
+            const Money gruppeBrutto = gruppeBetrag;
+            gruppeSteuer = steuerVorgegeben ? vorgegebeneSteuer
+                                            : gruppeBrutto.TaxInGross(satz);
+            if (!gruppeSteuer.Valid()) return false;
+            gruppeNetto = gruppeBrutto - gruppeSteuer;
+        } else {
+            gruppeNetto  = gruppeBetrag;
+            gruppeSteuer = steuerVorgegeben ? vorgegebeneSteuer
+                                            : gruppeNetto.TaxOnNet(satz);
+        }
+        if (!gruppeNetto.Valid() || !gruppeSteuer.Valid()) return false;
 
-        // 3. Hand that one tax figure back to the positions in proportion to
-        //    their net, by largest remainder. The shares always add up to
-        //    gruppeSteuer, so the invoice's line tax column sums to its tax
-        //    total - which is the property a recipient's system checks.
+        // 4. Hand the group's derived figure back to its lines by largest
+        //    remainder, so the lines add up to the group exactly. Which figure
+        //    is derived depends on the mode: in net mode the tax is split, in
+        //    gross mode the net is, and the line tax is then the remainder of
+        //    the line's own gross. That keeps the typed gross of every line
+        //    untouched, which is the whole point of typing gross.
         //
-        //    Weights must be non-negative: a credit note has negative lines, so
-        //    the split runs on magnitudes and the sign is restored afterwards.
+        //    Weights must be non-negative: a credit note has negative lines -
+        //    and so does a discount line on a supplier's invoice - so the split
+        //    runs on magnitudes and the sign is restored afterwards.
+        const Money zuVerteilen = preiseSindBrutto ? gruppeNetto : gruppeSteuer;
         std::vector<int64_t> weights;
         weights.reserve(indices.size());
         for (size_t i : indices) {
-            const int64_t minor = positionen[i].netto.Minor();
+            const int64_t minor = zeilenbetrag[i].Minor();
             weights.push_back(minor < 0 ? -minor : minor);
         }
 
         const std::vector<Money> anteile =
-            gruppeSteuer.IsNegative()
-                ? (Money::Zero(waehrung) - gruppeSteuer).SplitProportionally(weights)
-                : gruppeSteuer.SplitProportionally(weights);
+            zuVerteilen.IsNegative()
+                ? (Money::Zero(waehrung) - zuVerteilen).SplitProportionally(weights)
+                : zuVerteilen.SplitProportionally(weights);
         if (anteile.size() != indices.size()) return false;
 
         for (size_t n = 0; n < indices.size(); ++n) {
             BelegPosition& pos = positionen[indices[n]];
             Money anteil = anteile[n];
             if (!anteil.Valid()) return false;
-            // Restore the sign the group had, position by position: a negative
-            // group means every share is negative.
-            if (gruppeSteuer.IsNegative()) anteil = Money::Zero(waehrung) - anteil;
-            pos.steuer = anteil;
-            pos.brutto = pos.netto + pos.steuer;
-            if (!pos.brutto.Valid()) return false;
+            if (zuVerteilen.IsNegative()) anteil = Money::Zero(waehrung) - anteil;
+
+            if (preiseSindBrutto) {
+                pos.brutto = zeilenbetrag[indices[n]];
+                pos.netto  = anteil;
+                pos.steuer = pos.brutto - pos.netto;
+            } else {
+                pos.netto  = zeilenbetrag[indices[n]];
+                pos.steuer = anteil;
+                pos.brutto = pos.netto + pos.steuer;
+            }
+            if (!pos.brutto.Valid() || !pos.netto.Valid() || !pos.steuer.Valid())
+                return false;
         }
 
         summeNetto  = summeNetto + gruppeNetto;

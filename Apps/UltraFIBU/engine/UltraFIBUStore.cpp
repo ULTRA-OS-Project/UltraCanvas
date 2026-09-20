@@ -427,6 +427,24 @@ const char* const kSchemaV6 =
     "  benutzer TEXT);"
     "CREATE UNIQUE INDEX ix_eu_steuersatz ON eu_steuersatz(land, art, gueltig_von);";
 
+// Three facts about a document that were previously derived and should not
+// have been.
+//
+//  - `preise_brutto`: whether the prices on it were entered gross. A receipt
+//    states gross, and a draft reopened next week has to show the number on
+//    the receipt rather than a converted one.
+//  - `steuer_vorgegeben` / `vorgegebene_steuer`: the tax the document itself
+//    states. On an incoming document that is a fact, not a computation - see
+//    the comment on Beleg::vorgegebeneSteuer for the receipt that proved it.
+//  - `leistungsart`: which of the § 14 Abs. 4 Nr. 6 facts the dates state.
+//    "Geliefert am" and "geleistet im Zeitraum" are different statements, and
+//    the column existed for neither.
+const char* const kSchemaV7 =
+    "ALTER TABLE beleg ADD COLUMN preise_brutto INTEGER DEFAULT 0;"
+    "ALTER TABLE beleg ADD COLUMN steuer_vorgegeben INTEGER DEFAULT 0;"
+    "ALTER TABLE beleg ADD COLUMN vorgegebene_steuer BIGINT DEFAULT 0;"
+    "ALTER TABLE beleg ADD COLUMN leistungsart TEXT;";
+
 } // namespace
 
 // ===== BELEGE UND BUCHUNGEN =====
@@ -492,6 +510,13 @@ Beleg BelegFromRow(const UltraDbRow& row) {
     beleg.erfasstAm       = row["erfasst_am"].AsInt64();
     beleg.geaendertAm     = row["geaendert_am"].AsInt64();
     beleg.version         = row["version"].AsInt64();
+    beleg.preiseSindBrutto  = row["preise_brutto"].AsInt() != 0;
+    beleg.steuerVorgegeben  = row["steuer_vorgegeben"].AsInt() != 0;
+    beleg.vorgegebeneSteuer = MoneyFrom(row["vorgegebene_steuer"], beleg.waehrung);
+    // A row written before schema v7 has no value here. Leistungsdatum is the
+    // safe reading: it is what the old single date field meant.
+    if (!LeistungszeitpunktFromText(row["leistungsart"].AsString(), beleg.leistungsart))
+        beleg.leistungsart = Leistungszeitpunkt::Leistungsdatum;
     return beleg;
 }
 
@@ -501,7 +526,7 @@ const char* const kBelegSpalten =
     " partner_name, waehrung, netto, steuer, brutto, bezahlt, status,"
     " buchungstext, notiz, datei_pfad, datei_hash, storno_von, storniert_durch,"
     " festgeschrieben, erfasst_von, erfasst_von_name, erfasst_am, geaendert_am,"
-    " version";
+    " version, preise_brutto, steuer_vorgegeben, vorgegebene_steuer, leistungsart";
 
 BelegPosition PositionFromRow(const UltraDbRow& row) {
     BelegPosition pos;
@@ -734,7 +759,8 @@ static std::vector<UltraDbMigration> MigrationSchritte() {
         { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 },
         { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 },
         { 5, "UltraFIBU Steuermeldungen", kSchemaV5 },
-        { 6, "UltraFIBU EU-Steuersaetze", kSchemaV6 }
+        { 6, "UltraFIBU EU-Steuersaetze", kSchemaV6 },
+        { 7, "UltraFIBU Brutto-Erfassung und Leistungszeitpunkt", kSchemaV7 }
     };
 }
 
@@ -2149,8 +2175,10 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
             " partner_id, partner_konto, partner_name, waehrung, netto, steuer,"
             " brutto, bezahlt, status, buchungstext, notiz, datei_pfad, datei_hash,"
             " storno_von, storniert_durch, festgeschrieben, erfasst_von,"
-            " erfasst_von_name, erfasst_am, geaendert_am, version)"
-            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+            " erfasst_von_name, erfasst_am, geaendert_am, version, preise_brutto,"
+            " steuer_vorgegeben, vorgegebene_steuer, leistungsart)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,"
+            "?,?,?,?)",
             { beleg.id, beleg.mandantId, beleg.geschaeftsjahrId,
               BelegArtToText(beleg.art), beleg.nummer, beleg.externeNummer,
               beleg.datum.ToIso(), DateValue(beleg.leistungVon),
@@ -2161,7 +2189,11 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
               BelegStatusToText(beleg.status), beleg.buchungstext, beleg.notiz,
               beleg.dateiPfad, beleg.dateiHash, beleg.stornoVon, beleg.storniertDurch,
               beleg.festgeschrieben ? 1 : 0, beleg.erfasstVon, beleg.erfasstVonName,
-              beleg.erfasstAm, beleg.geaendertAm, beleg.version });
+              beleg.erfasstAm, beleg.geaendertAm, beleg.version,
+              beleg.preiseSindBrutto ? 1 : 0, beleg.steuerVorgegeben ? 1 : 0,
+              beleg.vorgegebeneSteuer.Valid() ? beleg.vorgegebeneSteuer.Minor()
+                                              : int64_t(0),
+              LeistungszeitpunktToText(beleg.leistungsart) });
         if (!inserted) { fehler = inserted.message; return abbrechen("Der Beleg konnte nicht angelegt werden"); }
     } else {
         // The optimistic-locking WHERE: if somebody else bumped the version
@@ -2173,7 +2205,8 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
             " externe_nummer = ?, datum = ?, leistung_von = ?, leistung_bis = ?,"
             " faellig_am = ?, partner_id = ?, partner_konto = ?, partner_name = ?,"
             " waehrung = ?, netto = ?, steuer = ?, brutto = ?, buchungstext = ?,"
-            " notiz = ?, geaendert_am = ?, version = ?"
+            " notiz = ?, geaendert_am = ?, version = ?, preise_brutto = ?,"
+            " steuer_vorgegeben = ?, vorgegebene_steuer = ?, leistungsart = ?"
             " WHERE id = ? AND version = ?",
             { beleg.geschaeftsjahrId, BelegArtToText(beleg.art), beleg.nummer,
               beleg.externeNummer, beleg.datum.ToIso(), DateValue(beleg.leistungVon),
@@ -2181,6 +2214,10 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
               beleg.partnerId, beleg.partnerKonto, beleg.partnerName, beleg.waehrung,
               beleg.netto.Minor(), beleg.steuer.Minor(), beleg.brutto.Minor(),
               beleg.buchungstext, beleg.notiz, beleg.geaendertAm, beleg.version,
+              beleg.preiseSindBrutto ? 1 : 0, beleg.steuerVorgegeben ? 1 : 0,
+              beleg.vorgegebeneSteuer.Valid() ? beleg.vorgegebeneSteuer.Minor()
+                                              : int64_t(0),
+              LeistungszeitpunktToText(beleg.leistungsart),
               beleg.id, vorher.version });
         if (!updated) { fehler = updated.message; return abbrechen("Der Beleg konnte nicht geändert werden"); }
 

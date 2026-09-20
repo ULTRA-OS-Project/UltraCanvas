@@ -4306,6 +4306,153 @@ static void TestBelegArchiv() {
     }
 }
 
+// ===== BRUTTO-ERFASSUNG UND DIE ANGEGEBENE STEUER =====
+
+static void TestBruttoUndAngegebeneSteuer() {
+    std::printf("Brutto-Erfassung und angegebene Steuer\n");
+
+    // The figures are from a real supplier's invoice, with its own wording
+    // dropped: four lines at 19 %, two of them negative (a discount line and a
+    // pro-rata credit), netting to 5,51 EUR. Its own totals read
+    //     Gesamt Netto 5,51   MwSt. 19% von 5,51 EUR 1,04   Gesamtbetrag 6,55
+    // and that last figure is what the bank debited.
+    auto vierZeilen = [](bool brutto) {
+        Beleg b;
+        b.art      = BelegArt::Eingangsrechnung;
+        b.datum    = Date(2026, 8, 20);
+        b.waehrung = "EUR";
+        b.preiseSindBrutto = brutto;
+        const char* betraege[] = { "-21.89", "10.95", "32.90", "-16.45" };
+        for (const char* wert : betraege) {
+            BelegPosition pos;
+            pos.bezeichnung      = wert;
+            pos.steuerschluessel = "VSt19";
+            pos.satzPromille     = 190;
+            Money preis;
+            Money::TryParse(wert, preis);
+            pos.einzelpreis = preis;
+            b.positionen.push_back(pos);
+        }
+        return b;
+    };
+
+    // --- what the engine does on its own ---
+    {
+        Beleg b = vierZeilen(false);
+        Check(b.Summieren(), "the four lines cost");
+        CheckText(b.netto.ToString(), "5,51", "the net is 5,51 EUR, as on the invoice");
+        // 5,51 x 19 % is 1,0469, which rounds to 1,05. Taxing each line and
+        // summing gives 1,04. Both are defensible roundings of the same rate;
+        // only one of them is the figure the supplier actually charged.
+        CheckText(b.steuer.ToString(), "1,05",
+                  "tax on the summed net rounds to 1,05 - which is right for an "
+                  "invoice we issue, because there we decide");
+        CheckText(b.brutto.ToString(), "6,56", "and the total is 6,56");
+    }
+
+    // --- the document says otherwise, and on an incoming document it wins ---
+    {
+        Beleg b = vierZeilen(false);
+        b.steuerVorgegeben = true;
+        Money::TryParse("1.04", b.vorgegebeneSteuer);
+        Check(b.Summieren(), "the same lines cost against the stated tax");
+        CheckText(b.netto.ToString(), "5,51", "the net is unchanged");
+        CheckText(b.steuer.ToString(), "1,04",
+                  "the tax is the one the supplier's invoice states, not the one "
+                  "we would have computed");
+        CheckText(b.brutto.ToString(), "6,55",
+                  "so the posted total is the amount that left the bank account - "
+                  "a cent of drift per receipt is a reconciliation nobody finishes, "
+                  "and an input-tax claim that disagrees with the document is the "
+                  "one an auditor stops at");
+
+        Money summeZeilen = Money::Zero("EUR");
+        for (const BelegPosition& pos : b.positionen) summeZeilen = summeZeilen + pos.steuer;
+        CheckText(summeZeilen.ToString(), "1,04",
+                  "and the line tax column still adds up to the total");
+    }
+
+    // --- a stated tax belongs to one rate ---
+    {
+        Beleg b = vierZeilen(false);
+        b.positionen[1].steuerschluessel = "VSt7";
+        b.positionen[1].satzPromille     = 70;
+        b.steuerVorgegeben = true;
+        Money::TryParse("1.04", b.vorgegebeneSteuer);
+        Check(!b.Summieren(),
+              "one stated figure across two rates is refused - apportioning it "
+              "would be a guess, and a guessed split lands in the UStVA");
+    }
+
+    // ===== gross entry =====
+
+    // A receipt states gross. Typing 6,55 into a net field overstates the
+    // expense by the tax, every time, and nothing downstream notices.
+    {
+        Beleg b;
+        b.art      = BelegArt::Eingangsrechnung;
+        b.datum    = Date(2026, 8, 20);
+        b.waehrung = "EUR";
+        b.preiseSindBrutto = true;
+        BelegPosition pos;
+        pos.bezeichnung      = "Lizenzen";
+        pos.steuerschluessel = "VSt19";
+        pos.satzPromille     = 190;
+        Money::TryParse("6.55", pos.einzelpreis);
+        b.positionen.push_back(pos);
+
+        Check(b.Summieren(), "a gross-entered receipt costs");
+        CheckText(b.brutto.ToString(), "6,55",
+                  "the gross is exactly what was typed - it is the number on the "
+                  "receipt and the number in the bank statement");
+        CheckText(b.steuer.ToString(), "1,05", "the tax contained in it is 1,05");
+        CheckText(b.netto.ToString(), "5,50", "and the net follows at 5,50");
+        CheckText(b.positionen[0].brutto.ToString(), "6,55",
+                  "the line keeps its typed gross");
+    }
+
+    // --- gross, several lines: the typed total must survive ---
+    {
+        Beleg b = vierZeilen(true);
+        Check(b.Summieren(), "four gross lines cost");
+        CheckText(b.brutto.ToString(), "5,51",
+                  "their gross is the sum of what was typed, to the cent");
+        Money summeZeilen = Money::Zero("EUR");
+        for (const BelegPosition& pos : b.positionen) summeZeilen = summeZeilen + pos.brutto;
+        CheckText(summeZeilen.ToString(), "5,51",
+                  "and no line's gross was altered to make the total work");
+        Money summeNetto = Money::Zero("EUR");
+        for (const BelegPosition& pos : b.positionen) summeNetto = summeNetto + pos.netto;
+        CheckText(summeNetto.ToString(), b.netto.ToString(),
+                  "the line nets add up to the document net");
+    }
+
+    // --- gross and a stated tax together, which is how a receipt is entered ---
+    {
+        Beleg b = vierZeilen(true);
+        b.steuerVorgegeben = true;
+        Money::TryParse("1.04", b.vorgegebeneSteuer);
+        Check(b.Summieren(), "gross lines with the stated tax cost");
+        CheckText(b.steuer.ToString(), "1,04", "the stated tax is kept");
+        CheckText(b.brutto.ToString(), "5,51", "the typed gross is kept");
+        CheckText(b.netto.ToString(), "4,47", "and the net is the difference");
+    }
+
+    // --- the § 14 Abs. 4 Nr. 6 selection ---
+    {
+        Leistungszeitpunkt art;
+        Check(LeistungszeitpunktFromText("lieferzeitraum", art) &&
+              art == Leistungszeitpunkt::Lieferzeitraum,
+              "the time-of-supply kinds round-trip through text");
+        Check(LeistungszeitpunktIstZeitraum(Leistungszeitpunkt::Leistungszeitraum) &&
+              !LeistungszeitpunktIstZeitraum(Leistungszeitpunkt::Leistungsdatum),
+              "and a period is distinguished from a day - the supplier's invoice "
+              "that prompted this states a Leistungszeitraum, not a date");
+        Check(!LeistungszeitpunktFromText("unfug", art),
+              "an unknown value is refused rather than defaulted");
+    }
+}
+
 // ===== REVERSE CHARGE UND DIE STEUERSCHLUESSEL-AUSWAHL =====
 
 static void TestReverseCharge() {
@@ -5286,6 +5433,7 @@ int main() {
     TestBelegArchiv();
     TestBelegImport();
     TestOss();
+    TestBruttoUndAngegebeneSteuer();
     TestReverseCharge();
     TestEuSteuersaetze();
 

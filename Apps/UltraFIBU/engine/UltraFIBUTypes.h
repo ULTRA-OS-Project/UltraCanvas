@@ -119,6 +119,30 @@ struct Konto {
     bool Valid() const { return !nummer.empty() && !bezeichnung.empty(); }
 };
 
+// ===== WHEN THE SUPPLY HAPPENED =====
+//
+// § 14 Abs. 4 Nr. 6 UStG makes the time of supply a mandatory invoice field,
+// and § 31 Abs. 4 UStDV lets the calendar month stand for it. It is a
+// selection rather than a date field alone because the words differ and mean
+// different things: goods are *delivered* on a day, a service is *performed*
+// over one or a period, and the recipient's input-tax deduction hangs on which.
+enum class Leistungszeitpunkt {
+    Lieferdatum,        // goods, one day
+    Leistungsdatum,     // a service, one day
+    Lieferzeitraum,     // goods, over a period
+    Leistungszeitraum,  // a service, over a period
+    // Deliberately available, deliberately flagged. An invoice for something
+    // not yet supplied - an Anzahlungsrechnung - has no time of supply yet, and
+    // that is the case this exists for. On an ordinary invoice it is a missing
+    // mandatory field, and PruefePflichtangaben says so.
+    Keiner
+};
+
+std::string LeistungszeitpunktToText(Leistungszeitpunkt art);
+bool        LeistungszeitpunktFromText(const std::string& text, Leistungszeitpunkt& out);
+std::string LeistungszeitpunktLabel(Leistungszeitpunkt art);   // for the UI
+bool        LeistungszeitpunktIstZeitraum(Leistungszeitpunkt art);
+
 // ===== STEUERSCHLUESSEL (how a transaction is taxed) =====
 
 enum class SteuerArt {

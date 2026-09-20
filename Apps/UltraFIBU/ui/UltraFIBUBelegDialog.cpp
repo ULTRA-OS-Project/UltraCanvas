@@ -23,14 +23,19 @@ constexpr float kRand       = 12.0f;
 struct Spalte { float x; float breite; const char* kopf; };
 const Spalte kSpalten[] = {
     { 0.0f,   28.0f,  "Pos" },
-    { 30.0f,  330.0f, "Bezeichnung" },
-    { 364.0f,  62.0f, "Menge" },
-    { 430.0f,  54.0f, "Einheit" },
-    { 488.0f,  96.0f, "Einzelpreis" },
-    { 588.0f,  74.0f, "Konto" },
-    { 666.0f, 300.0f, "Steuer" },
-    { 970.0f, 110.0f, "Betrag" },
+    { 30.0f,  288.0f, "Bezeichnung" },
+    { 322.0f,  56.0f, "Menge" },
+    { 382.0f,  48.0f, "Einheit" },
+    { 434.0f,  88.0f, "Preis" },
+    { 526.0f,  56.0f, "Rabatt %" },
+    { 586.0f,  66.0f, "Konto" },
+    { 656.0f, 300.0f, "Steuer" },
+    { 960.0f, 118.0f, "Betrag" },
 };
+// Named indices, because the columns moved twice while they were bare numbers
+// and a field ended up under the wrong header each time.
+enum SpaltenIndex { kPos, kBezeichnung, kMenge, kEinheit, kPreis, kRabatt, kKonto,
+                    kSteuer, kBetrag };
 
 std::string Zahl(int64_t wert) {
     char puffer[32];
@@ -70,8 +75,8 @@ std::shared_ptr<UltraCanvasContainer> BelegDialog::Bauen(const std::string& id,
     // First field on the form on purpose: it decides which tax keys the rest of
     // the form may offer, so choosing it later would mean re-answering every
     // line's tax question.
-    wurzel_->AddChild(CreateLabel(id + "KundeL", kRand, y, 110, kZeit,
-                                  IstAusgangsbeleg(art_) ? "Kunde" : "Lieferant"));
+    partnerLabel_ = CreateLabel(id + "KundeL", kRand, y, 110, kZeit, "Kunde");
+    wurzel_->AddChild(partnerLabel_);
     partnerWahl_ = CreateDropdown(id + "Kunde", kRand + 114, y, 330, kZeit);
     partnerWahl_->onSelectionChanged = [this](int index, const DropdownItem&) {
         PartnerGewaehlt(index);
@@ -89,25 +94,77 @@ std::shared_ptr<UltraCanvasContainer> BelegDialog::Bauen(const std::string& id,
     y += kZeit + 4.0f;
 
     // ---- dates and references ----
+    // **Brutto or Netto.** A supplier's receipt states gross; typing that into
+    // a net field overstates the expense by the tax, on every receipt, and
+    // nothing downstream notices. So it is a switch and not an assumption, and
+    // it defaults to gross on an incoming document because that is what those
+    // documents state.
+    wurzel_->AddChild(CreateLabel(id + "PreisartL", kRand, y, 110, kZeit, "Preise sind"));
+    preisart_ = CreateDropdown(id + "Preisart", kRand + 114, y, 130, kZeit);
+    preisart_->AddItem("Netto", "netto");
+    preisart_->AddItem("Brutto", "brutto");
+    preisart_->SetSelectedIndex(0, false);
+    preisart_->onSelectionChanged = [this](int, const DropdownItem&) { Neuberechnen(); };
+    wurzel_->AddChild(preisart_);
+
+    // The tax as the document states it. Always built, shown only on a
+    // document we received - on one we issue we are the ones deciding, so
+    // there is nothing to copy off it.
+    steuerLautLabel_ = CreateLabel(id + "StLautL", kRand + 260, y, 190, kZeit,
+                                   "Steuer laut Beleg");
+    wurzel_->AddChild(steuerLautLabel_);
+    steuerLaut_ = CreateTextInput(id + "StLaut", static_cast<int>(kRand + 454),
+                                  static_cast<int>(y), 110, static_cast<int>(kZeit));
+    steuerLaut_->SetPlaceholder("wie berechnet");
+    steuerLaut_->onTextChanged = [this](const std::string&) { Neuberechnen(); };
+    wurzel_->AddChild(steuerLaut_);
+    steuerLautHinweis_ = CreateLabel(
+        id + "StLautH", kRand + 574, y, breite - kRand - 586, kZeit,
+        "Leer lassen rechnet selbst. Weicht der Beleg ab, gilt der Beleg.");
+    wurzel_->AddChild(steuerLautHinweis_);
+    y += kZeit + 4.0f;
+
     wurzel_->AddChild(CreateLabel(id + "DatumL", kRand, y, 110, kZeit, "Belegdatum"));
     datum_ = CreateTextInput(id + "Datum", static_cast<int>(kRand + 114),
                              static_cast<int>(y), 130, static_cast<int>(kZeit));
     datum_->SetPlaceholder("TT.MM.JJJJ");
     wurzel_->AddChild(datum_);
 
-    wurzel_->AddChild(CreateLabel(id + "LeistL", kRand + 260, y, 120, kZeit,
-                                  "Leistungsdatum"));
-    leistungsdatum_ = CreateTextInput(id + "Leist", static_cast<int>(kRand + 384),
+    externLabel_ = CreateLabel(id + "ExtL", kRand + 260, y, 190, kZeit, "Ihre Referenz");
+    wurzel_->AddChild(externLabel_);
+    externeNummer_ = CreateTextInput(id + "Ext", static_cast<int>(kRand + 454),
+                                     static_cast<int>(y), 180, static_cast<int>(kZeit));
+    wurzel_->AddChild(externeNummer_);
+    y += kZeit + 4.0f;
+
+    // § 14 Abs. 4 Nr. 6: a selection rather than a bare date field, because
+    // "geliefert am" and "geleistet im Zeitraum" are different statements and
+    // the recipient books from whichever one is printed.
+    wurzel_->AddChild(CreateLabel(id + "LArtL", kRand, y, 110, kZeit,
+                                  "Lieferung/Leistung"));
+    leistungsart_ = CreateDropdown(id + "LArt", kRand + 114, y, 200, kZeit);
+    for (const Leistungszeitpunkt art : { Leistungszeitpunkt::Lieferdatum,
+                                          Leistungszeitpunkt::Leistungsdatum,
+                                          Leistungszeitpunkt::Lieferzeitraum,
+                                          Leistungszeitpunkt::Leistungszeitraum,
+                                          Leistungszeitpunkt::Keiner }) {
+        leistungsart_->AddItem(LeistungszeitpunktLabel(art),
+                               LeistungszeitpunktToText(art));
+    }
+    leistungsart_->SetSelectedIndex(1, false);   // Leistungsdatum
+    leistungsart_->onSelectionChanged = [this](int, const DropdownItem&) { Neuberechnen(); };
+    wurzel_->AddChild(leistungsart_);
+
+    leistungsdatum_ = CreateTextInput(id + "Leist", static_cast<int>(kRand + 322),
                                       static_cast<int>(y), 130, static_cast<int>(kZeit));
     leistungsdatum_->SetPlaceholder("TT.MM.JJJJ");
     wurzel_->AddChild(leistungsdatum_);
 
-    wurzel_->AddChild(CreateLabel(id + "ExtL", kRand + 530, y, 150, kZeit,
-                                  IstAusgangsbeleg(art_) ? "Ihre Referenz"
-                                                         : "Rechnungsnr. des Lieferanten"));
-    externeNummer_ = CreateTextInput(id + "Ext", static_cast<int>(kRand + 684),
-                                     static_cast<int>(y), 180, static_cast<int>(kZeit));
-    wurzel_->AddChild(externeNummer_);
+    wurzel_->AddChild(CreateLabel(id + "BisL", kRand + 458, y, 24, kZeit, "bis"));
+    leistungBis_ = CreateTextInput(id + "LeistBis", static_cast<int>(kRand + 484),
+                                   static_cast<int>(y), 130, static_cast<int>(kZeit));
+    leistungBis_->SetPlaceholder("nur bei Zeitraum");
+    wurzel_->AddChild(leistungBis_);
     y += kZeit + 4.0f;
 
     wurzel_->AddChild(CreateLabel(id + "BetreffL", kRand, y, 110, kZeit, "Betreff"));
@@ -133,7 +190,8 @@ std::shared_ptr<UltraCanvasContainer> BelegDialog::Bauen(const std::string& id,
     neueZeile_->SetOnClick([this]() { ZeileAnlegen(); Neuberechnen(); });
     wurzel_->AddChild(neueZeile_);
 
-    summen_ = CreateLabel(id + "Summen", kRand + 600, unten, 480, kZeit, "");
+    summen_ = CreateLabel(id + "Summen", kRand + 560, unten, breite - kRand - 572,
+                          kZeit, "");
     wurzel_->AddChild(summen_);
 
     // Two lines, because a finding is a sentence and not a code.
@@ -146,6 +204,7 @@ std::shared_ptr<UltraCanvasContainer> BelegDialog::Bauen(const std::string& id,
     speichern_->SetOnClick([this]() { Speichern(); });
     wurzel_->AddChild(speichern_);
 
+    RichtungAnwenden();
     PartnerListeFuellen();
     ZeileAnlegen();
     Neuberechnen();
@@ -212,18 +271,19 @@ void BelegDialog::ZeileAnlegen() {
         return f;
     };
 
-    zeile.nummer = CreateLabel(id + "Nr", kRand + kSpalten[0].x, y, kSpalten[0].breite,
+    zeile.nummer = CreateLabel(id + "Nr", kRand + kSpalten[kPos].x, y, kSpalten[kPos].breite,
                                24, Zahl(static_cast<int64_t>(zeilen_.size()) + 1) + ".");
     zeilenBereich_->AddChild(zeile.nummer);
 
-    zeile.bezeichnung = feld(kSpalten[1], "Leistung oder Ware");
-    zeile.menge       = feld(kSpalten[2], "1");
-    zeile.einheit     = feld(kSpalten[3], "Stk");
-    zeile.preis       = feld(kSpalten[4], "0,00");
-    zeile.konto       = feld(kSpalten[5], "8400");
+    zeile.bezeichnung = feld(kSpalten[kBezeichnung], "Leistung oder Ware");
+    zeile.menge       = feld(kSpalten[kMenge], "1");
+    zeile.einheit     = feld(kSpalten[kEinheit], "Stk");
+    zeile.preis       = feld(kSpalten[kPreis], "0,00");
+    zeile.rabatt      = feld(kSpalten[kRabatt], "0");
+    zeile.konto       = feld(kSpalten[kKonto], "8400");
 
-    zeile.steuer = CreateDropdown(id + "Steuer", kRand + kSpalten[6].x, y,
-                                  kSpalten[6].breite, 24);
+    zeile.steuer = CreateDropdown(id + "Steuer", kRand + kSpalten[kSteuer].x, y,
+                                  kSpalten[kSteuer].breite, 24);
     {
         // The stock 400 px cuts "Leistungsempfaenger schuldet die Steuer,
         // Ausgang (§ 13b UStG)" in half, and the half that survives is the
@@ -241,14 +301,14 @@ void BelegDialog::ZeileAnlegen() {
     };
     zeilenBereich_->AddChild(zeile.steuer);
 
-    zeile.betrag = CreateLabel(id + "Betrag", kRand + kSpalten[7].x, y,
-                               kSpalten[7].breite, 24, "0,00");
+    zeile.betrag = CreateLabel(id + "Betrag", kRand + kSpalten[kBetrag].x, y,
+                               kSpalten[kBetrag].breite, 24, "0,00");
     zeilenBereich_->AddChild(zeile.betrag);
 
     // The sentence sits under the dropdown, across the width of the grid,
     // because it is a sentence and not a cell.
-    zeile.hinweis = CreateLabel(id + "Hinweis", kRand + kSpalten[1].x, y + 24.0f,
-                                kSpalten[7].x - kSpalten[1].x, 20.0f, "");
+    zeile.hinweis = CreateLabel(id + "Hinweis", kRand + kSpalten[kBezeichnung].x, y + 24.0f,
+                                kSpalten[kBetrag].x - kSpalten[kBezeichnung].x, 20.0f, "");
     zeilenBereich_->AddChild(zeile.hinweis);
 
     zeilen_.push_back(zeile);
@@ -340,8 +400,30 @@ bool BelegDialog::BelegAusFormular(Beleg& out, std::string& fehler) const {
         fehler = "Das Belegdatum fehlt oder ist kein Datum (TT.MM.JJJJ).";
         return false;
     }
+    if (leistungsart_) {
+        const DropdownItem* gewaehlt = leistungsart_->GetSelectedItem();
+        if (gewaehlt != nullptr)
+            LeistungszeitpunktFromText(gewaehlt->value, out.leistungsart);
+    }
     if (leistungsdatum_ && !leistungsdatum_->GetText().empty())
         TryParseDateGerman(leistungsdatum_->GetText(), out.leistungVon);
+    if (leistungBis_ && !leistungBis_->GetText().empty())
+        TryParseDateGerman(leistungBis_->GetText(), out.leistungBis);
+
+    out.preiseSindBrutto = preisart_ && preisart_->GetSelectedIndex() == 1;
+
+    // An empty field means "compute it". A figure means the document states
+    // its own tax and that figure wins - which is the point, so a value that
+    // cannot be read is an error rather than a silent fallback to computing.
+    if (steuerLaut_ && !IstAusgangsbeleg(art_) && !steuerLaut_->GetText().empty()) {
+        Money angegeben;
+        if (!Money::TryParse(steuerLaut_->GetText(), angegeben)) {
+            fehler = "\"" + steuerLaut_->GetText() + "\" ist kein Steuerbetrag.";
+            return false;
+        }
+        out.steuerVorgegeben  = true;
+        out.vorgegebeneSteuer = angegeben;
+    }
 
     if (partner_.id == 0) {
         fehler = std::string(IstAusgangsbeleg(art_) ? "Kunde" : "Lieferant") +
@@ -380,6 +462,22 @@ bool BelegDialog::BelegAusFormular(Beleg& out, std::string& fehler) const {
             return false;
         }
         pos.einzelpreis = preis;
+
+        // Per mille internally, entered as a percentage: 5 -> 50. Read through
+        // Money for the same reason the quantity is - one decimal has to stay
+        // exact and no double may enter.
+        const std::string rabattText = zeile.rabatt ? zeile.rabatt->GetText() : "";
+        if (!rabattText.empty()) {
+            Money rabatt;
+            if (!Money::TryParse(rabattText, rabatt) || rabatt.Minor() < 0 ||
+                rabatt.Minor() > 10000) {
+                fehler = "\"" + rabattText + "\" ist kein Rabatt zwischen 0 und 100 % "
+                         "(Position \"" + pos.bezeichnung + "\").";
+                return false;
+            }
+            pos.rabattPromille = static_cast<int>(rabatt.Minor() / 10);
+        }
+
         if (zeile.einheit && !zeile.einheit->GetText().empty())
             pos.einheit = zeile.einheit->GetText();
         pos.konto = zeile.konto ? zeile.konto->GetText() : "";
@@ -423,14 +521,24 @@ void BelegDialog::Neuberechnen() {
     size_t i = 0;
     for (PositionsZeile& zeile : zeilen_) {
         if (!zeile.bezeichnung || zeile.bezeichnung->GetText().empty()) continue;
-        if (i < beleg.positionen.size() && zeile.betrag)
-            zeile.betrag->SetText(beleg.positionen[i].netto.ToString());
+        if (i < beleg.positionen.size() && zeile.betrag) {
+            const BelegPosition& pos = beleg.positionen[i];
+            zeile.betrag->SetText((beleg.preiseSindBrutto ? pos.brutto : pos.netto)
+                                      .ToString());
+        }
         ++i;
     }
-    if (summen_)
-        summen_->SetText("Netto " + beleg.netto.ToString() +
-                         "   Steuer " + beleg.steuer.ToString() +
-                         "   Gesamt " + beleg.brutto.ToString());
+    if (summen_) {
+        std::string text = "Netto " + beleg.netto.ToString() +
+                           "   Steuer " + beleg.steuer.ToString() +
+                           "   Gesamt " + beleg.brutto.ToString();
+        // Said out loud, because the same three numbers mean different things
+        // depending on which way the switch stands, and the one that matters
+        // on a receipt is whether the total equals the amount that was paid.
+        text += beleg.preiseSindBrutto ? "   (Preise brutto)" : "   (Preise netto)";
+        if (beleg.steuerVorgegeben) text += "   Steuer lt. Beleg";
+        summen_->SetText(text);
+    }
 
     // The same check the store runs, shown while there is still time to change
     // the choice rather than as a refusal on save.
@@ -484,11 +592,26 @@ void BelegDialog::Speichern() {
     if (onGespeichert) onGespeichert(beleg);
 }
 
+void BelegDialog::RichtungAnwenden() {
+    const bool ausgang = IstAusgangsbeleg(art_);
+    if (partnerLabel_) partnerLabel_->SetText(ausgang ? "Kunde" : "Lieferant");
+    if (externLabel_)
+        externLabel_->SetText(ausgang ? "Ihre Referenz" : "Rechnungsnr. des Lieferanten");
+    // A receipt states gross; an invoice we write is priced net. Defaulting the
+    // switch to what the document in hand actually shows is the difference
+    // between a correct expense and one overstated by the tax, every time.
+    if (preisart_) preisart_->SetSelectedIndex(ausgang ? 0 : 1, false);
+    if (steuerLautLabel_)   steuerLautLabel_->SetVisible(!ausgang);
+    if (steuerLaut_)        steuerLaut_->SetVisible(!ausgang);
+    if (steuerLautHinweis_) steuerLautHinweis_->SetVisible(!ausgang);
+}
+
 void BelegDialog::Neu(BelegArt art) {
     art_ = art;
     belegId_ = 0;
     belegNummer_.clear();
     FormularLeeren();
+    RichtungAnwenden();
     PartnerListeFuellen();
     if (titel_) titel_->SetText(BelegArtLabel(art_) + " - Entwurf");
     Neuberechnen();
@@ -497,6 +620,8 @@ void BelegDialog::Neu(BelegArt art) {
 void BelegDialog::FormularLeeren() {
     if (datum_)          datum_->SetText("");
     if (leistungsdatum_) leistungsdatum_->SetText("");
+    if (leistungBis_)    leistungBis_->SetText("");
+    if (steuerLaut_)     steuerLaut_->SetText("");
     if (externeNummer_)  externeNummer_->SetText("");
     if (betreff_)        betreff_->SetText("");
     for (PositionsZeile& zeile : zeilen_) {
@@ -504,6 +629,7 @@ void BelegDialog::FormularLeeren() {
         if (zeile.menge)       zeile.menge->SetText("");
         if (zeile.einheit)     zeile.einheit->SetText("");
         if (zeile.preis)       zeile.preis->SetText("");
+        if (zeile.rabatt)      zeile.rabatt->SetText("");
         if (zeile.konto)       zeile.konto->SetText("");
     }
     partner_ = Partner();
@@ -526,11 +652,26 @@ bool BelegDialog::Laden(int64_t belegId) {
     belegId_     = beleg.id;
     belegNummer_ = beleg.nummer;
     FormularLeeren();
+    RichtungAnwenden();
     PartnerListeFuellen();
 
     if (datum_)          datum_->SetText(FormatDateGerman(beleg.datum));
     if (leistungsdatum_ && beleg.leistungVon.Valid())
         leistungsdatum_->SetText(FormatDateGerman(beleg.leistungVon));
+    if (leistungBis_ && beleg.leistungBis.Valid())
+        leistungBis_->SetText(FormatDateGerman(beleg.leistungBis));
+    if (preisart_) preisart_->SetSelectedIndex(beleg.preiseSindBrutto ? 1 : 0, false);
+    if (steuerLaut_ && beleg.steuerVorgegeben)
+        steuerLaut_->SetText(beleg.vorgegebeneSteuer.ToString(MoneyStyle::Plain));
+    if (leistungsart_) {
+        const std::string wert = LeistungszeitpunktToText(beleg.leistungsart);
+        for (int i = 0; i < 5; ++i) {
+            const DropdownItem* item = nullptr;
+            leistungsart_->SetSelectedIndex(i, false);
+            item = leistungsart_->GetSelectedItem();
+            if (item != nullptr && item->value == wert) break;
+        }
+    }
     if (externeNummer_)  externeNummer_->SetText(beleg.externeNummer);
     if (betreff_)        betreff_->SetText(beleg.buchungstext);
     if (titel_) titel_->SetText(BelegArtLabel(art_) + " " + beleg.nummer + " bearbeiten");
@@ -554,6 +695,8 @@ bool BelegDialog::Laden(int64_t belegId) {
         }
         if (zeile.einheit) zeile.einheit->SetText(pos.einheit);
         if (zeile.preis)   zeile.preis->SetText(pos.einzelpreis.ToString(MoneyStyle::Plain));
+        if (zeile.rabatt && pos.rabattPromille != 0)
+            zeile.rabatt->SetText(Zahl(pos.rabattPromille / 10));
         if (zeile.konto)   zeile.konto->SetText(pos.konto);
         SteuerlisteFuellen(zeile);
         for (size_t k = 0; k < zeile.vorschlaege.size(); ++k) {

@@ -141,6 +141,51 @@ struct Beleg {
     Date leistungBis;
     Date faelligAm;
 
+    // Which of the two § 14 Abs. 4 Nr. 6 facts the dates above state, and
+    // whether it is a day or a period. Not cosmetic: "geliefert am" and
+    // "geleistet im Zeitraum" are different statements about when the tax
+    // arose, and an invoice that names neither is missing a mandatory field.
+    Leistungszeitpunkt leistungsart = Leistungszeitpunkt::Leistungsdatum;
+
+    // **True when `einzelpreis` on every position is a GROSS price.**
+    //
+    // A supplier's receipt states gross - 6,55 EUR including VAT - and typing
+    // that into a net field silently overstates the expense by the tax. So the
+    // form has a Brutto/Netto switch, and this records which way it stood,
+    // because the stored price has to stay the number that was typed: a draft
+    // reopened a week later must show what the receipt shows.
+    //
+    // The costing preserves the typed gross exactly. Net and tax are derived
+    // from it per rate group, and the per-line shares are distributed so the
+    // lines add back to that gross rather than to a re-multiplied figure.
+    bool preiseSindBrutto = false;
+
+    // **The tax as the document itself states it**, when it states one.
+    // `steuerVorgegeben` is what decides - deliberately a flag rather than
+    // Money::Valid(), because a default-constructed Money IS valid (it is a
+    // zero with no currency, so sums can start from one), and reading validity
+    // as "a figure was supplied" made every document declare a stated tax of
+    // 0,00 and lose its tax entirely.
+    //
+    // This exists because of a real receipt. Four lines netting to 5,51 EUR at
+    // 19 %: the supplier's own invoice says 1,04 EUR tax and 6,55 EUR total,
+    // because it taxed each line and summed. Tax on the summed net is 1,0469,
+    // which rounds to 1,05 - so recomputing turns a 6,55 EUR receipt into a
+    // 6,56 EUR posting. Both roundings are defensible; only one of them is what
+    // the supplier charged, and it is the one on the paper.
+    //
+    // On an incoming document the tax is therefore a fact to be recorded, not a
+    // figure to be derived - the input-tax deduction has to match the document,
+    // and a cent of drift per receipt is a reconciliation nobody can finish.
+    // On an outgoing document it is normally left invalid, because there we are
+    // the ones deciding.
+    //
+    // Only meaningful while the document has ONE tax rate: apportioning a
+    // single stated total across several rates would be a guess, so Summieren
+    // refuses that case rather than inventing a split.
+    bool  steuerVorgegeben = false;
+    Money vorgegebeneSteuer;
+
     int64_t     partnerId = 0;
     // The partner's account and name as they were when the document was
     // written. A customer who moves or is renamed must not retroactively

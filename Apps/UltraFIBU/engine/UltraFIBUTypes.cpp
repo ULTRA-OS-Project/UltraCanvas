@@ -76,6 +76,42 @@ bool KontoTypFromText(const std::string& text, KontoTyp& out) {
     return false;
 }
 
+std::string LeistungszeitpunktToText(Leistungszeitpunkt art) {
+    switch (art) {
+        case Leistungszeitpunkt::Lieferdatum:       return "lieferdatum";
+        case Leistungszeitpunkt::Leistungsdatum:    return "leistungsdatum";
+        case Leistungszeitpunkt::Lieferzeitraum:    return "lieferzeitraum";
+        case Leistungszeitpunkt::Leistungszeitraum: return "leistungszeitraum";
+        case Leistungszeitpunkt::Keiner:            return "keiner";
+    }
+    return "leistungsdatum";
+}
+
+bool LeistungszeitpunktFromText(const std::string& text, Leistungszeitpunkt& out) {
+    if (text == "lieferdatum")       { out = Leistungszeitpunkt::Lieferdatum;       return true; }
+    if (text == "leistungsdatum")    { out = Leistungszeitpunkt::Leistungsdatum;    return true; }
+    if (text == "lieferzeitraum")    { out = Leistungszeitpunkt::Lieferzeitraum;    return true; }
+    if (text == "leistungszeitraum") { out = Leistungszeitpunkt::Leistungszeitraum; return true; }
+    if (text == "keiner")            { out = Leistungszeitpunkt::Keiner;            return true; }
+    return false;
+}
+
+std::string LeistungszeitpunktLabel(Leistungszeitpunkt art) {
+    switch (art) {
+        case Leistungszeitpunkt::Lieferdatum:       return "Lieferdatum";
+        case Leistungszeitpunkt::Leistungsdatum:    return "Leistungsdatum";
+        case Leistungszeitpunkt::Lieferzeitraum:    return "Lieferzeitraum";
+        case Leistungszeitpunkt::Leistungszeitraum: return "Leistungszeitraum";
+        case Leistungszeitpunkt::Keiner:            return "kein Liefer-/Leistungsdatum";
+    }
+    return "Leistungsdatum";
+}
+
+bool LeistungszeitpunktIstZeitraum(Leistungszeitpunkt art) {
+    return art == Leistungszeitpunkt::Lieferzeitraum ||
+           art == Leistungszeitpunkt::Leistungszeitraum;
+}
+
 // Which kinds of key mean "no German VAT on this invoice". OSS is deliberately
 // NOT one of them: an OSS invoice does charge tax, the destination country's,
 // and its note says exactly that. IgErwerb and Inland are not either - they are

@@ -1,3 +1,43 @@
+#### 2026-09-20 *0.15.0*
+- **Ein Beleg wurde mit 6,56 EUR gebucht, auf dem 6,55 EUR stand.** Vier
+  Zeilen einer echten Lieferantenrechnung, 19 %, netto 5,51 EUR. Der
+  Lieferant weist 1,04 EUR Steuer aus, weil er je Zeile rechnet und addiert;
+  Steuer auf die Summe sind 1,0469 und damit 1,05. Beide Rundungen sind
+  vertretbar - aber nur eine davon ist die, die berechnet wurde, und die
+  steht auf dem Papier.
+- **Auf einem Eingangsbeleg ist die Steuer eine Tatsache, keine Rechnung.**
+  `Beleg::steuerVorgegeben` und `vorgegebeneSteuer`: ist eine Steuer
+  angegeben, gilt sie. Der Vorsteuerabzug muss zum Beleg passen, und ein Cent
+  Abweichung je Beleg ist eine Abstimmung, die niemand zu Ende bringt.
+  Mehrere Steuersätze mit einer angegebenen Summe werden abgelehnt - die
+  Aufteilung waere geraten, und Geratenes landet in der Voranmeldung.
+- **Brutto-Erfassung.** `Beleg::preiseSindBrutto`: ein Beleg weist brutto
+  aus, und 6,55 EUR in ein Nettofeld getippt erhoeht die Ausgabe um die
+  Steuer - jedes Mal, unbemerkt. Das Formular schaltet dafuer um und steht
+  bei einem Eingangsbeleg von vornherein auf Brutto. Der getippte
+  Bruttobetrag bleibt auf den Cent erhalten: verteilt wird der Nettoanteil,
+  nicht der Bruttobetrag.
+- **Liefer- oder Leistungszeitpunkt als Auswahl** (§ 14 Abs. 4 Nr. 6 UStG):
+  Lieferdatum, Leistungsdatum, Liefer- oder Leistungszeitraum - oder
+  ausdruecklich keiner. "Geliefert am" und "geleistet im Zeitraum" sind
+  verschiedene Aussagen darueber, wann die Steuer entstanden ist, und der
+  Empfaenger bucht nach dem, was gedruckt ist. Die Rechnung schreibt jetzt
+  die passende Zeile; "kein Datum" wird als fehlende Pflichtangabe gemeldet,
+  weil es nur bei einer noch nicht erbrachten Leistung zulaessig ist.
+- **Rabatt je Position** im Formular - das Feld gab es in der Engine laengst.
+- Schema v7 fuer die vier neuen Spalten. 26 weitere Pruefungen (1277
+  insgesamt), darunter die vier Zeilen der echten Rechnung als Testfall.
+- **Ein Fehler im Formular, den erst der Bildschirm gezeigt hat:** es wird
+  einmal gebaut und fuer beide Richtungen benutzt, und alles
+  Richtungsabhaengige wurde nur beim Bauen gesetzt. Eine Eingangsrechnung kam
+  deshalb mit der Beschriftung "Kunde" hoch, stand auf Netto und hatte kein
+  Feld fuer die Steuer laut Beleg. `RichtungAnwenden()` laeuft jetzt bei jedem
+  Oeffnen.
+- **Und einer in der Engine:** ein `Money()` ohne Argumente ist **gueltig**
+  (eine Null ohne Waehrung, damit Summen damit anfangen koennen). "Hat einen
+  Wert" an `Valid()` festzumachen hiess, dass jeder Beleg eine angegebene
+  Steuer von 0,00 meldete und seine Steuer verlor. Deshalb ein eigenes Flag.
+
 #### 2026-09-20 *0.14.0*
 - **Das Erfassungsformular, und darin die Steuerauswahl je Position.**
   `Apps/UltraFIBU/ui/UltraFIBUBelegDialog.{h,cpp}`, als eigener Reiter "Beleg
