@@ -56,16 +56,26 @@ the backing implementation can be replaced without affecting callers.
     ClosePath`, `GetLength`, `GetPointAtLength`, `Flatten`), `VectorText`
     (spans), `VectorImage`, `VectorSymbol` / `VectorUse`; every element has
     `Id`, `Style` (`FillData` variant of colour / gradient / pattern,
-    `StrokeData`, opacities, blend, clip, mask), an optional double-precision
+    `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
+    `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
+    `Transparency` ramp with its mix, clip, mask), `Effects` (optional
+    `ShadowEffect` and `FeatherEffect`), an optional double-precision
     `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
     `Clone()`.
+  - Geometry helpers shared by the renderer, the editor and the writers:
+    `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`,
+    `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline`.
   - `ParsePathString` / `SerializePathData`, `ParseColorString`,
     `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
     `PointsPerUnit`, `LengthUnitSymbol`.
   - `DataFormats/UltraCanvasVectorRenderer.h` — `VectorRenderer` draws a
     document, layer or element into any `IRenderContext`
-    (`VectorRenderOptions`, `VectorRenderStats`); `HitTestElement` /
-    `HitTestDocument` (bounding boxes, carried through ancestor transforms).
+    (`VectorRenderOptions`, `VectorRenderStats`), effects included: shadows
+    and feathers from a blurred silhouette raster cached per object
+    (`ClearCaches`, `EffectCacheSize`), transparency ramps and mixes through
+    masked groups and blend modes, arrowheads / width bands / brush stamps
+    from the outline; `HitTestElement` / `HitTestDocument` (bounding boxes,
+    carried through ancestor transforms).
   - `DataFormats/UltraCanvasVectorPathOps.h` — `PathOps::NormalizePath` and
     friends: any command mix down to absolute move / line / cubic segments
     (SVG arcs via endpoint-to-centre conversion), rect / rounded-rect /
@@ -673,7 +683,10 @@ the backing implementation can be replaced without affecting callers.
     printer bytes: `Native`, `GutenPrint`, `IPP`) from the **transport** (how
     those bytes reach the device: a CUPS raw job, or `StartDocPrinter` with
     datatype `RAW`), which is what lets GutenPrint be selectable on Windows as
-    well as Linux and macOS — libgutenprint is portable C and needs no CUPS.
+    well as Linux and macOS. GutenPrint is **run, not linked** — it is
+    GPL-2.0-or-later and this framework is MIT — so the renderer pipes a
+    rasterised page through GutenPrint's own `rastertogutenprint` program and
+    sends back what it gets, the same way UltraWin runs QEMU and Wine.
   See `Docs/Modules/IODeviceManager/Architecture.md`.
 
 - **UltraCanvasSpellChecker** (`UltraCanvasSpellChecker.h`) — cross-platform

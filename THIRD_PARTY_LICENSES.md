@@ -209,6 +209,33 @@ The vendored copy is unmodified upstream source (`yyjson.h` / `yyjson.c`).
 
 ---
 
+## GutenPrint (optional, GPL — run as a program, never linked)
+
+- **Used by:** `UltraCanvas/core/IODeviceManager/UltraCanvasIODevicePrinterGutenPrint.cpp`,
+  the `GutenPrint` print renderer. GutenPrint drives several thousand inkjet
+  and dye-sublimation printers far better than their own generic drivers do,
+  which is why it is worth reaching for at all.
+- **Nothing is linked, and nothing is vendored.** libgutenprint is
+  **GPL-2.0-or-later** and UltraCanvas is MIT, so linking it would make every
+  distributed binary a GPL work. Instead the renderer runs GutenPrint's own
+  two programs as child processes and talks to them over pipes:
+  `gutenprint.5.3` (lists supported models, emits a model's PPD) and
+  `rastertogutenprint.5.3` (reads a page of CUPS raster, writes the printer's
+  command language). Running a program is not linking against it and creates
+  no licence obligation on the caller.
+- **This is the same treatment QEMU and Wine already get** in this
+  repository — spawned, never linked — and it is recorded in
+  `master_dependencies.yaml` with no `pkg_config` or `cmake_module` entry for
+  exactly that reason.
+- **A distributor who wants GutenPrint available must ship or require it
+  separately**, under its own licence. UltraCanvas contains no GutenPrint
+  code, and a build on a machine without the tools simply does not offer the
+  renderer — the platform's native driver is used instead, with no error and
+  no missing symbol.
+- **Upstream:** http://gutenprint.sourceforge.net/ — GPL-2.0-or-later.
+
+---
+
 ## External services UltraAI talks to (no code bundled)
 
 These are separate programs or hosted APIs that UltraAI adapters

@@ -27,6 +27,10 @@ void RegisterCompiledBackends(IODeviceManager& manager) {
     RegisterSaneScannerBackend(manager);
 #endif
 
+#if defined(ULTRACANVAS_HAS_NET)
+    RegisterEsclScannerBackend(manager);
+#endif
+
     // Still to come, each adding a guarded call here:
     //
     //   #if defined(ULTRACANVAS_HAS_GPHOTO2)

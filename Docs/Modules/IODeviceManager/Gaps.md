@@ -9,7 +9,7 @@ overview that preceded this file marked Scanner and Camera "✅ 100% Complete,
 production-ready, ~11,525 lines" for a module that had no source at all. Read
 a ✅ below as "in the tree, compiled and tested", and nothing else.
 
-Last reviewed: 2026-09-15 (after wiring the OS print dialog to PrinterDevice).
+Last reviewed: 2026-09-19 (after the GutenPrint renderer).
 
 ---
 
@@ -63,7 +63,10 @@ backend now exist; the other four protocols do not.
 | WIA (Windows) | ❌ |
 | TWAIN (Windows) | ❌ |
 | ICA (macOS) | ❌ |
-| eSCL / AirScan driverless network scanning | ❌ |
+| **eSCL / AirScan driverless network scanning** | ✅ one backend for Linux, macOS and Windows, because eSCL is plain HTTP and XML. Reads `ScannerCapabilities`, posts a `ScanJobs` document, collects pages from `NextDocument` and cancels with `DELETE`. Lives in `core/`, not under `OS/`, and sits alongside SANE rather than replacing it. |
+| eSCL: discovery on Windows | ❌ the scanning works there, but `Plugins/UltraNet/mdns`'s Windows browse is a stub — a raw `DnsQuery_W` for PTR records that returns no host, port or TXT. Until that is finished, a Windows scanner is reached by naming it in `ULTRACANVAS_ESCL_SCANNERS`. Finishing it (`DnsServiceBrowse`) would also serve IPP driverless printing, which needs the same discovery. |
+| eSCL: PDF pages | ❌ JPEG and PNG are decoded; a scanner asked for `application/pdf` would need the PDF plugin to rasterise it. The backend asks for an image format it can decode rather than accepting one it cannot. |
+| eSCL: HTTPS with a self-signed certificate | ❌ `_uscans._tcp` is browsed and an `https://` base URL is built, but scanners generally present self-signed certificates and nothing yet opts into accepting them. |
 | Multi-page ADF, capability detection | ✅ |
 | Preview mode | ❌ detected but not exposed |
 
@@ -97,7 +100,11 @@ absent.
 | CUPS backend: enumeration, capabilities, status, supplies, jobs (Linux/macOS) | ✅ |
 | CUPS transport, driver documents and raw streams | ✅ |
 | Option resolver in GutenPrint priority order | ✅ replaces the `FIXME` that returned its input unchanged |
-| **GutenPrint renderer** | ❌ the seam it plugs into is complete and tested on both transports; the renderer itself is blocked on the licence decision below |
+| **GutenPrint renderer** | ✅ run as a subprocess, never linked, so the framework stays MIT. Matches a printer to one of GutenPrint's ~3,500 models, gets that model's PPD from GutenPrint's own driver program, rasterises the page and pipes it through `rastertogutenprint`. Produces a device-native stream, so it travels as a raw job on all three platforms. |
+| GutenPrint: colour separation to CMYK/KCMY | ❌ deliberately. GutenPrint is handed RGB and does its own separation against the ink set, which is better than anything we would do. Listed so the choice is visible, not because it is missing. |
+| GutenPrint: shipping the tools on Windows | ❌ the renderer works there and the RAW transport carries it, but nothing installs GutenPrint on Windows. Needs the binaries packaged beside the application and `ULTRACANVAS_GUTENPRINT_DRIVER`/`_FILTER` pointed at them. |
+| GutenPrint: streaming a long document | ❌ the whole rasterised document is held in memory before the filter runs, because `RunProcessCaptured` takes its input as one block. A page of RGB at 360 dpi is ~36 MB, so this suits letters and photographs and would not suit a book. Fixed by teaching the process runner to pull input a block at a time, after which one page need exist at once. |
+| GutenPrint: per-model options beyond the PPD defaults | 🔨 media, resolution, colour mode and page size reach the raster header; the cartridge and inkset parameters in `IOPrintOptions` are resolved but not yet passed through as PPD options. |
 | Windows spooler backend: enumeration, capabilities, status, job queue | ✅ |
 | Windows RAW transport (`StartDocPrinter`, datatype `RAW`) | ✅ this is the path GutenPrint uses |
 | **Windows GDI renderer** | ✅ `Native` now works on Windows. Prints raster images and plain text by drawing onto a printer DC; honours paper size, orientation, copies, collation, colour mode, duplex and quality through a driver-validated `DEVMODE`. |
@@ -107,7 +114,7 @@ absent.
 | Windows printer maintenance | ❌ |
 | **macOS printing** | 🔨 printing itself works through the CUPS backend, which is built for macOS as well as Linux, and the print panel is wired up (`NSPrintPanel` → `NSPrintInfo` → `IOPrintOptions`). What is missing is duplex, which is not on `NSPrintInfo` at all — it lives in the `PMPrintSettings` underneath — so it is left at its default rather than guessed. Untested on real hardware. |
 | Paper size recognition | ✅ by dimensions from the CUPS dest-info API, replacing the prior stub that returned A4 for every size a printer reported |
-| Page rendering (document/image → page raster) | ❌ |
+| Page rendering (document/image → page raster) | ✅ `RasterPageTarget` draws an `IPrintPageSource` onto an off-screen surface — the same page sources the GDI path uses, so text wrapping and pagination are shared rather than reimplemented. |
 | Page ranges | ✅ `IOPrintJob::pageRange` had been declared since the module was written and read by nothing, so a range chosen in a print dialog was dropped between the dialog and the queue. It now reaches the payload, and from there the IPP `page-ranges` attribute under CUPS and the page loop on the GDI path. |
 | IPP: real mDNS/DNS-SD discovery | ❌ the prior version piggybacked on CUPS and only found what CUPS already knew |
 | IPP: full `Get-Printer-Attributes` parsing | ❌ |
@@ -152,7 +159,7 @@ to "list my microphones" is the worst of the three options.
 | Item | State |
 |---|---|
 | CMake feature detection (libsane, libgphoto2, libcups, v4l2, net-snmp, gutenprint) and the matching `ULTRACANVAS_HAS_*` flags | 🔨 added per backend as each lands |
-| **Dependency records** for libgphoto2, net-snmp, GutenPrint | ❌ absent from `Docs/Dependencies.md`, `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`. SANE, V4L2, WIA, TWAIN, ICA, CUPS and FFmpeg are already recorded. |
+| **Dependency records** for libgphoto2 and net-snmp | ❌ absent from `Docs/Dependencies.md`, `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`. GutenPrint is now recorded in all three, including why it is run rather than linked; SANE, V4L2, WIA, TWAIN, ICA, CUPS and FFmpeg were already there. |
 | Per-category documentation | 🔨 |
 | DemoApp examples | ❌ repo pattern is `Apps/DemoApp/UltraCanvas<Thing>Examples.cpp`; the prototypes were standalone `main()` programs |
 | Per-category tests against fakes | 🔨 foundation done, categories follow |
@@ -162,12 +169,10 @@ to "list my microphones" is the worst of the three options.
 
 ## ❓ Open decisions
 
-1. **GutenPrint: linked or subprocess.** libgutenprint is GPL-2.0-or-later;
-   UltraCanvas is MIT, so linking makes the distributed binary GPL. This
-   repository's existing pattern for GPL tools is "runtime, not linked"
-   (QEMU, Wine). Recommendation and full trade-off in
-   [Architecture.md](Architecture.md#open-decision-linked-or-subprocess).
-   Blocks the GutenPrint renderer.
+1. ~~**GutenPrint: linked or subprocess.**~~ **Decided: subprocess.** The
+   framework stays MIT and GutenPrint is run rather than linked, matching the
+   QEMU/Wine pattern. Built; see
+   [Architecture.md](Architecture.md#decided-subprocess-not-linked).
 2. **Audio categories** — wrap `UltraCanvasAudioDevices`, or drop Microphone
    and Speaker from the README. See above.
 3. **SNMP transport** — net-snmp as a new dependency, or build the Printer-MIB

@@ -106,7 +106,7 @@ namespace UltraCanvas {
         ctx = context;
         ctx->PushState();
 
-        float layerOpacity = layer.Opacity * currentOpacity;
+        float layerOpacity = silhouetteMode ? 1.0f : layer.Opacity * currentOpacity;
         opacityStack.push(currentOpacity);
         currentOpacity = layerOpacity;
         ctx->SetAlpha(currentOpacity);
@@ -135,6 +135,20 @@ namespace UltraCanvas {
         if (element.Style.ClipPath.has_value() && !element.Style.ClipPath->empty())
             ApplyClip(*element.Style.ClipPath);
 
+        const TransparencyData *tr = element.Style.Transparency.has_value() ? &*element.Style.Transparency : nullptr;
+        const bool effects = !silhouetteMode &&
+                             (element.Effects.Any() ||
+                              (tr && (tr->IsGradient() || tr->Mix != TransparencyMix::Mix || tr->Level > 0.0f)));
+        if (effects) RenderWithEffects(element);
+        else DrawElementBody(element);
+
+        if (options.ShowBoundingBoxes) RenderDebugBounds(element.GetBoundingBox());
+        stats.ElementsRendered++;
+        ctx->PopState();
+    }
+
+    // The element itself, in the space its Transform and clip have set up.
+    void VectorRenderer::DrawElementBody(const VectorElement &element) {
         switch (element.Type) {
             case VectorElementType::Rectangle:
             case VectorElementType::RoundedRectangle:
@@ -167,10 +181,6 @@ namespace UltraCanvas {
             default:
                 break;
         }
-
-        if (options.ShowBoundingBoxes) RenderDebugBounds(element.GetBoundingBox());
-        stats.ElementsRendered++;
-        ctx->PopState();
     }
 
     // Puts the element's outline on the context in the element's own
@@ -234,7 +244,27 @@ namespace UltraCanvas {
 
     void VectorRenderer::RenderShape(const VectorElement &element) {
         if (!BuildElementPath(element)) return;
-        FillAndStroke(element.Style);
+        const VectorStyle &style = element.Style;
+        const StrokeData *st = HasStroke(style) ? &*style.Stroke : nullptr;
+        const bool gallery = st && (st->HasArrowheads() || st->HasWidthProfile() || st->HasBrush());
+        if (!gallery) {
+            FillAndStroke(style);
+            return;
+        }
+        // A line-gallery stroke: the fill as usual, the plain stroke only
+        // when neither a width profile nor a brush replaces it, then the
+        // decorations from the outline.
+        const Rect2Dd bounds = ctx->GetPathExtents();
+        if (HasFill(style)) {
+            ApplyFill(style.Fill.value(), bounds, style.FillOpacity);
+            ctx->FillPathPreserve();
+        }
+        if (!st->HasWidthProfile() && !st->HasBrush()) {
+            ApplyStroke(*st, bounds, style.StrokeOpacity);
+            ctx->StrokePathPreserve();
+        }
+        ctx->ClearPath();
+        RenderLineGallery(element, *st, bounds, style.StrokeOpacity);
     }
 
     // Fills and strokes the current path. Object-bounding-box gradients
@@ -261,16 +291,13 @@ namespace UltraCanvas {
 
     void VectorRenderer::RenderLine(const VectorLine &line) {
         if (!HasStroke(line.Style)) return;
-        BuildElementPath(line);
-        const Rect2Dd bounds = ctx->GetPathExtents();
-        ApplyStroke(line.Style.Stroke.value(), bounds, line.Style.StrokeOpacity);
-        ctx->StrokePathPreserve();
-        ctx->ClearPath();
+        RenderShape(line);
     }
 
     void VectorRenderer::RenderText(const VectorText &text) {
-        const float opacity = text.Style.FillOpacity;
-        if (text.Style.Fill.has_value()) {
+        const float opacity = silhouetteMode ? 1.0f : text.Style.FillOpacity;
+        if (silhouetteMode) ctx->SetTextPaint(Colors::Black);
+        else if (text.Style.Fill.has_value()) {
             if (auto *color = std::get_if<Color>(&text.Style.Fill.value()))
                 ctx->SetTextPaint(WithOpacity(*color, opacity));
             else ctx->SetTextPaint(WithOpacity(Colors::Black, opacity));
@@ -314,6 +341,11 @@ namespace UltraCanvas {
     }
 
     void VectorRenderer::RenderImage(const VectorImage &image) {
+        if (silhouetteMode) {
+            ctx->SetFillPaint(Colors::Black);
+            ctx->FillRectangle(image.Bounds);
+            return;
+        }
         if (!image.Source.empty())
             ctx->DrawImage(image.Source,
                            Rect2Dd(image.Bounds.x, image.Bounds.y, image.Bounds.width, image.Bounds.height),
@@ -322,7 +354,7 @@ namespace UltraCanvas {
 
     void VectorRenderer::RenderGroup(const VectorGroup &group) {
         opacityStack.push(currentOpacity);
-        currentOpacity *= group.Style.Opacity;
+        if (!silhouetteMode) currentOpacity *= group.Style.Opacity;
         ctx->SetAlpha(currentOpacity);
         for (const auto &child: group.Children) if (child) RenderElement(ctx, *child);
         currentOpacity = opacityStack.top();
@@ -343,7 +375,7 @@ namespace UltraCanvas {
     }
 
     void VectorRenderer::ApplyStyle(const VectorStyle &style) {
-        ctx->SetAlpha(style.Opacity * currentOpacity);
+        ctx->SetAlpha(silhouetteMode ? 1.0 : style.Opacity * currentOpacity);
     }
 
     // Clips to the outlines of a <clipPath> definition. The clip is set in
@@ -372,6 +404,7 @@ namespace UltraCanvas {
     }
 
     void VectorRenderer::ApplyFill(const FillData &fill, const Rect2Dd &bounds, float opacity) {
+        if (silhouetteMode) { ctx->SetFillPaint(Colors::Black); return; }
         if (auto *c = std::get_if<Color>(&fill)) ctx->SetFillPaint(WithOpacity(*c, opacity));
         else if (auto *g = std::get_if<GradientData>(&fill)) SetupGradient(*g, bounds, opacity, false);
         else if (auto *id = std::get_if<std::string>(&fill)) {
@@ -384,7 +417,8 @@ namespace UltraCanvas {
 
     void VectorRenderer::ApplyStroke(const StrokeData &stroke, const Rect2Dd &bounds, float opacity) {
         const float strokeOpacity = opacity * stroke.Opacity;
-        if (auto *c = std::get_if<Color>(&stroke.Fill)) ctx->SetStrokePaint(WithOpacity(*c, strokeOpacity));
+        if (silhouetteMode) ctx->SetStrokePaint(Colors::Black);
+        else if (auto *c = std::get_if<Color>(&stroke.Fill)) ctx->SetStrokePaint(WithOpacity(*c, strokeOpacity));
         else if (auto *g = std::get_if<GradientData>(&stroke.Fill)) SetupGradient(*g, bounds, strokeOpacity, true);
         else if (auto *id = std::get_if<std::string>(&stroke.Fill)) {
             if (currentDocument)
@@ -488,6 +522,423 @@ namespace UltraCanvas {
         }
     }
 
+
+    // ===========================================================================
+    // EFFECTS: shadow, feather, transparency ramps and mixes
+    // ===========================================================================
+
+    namespace {
+        void HashMix(size_t &h, size_t v) { h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2); }
+        void HashDouble(size_t &h, double d) { HashMix(h, std::hash<double>()(d)); }
+        void HashRect(size_t &h, const Rect2Dd &r) {
+            HashDouble(h, r.x); HashDouble(h, r.y); HashDouble(h, r.width); HashDouble(h, r.height);
+        }
+
+        // A fingerprint of what an element's silhouette depends on, so a
+        // cached raster is reused across frames and replaced after an edit.
+        size_t GeometryHash(const VectorElement &e) {
+            size_t h = static_cast<size_t>(e.Type) * 31 + 7;
+            HashRect(h, e.GetBoundingBox());
+            if (e.Transform.has_value())
+                for (int r = 0; r < 2; ++r)
+                    for (int c = 0; c < 3; ++c) HashDouble(h, e.Transform->m[r][c]);
+            HashMix(h, e.Style.Fill.has_value() ? 1u : 0u);
+            if (e.Style.Stroke.has_value()) {
+                HashDouble(h, e.Style.Stroke->Width);
+                HashMix(h, e.Style.Stroke->WidthProfile.size());
+                HashMix(h, static_cast<size_t>(e.Style.Stroke->StartArrow.Kind) * 8 +
+                           static_cast<size_t>(e.Style.Stroke->EndArrow.Kind));
+            }
+            switch (e.Type) {
+                case VectorElementType::Path:
+                    for (const auto &c: static_cast<const VectorPath &>(e).Path.commands) {
+                        HashMix(h, static_cast<size_t>(c.Type));
+                        for (float v: c.Parameters) HashDouble(h, v);
+                    }
+                    break;
+                case VectorElementType::Polyline:
+                    for (const auto &p: static_cast<const VectorPolyline &>(e).Points) { HashDouble(h, p.x); HashDouble(h, p.y); }
+                    break;
+                case VectorElementType::Polygon:
+                    for (const auto &p: static_cast<const VectorPolygon &>(e).Points) { HashDouble(h, p.x); HashDouble(h, p.y); }
+                    break;
+                case VectorElementType::Text: {
+                    const auto &t = static_cast<const VectorText &>(e);
+                    HashDouble(h, t.Position.x); HashDouble(h, t.Position.y);
+                    for (const auto &sp: t.Spans) { HashMix(h, std::hash<std::string>()(sp.Text)); HashDouble(h, sp.Style.FontSize); }
+                    break;
+                }
+                case VectorElementType::Group:
+                case VectorElementType::Symbol:
+                case VectorElementType::Layer:
+                    for (const auto &c: static_cast<const VectorGroup &>(e).Children) if (c) HashMix(h, GeometryHash(*c));
+                    break;
+                default:
+                    break;
+            }
+            return h;
+        }
+
+        // Three box passes approximate a gaussian of `sigma` pixels on the
+        // alpha of a premultiplied ARGB32 buffer whose colour is black, so
+        // alpha is the whole pixel. Outside the buffer counts as clear.
+        void BlurAlpha(uint32_t *px, int w, int h, double sigma) {
+            if (!px || w <= 0 || h <= 0 || sigma < 0.3) return;
+            const int r = std::max(1, static_cast<int>(std::lround((std::sqrt(4.0 * sigma * sigma + 1.0) - 1.0) / 2.0)));
+            const size_t n = static_cast<size_t>(w) * h;
+            std::vector<float> a(n), tmp(n);
+            for (size_t i = 0; i < n; ++i) a[i] = static_cast<float>(px[i] >> 24) / 255.0f;
+            const float norm = 1.0f / (2 * r + 1);
+            for (int pass = 0; pass < 3; ++pass) {
+                for (int y = 0; y < h; ++y) {                 // horizontal
+                    const float *row = &a[static_cast<size_t>(y) * w];
+                    float *out = &tmp[static_cast<size_t>(y) * w];
+                    float sum = 0;
+                    for (int x = 0; x <= std::min(r, w - 1); ++x) sum += row[x];
+                    for (int x = 0; x < w; ++x) {
+                        out[x] = sum * norm;
+                        const int add = x + r + 1, sub = x - r;
+                        if (add < w) sum += row[add];
+                        if (sub >= 0) sum -= row[sub];
+                    }
+                }
+                for (int x = 0; x < w; ++x) {                 // vertical
+                    float sum = 0;
+                    for (int y = 0; y <= std::min(r, h - 1); ++y) sum += tmp[static_cast<size_t>(y) * w + x];
+                    for (int y = 0; y < h; ++y) {
+                        a[static_cast<size_t>(y) * w + x] = sum * norm;
+                        const int add = y + r + 1, sub = y - r;
+                        if (add < h) sum += tmp[static_cast<size_t>(add) * w + x];
+                        if (sub >= 0) sum -= tmp[static_cast<size_t>(sub) * w + x];
+                    }
+                }
+            }
+            for (size_t i = 0; i < n; ++i) {
+                const float v = std::min(1.0f, std::max(0.0f, a[i]));
+                px[i] = static_cast<uint32_t>(std::lround(v * 255.0f)) << 24;
+            }
+        }
+
+        UltraCanvas::BlendMode ToBlendMode(TransparencyMix mix) {
+            switch (mix) {
+                case TransparencyMix::StainedGlass: return UltraCanvas::BlendMode::Multiply;
+                case TransparencyMix::Bleach: return UltraCanvas::BlendMode::Screen;
+                case TransparencyMix::Contrast: return UltraCanvas::BlendMode::Overlay;
+                case TransparencyMix::Saturation: return UltraCanvas::BlendMode::Saturation;
+                case TransparencyMix::Darken: return UltraCanvas::BlendMode::Darken;
+                case TransparencyMix::Lighten: return UltraCanvas::BlendMode::Lighten;
+                case TransparencyMix::Brightness: return UltraCanvas::BlendMode::HardLight;
+                case TransparencyMix::Luminosity: return UltraCanvas::BlendMode::Luminosity;
+                case TransparencyMix::Hue: return UltraCanvas::BlendMode::Hue;
+                case TransparencyMix::Mix:
+                default: return UltraCanvas::BlendMode::Normal;
+            }
+        }
+
+        // The widest stroke the element or its children draw, for the
+        // raster's padding.
+        double StrokePadOf(const VectorElement &e) {
+            double pad = 0;
+            if (e.Style.Stroke.has_value()) {
+                pad = e.Style.Stroke->Width;
+                if (e.Style.Stroke->HasArrowheads()) pad *= 4.0 * std::max(e.Style.Stroke->StartArrow.Scale, e.Style.Stroke->EndArrow.Scale);
+            }
+            if (e.Type == VectorElementType::Group || e.Type == VectorElementType::Layer || e.Type == VectorElementType::Symbol)
+                for (const auto &c: static_cast<const VectorGroup &>(e).Children) if (c) pad = std::max(pad, StrokePadOf(*c));
+            return pad;
+        }
+    }
+
+    void VectorRenderer::RenderWithEffects(const VectorElement &element) {
+        const TransparencyData *t = element.Style.Transparency.has_value() ? &*element.Style.Transparency : nullptr;
+        const bool tGroup = t && (t->IsGradient() || t->Mix != TransparencyMix::Mix || t->Level > 0.0f);
+        const bool feather = element.Effects.Feather.has_value() && element.Effects.Feather->Radius > 0;
+
+        if (element.Effects.Shadow.has_value()) RenderShadow(element, *element.Effects.Shadow);
+
+        // The mix is the operator the finished group is painted with, so it
+        // has to be in force before the group is pushed (popping the group
+        // restores it); inside the group the parts composite normally.
+        if (tGroup) {
+            ctx->SetBlendMode(ToBlendMode(t->Mix));
+            ctx->BeginGroup();
+            ctx->SetBlendMode(UltraCanvas::BlendMode::Normal);
+        }
+        if (feather) ctx->BeginGroup();
+
+        DrawElementBody(element);
+
+        if (feather) {
+            const EffectRaster *r = SilhouetteOf(element, element.Effects.Feather->Radius);
+            std::shared_ptr<IPaintPattern> mask;
+            if (r && r->alpha) mask = ctx->CreatePixmapPattern(*r->alpha, r->rect, PatternExtend::NoExtend);
+            ctx->EndGroupMasked(mask);
+        }
+        if (tGroup) {
+            auto mask = TransparencyMask(*t);
+            if (mask) ctx->EndGroupMasked(mask);
+            else ctx->EndGroup(1.0 - std::min(1.0f, std::max(0.0f, t->Level)));
+            ctx->SetBlendMode(UltraCanvas::BlendMode::Normal);
+        }
+    }
+
+    const VectorRenderer::EffectRaster *VectorRenderer::SilhouetteOf(const VectorElement &element, float blur) {
+        const Rect2Dd box = element.GetBoundingBox();
+        if (box.width < 0 || box.height < 0) return nullptr;
+        blur = std::max(0.0f, blur);
+
+        // Device pixels per element unit under the current transform; the
+        // raster is isotropic at the larger axis and capped in size.
+        const Point2Dd o = ctx->UserToDevice(Point2Dd(0, 0));
+        const Point2Dd ux = ctx->UserToDevice(Point2Dd(1, 0));
+        const Point2Dd uy = ctx->UserToDevice(Point2Dd(0, 1));
+        double s = std::max(std::hypot(ux.x - o.x, ux.y - o.y), std::hypot(uy.x - o.x, uy.y - o.y));
+        if (!(s > 1e-6) || !std::isfinite(s)) s = 1.0;
+        const double padU = blur * 2.0 + StrokePadOf(element) + 2.0 / s;
+        const double fullW = box.width + 2 * padU, fullH = box.height + 2 * padU;
+        constexpr double kMaxPixels = 4096.0;
+        if (fullW * s > kMaxPixels) s = kMaxPixels / fullW;
+        if (fullH * s > kMaxPixels) s = kMaxPixels / fullH;
+        const int w = std::max(1, static_cast<int>(std::ceil(fullW * s)));
+        const int h = std::max(1, static_cast<int>(std::ceil(fullH * s)));
+
+        size_t key = GeometryHash(element);
+        HashDouble(key, s);
+        HashDouble(key, blur);
+        auto it = effectCache.find(&element);
+        if (it != effectCache.end() && it->second.key == key && it->second.alpha) return &it->second;
+
+        std::unique_ptr<IRenderContext> off = CreateRenderContext(Size2Di(w, h), nullptr);
+        if (!off) return nullptr;
+        off->Clear(Color(0, 0, 0, 0));
+        off->Translate(padU * s, padU * s);
+        off->Scale(s, s);
+        off->Translate(-box.x, -box.y);
+        {
+            IRenderContext *savedCtx = ctx;
+            const float savedOpacity = currentOpacity;
+            const bool savedMode = silhouetteMode;
+            const VectorRenderOptions savedOptions = options;
+            ctx = off.get();
+            silhouetteMode = true;
+            currentOpacity = 1.0f;
+            options.EnableCulling = false;
+            options.ShowBoundingBoxes = false;
+            ctx->SetAlpha(1.0);
+            DrawElementBody(element);
+            ctx = savedCtx;
+            silhouetteMode = savedMode;
+            currentOpacity = savedOpacity;
+            options = savedOptions;
+        }
+        auto pm = std::make_shared<UCPixmap>();
+        if (!pm->Init(w, h)) return nullptr;
+        off->FlushToSurface(pm->GetSurface(), Point2Dd(0, 0));
+        pm->MarkDirty();
+        pm->Flush();
+        // The penumbra spans about 3.3 sigma (5 % to 95 % of the ramp).
+        BlurAlpha(pm->GetPixelData(), w, h, blur * s / 3.3);
+        pm->MarkDirty();
+
+        if (effectCache.size() > 256) effectCache.clear();
+        EffectRaster &r = effectCache[&element];
+        r.alpha = pm;
+        r.key = key;
+        r.rect = Rect2Dd(box.x - padU, box.y - padU, w / s, h / s);
+        return &r;
+    }
+
+    void VectorRenderer::RenderShadow(const VectorElement &element, const ShadowEffect &sh) {
+        if (sh.Darkness <= 0) return;
+        const EffectRaster *r = SilhouetteOf(element, sh.Blur);
+        if (!r || !r->alpha) return;
+        Color c = sh.Colour;
+        c.a = static_cast<uint8_t>(std::lround(std::min(1.0f, std::max(0.0f, sh.Darkness)) * 255.0f));
+        ctx->PushState();
+        ctx->SetImageSmoothing(true);
+        switch (sh.Kind) {
+            case ShadowKind::Glow:
+                ctx->DrawMask(c, *r->alpha, r->rect, ImageFitMode::Fill);
+                break;
+            case ShadowKind::Floor: {
+                // Squash toward the element's bottom edge and shear sideways:
+                // x' = x + shear * (bottom - y), y' = bottom - squash * (bottom - y).
+                const Rect2Dd box = element.GetBoundingBox();
+                const double bottom = box.y + box.height;
+                ctx->Translate(sh.Offset.x, bottom);
+                ctx->Transform(1.0, 0.0, -sh.FloorShear, std::max(0.05f, sh.FloorSquash), 0.0, 0.0);
+                ctx->Translate(0.0, -bottom);
+                ctx->DrawMask(c, *r->alpha, r->rect, ImageFitMode::Fill);
+                break;
+            }
+            case ShadowKind::Wall:
+            default:
+                ctx->DrawMask(c, *r->alpha,
+                              Rect2Dd(r->rect.x + sh.Offset.x, r->rect.y + sh.Offset.y, r->rect.width, r->rect.height),
+                              ImageFitMode::Fill);
+                break;
+        }
+        ctx->PopState();
+    }
+
+    std::shared_ptr<IPaintPattern> VectorRenderer::TransparencyMask(const TransparencyData &t) {
+        if (!t.IsGradient()) return nullptr;
+        std::vector<GradientStop> stops;
+        stops.reserve(t.Stops.size());
+        for (const auto &st: t.Stops) {
+            const float alpha = 1.0f - std::min(1.0f, std::max(0.0f, st.Level));
+            stops.emplace_back(st.Position, Color(0, 0, 0, static_cast<uint8_t>(std::lround(alpha * 255.0f))));
+        }
+        switch (t.Shape) {
+            case TransparencyShape::Linear:
+                return ctx->CreateLinearGradientPattern(t.Start.x, t.Start.y, t.End.x, t.End.y, stops);
+            case TransparencyShape::Radial: {
+                const double r = std::max(1e-3, std::hypot(t.End.x - t.Start.x, t.End.y - t.Start.y));
+                return ctx->CreateRadialGradientPattern(t.Start.x, t.Start.y, 0.0, t.Start.x, t.Start.y, r, stops);
+            }
+            case TransparencyShape::Conical: {
+                const double a0 = std::atan2(t.End.y - t.Start.y, t.End.x - t.Start.x);
+                return ctx->CreateConicGradientPattern(t.Start.x, t.Start.y, a0, a0 + 2.0 * M_PI, stops);
+            }
+            case TransparencyShape::Flat:
+            default:
+                return nullptr;
+        }
+    }
+
+    // ===========================================================================
+    // LINE GALLERY: arrowheads, variable width, brushes
+    // ===========================================================================
+    // The geometry comes from the model (FlattenPathData, PathEndpoints,
+    // ArrowheadOutline, VariableWidthOutline) so the XAR writer bakes the
+    // same shapes this draws.
+
+    namespace {
+        Point2Dd Unit(const Point2Dd &v) {
+            const double l = std::hypot(v.x, v.y);
+            return l > 1e-12 ? Point2Dd(v.x / l, v.y / l) : Point2Dd(1, 0);
+        }
+    }
+
+    void VectorRenderer::RenderLineGallery(const VectorElement &element, const StrokeData &stroke,
+                                           const Rect2Dd &bounds, float opacity) {
+        PathData pd;
+        if (!BuildOutlinePath(element, pd)) return;
+        SetGalleryPaint(stroke, bounds, opacity);
+        if (stroke.HasWidthProfile()) {
+            const PathData band = VariableWidthOutline(pd, stroke);
+            if (!band.commands.empty()) {
+                ctx->ClearPath();
+                BuildPath(band);
+                ctx->SetFillRule(UltraCanvas::FillRule::EvenOdd);
+                ctx->FillPathPreserve();
+                ctx->ClearPath();
+                ctx->SetFillRule(UltraCanvas::FillRule::NonZero);
+            }
+        } else if (stroke.HasBrush()) {
+            for (const auto &sub: FlattenPathData(pd)) StampBrush(sub.Points, stroke);
+        }
+        if (stroke.HasArrowheads()) {
+            Point2Dd start, startDir, end, endDir;
+            if (PathEndpoints(pd, start, startDir, end, endDir)) {
+                SetGalleryPaint(stroke, bounds, opacity);
+                if (stroke.StartArrow.IsSet()) DrawArrowhead(stroke.StartArrow, start, startDir, stroke);
+                if (stroke.EndArrow.IsSet()) DrawArrowhead(stroke.EndArrow, end, endDir, stroke);
+            }
+        }
+    }
+
+    // The stroke's paint as both fill and stroke source, for the filled
+    // decorations and the open ones.
+    void VectorRenderer::SetGalleryPaint(const StrokeData &stroke, const Rect2Dd &bounds, float opacity) {
+        ctx->SetLineDash(UCDashPattern());
+        ctx->SetStrokeWidth(stroke.Width);
+        ctx->SetLineCap(LineCap::Round);
+        ctx->SetLineJoin(LineJoin::Round);
+        if (silhouetteMode) {
+            ctx->SetFillPaint(Colors::Black);
+            ctx->SetStrokePaint(Colors::Black);
+            return;
+        }
+        const float a = opacity * stroke.Opacity;
+        if (auto *g = std::get_if<GradientData>(&stroke.Fill)) {
+            SetupGradient(*g, bounds, a, false);
+            SetupGradient(*g, bounds, a, true);
+            return;
+        }
+        Color c = Colors::Black;
+        if (auto *col = std::get_if<Color>(&stroke.Fill)) c = *col;
+        ctx->SetFillPaint(WithOpacity(c, a));
+        ctx->SetStrokePaint(WithOpacity(c, a));
+    }
+
+    void VectorRenderer::DrawArrowhead(const ArrowheadData &arrow, const Point2Dd &tip, const Point2Dd &d,
+                                       const StrokeData &stroke) {
+        bool stroked = false;
+        const PathData outline = ArrowheadOutline(arrow, tip, d, stroke.Width, stroked);
+        if (outline.commands.empty()) return;
+        ctx->ClearPath();
+        BuildPath(outline);
+        if (stroked) ctx->StrokePathPreserve();
+        else ctx->FillPathPreserve();
+        ctx->ClearPath();
+    }
+
+    void VectorRenderer::FillVariableWidth(const std::vector<Point2Dd> &pts, bool closed, const StrokeData &stroke) {
+        // Kept for the header's sake; RenderLineGallery uses the model's
+        // VariableWidthOutline over the whole path instead.
+        PathData pd;
+        for (size_t i = 0; i < pts.size(); ++i) {
+            PathCommand c;
+            c.Type = i == 0 ? PathCommandType::MoveTo : PathCommandType::LineTo;
+            c.Parameters = {static_cast<float>(pts[i].x), static_cast<float>(pts[i].y)};
+            pd.commands.push_back(c);
+        }
+        if (closed) { PathCommand z; z.Type = PathCommandType::ClosePath; pd.commands.push_back(z); pd.Closed = true; }
+        const PathData band = VariableWidthOutline(pd, stroke);
+        if (band.commands.empty()) return;
+        ctx->ClearPath();
+        BuildPath(band);
+        ctx->SetFillRule(UltraCanvas::FillRule::EvenOdd);
+        ctx->FillPathPreserve();
+        ctx->ClearPath();
+        ctx->SetFillRule(UltraCanvas::FillRule::NonZero);
+    }
+
+    void VectorRenderer::StampBrush(const std::vector<Point2Dd> &pts, const StrokeData &stroke) {
+        const BrushData &b = *stroke.Brush;
+        if (!b.Stamp || pts.size() < 2) return;
+        const Rect2Dd sb = b.Stamp->GetBoundingBox();
+        if (sb.width <= 0 || sb.height <= 0) return;
+        const double k = (std::max(0.5f, stroke.Width) * std::max(0.01f, b.Scale)) / sb.height;
+        const double step = std::max(0.25, sb.width * k * std::max(0.05f, b.Spacing));
+        std::vector<double> cum(pts.size(), 0.0);
+        for (size_t i = 1; i < pts.size(); ++i)
+            cum[i] = cum[i - 1] + std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        const double total = cum.back();
+        if (total <= 1e-9) return;
+        const VectorRenderOptions savedOptions = options;
+        options.EnableCulling = false;
+        size_t seg = 1;
+        int stamps = 0;
+        for (double dist = 0; dist <= total + 1e-9 && stamps < 4000; dist += step, ++stamps) {
+            while (seg + 1 < pts.size() && cum[seg] < dist) ++seg;
+            const double segLen = cum[seg] - cum[seg - 1];
+            const double u = segLen > 1e-12 ? std::min(1.0, std::max(0.0, (dist - cum[seg - 1]) / segLen)) : 0.0;
+            const Point2Dd p(pts[seg - 1].x + (pts[seg].x - pts[seg - 1].x) * u,
+                             pts[seg - 1].y + (pts[seg].y - pts[seg - 1].y) * u);
+            const Point2Dd t = Unit(Point2Dd(pts[seg].x - pts[seg - 1].x, pts[seg].y - pts[seg - 1].y));
+            ctx->PushState();
+            ctx->Translate(p.x, p.y);
+            if (b.Rotate) ctx->Rotate(std::atan2(t.y, t.x));
+            ctx->Scale(k, k);
+            ctx->Translate(-(sb.x + sb.width / 2), -(sb.y + sb.height / 2));
+            RenderElement(ctx, *b.Stamp);
+            ctx->PopState();
+        }
+        options = savedOptions;
+    }
+
     bool VectorRenderer::IsVisible(const VectorElement &e) const {
         return e.Style.Visible && e.Style.Display && e.Style.Opacity > 0;
     }
@@ -508,7 +959,7 @@ namespace UltraCanvas {
         ctx->PopState();
     }
 
-    void VectorRenderer::ClearCaches() {}
+    void VectorRenderer::ClearCaches() { effectCache.clear(); }
 
     bool BuildVectorElementOutline(IRenderContext *context, const VectorElement &element) {
         if (!context) return false;

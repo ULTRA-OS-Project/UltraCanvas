@@ -15,6 +15,7 @@
 #include "UltraCanvasWindowsIODevicePrinterGdi.h"
 
 #include "../../include/IODeviceManager/UltraCanvasIODevicePrinter.h"
+#include "../../include/IODeviceManager/UltraCanvasIODevicePrinterGutenPrint.h"
 #include "../../include/IODeviceManager/UltraCanvasIODeviceManager.h"
 #include "../../include/UltraCanvasUtils.h"
 
@@ -275,6 +276,10 @@ public:
         // the caller, different implementation underneath - which is the
         // point of choosing a renderer by kind rather than by class.
         AddRenderer(Internal::CreateWindowsGdiRenderer());
+        // GutenPrint is offered alongside, and answers for itself whether it
+        // knows this model. It emits the printer's own command language, so
+        // it needs a transport that carries a raw job - which this one does.
+        AddRenderer(CreateGutenPrintRenderer());
     }
 
 protected:
