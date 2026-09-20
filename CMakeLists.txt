@@ -822,6 +822,23 @@ if(ULTRACANVAS_BUILD_ULTRAWIN_TESTS AND TARGET UltraWin)
     message(STATUS "── UltraWin test suite enabled (target: UltraWinTests) ──")
 endif()
 
+# ===== ULTRAMESSAGE TESTS AND COMMAND LINE =====
+# Headless: the suite hosts an in-process broker on a private bus path and
+# drives it over the real transport, so it runs wherever UltraMessage builds.
+option(ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS "Build the UltraMessage test suite" OFF)
+if(ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS AND TARGET UltraMessage)
+    enable_testing()
+    add_subdirectory(Tests/UltraMessage)
+    message(STATUS "")
+    message(STATUS "── UltraMessage test suite enabled (target: UltraMessageTests) ──")
+endif()
+option(BUILD_ULTRAMSG_CLI "Build the ultramsg command-line tool" ON)
+if(BUILD_ULTRAMSG_CLI AND TARGET UltraMessage)
+    add_executable(ultramsg Apps/UltraMessageCli/main.cpp)
+    target_compile_features(ultramsg PRIVATE cxx_std_20)
+    target_link_libraries(ultramsg PRIVATE UltraMessage)
+endif()
+
 # ===== ULTRADATABASE TESTS =====
 # Independent of BUILD_TESTS / Catch2: uses a tiny in-tree framework so it
 # can run wherever UltraDatabase is built.

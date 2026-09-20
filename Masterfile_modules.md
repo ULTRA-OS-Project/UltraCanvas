@@ -1430,9 +1430,20 @@ UltraMessage is intended to be the recommended way for UltraFiler,
 UltraViewer, UltraMail, UltraSocial and the ULTRA OS desktop to talk to one
 another and for the desktop to collect messages from every source.
 
-**Implementation status:** none — named and specified only. The design
-proposal is written; no code, no `Docs/Modules/UltraMessage/README.md` and no
-demo entry exist yet, and those land with Phase 1 rather than before it.
+**Implementation status:** Phase 1 implemented — library target
+`UltraMessage` (`UltraCanvas/{include,core}/UltraMessage/`, header
+`<UltraMessage/UltraMessage.h>`, C++ layer `<UltraMessage/UltraMessageEndpoint.h>`,
+UI bridge `<UltraMessage/UltraMessageUltraCanvas.h>`): the broker with
+in-process hosting and lock-file election, the Unix-socket / named-pipe
+transport, `Connect` / `Post` / `PostRecorded` / `Request` / `Reply` /
+`Subscribe`, UI-thread delivery through an installable dispatcher, the journal
+on UltraDatabase with the `Query` / `MarkRead` / `Dismiss` / `Delete` /
+`ListConversations` / `SetRetention` / `Export` calls, the schema registry with
+the well-known topics, and the `ultramsg` command line. Tests in
+`Tests/UltraMessage` (24 cases, in-tree and standalone). Not yet: the
+`AddFdWatch` event-loop path (a reader thread serves every endpoint), an FTS5
+index (text search is a LIKE), automatic reconnection after the hosting broker
+exits, and the adapters of Phase 2. See `Docs/Modules/UltraMessage/README.md`.
 
 ---
 
