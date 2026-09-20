@@ -228,6 +228,9 @@ std::vector<ElementPtr> SortByDrawingOrder(const std::vector<ElementPtr>& elemen
 std::shared_ptr<VectorGroup> GroupElements(const std::vector<ElementPtr>& elements);
 // Replaces every group in the list by its children (transforms composed);
 // non-groups pass through. Returns the resulting elements.
+// Dissolves groups, symbols and the ClipView / Blend / Mould containers
+// (not layers): their children take their place, keeping their document
+// placement. Other elements pass through.
 std::vector<ElementPtr> UngroupElements(const std::vector<ElementPtr>& elements);
 // Moves an element to another parent at an index (-1 = end), keeping its
 // document-space placement.
@@ -252,6 +255,19 @@ void DistributeElements(const std::vector<ElementPtr>& elements, DistributeMode 
 std::shared_ptr<VectorStorage::VectorPath> ConvertToPath(const ElementPtr& element);
 // The outline geometry alone, in the element's own space (no replacement).
 std::optional<VectorStorage::PathData> OutlineOf(const VectorElement& element);
+
+// ===== COMBINE SHAPES =====
+// Xara's Combine Shapes over the elements' outlines (in document space,
+// through UltraCanvasVectorGeometry): Add joins them all into one shape;
+// Intersect keeps what they all share; Subtract cuts the front shape (the
+// last in drawing order) out of each of the others; Slice cuts each of
+// the others with the front shape into an inside and an outside piece
+// and removes the front shape. A joint result takes the back shape's
+// style, effects and place; per-shape results keep their own. Elements
+// without an outline (text, images, groups) are ignored. Returns the
+// new elements, which have replaced the inputs in the document.
+enum class CombineOp { Add, Subtract, Intersect, Slice };
+std::vector<ElementPtr> CombineShapes(const std::vector<ElementPtr>& elements, CombineOp op);
 
 } // namespace VectorEdit
 } // namespace UltraCanvas

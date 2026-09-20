@@ -59,12 +59,22 @@ the backing implementation can be replaced without affecting callers.
     `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
     `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
     `Transparency` ramp with its mix, clip, mask), `Effects` (optional
-    `ShadowEffect` and `FeatherEffect`), an optional double-precision
-    `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
-    `Clone()`.
+    `ShadowEffect`, `FeatherEffect`, `ContourEffect` and `BevelEffect`),
+    an optional double-precision `Matrix3x3` `Transform`,
+    `GetBoundingBox()` in its parent's space and `Clone()`. The Xara-class
+    containers `VectorClipView` (keyholes clip the rest), `VectorBlend`
+    (steps between children) and `VectorMould` (children warped into an
+    envelope or perspective shape) are groups too (`IsGroupType`).
   - Geometry helpers shared by the renderer, the editor and the writers:
     `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`,
     `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline`.
+  - `DataFormats/UltraCanvasVectorGeometry.h` — polygon booleans and
+    offsetting over path data, a planar-map clipper in core:
+    `PolygonBoolean` / `PathBoolean` (union, subtract, intersect, exclude,
+    per-input fill rules), `SlicePath`, `OffsetPolygons` / `OffsetPath`
+    (round, mitre, bevel joins), `FlattenToPolygons`, `PolygonsToPath`,
+    `PolygonSetArea`, `WindingNumber`, `PolygonSetContains`. What
+    `CombineShapes`, the contour effect and the XAR writer use.
   - `ParsePathString` / `SerializePathData`, `ParseColorString`,
     `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
     `PointsPerUnit`, `LengthUnitSymbol`.
@@ -102,7 +112,9 @@ the backing implementation can be replaced without affecting callers.
   `ReorderElements` (`ZOrderMove`), `GroupElements` / `UngroupElements` /
   `ReparentElement` (placement preserved), `DeleteElements`,
   `DuplicateElements`, `AlignElements` / `DistributeElements`,
-  `ConvertToPath` / `OutlineOf`.
+  `ConvertToPath` / `OutlineOf`, `CombineShapes` (`CombineOp` Add /
+  Subtract / Intersect / Slice, Xara's Combine Shapes over the outlines);
+  `UngroupElements` dissolves the ClipView / Blend / Mould containers too.
 - **UltraCanvasBezierPath** (`UltraCanvasBezierPath.h`) — the editing model
   of a path: `BezierNode` (anchor, two handles, `BezierNodeType` Corner /
   Smooth / Symmetric), `UltraCanvasBezierSubpath` (`InsertNodeAt` by de
