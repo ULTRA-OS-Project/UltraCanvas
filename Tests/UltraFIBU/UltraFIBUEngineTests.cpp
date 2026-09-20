@@ -1879,9 +1879,24 @@ static void TestRechnungPdf() {
         key.art        = SteuerArt::IgLieferung;
         iglKeys.push_back(key);
     }
+    // `euKunde` above deliberately has no VAT number - it is the fixture for
+    // "the number is missing". Zero-rating needs one, so this case gets its
+    // own customer: the exemption rests on the number, and rendering the
+    // invoice without it is refused now rather than printed with a warning.
+    Partner euKundeMitNummer = euKunde;
+    euKundeMitNummer.ustIdNr = "SK2022513009";
+
     const std::string pfadIgl = "rechnungstest_igl.pdf";
     std::remove(pfadIgl.c_str());
-    Check(SchreibeRechnungPdf(mandant, igl, euKunde, iglKeys, pfadIgl).ok,
+    {
+        const RechnungPdfErgebnis ohneNummer =
+            SchreibeRechnungPdf(mandant, igl, euKunde, iglKeys, pfadIgl);
+        Check(!ohneNummer.ok,
+              "an intra-community invoice without the customer's USt-IdNr. is NOT "
+              "written - it would claim an exemption it has no basis for");
+    }
+    std::remove(pfadIgl.c_str());
+    Check(SchreibeRechnungPdf(mandant, igl, euKundeMitNummer, iglKeys, pfadIgl).ok,
           "a zero-rated invoice is written");
     const std::string pdfIgl = LiesDatei(pfadIgl);
     Check(pdfIgl.find("6a UStG") != std::string::npos,
@@ -4291,6 +4306,264 @@ static void TestBelegArchiv() {
     }
 }
 
+// ===== REVERSE CHARGE UND DIE STEUERSCHLUESSEL-AUSWAHL =====
+
+static void TestReverseCharge() {
+    std::printf("Reverse Charge und Steuerschlüssel-Auswahl\n");
+
+    // A small, explicit key set. Written out rather than loaded from the
+    // shipped file so the test says what it is testing, and so a change to the
+    // shipped data cannot quietly change what these assertions mean.
+    auto key = [](const std::string& name, SteuerArt art, int promille,
+                  bool vorsteuer, const std::string& land = "") {
+        Steuerschluessel k;
+        k.schluessel   = name;
+        k.bezeichnung  = name;
+        k.art          = art;
+        k.satzPromille = promille;
+        k.vorsteuer    = vorsteuer;
+        k.land         = land;
+        k.kontoUmsatz  = "8400";
+        k.kontoSteuer  = promille != 0 ? "1776" : "";
+        k.gueltigVon   = Date(2026, 1, 1);
+        return k;
+    };
+    const std::vector<Steuerschluessel> keys = {
+        key("USt19",    SteuerArt::Inland, 190, false),
+        key("USt7",     SteuerArt::Inland,  70, false),
+        key("VSt19",    SteuerArt::Inland, 190, true),
+        key("IGL",      SteuerArt::IgLieferung,       0, false),
+        key("EURC",     SteuerArt::EuSonstigeLeistung, 0, false),
+        key("IGE19",    SteuerArt::IgErwerb,         190, false),
+        key("RC13b",    SteuerArt::ReverseCharge13b, 190, true),
+        key("RC13bAus", SteuerArt::ReverseCharge13b,   0, false),
+        key("Ausfuhr",  SteuerArt::Drittland,          0, false),
+        // A key configured wrongly in exactly one way: it declares the customer
+        // liable AND carries a rate. Nothing else about it is out of place - it
+        // is not an input-tax key, and it suits the partner - so it isolates the
+        // contradiction rule. Without it, "RC13b is blocked" passes because the
+        // input-tax rule fires first, and breaking the contradiction check
+        // leaves the suite green.
+        key("KaputtRC", SteuerArt::EuSonstigeLeistung, 190, false),
+    };
+
+    Mandant mandant;
+    mandant.name = "Muster GmbH";
+
+    Partner euFirma;
+    euFirma.name            = "Wien Handels GmbH";
+    euFirma.konto           = "10000";
+    euFirma.land            = "AT";
+    euFirma.steuerkategorie = Steuerkategorie::EuUnternehmer;
+    euFirma.ustIdNr         = "ATU12345675";
+
+    Partner inland;
+    inland.name            = "Berlin Bau GmbH";
+    inland.konto           = "10001";
+    inland.land            = "DE";
+    inland.steuerkategorie = Steuerkategorie::Inland;
+
+    auto belegMit = [](BelegArt art, const std::string& schluessel) {
+        Beleg b;
+        b.art          = art;
+        b.datum        = Date(2026, 6, 16);
+        b.partnerKonto = "10000";
+        BelegPosition pos;
+        pos.bezeichnung      = "Beratungsleistung";
+        pos.steuerschluessel = schluessel;
+        b.positionen.push_back(pos);
+        return b;
+    };
+
+    // --- the invoice that started this ---
+    {
+        // § 13b at 19 % is what the RECIPIENT of a service books to self-assess
+        // German tax. On an outgoing invoice the same rule means zero. Used
+        // there, it produced 1.000,00 net, 190,00 tax, 1.190,00 total - and
+        // underneath, "Steuerschuldnerschaft des Leistungsempfängers". The
+        // invoice charged the tax and told the customer they owed it.
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "RC13b"), euFirma, keys);
+        Check(HatBlockierendenBefund(befunde),
+              "a key that charges tax AND declares the customer liable is blocked");
+
+        // The same rule on its own, with nothing else wrong with the key.
+        const std::vector<SteuerBefund> nurWiderspruch = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "KaputtRC"), euFirma, keys);
+        Check(HatBlockierendenBefund(nurWiderspruch),
+              "and it is blocked by the contradiction itself, not by some other "
+              "rule that happens to fire at the same time");
+        CheckInt(static_cast<int64_t>(nurWiderspruch.size()), 1,
+                 "with exactly one finding, so the mutation test can see it");
+
+        bool nennGrund = false;
+        for (const SteuerBefund& b : befunde)
+            if (b.text.find("keine deutsche Umsatzsteuer berechnet") != std::string::npos)
+                nennGrund = true;
+        Check(nennGrund,
+              "and the finding names the contradiction rather than a key code - "
+              "the reader has to be able to see which half is wrong");
+    }
+
+    // --- the key that belongs there ---
+    {
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "EURC"), euFirma, keys);
+        Check(!HatBlockierendenBefund(befunde),
+              "the service-to-an-EU-business key passes");
+    }
+
+    // --- the VAT number is the condition, not a formality ---
+    {
+        Partner ohneNummer = euFirma;
+        ohneNummer.ustIdNr.clear();
+        for (const char* k : { "IGL", "EURC" }) {
+            const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+                belegMit(BelegArt::Ausgangsrechnung, k), ohneNummer, keys);
+            Check(HatBlockierendenBefund(befunde),
+                  std::string("zero-rating with ") + k +
+                  " is blocked without the customer's USt-IdNr. - without it the "
+                  "supply is taxable here, and § 14a UStG wants it on the invoice");
+        }
+    }
+
+    // --- and the mirror image ---
+    {
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "IGL"), inland, keys);
+        Check(HatBlockierendenBefund(befunde),
+              "zero-rating a domestic customer as an intra-community supply is "
+              "blocked - one of the two statements has to be wrong");
+    }
+
+    // --- a warning is not a refusal ---
+    {
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "USt19"), euFirma, keys);
+        Check(!HatBlockierendenBefund(befunde),
+              "charging German VAT to an EU business is allowed - the customer "
+              "may simply not have given their number in time");
+        Check(!befunde.empty(),
+              "but it is flagged, because it is usually a mistake");
+    }
+
+    // --- direction ---
+    {
+        Check(HatBlockierendenBefund(PruefeSteuerlicheStimmigkeit(
+                  belegMit(BelegArt::Ausgangsrechnung, "VSt19"), inland, keys)),
+              "an input-tax key on an outgoing document is blocked");
+        Check(HatBlockierendenBefund(PruefeSteuerlicheStimmigkeit(
+                  belegMit(BelegArt::Ausgangsrechnung, "unbekannt"), inland, keys)),
+              "and so is a key nobody can describe");
+    }
+
+    // ===== what the dropdown offers =====
+
+    auto finde = [](const std::vector<SteuerschluesselVorschlag>& liste,
+                    const std::string& name) -> const SteuerschluesselVorschlag* {
+        for (const SteuerschluesselVorschlag& v : liste)
+            if (v.schluessel.schluessel == name) return &v;
+        return nullptr;
+    };
+
+    // --- an EU business: both cross-border keys, and NO default ---
+    {
+        const std::vector<SteuerschluesselVorschlag> liste = SteuerschluesselFuerPartner(
+            mandant, euFirma, BelegArt::Ausgangsrechnung, Date(2026, 6, 16), keys);
+
+        const SteuerschluesselVorschlag* igl  = finde(liste, "IGL");
+        const SteuerschluesselVorschlag* eurc = finde(liste, "EURC");
+        Check(igl != nullptr && igl->passend, "goods to an EU business suggest IGL");
+        Check(eurc != nullptr && eurc->passend,
+              "and a service to the same customer suggests the reverse-charge key");
+
+        int vorgaben = 0;
+        for (const SteuerschluesselVorschlag& v : liste) if (v.vorgabe) ++vorgaben;
+        CheckInt(vorgaben, 0,
+                 "and NEITHER is preselected: goods or service is not something "
+                 "the program knows, and picking one of two legally different "
+                 "treatments by list order is how the wrong one gets onto an "
+                 "invoice with nothing to show for it");
+
+        const SteuerschluesselVorschlag* vst = finde(liste, "VSt19");
+        Check(vst != nullptr && vst->widerspruch && !vst->passend,
+              "the input-tax key is listed but marked as contradicting - visible "
+              "where the choice is made rather than refused afterwards");
+    }
+
+    // --- an EU business that never gave a number ---
+    {
+        Partner ohneNummer = euFirma;
+        ohneNummer.ustIdNr.clear();
+        const std::vector<SteuerschluesselVorschlag> liste = SteuerschluesselFuerPartner(
+            mandant, ohneNummer, BelegArt::Ausgangsrechnung, Date(2026, 6, 16), keys);
+        const SteuerschluesselVorschlag* ust19 = finde(liste, "USt19");
+        Check(ust19 != nullptr && ust19->passend && ust19->vorgabe,
+              "without the customer's USt-IdNr. German VAT is the default - the "
+              "exemption has no basis until the number is there");
+        const SteuerschluesselVorschlag* igl = finde(liste, "IGL");
+        Check(igl != nullptr && !igl->passend,
+              "and zero-rating is not suggested");
+    }
+
+    // --- a domestic customer ---
+    {
+        const std::vector<SteuerschluesselVorschlag> liste = SteuerschluesselFuerPartner(
+            mandant, inland, BelegArt::Ausgangsrechnung, Date(2026, 6, 16), keys);
+        const SteuerschluesselVorschlag* ust19 = finde(liste, "USt19");
+        Check(ust19 != nullptr && ust19->vorgabe, "19 % is the default at home");
+        const SteuerschluesselVorschlag* ust7 = finde(liste, "USt7");
+        Check(ust7 != nullptr && ust7->passend && !ust7->vorgabe,
+              "7 % is offered but is a decision, not a default");
+    }
+
+    // --- direction, in the dropdown ---
+    {
+        const std::vector<SteuerschluesselVorschlag> eingang = SteuerschluesselFuerPartner(
+            mandant, inland, BelegArt::Eingangsrechnung, Date(2026, 6, 16), keys);
+        const SteuerschluesselVorschlag* vst = finde(eingang, "VSt19");
+        Check(vst != nullptr && vst->passend && vst->vorgabe,
+              "a purchase at home defaults to input tax");
+        const SteuerschluesselVorschlag* ausfuhr = finde(eingang, "Ausfuhr");
+        Check(ausfuhr != nullptr && !ausfuhr->passend,
+              "and an export key is not suggested on an incoming invoice - it was, "
+              "until a Swiss supplier's bill offered \"Ausfuhrlieferung\"");
+    }
+
+    // --- a key that was not in force is not offered at all ---
+    {
+        const std::vector<SteuerschluesselVorschlag> liste = SteuerschluesselFuerPartner(
+            mandant, inland, BelegArt::Ausgangsrechnung, Date(2025, 6, 16), keys);
+        Check(liste.empty(),
+              "offering last year's key is how last year's rate reaches an invoice");
+    }
+
+    // --- the dropdown never recommends what posting would refuse ---
+    {
+        for (const Partner* p : { &euFirma, &inland }) {
+            for (BelegArt art : { BelegArt::Ausgangsrechnung, BelegArt::Eingangsrechnung }) {
+                const std::vector<SteuerschluesselVorschlag> liste =
+                    SteuerschluesselFuerPartner(mandant, *p, art, Date(2026, 6, 16), keys);
+                for (const SteuerschluesselVorschlag& v : liste) {
+                    if (!v.passend) continue;
+                    Beleg probe;
+                    probe.art          = art;
+                    probe.datum        = Date(2026, 6, 16);
+                    probe.partnerKonto = p->konto;
+                    BelegPosition pos;
+                    pos.bezeichnung      = "Probe";
+                    pos.steuerschluessel = v.schluessel.schluessel;
+                    probe.positionen.push_back(pos);
+                    Check(!HatBlockierendenBefund(
+                              PruefeSteuerlicheStimmigkeit(probe, *p, keys)),
+                          "a suggested key (" + v.schluessel.schluessel +
+                          ") is never one that Buchen would refuse");
+                }
+            }
+        }
+    }
+}
+
 // ===== EU-STEUERSAETZE IM BESTAND =====
 
 static void TestEuSteuersaetze() {
@@ -5013,6 +5286,7 @@ int main() {
     TestBelegArchiv();
     TestBelegImport();
     TestOss();
+    TestReverseCharge();
     TestEuSteuersaetze();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);

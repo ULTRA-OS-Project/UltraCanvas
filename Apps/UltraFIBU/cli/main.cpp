@@ -145,6 +145,10 @@ void PrintUsage() {
         "        --ziel <verzeichnis>\n"
         "  lieferschwelle <datei>  Stand der 10.000-EUR-Schwelle (§ 3c UStG)\n"
         "        --jahr <JJJJ>\n"
+        "  steuerwahl <datei>      Welche Steuerschlüssel zu einem Partner passen\n"
+        "        --partner <konto|name>   (Pflicht)\n"
+        "        --datum <datum>          (Pflicht)\n"
+        "        --art <belegart>         Vorgabe: ausgangsrechnung\n"
         "  eu-saetze <datei>       Umsatzsteuersätze der Mitgliedstaaten\n"
         "        --land <XX>           nur ein Land\n"
         "  eu-satz-neu <datei>     Neuen Steuersatz ab einem Datum erfassen\n"
@@ -2136,6 +2140,76 @@ int DatevImporte(int argc, char** argv) {
     return 0;
 }
 
+int Steuerwahl(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+
+    const std::string partnerText = Option(argc, argv, "--partner");
+    if (partnerText.empty()) {
+        std::printf("Fehler: --partner <konto|name> ist erforderlich.\n");
+        return 2;
+    }
+    Partner partner;
+    if (!FindePartner(store, mandant.id, partnerText, partner)) {
+        std::printf("Fehler: Kein Partner gefunden für \"%s\".\n", partnerText.c_str());
+        return 1;
+    }
+
+    BelegArt art = BelegArt::Ausgangsrechnung;
+    const std::string artText = Option(argc, argv, "--art");
+    if (!artText.empty() && !BelegArtFromText(artText, art)) {
+        std::printf("Fehler: \"%s\" ist keine Belegart.\n", artText.c_str());
+        return 2;
+    }
+    // The date is required rather than defaulted to today: tax keys carry a
+    // validity, and "which keys apply" has no answer without a day. The engine
+    // has no clock on purpose, and this command is not the place to give it one.
+    Date datum;
+    const std::string datumText = Option(argc, argv, "--datum");
+    if (datumText.empty() || !TryParseDateGerman(datumText, datum)) {
+        std::printf("Fehler: --datum <TT.MM.JJJJ> ist erforderlich - welche "
+                    "Steuerschlüssel gelten, hängt vom Belegdatum ab.\n");
+        return 2;
+    }
+
+    const std::vector<SteuerschluesselVorschlag> vorschlaege =
+        SteuerschluesselFuerPartner(mandant, partner, art, datum,
+                                    store.SteuerschluesselListe(mandant.id));
+
+    std::printf("%s an/von %s (%s, %s)\n",
+                BelegArtLabel(art).c_str(), partner.name.c_str(),
+                SteuerkategorieToText(partner.steuerkategorie).c_str(),
+                partner.ustIdNr.empty() ? "ohne USt-IdNr."
+                                        : ("USt-IdNr. " + partner.ustIdNr).c_str());
+    std::printf("Stand %s\n\n", FormatDateGerman(datum).c_str());
+
+    bool kopfGesetzt = false;
+    for (const SteuerschluesselVorschlag& v : vorschlaege) {
+        if (v.passend && !kopfGesetzt) {
+            std::printf("Vorgeschlagen:\n");
+            kopfGesetzt = true;
+        }
+        if (!v.passend && kopfGesetzt) {
+            std::printf("\nWeitere (nur mit Grund zu wählen):\n");
+            kopfGesetzt = false;   // print the second header once
+            // fall through into the row below
+        }
+        char satz[16];
+        std::snprintf(satz, sizeof(satz), "%d,%d %%",
+                      v.schluessel.satzPromille / 10, v.schluessel.satzPromille % 10);
+        std::printf("  %-10s %8s %-3s %s\n", v.schluessel.schluessel.c_str(), satz,
+                    v.vorgabe ? "<--" : (v.widerspruch ? " ! " : ""),
+                    v.schluessel.bezeichnung.c_str());
+        if (!v.begruendung.empty())
+            std::printf("             %s\n", v.begruendung.c_str());
+    }
+    std::printf("\n\"<--\" ist die Vorgabe, \"!\" widerspricht diesem Partner und wird "
+                "beim Buchen abgelehnt.\n");
+    return 0;
+}
+
 // ===== EU-STEUERSAETZE =====
 
 // "20" -> 200, "8,1" -> 81, "19.0" -> 190. Integer arithmetic throughout: a
@@ -2311,6 +2385,7 @@ int main(int argc, char** argv) {
     if (befehl == "partner")       return PartnerListeZeigen(argc, argv);
     if (befehl == "partner-neu")   return PartnerNeu(argc, argv);
     if (befehl == "ustid")         return UstIdPruefen(argc, argv);
+    if (befehl == "steuerwahl")    return Steuerwahl(argc, argv);
     if (befehl == "termine")       return Termine(argc, argv);
     if (befehl == "perioden")      return Perioden(argc, argv);
     if (befehl == "festschreiben") return Festschreiben(argc, argv);

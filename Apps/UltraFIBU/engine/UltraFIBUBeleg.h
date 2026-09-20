@@ -209,6 +209,79 @@ struct Beleg {
     bool Summieren();
 };
 
+// ===== IS THE TAX TREATMENT CONSISTENT WITH ITSELF? =====
+//
+// This exists because of an invoice this program actually produced: 1.000,00
+// net, "zzgl. 19 % USt 190,00", total 1.190,00 - and underneath it, in the
+// place § 14 Abs. 4 Nr. 8 UStG reserves for the exemption, the sentence
+// "Steuerschuldnerschaft des Leistungsempfängers". It charged the tax and told
+// the customer they owed it. Whichever half the reader believed, the other one
+// was wrong, and nothing in the program objected.
+//
+// The cause was one tax key doing two jobs: § 13b at 19 % is what the
+// *recipient* of a service books to self-assess German tax, and it had been
+// used on an outgoing invoice, where the same rule means zero. Splitting the
+// keys fixes that instance. This check is what stops the next one, because the
+// contradiction is visible without knowing any tax law: a document cannot both
+// charge tax and say no tax is charged.
+//
+// Each entry is a sentence a bookkeeper can act on. `blockierend` marks the
+// ones that must stop the document rather than warn about it.
+struct SteuerBefund {
+    std::string position;     // which line, empty for a document-wide finding
+    std::string schluessel;
+    std::string text;
+    bool        blockierend = false;
+};
+
+// Check a document against the tax keys it uses and the partner it is for.
+//
+// Pure: no database, no clock. `schluessel` is the set of keys in force, and a
+// key the document names but the list does not contain is itself a finding -
+// costing a document against a key nobody can describe is how a wrong rate
+// gets onto an invoice unremarked.
+std::vector<SteuerBefund> PruefeSteuerlicheStimmigkeit(
+    const Beleg& beleg, const Partner& partner,
+    const std::vector<Steuerschluessel>& schluessel);
+
+// True when any finding blocks. What `Buchen` asks.
+bool HatBlockierendenBefund(const std::vector<SteuerBefund>& befunde);
+
+// ===== WHICH TAX KEYS BELONG ON THIS DOCUMENT =====
+//
+// A bookkeeper should not have to know that a service to a Vienna customer is
+// "EURC" and goods to the same customer are "IGL". What decides it is where
+// the other party is, whether they are a business, whether they gave a VAT
+// number, and whether this is a sale or a purchase - all of which the program
+// already knows by the time anyone opens the tax dropdown.
+//
+// So the dropdown is not the whole key list: it is this. The suggestions come
+// first and carry a sentence saying why, the rest stay reachable - because the
+// law has exceptions and a program that hides the other keys is a program
+// somebody works around - and anything outright wrong is marked as such before
+// it is chosen rather than refused afterwards.
+struct SteuerschluesselVorschlag {
+    Steuerschluessel schluessel;
+    // Fits this partner and this kind of document. Listed first.
+    bool        passend = false;
+    // The one to preselect. At most one entry carries it.
+    bool        vorgabe = false;
+    // Would produce a blocking finding if used. Still listed, so the reason is
+    // visible where the choice is made.
+    bool        widerspruch = false;
+    // One sentence, in German, for the row under the dropdown.
+    std::string begruendung;
+};
+
+// The keys for a document of `art` to/from `partner`, suggestions first.
+//
+// Pure: no database. `alle` is the set of keys in force on `datum`; a key not
+// valid then is left out entirely, because offering last year's rate is how
+// last year's rate ends up on an invoice.
+std::vector<SteuerschluesselVorschlag> SteuerschluesselFuerPartner(
+    const Mandant& mandant, const Partner& partner, BelegArt art, const Date& datum,
+    const std::vector<Steuerschluessel>& alle);
+
 // The distinct tax keys of a document, in the order they first appear - which
 // is the order the postings are generated in, so a journal reads like the
 // invoice it came from.

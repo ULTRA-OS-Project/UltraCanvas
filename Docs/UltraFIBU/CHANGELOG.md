@@ -1,3 +1,61 @@
+#### 2026-09-20 *0.13.0*
+- **Eine Rechnung, die 19 % ausweist und zugleich schreibt, der Empfaenger
+  schulde die Steuer, wird nicht mehr erzeugt.** Genau das hat das Programm
+  getan: 1.000,00 netto, "zzgl. 19 % USt 190,00", 1.190,00 gesamt - und
+  darunter, an der Stelle, die § 14 Abs. 4 Nr. 8 UStG fuer den
+  Befreiungshinweis vorsieht, der Satz "Steuerschuldnerschaft des
+  Leistungsempfaengers". Welche Haelfte der Leser glaubt, die andere war
+  falsch. Nichts im Programm hat widersprochen.
+- **Die Ursache war ein Schluessel fuer drei Regeln.** "Reverse Charge"
+  heissen drei verschiedene Dinge, und RC13b war nur eines davon:
+  - `EURC` - sonstige Leistung an ein EU-Unternehmen. Leistungsort ist das
+    Land des Kunden (§ 3a Abs. 2 UStG), also 0 % auf der deutschen Rechnung;
+    der Kunde versteuert sie bei sich.
+  - `RC13b` - EINGANG: wir beziehen eine Leistung und schulden die deutsche
+    Steuer selbst (§ 13b UStG), deshalb 19 %.
+  - `RC13bAus` - AUSGANG: wir erbringen eine Leistung, bei der der deutsche
+    Empfaenger die Steuer schuldet, deshalb 0 %.
+  Dazu `SteuerArt::EuSonstigeLeistung` und der Hinweis auf der Rechnung.
+- **`PruefeSteuerlicheStimmigkeit` ist das, was die naechste Variante
+  verhindert.** Der Widerspruch ist ohne Steuerrecht sichtbar: ein Beleg kann
+  nicht Steuer berechnen und zugleich sagen, es werde keine berechnet.
+  Geprueft wird ausserdem: Vorsteuerschluessel auf einer Ausgangsrechnung,
+  Ausgangsschluessel auf einem Eingangsbeleg, ein Schluessel, der am
+  Belegdatum nicht galt, eine OSS-Zeile ohne Bestimmungsland, und die
+  Steuerbefreiung fuer einen Inlandskunden.
+- **Ohne USt-IdNr. des Kunden keine Steuerfreiheit.** Sie ist die Bedingung
+  der Befreiung, nicht eine Formalie: fehlt sie, wird die Rechnung nicht
+  geschrieben und nicht gebucht. Bisher wurde sie nur als fehlende
+  Pflichtangabe vermerkt und die Rechnung trotzdem gedruckt.
+- **Gebucht wird auch nicht.** Der Belegdruck haelt eine falsche Rechnung vom
+  Kunden fern, aber buchen ist der unumkehrbare Schritt: danach laesst sich
+  der Vorgang nur noch stornieren. Beide Wege pruefen dasselbe.
+- **Die Steuerschluessel-Auswahl richtet sich nach dem Partner.**
+  `SteuerschluesselFuerPartner` liefert die Schluessel, die zu Land,
+  Unternehmereigenschaft, USt-IdNr. und Belegrichtung passen - mit einem
+  deutschen Satz, warum. Das ist das, woran ein Auswahlfeld haengt: wer eine
+  Rechnung nach Wien schreibt, soll nicht wissen muessen, dass eine
+  Dienstleistung "EURC" und eine Warenlieferung "IGL" ist.
+- **Wo das Programm es nicht wissen kann, gibt es keine Vorauswahl.** Ware
+  oder Dienstleistung entscheidet zwischen zwei rechtlich verschiedenen
+  Behandlungen, und die Reihenfolge einer Liste ist kein Grund, eine davon zu
+  waehlen. Bei einem Inlandskunden ist 19 % die Vorgabe, 7 % eine
+  Entscheidung; bei einem EU-Unternehmen ohne USt-IdNr. ist deutsche
+  Umsatzsteuer die Vorgabe.
+- **Ein Vorschlag ist nie etwas, das das Buchen ablehnen wuerde.** Die
+  Auswahl fragt dieselbe Pruefung, die beim Buchen entscheidet - sonst
+  empfiehlt das eine, was das andere verweigert. Ein Test geht alle
+  Kombinationen durch.
+- Neu: `ultrafibu steuerwahl <datei> --partner ... --datum ...` zeigt, was das
+  Auswahlfeld anbieten wird. 32 weitere Pruefungen (1251 insgesamt).
+- **Offen und wichtig:** die Rechnungserfassung selbst hat noch kein
+  Eingabefenster - Belege entstehen ueber die Kommandozeile, und das
+  Auswahlfeld, an dem das hier haengt, gibt es damit noch nicht. Die
+  Kennzahlen 21, 46 und 47 (§ 18b, § 13b) bleiben ungeprueft und damit leer;
+  eine Voranmeldung, die sie braucht, verweigert die Datei. Die Formulierung
+  der Befreiungshinweise gehoert vor dem ersten Echteinsatz dem
+  Steuerberater vorgelegt.
+
 #### 2026-09-20 *0.12.0*
 - **EU-Steuersaetze als Tabelle mit Editor.** Schema v6 (`eu_steuersatz`),
   `Store::EuSteuersatzSetzen/Loeschen/AusDatei`, ein eigener Reiter unter

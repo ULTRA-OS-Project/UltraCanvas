@@ -123,14 +123,33 @@ struct Konto {
 
 enum class SteuerArt {
     Inland,              // domestic, 19 % / 7 % / 0 %
-    IgLieferung,         // intra-community supply, zero-rated (§ 4 Nr. 1b UStG)
+    IgLieferung,         // intra-community supply of GOODS, zero-rated (§ 4 Nr. 1b UStG)
     IgErwerb,            // intra-community acquisition, taxed here
+    // A SERVICE to a business in another member state. The place of supply is
+    // the customer's country (§ 3a Abs. 2 UStG), so no German VAT is charged
+    // and the customer accounts for it there - "reverse charge". It is a
+    // different rule from § 13b below, which is about who owes German tax, and
+    // conflating the two produces an invoice that charges 19 % while telling
+    // the customer they owe the tax. That invoice is wrong twice.
+    EuSonstigeLeistung,
     Drittland,           // third country: export, or an import with no deductible VAT
-    ReverseCharge13b,    // § 13b UStG, the recipient owes the tax
+    ReverseCharge13b,    // § 13b UStG, the recipient owes the GERMAN tax
     Oss,                 // taxed in the destination member state, reported to the BZSt
     Kleinunternehmer,    // § 19 UStG, no VAT charged
     NichtSteuerbar       // place of supply abroad, no German tax
 };
+
+// True when a key means "this customer is not charged German VAT", whatever the
+// reason. On an outgoing document such a key must carry a rate of zero: an
+// invoice that charges tax and also states an exemption contradicts itself, and
+// whichever of the two the reader believes, one of them is wrong.
+bool IstNullsatzImAusgang(SteuerArt art);
+
+// True when the invoice has to carry the recipient's USt-IdNr. and the note
+// naming the rule - § 14a UStG. Zero-rating a cross-border B2B supply without
+// the customer's number is not a formality: it is the condition for the
+// exemption, and without it the supply is taxable at home.
+bool BrauchtUstIdNrDesEmpfaengers(SteuerArt art);
 
 std::string SteuerArtToText(SteuerArt art);
 bool        SteuerArtFromText(const std::string& text, SteuerArt& out);

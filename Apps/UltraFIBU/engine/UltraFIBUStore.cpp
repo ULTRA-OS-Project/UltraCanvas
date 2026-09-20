@@ -2502,6 +2502,30 @@ StoreResult Store::Buchen(Beleg& beleg, const Akteur& akteur) {
                                  " kann nicht mehr gebucht werden.");
     }
 
+    // **Does the document's tax treatment agree with itself?** Checked here
+    // rather than only when printing, because posting is the irreversible step:
+    // afterwards the entry can only be reversed, never corrected, and a posting
+    // whose invoice charged 19 % while declaring the customer liable has gone
+    // into the journal, the UStVA and the customer's books before anyone looks.
+    {
+        Partner partner;
+        PartnerByKonto(aktuell.mandantId, aktuell.partnerKonto, partner);
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            aktuell, partner, SteuerschluesselListe(aktuell.mandantId));
+        if (HatBlockierendenBefund(befunde)) {
+            std::string text = "Die Umsatzsteuer des Belegs ist nicht stimmig:";
+            for (const SteuerBefund& b : befunde) {
+                if (!b.blockierend) continue;
+                text += "\n  - ";
+                if (!b.position.empty()) text += "Position \"" + b.position + "\": ";
+                text += b.text;
+            }
+            WriteAudit(akteur, "beleg", aktuell.id, "abgelehnt",
+                       "Steuerlich nicht stimmig: " + aktuell.nummer);
+            return StoreResult::Fail(text);
+        }
+    }
+
     const std::vector<Buchungsgruppe> gruppen = GruppiereBeleg(aktuell);
     if (gruppen.empty())
         return StoreResult::Fail("Der Beleg ergibt keine Buchung.");

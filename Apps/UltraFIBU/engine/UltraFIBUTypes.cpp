@@ -76,12 +76,41 @@ bool KontoTypFromText(const std::string& text, KontoTyp& out) {
     return false;
 }
 
+// Which kinds of key mean "no German VAT on this invoice". OSS is deliberately
+// NOT one of them: an OSS invoice does charge tax, the destination country's,
+// and its note says exactly that. IgErwerb and Inland are not either - they are
+// the ordinary taxed cases.
+bool IstNullsatzImAusgang(SteuerArt art) {
+    switch (art) {
+        case SteuerArt::IgLieferung:
+        case SteuerArt::EuSonstigeLeistung:
+        case SteuerArt::Drittland:
+        case SteuerArt::ReverseCharge13b:
+        case SteuerArt::Kleinunternehmer:
+        case SteuerArt::NichtSteuerbar:
+            return true;
+        case SteuerArt::Inland:
+        case SteuerArt::IgErwerb:
+        case SteuerArt::Oss:
+            return false;
+    }
+    return false;
+}
+
+// The two cross-border B2B cases. For both, § 14a UStG requires the customer's
+// USt-IdNr. on the invoice, and for both the number is what the exemption rests
+// on rather than a formality.
+bool BrauchtUstIdNrDesEmpfaengers(SteuerArt art) {
+    return art == SteuerArt::IgLieferung || art == SteuerArt::EuSonstigeLeistung;
+}
+
 std::string SteuerArtToText(SteuerArt art) {
     switch (art) {
         case SteuerArt::Inland:           return "inland";
         case SteuerArt::IgLieferung:      return "ig-lieferung";
         case SteuerArt::IgErwerb:         return "ig-erwerb";
         case SteuerArt::Drittland:        return "drittland";
+        case SteuerArt::EuSonstigeLeistung: return "eu-sonstige-leistung";
         case SteuerArt::ReverseCharge13b: return "reverse-charge-13b";
         case SteuerArt::Oss:              return "oss";
         case SteuerArt::Kleinunternehmer: return "kleinunternehmer";
@@ -94,6 +123,7 @@ bool SteuerArtFromText(const std::string& text, SteuerArt& out) {
     if (text == "ig-lieferung")       { out = SteuerArt::IgLieferung;      return true; }
     if (text == "ig-erwerb")          { out = SteuerArt::IgErwerb;         return true; }
     if (text == "drittland")          { out = SteuerArt::Drittland;        return true; }
+    if (text == "eu-sonstige-leistung") { out = SteuerArt::EuSonstigeLeistung; return true; }
     if (text == "reverse-charge-13b") { out = SteuerArt::ReverseCharge13b; return true; }
     if (text == "oss")                { out = SteuerArt::Oss;              return true; }
     if (text == "kleinunternehmer")   { out = SteuerArt::Kleinunternehmer; return true; }

@@ -261,6 +261,13 @@ std::string Befreiungshinweis(const Steuerschluessel& key) {
                    "(§ 4 Nr. 1 Buchst. b i. V. m. § 6a UStG).";
         case SteuerArt::Drittland:
             return "Steuerfreie Ausfuhrlieferung (§ 4 Nr. 1 Buchst. a i. V. m. § 6 UStG).";
+        case SteuerArt::EuSonstigeLeistung:
+            // § 14a Abs. 1 UStG requires this exact phrase, and both parties'
+            // VAT numbers, on a service invoiced to a business in another
+            // member state. The customer accounts for the tax at their rate,
+            // in their country; this invoice carries none.
+            return "Steuerschuldnerschaft des Leistungsempfängers "
+                   "(Reverse Charge, § 3a Abs. 2 UStG).";
         case SteuerArt::ReverseCharge13b:
             return "Steuerschuldnerschaft des Leistungsempfängers (§ 13b UStG).";
         case SteuerArt::Oss:
@@ -351,6 +358,24 @@ RechnungPdfErgebnis SchreibeRechnungPdf(const Mandant& mandant, const Beleg& bel
     }
 
     ergebnis.fehlendePflichtangaben = PruefePflichtangaben(mandant, beleg, empfaenger);
+
+    // **A contradictory invoice is not written.** Unlike a missing address,
+    // which leaves a draft incomplete but harmless, a line that charges tax and
+    // also declares the customer liable for it is a false statement in the one
+    // document the customer books from. Printing it and adding a warning to a
+    // console nobody reads is how it reaches them anyway.
+    ergebnis.steuerBefunde = PruefeSteuerlicheStimmigkeit(beleg, empfaenger, schluessel);
+    if (HatBlockierendenBefund(ergebnis.steuerBefunde)) {
+        ergebnis.fehler = "Die Umsatzsteuer des Belegs ist nicht stimmig, die Rechnung "
+                          "wird deshalb nicht geschrieben:";
+        for (const SteuerBefund& b : ergebnis.steuerBefunde) {
+            if (!b.blockierend) continue;
+            ergebnis.fehler += "\n  - ";
+            if (!b.position.empty()) ergebnis.fehler += "Position \"" + b.position + "\": ";
+            ergebnis.fehler += b.text;
+        }
+        return ergebnis;
+    }
 
     VectorDocument doc;
     doc.Title  = Ueberschrift(beleg) + " " + beleg.nummer;
