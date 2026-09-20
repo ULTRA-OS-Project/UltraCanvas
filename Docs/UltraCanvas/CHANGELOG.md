@@ -1,4 +1,4 @@
-#### 2026-09-20 *0.9.14*
+#### 2026-09-20 *0.9.15*
 - **New: UltraMessage Phase 1 — the message channel is built**
   (`Masterfile_modules.md` §13, design `Docs/Research/UltraMessageDesignProposal.md`,
   reference `Docs/Modules/UltraMessage/README.md`). Library target
@@ -46,6 +46,70 @@
 - Not in this phase, listed in the README: `AddFdWatch` event-loop integration,
   reconnection after the hosting broker exits, FTS5, the attachment spool,
   the Phase 2 adapters and the Phase 3 command surface.
+
+#### 2026-09-20 *0.9.14*
+- **The Alembic aircraft was half an aeroplane, and its canopy was inside the
+  fuselage.** Two separate defects that looked like one: `media/3D/Alembic/
+  E-45-Aircraft.abc` was the last of the 2017 exports still missing its
+  mirrored half, and the reader was dropping every Alembic transform.
+  - The hull mesh in the `.abc` stopped dead at X=0 — 937 faces of the
+    unevaluated cage, against the 7366 its siblings carry — because Blender
+    exported it without applying the Mirror modifier, the same way the `.dae`,
+    `.x`, `.fbx` and `.ms3d` were. Nothing available writes Alembic (the
+    framework's writers cover 3DS, OBJ, PLY, STEP, COLLADA and X3D, and
+    Debian's Blender is built without the exporter), so the archive was
+    repaired rather than re-exported: its Ogawa tree was re-serialised with
+    the hull's `P`, `.faceIndices`, `.faceCounts`, `N`, `uv` and `.selfBnds`
+    replaced by the mesh evaluated from `media/3D/Blend/E-45-Aircraft.blend`
+    with the whole modifier stack applied, the face set renumbered and the
+    archive's `.childBnds` recomputed. Every other object, property, metadata
+    string and time sampling is the bytes Blender wrote in 2017, and each new
+    sample carries a real Alembic sample key — MurmurHash3 x64 128 over the
+    payload, which reproduces the digest on every array the file already had.
+    The demo page now reports 8110 faces and an extent of 1.95 × 4.19 × 6.12,
+    the OBJ export's numbers.
+  - `ReadXform` mapped Alembic's matrix into `ModelStorage::Matrix4x4` by
+    reordering its sixteen doubles. Alembic is row-major *and* row-vector, so
+    the translation is its last row; `Matrix4x4` is column-major *and*
+    column-vector, so the translation is its last column. The two
+    disagreements cancel and the correct conversion is a straight copy — the
+    reorder put the translation in the bottom row, where `DecomposeTRS` never
+    looks, so **every transform in every Alembic read by this framework lost
+    its offset**. In the sample that put the glass canopy at the origin,
+    sunk into the hull, instead of 1.53 up it. Documented as the third entry
+    under "things that surprise people" in `UltraCanvasModelFormats.md`.
+- **The untouched export is now a fixture, like the other four.**
+  `Tests/data/3D/Alembic/E-45-Aircraft.abc` is the 2017 file byte for byte, and
+  `ModelAlembicTest` reads it for the assertions that pin the half hull — not
+  one of which changed. The suite now takes `Tests/data/3D` and `media/3D` as
+  its two arguments and adds `TestTheDemoCopy()`, which holds the repaired
+  asset to the OBJ export's 8110 faces, to symmetry about X, to face-varying
+  normals and UVs one per corner, to a winding that still agrees with the
+  file's own normals, and to the same width, height and length as the OBJ
+  within a percent. `TestSample()` gained the canopy's translation, which is
+  the regression test for the matrix mapping. All 122 tests pass.
+- **Every AI session's report now ends the same way.** `AGENTS.md` gained a
+  *Reporting back* section: a reply that reports work closes with a
+  `## Next Task` block saying what happens next and who does it, and an
+  `## Other recommendations` block listing defects found outside the change —
+  each with its file and why it was not fixed there. Both are written out even
+  when the answer is "none", because an explicit none is the difference
+  between finished and forgotten, and the second block is explicitly not a
+  place to park work that was asked for. `CLAUDE.md` points at it.
+- **The repair is reproducible.** `scripts/alembic/` carries the two scripts it
+  took: `ogawa.py`, the Ogawa container — the Python counterpart of
+  `UltraCanvasOgawaFile.cpp`, which reads an archive, verifies its sample keys
+  and writes it back with chosen blocks replaced — and `replace_mesh.py`, which
+  swaps one polygon mesh for a mesh evaluated from a `.blend`, converting Z-up
+  to Alembic's Y-up and reversing every face to Alembic's winding on the way.
+  The shipped `.abc` is now literally that tool's output, run on the fixture;
+  the README gives the command. `ogawa.py dump` also prints any archive's tree,
+  which is how the defect was found in the first place. Re-running it does not
+  reproduce the file byte for byte — Blender's evaluation is not
+  bit-deterministic, and about 1% of the corner normals come back differing by
+  up to 1.2e-7 — and the README says so rather than implying a checksum will
+  match.
+
 #### 2026-09-19 *0.9.13*
 - **NetworkMonitor records.** `NetworkMonitorStore.h`: an activity store
   over UltraDatabase (SQLite) that turns snapshots into *flows* — one row per
