@@ -862,11 +862,14 @@ message(STATUS "    Test registered: ModelPLYTest")
 # ===== ALEMBIC READER TEST =====
 # The Ogawa container and AbcGeom, against the same E-45 aircraft the 3DS, OBJ,
 # DXF and COLLADA suites read - exported from the same .blend, and like the
-# .dae exported without applying the mirror modifier. The suite pins that
-# difference rather than letting a later change quietly "fix" it, and checks
-# the face winding against the per-corner normals the file itself carries,
-# which is the one decision in an Alembic reader that is invisible until a
-# model renders inside out.
+# .dae exported without applying the mirror modifier. The .abc it reads is the
+# untouched export in Tests/data/3D, not the demo copy under media/3D, which
+# was completed from the .blend; the suite pins that difference rather than
+# letting a later change quietly "fix" it, and checks the face winding against
+# the per-corner normals the file itself carries, which is the one decision in
+# an Alembic reader that is invisible until a model renders inside out. The
+# media root comes second so the same run can also assert that the demo copy
+# is whole.
 message(STATUS "  Building ModelAlembicTest...")
 add_executable(ModelAlembicTest
     ${CMAKE_CURRENT_SOURCE_DIR}/ModelAlembicTest.cpp
@@ -889,7 +892,8 @@ set_target_properties(ModelAlembicTest PROPERTIES
 )
 add_test(
     NAME ModelAlembicTest
-    COMMAND ModelAlembicTest "${ULTRACANVAS_ROOT}/media/3D"
+    COMMAND ModelAlembicTest "${CMAKE_CURRENT_SOURCE_DIR}/data/3D"
+                             "${ULTRACANVAS_ROOT}/media/3D"
     WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin
 )
 message(STATUS "    Test registered: ModelAlembicTest")

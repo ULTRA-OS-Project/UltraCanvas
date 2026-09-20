@@ -1,4 +1,4 @@
-#### 2026-09-20 *0.9.13*
+#### 2026-09-20 *0.9.17*
 - **UltraDatabase speaks PostgreSQL.** `core/UltraDatabase/
   UltraDatabasePostgresDriver.cpp` plus `...PostgresSql.cpp`, registered the
   same way the SQLite driver is. Optional and soft-failing: without libpq the
@@ -25,6 +25,205 @@
 - TLS defaults to `verify-full`, and the connection password must be a
   `vault:` key: a literal password in a config file is refused rather than
   used.
+
+#### 2026-09-20 *0.9.16*
+- **Depth for the vector model: booleans, ClipView, contour, blend, mould,
+  bevel** - phase 5 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`
+  (its first slice); the application half is ArtCreator 0.3.0.
+  - *Geometry* (`DataFormats/UltraCanvasVectorGeometry.h`, core): polygon
+    booleans over paths flattened to polygons - `PolygonBoolean` /
+    `PathBoolean` (union, subtract, intersect, exclude, each input with
+    its own fill rule; a union with nothing normalises a self-crossing
+    path) and `SlicePath` - as a planar-map clipper: every edge is split
+    at every crossing, each piece classified by the winding numbers on
+    its two sides, the separating pieces linked into consistently wound
+    rings. `OffsetPolygons` / `OffsetPath` grow or shrink a set with
+    round, mitre or bevel joins through the same clipper. `FlattenToPolygons`,
+    `PolygonsToPath`, `PolygonSetArea`, `WindingNumber`,
+    `PolygonSetContains`.
+  - *Model*: three container kinds, all `VectorGroup`s (`IsGroupType`):
+    `VectorClipView` (its first `Keyholes` children clip the rest and are
+    not drawn), `VectorBlend` (`Steps` shapes interpolated between each
+    pair of children, a `ColourBlendKind` run - fade, rainbow, alt
+    rainbow, constant - the one-to-one, antialiased and tangential flags
+    and Xara's profiles) and `VectorMould` (`Envelope` or `Perspective`:
+    the children warped from `SourceBounds` into a four-sided `Shape`
+    that starts at the source's top-left corner; `Warp`, `ShapeCorners`,
+    `IdentityShape`). Two effects on `VectorElement::Effects`:
+    `ContourEffect` (`Steps` rings `Width` out - or in, when negative -
+    coloured from the fill to `Colour`) and `BevelEffect` (Xara's fifteen
+    `BevelKind` profiles, `Indent`, `LightAngle`, `Tilt`, `Contrast`,
+    `Outer`).
+  - *Renderer*: a ClipView clips to its keyholes' union; a blend draws
+    each child and the resampled, start-matched intermediates with their
+    colours, strokes and opacity run; a mould warps every outline through
+    a Coons patch or a projective map (text and images move to their
+    moulded anchor); contour rings come from the offsetter (outward
+    behind the object, inward over it; cached with the geometry); the
+    bevel lights a distance transform of the silhouette shaped by the
+    profile, inner or outer, as highlight and shadow masks (cached like
+    the effect rasters; `EffectCacheSize` counts all three caches).
+  - *Editing layer*: `CombineShapes` (Xara's Combine Shapes: `Add`,
+    `Intersect` give one shape with the back shape's style; `Subtract`
+    and `Slice` cut each shape with the front one, which is removed).
+    `UngroupElements` dissolves the new containers too.
+  - *XAR*: the plugin gives the five controllers real container nodes and
+    parses their fields as Xara's own source writes them (the previous
+    reader skipped the controller records, so their contents nested under
+    the preceding object): `TAG_CLIPVIEWCONTROLLER` with the keyholes
+    before the `TAG_CLIPVIEW` marker; `TAG_CONTOURCONTROLLER` (steps,
+    width, blend type with the inset flag, four profile doubles) with its
+    `TAG_CONTOUR` node carrying the contour colour; `TAG_BLENDPROFILES` +
+    `TAG_BLEND` (steps, flags) with `TAG_BLENDER` / `TAG_BLENDERADDITIONAL`
+    between the blended objects; `TAG_MOULD_ENVELOPE` / `_PERSPECTIVE`
+    (threshold) with the `TAG_MOULD_PATH` shape and the `TAG_MOULD_BOUNDS`
+    + `TAG_MOULD_GROUP` sources; the 24-byte `TAG_BEVEL` with its
+    `TAG_BEVELINK` node. The converter reads them into the model (the
+    mould shape re-ordered from Xara's bottom-left start) and writes them
+    back the same way, the moulded results as plain warped paths so any
+    reader shows them; Xara regenerates contour steps, blend steps and
+    bevels from the controllers on load. Not verified against a Designer
+    export: the repo's Xara samples carry none of these records.
+  - *Tests*: `VectorEditTest` checks the booleans (areas, ring counts,
+    containment, a holed square), the three joins, insets and the four
+    combine operations; `VectorModelTest` checks each container and
+    effect in pixels; `XARWriterTest` round-trips one of each through the
+    plugin and the converter.
+
+#### 2026-09-20 *0.9.15*
+- **New: UltraMessage Phase 1 — the message channel is built**
+  (`Masterfile_modules.md` §13, design `Docs/Research/UltraMessageDesignProposal.md`,
+  reference `Docs/Modules/UltraMessage/README.md`). Library target
+  `UltraMessage`, headless like UltraDatabase: `<UltraMessage/UltraMessage.h>`
+  with the `UltraMsg_*` surface — `Connect` (the first application to find no
+  broker hosts one in-process; a lock file beside the socket decides the
+  election), `Post`, `PostRecorded` (acknowledged by a subscriber or bounced
+  to the sender after the ttl), `Request` / `RequestAsync` / `Reply` /
+  `ReplyError` (exactly one reply or error, including when the target
+  disconnects), `Subscribe` with `mail.*` / `*.message` / `#` patterns,
+  `includeOwn`, `manualAck` and journal replay, and the journal calls `Query`,
+  `Count`, `GetMessage`, `MarkRead` / `MarkUnread`, `Dismiss`, `Delete`,
+  `ListConversations`, `SetRetention`, `Export`.
+- **The transport** is a Unix domain socket on Linux / macOS / BSD and a named
+  pipe with overlapped I/O on Windows, both carrying the same length-prefixed
+  JSON frames; the broker fills every message's sender from the connection it
+  came on and marks it verified when the operating system's peer credentials
+  agree (`SO_PEERCRED`, `LOCAL_PEERPID`, `GetNamedPipeClientProcessId`). One
+  reader and one bounded writer queue per session, so a slow receiver drops
+  and is told (`overflow`) rather than stalling routing.
+- **The journal** is an UltraDatabase (SQLite) file per user, written before
+  fan-out for every notice on a persistent topic (`messaging.message`,
+  `mail.message`, `system.notification`, or the `Persistent` flag), with
+  conversations, attachments, read / dismissed state, per-pattern retention
+  (defaults 90 days, 50 000 rows) and JSON-lines export. Only the broker opens
+  it; endpoints reach it over the control RPC.
+- **Callbacks run on the UI thread** through the dispatcher an UltraCanvas
+  application installs with one call, `UltraMsg_UseUltraCanvasApplication()`
+  (`<UltraMessage/UltraMessageUltraCanvas.h>`, header-only, wraps
+  `PostToUIThread`); tools without an event loop drain them with
+  `UltraMsg_ProcessPending`, and a subscription can opt onto the transport
+  thread. `<UltraMessage/UltraMessageEndpoint.h>` adds the RAII `Endpoint` /
+  `Subscription`, a `std::future` request, and the typed `MessagingMessage`,
+  `MailMessage` and `SystemNotification` helpers for the well-known topics.
+- **`ultramsg`** (`Apps/UltraMessageCli`): `post`, `tail`, `query`,
+  `conversations`, `endpoints`, `info`, `mark-read` / `dismiss` / `delete`,
+  `export` — the two-process check of an installation.
+- **Tests:** `Tests/UltraMessage` (24 cases: codec and patterns, schemas,
+  election and directory, delivery and targeting, recorded notices and bounce,
+  request / reply and every error path, the journal, replay, lifecycle
+  notices, the C++ layer and the helpers), hosting a broker on a private bus
+  path over the real transport. Builds in-tree
+  (`ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS`, now on in CI) and standalone where
+  the UI library cannot be built. Clean under AddressSanitizer and UBSan.
+- Not in this phase, listed in the README: `AddFdWatch` event-loop integration,
+  reconnection after the hosting broker exits, FTS5, the attachment spool,
+  the Phase 2 adapters and the Phase 3 command surface.
+
+#### 2026-09-20 *0.9.14*
+- **The Alembic aircraft was half an aeroplane, and its canopy was inside the
+  fuselage.** Two separate defects that looked like one: `media/3D/Alembic/
+  E-45-Aircraft.abc` was the last of the 2017 exports still missing its
+  mirrored half, and the reader was dropping every Alembic transform.
+  - The hull mesh in the `.abc` stopped dead at X=0 — 937 faces of the
+    unevaluated cage, against the 7366 its siblings carry — because Blender
+    exported it without applying the Mirror modifier, the same way the `.dae`,
+    `.x`, `.fbx` and `.ms3d` were. Nothing available writes Alembic (the
+    framework's writers cover 3DS, OBJ, PLY, STEP, COLLADA and X3D, and
+    Debian's Blender is built without the exporter), so the archive was
+    repaired rather than re-exported: its Ogawa tree was re-serialised with
+    the hull's `P`, `.faceIndices`, `.faceCounts`, `N`, `uv` and `.selfBnds`
+    replaced by the mesh evaluated from `media/3D/Blend/E-45-Aircraft.blend`
+    with the whole modifier stack applied, the face set renumbered and the
+    archive's `.childBnds` recomputed. Every other object, property, metadata
+    string and time sampling is the bytes Blender wrote in 2017, and each new
+    sample carries a real Alembic sample key — MurmurHash3 x64 128 over the
+    payload, which reproduces the digest on every array the file already had.
+    The demo page now reports 8110 faces and an extent of 1.95 × 4.19 × 6.12,
+    the OBJ export's numbers.
+  - `ReadXform` mapped Alembic's matrix into `ModelStorage::Matrix4x4` by
+    reordering its sixteen doubles. Alembic is row-major *and* row-vector, so
+    the translation is its last row; `Matrix4x4` is column-major *and*
+    column-vector, so the translation is its last column. The two
+    disagreements cancel and the correct conversion is a straight copy — the
+    reorder put the translation in the bottom row, where `DecomposeTRS` never
+    looks, so **every transform in every Alembic read by this framework lost
+    its offset**. In the sample that put the glass canopy at the origin,
+    sunk into the hull, instead of 1.53 up it. Documented as the third entry
+    under "things that surprise people" in `UltraCanvasModelFormats.md`.
+- **The untouched export is now a fixture, like the other four.**
+  `Tests/data/3D/Alembic/E-45-Aircraft.abc` is the 2017 file byte for byte, and
+  `ModelAlembicTest` reads it for the assertions that pin the half hull — not
+  one of which changed. The suite now takes `Tests/data/3D` and `media/3D` as
+  its two arguments and adds `TestTheDemoCopy()`, which holds the repaired
+  asset to the OBJ export's 8110 faces, to symmetry about X, to face-varying
+  normals and UVs one per corner, to a winding that still agrees with the
+  file's own normals, and to the same width, height and length as the OBJ
+  within a percent. `TestSample()` gained the canopy's translation, which is
+  the regression test for the matrix mapping. All 122 tests pass.
+- **Every AI session's report now ends the same way.** `AGENTS.md` gained a
+  *Reporting back* section: a reply that reports work closes with a
+  `## Next Task` block saying what happens next and who does it, and an
+  `## Other recommendations` block listing defects found outside the change —
+  each with its file and why it was not fixed there. Both are written out even
+  when the answer is "none", because an explicit none is the difference
+  between finished and forgotten, and the second block is explicitly not a
+  place to park work that was asked for. `CLAUDE.md` points at it.
+- **The repair is reproducible.** `scripts/alembic/` carries the two scripts it
+  took: `ogawa.py`, the Ogawa container — the Python counterpart of
+  `UltraCanvasOgawaFile.cpp`, which reads an archive, verifies its sample keys
+  and writes it back with chosen blocks replaced — and `replace_mesh.py`, which
+  swaps one polygon mesh for a mesh evaluated from a `.blend`, converting Z-up
+  to Alembic's Y-up and reversing every face to Alembic's winding on the way.
+  The shipped `.abc` is now literally that tool's output, run on the fixture;
+  the README gives the command. `ogawa.py dump` also prints any archive's tree,
+  which is how the defect was found in the first place. Re-running it does not
+  reproduce the file byte for byte — Blender's evaluation is not
+  bit-deterministic, and about 1% of the corner normals come back differing by
+  up to 1.2e-7 — and the README says so rather than implying a checksum will
+  match.
+
+#### 2026-09-19 *0.9.13*
+- **NetworkMonitor records.** `NetworkMonitorStore.h`: an activity store
+  over UltraDatabase (SQLite) that turns snapshots into *flows* — one row per
+  connection across the snapshots that saw it, with first and last sighting,
+  its latest state and counters, and the process behind it, deduplicated —
+  and, past a retention window, into per-day, per-process, per-peer totals so
+  the file stays small on a busy desktop. `NetworkMonitor_OpenStore` /
+  `RecordSnapshot` / `QueryFlows` / `QueryDailyTotals` / `RollUp` /
+  `ApplyRetention` / `Purge` / `StoreStats` / `ExportFlowsCsv`, every one
+  returning `NetworkMonitorResult`, parameter binding only, one transaction
+  per snapshot, and a per-store mutex so a recording thread and a reading
+  thread never share the single SQLite connection at once. The same 5-tuple
+  seen again more than two minutes after its last sighting starts a new flow,
+  so a reused ephemeral port is not glued to an earlier conversation.
+  `":memory:"` keeps a session off disk entirely. Without UltraDatabase in
+  the build the store compiles to stubs that report `NotSupported`, and
+  `NetworkMonitor_StoreAvailable()` says so. Tested end to end on an
+  in-memory store: continuation and its cut-off, every filter, the CSV, the
+  roll-up's accumulation onto an existing day, retention, purge.
+  - `NetworkMonitorResultCode` gains `InvalidArgument` and `StorageError`.
+  - The module links `UltraDatabase` from the block that defines that
+    target, since it comes later in the file than NetworkMonitor's own.
 
 #### 2026-09-19 *0.9.12*
 - **Driverless network scanning, on all three platforms, from one file.**

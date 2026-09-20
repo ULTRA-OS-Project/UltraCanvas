@@ -59,12 +59,22 @@ the backing implementation can be replaced without affecting callers.
     `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
     `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
     `Transparency` ramp with its mix, clip, mask), `Effects` (optional
-    `ShadowEffect` and `FeatherEffect`), an optional double-precision
-    `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
-    `Clone()`.
+    `ShadowEffect`, `FeatherEffect`, `ContourEffect` and `BevelEffect`),
+    an optional double-precision `Matrix3x3` `Transform`,
+    `GetBoundingBox()` in its parent's space and `Clone()`. The Xara-class
+    containers `VectorClipView` (keyholes clip the rest), `VectorBlend`
+    (steps between children) and `VectorMould` (children warped into an
+    envelope or perspective shape) are groups too (`IsGroupType`).
   - Geometry helpers shared by the renderer, the editor and the writers:
     `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`,
     `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline`.
+  - `DataFormats/UltraCanvasVectorGeometry.h` — polygon booleans and
+    offsetting over path data, a planar-map clipper in core:
+    `PolygonBoolean` / `PathBoolean` (union, subtract, intersect, exclude,
+    per-input fill rules), `SlicePath`, `OffsetPolygons` / `OffsetPath`
+    (round, mitre, bevel joins), `FlattenToPolygons`, `PolygonsToPath`,
+    `PolygonSetArea`, `WindingNumber`, `PolygonSetContains`. What
+    `CombineShapes`, the contour effect and the XAR writer use.
   - `ParsePathString` / `SerializePathData`, `ParseColorString`,
     `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
     `PointsPerUnit`, `LengthUnitSymbol`.
@@ -102,7 +112,9 @@ the backing implementation can be replaced without affecting callers.
   `ReorderElements` (`ZOrderMove`), `GroupElements` / `UngroupElements` /
   `ReparentElement` (placement preserved), `DeleteElements`,
   `DuplicateElements`, `AlignElements` / `DistributeElements`,
-  `ConvertToPath` / `OutlineOf`.
+  `ConvertToPath` / `OutlineOf`, `CombineShapes` (`CombineOp` Add /
+  Subtract / Intersect / Slice, Xara's Combine Shapes over the outlines);
+  `UngroupElements` dissolves the ClipView / Blend / Mould containers too.
 - **UltraCanvasBezierPath** (`UltraCanvasBezierPath.h`) — the editing model
   of a path: `BezierNode` (anchor, two handles, `BezierNodeType` Corner /
   Smooth / Symmetric), `UltraCanvasBezierSubpath` (`InsertNodeAt` by de
@@ -1430,9 +1442,20 @@ UltraMessage is intended to be the recommended way for UltraFiler,
 UltraViewer, UltraMail, UltraSocial and the ULTRA OS desktop to talk to one
 another and for the desktop to collect messages from every source.
 
-**Implementation status:** none — named and specified only. The design
-proposal is written; no code, no `Docs/Modules/UltraMessage/README.md` and no
-demo entry exist yet, and those land with Phase 1 rather than before it.
+**Implementation status:** Phase 1 implemented — library target
+`UltraMessage` (`UltraCanvas/{include,core}/UltraMessage/`, header
+`<UltraMessage/UltraMessage.h>`, C++ layer `<UltraMessage/UltraMessageEndpoint.h>`,
+UI bridge `<UltraMessage/UltraMessageUltraCanvas.h>`): the broker with
+in-process hosting and lock-file election, the Unix-socket / named-pipe
+transport, `Connect` / `Post` / `PostRecorded` / `Request` / `Reply` /
+`Subscribe`, UI-thread delivery through an installable dispatcher, the journal
+on UltraDatabase with the `Query` / `MarkRead` / `Dismiss` / `Delete` /
+`ListConversations` / `SetRetention` / `Export` calls, the schema registry with
+the well-known topics, and the `ultramsg` command line. Tests in
+`Tests/UltraMessage` (24 cases, in-tree and standalone). Not yet: the
+`AddFdWatch` event-loop path (a reader thread serves every endpoint), an FTS5
+index (text search is a LIKE), automatic reconnection after the hosting broker
+exits, and the adapters of Phase 2. See `Docs/Modules/UltraMessage/README.md`.
 
 ---
 
@@ -1514,9 +1537,10 @@ it never blocks, filters or modifies traffic, and never terminates TLS.
 with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
 `/proc/<pid>/fd` walk for attribution; Windows — IP Helper
 (`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
-macOS — libproc, per process. All polling. Connection events (ETW, eBPF),
-domain names, persistence and file-transfer correlation are still to come.
-Where there is no backend the module reports `NotSupported`.
+macOS — libproc, per process. All polling. Persistence: the activity store
+over UltraDatabase (flows, daily roll-up, retention, CSV export). Connection
+events (ETW, eBPF), domain names and file-transfer correlation are still to
+come. Where there is no backend the module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
@@ -1525,6 +1549,15 @@ Where there is no backend the module reports `NotSupported`.
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
   `NetworkMonitor_FormatEndpoint`
+- The activity store (`NetworkMonitorStore.h`, over UltraDatabase):
+  `NetworkMonitor_StoreAvailable`, `NetworkMonitor_Now`,
+  `NetworkMonitor_OpenStore`, `NetworkMonitor_CloseStore`,
+  `NetworkMonitor_RecordSnapshot`, `NetworkMonitor_QueryFlows`,
+  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RollUp`,
+  `NetworkMonitor_ApplyRetention`, `NetworkMonitor_Purge`,
+  `NetworkMonitor_StoreStats`, `NetworkMonitor_ExportFlowsCsv`; types
+  `NetworkMonitorStoreOptions`, `RecordedFlow`, `DailyProcessTotal`,
+  `ActivityQuery`, `NetworkMonitorStoreStats`
 - Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
   (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
   StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`)

@@ -3,7 +3,7 @@
 // line, rectangle, ellipse, quick shape, text, fill, transparency, shadow,
 // feather, zoom, push - the line gallery's named choices, and the option
 // widget helpers they share with the window.
-// Version: 1.1.0
+// Version: 1.2.0
 // Last Modified: 2026-09-18
 // Author: UltraCanvas Framework
 
@@ -178,6 +178,28 @@ Rect2Dd DragRect(const Point2Dd& from, const Point2Dd& to, bool square, bool fro
     }
     if (fromCentre) return Rect2Dd(from.x - std::fabs(w), from.y - std::fabs(h), 2 * std::fabs(w), 2 * std::fabs(h));
     return Rect2Dd(std::min(from.x, from.x + w), std::min(from.y, from.y + h), std::fabs(w), std::fabs(h));
+}
+
+
+void WrapInContainer(const std::shared_ptr<VectorGroup>& container, const std::shared_ptr<VectorGroup>& parent, int index,
+                     const std::vector<ElementPtr>& members) {
+    if (!container || !parent) return;
+    index = std::max(0, std::min(index, static_cast<int>(parent->Children.size())));
+    parent->Children.insert(parent->Children.begin() + index, container);
+    container->Parent = parent;
+    int i = 0;
+    for (const auto& m : SortByDrawingOrder(members)) if (m && m != container) ReparentElement(m, container, i++);
+}
+
+const std::vector<std::string>& ColourBlendNames() {
+    static const std::vector<std::string> names = { "Fade", "Rainbow", "Alt rainbow", "Constant" };
+    return names;
+}
+
+const std::vector<std::string>& BevelKindNames() {
+    static const std::vector<std::string> names = { "Flat", "Round", "Half round", "Frame", "Mesa 1", "Mesa 2", "Smooth 1", "Smooth 2",
+                                                    "Point 1", "Point 2a", "Point 2b", "Ruffle 2a", "Ruffle 2b", "Ruffle 3a", "Ruffle 3b" };
+    return names;
 }
 
 } // namespace ArtToolHelpers
@@ -1154,7 +1176,7 @@ public:
         auto hit = ctx.canvas->HitTest(e.doc, 4.0);
         if (!hit || !hit->element) return;
         ElementPtr el = hit->element;
-        if (el->Type == VectorElementType::Group || el->Type == VectorElementType::Layer) return;
+        if (IsGroupType(el->Type)) return;
         ctx.selection->Set(el);
         target = el;
         draggingEnd = -1;
@@ -1596,6 +1618,571 @@ private:
 // ZOOM AND PUSH
 // ===========================================================================
 
+// ===== CONTOUR =====
+// Click a shape for a contour; drag right for an outward width, left for
+// an inward one. The colour comes from the line colour when applied.
+class ContourTool : public ArtTool {
+public:
+    ContourTool() : ArtTool(ArtToolId::Contour, "Contour", "contour.svg", 'C',
+                            "Click a shape for a contour; drag right for an outward width, left for inward; steps and colours in the options") {}
+
+    static ContourEffect FromOptions(const ArtToolContext& ctx) {
+        const ArtToolOptions& o = *ctx.options;
+        ContourEffect c;
+        c.Steps = std::max(1, o.contourSteps);
+        c.Width = o.contourWidth;
+        c.Blend = static_cast<ColourBlendKind>(std::clamp(o.contourBlend, 0, 3));
+        const Color line = ctx.lineColor ? ctx.lineColor() : Colors::Black;
+        c.Colour = Color(line.r, line.g, line.b, 255);
+        return c;
+    }
+    void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        auto hit = ctx.canvas->HitTest(e.doc, 4.0);
+        if (!hit || !hit->element) { target = nullptr; return; }
+        target = hit->topLevel ? hit->topLevel : hit->element;
+        ctx.selection->Set(target);
+        startX = e.view.x;
+        ctx.history->BeginEdit("Contour");
+        if (!target->Effects.Contour.has_value()) target->Effects.Contour = FromOptions(ctx);
+        startWidth = target->Effects.Contour->Width;
+        ctx.canvas->Refresh();
+    }
+    void OnDrag(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        if (!target || !target->Effects.Contour.has_value()) return;
+        const float w = std::clamp(startWidth + static_cast<float>(ctx.canvas->PixelsToDoc(e.view.x - startX)), -200.0f, 200.0f);
+        target->Effects.Contour->Width = w;
+        ctx.options->contourWidth = w;
+        ctx.canvas->Refresh();
+    }
+    void OnRelease(ArtToolContext& ctx, const VectorPointerEvent&) override {
+        if (!target) return;
+        const std::string id = target->Id;
+        ctx.history->EndEdit();
+        target = nullptr;
+        ReselectByIds(ctx, {id});
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void OnSelectionChanged(ArtToolContext& ctx) override {
+        if (ctx.selection && ctx.selection->Count() == 1 && ctx.selection->First() && ctx.selection->First()->Effects.Contour.has_value()) {
+            const auto& c = *ctx.selection->First()->Effects.Contour;
+            ctx.options->contourSteps = c.Steps;
+            ctx.options->contourWidth = c.Width;
+            ctx.options->contourBlend = static_cast<int>(c.Blend);
+        }
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
+        ArtToolOptions& o = *ctx.options;
+        auto update = [&ctx](const std::string& label, const std::function<void(ContourEffect&)>& fn) {
+            if (ctx.selection->Empty()) return;
+            auto ids = ctx.selection->Ids();
+            ctx.history->Record(label, [&]() {
+                for (auto& e : ctx.selection->Elements()) {
+                    if (!e->Effects.Contour.has_value()) e->Effects.Contour = FromOptions(ctx);
+                    fn(*e->Effects.Contour);
+                }
+            }, true);
+            ReselectByIds(ctx, ids);
+        };
+        AddSliderRow(panel, "ac-co-steps", "Steps", 1, 30, static_cast<float>(o.contourSteps), 1, true, [&o, update](float v) {
+            o.contourSteps = static_cast<int>(std::lround(v));
+            update("Contour Steps", [v](ContourEffect& c) { c.Steps = static_cast<int>(std::lround(v)); });
+        });
+        AddSliderRow(panel, "ac-co-width", "Width", -60, 60, o.contourWidth, 0.5f, false, [&o, update](float v) {
+            o.contourWidth = v;
+            update("Contour Width", [v](ContourEffect& c) { c.Width = v; });
+        });
+        AddDropdown(panel, "ac-co-blend", "Colours", ColourBlendNames(), o.contourBlend, [&o, update](int i) {
+            o.contourBlend = i;
+            update("Contour Colours", [i](ContourEffect& c) { c.Blend = static_cast<ColourBlendKind>(i); });
+        });
+        AddButtonRow(panel, "ac-co-ops", {
+            {"Line colour", [&ctx, update]() {
+                const Color c = ctx.lineColor ? ctx.lineColor() : Colors::Black;
+                update("Contour Colour", [c](ContourEffect& e) { e.Colour = Color(c.r, c.g, c.b, 255); });
+            }},
+            {"Fill colour", [&ctx, update]() {
+                const Color c = ctx.fillColor ? ctx.fillColor() : Colors::White;
+                update("Contour Colour", [c](ContourEffect& e) { e.Colour = Color(c.r, c.g, c.b, 255); });
+            }},
+            {"Remove", [&ctx]() {
+                if (ctx.selection->Empty()) return;
+                auto ids = ctx.selection->Ids();
+                ctx.history->Record("Remove Contour", [&]() { for (auto& e : ctx.selection->Elements()) e->Effects.Contour.reset(); });
+                ReselectByIds(ctx, ids);
+            }},
+        });
+    }
+private:
+    ElementPtr target;
+    int startX = 0;
+    float startWidth = 0;
+};
+
+// ===== BEVEL =====
+// Click a shape for a bevel; drag right for a wider rim.
+class BevelTool : public ArtTool {
+public:
+    BevelTool() : ArtTool(ArtToolId::Bevel, "Bevel", "bevel.svg", 'J',
+                          "Click a shape for a bevel, drag right for a wider rim; profile, light and contrast in the options") {}
+
+    static BevelEffect FromOptions(const ArtToolOptions& o) {
+        BevelEffect b;
+        b.Kind = static_cast<BevelKind>(std::clamp(o.bevelKind, 0, BevelKindCount - 1));
+        b.Indent = o.bevelIndent;
+        b.LightAngle = o.bevelLight;
+        b.Tilt = o.bevelTilt;
+        b.Contrast = o.bevelContrast / 100.0f;
+        b.Outer = o.bevelOuter;
+        return b;
+    }
+    void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        auto hit = ctx.canvas->HitTest(e.doc, 4.0);
+        if (!hit || !hit->element) { target = nullptr; return; }
+        target = hit->topLevel ? hit->topLevel : hit->element;
+        ctx.selection->Set(target);
+        startX = e.view.x;
+        ctx.history->BeginEdit("Bevel");
+        if (!target->Effects.Bevel.has_value()) target->Effects.Bevel = FromOptions(*ctx.options);
+        startIndent = target->Effects.Bevel->Indent;
+        ctx.canvas->Refresh();
+    }
+    void OnDrag(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        if (!target || !target->Effects.Bevel.has_value()) return;
+        const float w = std::clamp(startIndent + static_cast<float>(ctx.canvas->PixelsToDoc(e.view.x - startX)), 0.5f, 100.0f);
+        target->Effects.Bevel->Indent = w;
+        ctx.options->bevelIndent = w;
+        ctx.canvas->Refresh();
+    }
+    void OnRelease(ArtToolContext& ctx, const VectorPointerEvent&) override {
+        if (!target) return;
+        const std::string id = target->Id;
+        ctx.history->EndEdit();
+        target = nullptr;
+        ReselectByIds(ctx, {id});
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void OnSelectionChanged(ArtToolContext& ctx) override {
+        if (ctx.selection && ctx.selection->Count() == 1 && ctx.selection->First() && ctx.selection->First()->Effects.Bevel.has_value()) {
+            const auto& b = *ctx.selection->First()->Effects.Bevel;
+            ctx.options->bevelKind = static_cast<int>(b.Kind);
+            ctx.options->bevelIndent = b.Indent;
+            ctx.options->bevelLight = b.LightAngle;
+            ctx.options->bevelTilt = b.Tilt;
+            ctx.options->bevelContrast = b.Contrast * 100.0f;
+            ctx.options->bevelOuter = b.Outer;
+        }
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
+        ArtToolOptions& o = *ctx.options;
+        auto update = [&ctx](const std::string& label, const std::function<void(BevelEffect&)>& fn) {
+            if (ctx.selection->Empty()) return;
+            auto ids = ctx.selection->Ids();
+            ctx.history->Record(label, [&]() {
+                for (auto& e : ctx.selection->Elements()) {
+                    if (!e->Effects.Bevel.has_value()) e->Effects.Bevel = FromOptions(*ctx.options);
+                    fn(*e->Effects.Bevel);
+                }
+            }, true);
+            ReselectByIds(ctx, ids);
+        };
+        AddDropdown(panel, "ac-bv-kind", "Profile", BevelKindNames(), o.bevelKind, [&o, update](int i) {
+            o.bevelKind = i;
+            update("Bevel Profile", [i](BevelEffect& b) { b.Kind = static_cast<BevelKind>(i); });
+        });
+        AddSliderRow(panel, "ac-bv-indent", "Width", 0.5f, 60, o.bevelIndent, 0.5f, false, [&o, update](float v) {
+            o.bevelIndent = v;
+            update("Bevel Width", [v](BevelEffect& b) { b.Indent = v; });
+        });
+        AddSliderRow(panel, "ac-bv-light", "Light", 0, 360, o.bevelLight, 5, true, [&o, update](float v) {
+            o.bevelLight = v;
+            update("Bevel Light", [v](BevelEffect& b) { b.LightAngle = v; });
+        });
+        AddSliderRow(panel, "ac-bv-tilt", "Tilt", 5, 85, o.bevelTilt, 5, true, [&o, update](float v) {
+            o.bevelTilt = v;
+            update("Bevel Tilt", [v](BevelEffect& b) { b.Tilt = v; });
+        });
+        AddSliderRow(panel, "ac-bv-contrast", "Contrast", 0, 100, o.bevelContrast, 1, true, [&o, update](float v) {
+            o.bevelContrast = v;
+            update("Bevel Contrast", [v](BevelEffect& b) { b.Contrast = v / 100.0f; });
+        });
+        AddCheckbox(panel, "ac-bv-outer", "Outer bevel", o.bevelOuter, [&o, update](bool on) {
+            o.bevelOuter = on;
+            update("Bevel Side", [on](BevelEffect& b) { b.Outer = on; });
+        });
+        AddButtonRow(panel, "ac-bv-ops", {
+            {"Remove", [&ctx]() {
+                if (ctx.selection->Empty()) return;
+                auto ids = ctx.selection->Ids();
+                ctx.history->Record("Remove Bevel", [&]() { for (auto& e : ctx.selection->Elements()) e->Effects.Bevel.reset(); });
+                ReselectByIds(ctx, ids);
+            }},
+        });
+    }
+private:
+    ElementPtr target;
+    int startX = 0;
+    float startIndent = 0;
+};
+
+// ===== BLEND =====
+// Drag from one shape to another to blend them; dragging from or onto a
+// blend adds the other shape to it.
+class BlendTool : public ArtTool {
+public:
+    BlendTool() : ArtTool(ArtToolId::Blend, "Blend", "blend.svg", 'B',
+                          "Drag from one shape to another to blend them; steps and colours in the options") {}
+
+    void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        auto hit = ctx.canvas->HitTest(e.doc, 4.0);
+        from = (hit && hit->element) ? (hit->topLevel ? hit->topLevel : hit->element) : nullptr;
+        if (from) ctx.selection->Set(from);
+        start = current = e.doc;
+        dragging = from != nullptr;
+        ctx.canvas->Refresh();
+    }
+    void OnDrag(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        if (!dragging) return;
+        current = e.doc;
+        ctx.canvas->Refresh();
+    }
+    void OnRelease(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        if (!dragging) return;
+        dragging = false;
+        auto hit = ctx.canvas->HitTest(e.doc, 4.0);
+        ElementPtr to = (hit && hit->element) ? (hit->topLevel ? hit->topLevel : hit->element) : nullptr;
+        if (!from || !to || from == to) { from = nullptr; ctx.canvas->Refresh(); return; }
+        std::string id;
+        ctx.history->Record("Blend", [&]() {
+            auto fromBlend = std::dynamic_pointer_cast<VectorBlend>(from);
+            auto toBlend = std::dynamic_pointer_cast<VectorBlend>(to);
+            if (fromBlend && !toBlend) {
+                ReparentElement(to, fromBlend, static_cast<int>(fromBlend->Children.size()));
+                id = fromBlend->Id;
+            } else if (toBlend && !fromBlend) {
+                ReparentElement(from, toBlend, 0);
+                id = toBlend->Id;
+            } else if (!fromBlend && !toBlend) {
+                auto parent = ParentOf(to);
+                if (!parent) return;
+                const auto ordered = SortByDrawingOrder({from, to});
+                const int index = IndexInParent(ordered.back());
+                auto blend = std::make_shared<VectorBlend>();
+                blend->Id = GenerateId("blend");
+                blend->Steps = std::max(0, ctx.options->blendSteps);
+                blend->ColourEffect = static_cast<ColourBlendKind>(std::clamp(ctx.options->blendColour, 0, 3));
+                WrapInContainer(blend, parent, index, {from, to});
+                id = blend->Id;
+            }
+        });
+        from = nullptr;
+        if (!id.empty()) ReselectByIds(ctx, {id});
+        if (ctx.refreshOptions) ctx.refreshOptions();
+        ctx.canvas->Refresh();
+    }
+    void DrawOverlay(ArtToolContext&, IRenderContext* ctx, const VectorViewTransform& v) override {
+        if (!dragging) return;
+        const Point2Dd a = v.DocToView(start), b = v.DocToView(current);
+        ctx->SetStrokePaint(Color(120, 120, 130, 220));
+        ctx->SetStrokeWidth(1.0);
+        ctx->SetLineDash(UCDashPattern());
+        ctx->DrawLine(a, b);
+        DrawViewSquare(ctx, a, 8.0, Colors::White, Color(120, 120, 130, 255));
+        DrawViewSquare(ctx, b, 8.0, Colors::White, Color(120, 120, 130, 255));
+    }
+    void OnSelectionChanged(ArtToolContext& ctx) override {
+        if (ctx.selection && ctx.selection->Count() == 1)
+            if (auto b = std::dynamic_pointer_cast<VectorBlend>(ctx.selection->First())) {
+                ctx.options->blendSteps = b->Steps;
+                ctx.options->blendColour = static_cast<int>(b->ColourEffect);
+            }
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
+        ArtToolOptions& o = *ctx.options;
+        auto update = [&ctx](const std::string& label, const std::function<void(VectorBlend&)>& fn) {
+            if (ctx.selection->Empty()) return;
+            auto ids = ctx.selection->Ids();
+            ctx.history->Record(label, [&]() {
+                for (auto& e : ctx.selection->Elements())
+                    if (auto b = std::dynamic_pointer_cast<VectorBlend>(e)) fn(*b);
+            }, true);
+            ReselectByIds(ctx, ids);
+        };
+        AddSliderRow(panel, "ac-bl-steps", "Steps", 0, 50, static_cast<float>(o.blendSteps), 1, true, [&o, update](float v) {
+            o.blendSteps = static_cast<int>(std::lround(v));
+            update("Blend Steps", [v](VectorBlend& b) { b.Steps = static_cast<int>(std::lround(v)); });
+        });
+        AddDropdown(panel, "ac-bl-colour", "Colours", ColourBlendNames(), o.blendColour, [&o, update](int i) {
+            o.blendColour = i;
+            update("Blend Colours", [i](VectorBlend& b) { b.ColourEffect = static_cast<ColourBlendKind>(i); });
+        });
+        AddButtonRow(panel, "ac-bl-ops", {
+            {"Remove blend", [&ctx]() {
+                if (ctx.selection->Empty()) return;
+                std::vector<std::string> ids;
+                ctx.history->Record("Remove Blend", [&]() {
+                    for (auto& e : UngroupElements(ctx.selection->Elements())) ids.push_back(e->Id);
+                });
+                ReselectByIds(ctx, ids);
+            }},
+        });
+    }
+private:
+    ElementPtr from;
+    Point2Dd start, current;
+    bool dragging = false;
+};
+
+// ===== MOULD =====
+// Click a shape to put it in a mould (an envelope or a perspective, as the
+// options say) and drag the mould's corner and curve handles.
+class MouldTool : public ArtTool {
+public:
+    MouldTool() : ArtTool(ArtToolId::Mould, "Mould", "mould.svg", 'M',
+                          "Click a shape to mould it, then drag the corners (and an envelope's curve handles); kind in the options") {}
+
+    // A handle: corner k (0..3) or control point c (0..7: side c/2, its
+    // first or second control).
+    struct Handle { bool corner; int index; Point2Dd doc; };
+
+    std::vector<Handle> Handles(const std::shared_ptr<VectorMould>& m) const {
+        std::vector<Handle> out;
+        std::vector<PathCommand> sides;
+        Point2Dd corners[4];
+        if (!MouldSides(m->Shape, sides, corners)) return out;
+        for (int i = 0; i < 4; ++i) out.push_back({true, i, m->LocalToGlobal(corners[i])});
+        if (m->Kind == MouldKind::Envelope)
+            for (int sd = 0; sd < 4; ++sd)
+                if (sides[sd].Type == PathCommandType::CurveTo && sides[sd].Parameters.size() >= 6) {
+                    out.push_back({false, sd * 2, m->LocalToGlobal(Point2Dd(sides[sd].Parameters[0], sides[sd].Parameters[1]))});
+                    out.push_back({false, sd * 2 + 1, m->LocalToGlobal(Point2Dd(sides[sd].Parameters[2], sides[sd].Parameters[3]))});
+                }
+        return out;
+    }
+    // The shape's four sides and their start corners (MoveTo + four
+    // segments, a ClosePath standing in for a missing last side).
+    static bool MouldSides(const PathData& shape, std::vector<PathCommand>& sides, Point2Dd corners[4]) {
+        sides.clear();
+        std::vector<Point2Dd> starts;
+        Point2Dd cur(0, 0), start(0, 0);
+        for (const auto& c : shape.commands) {
+            const auto& p = c.Parameters;
+            if (c.Type == PathCommandType::MoveTo && p.size() >= 2 && sides.empty()) cur = start = Point2Dd(p[0], p[1]);
+            else if (c.Type == PathCommandType::LineTo && p.size() >= 2 && sides.size() < 4) { starts.push_back(cur); sides.push_back(c); cur = Point2Dd(p[0], p[1]); }
+            else if (c.Type == PathCommandType::CurveTo && p.size() >= 6 && sides.size() < 4) { starts.push_back(cur); sides.push_back(c); cur = Point2Dd(p[4], p[5]); }
+            else if (c.Type == PathCommandType::ClosePath && sides.size() == 3) {
+                PathCommand l; l.Type = PathCommandType::LineTo; l.Parameters = {static_cast<float>(start.x), static_cast<float>(start.y)};
+                starts.push_back(cur); sides.push_back(l); cur = start;
+            }
+        }
+        if (sides.size() != 4) return false;
+        for (int i = 0; i < 4; ++i) corners[i] = starts[i];
+        return true;
+    }
+    static PathData ShapeOf(const std::vector<PathCommand>& sides, const Point2Dd corners[4]) {
+        PathData out;
+        PathCommand m; m.Type = PathCommandType::MoveTo;
+        m.Parameters = {static_cast<float>(corners[0].x), static_cast<float>(corners[0].y)};
+        out.commands.push_back(m);
+        for (const auto& s : sides) out.commands.push_back(s);
+        PathCommand z; z.Type = PathCommandType::ClosePath;
+        out.commands.push_back(z);
+        out.Closed = true;
+        return out;
+    }
+    // Moves a handle in the mould's space: a corner drags its two
+    // neighbouring controls with it.
+    static void MoveHandle(VectorMould& m, const Handle& h, const Point2Dd& to) {
+        std::vector<PathCommand> sides;
+        Point2Dd corners[4];
+        if (!MouldSides(m.Shape, sides, corners)) return;
+        auto endOf = [](PathCommand& s) -> float* { return s.Type == PathCommandType::CurveTo ? &s.Parameters[4] : &s.Parameters[0]; };
+        if (h.corner) {
+            const int k = h.index;
+            const Point2Dd d(to.x - corners[k].x, to.y - corners[k].y);
+            corners[k] = to;
+            float* e = endOf(sides[(k + 3) % 4]);
+            e[0] = static_cast<float>(to.x); e[1] = static_cast<float>(to.y);
+            if (sides[k].Type == PathCommandType::CurveTo) { sides[k].Parameters[0] += static_cast<float>(d.x); sides[k].Parameters[1] += static_cast<float>(d.y); }
+            PathCommand& prev = sides[(k + 3) % 4];
+            if (prev.Type == PathCommandType::CurveTo) { prev.Parameters[2] += static_cast<float>(d.x); prev.Parameters[3] += static_cast<float>(d.y); }
+        } else {
+            PathCommand& s = sides[h.index / 2];
+            if (s.Type != PathCommandType::CurveTo) return;
+            const int base = (h.index % 2) * 2;
+            s.Parameters[base] = static_cast<float>(to.x);
+            s.Parameters[base + 1] = static_cast<float>(to.y);
+        }
+        m.Shape = ShapeOf(sides, corners);
+    }
+
+    void OnPress(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        active = nullptr;
+        // A handle of the selected mould?
+        if (ctx.selection && ctx.selection->Count() == 1)
+            if (auto m = std::dynamic_pointer_cast<VectorMould>(ctx.selection->First())) {
+                const double tol = ctx.canvas->PixelsToDoc(6.0);
+                for (const Handle& h : Handles(m))
+                    if (std::hypot(h.doc.x - e.doc.x, h.doc.y - e.doc.y) <= tol) {
+                        active = m;
+                        handle = h;
+                        ctx.history->BeginEdit("Mould Shape");
+                        return;
+                    }
+            }
+        auto hit = ctx.canvas->HitTest(e.doc, 4.0);
+        if (!hit || !hit->element) return;
+        ElementPtr el = hit->topLevel ? hit->topLevel : hit->element;
+        if (auto m = std::dynamic_pointer_cast<VectorMould>(el)) { ctx.selection->Set(m); ctx.canvas->Refresh(); return; }
+        // Wrap the shape (or the whole selection it belongs to) in a mould.
+        std::vector<ElementPtr> members = ctx.selection && ctx.selection->Contains(el) ? ctx.selection->Elements() : std::vector<ElementPtr>{el};
+        std::string id;
+        ctx.history->Record("Mould", [&]() {
+            const auto ordered = SortByDrawingOrder(members);
+            auto parent = ParentOf(ordered.back());
+            if (!parent) return;
+            Rect2Dd bounds{0, 0, 0, 0};
+            for (const auto& m : ordered) {
+                const Rect2Dd b = m->GetBoundingBox();
+                if (bounds.width <= 0 && bounds.height <= 0) bounds = b;
+                else {
+                    const double x0 = std::min(bounds.x, b.x), y0 = std::min(bounds.y, b.y);
+                    const double x1 = std::max(bounds.x + bounds.width, b.x + b.width), y1 = std::max(bounds.y + bounds.height, b.y + b.height);
+                    bounds = Rect2Dd(x0, y0, x1 - x0, y1 - y0);
+                }
+            }
+            auto mould = std::make_shared<VectorMould>();
+            mould->Id = GenerateId("mould");
+            mould->Kind = ctx.options->mouldKind == 1 ? MouldKind::Perspective : MouldKind::Envelope;
+            mould->Shape = VectorMould::IdentityShape(mould->Kind, bounds);
+            mould->SourceBounds = bounds;
+            WrapInContainer(mould, parent, IndexInParent(ordered.back()), ordered);
+            id = mould->Id;
+        });
+        if (!id.empty()) ReselectByIds(ctx, {id});
+        ctx.canvas->Refresh();
+    }
+    void OnDrag(ArtToolContext& ctx, const VectorPointerEvent& e) override {
+        if (!active) return;
+        MoveHandle(*active, handle, active->GlobalToLocal(e.snapped));
+        handle.doc = e.snapped;
+        ctx.canvas->Refresh();
+    }
+    void OnRelease(ArtToolContext& ctx, const VectorPointerEvent&) override {
+        if (!active) return;
+        const std::string id = active->Id;
+        ctx.history->EndEdit();
+        active = nullptr;
+        ReselectByIds(ctx, {id});
+    }
+    void DrawOverlay(ArtToolContext& tctx, IRenderContext* ctx, const VectorViewTransform& v) override {
+        if (!tctx.selection || tctx.selection->Count() != 1) return;
+        auto m = std::dynamic_pointer_cast<VectorMould>(tctx.selection->First());
+        if (!m) return;
+        std::vector<PathCommand> sides;
+        Point2Dd corners[4];
+        if (!MouldSides(m->Shape, sides, corners)) return;
+        ctx->SetStrokePaint(Color(120, 120, 130, 220));
+        ctx->SetStrokeWidth(1.0);
+        ctx->SetLineDash(UCDashPattern());
+        // The shape's outline, flattened.
+        PathData shape = m->Shape;
+        for (const FlatSubpath& sub : FlattenPathData(shape)) {
+            for (size_t i = 1; i < sub.Points.size(); ++i)
+                ctx->DrawLine(v.DocToView(m->LocalToGlobal(sub.Points[i - 1])), v.DocToView(m->LocalToGlobal(sub.Points[i])));
+            if (sub.Closed && sub.Points.size() > 1)
+                ctx->DrawLine(v.DocToView(m->LocalToGlobal(sub.Points.back())), v.DocToView(m->LocalToGlobal(sub.Points.front())));
+        }
+        const auto handles = Handles(m);
+        for (const Handle& h : handles) {
+            const Point2Dd p = v.DocToView(h.doc);
+            if (h.corner) DrawViewSquare(ctx, p, 8.0, Colors::White, Color(120, 120, 130, 255));
+            else {
+                // A control point, joined to its corner.
+                const int sd = h.index / 2;
+                const Point2Dd corner = m->LocalToGlobal(corners[(h.index % 2 == 0) ? sd : (sd + 1) % 4]);
+                ctx->DrawLine(p, v.DocToView(corner));
+                ctx->SetFillPaint(Colors::White);
+                ctx->FillCircle(p, 4.0);
+                ctx->DrawCircle(p, 4.0);
+            }
+        }
+    }
+    void OnSelectionChanged(ArtToolContext& ctx) override {
+        if (ctx.selection && ctx.selection->Count() == 1)
+            if (auto m = std::dynamic_pointer_cast<VectorMould>(ctx.selection->First()))
+                ctx.options->mouldKind = m->Kind == MouldKind::Perspective ? 1 : 0;
+        if (ctx.refreshOptions) ctx.refreshOptions();
+    }
+    void BuildOptions(ArtToolContext& ctx, UltraCanvasContainer& panel, const std::function<void()>&) override {
+        ArtToolOptions& o = *ctx.options;
+        AddDropdown(panel, "ac-mo-kind", "Kind", { "Envelope", "Perspective" }, o.mouldKind, [&ctx, &o](int i) {
+            o.mouldKind = i;
+            if (ctx.selection->Empty()) return;
+            auto ids = ctx.selection->Ids();
+            ctx.history->Record("Mould Kind", [&]() {
+                for (auto& e : ctx.selection->Elements())
+                    if (auto m = std::dynamic_pointer_cast<VectorMould>(e)) {
+                        m->Kind = i == 1 ? MouldKind::Perspective : MouldKind::Envelope;
+                        Point2Dd corners[4];
+                        if (m->ShapeCorners(corners)) {
+                            // Keep the corners, straighten or curve the sides.
+                            PathData shape;
+                            PathCommand mv; mv.Type = PathCommandType::MoveTo;
+                            mv.Parameters = {static_cast<float>(corners[0].x), static_cast<float>(corners[0].y)};
+                            shape.commands.push_back(mv);
+                            for (int k = 0; k < 4; ++k) {
+                                const Point2Dd& a = corners[k];
+                                const Point2Dd& z = corners[(k + 1) % 4];
+                                PathCommand c;
+                                if (m->Kind == MouldKind::Envelope) {
+                                    c.Type = PathCommandType::CurveTo;
+                                    c.Parameters = {static_cast<float>(a.x + (z.x - a.x) / 3), static_cast<float>(a.y + (z.y - a.y) / 3),
+                                                    static_cast<float>(a.x + 2 * (z.x - a.x) / 3), static_cast<float>(a.y + 2 * (z.y - a.y) / 3),
+                                                    static_cast<float>(z.x), static_cast<float>(z.y)};
+                                } else {
+                                    c.Type = PathCommandType::LineTo;
+                                    c.Parameters = {static_cast<float>(z.x), static_cast<float>(z.y)};
+                                }
+                                shape.commands.push_back(c);
+                            }
+                            PathCommand cl; cl.Type = PathCommandType::ClosePath;
+                            shape.commands.push_back(cl);
+                            shape.Closed = true;
+                            m->Shape = shape;
+                        }
+                    }
+            });
+            ReselectByIds(ctx, ids);
+        });
+        AddButtonRow(panel, "ac-mo-ops", {
+            {"Reset shape", [&ctx]() {
+                if (ctx.selection->Empty()) return;
+                auto ids = ctx.selection->Ids();
+                ctx.history->Record("Reset Mould", [&]() {
+                    for (auto& e : ctx.selection->Elements())
+                        if (auto m = std::dynamic_pointer_cast<VectorMould>(e))
+                            m->Shape = VectorMould::IdentityShape(m->Kind, m->EffectiveSourceBounds());
+                });
+                ReselectByIds(ctx, ids);
+            }},
+            {"Remove mould", [&ctx]() {
+                if (ctx.selection->Empty()) return;
+                std::vector<std::string> ids;
+                ctx.history->Record("Remove Mould", [&]() {
+                    for (auto& e : UngroupElements(ctx.selection->Elements())) ids.push_back(e->Id);
+                });
+                ReselectByIds(ctx, ids);
+            }},
+        });
+    }
+private:
+    std::shared_ptr<VectorMould> active;
+    Handle handle{true, 0, Point2Dd(0, 0)};
+};
+
 class ZoomTool : public ArtTool {
 public:
     ZoomTool() : ArtTool(ArtToolId::Zoom, "Zoom", "zoom.svg", 'Z', "Click to zoom in, shift-click to zoom out, drag a rectangle to zoom to it") {}
@@ -1653,6 +2240,10 @@ std::vector<std::unique_ptr<ArtTool>> CreateArtTools() {
     tools.push_back(std::make_unique<TransparencyTool>());
     tools.push_back(std::make_unique<ShadowTool>());
     tools.push_back(std::make_unique<FeatherTool>());
+    tools.push_back(std::make_unique<ContourTool>());
+    tools.push_back(std::make_unique<BevelTool>());
+    tools.push_back(std::make_unique<BlendTool>());
+    tools.push_back(std::make_unique<MouldTool>());
     tools.push_back(std::make_unique<ZoomTool>());
     tools.push_back(std::make_unique<PushTool>());
     return tools;

@@ -151,7 +151,9 @@ mkdir build && cd build && cmake .. && make
 ```
 
 The project now defaults to Clang on Linux, so install the `clang` package
-alongside the existing deps.
+alongside the existing deps. The build uses the system default linker (GNU ld,
+same as CI); with a newer Clang on an older distro it automatically drops to
+DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 
 The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`
@@ -279,6 +281,46 @@ anywhere else, and never introduce a new literal copy of one:
    `THIRD_PARTY_LICENSES.md`.
 6. Docs changes: regenerate `llms.txt`/`llms-full.txt`
    (`python3 scripts/generate_llms_txt.py`) — CI verifies they are in sync.
+
+## Reporting back (AI sessions)
+
+Finish every reply that reports work — the end of a task, a check-in, a
+status update — with these two blocks, in this order, after the prose that
+says what happened. They are headings, not prose: a reader scanning for "what
+now" must find it without reading the report.
+
+```markdown
+## Next Task
+...
+
+## Other recommendations
+...
+```
+
+1. **`## Next Task`** — what happens next, and who does it. One or two lines:
+   the next step you intend to take, the thing you are waiting on (a CI run, a
+   review, a merge), or the decision you need from the user. When the work is
+   finished and nothing follows, write `None — <what was delivered> is
+   complete.` Never leave the block out because the answer is "nothing": an
+   explicit "none" is the difference between finished and forgotten.
+2. **`## Other recommendations`** — defects and smells found *outside* the
+   change you were asked to make: a bug in another module, a stale document, a
+   test asserting something untrue, a dependency that no longer resolves.
+   One bullet each, naming the file or module, what is wrong, and why it was
+   not fixed here. Write `None.` when a session turned up nothing.
+
+Two rules about the second block, because it is the one that goes wrong:
+
+- **Finding something is not permission to fix it.** Out-of-scope repairs
+  belong in this block, not in the diff — unless the user asks for them, or
+  the change cannot work without them, in which case say so in the prose.
+- **It is not a place to park work you were asked to do.** Anything inside the
+  task's scope gets finished or explicitly reported as blocked; it does not
+  become a recommendation.
+
+Both blocks describe the repository, not the conversation. "Waiting for the
+test suite" belongs in `Next Task`; "the Alembic reader drops transforms"
+belongs in `Other recommendations` whether or not anyone asked about Alembic.
 
 ## Branch and pull-request rules (AI sessions)
 

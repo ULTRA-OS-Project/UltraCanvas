@@ -1,32 +1,39 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.h
-// UltraNetMonitor's window: the processes on the left, every connection on
-// the right, a filter box and a pause button above them, and a status line
-// that says what the backend can and cannot see. Nothing is painted by hand
-// - it is two UltraCanvasListViews over the models in UltraNetMonitorModels,
-// each behind an UltraCanvasListSortFilterProxy for header-click sorting and
-// filtering.
+// UltraNetMonitor's window. Two tabs: *Live* - the processes on the left,
+// every connection on the right, a filter box and a pause button above them
+// - and *History* - the flows the activity store has recorded, over a
+// chosen range. A *Record* toggle on the toolbar writes every snapshot the
+// worker takes into the store at the platform's per-user data path. Nothing
+// is painted by hand: three UltraCanvasListViews over the models in
+// UltraNetMonitorModels, each behind an UltraCanvasListSortFilterProxy.
 //
 // The socket table is read on a worker thread once a second (walking /proc
 // is I/O, and it must never stall a repaint); the result is parked in one
 // slot that a UI timer applies on the main thread - the same shape
-// UltraCleaner uses for its scanner.
-// Version: 0.2.0
+// UltraCleaner uses for its scanner. Recording happens on that worker too,
+// under a mutex the History tab's queries share, so the single SQLite
+// connection is never used from two threads at once.
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraNetMonitorModels.h"
 
 #include "NetworkMonitor/NetworkMonitor.h"
+#include "NetworkMonitor/NetworkMonitorStore.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
+#include "UltraCanvasDropdown.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasListSortFilterProxy.h"
 #include "UltraCanvasListView.h"
 #include "UltraCanvasSplitPane.h"
+#include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasWindow.h"
 
 #include <atomic>
+#include <cstdint>
 #include <memory>
 #include <mutex>
 #include <optional>
@@ -47,8 +54,11 @@ private:
     // ===== CONSTRUCTION =====
     void LayoutForSize(float width, float height);
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildToolbar();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildLivePage();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildHistoryPage();
     std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildProcessList();
     std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildConnectionList();
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildFlowList();
 
     // ===== DATA FLOW =====
     void StartWorker();
@@ -65,12 +75,23 @@ private:
     void ReapplyProcessSelection();
     void RebuildConnectionFilter();
 
+    // ===== THE STORE =====
+    // Opens the store at the default path on first use. Caller holds
+    // storeMutex_. False, with storeError_ set, when it cannot be opened.
+    bool EnsureStoreOpen();
+    void ToggleRecording();
+    void RefreshHistory();
+    void PurgeHistory();
+    int64_t HistoryRangeSeconds() const;
+
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> page_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTabbedContainer> tabs_;
     std::shared_ptr<UltraCanvas::UltraCanvasSplitPane> split_;
     std::shared_ptr<UltraCanvas::UltraCanvasTextInput> filterInput_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> allButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton> pauseButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> recordButton_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> statusLabel_;
     std::shared_ptr<UltraCanvas::UltraCanvasLabel> subtitleLabel_;
 
@@ -82,6 +103,19 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> connectionProxy_;
     std::shared_ptr<UltraCanvas::UltraCanvasListView> connectionView_;
 
+    // History tab
+    std::shared_ptr<UltraCanvas::UltraCanvasDropdown> rangeDropdown_;
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> historyFilter_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> refreshButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> purgeButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> historyStatus_;
+    std::shared_ptr<FlowListModel> flowModel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> flowProxy_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> flowView_;
+    // "Purge" asks twice: the first click arms it, the second acts. A refresh
+    // or a tab change disarms it.
+    bool purgeArmed_ = false;
+
     // Worker -> UI: one slot, overwritten, never queued.
     std::thread worker_;
     std::atomic<bool> stopWorker_{false};
@@ -90,6 +124,16 @@ private:
     std::vector<UltraCanvas::NetworkConnection> pendingConnections_;
     UltraCanvas::NetworkMonitorResult pendingResult_;
     bool pendingDirty_ = false;
+
+    // The store: opened lazily, used by the worker (recording) and the UI
+    // thread (history) under one mutex.
+    std::mutex storeMutex_;
+    UltraCanvas::NetworkMonitorStoreHandle store_ = UltraCanvas::NetworkMonitorInvalidStore;
+    std::string storePath_;
+    std::string storeError_;
+    std::atomic<bool> recording_{false};
+    std::atomic<int64_t> recordedSnapshots_{0};
+    std::string recordError_;   // worker -> UI, under storeMutex_
 
     UltraCanvas::NetworkMonitorCapabilities capabilities_;
     UltraCanvas::NetworkMonitorResult lastResult_;

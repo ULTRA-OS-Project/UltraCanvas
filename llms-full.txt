@@ -231,12 +231,22 @@ the backing implementation can be replaced without affecting callers.
     `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
     `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
     `Transparency` ramp with its mix, clip, mask), `Effects` (optional
-    `ShadowEffect` and `FeatherEffect`), an optional double-precision
-    `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
-    `Clone()`.
+    `ShadowEffect`, `FeatherEffect`, `ContourEffect` and `BevelEffect`),
+    an optional double-precision `Matrix3x3` `Transform`,
+    `GetBoundingBox()` in its parent's space and `Clone()`. The Xara-class
+    containers `VectorClipView` (keyholes clip the rest), `VectorBlend`
+    (steps between children) and `VectorMould` (children warped into an
+    envelope or perspective shape) are groups too (`IsGroupType`).
   - Geometry helpers shared by the renderer, the editor and the writers:
     `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`,
     `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline`.
+  - `DataFormats/UltraCanvasVectorGeometry.h` — polygon booleans and
+    offsetting over path data, a planar-map clipper in core:
+    `PolygonBoolean` / `PathBoolean` (union, subtract, intersect, exclude,
+    per-input fill rules), `SlicePath`, `OffsetPolygons` / `OffsetPath`
+    (round, mitre, bevel joins), `FlattenToPolygons`, `PolygonsToPath`,
+    `PolygonSetArea`, `WindingNumber`, `PolygonSetContains`. What
+    `CombineShapes`, the contour effect and the XAR writer use.
   - `ParsePathString` / `SerializePathData`, `ParseColorString`,
     `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
     `PointsPerUnit`, `LengthUnitSymbol`.
@@ -274,7 +284,9 @@ the backing implementation can be replaced without affecting callers.
   `ReorderElements` (`ZOrderMove`), `GroupElements` / `UngroupElements` /
   `ReparentElement` (placement preserved), `DeleteElements`,
   `DuplicateElements`, `AlignElements` / `DistributeElements`,
-  `ConvertToPath` / `OutlineOf`.
+  `ConvertToPath` / `OutlineOf`, `CombineShapes` (`CombineOp` Add /
+  Subtract / Intersect / Slice, Xara's Combine Shapes over the outlines);
+  `UngroupElements` dissolves the ClipView / Blend / Mould containers too.
 - **UltraCanvasBezierPath** (`UltraCanvasBezierPath.h`) — the editing model
   of a path: `BezierNode` (anchor, two handles, `BezierNodeType` Corner /
   Smooth / Symmetric), `UltraCanvasBezierSubpath` (`InsertNodeAt` by de
@@ -1602,9 +1614,20 @@ UltraMessage is intended to be the recommended way for UltraFiler,
 UltraViewer, UltraMail, UltraSocial and the ULTRA OS desktop to talk to one
 another and for the desktop to collect messages from every source.
 
-**Implementation status:** none — named and specified only. The design
-proposal is written; no code, no `Docs/Modules/UltraMessage/README.md` and no
-demo entry exist yet, and those land with Phase 1 rather than before it.
+**Implementation status:** Phase 1 implemented — library target
+`UltraMessage` (`UltraCanvas/{include,core}/UltraMessage/`, header
+`<UltraMessage/UltraMessage.h>`, C++ layer `<UltraMessage/UltraMessageEndpoint.h>`,
+UI bridge `<UltraMessage/UltraMessageUltraCanvas.h>`): the broker with
+in-process hosting and lock-file election, the Unix-socket / named-pipe
+transport, `Connect` / `Post` / `PostRecorded` / `Request` / `Reply` /
+`Subscribe`, UI-thread delivery through an installable dispatcher, the journal
+on UltraDatabase with the `Query` / `MarkRead` / `Dismiss` / `Delete` /
+`ListConversations` / `SetRetention` / `Export` calls, the schema registry with
+the well-known topics, and the `ultramsg` command line. Tests in
+`Tests/UltraMessage` (24 cases, in-tree and standalone). Not yet: the
+`AddFdWatch` event-loop path (a reader thread serves every endpoint), an FTS5
+index (text search is a LIKE), automatic reconnection after the hosting broker
+exits, and the adapters of Phase 2. See `Docs/Modules/UltraMessage/README.md`.
 
 ---
 
@@ -1686,9 +1709,10 @@ it never blocks, filters or modifies traffic, and never terminates TLS.
 with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
 `/proc/<pid>/fd` walk for attribution; Windows — IP Helper
 (`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
-macOS — libproc, per process. All polling. Connection events (ETW, eBPF),
-domain names, persistence and file-transfer correlation are still to come.
-Where there is no backend the module reports `NotSupported`.
+macOS — libproc, per process. All polling. Persistence: the activity store
+over UltraDatabase (flows, daily roll-up, retention, CSV export). Connection
+events (ETW, eBPF), domain names and file-transfer correlation are still to
+come. Where there is no backend the module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
@@ -1697,6 +1721,15 @@ Where there is no backend the module reports `NotSupported`.
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
   `NetworkMonitor_FormatEndpoint`
+- The activity store (`NetworkMonitorStore.h`, over UltraDatabase):
+  `NetworkMonitor_StoreAvailable`, `NetworkMonitor_Now`,
+  `NetworkMonitor_OpenStore`, `NetworkMonitor_CloseStore`,
+  `NetworkMonitor_RecordSnapshot`, `NetworkMonitor_QueryFlows`,
+  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RollUp`,
+  `NetworkMonitor_ApplyRetention`, `NetworkMonitor_Purge`,
+  `NetworkMonitor_StoreStats`, `NetworkMonitor_ExportFlowsCsv`; types
+  `NetworkMonitorStoreOptions`, `RecordedFlow`, `DailyProcessTotal`,
+  `ActivityQuery`, `NetworkMonitorStoreStats`
 - Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
   (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
   StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`)
@@ -34500,7 +34533,7 @@ more often than a model, so the Vector plugin's reader stays the default for
 it. A caller that wants the 3D entities asks for the converter by name —
 `CreateConverterForExtension(".dxf")` does answer.
 
-## Two things that surprise people
+## Three things that surprise people
 
 **A STEP file contains no triangles.** It carries trimmed NURBS and analytic
 surfaces with the topology that closes them into solids, in
@@ -34510,6 +34543,16 @@ surfaces with the topology that closes them into solids, in
 `ConversionOptions::Tessellation`. A converter writing STEP to IGES wants it
 off, because tessellating and discarding is exactly the loss the B-rep
 structure exists to prevent.
+
+**A matrix is not just sixteen numbers.** Formats disagree on whether a
+transform multiplies a row vector or a column vector, and the translation sits
+in the last row of the one and the last column of the other. Alembic is
+row-vector and row-major; `ModelStorage::Matrix4x4` is column-vector and
+column-major. Those two disagreements cancel, so the correct conversion is the
+sixteen doubles copied straight across — reordering them "to transpose" moves
+the translation into the bottom row, where `DecomposeTRS` never looks and a
+child object silently lands at its parent's origin. Every reader here states
+which convention its format uses at the point of conversion, for that reason.
 
 **Readers do not rescale geometry.** A millimetre drawing stays in
 millimetres. What the file declared is recorded in `SourceUnit` /
@@ -55760,7 +55803,7 @@ BakeTransform(el);                            // write the transform into the ge
 
 ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
 auto group = GroupElements(els);              // into the topmost member's parent
-auto freed = UngroupElements({group});        // placement preserved both ways
+auto freed = UngroupElements({group});        // placement preserved both ways; clip views, blends and moulds dissolve too
 ReparentElement(el, otherGroup, index);
 
 DeleteElements(els);
@@ -55768,6 +55811,8 @@ auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids
 AlignElements(els, AlignMode::Left);          // to the selection, or a reference rect (the page)
 DistributeElements(els, DistributeMode::HorizontalCenters);
 auto path = ConvertToPath(el);                // rect / circle / ellipse / line / polygon → path, in place
+auto made = CombineShapes(sel.Elements(), CombineOp::Subtract);   // Xara's Combine Shapes: the front shape
+                                              // cuts the others (Add / Intersect: one shape, the back one's style)
 ```
 
 A document-space matrix `M` lands on an element as `T' = P⁻¹·M·P·T`, `P`
@@ -55896,7 +55941,7 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | Format | Class | Read | Write | Fidelity notes |
 |---|---|---|---|---|
 | SVG | `SVGConverter` | ✓ | ✓ | Lossless both ways — the storage model is SVG-shaped. Gradients keep all stops, transforms stay attributes, text keeps spans. |
-| XAR | `XARConverter` | ✓ (XAR plugin) | ✓ | Spec-correct record grammar; native shape records when axis-aligned, paths otherwise; linear / radial / conical gradients with every stop (multistage records), flat and gradient transparency with Xara's mixes, line transparency, shadows (`TAG_SHADOWCONTROLLER`), feathers (`TAG_FEATHER`), dash patterns, text stories; Xara's stock arrowheads as `TAG_ARROWHEAD` (start) / `TAG_ARROWTAIL` (end) line attributes with their reference and FIXED16 size, as Xara writes them, every other arrowhead, width profiles and brushes baked into plain shapes under a group carrying a `TAG_USERVALUE` marker (`UltraCanvas.LineGallery`) the reader rebuilds the stroke from. Reading is the XAR plugin's `XARDocument` (compressed files too) translated into the model — with `ULTRACANVAS_PLUGIN_XAR` off the converter only writes and `CanImport()` is false. Bevel, contour, blend, mould, ClipView, live effects, Xara brushes and pages are read as their contents or dropped, and reported; `TAG_DEFINEARROW` is a tag Xara never writes, and a reference to one reads as the straight arrow. |
+| XAR | `XARConverter` | ✓ (XAR plugin) | ✓ | Spec-correct record grammar; native shape records when axis-aligned, paths otherwise; linear / radial / conical gradients with every stop (multistage records), flat and gradient transparency with Xara's mixes, line transparency, shadows (`TAG_SHADOWCONTROLLER`), feathers (`TAG_FEATHER`), dash patterns, text stories; clip views, contours, blends, moulds and bevels as Xara's own controller records (`TAG_CLIPVIEWCONTROLLER`, `TAG_CONTOURCONTROLLER`, `TAG_BLEND` with its blenders, `TAG_MOULD_ENVELOPE` / `_PERSPECTIVE` with the shape and sources, `TAG_BEVEL`) read back as the model's containers and effects; Xara's stock arrowheads as `TAG_ARROWHEAD` (start) / `TAG_ARROWTAIL` (end) line attributes with their reference and FIXED16 size, as Xara writes them, every other arrowhead, width profiles and brushes baked into plain shapes under a group carrying a `TAG_USERVALUE` marker (`UltraCanvas.LineGallery`) the reader rebuilds the stroke from. Reading is the XAR plugin's `XARDocument` (compressed files too) translated into the model — with `ULTRACANVAS_PLUGIN_XAR` off the converter only writes and `CanImport()` is false. Live effects, Xara brushes and pages are read as their contents or dropped, and reported; `TAG_DEFINEARROW` is a tag Xara never writes, and a reference to one reads as the straight arrow. |
 | EPS | `EPSConverter` | – | ✓ | PostScript program restricted to operators the EPS plugin's interpreter knows. Opacity flattens toward white; gradients blend end stops. Reading via the EPS plugin. |
 | CDR | `CDRConverter` | – | ✓ | Version-7 RIFF targeting libcdr's parser layouts (no public spec exists). Solid fills, outline state, fill opacity; text/bitmaps skipped. Reading via the CDR plugin. |
 | PDF | `PDFVectorConverter` | – | ✓ | Hand-assembled PDF 1.4: base-14 fonts, ExtGState opacity, dashes, verified xref. Reading via the MuPDF PDF plugin. |
@@ -55920,7 +55965,9 @@ Unsupported features never change meaning silently: each converter reports its f
 
 **Effects, transparency and the line gallery** (phase 4 of [ArtCreatorVectorCanvasProposal](../Research/ArtCreatorVectorCanvasProposal.md)). `VectorElement::Effects` holds an optional `ShadowEffect` (`Kind` wall / floor / glow, `Offset`, `Blur` — the penumbra width, `Colour`, `Darkness`, and `FloorSquash` / `FloorShear` for floor shadows) and an optional `FeatherEffect` (`Radius`); they are per object, cloned with it, never inherited. `VectorStyle::Transparency` is an optional `TransparencyData`: a `Shape` (flat, linear, radial, conical), a flat `Level` or `Stops` of `{Position, Level}` along `Start`..`End` in the element's own space (Xara's convention: level 0 is opaque, 1 clear), and a `Mix` (`Mix`, `StainedGlass`, `Bleach`, `Contrast`, `Saturation`, `Darken`, `Lighten`, `Brightness`, `Luminosity`, `Hue`) that the renderer paints as the matching blend mode; `LevelAt(t)` interpolates. It sits beside the flat `Opacity`, which stays the plain normal-mix alpha every other format uses. `StrokeData` carries the line gallery: `StartArrow` / `EndArrow` (`ArrowheadData`: `Kind` triangle, open arrow, circle, square, diamond, bar - the tip on the line's end, `Scale` 1 = four line widths long - and Xara's eight stock arrowheads, straight, angled, rounded, spot, solid diamond, feather, feather 2, hollow diamond, with Xara's own geometry and placement, where `Scale` 1 is Xara's default size 3; `IsXaraArrowhead`), a `WidthProfile` of `WidthSample{T, Factor}` (two or more turn the stroke into a filled band; `WidthAt(t)`), and an optional `BrushData` (`Stamp` group drawn every `Spacing` stamp-widths, scaled to `Width * Scale`, rotated to the tangent). The geometry they draw is public — `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`, `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline` — so the renderer and the XAR writer produce the same shapes.
 
-**Rendering effects.** `VectorRenderer` draws an element with effects through groups: the shadow and the feather need a raster of the element's silhouette, which it draws black into an offscreen context at the current device scale, blurs (three box passes approximating a gaussian whose penumbra spans about 3.3 σ), and caches per object (`EffectCacheSize()`, `ClearCaches()`; an entry is replaced when the geometry, blur or zoom changes and the cache empties itself past 256 entries). The shadow is the raster painted as a colour mask at its offset (squashed and sheared from the bottom edge for floor shadows, unshifted for glows); the feather masks the element's own group with it; a transparency ramp masks the group with an alpha gradient and paints it with the mix's operator. Arrowheads, width bands and brush stamps are drawn from the outline after the fill.
+**Depth: containers, contour, bevel, booleans** (phase 5 of the proposal, first slice). Three group kinds (`IsGroupType`): `VectorClipView` (its first `Keyholes` children are the clip shapes, not drawn; the rest draw clipped to their union), `VectorBlend` (`Steps` intermediate shapes between each pair of children, outlines resampled to a common count and start-matched, colours run as `ColourBlendKind` fade / rainbow / alt rainbow / constant, strokes and opacity interpolated; `OneToOne`, `Antialiased`, `Tangential` and Xara's bias / gain profiles kept for the round trip) and `VectorMould` (`Kind` `Envelope` or `Perspective`; the children warped from `SourceBounds` — their joint bounds when empty — into `Shape`, a closed four-sided path starting at the source's top-left corner and running along its top, right, bottom and left edges: four cubics for an envelope, a Coons patch, four lines for a perspective, a projective map; `Warp`, `ShapeCorners`, `IdentityShape`; text and images move to their moulded anchor). Two more effects on `VectorElement::Effects`: `ContourEffect` (`Steps` rings between the outline and a copy `Width` units out — or in, when negative — each filled with the colour between the object's fill and `Colour`; outward rings draw behind the object, inward ones over it) and `BevelEffect` (`Kind`: Xara's fifteen profiles, `Indent`, `LightAngle` and `Tilt` in degrees, `Contrast`, `Outer`). The geometry under them is `DataFormats/UltraCanvasVectorGeometry.h`: `PolygonBoolean` / `PathBoolean` (union, subtract, intersect, exclude, each input with its own fill rule; a planar-map clipper that splits every edge at every crossing, classifies each piece by the winding numbers on its two sides and links the separating pieces into consistently wound rings), `SlicePath`, `OffsetPolygons` / `OffsetPath` (round, mitre or bevel joins through the same clipper), `FlattenToPolygons`, `PolygonsToPath`, `PolygonSetArea`, `WindingNumber`, `PolygonSetContains`. The editing layer's `CombineShapes` is Xara's Combine Shapes over it.
+
+**Rendering effects.** `VectorRenderer` draws an element with effects through groups: the shadow and the feather need a raster of the element's silhouette, which it draws black into an offscreen context at the current device scale, blurs (three box passes approximating a gaussian whose penumbra spans about 3.3 σ), and caches per object (`EffectCacheSize()`, `ClearCaches()`; an entry is replaced when the geometry, blur or zoom changes and the cache empties itself past 256 entries). The shadow is the raster painted as a colour mask at its offset (squashed and sheared from the bottom edge for floor shadows, unshifted for glows); the feather masks the element's own group with it; a transparency ramp masks the group with an alpha gradient and paints it with the mix's operator. Arrowheads, width bands and brush stamps are drawn from the outline after the fill. Contour rings come from the offsetter and are cached with the geometry, width and step count; the bevel's highlight and shadow masks come from a distance transform of the silhouette shaped by the profile and lit from the effect's angle and tilt, cached like the effect rasters (`EffectCacheSize()` counts all three caches).
 
 The survey of what each converter reads and writes, the dead model surface and the planned steps live in [UltraCanvasVectorModelProposal](../Research/UltraCanvasVectorModelProposal.md).
 
@@ -61526,8 +61573,8 @@ FILE: Docs/Modules/NetworkMonitor/README.md
 
 # NetworkMonitor — System-Wide Network Activity
 
-**Status:** Phase 1 and the platform half of Phase 2 implemented (Linux, Windows, macOS); the rest of Phase 2 and Phase 3 in the proposal.
-**Version:** 0.2.0
+**Status:** Phase 1, the platform half of Phase 2 (Linux, Windows, macOS) and persistence implemented; connection events, names and Phase 3 in the proposal.
+**Version:** 0.3.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-09-19
 
@@ -61632,6 +61679,69 @@ lies.
 | `NetworkMonitor_TransportName` / `NetworkMonitor_StateName` | Display names, the kernel's spelling (`ESTABLISHED`, `CLOSE_WAIT`, `UNCONN`) |
 | `NetworkMonitor_FormatEndpoint(address, port)` | `1.2.3.4:443`, `[::1]:22`, `*:0` |
 
+## The activity store
+
+`NetworkMonitor/NetworkMonitorStore.h`, over UltraDatabase's bundled SQLite.
+It turns snapshots into **flows** — one row per connection across the
+snapshots that saw it — and, past a retention window, into **daily totals**
+per process and peer, so the file stays small however busy the machine.
+
+```cpp
+#include "NetworkMonitor/NetworkMonitorStore.h"
+
+NetworkMonitorStoreOptions options;
+options.path = "~/.local/share/UltraNetMonitor/activity.db";   // or ":memory:"
+options.retentionDays = 30;
+NetworkMonitorStoreHandle store;
+if (!NetworkMonitor_OpenStore(options, store)) { /* r.message says why */ }
+
+// Once a second, whatever the app already snapshots:
+NetworkMonitor_RecordSnapshot(store, connections);      // one transaction
+
+// "What was firefox talking to in the last day?"
+ActivityQuery query;
+query.since = NetworkMonitor_Now() - 24 * 3600;
+query.processName = "firefox";
+std::vector<RecordedFlow> flows;
+NetworkMonitor_QueryFlows(store, query, flows);         // newest first
+
+NetworkMonitor_ApplyRetention(store);                   // on stop, on close
+NetworkMonitor_CloseStore(store);
+```
+
+| Function | Does |
+|---|---|
+| `NetworkMonitor_StoreAvailable()` | Whether this build has UltraDatabase; without it every call below reports `NotSupported` |
+| `NetworkMonitor_OpenStore` / `CloseStore` | Registers a named SQLite connection and migrates the schema (versioned; a newer file is refused, not damaged) |
+| `NetworkMonitor_RecordSnapshot` | Every connection either extends the flow it continues or starts a new one; processes are deduplicated and cached |
+| `NetworkMonitor_QueryFlows` | Filters: `since`, `until`, `pid`, `processName`, `text` (substring over addresses, name, executable), `includeListening`, `includeLoopback`, `limit`; newest first |
+| `NetworkMonitor_QueryDailyTotals` | The rolled-up totals, newest day first |
+| `NetworkMonitor_RollUp(olderThan)` | Aggregates flows last seen before the time into daily totals and deletes them; a second roll-up onto the same day accumulates |
+| `NetworkMonitor_ApplyRetention` | Rolls up flows older than the window, drops daily totals and snapshot records older than twelve windows |
+| `NetworkMonitor_Purge` | Deletes everything; irreversible, so the caller confirms |
+| `NetworkMonitor_StoreStats` | Counts and the oldest / newest flow |
+| `NetworkMonitor_ExportFlowsCsv` | RFC 4180 quoting, UTC ISO-8601 times, dot-decimal numbers |
+
+**Continuation.** A connection is the same flow across snapshots while its
+sightings are at most `kFlowContinuationSeconds` (120) apart; the same
+5-tuple seen again later starts a new flow, so a reused ephemeral port is
+not glued to an earlier conversation. `TIME_WAIT` and the like extend the
+flow they belong to.
+
+**Counters.** A flow carries its *latest* counters (the kernel's are
+cumulative). A daily total sums only the flows that had counters and says
+how many did (`countedFlows`), so a day with no counters reads as zero
+counted flows, not as zero bytes.
+
+**Threads.** One mutex per store: a recording thread and a reading thread
+never share the single SQLite connection at once. One transaction per
+snapshot.
+
+**What it does not do yet.** Encrypt at rest — the proposal's plan is
+UltraCrypt with the key in UltraVault, and it is the next store increment.
+Until then the file is as private as the directory it sits in, which is
+why the app keeps it in the per-user data directory, never a cache.
+
 ## Privilege
 
 Three tiers; the module degrades across them and says which it is in:
@@ -61655,6 +61765,7 @@ UltraCanvas/core/NetworkMonitor/
     NetworkMonitorCore.cpp        NetworkMonitor_* functions, filters, roll-up, null backend
     NetworkMonitorAddress.cpp     RFC 5952 IPv6 text, IPv4-mapped in mixed notation
     NetworkMonitorProcfs.cpp      table parsing - no I/O, so it is tested on every platform
+    NetworkMonitorStore.cpp       the activity store over UltraDatabase (stubs without it)
 UltraCanvas/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp
                                   netlink sock_diag, the /proc/net fallback, the /proc walk
 UltraCanvas/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
@@ -61729,12 +61840,15 @@ snapshot attributed to the test's own PID, with counters at least that large
 where the backend collects them and unset (not zero) where it does not; then
 that the option filters remove what they should. The socket code compiles
 on Winsock too. Where there is no backend, it asserts the module says so.
+The store is tested on an in-memory database: continuation across
+snapshots and its cut-off, every query filter, the CSV export, the
+roll-up's accumulation onto an existing day, retention and purge.
 
 ## Not built yet
 
 - Connection events (ETW on Windows, eBPF on Linux), domain names,
-  persistence, throughput charts and file-transfer correlation — the rest of
-  Phase 2 and Phase 3, in the proposal's §9 order.
+  throughput charts, at-rest encryption of the store and file-transfer
+  correlation — the rest of Phase 2 and Phase 3, in the proposal's §9 order.
 - Byte counters on Windows (ETW) and macOS (no public source).
 - Any blocking or TLS interception, by decision (proposal §7).
 
@@ -64986,6 +65100,271 @@ FILE: Docs/Modules/UltraDatabase/intro.md
 # UltraDatabase
 
 The unified data-access layer for every platform. One API covers every database an app touches: embedded SQLite out of the box, plus PostgreSQL, MySQL/MariaDB and more as plug-in drivers, without touching the core. Connections are defined once by name and pooled centrally; the same parameterized query, transaction and streaming-cursor API works across every engine, so an app can prototype on SQLite and deploy on Postgres without a rewrite. Injection-safe by default, TLS for networked engines, and credentials pulled from UltraVault — never embedded in code. Blocking calls run sync; async variants keep the UI responsive.
+
+==============================================================================
+FILE: Docs/Modules/UltraMessage/README.md
+==============================================================================
+
+# UltraMessage — The Message Channel
+
+**Status:** Phase 1 implemented (channel and journal); Phases 2–4 in the proposal.
+**Version:** 0.1.0
+**Author:** UltraCanvas Framework / ULTRA OS
+**Last Modified:** 2026-09-19
+
+UltraMessage is the message channel of the ULTRA OS stack: one API through
+which applications send structured messages to each other, receive what other
+applications publish, and — with Phase 3 — expose commands others may invoke.
+Its model is the RISC OS Wimp: a message is posted to everyone or to one
+application, a *recorded* post bounces back when nobody acknowledged it, and a
+request gets exactly one reply. A per-user **broker** routes everything and
+keeps a **journal** of the persistent topics, which is what the ULTRA OS
+desktop's message centre will list.
+
+The research and the full design — the platform survey, the wire format, the
+adapters that will feed messenger and mail notifications onto the bus, the
+security model and the delivery plan — is the proposal,
+`Docs/Research/UltraMessageDesignProposal.md`. This document is the reference
+for what is built. The registry entry is `Masterfile_modules.md` §13.
+
+**It is not a network protocol** (everything is local to one user session;
+mail and messengers come in through UltraNet) and **not a scripting
+language** (UltraScript is a separate module, §14, and a client of this one).
+
+---
+
+## 1. What is built
+
+| Piece | Where |
+|---|---|
+| Public API (`UltraMsg_*`) | `UltraCanvas/include/UltraMessage/UltraMessage.h`, `UltraMessageTypes.h` |
+| C++ layer and typed topic helpers | `UltraCanvas/include/UltraMessage/UltraMessageEndpoint.h` |
+| UltraCanvas UI-thread bridge (header-only) | `UltraCanvas/include/UltraMessage/UltraMessageUltraCanvas.h` |
+| Codec, identifiers, topic matching, default paths | `UltraCanvas/core/UltraMessage/UltraMessageCodec.cpp` |
+| Schema registry and the well-known topics | `UltraCanvas/core/UltraMessage/UltraMessageSchemas.cpp` |
+| Transport: Unix domain socket / Windows named pipe | `UltraCanvas/core/UltraMessage/UltraMessageTransport.cpp` |
+| Broker: sessions, routing, bounce, request/reply, control RPC | `UltraCanvas/core/UltraMessage/UltraMessageBroker.cpp` |
+| Journal on UltraDatabase | `UltraCanvas/core/UltraMessage/UltraMessageJournal.cpp` |
+| Endpoint client and the API implementation | `UltraCanvas/core/UltraMessage/UltraMessageEndpoint.cpp` |
+| `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
+| Tests (24 cases) | `Tests/UltraMessage/` |
+
+Library target `UltraMessage` (`libultramessage.a`), built whenever
+UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
+UltraDatabase and nothing of the widget layer, so tools and tests stay
+headless; `Tests/UltraMessage/CMakeLists.txt` also configures on its own
+where the UI library cannot be built.
+
+## 2. Ten-line tour
+
+```cpp
+#include <UltraMessage/UltraMessageEndpoint.h>
+#include <UltraMessage/UltraMessageUltraCanvas.h>   // only in an UltraCanvas app
+using namespace UltraMessage;
+
+UltraMsg_UseUltraCanvasApplication();   // callbacks on the UI thread from now on
+
+auto bus = Endpoint::Connect({.appId = "org.ultraos.ultramail", .displayName = "UltraMail"});
+bus->Subscribe("app.open.request", [&](const UltraMsgMessage& m) { OpenPaths(m.body); });
+
+MailMessage mail;                        // typed helper, see §5
+mail.account = "me@example.org"; mail.from = {"Ada", "ada@example.org"}; mail.subject = "Hi";
+bus->Post("mail.message", MakeMailMessage(mail));   // journaled: the feed shows it
+
+UltraMsgMessage reply;                   // request / reply, 3 s timeout
+bus->RequestBlocking("org.ultraos.ultraviewer", "app.command.invoke",
+                     UltraCanvas::JSON::Parse(R"({"verb":"export","args":{"format":"pdf"}})"),
+                     std::chrono::seconds(3), reply);
+```
+
+The first application to connect and find no broker hosts one in-process;
+every later one connects to it. When the hosting process exits, the next
+`Connect` elects a new host (a lock file beside the socket decides; no two
+processes ever both win). On ULTRA OS the shell will host it permanently.
+
+## 3. The API
+
+Everything is a free function with the `UltraMsg_` prefix; blocking calls
+return `UltraMsgResult` (`ok`, `code`, `message`; `explicit operator bool`),
+endpoints and subscriptions are opaque `UltraMsgHandle`s.
+
+### 3.1 Endpoint
+
+| Call | Purpose |
+|---|---|
+| `UltraMsg_Connect(options, &error)` | Join the bus as `options.appId` (reverse DNS). Hosts a broker when none answers and `startBrokerIfAbsent` is set. `busPath` / `journalPath` override the platform defaults. |
+| `UltraMsg_Disconnect(endpoint)` | Leave; every subscription of the endpoint ends. |
+| `UltraMsg_IsConnected`, `UltraMsg_GetEndpointInfo`, `UltraMsg_GetBrokerInfo` | State: instance id, verified process id, whether the broker is in this process, its bus and journal paths. |
+| `UltraMsg_ListEndpoints`, `UltraMsg_ResolveApp` | Who is on the bus; the instance ids of one application, first-connected first. |
+
+### 3.2 Sending — the Wimp set
+
+| Call | Semantics |
+|---|---|
+| `UltraMsg_Post(endpoint, topic, body, options)` | Fire and forget, to `*` or `options.to` (an app id or instance id). |
+| `UltraMsg_PostRecorded(…, onBounce)` | The broker expects an acknowledgement from at least one subscriber within `ttlSeconds` (default 5); with none, `onBounce` runs with the original message. |
+| `UltraMsg_Request(endpoint, target, topic, body, timeoutMs, outReply)` | Blocking request / reply. Fails with `NoSuchTarget`, `NotHandled` (the target has no subscription for the topic) or `Timeout`; an error reply carries its code and message. Never depends on the UI dispatcher, so it is safe from the UI thread. |
+| `UltraMsg_RequestAsync(…, onReply)` | The same, with a callback. |
+| `UltraMsg_Reply`, `UltraMsg_ReplyError` | Answer a request received through a subscription. Replies are not validated against the topic's schema. |
+| `UltraMsg_Acknowledge` | Explicit acknowledgement for subscriptions created with `manualAck`; otherwise the return of the callback acknowledges. |
+
+`UltraMsgSendOptions` carries `to`, `conversation` (the feed groups by it),
+`ttlSeconds`, `flags` (`Persistent`, `Urgent`, `Silent`, `NoJournal`,
+`Replace` + `replaces`), and inline `attachments` (≤ 1 MiB each; larger
+payloads travel as a file path).
+
+### 3.3 Receiving
+
+`UltraMsg_Subscribe(endpoint, pattern, callback, options)` — patterns are an
+exact topic, one wildcard segment (`mail.*`, `*.message`), a trailing `#`
+(`app.#`) or `#` alone. Options: `manualAck`, `includeOwn` (also see what
+this endpoint posts), `onWorkerThread` (bypass the UI dispatcher),
+`replaySinceMs` (journaled history first, oldest to newest, then live).
+`UltraMsg_Unsubscribe(subscription)` ends it.
+
+**Threading.** Callbacks run through the dispatcher installed with
+`UltraMsg_SetUIDispatcher`; an UltraCanvas application installs
+`PostToUIThread` by calling `UltraMsg_UseUltraCanvasApplication()` once. With
+no dispatcher, callbacks wait until `UltraMsg_ProcessPending()` drains them on
+the caller's thread — what tools and tests do. A subscription with
+`onWorkerThread`, or an endpoint connected with `deliverOnUIThread = false`,
+runs its callbacks on the transport thread as frames arrive; such a callback
+must not make a blocking call (`UltraMsg_Request`, journal queries) on the same
+endpoint, because the thread it would wait on is the one it runs on. `Post`,
+`Reply` and `Acknowledge` are fine there.
+
+### 3.4 Journal
+
+Served by the broker, which alone opens the database, so one process holds the
+SQLite file at a time:
+
+| Call | Purpose |
+|---|---|
+| `UltraMsg_Query(endpoint, query, out)` | Filter by topic patterns, conversation, sender app id, `service`, time range, unread, dismissed, `textContains`; newest first, `limit` / `offset`. |
+| `UltraMsg_Count`, `UltraMsg_GetMessage` | The same filter as a count; one message by id. |
+| `UltraMsg_MarkRead`, `UltraMsg_MarkUnread`, `UltraMsg_Dismiss`, `UltraMsg_Delete` | State changes by id list; dismissing also marks read; deletion is real. |
+| `UltraMsg_ListConversations` | Conversation rows with unread and total counts, newest first. |
+| `UltraMsg_SetRetention(pattern, days, maxRows)` | Per-pattern retention; the defaults are 90 days and 50 000 rows for everything. Applied when the broker starts and every ten minutes. |
+| `UltraMsg_Export(query, path)` | JSON lines, one message per line. |
+
+What is journaled: every `Notice` or `RecordedNotice` whose topic's schema says
+*persistent* (`messaging.message`, `mail.message`, `system.notification`) or
+whose sender set `UltraMsgFlag_Persistent`, unless it set `NoJournal`. The
+broker writes before it fans out, so what a feed shows is always something it
+can find again. Text search is a `LIKE` over the extracted text (`text`,
+`subject` + `snippet`, `summary` + `body`) in this phase.
+
+Default locations: bus `$XDG_RUNTIME_DIR/ultramessage/bus.sock` (Linux),
+`$TMPDIR/ultramessage/bus.sock` (macOS), `\\.\pipe\UltraMessage-<session>`
+(Windows); journal `~/.local/share/ultramessage/journal.db`,
+`~/Library/Application Support/UltraMessage/journal.db`,
+`%LOCALAPPDATA%\UltraMessage\journal.db`. Socket, lock file and directories
+are owner-only.
+
+### 3.5 Schemas and topics
+
+`UltraMsg_RegisterSchema`, `UltraMsg_GetSchema`, `UltraMsg_ListSchemas`,
+`UltraMsg_Validate`, `UltraMsg_IsPersistentTopic`, plus
+`UltraMsg_TopicMatches`, `UltraMsg_IsValidTopic`, `UltraMsg_IsValidAppId`.
+A schema names a topic or pattern, its fields with a type and whether they
+are required, and whether the topic is persistent; `Post` refuses a body that
+violates it. The well-known topics ship registered; applications add their
+own under a vendor prefix (`com.example.myapp.*`). Their names are in
+`namespace UltraMsgTopics`.
+
+| Topic | Persistent | Body (see the proposal §5.3 for every field) |
+|---|---|---|
+| `messaging.message` | yes | `service`, `conversation{id,title,isGroup}`, `sender{id,name}`, `text`, `direction`, `read`, `attachments[]` |
+| `mail.message` | yes | `account`, `folder`, `from{name,address}`, `to[]`, `subject`, `snippet`, `read`, `flagged` |
+| `system.notification` | yes | `appName`, `category` (freedesktop: `im.received`, `email.arrived`, …), `summary`, `body`, `urgency`, `actions[]` |
+| `system.notification.action` / `.dismissed`, `feed.read` / `feed.dismissed` | no | feed ↔ adapter signalling |
+| `app.lifecycle.started` / `.stopping` | no | published by the broker for every endpoint |
+| `app.open.request` | no | `paths[]` / `urls[]`, `activate` — single-instance hand-off |
+| `app.command.list` / `.invoke` / `.echo` | no | the Phase 3 command surface; the topics exist, the consent and manifests do not yet |
+| `file.changed`, `clipboard.changed` | no | |
+
+## 4. The C++ layer
+
+`UltraMessage::Endpoint` (`Connect`, `Subscribe`, `Post`, `PostRecorded`,
+`Request` returning a `std::future` completed on the transport thread,
+`RequestBlocking`, `Reply`, `ReplyError`, `Acknowledge`, `Query`, `MarkRead`,
+`Dismiss`) disconnects in its destructor; `UltraMessage::Subscription`
+unsubscribes in its.
+
+## 5. Typed helpers
+
+`MessagingMessage`, `MailMessage` and `SystemNotification` with
+`MakeMessagingMessage` / `ParseMessagingMessage` and their siblings build and
+read the well-known bodies; `ConversationKey(m)` is the `<service>:<id>` the
+feed groups by. A messenger adapter or UltraMail fills the struct and posts
+the JSON; the message centre parses it back.
+
+## 6. `ultramsg`
+
+```
+ultramsg post <topic> [json-body] [--to <app>] [--conversation <id>] [--persistent]
+ultramsg tail [pattern] [--json]        follow the bus
+ultramsg query [--topic <pattern>] [--unread] [--text <s>] [--service <s>] [--limit <n>] [--json]
+ultramsg conversations | endpoints | info
+ultramsg mark-read <id>... | dismiss <id>... | delete <id>...
+ultramsg export <path> [--topic <pattern>]
+```
+
+`--bus`, `--journal`, `--app` and `--no-broker` (fail rather than host a
+broker) apply everywhere. `ultramsg tail` in one shell and `ultramsg post` in
+another is the quickest two-process check of an installation.
+
+## 7. Wire format and delivery guarantees
+
+Frames are a 4-byte little-endian length and one UTF-8 JSON object with a
+`t` field: `hello` / `welcome`, `ctl` / `ctlr` (control RPC: subscriptions,
+directory, journal), `msg`, `deliver`, `ack`, `bounce`, `overflow`, `ping` /
+`pong`, `bye`. The message envelope is the proposal's §5.2. The broker fills
+`from` from the session that sent a message (an app cannot claim another's
+identity) and marks it *verified* when the operating system's peer credentials
+match the connecting process (Linux `SO_PEERCRED`, macOS `LOCAL_PEERPID`,
+Windows `GetNamedPipeClientProcessId`).
+
+- Per sender, messages arrive in send order.
+- A notice is delivered at most once per subscription; a receiver whose
+  outbound queue is full (4096 frames) loses messages and is told so with an
+  `overflow` frame.
+- A recorded notice is acknowledged by at least one receiver or bounced to
+  its sender when the ttl passes; with no matching subscriber it bounces at
+  once.
+- A request gets exactly one reply or error — including when its target
+  disconnects first.
+- Persistent topics are journaled before fan-out.
+
+## 8. Building and testing
+
+```
+cmake -B build                       # UltraMessage builds with UltraDatabase
+cmake -B build -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON && cmake --build build --target UltraMessageTests
+ctest --test-dir build -R UltraMessage
+
+cmake -S Tests/UltraMessage -B build-um && cmake --build build-um && build-um/UltraMessageTests   # standalone
+```
+
+The suite hosts an in-process broker on a private bus path (`/tmp/ultramsg-test-<pid>/bus.sock`,
+a per-process pipe name on Windows) and drives it over the real transport with
+several endpoints; the journal is in memory. CI enables the suite on every
+platform and runs it on Linux.
+
+## 9. Not in this phase
+
+- **Event-loop integration on Linux** through `AddFdWatch`: a reader thread
+  serves every endpoint on every platform for now.
+- **Reconnection** after the process hosting the broker exits: endpoints
+  report `NotConnected`; the application reconnects. The ULTRA OS shell will
+  host the broker permanently, which removes the case there.
+- **FTS5** for text search.
+- **The spool** for attachments over 1 MiB (a file path is passed instead).
+- **Adapters** (Phase 2: freedesktop notifications, the Windows listener,
+  Apple Mail, UltraMail publishing, Telegram) and the `UltraCanvasMessageCenter`
+  element.
+- **Commands** (Phase 3: `RegisterCommand` / `ListCommands` / `Invoke`,
+  manifests, consent) — the `app.command.*` topics are reserved for them.
 
 ==============================================================================
 FILE: Docs/Modules/UltraNet/ApiStatus.md
