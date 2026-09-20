@@ -1,35 +1,38 @@
 // Apps/UltraSocial/engine/UltraSocialCredentialVault.h
-// Per-account credential blobs (OAuth tokens / app passwords / bot tokens)
-// out of the config files, keyed by accountId. Same fallback file backend as
-// UltraMail's vault: secrets obfuscated with a per-vault key — better than
-// plaintext but NOT strong at-rest encryption (the key lives beside the
-// data). The target backend is the OS keychain / UltraVault behind this same
-// Store/Retrieve/Remove interface (see UltraAI/Docs/UltraVault.md).
-// Version: 0.1.0 (Phase 1)
+// UltraSocial's per-account credential blobs (OAuth tokens / app passwords /
+// bot tokens), keyed by accountId: the framework's device-key vault
+// (UltraVault::DeviceKeyVault, see
+// UltraCanvas/include/UltraVault/UltraVaultDeviceKeyVault.h) with UltraSocial's
+// file name and key prefix. Until 0.1.0 this was a copy of UltraMail's vault
+// that still wrote the 0.1 XOR format; a vault in that format is migrated on
+// the first TryAutoUnlock() and its files removed.
+//
+// Layout in the vault folder: `ultrasocial.vault` (the encrypted store) and
+// `device.key` (the random passphrase that unlocks it without a prompt). Keys
+// are "social.ultrasocial.<accountId>".
+// Version: 0.2.0 - profile of UltraVault::DeviceKeyVault (was the 0.1 file format)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
+
+#include <UltraVault/UltraVaultDeviceKeyVault.h>
 
 #include <string>
 
 namespace UltraSocial {
 
-class CredentialVault {
+using VaultStatus = UltraVault::UnlockStatus;
+
+// What tells UltraSocial's vault from another application's.
+inline const UltraVault::DeviceKeyVaultProfile kVaultProfile{
+    /*vaultFileName=*/"ultrasocial.vault",
+    /*keyPrefix=*/    "social.ultrasocial."};
+
+class CredentialVault : public UltraVault::DeviceKeyVault {
 public:
-    explicit CredentialVault(std::string directory) : dir_(std::move(directory)) {}
-
-    // Store (or replace) the secret for an account key. False on I/O error.
-    bool Store(const std::string& accountId, const std::string& secret);
-
-    // Retrieve the secret; false (and `out` empty) if absent.
-    bool Retrieve(const std::string& accountId, std::string& out) const;
-
-    bool Has(const std::string& accountId) const;
-
-    // Remove the secret. True if it existed.
-    bool Remove(const std::string& accountId);
-
-private:
-    std::string dir_;
+    CredentialVault() : CredentialVault(std::string{}) {}
+    // `directory` holds the vault file and the device key; created on first write.
+    explicit CredentialVault(std::string directory)
+        : UltraVault::DeviceKeyVault(std::move(directory), kVaultProfile) {}
 };
 
 } // namespace UltraSocial

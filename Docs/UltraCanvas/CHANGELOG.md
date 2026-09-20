@@ -1,3 +1,27 @@
+#### 2026-09-20 *0.9.16*
+- **New: `UltraVault::DeviceKeyVault` — an application's own vault on
+  UltraVault** (`<UltraVault/UltraVaultDeviceKeyVault.h>`, target `UltraVault`,
+  reference `Docs/Modules/UltraVault/README.md`). One encrypted vault file in a
+  directory the application owns, unlocked without a prompt by a random
+  passphrase kept owner-only in `device.key` beside it (`TryAutoUnlock`) or by
+  an explicit master password (`Unlock` -> `UnlockStatus`, which tells a wrong
+  password from a build without crypto; `PersistDeviceKey` makes the next run
+  silent); per-account `Store` / `Retrieve` / `Has` / `Remove`, an OAuth2
+  token set beside the password slot (`StoreOAuthTokens` …, `MethodFor` ->
+  `SignInMethod`), and migration of the 0.1 XOR-sidecar format (`vault.key` +
+  `creds.dat`) on the first unlock. A `DeviceKeyVaultProfile` — vault file
+  name and key prefix in the `<vendor>.<app>.` convention — tells one
+  application's vault from another's. This is UltraMail's `CredentialVault`
+  0.6.0 moved into the framework: UltraSocial carried a copy of it that had
+  never left the 0.1 format, so the two had drifted apart; both apps are now
+  one-line profiles of the one class (UltraMail 0.10.2, UltraSocial 0.1.1). The
+  legacy reader keeps a private Base64 decoder because UltraVault stays off the
+  UltraCanvas library on purpose (the link-time split that keeps UltraCrypt
+  UI-free). Covered in `Tests/UltraVaultTests.cpp`: locked-until-unlocked,
+  first-run key + vault creation and reopen, profile-prefixed keys, no
+  plaintext on disk, wrong / empty passphrase, token sets, the
+  "vault without a device key must prompt" case, and the migration.
+
 #### 2026-09-20 *0.9.15*
 - **New: UltraMessage Phase 1 — the message channel is built**
   (`Masterfile_modules.md` §13, design `Docs/Research/UltraMessageDesignProposal.md`,

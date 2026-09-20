@@ -2104,7 +2104,8 @@ endif()
 # encrypted-file backends on UltraCrypt; UI-free, so headless consumers
 # (UltraAI adapters, tools) link it without the widget layer.
 add_library(UltraVault STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultCore.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultDeviceKeyVault.cpp)
 target_include_directories(UltraVault PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas>)

@@ -1,3 +1,15 @@
+#### 2026-09-20 *0.10.2*
+- **The credential vault is the framework's now.** `UltraMailCredentialVault.cpp`
+  was the only implementation of the device-key vault, and UltraSocial had
+  copied it; the implementation moved to `UltraVault::DeviceKeyVault`
+  (framework 0.9.16) and `UltraMailCredentialVault.h` only names UltraMail's
+  profile — `ultramail.vault` and `device.key` in the account folder, keys
+  `mail.ultramail.<account>`. Nothing on disk changes and no existing vault
+  needs migrating; `CredentialVault`, `OAuthTokens`, `SignInMethod` and
+  `VaultStatus` keep their names in `namespace UltraMail` (the last three are
+  aliases of the framework's types), so the app, EmailCleaner and the tests
+  compile unchanged. `KeyFor` is a member now rather than static.
+
 #### 2026-09-19 *0.10.1*
 - **Crowdfunding and creator-support platforms are known senders.** Kickstarter,
   Indiegogo, GoFundMe, Startnext, Crowd Supply, Patreon, Buy Me a Coffee, Ko-fi,

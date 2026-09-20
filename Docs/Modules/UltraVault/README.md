@@ -102,6 +102,61 @@ UltraVault::Shutdown();
 readers and a "requires user presence" flag; the memory and file backends
 store it, OS-native backends will enforce it.
 
+## Per-application vaults: `DeviceKeyVault`
+
+An application that keeps a password or a token set per account does not
+drive `Initialize`/`Put`/`Get` itself. It uses `UltraVault::DeviceKeyVault`
+(`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target): one encrypted
+vault file in a directory the application owns, unlocked without a prompt
+by a random passphrase kept owner-only in `device.key` beside it — the
+posture of Thunderbird with no Primary Password: encrypted at rest, no
+prompt, and the key is readable by whoever can read the directory. A
+`DeviceKeyVaultProfile` — the vault file name and the key prefix in the
+`<vendor>.<app>.` convention — tells one application's vault from another's.
+
+```cpp
+#include <UltraVault/UltraVaultDeviceKeyVault.h>
+
+// Usually a one-line subclass per application fixes the profile
+// (Apps/UltraMail/engine/UltraMailCredentialVault.h is the pattern).
+UltraVault::DeviceKeyVault vault(dataDir + "/vault",
+                                 {"ultramail.vault", "mail.ultramail."});
+
+// First run: a device key is generated and the vault created. Later runs:
+// the key unlocks it. False only when a vault exists that was made with a
+// master password (prompt once, Unlock(), then PersistDeviceKey()) or when
+// this build has no crypto backend.
+if (!vault.TryAutoUnlock()) { /* say so; Store() will refuse, not drop */ }
+
+vault.Store("erika@example.com", password);         // key mail.ultramail.erika@example.com
+std::string got;
+if (vault.Retrieve("erika@example.com", got)) { /* … */ }
+
+UltraVault::OAuthTokens tokens = { access, refresh, expiresAt };
+vault.StoreOAuthTokens("erika@example.com", tokens); // drops the password slot
+switch (vault.MethodFor("erika@example.com")) { /* None / Password / OAuth2 */ }
+
+vault.Lock();                                       // wipes the derived key
+```
+
+| Group | Members |
+|---|---|
+| Unlocking | `TryAutoUnlock()`, `Unlock(passphrase) -> UnlockStatus`, `PersistDeviceKey(passphrase)`, `IsUnlocked()`, `Lock()`, `Exists()`, `VaultPath()` |
+| Secrets | `Store(account, secret)`, `Retrieve(account, out)`, `Has(account)`, `Remove(account)`, `KeyFor(account)` |
+| OAuth2 token sets | `StoreOAuthTokens`, `RetrieveOAuthTokens`, `HasOAuthTokens`, `RemoveOAuthTokens`, `MethodFor(account) -> SignInMethod` |
+
+`UnlockStatus` tells a wrong master password (`WrongPassphrase` — also what a
+tampered file reports) from a build that cannot open a vault at all
+(`Unavailable`: UltraCrypt without libsodium) and from a path that cannot be
+written (`IoError`). An empty passphrase is refused. A vault in the 0.1 format
+the applications used before UltraVault (secrets XOR-ed against a `vault.key`
+sidecar, one line per account in `creds.dat`) is carried across on the first
+successful unlock and its files removed.
+
+UltraVault itself is one store per process: `Unlock()` closes whatever
+UltraVault had open and opens this vault, so a process works with one
+`DeviceKeyVault` at a time.
+
 ## Consumers
 
 - **UltraAI** — `ProviderConfig::apiKeyVaultRef` resolves through
@@ -109,6 +164,13 @@ store it, OS-native backends will enforce it.
   in-tree); see `Docs/Modules/UltraAI/README.md`.
 - **UltraCloud** — `VaultSecretStore` keeps cloud account tokens here, falling
   back to a per-app obfuscated file store when UltraVault is not built.
+- **UltraMail** and **EmailCleaner** — `UltraMail::CredentialVault`
+  (`Apps/UltraMail/engine/UltraMailCredentialVault.h`) is `DeviceKeyVault`
+  with the profile `ultramail.vault` / `mail.ultramail.`; mail passwords and
+  OAuth2 token sets per account.
+- **UltraSocial** — `UltraSocial::CredentialVault`
+  (`Apps/UltraSocial/engine/UltraSocialCredentialVault.h`), profile
+  `ultrasocial.vault` / `social.ultrasocial.`; one credential blob per account.
 
 ## Third-party dependencies
 

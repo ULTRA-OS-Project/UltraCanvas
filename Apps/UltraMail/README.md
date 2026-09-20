@@ -68,8 +68,11 @@ Apps/UltraMail/
     UltraMailDiscovery.{h,cpp}    account auto-discovery: provider presets +
                                   Mozilla-autoconfig XML (over UltraNet HTTP);
                                   ForAccount (stored settings, else presets)
-    UltraMailCredentialVault.{h,cpp} per-account secrets out of the config:
-                                  a password or an OAuth2 token set, in UltraVault
+    UltraMailCredentialVault.h    per-account secrets out of the config: a
+                                  password or an OAuth2 token set, in the
+                                  framework's UltraVault::DeviceKeyVault with
+                                  UltraMail's profile (ultramail.vault,
+                                  device.key, keys mail.ultramail.<account>)
     UltraMailOAuth.{h,cpp}        OAuth2 sign-in (Gmail): provider table, app
                                   registration (env / oauth.ini), sign-in +
                                   token refresh, credentials for IMAP/SMTP
