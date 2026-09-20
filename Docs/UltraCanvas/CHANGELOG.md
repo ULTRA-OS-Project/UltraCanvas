@@ -1,4 +1,4 @@
-#### 2026-09-20 *0.9.14*
+#### 2026-09-20 *0.9.18*
 - **Tables can be built and reshaped, not just filled in.** A document could
   hold a table, and the caret could edit its cells, but the table's own
   structure was fixed: there was no way to make one, add a row, or merge two
