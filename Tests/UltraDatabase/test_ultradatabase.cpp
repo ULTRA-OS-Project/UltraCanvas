@@ -9,6 +9,10 @@
 
 #include <UltraDatabase/UltraDatabase.h>
 
+// Not a public header: the placeholder rewriter is driver-internal, and the
+// suite is part of the same library rather than a consumer of it.
+#include "../../UltraCanvas/core/UltraDatabase/UltraDatabaseInternal.h"
+
 #include <string>
 #include <vector>
 
@@ -240,4 +244,87 @@ TEST(close_connection) {
     REQUIRE(UltraDb_CloseConnection(c).success);
     REQUIRE(!UltraDb_HasConnection(c));
     REQUIRE(UltraDb_CloseConnection(c).code == UltraDbResultCode::ConnectionNotFound);
+}
+
+// ===== POSTGRESQL PLACEHOLDER REWRITING =====
+//
+// UltraDatabase's SQL is written with `?` and PostgreSQL wants `$1, $2, ...`.
+// Everything the engine sends a multi-user server goes through this rewriter,
+// so a `?` it takes for a placeholder when it is really part of a literal
+// corrupts a statement silently - the failure mode is a wrong query that still
+// runs, not an error. These cases are the ones that actually occur in the
+// UltraFIBU schema and in migrations.
+//
+// Tested here rather than in the driver's own suite because the function has
+// no libpq in it: a build without libpq must still prove this correct.
+
+namespace {
+std::string Pg(const std::string& sql) {
+    return ultradb_internal::PostgresPlatzhalter(sql);
+}
+} // namespace
+
+TEST(pg_placeholders_numbered_in_order) {
+    REQUIRE_EQ(Pg("INSERT INTO t(a, b, c) VALUES(?, ?, ?)"),
+               std::string("INSERT INTO t(a, b, c) VALUES($1, $2, $3)"));
+    REQUIRE_EQ(Pg("SELECT * FROM t WHERE a = ? AND b = ?"),
+               std::string("SELECT * FROM t WHERE a = $1 AND b = $2"));
+    // Nothing to do is not the same as doing something.
+    REQUIRE_EQ(Pg("SELECT 1"), std::string("SELECT 1"));
+    REQUIRE_EQ(Pg(""), std::string(""));
+}
+
+TEST(pg_placeholders_leave_string_literals_alone) {
+    // A question mark in text the user stored. Rewriting it would change the
+    // data that gets compared, and the query would still succeed.
+    REQUIRE_EQ(Pg("SELECT * FROM t WHERE frage = 'wie viel?' AND id = ?"),
+               std::string("SELECT * FROM t WHERE frage = 'wie viel?' AND id = $1"));
+    // '' is an escaped quote inside a literal, not the end of it: the `?`
+    // after it is still data.
+    REQUIRE_EQ(Pg("SELECT 'it''s ? here', ?"),
+               std::string("SELECT 'it''s ? here', $1"));
+    // An unterminated literal must not make the rest of the statement be
+    // rewritten as if it were code.
+    REQUIRE_EQ(Pg("SELECT 'offen ?"), std::string("SELECT 'offen ?"));
+}
+
+TEST(pg_placeholders_leave_quoted_identifiers_alone) {
+    REQUIRE_EQ(Pg("SELECT \"spalte?\" FROM t WHERE id = ?"),
+               std::string("SELECT \"spalte?\" FROM t WHERE id = $1"));
+    REQUIRE_EQ(Pg("SELECT \"a\"\"?b\" FROM t WHERE id = ?"),
+               std::string("SELECT \"a\"\"?b\" FROM t WHERE id = $1"));
+}
+
+TEST(pg_placeholders_leave_comments_alone) {
+    REQUIRE_EQ(Pg("SELECT a -- was? egal\nFROM t WHERE id = ?"),
+               std::string("SELECT a -- was? egal\nFROM t WHERE id = $1"));
+    REQUIRE_EQ(Pg("SELECT /* wirklich? */ a FROM t WHERE id = ?"),
+               std::string("SELECT /* wirklich? */ a FROM t WHERE id = $1"));
+    // PostgreSQL block comments nest, so the first */ does not end this one.
+    REQUIRE_EQ(Pg("SELECT /* a /* ? */ b ? */ c FROM t WHERE id = ?"),
+               std::string("SELECT /* a /* ? */ b ? */ c FROM t WHERE id = $1"));
+    // A comment running to end of input is a comment to the end of input.
+    REQUIRE_EQ(Pg("SELECT 1 -- ?"), std::string("SELECT 1 -- ?"));
+}
+
+TEST(pg_placeholders_leave_dollar_quoted_bodies_alone) {
+    REQUIRE_EQ(Pg("SELECT $$was? $$, ?"), std::string("SELECT $$was? $$, $1"));
+    REQUIRE_EQ(Pg("SELECT $tag$ ? $tag$, ?"), std::string("SELECT $tag$ ? $tag$, $1"));
+    // A lone `$` that opens nothing is just a `$`, and what follows is code.
+    REQUIRE_EQ(Pg("SELECT $ ?"), std::string("SELECT $ $1"));
+    // An unterminated dollar quote leaves the `$tag$` in place; the `?` after
+    // it is outside any opened body in the text we were given.
+    REQUIRE_EQ(Pg("SELECT $tag$ offen ?"), std::string("SELECT $tag$ offen $1"));
+}
+
+TEST(pg_placeholders_survive_a_real_statement) {
+    // Shaped like what the bookkeeping engine actually sends: the audit insert.
+    REQUIRE_EQ(
+        Pg("INSERT INTO audit(id, zeit, benutzer_id, benutzer, tabelle, row_id,"
+           " aktion, details) VALUES(?,?,?,?,?,?,?,?)"),
+        std::string("INSERT INTO audit(id, zeit, benutzer_id, benutzer, tabelle, row_id,"
+                    " aktion, details) VALUES($1,$2,$3,$4,$5,$6,$7,$8)"));
+    // And the locking read the number allocator depends on.
+    REQUIRE_EQ(Pg("SELECT naechste FROM sequenz WHERE name = ? FOR UPDATE"),
+               std::string("SELECT naechste FROM sequenz WHERE name = $1 FOR UPDATE"));
 }

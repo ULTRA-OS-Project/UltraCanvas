@@ -37,6 +37,34 @@
   last change replaced (`GetLastChangedBlocks`) and the element invalidates
   exactly those. Pinned by a test that centres a paragraph without touching the
   caret and reads back where the text actually landed.
+#### 2026-09-20 *0.9.17*
+- **UltraDatabase speaks PostgreSQL.** `core/UltraDatabase/
+  UltraDatabasePostgresDriver.cpp` plus `...PostgresSql.cpp`, registered the
+  same way the SQLite driver is. Optional and soft-failing: without libpq the
+  same source compiles to a stub and a `postgresql` connection reports that
+  the driver is missing, which is a true answer rather than a link error.
+- **Two new driver hooks, because a transaction is not portable.**
+  `BeginTransactionSql()` is `BEGIN IMMEDIATE` on SQLite and `BEGIN` on
+  PostgreSQL; `RowLockSuffix()` is empty on SQLite and ` FOR UPDATE` on
+  PostgreSQL. The second one exists because SQLite serialises writers and
+  PostgreSQL at READ COMMITTED does not, so a read-then-write counter that is
+  safe on one is a duplicate-key generator on the other - which is what two
+  concurrent clients proved, handing out 40 distinct numbers in 80 draws.
+- **`datetime('now')` was SQLite-only and sat in the migration bookkeeping**,
+  where every driver has to run it. It is `CURRENT_TIMESTAMP` now.
+- **The `?` -> `$n` rewriter is its own translation unit**, compiled whether
+  or not libpq was found. It is pure string handling, and gating it on the
+  driver would mean a machine without libpq ships it untested - while the
+  mistakes it guards against (a `?` inside a literal, a comment or a
+  dollar-quoted body) corrupt a statement that then still runs.
+- **The suite runs, rather than being built.** CI installs libsqlite3-dev and
+  libpq-dev explicitly instead of trusting the runner image, builds
+  `UltraDatabaseTests`, and fails the job if configure reports UltraDatabase
+  without PostgreSQL - a soft-disabled module takes its own tests with it.
+- TLS defaults to `verify-full`, and the connection password must be a
+  `vault:` key: a literal password in a config file is refused rather than
+  used.
+
 #### 2026-09-20 *0.9.16*
 - **Depth for the vector model: booleans, ClipView, contour, blend, mould,
   bevel** - phase 5 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`

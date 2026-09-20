@@ -23,6 +23,9 @@ set(ULTRAFIBU_ENGINE_SOURCES
     engine/UltraFIBUBuchung.cpp
     engine/UltraFIBUDatev.cpp
     engine/UltraFIBUBank.cpp
+    engine/UltraFIBUUstva.cpp
+    engine/UltraFIBUBelegArchiv.cpp
+    engine/UltraFIBUOss.cpp
     engine/UltraFIBUStore.cpp
 )
 
@@ -145,6 +148,7 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
         ui/main.cpp
         ui/UltraFIBUApp.cpp
         ui/UltraFIBUTabelle.cpp
+        ui/UltraFIBUBelegDialog.cpp
     )
     target_compile_features(ultrafibu-ui PRIVATE cxx_std_20)
     target_include_directories(ultrafibu-ui PRIVATE

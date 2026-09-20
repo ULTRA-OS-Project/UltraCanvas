@@ -2646,7 +2646,22 @@ if(ULTRACANVAS_ENABLE_DATABASE)
             ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseValue.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseManager.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseSqliteDriver.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabasePostgresDriver.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabasePostgresSql.cpp
         )
+
+        # PostgreSQL, for the multi-user mode. Optional and soft-failing: with
+        # libpq the driver registers itself, without it the same source
+        # compiles to a stub and a "postgresql" connection reports that the
+        # driver is missing - which is a true answer instead of a link error.
+        if(PkgConfig_FOUND)
+            pkg_check_modules(LIBPQ libpq)
+        endif()
+        if(NOT LIBPQ_FOUND)
+            find_path(LIBPQ_INCLUDE_DIRS libpq-fe.h
+                      PATH_SUFFIXES postgresql postgresql/16 postgresql/15)
+            find_library(LIBPQ_LIBRARIES NAMES pq)
+        endif()
         add_library(UltraDatabase STATIC ${ULTRADATABASE_SOURCES})
         set_target_properties(UltraDatabase PROPERTIES
             POSITION_INDEPENDENT_CODE ON
@@ -2659,6 +2674,17 @@ if(ULTRACANVAS_ENABLE_DATABASE)
         target_include_directories(UltraDatabase PRIVATE ${SQLITE3_INCLUDE_DIRS})
         target_link_libraries(UltraDatabase PUBLIC Threads::Threads)
         target_link_libraries(UltraDatabase PRIVATE ${SQLITE3_LIBRARIES})
+        if(LIBPQ_LIBRARIES)
+            target_include_directories(UltraDatabase PRIVATE ${LIBPQ_INCLUDE_DIRS})
+            target_link_libraries(UltraDatabase PRIVATE ${LIBPQ_LIBRARIES})
+            if(LIBPQ_LIBRARY_DIRS)
+                target_link_directories(UltraDatabase PRIVATE ${LIBPQ_LIBRARY_DIRS})
+            endif()
+            target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_POSTGRES=1)
+            set(ULTRADATABASE_POSTGRES_NOTE " + PostgreSQL")
+        else()
+            set(ULTRADATABASE_POSTGRES_NOTE " (no libpq: SQLite only)")
+        endif()
         target_compile_definitions(UltraDatabase PUBLIC ULTRACANVAS_HAS_DATABASE=1)
 
         # The NetworkMonitor activity store (core/NetworkMonitor/
@@ -2674,7 +2700,7 @@ if(ULTRACANVAS_ENABLE_DATABASE)
         # data through it when the module is enabled.
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraDatabase)
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_DATABASE=1)
-        message(STATUS "  [✓] UltraDatabase - ENABLED (SQLite ${SQLITE3_VERSION})")
+        message(STATUS "  [✓] UltraDatabase - ENABLED (SQLite ${SQLITE3_VERSION}${ULTRADATABASE_POSTGRES_NOTE})")
     endif()
 else()
     message(STATUS "  [−] UltraDatabase - DISABLED")
