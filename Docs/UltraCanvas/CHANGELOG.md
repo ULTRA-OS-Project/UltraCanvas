@@ -39,6 +39,14 @@
   file's own normals, and to the same width, height and length as the OBJ
   within a percent. `TestSample()` gained the canopy's translation, which is
   the regression test for the matrix mapping. All 122 tests pass.
+- **Every AI session's report now ends the same way.** `AGENTS.md` gained a
+  *Reporting back* section: a reply that reports work closes with a
+  `## Next Task` block saying what happens next and who does it, and an
+  `## Other recommendations` block listing defects found outside the change —
+  each with its file and why it was not fixed there. Both are written out even
+  when the answer is "none", because an explicit none is the difference
+  between finished and forgotten, and the second block is explicitly not a
+  place to park work that was asked for. `CLAUDE.md` points at it.
 - **The repair is reproducible.** `scripts/alembic/` carries the two scripts it
   took: `ogawa.py`, the Ogawa container — the Python counterpart of
   `UltraCanvasOgawaFile.cpp`, which reads an archive, verifies its sample keys
