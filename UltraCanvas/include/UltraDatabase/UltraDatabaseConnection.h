@@ -25,6 +25,11 @@ UltraDbResult UltraDb_CloseConnection(const std::string& name);
 // Useful in setup flows that want to surface connection errors immediately.
 UltraDbResult UltraDb_OpenConnection(const std::string& name);
 
+// The clause this connection's engine needs to lock a row being read for
+// update ("" or " FOR UPDATE"). Callers that read a counter and write it back
+// append this to the SELECT; see IUltraDbConnection::RowLockSuffix.
+std::string UltraDb_RowLockSuffix(const std::string& connection);
+
 struct UltraDbConnectionInfo {
     std::string name;
     std::string driver;

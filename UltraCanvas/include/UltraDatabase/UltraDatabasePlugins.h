@@ -40,6 +40,28 @@ public:
     virtual UltraDbResult ExecuteDirect(const std::string& sql,
                                         const UltraDbParams& params,
                                         UltraDbResultSet& out) = 0;
+
+    // How this engine starts a write transaction.
+    //
+    // Genuinely driver-specific rather than a detail: SQLite needs
+    // "BEGIN IMMEDIATE" to take the write lock at once and avoid a deadlock
+    // when a reader tries to upgrade, while PostgreSQL has no such statement
+    // and rejects it outright. The core used to hardcode SQLite's spelling,
+    // which meant no other engine could ever start a transaction. The default
+    // is the standard form, so a driver only overrides it when it needs to.
+    virtual std::string BeginTransactionSql() const { return "BEGIN"; }
+
+    // What to append to a SELECT whose row is about to be updated, so a
+    // concurrent transaction cannot read the same value.
+    //
+    // This is the difference between a counter that allocates unique numbers
+    // and one that hands the same number to two clients. SQLite needs nothing
+    // because BEGIN IMMEDIATE already serialises writers; PostgreSQL at READ
+    // COMMITTED will happily let both transactions read the old value, so it
+    // needs an explicit row lock. Empty by default, because a driver that
+    // serialises writers wants no clause at all - and because SQLite rejects
+    // "FOR UPDATE" outright.
+    virtual std::string RowLockSuffix() const { return std::string(); }
 };
 
 // A driver: a factory that opens connections for one or more driver ids.
