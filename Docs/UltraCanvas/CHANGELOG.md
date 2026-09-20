@@ -61,6 +61,53 @@
     combine operations; `VectorModelTest` checks each container and
     effect in pixels; `XARWriterTest` round-trips one of each through the
     plugin and the converter.
+- **New: UltraMessage Phase 1 — the message channel is built**
+  (`Masterfile_modules.md` §13, design `Docs/Research/UltraMessageDesignProposal.md`,
+  reference `Docs/Modules/UltraMessage/README.md`). Library target
+  `UltraMessage`, headless like UltraDatabase: `<UltraMessage/UltraMessage.h>`
+  with the `UltraMsg_*` surface — `Connect` (the first application to find no
+  broker hosts one in-process; a lock file beside the socket decides the
+  election), `Post`, `PostRecorded` (acknowledged by a subscriber or bounced
+  to the sender after the ttl), `Request` / `RequestAsync` / `Reply` /
+  `ReplyError` (exactly one reply or error, including when the target
+  disconnects), `Subscribe` with `mail.*` / `*.message` / `#` patterns,
+  `includeOwn`, `manualAck` and journal replay, and the journal calls `Query`,
+  `Count`, `GetMessage`, `MarkRead` / `MarkUnread`, `Dismiss`, `Delete`,
+  `ListConversations`, `SetRetention`, `Export`.
+- **The transport** is a Unix domain socket on Linux / macOS / BSD and a named
+  pipe with overlapped I/O on Windows, both carrying the same length-prefixed
+  JSON frames; the broker fills every message's sender from the connection it
+  came on and marks it verified when the operating system's peer credentials
+  agree (`SO_PEERCRED`, `LOCAL_PEERPID`, `GetNamedPipeClientProcessId`). One
+  reader and one bounded writer queue per session, so a slow receiver drops
+  and is told (`overflow`) rather than stalling routing.
+- **The journal** is an UltraDatabase (SQLite) file per user, written before
+  fan-out for every notice on a persistent topic (`messaging.message`,
+  `mail.message`, `system.notification`, or the `Persistent` flag), with
+  conversations, attachments, read / dismissed state, per-pattern retention
+  (defaults 90 days, 50 000 rows) and JSON-lines export. Only the broker opens
+  it; endpoints reach it over the control RPC.
+- **Callbacks run on the UI thread** through the dispatcher an UltraCanvas
+  application installs with one call, `UltraMsg_UseUltraCanvasApplication()`
+  (`<UltraMessage/UltraMessageUltraCanvas.h>`, header-only, wraps
+  `PostToUIThread`); tools without an event loop drain them with
+  `UltraMsg_ProcessPending`, and a subscription can opt onto the transport
+  thread. `<UltraMessage/UltraMessageEndpoint.h>` adds the RAII `Endpoint` /
+  `Subscription`, a `std::future` request, and the typed `MessagingMessage`,
+  `MailMessage` and `SystemNotification` helpers for the well-known topics.
+- **`ultramsg`** (`Apps/UltraMessageCli`): `post`, `tail`, `query`,
+  `conversations`, `endpoints`, `info`, `mark-read` / `dismiss` / `delete`,
+  `export` — the two-process check of an installation.
+- **Tests:** `Tests/UltraMessage` (24 cases: codec and patterns, schemas,
+  election and directory, delivery and targeting, recorded notices and bounce,
+  request / reply and every error path, the journal, replay, lifecycle
+  notices, the C++ layer and the helpers), hosting a broker on a private bus
+  path over the real transport. Builds in-tree
+  (`ULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS`, now on in CI) and standalone where
+  the UI library cannot be built. Clean under AddressSanitizer and UBSan.
+- Not in this phase, listed in the README: `AddFdWatch` event-loop integration,
+  reconnection after the hosting broker exits, FTS5, the attachment spool,
+  the Phase 2 adapters and the Phase 3 command surface.
 
 #### 2026-09-20 *0.9.14*
 - **The Alembic aircraft was half an aeroplane, and its canopy was inside the

@@ -1,7 +1,8 @@
 # UltraMessage — Cross-Platform Message Channel (Design Proposal)
 
 **Date:** 2026-09-17
-**Status:** Proposal — for review; no implementation yet
+**Status:** Phase 1 implemented (channel, journal, `ultramsg`); Phases 2–4
+remain the plan. `Docs/Modules/UltraMessage/README.md` documents what is built.
 **Registry entry:** `Masterfile_modules.md` §13
 **Companion:** [UltraScriptSpecification.md](UltraScriptSpecification.md) — the
 scripting language, a separate module and a client of this one; §12 draws the
