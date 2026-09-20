@@ -582,8 +582,24 @@ jobs:
         run: |
           set -eu
           sudo systemctl start postgresql || sudo service postgresql start
-          sudo -u postgres psql -c "CREATE ROLE fibuci LOGIN SUPERUSER PASSWORD 'fibuci';"
-          sudo -u postgres createdb -O fibuci ultrafibu_ci
+          # **The role must be named after the OS user.** Ubuntu ships
+          # `local all all peer` in pg_hba.conf, so a unix-socket connection is
+          # authenticated by the operating-system account and a role with any
+          # other name is refused before a password is even considered. The
+          # first run of this step created `fibuci`, which existed and could
+          # not be used: "Peer authentication failed".
+          #
+          # The name is taken from the runner rather than written as `runner`,
+          # so a change of account surfaces as this step failing instead of as
+          # a test that quietly cannot connect.
+          PGUSER_NAME="$(whoami)"
+          sudo -u postgres createuser --createdb "$PGUSER_NAME"
+          sudo -u postgres createdb -O "$PGUSER_NAME" ultrafibu_ci
+          echo "ULTRAFIBU_TEST_PG_USER=$PGUSER_NAME" >> "$GITHUB_ENV"
+          # Prove the connection the tests will make actually works, here,
+          # where the error names the cause - rather than inside ctest, where
+          # it arrives as one line with no diagnosis.
+          psql -h /var/run/postgresql -p 5432 -d ultrafibu_ci -c 'SELECT 1' >/dev/null
 
       - name: Run unit tests
         if: runner.os == 'Linux'
@@ -591,7 +607,8 @@ jobs:
         env:
           ULTRAFIBU_TEST_PG_HOST: /var/run/postgresql
           ULTRAFIBU_TEST_PG_PORT: 5432
-          ULTRAFIBU_TEST_PG_USER: fibuci
+          # ULTRAFIBU_TEST_PG_USER comes from the step above via GITHUB_ENV:
+          # naming it here would override it, which is how it ends up wrong.
           ULTRAFIBU_TEST_PG_DB: ultrafibu_ci
           # A skip here is indistinguishable from a pass, so forbid it.
           ULTRAFIBU_TEST_PG_REQUIRED: 1
