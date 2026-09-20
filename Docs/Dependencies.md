@@ -66,6 +66,7 @@ their *License* is likewise marked **—** (OS component).
 | GLX | [registry.khronos.org/OpenGL](https://registry.khronos.org/OpenGL/) | [github.com/KhronosGroup/OpenGL-Registry](https://github.com/KhronosGroup/OpenGL-Registry) | — |
 | GStreamer | [gstreamer.freedesktop.org](https://gstreamer.freedesktop.org/) | [gitlab.freedesktop.org/gstreamer/gstreamer](https://gitlab.freedesktop.org/gstreamer/gstreamer) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
 | GTK 3 | [gtk.org](https://www.gtk.org/) | [gitlab.gnome.org/GNOME/gtk](https://gitlab.gnome.org/GNOME/gtk) | [LGPL 2.1](https://spdx.org/licenses/LGPL-2.1-or-later.html) |
+| GutenPrint (runtime, not linked) | [gutenprint.sourceforge.net](http://gutenprint.sourceforge.net/) | [sourceforge.net/p/gimp-print/source](https://sourceforge.net/p/gimp-print/source/) | [GPL 2](https://spdx.org/licenses/GPL-2.0-or-later.html) |
 | gumbo | [github.com/google/gumbo-parser](https://github.com/google/gumbo-parser) | [github.com/google/gumbo-parser](https://github.com/google/gumbo-parser) | [Apache 2](https://spdx.org/licenses/Apache-2.0.html) |
 | HarfBuzz | [harfbuzz.github.io](https://harfbuzz.github.io/) | [github.com/harfbuzz/harfbuzz](https://github.com/harfbuzz/harfbuzz) | [MIT](https://spdx.org/licenses/MIT.html) |
 | ICA (ImageCaptureCore) | [developer.apple.com](https://developer.apple.com/documentation/imagecapturecore) | — | — |

@@ -9,3 +9,5 @@ Quick pointers:
 - Component docs (consult before using any widget): `Docs/UltraCanvas/`
 - LLM-ready docs index: `llms.txt` (full corpus: `llms-full.txt`)
 - After editing docs, run `python3 scripts/generate_llms_txt.py`
+- End every reply that reports work with a `## Next Task` block and an
+  `## Other recommendations` block — see *Reporting back* in `AGENTS.md`

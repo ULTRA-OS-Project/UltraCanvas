@@ -5,7 +5,7 @@
 # (UltraCanvas/CMakeLists.txt); the module is what --list / --by-app use, so
 # the headless modes need nothing this file adds.
 #
-# Version: 0.1.0
+# Version: 0.3.0
 # Author: UltraCanvas Framework / ULTRA OS
 
 # Needs the UltraCanvas UI library, built by add_subdirectory(UltraCanvas)
@@ -23,6 +23,7 @@ endif()
 add_executable(UltraNetMonitor
     main.cpp
     ui/UltraNetMonitorModels.cpp
+    ui/UltraNetMonitorPaths.cpp
     ui/UltraNetMonitorWindow.cpp
 )
 

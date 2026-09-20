@@ -16,6 +16,7 @@
 #include <memory>
 #include <algorithm>
 #include <cctype>
+#include <utility>   // std::pair, for RunProcessCaptured's environment list
 #include <chrono>
 #include <iostream>
 #include <mutex>
@@ -95,6 +96,43 @@ namespace UltraCanvas {
     bool LaunchDetachedProcess(const std::vector<std::string>& argv,
                                const std::string& workingDirectory,
                                std::string& outError);
+
+    // What a captured child process produced.
+    struct ProcessOutput {
+        bool started = false;       // the program was found and executed
+        int exitCode = -1;          // meaningful only when started
+        std::vector<unsigned char> standardOutput;
+        std::string standardError;  // diagnostics, for an error message
+        std::string error;          // why it could not be run at all
+
+        bool Succeeded() const { return started && exitCode == 0; }
+    };
+
+    // Runs argv[0] to completion, writes `input` to its standard input and
+    // returns what it wrote back. Unlike LaunchDetachedProcess above, this
+    // waits, and the output is the point.
+    //
+    // **argv is a list, never a command line.** The program is executed
+    // directly - execvp on POSIX, CreateProcessW on Windows - so no shell
+    // ever sees these strings and an argument containing a space, a quote, a
+    // semicolon or a $( is an argument rather than syntax. That is not a
+    // stylistic preference: the prototype this module replaces built a
+    // command by pasting a device path into a string and handing it to
+    // popen(), which runs a shell, so a device path was an injection point.
+    // Use this, and there is nothing to escape.
+    //
+    // `extraEnvironment` adds or replaces variables for the child only; the
+    // rest of the environment is inherited.
+    //
+    // Input and output are pumped together rather than in sequence, because a
+    // filter that writes as it reads will otherwise fill its output pipe and
+    // block while we are still blocked writing its input - a deadlock that
+    // appears only once the data is bigger than a pipe buffer, which is to
+    // say never during development and always on a real page.
+    ProcessOutput RunProcessCaptured(
+            const std::vector<std::string>& argv,
+            const std::vector<unsigned char>& input,
+            const std::vector<std::pair<std::string, std::string>>& extraEnvironment = {});
 
     template <typename Func, typename... Args>
     void measureExecutionTime(const std::string& logPrefix, Func&& func, Args&&... args) {

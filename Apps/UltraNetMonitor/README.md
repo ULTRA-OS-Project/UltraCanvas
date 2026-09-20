@@ -13,15 +13,26 @@ Changelog and version: [`Docs/UltraNetMonitor/CHANGELOG.md`](../../Docs/UltraNet
 
 | Path | What is in it |
 |---|---|
-| `ui/UltraNetMonitorModels.*` | The two `IListModel`s: one row per connection, one per process |
-| `ui/UltraNetMonitorWindow.*` | The window: filter, pause, the split pane of two `UltraCanvasListView`s, the snapshot thread |
-| `main.cpp` | GUI bootstrap, and the `--list` / `--by-app` / `--capabilities` command line |
+| `ui/UltraNetMonitorModels.*` | The three `IListModel`s: one row per connection, per process, per recorded flow |
+| `ui/UltraNetMonitorPaths.*` | Where the activity store lives by default (the per-user data directory) |
+| `ui/UltraNetMonitorWindow.*` | The window: the *Live* tab's split pane, the *History* tab, the Record toggle, the snapshot thread |
+| `main.cpp` | GUI bootstrap, and the command line: `--list`, `--by-app`, `--capabilities`, `--record`, `--history`, `--totals`, `--store-stats`, `--purge` |
 
 The socket table is read on a worker thread once a second and applied on
 the UI thread by a timer; both lists sit behind an
 `UltraCanvasListSortFilterProxy`, so a header click sorts and the filter box
 narrows the connection list as you type. Selecting a process narrows it to
 that PID; *All applications* widens it again.
+
+## Recording
+
+*Record* on the toolbar writes every snapshot into the activity store —
+`%LOCALAPPDATA%\UltraNetMonitor\activity.db`, `~/Library/Application
+Support/UltraNetMonitor/activity.db` or `$XDG_DATA_HOME/UltraNetMonitor/activity.db`
+— and the *History* tab shows what was recorded over the last hour, day,
+week or month, one row per flow. Flows older than 30 days are rolled up
+into daily totals per application and peer; those age out after a year.
+*Purge…* asks twice. The store never leaves the machine.
 
 ## Command line
 
@@ -30,6 +41,14 @@ UltraNetMonitor --list             # every connection with its process
 UltraNetMonitor --by-app           # per-process roll-up, busiest first
 UltraNetMonitor --capabilities     # what this machine's backend can deliver
 UltraNetMonitor --list --no-listen --no-loopback
+
+UltraNetMonitor --record                       # to the default store, until Ctrl-C
+UltraNetMonitor --record ~/net.db --seconds 600 --interval 2000
+UltraNetMonitor --history --since 48 --app firefox --limit 50
+UltraNetMonitor --history --csv flows.csv      # export instead of print
+UltraNetMonitor --totals                       # the rolled-up daily totals
+UltraNetMonitor --store-stats
+UltraNetMonitor --purge --yes                  # irreversible
 ```
 
 ## What it cannot see

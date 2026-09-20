@@ -1,4 +1,4 @@
-#### 2026-09-19 *0.9.10*
+#### 2026-09-20 *0.9.15*
 - **Depth for the vector model: booleans, ClipView, contour, blend, mould,
   bevel** - phase 5 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`
   (its first slice); the application half is ArtCreator 0.3.0.
@@ -62,6 +62,202 @@
     effect in pixels; `XARWriterTest` round-trips one of each through the
     plugin and the converter.
 
+#### 2026-09-20 *0.9.14*
+- **The Alembic aircraft was half an aeroplane, and its canopy was inside the
+  fuselage.** Two separate defects that looked like one: `media/3D/Alembic/
+  E-45-Aircraft.abc` was the last of the 2017 exports still missing its
+  mirrored half, and the reader was dropping every Alembic transform.
+  - The hull mesh in the `.abc` stopped dead at X=0 — 937 faces of the
+    unevaluated cage, against the 7366 its siblings carry — because Blender
+    exported it without applying the Mirror modifier, the same way the `.dae`,
+    `.x`, `.fbx` and `.ms3d` were. Nothing available writes Alembic (the
+    framework's writers cover 3DS, OBJ, PLY, STEP, COLLADA and X3D, and
+    Debian's Blender is built without the exporter), so the archive was
+    repaired rather than re-exported: its Ogawa tree was re-serialised with
+    the hull's `P`, `.faceIndices`, `.faceCounts`, `N`, `uv` and `.selfBnds`
+    replaced by the mesh evaluated from `media/3D/Blend/E-45-Aircraft.blend`
+    with the whole modifier stack applied, the face set renumbered and the
+    archive's `.childBnds` recomputed. Every other object, property, metadata
+    string and time sampling is the bytes Blender wrote in 2017, and each new
+    sample carries a real Alembic sample key — MurmurHash3 x64 128 over the
+    payload, which reproduces the digest on every array the file already had.
+    The demo page now reports 8110 faces and an extent of 1.95 × 4.19 × 6.12,
+    the OBJ export's numbers.
+  - `ReadXform` mapped Alembic's matrix into `ModelStorage::Matrix4x4` by
+    reordering its sixteen doubles. Alembic is row-major *and* row-vector, so
+    the translation is its last row; `Matrix4x4` is column-major *and*
+    column-vector, so the translation is its last column. The two
+    disagreements cancel and the correct conversion is a straight copy — the
+    reorder put the translation in the bottom row, where `DecomposeTRS` never
+    looks, so **every transform in every Alembic read by this framework lost
+    its offset**. In the sample that put the glass canopy at the origin,
+    sunk into the hull, instead of 1.53 up it. Documented as the third entry
+    under "things that surprise people" in `UltraCanvasModelFormats.md`.
+- **The untouched export is now a fixture, like the other four.**
+  `Tests/data/3D/Alembic/E-45-Aircraft.abc` is the 2017 file byte for byte, and
+  `ModelAlembicTest` reads it for the assertions that pin the half hull — not
+  one of which changed. The suite now takes `Tests/data/3D` and `media/3D` as
+  its two arguments and adds `TestTheDemoCopy()`, which holds the repaired
+  asset to the OBJ export's 8110 faces, to symmetry about X, to face-varying
+  normals and UVs one per corner, to a winding that still agrees with the
+  file's own normals, and to the same width, height and length as the OBJ
+  within a percent. `TestSample()` gained the canopy's translation, which is
+  the regression test for the matrix mapping. All 122 tests pass.
+- **Every AI session's report now ends the same way.** `AGENTS.md` gained a
+  *Reporting back* section: a reply that reports work closes with a
+  `## Next Task` block saying what happens next and who does it, and an
+  `## Other recommendations` block listing defects found outside the change —
+  each with its file and why it was not fixed there. Both are written out even
+  when the answer is "none", because an explicit none is the difference
+  between finished and forgotten, and the second block is explicitly not a
+  place to park work that was asked for. `CLAUDE.md` points at it.
+- **The repair is reproducible.** `scripts/alembic/` carries the two scripts it
+  took: `ogawa.py`, the Ogawa container — the Python counterpart of
+  `UltraCanvasOgawaFile.cpp`, which reads an archive, verifies its sample keys
+  and writes it back with chosen blocks replaced — and `replace_mesh.py`, which
+  swaps one polygon mesh for a mesh evaluated from a `.blend`, converting Z-up
+  to Alembic's Y-up and reversing every face to Alembic's winding on the way.
+  The shipped `.abc` is now literally that tool's output, run on the fixture;
+  the README gives the command. `ogawa.py dump` also prints any archive's tree,
+  which is how the defect was found in the first place. Re-running it does not
+  reproduce the file byte for byte — Blender's evaluation is not
+  bit-deterministic, and about 1% of the corner normals come back differing by
+  up to 1.2e-7 — and the README says so rather than implying a checksum will
+  match.
+
+#### 2026-09-19 *0.9.13*
+- **NetworkMonitor records.** `NetworkMonitorStore.h`: an activity store
+  over UltraDatabase (SQLite) that turns snapshots into *flows* — one row per
+  connection across the snapshots that saw it, with first and last sighting,
+  its latest state and counters, and the process behind it, deduplicated —
+  and, past a retention window, into per-day, per-process, per-peer totals so
+  the file stays small on a busy desktop. `NetworkMonitor_OpenStore` /
+  `RecordSnapshot` / `QueryFlows` / `QueryDailyTotals` / `RollUp` /
+  `ApplyRetention` / `Purge` / `StoreStats` / `ExportFlowsCsv`, every one
+  returning `NetworkMonitorResult`, parameter binding only, one transaction
+  per snapshot, and a per-store mutex so a recording thread and a reading
+  thread never share the single SQLite connection at once. The same 5-tuple
+  seen again more than two minutes after its last sighting starts a new flow,
+  so a reused ephemeral port is not glued to an earlier conversation.
+  `":memory:"` keeps a session off disk entirely. Without UltraDatabase in
+  the build the store compiles to stubs that report `NotSupported`, and
+  `NetworkMonitor_StoreAvailable()` says so. Tested end to end on an
+  in-memory store: continuation and its cut-off, every filter, the CSV, the
+  roll-up's accumulation onto an existing day, retention, purge.
+  - `NetworkMonitorResultCode` gains `InvalidArgument` and `StorageError`.
+  - The module links `UltraDatabase` from the block that defines that
+    target, since it comes later in the file than NetworkMonitor's own.
+
+#### 2026-09-19 *0.9.12*
+- **Driverless network scanning, on all three platforms, from one file.**
+  eSCL — Apple calls it AirScan, Mopria calls it Mopria Scan — is what a
+  network scanner speaks when nobody has installed a driver for it. It is
+  plain HTTP and XML, which is exactly why it was built before WIA, TWAIN or
+  ICA: each of those is one platform's work for one platform's scanners,
+  while this is one file in `core/` that serves Linux, macOS and Windows
+  alike. It sits alongside SANE rather than replacing it — a USB scanner
+  still needs a driver, a network one needs none, and the manager merges the
+  two enumerators.
+- **The empty-feeder rule was already right.** eSCL says "no more pages" with
+  a 404 from `NextDocument`; this module says it with `DeviceNotFound` from
+  `DoScanPage()`, which `ScanPages()` reads as the end of a run rather than a
+  failure — and only once a page has arrived, so a 404 on the very first page
+  stays the error it is, because a job that produced nothing was a bad job
+  and not an empty tray. The two were designed apart and agree exactly.
+- **A job covers a run, not a page**, so one is opened only when none is. A
+  flatbed's job is closed as soon as its single page arrives: left open, the
+  next scan would fetch from a spent job and read its 404 as an empty feeder
+  on a device that has no feeder.
+- **`ScanCapabilities::Supports()` cannot be used to build a capability
+  list**, and finding that out cost a bug. It answers "would this be
+  accepted", and an empty list means the backend has not enumerated yet — so
+  it says yes to everything. Using it to deduplicate while filling the list
+  drops the first entry, after which the list is still empty and so drops
+  every entry. Worse, the tests written against `Supports()` then pass on an
+  empty list. The parser uses `std::find` on the vector and the tests assert
+  against the vectors.
+- Two translation units, as the printer path has: the units, the colour-mode
+  names, the capability document and the job URL are pure data and live in
+  `...ESCLProtocol.cpp`, which the tests link without UltraNet or the image
+  stack. eSCL measures in three-hundredths of an inch against this module's
+  hundredths of a millimetre, and the conversion rounds to nearest both ways,
+  because a scan area is derived from a paper size and handed straight back —
+  truncating twice leaves A4 a millimetre short.
+- The capability XML is namespace-prefixed and the prefix is the vendor's
+  choice: one scanner writes `scan:ColorMode`, another `escl:ColorMode`.
+  tinyxml2 does not strip prefixes, so every lookup matches the local name
+  after the last colon — covered by a test that reparses the same document
+  with every prefix changed.
+- `Tests/IODeviceScannerESCLTest`: 62 assertions, none needing a scanner.
+
+#### 2026-09-19 *0.9.11*
+- **GutenPrint printing works, and the framework is still MIT.** GutenPrint
+  drives several thousand inkjet and dye-sublimation printers far better than
+  their own generic drivers, which is why the renderer/transport split was
+  built to accommodate it in the first place. The obstacle was never
+  technical: `libgutenprint` is GPL-2.0-or-later, so linking it would make
+  every distributed binary a GPL work.
+- **So it is run, not linked.** GutenPrint ships its own programs, and between
+  them they are a complete interface: `gutenprint.5.3 list` names the ~3,500
+  models it drives with each one's IEEE-1284 device id, `gutenprint.5.3 cat`
+  emits a model's PPD, and `rastertogutenprint.5.3` reads a page of CUPS
+  raster and writes the printer's own command language. Running a program is
+  not linking against it. This is the same treatment QEMU and Wine already
+  get here, and it is recorded that way in `Docs/Dependencies.md`,
+  `master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md`.
+- **One renderer class, no transport change.** What comes back from the filter
+  is a device-native stream, so it goes out as a raw job — the CUPS raw path
+  on Linux and macOS, datatype `RAW` through the Windows spooler. Both already
+  existed. That was the point of separating the renderer from the transport,
+  and this is the first time the claim has been cashed.
+- **A page is drawn, not converted.** `RasterPageTarget` draws an
+  `IPrintPageSource` onto an off-screen surface, so the same wrapped text, the
+  same fitted image and the same pagination the Windows GDI path uses serve
+  here too. Deciding what a job *contains* moved into `MakePageSourceForJob`
+  as well, so the two renderers cannot drift about which extensions are text.
+- **`IPrintRenderer::Render()` now receives the printer.** It did not, and a
+  renderer that emits a device's own command language cannot work without
+  knowing the device — GutenPrint has to pick a model before it can produce a
+  byte. Passed rather than remembered from `SupportsPrinter()`, because one
+  renderer is shared between the devices that register it and leftover state
+  would be the wrong printer's.
+- **A reusable way to run a program and keep what it says**, as
+  `RunProcessCaptured()` beside the existing detached launcher. It takes an
+  argument **list** and executes the program directly — `execvp`, or
+  `CreateProcessW` — so no shell ever sees it and there is nothing to escape.
+  The prototype this module replaces built a command line by pasting a device
+  path into a string and handing it to `popen()`.
+- **It pumps input and output together, and that is load-bearing.** `poll()`
+  reporting a pipe writable means one byte is free, not 64K, so a blocking
+  write parks in the kernel until the child drains it — and if the child is
+  meanwhile blocked writing output nobody is reading, neither side moves
+  again. Both processes sat in `anon_pipe_write`. The pipe ends are
+  non-blocking now. The bug appears only once the data outgrows a pipe
+  buffer, which is to say on every real page and on no small test.
+- GutenPrint is handed RGB and left to do its own colour separation: matching
+  an ink set at a resolution is the one thing it is unambiguously better at.
+  The raster is uncompressed (`RaS3`) because it travels down a pipe to a
+  filter that reads it immediately, and a run-length encoder is wrong in ways
+  that surface on one printer at one resolution.
+- **macOS does not implement `sigtimedwait`.** The SIGPIPE drain used it and
+  broke the macOS build; it uses `sigwait` now, and only when a write has
+  actually reported `EPIPE`. That second part is not tidiness: a SIGPIPE from
+  `write()` is directed at the calling thread, so having seen `EPIPE` proves
+  there is one pending for *this* thread and `sigwait` returns at once.
+  Deciding from `sigpending()` instead would also match a process-directed
+  SIGPIPE meant for another thread, and if that one were consumed elsewhere
+  in between, the wait would never return.
+- `Tests/ProcessRunnerTest` (POSIX): 16 assertions over the three ways a
+  process runner goes wrong and only at scale - 64 MB written into a closed
+  pipe without dying, 64 MB through a filter reading and writing at once
+  without deadlocking, and shell metacharacters reaching the program as text.
+- `Tests/IODevicePrinterTest`: 173 assertions, up from 157. Parsing
+  GutenPrint's listing and matching a printer to a model are string work with
+  no tools installed, so they live in a translation unit the tests link and
+  run on every arm of the matrix — including that an R2400 is never handed
+  the R200's driver, and that an unknown printer matches nothing rather than
+  something close.
+
 #### 2026-09-19 *0.9.9*
 - **LaTeX Documents, XAR Images and EPS Images read as fully implemented in the
   demo tree.** All three carried the blue "partially implemented" icon because
@@ -81,6 +277,7 @@
   `XARFeatherNode`, `XARLiveEffectNode`) are parsed but not painted, and EPS
   keeps its *Known gaps* section untouched. Nothing was promoted that is not
   implemented; only the leading verdict changed.
+
 #### 2026-09-19 *0.9.7*
 - **Xara-class effects in the vector model, renderer and XAR converter** -
   phase 4 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`; the
@@ -151,6 +348,7 @@
     3) - and `TAG_ARROWHEAD` now lands on the start of the path and
     `TAG_ARROWTAIL` on its end, as Xara's `AttrStartArrow` /
     `AttrEndArrow` write them (they were swapped).
+
 #### 2026-09-19 *0.9.3*
 - **The PDF writer can write a euro sign.** `UltraCanvasPDFVectorConverter`
   declares `/WinAnsiEncoding` on its base-14 fonts, but its string escaper only
@@ -2197,7 +2395,6 @@
     earlier prototype Linux/macOS-only. The GPL-vs-MIT question that decides
     whether it is linked or run as a subprocess is written up there, unanswered
     - it is a product decision.
-
 
 #### 2026-09-15 *0.8.52*
 - **`UltraCanvasPaintSurface::SetPanMode` never turned permanent panning

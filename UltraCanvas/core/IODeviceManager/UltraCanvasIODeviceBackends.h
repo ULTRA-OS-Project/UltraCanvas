@@ -55,5 +55,15 @@ void RegisterV4L2CameraBackend(IODeviceManager& manager);
 void RegisterSaneScannerBackend(IODeviceManager& manager);
 #endif
 
+#if defined(ULTRACANVAS_HAS_NET)
+// core/IODeviceManager/UltraCanvasIODeviceScannerESCL.cpp
+//
+// Not under OS/: eSCL is HTTP and XML, so one file serves every platform.
+// It sits alongside SANE rather than replacing it - a USB scanner needs
+// SANE, a network one needs no driver at all, and the manager merges the
+// two enumerators.
+void RegisterEsclScannerBackend(IODeviceManager& manager);
+#endif
+
 } // namespace Internal
 } // namespace UltraCanvas

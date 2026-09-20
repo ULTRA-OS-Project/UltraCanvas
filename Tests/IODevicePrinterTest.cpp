@@ -23,6 +23,7 @@
 
 #include "IODeviceManager/UltraCanvasIODevicePrinter.h"
 #include "IODeviceManager/UltraCanvasIODevicePrintDialog.h"
+#include "IODeviceManager/UltraCanvasIODevicePrinterGutenPrint.h"
 
 #include <iostream>
 #include <memory>
@@ -173,8 +174,10 @@ public:
         return knowsModel && printer.model != "Unknown Model";
     }
 
-    IODeviceResult Render(const IOPrintJob& job, const IOPrinterCapabilities& capabilities,
+    IODeviceResult Render(const IODeviceInfo& printer, const IOPrintJob& job,
+                          const IOPrinterCapabilities& capabilities,
                           IOPrintPayload& payload) override {
+        (void)printer;
         (void)job;
         (void)capabilities;
         payload.data = {0x1B, 0x40};   // ESC @ — an ESC/P2 reset, near enough
@@ -201,9 +204,10 @@ public:
         return true;
     }
 
-    IODeviceResult Render(const IOPrintJob& job,
+    IODeviceResult Render(const IODeviceInfo& printer, const IOPrintJob& job,
                           const IOPrinterCapabilities& capabilities,
                           IOPrintPayload& payload) override {
+        (void)printer;
         (void)job;
         (void)capabilities;
         payload.pages = std::make_shared<TextPageSource>(text, pixelHeight);
@@ -963,6 +967,102 @@ void TestPageRangeReachesTheTransport() {
           "and carries no range, which means every page");
 }
 
+// ===== GUTENPRINT: WHICH MODEL IS THIS PRINTER =====
+
+// GutenPrint is run rather than linked - it is GPL and this is MIT - so the
+// renderer asks its driver program which models it supports and picks one.
+// The listing is three and a half thousand lines, and picking the wrong line
+// means printing an Epson's command language at a Canon.
+
+// Real lines from `gutenprint.5.3 list`, including the older models that
+// carry no device id at all.
+const char* const kSampleListing =
+    "\"gutenprint.5.3://bjc-30/expert\" en \"Canon\" \"Canon BJ-30 - CUPS+Gutenprint v5.3.4\" \"\"\n"
+    "\"gutenprint.5.3://escp2-r200/expert\" en \"Epson\" \"Epson Stylus Photo R200 - CUPS+Gutenprint v5.3.4\" \"MFG:EPSON;MDL:Stylus Photo R200;DES:EPSON Stylus Photo R200;CMD:ESCPL2,BDC,D4;\"\n"
+    "\"gutenprint.5.3://escp2-r2400/expert\" en \"Epson\" \"Epson Stylus Photo R2400 - CUPS+Gutenprint v5.3.4\" \"MFG:EPSON;MDL:Stylus Photo R2400;\"\n"
+    "\"gutenprint.5.3://pcl-4l/expert\" en \"HP\" \"HP LaserJet 4L - CUPS+Gutenprint v5.3.4\" \"MFG:Hewlett-Packard;MDL:LaserJet 4L;\"\n";
+
+void TestParsingTheModelListing() {
+    std::cout << "\n-- Reading GutenPrint's model listing --\n";
+
+    const std::vector<IOGutenPrintModel> models =
+        ParseGutenPrintModels(kSampleListing);
+
+    Check(models.size() == 4, "every line becomes a model");
+    if (models.size() < 4) return;
+
+    Check(models[1].uri == "gutenprint.5.3://escp2-r200/expert",
+          "the uri is the first quoted field");
+    Check(models[1].manufacturer == "Epson",
+          "the language between the quoted fields is skipped");
+    Check(models[1].description ==
+              "Epson Stylus Photo R200 - CUPS+Gutenprint v5.3.4",
+          "the description is carried whole");
+    Check(models[1].deviceId.find("MDL:Stylus Photo R200") != std::string::npos,
+          "and so is the device id");
+
+    // GutenPrint leaves the device id empty for many older models, so a line
+    // without one still has to produce a usable entry.
+    Check(models[0].uri == "gutenprint.5.3://bjc-30/expert" &&
+              models[0].deviceId.empty(),
+          "a model with no device id is still a model");
+
+    // The listing comes from a tool that may be a different version than this
+    // code was written against; one unreadable line should cost one model.
+    const std::vector<IOGutenPrintModel> withRubbish =
+        ParseGutenPrintModels(std::string("not a model line at all\n") +
+                              kSampleListing + "\"unterminated\n");
+    Check(withRubbish.size() == 4,
+          "a line that does not parse is skipped, not fatal");
+
+    Check(ParseGutenPrintModels("").empty(), "an empty listing is no models");
+}
+
+void TestMatchingAPrinterToAModel() {
+    std::cout << "\n-- Matching a printer to a GutenPrint model --\n";
+
+    const std::vector<IOGutenPrintModel> models =
+        ParseGutenPrintModels(kSampleListing);
+
+    // How CUPS reports this printer: printer-make-and-model is split on the
+    // first space, so the make is "Epson" and the model is the rest.
+    Check(MatchGutenPrintModel(models, "Epson", "Stylus Photo R2400") ==
+              "gutenprint.5.3://escp2-r2400/expert",
+          "the printer's make and model find their model");
+
+    // R200 and R2400 differ by one character in the middle. A prefix or
+    // substring rule would hand an R2400 owner the R200 driver.
+    Check(MatchGutenPrintModel(models, "Epson", "Stylus Photo R200") ==
+              "gutenprint.5.3://escp2-r200/expert",
+          "and a near neighbour is not confused for it");
+
+    // Punctuation and case are how one vendor writes a name and not another.
+    Check(MatchGutenPrintModel(models, "EPSON", "STYLUS_PHOTO_R2400") ==
+              "gutenprint.5.3://escp2-r2400/expert",
+          "case and punctuation do not decide the match");
+
+    // The device id says "Hewlett-Packard" where CUPS says "HP"; the
+    // description carries the human name, which is the fallback.
+    Check(MatchGutenPrintModel(models, "HP", "LaserJet 4L") ==
+              "gutenprint.5.3://pcl-4l/expert",
+          "a maker written two ways still matches");
+
+    // A model with no device id can only be matched by its description.
+    Check(MatchGutenPrintModel(models, "Canon", "BJ-30") ==
+              "gutenprint.5.3://bjc-30/expert",
+          "a model with no device id matches on its description");
+
+    // The important negative. Printing an unrecognised printer's pages with
+    // some other model's command language produces pages of garbage, so the
+    // renderer has to decline and let Native take the job.
+    Check(MatchGutenPrintModel(models, "Brother", "HL-2030").empty(),
+          "a printer GutenPrint does not know matches nothing");
+    Check(MatchGutenPrintModel(models, "Epson", "").empty(),
+          "and neither does a printer with no model name");
+    Check(MatchGutenPrintModel({}, "Epson", "Stylus Photo R2400").empty(),
+          "an empty listing matches nothing");
+}
+
 }  // namespace
 
 int main() {
@@ -990,6 +1090,8 @@ int main() {
     TestMatchingADialogsPrinterName();
     TestBuildingAJobFromADialogAnswer();
     TestPageRangeReachesTheTransport();
+    TestParsingTheModelListing();
+    TestMatchingAPrinterToAModel();
 
     std::cout << "\n";
     if (g_failures == 0) {
