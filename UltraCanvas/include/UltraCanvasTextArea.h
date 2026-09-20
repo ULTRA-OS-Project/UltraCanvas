@@ -706,15 +706,6 @@ namespace UltraCanvas {
 
         // Color settings
         void SetTextColor(const Color& color);
-        void SetBackgroundColor(const Color& color) {
-            // Keep the style copy AND the base UIElement member in sync: the
-            // background is painted from the base member (UltraCanvasUIElement::
-            // Render), so writing only style.backgroundColor left themed/explicit
-            // backgrounds ignored — the area kept the constructor default.
-            style.backgroundColor = color;
-            UltraCanvasUIElement::SetBackgroundColor(color);
-            RequestRedraw();
-        }
         void SetSelectionColor(const Color& color) { style.selectionColor = color; RequestRedraw(); }
         void SetCursorColor(const Color& color) { style.cursorColor = color; RequestRedraw(); }
 

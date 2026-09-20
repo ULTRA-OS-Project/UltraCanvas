@@ -79,11 +79,12 @@ namespace UltraCanvas {
             style.fontStyle.fontFamily = app->GetSystemFontStyle().fontFamily;
             style.fixedFontStyle.fontFamily = app->GetDefaultMonospacedFontStyle().fontFamily;
         }
+        backgroundColor = {255, 255, 255, 255};
+
         style.fontStyle.fontSize = 11;
         style.fixedFontStyle.fontSize = 11;
         style.fontColor = {0, 0, 0, 255};
         style.lineHeight = 1.1;
-        style.backgroundColor = {255, 255, 255, 255};
         style.borderColor = {200, 200, 200, 255};
         style.selectionColor = {51, 153, 255, 100};
         style.cursorColor = {0, 0, 0, 255};
@@ -110,7 +111,6 @@ namespace UltraCanvas {
         style.tokenStyles.preprocessorStyle.color = {64, 128, 128, 255};
         style.tokenStyles.builtinStyle.color = {128, 0, 255, 255};
 
-        backgroundColor = style.backgroundColor;
     }
 
 // ===== LINE ENDING HELPERS =====
@@ -1236,8 +1236,6 @@ namespace UltraCanvas {
 
     void UltraCanvasTextArea::DrawCurrentLineBackground(IRenderContext* context) {
         auto bounds = GetContentRect();
-//        context->SetFillPaint(style.backgroundColor);
-//        context->FillRectangle(bounds);
 
         if (highlightCurrentLine && currentLine) {
             float highlightX = style.showLineNumbers ? computedLineNumbersWidth : 0;
@@ -2568,7 +2566,7 @@ namespace UltraCanvas {
 // ===== THEMES =====
 
     void UltraCanvasTextArea::ApplyDarkTheme() {
-        style.backgroundColor = {30, 30, 30, 255};
+        backgroundColor = {30, 30, 30, 255};
         style.fontColor = {210, 210, 210, 255};
         style.currentLineColor = {60, 60, 60, 255};
         style.lineNumbersColor = {80, 80, 80, 255};           // Dimmer — less visual noise in dark mode
@@ -2592,14 +2590,12 @@ namespace UltraCanvas {
         style.tokenStyles.builtinStyle.color = {0x4c, 0xbb, 0xc9, 255};
         style.tokenStyles.defaultStyle.color = {210, 210, 210, 255};
 
-        backgroundColor = style.backgroundColor;
-
         SetMarkdownStyle(MarkdownHybridStyle::DarkMode());
         RequestRedraw();
     }
     void UltraCanvasTextArea::ApplyLightTheme() {
+        backgroundColor = {255, 255, 255, 255};
         style.fontColor = {0, 0, 0, 255};
-        style.backgroundColor = {255, 255, 255, 255};
         style.borderColor = {200, 200, 200, 255};
         style.selectionColor = {51, 153, 255, 100};
         style.cursorColor = {0, 0, 0, 255};
@@ -2624,8 +2620,6 @@ namespace UltraCanvas {
         style.tokenStyles.constantStyle.color = {0, 0, 128, 255};
         style.tokenStyles.preprocessorStyle.color = {64, 128, 128, 255};
         style.tokenStyles.builtinStyle.color = {128, 0, 255, 255};
-
-        backgroundColor = style.backgroundColor;
 
         SetMarkdownStyle(MarkdownHybridStyle::Default());
     }
