@@ -29,6 +29,7 @@
 #include "UltraCanvasMenu.h"
 
 #include "UltraFIBUTabelle.h"
+#include "UltraFIBUBelegDialog.h"
 
 #include "UltraFIBUStore.h"
 
@@ -89,6 +90,14 @@ private:
     void EuSaetzeUebernehmen();
     void KonfigurationOeffnen();
 
+    // ---- Belege erfassen ---------------------------------------------------
+    // The entry form, as its own tab rather than a modal window: entering a
+    // document means looking things up - what the customer is called, what was
+    // invoiced last time - and a modal that covers the lists makes that a
+    // sequence of cancels.
+    void BelegFormularOeffnen(BelegArt art);
+    void GewaehltenBelegBearbeiten();
+
     Store        store_;
     Mandant      mandant_;
     Geschaeftsjahr jahr_;
@@ -120,6 +129,9 @@ private:
     TabellenPanel salden_;
     TabellenPanel partner_;
     TabellenPanel euSaetze_;
+
+    std::unique_ptr<BelegDialog> formular_;
+    int                          formularReiter_ = -1;
 
     std::vector<EuSteuersatz> geladeneEuSaetze_;
     int64_t                   gewaehlterEuSatz_ = 0;

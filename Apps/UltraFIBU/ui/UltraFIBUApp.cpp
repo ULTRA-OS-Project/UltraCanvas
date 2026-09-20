@@ -161,6 +161,24 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
     hochladenKnopf_->SetOnClick([this]() { BelegDialogOeffnen(); });
     fenster_->AddChild(hochladenKnopf_);
 
+    // The two that open the entry form. Separate buttons rather than one with a
+    // type dropdown, because the direction decides which partners and which tax
+    // keys the form offers - it is not a field on the document, it is which
+    // document this is.
+    auto rechnungKnopf = CreateButton("fibuNeueRechnung", 526, kMenueH + kKopfH, 160,
+                                      kLeisteH - 6, "Neue Rechnung");
+    rechnungKnopf->SetOnClick([this]() {
+        BelegFormularOeffnen(BelegArt::Ausgangsrechnung);
+    });
+    fenster_->AddChild(rechnungKnopf);
+
+    auto eingangKnopf = CreateButton("fibuNeuerEingang", 694, kMenueH + kKopfH, 190,
+                                     kLeisteH - 6, "Eingangsrechnung erfassen");
+    eingangKnopf->SetOnClick([this]() {
+        BelegFormularOeffnen(BelegArt::Eingangsrechnung);
+    });
+    fenster_->AddChild(eingangKnopf);
+
     // Dropping files onto the window does the same thing as the button. The
     // filter is the framework's own mechanism rather than a hand-rolled
     // handler, and it sits on the window because a receipt may be dropped
@@ -215,6 +233,17 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
                                         "Land, Satz oder Quelle suchen ..."));
         euSaetzeReiter_ = reiter_->AddTab("EU-Steuersätze", seite);
     }
+
+    // The entry form, as a tab. See UltraFIBUBelegDialog.h for why the tax
+    // dropdown rather than the layout is the interesting part of it.
+    {
+        formular_ = std::make_unique<BelegDialog>(store_, mandant_, akteur_);
+        formular_->onMeldung     = [this](const std::string& text) { Melden(text); };
+        formular_->onGespeichert = [this](const Beleg&) { Aktualisieren(); };
+        formularReiter_ = reiter_->AddTab(
+            "Beleg erfassen",
+            formular_->Bauen("fibuFormular", seiteB, seiteH, BelegArt::Ausgangsrechnung));
+    }
     fenster_->AddChild(reiter_);
 
     status_ = CreateLabel("fibuStatus", 12, kFensterH - kStatusH,
@@ -227,6 +256,9 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
     euSaetze_.onAuswahlGeaendert = [this](int64_t id) { gewaehlterEuSatz_ = id; };
     belege_.onZeileAktiviert   = [this](int64_t id) {
         gewaehlterBeleg_ = id;
+        // A draft opens in the form; a posted document only reports itself,
+        // because it cannot be changed any more.
+        GewaehltenBelegBearbeiten();
         Beleg beleg;
         if (!store_.BelegById(id, beleg)) return;
         Melden(BelegArtLabel(beleg.art) + " " + beleg.nummer + ": " +
@@ -847,6 +879,31 @@ void FibuApp::EuSaetzeUebernehmen() {
                 "gegen eine amtliche Quelle bestätigt und mit Quelle neu erfasst "
                 "wurden.";
     Melden(text);
+}
+
+// ===== BELEGE ERFASSEN =====
+
+void FibuApp::BelegFormularOeffnen(BelegArt art) {
+    if (!formular_) return;
+    formular_->Neu(art);
+    if (reiter_ && formularReiter_ >= 0) reiter_->SetActiveTab(formularReiter_);
+    Melden(BelegArtLabel(art) + ": zuerst den Partner wählen - er entscheidet, "
+           "welche Steuerschlüssel je Position in Frage kommen.");
+}
+
+void FibuApp::GewaehltenBelegBearbeiten() {
+    if (!formular_ || gewaehlterBeleg_ == 0) return;
+    Beleg beleg;
+    if (!store_.BelegById(gewaehlterBeleg_, beleg)) return;
+    if (beleg.status != BelegStatus::Entwurf) {
+        Melden(BelegArtLabel(beleg.art) + " " + beleg.nummer + " ist " +
+               BelegStatusLabel(beleg.status) + " und nicht mehr änderbar - "
+               "eine Änderung ist eine Stornierung.");
+        return;
+    }
+    if (!formular_->Laden(gewaehlterBeleg_)) return;
+    if (reiter_ && formularReiter_ >= 0) reiter_->SetActiveTab(formularReiter_);
+    Melden(BelegArtLabel(beleg.art) + " " + beleg.nummer + " im Formular geöffnet.");
 }
 
 } // namespace UltraFIBU

@@ -1,3 +1,46 @@
+#### 2026-09-20 *0.14.0*
+- **Das Erfassungsformular, und darin die Steuerauswahl je Position.**
+  `Apps/UltraFIBU/ui/UltraFIBUBelegDialog.{h,cpp}`, als eigener Reiter "Beleg
+  erfassen" mit den Schaltflaechen "Neue Rechnung" und "Eingangsrechnung
+  erfassen". Damit entstehen Belege nicht mehr nur auf der Kommandozeile.
+- **Der Partner steht als erstes Feld, weil er den Rest entscheidet.** Aus
+  Land, Unternehmereigenschaft, USt-IdNr. und Belegrichtung folgt, welche
+  Steuerschluessel ueberhaupt in Frage kommen. Neben dem Auswahlfeld steht,
+  was davon in den Stammdaten hinterlegt ist - insbesondere, ob eine
+  USt-IdNr. fehlt, denn daran haengt die Steuerfreiheit.
+- **Solange kein Partner gewaehlt ist, ist die Steuerliste leer.** Ein leerer
+  `Partner` hat die Kategorie "Inland", und das Formular hat deshalb zuerst
+  ein selbstbewusstes "USt19 19 %" fuer einen Kunden angeboten, den niemand
+  ausgewaehlt hatte - eine Position haette so gespeichert werden koennen.
+  Eine leere Liste ist der ehrliche Zustand: die Frage ist vor dem Partner
+  nicht beantwortbar.
+- **Vorgeschlagene Schluessel stehen oben und sind mit "✓" markiert,
+  widersprechende mit "!".** Wer den Grund sehen will, sieht ihn: unter jeder
+  Zeile steht ein Satz, was der gewaehlte Schluessel bedeutet. Bei einem
+  oesterreichischen Firmenkunden sind das "DIENSTLEISTUNG an ein
+  EU-Unternehmen ..." und "WARE an ein EU-Unternehmen ...", und **keiner von
+  beiden ist vorausgewaehlt** - Ware oder Dienstleistung weiss das Programm
+  nicht, und die Listenreihenfolge ist kein Grund, eine der beiden rechtlich
+  verschiedenen Behandlungen zu waehlen.
+- **Die Breite der Auswahlliste ist kein Schoenheitsfehler.** Bei den
+  voreingestellten 400 Pixeln endet "Leistungsempfaenger schuldet die Steuer,
+  Ausgang (§ 13b UStG)" genau da, wo er sich vom Eingangsfall unterscheidet -
+  zwei Eintraege, die gleich aussehen und Gegenteiliges bedeuten.
+- **Summen und Befunde stehen waehrend der Eingabe da**, nicht erst beim
+  Speichern: gerechnet wird bei jeder Aenderung, und geprueft wird mit
+  derselben Funktion, die auch das Buchen ablehnt.
+- **Das Formular ist keine Absicherung.** `SaveBeleg` und `Buchen` pruefen
+  unabhaengig weiter. Ein Beleg, den dieses Formular durchlaesst und der
+  Store ablehnt, ist ein Fehler im Formular - kein Weg hinein.
+- Ein Doppelklick auf einen Entwurf in der Belegliste oeffnet ihn im
+  Formular; ein gebuchter Beleg sagt statt dessen, dass eine Aenderung eine
+  Stornierung ist.
+- **Noch offen an diesem Formular:** die PDF-Vorschau neben dem Formular fuer
+  hochgeladene Belege, das Anlegen eines Partners direkt aus dem Formular,
+  Rabatt/Aufschlag, Zahlungsbedingungen und Vorlagen, das Loeschen einer
+  einzelnen Position und ein Konten-Auswahlfeld statt der freien
+  Kontonummer.
+
 #### 2026-09-20 *0.13.0*
 - **Eine Rechnung, die 19 % ausweist und zugleich schreibt, der Empfaenger
   schulde die Steuer, wird nicht mehr erzeugt.** Genau das hat das Programm
