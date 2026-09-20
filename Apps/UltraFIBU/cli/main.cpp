@@ -119,6 +119,14 @@ void PrintUsage() {
         "                              erneut zulassen\n"
         "  datev-importe <datei>   Bisherige DATEV-Importe anzeigen\n"
         "\n"
+        "  beleg-import <datei> <pdf> [<pdf> ...]\n"
+        "                          PDF-Belege einlesen und archivieren;\n"
+        "                          je Datei entsteht ein Entwurf\n"
+        "        --datum <datum>       Belegdatum (Pflicht)\n"
+        "        --art <art>           eingangsrechnung (Standard),\n"
+        "                              ausgangsrechnung, ...\n"
+        "        --kreis <name>        Nummernkreis (Standard: eingang)\n"
+        "\n"
         "Steuer:\n"
         "  ustva <datei>           Umsatzsteuer-Voranmeldung berechnen\n"
         "        --jahr <JJJJ>         (Pflicht)\n"
@@ -322,6 +330,15 @@ int Einrichten(int argc, char** argv) {
     belege.praefix   = "B-";
     belege.stellen   = 5;
     store.SaveNummernkreis(belege, akteur);
+    // Incoming documents get their own range. A supplier's invoice carries the
+    // supplier's number; this is our internal one, and mixing it with the
+    // outgoing invoice numbers would make both meaningless.
+    Nummernkreis eingang;
+    eingang.mandantId = mandant.id;
+    eingang.kreis     = "eingang";
+    eingang.praefix   = "E-{JJJJ}";
+    eingang.stellen   = 5;
+    store.SaveNummernkreis(eingang, akteur);
 
     std::printf("Buchhaltung angelegt: %s\n", datei.c_str());
     std::printf("  Mandant          %s\n", mandant.name.c_str());
@@ -1354,6 +1371,71 @@ int DatevImport(int argc, char** argv) {
     return 0;
 }
 
+int BelegImport(int argc, char** argv) {
+    const std::string datei = Positional(argc, argv, 0);
+    Store store;
+    if (!OpenStore(store, datei)) return 1;
+    Mandant mandant;
+    if (!ErsterMandant(store, mandant)) return 1;
+    const Akteur akteur = AkteurFor(store);
+
+    // Every positional after the database is a file. An import button and a
+    // drop target both hand over a list, and so does a shell glob.
+    std::vector<std::string> pfade;
+    for (int i = 1; ; ++i) {
+        const std::string p = Positional(argc, argv, i);
+        if (p.empty()) break;
+        pfade.push_back(p);
+    }
+    if (pfade.empty()) {
+        std::printf("Fehler: Aufruf ist "
+                    "ultrafibu beleg-import <datei> <pdf> [<pdf> ...] "
+                    "--datum <datum>\n");
+        return 2;
+    }
+
+    Date datum;
+    const std::string datumText = Option(argc, argv, "--datum");
+    if (datumText.empty() || !TryParseDateGerman(datumText, datum)) {
+        std::printf("Fehler: --datum <datum> ist erforderlich.\n"
+                    "Ohne Belegdatum lässt sich der Beleg keinem Geschäftsjahr "
+                    "zuordnen; aus dem PDF wird es nicht geraten.\n");
+        return 2;
+    }
+    BelegArt art = BelegArt::Eingangsrechnung;
+    const std::string artText = Option(argc, argv, "--art");
+    if (!artText.empty() && !BelegArtFromText(artText, art)) {
+        std::printf("Fehler: \"%s\" ist keine Belegart.\n", artText.c_str());
+        return 2;
+    }
+
+    const Store::BelegImportBericht b = store.ImportiereBelegDateien(
+        mandant.id, pfade, art, datum, Option(argc, argv, "--kreis", "eingang"),
+        akteur);
+
+    std::printf("Archiv: %s\n\n", store.BelegArchivPfad().c_str());
+    for (const Store::BelegImportEintrag& e : b.eintraege) {
+        if (!e.ok) {
+            std::printf("  ABGELEHNT  %-40s %s\n", e.dateiname.substr(0, 40).c_str(),
+                        e.fehler.c_str());
+        } else if (e.schonVorhanden) {
+            std::printf("  BEKANNT    %-40s liegt schon als %s\n",
+                        e.dateiname.substr(0, 40).c_str(), e.belegnummer.c_str());
+        } else {
+            std::printf("  ANGELEGT   %-40s %s\n", e.dateiname.substr(0, 40).c_str(),
+                        e.belegnummer.c_str());
+        }
+    }
+    std::printf("\n%d Datei(en): %d angelegt, %d bereits vorhanden, %d abgelehnt.\n",
+                b.gelesen, b.angelegt, b.bekannt, b.abgelehnt);
+    for (const std::string& w : b.warnungen) std::printf("  ACHTUNG: %s\n", w.c_str());
+    if (!b.ok) { std::printf("\nFehler: %s\n", b.fehler.c_str()); return 1; }
+    if (b.angelegt > 0)
+        std::printf("\nWeiter mit: ultrafibu belege %s --status entwurf\n",
+                    datei.c_str());
+    return 0;
+}
+
 // ===== STEUER =====
 
 // Load the year's Kennzahl mapping, saying plainly what is missing when it is
@@ -1935,6 +2017,7 @@ int main(int argc, char** argv) {
     if (befehl == "datev-pruefen") return DatevPruefen(argc, argv);
     if (befehl == "datev-import")  return DatevImport(argc, argv);
     if (befehl == "datev-importe") return DatevImporte(argc, argv);
+    if (befehl == "beleg-import")     return BelegImport(argc, argv);
     if (befehl == "ustva")            return Ustva(argc, argv);
     if (befehl == "ustva-xml")        return UstvaXml(argc, argv);
     if (befehl == "meldungen")        return Meldungen(argc, argv);

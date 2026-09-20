@@ -24,6 +24,7 @@ set(ULTRAFIBU_ENGINE_SOURCES
     engine/UltraFIBUDatev.cpp
     engine/UltraFIBUBank.cpp
     engine/UltraFIBUUstva.cpp
+    engine/UltraFIBUBelegArchiv.cpp
     engine/UltraFIBUStore.cpp
 )
 

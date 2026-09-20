@@ -5,6 +5,11 @@
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraFIBUApp.h"
 
+#include <ctime>
+
+#include "UltraCanvasFileLoader.h"
+#include "UltraCanvasModalDialog.h"
+
 #include "UltraFIBURechnungPdf.h"
 
 #include <algorithm>
@@ -107,6 +112,25 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
     druckenKnopf_->SetOnClick([this]() { GewaehltenBelegDrucken(); });
     fenster_->AddChild(druckenKnopf_);
 
+    hochladenKnopf_ = CreateButton("fibuHochladen", 348, kKopfH, 170, kLeisteH - 6,
+                                   "Beleg hochladen");
+    hochladenKnopf_->SetOnClick([this]() { BelegDialogOeffnen(); });
+    fenster_->AddChild(hochladenKnopf_);
+
+    // Dropping files onto the window does the same thing as the button. The
+    // filter is the framework's own mechanism rather than a hand-rolled
+    // handler, and it sits on the window because a receipt may be dropped
+    // anywhere on it - hunting for a small target with a full hand is not how
+    // anybody files receipts.
+    fenster_->InstallEventFilter(
+        "fibuBelegDrop",
+        [this](const UltraCanvas::UCEvent& ereignis) -> bool {
+            if (ereignis.droppedFiles.empty()) return false;
+            BelegeHochladen(ereignis.droppedFiles);
+            return true;
+        },
+        { UltraCanvas::UCEventType::Drop });
+
     const float reiterY = kKopfH + kLeisteH;
     const float reiterH = kFensterH - reiterY - kStatusH;
     reiter_ = CreateTabbedContainer("fibuReiter", 0, reiterY, kFensterB, reiterH);
@@ -192,7 +216,7 @@ void FibuApp::BelegeFuellen() {
         ListColumnDef("Nummer", 130, TextAlignment::Left),
         ListColumnDef("Datum", 100, TextAlignment::Left),
         ListColumnDef("Art", 150, TextAlignment::Left),
-        ListColumnDef("Partner", 220, TextAlignment::Left),
+        ListColumnDef("Partner / Beleg", 220, TextAlignment::Left),
         ListColumnDef("Brutto", 110, TextAlignment::Right),
         ListColumnDef("Offen", 110, TextAlignment::Right),
         ListColumnDef("Fällig", 100, TextAlignment::Left),
@@ -213,7 +237,12 @@ void FibuApp::BelegeFuellen() {
             TabellenZelle(beleg.nummer),
             DatumsZelle(beleg.datum),
             TabellenZelle(BelegArtLabel(beleg.art)),
-            TabellenZelle(beleg.partnerName),
+            // A freshly uploaded receipt has no partner yet - nothing is read
+            // out of the PDF - so its file name stands in. Without it a stack
+            // of imported receipts is a column of identical rows and the user
+            // cannot tell which is which, which makes the import useless.
+            TabellenZelle(beleg.partnerName.empty() ? beleg.buchungstext
+                                                    : beleg.partnerName),
             BetragsZelle(beleg.brutto),
             BetragsZelle(beleg.Offen()),
             DatumsZelle(beleg.faelligAm),
@@ -445,6 +474,66 @@ void FibuApp::GewaehltenBelegBuchen() {
     if (!gebucht) { Melden("Nicht gebucht: " + gebucht.fehler); return; }
 
     Melden("Beleg " + beleg.nummer + " gebucht (" + beleg.brutto.ToString() + ").");
+    Aktualisieren();
+}
+
+void FibuApp::BelegDialogOeffnen() {
+    // Several at once is the point: receipts arrive in batches, not one by one.
+    UltraCanvas::FileDialogOptions optionen;
+    optionen.SetTitle("Belege hochladen");
+    optionen.filters.emplace_back("PDF-Belege", "pdf");
+    optionen.parentWindow = fenster_.get();
+
+    UltraCanvas::UltraCanvasFileLoader::OpenMultipleFilesDialog(
+        optionen,
+        [this](UltraCanvas::DialogResult ergebnis,
+               const std::vector<std::string>& pfade) {
+            if (ergebnis != UltraCanvas::DialogResult::OK) return;
+            BelegeHochladen(pfade);
+        });
+}
+
+void FibuApp::BelegeHochladen(const std::vector<std::string>& pfade) {
+    if (pfade.empty()) return;
+
+    // A receipt that has just arrived is dated today until somebody says
+    // otherwise; the draft is editable and the date is the first thing the
+    // user corrects. Reading a clock is fine here - this is a UI action, not
+    // a report that has to be reproducible.
+    Date heute;
+    {
+        const std::time_t jetzt = std::time(nullptr);
+        std::tm teile{};
+#if defined(_WIN32)
+        localtime_s(&teile, &jetzt);
+#else
+        localtime_r(&jetzt, &teile);
+#endif
+        heute = Date(teile.tm_year + 1900, teile.tm_mon + 1, teile.tm_mday);
+    }
+
+    const Store::BelegImportBericht bericht = store_.ImportiereBelegDateien(
+        mandant_.id, pfade, BelegArt::Eingangsrechnung, heute, "eingang", akteur_);
+
+    if (!bericht.ok) {
+        Melden(bericht.fehler.empty() ? "Es konnte nichts übernommen werden."
+                                      : bericht.fehler);
+        return;
+    }
+
+    std::string text = std::to_string(bericht.angelegt) + " Beleg(e) angelegt";
+    if (bericht.bekannt > 0)
+        text += ", " + std::to_string(bericht.bekannt) + " schon vorhanden";
+    if (bericht.abgelehnt > 0) {
+        // Name the first rejection rather than only counting: "1 abgelehnt"
+        // sends the user looking, and the reason is already known here.
+        text += ", " + std::to_string(bericht.abgelehnt) + " abgelehnt";
+        for (const Store::BelegImportEintrag& e : bericht.eintraege) {
+            if (!e.ok) { text += " (" + e.dateiname + ": " + e.fehler + ")"; break; }
+        }
+    }
+    text += ". Betrag und Konto fehlen noch - aus dem PDF wird nichts ausgelesen.";
+    Melden(text);
     Aktualisieren();
 }
 

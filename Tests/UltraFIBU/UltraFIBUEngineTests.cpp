@@ -36,6 +36,7 @@
 #include "UltraFIBUGeschaeftsjahr.h"
 #include "UltraFIBUKontenrahmen.h"
 #include "UltraFIBUBank.h"
+#include "UltraFIBUBelegArchiv.h"
 #include "UltraFIBUDatev.h"
 #include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUStore.h"
@@ -49,6 +50,9 @@
 // file and a SQL prompt would - which is the only way to prove the chain
 // notices. Nothing else in the engine writes SQL outside the store.
 #include <UltraDatabase/UltraDatabaseQuery.h>
+
+#include <dirent.h>
+#include <unistd.h>
 
 #include <cstdio>
 #include <cstring>
@@ -4119,6 +4123,306 @@ static void TestUstva() {
     }
 }
 
+// ===== BELEGARCHIV =====
+//
+// The receipts themselves. What is tested is mostly what the archive refuses
+// and what it recognises, because the failures here are quiet ones: a file
+// that was not really a PDF, a copy that was truncated, the same receipt
+// filed twice, or a path that stopped resolving five years later.
+
+static const char* const kPdfKopf = "%PDF-1.4\n";
+
+// Remove an archive directory and what is in it. The other tests here leave
+// nothing behind and neither should these; a suite that litters the working
+// directory makes the next run's failures ambiguous.
+static void RaeumeArchivAuf(const std::string& wurzel) {
+    for (int jahr = 2025; jahr <= 2028; ++jahr) {
+        const std::string verzeichnis = wurzel + "/" + std::to_string(jahr);
+        DIR* dir = ::opendir(verzeichnis.c_str());
+        if (dir != nullptr) {
+            while (struct dirent* eintrag = ::readdir(dir)) {
+                const std::string name = eintrag->d_name;
+                if (name == "." || name == "..") continue;
+                std::remove((verzeichnis + "/" + name).c_str());
+            }
+            ::closedir(dir);
+        }
+        ::rmdir(verzeichnis.c_str());
+    }
+    ::rmdir(wurzel.c_str());
+}
+
+static std::string BaueMiniPdf(const std::string& inhalt) {
+    return std::string(kPdfKopf) + "1 0 obj<<>>endobj\n" + inhalt + "\n%%EOF\n";
+}
+
+static void TestBelegArchiv() {
+    std::printf("Belegarchiv (PDF-Import)\n");
+
+    // --- a PDF is its bytes, not its name ---
+    {
+        Check(IstPdf(BaueMiniPdf("x")), "a file starting %PDF- is a PDF");
+        Check(!IstPdf("Das hier ist Text.\n"),
+              "and a text file is not, whatever it is called - an extension is "
+              "a claim, the magic number is evidence");
+        Check(!IstPdf(""), "an empty file is not a PDF");
+        // Some producers put a few bytes in front; readers tolerate it.
+        Check(IstPdf(std::string("\n\n") + BaueMiniPdf("x")),
+              "a few bytes of junk before the header are tolerated");
+        // But the word appearing deep inside a big file is not a header.
+        Check(!IstPdf(std::string(4000, 'x') + "%PDF-1.4"),
+              "while the string appearing far into the file is not");
+
+        Check(IstVerschluesseltesPdf(BaueMiniPdf("trailer<</Encrypt 5 0 R>>")),
+              "an encrypted PDF is recognised");
+        Check(!IstVerschluesseltesPdf(BaueMiniPdf("trailer<</Root 1 0 R>>")),
+              "and an ordinary one is not");
+    }
+
+    // --- filing a document ---
+    {
+        BelegArchiv archiv("archiv-test");
+        SchreibeDatei("quelle-a.pdf", BaueMiniPdf("Rechnung A"));
+
+        const ArchivEintrag eintrag = archiv.Ablegen("quelle-a.pdf", 2026);
+        Check(eintrag.ok, "a PDF is filed");
+        Check(!eintrag.schonVorhanden, "as a new document");
+        CheckText(eintrag.dateiname, "quelle-a.pdf",
+                  "the original name is kept - it usually carries the supplier "
+                  "and the invoice number, and it is all that is known at this "
+                  "point");
+        Check(!eintrag.hash.empty(), "and it is hashed");
+        // **Content-addressed**: the name in the archive IS the hash, so the
+        // integrity check and the file name cannot drift apart.
+        Check(eintrag.pfad.find(eintrag.hash) != std::string::npos,
+              "the archived file is named by its own hash");
+        Check(eintrag.pfad.find("2026") != std::string::npos,
+              "under the document's year, not today's - a receipt filed late "
+              "still belongs to its own year");
+
+        // The copy really is the original. A copy truncated by a full disk is
+        // precisely the failure an archive exists to prevent.
+        std::string kopie;
+        {
+            std::FILE* f = std::fopen(eintrag.pfad.c_str(), "rb");
+            Check(f != nullptr, "the archived file exists");
+            if (f) {
+                char puffer[8192]; size_t n = 0;
+                while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
+                    kopie.append(puffer, n);
+                std::fclose(f);
+            }
+        }
+        CheckText(kopie, BaueMiniPdf("Rechnung A"),
+                  "and is byte-for-byte the original");
+
+        // **The original may now go away.** That is the whole point: a receipt
+        // kept as a path into somebody's Downloads folder does not survive the
+        // ten years § 147 AO asks for.
+        std::remove("quelle-a.pdf");
+        std::string wo;
+        Check(archiv.Enthaelt(eintrag.hash, 2026, wo),
+              "the archive still holds it after the original is deleted");
+
+        // Filing it again is free and produces one file, because that is what
+        // dragging the same folder in twice has to do.
+        SchreibeDatei("quelle-a-kopie.pdf", BaueMiniPdf("Rechnung A"));
+        const ArchivEintrag nochmal = archiv.Ablegen("quelle-a-kopie.pdf", 2026);
+        Check(nochmal.ok, "a byte-identical file files again");
+        Check(nochmal.schonVorhanden,
+              "and is recognised as already there rather than stored twice");
+        CheckText(nochmal.pfad, eintrag.pfad, "pointing at the same file");
+        std::remove("quelle-a-kopie.pdf");
+
+        // A different document is a different file, even on the same day.
+        SchreibeDatei("quelle-b.pdf", BaueMiniPdf("Rechnung B"));
+        const ArchivEintrag b = archiv.Ablegen("quelle-b.pdf", 2026);
+        Check(b.ok && !b.schonVorhanden, "a different document is filed separately");
+        Check(b.hash != eintrag.hash, "with its own hash");
+        std::remove("quelle-b.pdf");
+
+        // What is refused.
+        SchreibeDatei("kein.pdf", "Das ist nur Text.\n");
+        const ArchivEintrag kein = archiv.Ablegen("kein.pdf", 2026);
+        Check(!kein.ok, "a file that is not a PDF is refused");
+        Check(kein.fehler.find("%PDF-") != std::string::npos,
+              "and the reason says what was looked for");
+        std::remove("kein.pdf");
+        Check(!archiv.Ablegen("gibtesnicht.pdf", 2026).ok,
+              "a missing file is reported rather than crashing");
+
+        // An encrypted PDF is stored but flagged: in ten years nobody has the
+        // password, and that is exactly when the document is wanted.
+        SchreibeDatei("gesperrt.pdf", BaueMiniPdf("trailer<</Encrypt 5 0 R>>"));
+        const ArchivEintrag gesperrt = archiv.Ablegen("gesperrt.pdf", 2026);
+        Check(gesperrt.ok, "an encrypted PDF is still archived");
+        Check(!gesperrt.warnungen.empty(),
+              "but warned about - it cannot be read back without a password "
+              "nobody recorded");
+        std::remove("gesperrt.pdf");
+
+        // A batch, which is how the button and the drop target both call it.
+        SchreibeDatei("stapel-1.pdf", BaueMiniPdf("Eins"));
+        SchreibeDatei("stapel-2.pdf", BaueMiniPdf("Zwei"));
+        SchreibeDatei("stapel-3.txt", "kein pdf");
+        const ArchivBericht stapel = archiv.AblegenAlle(
+            { "stapel-1.pdf", "stapel-2.pdf", "stapel-3.txt", "stapel-1.pdf" }, 2026);
+        Check(stapel.ok, "a mixed batch files what it can");
+        CheckInt(stapel.gelesen, 4, "four handed over");
+        CheckInt(stapel.abgelegt, 2, "two newly stored");
+        CheckInt(stapel.bekannt, 1, "one already there - the repeat");
+        CheckInt(stapel.abgelehnt, 1, "and one refused");
+        std::remove("stapel-1.pdf");
+        std::remove("stapel-2.pdf");
+        std::remove("stapel-3.txt");
+
+        Check(archiv.AblegenAlle({}, 2026).ok == false, "an empty batch is refused");
+        RaeumeArchivAuf("archiv-test");
+    }
+
+    // --- where the archive lives ---
+    {
+        CheckText(BelegArchivPfadFuer("/pfad/buch.db"), "/pfad/buch-belege",
+                  "the archive sits beside its database - a database and its "
+                  "receipts that can be separated will be separated");
+        CheckText(BelegArchivPfadFuer(":memory:"), "belege",
+                  "and an in-memory database gets a working directory");
+    }
+}
+
+// ===== PDF-BELEGE IN DEN BESTAND =====
+
+static void TestBelegImport() {
+    std::printf("PDF-Belege importieren\n");
+
+    Store store;
+    if (!CheckStore(store.Open("fibu-pdf", ":memory:"),
+                    "a database for the import tests opens")) {
+        std::printf("    skipping the PDF import tests\n");
+        return;
+    }
+    Akteur setup;
+    Benutzer admin;
+    admin.anmeldename = "chef";
+    CheckStore(store.SaveBenutzer(admin, setup), "an administrator exists");
+    Akteur akteur;
+    akteur.benutzerId  = admin.id;
+    akteur.anmeldename = admin.anmeldename;
+    akteur.rolle       = admin.rolle;
+
+    Mandant mandant;
+    mandant.name = "Beispiel GmbH";
+    CheckStore(store.SaveMandant(mandant, akteur), "a company exists");
+    Geschaeftsjahr jahr;
+    jahr.mandantId   = mandant.id;
+    jahr.beginn      = Date(2026, 4, 1);
+    jahr.ende        = Date(2027, 3, 31);
+    jahr.bezeichnung = jahr.DefaultBezeichnung();
+    CheckStore(store.SaveGeschaeftsjahr(jahr, akteur), "with a fiscal year");
+    Nummernkreis kreis;
+    kreis.mandantId = mandant.id;
+    kreis.kreis     = "eingang";
+    kreis.praefix   = "E-";
+    CheckStore(store.SaveNummernkreis(kreis, akteur),
+               "and a number range for incoming documents");
+
+    SchreibeDatei("import-1.pdf", BaueMiniPdf("Beleg eins"));
+    SchreibeDatei("import-2.pdf", BaueMiniPdf("Beleg zwei"));
+    SchreibeDatei("import-3.txt", "kein pdf");
+    SchreibeDatei("import-1-kopie.pdf", BaueMiniPdf("Beleg eins"));
+
+    const Store::BelegImportBericht b = store.ImportiereBelegDateien(
+        mandant.id,
+        { "import-1.pdf", "import-2.pdf", "import-3.txt", "import-1-kopie.pdf" },
+        BelegArt::Eingangsrechnung, Date(2026, 6, 20), "eingang", akteur);
+
+    Check(b.ok, "a stack of PDFs imports");
+    CheckInt(b.gelesen, 4, "four files handed over");
+    CheckInt(b.angelegt, 2, "two became drafts");
+    CheckInt(b.bekannt, 1, "one was the same receipt again");
+    CheckInt(b.abgelehnt, 1, "and one was not a PDF");
+
+    // **The same receipt twice is one receipt.** Creating a second draft for a
+    // file already filed is how a duplicate expense gets into a ledger.
+    for (const Store::BelegImportEintrag& e : b.eintraege) {
+        if (e.dateiname == "import-1-kopie.pdf") {
+            Check(e.schonVorhanden,
+                  "the repeat is recognised by its hash, not its name - the "
+                  "same receipt under a different file name is still the same "
+                  "receipt");
+            Check(e.vorhandenerBeleg != 0, "and points at the document that has it");
+        }
+    }
+
+    Store::BelegFilter filter;
+    filter.mandantId = mandant.id;
+    const std::vector<Beleg> belege = store.BelegListe(filter);
+    CheckInt(static_cast<int64_t>(belege.size()), 2,
+             "so the ledger holds two documents, not three");
+
+    // The drafts carry the file, the name and nothing invented.
+    if (belege.size() == 2) {
+        const Beleg& b1 = belege[0];
+        Check(b1.status == BelegStatus::Entwurf,
+              "each is a draft - nothing is read out of the PDF, and invented "
+              "figures in a ledger would be worse than none");
+        Check(!b1.dateiHash.empty(), "with the file's hash recorded");
+        Check(!b1.dateiPfad.empty(), "and its place in the archive");
+        Check(!b1.buchungstext.empty(),
+              "and the original file name, which is the only thing that tells "
+              "one uploaded receipt from another");
+        CheckInt(b1.brutto.Minor(), 0, "no amount was invented");
+
+        std::string fehler;
+        Check(store.PruefeBelegDatei(b1, fehler),
+              "and the archived file still matches the hash recorded for it");
+    }
+
+    // **The invariant that was relaxed, and the one that was not.**
+    // An empty draft may now be saved, because a received PDF has no positions
+    // until somebody reads it. Posting one must still be refused.
+    {
+        Beleg leer;
+        leer.mandantId = mandant.id;
+        leer.art       = BelegArt::Eingangsrechnung;
+        leer.datum     = Date(2026, 6, 20);
+        leer.waehrung  = "EUR";
+        CheckStore(store.SaveBeleg(leer, "eingang", akteur),
+                   "an empty draft saves - a receipt can be filed before it is "
+                   "understood");
+        // Asserting *why* it is refused, not merely that it is. A refusal for
+        // some unrelated reason would pass a weaker test while leaving the
+        // relaxed draft rule genuinely unsafe - which is exactly what a
+        // mutation of the positions guard revealed.
+        const StoreResult gebucht = store.Buchen(leer, akteur);
+        CheckRefused(gebucht,
+                     "but posting it is still refused - relaxing the draft rule "
+                     "must not let an empty document become a posting");
+        Check(gebucht.fehler.find("Positionen") != std::string::npos,
+              "and refused for the right reason: no positions, not some other "
+              "validation that might not apply to the next empty document");
+    }
+
+    // What the import refuses outright.
+    {
+        int dummy = 0; (void)dummy;
+        Check(!store.ImportiereBelegDateien(mandant.id, {}, BelegArt::Eingangsrechnung,
+                                            Date(2026, 6, 20), "eingang", akteur).ok,
+              "an empty list is refused");
+        Check(!store.ImportiereBelegDateien(mandant.id, { "import-1.pdf" },
+                                            BelegArt::Eingangsrechnung, Date(),
+                                            "eingang", akteur).ok,
+              "and so is an import with no document date - without one the "
+              "document belongs to no fiscal year");
+    }
+
+    std::remove("import-1.pdf");
+    std::remove("import-2.pdf");
+    std::remove("import-3.txt");
+    std::remove("import-1-kopie.pdf");
+    RaeumeArchivAuf(store.BelegArchivPfad());
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -4139,6 +4443,8 @@ int main() {
     TestBankZuordnung();
     TestBankImportInDenBestand();
     TestUstva();
+    TestBelegArchiv();
+    TestBelegImport();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

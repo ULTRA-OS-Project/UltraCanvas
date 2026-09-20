@@ -30,6 +30,7 @@
 #pragma once
 
 #include "UltraFIBUBank.h"
+#include "UltraFIBUBelegArchiv.h"
 #include "UltraFIBUBeleg.h"
 #include "UltraFIBUBuchung.h"
 #include "UltraFIBUDatev.h"
@@ -258,6 +259,56 @@ public:
     // says which of the three failure modes it was: no file recorded, file
     // missing now, or contents changed.
     bool PruefeBelegDatei(const Beleg& beleg, std::string& fehler) const;
+
+    // ---- Belege aus Dateien -------------------------------------------------
+
+    // Where this database's documents are archived. Derived from the database
+    // path rather than configured, so the two move together.
+    std::string BelegArchivPfad() const;
+
+    struct BelegImportEintrag {
+        std::string dateiname;
+        std::string hash;
+        std::string pfad;
+        bool        ok = false;
+        std::string fehler;
+        int64_t     belegId = 0;      // the draft that was created
+        std::string belegnummer;
+        // True when a document with this file already existed. Dragging the
+        // same folder in twice is the normal way an import button gets used,
+        // so this is an outcome to report rather than an error.
+        bool        schonVorhanden = false;
+        int64_t     vorhandenerBeleg = 0;
+        std::vector<std::string> warnungen;
+    };
+
+    struct BelegImportBericht {
+        bool ok = false;
+        std::string fehler;
+        int gelesen = 0, angelegt = 0, bekannt = 0, abgelehnt = 0;
+        std::vector<BelegImportEintrag> eintraege;
+        std::vector<std::string> warnungen;
+    };
+
+    // Take a stack of PDFs in and make a draft document of each.
+    //
+    // This is what the "Beleg hochladen" button and the drop target both call.
+    // The files are **copied into the archive**, not referenced: a receipt kept
+    // only as a path to somebody's Downloads folder does not survive the ten
+    // years § 147 AO asks for.
+    //
+    // Each document is created as a draft - the amounts and the account still
+    // have to be entered, because nothing here reads what is inside the PDF.
+    // Claiming otherwise would put invented figures in a ledger.
+    BelegImportBericht ImportiereBelegDateien(int64_t mandantId,
+                                              const std::vector<std::string>& pfade,
+                                              BelegArt art, const Date& datum,
+                                              const std::string& kreis,
+                                              const Akteur& akteur);
+
+    // The document already holding this file, if there is one. What makes a
+    // second import of the same receipt a no-op rather than a duplicate.
+    bool BelegMitDateiHash(int64_t mandantId, const std::string& hash, Beleg& out) const;
 
     // ---- Buchen (posting) --------------------------------------------------
 
@@ -574,6 +625,9 @@ private:
                       UltraDbResultSet& out) const;
 
     std::string connection_;
+    // Kept so the document archive can live beside the database. A database
+    // and its receipts that can be separated will be separated.
+    std::string datenbankPfad_;
 };
 
 } // namespace UltraFIBU

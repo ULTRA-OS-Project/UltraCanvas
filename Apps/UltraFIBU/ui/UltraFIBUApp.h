@@ -61,6 +61,10 @@ private:
     // The two actions. Both go through the store, so a frozen period, a wrong
     // role or an already-posted document is refused there and reported here.
     void GewaehltenBelegBuchen();
+    // Take PDFs in and make a draft of each. Both the button and a drop onto
+    // the window end up here, so there is one path and one set of messages.
+    void BelegeHochladen(const std::vector<std::string>& pfade);
+    void BelegDialogOeffnen();
     void GewaehltenBelegDrucken();
 
     Store        store_;
@@ -84,6 +88,7 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasLabel>           status_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>          buchenKnopf_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>          druckenKnopf_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>          hochladenKnopf_;
 
     TabellenPanel belege_;
     TabellenPanel journal_;

@@ -1,3 +1,51 @@
+#### 2026-09-20 *0.9.0*
+- **Belege als PDF hochladen - per Knopf oder per Drag & Drop, mehrere auf
+  einmal.** `Apps/UltraFIBU/engine/UltraFIBUBelegArchiv.{h,cpp}`,
+  `Store::ImportiereBelegDateien()`, der Befehl `ultrafibu beleg-import`,
+  der Knopf **"Beleg hochladen"** und ein Drop-Ziel auf dem ganzen Fenster.
+- **Die Dateien werden hineinkopiert, nicht verwiesen.** Bisher merkte sich
+  der Beleg einen **Pfad** dorthin, wo die Datei gerade lag. Das reicht fuer
+  einen Link und fuer sonst nichts: Ordner verschoben, Downloads geleert,
+  Rechner gewechselt - und der Beleg zu einer zehn Jahre alten Buchung ist
+  weg. § 147 AO verlangt zehn Jahre Aufbewahrung, also muss die Datei ins
+  Archiv.
+- **Das Archiv ist inhaltsadressiert.** Jede Datei liegt unter ihrem eigenen
+  SHA-256 (`<datenbank>-belege/<jahr>/<hash>.pdf`), und zwar unter dem Jahr
+  des Belegs, nicht dem von heute. Damit ist derselbe Beleg zweimal genau
+  eine Datei - und zweimal denselben Ordner hineinzuziehen ist die normale
+  Art, einen Import-Knopf zu benutzen. Nach dem Schreiben wird die Kopie
+  erneut gehasht: eine von einer vollen Platte abgeschnittene Datei ist genau
+  der Fehler, den ein Archiv verhindern soll.
+- **Derselbe Beleg zweimal ist ein Beleg** - erkannt am Hash, nicht am
+  Dateinamen. Ein zweiter Entwurf zu einer bereits abgelegten Datei ist der
+  Weg, auf dem eine doppelte Ausgabe ins Hauptbuch kommt.
+- **Ein PDF wird an seinen Bytes erkannt, nicht an der Endung.** `.pdf` auf
+  einem JPEG macht ein Telefon beilaeufig. Ein verschluesseltes PDF wird
+  abgelegt, aber gemeldet: ohne Passwort ist es in zehn Jahren nicht lesbar,
+  und dann wird es gebraucht.
+- **Aus dem PDF wird nichts ausgelesen, und das steht auch so da.** Je Datei
+  entsteht ein **Entwurf**; Betrag, Konto und Steuerschluessel fehlen noch.
+  Erfundene Zahlen in einem Hauptbuch waeren schlimmer als gar keine.
+- **Ein Entwurf darf leer sein, ein gebuchter Beleg nicht.** `SaveBeleg` wies
+  bisher jeden Beleg ohne Positionen ab, womit sich ein empfangenes PDF erst
+  ablegen liess, nachdem jemand es gelesen und die Betraege getippt hatte.
+  Die Regel, auf die es ankommt, steht dort, wo sie hingehoert: `Buchen()`
+  weist einen Beleg ohne Positionen weiterhin ab, ein leerer Entwurf kann
+  also nie zu einer Buchung werden. Der Test prueft nicht nur **dass**,
+  sondern **warum** abgewiesen wird - eine Ablehnung aus einem anderen Grund
+  haette einen schwaecheren Test bestehen lassen.
+- **Die Belegliste zeigt den Dateinamen**, solange kein Partner feststeht
+  (Spalte "Partner / Beleg"). Ohne ihn sind frisch hochgeladene Belege eine
+  Spalte identischer Zeilen, und der Import waere nutzlos.
+- **`einrichten` legt jetzt den Nummernkreis `eingang` an** (`E-{JJJJ}`).
+  Eine Lieferantenrechnung traegt die Nummer des Lieferanten; dies ist die
+  eigene, und sie mit den Ausgangsrechnungsnummern zu mischen macht beide
+  wertlos.
+- Knopf und Drop-Ziel benutzen die Bordmittel des Frameworks
+  (`UltraCanvasFileLoader::OpenMultipleFilesDialog`,
+  `InstallEventFilter` auf `UCEventType::Drop`) - nichts davon ist
+  nachgebaut. 58 weitere Pruefungen (1129 insgesamt).
+
 #### 2026-09-20 *0.8.0*
 - **Umsatzsteuer-Voranmeldung: berechnen, pruefen, als ELSTER-XML abgeben.**
   `Apps/UltraFIBU/engine/UltraFIBUUstva.{h,cpp}`, Schema v5 (`meldung`),

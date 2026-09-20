@@ -688,6 +688,7 @@ bool InsertBuchungInTx(UltraDbHandle tx, Buchung& b, std::string& fehler) {
 // ===== OPENING =====
 
 StoreResult Store::Open(const std::string& connectionName, const std::string& databasePath) {
+    datenbankPfad_ = databasePath;
     // Re-registering a name replaces the pooled entry and drops the physical
     // connection - which for ":memory:" would throw the database away. So it
     // only happens when the name is new or now points somewhere else.
@@ -1951,8 +1952,18 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
     if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
     if (!beleg.datum.Valid())
         return StoreResult::Fail("Der Beleg braucht ein gültiges Belegdatum.");
-    if (beleg.positionen.empty())
-        return StoreResult::Fail("Ein Beleg ohne Positionen kann nicht gespeichert werden.");
+    // **A draft may be empty; a posted document may not.**
+    //
+    // This used to refuse every document with no positions, which made it
+    // impossible to file a received PDF before somebody had read it and typed
+    // the amounts in - and the alternative, inventing a placeholder position,
+    // would put figures in a ledger that nobody entered. The rule that
+    // matters is enforced where it belongs: Buchen() still refuses to post a
+    // document with no positions, so an empty draft can never become a
+    // posting.
+    if (beleg.positionen.empty() && beleg.status != BelegStatus::Entwurf)
+        return StoreResult::Fail("Ein gebuchter Beleg ohne Positionen kann nicht "
+                                 "gespeichert werden.");
     for (const BelegPosition& pos : beleg.positionen) {
         if (!pos.Valid())
             return StoreResult::Fail("Die Position \"" + pos.bezeichnung +
@@ -3658,6 +3669,124 @@ std::vector<Store::BankZuordnung> Store::Zuordnungen(int64_t bankumsatzId) const
         liste.push_back(z);
     }
     return liste;
+}
+
+// ===== BELEGE AUS DATEIEN =====
+
+std::string Store::BelegArchivPfad() const {
+    return BelegArchivPfadFuer(datenbankPfad_);
+}
+
+bool Store::BelegMitDateiHash(int64_t mandantId, const std::string& hash,
+                              Beleg& out) const {
+    if (hash.empty()) return false;
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kBelegSpalten +
+                  " FROM beleg WHERE mandant_id = ? AND datei_hash = ?"
+                  " ORDER BY id LIMIT 1", { mandantId, hash }, row))
+        return false;
+    out = BelegFromRow(row);
+    return true;
+}
+
+Store::BelegImportBericht Store::ImportiereBelegDateien(
+        int64_t mandantId, const std::vector<std::string>& pfade, BelegArt art,
+        const Date& datum, const std::string& kreis, const Akteur& akteur) {
+    BelegImportBericht bericht;
+    if (!akteur.Darf(Recht::BelegErfassen)) {
+        bericht.fehler = "Diese Rolle darf keine Belege erfassen.";
+        return bericht;
+    }
+    if (connection_.empty()) {
+        bericht.fehler = "Es ist keine Datenbank geöffnet.";
+        return bericht;
+    }
+    if (pfade.empty()) {
+        bericht.fehler = "Es wurde keine Datei angegeben.";
+        return bericht;
+    }
+    if (!datum.Valid()) {
+        bericht.fehler = "Ohne Belegdatum lässt sich der Beleg keinem "
+                         "Geschäftsjahr zuordnen.";
+        return bericht;
+    }
+
+    BelegArchiv archiv(BelegArchivPfad());
+    for (const std::string& pfad : pfade) {
+        ++bericht.gelesen;
+        BelegImportEintrag eintrag;
+
+        // Copy the file in first. A document row pointing at an archive entry
+        // that was never written would be worse than no row at all.
+        const ArchivEintrag abgelegt = archiv.Ablegen(pfad, datum.year);
+        eintrag.dateiname = abgelegt.dateiname;
+        eintrag.hash      = abgelegt.hash;
+        eintrag.pfad      = abgelegt.pfad;
+        eintrag.warnungen = abgelegt.warnungen;
+        if (!abgelegt.ok) {
+            eintrag.fehler = abgelegt.fehler;
+            ++bericht.abgelehnt;
+            bericht.eintraege.push_back(std::move(eintrag));
+            continue;
+        }
+
+        // **The same receipt twice is one receipt.** Dragging a folder in
+        // again is how an import button is actually used, and creating a
+        // second draft for a file already booked is how duplicate expenses
+        // get into a ledger.
+        Beleg vorhanden;
+        if (BelegMitDateiHash(mandantId, abgelegt.hash, vorhanden)) {
+            eintrag.ok               = true;
+            eintrag.schonVorhanden   = true;
+            eintrag.vorhandenerBeleg = vorhanden.id;
+            eintrag.belegnummer      = vorhanden.nummer;
+            ++bericht.bekannt;
+            bericht.eintraege.push_back(std::move(eintrag));
+            continue;
+        }
+
+        Beleg beleg;
+        beleg.mandantId = mandantId;
+        beleg.art       = art;
+        beleg.datum     = datum;
+        beleg.waehrung  = "EUR";
+        // The file name is usually the only thing known about the document at
+        // this point, and it often carries the supplier and the number. It is
+        // put where a list will show it rather than discarded.
+        beleg.buchungstext = abgelegt.dateiname;
+        beleg.dateiPfad    = abgelegt.pfad;
+        beleg.dateiHash    = abgelegt.hash;
+
+        const StoreResult gespeichert = SaveBeleg(beleg, kreis, akteur);
+        if (!gespeichert) {
+            eintrag.fehler = gespeichert.fehler;
+            ++bericht.abgelehnt;
+            bericht.eintraege.push_back(std::move(eintrag));
+            continue;
+        }
+        eintrag.ok          = true;
+        eintrag.belegId     = beleg.id;
+        eintrag.belegnummer = beleg.nummer;
+        ++bericht.angelegt;
+        WriteAudit(akteur, "beleg", beleg.id, "datei-import",
+                   abgelegt.dateiname + " sha256:" + abgelegt.hash);
+        bericht.eintraege.push_back(std::move(eintrag));
+    }
+
+    for (const BelegImportEintrag& e : bericht.eintraege)
+        for (const std::string& w : e.warnungen) bericht.warnungen.push_back(w);
+
+    if (bericht.angelegt > 0)
+        bericht.warnungen.push_back(
+            Number(bericht.angelegt) + " Beleg(e) sind als Entwurf angelegt. "
+            "Betrag, Konto und Steuerschlüssel stehen noch nicht darin - aus "
+            "dem PDF wird nichts ausgelesen, und erfundene Zahlen in einem "
+            "Hauptbuch wären schlimmer als gar keine.");
+
+    bericht.ok = bericht.angelegt > 0 || bericht.bekannt > 0;
+    if (!bericht.ok && bericht.fehler.empty())
+        bericht.fehler = "Keine der Dateien konnte übernommen werden.";
+    return bericht;
 }
 
 // ===== STEUERMELDUNGEN =====
