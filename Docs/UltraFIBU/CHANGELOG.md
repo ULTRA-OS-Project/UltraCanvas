@@ -1,3 +1,43 @@
+#### 2026-09-20 *0.11.0*
+- **Mehrbenutzerbetrieb: derselbe Bestand auf einem Server.**
+  `UltraCanvas/core/UltraDatabase/UltraDatabasePostgresDriver.cpp` und
+  `...PostgresSql.cpp`, `Store::OpenServer()`, die Acceptance-Tests in
+  `Tests/UltraFIBU/UltraFIBUServerTests.cpp`. Phase A8. Lokal bleibt SQLite,
+  gemeinsam ist es PostgreSQL - dieselben Migrationen, dasselbe Schema,
+  derselbe Code.
+- **Zwei Benutzer haben dieselbe Rechnungsnummer bekommen.** Das ist keine
+  Anekdote, sondern der Befund des ersten Laufs mit zwei echten Prozessen:
+  80 vergebene Nummern, davon 40 verschiedene. Der Zaehler wurde gelesen und
+  zurueckgeschrieben - unter SQLite sicher, weil `BEGIN IMMEDIATE` Schreiber
+  serialisiert, unter PostgreSQL bei READ COMMITTED nicht. Der Treiber
+  liefert jetzt `FOR UPDATE` als Zeilensperre, SQLite liefert dafuer nichts,
+  und jede Nummernvergabe liest gesperrt.
+- **Den Fehler hat die Verdopplung ueberlebt.** Die Sperre lag beim ersten
+  Anlauf nur in den In-Transaktions-Helfern, waehrend `NextBelegnummer` und
+  `NextSequenceValue` zweite Kopien derselben Logik ohne Sperre waren - der
+  Test blieb rot, obwohl "der Fehler behoben" war. Es gibt jetzt genau eine
+  Stelle, die eine Nummer vergibt.
+- **Der Test forkt, weil nichts anderes das beweist.** Zwei Prozesse, je 40
+  Nummern, aus einem Nummernkreis; geprueft wird auf eindeutig **und**
+  lueckenlos, denn eine fehlende Nummer ist das, wonach eine Pruefung fragt.
+  Die einbenutzige SQLite-Suite war die ganze Zeit gruen.
+- **Ein uebersprungener Test ist kein bestandener Test.** Ohne konfigurierten
+  Server meldet die Suite SKIP und ist damit fertig - in CI setzt
+  `ULTRAFIBU_TEST_PG_REQUIRED=1` den Sprung auf Fehler, und der Workflow
+  prueft ausserdem, dass `UltraDatabase` ueberhaupt mit PostgreSQL gebaut
+  wurde. Ohne libpq baut es stillschweigend ohne den Treiber, und genau
+  dieser Test faellt dann weg.
+- **Kein Passwort in einer Konfigurationsdatei.** `OpenServer()` verlangt fuer
+  die Zugangsdaten ein `vault:`-Praefix und der Treiber weist ein
+  literales Passwort ab; der aufgeloeste Wert wird nach dem Verbinden
+  ueberschrieben.
+- **`?` wird zu `$1` - aber nur, wo es ein Platzhalter ist.** Ein
+  Fragezeichen in einem Literal, einem Bezeichner, einem Kommentar oder einem
+  Dollar-Quoting ist Text. Der Umschreiber steht in einer eigenen
+  Uebersetzungseinheit ohne libpq, damit er auch dort gebaut und geprueft
+  wird, wo kein PostgreSQL installiert ist: er verfaelscht eine Abfrage
+  lautlos, und eine verfaelschte Abfrage laeuft trotzdem.
+
 #### 2026-09-20 *0.10.0*
 - **One-Stop-Shop: die Quartalsmeldung fuer Steuer, die anderen
   Mitgliedstaaten zusteht.** `Apps/UltraFIBU/engine/UltraFIBUOss.{h,cpp}`,

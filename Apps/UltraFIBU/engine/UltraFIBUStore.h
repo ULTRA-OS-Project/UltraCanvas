@@ -619,6 +619,10 @@ private:
     // the driver's message.
     StoreResult Exec(const std::string& sql, const UltraDbParams& params,
                      const std::string& wobei) const;
+    // The clause this engine needs to lock a counter row while reading it.
+    // Empty on SQLite, " FOR UPDATE" on PostgreSQL - see
+    // IUltraDbConnection::RowLockSuffix.
+    std::string RowLock() const;
     bool        QueryOne(const std::string& sql, const UltraDbParams& params,
                          UltraDbRow& out) const;
     bool        Query(const std::string& sql, const UltraDbParams& params,

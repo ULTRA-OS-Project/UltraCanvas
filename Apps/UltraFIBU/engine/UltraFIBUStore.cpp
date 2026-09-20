@@ -561,10 +561,16 @@ const char* const kBuchungSpalten =
 // halfway through leaves nothing behind rather than half an invoice.
 
 bool NextSequenzInTx(UltraDbHandle tx, const std::string& name, int64_t& out,
-                     std::string& fehler) {
+                     std::string& fehler, const std::string& rowLock) {
     UltraDbResultSet rs;
+    // **The row is locked while it is read**, or two clients read the same
+    // value and both write back the same successor. On SQLite the suffix is
+    // empty because BEGIN IMMEDIATE already serialises writers; on PostgreSQL
+    // it is FOR UPDATE. Without it, two people posting at once get the same
+    // id - which was exactly what happened the first time this ran against a
+    // real server with two processes.
     const UltraDbResult read = UltraDb_QueryInTx(
-        tx, "SELECT naechste FROM sequenz WHERE name = ?", { name }, rs);
+        tx, "SELECT naechste FROM sequenz WHERE name = ?" + rowLock, { name }, rs);
     if (!read) { fehler = read.message; return false; }
 
     if (rs.Empty()) {
@@ -582,12 +588,16 @@ bool NextSequenzInTx(UltraDbHandle tx, const std::string& name, int64_t& out,
 }
 
 bool NextBelegnummerInTx(UltraDbHandle tx, int64_t mandantId, const std::string& kreisName,
-                         const Date& datum, std::string& out, std::string& fehler) {
+                         const Date& datum, std::string& out, std::string& fehler,
+                         const std::string& rowLock) {
     UltraDbResultSet rs;
+    // Locked for the same reason as the sequence above: a document number
+    // handed to two people is the failure that makes multi-user bookkeeping
+    // unusable, and a gap-free numbering cannot be repaired afterwards.
     const UltraDbResult read = UltraDb_QueryInTx(
         tx,
         "SELECT id, kreis, praefix, naechste, stellen, jaehrlich_zuruecksetzen,"
-        " letztes_jahr FROM nummernkreis WHERE mandant_id = ? AND kreis = ?",
+        " letztes_jahr FROM nummernkreis WHERE mandant_id = ? AND kreis = ?" + rowLock,
         { mandantId, kreisName }, rs);
     if (!read) { fehler = read.message; return false; }
     if (rs.Empty()) {
@@ -620,9 +630,9 @@ bool NextBelegnummerInTx(UltraDbHandle tx, int64_t mandantId, const std::string&
 
 bool AuditInTx(UltraDbHandle tx, const Akteur& akteur, const std::string& tabelle,
                int64_t rowId, const std::string& aktion, const std::string& details,
-               std::string& fehler) {
+               std::string& fehler, const std::string& rowLock) {
     int64_t id = 0;
-    if (!NextSequenzInTx(tx, "audit", id, fehler)) return false;
+    if (!NextSequenzInTx(tx, "audit", id, fehler, rowLock)) return false;
     const UltraDbResult inserted = UltraDb_ExecInTx(
         tx,
         "INSERT INTO audit(id, zeit, benutzer_id, benutzer, tabelle, row_id, aktion,"
@@ -637,8 +647,9 @@ bool AuditInTx(UltraDbHandle tx, const Akteur& akteur, const std::string& tabell
 // laufende Nummer, reads the chain head, computes the hash over the finished
 // row, and inserts. Everything that decides the hash is settled before it is
 // taken, which is why this is one function and not three.
-bool InsertBuchungInTx(UltraDbHandle tx, Buchung& b, std::string& fehler) {
-    if (!NextSequenzInTx(tx, "buchung", b.id, fehler)) return false;
+bool InsertBuchungInTx(UltraDbHandle tx, Buchung& b, std::string& fehler,
+                       const std::string& rowLock) {
+    if (!NextSequenzInTx(tx, "buchung", b.id, fehler, rowLock)) return false;
 
     UltraDbResultSet head;
     const UltraDbResult read = UltraDb_QueryInTx(
@@ -687,6 +698,27 @@ bool InsertBuchungInTx(UltraDbHandle tx, Buchung& b, std::string& fehler) {
 
 // ===== OPENING =====
 
+// The migrations, in one place.
+//
+// Local and server mode run **this same list**. That is the whole of the
+// "one schema, two storage modes" claim, and keeping one list is what makes
+// it true rather than aspirational: a step added for SQLite and forgotten for
+// PostgreSQL is a database that silently lacks a table.
+static std::vector<UltraDbMigration> MigrationSchritte() {
+    return {
+        { 1, "UltraFIBU Stammdaten", kSchemaV1 },
+        { 2, "UltraFIBU Belege und Buchungen", kSchemaV2 },
+        { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 },
+        { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 },
+        { 5, "UltraFIBU Steuermeldungen", kSchemaV5 }
+    };
+}
+
+std::string Store::RowLock() const {
+    if (connection_.empty()) return std::string();
+    return UltraDb_RowLockSuffix(connection_);
+}
+
 StoreResult Store::Open(const std::string& connectionName, const std::string& databasePath) {
     datenbankPfad_ = databasePath;
     // Re-registering a name replaces the pooled entry and drops the physical
@@ -723,14 +755,7 @@ StoreResult Store::Open(const std::string& connectionName, const std::string& da
         return StoreResult::Fail(fehler);
     }
 
-    const std::vector<UltraDbMigration> steps = {
-        { 1, "UltraFIBU Stammdaten", kSchemaV1 },
-        { 2, "UltraFIBU Belege und Buchungen", kSchemaV2 },
-        { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 },
-        { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 },
-        { 5, "UltraFIBU Steuermeldungen", kSchemaV5 }
-    };
-    const UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
+    const UltraDbResult migrated = UltraDb_Migrate(connection_, MigrationSchritte());
     if (!migrated) {
         connection_.clear();
         return StoreResult::Fail("Das Datenbank-Schema konnte nicht angelegt werden: " +
@@ -744,18 +769,78 @@ StoreResult Store::OpenServer(const std::string& connectionName,
                               const std::string& database,
                               const std::string& user,
                               const std::string& credentialsRef) {
-    (void)connectionName; (void)host; (void)port; (void)database; (void)user;
-    // Deliberately explicit rather than a silent fallback to SQLite: a
-    // multi-user installation that quietly became single-user would be
-    // discovered by two people overwriting each other's work.
-    if (credentialsRef.find("vault:") != 0)
+    if (host.empty() || database.empty() || user.empty())
+        return StoreResult::Fail("Für den Mehrplatz-Betrieb werden Host, Datenbank "
+                                 "und Benutzer gebraucht.");
+    // **A password never comes from a configuration file.** It would end up in
+    // a backup, a log or a screenshot; the key names an UltraVault entry and
+    // the driver resolves it.
+    if (credentialsRef.rfind("vault:", 0) != 0)
         return StoreResult::Fail("Server-Zugangsdaten müssen als UltraVault-Schlüssel "
                                  "angegeben werden (vault:...), nicht als Passwort.");
-    return StoreResult::Fail(
-        "Der Mehrplatz-Betrieb ist vorbereitet, aber der PostgreSQL-Treiber von "
-        "UltraDatabase ist noch nicht gebaut (Stage 2). Bis dahin bitte eine lokale "
-        "Datenbank verwenden - das Schema ist dasselbe, ein Wechsel erfordert keine "
-        "Änderung an den Daten.");
+
+    const std::vector<std::string> treiber = UltraDatabase_GetSupportedDrivers();
+    bool hatPostgres = false;
+    for (const std::string& t : treiber)
+        if (t == "postgresql") hatPostgres = true;
+    if (!hatPostgres) {
+        // Explicit rather than a silent fallback to SQLite: an installation
+        // that quietly became single-user would be discovered by two people
+        // overwriting each other's work.
+        return StoreResult::Fail(
+            "Der PostgreSQL-Treiber ist in diesem Build nicht enthalten (libpq "
+            "fehlte beim Übersetzen). Das Schema ist dasselbe wie lokal, ein "
+            "Wechsel erfordert also keine Änderung an den Daten - aber dieser "
+            "Build kann sich nicht mit einem Server verbinden.");
+    }
+
+    datenbankPfad_ = database;
+
+    UltraDbConnectionConfig cfg;
+    cfg.name        = connectionName;
+    cfg.driver      = "postgresql";
+    cfg.database    = database;
+    cfg.host        = host;
+    cfg.port        = port > 0 ? port : 5432;
+    cfg.user        = user;
+    cfg.credentials = credentialsRef;
+    // Verified TLS by default. A shared accounting database is exactly the
+    // case where a downgrade has to be a deliberate act rather than a default.
+    cfg.tls         = UltraDbTls::VerifyFull;
+
+    UltraDbResult registriert = UltraDb_RegisterConnection(cfg);
+    if (!registriert)
+        return StoreResult::Fail("Die Serververbindung konnte nicht eingerichtet "
+                                 "werden: " + registriert.message);
+
+    connection_ = connectionName;
+    UltraDbResult geoeffnet = UltraDb_OpenConnection(connectionName);
+    if (!geoeffnet) {
+        connection_.clear();
+        return StoreResult::Fail("Der Server ist nicht erreichbar: " +
+                                 geoeffnet.message);
+    }
+
+    // The same migrations as locally. That they run unchanged is the whole
+    // claim of "one schema, two storage modes", and it is checked here rather
+    // than asserted.
+    const std::vector<UltraDbMigration> steps = MigrationSchritte();
+    const UltraDbResult migrated = UltraDb_Migrate(connection_, steps);
+    if (!migrated) {
+        connection_.clear();
+        return StoreResult::Fail("Das Schema konnte auf dem Server nicht angelegt "
+                                 "werden: " + migrated.message);
+    }
+    if (SchemaIsNewerThanCode()) {
+        const int version = SchemaVersion();
+        connection_.clear();
+        return StoreResult::Fail(
+            "Die Datenbank hat Schema-Version " + Number(version) +
+            ", dieses Programm kennt nur " + Number(kSchemaVersion) +
+            ". Ein älteres Programm darf nicht in ein neueres Schema schreiben - "
+            "bitte dieses Programm aktualisieren.");
+    }
+    return StoreResult::Ok();
 }
 
 void Store::Close() {
@@ -805,36 +890,19 @@ StoreResult Store::NextSequenceValue(const std::string& name, int64_t& out) {
     if (tx == UltraDbInvalidHandle)
         return StoreResult::Fail("Transaktion konnte nicht gestartet werden: " + error.message);
 
-    UltraDbResultSet rs;
-    const UltraDbResult read = UltraDb_QueryInTx(
-        tx, "SELECT naechste FROM sequenz WHERE name = ?", { name }, rs);
-    if (!read) {
+    // Deliberately the same code as the posting path uses, rather than a second
+    // copy of it. The copy that used to stand here had no row lock, so two
+    // clients on one PostgreSQL server read the same counter and both wrote
+    // back the same successor - and the duplicate only appeared under real
+    // concurrency, long after the "fix" that had touched the other copy.
+    std::string fehler;
+    if (!NextSequenzInTx(tx, name, out, fehler, RowLock())) {
         UltraDb_Rollback(tx);
-        return StoreResult::Fail("Nummernvergabe fehlgeschlagen: " + read.message);
-    }
-
-    int64_t value = 1;
-    if (rs.Empty()) {
-        const UltraDbResult insert = UltraDb_ExecInTx(
-            tx, "INSERT INTO sequenz(name, naechste) VALUES(?, ?)", { name, int64_t(2) });
-        if (!insert) {
-            UltraDb_Rollback(tx);
-            return StoreResult::Fail("Nummernkreis konnte nicht angelegt werden: " + insert.message);
-        }
-    } else {
-        value = rs.Row(0)["naechste"].AsInt64();
-        const UltraDbResult bump = UltraDb_ExecInTx(
-            tx, "UPDATE sequenz SET naechste = naechste + 1 WHERE name = ?", { name });
-        if (!bump) {
-            UltraDb_Rollback(tx);
-            return StoreResult::Fail("Nummernkreis konnte nicht fortgeschrieben werden: " +
-                                     bump.message);
-        }
+        return StoreResult::Fail("Nummernvergabe fehlgeschlagen: " + fehler);
     }
 
     const UltraDbResult commit = UltraDb_Commit(tx);
     if (!commit) return StoreResult::Fail("Nummernvergabe nicht bestätigt: " + commit.message);
-    out = value;
     return StoreResult::Ok();
 }
 
@@ -849,46 +917,17 @@ StoreResult Store::NextBelegnummer(int64_t mandantId, const std::string& kreisNa
     if (tx == UltraDbInvalidHandle)
         return StoreResult::Fail("Transaktion konnte nicht gestartet werden: " + error.message);
 
-    UltraDbResultSet rs;
-    const UltraDbResult read = UltraDb_QueryInTx(
-        tx,
-        "SELECT id, kreis, praefix, naechste, stellen, jaehrlich_zuruecksetzen, letztes_jahr "
-        "FROM nummernkreis WHERE mandant_id = ? AND kreis = ?",
-        { mandantId, kreisName }, rs);
-    if (!read || rs.Empty()) {
+    // Same shared implementation, same reason as above: a document number
+    // handed to two people cannot be repaired afterwards, so there is exactly
+    // one place that hands one out.
+    std::string fehler;
+    if (!NextBelegnummerInTx(tx, mandantId, kreisName, datum, out, fehler, RowLock())) {
         UltraDb_Rollback(tx);
-        return StoreResult::Fail("Der Nummernkreis \"" + kreisName + "\" ist nicht angelegt.");
-    }
-
-    const UltraDbRow& row = rs.Row(0);
-    Nummernkreis kreis;
-    kreis.id        = row["id"].AsInt64();
-    kreis.mandantId = mandantId;
-    kreis.kreis     = row["kreis"].AsString();
-    kreis.praefix   = row["praefix"].AsString();
-    kreis.naechste  = row["naechste"].AsInt64();
-    kreis.stellen   = row["stellen"].AsInt();
-    kreis.jaehrlichZuruecksetzen = row["jaehrlich_zuruecksetzen"].AsInt() != 0;
-    kreis.letztesJahr = row["letztes_jahr"].AsInt();
-
-    int64_t wert = kreis.naechste;
-    if (kreis.jaehrlichZuruecksetzen && kreis.letztesJahr != datum.year) {
-        wert = 1;                                  // a new year starts at one
-    }
-
-    const UltraDbResult bump = UltraDb_ExecInTx(
-        tx, "UPDATE nummernkreis SET naechste = ?, letztes_jahr = ? WHERE id = ?",
-        { wert + 1, datum.year, kreis.id });
-    if (!bump) {
-        UltraDb_Rollback(tx);
-        return StoreResult::Fail("Nummernkreis konnte nicht fortgeschrieben werden: " +
-                                 bump.message);
+        return StoreResult::Fail(fehler);
     }
 
     const UltraDbResult commit = UltraDb_Commit(tx);
     if (!commit) return StoreResult::Fail("Nummernvergabe nicht bestätigt: " + commit.message);
-
-    out = FormatNummer(kreis, wert, datum);
     return StoreResult::Ok();
 }
 
@@ -1268,7 +1307,7 @@ StoreResult Store::Festschreiben(int64_t geschaeftsjahrId, const Date& bis,
 
     std::string fehler;
     if (!AuditInTx(tx, akteur, "geschaeftsjahr", jahr.id, "festschreiben", bis.ToIso(),
-                   fehler))
+                   fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden", fehler);
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -2062,12 +2101,12 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
     // no number and two writers cannot be given the same one.
     if (beleg.nummer.empty()) {
         if (!NextBelegnummerInTx(tx, beleg.mandantId, kreis, beleg.datum,
-                                 beleg.nummer, fehler))
+                                 beleg.nummer, fehler, RowLock()))
             return abbrechen("Die Belegnummer konnte nicht vergeben werden");
     }
 
     if (!istAenderung) {
-        if (!NextSequenzInTx(tx, "beleg", beleg.id, fehler))
+        if (!NextSequenzInTx(tx, "beleg", beleg.id, fehler, RowLock()))
             return abbrechen("Die Belegnummer konnte nicht vergeben werden");
         beleg.erfasstVon     = akteur.benutzerId;
         beleg.erfasstVonName = akteur.anmeldename;
@@ -2130,7 +2169,7 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
     for (BelegPosition& pos : beleg.positionen) {
         pos.belegId  = beleg.id;
         pos.position = nummer++;
-        if (!NextSequenzInTx(tx, "beleg_position", pos.id, fehler))
+        if (!NextSequenzInTx(tx, "beleg_position", pos.id, fehler, RowLock()))
             return abbrechen("Die Position konnte nicht angelegt werden");
         const UltraDbResult inserted = UltraDb_ExecInTx(
             tx,
@@ -2147,7 +2186,7 @@ StoreResult Store::SaveBeleg(Beleg& beleg, const std::string& kreis, const Akteu
     }
 
     if (!AuditInTx(tx, akteur, "beleg", beleg.id, istAenderung ? "aendern" : "anlegen",
-                   beleg.nummer + " " + beleg.brutto.ToString(), fehler))
+                   beleg.nummer + " " + beleg.brutto.ToString(), fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -2286,7 +2325,7 @@ StoreResult Store::DeleteBeleg(int64_t id, const Akteur& akteur) {
     }
 
     std::string fehler;
-    if (!AuditInTx(tx, akteur, "beleg", id, "loeschen", beleg.nummer, fehler)) {
+    if (!AuditInTx(tx, akteur, "beleg", id, "loeschen", beleg.nummer, fehler, RowLock())) {
         UltraDb_Rollback(tx);
         return StoreResult::Fail("Der Protokolleintrag konnte nicht geschrieben werden: " +
                                  fehler);
@@ -2524,7 +2563,7 @@ StoreResult Store::Buchen(Beleg& beleg, const Akteur& akteur) {
             fehler = "Konto und Gegenkonto müssen verschieden und gesetzt sein";
             return abbrechen("Die Buchung konnte nicht gebildet werden");
         }
-        if (!InsertBuchungInTx(tx, b, fehler))
+        if (!InsertBuchungInTx(tx, b, fehler, RowLock()))
             return abbrechen("Die Buchung konnte nicht geschrieben werden");
         geschrieben.push_back(b);
     }
@@ -2540,7 +2579,7 @@ StoreResult Store::Buchen(Beleg& beleg, const Akteur& akteur) {
     if (!AuditInTx(tx, akteur, "beleg", aktuell.id, "buchen",
                    aktuell.nummer + " " + aktuell.brutto.ToString() + ", " +
                    Number(static_cast<int64_t>(geschrieben.size())) + " Buchung(en)",
-                   fehler))
+                   fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -2669,9 +2708,9 @@ StoreResult Store::StorniereBeleg(int64_t belegId, const Date& stornoDatum,
     }
 
     if (!NextBelegnummerInTx(tx, storno.mandantId, kreis, stornoDatum, storno.nummer,
-                             fehler))
+                             fehler, RowLock()))
         return abbrechen("Die Belegnummer für die Stornierung konnte nicht vergeben werden");
-    if (!NextSequenzInTx(tx, "beleg", storno.id, fehler))
+    if (!NextSequenzInTx(tx, "beleg", storno.id, fehler, RowLock()))
         return abbrechen("Der Stornobeleg konnte nicht angelegt werden");
 
     const UltraDbResult insertedKopf = UltraDb_ExecInTx(
@@ -2699,7 +2738,7 @@ StoreResult Store::StorniereBeleg(int64_t belegId, const Date& stornoDatum,
     for (BelegPosition& pos : storno.positionen) {
         pos.belegId  = storno.id;
         pos.position = posNr++;
-        if (!NextSequenzInTx(tx, "beleg_position", pos.id, fehler))
+        if (!NextSequenzInTx(tx, "beleg_position", pos.id, fehler, RowLock()))
             return abbrechen("Die Stornoposition konnte nicht angelegt werden");
         const UltraDbResult inserted = UltraDb_ExecInTx(
             tx,
@@ -2742,7 +2781,7 @@ StoreResult Store::StorniereBeleg(int64_t belegId, const Date& stornoDatum,
         gegen.prevHash.clear();
         gegen.hash.clear();
 
-        if (!InsertBuchungInTx(tx, gegen, fehler))
+        if (!InsertBuchungInTx(tx, gegen, fehler, RowLock()))
             return abbrechen("Die Stornobuchung konnte nicht geschrieben werden");
 
         // The back-reference on the sealed row. This column is deliberately
@@ -2765,7 +2804,7 @@ StoreResult Store::StorniereBeleg(int64_t belegId, const Date& stornoDatum,
 
     if (!AuditInTx(tx, akteur, "beleg", original.id, "stornieren",
                    original.nummer + " storniert durch " + storno.nummer +
-                   (grund.empty() ? "" : " (" + grund + ")"), fehler))
+                   (grund.empty() ? "" : " (" + grund + ")"), fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -2872,11 +2911,11 @@ StoreResult Store::ZahlungErfassen(int64_t belegId, const Date& datum, const Mon
     b.erfasstVonName   = akteur.anmeldename;
     b.erfasstAm        = jetzt;
 
-    if (!InsertBuchungInTx(tx, b, fehler))
+    if (!InsertBuchungInTx(tx, b, fehler, RowLock()))
         return abbrechen("Die Zahlung konnte nicht gebucht werden");
 
     int64_t zahlungId = 0;
-    if (!NextSequenzInTx(tx, "zahlung", zahlungId, fehler))
+    if (!NextSequenzInTx(tx, "zahlung", zahlungId, fehler, RowLock()))
         return abbrechen("Die Zahlung konnte nicht gespeichert werden");
     const UltraDbResult inserted = UltraDb_ExecInTx(
         tx,
@@ -2895,7 +2934,7 @@ StoreResult Store::ZahlungErfassen(int64_t belegId, const Date& datum, const Mon
     if (!updated) { fehler = updated.message; return abbrechen("Der Zahlungsstand konnte nicht fortgeschrieben werden"); }
 
     if (!AuditInTx(tx, akteur, "zahlung", zahlungId, "buchen",
-                   beleg.nummer + " " + betrag.ToString() + " auf " + geldkonto, fehler))
+                   beleg.nummer + " " + betrag.ToString() + " auf " + geldkonto, fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -2991,13 +3030,13 @@ StoreResult Store::BuchungErfassen(Buchung& buchung, const Akteur& akteur) {
                                  error.message);
 
     std::string fehler;
-    if (!InsertBuchungInTx(tx, buchung, fehler)) {
+    if (!InsertBuchungInTx(tx, buchung, fehler, RowLock())) {
         UltraDb_Rollback(tx);
         return StoreResult::Fail("Die Buchung konnte nicht geschrieben werden: " + fehler);
     }
     if (!AuditInTx(tx, akteur, "buchung", buchung.id, "buchen",
                    buchung.konto + " an " + buchung.gegenkonto + " " +
-                   buchung.umsatz.ToString(), fehler)) {
+                   buchung.umsatz.ToString(), fehler, RowLock())) {
         UltraDb_Rollback(tx);
         return StoreResult::Fail("Der Protokolleintrag konnte nicht geschrieben werden: " +
                                  fehler);
@@ -3063,7 +3102,7 @@ StoreResult Store::StorniereBuchung(int64_t buchungId, const Date& stornoDatum,
         return StoreResult::Fail(text + (fehler.empty() ? "" : ": " + fehler));
     };
 
-    if (!InsertBuchungInTx(tx, gegen, fehler))
+    if (!InsertBuchungInTx(tx, gegen, fehler, RowLock()))
         return abbrechen("Die Stornobuchung konnte nicht geschrieben werden");
 
     const UltraDbResult markiert = UltraDb_ExecInTx(
@@ -3072,7 +3111,7 @@ StoreResult Store::StorniereBuchung(int64_t buchungId, const Date& stornoDatum,
     if (!markiert) { fehler = markiert.message; return abbrechen("Die Ursprungsbuchung konnte nicht markiert werden"); }
 
     if (!AuditInTx(tx, akteur, "buchung", original.id, "stornieren",
-                   "storniert durch Buchung " + Number(gegen.id), fehler))
+                   "storniert durch Buchung " + Number(gegen.id), fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -3367,7 +3406,7 @@ StoreResult Store::ImportiereBankauszug(int64_t bankkontoId,
     };
 
     int64_t importId = 0;
-    if (!NextSequenzInTx(tx, "bank_import", importId, fehler))
+    if (!NextSequenzInTx(tx, "bank_import", importId, fehler, RowLock()))
         return abbrechen("Die Importnummer konnte nicht vergeben werden");
 
     const int64_t jetzt = NowSeconds();
@@ -3392,7 +3431,7 @@ StoreResult Store::ImportiereBankauszug(int64_t bankkontoId,
             }
 
             int64_t id = 0;
-            if (!NextSequenzInTx(tx, "bankumsatz", id, fehler))
+            if (!NextSequenzInTx(tx, "bankumsatz", id, fehler, RowLock()))
                 return abbrechen("Eine Umsatznummer konnte nicht vergeben werden");
 
             const UltraDbResult r = UltraDb_ExecInTx(
@@ -3435,7 +3474,7 @@ StoreResult Store::ImportiereBankauszug(int64_t bankkontoId,
 
     if (!AuditInTx(tx, akteur, "bank_import", importId, "insert",
                    dateiname + ", " + Number(outNeu) + " neu, " +
-                   Number(outBekannt) + " bereits vorhanden", fehler))
+                   Number(outBekannt) + " bereits vorhanden", fehler, RowLock()))
         return abbrechen("Der Import konnte nicht protokolliert werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);
@@ -4111,12 +4150,12 @@ StoreResult Store::ImportiereDatevStapel(const DatevImportBericht& bericht,
     // they take their place in the hash chain and a later PruefeHashKette
     // covers them too.
     for (Buchung& b : fertig) {
-        if (!InsertBuchungInTx(tx, b, fehler))
+        if (!InsertBuchungInTx(tx, b, fehler, RowLock()))
             return abbrechen("Eine importierte Buchung konnte nicht geschrieben werden");
     }
 
     int64_t importId = 0;
-    if (!NextSequenzInTx(tx, "datev_import", importId, fehler))
+    if (!NextSequenzInTx(tx, "datev_import", importId, fehler, RowLock()))
         return abbrechen("Der Importeintrag konnte nicht angelegt werden");
     const UltraDbResult protokoll = UltraDb_ExecInTx(
         tx,
@@ -4130,7 +4169,7 @@ StoreResult Store::ImportiereDatevStapel(const DatevImportBericht& bericht,
     if (!AuditInTx(tx, akteur, "datev_import", importId, "importieren",
                    dateiname + ", " + Number(static_cast<int64_t>(fertig.size())) +
                    " Buchung(en), " + FormatDateGerman(bericht.von) + " - " +
-                   FormatDateGerman(bericht.bis), fehler))
+                   FormatDateGerman(bericht.bis), fehler, RowLock()))
         return abbrechen("Der Protokolleintrag konnte nicht geschrieben werden");
 
     const UltraDbResult commit = UltraDb_Commit(tx);

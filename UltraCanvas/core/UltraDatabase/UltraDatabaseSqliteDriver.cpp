@@ -183,6 +183,10 @@ public:
         return std::make_unique<SqliteStatement>(this, stmt);
     }
 
+    // SQLite takes the write lock up front, so a reader that later wants to
+    // write cannot deadlock against another writer.
+    std::string BeginTransactionSql() const override { return "BEGIN IMMEDIATE"; }
+
     UltraDbResult ExecuteDirect(const std::string& sql, const UltraDbParams& params,
                                 UltraDbResultSet& out) override {
         std::lock_guard<std::mutex> lk(mtx_);
