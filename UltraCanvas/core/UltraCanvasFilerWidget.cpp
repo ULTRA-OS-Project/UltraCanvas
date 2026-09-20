@@ -49,8 +49,8 @@
 // as a bar or a small tag over the foot of its icon box instead — the name
 // itself is never touched, so renaming and every file operation still work on
 // the real one.
-// Version: 1.31.0
-// Last Modified: 2026-09-17
+// Version: 1.31.1
+// Last Modified: 2026-09-20
 // Author: UltraCanvas Framework
 
 // VirtualFS + bridge must be included before the UI headers: X11 (pulled in
@@ -9519,10 +9519,13 @@ namespace UltraCanvas {
         std::vector<Rect2Di> cards;
         count = std::min<size_t>(count, kFolderPreviewCount);
         if (count == 0) return cards;
+        // Proportions of the box, then a fixed nudge: the cards sit 2 px
+        // lower and are 4 px taller than the proportions alone would put
+        // them, so the picture starts a touch further into the folder.
         const double w = rect.width, h = rect.height;
-        const double cardW = w * 0.62, cardH = h * 0.56;
+        const double cardW = w * 0.62, cardH = h * 0.56 + 4.0;
         const double left = rect.x + (w - cardW) / 2.0;
-        const double top = rect.y + h * 0.20;
+        const double top = rect.y + h * 0.20 + 2.0;
         for (size_t i = 0; i < count; ++i) {
             double dx = 0.0, dy = 0.0;
             if (count > 1) {

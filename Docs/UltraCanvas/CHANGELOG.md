@@ -1,3 +1,10 @@
+#### 2026-09-20 *0.9.12*
+- **`UltraCanvasFilerWidget`: the picture cards in a folder icon sit 2 px
+  lower and are 4 px taller.** The cards peeking out of a folder in the
+  thumbnail views started a touch too close to the folder's tab; they now
+  begin 2 px further down and the sheet is 4 px taller, which keeps the same
+  proportions at every tile size (`FolderPreviewCardRects`).
+
 #### 2026-09-19 *0.9.11*
 - **GutenPrint printing works, and the framework is still MIT.** GutenPrint
   drives several thousand inkjet and dye-sublimation printers far better than
