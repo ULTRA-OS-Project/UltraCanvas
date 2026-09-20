@@ -57,8 +57,15 @@ enum class OssVerfahren {
 std::string OssVerfahrenToText(OssVerfahren v);
 bool        OssVerfahrenFromText(const std::string& text, OssVerfahren& out);
 
-// A member state's VAT rate, as that state sets it.
+// A member state's VAT rate, as that state sets it, for the span it applies to.
+//
+// **A rate that changes is a new row, never an edit.** The old one keeps its
+// span and stops at the day before the new one starts. Overwriting it would
+// mean a return already filed no longer reproduces the figures it was filed
+// with, and the difference would be invisible: the books, the invoice and the
+// return would simply disagree the next time anyone looked.
 struct EuSteuersatz {
+    int64_t     id = 0;        // 0 for a rate read from the CSV rather than the table
     std::string land;          // ISO 3166-1 alpha-2
     std::string art;           // "standard" | "ermaessigt"
     int         satzPromille = 0;
@@ -75,9 +82,18 @@ struct EuSteuersatz {
 class EuSteuersaetze {
 public:
     bool Laden(const std::string& dateipfad, std::string& fehler);
+
+    // The same set out of the database rather than the shipped file. The table
+    // is the editable copy: the CSV is what a fresh installation starts from.
+    void Setze(std::vector<EuSteuersatz> saetze) { saetze_ = std::move(saetze); }
+    const std::vector<EuSteuersatz>& Alle() const { return saetze_; }
+
     size_t Anzahl() const { return saetze_.size(); }
     // The verified standard rate for a country on a date, or false when there
-    // is none to compare against.
+    // is none to compare against. Where more than one row covers the date, the
+    // one that started latest wins - so a rate entered without closing its
+    // predecessor still resolves to the newer rule rather than to whichever
+    // row happened to be read first.
     bool Standardsatz(const std::string& land, const Date& datum, int& outPromille) const;
     bool Kennt(const std::string& land) const;
 

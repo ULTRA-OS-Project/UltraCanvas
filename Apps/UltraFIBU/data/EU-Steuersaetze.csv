@@ -21,6 +21,19 @@
 # Saetze aendern sich, und zwar Landessache: deshalb eine Datendatei mit
 # Gueltigkeitsdatum und nicht eine Tabelle im Programm.
 #
+# DIESE DATEI IST DER ANFANGSBESTAND, NICHT DER LAUFENDE.
+# Gepflegt werden die Saetze in der Datenbank - "ultrafibu eu-saetze-uebernehmen"
+# holt diese Datei einmal herein, danach im Programm unter Konfiguration ->
+# EU-Steuersaetze bzw. mit "ultrafibu eu-satz-neu". Der Grund ist derselbe wie
+# der fuer das Gueltigkeitsdatum: ein Land aendert seinen Satz mit ein paar
+# Wochen Vorlauf, und wer darauf ein neues Programm abwarten muss, stellt bis
+# dahin jede Rechnung mit dem falschen Satz aus.
+#
+# EIN GEAENDERTER SATZ IST EINE NEUE ZEILE, NIE EINE AENDERUNG.
+# Der bisherige Satz behaelt seinen Zeitraum und endet am Vortag. Wuerde man
+# ihn ueberschreiben, rechnete eine laengst abgegebene Meldung ploetzlich
+# anders - und nichts wuerde zeigen, dass sie es tut.
+#
 # Format: land;art;satz_promille;gueltig_von;gueltig_bis;geprueft;quelle
 #   art  = standard | ermaessigt
 #   satz_promille: 200 = 20 %

@@ -404,6 +404,29 @@ const char* const kSchemaV5 =
     "  benutzer TEXT);"
     "CREATE INDEX ix_meldung ON meldung(mandant_id, art, jahr, zeitraum);";
 
+// The VAT rates of the other member states, as an editable table rather than
+// only the shipped CSV - rates are set by twenty-six parliaments and change on
+// their own timetable, so this has to be maintainable without a new release.
+//
+// **The primary key is (land, art, gueltig_von), and that is the design.** A
+// changed rate is a new row starting on the day it changes; the previous row
+// keeps its span and is closed the day before. Updating a rate in place would
+// silently change what an already-filed return recomputes to - the one thing
+// a set of books must never do.
+const char* const kSchemaV6 =
+    "CREATE TABLE eu_steuersatz("
+    "  id BIGINT PRIMARY KEY,"
+    "  land TEXT NOT NULL,"
+    "  art TEXT NOT NULL,"
+    "  satz_promille INTEGER NOT NULL,"
+    "  gueltig_von TEXT NOT NULL,"
+    "  gueltig_bis TEXT,"
+    "  geprueft INTEGER NOT NULL DEFAULT 0,"
+    "  quelle TEXT,"
+    "  erfasst_am BIGINT DEFAULT 0,"
+    "  benutzer TEXT);"
+    "CREATE UNIQUE INDEX ix_eu_steuersatz ON eu_steuersatz(land, art, gueltig_von);";
+
 } // namespace
 
 // ===== BELEGE UND BUCHUNGEN =====
@@ -710,7 +733,8 @@ static std::vector<UltraDbMigration> MigrationSchritte() {
         { 2, "UltraFIBU Belege und Buchungen", kSchemaV2 },
         { 3, "UltraFIBU DATEV-Importprotokoll", kSchemaV3 },
         { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 },
-        { 5, "UltraFIBU Steuermeldungen", kSchemaV5 }
+        { 5, "UltraFIBU Steuermeldungen", kSchemaV5 },
+        { 6, "UltraFIBU EU-Steuersaetze", kSchemaV6 }
     };
 }
 
@@ -4018,6 +4042,277 @@ bool Store::MeldungFuerZeitraum(int64_t mandantId, const std::string& art, int j
         return false;
     out = MeldungAusZeile(row);
     return true;
+}
+
+// ===== EU-STEUERSAETZE =====
+//
+// The rates the OSS return checks an invoice against, as a table a user can
+// maintain. Twenty-six member states set them, they change on notice measured
+// in weeks, and waiting for a release to enter one is not workable.
+//
+// The rule that shapes everything here: **a rate is added, never edited.** A
+// change is a new row from the day it takes effect, and the row it supersedes
+// keeps its own span, closed the day before. Any other arrangement means a
+// return filed last quarter stops reproducing the figures that were filed -
+// which is not a bug anyone would notice until a member state asked.
+
+namespace {
+
+EuSteuersatz EuSatzAusZeile(const UltraDbRow& row) {
+    EuSteuersatz satz;
+    satz.id           = row["id"].AsInt64();
+    satz.land         = row["land"].AsString();
+    satz.art          = row["art"].AsString();
+    satz.satzPromille = row["satz_promille"].AsInt();
+    Date::TryParseIso(row["gueltig_von"].AsString(), satz.gueltigVon);
+    Date::TryParseIso(row["gueltig_bis"].AsString(), satz.gueltigBis);
+    satz.geprueft     = row["geprueft"].AsInt() != 0;
+    satz.quelle       = row["quelle"].AsString();
+    return satz;
+}
+
+const char* const kEuSatzSpalten =
+    "id, land, art, satz_promille, gueltig_von, gueltig_bis, geprueft, quelle";
+
+// Uppercased ISO country code, for a field a user types by hand.
+std::string LandNormal(const std::string& land) {
+    std::string out;
+    for (const char c : land)
+        if (!std::isspace(static_cast<unsigned char>(c)))
+            out.push_back(static_cast<char>(std::toupper(static_cast<unsigned char>(c))));
+    return out;
+}
+
+} // namespace
+
+std::vector<EuSteuersatz> Store::EuSteuersaetzeAlle() const {
+    std::vector<EuSteuersatz> liste;
+    UltraDbResultSet rs;
+    if (!Query(std::string("SELECT ") + kEuSatzSpalten +
+               " FROM eu_steuersatz ORDER BY land, art, gueltig_von", {}, rs))
+        return liste;
+    for (size_t i = 0; i < rs.Size(); ++i) liste.push_back(EuSatzAusZeile(rs.Row(i)));
+    return liste;
+}
+
+EuSteuersaetze Store::EuSteuersaetzeGeladen() const {
+    EuSteuersaetze saetze;
+    saetze.Setze(EuSteuersaetzeAlle());
+    return saetze;
+}
+
+namespace {
+
+// Does a return that has already been filed cover a day on or after `ab`?
+//
+// This is the question that decides whether a rate may be entered or removed.
+// A rate starting in the future changes nothing that was filed; one starting
+// before the end of a filed period changes what that period recomputes to, and
+// the filed figures are then no longer reproducible from the books.
+//
+// Deliberately generous about which returns count: only eingereicht and
+// bestaetigt, because a draft is not yet a claim about anything.
+bool FilingBetroffen(const std::vector<Store::Meldung>& meldungen, const Date& ab,
+                     std::string& outBeschreibung) {
+    for (const Store::Meldung& m : meldungen) {
+        Date von, bis;
+        bool bekannt = false;
+        if (m.art == "oss" || m.art == "ioss") {
+            bekannt = OssZeitraumGrenzen(m.art == "oss" ? OssVerfahren::Oss : OssVerfahren::Ioss,
+                                         m.jahr, m.zeitraum, von, bis);
+        } else {
+            bekannt = UstvaZeitraumGrenzen(m.jahr, m.zeitraum, von, bis);
+        }
+        // A period whose bounds cannot be worked out is treated as affected.
+        // Guessing "probably fine" about a filed return is the wrong way round.
+        if (!bekannt || !ab.Valid() || !(bis < ab)) {
+            outBeschreibung = m.art + " " + Number(m.jahr) + "/" + m.zeitraum;
+            if (!m.transferticket.empty())
+                outBeschreibung += " (Transferticket " + m.transferticket + ")";
+            return true;
+        }
+    }
+    return false;
+}
+
+} // namespace
+
+// Every return that has actually been filed, across all Mandanten. The rate
+// table is not per-Mandant - a member state's VAT rate is the same for every
+// set of books in the database - so the question "would this change something
+// already filed" has to be asked of all of them.
+std::vector<Store::Meldung> Store::EingereichteMeldungen() const {
+    std::vector<Meldung> liste;
+    UltraDbResultSet rs;
+    if (!Query(std::string("SELECT ") + kMeldungSpalten +
+               " FROM meldung WHERE status IN ('eingereicht','bestaetigt')", {}, rs))
+        return liste;
+    for (const UltraDbRow& row : rs) liste.push_back(MeldungAusZeile(row));
+    return liste;
+}
+
+StoreResult Store::EuSteuersatzSetzen(EuSteuersatz& satz, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuersätze ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    satz.land = LandNormal(satz.land);
+    if (satz.land.size() != 2)
+        return StoreResult::Fail("Das Land ist ein ISO-Kürzel aus zwei Buchstaben, "
+                                 "zum Beispiel AT für Österreich.");
+    if (satz.art.empty()) satz.art = "standard";
+    if (satz.art != "standard" && satz.art != "ermaessigt")
+        return StoreResult::Fail("Die Art ist \"standard\" oder \"ermaessigt\".");
+    if (satz.satzPromille < 0 || satz.satzPromille > 1000)
+        return StoreResult::Fail("Der Steuersatz liegt zwischen 0 und 100 Prozent.");
+    // **The start date is the point of the whole table**, so it is required
+    // rather than defaulted to today: a rate entered a fortnight after it took
+    // effect would otherwise silently apply from the wrong day.
+    if (!satz.gueltigVon.Valid())
+        return StoreResult::Fail("Ein Steuersatz braucht ein Datum, ab dem er gilt.");
+
+    // Same country, same kind, same day: that is an edit of an existing rate
+    // rather than a new one, and an edit is what this table exists to prevent.
+    UltraDbRow doppelt;
+    if (QueryOne(std::string("SELECT ") + kEuSatzSpalten +
+                 " FROM eu_steuersatz WHERE land = ? AND art = ? AND gueltig_von = ?",
+                 { satz.land, satz.art, satz.gueltigVon.ToIso() }, doppelt)) {
+        return StoreResult::Fail(
+            "Für " + satz.land + " (" + satz.art + ") gibt es bereits einen Satz ab " +
+            FormatDateGerman(satz.gueltigVon) + ". Ein geänderter Satz bekommt das Datum, "
+            "ab dem er gilt; ein falsch erfasster wird gelöscht und neu angelegt.");
+    }
+
+    // A filed return must keep recomputing to what was filed.
+    std::string betroffen;
+    if (FilingBetroffen(EingereichteMeldungen(), satz.gueltigVon, betroffen)) {
+        return StoreResult::Fail(
+            "Ab " + FormatDateGerman(satz.gueltigVon) + " ist bereits eine Meldung "
+            "eingereicht (" + betroffen + "). Ein Satz, der diesen Zeitraum verändert, "
+            "würde eine abgegebene Meldung nachträglich anders rechnen lassen. "
+            "Zu korrigieren ist das über eine berichtigte Meldung.");
+    }
+
+    const StoreResult id = NextSequenceValue("eu_steuersatz", satz.id);
+    if (!id) return id;
+
+    const StoreResult r = Exec(
+        "INSERT INTO eu_steuersatz(id, land, art, satz_promille, gueltig_von,"
+        " gueltig_bis, geprueft, quelle, erfasst_am, benutzer)"
+        " VALUES(?,?,?,?,?,?,?,?,?,?)",
+        { satz.id, satz.land, satz.art, satz.satzPromille, satz.gueltigVon.ToIso(),
+          satz.gueltigBis.Valid() ? satz.gueltigBis.ToIso() : std::string(),
+          satz.geprueft ? 1 : 0, satz.quelle, NowSeconds(), akteur.anmeldename },
+        "Der Steuersatz konnte nicht gespeichert werden");
+    if (!r) return r;
+
+    // Close the row this one supersedes: the last one for the same country and
+    // kind that started earlier and is still open. It keeps its own rate and
+    // its own span - it just stops the day before the new one starts.
+    UltraDbRow vorher;
+    if (QueryOne(std::string("SELECT ") + kEuSatzSpalten +
+                 " FROM eu_steuersatz WHERE land = ? AND art = ? AND gueltig_von < ?"
+                 " AND (gueltig_bis IS NULL OR gueltig_bis = '')"
+                 " ORDER BY gueltig_von DESC LIMIT 1",
+                 { satz.land, satz.art, satz.gueltigVon.ToIso() }, vorher)) {
+        const Date bis = satz.gueltigVon.AddDays(-1);
+        const StoreResult zu = Exec(
+            "UPDATE eu_steuersatz SET gueltig_bis = ? WHERE id = ?",
+            { bis.ToIso(), vorher["id"].AsInt64() },
+            "Der bisherige Satz konnte nicht abgeschlossen werden");
+        if (!zu) return zu;
+    }
+
+    return WriteAudit(akteur, "eu_steuersatz", satz.id, "anlegen",
+                      satz.land + " " + satz.art + " " +
+                      Number(satz.satzPromille) + "‰ ab " +
+                      FormatDateGerman(satz.gueltigVon));
+}
+
+StoreResult Store::EuSteuersatzLoeschen(int64_t id, const Akteur& akteur) {
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuersätze ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    UltraDbRow row;
+    if (!QueryOne(std::string("SELECT ") + kEuSatzSpalten +
+                  " FROM eu_steuersatz WHERE id = ?", { id }, row))
+        return StoreResult::Fail("Diesen Steuersatz gibt es nicht.");
+    const EuSteuersatz satz = EuSatzAusZeile(row);
+
+    std::string betroffen;
+    if (FilingBetroffen(EingereichteMeldungen(), satz.gueltigVon, betroffen)) {
+        return StoreResult::Fail(
+            "Der Satz gilt ab " + FormatDateGerman(satz.gueltigVon) +
+            ", und für diesen Zeitraum ist bereits eine Meldung eingereicht (" +
+            betroffen + "). Er gehört zur abgegebenen Meldung und wird nicht gelöscht.");
+    }
+
+    const StoreResult r = Exec("DELETE FROM eu_steuersatz WHERE id = ?", { id },
+                               "Der Steuersatz konnte nicht gelöscht werden");
+    if (!r) return r;
+
+    // The row this one had closed becomes open again - otherwise deleting a
+    // mistyped rate would leave its predecessor ending on a day that no longer
+    // means anything, and the country would have no rate at all from then on.
+    const Date bisVorher = satz.gueltigVon.AddDays(-1);
+    const StoreResult auf = Exec(
+        "UPDATE eu_steuersatz SET gueltig_bis = '' WHERE land = ? AND art = ?"
+        " AND gueltig_bis = ?",
+        { satz.land, satz.art, bisVorher.ToIso() },
+        "Der vorherige Satz konnte nicht wieder geöffnet werden");
+    if (!auf) return auf;
+
+    return WriteAudit(akteur, "eu_steuersatz", id, "loeschen",
+                      satz.land + " " + satz.art + " ab " +
+                      FormatDateGerman(satz.gueltigVon));
+}
+
+StoreResult Store::EuSteuersaetzeAusDatei(const std::string& dateipfad, const Akteur& akteur,
+                                          int& outNeu, int& outBekannt) {
+    outNeu = 0;
+    outBekannt = 0;
+    if (!akteur.Darf(Recht::StammdatenSchreiben))
+        return StoreResult::Fail("Diese Rolle darf keine Steuersätze ändern.");
+    if (connection_.empty()) return StoreResult::Fail("Es ist keine Datenbank geöffnet.");
+
+    EuSteuersaetze datei;
+    std::string fehler;
+    if (!datei.Laden(dateipfad, fehler)) return StoreResult::Fail(fehler);
+
+    for (const EuSteuersatz& ausDatei : datei.Alle()) {
+        UltraDbRow vorhanden;
+        if (QueryOne(std::string("SELECT ") + kEuSatzSpalten +
+                     " FROM eu_steuersatz WHERE land = ? AND art = ? AND gueltig_von = ?",
+                     { ausDatei.land, ausDatei.art, ausDatei.gueltigVon.ToIso() },
+                     vorhanden)) {
+            // **Leave it exactly as it is.** Someone may have verified this rate
+            // by hand since the file shipped; re-seeding must not undo that.
+            ++outBekannt;
+            continue;
+        }
+        int64_t id = 0;
+        const StoreResult seq = NextSequenceValue("eu_steuersatz", id);
+        if (!seq) return seq;
+        const StoreResult r = Exec(
+            "INSERT INTO eu_steuersatz(id, land, art, satz_promille, gueltig_von,"
+            " gueltig_bis, geprueft, quelle, erfasst_am, benutzer)"
+            " VALUES(?,?,?,?,?,?,?,?,?,?)",
+            { id, ausDatei.land, ausDatei.art, ausDatei.satzPromille,
+              ausDatei.gueltigVon.ToIso(),
+              ausDatei.gueltigBis.Valid() ? ausDatei.gueltigBis.ToIso() : std::string(),
+              ausDatei.geprueft ? 1 : 0, ausDatei.quelle, NowSeconds(), akteur.anmeldename },
+            "Der Steuersatz konnte nicht übernommen werden");
+        if (!r) return r;
+        ++outNeu;
+    }
+
+    if (outNeu > 0) {
+        const StoreResult a = WriteAudit(akteur, "eu_steuersatz", 0, "importieren",
+                                         Number(outNeu) + " Sätze aus " + dateipfad);
+        if (!a) return a;
+    }
+    return StoreResult::Ok();
 }
 
 // ===== DATEV-IMPORT =====

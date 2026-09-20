@@ -144,6 +144,7 @@ bool EuSteuersaetze::Laden(const std::string& dateipfad, std::string& fehler) {
 
 bool EuSteuersaetze::Standardsatz(const std::string& land, const Date& datum,
                                   int& outPromille) const {
+    const EuSteuersatz* beste = nullptr;
     for (const EuSteuersatz& satz : saetze_) {
         if (satz.land != land) continue;
         if (satz.art != "standard") continue;
@@ -152,10 +153,15 @@ bool EuSteuersaetze::Standardsatz(const std::string& land, const Date& datum,
         // warning, and then it is worth nothing on the day it is right.
         if (!satz.geprueft) continue;
         if (!satz.GueltigAm(datum)) continue;
-        outPromille = satz.satzPromille;
-        return true;
+        // The newest rule that covers the date. Closing a rate's predecessor is
+        // the editor's job and it does it, but a hand-edited file or an import
+        // can still leave two rows overlapping, and then "the first one in the
+        // list" is not an answer - it depends on the order rows were read.
+        if (beste == nullptr || beste->gueltigVon < satz.gueltigVon) beste = &satz;
     }
-    return false;
+    if (beste == nullptr) return false;
+    outPromille = beste->satzPromille;
+    return true;
 }
 
 bool EuSteuersaetze::Kennt(const std::string& land) const {

@@ -4291,6 +4291,203 @@ static void TestBelegArchiv() {
     }
 }
 
+// ===== EU-STEUERSAETZE IM BESTAND =====
+
+static void TestEuSteuersaetze() {
+    std::printf("EU-Steuersätze (Tabelle und Editor)\n");
+
+    Store store;
+    if (!CheckStore(store.Open("fibu-eusatz", ":memory:"),
+                    "a database for the rate tests opens")) {
+        std::printf("    skipping the EU rate tests\n");
+        return;
+    }
+    Akteur setup;
+    Benutzer admin;
+    admin.anmeldename = "chef";
+    CheckStore(store.SaveBenutzer(admin, setup), "an administrator exists");
+    Akteur akteur;
+    akteur.benutzerId  = admin.id;
+    akteur.anmeldename = admin.anmeldename;
+    akteur.rolle       = admin.rolle;
+
+    Mandant mandant;
+    mandant.name = "Beispiel GmbH";
+    CheckStore(store.SaveMandant(mandant, akteur), "a company exists");
+
+    // --- a rate goes in, and the country code is normalised ---
+    {
+        EuSteuersatz satz;
+        satz.land         = " at ";
+        satz.satzPromille = 200;
+        satz.gueltigVon   = Date(2021, 7, 1);
+        satz.geprueft     = true;
+        satz.quelle       = "Testquelle";
+        CheckStore(store.EuSteuersatzSetzen(satz, akteur), "a rate can be entered");
+        CheckText(satz.land, "AT", "the country code is normalised to ISO form");
+        Check(satz.id != 0, "and it has an id");
+    }
+
+    // --- what the whole table exists for: a change is a NEW ROW ---
+    {
+        EuSteuersatz neu;
+        neu.land         = "AT";
+        neu.satzPromille = 220;
+        neu.gueltigVon   = Date(2027, 1, 1);
+        neu.geprueft     = true;
+        neu.quelle       = "Testquelle";
+        CheckStore(store.EuSteuersatzSetzen(neu, akteur), "a changed rate is entered");
+
+        const std::vector<EuSteuersatz> alle = store.EuSteuersaetzeAlle();
+        CheckInt(static_cast<int64_t>(alle.size()), 2,
+                 "both rates are in the table - a changed rate is added, never an "
+                 "edit, or a return already filed stops reproducing its figures");
+
+        const EuSteuersatz* alt = nullptr;
+        for (const EuSteuersatz& satz : alle)
+            if (satz.gueltigVon == Date(2021, 7, 1)) alt = &satz;
+        Check(alt != nullptr, "the previous rate is still there");
+        if (alt != nullptr) {
+            Check(alt->gueltigBis == Date(2026, 12, 31),
+                  "and it is closed the day before the new one starts, so every "
+                  "day has exactly one rate");
+            CheckInt(alt->satzPromille, 200, "with its own rate untouched");
+        }
+    }
+
+    // --- which rate applies on which day ---
+    {
+        const EuSteuersaetze saetze = store.EuSteuersaetzeGeladen();
+        int satz = 0;
+        Check(saetze.Standardsatz("AT", Date(2026, 6, 15), satz) && satz == 200,
+              "a day before the change gets the old rate");
+        Check(saetze.Standardsatz("AT", Date(2027, 6, 15), satz) && satz == 220,
+              "a day after it gets the new one");
+        Check(!saetze.Standardsatz("AT", Date(2020, 1, 1), satz),
+              "and a day before either was in force gets neither");
+    }
+
+    // --- the same country, kind and day twice is an edit in disguise ---
+    {
+        EuSteuersatz doppelt;
+        doppelt.land         = "AT";
+        doppelt.satzPromille = 210;
+        doppelt.gueltigVon   = Date(2027, 1, 1);
+        const StoreResult r = store.EuSteuersatzSetzen(doppelt, akteur);
+        Check(!r, "the same country, kind and start date is refused");
+        Check(r.fehler.find("bereits einen Satz") != std::string::npos,
+              "and the refusal says why - a changed rate takes the date it "
+              "changed, not the date of the one it replaces");
+    }
+
+    // --- a rate needs a start date, a country and a plausible percentage ---
+    {
+        EuSteuersatz ohneDatum;
+        ohneDatum.land         = "FR";
+        ohneDatum.satzPromille = 200;
+        Check(!store.EuSteuersatzSetzen(ohneDatum, akteur),
+              "a rate without a start date is refused - the date is the point");
+
+        EuSteuersatz falschesLand;
+        falschesLand.land         = "Frankreich";
+        falschesLand.satzPromille = 200;
+        falschesLand.gueltigVon   = Date(2026, 1, 1);
+        Check(!store.EuSteuersatzSetzen(falschesLand, akteur),
+              "a country that is not an ISO code is refused");
+
+        EuSteuersatz zuHoch;
+        zuHoch.land         = "FR";
+        zuHoch.satzPromille = 1200;
+        zuHoch.gueltigVon   = Date(2026, 1, 1);
+        Check(!store.EuSteuersatzSetzen(zuHoch, akteur),
+              "and a rate above 100 % is refused");
+    }
+
+    // --- seeding from the shipped file is additive and never overwrites ---
+    {
+        SchreibeDatei("eu-seed-test.csv",
+                      "land;art;satz_promille;gueltig_von;gueltig_bis;geprueft;quelle\n"
+                      "AT;standard;190;2021-07-01;;nein;\n"
+                      "PT;standard;230;2021-07-01;;nein;\n");
+        int neu = 0, bekannt = 0;
+        CheckStore(store.EuSteuersaetzeAusDatei("eu-seed-test.csv", akteur, neu, bekannt),
+                   "the shipped rates can be taken over");
+        CheckInt(neu, 1, "only the country that was missing is added");
+        CheckInt(bekannt, 1, "the one already there is counted as known");
+
+        // The important half: the file says AT was 19 % from 2021-07-01 and
+        // unverified. The table says 20 % and verified. Re-seeding must not
+        // undo a rate somebody checked by hand.
+        const EuSteuersaetze saetze = store.EuSteuersaetzeGeladen();
+        int satz = 0;
+        Check(saetze.Standardsatz("AT", Date(2026, 6, 15), satz) && satz == 200,
+              "and the rate already in the table is left exactly as it was - "
+              "re-seeding must not undo a rate that was verified by hand");
+        std::remove("eu-seed-test.csv");
+    }
+
+    // --- a rate entered by mistake can go, and its predecessor reopens ---
+    {
+        std::vector<EuSteuersatz> alle = store.EuSteuersaetzeAlle();
+        int64_t neueAt = 0;
+        for (const EuSteuersatz& satz : alle)
+            if (satz.land == "AT" && satz.gueltigVon == Date(2027, 1, 1)) neueAt = satz.id;
+        Check(neueAt != 0, "the 2027 rate is findable");
+
+        CheckStore(store.EuSteuersatzLoeschen(neueAt, akteur),
+                   "a rate entered by mistake can be removed");
+        alle = store.EuSteuersaetzeAlle();
+        const EuSteuersatz* alt = nullptr;
+        for (const EuSteuersatz& satz : alle)
+            if (satz.land == "AT") alt = &satz;
+        Check(alt != nullptr && !alt->gueltigBis.Valid(),
+              "and the rate it had superseded is open again - otherwise deleting "
+              "a typo would leave the country with no rate at all from that day");
+    }
+
+    // --- the rule that outranks all of it: a filed return stays reproducible ---
+    {
+        Store::Meldung meldung;
+        meldung.mandantId = mandant.id;
+        meldung.art       = "oss";
+        meldung.jahr      = 2026;
+        meldung.zeitraum  = "Q2";
+        meldung.status    = Store::MeldungStatus::Eingereicht;
+        meldung.transferticket = "TESTTICKET";
+        CheckStore(store.MeldungEintragen(meldung, akteur), "a return is on file");
+
+        EuSteuersatz rueckwirkend;
+        rueckwirkend.land         = "AT";
+        rueckwirkend.satzPromille = 230;
+        rueckwirkend.gueltigVon   = Date(2026, 1, 1);
+        const StoreResult r = store.EuSteuersatzSetzen(rueckwirkend, akteur);
+        Check(!r, "a rate starting inside a filed period is refused");
+        Check(r.fehler.find("eingereicht") != std::string::npos,
+              "and the refusal names the filing - changing it would make an "
+              "already-submitted return recompute to something else, with "
+              "nothing on screen to show that it had");
+
+        EuSteuersatz spaeter;
+        spaeter.land         = "AT";
+        spaeter.satzPromille = 230;
+        spaeter.gueltigVon   = Date(2026, 7, 1);
+        spaeter.geprueft     = true;
+        CheckStore(store.EuSteuersatzSetzen(spaeter, akteur),
+                   "while a rate starting after that period is fine - the filed "
+                   "return is untouched by it");
+
+        std::vector<EuSteuersatz> alle = store.EuSteuersaetzeAlle();
+        int64_t inPeriode = 0;
+        for (const EuSteuersatz& satz : alle)
+            if (satz.land == "AT" && satz.gueltigVon == Date(2021, 7, 1)) inPeriode = satz.id;
+        Check(inPeriode != 0, "the rate the filed return used is findable");
+        const StoreResult weg = store.EuSteuersatzLoeschen(inPeriode, akteur);
+        Check(!weg, "and it cannot be deleted either, for the same reason");
+    }
+
+    store.Close();
+}
+
 // ===== PDF-BELEGE IN DEN BESTAND =====
 
 static void TestBelegImport() {
@@ -4816,6 +5013,7 @@ int main() {
     TestBelegArchiv();
     TestBelegImport();
     TestOss();
+    TestEuSteuersaetze();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

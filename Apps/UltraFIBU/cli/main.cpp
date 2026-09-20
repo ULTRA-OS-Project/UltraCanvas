@@ -145,6 +145,17 @@ void PrintUsage() {
         "        --ziel <verzeichnis>\n"
         "  lieferschwelle <datei>  Stand der 10.000-EUR-Schwelle (§ 3c UStG)\n"
         "        --jahr <JJJJ>\n"
+        "  eu-saetze <datei>       Umsatzsteuersätze der Mitgliedstaaten\n"
+        "        --land <XX>           nur ein Land\n"
+        "  eu-satz-neu <datei>     Neuen Steuersatz ab einem Datum erfassen\n"
+        "        --land <XX> --satz <prozent> --ab <JJJJ-MM-TT>   (Pflicht)\n"
+        "        --art <standard|ermaessigt>\n"
+        "        --geprueft --quelle \"...\"   erst dann wird verglichen\n"
+        "  eu-satz-loeschen <datei> --id <nr>\n"
+        "                          Falsch erfassten Satz entfernen\n"
+        "  eu-saetze-uebernehmen <datei>\n"
+        "                          Mitgelieferte Sätze in die Datenbank holen\n"
+        "        --datei <pfad>        statt data/EU-Steuersaetze.csv\n"
         "  meldungen <datei>       Abgegebene Meldungen anzeigen\n"
         "  meldung-quittung <datei> <id>\n"
         "                          Transferticket nach dem Upload eintragen\n"
@@ -1631,14 +1642,22 @@ int Oss(int argc, char** argv) {
         return 2;
     }
 
-    EuSteuersaetze saetze;
-    {
+    // The table first: it is the copy a user can edit, and an edited rate that
+    // the return ignored in favour of the shipped file would be worse than no
+    // editor at all. The CSV is the fallback for a database nobody seeded.
+    EuSteuersaetze saetze = store.EuSteuersaetzeGeladen();
+    if (saetze.Anzahl() == 0) {
         const std::string pfad = EuSteuersaetzePfad();
         std::string fehler;
-        if (pfad.empty() || !saetze.Laden(pfad, fehler))
+        if (pfad.empty() || !saetze.Laden(pfad, fehler)) {
             std::printf("Hinweis: die EU-Steuersätze sind nicht geladen (%s); die "
                         "berechneten Sätze können nicht geprüft werden.\n",
                         fehler.empty() ? "Datei nicht gefunden" : fehler.c_str());
+        } else {
+            std::printf("Hinweis: die Sätze stammen aus %s, nicht aus der Datenbank. "
+                        "Mit \"ultrafibu eu-saetze-uebernehmen\" werden sie "
+                        "übernommen und dann im Programm pflegbar.\n", pfad.c_str());
+        }
     }
 
     const OssBerechnung b = BerechneOss(verfahren, mandant.id, jahr, zeitraum, von, bis,
@@ -2117,6 +2136,167 @@ int DatevImporte(int argc, char** argv) {
     return 0;
 }
 
+// ===== EU-STEUERSAETZE =====
+
+// "20" -> 200, "8,1" -> 81, "19.0" -> 190. Integer arithmetic throughout: a
+// tax rate read through a double comes back a fraction off, and that fraction
+// reaches every invoice the rate is used on.
+bool ProzentNachPromille(const std::string& text, int& out) {
+    std::string ganz, bruch;
+    bool nachKomma = false;
+    for (const char c : text) {
+        if (c == ' ' || c == '%') continue;
+        if ((c == ',' || c == '.') && !nachKomma) { nachKomma = true; continue; }
+        if (c < '0' || c > '9') return false;
+        (nachKomma ? bruch : ganz).push_back(c);
+    }
+    if (ganz.empty() && bruch.empty()) return false;
+    if (bruch.size() > 1) return false;   // per-mille holds exactly one decimal
+    const long prozent = ganz.empty() ? 0 : std::atol(ganz.c_str());
+    const long zehntel = bruch.empty() ? 0 : (bruch[0] - '0');
+    const long promille = prozent * 10 + zehntel;
+    if (promille < 0 || promille > 1000) return false;
+    out = static_cast<int>(promille);
+    return true;
+}
+
+void ZeigeSatz(const EuSteuersatz& satz) {
+    char prozent[16];
+    std::snprintf(prozent, sizeof(prozent), "%d,%d %%",
+                  satz.satzPromille / 10, satz.satzPromille % 10);
+    const std::string bis = satz.gueltigBis.Valid()
+                                ? "bis " + FormatDateGerman(satz.gueltigBis)
+                                : std::string("offen");
+    std::printf("%6lld  %-4s %-11s %8s  %-12s %-16s %-10s %s\n",
+                static_cast<long long>(satz.id), satz.land.c_str(), satz.art.c_str(),
+                prozent, FormatDateGerman(satz.gueltigVon).c_str(), bis.c_str(),
+                satz.geprueft ? "geprüft" : "ungeprüft",
+                satz.quelle.c_str());
+}
+
+int EuSaetze(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+
+    const std::vector<EuSteuersatz> alle = store.EuSteuersaetzeAlle();
+    if (alle.empty()) {
+        std::printf("In dieser Datei ist noch kein EU-Steuersatz erfasst.\n"
+                    "Mit \"ultrafibu eu-saetze-uebernehmen <datei>\" die "
+                    "mitgelieferten Sätze übernehmen.\n");
+        return 0;
+    }
+    const std::string land = Option(argc, argv, "--land");
+    std::printf("%6s  %-4s %-11s %8s  %-12s %-16s %-10s %s\n",
+                "Id", "Land", "Art", "Satz", "gilt ab", "gilt bis", "Prüfung", "Quelle");
+    int gezeigt = 0;
+    for (const EuSteuersatz& satz : alle) {
+        if (!land.empty() && satz.land != land) continue;
+        ZeigeSatz(satz);
+        ++gezeigt;
+    }
+    // Which rates actually get used for a comparison, said plainly: an
+    // unverified rate is carried but never compared against, and a list that
+    // does not say so reads like a list of rates in force.
+    int geprueft = 0;
+    for (const EuSteuersatz& satz : alle) if (satz.geprueft) ++geprueft;
+    std::printf("\n%d Satz/Sätze angezeigt, %d von %d insgesamt sind geprüft und "
+                "werden zum Vergleich herangezogen.\n",
+                gezeigt, geprueft, static_cast<int>(alle.size()));
+    return 0;
+}
+
+int EuSatzNeu(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+
+    EuSteuersatz satz;
+    satz.land = Option(argc, argv, "--land");
+    satz.art  = Option(argc, argv, "--art");
+    if (satz.art.empty()) satz.art = "standard";
+    satz.quelle = Option(argc, argv, "--quelle");
+    satz.geprueft = HasOption(argc, argv, "--geprueft");
+
+    const std::string satzText = Option(argc, argv, "--satz");
+    const std::string abText   = Option(argc, argv, "--ab");
+    if (satz.land.empty() || satzText.empty() || abText.empty()) {
+        std::printf("Fehler: --land, --satz und --ab sind erforderlich.\n"
+                    "  ultrafibu eu-satz-neu <datei> --land AT --satz 20 "
+                    "--ab 2026-01-01 [--art ermaessigt] [--geprueft --quelle \"...\"]\n");
+        return 2;
+    }
+    // The rate is typed as a percentage the way it is written on an invoice
+    // ("20", "8,1", "8.1") and kept in per-mille, so a rate with one decimal -
+    // which several member states have - is exact. Parsed digit by digit
+    // rather than through a float: 8.1 is not representable, and a tax rate
+    // that is one ten-thousandth off is a rounding difference in every
+    // invoice that uses it.
+    if (!ProzentNachPromille(satzText, satz.satzPromille)) {
+        std::printf("Fehler: \"%s\" ist kein Steuersatz zwischen 0 und 100 "
+                    "(höchstens eine Nachkommastelle).\n", satzText.c_str());
+        return 2;
+    }
+    if (!Date::TryParseIso(abText, satz.gueltigVon)) {
+        std::printf("Fehler: \"%s\" ist kein Datum (JJJJ-MM-TT).\n", abText.c_str());
+        return 2;
+    }
+    if (!satz.geprueft)
+        std::printf("Hinweis: ohne --geprueft wird der Satz gespeichert, aber NICHT "
+                    "zum Vergleich herangezogen. Ein geratener Satz, der eine richtige "
+                    "Rechnung als falsch meldet, ist schlimmer als kein Satz.\n");
+
+    const StoreResult r = store.EuSteuersatzSetzen(satz, AkteurFor(store));
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+
+    std::printf("Steuersatz angelegt:\n");
+    ZeigeSatz(satz);
+    // What just happened to the predecessor, because it is the part that is
+    // easy to miss and the part that keeps old returns reproducible.
+    for (const EuSteuersatz& andere : store.EuSteuersaetzeAlle()) {
+        if (andere.id == satz.id || andere.land != satz.land || andere.art != satz.art)
+            continue;
+        if (andere.gueltigBis.Valid() && andere.gueltigBis == satz.gueltigVon.AddDays(-1)) {
+            std::printf("Der bisherige Satz gilt weiter bis %s und bleibt erhalten - "
+                        "eine bereits abgegebene Meldung rechnet damit unverändert.\n",
+                        FormatDateGerman(andere.gueltigBis).c_str());
+        }
+    }
+    return 0;
+}
+
+int EuSatzLoeschen(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+    const int64_t id = std::atoll(Option(argc, argv, "--id").c_str());
+    if (id == 0) { std::printf("Fehler: --id <nummer> ist erforderlich.\n"); return 2; }
+    const StoreResult r = store.EuSteuersatzLoeschen(id, AkteurFor(store));
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("Steuersatz %lld gelöscht.\n", static_cast<long long>(id));
+    return 0;
+}
+
+int EuSaetzeUebernehmen(int argc, char** argv) {
+    Store store;
+    if (!OpenStore(store, Positional(argc, argv, 0))) return 1;
+
+    std::string pfad = Option(argc, argv, "--datei");
+    if (pfad.empty()) pfad = EuSteuersaetzePfad();
+    if (pfad.empty()) {
+        std::printf("Fehler: EU-Steuersaetze.csv wurde nicht gefunden "
+                    "(mit --datei <pfad> angeben).\n");
+        return 2;
+    }
+    int neu = 0, bekannt = 0;
+    const StoreResult r = store.EuSteuersaetzeAusDatei(pfad, AkteurFor(store), neu, bekannt);
+    if (!r) { std::printf("Fehler: %s\n", r.fehler.c_str()); return 1; }
+    std::printf("%s: %d neu übernommen, %d waren bereits erfasst und bleiben "
+                "unverändert.\n", pfad.c_str(), neu, bekannt);
+    if (neu > 0)
+        std::printf("Keiner der mitgelieferten Sätze ist geprüft; sie werden erst "
+                    "zum Vergleich herangezogen, wenn sie gegen eine amtliche Quelle "
+                    "geprüft und mit \"eu-satz-neu ... --geprueft\" bestätigt wurden.\n");
+    return 0;
+}
+
 } // namespace
 
 int main(int argc, char** argv) {
@@ -2151,6 +2331,10 @@ int main(int argc, char** argv) {
     if (befehl == "beleg-import")     return BelegImport(argc, argv);
     if (befehl == "oss")              return Oss(argc, argv);
     if (befehl == "lieferschwelle")   return Lieferschwelle(argc, argv);
+    if (befehl == "eu-saetze")            return EuSaetze(argc, argv);
+    if (befehl == "eu-satz-neu")          return EuSatzNeu(argc, argv);
+    if (befehl == "eu-satz-loeschen")     return EuSatzLoeschen(argc, argv);
+    if (befehl == "eu-saetze-uebernehmen") return EuSaetzeUebernehmen(argc, argv);
     if (befehl == "ustva")            return Ustva(argc, argv);
     if (befehl == "ustva-xml")        return UstvaXml(argc, argv);
     if (befehl == "meldungen")        return Meldungen(argc, argv);

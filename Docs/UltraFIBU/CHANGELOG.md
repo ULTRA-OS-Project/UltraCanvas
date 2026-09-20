@@ -1,3 +1,45 @@
+#### 2026-09-20 *0.12.0*
+- **EU-Steuersaetze als Tabelle mit Editor.** Schema v6 (`eu_steuersatz`),
+  `Store::EuSteuersatzSetzen/Loeschen/AusDatei`, ein eigener Reiter unter
+  Konfiguration -> EU-Steuersaetze mit dem Knopf "Neuen Steuersatz setzen",
+  dazu `ultrafibu eu-saetze`, `eu-satz-neu`, `eu-satz-loeschen` und
+  `eu-saetze-uebernehmen`. 32 weitere Pruefungen (1219 insgesamt).
+- **Warum ueberhaupt eine Tabelle.** Sechsundzwanzig Parlamente setzen diese
+  Saetze, mit ein paar Wochen Vorlauf. Wer auf ein neues Programm warten
+  muss, um eine Aenderung einzutragen, stellt bis dahin jede Rechnung mit dem
+  falschen Satz aus. `data/EU-Steuersaetze.csv` ist jetzt der
+  Anfangsbestand; gepflegt wird in der Datenbank.
+- **Ein geaenderter Satz ist eine neue Zeile, nie eine Aenderung.** Der
+  Schluessel ist (Land, Art, gueltig ab). Der bisherige Satz behaelt seinen
+  Zeitraum und wird am Vortag geschlossen, so dass jeder Tag genau einen Satz
+  hat. Wuerde man ihn ueberschreiben, rechnete eine laengst abgegebene
+  Meldung ploetzlich anders - und nichts auf dem Bildschirm wuerde zeigen,
+  dass sie es tut. Deshalb hat der Dialog auch kein "Satz bearbeiten": es
+  gibt nur Hinzufuegen und, fuer einen Tippfehler, Loeschen.
+- **Was eingereicht ist, bleibt nachrechenbar.** Ein Satz, dessen Beginn in
+  einen Zeitraum faellt, fuer den bereits eine Meldung abgegeben wurde, wird
+  abgelehnt und die Ablehnung nennt die Meldung samt Transferticket. Dasselbe
+  gilt fuers Loeschen. Zu korrigieren ist so etwas ueber eine berichtigte
+  Meldung, nicht ueber die Stammdaten.
+- **Loeschen macht den Vorgaenger wieder auf.** Sonst haette das Land ab dem
+  Tag, an dem der geloeschte Satz begann, gar keinen mehr - ein stiller
+  Ausfall, der erst bei der naechsten Meldung auffiele.
+- **Uebernehmen ueberschreibt nichts.** Wer einen Satz von Hand geprueft hat,
+  verliert das nicht dadurch, dass die mitgelieferte Datei noch einmal
+  eingelesen wird.
+- **Ohne Quelle keine Pruefung.** Der Dialog macht die Quelle zu dem, was den
+  Satz ueberhaupt verwendbar macht: ohne sie wird er gespeichert, aber nicht
+  zum Vergleich herangezogen - und die Fusszeile sagt bei jedem Aufbau, wie
+  viele der angezeigten Saetze das betrifft.
+- **Der Satz wird ziffernweise gelesen, nicht ueber ein double.** 8,1 % ist
+  als Gleitkommazahl nicht darstellbar, und ein Steuersatz, der ein
+  Zehntausendstel danebenliegt, ist eine Rundungsdifferenz in jeder Rechnung,
+  die ihn verwendet.
+- **Die OSS-Meldung liest jetzt die Tabelle.** Die CSV bleibt Rueckfall fuer
+  eine Datenbank, in die nie uebernommen wurde - und sagt dann, dass sie es
+  ist. Ein gepflegter Satz, den die Meldung zugunsten der Auslieferungsdatei
+  ignoriert, waere schlimmer als gar kein Editor.
+
 #### 2026-09-20 *0.11.0*
 - **Mehrbenutzerbetrieb: derselbe Bestand auf einem Server.**
   `UltraCanvas/core/UltraDatabase/UltraDatabasePostgresDriver.cpp` und

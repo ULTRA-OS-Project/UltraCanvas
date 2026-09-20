@@ -26,6 +26,7 @@
 #include "UltraCanvasTabbedContainer.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasLabel.h"
+#include "UltraCanvasMenu.h"
 
 #include "UltraFIBUTabelle.h"
 
@@ -54,6 +55,7 @@ private:
     void JournalFuellen();
     void SaldenFuellen();
     void PartnerFuellen();
+    void EuSaetzeFuellen();
 
     void KopfAktualisieren();
     void Melden(const std::string& text);
@@ -66,6 +68,26 @@ private:
     void BelegeHochladen(const std::vector<std::string>& pfade);
     void BelegDialogOeffnen();
     void GewaehltenBelegDrucken();
+
+    // ---- Konfiguration: EU-Steuersätze ------------------------------------
+    //
+    // The one screen in this window that writes master data, and the reason it
+    // is here rather than in the CLI alone: a member state changes its VAT rate
+    // with a few weeks' notice, and a bookkeeper who cannot enter that without
+    // a new release will enter the wrong rate on every invoice until one
+    // arrives.
+    //
+    // **The dialog can only add.** There is no "edit this rate", because a rate
+    // that changed is a new row from the day it changed - overwriting one would
+    // silently change what an already-filed return recomputes to. The store
+    // enforces that; this asks for the three things a new row needs.
+    void EuSatzDialogOeffnen();
+    void EuSatzAnlegen(const std::string& land, const std::string& satz,
+                       const std::string& abDatum, bool geprueft,
+                       const std::string& quelle);
+    void GewaehltenEuSatzLoeschen();
+    void EuSaetzeUebernehmen();
+    void KonfigurationOeffnen();
 
     Store        store_;
     Mandant      mandant_;
@@ -89,11 +111,20 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasButton>          buchenKnopf_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>          druckenKnopf_;
     std::shared_ptr<UltraCanvas::UltraCanvasButton>          hochladenKnopf_;
+    std::shared_ptr<UltraCanvas::UltraCanvasMenu>            menue_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>          satzNeuKnopf_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton>          satzLoeschenKnopf_;
 
     TabellenPanel belege_;
     TabellenPanel journal_;
     TabellenPanel salden_;
     TabellenPanel partner_;
+    TabellenPanel euSaetze_;
+
+    std::vector<EuSteuersatz> geladeneEuSaetze_;
+    int64_t                   gewaehlterEuSatz_ = 0;
+    // Which tab the EU rate screen sits on, so the Config menu can select it.
+    int                       euSaetzeReiter_ = -1;
 };
 
 } // namespace UltraFIBU

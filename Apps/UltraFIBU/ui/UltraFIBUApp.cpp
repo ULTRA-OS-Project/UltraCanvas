@@ -21,7 +21,8 @@ using namespace UltraCanvas;
 namespace {
 
 constexpr float kFensterB   = 1180.0f;
-constexpr float kFensterH   = 760.0f;
+constexpr float kFensterH   = 790.0f;
+constexpr float kMenueH     = 30.0f;
 constexpr float kKopfH      = 52.0f;
 constexpr float kLeisteH    = 34.0f;
 constexpr float kStatusH    = 24.0f;
@@ -38,6 +39,26 @@ TabellenZelle DatumsZelle(const Date& datum) {
 TabellenZelle BetragsZelle(const Money& betrag) {
     if (!betrag.Valid()) return TabellenZelle(std::string());
     return TabellenZelle(betrag.ToString(), betrag.Minor());
+}
+
+// "20" -> 200, "8,1" -> 81. Integer arithmetic: a tax rate read through a
+// double comes back a fraction off, and that fraction reaches every invoice.
+bool ProzentNachPromille(const std::string& text, int& out) {
+    std::string ganz, bruch;
+    bool nachKomma = false;
+    for (const char c : text) {
+        if (c == ' ' || c == '%') continue;
+        if ((c == ',' || c == '.') && !nachKomma) { nachKomma = true; continue; }
+        if (c < '0' || c > '9') return false;
+        (nachKomma ? bruch : ganz).push_back(c);
+    }
+    if (ganz.empty() && bruch.empty()) return false;
+    if (bruch.size() > 1) return false;
+    const long promille = (ganz.empty() ? 0 : std::atol(ganz.c_str())) * 10 +
+                          (bruch.empty() ? 0 : (bruch[0] - '0'));
+    if (promille < 0 || promille > 1000) return false;
+    out = static_cast<int>(promille);
+    return true;
 }
 
 std::string Zahl(int64_t wert) {
@@ -96,23 +117,46 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
     config.height = static_cast<int>(kFensterH);
     fenster_ = CreateWindow(config);
 
-    kopf_ = CreateLabel("fibuKopf", 12, 8, kFensterB - 24, kKopfH - 12, "");
+    // The configuration menu. It is a menu rather than another button because
+    // what goes in it is setup rather than daily work: a rate a member state
+    // changed, the shipped rates taken over once. Putting those next to
+    // "Beleg buchen" would invite a mis-click into master data.
+    menue_ = CreateMenu("fibuMenue", 0, 0, kFensterB, kMenueH);
+    menue_->SetMenuType(MenuType::Menubar);
+    {
+        MenuItemData konfiguration;
+        konfiguration.type  = MenuItemType::Submenu;
+        konfiguration.label = "Konfiguration";
+        konfiguration.subItems = {
+            MenuItemData::Action("EU-Steuersätze ...",
+                                 [this]() { KonfigurationOeffnen(); }),
+            MenuItemData::Action("Neuen Steuersatz setzen ...",
+                                 [this]() { EuSatzDialogOeffnen(); }),
+            MenuItemData::Separator(),
+            MenuItemData::Action("Mitgelieferte Sätze übernehmen",
+                                 [this]() { EuSaetzeUebernehmen(); }),
+        };
+        menue_->AddItem(konfiguration);
+    }
+    fenster_->AddChild(menue_);
+
+    kopf_ = CreateLabel("fibuKopf", 12, kMenueH + 4, kFensterB - 24, kKopfH - 12, "");
     fenster_->AddChild(kopf_);
 
     // The two actions sit above the screens rather than inside the Belege
     // panel, so their enabled state is one place and the panel stays the
     // reusable thing it is.
-    buchenKnopf_ = CreateButton("fibuBuchen", 12, kKopfH, 150, kLeisteH - 6,
+    buchenKnopf_ = CreateButton("fibuBuchen", 12, kMenueH + kKopfH, 150, kLeisteH - 6,
                                 "Beleg buchen");
     buchenKnopf_->SetOnClick([this]() { GewaehltenBelegBuchen(); });
     fenster_->AddChild(buchenKnopf_);
 
-    druckenKnopf_ = CreateButton("fibuDrucken", 170, kKopfH, 170, kLeisteH - 6,
+    druckenKnopf_ = CreateButton("fibuDrucken", 170, kMenueH + kKopfH, 170, kLeisteH - 6,
                                  "Rechnung als PDF");
     druckenKnopf_->SetOnClick([this]() { GewaehltenBelegDrucken(); });
     fenster_->AddChild(druckenKnopf_);
 
-    hochladenKnopf_ = CreateButton("fibuHochladen", 348, kKopfH, 170, kLeisteH - 6,
+    hochladenKnopf_ = CreateButton("fibuHochladen", 348, kMenueH + kKopfH, 170, kLeisteH - 6,
                                    "Beleg hochladen");
     hochladenKnopf_->SetOnClick([this]() { BelegDialogOeffnen(); });
     fenster_->AddChild(hochladenKnopf_);
@@ -131,7 +175,7 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
         },
         { UltraCanvas::UCEventType::Drop });
 
-    const float reiterY = kKopfH + kLeisteH;
+    const float reiterY = kMenueH + kKopfH + kLeisteH;
     const float reiterH = kFensterH - reiterY - kStatusH;
     reiter_ = CreateTabbedContainer("fibuReiter", 0, reiterY, kFensterB, reiterH);
 
@@ -150,6 +194,27 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
     reiter_->AddTab("Partner",
                     partner_.Bauen("fibuPartner", 0, 0, seiteB, seiteH,
                                    "Name, Ort oder USt-IdNr. suchen ..."));
+
+    // The rate editor. Its two buttons sit on the page rather than in the
+    // window's toolbar: they belong to this screen, and a "Steuersatz löschen"
+    // button visible while the Belege list is showing would be an invitation.
+    {
+        auto seite = CreateContainer("fibuEuSeite", 0, 0, seiteB, seiteH);
+        satzNeuKnopf_ = CreateButton("fibuSatzNeu", 4, 4, 230, kLeisteH - 6,
+                                     "Neuen Steuersatz setzen");
+        satzNeuKnopf_->SetOnClick([this]() { EuSatzDialogOeffnen(); });
+        seite->AddChild(satzNeuKnopf_);
+
+        satzLoeschenKnopf_ = CreateButton("fibuSatzWeg", 242, 4, 190, kLeisteH - 6,
+                                          "Steuersatz löschen");
+        satzLoeschenKnopf_->SetOnClick([this]() { GewaehltenEuSatzLoeschen(); });
+        seite->AddChild(satzLoeschenKnopf_);
+
+        seite->AddChild(euSaetze_.Bauen("fibuEuSaetze", 0, kLeisteH, seiteB,
+                                        seiteH - kLeisteH,
+                                        "Land, Satz oder Quelle suchen ..."));
+        euSaetzeReiter_ = reiter_->AddTab("EU-Steuersätze", seite);
+    }
     fenster_->AddChild(reiter_);
 
     status_ = CreateLabel("fibuStatus", 12, kFensterH - kStatusH,
@@ -158,7 +223,8 @@ std::shared_ptr<UltraCanvasWindow> FibuApp::FensterBauen() {
 
     // The selection carries a record id, never a row number: the proxy has
     // re-ordered the rows by the time this fires.
-    belege_.onAuswahlGeaendert = [this](int64_t id) { gewaehlterBeleg_ = id; };
+    belege_.onAuswahlGeaendert  = [this](int64_t id) { gewaehlterBeleg_ = id; };
+    euSaetze_.onAuswahlGeaendert = [this](int64_t id) { gewaehlterEuSatz_ = id; };
     belege_.onZeileAktiviert   = [this](int64_t id) {
         gewaehlterBeleg_ = id;
         Beleg beleg;
@@ -209,6 +275,7 @@ void FibuApp::Aktualisieren() {
     JournalFuellen();
     SaldenFuellen();
     PartnerFuellen();
+    EuSaetzeFuellen();
 }
 
 void FibuApp::BelegeFuellen() {
@@ -456,6 +523,60 @@ void FibuApp::PartnerFuellen() {
     });
 }
 
+void FibuApp::EuSaetzeFuellen() {
+    euSaetze_.SetSpalten({
+        ListColumnDef("Land", 70, TextAlignment::Left),
+        ListColumnDef("Art", 110, TextAlignment::Left),
+        ListColumnDef("Satz", 90, TextAlignment::Right),
+        ListColumnDef("gilt ab", 110, TextAlignment::Left),
+        ListColumnDef("gilt bis", 110, TextAlignment::Left),
+        ListColumnDef("Prüfung", 110, TextAlignment::Left),
+        ListColumnDef("Quelle", 380, TextAlignment::Left),
+    });
+
+    geladeneEuSaetze_ = store_.EuSteuersaetzeAlle();
+    std::vector<TabellenZeile> zeilen;
+    zeilen.reserve(geladeneEuSaetze_.size());
+    for (const EuSteuersatz& satz : geladeneEuSaetze_) {
+        char prozent[16];
+        std::snprintf(prozent, sizeof(prozent), "%d,%d %%",
+                      satz.satzPromille / 10, satz.satzPromille % 10);
+        TabellenZeile zeile;
+        zeile.id = satz.id;
+        zeile.zellen = {
+            TabellenZelle(satz.land),
+            TabellenZelle(satz.art),
+            // Sorted by the rate itself, not by its text: "8,1 %" before
+            // "20,0 %" is the ordering a string comparison would give.
+            TabellenZelle(prozent, satz.satzPromille),
+            DatumsZelle(satz.gueltigVon),
+            satz.gueltigBis.Valid() ? DatumsZelle(satz.gueltigBis)
+                                    : TabellenZelle(std::string("offen")),
+            // The word that decides whether the rate is used at all.
+            TabellenZelle(satz.geprueft ? "geprüft" : "ungeprüft"),
+            TabellenZelle(satz.quelle),
+        };
+        zeilen.push_back(std::move(zeile));
+    }
+    euSaetze_.SetZeilen(std::move(zeilen));
+    euSaetze_.SetFussFunktion([this](const std::vector<int64_t>& ids) {
+        int geprueft = 0;
+        for (const int64_t id : ids)
+            for (const EuSteuersatz& satz : geladeneEuSaetze_)
+                if (satz.id == id && satz.geprueft) { ++geprueft; break; }
+        std::string text = Zahl(static_cast<int64_t>(ids.size())) + " Steuersatz/Sätze";
+        if (ids.size() != geladeneEuSaetze_.size())
+            text += " von " + Zahl(static_cast<int64_t>(geladeneEuSaetze_.size())) +
+                    " (gefiltert)";
+        // Said on every refresh, because it is the thing that decides whether
+        // the OSS return compares anything at all - and an unverified rate in
+        // a table looks exactly like a verified one until it is spelled out.
+        text += ", davon " + Zahl(geprueft) + " geprüft und damit im Vergleich "
+                "der OSS-Meldung verwendet";
+        return text;
+    });
+}
+
 // ===== ACTIONS =====
 
 void FibuApp::GewaehltenBelegBuchen() {
@@ -570,6 +691,162 @@ void FibuApp::GewaehltenBelegDrucken() {
         return;
     }
     Melden("\"" + ziel + "\" geschrieben.");
+}
+
+// ===== KONFIGURATION: EU-STEUERSAETZE =====
+
+void FibuApp::KonfigurationOeffnen() {
+    if (reiter_ && euSaetzeReiter_ >= 0) reiter_->SetActiveTab(euSaetzeReiter_);
+    EuSaetzeFuellen();
+    if (geladeneEuSaetze_.empty()) {
+        Melden("Noch kein EU-Steuersatz erfasst - \"Mitgelieferte Sätze übernehmen\" "
+               "holt die Normalsätze der Mitgliedstaaten herein.");
+    } else {
+        Melden(Zahl(static_cast<int64_t>(geladeneEuSaetze_.size())) +
+               " Steuersätze. Ein geänderter Satz wird mit \"Neuen Steuersatz setzen\" "
+               "ab seinem Datum erfasst - der bisherige bleibt erhalten.");
+    }
+}
+
+void FibuApp::EuSatzDialogOeffnen() {
+    DialogConfig config;
+    config.title  = "Neuen Steuersatz setzen";
+    config.width  = 520;
+    config.height = 400;
+    auto dialog = UltraCanvasDialogManager::CreateDialog(config);
+    if (!dialog) { Melden("Der Dialog konnte nicht geöffnet werden."); return; }
+
+    dialog->SetDialogType(DialogType::Question);
+    dialog->SetIconVisible(false);
+    dialog->SetMessage("Ab welchem Tag gilt welcher Satz?");
+    // Spelled out in the dialog, because it is the rule that makes the date
+    // field matter and the one a user would otherwise work around by editing
+    // the existing row - which this deliberately does not offer.
+    dialog->SetDetails("Ein geänderter Satz wird **zusätzlich** erfasst, nicht "
+                       "überschrieben: der bisherige gilt bis zum Vortag weiter, "
+                       "damit eine bereits abgegebene Meldung unverändert "
+                       "nachrechenbar bleibt.");
+    // Custom buttons rather than OKCancel: the framework's stock labels are
+    // English, and the rest of this window is not. They still carry the OK and
+    // Cancel results, so the handler below is unchanged.
+    dialog->SetDialogButtons(DialogButtons::NoButtons);
+    dialog->AddCustomButton("Steuersatz setzen", DialogResult::OK);
+    dialog->AddCustomButton("Abbrechen", DialogResult::Cancel);
+
+    auto landFeld = CreateTextInput("euLand", 0, 0, 480, 28);
+    landFeld->SetPlaceholder("Land, z. B. AT");
+    dialog->AddDialogElement(landFeld);
+
+    auto satzFeld = CreateTextInput("euSatz", 0, 0, 480, 28);
+    satzFeld->SetPlaceholder("Steuersatz in Prozent, z. B. 20 oder 8,1");
+    dialog->AddDialogElement(satzFeld);
+
+    auto abFeld = CreateTextInput("euAb", 0, 0, 480, 28);
+    abFeld->SetPlaceholder("gilt ab (TT.MM.JJJJ)");
+    dialog->AddDialogElement(abFeld);
+
+    auto quelleFeld = CreateTextInput("euQuelle", 0, 0, 480, 28);
+    quelleFeld->SetPlaceholder("Quelle - nur mit Quelle wird der Satz verglichen");
+    dialog->AddDialogElement(quelleFeld);
+
+    UltraCanvasDialogManager::ShowDialog(
+        dialog,
+        [this, landFeld, satzFeld, abFeld, quelleFeld](DialogResult ergebnis) {
+            if (ergebnis != DialogResult::OK) return;
+            const std::string quelle = quelleFeld->GetText();
+            // **A source is what makes a rate usable.** An unverified rate is
+            // stored but never compared against, so requiring the source here
+            // is the difference between entering a rate and entering a note -
+            // and the user finds that out now rather than at the next return.
+            EuSatzAnlegen(landFeld->GetText(), satzFeld->GetText(), abFeld->GetText(),
+                          !quelle.empty(), quelle);
+        },
+        fenster_.get());
+}
+
+void FibuApp::EuSatzAnlegen(const std::string& land, const std::string& satzText,
+                            const std::string& abDatum, bool geprueft,
+                            const std::string& quelle) {
+    EuSteuersatz satz;
+    satz.land     = land;
+    satz.art      = "standard";
+    satz.quelle   = quelle;
+    satz.geprueft = geprueft;
+
+    if (!ProzentNachPromille(satzText, satz.satzPromille)) {
+        Melden("\"" + satzText + "\" ist kein Steuersatz zwischen 0 und 100 "
+               "(höchstens eine Nachkommastelle).");
+        return;
+    }
+    // German input first, ISO second: a bookkeeper types 01.01.2027, and a
+    // pasted 2027-01-01 should not be rejected for it.
+    if (!TryParseDateGerman(abDatum, satz.gueltigVon) &&
+        !Date::TryParseIso(abDatum, satz.gueltigVon)) {
+        Melden("\"" + abDatum + "\" ist kein Datum (TT.MM.JJJJ).");
+        return;
+    }
+
+    const StoreResult r = store_.EuSteuersatzSetzen(satz, akteur_);
+    if (!r) { Melden(r.fehler); return; }
+
+    EuSaetzeFuellen();
+    char prozent[16];
+    std::snprintf(prozent, sizeof(prozent), "%d,%d %%",
+                  satz.satzPromille / 10, satz.satzPromille % 10);
+    std::string text = satz.land + ": " + prozent + " ab " +
+                       FormatDateGerman(satz.gueltigVon) + " erfasst.";
+    if (!geprueft)
+        text += " Ohne Quelle gilt der Satz als ungeprüft und wird NICHT zum "
+                "Vergleich herangezogen.";
+    Melden(text);
+}
+
+void FibuApp::GewaehltenEuSatzLoeschen() {
+    const int64_t id = euSaetze_.AusgewaehlteId();
+    if (id == 0) { Melden("Kein Steuersatz ausgewählt."); return; }
+
+    const EuSteuersatz* satz = nullptr;
+    for (const EuSteuersatz& kandidat : geladeneEuSaetze_)
+        if (kandidat.id == id) { satz = &kandidat; break; }
+    if (satz == nullptr) { Melden("Diesen Steuersatz gibt es nicht mehr."); return; }
+
+    // Asked rather than done, because deleting the wrong row here silently
+    // changes what the next OSS return compares against.
+    const std::string frage =
+        "Steuersatz " + satz->land + " (" + satz->art + ") ab " +
+        FormatDateGerman(satz->gueltigVon) + " löschen?\n\n"
+        "Ein geänderter Satz wird nicht gelöscht, sondern ab seinem Datum neu "
+        "erfasst. Löschen ist für einen Satz, der so nie gegolten hat.";
+    UltraCanvasDialogManager::ShowConfirmation(
+        frage, "Steuersatz löschen",
+        [this, id](bool bestaetigt) {
+            if (!bestaetigt) return;
+            const StoreResult r = store_.EuSteuersatzLoeschen(id, akteur_);
+            if (!r) { Melden(r.fehler); return; }
+            EuSaetzeFuellen();
+            Melden("Steuersatz gelöscht. Ein Satz, den er abgelöst hatte, gilt "
+                   "wieder unbefristet.");
+        },
+        fenster_.get());
+}
+
+void FibuApp::EuSaetzeUebernehmen() {
+    const std::string pfad = EuSteuersaetzePfad();
+    if (pfad.empty()) {
+        Melden("EU-Steuersaetze.csv wurde nicht gefunden.");
+        return;
+    }
+    int neu = 0, bekannt = 0;
+    const StoreResult r = store_.EuSteuersaetzeAusDatei(pfad, akteur_, neu, bekannt);
+    if (!r) { Melden(r.fehler); return; }
+    EuSaetzeFuellen();
+    std::string text = Zahl(neu) + " Sätze übernommen, " + Zahl(bekannt) +
+                       " waren bereits erfasst und bleiben unverändert.";
+    if (neu > 0)
+        text += " Keiner davon ist geprüft: sie werden erst verglichen, wenn sie "
+                "gegen eine amtliche Quelle bestätigt und mit Quelle neu erfasst "
+                "wurden.";
+    Melden(text);
 }
 
 } // namespace UltraFIBU

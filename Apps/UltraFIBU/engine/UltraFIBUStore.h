@@ -36,6 +36,7 @@
 #include "UltraFIBUDatev.h"
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNrOnline.h"
+#include "UltraFIBUOss.h"
 #include "UltraFIBUUstva.h"
 
 #include <UltraDatabase/UltraDatabaseCore.h>
@@ -81,7 +82,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert that the database matches the
     // code without a literal that has to be chased.
-    static constexpr int kSchemaVersion = 5;
+    static constexpr int kSchemaVersion = 6;
 
     Store() = default;
     ~Store() = default;
@@ -530,6 +531,47 @@ public:
     // second one a correction rather than a duplicate.
     bool MeldungFuerZeitraum(int64_t mandantId, const std::string& art, int jahr,
                              const std::string& zeitraum, Meldung& out) const;
+
+    // ---- EU-Steuersaetze (One-Stop-Shop) ------------------------------------
+    //
+    // The rates the OSS return checks an invoice against. They live in a table
+    // rather than only in `data/EU-Steuersaetze.csv` because twenty-six member
+    // states change them on their own timetable, and a user must be able to
+    // enter the change the week it is announced rather than wait for a release.
+
+    // Every return already filed, in any Mandant. A member state's VAT rate is
+    // not per-Mandant, so whether a new rate would disturb a filed return is a
+    // question about all of them.
+    std::vector<Meldung> EingereichteMeldungen() const;
+
+    // Every rate, ordered by country, kind and start date.
+    std::vector<EuSteuersatz> EuSteuersaetzeAlle() const;
+
+    // The same, ready for BerechneOss.
+    EuSteuersaetze EuSteuersaetzeGeladen() const;
+
+    // Enter a rate. **This never updates an existing one.** A rate that changed
+    // is a new row with its own `gueltigVon`; the row it supersedes is closed
+    // the day before, keeping its own span. Editing a rate in place would
+    // change what an already-filed return recomputes to, and nothing would
+    // show that it had.
+    //
+    // Refused when:
+    //  - the same country, kind and start date already exist (that is an edit
+    //    wearing a new coat: delete the row or pick the real date),
+    //  - a return that has already been filed covers a period the new row
+    //    would change. Its figures were filed; they are history, not data.
+    StoreResult EuSteuersatzSetzen(EuSteuersatz& satz, const Akteur& akteur);
+
+    // Remove a rate entered by mistake. Refused once a filed return depends on
+    // it, for the same reason.
+    StoreResult EuSteuersatzLoeschen(int64_t id, const Akteur& akteur);
+
+    // Seed the table from the shipped CSV. Adds what is missing and leaves
+    // every existing row alone, so running it again after a rate was edited by
+    // hand does not undo the edit.
+    StoreResult EuSteuersaetzeAusDatei(const std::string& dateipfad, const Akteur& akteur,
+                                       int& outNeu, int& outBekannt);
 
     // ---- Journal -----------------------------------------------------------
 
