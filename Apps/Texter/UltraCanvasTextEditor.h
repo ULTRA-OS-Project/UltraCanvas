@@ -477,6 +477,8 @@ namespace UltraCanvas {
         // Menu handler: switches dictionary, and switches checking on with it.
         void OnSpellDictionarySelected(const std::string& languageCode);
         std::vector<MenuItemData> BuildSpellingMenuItems();
+        // Rows, columns, merge and split for the table the caret is in.
+        std::vector<MenuItemData> BuildTableMenuItems();
         std::vector<MenuItemData> BuildDictionaryMenuItems();
 
         // Every open editor window, so the singleton spell service can reach
