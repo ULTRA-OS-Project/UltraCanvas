@@ -9,15 +9,19 @@
 //
 // Self-contained: no test framework, no UI stack, links only NetworkMonitor.
 //
-// Version: 0.2.0
+// Version: 0.3.0
 // Last Modified: 2026-09-19
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitor.h"
 #include "NetworkMonitor/NetworkMonitorAddress.h"
 #include "NetworkMonitor/NetworkMonitorProcfs.h"
+#include "NetworkMonitor/NetworkMonitorStore.h"
 
 #include <cstdio>
 #include <cstring>
+#include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -437,6 +441,167 @@ static void TestLiveSnapshot() {
     CHECK(selfGroup, "the roll-up has a group for this process");
 }
 
+// ===== STORE =====
+
+static void TestStore() {
+    std::printf("Activity store\n");
+    NetworkMonitorStoreHandle store = NetworkMonitorInvalidStore;
+    NetworkMonitorStoreOptions options;
+    options.path = ":memory:";
+    options.retentionDays = 7;
+    const NetworkMonitorResult opened = NetworkMonitor_OpenStore(options, store);
+
+    if (!NetworkMonitor_StoreAvailable()) {
+        CHECK(!opened && opened.code == NetworkMonitorResultCode::NotSupported,
+              "without UltraDatabase, opening a store reports NotSupported");
+        std::printf("  skipped: no UltraDatabase in this build\n");
+        return;
+    }
+    CHECK(opened && store != NetworkMonitorInvalidStore, "an in-memory store opens");
+    if (!opened) return;
+
+    NetworkMonitorStoreOptions bad;
+    NetworkMonitorStoreHandle none = NetworkMonitorInvalidStore;
+    CHECK(!NetworkMonitor_OpenStore(bad, none) && none == NetworkMonitorInvalidStore,
+          "a store without a path is refused");
+    std::vector<RecordedFlow> flows;
+    CHECK(NetworkMonitor_QueryFlows(12345, ActivityQuery(), flows).code ==
+              NetworkMonitorResultCode::InvalidArgument,
+          "a bad handle is refused");
+
+    const int64_t t0 = 1'800'000'000;   // some Tuesday
+    std::vector<NetworkConnection> snapshot;
+    snapshot.push_back(MakeConnection(100, "firefox", "1.1.1.1", NetworkConnectionState::Established));
+    snapshot[0].bytesSent = 1000; snapshot[0].bytesReceived = 5000; snapshot[0].socketInode = 77;
+    snapshot.push_back(MakeConnection(200, "sshd", "0.0.0.0", NetworkConnectionState::Listening));
+    snapshot[1].localPort = 22; snapshot[1].remotePort = 0;
+    snapshot.push_back(MakeConnection(0, "", "9.9.9.9", NetworkConnectionState::Established));
+
+    CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0), "a snapshot records");
+    snapshot[0].bytesSent = 2000; snapshot[0].bytesReceived = 9000;
+    CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0 + 1), "a second snapshot a second later records");
+
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows), "the flows read back");
+    CHECK(flows.size() == 3, "three connections seen twice are three flows, not six");
+    const RecordedFlow* firefox = nullptr;
+    const RecordedFlow* orphan = nullptr;
+    for (const auto& f : flows) {
+        if (f.process && f.process->displayName == "firefox") firefox = &f;
+        if (!f.process) orphan = &f;
+    }
+    CHECK(firefox != nullptr, "the browser's flow is there");
+    if (firefox) {
+        CHECK(firefox->snapshots == 2 && firefox->firstSeen == t0 && firefox->lastSeen == t0 + 1,
+              "seen in both snapshots, with first and last sighting");
+        CHECK(firefox->bytesSent && *firefox->bytesSent == 2000 &&
+              firefox->bytesReceived && *firefox->bytesReceived == 9000,
+              "and the latest counters");
+        CHECK(firefox->process->pid == 100 && firefox->RemoteEndpoint() == "1.1.1.1:443",
+              "with its process and peer");
+    }
+    CHECK(orphan != nullptr && orphan->snapshots == 2 && !orphan->bytesSent,
+          "an unattributed socket is a flow too, without counters");
+
+    // The same 5-tuple long after the last sighting is a new conversation.
+    CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0 + 1 + kFlowContinuationSeconds + 1),
+          "a snapshot past the continuation window records");
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows.size() == 6,
+          "and starts new flows rather than extending the old ones");
+    CHECK(flows.front().lastSeen > flows.back().lastSeen, "newest first");
+
+    ActivityQuery byName;
+    byName.processName = "sshd";
+    CHECK(NetworkMonitor_QueryFlows(store, byName, flows) && flows.size() == 2 &&
+          flows[0].lastState == NetworkConnectionState::Listening,
+          "filtering by process name");
+    ActivityQuery noListeners;
+    noListeners.includeListening = false;
+    CHECK(NetworkMonitor_QueryFlows(store, noListeners, flows) && flows.size() == 4,
+          "leaving listeners out");
+    ActivityQuery byText;
+    byText.text = "9.9.9";
+    CHECK(NetworkMonitor_QueryFlows(store, byText, flows) && flows.size() == 2 &&
+          flows[0].remoteAddress == "9.9.9.9", "a substring over the addresses");
+    ActivityQuery byPid;
+    byPid.pid = 100;
+    CHECK(NetworkMonitor_QueryFlows(store, byPid, flows) && flows.size() == 2, "filtering by PID");
+    ActivityQuery recent;
+    recent.since = t0 + 100;
+    CHECK(NetworkMonitor_QueryFlows(store, recent, flows) && flows.size() == 3,
+          "a since-time keeps only the later sightings");
+    ActivityQuery limited;
+    limited.limit = 2;
+    CHECK(NetworkMonitor_QueryFlows(store, limited, flows) && flows.size() == 2, "the limit holds");
+
+    NetworkMonitorStoreStats stats;
+    CHECK(NetworkMonitor_StoreStats(store, stats) && stats.flows == 6 && stats.snapshots == 3 &&
+          stats.dailyTotals == 0 && stats.oldestFlow == t0,
+          "the stats count flows and snapshots");
+
+    // CSV export: a header and one line per flow, RFC 4180 quoting.
+    const std::filesystem::path csv = std::filesystem::temp_directory_path() / "networkmonitor-test.csv";
+    int64_t written = 0;
+    CHECK(NetworkMonitor_ExportFlowsCsv(store, ActivityQuery(), csv.string(), &written) && written == 6,
+          "six flows export to CSV");
+    {
+        std::ifstream file(csv);
+        std::string line;
+        int lines = 0;
+        bool header = false;
+        bool isoTime = false;
+        while (std::getline(file, line)) {
+            if (lines == 0) header = line.rfind("first_seen,last_seen,", 0) == 0;
+            if (line.find("T") != std::string::npos && line.find("Z,") != std::string::npos) isoTime = true;
+            ++lines;
+        }
+        CHECK(lines == 7 && header, "with a header and a line per flow");
+        CHECK(isoTime, "and UTC ISO-8601 times");
+        std::filesystem::remove(csv);
+    }
+
+    // Roll-up: the first two sightings' flows (last seen t0+1) are older
+    // than t0+60; the third snapshot's are not.
+    int64_t rolled = 0;
+    CHECK(NetworkMonitor_RollUp(store, t0 + 60, &rolled) && rolled == 3,
+          "rolling up drops exactly the old flows");
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows.size() == 3,
+          "leaving the recent ones");
+    std::vector<DailyProcessTotal> totals;
+    CHECK(NetworkMonitor_QueryDailyTotals(store, ActivityQuery(), totals) && totals.size() == 3,
+          "into one daily total per process and peer");
+    const DailyProcessTotal* browserDay = nullptr;
+    for (const auto& d : totals) if (d.processName == "firefox") browserDay = &d;
+    CHECK(browserDay && browserDay->flows == 1 && browserDay->countedFlows == 1 &&
+          browserDay->bytesSent == 2000 && browserDay->bytesReceived == 9000 &&
+          browserDay->day == (t0 / 86400) * 86400 && browserDay->remoteAddress == "1.1.1.1",
+          "the browser's day carries its flow and its counters");
+    bool orphanDay = false;
+    for (const auto& d : totals) if (d.processName == "(unattributed)" && d.countedFlows == 0) orphanDay = true;
+    CHECK(orphanDay, "the unattributed flow is a day total with no counted bytes");
+
+    // A second roll-up onto the same day accumulates.
+    CHECK(NetworkMonitor_RollUp(store, t0 + 1000, &rolled) && rolled == 3,
+          "the remaining flows roll up too");
+    CHECK(NetworkMonitor_QueryDailyTotals(store, ActivityQuery(), totals) && totals.size() == 3,
+          "onto the same three day rows");
+    for (const auto& d : totals) if (d.processName == "firefox") browserDay = &d;
+    CHECK(browserDay && browserDay->flows == 2 && browserDay->bytesSent == 4000,
+          "which now count both flows and both byte totals");
+
+    // Retention: with a 7-day window and 'now' far in the future, everything goes.
+    CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0 + 5000), "one more snapshot records");
+    CHECK(NetworkMonitor_ApplyRetention(store, t0 + 400LL * 86400), "retention applies");
+    CHECK(NetworkMonitor_StoreStats(store, stats) && stats.flows == 0 && stats.dailyTotals == 0 &&
+          stats.snapshots == 0, "and a store older than twelve windows is empty");
+
+    CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0), "recording works again");
+    CHECK(NetworkMonitor_Purge(store), "purging");
+    CHECK(NetworkMonitor_StoreStats(store, stats) && stats.flows == 0, "leaves nothing");
+    CHECK(NetworkMonitor_CloseStore(store), "the store closes");
+    CHECK(NetworkMonitor_CloseStore(store).code == NetworkMonitorResultCode::InvalidArgument,
+          "and closing it twice is refused");
+}
+
 int main() {
     std::printf("=== NetworkMonitor tests ===\n");
     TestAddressFormatting();
@@ -446,6 +611,7 @@ int main() {
     TestSummarize();
     TestFormatting();
     TestLiveSnapshot();
+    TestStore();
     std::printf("=== %s ===\n", g_failures == 0 ? "all tests passed" : "FAILURES");
     return g_failures == 0 ? 0 : 1;
 }

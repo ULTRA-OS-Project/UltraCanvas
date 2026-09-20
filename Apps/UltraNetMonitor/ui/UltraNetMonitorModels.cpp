@@ -1,10 +1,11 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorModels.cpp
-// Version: 0.2.0
+// Version: 0.3.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorModels.h"
 
 #include "UltraCanvasHardwareInfo.h"
 
+#include <ctime>
 #include <optional>
 #include <string>
 
@@ -22,6 +23,21 @@ std::string ByteText(const std::optional<uint64_t>& bytes) {
 ListDataValue ByteSortKey(const std::optional<uint64_t>& bytes) {
     if (!bytes) return {};
     return static_cast<float>(*bytes);
+}
+
+// Local time, to the second, for the history columns.
+std::string LocalTime(int64_t seconds) {
+    if (seconds <= 0) return "\u2014";
+    const std::time_t when = static_cast<std::time_t>(seconds);
+    std::tm local{};
+#if defined(_WIN32)
+    localtime_s(&local, &when);
+#else
+    localtime_r(&when, &local);
+#endif
+    char buffer[32];
+    std::strftime(buffer, sizeof buffer, "%Y-%m-%d %H:%M:%S", &local);
+    return buffer;
 }
 
 std::string ProcessName(const std::optional<ProcessIdentity>& process) {
@@ -190,6 +206,79 @@ void ProcessListModel::Replace(std::vector<ProcessTrafficSummary> rows) {
 }
 
 const ProcessTrafficSummary* ProcessListModel::At(int row) const {
+    if (row < 0 || row >= static_cast<int>(rows_.size())) return nullptr;
+    return &rows_[static_cast<std::size_t>(row)];
+}
+
+// ===== RECORDED FLOWS =====
+
+int FlowListModel::GetRowCount() const { return static_cast<int>(rows_.size()); }
+int FlowListModel::GetColumnCount() const { return ColumnCount; }
+
+ListDataValue FlowListModel::GetData(const ListIndex& index, ListDataRole role) const {
+    const RecordedFlow* f = At(index.row);
+    if (!f) return {};
+    const bool unbound = f->lastState == NetworkConnectionState::Listening ||
+                         f->lastState == NetworkConnectionState::Unconnected;
+    switch (role) {
+        case ListDataRole::DisplayRole:
+            switch (index.column) {
+                case Application: return ProcessName(f->process);
+                case Pid:         return f->process ? std::to_string(f->process->pid) : std::string("-");
+                case Protocol:    return std::string(NetworkMonitor_TransportName(f->transport)) +
+                                         (f->family == NetworkAddressFamily::IPv6 ? "6" : "");
+                case Local:       return f->LocalEndpoint();
+                case Remote:      return unbound ? std::string("*") : f->RemoteEndpoint();
+                case State:       return std::string(NetworkMonitor_StateName(f->lastState));
+                case FirstSeen:   return LocalTime(f->firstSeen);
+                case LastSeen:    return LocalTime(f->lastSeen);
+                case Seen:        return std::to_string(f->snapshots);
+                case Sent:        return ByteText(f->bytesSent);
+                case Received:    return ByteText(f->bytesReceived);
+                default:          return {};
+            }
+        case ListDataRole::SortRole:
+            switch (index.column) {
+                case Pid:       return static_cast<int>(f->process ? f->process->pid : 0);
+                case FirstSeen: return static_cast<float>(f->firstSeen);
+                case LastSeen:  return static_cast<float>(f->lastSeen);
+                case Seen:      return f->snapshots;
+                case Sent:      return ByteSortKey(f->bytesSent);
+                case Received:  return ByteSortKey(f->bytesReceived);
+                default:        return {};
+            }
+        case ListDataRole::ToolTipRole:
+            if (index.column == Application || index.column == Pid) return ProcessTooltip(f->process);
+            return {};
+        default:
+            return {};
+    }
+}
+
+ListColumnDef FlowListModel::GetColumnDef(int column) const {
+    switch (column) {
+        case Application: return ListColumnDef("Application", 140);
+        case Pid:         return ListColumnDef("PID", 60, TextAlignment::Right);
+        case Protocol:    return ListColumnDef("Proto", 56);
+        case Local:       return ListColumnDef("Local", 150);
+        case Remote:      return ListColumnDef("Remote", 180);
+        case State:       return ListColumnDef("Last state", 100);
+        case FirstSeen:   return ListColumnDef("First seen", 140);
+        case LastSeen:    return ListColumnDef("Last seen", 140);
+        case Seen:        return ListColumnDef("Seen", 50, TextAlignment::Right,
+                                               "How many snapshots saw this flow");
+        case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right);
+        case Received:    return ListColumnDef("Received", 80, TextAlignment::Right);
+        default:          return ListColumnDef("", 60);
+    }
+}
+
+void FlowListModel::Replace(std::vector<RecordedFlow> rows) {
+    rows_ = std::move(rows);
+    NotifyDataChanged();
+}
+
+const RecordedFlow* FlowListModel::At(int row) const {
     if (row < 0 || row >= static_cast<int>(rows_.size())) return nullptr;
     return &rows_[static_cast<std::size_t>(row)];
 }
