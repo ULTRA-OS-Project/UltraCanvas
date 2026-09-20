@@ -5,7 +5,11 @@
   `ARTCREATOR_VERSION`. The `"0.0.0"` fallbacks in `main.cpp` and
   `ArtCreatorWindow.cpp` are gone; a build without the definition now
   fails at compile time instead of an About dialog and `--version`
-  reporting 0.0.0. No functional change otherwise.
+  reporting 0.0.0.
+- **`--help` and `--version` answer on stdout.** They wrote to the
+  diagnostic stream, which a Release build keeps off unless
+  `ULTRACANVAS_DEBUG_LOG` is set, so a shell saw nothing. Unknown arguments
+  go to stderr.
 
 #### 2026-09-19 *0.3.0*
 - **Depth, phase 5 of the proposal (first slice).** Four tools after

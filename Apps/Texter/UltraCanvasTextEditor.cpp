@@ -39,10 +39,12 @@
 #include "UltraCanvasUtils.h"
 #include "UltraCanvasUtilsUtf8.h"
 
-// Defined by the build from the first line of Docs/Texter/CHANGELOG.md — see
-// cmake/UltraCanvasVersion.cmake. The fallback only applies outside CMake.
+// ULTRATEXTER_VERSION comes from the build alone: CMake reads the first line
+// of Docs/Texter/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
+// as a compile definition. No fallback here, so a build that lost it
+// fails instead of reporting a wrong number.
 #ifndef ULTRATEXTER_VERSION
-#define ULTRATEXTER_VERSION "0.0-dev"
+#error "ULTRATEXTER_VERSION is not defined: build through CMake, which reads it from Docs/Texter/CHANGELOG.md"
 #endif
 
 namespace UltraCanvas {

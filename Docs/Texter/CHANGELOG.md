@@ -1,3 +1,12 @@
+#### 2026-09-20 *1.47*
+- **One version number, one place.** This changelog's first line is now the
+  only place Texter's version lives: the build reads it
+  (`cmake/UltraCanvasVersion.cmake`) and passes it to the sources. The
+  `"0.0-dev"` fallback in `UltraCanvasTextEditor.cpp` is gone; a build
+  without the definition now fails at compile time instead of reporting
+  0.0-dev. `--version` printed a literal `2.0.0` of its own (`main.cpp`);
+  it prints this number now.
+
 #### 2026-09-17 *1.46*
 - **Pictures inside a line of text stay there.** A logo in the middle of a
   sentence, an icon in a heading or a signature beside a sign-off used to be
