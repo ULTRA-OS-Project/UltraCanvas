@@ -1,3 +1,11 @@
+#### 2026-09-20 *0.4*
+- **One version number, one place.** This changelog's first line is now the
+  only place UltraNetMonitor's version lives: the build reads it
+  (`cmake/UltraCanvasVersion.cmake`) and passes it to the sources. The
+  `"0.0-dev"` fallbacks in `main.cpp` and `ui/UltraNetMonitorWindow.cpp` are
+  gone; a build without the definition now fails at compile time instead of
+  reporting 0.0-dev. No functional change otherwise.
+
 #### 2026-09-19 *0.3*
 - **It remembers.** A *Record* toggle on the toolbar writes every snapshot
   into the activity store (NetworkMonitor 0.3, framework 0.9.13) at the

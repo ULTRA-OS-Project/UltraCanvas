@@ -8,8 +8,15 @@
   or column the cursor is in (named, so "Delete Row 2 of 5" says which), merge
   with the cell to the right or below, and split a merged cell back up. Merging
   keeps the text from both cells.
-- Anything that cannot be done right now is greyed rather than hidden: Split
+- Anything that cannot be done right now is greyed's first line is now the
+  only place Texter's version lives: the build rea rather than hidden: Split
   Cell where nothing is merged, Merge With Cell Right in the last column.
+- **One version number, one place.** This changelogds it
+  (`cmake/UltraCanvasVersion.cmake`) and passes it to the sources. The
+  `"0.0-dev"` fallback in `UltraCanvasTextEditor.cpp` is gone; a build
+  without the definition now fails at compile time instead of reporting
+  0.0-dev. `--version` printed a literal `2.0.0` of its own (`main.cpp`);
+  it prints this number now.
 
 #### 2026-09-17 *1.46*
 - **Pictures inside a line of text stay there.** A logo in the middle of a

@@ -1,3 +1,11 @@
+#### 2026-09-20 *0.55*
+- **One version number, one place.** This changelog's first line is now the
+  only place UltraCleaner's version lives: the build reads it
+  (`cmake/UltraCanvasVersion.cmake`) and passes it to the sources. The
+  `"0.0-dev"` fallbacks in `main.cpp` and `ui/UltraCleanerWindow.cpp` are
+  gone; a build without the definition now fails at compile time instead of
+  reporting 0.0-dev. No functional change otherwise.
+
 #### 2026-09-19 *0.54*
 - **UltraCleaner has an icon.** The trash can with the green disc and red
   cross (`media/appicon/UltraCleaner.svg`) is drawn everywhere the app is
