@@ -34,6 +34,8 @@ enum class NetworkMonitorResultCode {
     NotSupported,      // no backend on this platform / build
     PermissionDenied,  // the OS refused the socket table itself
     IoError,           // the table exists but could not be read
+    InvalidArgument,   // a bad handle or option
+    StorageError,      // the activity store refused (NetworkMonitorStore.h)
     Unknown
 };
 

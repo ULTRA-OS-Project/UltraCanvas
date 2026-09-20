@@ -427,6 +427,134 @@ int main() {
         Check(pastTip.a == 0, "nothing past the straight arrow's tip (39 beyond the end)");
         Check(spotEdge.a == 255 && beforeSpot.a == 0, "the Xara spot is centred on the start with radius 18");
 
+        // ----- phase 5: ClipView, contour, blend, mould, bevel -----
+
+        // ClipView: the keyhole clips the contents and is not drawn itself.
+        VectorDocument cvdoc;
+        auto cvlayer = MakeDoc(cvdoc, 200, 200);
+        auto clip = std::make_shared<VectorClipView>();
+        auto keyhole = MakeRect(50, 50, 100, 100);
+        keyhole->Style.Fill = Color(0, 0, 255, 255);
+        auto content = MakeRect(50, 50, 50, 100);
+        content->Style.Fill = Color(255, 0, 0, 255);
+        clip->AddChild(keyhole);
+        clip->AddChild(content);
+        cvlayer->AddChild(clip);
+        Rgba cvIn = RenderAndSample(cvdoc, 200, 200, 75, 100);
+        Rgba cvKeyholeOnly = RenderAndSample(cvdoc, 200, 200, 125, 100);
+        Rgba cvOut = RenderAndSample(cvdoc, 200, 200, 20, 20);
+        Check(cvIn.r == 255 && cvIn.a == 255, "ClipView draws its contents inside the keyhole");
+        Check(cvKeyholeOnly.a == 0, "the keyhole shape itself is not drawn");
+        Check(cvOut.a == 0, "nothing outside the keyhole");
+        const Rect2Dd cvb = clip->GetBoundingBox();
+        Check(std::fabs(cvb.x - 50) < 0.01 && std::fabs(cvb.width - 100) < 0.01, "a ClipView's bounds are its keyhole's");
+
+        // Contour: outward rings behind the object run from its colour to
+        // the contour colour; inward rings lie over it.
+        VectorDocument codoc;
+        auto colayer = MakeDoc(codoc, 200, 200);
+        auto cobox = MakeRect(80, 80, 40, 40);
+        cobox->Style.Fill = Color(255, 0, 0, 255);
+        ContourEffect contour;
+        contour.Steps = 2;
+        contour.Width = 20;
+        contour.Colour = Color(0, 0, 255, 255);
+        cobox->Effects.Contour = contour;
+        colayer->AddChild(cobox);
+        Rgba coObj = RenderAndSample(codoc, 200, 200, 100, 100);
+        Rgba coRing1 = RenderAndSample(codoc, 200, 200, 75, 100);
+        Rgba coRing2 = RenderAndSample(codoc, 200, 200, 65, 100);
+        Rgba coPast = RenderAndSample(codoc, 200, 200, 55, 100);
+        Check(coObj.r == 255 && coObj.b == 0, "the contoured object draws over its rings");
+        Check(coRing1.a == 255 && coRing1.r > 100 && coRing1.r < 160 && coRing1.b > 100 && coRing1.b < 160, "the first outward ring is half way to the contour colour");
+        Check(coRing2.a == 255 && coRing2.b == 255 && coRing2.r == 0, "the outermost ring has the contour colour");
+        Check(coPast.a == 0, "nothing beyond the contour width");
+        contour.Width = -10;
+        cobox->Effects.Contour = contour;
+        Rgba coInner = RenderAndSample(codoc, 200, 200, 100, 100);
+        Rgba coEdge = RenderAndSample(codoc, 200, 200, 83, 100);
+        Check(coInner.b == 255 && coInner.r == 0, "an inward contour's innermost ring lies over the middle of the object");
+        Check(coEdge.r == 255 && coEdge.b == 0, "the object's own colour shows between its edge and the first inset");
+
+        // Blend: three steps between a red and a blue circle put a purple
+        // one half way.
+        VectorDocument bldoc;
+        auto bllayer = MakeDoc(bldoc, 200, 200);
+        auto blend = std::make_shared<VectorBlend>();
+        blend->Steps = 3;
+        auto ca = std::make_shared<VectorCircle>();
+        ca->Center = Point2Dd(40, 100); ca->Radius = 15; ca->Style.Fill = Color(255, 0, 0, 255);
+        auto cb = std::make_shared<VectorCircle>();
+        cb->Center = Point2Dd(160, 100); cb->Radius = 15; cb->Style.Fill = Color(0, 0, 255, 255);
+        blend->AddChild(ca);
+        blend->AddChild(cb);
+        bllayer->AddChild(blend);
+        Rgba blMid = RenderAndSample(bldoc, 200, 200, 100, 100);
+        Rgba blGap = RenderAndSample(bldoc, 200, 200, 100, 60);
+        Rgba blEnd = RenderAndSample(bldoc, 200, 200, 160, 100);
+        Check(blMid.a == 255 && blMid.r > 100 && blMid.r < 160 && blMid.b > 100 && blMid.b < 160, "the middle blend step is half way in colour and position");
+        Check(blGap.a == 0, "the blend draws nothing off the steps");
+        Check(blEnd.b == 255, "the blend's end object draws as it is");
+        blend->Steps = 0;
+        Rgba blNone = RenderAndSample(bldoc, 200, 200, 100, 100);
+        Check(blNone.a == 0, "no steps, no intermediates");
+
+        // Mould: a square warped into a trapezoid by a perspective mould.
+        VectorDocument modoc;
+        auto molayer = MakeDoc(modoc, 200, 200);
+        auto mould = std::make_shared<VectorMould>();
+        mould->Kind = MouldKind::Perspective;
+        auto square = MakeRect(0, 0, 100, 100);
+        square->Style.Fill = Color(0, 200, 0, 255);
+        mould->AddChild(square);
+        {
+            PathData shape;
+            auto cmd = [&](PathCommandType t, std::initializer_list<float> v) { PathCommand c; c.Type = t; c.Parameters = v; shape.commands.push_back(c); };
+            cmd(PathCommandType::MoveTo, {50, 20});
+            cmd(PathCommandType::LineTo, {150, 20});
+            cmd(PathCommandType::LineTo, {190, 180});
+            cmd(PathCommandType::LineTo, {10, 180});
+            cmd(PathCommandType::ClosePath, {});
+            shape.Closed = true;
+            mould->Shape = shape;
+        }
+        molayer->AddChild(mould);
+        Rgba moMid = RenderAndSample(modoc, 200, 200, 100, 100);
+        Rgba moOutside = RenderAndSample(modoc, 200, 200, 20, 40);
+        Rgba moCorner = RenderAndSample(modoc, 200, 200, 20, 170);
+        Check(moMid.g == 200 && moMid.a == 255, "the moulded square fills the middle of the shape");
+        Check(moOutside.a == 0, "nothing where the unwarped square would have been");
+        Check(moCorner.g == 200, "the square reaches the shape's wider bottom corners");
+        const Rect2Dd mob = mould->GetBoundingBox();
+        Check(std::fabs(mob.x - 10) < 0.01 && std::fabs(mob.width - 180) < 0.01, "a mould's bounds are its shape's");
+        mould->Kind = MouldKind::Envelope;
+        mould->Shape = VectorMould::IdentityShape(MouldKind::Envelope, Rect2Dd(0, 0, 100, 100));
+        Rgba moIdentity = RenderAndSample(modoc, 200, 200, 50, 50);
+        Rgba moIdentityOut = RenderAndSample(modoc, 200, 200, 150, 150);
+        Check(moIdentity.g == 200 && moIdentityOut.a == 0, "an identity envelope leaves the square where it was");
+
+        // Bevel: lit from the upper left, the left rim brightens and the
+        // right rim darkens; the middle keeps its colour.
+        VectorDocument bvdoc;
+        auto bvlayer = MakeDoc(bvdoc, 200, 200);
+        auto bvbox = MakeRect(50, 50, 100, 100);
+        bvbox->Style.Fill = Color(128, 128, 128, 255);
+        BevelEffect bevel;
+        bevel.Indent = 20;
+        bevel.LightAngle = 135;
+        bevel.Contrast = 0.8f;
+        bvbox->Effects.Bevel = bevel;
+        bvlayer->AddChild(bvbox);
+        Rgba bvLeft = RenderAndSample(bvdoc, 200, 200, 56, 100);
+        Rgba bvRight = RenderAndSample(bvdoc, 200, 200, 144, 100);
+        Rgba bvMid = RenderAndSample(bvdoc, 200, 200, 100, 100);
+        Rgba bvOut = RenderAndSample(bvdoc, 200, 200, 30, 100);
+        Check(bvLeft.r > 140, "the bevel's left rim faces the light and brightens");
+        Check(bvRight.r < 116, "its right rim faces away and darkens");
+        Check(bvMid.r == 128, "the flat middle keeps its colour");
+        Check(bvOut.a == 0, "an inner bevel draws nothing outside the shape");
+        std::printf("      (bevel left %d, right %d)\n", bvLeft.r, bvRight.r);
+
         // A width profile: thick at the start, vanishing at the end.
         VectorDocument wdoc;
         auto wlayer = MakeDoc(wdoc, 200, 100);

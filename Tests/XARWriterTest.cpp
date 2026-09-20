@@ -245,6 +245,85 @@ std::shared_ptr<VectorDocument> BuildTestDocument() {
     brushed->Style.Stroke = brushStroke;
     layer->AddChild(brushed);
 
+    // ----- phase 5: the depth containers and effects -----
+    // 13. A ClipView: a circle keyhole over two stripes.
+    auto clip = std::make_shared<VectorClipView>();
+    clip->Id = "clip";
+    auto keyhole = std::make_shared<VectorCircle>();
+    keyhole->Center = Point2Dd(240, 270);
+    keyhole->Radius = 20;
+    keyhole->Style.Fill = Color(0, 0, 0, 255);
+    clip->AddChild(keyhole);
+    for (int i = 0; i < 2; ++i) {
+        auto stripe = std::make_shared<VectorRect>();
+        stripe->Bounds = Rect2Dd(220 + i * 20, 250, 10, 40);
+        stripe->Style.Fill = Color(0, 100, 200, 255);
+        clip->AddChild(stripe);
+    }
+    layer->AddChild(clip);
+
+    // 14. A contoured rectangle: three outward steps to yellow.
+    auto contoured = std::make_shared<VectorRect>();
+    contoured->Id = "contoured";
+    contoured->Bounds = Rect2Dd(300, 250, 40, 30);
+    contoured->Style.Fill = Color(200, 0, 0, 255);
+    ContourEffect contour;
+    contour.Steps = 3;
+    contour.Width = 12;
+    contour.Colour = Color(255, 220, 0, 255);
+    contour.Blend = ColourBlendKind::Rainbow;
+    contoured->Effects.Contour = contour;
+    layer->AddChild(contoured);
+
+    // 15. A blend of two circles in four steps.
+    auto blend = std::make_shared<VectorBlend>();
+    blend->Id = "blend";
+    blend->Steps = 4;
+    blend->ColourEffect = ColourBlendKind::AltRainbow;
+    auto ba = std::make_shared<VectorCircle>();
+    ba->Center = Point2Dd(30, 275); ba->Radius = 8; ba->Style.Fill = Color(255, 0, 0, 255);
+    auto bb = std::make_shared<VectorCircle>();
+    bb->Center = Point2Dd(120, 275); bb->Radius = 12; bb->Style.Fill = Color(0, 0, 255, 255);
+    blend->AddChild(ba);
+    blend->AddChild(bb);
+    layer->AddChild(blend);
+
+    // 16. A perspective mould over a square.
+    auto mould = std::make_shared<VectorMould>();
+    mould->Id = "mould";
+    mould->Kind = MouldKind::Perspective;
+    mould->Threshold = 64;
+    auto moulded = std::make_shared<VectorRect>();
+    moulded->Bounds = Rect2Dd(0, 0, 40, 40);
+    moulded->Style.Fill = Color(0, 160, 0, 255);
+    mould->AddChild(moulded);
+    {
+        PathData shape;
+        auto cmd = [&](PathCommandType t, std::initializer_list<float> v) { PathCommand c; c.Type = t; c.Parameters = v; shape.commands.push_back(c); };
+        cmd(PathCommandType::MoveTo, {150, 250});
+        cmd(PathCommandType::LineTo, {190, 250});
+        cmd(PathCommandType::LineTo, {200, 290});
+        cmd(PathCommandType::LineTo, {140, 290});
+        cmd(PathCommandType::ClosePath, {});
+        shape.Closed = true;
+        mould->Shape = shape;
+    }
+    layer->AddChild(mould);
+
+    // 17. A bevelled rectangle.
+    auto bevelled = std::make_shared<VectorRect>();
+    bevelled->Id = "bevelled";
+    bevelled->Bounds = Rect2Dd(350, 250, 40, 30);
+    bevelled->Style.Fill = Color(120, 120, 200, 255);
+    BevelEffect bevel;
+    bevel.Kind = BevelKind::Round;
+    bevel.Indent = 6;
+    bevel.LightAngle = 120;
+    bevel.Contrast = 0.7f;
+    bevel.Tilt = 40;
+    bevelled->Effects.Bevel = bevel;
+    layer->AddChild(bevelled);
+
     return doc;
 }
 
@@ -282,13 +361,17 @@ int main(int argc, char** argv) {
     std::map<XARNodeType, int> counts;
     CountNodes(reader.GetRoot(), counts);
     Check(counts[XARNodeType::Layer] == 1, "one layer");
-    Check(counts[XARNodeType::Rectangle] == 3, "three rectangle records (plain + rounded + shaded)");
-    // circle + ellipse + feathered, plus the brush's stamped copies of its dot
-    Check(counts[XARNodeType::Ellipse] >= 12 && counts[XARNodeType::Ellipse] <= 15,
-          "three ellipse records plus the brush's stamped dots");
+    // plain + rounded + shaded, the two clipped stripes, the contoured and
+    // bevelled ones, the mould's source
+    Check(counts[XARNodeType::Rectangle] == 8, "eight rectangle records");
+    // circle + ellipse + feathered, the keyhole and the two blended circles,
+    // plus the brush's stamped copies of its dot
+    Check(counts[XARNodeType::Ellipse] >= 15 && counts[XARNodeType::Ellipse] <= 18,
+          "six ellipse records plus the brush's stamped dots");
     // bezier leaf, rotated rect, the arrow's line, the taper's polyline and
     // its band, the barred line and its baked bar, the brushed line
-    Check(counts[XARNodeType::Path] == 8, "eight path records (two shapes, three lines, the width band, the bar, the taper)");
+    // ... plus the moulded result
+    Check(counts[XARNodeType::Path] == 9, "nine path records (two shapes, three lines, the width band, the bar, the taper, the moulded square)");
     // the rotated one, one marker group each for the taper, the bar and the
     // brush, the brush's stamps group and one group per stamped copy
     Check(counts[XARNodeType::Group] >= 14 && counts[XARNodeType::Group] <= 17,
@@ -441,6 +524,56 @@ int main(int argc, char** argv) {
         // 100pt line, stamp height 6pt, spacing 1.6 stamp widths -> ~11 copies
         Check(stampCopies >= 9 && stampCopies <= 12, "the brush is written as stamped ellipse copies");
         std::printf("      (stamp copies: %d)\n", stampCopies);
+
+        // Phase 5 controllers, as Xara's tree has them.
+        std::vector<XARNodePtr> clips, contours, blends, moulds, bevels;
+        Collect(reader.GetRoot(), XARNodeType::ClipView, clips);
+        Collect(reader.GetRoot(), XARNodeType::Contour, contours);
+        Collect(reader.GetRoot(), XARNodeType::Blend, blends);
+        Collect(reader.GetRoot(), XARNodeType::Mould, moulds);
+        Collect(reader.GetRoot(), XARNodeType::Bevel, bevels);
+        Check(clips.size() == 1 && clips[0]->children.size() == 4 && clips[0]->children[1]->type == XARNodeType::ClipViewMarker,
+              "the ClipView controller holds the keyhole, the marker and the two stripes");
+        Check(contours.size() == 1, "one contour controller");
+        if (contours.size() == 1) {
+            const auto& c = static_cast<const XARContourNode&>(*contours[0]);
+            Check(c.steps == 3 && c.width == -12000 && c.colourBlend == 1 && !c.insetPath,
+                  "the contour controller carries 3 steps, an outer width of 12000 mp and the rainbow blend");
+            bool stepsNode = false;
+            for (const auto& ch : c.children)
+                if (ch->type == XARNodeType::ContourSteps && ch->hasFill && ch->fill.startColor.r == 255 && ch->fill.startColor.g == 220) stepsNode = true;
+            Check(stepsNode, "the contour node carries the contour colour as its fill");
+        }
+        Check(blends.size() == 1, "one blend");
+        if (blends.size() == 1) {
+            const auto& b = static_cast<const XARBlendNode&>(*blends[0]);
+            int blenders = 0, shapes = 0;
+            for (const auto& ch : b.children) { if (ch->type == XARNodeType::Blender) ++blenders; else ++shapes; }
+            Check(b.numSteps == 4 && b.colourEffect == 2 && b.antialiased, "the blend record carries 4 steps and the alt-rainbow effect");
+            Check(blenders == 1 && shapes == 2, "a blender sits between the two blended shapes");
+        }
+        Check(moulds.size() == 1, "one mould");
+        if (moulds.size() == 1) {
+            const auto& m = static_cast<const XARMouldNode&>(*moulds[0]);
+            int paths = 0, groups = 0, results = 0;
+            bool bounds = false;
+            for (const auto& ch : m.children) {
+                if (ch->type == XARNodeType::MouldPath) ++paths;
+                else if (ch->type == XARNodeType::MouldGroup) { ++groups; bounds = static_cast<const XARMouldGroupNode&>(*ch).hasBounds; }
+                else ++results;
+            }
+            Check(m.isPerspective && m.threshold == 64, "the mould is a perspective with its threshold");
+            Check(paths == 1 && groups == 1 && bounds && results == 1, "the mould holds its shape, the bounded source group and the moulded result");
+        }
+        Check(bevels.size() == 1, "one bevel controller");
+        if (bevels.size() == 1) {
+            const auto& b = static_cast<const XARBevelNode&>(*bevels[0]);
+            Check(b.bevelType == 1 && b.indent == 6000 && b.lightAngle == 120 && !b.outer && b.contrast == 70 && b.tilt == 40,
+                  "the bevel record carries the round profile, 6000 mp indent, light 120, contrast 70, tilt 40");
+            bool ink = false;
+            for (const auto& ch : b.children) if (ch->type == XARNodeType::BevelInk) ink = true;
+            Check(ink, "the bevel node is under its controller");
+        }
     }
 
     // ===== The converter reads the file back into the model =====
@@ -456,6 +589,7 @@ int main(int argc, char** argv) {
             Check(back->Layers.size() == 1, "one layer comes back");
             int shadowed = 0, feathered = 0, ramped = 0, multistage = 0, texts = 0, strokedShadowed = 0;
             int tapers = 0, brushes = 0, barred = 0, plainArrows = 0, groups = 0;
+            int clipViews = 0, contoured = 0, blends = 0, moulds = 0, bevelled = 0;
             std::function<void(const std::shared_ptr<VectorElement>&)> walk = [&](const std::shared_ptr<VectorElement>& e) {
                 if (!e) return;
                 if (e->Effects.Shadow && std::fabs(e->Effects.Shadow->Offset.x - 5.0) < 0.01 &&
@@ -485,7 +619,27 @@ int main(int argc, char** argv) {
                         std::fabs(st.StartArrow.Scale - 1.0f) < 0.01f && std::fabs(st.EndArrow.Scale - 1.0f) < 0.01f) ++plainArrows;
                 }
                 if (e->Type == VectorElementType::Group) ++groups;
-                if (e->Type == VectorElementType::Group || e->Type == VectorElementType::Layer)
+                if (e->Type == VectorElementType::ClipView) {
+                    auto cv = std::static_pointer_cast<VectorClipView>(e);
+                    if (cv->Keyholes == 1 && cv->Children.size() == 3 && cv->Children[0]->Type == VectorElementType::Circle) ++clipViews;
+                }
+                if (e->Effects.Contour && e->Effects.Contour->Steps == 3 && std::fabs(e->Effects.Contour->Width - 12.0f) < 0.01f &&
+                    e->Effects.Contour->Blend == ColourBlendKind::Rainbow && e->Effects.Contour->Colour.g == 220) ++contoured;
+                if (e->Type == VectorElementType::Blend) {
+                    auto b = std::static_pointer_cast<VectorBlend>(e);
+                    if (b->Steps == 4 && b->ColourEffect == ColourBlendKind::AltRainbow && b->Children.size() == 2) ++blends;
+                }
+                if (e->Type == VectorElementType::Mould) {
+                    auto m = std::static_pointer_cast<VectorMould>(e);
+                    Point2Dd corners[4];
+                    if (m->Kind == MouldKind::Perspective && m->Children.size() == 1 && m->ShapeCorners(corners) &&
+                        std::fabs(corners[0].x - 150) < 0.01 && std::fabs(corners[0].y - 250) < 0.01 &&
+                        std::fabs(corners[2].x - 200) < 0.01 && std::fabs(corners[2].y - 290) < 0.01 &&
+                        std::fabs(m->SourceBounds.width - 40) < 0.01) ++moulds;
+                }
+                if (e->Effects.Bevel && e->Effects.Bevel->Kind == BevelKind::Round && std::fabs(e->Effects.Bevel->Indent - 6.0f) < 0.01f &&
+                    std::fabs(e->Effects.Bevel->LightAngle - 120.0f) < 0.01f && std::fabs(e->Effects.Bevel->Contrast - 0.7f) < 0.01f) ++bevelled;
+                if (IsGroupType(e->Type))
                     for (const auto& c : std::static_pointer_cast<VectorGroup>(e)->Children) walk(c);
             };
             for (const auto& l : back->Layers) walk(l);
@@ -500,6 +654,11 @@ int main(int argc, char** argv) {
             Check(tapers == 1, "the width profile reads back as a stroke, not as the baked band");
             Check(brushes == 1, "the brush reads back with its spacing and one-dot stamp");
             Check(groups == 1, "only the rotated group stays a group (the marker groups unwrap)");
+            Check(clipViews == 1, "the ClipView comes back with its circle keyhole and two stripes");
+            Check(contoured == 1, "the contour comes back as an effect: steps, outward width, blend and colour");
+            Check(blends == 1, "the blend comes back with its steps, colour effect and both shapes");
+            Check(moulds == 1, "the mould comes back as a perspective with its shape corners in order and its source bounds");
+            Check(bevelled == 1, "the bevel comes back as an effect with its profile, indent, light and contrast");
             for (const auto& w : warnings) std::printf("  (import note) %s\n", w.c_str());
         }
     }
