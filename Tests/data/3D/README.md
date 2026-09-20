@@ -33,4 +33,6 @@ nothing available writes Alembic, and Debian's Blender is built without the
 exporter — so it was made by rewriting the Ogawa archive in place: the same
 objects, properties, metadata and time sampling, with the hull's arrays
 replaced by the evaluated mesh and Alembic's own MurmurHash3 sample keys
-recomputed.
+recomputed. The tools that did it are in `scripts/alembic/`, and its README
+carries the exact command, which regenerates the demo copy from the fixture
+here.
