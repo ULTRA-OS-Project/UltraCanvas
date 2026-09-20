@@ -1,6 +1,6 @@
 # ArtCreator and a public `UltraCanvasVectorCanvas` — Investigation and Proposal
 
-**Status:** phases 0–4 implemented (framework 0.9.7, ArtCreator 0.2.0); phase 5 first slice implemented (framework 0.9.15, ArtCreator 0.3.0), the rest open
+**Status:** phases 0–4 implemented (framework 0.9.7, ArtCreator 0.2.0); phase 5 first slice implemented (framework 0.9.16, ArtCreator 0.3.0), the rest open
 **Date:** 2026-09-15
 **Scope:** a new application, `Apps/ArtCreator`, a vector graphics editor of
 the Xara Designer / ArtWorks class, and the question of whether the editing
@@ -545,7 +545,7 @@ further ahead on the model and further behind on the render context.
 | **2. Core editing layer** | `VectorSelection`, `VectorHistory`, `VectorHitTest`, `UltraCanvasBezierPath`, `VectorEditOps` (transform, arrange, group, align), `UltraCanvasVectorCanvas` with rulers / guides / grid / snap / handles, `UltraCanvasGradientEditor`; catalogue entries, docs, a DemoApp page | ~5 k lines | 0, 1 (parts) |
 | **3. ArtCreator 0.1** | the 13 tools of §4.5, panels, layers, pages UI (single page), import via converters, save as SVG, export via the matrix and `UltraCanvasVectorRaster` | ~5–6 k lines | 2 |
 | **4. Xara-class effects** — *done in 0.9.7 / ArtCreator 0.2.0* | effects in the model, per-object raster caches with blur, shadow / feather / transparency tools, multi-stage fills, XAR round trip of effects, unify the two XAR readers (the converter now reads through the XAR plugin's `XARDocument`), arrowheads / brushes / variable width (Xara's stock arrowheads are XAR line attributes with Xara's geometry, reference numbers and record layout taken from Xara's own source; the rest bakes into XAR as plain shapes under a `TAG_USERVALUE` marker and reads back as the stroke) | ~4 k lines | 1, 3 |
-| **5. Depth** — *first slice done in 0.9.15 / ArtCreator 0.3.0* | done: path booleans and offsetting (an in-house planar-map clipper in core, `UltraCanvasVectorGeometry`), bevel, contour, blend, mould (envelope and perspective), ClipView, their XAR round trip on Xara's own record layouts, the Combine Shapes commands and the four tools. Open: text on path and text areas, pages and spreads, colour gallery with linked shades, symbols, photo tool over the raster bridge, live effects via PixelFX, trace-to-vector | open-ended | 4 |
+| **5. Depth** — *first slice done in 0.9.16 / ArtCreator 0.3.0* | done: path booleans and offsetting (an in-house planar-map clipper in core, `UltraCanvasVectorGeometry`), bevel, contour, blend, mould (envelope and perspective), ClipView, their XAR round trip on Xara's own record layouts, the Combine Shapes commands and the four tools. Open: text on path and text areas, pages and spreads, colour gallery with linked shades, symbols, photo tool over the raster bridge, live effects via PixelFX, trace-to-vector | open-ended | 4 |
 
 Phases 0 and 1 are independent and small; they are also useful on their
 own (every diagram and chart gets blend modes and group opacity). Phase 2

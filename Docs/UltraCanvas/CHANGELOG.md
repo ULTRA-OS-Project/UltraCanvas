@@ -1,4 +1,4 @@
-#### 2026-09-20 *0.9.15*
+#### 2026-09-20 *0.9.16*
 - **Depth for the vector model: booleans, ClipView, contour, blend, mould,
   bevel** - phase 5 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`
   (its first slice); the application half is ArtCreator 0.3.0.
@@ -61,6 +61,8 @@
     combine operations; `VectorModelTest` checks each container and
     effect in pixels; `XARWriterTest` round-trips one of each through the
     plugin and the converter.
+
+#### 2026-09-20 *0.9.15*
 - **New: UltraMessage Phase 1 — the message channel is built**
   (`Masterfile_modules.md` §13, design `Docs/Research/UltraMessageDesignProposal.md`,
   reference `Docs/Modules/UltraMessage/README.md`). Library target
