@@ -151,7 +151,9 @@ mkdir build && cd build && cmake .. && make
 ```
 
 The project now defaults to Clang on Linux, so install the `clang` package
-alongside the existing deps.
+alongside the existing deps. The build uses the system default linker (GNU ld,
+same as CI); with a newer Clang on an older distro it automatically drops to
+DWARF4 so binutils 2.38's `ld` does not choke on clang's DWARF5 output.
 
 The full 3-OS dependency lists are in `.github/workflows/build.yml`.
 UltraAI builds standalone: `cmake -S UltraAI -B build -DULTRAAI_BUILD_TESTS=ON`

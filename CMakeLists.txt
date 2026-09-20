@@ -50,8 +50,13 @@ if(UNIX AND NOT APPLE AND NOT ANDROID
             message(STATUS "Skipping ${_uc_candidate} (Clang ${_uc_ver} < ${ULTRACANVAS_MIN_CLANG_MAJOR})")
             continue()
         endif()
-        # Found one new enough; its C++ driver must sit beside it.
-        string(REGEX REPLACE "clang$" "clang++" _uc_cxx_name "${_uc_name}")
+        # Found one new enough; its C++ driver must sit beside it. Keep any
+        # version suffix: "clang" -> "clang++", but also "clang-21" ->
+        # "clang++-21". Anchoring on "clang$" alone silently left the versioned
+        # name untouched, so CMAKE_CXX_COMPILER became the C driver "clang-NN",
+        # which compiles C++ fine but does NOT add -lstdc++ at link time - every
+        # C++ runtime symbol then comes back undefined.
+        string(REGEX REPLACE "clang(-[0-9]+)?$" "clang++\\1" _uc_cxx_name "${_uc_name}")
         unset(_uc_candidate_cxx CACHE)
         find_program(_uc_candidate_cxx NAMES ${_uc_cxx_name})
         if(_uc_candidate_cxx)
@@ -88,6 +93,32 @@ if(CMAKE_CXX_COMPILER_ID STREQUAL "Clang"
         "14 - use https://apt.llvm.org), then point the build at it, e.g.\n"
         "         CC=clang-19 CXX=clang++-19 cmake -B build\n"
         "       or configure with -DCMAKE_C_COMPILER=... -DCMAKE_CXX_COMPILER=...")
+endif()
+
+# ---- Debug info: keep the system GNU ld happy with a new Clang ----
+# We deliberately stay on the compiler's default linker (GNU ld) so the build
+# matches CI and Windows. mupdf is linked statically and bundles its own lcms2mt
+# fork; GNU ld (--no-copy-dt-needed-entries by default) resolves those symbols
+# from the static archive, whereas LLD binds them to the system liblcms2 pulled
+# in transitively by libvips - an ABI clash that SIGSEGVs the PDF viewer.
+#
+# The one wrinkle: clang emits DWARF5, which binutils ld < 2.40 (Ubuntu 22.04
+# ships 2.38) mis-parses - "DWARF error: invalid or unhandled FORM value: 0x23"
+# (DW_FORM_rnglistx) - and spams it at link. Drop such old-ld builds to DWARF4;
+# it is a no-op without -g and is read fine by gdb/lldb. Newer ld keeps DWARF5.
+if(UNIX AND NOT APPLE AND NOT ANDROID AND CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+    # Ask the compiler which linker it actually drives (honours its default and any
+    # -fuse-ld), not CMAKE_LINKER - that is just a path CMake happened to find and
+    # is not what clang links with.
+    execute_process(
+        COMMAND ${CMAKE_CXX_COMPILER} -Wl,--version -x c++ /dev/null -o /dev/null
+        OUTPUT_VARIABLE _uc_ld_ver ERROR_QUIET)
+    if(_uc_ld_ver MATCHES "GNU ld[^0-9]*([0-9]+)\\.([0-9]+)"
+       AND "${CMAKE_MATCH_1}.${CMAKE_MATCH_2}" VERSION_LESS "2.40")
+        add_compile_options(-gdwarf-4)
+        message(STATUS "UltraCanvas: emitting DWARF4 (GNU ld "
+                       "${CMAKE_MATCH_1}.${CMAKE_MATCH_2} < 2.40)")
+    endif()
 endif()
 
 message(STATUS "")
@@ -572,7 +603,7 @@ if(BUILD_DEMO_APP)
                 ${X11_INCLUDE_DIRS}
                 ${CAIRO_INCLUDE_DIRS}
                 ${PANGO_INCLUDE_DIRS}
-                ${VIPS_INCLUDE_DIRS}
+                ${LIBVIPS_INCLUDE_DIRS}
                 ${PANGOCAIRO_INCLUDE_DIRS}
                 ${FREETYPE_INCLUDE_DIRS}
                 ${TINYXML2_INCLUDE_DIRS}
@@ -586,7 +617,7 @@ if(BUILD_DEMO_APP)
                 ${PANGOCAIRO_LIBRARY_DIRS}
                 ${FREETYPE_LIBRARY_DIRS}
                 ${TINYXML2_LIBRARY_DIRS}
-                ${VIPS_LIBRARY_DIRS}
+                ${LIBVIPS_LIBRARY_DIRS}
         )
     elseif(ULTRACANVAS_PLATFORM STREQUAL "MacOS")
         # Set Homebrew prefix
@@ -602,7 +633,7 @@ if(BUILD_DEMO_APP)
                 ${FREETYPE_INCLUDE_DIRS}
                 ${HARFBUZZ_INCLUDE_DIRS}
                 ${GLIB_INCLUDE_DIRS}
-                ${VIPS_INCLUDE_DIRS}
+                ${LIBVIPS_INCLUDE_DIRS}
                 ${TINYXML2_INCLUDE_DIRS}
                 ${HOMEBREW_PREFIX}/include
                 ${HOMEBREW_PREFIX}/include/pango-1.0

@@ -36,6 +36,18 @@ message(STATUS "========================================")
 
 # ===== OPTIONS =====
 if (BUILD_DEMO_APP)
+    # On Linux the shipping and CI configuration is a SHARED core, and it has to
+    # be: only a shared libUltraCanvas lets -Wl,--exclude-libs (near the MuPDF
+    # link below) hide MuPDF's bundled lcms2mt fork from the system Little-CMS
+    # that libvips and the CDR plugin use. A static core skips that isolation, so
+    # MuPDF's ICC calls bind to the standard lcms2 and the PDF viewer SIGSEGVs.
+    # Default ON here so a plain `cmake ..` matches CI (which passes
+    # -DULTRACANVAS_BUILD_SHARED=ON); an explicit -D...=OFF still wins.
+    if(UNIX AND NOT APPLE AND NOT ANDROID)
+        option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
+    else()
+        option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
+    endif()
 else()
     option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
 endif ()
@@ -1628,6 +1640,16 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
 )
+
+# The vips libraries above are added as bare names (-lvips-cpp -lvips), so the
+# linker must know where to find them. A source-built libvips lives under
+# /usr/local/lib/<triple>: GNU ld searches that via its built-in SEARCH_DIR, but
+# LLD does not, so without this every app that links the core (which re-exports
+# the vips libs PUBLIC) fails with "unable to find library -lvips". PUBLIC so the
+# -L rides along with the libraries, matching what the Vectorizer/OCR plugins do.
+if(ULTRACANVAS_HAS_VIPS)
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBVIPS_LIBRARY_DIRS})
+endif()
 
 # Native folder watching: the define tells the core watcher that this platform
 # ships a backend under OS/<Platform>/, so it must not compile its own
