@@ -1,3 +1,12 @@
+#### 2026-09-20 *0.5.0*
+- **One version number, one place.** This changelog's first line is now
+  the only place ArtCreator's version lives: the build reads it
+  (`cmake/UltraCanvasVersion.cmake`) and passes it to the sources as
+  `ARTCREATOR_VERSION`. The `"0.0.0"` fallbacks in `main.cpp` and
+  `ArtCreatorWindow.cpp` are gone; a build without the definition now
+  fails at compile time instead of an About dialog and `--version`
+  reporting 0.0.0. No functional change otherwise.
+
 #### 2026-09-19 *0.3.0*
 - **Depth, phase 5 of the proposal (first slice).** Four tools after
   Feather in the palette and three commands, on the framework's new
