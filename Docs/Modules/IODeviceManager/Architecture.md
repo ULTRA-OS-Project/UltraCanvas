@@ -339,28 +339,79 @@ macOS** is left at its default: it is not on `NSPrintInfo` at all — it lives
 in the `PMPrintSettings` underneath — and claiming a value would be inventing
 one.
 
-### Open decision: linked or subprocess
+### Decided: subprocess, not linked
 
-**libgutenprint is GPL-2.0-or-later. UltraCanvas is MIT.** Linking it means
-the distributed binary is GPL. That is a product decision, not a technical
-one, and it must be made before the GutenPrint renderer is written.
+**libgutenprint is GPL-2.0-or-later. UltraCanvas is MIT.** Linking it would
+make every distributed binary a GPL work. That was a product decision rather
+than a technical one, and it has been taken: **GutenPrint is run, not linked.**
 
-| | Linked (`libgutenprint`) | Subprocess (GutenPrint's own tools) |
+| | Linked (`libgutenprint`) | **Subprocess (chosen)** |
 |---|---|---|
-| Quality / control | Full: every parameter, in-process | Good: whatever the CLI exposes |
-| Licence effect | Distributed binary becomes GPL | None — matches this repo's existing "runtime, not linked" pattern (QEMU, Wine in `Docs/Dependencies.md`) |
+| Quality / control | Full: every parameter, in-process | Good: whatever the tools expose — which is the whole PPD |
+| Licence effect | Distributed binary becomes GPL | None. Matches this repo's existing "runtime, not linked" pattern (QEMU, Wine) |
 | Windows | Needs an MSYS2/MinGW build of the library | Needs the GutenPrint binaries shipped alongside |
-| Failure mode | Link error if absent | Clean: renderer simply not offered |
+| Failure mode | Link error if absent | Clean: the renderer is simply not offered |
 
-**Recommendation:** subprocess, gated on `ULTRACANVAS_HAS_GUTENPRINT`, with
-`Native` as the fallback whenever GutenPrint is absent. It keeps the
-framework MIT and matches how this repository already handles GPL tools. If
-ULTRA OS ships under GPL anyway, linking is the better technical answer and
-nothing else in this design changes — only the renderer's internals.
+GutenPrint ships two programs, and between them they are a complete interface:
 
-Either way `libgutenprint`/GutenPrint must be added to `Docs/Dependencies.md`,
-`master_dependencies.yaml` and `THIRD_PARTY_LICENSES.md` before the renderer
-lands.
+| Program | What it does |
+|---|---|
+| `gutenprint.5.3` | `list` names every model it drives — about 3,500 — each with its IEEE-1284 device id. `cat <uri>` writes that model's PPD. |
+| `rastertogutenprint.5.3` | Reads a page of CUPS raster on standard input, writes the printer's own command language on standard output. |
+
+So the renderer lays the document out, rasterises it, pipes the raster
+through the filter, and the bytes that come back **are** the payload. They are
+a device-native stream, so `ProducesRawStream()` is true and they travel as a
+raw job — `application/vnd.cups-raw` under CUPS, datatype `RAW` through the
+Windows spooler. **Both raw transports already existed, so this added one
+renderer and changed no transport**, which is what the renderer/transport
+split was for.
+
+Four things are worth keeping in mind about the implementation.
+
+**A page is drawn, not converted.** The same `IPrintPageSource` the Windows
+GDI renderer uses — the same wrapped text, the same fitted image, the same
+pagination — is driven against a `RasterPageTarget`, which draws onto an
+off-screen surface instead of onto a printer device context. One layout, two
+destinations; that is what `IPrintPageTarget` being abstract buys. Deciding
+*what* a job contains is shared too, in `MakePageSourceForJob`, so the two
+renderers cannot drift about which file extensions are text.
+
+**GutenPrint is handed RGB and left to separate it.** Its PPDs also offer CMY,
+CMYK and KCMY, but choosing those would mean separating the colour ourselves
+against a specific ink set at a specific resolution — the one thing GutenPrint
+is unambiguously better at than anything written here. The raster it gets is
+RGB (or grey), which is also what its PPDs default to.
+
+**The raster is uncompressed.** The sync word is `RaS3`: version 3,
+big-endian, no run-length encoding. A v2 encoder is the kind of code that is
+wrong in ways which surface on one printer at one resolution; the raster goes
+down a pipe to a filter that reads it immediately, so the size costs nothing
+but a moment of memory.
+
+**Input and output are pumped together.** `RunProcessCaptured` polls the
+child's stdin, stdout and stderr in one loop with non-blocking pipe ends. This
+is not tidiness: `poll()` reporting the pipe writable means *one byte* is
+free, so a blocking 64 KB write parks in the kernel until the child drains it
+— and if the child is meanwhile blocked writing output nobody is reading,
+neither side moves again. That deadlock was hit during development, on the
+first page large enough to fill a pipe buffer, which is to say on every real
+page and never on a small test.
+
+And one thing that is **not** an implementation detail: `RunProcessCaptured`
+takes an argument **list**, and executes the program directly — `execvp`, or
+`CreateProcessW` — so no shell ever sees it. The prototype this module
+replaces built a command line by pasting a device path into a string and
+handing it to `popen()`, which runs a shell. There is nothing to escape here
+because nothing parses.
+
+**Windows.** The renderer is built and offered there on the same terms as
+anywhere else, and the RAW transport carries what it produces. What Windows
+does not have is an installer that puts GutenPrint on the machine, so in
+practice the tools have to be shipped beside the application and pointed at
+with `ULTRACANVAS_GUTENPRINT_DRIVER` / `ULTRACANVAS_GUTENPRINT_FILTER`.
+Absent those, `GetAvailableRenderers()` does not list GutenPrint and `Native`
+takes the job.
 
 ### Enumeration double-counting
 
@@ -423,7 +474,7 @@ compiling, tested and wired into CI before the next starts:
 | 1 ✅ | `IODevice`, `IODeviceManager`, device-generic types, tests |
 | 2 ✅ | `PrinterDevice`, renderer/transport seam, option resolver, CUPS backend (Linux + macOS), tests |
 | 3 ✅ | Windows spooler backend: enumeration, capabilities, status, job queue, RAW transport |
-| 4 | GutenPrint renderer — blocked on the licence decision above. With slices 2 and 3 in, this is one class and no other change on any platform. |
+| 4 ✅ | GutenPrint renderer, run as a subprocess — one renderer class, no transport change, on all three platforms |
 | 5 ✅ | `CameraDevice` + V4L2 (Linux) |
 | 6 ✅ | `ScannerDevice` + SANE (Linux) |
 | 7 ✅ | Hot-plug watching + the udev watcher (Linux) |
@@ -431,7 +482,7 @@ compiling, tested and wired into CI before the next starts:
 | 8a ✅ | The OS print dialog wired to `PrinterDevice` on Linux, Windows and macOS, so the settings it collects reach the queue; page ranges carried end to end |
 | 9 | Windows and macOS backends for camera and scanner |
 | 10 | Hot-plug watchers for Windows and macOS; the permission model |
-| 11 | IPP / eSCL driverless, network cameras |
+| 11 🔨 | eSCL driverless scanning ✅ (all three platforms; Windows discovery still open); IPP driverless and network cameras to come |
 
 Slices 2 and 3 ship the switch and both transports. Adding GutenPrint is then
 a renderer class and nothing else: no change to `PrinterDevice`, and no change
@@ -555,6 +606,71 @@ one place rather than at every call site. `sane_init`/`sane_exit` are
 process-global and not reference-counted by the library, so the count is kept
 in the backend: a second scanner opening must not re-init, and the first one
 closing must not tear the library out from under the others.
+
+### eSCL backend — one file, every platform
+
+eSCL (Apple calls it AirScan, Mopria calls it Mopria Scan) is what a network
+scanner speaks when nobody has installed a driver for it. It is plain HTTP and
+XML, and that is exactly why it was built before WIA, TWAIN or ICA: **each of
+those is one platform's work for one platform's scanners, while this is one
+file in `core/` that serves Linux, macOS and Windows alike.**
+
+Four calls are the whole protocol:
+
+| Call | What it does |
+|---|---|
+| `GET {base}/ScannerCapabilities` | what the scanner can do |
+| `POST {base}/ScanJobs` | start a run; the reply's `Location` names the job |
+| `GET {job}/NextDocument` | the next page — or **404 when there are no more** |
+| `DELETE {job}` | cancel |
+
+**That 404 is the protocol's way of saying the feeder is empty**, and it lands
+exactly on the rule this module already had: `DoScanPage()` returns
+`DeviceNotFound`, and `ScanPages()` reads that as the end of a run rather than
+a failure — but only once a page has arrived, so a 404 on the very first page
+stays the error it is. A job that produced nothing was a bad job, not an empty
+tray. The two protocols were designed apart and agree exactly, which is a good
+sign the rule was the right one.
+
+A job covers a *run*, not a page, so one is opened only when none is and the
+page fetch is what repeats. A flatbed's job is closed as soon as its one page
+arrives: left open, the next `Scan()` would fetch from a spent job and read
+its 404 as an empty feeder on a device with no feeder.
+
+Two translation units, for the same reason the printer path has them. The
+protocol arithmetic — units, colour-mode names, the capability document, the
+job URL — is pure data and lives in `...ESCLProtocol.cpp`, which the tests
+link without UltraNet or the image stack. What needs a network is next door.
+
+Three things are worth knowing about the data:
+
+**The units are not the module's.** eSCL measures scan regions in
+three-hundredths of an inch; everything here is hundredths of a millimetre.
+The conversion rounds to nearest in both directions, because a scan area is
+derived from a paper size and handed straight back, and truncating twice
+leaves A4 a millimetre short.
+
+**The XML is namespace-prefixed and the prefix is the vendor's choice.** One
+scanner writes `scan:ColorMode`, another `escl:ColorMode`; the PWG-derived
+elements carry `pwg:` or `sm:`. tinyxml2 does not strip prefixes, so every
+lookup matches the local name after the last colon.
+
+**`ScanCapabilities::Supports()` cannot be used to build a capability list.**
+It answers "would this be accepted", and an empty list means *the backend has
+not enumerated yet* — so it says yes to everything. Using it to deduplicate
+while filling the list drops the first entry, after which the list is still
+empty and so drops every entry. The parser uses `std::find` on the vector.
+This is not hypothetical: the first version did exactly that, collected
+nothing, and the tests built on `Supports()` passed anyway.
+
+**Discovery is the one part that is not uniform.** `_uscan._tcp` is browsed
+through UltraNet's mDNS plugin, which is complete on Linux (Avahi) and macOS
+(Bonjour) and a stub on Windows — a raw `DnsQuery_W` for PTR records that
+returns no host, port or TXT. So on Windows a scanner is named outright,
+through `ULTRACANVAS_ESCL_SCANNERS`, which is also how any scanner on another
+subnet is reached, since mDNS does not cross routers. The gap is recorded in
+`Gaps.md`; closing it would serve IPP driverless printing too, which needs the
+same discovery.
 
 ---
 

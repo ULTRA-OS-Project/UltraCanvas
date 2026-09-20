@@ -1,3 +1,357 @@
+#### 2026-09-19 *0.7.0*
+- **Bankimport: Kontoauszüge lesen und Zahlungen zuordnen.**
+  `Apps/UltraFIBU/engine/UltraFIBUBank.{h,cpp}`, Schema v4 (`bankkonto`,
+  `bankumsatz`, `zuordnung`, `bank_import`), die Befehle `bankkonto-neu`,
+  `bankkonten`, `bank-import`, `bank-importe`, `umsaetze` und `zuordnen`,
+  164 weitere Prüfungen (997 insgesamt). Die Importhälfte von Phase A4.
+- **Drei Leser, eine Form.** **CAMT.053** (ISO 20022, XML) ist die richtige
+  Datei - die deutschen Banken haben MT940 im November 2025 abgelöst. **MT940**
+  bleibt für das Archiv: das Format hört an dem Tag auf, neu zu entstehen,
+  aber die Jahre davor liegen darin. **CSV** für Banken, die nichts anderes
+  anbieten; dessen Spaltenzuordnung ist eine **Datendatei**
+  (`data/Bankprofil-Standard.csv`), dieselbe Entscheidung wie beim
+  DATEV-Format und aus demselben Grund. Welcher Leser drankommt, entscheidet
+  der **Inhalt** der Datei, nicht ihre Endung.
+- **Vier Eigenschaften der Formate sind eingebaut, nicht später entdeckt** -
+  jede ergibt sonst einen plausibel aussehenden, falschen Kontostand:
+  - **Der Betrag ist vorzeichenlos, die Richtung ein eigenes Feld**
+    (`CdtDbtInd` CRDT/DBIT bei CAMT, C/D bei MT940). Das Vorzeichen wird
+    genau einmal gesetzt, beim Lesen. MT940 kennt zusätzlich **RC/RD**: eine
+    Rücklastschrift läuft andersherum als das C, das in ihr steht.
+  - **CAMT rechnet mit Punkt, MT940 mit Komma**, und keines von beiden geht
+    die Locale des Prozesses etwas an.
+  - **Die Gegenseite wechselt mit der Richtung.** Bei Geldeingang ist sie der
+    *Debtor*, bei Geldausgang der *Creditor*. Ein Leser, der immer denselben
+    nimmt, schreibt auf der halben Datei **uns selbst** als Zahlungsempfänger
+    - und diese Hälfte ist still falsch, weil die Beträge weiter aufgehen.
+  - **Ein Auszug prüft sich selbst.** Er bringt Anfangssaldo, Endsaldo und
+    alle Buchungen mit, und `Anfangssaldo + Buchungen = Endsaldo` muss
+    aufgehen. Das ist die eine Prüfung, die eine verlorene Buchung, eine
+    doppelte Buchung und ein gedrehtes Vorzeichen auf einmal fängt. Geht ein
+    Auszug nicht auf, wird er **nicht** eingelesen.
+- **Dieselbe Datei zweimal ändert nichts**, und zwar **je Zeile** statt je
+  Datei. Der überlappende Download ist der Normalfall - wer wöchentlich "die
+  letzten 30 Tage" herunterlädt, liefert dieselben Zeilen viermal ab. Eine
+  Prüfung auf Dateiebene müsste den ganzen Download ablehnen oder drei Wochen
+  verdoppeln. Der Schlüssel ist die Bankreferenz (`AcctSvcrRef`), und wo die
+  Datei keine mitbringt, ein abgeleiteter - **einschließlich der Position im
+  Auszug**, weil zwei identische Zeilen an einem Tag möglich sind und ein
+  Schlüssel, der sie nicht unterscheiden kann, eine Zahlung spurlos
+  verschluckt.
+- **Vorgemerkte Buchungen (`PDNG`) werden nicht übernommen.** Sie haben das
+  Konto noch nicht berührt und können sich noch ändern oder verschwinden;
+  eine übernommene und später von der Bank fallengelassene Buchung ist eine
+  Differenz, die hinterher niemand erklären kann.
+- **SEPA-Tags werden ausgepackt.** Deutsche Banken pressen mehrere Felder in
+  eine Zeile (`EREF+… MREF+… SVWZ+…`); der von Hand geschriebene Teil ist
+  der nach `SVWZ+`. Mehrere `<Ustrd>` gehören zu **einem** Verwendungszweck,
+  der bei 140 Zeichen geteilt wurde, und bei MT940 gilt dasselbe für `?20`
+  bis `?29` und für den in `?32`/`?33` zerlegten Namen.
+- **Die automatische Zuordnung schlägt vor und bucht nichts.** Ein falscher
+  automatischer Beleg in einem festgeschriebenen Zeitraum lässt sich nur
+  durch Storno beheben, also ist eine Bestätigung billiger als eine
+  Selbstsicherheit. **Sicher** heißt: die Belegnummer steht im
+  Verwendungszweck **und** der Betrag stimmt - der Betrag allein ist es
+  nicht, weil zwei Rechnungen gleich viel kosten können.
+- **Die Richtung ist Voraussetzung, keine Punktzahl.** Eingehendes Geld kann
+  keine Eingangsrechnung bezahlen. Dabei fragt der Abgleich, ob der Ausgleich
+  Geld **abfließen** lässt, und nicht, ob wir den Beleg ausgestellt haben:
+  eine **Ausgangsgutschrift** ist beides zugleich - unser Beleg und Geld, das
+  hinausgeht (`GeldAbgangBeimAusgleich()`).
+- **Eine zu kurze Belegnummer gilt nicht als Fund.** Nummern werden auf
+  Buchstaben und Ziffern reduziert und in Großschreibung verglichen, damit
+  Schreibweise und Leerzeichen des Zahlenden nichts ausmachen - aber eine
+  Nummer mit weniger als vier Zeichen wird gar nicht erst gesucht: "1" steht
+  in fast jedem Verwendungszweck und würde einen Beleg auf alles passen
+  lassen.
+- **Bestätigen bucht über `ZahlungErfassen`**, den Weg, der Überzahlung,
+  festgeschriebene Zeiträume, den Belegstatus und die Prüfsummenkette schon
+  kennt. Eine Zuordnung ist ein *Grund*, eine Zahlung zu buchen, und kein
+  zweiter Weg, sie zu buchen - zwei Wege driften auseinander, und der
+  ungetestete gewinnt.
+- **`partner-neu` kennt jetzt `--iban` und `--bic`.** Ohne sie war die
+  IBAN-Regel des Abgleichs nicht benutzbar, und die Option wurde vorher
+  stillschweigend verworfen.
+- **Ansehen schreibt nicht.** `bank-import` ist ohne `--uebernehmen` ein
+  Trockenlauf und zeigt die ersten Zeilen so, wie das Profil sie liest - bei
+  CSV ist genau das die Prüfung der Spaltenzuordnung.
+
+#### 2026-09-19 *0.6.0*
+- **DATEV-Import: der Buchungsstapel zurück ins Hauptbuch.**
+  `LeseBuchungsstapel()` in `Apps/UltraFIBU/engine/UltraFIBUDatev.{h,cpp}`,
+  Schema v3 mit `Store::ImportiereDatevStapel()`, `ultrafibu datev-import` und
+  `ultrafibu datev-importe`, 126 weitere Prüfungen (833 insgesamt).
+- **Der Import hängt nicht an der geratenen Spaltenreihenfolge.** Eine echte
+  DATEV-Datei benennt ihre Spalten selbst, und gelesen wird über diese Namen.
+  Die Unsicherheit, die über `data/DATEV-Buchungsstapel-v700.csv` und dem
+  Export steht, gilt hier also gar nicht.
+- **Das Jahr hinter TTMM kommt aus dem Zeitraum der Datei.** Beide in Frage
+  kommenden Jahre werden probiert, und das genommen, das im Zeitraum liegt; ein
+  Datum, das in keines passt, wird gemeldet statt geraten. Ein Stapel ohne
+  Zeitraum in der Kopfzeile wird abgelehnt, weil TTMM ohne ihn nicht auflösbar
+  ist.
+- **Zwei Regeln schützen das Hauptbuch, und beide sind gegen eine echte
+  Datenbank geprüft:**
+  - **Entweder ganz oder gar nicht.** Geschäftsjahr, Abschluss und
+    Festschreibung werden für *alle* Zeilen geprüft, bevor eine einzige
+    geschrieben wird. Der Test legt die gute Zeile absichtlich vor die
+    gesperrte: ein Import, der beim Schreiben prüft, hätte die erste längst
+    übernommen und ein halb gefülltes Hauptbuch hinterlassen.
+  - **Dieselbe Datei nicht zweimal.** Der Stapel wird über seinen SHA-256
+    erkannt; ein zweiter Import verdoppelt einen Monat und fällt nur als
+    falscher Saldo auf. `--nochmal` gibt es trotzdem, für den einen echten Fall:
+    ein rückgängig gemachter Import, der wiederholt werden muss.
+- **Importierte Buchungen sind gewöhnliche Buchungen.** Sie laufen über denselben
+  append-only-Pfad, reihen sich in die Prüfsummenkette ein und werden von
+  `ultrafibu pruefen` mit abgedeckt. Festgeschrieben werden sie hier und nicht
+  durch ein Kennzeichen in einer fremden Datei.
+- **Der BU-Schlüssel wird zurückübersetzt, wo die Zuordnung existiert - und
+  nicht erfunden, wo sie fehlt.** Aus `data/Steuerschluessel.csv`, Spalte
+  `datev_bu`. Fehlt sie, wird der Betrag ungeteilt übernommen, der
+  BU-Schlüssel bleibt wörtlich erhalten und die Warnung **nennt die
+  Schlüssel**, um die es geht - die Zuordnung lässt sich nachtragen und die
+  Datei erneut einlesen.
+- **Warum ein Erlöskonto nach dem Import brutto dasteht, steht im Bericht.**
+  `mitSteuer` zählt die Buchungen mit Steueraufteilung; ist es null, sagt der
+  Import das ausdrücklich und nennt die noch leere Spalte `datev_bu` als
+  wahrscheinliche Ursache. Ohne diesen Satz ist ein Bruttobetrag auf 8400 ein
+  Rätsel, das lange dauert.
+- **Sachkonten aus der Datei, die der Kontenrahmen nicht hat**, werden vor dem
+  Schreiben genannt (`UnbekannteSachkonten()`). Personenkonten bleiben dabei
+  außen vor: ein Debitor gehört zu einem Partner und steht nie im
+  Kontenrahmen, ihn zu melden würde den einen Fall zudecken, der zählt - ein
+  falsch getipptes Sachkonto, das hinterher nur als Nummer ohne Bezeichnung in
+  der Saldenliste auftaucht.
+- **Ansehen schreibt nicht.** `ultrafibu datev-import` ist ohne
+  `--uebernehmen` ein Trockenlauf: erst der Bericht über eine fremde Datei,
+  dann die Entscheidung. `ultrafibu datev-importe` zeigt, was wann von wem
+  eingelesen wurde.
+- **Der Rundlauf ist jetzt ein Test, keine Absicht.** Ein Stapel wird
+  geschrieben, wieder eingelesen und Buchung für Buchung verglichen - Datum,
+  Betrag, Soll/Haben, Konten, Buchungstext, Steueraufteilung. Der Vorschlag
+  nennt das den einen Test, der Vorzeichen-, Soll/Haben-, Komma- und
+  TTMM-Fehler auf einmal fängt, und er hat recht: jeder davon ergibt eine
+  völlig plausibel aussehende Datei. Ein absichtlich vertauschtes
+  Soll/Haben-Kennzeichen im Export wird von genau diesem Test gemeldet.
+- **Unlesbare Zeilen werden gemeldet, nicht stillschweigend übergangen** - jede
+  mit ihrer Zeilennummer, und zusammengefasst als Warnung, damit die Zahl unter
+  den übernommenen Buchungen nicht als vollständig gelesen wird.
+
+#### 2026-09-19 *0.5.0*
+- **DATEV-Export: der Buchungsstapel.** `Apps/UltraFIBU/engine/UltraFIBUDatev.{h,cpp}`,
+  `ultrafibu datev-export` und `ultrafibu datev-pruefen`, 49 weitere Prüfungen
+  (707 insgesamt). Phase A3 des Vorschlags, Kategorie 21 (Buchungsstapel) und
+  20 (Kontenbeschriftungen).
+- **Die Spaltenreihenfolge ist eine Datendatei, kein Quelltext**
+  (`data/DATEV-Buchungsstapel-v700.csv`). DATEV gibt rund 120 Spalten in fester
+  Reihenfolge vor, und **diese Datei ist noch nicht an einer echten DATEV-Datei
+  geprüft** - sie sagt das oben in sich selbst. Der Export schreibt jeden Wert
+  **über den Spaltennamen**, nicht über die Position, also wandern die Werte
+  beim Korrigieren mit und es braucht keinen neuen Build.
+  - **`ultrafibu datev-pruefen <echte_datei.csv>`** liest die Kopf- und die
+    Spaltenzeile einer echten DATEV-Datei und meldet jede Abweichung mit ihrer
+    Position. Damit hört die Reihenfolge in dem Moment auf, eine Vermutung zu
+    sein, in dem eine echte Datei vorliegt - ein Befehl, keine Nachprogrammierung.
+    Der Test korrumpiert einen Spaltennamen und prüft, dass genau diese Position
+    gemeldet wird.
+- **Drei Formatregeln, die eingebaut und nicht später entdeckt sind:**
+  - **Belegdatum ist TTMM - vier Stellen, kein Jahr.** DATEV leitet das Jahr aus
+    dem Wirtschaftsjahr ab. Deshalb schreibt der Export **eine Datei je
+    Kalendermonat** und weist einen Monat zurück, der nicht vollständig im
+    Geschäftsjahr liegt. Für ein Geschäftsjahr ab 1. April ist das der
+    Unterschied zwischen einem richtigen Export und einem, der Dezember
+    stillschweigend in den Januar bucht.
+  - **Umsatz ist vorzeichenlos**; die Richtung trägt das
+    Soll-/Haben-Kennzeichen. Ein vorzeichenbehafteter Betrag ergibt ein
+    plausibel aussehendes, falsches Hauptbuch. Der Test prüft, dass in der
+    ganzen Datei kein Minuszeichen steht.
+  - **Die Datei ist CP1252 mit CRLF**, nicht UTF-8. Ein Umlaut als UTF-8
+    geschrieben kommt in der Kanzlei als zwei falsche Zeichen an und bleibt dort
+    zehn Jahre stehen. Derselbe CP1252-Bereich wie beim Euro-Zeichen im
+    PDF-Writer; hier wird er direkt getestet, Byte für Byte.
+- **Was fehlt, wird gesagt statt weggelassen.** Ohne Berater- und
+  Mandantennummer - beide vergibt die Kanzlei - lehnt DATEV den Import ab, also
+  lehnt der Export vorher ab und nennt beide. Hat eine Buchung einen
+  Steuerschlüssel, aber keinen DATEV-BU-Schlüssel, warnt der Export: die Datei
+  importiert, aber DATEV bucht ohne Steuerautomatik. Die Zuordnung steht in
+  `data/Steuerschluessel.csv`, Spalte `datev_bu`, und ist dort noch leer.
+- **Kategorie 16 (Debitoren/Kreditoren) ist bewusst nicht dabei.** Rund 240
+  Spalten, deren Reihenfolge zu raten schlechter wäre als sie nicht anzubieten.
+  Sie wartet auf eine echte Datei - dann ist sie eine weitere Datendatei.
+- **`ultrafibu einrichten` kennt jetzt Berater- und Mandantennummer**, wie
+  zuvor schon die Pflichtangaben nach § 14 UStG.
+
+#### 2026-09-19 *0.4.0*
+- **Die Oberfläche: vier Bildschirme über der Engine.** `Apps/UltraFIBU/ui/`,
+  target `ultrafibu-ui`. Belege, Journal, Summen und Salden, Partner - each a
+  sortable, filterable table over `UltraCanvasListView` and
+  `UltraCanvasListSortFilterProxy`, in German, reading a real bookkeeping file.
+  This is what phase B1's sorting work was built for.
+- **One panel, four screens.** `TabellenPanel` is a search box, a table and a
+  summary line; the screens differ only in the columns they declare and the
+  store call that fills them. Writing that four times is how the fourth one
+  ends up subtly different from the first.
+- **The columns sort by value, not by their text.** `TabellenModell` answers
+  `ListDataRole::SortRole`, so `1.232,80` sorts after `404,60` instead of
+  before it the way those read as text, and `15.06.2026` sorts by its day
+  number rather than by its day of month.
+  - `ListDataValue` has no `int64` alternative - its choices are string, int,
+    float and Color - and an amount in minor units passes 2^31 at
+    **21.474.836,47**, a figure a company can genuinely invoice in a year.
+    Truncating there would have mis-sorted silently. So the panel installs a
+    per-column comparator through the proxy's `SetColumnComparator` seam, which
+    reads the exact `int64` from the model; `SortRole` stays as the fallback
+    for anything driving the model without one.
+- **A row carries its record's id, never its position.** The proxy re-orders
+  rows, so a selection is mapped back through `MapToSource` before anything
+  acts on it. That is the mistake the proxy's own documentation warns about,
+  and a sorted table that opens the wrong invoice is how it looks.
+- **Two actions, and only two**: post the selected draft, and print it as a
+  PDF. Each is one engine call, and every rule that protects the ledger - the
+  draft state, the frozen period, the role - stays in the store, so the button
+  can do nothing the CLI could not. Entering a document still belongs to
+  `ultrafibu beleg-neu` until the position editor exists.
+- **The journal screen verifies the hash chain and the double entry every time
+  it loads**, and says so in its summary line. Both are statements about the
+  whole ledger, so they are deliberately not recomputed when a filter narrows
+  the view - half a ledger has no reason to balance.
+- **A bug found by looking at the running window, not by reading the code.**
+  With a static summary line, filtering the Belege list to one customer left
+  *"4 Beleg(e), offen insgesamt 3.904,60 EUR"* under a single row. A total that
+  does not describe what is above it is worse than no total, because somebody
+  reads it. The summary is now a function of the visible rows, and says
+  "1 Beleg(e) von 4 (gefiltert)" when it is showing a subset. Two column widths
+  that clipped `05.08.20…` and `Teilweise bez…` came from the same look.
+
+#### 2026-09-19 *0.3.0*
+- **Die Rechnung als PDF.** `Apps/UltraFIBU/report/UltraFIBURechnungPdf.{h,cpp}`,
+  the target `UltraFIBUReport`, `ultrafibu rechnung-pdf`, and 32 further checks
+  (658 in total). Phase A2's remaining half, minus the screens.
+- **There is no PDF writer in it.** The framework already has one -
+  `UltraCanvas::VectorConverter::PDFVectorConverter`, which writes a
+  self-contained PDF 1.4 from a `VectorStorage::VectorDocument`. This module
+  builds that document and hands it over. Writing a second emitter beside the
+  existing one would have been the same mistake as building a second data grid
+  beside `UltraCanvasListView`, and this time the tree was checked first: both
+  sources the writer needs reference nothing outside `VectorStorage`, so an
+  invoice can still be produced on a server with no display, no pango and no
+  vips. The build compiles those two files directly rather than linking the
+  Vector plugin, because the plugin links the UltraCanvas core and would drag
+  the whole rendering stack in behind it.
+- **§ 14 UStG decides the content, not taste.** `PruefePflichtangaben` checks
+  every mandatory field - both addresses in full, the supplier's Steuernummer
+  or USt-IdNr., the date of issue, the sequential number, quantity and
+  description, the date of supply, the base and rate per tax rate, and the
+  recipient's USt-IdNr. when the supply is an intra-community one. What is
+  missing is **named**, in German, and `ultrafibu rechnung-pdf` exits non-zero
+  for it: an invoice missing these is legally deficient and its recipient
+  cannot deduct the input tax from it, which is the customer's problem as much
+  as ours.
+- **A zero-rated line names its exemption**, which § 14 Abs. 4 Nr. 8 requires:
+  innergemeinschaftliche Lieferung, Ausfuhr, § 13b reverse charge, One-Stop-Shop,
+  § 19 Kleinunternehmer and nicht steuerbar each have their wording, taken from
+  the Steuerschlüssel valid on the Belegdatum rather than from today's table.
+- **The VAT summary is per rate**, one line per tax key in the order the
+  positions introduced them - so the invoice and the journal read the same way
+  round. A Gutschrift says "Gutschrift" and a reversal says "Stornorechnung",
+  because a credit note that looks like an invoice is how a customer pays twice.
+- **Amounts line up.** Nothing is embedded, so the writer approximates centre
+  and right anchoring from an average glyph width - which a money column cannot
+  be. Right alignment is therefore computed here from the base-14 Helvetica
+  advance widths: every digit is 556/1000 em, which is exactly the property a
+  column of amounts depends on, and the test pins it.
+- **Three layout faults found by looking at the rendered page**, not by reading
+  the code: the Leistungsdatum value printed straight through its own label, the
+  ENTWURF mark was drawn across the opening paragraph, and the standard sentence
+  about the date of supply sat in a field where it belonged in a note. A meta
+  value too wide for its row now takes the next line, the document's state is a
+  line under the heading instead of a watermark, and the sentence moved under
+  the total where a German invoice puts it.
+- **An invoice that does not fit one page is refused**, with the reason. The
+  framework's writer emits a single page (proposal §3.2); dropping the last
+  positions off the bottom of an invoice is a failure nobody notices until the
+  customer pays the wrong amount, and shrinking the type until it fits produces
+  something nobody can read. Multi-page output is the writer's to grow.
+- **`ultrafibu einrichten` can now record the company's own address, tax
+  number, telephone, e-mail, IBAN, BIC and bank** - the fields § 14 asks for,
+  which until now could not be entered at all.
+
+#### 2026-09-19 *0.2.0*
+- **Belege und Buchungen: the documents and the journal they produce.** Phase
+  A2 of `Docs/Research/UltraFIBUDesignProposal.md`, minus the invoice PDF and
+  the screens. `UltraFIBUBeleg.{h,cpp}`, `UltraFIBUBuchung.{h,cpp}`, schema
+  version 2 (`beleg`, `beleg_position`, `buchung`, `zahlung`), nine new
+  commands in `ultrafibu`, and 126 further checks in
+  `Tests/UltraFIBU/UltraFIBUEngineTests.cpp` (626 in total).
+- **A document produces postings; it is never derived from them.** A `Beleg`
+  has positions, a partner, a currency, a file, a status and a payment history;
+  a `Buchung` has two accounts and an amount. While a document is a draft it can
+  be edited and re-priced freely. `Buchen()` turns it into journal rows, and
+  from that moment the store refuses every change to it - a correction is a
+  Storno, which is what the GoBD require and what `SaveBeleg` answers with
+  rather than leaving it to the UI.
+- **The journal row is DATEV-shaped**: `umsatz` (always positive) with a
+  Soll-/Haben-Kennzeichen, a `konto`, a `gegenkonto` and a BU-Schlüssel - the
+  shape the Buchungsstapel exports and the Kanzlei reads. In that shape the tax
+  is not a third row: one account is net, the other gross, and the difference is
+  an automatic posting to a tax account nobody types. The row therefore also
+  records what that automatic posting was - `netto`, `steuer`, `steuerkonto`,
+  `satzPromille` and which side was the net one - because a Saldenliste has to
+  show the tax account, because the rate that applied on the Belegdatum is
+  history rather than configuration, and because rounding happened once and
+  re-deriving it later can differ by a cent.
+- **Tax is computed per rate, not per position.** Three lines of 33,33 EUR at
+  19 % owe **19,00 EUR**; rounding each line first gives 18,99. The one tax
+  figure is then distributed back over the lines by largest remainder, so the
+  invoice's tax column adds up to its tax total - the property the recipient's
+  own system checks. The test asserts both numbers, so the difference cannot be
+  optimised away by accident.
+- **Storno is a reversal, never a deletion or a negative amount.** A new
+  document with the amounts negated and its own number, postings with Soll and
+  Haben exchanged at the *same* positive amounts, both documents and both
+  postings pointing at each other, dated into an open period while the original
+  may sit in a frozen one. Reversing the same document twice is refused.
+  - **A payment already recorded is not reversed with it.** The money arrived;
+    reversing the bank leg would make the bank balance disagree with the bank
+    statement, which is the one figure in a bookkeeping system that is checked
+    against the outside world. What remains is a credit on the person account -
+    the customer paid for an invoice that no longer exists and is owed the
+    money - which is the true position and the start of a refund. This was
+    wrong in the first version of the code and is now pinned by a test that
+    asserts the bank is untouched.
+- **A hash chain over the journal, and something that checks it.**
+  `hash = SHA-256(prevHash ‖ KanonischeForm(buchung))` over a length-prefixed
+  canonical form, so a Buchungstext containing a semicolon cannot imitate a
+  field separator. `PruefeHashKette` walks the chain from the first row and
+  re-computes every link; the tests edit an amount and then delete a row with
+  plain SQL - exactly what somebody with the database file would do - and assert
+  that both are detected, the first by the hash and the second by the gap in the
+  running numbers. It is tamper *evidence*, not a qualified signature, and the
+  CLI says so.
+- **Festschreibung now reaches the rows.** Freezing a period sets the date on
+  the Geschäftsjahr *and* marks every posting and posted document in it, in one
+  transaction. Afterwards the store refuses a document dated into the period, a
+  posting dated into it, a reversal dated into it and a payment dated into it -
+  each with the date it is refusing and why.
+- **Payments and the overdue list.** `ZahlungErfassen` posts the money account
+  against the person account and carries the document from Offen through
+  Teilweise bezahlt to Bezahlt; an over-payment is refused, because the usual
+  cause is the same payment entered twice. The due date is derived once from the
+  partner's terms and then stored, so changing a customer's terms next year does
+  not move when last year's invoices were due. `BelegFilter` covers the
+  Rechnungen screen - open, overdue, by kind, by partner, by date range, by
+  search text - and takes the cut-off date as a parameter rather than reading
+  the clock, so a report is reproducible and a test is not flaky.
+- **`SummenUndSalden` expands the automatic tax posting** into the leg it always
+  was, which is what makes the list balance, and names a Personenkonto after its
+  partner since it is not in the chart of accounts.
+  `Buchungskreisdifferenz` is the one-line answer to whether the ledger is still
+  a ledger; every test in this area ends with it, and so does `ultrafibu salden`.
+- **Nine commands**: `beleg-neu`, `belege`, `buchen`, `storno`, `zahlung`,
+  `journal`, `salden`, `pruefen`, beside the existing ones. A whole month can be
+  entered, posted, paid, partly reversed, frozen and verified without a window -
+  which is what keeps the engine honest about being headless.
+
 #### 2026-09-18 *0.1.0*
 - **UltraFIBU exists: the engine a German bookkeeping program is built on, and
   a command line that already uses it.** Phase A1 of

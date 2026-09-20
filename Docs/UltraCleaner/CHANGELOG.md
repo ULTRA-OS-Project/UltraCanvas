@@ -1,3 +1,23 @@
+#### 2026-09-19 *0.54*
+- **UltraCleaner has an icon.** The trash can with the green disc and red
+  cross (`media/appicon/UltraCleaner.svg`) is drawn everywhere the app is
+  shown: the window and the taskbar entry that follows it
+  (`SetDefaultWindowIcon` and the `UCAPP_ICON_PATH` fallback), the icon
+  compiled into the Windows `.exe`, and the launcher in an application menu
+  and in a filer. Until now the app set no icon at all, so every one of those
+  surfaces wore the generic UltraCanvas or executable glyph. The PNG the
+  fixed-size consumers read is rendered from the SVG (padded to a square on a
+  transparent background; the drawing is 243 x 257 units), so the scalable and
+  the fixed-size icon agree at every size.
+- **UltraCleaner has a desktop entry.** `Apps/UltraCleaner/UltraCleaner.desktop`
+  is installed to `share/applications`, with the PNG and the SVG installed to
+  `share/icons/hicolor/256x256/apps` and `share/icons/hicolor/scalable/apps`.
+  `Icon=UltraCleaner` is an icon *name* resolved through the installed themes,
+  and UltraFiler finds an application's icon by reading its desktop entry, so
+  without one the new artwork would show in the window and nowhere else.
+  `Exec=UltraCleaner %f` matches the one bare path `main()` already accepts (a
+  folder to open as an album); no MIME type is claimed.
+
 #### 2026-09-03 *0.53*
 - **System junk tab: the two panels are laid out again, and a wider window is
   a wider table.** Both group boxes were built with a construction origin —

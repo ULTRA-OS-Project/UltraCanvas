@@ -5,7 +5,9 @@
 // Author: UltraCanvas Framework
 
 #include "DataFormats/UltraCanvasVectorStorage.h"
+#include "DataFormats/UltraCanvasVectorPathOps.h"
 #include <cmath>
+#include <cstdlib>
 #include <algorithm>
 #include <sstream>
 #include <regex>
@@ -170,6 +172,40 @@ Matrix3x3 Matrix3x3::Inverse() const {
 
 // ===== VECTOR STYLE IMPLEMENTATION =====
 
+// ===== STROKE / TRANSPARENCY RAMPS =====
+
+float StrokeData::WidthAt(float t) const {
+    if (WidthProfile.size() < 2) return Width;
+    if (t <= WidthProfile.front().T) return Width * WidthProfile.front().Factor;
+    if (t >= WidthProfile.back().T) return Width * WidthProfile.back().Factor;
+    for (size_t i = 1; i < WidthProfile.size(); ++i) {
+        const WidthSample& a = WidthProfile[i - 1];
+        const WidthSample& b = WidthProfile[i];
+        if (t <= b.T) {
+            const float span = b.T - a.T;
+            const float u = span > 1e-6f ? (t - a.T) / span : 1.0f;
+            return Width * (a.Factor + (b.Factor - a.Factor) * u);
+        }
+    }
+    return Width * WidthProfile.back().Factor;
+}
+
+float TransparencyData::LevelAt(double t) const {
+    if (!IsGradient()) return Level;
+    if (t <= Stops.front().Position) return Stops.front().Level;
+    if (t >= Stops.back().Position) return Stops.back().Level;
+    for (size_t i = 1; i < Stops.size(); ++i) {
+        const TransparencyStop& a = Stops[i - 1];
+        const TransparencyStop& b = Stops[i];
+        if (t <= b.Position) {
+            const double span = b.Position - a.Position;
+            const double u = span > 1e-9 ? (t - a.Position) / span : 1.0;
+            return static_cast<float>(a.Level + (b.Level - a.Level) * u);
+        }
+    }
+    return Stops.back().Level;
+}
+
 void VectorStyle::Inherit(const VectorStyle& parent) {
     // Inherit properties that weren't explicitly set
     if (!Fill.has_value() && parent.Fill.has_value()) {
@@ -179,6 +215,10 @@ void VectorStyle::Inherit(const VectorStyle& parent) {
         Stroke = parent.Stroke;
     }
     
+    if (!Transparency.has_value() && parent.Transparency.has_value()) {
+        Transparency = parent.Transparency;
+    }
+
     // Multiply opacity values
     Opacity *= parent.Opacity;
     FillOpacity *= parent.FillOpacity;
@@ -1157,6 +1197,322 @@ std::shared_ptr<VectorDocument> VectorDocument::Clone() const {
 }
 
 // ===== UTILITY FUNCTIONS IMPLEMENTATION =====
+
+// ===== OUTLINES =====
+
+bool BuildOutlinePath(const VectorElement& element, PathData& out) {
+    using namespace VectorConverter::PathOps;
+    switch (element.Type) {
+        case VectorElementType::Rectangle:
+        case VectorElementType::RoundedRectangle: {
+            const auto& r = static_cast<const VectorRect&>(element);
+            out = (r.RadiusX > 0 || r.RadiusY > 0) ? SegsToPathData(RoundedRectSegs(r.Bounds, r.RadiusX, r.RadiusY))
+                                                   : SegsToPathData(RectSegs(r.Bounds));
+            return true;
+        }
+        case VectorElementType::Circle: {
+            const auto& c = static_cast<const VectorCircle&>(element);
+            out = SegsToPathData(EllipseSegs(c.Center, c.Radius, c.Radius));
+            return true;
+        }
+        case VectorElementType::Ellipse: {
+            const auto& e = static_cast<const VectorEllipse&>(element);
+            out = SegsToPathData(EllipseSegs(e.Center, e.RadiusX, e.RadiusY));
+            return true;
+        }
+        case VectorElementType::Line: {
+            const auto& l = static_cast<const VectorLine&>(element);
+            PathData d;
+            PathCommand m; m.Type = PathCommandType::MoveTo;
+            m.Parameters = {static_cast<float>(l.Start.x), static_cast<float>(l.Start.y)};
+            PathCommand n; n.Type = PathCommandType::LineTo;
+            n.Parameters = {static_cast<float>(l.End.x), static_cast<float>(l.End.y)};
+            d.commands = {m, n};
+            out = d;
+            return true;
+        }
+        case VectorElementType::Polyline:
+        case VectorElementType::Polygon: {
+            const auto* pts = element.Type == VectorElementType::Polyline
+                              ? &static_cast<const VectorPolyline&>(element).Points
+                              : &static_cast<const VectorPolygon&>(element).Points;
+            if (pts->empty()) return false;
+            PathData d;
+            for (size_t i = 0; i < pts->size(); ++i) {
+                PathCommand c;
+                c.Type = i == 0 ? PathCommandType::MoveTo : PathCommandType::LineTo;
+                c.Parameters = {static_cast<float>((*pts)[i].x), static_cast<float>((*pts)[i].y)};
+                d.commands.push_back(c);
+            }
+            if (element.Type == VectorElementType::Polygon) {
+                PathCommand z; z.Type = PathCommandType::ClosePath;
+                d.commands.push_back(z);
+                d.Closed = true;
+            }
+            out = d;
+            return true;
+        }
+        case VectorElementType::Path:
+            out = static_cast<const VectorPath&>(element).Path;
+            return !out.commands.empty();
+        default:
+            return false;
+    }
+}
+
+// ===== LINE GALLERY GEOMETRY =====
+
+namespace {
+    Point2Dd UnitVector(const Point2Dd& v) {
+        const double l = std::hypot(v.x, v.y);
+        return l > 1e-12 ? Point2Dd(v.x / l, v.y / l) : Point2Dd(1, 0);
+    }
+    void AppendPolyline(PathData& out, const std::vector<Point2Dd>& pts, bool close) {
+        for (size_t i = 0; i < pts.size(); ++i) {
+            PathCommand c;
+            c.Type = i == 0 ? PathCommandType::MoveTo : PathCommandType::LineTo;
+            c.Parameters = {static_cast<float>(pts[i].x), static_cast<float>(pts[i].y)};
+            out.commands.push_back(c);
+        }
+        if (close && !pts.empty()) {
+            PathCommand z; z.Type = PathCommandType::ClosePath;
+            out.commands.push_back(z);
+        }
+    }
+}
+
+std::vector<FlatSubpath> FlattenPathData(const PathData& path) {
+    using namespace VectorConverter::PathOps;
+    std::vector<FlatSubpath> out;
+    Point2Dd cur{0, 0};
+    for (const auto& s : NormalizePath(path)) {
+        switch (s.kind) {
+            case FlatSeg::Move:
+                out.push_back({});
+                out.back().Points.push_back(s.p[0]);
+                cur = s.p[0];
+                break;
+            case FlatSeg::Line:
+                if (out.empty()) { out.push_back({}); out.back().Points.push_back(cur); }
+                out.back().Points.push_back(s.p[0]);
+                cur = s.p[0];
+                break;
+            case FlatSeg::Cubic: {
+                if (out.empty()) { out.push_back({}); out.back().Points.push_back(cur); }
+                const double len = std::hypot(s.p[0].x - cur.x, s.p[0].y - cur.y) +
+                                   std::hypot(s.p[1].x - s.p[0].x, s.p[1].y - s.p[0].y) +
+                                   std::hypot(s.p[2].x - s.p[1].x, s.p[2].y - s.p[1].y);
+                const int n = std::min(64, std::max(4, static_cast<int>(std::ceil(len / 3.0))));
+                for (int i = 1; i <= n; ++i) {
+                    const double u = static_cast<double>(i) / n, v = 1.0 - u;
+                    out.back().Points.emplace_back(
+                            v * v * v * cur.x + 3 * v * v * u * s.p[0].x + 3 * v * u * u * s.p[1].x + u * u * u * s.p[2].x,
+                            v * v * v * cur.y + 3 * v * v * u * s.p[0].y + 3 * v * u * u * s.p[1].y + u * u * u * s.p[2].y);
+                }
+                cur = s.p[2];
+                break;
+            }
+        }
+        if (s.closeAfter && !out.empty()) {
+            out.back().Closed = true;
+            if (!out.back().Points.empty()) cur = out.back().Points.front();
+        }
+    }
+    out.erase(std::remove_if(out.begin(), out.end(),
+                             [](const FlatSubpath& l) { return l.Points.size() < 2; }), out.end());
+    return out;
+}
+
+bool PathEndpoints(const PathData& path, Point2Dd& start, Point2Dd& startDir, Point2Dd& end, Point2Dd& endDir) {
+    const auto lines = FlattenPathData(path);
+    if (lines.empty()) return false;
+    const FlatSubpath& first = lines.front();
+    const FlatSubpath& last = lines.back();
+    if (first.Closed || last.Closed) return false;
+    size_t k = 1;
+    while (k + 1 < first.Points.size() &&
+           std::hypot(first.Points[k].x - first.Points[0].x, first.Points[k].y - first.Points[0].y) < 1e-9) ++k;
+    start = first.Points[0];
+    startDir = UnitVector(Point2Dd(first.Points[0].x - first.Points[k].x, first.Points[0].y - first.Points[k].y));
+    const size_t n = last.Points.size();
+    size_t j = n - 2;
+    while (j > 0 && std::hypot(last.Points[n - 1].x - last.Points[j].x, last.Points[n - 1].y - last.Points[j].y) < 1e-9) --j;
+    end = last.Points[n - 1];
+    endDir = UnitVector(Point2Dd(last.Points[n - 1].x - last.Points[j].x, last.Points[n - 1].y - last.Points[j].y));
+    return true;
+}
+
+// Xara's default arrowheads, as its source defines them (Kernel/arrows.cpp,
+// ArrowRec::CreateStockArrow): path data in millipoints for a line 36000
+// millipoints wide, x pointing away from the line's end, scaled by
+// (arrow size * line width / 36000) and placed with `centre` on the end
+// point (Kernel/arrows.cpp, ArrowRec::GetArrowMatrix). Xara's default size
+// is 3, which is this model's Scale 1. The hollow diamond's inner subpath
+// is wound the other way so a non-zero fill leaves the hole.
+namespace {
+    struct XaraStock { const char* Spec; double Cx, Cy; };
+    const XaraStock* StockArrow(ArrowheadKind k) {
+        static const XaraStock straight{"M -9000 54000 L -9000 -54000 L 117000 0 Z", 0, 0};
+        static const XaraStock angled{"M -27000 54000 L -9000 0 L -27000 -54000 L 135000 0 Z", 0, 0};
+        static const XaraStock rounded{
+            "M -9000 0 L -9000 -45000 C -9000 -51708 2808 -56580 9000 -54000 L 117000 -9000 "
+            "C 120916 -7369 126000 -4242 126000 0 C 126000 4242 120916 7369 117000 9000 "
+            "L 9000 54000 C 2808 56580 -9000 51708 -9000 45000 Z", 0, 0};
+        static const XaraStock spot{
+            "M -54000 0 C -54000 29807 -29807 54000 0 54000 C 29807 54000 54000 29807 54000 0 "
+            "C 54000 -29807 29807 -54000 0 -54000 C -29807 -54000 -54000 -29807 -54000 0 Z", 0, 0};
+        static const XaraStock diamond{"M -63000 0 L 0 63000 L 63000 0 L 0 -63000 Z", 0, 0};
+        static const XaraStock feather{
+            "M 18000 -54000 L 108000 -54000 L 63000 0 L 108000 54000 L 18000 54000 L -36000 0 Z", 0, 0};
+        static const XaraStock feather2{
+            "M -36000 0 L 18000 -54000 L 54000 -54000 L 18000 -18000 L 27000 -18000 L 63000 -54000 "
+            "L 99000 -54000 L 63000 -18000 L 72000 -18000 L 108000 -54000 L 144000 -54000 L 90000 0 "
+            "L 144000 54000 L 108000 54000 L 72000 18000 L 63000 18000 L 99000 54000 L 63000 54000 "
+            "L 27000 18000 L 18000 18000 L 54000 54000 L 18000 54000 Z", 0, 0};
+        static const XaraStock hollow{
+            "M 0 63000 L -63000 0 L 0 -63000 L 63000 0 Z M 0 45000 L 45000 0 L 0 -45000 L -45000 0 Z", -45000, 0};
+        switch (k) {
+            case ArrowheadKind::StraightArrow: return &straight;
+            case ArrowheadKind::AngledArrow: return &angled;
+            case ArrowheadKind::RoundedArrow: return &rounded;
+            case ArrowheadKind::Spot: return &spot;
+            case ArrowheadKind::SolidDiamond: return &diamond;
+            case ArrowheadKind::Feather: return &feather;
+            case ArrowheadKind::Feather2: return &feather2;
+            case ArrowheadKind::HollowDiamond: return &hollow;
+            default: return nullptr;
+        }
+    }
+
+    PathData XaraStockArrowhead(const ArrowheadData& arrow, const Point2Dd& tip, const Point2Dd& d, double W) {
+        PathData out;
+        const XaraStock* stock = StockArrow(arrow.Kind);
+        if (!stock) return out;
+        const double k = 3.0 * arrow.Scale * W / 36000.0;
+        const Point2Dd n(-d.y, d.x);
+        // Stock x runs away from the line, stock y across it.
+        auto at = [&](double x, double y) {
+            const double ax = (x - stock->Cx) * k, ay = (y - stock->Cy) * k;
+            return Point2Dd(tip.x + d.x * ax + n.x * ay, tip.y + d.y * ax + n.y * ay);
+        };
+        const char* s = stock->Spec;
+        auto num = [&]() { char* e = nullptr; const double v = std::strtod(s, &e); s = e; return v; };
+        while (*s) {
+            while (*s == ' ') ++s;
+            const char verb = *s;
+            if (!verb) break;
+            ++s;
+            PathCommand c;
+            if (verb == 'Z') {
+                c.Type = PathCommandType::ClosePath;
+            } else {
+                const int pts = verb == 'C' ? 3 : 1;
+                c.Type = verb == 'M' ? PathCommandType::MoveTo : verb == 'C' ? PathCommandType::CurveTo : PathCommandType::LineTo;
+                for (int i = 0; i < pts; ++i) {
+                    const double x = num(), y = num();
+                    const Point2Dd p = at(x, y);
+                    c.Parameters.push_back(static_cast<float>(p.x));
+                    c.Parameters.push_back(static_cast<float>(p.y));
+                }
+            }
+            out.commands.push_back(c);
+        }
+        out.Closed = true;
+        return out;
+    }
+}   // namespace
+
+PathData ArrowheadOutline(const ArrowheadData& arrow, const Point2Dd& tip, const Point2Dd& d, float width, bool& stroked) {
+    PathData out;
+    stroked = false;
+    if (!arrow.IsSet()) return out;
+    const double W = std::max(0.5f, width);
+    const double L = 4.0 * W * arrow.Scale, H = 2.0 * W * arrow.Scale;
+    const Point2Dd n(-d.y, d.x);
+    // `along` back from the tip, `across` to the side.
+    auto P = [&](double along, double across) {
+        return Point2Dd(tip.x - d.x * along + n.x * across, tip.y - d.y * along + n.y * across);
+    };
+    switch (arrow.Kind) {
+        case ArrowheadKind::Triangle:
+            AppendPolyline(out, {tip, P(L, H / 2), P(L, -H / 2)}, true);
+            break;
+        case ArrowheadKind::OpenArrow:
+            AppendPolyline(out, {P(L, H / 2), tip, P(L, -H / 2)}, false);
+            stroked = true;
+            break;
+        case ArrowheadKind::Circle: {
+            const Point2Dd c = P(H / 2, 0);
+            out = VectorConverter::PathOps::SegsToPathData(VectorConverter::PathOps::EllipseSegs(c, H / 2, H / 2));
+            break;
+        }
+        case ArrowheadKind::Square:
+            AppendPolyline(out, {P(0, H / 2), P(H, H / 2), P(H, -H / 2), P(0, -H / 2)}, true);
+            break;
+        case ArrowheadKind::Diamond:
+            AppendPolyline(out, {tip, P(L / 2, H / 2), P(L, 0), P(L / 2, -H / 2)}, true);
+            break;
+        case ArrowheadKind::Bar:
+            AppendPolyline(out, {P(0, H / 2), P(0, -H / 2)}, false);
+            stroked = true;
+            break;
+        case ArrowheadKind::StraightArrow:
+        case ArrowheadKind::AngledArrow:
+        case ArrowheadKind::RoundedArrow:
+        case ArrowheadKind::Spot:
+        case ArrowheadKind::SolidDiamond:
+        case ArrowheadKind::Feather:
+        case ArrowheadKind::Feather2:
+        case ArrowheadKind::HollowDiamond:
+            out = XaraStockArrowhead(arrow, tip, d, W);
+            break;
+        case ArrowheadKind::NoArrowhead:
+        default:
+            break;
+    }
+    if (!IsXaraArrowhead(arrow.Kind)) out.Closed = !stroked;
+    return out;
+}
+
+PathData VariableWidthOutline(const PathData& path, const StrokeData& stroke) {
+    PathData out;
+    for (const FlatSubpath& sub : FlattenPathData(path)) {
+        std::vector<Point2Dd> pts = sub.Points;
+        const bool closed = sub.Closed;
+        if (closed && pts.size() > 2 &&
+            std::hypot(pts.front().x - pts.back().x, pts.front().y - pts.back().y) < 1e-9)
+            pts.pop_back();
+        const size_t n = pts.size();
+        if (n < 2) continue;
+        std::vector<double> cum(n, 0.0);
+        for (size_t i = 1; i < n; ++i) cum[i] = cum[i - 1] + std::hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+        const double total = closed ? cum.back() + std::hypot(pts.front().x - pts.back().x, pts.front().y - pts.back().y)
+                                    : cum.back();
+        if (total <= 1e-9) continue;
+        std::vector<Point2Dd> left(n), right(n);
+        Point2Dd lastT(1, 0);
+        for (size_t i = 0; i < n; ++i) {
+            const Point2Dd& prev = i > 0 ? pts[i - 1] : (closed ? pts[n - 1] : pts[i]);
+            const Point2Dd& next = i + 1 < n ? pts[i + 1] : (closed ? pts[0] : pts[i]);
+            Point2Dd t(next.x - prev.x, next.y - prev.y);
+            if (std::hypot(t.x, t.y) < 1e-12) t = lastT; else t = UnitVector(t);
+            lastT = t;
+            const double half = stroke.WidthAt(static_cast<float>(cum[i] / total)) / 2.0;
+            left[i] = Point2Dd(pts[i].x - t.y * half, pts[i].y + t.x * half);
+            right[i] = Point2Dd(pts[i].x + t.y * half, pts[i].y - t.x * half);
+        }
+        if (closed) {
+            AppendPolyline(out, left, true);
+            AppendPolyline(out, right, true);
+        } else {
+            std::vector<Point2Dd> ring = left;
+            for (size_t i = n; i-- > 0;) ring.push_back(right[i]);
+            AppendPolyline(out, ring, true);
+        }
+    }
+    out.Closed = true;
+    return out;
+}
 
 PathData ParsePathString(const std::string& pathStr) {
     PathData result;

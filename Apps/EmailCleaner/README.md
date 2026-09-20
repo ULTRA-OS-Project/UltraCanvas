@@ -43,6 +43,11 @@ Point it at a different mailbox with `EMAILCLEANER_MAIL_DIR`.
 
 ```
 Apps/EmailCleaner/
+  EmailCleaner.desktop               the freedesktop shortcut; `make install` places
+                                     it with the app icon (media/appicon/EmailCleaner
+                                     .png / .svg, the PNG rendered from the SVG) in the
+                                     hicolor icon theme, which is how the application
+                                     menu and UltraFiler find the app and its icon
   engine/                            headless — UltraDatabase + UltraNet MIME
     EmailCleanerTypes.{h,cpp}        categories, analysed message / sender block /
                                      timetable / timeline types, address + RFC 5322
