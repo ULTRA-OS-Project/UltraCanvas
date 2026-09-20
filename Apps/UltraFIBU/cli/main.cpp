@@ -1376,7 +1376,8 @@ bool LadeUstvaMapping(int jahr, UstvaMapping& mapping) {
     return true;
 }
 
-void ZeigeUstva(const UstvaBerechnung& b, bool details) {
+void ZeigeUstva(const UstvaBerechnung& b, const UstvaMapping& mapping,
+                bool details) {
     std::printf("Umsatzsteuer-Voranmeldung %d/%s (%s - %s)\n",
                 b.jahr, b.zeitraum.c_str(),
                 FormatDateGerman(b.von).c_str(), FormatDateGerman(b.bis).c_str());
@@ -1391,8 +1392,13 @@ void ZeigeUstva(const UstvaBerechnung& b, bool details) {
               });
     for (const KennzahlBetrag* kb : zeilen) {
         if (kb->betrag.Minor() == 0 && kb->code != "83") continue;
+        // The form's own wording, so this list can be read down beside the
+        // paper Vordruck line by line.
+        UstvaKennzahl kz;
+        const std::string text =
+            mapping.Finde(kb->code, kz) ? kz.bezeichnung : KennzahlArtToText(kb->art);
         std::printf("%-6s %-52s %16s\n", kb->code.c_str(),
-                    KennzahlArtToText(kb->art).c_str(), kb->betrag.ToString().c_str());
+                    text.substr(0, 52).c_str(), kb->betrag.ToString().c_str());
         if (details && !kb->buchungIds.empty()) {
             std::printf("       aus %d Buchung(en):", kb->buchungen);
             for (size_t i = 0; i < kb->buchungIds.size() && i < 12; ++i)
@@ -1441,7 +1447,7 @@ int Ustva(int argc, char** argv) {
 
     const UstvaBerechnung b = store.BerechneUstvaFuer(mandant.id, jahr, zeitraum, mapping);
     if (!b.ok) { std::printf("Fehler: %s\n", b.fehler.c_str()); return 1; }
-    ZeigeUstva(b, HasOption(argc, argv, "--details"));
+    ZeigeUstva(b, mapping, HasOption(argc, argv, "--details"));
     return b.Vollstaendig() ? 0 : 1;
 }
 
@@ -1464,7 +1470,7 @@ int UstvaXml(int argc, char** argv) {
 
     const UstvaBerechnung b = store.BerechneUstvaFuer(mandant.id, jahr, zeitraum, mapping);
     if (!b.ok) { std::printf("Fehler: %s\n", b.fehler.c_str()); return 1; }
-    ZeigeUstva(b, false);
+    ZeigeUstva(b, mapping, false);
 
     ElsterKopf kopf;
     kopf.steuernummer    = mandant.steuernummer;

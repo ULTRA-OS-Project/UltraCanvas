@@ -50,6 +50,10 @@
 - **Betragsformate nach Formular:** Bemessungsgrundlagen in vollen Euro und
   **abgeschnitten**, nicht gerundet - Aufrunden wuerde Umsatz melden, den es
   nicht gab; Steuerbetraege auf den Cent mit Punkt als Dezimaltrenner.
+- **Die Anzeige nennt die Kennzahlen so wie das Formular**, damit die Liste
+  Zeile fuer Zeile neben dem Papiervordruck gelesen werden kann, und
+  `ustva --details` nennt je Kennzahl die Buchungen dahinter.
+- 74 weitere Pruefungen (1071 insgesamt).
 - **`einrichten` kennt jetzt `--finanzamt-nr`.** Ohne die Finanzamtsnummer
   weiss ELSTER nicht, wohin die Anmeldung geht.
 
