@@ -3130,6 +3130,36 @@ else()
     message(STATUS "  ProcessRunnerTest skipped (POSIX only)")
 endif()
 
+# ===== eSCL PROTOCOL TEST =====
+# eSCL is driverless network scanning - plain HTTP and XML, so one backend
+# serves every platform. The two things easiest to get wrong in it are pure
+# data and need no scanner: the units (eSCL measures in three-hundredths of
+# an inch, this module in hundredths of a millimetre) and the capability
+# document, whose elements are namespace-prefixed with prefixes the vendor
+# picks. Both live in their own translation unit so this links without
+# UltraNet or the image stack.
+message(STATUS "  Building IODeviceScannerESCLTest...")
+add_executable(IODeviceScannerESCLTest
+    ${CMAKE_CURRENT_SOURCE_DIR}/IODeviceScannerESCLTest.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerESCLProtocol.cpp
+    ${ULTRACANVAS_CORE_DIR}/IODeviceManager/UltraCanvasIODeviceScannerTypes.cpp
+)
+target_include_directories(IODeviceScannerESCLTest PRIVATE
+    ${ULTRACANVAS_INCLUDE_DIR}
+    ${ULTRACANVAS_CORE_DIR}
+    ${TINYXML2_INCLUDE_DIRS}
+)
+target_link_libraries(IODeviceScannerESCLTest PRIVATE ${TINYXML2_LIBRARIES})
+target_link_directories(IODeviceScannerESCLTest PRIVATE ${TINYXML2_LIBRARY_DIRS})
+target_compile_features(IODeviceScannerESCLTest PRIVATE cxx_std_20)
+set_target_properties(IODeviceScannerESCLTest PROPERTIES
+    OUTPUT_NAME "IODeviceScannerESCLTest"
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+)
+add_test(NAME IODeviceScannerESCLTest COMMAND IODeviceScannerESCLTest
+         WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+message(STATUS "    Test registered: IODeviceScannerESCLTest")
+
 # ===== VECTOR RASTERIZER TEST =====
 # UltraCanvasVectorRaster: a vector file's natural size, and rasterizing it
 # into a raster layer at a chosen pixel size (the path a bitmap editor takes
