@@ -2100,7 +2100,8 @@ target_link_libraries(UltraVault PUBLIC UltraCrypt)
 set(_uc_networkmonitor_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorCore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorAddress.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorProcfs.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorProcfs.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorStore.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp)
@@ -2634,6 +2635,15 @@ if(ULTRACANVAS_ENABLE_DATABASE)
         target_link_libraries(UltraDatabase PUBLIC Threads::Threads)
         target_link_libraries(UltraDatabase PRIVATE ${SQLITE3_LIBRARIES})
         target_compile_definitions(UltraDatabase PUBLIC ULTRACANVAS_HAS_DATABASE=1)
+
+        # The NetworkMonitor activity store (core/NetworkMonitor/
+        # NetworkMonitorStore.cpp) records snapshots through UltraDatabase.
+        # Linked here, after the target exists; without it the store compiles
+        # to stubs that report NotSupported (ULTRACANVAS_HAS_DATABASE is the
+        # switch, and it is PUBLIC on this target).
+        if(TARGET NetworkMonitor)
+            target_link_libraries(NetworkMonitor PUBLIC UltraDatabase)
+        endif()
 
         # Let UltraCanvas link UltraDatabase so components/apps can persist
         # data through it when the module is enabled.

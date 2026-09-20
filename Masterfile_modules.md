@@ -1525,9 +1525,10 @@ it never blocks, filters or modifies traffic, and never terminates TLS.
 with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
 `/proc/<pid>/fd` walk for attribution; Windows — IP Helper
 (`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
-macOS — libproc, per process. All polling. Connection events (ETW, eBPF),
-domain names, persistence and file-transfer correlation are still to come.
-Where there is no backend the module reports `NotSupported`.
+macOS — libproc, per process. All polling. Persistence: the activity store
+over UltraDatabase (flows, daily roll-up, retention, CSV export). Connection
+events (ETW, eBPF), domain names and file-transfer correlation are still to
+come. Where there is no backend the module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
@@ -1536,6 +1537,15 @@ Where there is no backend the module reports `NotSupported`.
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
   `NetworkMonitor_FormatEndpoint`
+- The activity store (`NetworkMonitorStore.h`, over UltraDatabase):
+  `NetworkMonitor_StoreAvailable`, `NetworkMonitor_Now`,
+  `NetworkMonitor_OpenStore`, `NetworkMonitor_CloseStore`,
+  `NetworkMonitor_RecordSnapshot`, `NetworkMonitor_QueryFlows`,
+  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RollUp`,
+  `NetworkMonitor_ApplyRetention`, `NetworkMonitor_Purge`,
+  `NetworkMonitor_StoreStats`, `NetworkMonitor_ExportFlowsCsv`; types
+  `NetworkMonitorStoreOptions`, `RecordedFlow`, `DailyProcessTotal`,
+  `ActivityQuery`, `NetworkMonitorStoreStats`
 - Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
   (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
   StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`)

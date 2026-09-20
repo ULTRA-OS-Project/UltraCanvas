@@ -1,4 +1,4 @@
-#### 2026-09-20 *0.9.13*
+#### 2026-09-20 *0.9.14*
 - **New: UltraMessage Phase 1 — the message channel is built**
   (`Masterfile_modules.md` §13, design `Docs/Research/UltraMessageDesignProposal.md`,
   reference `Docs/Modules/UltraMessage/README.md`). Library target
@@ -46,6 +46,29 @@
 - Not in this phase, listed in the README: `AddFdWatch` event-loop integration,
   reconnection after the hosting broker exits, FTS5, the attachment spool,
   the Phase 2 adapters and the Phase 3 command surface.
+#### 2026-09-19 *0.9.13*
+- **NetworkMonitor records.** `NetworkMonitorStore.h`: an activity store
+  over UltraDatabase (SQLite) that turns snapshots into *flows* — one row per
+  connection across the snapshots that saw it, with first and last sighting,
+  its latest state and counters, and the process behind it, deduplicated —
+  and, past a retention window, into per-day, per-process, per-peer totals so
+  the file stays small on a busy desktop. `NetworkMonitor_OpenStore` /
+  `RecordSnapshot` / `QueryFlows` / `QueryDailyTotals` / `RollUp` /
+  `ApplyRetention` / `Purge` / `StoreStats` / `ExportFlowsCsv`, every one
+  returning `NetworkMonitorResult`, parameter binding only, one transaction
+  per snapshot, and a per-store mutex so a recording thread and a reading
+  thread never share the single SQLite connection at once. The same 5-tuple
+  seen again more than two minutes after its last sighting starts a new flow,
+  so a reused ephemeral port is not glued to an earlier conversation.
+  `":memory:"` keeps a session off disk entirely. Without UltraDatabase in
+  the build the store compiles to stubs that report `NotSupported`, and
+  `NetworkMonitor_StoreAvailable()` says so. Tested end to end on an
+  in-memory store: continuation and its cut-off, every filter, the CSV, the
+  roll-up's accumulation onto an existing day, retention, purge.
+  - `NetworkMonitorResultCode` gains `InvalidArgument` and `StorageError`.
+  - The module links `UltraDatabase` from the block that defines that
+    target, since it comes later in the file than NetworkMonitor's own.
+
 #### 2026-09-19 *0.9.12*
 - **Driverless network scanning, on all three platforms, from one file.**
   eSCL — Apple calls it AirScan, Mopria calls it Mopria Scan — is what a

@@ -1697,9 +1697,10 @@ it never blocks, filters or modifies traffic, and never terminates TLS.
 with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
 `/proc/<pid>/fd` walk for attribution; Windows — IP Helper
 (`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
-macOS — libproc, per process. All polling. Connection events (ETW, eBPF),
-domain names, persistence and file-transfer correlation are still to come.
-Where there is no backend the module reports `NotSupported`.
+macOS — libproc, per process. All polling. Persistence: the activity store
+over UltraDatabase (flows, daily roll-up, retention, CSV export). Connection
+events (ETW, eBPF), domain names and file-transfer correlation are still to
+come. Where there is no backend the module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
@@ -1708,6 +1709,15 @@ Where there is no backend the module reports `NotSupported`.
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
   `NetworkMonitor_FormatEndpoint`
+- The activity store (`NetworkMonitorStore.h`, over UltraDatabase):
+  `NetworkMonitor_StoreAvailable`, `NetworkMonitor_Now`,
+  `NetworkMonitor_OpenStore`, `NetworkMonitor_CloseStore`,
+  `NetworkMonitor_RecordSnapshot`, `NetworkMonitor_QueryFlows`,
+  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RollUp`,
+  `NetworkMonitor_ApplyRetention`, `NetworkMonitor_Purge`,
+  `NetworkMonitor_StoreStats`, `NetworkMonitor_ExportFlowsCsv`; types
+  `NetworkMonitorStoreOptions`, `RecordedFlow`, `DailyProcessTotal`,
+  `ActivityQuery`, `NetworkMonitorStoreStats`
 - Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
   (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
   StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`)
@@ -61537,8 +61547,8 @@ FILE: Docs/Modules/NetworkMonitor/README.md
 
 # NetworkMonitor — System-Wide Network Activity
 
-**Status:** Phase 1 and the platform half of Phase 2 implemented (Linux, Windows, macOS); the rest of Phase 2 and Phase 3 in the proposal.
-**Version:** 0.2.0
+**Status:** Phase 1, the platform half of Phase 2 (Linux, Windows, macOS) and persistence implemented; connection events, names and Phase 3 in the proposal.
+**Version:** 0.3.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-09-19
 
@@ -61643,6 +61653,69 @@ lies.
 | `NetworkMonitor_TransportName` / `NetworkMonitor_StateName` | Display names, the kernel's spelling (`ESTABLISHED`, `CLOSE_WAIT`, `UNCONN`) |
 | `NetworkMonitor_FormatEndpoint(address, port)` | `1.2.3.4:443`, `[::1]:22`, `*:0` |
 
+## The activity store
+
+`NetworkMonitor/NetworkMonitorStore.h`, over UltraDatabase's bundled SQLite.
+It turns snapshots into **flows** — one row per connection across the
+snapshots that saw it — and, past a retention window, into **daily totals**
+per process and peer, so the file stays small however busy the machine.
+
+```cpp
+#include "NetworkMonitor/NetworkMonitorStore.h"
+
+NetworkMonitorStoreOptions options;
+options.path = "~/.local/share/UltraNetMonitor/activity.db";   // or ":memory:"
+options.retentionDays = 30;
+NetworkMonitorStoreHandle store;
+if (!NetworkMonitor_OpenStore(options, store)) { /* r.message says why */ }
+
+// Once a second, whatever the app already snapshots:
+NetworkMonitor_RecordSnapshot(store, connections);      // one transaction
+
+// "What was firefox talking to in the last day?"
+ActivityQuery query;
+query.since = NetworkMonitor_Now() - 24 * 3600;
+query.processName = "firefox";
+std::vector<RecordedFlow> flows;
+NetworkMonitor_QueryFlows(store, query, flows);         // newest first
+
+NetworkMonitor_ApplyRetention(store);                   // on stop, on close
+NetworkMonitor_CloseStore(store);
+```
+
+| Function | Does |
+|---|---|
+| `NetworkMonitor_StoreAvailable()` | Whether this build has UltraDatabase; without it every call below reports `NotSupported` |
+| `NetworkMonitor_OpenStore` / `CloseStore` | Registers a named SQLite connection and migrates the schema (versioned; a newer file is refused, not damaged) |
+| `NetworkMonitor_RecordSnapshot` | Every connection either extends the flow it continues or starts a new one; processes are deduplicated and cached |
+| `NetworkMonitor_QueryFlows` | Filters: `since`, `until`, `pid`, `processName`, `text` (substring over addresses, name, executable), `includeListening`, `includeLoopback`, `limit`; newest first |
+| `NetworkMonitor_QueryDailyTotals` | The rolled-up totals, newest day first |
+| `NetworkMonitor_RollUp(olderThan)` | Aggregates flows last seen before the time into daily totals and deletes them; a second roll-up onto the same day accumulates |
+| `NetworkMonitor_ApplyRetention` | Rolls up flows older than the window, drops daily totals and snapshot records older than twelve windows |
+| `NetworkMonitor_Purge` | Deletes everything; irreversible, so the caller confirms |
+| `NetworkMonitor_StoreStats` | Counts and the oldest / newest flow |
+| `NetworkMonitor_ExportFlowsCsv` | RFC 4180 quoting, UTC ISO-8601 times, dot-decimal numbers |
+
+**Continuation.** A connection is the same flow across snapshots while its
+sightings are at most `kFlowContinuationSeconds` (120) apart; the same
+5-tuple seen again later starts a new flow, so a reused ephemeral port is
+not glued to an earlier conversation. `TIME_WAIT` and the like extend the
+flow they belong to.
+
+**Counters.** A flow carries its *latest* counters (the kernel's are
+cumulative). A daily total sums only the flows that had counters and says
+how many did (`countedFlows`), so a day with no counters reads as zero
+counted flows, not as zero bytes.
+
+**Threads.** One mutex per store: a recording thread and a reading thread
+never share the single SQLite connection at once. One transaction per
+snapshot.
+
+**What it does not do yet.** Encrypt at rest — the proposal's plan is
+UltraCrypt with the key in UltraVault, and it is the next store increment.
+Until then the file is as private as the directory it sits in, which is
+why the app keeps it in the per-user data directory, never a cache.
+
 ## Privilege
 
 Three tiers; the module degrades across them and says which it is in:
@@ -61666,6 +61739,7 @@ UltraCanvas/core/NetworkMonitor/
     NetworkMonitorCore.cpp        NetworkMonitor_* functions, filters, roll-up, null backend
     NetworkMonitorAddress.cpp     RFC 5952 IPv6 text, IPv4-mapped in mixed notation
     NetworkMonitorProcfs.cpp      table parsing - no I/O, so it is tested on every platform
+    NetworkMonitorStore.cpp       the activity store over UltraDatabase (stubs without it)
 UltraCanvas/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp
                                   netlink sock_diag, the /proc/net fallback, the /proc walk
 UltraCanvas/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
@@ -61740,12 +61814,15 @@ snapshot attributed to the test's own PID, with counters at least that large
 where the backend collects them and unset (not zero) where it does not; then
 that the option filters remove what they should. The socket code compiles
 on Winsock too. Where there is no backend, it asserts the module says so.
+The store is tested on an in-memory database: continuation across
+snapshots and its cut-off, every query filter, the CSV export, the
+roll-up's accumulation onto an existing day, retention and purge.
 
 ## Not built yet
 
 - Connection events (ETW on Windows, eBPF on Linux), domain names,
-  persistence, throughput charts and file-transfer correlation — the rest of
-  Phase 2 and Phase 3, in the proposal's §9 order.
+  throughput charts, at-rest encryption of the store and file-transfer
+  correlation — the rest of Phase 2 and Phase 3, in the proposal's §9 order.
 - Byte counters on Windows (ETW) and macOS (no public source).
 - Any blocking or TLS interception, by decision (proposal §7).
 
