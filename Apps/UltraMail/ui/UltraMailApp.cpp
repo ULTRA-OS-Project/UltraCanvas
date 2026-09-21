@@ -28,6 +28,7 @@
 #include "UltraCanvasFileAssociations.h"
 #include "UltraCanvasFileLoader.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasTextArea.h"
 #include "UltraCanvasUtils.h"
 
 #include <UltraNet/UltraNetCore.h>
@@ -321,6 +322,16 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                const std::string& selfAddr) {
         OpenComposer(Composer::Reply(src, selfName, selfAddr, /*replyAll=*/false));
     };
+    mailView_.onForward = [this](const SourceMessage& src, const std::string& selfName,
+                                 const std::string& selfAddr) {
+        OpenComposer(Composer::Forward(src, selfName, selfAddr));
+    };
+    mailView_.onDelete     = [this](const MessageEnvelope& e) { HandleDeleteMessage(e); };
+    mailView_.onJunk       = [this](const MessageEnvelope& e) { HandleJunkMessage(e); };
+    mailView_.onMarkUnread = [this](const MessageEnvelope& e) { HandleMarkUnread(e); };
+    mailView_.onViewSource = [this](const std::string& subject, const std::string& raw) {
+        OpenSourceViewer(subject, raw);
+    };
     // The folder tree switched to a folder under a different account: adopt that
     // account (and highlight its tile) without re-showing its inbox, so the
     // tree's chosen folder stays open.
@@ -456,6 +467,157 @@ void UltraMailApp::OpenComposer(const Draft& draft) {
     composeView_.Resize(static_cast<float>(cfg.width), static_cast<float>(cfg.height));
     win->onWindowResize = [this](int cw, int ch) {
         composeView_.Resize(static_cast<float>(cw), static_cast<float>(ch));
+    };
+    win->Show();
+    viewerWindows_.push_back(win);
+}
+
+std::string UltraMailApp::FolderWithRole(const std::string& accountId, FolderRole role) const {
+    std::vector<Folder> folders;
+    store_.ListFolders(accountId, folders);
+    for (const auto& f : folders) if (f.role == role) return f.name;
+    return {};
+}
+
+void UltraMailApp::RunMailboxAction(
+    const std::string& accountId,
+    std::function<SyncOutcome(SyncEngine&, const std::string&, const UltraNetMailOptions&)> op,
+    const std::string& actionName) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    IMailboxProtocolPlugin* imap = ImapPlugin();
+    if (!imap) { ReportMissingImapPlugin(); return; }
+
+    // The IMAP action needs the account password / OAuth token, so unlock first
+    // (silently with the device key, or a single prompt for an old vault).
+    EnsureVaultUnlocked([this, accountId, op, actionName, parent, imap]() {
+        const Account* account = nullptr;
+        for (const auto& a : accounts_) if (a.accountId == accountId) account = &a;
+        if (!account) return;
+
+        const DiscoveryResult settings = SettingsFor(*account);
+        const std::string serverUrl =
+            settings.found ? AutoDiscovery::ImapServerUrl(settings.imap) : "";
+        if (serverUrl.empty() || !settings.found) {
+            AlertWarning(parent, actionName + " could not be completed.",
+                         "No incoming (IMAP) server is known for this account.");
+            return;
+        }
+        if (vault_.MethodFor(accountId) == SignInMethod::None) {
+            AlertWarning(parent, actionName + " could not be completed.",
+                         "No password or sign-in is stored for this account in the "
+                         "credential vault.");
+            return;
+        }
+
+        UltraNetMailOptions opts;
+        opts.useTls      = settings.imap.security != MailSecurity::Plain;
+        opts.implicitTls = settings.imap.security == MailSecurity::SslTls;
+        const std::string email    = account->email;
+        const std::string username = settings.imap.username.empty() ? email
+                                                                    : settings.imap.username;
+        const std::string provider = OAuthProviderFor(settings);
+        opts.credentials.username  = username;
+
+        // The server op + local-store update run off the UI thread (a credential
+        // refresh can make an HTTPS request); the result is marshalled back.
+        std::thread([this, accountId, serverUrl, opts, op, actionName,
+                     username, provider, imap]() mutable {
+            UltraNetResult cred = ResolveCredentials(accountId, username, provider,
+                                                     opts.credentials);
+            SyncOutcome outcome;
+            if (!cred) {
+                outcome = SyncOutcome::Fail(cred.message);
+            } else {
+                SyncEngine engine(store_, *imap, mailDir_);
+                outcome = op(engine, serverUrl, opts);
+            }
+            auto* app = UltraCanvas::UltraCanvasApplicationBase::GetCurrent();
+            if (!app) return;
+            app->PostToUIThread([this, outcome, actionName]() {
+                if (!outcome) {
+                    AlertError(window_ ? window_.get() : nullptr,
+                               actionName + " could not be completed.", outcome.message);
+                    return;
+                }
+                Refresh();
+            });
+        }).detach();
+    });
+}
+
+void UltraMailApp::HandleMarkUnread(const MessageEnvelope& env) {
+    RunMailboxAction(env.accountId,
+        [env](SyncEngine& engine, const std::string& url, const UltraNetMailOptions& opts) {
+            return engine.SetFlag(env.accountId, env.folder, env.uid, Flag_Seen, false, url, opts);
+        },
+        "Mark as unread");
+}
+
+void UltraMailApp::HandleDeleteMessage(const MessageEnvelope& env) {
+    const std::string trash = FolderWithRole(env.accountId, FolderRole::Trash);
+    RunMailboxAction(env.accountId,
+        [this, env, trash](SyncEngine& engine, const std::string& url,
+                           const UltraNetMailOptions& opts) -> SyncOutcome {
+            if (!trash.empty() && trash != env.folder)
+                return engine.MoveMessage(env.accountId, env.folder, env.uid, trash, url, opts);
+            // No Trash mailbox (or already in it): flag \Deleted on the server and
+            // drop the local row so it leaves the list.
+            SyncOutcome o = engine.SetFlag(env.accountId, env.folder, env.uid,
+                                           Flag_Deleted, true, url, opts);
+            if (o) store_.RemoveMessage(env.accountId, env.folder, env.uid);
+            return o;
+        },
+        "Delete");
+}
+
+void UltraMailApp::HandleJunkMessage(const MessageEnvelope& env) {
+    const std::string junk = FolderWithRole(env.accountId, FolderRole::Junk);
+    if (junk.empty()) {
+        AlertWarning(window_ ? window_.get() : nullptr,
+                     "This account has no Junk (Spam) folder.",
+                     "UltraMail could not find a mailbox marked as Junk on this "
+                     "account, so the message was not moved.");
+        return;
+    }
+    RunMailboxAction(env.accountId,
+        [env, junk](SyncEngine& engine, const std::string& url, const UltraNetMailOptions& opts) {
+            return engine.MoveMessage(env.accountId, env.folder, env.uid, junk, url, opts);
+        },
+        "Mark as junk");
+}
+
+void UltraMailApp::OpenSourceViewer(const std::string& subject, const std::string& raw) {
+    UltraCanvas::UltraCanvasWindowBase* parent = window_ ? window_.get() : nullptr;
+    if (raw.empty()) {
+        AlertWarning(parent, "There is no source to show.",
+                     "This message's body has not been downloaded yet.");
+        return;
+    }
+    WindowConfig cfg;
+    cfg.title  = subject.empty() ? "Message source" : ("Source: " + subject);
+    cfg.width  = 720;
+    cfg.height = 640;
+    cfg.backgroundColor = Theme::kCardBackground;
+    auto win = CreateWindow(cfg);
+
+    auto root = CreateContainer("mailSourceRoot", 0, 0,
+                                static_cast<float>(cfg.width), static_cast<float>(cfg.height));
+    root->SetPadding(Theme::kPagePadding);
+    root->layout.SetFlexColumn().SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+
+    auto text = std::make_shared<UltraCanvasTextArea>("mailSource", 0, 0, 0, 0);
+    text->SetReadOnly(true);
+    text->SetEditingMode(TextAreaEditingMode::PlainText);
+    text->SetWordWrap(false);
+    Theme::StyleTextArea(text, /*bordered=*/true);
+    text->SetText(raw);
+    root->AddChild(text);
+    text->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+
+    win->AddChild(root);
+    UltraCanvasContainer* rootRaw = root.get();
+    win->onWindowResize = [rootRaw](int cw, int ch) {
+        rootRaw->SetElementSize(Size2Df(static_cast<float>(cw), static_cast<float>(ch)));
     };
     win->Show();
     viewerWindows_.push_back(win);

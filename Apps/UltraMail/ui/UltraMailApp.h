@@ -21,6 +21,7 @@
 #include "UltraMailPreferences.h"
 
 #include "UltraMailLocalStore.h"
+#include "UltraMailSyncEngine.h"
 #include "UltraMailMimeCodec.h"
 #include "UltraMailContactStore.h"
 #include "UltraMailSenderIconCache.h"
@@ -167,6 +168,24 @@ private:
 
     // Open a compose window for the given draft (new / reply / forward).
     void OpenComposer(const Draft& draft);
+
+    // Message actions from the reading pane, mirrored to the IMAP server on a
+    // background worker and then refreshed. Delete moves to Trash (fallback:
+    // \Deleted flag + local removal); Junk moves to the Junk mailbox; Mark-Unread
+    // clears \Seen. All non-blocking; failures surface an alert.
+    void HandleDeleteMessage(const MessageEnvelope& env);
+    void HandleJunkMessage(const MessageEnvelope& env);
+    void HandleMarkUnread(const MessageEnvelope& env);
+    // Run one IMAP mailbox op on a worker (credentials resolved off the UI
+    // thread), then Refresh() on success or alert `actionName` on failure.
+    void RunMailboxAction(const std::string& accountId,
+                          std::function<SyncOutcome(SyncEngine&, const std::string& serverUrl,
+                                                    const UltraNetMailOptions&)> op,
+                          const std::string& actionName);
+    // The name of the account's folder with the given special-use role, or "".
+    std::string FolderWithRole(const std::string& accountId, FolderRole role) const;
+    // Open the raw .eml source of a message in a read-only window.
+    void OpenSourceViewer(const std::string& subject, const std::string& raw);
     // Attempt to send a draft via the SMTP plug-in; report the outcome.
     void HandleSendDraft(const Draft& draft);
     // Re-flush the outbox after a failed send (the Retry button's action).
