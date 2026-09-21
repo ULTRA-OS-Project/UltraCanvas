@@ -1,3 +1,34 @@
+#### 2026-09-21 *0.16.0*
+- **UltraFIBU war in keinem fertigen Paket enthalten.** Es wurde gebaut, es
+  bestand seine Tests, und `package-linux.sh` listete beim Packen auf:
+  `Apps: UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp
+  UltraViewer UltraPaint ArtCreator` - ohne ein Wort darueber, dass etwas
+  fehlt. Zwei unabhaengige Gruende:
+  - Die Liste `APPS=` kannte `ultrafibu` und `ultrafibu-ui` nicht.
+  - Gesucht wurde nur in `$BUILDDIR/$app`. UltraFIBU setzt
+    `RUNTIME_OUTPUT_DIRECTORY` auf `bin/`, liegt also woanders - die Namen
+    einzutragen haette allein nichts geaendert. Gleiches unter Windows, wo
+    `./build/*.exe` eingesammelt wird.
+- **Die Datendateien fehlten ebenfalls.** Ein Programm ohne Kontenrahmen kann
+  keinen Mandanten anlegen; ausgeliefert ohne sie waere es schlimmer als gar
+  nicht ausgeliefert. SKR03, Steuerschluessel, UStVA-Kennzahlen, EU-Saetze
+  und die Bank-/DATEV-Profile liegen jetzt unter `share/UltraFIBU/data` und
+  zusaetzlich neben der Binaerdatei.
+- **Gesucht wird jetzt zuerst neben dem Programm, dann im Arbeitsverzeichnis.**
+  Ein installiertes Programm wird aus einem Menue oder vom Dateimanager
+  gestartet, und das Arbeitsverzeichnis ist dann das Heimatverzeichnis oder
+  `/` - nirgends in der Naehe seiner Daten. Nur dort zu suchen ist der Grund,
+  warum dieselbe Binaerdatei im Bauverzeichnis lief und installiert "kein
+  Kontenrahmen gefunden" gemeldet haette.
+- Geprueft am echten Paket, nicht nur im Test: aus `/` gestartet, ueber den
+  Wrapper und einmal direkt als `bin/ultrafibu` ohne gesetzte Umgebung -
+  beide Male 74 Konten und 16 Steuerschluessel, und die EU-Saetze lassen sich
+  uebernehmen.
+- **Offen:** `package-macos.sh` baut nur zwei .app-Bundles (Texter und Demo)
+  und kennt UltraFIBU so wenig wie UltraFiler, UltraMail oder ArtCreator. Das
+  ist eine Luecke dieses Skripts, keine von UltraFIBU, und wird hier nicht
+  angefasst.
+
 #### 2026-09-20 *0.15.0*
 - **Ein Beleg wurde mit 6,56 EUR gebucht, auf dem 6,55 EUR stand.** Vier
   Zeilen einer echten Lieferantenrechnung, 19 %, netto 5,51 EUR. Der

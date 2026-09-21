@@ -43,7 +43,11 @@ MULTIARCH="$(dpkg-architecture -qDEB_HOST_MULTIARCH 2>/dev/null \
     || echo "$(uname -m)-linux-gnu")"
 
 # Apps to include (executable target names, output to the build root).
-APPS=(UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator)
+# `ultrafibu` is the command line and `ultrafibu-ui` the window; both ship,
+# because the bookkeeping engine is usable without a display and the CLI is
+# what a server installation runs.
+APPS=(UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp UltraViewer UltraPaint ArtCreator
+      ultrafibu ultrafibu-ui)
 
 # Shared libraries that must come from the host, NOT be bundled: the glibc/loader
 # core, and the GPU/GL/driver + display stack that has to match the running system.
@@ -106,10 +110,18 @@ mkdir -p "$PKG"/{bin,lib,etc,share}
 
 # --- executables -------------------------------------------------------------
 
+# Most targets land in the build root; some set RUNTIME_OUTPUT_DIRECTORY to
+# `bin/` (UltraFIBU does). Looking in only one of the two is why an app can be
+# built by CI, pass its tests, and still be missing from the package with
+# nothing but a "skip ... (not built)" line to say so.
 FOUND_APPS=()
 for app in "${APPS[@]}"; do
-    if [ -x "$BUILDDIR/$app" ]; then
-        cp "$BUILDDIR/$app" "$PKG/bin/"
+    src=""
+    for cand in "$BUILDDIR/$app" "$BUILDDIR/bin/$app"; do
+        if [ -x "$cand" ]; then src="$cand"; break; fi
+    done
+    if [ -n "$src" ]; then
+        cp "$src" "$PKG/bin/"
         FOUND_APPS+=("$app")
         log "  exe  $app"
     else
@@ -187,6 +199,12 @@ if [ -n "$IM_LIB" ]; then
     export MAGICK_CODER_MODULE_PATH="$IM_LIB/modules-Q16/coders"
     export MAGICK_FILTER_MODULE_PATH="$IM_LIB/modules-Q16/filters"
 fi
+# UltraFIBU reads its chart of accounts and tax keys from data files. It finds
+# them next to its own binary as well, but the packaged layout puts them under
+# share/, so point at that directly. Harmless for every other app.
+if [ -d "$HERE/share/UltraFIBU/data" ]; then
+    export ULTRAFIBU_DATA_DIR="$HERE/share/UltraFIBU/data"
+fi
 exec "$HERE/bin/__APP__" "$@"
 WRAP
     sed -i "s/__APP__/$app/" "$PKG/$app"
@@ -201,6 +219,17 @@ cp -r "$PROJECTDIR/media" "$PKG/share/media"
 cp -r "$PROJECTDIR/Docs"  "$PKG/share/Docs"
 mkdir -p "$PKG/share/DemoApp"
 cp "$PROJECTDIR"/Apps/DemoApp/*.cpp "$PKG/share/DemoApp/" 2>/dev/null || true
+
+# UltraFIBU's data files. Without them the application starts and can do
+# nothing: no chart of accounts means no Mandant, and shipping the binary
+# without them would be worse than not shipping it at all.
+if [ -d "$PROJECTDIR/Apps/UltraFIBU/data" ]; then
+    mkdir -p "$PKG/share/UltraFIBU"
+    cp -r "$PROJECTDIR/Apps/UltraFIBU/data" "$PKG/share/UltraFIBU/data"
+    # And beside the binary, so `bin/ultrafibu` run directly - without the
+    # wrapper that sets ULTRAFIBU_DATA_DIR - still finds them.
+    cp -r "$PROJECTDIR/Apps/UltraFIBU/data" "$PKG/bin/data"
+fi
 
 # --- archive -----------------------------------------------------------------
 

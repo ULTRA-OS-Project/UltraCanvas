@@ -55,7 +55,11 @@ mkdir -p "$DIST_DIR"
 # and load plug-in DLLs, which behaviour-based AV heuristics flag — AVG's
 # Verhaltensschutz quarantined UltraNetApiStatus.exe from the 0.3.50 package
 # as IDP.Generic. End users have no use for them anyway.
-for exe in ./build/*.exe; do
+# Both locations: most targets output to the build root, but some set
+# RUNTIME_OUTPUT_DIRECTORY to bin/ (UltraFIBU does), and globbing only the
+# root is why such an app is built by CI and then missing from the package.
+for exe in ./build/*.exe ./build/bin/*.exe; do
+    [ -e "$exe" ] || continue
     case "$(basename "$exe")" in
         *Test.exe|*Tests.exe|ultraai_test_*.exe|UltraNetApiStatus.exe)
             echo "  Skipping test/diagnostic binary: $(basename "$exe")"
@@ -283,6 +287,14 @@ done
 # fi
 mkdir -p $DIST_DIR/Resources/DemoApp
 cp -r media Docs $DIST_DIR/Resources
+
+# UltraFIBU's chart of accounts and tax keys, beside the executables: the
+# application looks for `data/` next to its own binary. Without them it starts
+# and can do nothing, because no chart of accounts means no Mandant.
+if [ -d Apps/UltraFIBU/data ]; then
+    mkdir -p "$DIST_DIR/data"
+    cp -r Apps/UltraFIBU/data/. "$DIST_DIR/data/"
+fi
 # Demo "View Source" loads files from Resources/DemoApp/ (see GetResourcesDir()
 # + the "DemoApp/..." paths registered in UltraCanvasDemo.cpp).
 cp -r Apps/DemoApp/*.cpp $DIST_DIR/Resources/DemoApp/

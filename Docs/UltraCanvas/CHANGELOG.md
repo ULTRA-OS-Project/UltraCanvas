@@ -1,3 +1,11 @@
+#### 2026-09-21 *0.9.18*
+- **`package-linux.sh` and `package-win.sh` looked in one place for
+  executables.** Most targets land in the build root; a target that sets
+  `RUNTIME_OUTPUT_DIRECTORY` to `bin/` was silently absent from the package,
+  reported only as `skip <app> (not built)` among the apps that genuinely were
+  not built. Both scripts now look in both places, and a packaged app is no
+  longer decided by which output directory its CMakeLists happened to pick.
+
 #### 2026-09-20 *0.9.17*
 - **UltraDatabase speaks PostgreSQL.** `core/UltraDatabase/
   UltraDatabasePostgresDriver.cpp` plus `...PostgresSql.cpp`, registered the
