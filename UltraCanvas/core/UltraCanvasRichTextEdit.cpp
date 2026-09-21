@@ -392,15 +392,13 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
         }
 
         case RichBlockType::Table: {
-            // The grid is as wide as the widest row counting column spans, not
-            // as the row with the most cells: one cell spanning three columns
-            // is three columns wide.
-            size_t columnCount = 0;
-            for (const auto& row : block.tableRows) {
-                size_t width = 0;
-                for (const auto& cell : row.cells) width += static_cast<size_t>(std::max(1, cell.columnSpan));
-                columnCount = std::max(columnCount, width);
-            }
+            // Where each cell actually sits is resolved by the shared grid
+            // walk in the model, which the structural table operations use too
+            // - two implementations of "which column is this cell in" would
+            // drift, and a disagreement between layout and editing is a caret
+            // landing in the wrong cell.
+            const RichTableGrid grid = BuildTableGrid(block);
+            const size_t columnCount = static_cast<size_t>(grid.columnCount);
             if (columnCount == 0) {
                 bl.bounds.width = visibleArea.width;
                 bl.bounds.height = static_cast<float>(style.baseFont.fontSize);
@@ -414,7 +412,7 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
             // indices (row, index-within-row) are what positions address, so
             // cellRows/cellColumns keep storing those while the geometry
             // follows the grid.
-            std::vector<int> rowSpanRemaining(columnCount, 0);
+            //
             // Cells still growing downwards: index into bl.cells, and the row
             // they must reach. Their height is fixed up once rows are measured.
             struct PendingSpan { size_t cellIndex; size_t lastRow; };
@@ -429,17 +427,24 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                 float rowHeight = static_cast<float>(style.baseFont.fontSize) * 1.3f;
                 const size_t firstCellOfRow = bl.cells.size();
 
-                size_t cellIndex = 0;
                 for (size_t gridColumn = 0; gridColumn < columnCount; ) {
-                    if (rowSpanRemaining[gridColumn] > 0) {
-                        rowSpanRemaining[gridColumn]--;
+                    const RichTableGridSlot& slot =
+                        grid.At(static_cast<int>(r), static_cast<int>(gridColumn));
+                    if (!slot.Occupied() || !slot.origin) {
+                        // Covered by a cell from an earlier row, or a slot this
+                        // row's cells never reach (a ragged row). Either way
+                        // there is nothing to lay out here.
                         gridColumn++;
-                        continue;           // covered by a cell from an earlier row
+                        continue;
                     }
-                    if (cellIndex >= row.cells.size()) break;
+                    const size_t cellIndex = static_cast<size_t>(slot.cellIndex);
                     const RichTableCell& modelCell = row.cells[cellIndex];
-                    const int columnSpan = std::max(1, modelCell.columnSpan);
-                    const int rowSpan = std::max(1, modelCell.rowSpan);
+                    // Clamped exactly as the grid clamped them, or the geometry
+                    // would claim room the grid does not agree the cell has.
+                    const int columnSpan = std::min(std::max(1, modelCell.columnSpan),
+                                                    static_cast<int>(columnCount - gridColumn));
+                    const int rowSpan = std::min(std::max(1, modelCell.rowSpan),
+                                                 static_cast<int>(block.tableRows.size() - r));
                     const float cellWidth = columnWidth * static_cast<float>(columnSpan);
 
                     RichDocBlock cellBlock;
@@ -464,14 +469,9 @@ void UltraCanvasRichTextEdit::BuildBlockLayout(IRenderContext* ctx, int blockInd
                             bl.cells.size(),
                             std::min(r + static_cast<size_t>(rowSpan) - 1,
                                      block.tableRows.size() - 1)});
-                        for (size_t c = gridColumn;
-                             c < gridColumn + static_cast<size_t>(columnSpan) && c < columnCount; c++) {
-                            rowSpanRemaining[c] = rowSpan - 1;
-                        }
                     }
                     bl.cells.push_back(std::move(cell));
 
-                    cellIndex++;
                     gridColumn += static_cast<size_t>(columnSpan);
                 }
 
@@ -1388,6 +1388,23 @@ void UltraCanvasRichTextEdit::DrawSpellErrorMarks(IRenderContext* ctx) {
 }
 
 void UltraCanvasRichTextEdit::AfterEdit() {
+    // Marking the layouts dirty is not enough: the rebuild pass only rebuilds
+    // blocks whose cached layout has been invalidated, and an edit that leaves
+    // the caret where it was invalidates nothing. Such a block would keep
+    // showing its old text - a paragraph centred with a collapsed caret stayed
+    // left-aligned until something else moved the caret. So the blocks the
+    // editor just changed are invalidated here, by name.
+    int firstChanged = -1, lastChanged = -1;
+    editor.GetLastChangedBlocks(firstChanged, lastChanged);
+    if (firstChanged < 0) {
+        for (auto& bl : blockLayouts) bl.valid = false;
+    } else {
+        for (int i = firstChanged; i <= lastChanged; i++) {
+            if (i >= 0 && i < static_cast<int>(blockLayouts.size())) {
+                blockLayouts[static_cast<size_t>(i)].valid = false;
+            }
+        }
+    }
     layoutsDirty = true;
     caretMoved = true;
     QueueSpellCheck();
@@ -1745,6 +1762,76 @@ UC_RTE_FORMAT_ACTION(InsertHorizontalRule(), editor.InsertHorizontalRule())
 UC_RTE_FORMAT_ACTION(InsertPageBreak(), editor.InsertPageBreak())
 
 #undef UC_RTE_FORMAT_ACTION
+
+// ===== TABLES =====
+
+// Every structural table operation is "do this where the caret is", so they
+// share one shape: refuse when read-only, resolve the caret's cell to its grid
+// position, call the editing core, and repaint. The core owns the span
+// bookkeeping; the element owns only the translation from caret to grid.
+#define UC_RTE_TABLE_ACTION(name, call)                                       \
+    bool UltraCanvasRichTextEdit::name {                                      \
+        if (readOnly) return false;                                           \
+        int row = 0, column = 0;                                              \
+        if (!editor.CaretGridPosition(row, column)) return false;             \
+        const int block = editor.GetCaret().blockIndex;                       \
+        (void)block; (void)row; (void)column;                                 \
+        if (!(call)) return false;                                            \
+        AfterEdit();                                                          \
+        return true;                                                          \
+    }
+
+UC_RTE_TABLE_ACTION(InsertRowAbove(), editor.InsertTableRow(block, row, false))
+UC_RTE_TABLE_ACTION(InsertRowBelow(), editor.InsertTableRow(block, row, true))
+UC_RTE_TABLE_ACTION(InsertColumnLeft(), editor.InsertTableColumn(block, column, false))
+UC_RTE_TABLE_ACTION(InsertColumnRight(), editor.InsertTableColumn(block, column, true))
+UC_RTE_TABLE_ACTION(DeleteCurrentRow(), editor.DeleteTableRow(block, row))
+UC_RTE_TABLE_ACTION(DeleteCurrentColumn(), editor.DeleteTableColumn(block, column))
+UC_RTE_TABLE_ACTION(MergeWithCellRight(),
+                    editor.MergeTableCells(block, editor.GetCaret().cellRow,
+                                           editor.GetCaret().cellColumn, 1, 0))
+UC_RTE_TABLE_ACTION(MergeWithCellBelow(),
+                    editor.MergeTableCells(block, editor.GetCaret().cellRow,
+                                           editor.GetCaret().cellColumn, 0, 1))
+UC_RTE_TABLE_ACTION(SplitCurrentCell(),
+                    editor.SplitTableCell(block, editor.GetCaret().cellRow,
+                                          editor.GetCaret().cellColumn))
+
+#undef UC_RTE_TABLE_ACTION
+
+void UltraCanvasRichTextEdit::InsertTable(int rows, int columns, bool headerRow) {
+    if (readOnly) return;
+    if (editor.InsertTable(rows, columns, headerRow) < 0) return;
+    AfterEdit();
+}
+
+bool UltraCanvasRichTextEdit::IsCaretInTable() const {
+    int row = 0, column = 0;
+    return editor.CaretGridPosition(row, column);
+}
+
+bool UltraCanvasRichTextEdit::CaretTableGeometry(int& outRows, int& outColumns,
+                                                 int& outRow, int& outColumn) const {
+    outRows = outColumns = 0;
+    outRow = outColumn = -1;
+    if (!editor.CaretGridPosition(outRow, outColumn)) return false;
+    const RichTableGrid grid = editor.TableGrid(editor.GetCaret().blockIndex);
+    outRows = grid.rowCount;
+    outColumns = grid.columnCount;
+    return true;
+}
+
+bool UltraCanvasRichTextEdit::CanSplitCurrentCell() const {
+    const RichDocPosition caret = editor.GetCaret();
+    if (!caret.InCell()) return false;
+    const RichDocBlock& block = editor.GetBlock(caret.blockIndex);
+    if (block.type != RichBlockType::Table) return false;
+    if (caret.cellRow < 0 || caret.cellRow >= static_cast<int>(block.tableRows.size())) return false;
+    const RichTableRow& row = block.tableRows[static_cast<size_t>(caret.cellRow)];
+    if (caret.cellColumn < 0 || caret.cellColumn >= static_cast<int>(row.cells.size())) return false;
+    const RichTableCell& cell = row.cells[static_cast<size_t>(caret.cellColumn)];
+    return std::max(1, cell.columnSpan) > 1 || std::max(1, cell.rowSpan) > 1;
+}
 
 RichBlockType UltraCanvasRichTextEdit::GetCurrentBlockType() const {
     int blockIndex = editor.GetCaret().blockIndex;

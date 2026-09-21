@@ -1,4 +1,4 @@
-#### 2026-09-21 *0.9.18*
+#### 2026-09-21 *0.9.19*
 - **`package-linux.sh` and `package-win.sh` looked in one place for
   executables.** Most targets land in the build root; a target that sets
   `RUNTIME_OUTPUT_DIRECTORY` to `bin/` was silently absent from the package,
@@ -6,6 +6,45 @@
   not built. Both scripts now look in both places, and a packaged app is no
   longer decided by which output directory its CMakeLists happened to pick.
 
+#### 2026-09-20 *0.9.18*
+- **Tables can be built and reshaped, not just filled in.** A document could
+  hold a table, and the caret could edit its cells, but the table's own
+  structure was fixed: there was no way to make one, add a row, or merge two
+  cells. `UCRichDocumentEditor` gains `InsertTable`, `InsertTableRow`,
+  `InsertTableColumn`, `DeleteTableRow`, `DeleteTableColumn`,
+  `MergeTableCells` and `SplitTableCell`, and `UltraCanvasRichTextEdit` the
+  caret-relative wrappers a menu calls (`InsertRowBelow`, `DeleteCurrentColumn`,
+  `MergeWithCellRight`, `SplitCurrentCell` and the rest). Each is one undo step.
+  - **The grid stays rectangular across every operation.** A span reaching
+    across an insertion point grows instead of being cut in two - its text
+    lives in one cell and cannot be in two places - and a span reaching into a
+    deleted row or column shrinks. Where a span *started* in the deleted row,
+    the cell moves down into the next one rather than being deleted with it, so
+    what somebody typed in it survives.
+  - **Merging keeps the text of every cell it absorbs**, appended to the
+    surviving cell: a merge is a layout decision, and dropping the contents
+    would be a silent deletion. A merge whose rectangle would cut an existing
+    span in half is refused rather than approximated, because the model cannot
+    store half a cell.
+  - Deleting the last row or the last column deletes the table: one with no
+    cells has nothing to type into and no way back.
+- **One grid walk, shared.** Cells are stored sparsely - a merged cell is one
+  `RichTableCell` carrying a span, and the slots it covers hold nothing - so a
+  cell's index within its row is not its column. `BuildTableGrid()` resolves
+  which cell occupies each slot, and the element's layout now uses it instead
+  of its own copy of the walk. Two implementations of "which column is this
+  cell in" would drift, and a disagreement between layout and editing is a
+  caret landing in the wrong cell.
+- **An edit that did not move the caret was not drawn.** Block layouts are
+  cached and the rebuild pass only rebuilds the ones that have been
+  invalidated - which, until now, only moving the caret did. Centring the
+  paragraph the caret was already in changed the document and left the old
+  layout on screen until something else moved the caret; the same was true of
+  any format applied to the caret's own block, and of an undo that restored
+  text without moving anything. The editing core now reports which blocks its
+  last change replaced (`GetLastChangedBlocks`) and the element invalidates
+  exactly those. Pinned by a test that centres a paragraph without touching the
+  caret and reads back where the text actually landed.
 #### 2026-09-20 *0.9.17*
 - **UltraDatabase speaks PostgreSQL.** `core/UltraDatabase/
   UltraDatabasePostgresDriver.cpp` plus `...PostgresSql.cpp`, registered the
@@ -457,6 +496,7 @@
   UltraFIBU's was the one application suite CI never built, so its checks - now
   833 of them, including the encoding fix above - ran nowhere. It is a headless
   suite with no UI dependency, which is why it can simply be switched on.
+
 
 #### 2026-09-19 *0.8.99*
 - **NetworkMonitor on Windows and macOS, and byte counters on Linux** — the

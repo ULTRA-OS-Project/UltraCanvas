@@ -24,6 +24,26 @@
   Wrapper und einmal direkt als `bin/ultrafibu` ohne gesetzte Umgebung -
   beide Male 74 Konten und 16 Steuerschluessel, und die EU-Saetze lassen sich
   uebernehmen.
+- **Das Programmsymbol.** `media/appicon/UltraFIBU.png` wird jetzt ueberall
+  verwendet, wo die anderen Anwendungen ihres verwenden: als Fenster- und
+  Taskleistensymbol (`SetDefaultWindowIcon` in `ui/main.cpp`), als
+  `UCAPP_ICON_PATH` - der Rueckfall des Kerns, damit nie ein unbeschriftetes
+  Fenster erscheint -, eingebettet in die Windows-.exe (Explorer und
+  Taskleiste lesen es von der Binaerdatei, nicht aus einem Desktop-Eintrag)
+  und ueber den neuen Eintrag `Apps/UltraFIBU/UltraFIBU.desktop` im
+  Anwendungsmenue.
+- **Das hochgeladene Bild wurde dafuer aufbereitet, und das ist eine
+  Aenderung am Original:** es kam mit 1254x1254 Bildpunkten und ohne
+  Transparenz, mit weissem Rand um das abgerundete Quadrat. Alle anderen
+  Symbole der Sammlung sind 256x256 mit Alphakanal. Unveraendert waere es auf
+  einer dunklen Leiste ein weisses Rechteck geworden, und die Installation
+  nach `share/icons/hicolor/256x256/apps` haette eine Groesse behauptet, die
+  nicht stimmt - Symbolthemen verlassen sich auf den Verzeichnisnamen. Es
+  liegt jetzt als 256x256 mit freigestellten Ecken vor; das Original bleibt
+  im Git-Verlauf (`git show 0ed1ed1:media/appicon/UltraFIBU.png`).
+- **Kein SVG.** Die Regel fuer `share/icons/hicolor/scalable/apps` fehlt
+  deshalb, anders als bei EmailCleaner oder UltraFiler, die ein Paar aus PNG
+  und SVG mitbringen.
 - **Offen:** `package-macos.sh` baut nur zwei .app-Bundles (Texter und Demo)
   und kennt UltraFIBU so wenig wie UltraFiler, UltraMail oder ArtCreator. Das
   ist eine Luecke dieses Skripts, keine von UltraFIBU, und wird hier nicht

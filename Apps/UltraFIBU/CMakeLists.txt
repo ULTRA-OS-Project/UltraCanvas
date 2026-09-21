@@ -161,6 +161,33 @@ if(ULTRACANVAS_LIBRARY AND TARGET ${ULTRACANVAS_LIBRARY})
     endif()
     set_target_properties(ultrafibu-ui PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # The app icon, in one place for every consumer of it. ui/main.cpp asks for
+    # this same file by name; UCAPP_ICON_PATH is the fallback the core applies
+    # when an app sets no icon of its own, and the two agreeing is what keeps a
+    # window from ever coming up unbranded.
+    target_compile_definitions(ultrafibu-ui PRIVATE
+        UCAPP_ICON_PATH="media/appicon/UltraFIBU.png")
+
+    # Embed the icon in the .exe (Windows only). Explorer and the Windows
+    # taskbar read it off the binary itself - neither looks at _NET_WM_ICON or
+    # at a desktop entry.
+    ultracanvas_embed_app_icon(ultrafibu-ui
+        "${CMAKE_SOURCE_DIR}/media/appicon/UltraFIBU.png")
+
+    # The freedesktop shortcut and the icon it names. `Icon=UltraFIBU` is an
+    # icon *name* resolved through the installed themes, so the file has to land
+    # in one. There is no scalable/apps install here because UltraFIBU has no
+    # SVG yet - unlike EmailCleaner and UltraFiler, which ship a PNG/SVG pair.
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+        install(TARGETS ultrafibu-ui RUNTIME DESTINATION bin)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/UltraFIBU.desktop
+                DESTINATION share/applications)
+        install(FILES ${CMAKE_SOURCE_DIR}/media/appicon/UltraFIBU.png
+                DESTINATION share/icons/hicolor/256x256/apps)
+        message(STATUS "  UltraFIBU desktop entry: share/applications/UltraFIBU.desktop")
+    endif()
+
     message(STATUS "  [✓] UltraFIBU Oberfläche - ENABLED (target: ultrafibu-ui)")
 else()
     message(STATUS "  [−] UltraFIBU Oberfläche - SKIPPED (UltraCanvas UI library not built)")

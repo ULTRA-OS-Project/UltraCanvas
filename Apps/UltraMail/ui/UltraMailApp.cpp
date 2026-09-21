@@ -277,14 +277,13 @@ std::shared_ptr<UltraCanvasContainer> UltraMailApp::BuildAccountView(float width
                                [this]() { HandleReload(); });
     makeAction("umContacts", "Contacts", 76, "", false, [this]() { OpenContacts(); });
     toolbar->AddStretchSpacer(1);
-    makeAction("umSettings", "Settings", 76, "", false, [this]() {
+    makeAction("umSettings", "Account Settings", 0, "", false, [this]() {
         if (!selectedAccount_.empty()) HandleAccountSettings(selectedAccount_);
     });
-    makeAction("umAddAccount", "Add account", 92, "", false,
+    makeAction("umAddAccount", "Add account", 0, "", false,
                [this]() { HandleAddAccount(); });
-    makeAction("umDeleteAccount", "Delete account", 108, "", false, [this]() {
-        if (!selectedAccount_.empty()) HandleDeleteAccount(selectedAccount_);
-    });
+    // "Delete account" moved to the account settings dialog's bottom row
+    // (ServerSettingsDialog, red button) — see HandleAccountSettings.
     accountView_->AddChild(toolbar);
     // Freeze the chrome rows: grow 0, shrink 0. Without shrink 0 (the flex
     // default is 1) a tall inbox list pushes the column past the window and the
@@ -1382,6 +1381,9 @@ void UltraMailApp::HandleAccountSettings(const std::string& accountId) {
                                                    : OAuthProviderDisplayName(provider);
         fields.showReadingPane  = prefs_.showReadingPane;
         fields.fetchSenderIcons = prefs_.fetchSenderIcons;
+        // The red "Delete account" button in the settings dialog's bottom row.
+        // It closes the page, then HandleDeleteAccount runs the confirm-and-remove.
+        fields.onDelete = [this, accountId]() { HandleDeleteAccount(accountId); };
 
         // The login check uses the typed new password when present, else the
         // account's stored credentials. It only runs on the password path; the

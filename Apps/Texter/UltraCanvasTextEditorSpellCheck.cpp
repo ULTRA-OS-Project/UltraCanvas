@@ -459,11 +459,69 @@ std::vector<MenuItemData> UltraCanvasTextEditor::BuildEditorContextMenuItems(
     items.push_back(MenuItemData::ActionWithShortcut("Select All", "Ctrl+A",
         [this]() { OnEditSelectAll(); }));
 
+    // Table items only where there is a table: offered in every document they
+    // would be a menu full of things that cannot be done.
+    if (richEdit && richEdit->IsCaretInTable()) {
+        items.push_back(MenuItemData::Separator());
+        items.push_back(MenuItemData::Submenu("Table", [this]() {
+            return BuildTableMenuItems();
+        }));
+    }
+
     items.push_back(MenuItemData::Separator());
     items.push_back(MenuItemData::Submenu("Spelling", [this]() {
         return BuildSpellingMenuItems();
     }));
 
+    return items;
+}
+
+std::vector<MenuItemData> UltraCanvasTextEditor::BuildTableMenuItems() {
+    std::vector<MenuItemData> items;
+    auto richEdit = GetActiveRichEdit();
+    if (!richEdit || !richEdit->IsCaretInTable()) return items;
+
+    const bool editable = !richEdit->IsReadOnly();
+    int rows = 0, columns = 0, row = 0, column = 0;
+    richEdit->CaretTableGeometry(rows, columns, row, column);
+
+    // The row and column are named, because "Delete row" over a table of eight
+    // is a question about which one.
+    auto action = [&](const std::string& label, std::function<void()> fn, bool enabled = true) {
+        MenuItemData item = MenuItemData::Action(label, std::move(fn));
+        item.enabled = editable && enabled;
+        items.push_back(std::move(item));
+    };
+    // The menu outlives this call and the tab it belongs to can be closed in
+    // the meantime, so the actions re-resolve the active document rather than
+    // capturing the element they were built from. This is the same reason the
+    // rest of this file captures a document id instead of an index.
+    auto run = [this](bool (UltraCanvasRichTextEdit::*op)()) {
+        return [this, op]() {
+            if (UltraCanvasRichTextEdit* edit = GetActiveRichEdit()) {
+                (edit->*op)();
+                UpdateStatusBar();
+            }
+        };
+    };
+
+    action("Insert Row Above", run(&UltraCanvasRichTextEdit::InsertRowAbove));
+    action("Insert Row Below", run(&UltraCanvasRichTextEdit::InsertRowBelow));
+    action("Insert Column Left", run(&UltraCanvasRichTextEdit::InsertColumnLeft));
+    action("Insert Column Right", run(&UltraCanvasRichTextEdit::InsertColumnRight));
+    items.push_back(MenuItemData::Separator());
+    action("Delete Row " + std::to_string(row + 1) + " of " + std::to_string(rows),
+           run(&UltraCanvasRichTextEdit::DeleteCurrentRow));
+    action("Delete Column " + std::to_string(column + 1) + " of " + std::to_string(columns),
+           run(&UltraCanvasRichTextEdit::DeleteCurrentColumn));
+    items.push_back(MenuItemData::Separator());
+    // Merging needs somewhere to merge into; splitting needs something merged.
+    action("Merge With Cell Right", run(&UltraCanvasRichTextEdit::MergeWithCellRight),
+           column + 1 < columns);
+    action("Merge With Cell Below", run(&UltraCanvasRichTextEdit::MergeWithCellBelow),
+           row + 1 < rows);
+    action("Split Cell", run(&UltraCanvasRichTextEdit::SplitCurrentCell),
+           richEdit->CanSplitCurrentCell());
     return items;
 }
 

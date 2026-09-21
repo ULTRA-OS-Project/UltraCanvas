@@ -858,6 +858,362 @@ static void TestTableCellEditing() {
 // ===================================================================
 // INLINE IMAGES
 // ===================================================================
+// A helper that renders a table's grid as text, so a failure prints the shape
+// that went wrong rather than a count that disagrees. "--" is a slot no cell
+// starts in; a cell shows its text (or "." when empty) and "*" at its origin.
+static std::string GridPicture(const UCRichDocumentEditor& ed, int blockIndex) {
+    const RichDocBlock& table = ed.GetBlock(blockIndex);
+    const RichTableGrid grid = BuildTableGrid(table);
+    std::string out;
+    for (int r = 0; r < grid.rowCount; ++r) {
+        for (int c = 0; c < grid.columnCount; ++c) {
+            const RichTableGridSlot& slot = grid.At(r, c);
+            if (c) out += " ";
+            if (!slot.Occupied()) { out += "--"; continue; }
+            std::string text = UCRichDocument::ConcatenateRunText(
+                table.tableRows[slot.row].cells[slot.cellIndex].runs);
+            if (text.empty()) text = ".";
+            out += text + (slot.origin ? "*" : "");
+        }
+        if (r + 1 < grid.rowCount) out += " / ";
+    }
+    return out;
+}
+
+static void SetCellText(UCRichDocumentEditor& ed, int block, int row, int cell,
+                        const std::string& text) {
+    ed.SetCaret(RichDocPosition(block, row, cell, 0));
+    ed.InsertText(text);
+}
+
+static void TestTableGrid() {
+    std::cout << "\n--- Table grid ---\n";
+
+    // The shape that made the grid necessary: a column span in one row and a
+    // row span in another, so no cell's index equals its column.
+    auto doc = std::make_shared<UCRichDocument>();
+    RichDocBlock table;
+    table.type = RichBlockType::Table;
+    auto cell = [](const std::string& text, int cs = 1, int rs = 1) {
+        RichTableCell c;
+        RichTextRun run; run.text = text; c.runs.push_back(run);
+        c.columnSpan = cs; c.rowSpan = rs;
+        return c;
+    };
+    RichTableRow r0; r0.cells = {cell("A", 2), cell("B")};
+    RichTableRow r1; r1.cells = {cell("C", 1, 2), cell("D"), cell("E")};
+    RichTableRow r2; r2.cells = {cell("F"), cell("G")};
+    table.tableRows = {r0, r1, r2};
+    doc->blocks.push_back(table);
+    UCRichDocumentEditor ed(doc);
+
+    const RichTableGrid grid = ed.TableGrid(0);
+    CHECK_EQ(grid.rowCount, 3);
+    CHECK_EQ(grid.columnCount, 3);
+    CHECK_EQ(GridPicture(ed, 0), std::string("A* A B* / C* D* E* / C F* G*"));
+
+    // F is row 2's FIRST cell but the grid's second column, because C reaches
+    // down into column 0. This is the mapping everything else depends on.
+    int row = -1, column = -1;
+    CHECK(grid.OriginOf(2, 0, row, column));
+    CHECK_EQ(row, 2);
+    CHECK_EQ(column, 1);
+
+    // (2,0) is C's, even though C is stored in row 1.
+    int ownerRow = -1, ownerCell = -1;
+    CHECK(grid.CellAt(2, 0, ownerRow, ownerCell));
+    CHECK_EQ(ownerRow, 1);
+    CHECK_EQ(ownerCell, 0);
+
+    // A malformed span must not read past the grid: a rowSpan of 99 on a
+    // three-row table is clamped, not trusted.
+    doc->blocks[0].tableRows[0].cells[1].rowSpan = 99;
+    const RichTableGrid clamped = ed.TableGrid(0);
+    CHECK_EQ(clamped.rowCount, 3);
+    CHECK(clamped.At(2, 2).Occupied());
+
+    // A non-table block has no grid at all.
+    CHECK_EQ(ed.TableGrid(-1).columnCount, 0);
+}
+
+static void TestTableInsertion() {
+    std::cout << "\n--- Table insertion ---\n";
+
+    UCRichDocumentEditor ed(MakeDocument({"intro"}));
+    const int table = ed.InsertTable(2, 3);
+    CHECK(table >= 0);
+    CHECK_EQ(ed.TableRowCount(table), 2);
+    CHECK_EQ(ed.TableColumnCount(table, 0), 3);
+    // The caret lands in the first cell: a table you have to click into first
+    // is a table you cannot fill in from the keyboard.
+    CHECK(ed.GetCaret().InCell());
+    CHECK_EQ(ed.GetCaret().blockIndex, table);
+    CHECK_EQ(ed.GetCaret().cellRow, 0);
+    CHECK_EQ(ed.GetCaret().cellColumn, 0);
+    // A paragraph follows it, or the caret could never get past the table.
+    CHECK(ed.IsTextBlock(table + 1));
+
+    SetCellText(ed, table, 0, 0, "one");
+    CHECK_EQ(ed.TextAt(RichDocPosition(table, 0, 0, 0)), std::string("one"));
+
+    // Insertion is one undo step, table and trailing paragraph together.
+    const int blocksWithTable = ed.GetBlockCount();
+    CHECK(ed.Undo());                       // the typing
+    CHECK(ed.Undo());                       // the table
+    CHECK(ed.GetBlockCount() < blocksWithTable);
+    CHECK(ed.GetBlock(0).type == RichBlockType::Paragraph);
+
+    // A degenerate size is refused rather than producing a table with no cells.
+    UCRichDocumentEditor other(MakeDocument({"x"}));
+    CHECK_EQ(other.InsertTable(0, 3), -1);
+    CHECK_EQ(other.InsertTable(2, 0), -1);
+    CHECK_EQ(other.GetBlockCount(), 1);
+
+    // An empty paragraph is replaced rather than left above the table.
+    UCRichDocumentEditor empty(MakeDocument({""}));
+    CHECK_EQ(empty.InsertTable(1, 1), 0);
+    CHECK(empty.GetBlock(0).type == RichBlockType::Table);
+}
+
+static void TestTableRowsAndColumns() {
+    std::cout << "\n--- Table rows and columns ---\n";
+
+    UCRichDocumentEditor ed(MakeDocument({"x"}));
+    const int t = ed.InsertTable(2, 2);
+    SetCellText(ed, t, 0, 0, "a");
+    SetCellText(ed, t, 0, 1, "b");
+    SetCellText(ed, t, 1, 0, "c");
+    SetCellText(ed, t, 1, 1, "d");
+    CHECK_EQ(GridPicture(ed, t), std::string("a* b* / c* d*"));
+
+    // --- rows ---
+    CHECK(ed.InsertTableRow(t, 0, true));           // below the first row
+    CHECK_EQ(GridPicture(ed, t), std::string("a* b* / .* .* / c* d*"));
+    CHECK(ed.Undo());
+    CHECK_EQ(GridPicture(ed, t), std::string("a* b* / c* d*"));
+
+    CHECK(ed.InsertTableRow(t, 0, false));          // above the first row
+    CHECK_EQ(GridPicture(ed, t), std::string(".* .* / a* b* / c* d*"));
+    CHECK(ed.DeleteTableRow(t, 0));
+    CHECK_EQ(GridPicture(ed, t), std::string("a* b* / c* d*"));
+
+    // --- columns ---
+    CHECK(ed.InsertTableColumn(t, 0, true));        // right of the first column
+    CHECK_EQ(GridPicture(ed, t), std::string("a* .* b* / c* .* d*"));
+    CHECK(ed.DeleteTableColumn(t, 1));
+    CHECK_EQ(GridPicture(ed, t), std::string("a* b* / c* d*"));
+
+    CHECK(ed.InsertTableColumn(t, 1, false));       // left of the second column
+    CHECK_EQ(GridPicture(ed, t), std::string("a* .* b* / c* .* d*"));
+    CHECK(ed.Undo());
+    CHECK_EQ(GridPicture(ed, t), std::string("a* b* / c* d*"));
+
+    // --- deleting content-bearing rows and columns ---
+    CHECK(ed.DeleteTableRow(t, 1));
+    CHECK_EQ(GridPicture(ed, t), std::string("a* b*"));
+    CHECK(ed.DeleteTableColumn(t, 0));
+    CHECK_EQ(GridPicture(ed, t), std::string("b*"));
+
+    // The last one takes the table with it: a table with no cells has nothing
+    // to type into and no way back.
+    const int blocksBefore = ed.GetBlockCount();
+    CHECK(ed.DeleteTableRow(t, 0));
+    CHECK_EQ(ed.GetBlockCount(), blocksBefore - 1);
+    CHECK(ed.GetBlockCount() > 0);
+    CHECK(ed.IsTextBlock(ed.GetCaret().blockIndex));
+
+    // Out-of-range asks are refused, not clamped into the wrong row.
+    UCRichDocumentEditor other(MakeDocument({"x"}));
+    const int t2 = other.InsertTable(2, 2);
+    CHECK(!other.InsertTableRow(t2, 5, true));
+    CHECK(!other.DeleteTableRow(t2, -1));
+    CHECK(!other.InsertTableColumn(t2, 9, false));
+    CHECK(!other.DeleteTableColumn(t2, 2));
+    CHECK_EQ(other.TableRowCount(t2), 2);
+}
+
+static void TestTableStructureWithSpans() {
+    std::cout << "\n--- Table structure across spans ---\n";
+
+    // A row span is the case that breaks naive row insertion: the new row must
+    // not appear inside the span, and the span has to grow instead.
+    UCRichDocumentEditor ed(MakeDocument({"x"}));
+    const int t = ed.InsertTable(3, 2);
+    SetCellText(ed, t, 0, 0, "tall");
+    SetCellText(ed, t, 0, 1, "b");
+    SetCellText(ed, t, 1, 1, "d");
+    SetCellText(ed, t, 2, 0, "e");
+    SetCellText(ed, t, 2, 1, "f");
+    // Merge (0,0) downwards over row 1 — "tall" now covers two rows.
+    CHECK(ed.MergeTableCells(t, 0, 0, 0, 1));
+    CHECK_EQ(GridPicture(ed, t), std::string("tall* b* / tall d* / e* f*"));
+
+    // Inserting a row inside the span grows it rather than splitting it.
+    CHECK(ed.InsertTableRow(t, 0, true));
+    CHECK_EQ(GridPicture(ed, t), std::string("tall* b* / tall .* / tall d* / e* f*"));
+    CHECK_EQ(ed.GetBlock(t).tableRows[0].cells[0].rowSpan, 3);
+    CHECK(ed.Undo());
+    CHECK_EQ(GridPicture(ed, t), std::string("tall* b* / tall d* / e* f*"));
+
+    // Inserting a row past the span's end does not touch it.
+    CHECK(ed.InsertTableRow(t, 2, true));
+    CHECK_EQ(ed.GetBlock(t).tableRows[0].cells[0].rowSpan, 2);
+    CHECK(ed.Undo());
+
+    // Deleting a row the span crosses shortens the span; the text survives.
+    CHECK(ed.DeleteTableRow(t, 1));
+    CHECK_EQ(GridPicture(ed, t), std::string("tall* b* / e* f*"));
+    CHECK_EQ(ed.GetBlock(t).tableRows[0].cells[0].rowSpan, 1);
+    CHECK(ed.Undo());
+    CHECK_EQ(GridPicture(ed, t), std::string("tall* b* / tall d* / e* f*"));
+
+    // Deleting the row the span STARTS in re-homes the cell one row down, so
+    // its text is not deleted along with the row.
+    CHECK(ed.DeleteTableRow(t, 0));
+    CHECK_EQ(GridPicture(ed, t), std::string("tall* d* / e* f*"));
+    CHECK_EQ(ed.GetBlock(t).tableRows[0].cells[0].rowSpan, 1);
+    CHECK(ed.Undo());
+
+    // A column span grows when a column is inserted through it.
+    UCRichDocumentEditor wide(MakeDocument({"x"}));
+    const int w = wide.InsertTable(2, 3);
+    SetCellText(wide, w, 0, 0, "W");
+    SetCellText(wide, w, 1, 0, "p");
+    SetCellText(wide, w, 1, 1, "q");
+    SetCellText(wide, w, 1, 2, "r");
+    CHECK(wide.MergeTableCells(w, 0, 0, 2, 0));      // W spans all three columns
+    CHECK_EQ(GridPicture(wide, w), std::string("W* W W / p* q* r*"));
+
+    CHECK(wide.InsertTableColumn(w, 1, false));      // inside the span
+    CHECK_EQ(GridPicture(wide, w), std::string("W* W W W / p* .* q* r*"));
+    CHECK_EQ(wide.GetBlock(w).tableRows[0].cells[0].columnSpan, 4);
+    CHECK(wide.Undo());
+    CHECK_EQ(GridPicture(wide, w), std::string("W* W W / p* q* r*"));
+
+    // Deleting a column the span crosses narrows it by one.
+    CHECK(wide.DeleteTableColumn(w, 1));
+    CHECK_EQ(GridPicture(wide, w), std::string("W* W / p* r*"));
+    CHECK_EQ(wide.GetBlock(w).tableRows[0].cells[0].columnSpan, 2);
+    CHECK(wide.Undo());
+
+    // A cell spanning BOTH ways is widened ONCE, not once per row it covers.
+    // The insertion point has to fall inside its column span for this to be
+    // reachable at all: a cell one column wide is never widened, whichever
+    // rows it covers, so a narrower case would pass with the bug present.
+    UCRichDocumentEditor deep(MakeDocument({"x"}));
+    const int d = deep.InsertTable(3, 3);
+    SetCellText(deep, d, 0, 0, "S");
+    SetCellText(deep, d, 0, 2, "t");
+    SetCellText(deep, d, 1, 2, "u");
+    SetCellText(deep, d, 2, 0, "v");
+    SetCellText(deep, d, 2, 1, "w");
+    SetCellText(deep, d, 2, 2, "x");
+    CHECK(deep.MergeTableCells(d, 0, 0, 1, 1));      // S covers rows 0-1, cols 0-1
+    CHECK_EQ(GridPicture(deep, d), std::string("S* S t* / S S u* / v* w* x*"));
+
+    // Column inserted through the middle of S: it is two rows tall, so a
+    // per-row walk would widen it twice and push the grid out of shape.
+    CHECK(deep.InsertTableColumn(d, 0, true));
+    CHECK_EQ(deep.GetBlock(d).tableRows[0].cells[0].columnSpan, 3);
+    CHECK_EQ(GridPicture(deep, d), std::string("S* S S t* / S S S u* / v* .* w* x*"));
+    CHECK(deep.Undo());
+    CHECK_EQ(GridPicture(deep, d), std::string("S* S t* / S S u* / v* w* x*"));
+
+    // Deleting a column through it narrows it once, by the same argument.
+    CHECK(deep.DeleteTableColumn(d, 1));
+    CHECK_EQ(deep.GetBlock(d).tableRows[0].cells[0].columnSpan, 1);
+    CHECK_EQ(GridPicture(deep, d), std::string("S* t* / S u* / v* x*"));
+}
+
+static void TestTableMergeAndSplit() {
+    std::cout << "\n--- Table merge and split ---\n";
+
+    UCRichDocumentEditor ed(MakeDocument({"x"}));
+    const int t = ed.InsertTable(2, 2);
+    SetCellText(ed, t, 0, 0, "a");
+    SetCellText(ed, t, 0, 1, "b");
+    SetCellText(ed, t, 1, 0, "c");
+    SetCellText(ed, t, 1, 1, "d");
+
+    // Merging right keeps the text of BOTH cells: a merge is a layout change,
+    // and throwing away what somebody typed would be a silent deletion.
+    CHECK(ed.MergeTableCells(t, 0, 0, 1, 0));
+    CHECK_EQ(GridPicture(ed, t), std::string("a\nb* a\nb / c* d*"));
+    CHECK_EQ(ed.TextAt(RichDocPosition(t, 0, 0, 0)), std::string("a\nb"));
+    CHECK_EQ(ed.GetBlock(t).tableRows[0].cells.size(), size_t(1));
+
+    // Undo restores both cells with their own text.
+    CHECK(ed.Undo());
+    CHECK_EQ(GridPicture(ed, t), std::string("a* b* / c* d*"));
+
+    // Splitting a merged cell gives the slots back as empty cells; the text
+    // stays with the cell that held it.
+    CHECK(ed.MergeTableCells(t, 0, 0, 1, 1));       // the whole 2x2
+    CHECK_EQ(ed.GetBlock(t).tableRows[0].cells[0].rowSpan, 2);
+    CHECK_EQ(ed.GetBlock(t).tableRows[0].cells[0].columnSpan, 2);
+    CHECK(ed.SplitTableCell(t, 0, 0));
+    CHECK_EQ(GridPicture(ed, t), std::string("a\nb\nc\nd* .* / .* .*"));
+    CHECK_EQ(ed.TableColumnCount(t, 1), 2);
+
+    // Splitting a 1x1 cell changes nothing, and says so.
+    CHECK(!ed.SplitTableCell(t, 0, 1));
+    // Merging nothing is not a merge.
+    CHECK(!ed.MergeTableCells(t, 0, 0, 0, 0));
+    // Nor is merging off the end of the grid.
+    CHECK(!ed.MergeTableCells(t, 0, 0, 5, 0));
+    CHECK(!ed.MergeTableCells(t, 0, 0, 0, 5));
+
+    // A rectangle that would cut an existing span in half is refused: the model
+    // cannot store half a cell, so approximating it would corrupt the grid.
+    UCRichDocumentEditor sp(MakeDocument({"x"}));
+    const int s = sp.InsertTable(3, 3);
+    CHECK(sp.MergeTableCells(s, 1, 1, 1, 0));       // (1,1)-(1,2) merged
+    CHECK_EQ(sp.GetBlock(s).tableRows[1].cells[1].columnSpan, 2);
+    // Now try to merge (0,0)-(1,1): it would take only half of that span.
+    CHECK(!sp.MergeTableCells(s, 0, 0, 1, 1));
+    CHECK_EQ(sp.GetBlock(s).tableRows[1].cells[1].columnSpan, 2);   // untouched
+    // Covering the whole span is fine.
+    CHECK(sp.MergeTableCells(s, 0, 0, 2, 1));
+    CHECK_EQ(sp.GetBlock(s).tableRows[0].cells[0].columnSpan, 3);
+    CHECK_EQ(sp.GetBlock(s).tableRows[0].cells[0].rowSpan, 2);
+}
+
+static void TestTableCaretFollowsStructure() {
+    std::cout << "\n--- Caret follows table structure ---\n";
+
+    UCRichDocumentEditor ed(MakeDocument({"x"}));
+    const int t = ed.InsertTable(2, 2);
+    SetCellText(ed, t, 1, 1, "target");
+
+    // The caret is in the last cell; inserting a row above it must keep it
+    // pointing at the same text rather than at whatever moved into its slot.
+    ed.SetCaret(RichDocPosition(t, 1, 1, 6));
+    CHECK(ed.InsertTableRow(t, 0, true));
+    CHECK_EQ(ed.TextAt(ed.GetCaret()), std::string("target"));
+    CHECK_EQ(ed.GetCaret().cellRow, 2);
+    CHECK_EQ(ed.GetCaret().byteOffset, 6);
+
+    // Same for a column inserted to its left.
+    CHECK(ed.InsertTableColumn(t, 0, true));
+    CHECK_EQ(ed.TextAt(ed.GetCaret()), std::string("target"));
+
+    // CaretGridPosition reports where the caret's cell sits in the grid, which
+    // is what a "insert column right of here" menu item needs.
+    int row = -1, column = -1;
+    CHECK(ed.CaretGridPosition(row, column));
+    CHECK_EQ(row, 2);
+    CHECK_EQ(column, 2);
+
+    // Outside a table it reports nothing rather than a stale position.
+    ed.SetCaret(RichDocPosition(0, 0));
+    CHECK(!ed.CaretGridPosition(row, column));
+
+    // Deleting the row the caret is in leaves it somewhere valid.
+    ed.SetCaret(RichDocPosition(t, 0, 0, 0));
+    CHECK(ed.DeleteTableRow(t, 0));
+    CHECK(ed.IsTextContainer(ed.GetCaret()));
+}
+
 static void TestInlineImages() {
     std::cout << "\n--- Inline images ---\n";
 
@@ -961,6 +1317,12 @@ int main() {
     TestDocumentIntegration();
     TestSearch();
     TestTableCellEditing();
+    TestTableGrid();
+    TestTableInsertion();
+    TestTableRowsAndColumns();
+    TestTableStructureWithSpans();
+    TestTableMergeAndSplit();
+    TestTableCaretFollowsStructure();
     TestInlineImages();
 
     if (failures == 0) {
