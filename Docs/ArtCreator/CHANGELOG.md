@@ -1,3 +1,13 @@
+#### 2026-09-21 *0.5.1*
+- **The app icon needs no font.** `media/appicon/ArtCreator.svg` kept the
+  letter as live text in the Salina face, so every renderer without that
+  font (GitHub's PNG export, the build environment, most desktops' icon
+  themes) drew a different "A" from the one in the artwork. The glyph is
+  now an outline path traced from the uploaded 256 px render, which is
+  what `media/appicon/ArtCreator.png` (the window icon, the desktop entry
+  and the Windows `.exe` icon) holds; the four tiles and their colours are
+  unchanged. Rendering the SVG reproduces the PNG to within antialiasing.
+
 #### 2026-09-20 *0.5.0*
 - **One version number, one place.** This changelog's first line is now
   the only place ArtCreator's version lives: the build reads it
