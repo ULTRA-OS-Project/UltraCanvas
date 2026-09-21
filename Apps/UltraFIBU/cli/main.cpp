@@ -1331,7 +1331,10 @@ int DatevImport(int argc, char** argv) {
 
     const DatevImportBericht bericht = LeseBuchungsstapel(
         datevDatei, mandant, jahre.back(),
-        store.SteuerschluesselListe(mandant.id));
+        store.SteuerschluesselListe(mandant.id),
+        // The chart of accounts, so a row on an Automatikkonto is split by the
+        // account the way DATEV would split it.
+        store.Konten(mandant.id));
 
     std::printf("%s, Version %d, Kategorie %d\n", bericht.kennzeichen.c_str(),
                 bericht.versionsnummer, bericht.kategorie);

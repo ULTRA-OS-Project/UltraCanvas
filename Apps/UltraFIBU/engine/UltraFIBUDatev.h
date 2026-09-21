@@ -194,6 +194,15 @@ struct DatevImportBericht {
     // amount after an import, so it is reported rather than left to be noticed.
     int mitSteuer     = 0;
 
+    // How many postings took their tax key from the account rather than from a
+    // BU-Schlüssel - a DATEV Automatikkonto. Counted even when the key is a
+    // zero-rate one, because what it records is where the treatment came from.
+    // Reported separately because the two sources are different in kind: a BU
+    // key is in the file and can be read there, an Automatik is a property of
+    // the chart of accounts, and a user asking why a figure looks the way it
+    // does has to know which of the two applied.
+    int mitAutomatik  = 0;
+
     // Anything that changes what the ledger will contain, in German.
     std::vector<std::string> warnungen;
     // One sentence per unreadable line, each naming its line number.
@@ -215,10 +224,30 @@ struct DatevImportBericht {
 // posting is still imported - with its BU key preserved verbatim and the whole
 // amount unsplit - and a warning says so: inventing a tax split from a key we
 // cannot read would be worse than not splitting it.
+//
+// `konten` is the chart of accounts, and it is what makes **Automatikkonten**
+// work. A DATEV row on 8400 ("Erlöse 19 % USt") normally carries no BU key at
+// all: the account itself supplies the rate, and a program that looks only at
+// the BU column imports such a row gross, leaving the revenue account too high
+// and the tax account empty with nothing to show that anything was missed.
+// Which accounts behave that way is already recorded - `Konto::steuerschluessel`
+// in SKR03.csv - and this is what reads it.
+//
+// Three rules, each deliberate:
+//   - An explicit BU-Schlüssel always wins. It is in the file; the Automatik
+//     is a default, and a default does not overrule what was written down.
+//   - Only revenue and expense accounts count. 1576 carries `VSt19` because it
+//     *is* the input-tax account, not because posting to it is taxable.
+//   - If both sides are Automatikkonten the row is left unsplit and named in a
+//     warning, because guessing which one was meant would put an invented
+//     figure in a tax account.
+//
+// Passing no chart keeps the previous behaviour exactly: BU keys only.
 DatevImportBericht LeseBuchungsstapel(const std::string& dateipfad,
                                       const Mandant& mandant,
                                       const Geschaeftsjahr& jahr,
-                                      const std::vector<Steuerschluessel>& steuerschluessel);
+                                      const std::vector<Steuerschluessel>& steuerschluessel,
+                                      const std::vector<Konto>& konten = {});
 
 // The Sachkonten a read stack posts to that the chart of accounts does not
 // have. Personenkonten are deliberately left out: a Debitor or Kreditor belongs

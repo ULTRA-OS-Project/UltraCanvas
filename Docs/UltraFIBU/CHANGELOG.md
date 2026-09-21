@@ -1,3 +1,35 @@
+#### 2026-09-21 *0.19.0*
+- **DATEV-Automatikkonten werden beim Import ausgewertet.** Die haeufigste
+  Erloeszeile eines echten Buchungsstapels traegt ueberhaupt keinen
+  BU-Schluessel: 8400 heisst "Erloese 19 % USt", und das Konto gibt den Satz
+  vor. Der Import sah nur in die BU-Spalte und uebernahm solche Zeilen
+  brutto - das Erloeskonto um die Steuer zu hoch, das Steuerkonto leer, und
+  nichts in der Datei, was darauf hinweist. Am echten Stapel 2026 sind das
+  drei Zeilen auf 8400; danach stehen 674,50 auf 1776 und 3.550,00 netto auf
+  8400 statt 4.224,50 brutto, und Soll und Haben gleichen sich weiterhin aus.
+  - **Die Zuordnung lag bereits vor und wurde nur nicht gelesen.**
+    `Konto::steuerschluessel` ist in `SKR03.csv` seit jeher gefuellt (8400 ->
+    USt19) und im Header als "default tax key for postings on this account"
+    beschrieben; ausgewertet hat sie niemand. `LeseBuchungsstapel()` nimmt
+    dafuer den Kontenrahmen als zusaetzliches, optionales Argument.
+  - **Ein BU-Schluessel in der Datei hat Vorrang.** Die Automatik ist ein
+    Standardwert, und ein Standardwert ueberschreibt nicht, was dasteht.
+  - **Nur Erloes- und Aufwandskonten zaehlen.** 1776 traegt `USt19`, weil es
+    das Konto *dieses Schluessels* ist; eine Buchung darauf ist kein
+    steuerpflichtiger Umsatz. Ohne diese Einschraenkung wuerde die Steuer
+    besteuert.
+  - **`steuerSeite` folgt dem Konto.** Welche Seite das Nettokonto ist, wird
+    gesucht, nicht angenommen: im Testfall steht 8400 im Gegenkonto, im
+    echten Stapel des Mandanten steht es im Konto.
+  - **Tragen beide Seiten eine Automatik, bleibt die Zeile ungeteilt** und
+    wird mit dem Kontenpaar gemeldet - raten hiesse, eine nicht pruefbare
+    Zahl auf ein Steuerkonto zu schreiben.
+  - Ohne uebergebenen Kontenrahmen verhaelt sich der Import exakt wie bisher.
+  - Die Meldung "keine einzige Buchung hat eine Steueraufteilung" nannte nur
+    die leere Spalte `datev_bu`. Sie nennt jetzt beide moeglichen Ursachen,
+    denn die zweite - ein Kontenrahmen ohne Steuerschluessel oder ohne das
+    benutzte Konto - ist seit dieser Aenderung genauso wahrscheinlich.
+
 #### 2026-09-21 *0.18.0*
 - **Ein abfotografierter Beleg ist ein Beleg.** Das Belegarchiv nahm nur
   Dateien an, die mit `%PDF-` beginnen, und wies alles andere mit "ist keine

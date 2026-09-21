@@ -682,7 +682,8 @@ std::string Trimme(const std::string& text) {
 DatevImportBericht LeseBuchungsstapel(
         const std::string& dateipfad, const Mandant& mandant,
         const Geschaeftsjahr& jahr,
-        const std::vector<Steuerschluessel>& steuerschluessel) {
+        const std::vector<Steuerschluessel>& steuerschluessel,
+        const std::vector<Konto>& konten) {
     DatevImportBericht bericht;
 
     std::FILE* datei = std::fopen(dateipfad.c_str(), "rb");
@@ -841,8 +842,36 @@ DatevImportBericht LeseBuchungsstapel(
             "Die Datei hat keine Spalte \"Belegdatum\"; alle Buchungen werden auf "
             "den Beginn des Zeitraums datiert.");
 
+    // ---- Automatikkonten ----
+    //
+    // A DATEV row on an Automatikkonto carries no BU-Schlüssel: the account
+    // supplies the rate. 8400 with an empty BU column is a 19 % revenue
+    // posting, and reading only the BU column imports it gross - the revenue
+    // account too high by the tax, the tax account empty, and nothing in the
+    // file to say so.
+    //
+    // Only revenue and expense accounts qualify. 1576 names `VSt19` because it
+    // *is* the input-tax account; treating a posting onto it as taxable would
+    // tax the tax.
+    std::vector<std::pair<std::string, std::string>> automatikKonten;
+    for (const Konto& k : konten) {
+        if (k.steuerschluessel.empty()) continue;
+        if (k.typ != KontoTyp::Ertrag && k.typ != KontoTyp::Aufwand) continue;
+        automatikKonten.emplace_back(k.nummer, k.steuerschluessel);
+    }
+    auto automatikFuer = [&automatikKonten](const std::string& nummer) -> std::string {
+        for (const std::pair<std::string, std::string>& a : automatikKonten)
+            if (a.first == nummer) return a.second;
+        return std::string();
+    };
+
     // ---- the rows ----
     int ohneBuZuordnung = 0;
+    // Accounts whose automatic actually applied, and rows where both sides
+    // claimed one. Both are listed rather than counted: the first explains a
+    // figure the file does not contain, the second is a row left unsplit.
+    std::vector<std::string> automatikVerwendet;
+    std::vector<std::string> automatikMehrdeutig;
     // Which DATEV keys could not be mapped. Counting them is not enough: the
     // user has to fill in `datev_bu` for exactly these, and looking them up
     // means reading the whole file otherwise.
@@ -958,6 +987,47 @@ DatevImportBericht LeseBuchungsstapel(
                               eintrag.buSchluessel) == unbekannteBu.end())
                     unbekannteBu.push_back(eintrag.buSchluessel);
             }
+        } else {
+            // No BU-Schlüssel. The account may still carry one of its own -
+            // this is the Automatikkonto, and it is the ordinary way a revenue
+            // row is written, not an exception.
+            const std::string keyKonto      = automatikFuer(konto);
+            const std::string keyGegenkonto = automatikFuer(gegenkonto);
+            if (!keyKonto.empty() && !keyGegenkonto.empty()) {
+                // Both sides claim an automatic. DATEV would not write such a
+                // row, and picking one would put a figure nobody can check in
+                // a tax account. Imported unsplit, and said out loud.
+                const std::string paar = konto + "/" + gegenkonto;
+                if (std::find(automatikMehrdeutig.begin(), automatikMehrdeutig.end(),
+                              paar) == automatikMehrdeutig.end())
+                    automatikMehrdeutig.push_back(paar);
+            } else if (!keyKonto.empty() || !keyGegenkonto.empty()) {
+                const bool aufKonto = !keyKonto.empty();
+                const std::string& name = aufKonto ? keyKonto : keyGegenkonto;
+                for (const Steuerschluessel& key : steuerschluessel) {
+                    if (key.schluessel != name) continue;
+                    if (!key.GueltigAm(belegdatum)) continue;
+                    b.steuerschluessel = key.schluessel;
+                    b.satzPromille     = key.satzPromille;
+                    if (key.satzPromille != 0 && !key.kontoSteuer.empty()) {
+                        // `steuerSeite` names the net account, so it is the
+                        // side the automatic was found on - not always the
+                        // Gegenkonto, as the BU path can assume.
+                        b.steuerSeite = aufKonto ? SteuerSeite::Konto
+                                                 : SteuerSeite::Gegenkonto;
+                        b.steuer      = b.umsatz.TaxInGross(key.satzPromille);
+                        b.netto       = b.umsatz - b.steuer;
+                        b.steuerkonto = key.kontoSteuer;
+                    }
+                    ++bericht.mitAutomatik;
+                    const std::string wo = (aufKonto ? konto : gegenkonto) + " (" +
+                                           key.schluessel + ")";
+                    if (std::find(automatikVerwendet.begin(), automatikVerwendet.end(),
+                                  wo) == automatikVerwendet.end())
+                        automatikVerwendet.push_back(wo);
+                    break;
+                }
+            }
         }
 
         if (iFest >= 0 && feld(iFest) == "1")
@@ -982,6 +1052,33 @@ DatevImportBericht LeseBuchungsstapel(
             "übernommen; der BU-Schlüssel bleibt erhalten, die Zuordnung kann "
             "also nachgetragen und die Datei erneut eingelesen werden.");
     }
+    if (!automatikVerwendet.empty()) {
+        std::string liste;
+        for (const std::string& a : automatikVerwendet) {
+            if (!liste.empty()) liste += ", ";
+            liste += a;
+        }
+        bericht.warnungen.push_back(
+            Zahl(bericht.mitAutomatik) + " Buchung(en) haben ihren "
+            "Steuerschlüssel nicht aus der Datei, sondern vom Konto: " + liste +
+            ". Das ist die DATEV-Automatik - eine Zeile auf einem solchen Konto "
+            "traegt keinen BU-Schlüssel, weil das Konto den Satz vorgibt. Die "
+            "Zuordnung steht in der Spalte steuerschluessel des Kontenrahmens "
+            "und laesst sich dort pruefen.");
+    }
+    if (!automatikMehrdeutig.empty()) {
+        std::string liste;
+        for (const std::string& a : automatikMehrdeutig) {
+            if (!liste.empty()) liste += ", ";
+            liste += a;
+        }
+        bericht.warnungen.push_back(
+            "Bei " + Zahl(static_cast<int>(automatikMehrdeutig.size())) +
+            " Kontenpaar(en) tragen beide Seiten eine Automatik: " + liste +
+            ". Welche gemeint war, ist der Zeile nicht zu entnehmen; sie wird "
+            "ohne Steueraufteilung uebernommen, damit keine erfundene Zahl auf "
+            "einem Steuerkonto landet.");
+    }
     if (bericht.uebernommen > 0 && bericht.mitSteuer == 0) {
         // Every posting arrived without a tax split. On a stack that really is
         // tax-free that is right; on one that is not, the revenue accounts now
@@ -990,8 +1087,11 @@ DatevImportBericht LeseBuchungsstapel(
         bericht.warnungen.push_back(
             "Keine einzige Buchung hat eine Steueraufteilung bekommen. Die "
             "Beträge stehen damit brutto auf den Erlös- und Aufwandskonten und "
-            "die Steuerkonten bleiben leer. Ursache ist fast immer die noch "
-            "leere Spalte datev_bu in data/Steuerschluessel.csv.");
+            "die Steuerkonten bleiben leer. Zwei Ursachen kommen in Frage: die "
+            "noch leere Spalte datev_bu in data/Steuerschluessel.csv (fuer "
+            "Zeilen mit BU-Schlüssel) und ein Kontenrahmen, in dem die "
+            "benutzten Erlös- und Aufwandskonten keinen Steuerschlüssel tragen "
+            "oder ganz fehlen (fuer Zeilen ohne).");
     }
     if (bericht.festgeschrieben) {
         bericht.warnungen.push_back(

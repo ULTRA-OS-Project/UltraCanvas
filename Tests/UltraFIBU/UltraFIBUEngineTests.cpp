@@ -2377,6 +2377,129 @@ static void TestDatevImport() {
     Check(nenntBu, "the warning names where the mapping belongs");
     Check(nenntDenSchluessel, "and which key it belongs for");
 
+    // --- Automatikkonten: the account carries the rate, not the file ---
+    //
+    // The commonest revenue row in a real Buchungsstapel has an EMPTY BU
+    // column: 8400 is "Erlöse 19 % USt" and the account supplies the rate.
+    // Reading only the BU column imports such a row gross - revenue too high
+    // by the tax, the tax account empty, and nothing in the file saying so.
+    {
+        std::vector<Konto> chart;
+        auto konto = [&chart](const std::string& nummer, KontoTyp typ,
+                              const std::string& key) {
+            Konto k;
+            k.nummer           = nummer;
+            k.typ              = typ;
+            k.steuerschluessel = key;
+            chart.push_back(k);
+        };
+        konto("8400", KontoTyp::Ertrag, "USt19");   // the Automatikkonto
+        konto("1776", KontoTyp::Passiv, "USt19");   // the tax account itself
+        konto("10000", KontoTyp::Debitor, "");      // the customer side
+
+        // Gegenkonto is the Automatikkonto.
+        const std::string ohneBu =
+            kopf + spalten +
+            "1190,00;\"S\";\"EUR\";10000;8400;\"\";1506;\"R-1\";\"Erlös\";0\r\n";
+        SchreibeDatei("import-automatik.csv", Cp1252(ohneBu));
+
+        // Without the chart, nothing changes - that is the previous behaviour,
+        // and passing no accounts has to keep it exactly.
+        const DatevImportBericht ohneChart =
+            LeseBuchungsstapel("import-automatik.csv", mandant, jahr, mitMapping);
+        CheckInt(ohneChart.mitSteuer, 0,
+                 "without a chart of accounts an empty BU column stays unsplit");
+        CheckInt(ohneChart.mitAutomatik, 0, "and nothing claims an automatic");
+
+        const DatevImportBericht autom = LeseBuchungsstapel(
+            "import-automatik.csv", mandant, jahr, mitMapping, chart);
+        Check(autom.ok, "the same row reads with a chart");
+        CheckInt(autom.mitSteuer, 1,
+                 "and now gets its split from the account - 8400 is an "
+                 "Automatikkonto and carries 19 % without any BU-Schlüssel");
+        CheckInt(autom.mitAutomatik, 1, "counted as coming from the account");
+        if (!autom.zeilen.empty()) {
+            const Buchung& b = autom.zeilen[0].buchung;
+            CheckText(b.steuerschluessel, "USt19", "with the account's key");
+            CheckInt(b.steuer.Minor(), 19000, "190,00 out of 1.190,00 gross");
+            CheckInt(b.netto.Minor(), 100000, "leaving 1.000,00 net");
+            CheckText(b.steuerkonto, "1776", "on the key's tax account");
+            Check(b.steuerSeite == SteuerSeite::Gegenkonto,
+                  "and the net side is the one the Automatikkonto stands on");
+            Check(b.buSchluessel.empty(), "the BU column stays empty - it was");
+        }
+
+        // The other way round: in a real Buchungsstapel the revenue account is
+        // just as often the Konto, with the bank opposite. The side has to be
+        // found, not assumed.
+        const std::string andersHerum =
+            kopf + spalten +
+            "1190,00;\"H\";\"EUR\";8400;1200;\"\";1506;\"R-2\";\"Erlös\";0\r\n";
+        SchreibeDatei("import-automatik-konto.csv", Cp1252(andersHerum));
+        const DatevImportBericht seite = LeseBuchungsstapel(
+            "import-automatik-konto.csv", mandant, jahr, mitMapping, chart);
+        CheckInt(seite.mitSteuer, 1, "the automatic is found on the Konto side too");
+        if (!seite.zeilen.empty())
+            Check(seite.zeilen[0].buchung.steuerSeite == SteuerSeite::Konto,
+                  "and the net side follows the account, not a fixed assumption");
+
+        // An explicit BU-Schlüssel is in the file; the automatic is a default.
+        // The file wins.
+        const std::string mitBeidem =
+            kopf + spalten +
+            "1190,00;\"S\";\"EUR\";10000;8400;\"3\";1506;\"R-3\";\"Erlös\";0\r\n";
+        SchreibeDatei("import-automatik-bu.csv", Cp1252(mitBeidem));
+        const DatevImportBericht vorrang = LeseBuchungsstapel(
+            "import-automatik-bu.csv", mandant, jahr, mitMapping, chart);
+        CheckInt(vorrang.mitSteuer, 1, "a row with both still splits once");
+        CheckInt(vorrang.mitAutomatik, 0,
+                 "but through the BU-Schlüssel - what the file says beats what "
+                 "the account would have defaulted to");
+
+        // A tax account names a key because it IS that key's account. Posting
+        // onto it is not a taxable turnover, and treating it as one would tax
+        // the tax.
+        const std::string aufSteuerkonto =
+            kopf + spalten +
+            "190,00;\"S\";\"EUR\";1776;1200;\"\";1506;\"R-4\";\"Zahlung\";0\r\n";
+        SchreibeDatei("import-steuerkonto.csv", Cp1252(aufSteuerkonto));
+        const DatevImportBericht steuerkonto = LeseBuchungsstapel(
+            "import-steuerkonto.csv", mandant, jahr, mitMapping, chart);
+        CheckInt(steuerkonto.mitSteuer, 0,
+                 "a posting onto the tax account itself gets no automatic - "
+                 "1776 carries USt19 because it is that key's account");
+
+        // Both sides claiming an automatic is not a row DATEV writes. Guessing
+        // which was meant would put an unverifiable figure in a tax account.
+        std::vector<Konto> beide = chart;
+        beide[2].typ = KontoTyp::Ertrag;          // make 10000 an Automatikkonto too
+        beide[2].steuerschluessel = "USt19";
+        const DatevImportBericht mehrdeutig = LeseBuchungsstapel(
+            "import-automatik.csv", mandant, jahr, mitMapping, beide);
+        CheckInt(mehrdeutig.mitSteuer, 0,
+                 "with an automatic on both sides the row stays unsplit");
+        bool nenntPaar = false;
+        for (const std::string& w : mehrdeutig.warnungen)
+            if (w.find("beide Seiten") != std::string::npos &&
+                w.find("10000/8400") != std::string::npos) nenntPaar = true;
+        Check(nenntPaar, "and the warning names the pair, not just a count");
+
+        // The key's validity still governs. A 2026 key does not apply to a
+        // 2025 document - which is exactly why a real 2025 stack imports flat
+        // against a chart seeded for 2026.
+        std::vector<Steuerschluessel> ab2027 = mitMapping;
+        ab2027[0].gueltigVon = Date(2027, 1, 1);
+        const DatevImportBericht zuFrueh = LeseBuchungsstapel(
+            "import-automatik.csv", mandant, jahr, ab2027, chart);
+        CheckInt(zuFrueh.mitSteuer, 0,
+                 "an account key not yet valid on the Belegdatum does not apply");
+
+        std::remove("import-automatik.csv");
+        std::remove("import-automatik-konto.csv");
+        std::remove("import-automatik-bu.csv");
+        std::remove("import-steuerkonto.csv");
+    }
+
     // --- the unsigned rule ---
     // DATEV's Umsatz is never signed. A file from elsewhere that carries one
     // must not double up with the Soll/Haben flag.
