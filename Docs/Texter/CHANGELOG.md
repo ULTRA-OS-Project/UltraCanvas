@@ -1,3 +1,13 @@
+#### 2026-09-21 *1.48*
+- **The 1.47 entry below said neither of the two things it meant.** Two
+  branches wrote a 1.47 entry at the same time - the table editing work and the
+  version-number change - and git merged their bullet lists without a conflict,
+  splicing two sentences into each other mid-word ("is greyed's first line is
+  now the", "This changelogds it"). Both bullets are restored from their own
+  commits; no behaviour changed. This is the shared-version collision
+  `scripts/check_changelog.py` refuses at line 1, happening one line further
+  down where nothing checks it.
+
 #### 2026-09-20 *1.47*
 - **Insert Table works in a word-processing document.** The toolbar button was
   greyed out there because there was nothing behind it; it now inserts a real
@@ -8,10 +18,10 @@
   or column the cursor is in (named, so "Delete Row 2 of 5" says which), merge
   with the cell to the right or below, and split a merged cell back up. Merging
   keeps the text from both cells.
-- Anything that cannot be done right now is greyed's first line is now the
-  only place Texter's version lives: the build rea rather than hidden: Split
+- Anything that cannot be done right now is greyed rather than hidden: Split
   Cell where nothing is merged, Merge With Cell Right in the last column.
-- **One version number, one place.** This changelogds it
+- **One version number, one place.** This changelog's first line is now the
+  only place Texter's version lives: the build reads it
   (`cmake/UltraCanvasVersion.cmake`) and passes it to the sources. The
   `"0.0-dev"` fallback in `UltraCanvasTextEditor.cpp` is gone; a build
   without the definition now fails at compile time instead of reporting
