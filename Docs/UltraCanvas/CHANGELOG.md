@@ -1,3 +1,11 @@
+#### 2026-09-21 *0.9.19*
+- **`package-linux.sh` and `package-win.sh` looked in one place for
+  executables.** Most targets land in the build root; a target that sets
+  `RUNTIME_OUTPUT_DIRECTORY` to `bin/` was silently absent from the package,
+  reported only as `skip <app> (not built)` among the apps that genuinely were
+  not built. Both scripts now look in both places, and a packaged app is no
+  longer decided by which output directory its CMakeLists happened to pick.
+
 #### 2026-09-20 *0.9.18*
 - **Tables can be built and reshaped, not just filled in.** A document could
   hold a table, and the caret could edit its cells, but the table's own
