@@ -1992,13 +1992,26 @@ static void TestDatev() {
         return;
     }
     Check(definition.Laden(pfad, fehler), "the shipped column definition loads");
-    CheckInt(static_cast<int64_t>(definition.Anzahl()), 120,
-             "and has the 120 columns the format describes");
+    CheckInt(static_cast<int64_t>(definition.Anzahl()), 125,
+             "and has the 125 columns a real EXTF file carries");
     Check(definition.Index("Umsatz (ohne Soll/Haben-Kz)") == 0,
           "Umsatz is the first column");
     Check(definition.Index("Soll/Haben-Kennzeichen") == 1, "the S/H flag the second");
     Check(definition.Index("Festschreibung") > 0, "and Festschreibung is in there");
     Check(definition.Index("Gibt Es Nicht") == -1, "an unknown column reports -1");
+
+    // DATEV spells these with a dash (U+2013), not a hyphen. The definition
+    // used a hyphen, `Index` returned -1, and the exporter's `setze` skipped
+    // the column without a word - so a Kostenstelle was never written and
+    // never read back, and nothing anywhere said so. The names are asserted
+    // byte for byte because that is precisely what went wrong.
+    Check(definition.Index("KOST1 – Kostenstelle") > 0,
+          "KOST1 is found under the name DATEV actually writes");
+    Check(definition.Index("KOST2 – Kostenstelle") > 0, "and KOST2 too");
+    Check(definition.Index("KOST1 - Kostenstelle") == -1,
+          "the hyphen spelling is not what the format uses");
+    Check(definition.Index("Abrechnungsreferent") > 0,
+          "and the five columns past 120 are there too");
 
     // A definition with a line missing would write every later value into the
     // wrong column, so the loader refuses a gap rather than shifting silently.
@@ -2014,6 +2027,40 @@ static void TestDatev() {
           "a gap in the column numbering is refused, not silently shifted");
     Check(fehler.find("springen") != std::string::npos, "and the reason says so");
     std::remove(luecke.c_str());
+
+    // --- the definition against a real DATEV file ---
+    // The shipped column order was a reconstruction from the format
+    // description for months, and the header of the file it lives in said so.
+    // It was wrong in three ways at once: five columns short, the wrong kind
+    // of dash in twenty-odd names, and several names longer than DATEV
+    // actually writes. None of that could be found by reading the code.
+    //
+    // `Tests/UltraFIBU/data/EXTF-Buchungsstapel-Spaltenzeile.csv` is the two
+    // header lines of a real EXTF export - the Berater- and Mandantennummer
+    // replaced, and not one posting in it. Comparing the definition against
+    // that file is what keeps the correction from being undone by the next
+    // person who edits the definition by hand.
+#ifdef ULTRAFIBU_TEST_DATA_DIR
+    {
+        const std::string echt = std::string(ULTRAFIBU_TEST_DATA_DIR) +
+                                 "/EXTF-Buchungsstapel-Spaltenzeile.csv";
+        const DatevPruefung pruefung = PruefeDateiGegenDefinition(echt, definition);
+        Check(pruefung.fehler.empty(),
+              "the real DATEV column line is readable");
+        CheckInt(static_cast<int64_t>(pruefung.spaltenInDatei), 125,
+                 "it has 125 columns");
+        CheckInt(pruefung.formatversion, 13, "and calls itself Formatversion 13");
+        if (!pruefung.ok) {
+            for (const std::string& abweichung : pruefung.abweichungen)
+                std::printf("    ABWEICHUNG: %s\n", abweichung.c_str());
+        }
+        Check(pruefung.ok,
+              "and the shipped definition matches it column for column");
+    }
+#else
+    std::printf("    note: ULTRAFIBU_TEST_DATA_DIR not defined, "
+                "skipping the check against the real DATEV column line\n");
+#endif
 
     // --- the ground for an export ---
     Mandant mandant;
@@ -2133,7 +2180,7 @@ static void TestDatev() {
     // --- the checker, both ways ---
     DatevPruefung gut = PruefeDateiGegenDefinition(juni.datei, definition);
     Check(gut.ok, "the checker accepts a file written from the same definition");
-    CheckInt(static_cast<int64_t>(gut.spaltenInDatei), 120, "and counts its columns");
+    CheckInt(static_cast<int64_t>(gut.spaltenInDatei), 125, "and counts its columns");
     CheckInt(gut.kategorie, 21, "and reads the category out of the header");
 
     // Corrupt one column name and confirm the position is named. This is the

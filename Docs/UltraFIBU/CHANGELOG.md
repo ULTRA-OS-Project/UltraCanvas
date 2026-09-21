@@ -1,3 +1,36 @@
+#### 2026-09-21 *0.17.0*
+- **Die DATEV-Spaltendefinition war eine Rekonstruktion - jetzt ist sie an
+  einer echten EXTF-Datei geprueft.** `data/DATEV-Buchungsstapel-v700.csv`
+  trug seit dem ersten Tag die Warnung, dass sie ohne Original entstanden
+  ist. Gegen zwei echte Buchungsstapel gehalten, war sie an drei Stellen
+  zugleich falsch:
+  - **125 Spalten, nicht 120.** `Abrechnungsreferent`, `BVV-Position`,
+    `EU-Mitgliedstaat u. UStID (Ursprung)`, `EU-Steuersatz (Ursprung)` und
+    `Abw. Skontokonto` fehlten vollstaendig.
+  - **DATEV schreibt einen Gedankenstrich (U+2013), keinen Bindestrich** -
+    in `Beleginfo - Art 1`, `Zusatzinformation - Art 1`, `KOST1 -
+    Kostenstelle` und zwei Dutzend weiteren Namen.
+  - Mehrere Namen sind kuerzer als die Formatbeschreibung vermuten laesst
+    (`Bezeichnung`, nicht `Bezeichnung SoBil-Sachverhalt`).
+- **Dadurch gingen Kostenstellen still verloren.** Export und Import suchen
+  ihre Spalte ueber den Namen. `KOST1 - Kostenstelle` mit Bindestrich fand
+  nichts, `Index` lieferte -1, und die Zuweisung sprang die Spalte
+  wortlos ueber: der Wert wurde nie geschrieben und nie gelesen, die Datei
+  sah korrekt aus, und niemand haette es bemerkt.
+- **Eine nicht gefundene Spalte ist jetzt eine Warnung, kein Schweigen.**
+  Export wie Import nennen jede optionale Spalte, die sie nicht finden, und
+  sagen dazu, dass `ultrafibu datev-pruefen` sie gegen eine echte Datei
+  haelt. Die Umbenennung allein haette denselben Fehler beim naechsten Mal
+  nur erneut versteckt.
+- **Die Korrektur ist gegen eine echte Spaltenzeile festgenagelt.**
+  `Tests/UltraFIBU/data/EXTF-Buchungsstapel-Spaltenzeile.csv` enthaelt die
+  beiden Kopfzeilen eines echten Exports - Berater- und Mandantennummer
+  ersetzt, keine einzige Buchung darin. Der Test vergleicht die
+  Definition Spalte fuer Spalte damit.
+- Geprueft an echten Daten: 637 Buchungen eines vollen Jahres eingelesen,
+  0 uebersprungen, Soll und Haben gleichen sich auf den Cent aus, und die
+  Pruefsummenkette des Journals bleibt unversehrt.
+
 #### 2026-09-21 *0.16.0*
 - **UltraFIBU war in keinem fertigen Paket enthalten.** Es wurde gebaut, es
   bestand seine Tests, und `package-linux.sh` listete beim Packen auf:

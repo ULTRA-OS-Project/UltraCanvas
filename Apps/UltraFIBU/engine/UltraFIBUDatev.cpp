@@ -432,10 +432,39 @@ DatevErgebnis SchreibeBuchungsstapel(const Mandant& mandant,
     const int beleg1Spalte     = definition.Index("Belegfeld 1");
     const int beleg2Spalte     = definition.Index("Belegfeld 2");
     const int textSpalte       = definition.Index("Buchungstext");
-    const int kost1Spalte      = definition.Index("KOST1 - Kostenstelle");
-    const int kost2Spalte      = definition.Index("KOST2 - Kostenstelle");
+    const int kost1Spalte      = definition.Index("KOST1 – Kostenstelle");
+    const int kost2Spalte      = definition.Index("KOST2 – Kostenstelle");
     const int festSpalte       = definition.Index("Festschreibung");
     const int leistungSpalte   = definition.Index("Leistungsdatum");
+
+    // A column the definition does not contain silently drops its value: the
+    // row is written, DATEV accepts it, and the Kostenstelle or the
+    // Leistungsdatum is simply gone. That is how KOST1/KOST2 were lost for
+    // months - the definition spelled them with a hyphen where DATEV uses a
+    // dash, `Index` returned -1, and nothing said so. So every optional column
+    // that cannot be found is named here.
+    {
+        const std::pair<const char*, int> optional[] = {
+            {"WKZ Umsatz",           wkzSpalte},
+            {"BU-Schlüssel",         buSpalte},
+            {"Belegdatum",           belegdatumSpalte},
+            {"Belegfeld 1",          beleg1Spalte},
+            {"Belegfeld 2",          beleg2Spalte},
+            {"Buchungstext",         textSpalte},
+            {"KOST1 – Kostenstelle", kost1Spalte},
+            {"KOST2 – Kostenstelle", kost2Spalte},
+            {"Festschreibung",       festSpalte},
+            {"Leistungsdatum",       leistungSpalte},
+        };
+        for (const std::pair<const char*, int>& spalte : optional) {
+            if (spalte.second >= 0) continue;
+            ergebnis.warnungen.push_back(
+                std::string("Die Spaltendefinition kennt keine Spalte \"") +
+                spalte.first + "\"; dieser Wert fehlt in der Datei. Bitte "
+                "data/DATEV-Buchungsstapel-v700.csv mit \"ultrafibu "
+                "datev-pruefen\" gegen eine echte DATEV-Datei prüfen.");
+        }
+    }
 
     std::vector<std::vector<std::string>> zeilen;
     bool alleFestgeschrieben = true;
@@ -784,9 +813,28 @@ DatevImportBericht LeseBuchungsstapel(
     const int iBeleg1     = spalteIndex("Belegfeld 1");
     const int iBeleg2     = spalteIndex("Belegfeld 2");
     const int iText       = spalteIndex("Buchungstext");
-    const int iKost1      = spalteIndex("KOST1 - Kostenstelle");
-    const int iKost2      = spalteIndex("KOST2 - Kostenstelle");
+    const int iKost1      = spalteIndex("KOST1 – Kostenstelle");
+    const int iKost2      = spalteIndex("KOST2 – Kostenstelle");
     const int iFest       = spalteIndex("Festschreibung");
+
+    // The same silence as on the export side: a column this file spells
+    // differently is simply not read, and the posting arrives without its
+    // Kostenstelle with nothing said. Naming it turns that into one line.
+    {
+        const std::pair<const char*, int> optional[] = {
+            {"Belegfeld 1",          iBeleg1},
+            {"Belegfeld 2",          iBeleg2},
+            {"Buchungstext",         iText},
+            {"KOST1 – Kostenstelle", iKost1},
+            {"KOST2 – Kostenstelle", iKost2},
+        };
+        for (const std::pair<const char*, int>& spalte : optional) {
+            if (spalte.second >= 0) continue;
+            bericht.warnungen.push_back(
+                std::string("Die Datei hat keine Spalte \"") + spalte.first +
+                "\"; dieser Wert wird nicht übernommen.");
+        }
+    }
 
     if (iBelegdatum < 0)
         bericht.warnungen.push_back(
