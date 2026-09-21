@@ -272,7 +272,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     auto note = Theme::MakeLine("srvNote",
         "Ports are usually 993 (IMAP, SSL/TLS) or 143 (STARTTLS), and 465 (SMTP, "
         "SSL/TLS) or 587 (STARTTLS). Most providers list them under \"mail program "
-        "settings\" or \"IMAP/SMTP\" in their help.", 30, Theme::kSizeBody,
+        "settings\" or \"IMAP/SMTP\" in their help.", 0, Theme::kSizeBody,
         Theme::kTextSecondary);
     note->SetWrap(TextWrap::WrapWord);
     content->AddChild(note);
