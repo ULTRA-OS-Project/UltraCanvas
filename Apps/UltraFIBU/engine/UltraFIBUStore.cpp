@@ -3904,7 +3904,7 @@ Store::BelegImportBericht Store::ImportiereBelegDateien(
         bericht.warnungen.push_back(
             Number(bericht.angelegt) + " Beleg(e) sind als Entwurf angelegt. "
             "Betrag, Konto und Steuerschlüssel stehen noch nicht darin - aus "
-            "dem PDF wird nichts ausgelesen, und erfundene Zahlen in einem "
+            "dem Beleg wird nichts ausgelesen, und erfundene Zahlen in einem "
             "Hauptbuch wären schlimmer als gar keine.");
 
     bericht.ok = bericht.angelegt > 0 || bericht.bekannt > 0;

@@ -4219,6 +4219,26 @@ static std::string BaueMiniPdf(const std::string& inhalt) {
     return std::string(kPdfKopf) + "1 0 obj<<>>endobj\n" + inhalt + "\n%%EOF\n";
 }
 
+// Smallest things that carry each magic number. Not decodable images - the
+// archive does not decode, it recognises, and a test that needed a real JPEG
+// would be testing libjpeg instead of this file.
+static std::string BaueMiniJpeg(const std::string& inhalt) {
+    return std::string("\xFF\xD8\xFF\xE0", 4) + inhalt + std::string("\xFF\xD9", 2);
+}
+static std::string BaueMiniPng(const std::string& inhalt) {
+    return std::string("\x89PNG\r\n\x1A\n", 8) + inhalt;
+}
+static std::string BaueMiniTiff(const std::string& inhalt) {
+    return std::string("II*\0", 4) + inhalt;
+}
+static std::string BaueMiniHeic(const std::string& inhalt) {
+    // length, "ftyp", brand - an ISO-BMFF box header.
+    return std::string("\0\0\0\x18", 4) + "ftyp" + "heic" + inhalt;
+}
+static std::string BaueMiniWebp(const std::string& inhalt) {
+    return std::string("RIFF") + std::string("\0\0\0\x10", 4) + "WEBP" + inhalt;
+}
+
 static void TestBelegArchiv() {
     std::printf("Belegarchiv (PDF-Import)\n");
 
@@ -4240,6 +4260,84 @@ static void TestBelegArchiv() {
               "an encrypted PDF is recognised");
         Check(!IstVerschluesseltesPdf(BaueMiniPdf("trailer<</Root 1 0 R>>")),
               "and an ordinary one is not");
+    }
+
+    // --- a photographed receipt is a receipt ---
+    //
+    // The commonest way a Beleg arrives is a phone photo, and the archive used
+    // to answer that with "ist keine PDF-Datei". These are the formats a phone
+    // or a scanner actually produces.
+    {
+        Check(ErkenneDateiArt(BaueMiniPdf("x"))   == DateiArt::Pdf,  "a PDF is a PDF");
+        Check(ErkenneDateiArt(BaueMiniJpeg("x"))  == DateiArt::Jpeg, "a JPEG is recognised");
+        Check(ErkenneDateiArt(BaueMiniPng("x"))   == DateiArt::Png,  "a PNG is recognised");
+        Check(ErkenneDateiArt(BaueMiniTiff("x"))  == DateiArt::Tiff, "a TIFF is recognised");
+        Check(ErkenneDateiArt(BaueMiniHeic("x"))  == DateiArt::Heif,
+              "and HEIC - what an iPhone writes unless told otherwise");
+        Check(ErkenneDateiArt(BaueMiniWebp("x"))  == DateiArt::WebP, "and WebP");
+
+        Check(ErkenneDateiArt("Das hier ist Text.\n") == DateiArt::Unbekannt,
+              "while a text file is still refused - widening the archive is not "
+              "the same as accepting anything");
+        Check(ErkenneDateiArt("") == DateiArt::Unbekannt, "and an empty file is");
+
+        // An ftyp box is not on its own an image: an MP4 has one too.
+        Check(ErkenneDateiArt(std::string("\0\0\0\x18", 4) + "ftyp" + "isom" + "x")
+                  == DateiArt::Unbekannt,
+              "an ftyp box with a video brand is not filed as an image");
+
+        // The ordering guarantee. IstPdf tolerates junk ahead of its header, so
+        // a JPEG whose EXIF happens to carry the string would be filed as a
+        // document if the PDF test ran first.
+        const std::string jpegMitText = BaueMiniJpeg("Scanner-Kommentar: %PDF-1.4");
+        Check(IstPdf(jpegMitText), "a JPEG can contain the PDF header string");
+        Check(ErkenneDateiArt(jpegMitText) == DateiArt::Jpeg,
+              "but it is still a JPEG - the offset-zero signature decides first");
+
+        CheckText(EndungFuer(DateiArt::Jpeg), "jpg", "a JPEG is stored as .jpg");
+        CheckText(EndungFuer(DateiArt::Pdf),  "pdf", "and a PDF as .pdf");
+    }
+
+    // --- filing a photograph, and finding it again ---
+    {
+        BelegArchiv archiv("archiv-bild-test");
+        SchreibeDatei("quelle-foto.jpg", BaueMiniJpeg("Quittung Tankstelle"));
+
+        const ArchivEintrag foto = archiv.Ablegen("quelle-foto.jpg", 2026);
+        Check(foto.ok, "a photographed receipt is filed");
+        Check(foto.art == DateiArt::Jpeg, "and recorded as a JPEG");
+        Check(foto.pfad.size() > 4 &&
+                  foto.pfad.compare(foto.pfad.size() - 4, 4, ".jpg") == 0,
+              "under .jpg, so a file manager can open it without guessing");
+
+        // The journal keeps a hash, not a format. A lookup has to find the file
+        // from the hash alone.
+        std::string gefunden;
+        DateiArt art = DateiArt::Unbekannt;
+        Check(archiv.Enthaelt(foto.hash, 2026, gefunden, &art),
+              "and is found again from the hash alone, without knowing the kind");
+        CheckText(gefunden, foto.pfad, "at the path it was written to");
+        Check(art == DateiArt::Jpeg, "reporting the kind it turned out to be");
+
+        // Same bytes, different name: still one receipt.
+        SchreibeDatei("quelle-foto-kopie.jpg", BaueMiniJpeg("Quittung Tankstelle"));
+        const ArchivEintrag nochmal = archiv.Ablegen("quelle-foto-kopie.jpg", 2026);
+        Check(nochmal.ok && nochmal.schonVorhanden,
+              "the same photograph twice is one photograph");
+        CheckText(nochmal.pfad, foto.pfad, "and keeps the first path");
+
+        // A kind the archive cannot display is still refused, with a message
+        // that now says what would work.
+        SchreibeDatei("notiz.txt", "Das ist nur eine Notiz.\n");
+        const ArchivEintrag notiz = archiv.Ablegen("notiz.txt", 2026);
+        Check(!notiz.ok, "a text file is still refused");
+        Check(notiz.fehler.find("JPEG") != std::string::npos,
+              "and the refusal names the kinds that would be accepted");
+
+        std::remove("quelle-foto.jpg");
+        std::remove("quelle-foto-kopie.jpg");
+        std::remove("notiz.txt");
+        RaeumeArchivAuf("archiv-bild-test");
     }
 
     // --- filing a document ---
@@ -4307,9 +4405,12 @@ static void TestBelegArchiv() {
         // What is refused.
         SchreibeDatei("kein.pdf", "Das ist nur Text.\n");
         const ArchivEintrag kein = archiv.Ablegen("kein.pdf", 2026);
-        Check(!kein.ok, "a file that is not a PDF is refused");
-        Check(kein.fehler.find("%PDF-") != std::string::npos,
-              "and the reason says what was looked for");
+        Check(!kein.ok, "a file of no kind the archive knows is refused");
+        Check(kein.fehler.find("PDF") != std::string::npos &&
+                  kein.fehler.find("JPEG") != std::string::npos,
+              "and the reason lists what would have been accepted - since the "
+              "archive widened, naming only %PDF- would send a user with a "
+              "photograph away for the wrong reason");
         std::remove("kein.pdf");
         Check(!archiv.Ablegen("gibtesnicht.pdf", 2026).ok,
               "a missing file is reported rather than crashing");

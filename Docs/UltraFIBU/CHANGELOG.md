@@ -1,3 +1,31 @@
+#### 2026-09-21 *0.18.0*
+- **Ein abfotografierter Beleg ist ein Beleg.** Das Belegarchiv nahm nur
+  Dateien an, die mit `%PDF-` beginnen, und wies alles andere mit "ist keine
+  PDF-Datei" ab - also ausgerechnet den haeufigsten Fall: die mit dem Handy
+  fotografierte Quittung. Die GoBD sehen die bildliche Erfassung eines
+  Papierbelegs ausdruecklich vor, mobiles Scannen eingeschlossen. Abgelegt
+  werden jetzt PDF, JPEG, PNG, TIFF, HEIF/HEIC und WebP.
+  - **Erkannt wird weiter an den Bytes, nicht an der Endung.** Neu ist
+    `ErkenneDateiArt()`; `IstPdf()` bleibt, was es war. Die Signaturen an
+    Offset 0 werden *vor* dem PDF-Test geprueft, denn der toleriert
+    absichtlich Muell vor seinem Header - ein JPEG, das die Zeichenfolge
+    `%PDF-` in seinen Metadaten fuehrt, waere sonst als Dokument abgelegt
+    worden. Genau dieser Fall ist jetzt ein Test.
+  - **Eine `ftyp`-Box allein genuegt nicht.** Auch ein MP4 hat eine; geprueft
+    wird die Marke dahinter (`heic`, `mif1`, `avif` ...).
+  - **Die Datei behaelt die Endung ihrer tatsaechlichen Art**
+    (`<jahr>/<hash>.jpg`), damit ein Dateimanager oder ein Pruefer mit einem
+    Verzeichnislisting sie ohne Raten oeffnen kann. Der Hash bleibt die
+    Identitaet: `Enthaelt()` sucht deshalb ueber alle bekannten Endungen,
+    weil ein Aufrufer mit einem Hash aus dem Journal das Format nicht kennt.
+  - Abgewiesen wird weiterhin alles Uebrige - eine Textdatei bleibt eine
+    Textdatei. Die Meldung nennt jetzt aber, was angenommen worden waere,
+    statt nur `%PDF-` zu verlangen.
+  - Geprueft an echten Dateien, nicht nur an synthetischen: drei echte Fotos
+    (JPEG, PNG, WebP) byte-identisch abgelegt und ueber den Hash allein
+    wiedergefunden, die 24 echten PDF-Belege unveraendert (22 abgelegt, 2 als
+    Dubletten erkannt).
+
 #### 2026-09-21 *0.17.0*
 - **Die DATEV-Spaltendefinition war eine Rekonstruktion - jetzt ist sie an
   einer echten EXTF-Datei geprueft.** `data/DATEV-Buchungsstapel-v700.csv`

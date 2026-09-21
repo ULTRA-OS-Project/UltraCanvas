@@ -120,9 +120,10 @@ void PrintUsage() {
         "                              erneut zulassen\n"
         "  datev-importe <datei>   Bisherige DATEV-Importe anzeigen\n"
         "\n"
-        "  beleg-import <datei> <pdf> [<pdf> ...]\n"
-        "                          PDF-Belege einlesen und archivieren;\n"
-        "                          je Datei entsteht ein Entwurf\n"
+        "  beleg-import <datei> <beleg> [<beleg> ...]\n"
+        "                          Belege einlesen und archivieren (PDF oder\n"
+        "                          abfotografiert: JPEG, PNG, TIFF, HEIC,\n"
+        "                          WebP); je Datei entsteht ein Entwurf\n"
         "        --datum <datum>       Belegdatum (Pflicht)\n"
         "        --art <art>           eingangsrechnung (Standard),\n"
         "                              ausgangsrechnung, ...\n"
@@ -1412,7 +1413,7 @@ int BelegImport(int argc, char** argv) {
     }
     if (pfade.empty()) {
         std::printf("Fehler: Aufruf ist "
-                    "ultrafibu beleg-import <datei> <pdf> [<pdf> ...] "
+                    "ultrafibu beleg-import <datei> <beleg> [<beleg> ...] "
                     "--datum <datum>\n");
         return 2;
     }
@@ -1422,7 +1423,7 @@ int BelegImport(int argc, char** argv) {
     if (datumText.empty() || !TryParseDateGerman(datumText, datum)) {
         std::printf("Fehler: --datum <datum> ist erforderlich.\n"
                     "Ohne Belegdatum lässt sich der Beleg keinem Geschäftsjahr "
-                    "zuordnen; aus dem PDF wird es nicht geraten.\n");
+                    "zuordnen; aus dem Beleg wird es nicht geraten.\n");
         return 2;
     }
     BelegArt art = BelegArt::Eingangsrechnung;
