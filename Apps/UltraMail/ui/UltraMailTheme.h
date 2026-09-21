@@ -140,11 +140,34 @@ inline UltraCanvas::ButtonStyle SecondaryButton() {
     return s;
 }
 
+// The filled red button: destructive actions (removing an account), where the
+// colour itself is the warning. One per surface, kept apart from the safe
+// buttons in the row.
+inline UltraCanvas::ButtonStyle DangerButton() {
+    UltraCanvas::ButtonStyle s;
+    s.normalColor      = kTrustScam;                        // red-600
+    s.hoverColor       = UltraCanvas::Color(185,  28,  28); // red-700
+    s.pressedColor     = UltraCanvas::Color(153,  27,  27); // red-800
+    s.disabledColor    = UltraCanvas::Color(240, 180, 180, 255);
+    s.normalTextColor  = UltraCanvas::Colors::White;
+    s.hoverTextColor   = UltraCanvas::Colors::White;
+    s.pressedTextColor = UltraCanvas::Colors::White;
+    s.disabledTextColor= UltraCanvas::Colors::White;
+    s.borderWidth      = 0.0f;
+    s.borderColor      = kTrustScam;
+    s.cornerRadius     = kControlRadius;
+    s.fontSize         = kSizeBody;
+    return s;
+}
+
 inline void StylePrimary(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b) {
     if (b) b->SetStyle(PrimaryButton());
 }
 inline void StyleSecondary(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b) {
     if (b) b->SetStyle(SecondaryButton());
+}
+inline void StyleDanger(const std::shared_ptr<UltraCanvas::UltraCanvasButton>& b) {
+    if (b) b->SetStyle(DangerButton());
 }
 
 // A white card: the surface every content block sits on.

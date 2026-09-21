@@ -62,6 +62,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     intro->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
 
     // Build a [label + input] flex row and append it to the content column.
+    // Returns the row container so callers can hide/show a whole field at once.
     auto addRow = [&content](const std::string& id, const std::string& labelText,
                              const std::shared_ptr<UltraCanvasTextInput>& input) {
         auto row = CreateContainer(id + "Row", 0, 0, 0, Theme::kControlHeight);
@@ -80,6 +81,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
 
         content->AddChild(row);
         row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        return row;
     };
 
     auto name = CreateTextInput("wizName", 0, 0, 0, Theme::kControlHeight);
@@ -92,7 +94,7 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
 
     auto password = CreatePasswordInput("wizPass", 0, 0, 0, Theme::kControlHeight);
     password->SetPlaceholder("Your password");
-    addRow("wizPass", "Password", password);
+    auto passRow = addRow("wizPass", "Password", password);
 
     // Provider-specific advice that follows the address as it is typed: Gmail
     // and Outlook sign in through the browser (OAuth2) when the password is
@@ -101,18 +103,23 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     hint->SetWrap(TextWrap::WrapWord);
     content->AddChild(hint);
     hint->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-    email->onTextChanged = [hint, password](const std::string& text) {
+    email->onTextChanged = [hint, password, passRow](const std::string& text) {
         const DiscoveryResult d = AutoDiscovery::FromPresets(text);
         const std::string provider = OAuthProviderFor(d);
-        if (!provider.empty() && !ProviderAcceptsPassword(d)) {
-            // Microsoft: the browser sign-in is the only way in.
+        // Providers that no longer take a typed password (Google, Microsoft) sign
+        // in through the browser only: drop the password field entirely so nothing
+        // stale is submitted, rather than asking for a password we cannot use.
+        const bool acceptsPassword = ProviderAcceptsPassword(d);
+        if (!acceptsPassword) password->SetText("");
+        passRow->SetVisible(acceptsPassword);
+        if (!provider.empty() && !acceptsPassword) {
+            // Microsoft / Google: the browser sign-in is the only way in.
             const std::string name = OAuthProviderDisplayName(provider);
             hint->SetText(OAuthApps::Has(provider)
-                ? d.displayName + ": leave the password empty to sign in with " + name
-                  + " in your browser. Passwords are no longer accepted."
+                ? d.displayName + " signs in with " + name + " in your browser — no "
+                  "password needed. Continue to open the sign-in page."
                 : d.displayName + " only accepts the " + name + " browser sign-in, which "
                   "needs an OAuth client configured (Docs/UltraMail/AccountSetup.md).");
-            password->SetPlaceholder("Leave empty to sign in with " + name);
         } else if (!provider.empty() && OAuthApps::Has(provider)) {
             const std::string name = OAuthProviderDisplayName(provider);
             hint->SetText(d.displayName + ": leave the password empty to sign in with "
