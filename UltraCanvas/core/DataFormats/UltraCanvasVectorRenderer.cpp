@@ -1,7 +1,7 @@
 // UltraCanvasVectorRenderer.cpp
 // Vector Graphics Rendering for UltraCanvas
-// Version: 2.1.0
-// Last Modified: 2026-09-15
+// Version: 2.1.1
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 //
 // Draws a VectorStorage::VectorDocument into any IRenderContext. Every
@@ -53,6 +53,19 @@ namespace UltraCanvas {
         // for an element without geometry.
         bool EmptyBox(const Rect2Dd &b) {
             return b.width <= 0 && b.height <= 0 && b.x == 0 && b.y == 0;
+        }
+
+        // A transform that collapses the plane onto a line or a point. It
+        // arrives from readers rather than from bad arithmetic here: a DWG
+        // block standing in a vertical plane projects to plan view with one
+        // axis scaled to zero (the bathroom sample's 'cornice' layer does
+        // exactly this). Such an element has no area to draw, and handing the
+        // matrix to the backend is worse than skipping it - Cairo latches a
+        // non-invertible matrix as a permanent error on the context, after
+        // which NOTHING renders: the rest of the drawing, the rest of the
+        // page, and every later frame drawn into it.
+        bool Singular(const Matrix3x3 &m) {
+            return !(std::fabs(m.Determinant()) > 1e-12);   // false for NaN too
         }
     }
 
@@ -124,6 +137,10 @@ namespace UltraCanvas {
     void VectorRenderer::RenderElement(IRenderContext *context, const VectorElement &element) {
         ctx = context;
         if (!IsVisible(element)) return;
+        if (element.Transform.has_value() && Singular(element.Transform.value())) {
+            stats.ElementsCulled++;
+            return;
+        }
 
         if (options.EnableCulling && options.ClipToViewport && !IsInViewport(element.GetBoundingBox())) {
             stats.ElementsCulled++;

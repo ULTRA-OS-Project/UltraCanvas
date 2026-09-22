@@ -118,6 +118,11 @@ namespace UltraCanvas {
         void ResetState() override;
 
         // Transformation
+        // False for a matrix Cairo cannot invert (a zero scale, a NaN): such
+        // a matrix is a permanent error on the cairo_t, after which the
+        // context draws nothing at all. See the definition.
+        static bool UsableMatrix(const cairo_matrix_t& m, const char* where);
+
         void Translate(double x, double y) override;
         void Rotate(double angle) override;
         void Scale(double sx, double sy) override;
