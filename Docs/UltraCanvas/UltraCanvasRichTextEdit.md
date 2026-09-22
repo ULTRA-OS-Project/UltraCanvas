@@ -218,6 +218,55 @@ Search reaches into cells, so **find and replace now cover table content**.
 `AllContainers()` enumerates every container in document order if you need to
 walk the document yourself.
 
+#### Editing a table's structure
+
+Tables are created and reshaped from the caret, so a menu item says what the
+user means — "insert a row below *this* one":
+
+```cpp
+editor->InsertTable(3, 4, /*headerRow=*/true);   // caret lands in the first cell
+
+editor->InsertRowAbove();      editor->InsertRowBelow();
+editor->InsertColumnLeft();    editor->InsertColumnRight();
+editor->DeleteCurrentRow();    editor->DeleteCurrentColumn();
+editor->MergeWithCellRight();  editor->MergeWithCellBelow();
+editor->SplitCurrentCell();
+```
+
+Each returns `false` when it does not apply — the caret is not in a table,
+there is no neighbour to merge with, the cell is not merged — which is also
+what a menu should ask to decide whether to offer the item:
+
+```cpp
+if (editor->IsCaretInTable()) {
+    int rows = 0, columns = 0, row = 0, column = 0;
+    editor->CaretTableGeometry(rows, columns, row, column);   // for "Delete row 2 of 5"
+    menu.SetEnabled("split", editor->CanSplitCurrentCell());
+}
+```
+
+Each operation is **one undo step**, and each keeps the grid rectangular:
+
+- A span reaching across an insertion point **grows** rather than being cut in
+  two, because the text in it lives in one cell and cannot be in two places.
+- A span reaching into a deleted row or column **shrinks**; where the span
+  *started* in the deleted row, the cell moves down into the next one instead,
+  so its text is not deleted along with the row.
+- **Merging keeps the text of every cell it absorbs**, appended to the
+  surviving cell. A merge is a layout decision, and dropping what somebody
+  typed would be a silent deletion.
+- A merge whose rectangle would cut an existing span in half is **refused**:
+  the model cannot store half a cell, so approximating it would corrupt the
+  grid.
+- Deleting the last row or the last column deletes the table, because a table
+  with no cells has nothing to type into and no way back.
+
+Cells are stored sparsely — a merged cell is one `RichTableCell` with a span,
+and the slots it covers hold nothing — so **a cell's index within its row is
+not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
+which cell occupies each slot, and is what both the layout and these operations
+use; positions keep addressing cells as `{row, index-within-row}`.
+
 ### Structure
 
 ```cpp
@@ -372,11 +421,16 @@ This is the shortest path to a faithful `.odt`/`.docx` preview pane.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **A table's own structure is not edited yet.** Merged cells load, save and
-  lay out correctly, but *making* them does not: adding or removing rows and
-  columns, merging and splitting cells, and selecting across several cells at
-  once are not there — and neither is inserting a new table, which is why
-  UltraTexter's Insert Table button stays disabled for these documents.
+- **A selection cannot span several cells.** Rows, columns, merging and
+  splitting are all there (see *Editing a table's structure*), but they act on
+  the cell the caret is in: there is no drag-select across a block of cells, so
+  "merge these six" has to be done as a merge right and a merge down. The
+  selection model holds a range inside one container, and widening it is a
+  piece of work in its own right — rendering, hit testing and copying all
+  change with it.
+- **Column widths are uniform.** The grid divides the available width evenly;
+  a column width stored in a `.docx` or `.odt` is preserved on save but not
+  honoured on screen.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the

@@ -1,0 +1,64 @@
+# UltraFIBU - UStVA-Kennzahlen, Vordruckmuster 2026
+#
+# ============================================================================
+# DAS FORMULAR AENDERT SICH JEDES JAHR. DESHALB IST DIES EINE DATENDATEI.
+# ============================================================================
+# Die Umsatzsteuer-Voranmeldung wird jaehrlich vom BMF neu herausgegeben; 2026
+# ist z. B. die Kennzahl 43 (SAFE-Lieferungen) neu hinzugekommen. Eine
+# Kennzahl in C++ zu schreiben hiesse, jedes Jahr ein neues Programm zu
+# brauchen. Hier ist eine Aenderung eine Zeile.
+#
+# WAS "geprueft" BEDEUTET:
+#   ja    Die Kennzahl ist gegen das BMF-Vordruckmuster bzw. eine belastbare
+#         Quelle geprueft und darf verwendet werden.
+#   nein  NICHT geprueft. Die Zeile ist Dokumentation, kein Rechenweg: die
+#         Meldung verweigert die Abgabe, wenn Betraege auf eine ungeprueffte
+#         Kennzahl entfallen wuerden. Eine geratene Kennzahl ergibt eine
+#         falsche Voranmeldung, und die faellt erst beim Finanzamt auf.
+#
+# ART bestimmt, wie die Kennzahl in die Zahllast (Kz 83) eingeht:
+#   bemessung   Bemessungsgrundlage (netto). ELSTER rechnet die Steuer selbst
+#               aus dem Satz; sie geht ueber "satz_promille" in Kz 83 ein.
+#   steuer      Ein Steuerbetrag, der ausdruecklich gemeldet wird (+)
+#   vorsteuer   Abziehbare Vorsteuer (-)
+#   frei        Steuerfreier/nicht steuerbarer Umsatz, wirkt nicht auf Kz 83
+#   berechnet   Ergebnis, wird nicht aus dem Journal summiert
+#
+# Format: kennzahl;art;satz_promille;geprueft;bezeichnung
+# satz_promille nur bei art=bemessung; 0 sonst.
+#
+kennzahl;art;satz_promille;geprueft;bezeichnung
+81;bemessung;190;ja;Steuerpflichtige Umsaetze zum Steuersatz von 19 %
+86;bemessung;70;ja;Steuerpflichtige Umsaetze zum Steuersatz von 7 %
+87;frei;0;ja;Umsaetze zum Steuersatz von 0 %
+35;bemessung;0;nein;Umsaetze zu anderen Steuersaetzen - Bemessungsgrundlage
+36;steuer;0;nein;Umsaetze zu anderen Steuersaetzen - Steuer
+41;frei;0;ja;Innergemeinschaftliche Lieferungen (§ 4 Nr. 1b UStG)
+43;frei;0;nein;SAFE-Lieferungen (neu 2026, Zeile 22)
+45;frei;0;ja;Nicht steuerbare Umsaetze (Leistungsort nicht im Inland)
+48;frei;0;nein;Steuerfreie Umsaetze ohne Vorsteuerabzug
+66;vorsteuer;0;ja;Vorsteuerbetraege aus Rechnungen anderer Unternehmer
+#
+# ---------------------------------------------------------------------------
+# AB HIER: NICHT GEPRUEFT. Die Zeilen stehen hier, damit sichtbar ist, WELCHE
+# Faelle noch fehlen - nicht, damit sie verwendet werden. Solange "geprueft"
+# auf "nein" steht, verweigert "ultrafibu ustva-xml" die Datei, sobald ein
+# Betrag auf eine dieser Kennzahlen entfaellt.
+#
+# Zum Pruefen: das BMF-Vordruckmuster des Jahres oder eine tatsaechlich
+# abgegebene Voranmeldung danebenlegen, Kennzahl fuer Kennzahl vergleichen,
+# "nein" auf "ja" setzen. Danach:
+#   ultrafibu ustva <datei> --jahr 2026 --zeitraum 06
+# ---------------------------------------------------------------------------
+89;bemessung;190;nein;Innergemeinschaftliche Erwerbe 19 %
+93;bemessung;70;nein;Innergemeinschaftliche Erwerbe 7 %
+61;vorsteuer;0;nein;Vorsteuer aus innergemeinschaftlichen Erwerben
+46;bemessung;0;nein;Leistungen nach § 13b UStG - Bemessungsgrundlage
+47;steuer;0;nein;Leistungen nach § 13b UStG - Steuer
+67;vorsteuer;0;nein;Vorsteuer aus Leistungen nach § 13b UStG
+62;vorsteuer;0;nein;Entrichtete Einfuhrumsatzsteuer
+21;frei;0;nein;Nicht steuerbare sonstige Leistungen nach § 18b UStG
+#
+# Ergebniszeilen - werden gerechnet, nicht summiert.
+83;berechnet;0;ja;Umsatzsteuer-Vorauszahlung / verbleibender Ueberschuss
+39;steuer;0;nein;Anrechnung der Sondervorauszahlung (nur Dezember bzw. Q4)

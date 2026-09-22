@@ -38,12 +38,12 @@
 #include <csignal>
 #endif
 
-// Defined by the build from the first line of Docs/UltraCleaner/CHANGELOG.md
-// — see cmake/UltraCanvasVersion.cmake. UltraCleaner versions itself
-// independently of the framework it is built on. The fallback only applies
-// outside CMake.
+// ULTRACLEANER_VERSION comes from the build alone: CMake reads the first line
+// of Docs/UltraCleaner/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
+// as a compile definition. No fallback here, so a build that lost it
+// fails instead of reporting a wrong number.
 #ifndef ULTRACLEANER_VERSION
-#define ULTRACLEANER_VERSION "0.0-dev"
+#error "ULTRACLEANER_VERSION is not defined: build through CMake, which reads it from Docs/UltraCleaner/CHANGELOG.md"
 #endif
 
 using namespace UltraCanvas;

@@ -18,8 +18,8 @@
 //
 // Rows hidden with SetVisible(false) leave the grid entirely (display:none),
 // so a form can show a different set of rows without leaving gaps.
-// Version: 1.0.0
-// Last Modified: 2026-09-13
+// Version: 1.1.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -31,6 +31,22 @@
 #include <string>
 
 namespace UltraCanvas {
+
+    // A container that only arranges what is in it - a form grid, a row of
+    // controls, a caption and its field - has nothing to scroll: it is sized
+    // by the layout, so a scrollbar there is a symptom of a row being a couple
+    // of pixels short, not a way to reach anything. Whatever really needs to
+    // scroll is the pane or dialog around it.
+    inline void DisableScrollbars(const std::shared_ptr<UltraCanvasContainer>& container) {
+        if (!container) return;
+        ContainerStyle style = container->GetContainerStyle();
+        style.autoShowScrollbars = false;
+        style.autoShowVerticalScrollbar = false;
+        style.autoShowHorizontalScrollbar = false;
+        style.forceShowVerticalScrollbar = false;
+        style.forceShowHorizontalScrollbar = false;
+        container->SetContainerStyle(style);
+    }
 
     // The grid every row goes into. Add it to the window (or a section) as a
     // stretched child; the rows are its children.
@@ -52,11 +68,7 @@ namespace UltraCanvas {
         // raised a vertical scrollbar, which narrowed the viewport enough to
         // raise a horizontal one as well - and the pair covered the last row.
         // Whatever needs to scroll is the pane or dialog around the grid.
-        ContainerStyle gridStyle = grid->GetContainerStyle();
-        gridStyle.autoShowScrollbars = false;
-        gridStyle.autoShowVerticalScrollbar = false;
-        gridStyle.autoShowHorizontalScrollbar = false;
-        grid->SetContainerStyle(gridStyle);
+        DisableScrollbars(grid);
         return grid;
     }
 
@@ -110,6 +122,11 @@ namespace UltraCanvas {
                                                                    int height = 28) {
         auto row = std::make_shared<UltraCanvasContainer>(identifier, 0, 0, 0, height);
         row->layout.SetFlexRow().SetFlexGap(gap).SetFlexAlignItems(CSSLayout::AlignItems::Center);
+        // Same reason as the grid above: a row that only places a caption and
+        // its control has nothing to scroll, and a control one pixel taller
+        // than the row would otherwise raise a scrollbar across the row - over
+        // the very caption and field it was laying out.
+        DisableScrollbars(row);
         return row;
     }
 

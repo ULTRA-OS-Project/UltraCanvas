@@ -10,6 +10,7 @@
 #include "UltraFIBUApp.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasUtils.h"   // GetResourcesDir, NormalizePath
 
 #include <cstdio>
 #include <cstdlib>
@@ -50,6 +51,13 @@ int main(int argc, char** argv) {
                     "(kein Display?).\n");
         return EXIT_FAILURE;
     }
+
+    // One icon, everywhere the app is drawn: the window and the taskbar entry
+    // that follows it read this file; the .ico embedded in the Windows binary
+    // and the desktop entry's theme icon come from the same
+    // media/appicon/UltraFIBU.png (see CMakeLists.txt).
+    app.SetDefaultWindowIcon(UltraCanvas::NormalizePath(
+        UltraCanvas::GetResourcesDir() + "media/appicon/UltraFIBU.png"));
 
     UltraFIBU::FibuApp fibu;
     std::string fehler;

@@ -1,3 +1,432 @@
+#### 2026-09-21 *0.16.0*
+- **UltraFIBU war in keinem fertigen Paket enthalten.** Es wurde gebaut, es
+  bestand seine Tests, und `package-linux.sh` listete beim Packen auf:
+  `Apps: UltraCanvasDemo UltraCanvasTexter UltraFiler UltraMail UltraAIApp
+  UltraViewer UltraPaint ArtCreator` - ohne ein Wort darueber, dass etwas
+  fehlt. Zwei unabhaengige Gruende:
+  - Die Liste `APPS=` kannte `ultrafibu` und `ultrafibu-ui` nicht.
+  - Gesucht wurde nur in `$BUILDDIR/$app`. UltraFIBU setzt
+    `RUNTIME_OUTPUT_DIRECTORY` auf `bin/`, liegt also woanders - die Namen
+    einzutragen haette allein nichts geaendert. Gleiches unter Windows, wo
+    `./build/*.exe` eingesammelt wird.
+- **Die Datendateien fehlten ebenfalls.** Ein Programm ohne Kontenrahmen kann
+  keinen Mandanten anlegen; ausgeliefert ohne sie waere es schlimmer als gar
+  nicht ausgeliefert. SKR03, Steuerschluessel, UStVA-Kennzahlen, EU-Saetze
+  und die Bank-/DATEV-Profile liegen jetzt unter `share/UltraFIBU/data` und
+  zusaetzlich neben der Binaerdatei.
+- **Gesucht wird jetzt zuerst neben dem Programm, dann im Arbeitsverzeichnis.**
+  Ein installiertes Programm wird aus einem Menue oder vom Dateimanager
+  gestartet, und das Arbeitsverzeichnis ist dann das Heimatverzeichnis oder
+  `/` - nirgends in der Naehe seiner Daten. Nur dort zu suchen ist der Grund,
+  warum dieselbe Binaerdatei im Bauverzeichnis lief und installiert "kein
+  Kontenrahmen gefunden" gemeldet haette.
+- Geprueft am echten Paket, nicht nur im Test: aus `/` gestartet, ueber den
+  Wrapper und einmal direkt als `bin/ultrafibu` ohne gesetzte Umgebung -
+  beide Male 74 Konten und 16 Steuerschluessel, und die EU-Saetze lassen sich
+  uebernehmen.
+- **Das Programmsymbol.** `media/appicon/UltraFIBU.png` wird jetzt ueberall
+  verwendet, wo die anderen Anwendungen ihres verwenden: als Fenster- und
+  Taskleistensymbol (`SetDefaultWindowIcon` in `ui/main.cpp`), als
+  `UCAPP_ICON_PATH` - der Rueckfall des Kerns, damit nie ein unbeschriftetes
+  Fenster erscheint -, eingebettet in die Windows-.exe (Explorer und
+  Taskleiste lesen es von der Binaerdatei, nicht aus einem Desktop-Eintrag)
+  und ueber den neuen Eintrag `Apps/UltraFIBU/UltraFIBU.desktop` im
+  Anwendungsmenue.
+- **Das hochgeladene Bild wurde dafuer aufbereitet, und das ist eine
+  Aenderung am Original:** es kam mit 1254x1254 Bildpunkten und ohne
+  Transparenz, mit weissem Rand um das abgerundete Quadrat. Alle anderen
+  Symbole der Sammlung sind 256x256 mit Alphakanal. Unveraendert waere es auf
+  einer dunklen Leiste ein weisses Rechteck geworden, und die Installation
+  nach `share/icons/hicolor/256x256/apps` haette eine Groesse behauptet, die
+  nicht stimmt - Symbolthemen verlassen sich auf den Verzeichnisnamen. Es
+  liegt jetzt als 256x256 mit freigestellten Ecken vor; das Original bleibt
+  im Git-Verlauf (`git show 0ed1ed1:media/appicon/UltraFIBU.png`).
+- **Kein SVG.** Die Regel fuer `share/icons/hicolor/scalable/apps` fehlt
+  deshalb, anders als bei EmailCleaner oder UltraFiler, die ein Paar aus PNG
+  und SVG mitbringen.
+- **Offen:** `package-macos.sh` baut nur zwei .app-Bundles (Texter und Demo)
+  und kennt UltraFIBU so wenig wie UltraFiler, UltraMail oder ArtCreator. Das
+  ist eine Luecke dieses Skripts, keine von UltraFIBU, und wird hier nicht
+  angefasst.
+
+#### 2026-09-20 *0.15.0*
+- **Ein Beleg wurde mit 6,56 EUR gebucht, auf dem 6,55 EUR stand.** Vier
+  Zeilen einer echten Lieferantenrechnung, 19 %, netto 5,51 EUR. Der
+  Lieferant weist 1,04 EUR Steuer aus, weil er je Zeile rechnet und addiert;
+  Steuer auf die Summe sind 1,0469 und damit 1,05. Beide Rundungen sind
+  vertretbar - aber nur eine davon ist die, die berechnet wurde, und die
+  steht auf dem Papier.
+- **Auf einem Eingangsbeleg ist die Steuer eine Tatsache, keine Rechnung.**
+  `Beleg::steuerVorgegeben` und `vorgegebeneSteuer`: ist eine Steuer
+  angegeben, gilt sie. Der Vorsteuerabzug muss zum Beleg passen, und ein Cent
+  Abweichung je Beleg ist eine Abstimmung, die niemand zu Ende bringt.
+  Mehrere Steuersätze mit einer angegebenen Summe werden abgelehnt - die
+  Aufteilung waere geraten, und Geratenes landet in der Voranmeldung.
+- **Brutto-Erfassung.** `Beleg::preiseSindBrutto`: ein Beleg weist brutto
+  aus, und 6,55 EUR in ein Nettofeld getippt erhoeht die Ausgabe um die
+  Steuer - jedes Mal, unbemerkt. Das Formular schaltet dafuer um und steht
+  bei einem Eingangsbeleg von vornherein auf Brutto. Der getippte
+  Bruttobetrag bleibt auf den Cent erhalten: verteilt wird der Nettoanteil,
+  nicht der Bruttobetrag.
+- **Liefer- oder Leistungszeitpunkt als Auswahl** (§ 14 Abs. 4 Nr. 6 UStG):
+  Lieferdatum, Leistungsdatum, Liefer- oder Leistungszeitraum - oder
+  ausdruecklich keiner. "Geliefert am" und "geleistet im Zeitraum" sind
+  verschiedene Aussagen darueber, wann die Steuer entstanden ist, und der
+  Empfaenger bucht nach dem, was gedruckt ist. Die Rechnung schreibt jetzt
+  die passende Zeile; "kein Datum" wird als fehlende Pflichtangabe gemeldet,
+  weil es nur bei einer noch nicht erbrachten Leistung zulaessig ist.
+- **Rabatt je Position** im Formular - das Feld gab es in der Engine laengst.
+- Schema v7 fuer die vier neuen Spalten. 26 weitere Pruefungen (1277
+  insgesamt), darunter die vier Zeilen der echten Rechnung als Testfall.
+- **Ein Fehler im Formular, den erst der Bildschirm gezeigt hat:** es wird
+  einmal gebaut und fuer beide Richtungen benutzt, und alles
+  Richtungsabhaengige wurde nur beim Bauen gesetzt. Eine Eingangsrechnung kam
+  deshalb mit der Beschriftung "Kunde" hoch, stand auf Netto und hatte kein
+  Feld fuer die Steuer laut Beleg. `RichtungAnwenden()` laeuft jetzt bei jedem
+  Oeffnen.
+- **Und einer in der Engine:** ein `Money()` ohne Argumente ist **gueltig**
+  (eine Null ohne Waehrung, damit Summen damit anfangen koennen). "Hat einen
+  Wert" an `Valid()` festzumachen hiess, dass jeder Beleg eine angegebene
+  Steuer von 0,00 meldete und seine Steuer verlor. Deshalb ein eigenes Flag.
+
+#### 2026-09-20 *0.14.0*
+- **Das Erfassungsformular, und darin die Steuerauswahl je Position.**
+  `Apps/UltraFIBU/ui/UltraFIBUBelegDialog.{h,cpp}`, als eigener Reiter "Beleg
+  erfassen" mit den Schaltflaechen "Neue Rechnung" und "Eingangsrechnung
+  erfassen". Damit entstehen Belege nicht mehr nur auf der Kommandozeile.
+- **Der Partner steht als erstes Feld, weil er den Rest entscheidet.** Aus
+  Land, Unternehmereigenschaft, USt-IdNr. und Belegrichtung folgt, welche
+  Steuerschluessel ueberhaupt in Frage kommen. Neben dem Auswahlfeld steht,
+  was davon in den Stammdaten hinterlegt ist - insbesondere, ob eine
+  USt-IdNr. fehlt, denn daran haengt die Steuerfreiheit.
+- **Solange kein Partner gewaehlt ist, ist die Steuerliste leer.** Ein leerer
+  `Partner` hat die Kategorie "Inland", und das Formular hat deshalb zuerst
+  ein selbstbewusstes "USt19 19 %" fuer einen Kunden angeboten, den niemand
+  ausgewaehlt hatte - eine Position haette so gespeichert werden koennen.
+  Eine leere Liste ist der ehrliche Zustand: die Frage ist vor dem Partner
+  nicht beantwortbar.
+- **Vorgeschlagene Schluessel stehen oben und sind mit "✓" markiert,
+  widersprechende mit "!".** Wer den Grund sehen will, sieht ihn: unter jeder
+  Zeile steht ein Satz, was der gewaehlte Schluessel bedeutet. Bei einem
+  oesterreichischen Firmenkunden sind das "DIENSTLEISTUNG an ein
+  EU-Unternehmen ..." und "WARE an ein EU-Unternehmen ...", und **keiner von
+  beiden ist vorausgewaehlt** - Ware oder Dienstleistung weiss das Programm
+  nicht, und die Listenreihenfolge ist kein Grund, eine der beiden rechtlich
+  verschiedenen Behandlungen zu waehlen.
+- **Die Breite der Auswahlliste ist kein Schoenheitsfehler.** Bei den
+  voreingestellten 400 Pixeln endet "Leistungsempfaenger schuldet die Steuer,
+  Ausgang (§ 13b UStG)" genau da, wo er sich vom Eingangsfall unterscheidet -
+  zwei Eintraege, die gleich aussehen und Gegenteiliges bedeuten.
+- **Summen und Befunde stehen waehrend der Eingabe da**, nicht erst beim
+  Speichern: gerechnet wird bei jeder Aenderung, und geprueft wird mit
+  derselben Funktion, die auch das Buchen ablehnt.
+- **Das Formular ist keine Absicherung.** `SaveBeleg` und `Buchen` pruefen
+  unabhaengig weiter. Ein Beleg, den dieses Formular durchlaesst und der
+  Store ablehnt, ist ein Fehler im Formular - kein Weg hinein.
+- Ein Doppelklick auf einen Entwurf in der Belegliste oeffnet ihn im
+  Formular; ein gebuchter Beleg sagt statt dessen, dass eine Aenderung eine
+  Stornierung ist.
+- **Noch offen an diesem Formular:** die PDF-Vorschau neben dem Formular fuer
+  hochgeladene Belege, das Anlegen eines Partners direkt aus dem Formular,
+  Rabatt/Aufschlag, Zahlungsbedingungen und Vorlagen, das Loeschen einer
+  einzelnen Position und ein Konten-Auswahlfeld statt der freien
+  Kontonummer.
+
+#### 2026-09-20 *0.13.0*
+- **Eine Rechnung, die 19 % ausweist und zugleich schreibt, der Empfaenger
+  schulde die Steuer, wird nicht mehr erzeugt.** Genau das hat das Programm
+  getan: 1.000,00 netto, "zzgl. 19 % USt 190,00", 1.190,00 gesamt - und
+  darunter, an der Stelle, die § 14 Abs. 4 Nr. 8 UStG fuer den
+  Befreiungshinweis vorsieht, der Satz "Steuerschuldnerschaft des
+  Leistungsempfaengers". Welche Haelfte der Leser glaubt, die andere war
+  falsch. Nichts im Programm hat widersprochen.
+- **Die Ursache war ein Schluessel fuer drei Regeln.** "Reverse Charge"
+  heissen drei verschiedene Dinge, und RC13b war nur eines davon:
+  - `EURC` - sonstige Leistung an ein EU-Unternehmen. Leistungsort ist das
+    Land des Kunden (§ 3a Abs. 2 UStG), also 0 % auf der deutschen Rechnung;
+    der Kunde versteuert sie bei sich.
+  - `RC13b` - EINGANG: wir beziehen eine Leistung und schulden die deutsche
+    Steuer selbst (§ 13b UStG), deshalb 19 %.
+  - `RC13bAus` - AUSGANG: wir erbringen eine Leistung, bei der der deutsche
+    Empfaenger die Steuer schuldet, deshalb 0 %.
+  Dazu `SteuerArt::EuSonstigeLeistung` und der Hinweis auf der Rechnung.
+- **`PruefeSteuerlicheStimmigkeit` ist das, was die naechste Variante
+  verhindert.** Der Widerspruch ist ohne Steuerrecht sichtbar: ein Beleg kann
+  nicht Steuer berechnen und zugleich sagen, es werde keine berechnet.
+  Geprueft wird ausserdem: Vorsteuerschluessel auf einer Ausgangsrechnung,
+  Ausgangsschluessel auf einem Eingangsbeleg, ein Schluessel, der am
+  Belegdatum nicht galt, eine OSS-Zeile ohne Bestimmungsland, und die
+  Steuerbefreiung fuer einen Inlandskunden.
+- **Ohne USt-IdNr. des Kunden keine Steuerfreiheit.** Sie ist die Bedingung
+  der Befreiung, nicht eine Formalie: fehlt sie, wird die Rechnung nicht
+  geschrieben und nicht gebucht. Bisher wurde sie nur als fehlende
+  Pflichtangabe vermerkt und die Rechnung trotzdem gedruckt.
+- **Gebucht wird auch nicht.** Der Belegdruck haelt eine falsche Rechnung vom
+  Kunden fern, aber buchen ist der unumkehrbare Schritt: danach laesst sich
+  der Vorgang nur noch stornieren. Beide Wege pruefen dasselbe.
+- **Die Steuerschluessel-Auswahl richtet sich nach dem Partner.**
+  `SteuerschluesselFuerPartner` liefert die Schluessel, die zu Land,
+  Unternehmereigenschaft, USt-IdNr. und Belegrichtung passen - mit einem
+  deutschen Satz, warum. Das ist das, woran ein Auswahlfeld haengt: wer eine
+  Rechnung nach Wien schreibt, soll nicht wissen muessen, dass eine
+  Dienstleistung "EURC" und eine Warenlieferung "IGL" ist.
+- **Wo das Programm es nicht wissen kann, gibt es keine Vorauswahl.** Ware
+  oder Dienstleistung entscheidet zwischen zwei rechtlich verschiedenen
+  Behandlungen, und die Reihenfolge einer Liste ist kein Grund, eine davon zu
+  waehlen. Bei einem Inlandskunden ist 19 % die Vorgabe, 7 % eine
+  Entscheidung; bei einem EU-Unternehmen ohne USt-IdNr. ist deutsche
+  Umsatzsteuer die Vorgabe.
+- **Ein Vorschlag ist nie etwas, das das Buchen ablehnen wuerde.** Die
+  Auswahl fragt dieselbe Pruefung, die beim Buchen entscheidet - sonst
+  empfiehlt das eine, was das andere verweigert. Ein Test geht alle
+  Kombinationen durch.
+- Neu: `ultrafibu steuerwahl <datei> --partner ... --datum ...` zeigt, was das
+  Auswahlfeld anbieten wird. 32 weitere Pruefungen (1251 insgesamt).
+- **Offen und wichtig:** die Rechnungserfassung selbst hat noch kein
+  Eingabefenster - Belege entstehen ueber die Kommandozeile, und das
+  Auswahlfeld, an dem das hier haengt, gibt es damit noch nicht. Die
+  Kennzahlen 21, 46 und 47 (§ 18b, § 13b) bleiben ungeprueft und damit leer;
+  eine Voranmeldung, die sie braucht, verweigert die Datei. Die Formulierung
+  der Befreiungshinweise gehoert vor dem ersten Echteinsatz dem
+  Steuerberater vorgelegt.
+
+#### 2026-09-20 *0.12.0*
+- **EU-Steuersaetze als Tabelle mit Editor.** Schema v6 (`eu_steuersatz`),
+  `Store::EuSteuersatzSetzen/Loeschen/AusDatei`, ein eigener Reiter unter
+  Konfiguration -> EU-Steuersaetze mit dem Knopf "Neuen Steuersatz setzen",
+  dazu `ultrafibu eu-saetze`, `eu-satz-neu`, `eu-satz-loeschen` und
+  `eu-saetze-uebernehmen`. 32 weitere Pruefungen (1219 insgesamt).
+- **Warum ueberhaupt eine Tabelle.** Sechsundzwanzig Parlamente setzen diese
+  Saetze, mit ein paar Wochen Vorlauf. Wer auf ein neues Programm warten
+  muss, um eine Aenderung einzutragen, stellt bis dahin jede Rechnung mit dem
+  falschen Satz aus. `data/EU-Steuersaetze.csv` ist jetzt der
+  Anfangsbestand; gepflegt wird in der Datenbank.
+- **Ein geaenderter Satz ist eine neue Zeile, nie eine Aenderung.** Der
+  Schluessel ist (Land, Art, gueltig ab). Der bisherige Satz behaelt seinen
+  Zeitraum und wird am Vortag geschlossen, so dass jeder Tag genau einen Satz
+  hat. Wuerde man ihn ueberschreiben, rechnete eine laengst abgegebene
+  Meldung ploetzlich anders - und nichts auf dem Bildschirm wuerde zeigen,
+  dass sie es tut. Deshalb hat der Dialog auch kein "Satz bearbeiten": es
+  gibt nur Hinzufuegen und, fuer einen Tippfehler, Loeschen.
+- **Was eingereicht ist, bleibt nachrechenbar.** Ein Satz, dessen Beginn in
+  einen Zeitraum faellt, fuer den bereits eine Meldung abgegeben wurde, wird
+  abgelehnt und die Ablehnung nennt die Meldung samt Transferticket. Dasselbe
+  gilt fuers Loeschen. Zu korrigieren ist so etwas ueber eine berichtigte
+  Meldung, nicht ueber die Stammdaten.
+- **Loeschen macht den Vorgaenger wieder auf.** Sonst haette das Land ab dem
+  Tag, an dem der geloeschte Satz begann, gar keinen mehr - ein stiller
+  Ausfall, der erst bei der naechsten Meldung auffiele.
+- **Uebernehmen ueberschreibt nichts.** Wer einen Satz von Hand geprueft hat,
+  verliert das nicht dadurch, dass die mitgelieferte Datei noch einmal
+  eingelesen wird.
+- **Ohne Quelle keine Pruefung.** Der Dialog macht die Quelle zu dem, was den
+  Satz ueberhaupt verwendbar macht: ohne sie wird er gespeichert, aber nicht
+  zum Vergleich herangezogen - und die Fusszeile sagt bei jedem Aufbau, wie
+  viele der angezeigten Saetze das betrifft.
+- **Der Satz wird ziffernweise gelesen, nicht ueber ein double.** 8,1 % ist
+  als Gleitkommazahl nicht darstellbar, und ein Steuersatz, der ein
+  Zehntausendstel danebenliegt, ist eine Rundungsdifferenz in jeder Rechnung,
+  die ihn verwendet.
+- **Die OSS-Meldung liest jetzt die Tabelle.** Die CSV bleibt Rueckfall fuer
+  eine Datenbank, in die nie uebernommen wurde - und sagt dann, dass sie es
+  ist. Ein gepflegter Satz, den die Meldung zugunsten der Auslieferungsdatei
+  ignoriert, waere schlimmer als gar kein Editor.
+
+#### 2026-09-20 *0.11.0*
+- **Mehrbenutzerbetrieb: derselbe Bestand auf einem Server.**
+  `UltraCanvas/core/UltraDatabase/UltraDatabasePostgresDriver.cpp` und
+  `...PostgresSql.cpp`, `Store::OpenServer()`, die Acceptance-Tests in
+  `Tests/UltraFIBU/UltraFIBUServerTests.cpp`. Phase A8. Lokal bleibt SQLite,
+  gemeinsam ist es PostgreSQL - dieselben Migrationen, dasselbe Schema,
+  derselbe Code.
+- **Zwei Benutzer haben dieselbe Rechnungsnummer bekommen.** Das ist keine
+  Anekdote, sondern der Befund des ersten Laufs mit zwei echten Prozessen:
+  80 vergebene Nummern, davon 40 verschiedene. Der Zaehler wurde gelesen und
+  zurueckgeschrieben - unter SQLite sicher, weil `BEGIN IMMEDIATE` Schreiber
+  serialisiert, unter PostgreSQL bei READ COMMITTED nicht. Der Treiber
+  liefert jetzt `FOR UPDATE` als Zeilensperre, SQLite liefert dafuer nichts,
+  und jede Nummernvergabe liest gesperrt.
+- **Den Fehler hat die Verdopplung ueberlebt.** Die Sperre lag beim ersten
+  Anlauf nur in den In-Transaktions-Helfern, waehrend `NextBelegnummer` und
+  `NextSequenceValue` zweite Kopien derselben Logik ohne Sperre waren - der
+  Test blieb rot, obwohl "der Fehler behoben" war. Es gibt jetzt genau eine
+  Stelle, die eine Nummer vergibt.
+- **Der Test forkt, weil nichts anderes das beweist.** Zwei Prozesse, je 40
+  Nummern, aus einem Nummernkreis; geprueft wird auf eindeutig **und**
+  lueckenlos, denn eine fehlende Nummer ist das, wonach eine Pruefung fragt.
+  Die einbenutzige SQLite-Suite war die ganze Zeit gruen.
+- **Ein uebersprungener Test ist kein bestandener Test.** Ohne konfigurierten
+  Server meldet die Suite SKIP und ist damit fertig - in CI setzt
+  `ULTRAFIBU_TEST_PG_REQUIRED=1` den Sprung auf Fehler, und der Workflow
+  prueft ausserdem, dass `UltraDatabase` ueberhaupt mit PostgreSQL gebaut
+  wurde. Ohne libpq baut es stillschweigend ohne den Treiber, und genau
+  dieser Test faellt dann weg.
+- **Kein Passwort in einer Konfigurationsdatei.** `OpenServer()` verlangt fuer
+  die Zugangsdaten ein `vault:`-Praefix und der Treiber weist ein
+  literales Passwort ab; der aufgeloeste Wert wird nach dem Verbinden
+  ueberschrieben.
+- **`?` wird zu `$1` - aber nur, wo es ein Platzhalter ist.** Ein
+  Fragezeichen in einem Literal, einem Bezeichner, einem Kommentar oder einem
+  Dollar-Quoting ist Text. Der Umschreiber steht in einer eigenen
+  Uebersetzungseinheit ohne libpq, damit er auch dort gebaut und geprueft
+  wird, wo kein PostgreSQL installiert ist: er verfaelscht eine Abfrage
+  lautlos, und eine verfaelschte Abfrage laeuft trotzdem.
+
+#### 2026-09-20 *0.10.0*
+- **One-Stop-Shop: die Quartalsmeldung fuer Steuer, die anderen
+  Mitgliedstaaten zusteht.** `Apps/UltraFIBU/engine/UltraFIBUOss.{h,cpp}`,
+  `data/EU-Steuersaetze.csv`, die Befehle `ultrafibu oss` und
+  `ultrafibu lieferschwelle`, 58 weitere Pruefungen (1187 insgesamt).
+  Phase A6; IOSS ist dasselbe mit monatlichem Zeitraum und laeuft ueber
+  dieselben Typen statt ueber eine Kopie.
+- **Es gibt keine Maschinenschnittstelle.** Das BZSt nimmt OSS-Meldungen
+  ueber Mein BOP entgegen, und der einzige Massenweg dorthin ist eine
+  CSV-Transportdatei, die von Hand hochgeladen wird. Die ehrliche Form ist
+  deshalb: rechnen, erzeugen, uebergeben - und bei den ersten beiden genau
+  sein, weil danach nichts mehr prueft.
+- **Gemeldet wird der Satz, der berechnet wurde - auch wenn er falsch war.**
+  Der Satz steht im Steuerschluessel, mit dem die Rechnung gebucht wurde;
+  `data/EU-Steuersaetze.csv` ist eine **Pruefung dagegen**, nie ein Ersatz.
+  Wuerde die Meldung stillschweigend einen anderen Betrag ausweisen als die
+  Rechnung, staenden Buch, Rechnung und Meldung an drei verschiedenen
+  Stellen. Weicht der berechnete Satz vom Satz des Ziellandes ab, wird das
+  gemeldet: zu korrigieren ist die Rechnung.
+- **Ein ungeprueffter Satz wird nicht zum Vergleich herangezogen.** Keiner
+  der 26 Saetze in der mitgelieferten Datei steht auf "ja" - sie konnten
+  hier an keiner amtlichen Quelle geprueft werden. Ein geratener Satz, der
+  eine richtige Rechnung als falsch meldet, wuerde dazu erziehen, die
+  Warnung zu ignorieren, und waere an dem Tag wertlos, an dem sie stimmt.
+- **Ohne Zielland keine Meldung.** Ein OSS-Steuerschluessel ohne Land haelt
+  die Meldung an: "Steuer, die irgendwo in der EU geschuldet wird" ist keine
+  Abgabe, und ein geratenes Land schickt das Geld eines anderen Staates an
+  die falsche Stelle. Je Zielland ein eigener Schluessel, z. B. `OSS-AT-20`.
+- **Die Meldung prueft sich gegen die UStVA.** OSS-Umsatz gehoert in
+  Kennzahl 45 - nur Bemessungsgrundlage, keine Steuer, keine Wirkung auf die
+  Zahllast. Beide Zahlen kommen aus demselben Journal auf verschiedenen
+  Wegen; gehen sie auseinander, ist eine der beiden Meldungen falsch, und
+  das gehoert vor die Abgabe. Beim Ausprobieren hat genau diese Pruefung
+  sofort angeschlagen, weil ein neu angelegter Landesschluessel die
+  Kennzahl 45 noch nicht trug.
+- **Die Lieferschwelle wird beobachtet, bevor sie reisst** (§ 3c UStG,
+  10.000 EUR EU-weit). Ab 80 % kommt die Warnung, und beim Ueberschreiten
+  nennt sie **den Tag und die Rechnung**: ab dieser Rechnung ist im Zielland
+  zu versteuern, sofort und nicht ab dem naechsten Quartal. Was die Zaehlung
+  nicht sieht - EU-Privatverkaeufe, die noch auf einem Inlandsschluessel
+  gebucht sind - steht dabei, statt verschwiegen zu werden.
+- **Der Spaltenaufbau der BOP-Datei ist nicht veroeffentlicht.** Das BZSt
+  bietet die Importfunktion an, aber nicht ihre Spezifikation. Die erzeugte
+  Datei traegt diesen Hinweis in sich selbst - dieselbe Haltung wie bei der
+  DATEV-Spaltendefinition. Die Zahlen darin stammen unmittelbar aus dem
+  Journal; zu pruefen ist die Anordnung, an einer echten Exportdatei.
+- Ein Storno zieht auch hier ab, und Inlandsumsatz bleibt draussen.
+
+#### 2026-09-20 *0.9.0*
+- **Belege als PDF hochladen - per Knopf oder per Drag & Drop, mehrere auf
+  einmal.** `Apps/UltraFIBU/engine/UltraFIBUBelegArchiv.{h,cpp}`,
+  `Store::ImportiereBelegDateien()`, der Befehl `ultrafibu beleg-import`,
+  der Knopf **"Beleg hochladen"** und ein Drop-Ziel auf dem ganzen Fenster.
+- **Die Dateien werden hineinkopiert, nicht verwiesen.** Bisher merkte sich
+  der Beleg einen **Pfad** dorthin, wo die Datei gerade lag. Das reicht fuer
+  einen Link und fuer sonst nichts: Ordner verschoben, Downloads geleert,
+  Rechner gewechselt - und der Beleg zu einer zehn Jahre alten Buchung ist
+  weg. § 147 AO verlangt zehn Jahre Aufbewahrung, also muss die Datei ins
+  Archiv.
+- **Das Archiv ist inhaltsadressiert.** Jede Datei liegt unter ihrem eigenen
+  SHA-256 (`<datenbank>-belege/<jahr>/<hash>.pdf`), und zwar unter dem Jahr
+  des Belegs, nicht dem von heute. Damit ist derselbe Beleg zweimal genau
+  eine Datei - und zweimal denselben Ordner hineinzuziehen ist die normale
+  Art, einen Import-Knopf zu benutzen. Nach dem Schreiben wird die Kopie
+  erneut gehasht: eine von einer vollen Platte abgeschnittene Datei ist genau
+  der Fehler, den ein Archiv verhindern soll.
+- **Derselbe Beleg zweimal ist ein Beleg** - erkannt am Hash, nicht am
+  Dateinamen. Ein zweiter Entwurf zu einer bereits abgelegten Datei ist der
+  Weg, auf dem eine doppelte Ausgabe ins Hauptbuch kommt.
+- **Ein PDF wird an seinen Bytes erkannt, nicht an der Endung.** `.pdf` auf
+  einem JPEG macht ein Telefon beilaeufig. Ein verschluesseltes PDF wird
+  abgelegt, aber gemeldet: ohne Passwort ist es in zehn Jahren nicht lesbar,
+  und dann wird es gebraucht.
+- **Aus dem PDF wird nichts ausgelesen, und das steht auch so da.** Je Datei
+  entsteht ein **Entwurf**; Betrag, Konto und Steuerschluessel fehlen noch.
+  Erfundene Zahlen in einem Hauptbuch waeren schlimmer als gar keine.
+- **Ein Entwurf darf leer sein, ein gebuchter Beleg nicht.** `SaveBeleg` wies
+  bisher jeden Beleg ohne Positionen ab, womit sich ein empfangenes PDF erst
+  ablegen liess, nachdem jemand es gelesen und die Betraege getippt hatte.
+  Die Regel, auf die es ankommt, steht dort, wo sie hingehoert: `Buchen()`
+  weist einen Beleg ohne Positionen weiterhin ab, ein leerer Entwurf kann
+  also nie zu einer Buchung werden. Der Test prueft nicht nur **dass**,
+  sondern **warum** abgewiesen wird - eine Ablehnung aus einem anderen Grund
+  haette einen schwaecheren Test bestehen lassen.
+- **Die Belegliste zeigt den Dateinamen**, solange kein Partner feststeht
+  (Spalte "Partner / Beleg"). Ohne ihn sind frisch hochgeladene Belege eine
+  Spalte identischer Zeilen, und der Import waere nutzlos.
+- **`einrichten` legt jetzt den Nummernkreis `eingang` an** (`E-{JJJJ}`).
+  Eine Lieferantenrechnung traegt die Nummer des Lieferanten; dies ist die
+  eigene, und sie mit den Ausgangsrechnungsnummern zu mischen macht beide
+  wertlos.
+- Knopf und Drop-Ziel benutzen die Bordmittel des Frameworks
+  (`UltraCanvasFileLoader::OpenMultipleFilesDialog`,
+  `InstallEventFilter` auf `UCEventType::Drop`) - nichts davon ist
+  nachgebaut. 58 weitere Pruefungen (1129 insgesamt).
+
+#### 2026-09-20 *0.8.0*
+- **Umsatzsteuer-Voranmeldung: berechnen, pruefen, als ELSTER-XML abgeben.**
+  `Apps/UltraFIBU/engine/UltraFIBUUstva.{h,cpp}`, Schema v5 (`meldung`),
+  `data/UStVA-Kennzahlen-2026.csv`, die Befehle `ustva`, `ustva-xml`,
+  `meldungen` und `meldung-quittung`. Die Abgabe-Haelfte von Phase A5.
+- **Die Kennzahlen-Zuordnung ist eine Datendatei je Jahr.** Das BMF gibt den
+  Vordruck jaehrlich neu heraus - 2026 ist die Kennzahl 43 dazugekommen -,
+  also waere eine Zuordnung in C++ jedes Jahr ein neues Programm. Die Datei
+  sagt ausserdem je Kennzahl, ob sie **geprueft** ist.
+- **Ein Betrag, der nirgendwohin gehoert, haelt die Meldung an.** Traegt eine
+  Buchung einen Steuerschluessel ohne Kennzahl - oder mit einer, die noch
+  nicht am BMF-Vordruckmuster geprueft ist -, dann wird die Datei **nicht**
+  geschrieben. Eine Voranmeldung, die diesen Umsatz weglaesst, meldet zu wenig
+  und sieht dabei voellig in Ordnung aus. Das ist der schlimmste Ausgang, und
+  deshalb ist Verweigern hier billiger als Weitermachen. Die Meldung nennt den
+  Schluessel und den Betrag, der gefehlt haette.
+- **Die Meldung prueft sich gegen die Buecher.** Zu jeder Kennzahl mit
+  Bemessungsgrundlage wird die Steuer aus dem Satz nachgerechnet und gegen die
+  tatsaechlich gebuchte gehalten. Ein, zwei Cent sind Rundung; mehr heisst,
+  dass in den Buechern ein anderer Satz steht als im Formular - und dass die
+  beiden auseinanderlaufen, darf nicht das Finanzamt zuerst merken.
+- **Ein Storno zieht ab.** Eine Rueckbuchung liegt auf der anderen Seite und
+  mindert den Umsatz; addierte sie, wuerde ein korrigierter Monat den Umsatz
+  doppelt melden. Bei der Vorsteuer ist die "normale" Seite die andere, weil
+  eine Eingangsrechnung anders herum bucht - beides ist geprueft.
+- **Jede Zahl nennt ihre Buchungen.** Die Frage, woher ein Betrag kommt, wird
+  Monate spaeter gestellt; `ustva --details` beantwortet sie aus der Meldung
+  selbst statt aus einer Nachrechnung.
+- **Eine Testuebermittlung sagt, dass sie eine ist.** Ohne Testmerker wird eine
+  Probe echt abgegeben, mit Testmerker kommt eine echte Abgabe nie an - beides
+  faellt hinterher nicht auf. Deshalb ist der Testmerker die Vorgabe und die
+  echte Abgabe braucht `--echtfall`.
+- **Was abgegeben wurde, bleibt nachweisbar.** Schema v5 haelt die Kennzahlen
+  **wie abgegeben** (nicht als Verweis ins Journal, das sich weiterbewegt),
+  den SHA-256 der geschriebenen Datei und das Transferticket. Eine bereits
+  eingereichte Meldung wird nicht ueberschrieben: eine Aenderung ist eine
+  berichtigte Meldung, dieselbe Regel wie beim Storno.
+- **Zwei Transportwege, und der immer funktionierende braucht nichts.**
+  `ElsterDateiTransport` schreibt die XML-Datei fuer den Upload in Mein ELSTER.
+  **ERiC liegt nicht in diesem Repository und wird es nie**: die
+  Ueberlassungsbedingungen erlauben das nicht. `ElsterEricTransport` sucht die
+  Bibliothek an einem konfigurierten Pfad und sagt genau, was fehlt - und
+  ruft ERiC bewusst noch nicht auf, weil dessen C-Schnittstelle hier nur aus
+  Sekundaerquellen bekannt ist. Eine geratene Schnittstelle wuerde vor einer
+  Finanzbehoerde scheitern.
+- **Der ELSTER-Rahmen sagt in sich selbst, dass er ungeprueft ist.** Die
+  amtlichen Schemata liegen im ERiC-SDK, das hier nicht vorliegt; die
+  geschriebene Datei traegt diesen Hinweis als Kommentar. Die Zahlen darin
+  stammen unmittelbar aus dem Journal und sind nachvollziehbar.
+- **Betragsformate nach Formular:** Bemessungsgrundlagen in vollen Euro und
+  **abgeschnitten**, nicht gerundet - Aufrunden wuerde Umsatz melden, den es
+  nicht gab; Steuerbetraege auf den Cent mit Punkt als Dezimaltrenner.
+- **Die Anzeige nennt die Kennzahlen so wie das Formular**, damit die Liste
+  Zeile fuer Zeile neben dem Papiervordruck gelesen werden kann, und
+  `ustva --details` nennt je Kennzahl die Buchungen dahinter.
+- 74 weitere Pruefungen (1071 insgesamt).
+- **`einrichten` kennt jetzt `--finanzamt-nr`.** Ohne die Finanzamtsnummer
+  weiss ELSTER nicht, wohin die Anmeldung geht.
+
 #### 2026-09-19 *0.7.0*
 - **Bankimport: Kontoauszüge lesen und Zahlungen zuordnen.**
   `Apps/UltraFIBU/engine/UltraFIBUBank.{h,cpp}`, Schema v4 (`bankkonto`,

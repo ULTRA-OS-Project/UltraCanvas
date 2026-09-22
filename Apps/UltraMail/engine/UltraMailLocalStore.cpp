@@ -361,6 +361,20 @@ UltraDbResult LocalStore::SetFlags(const std::string& accountId,
         { updated, needsAnswer ? 1 : 0, accountId, folder, uid });
 }
 
+UltraDbResult LocalStore::RemoveMessage(const std::string& accountId,
+                                        const std::string& folder, int64_t uid) {
+    UltraDbHandle tx = UltraDb_Begin(connection_);
+    if (tx == UltraDbInvalidHandle)
+        return UltraDbResult::Error(UltraDbResultCode::Internal, "begin failed");
+    UltraDb_ExecInTx(tx, "DELETE FROM messages "
+                         "WHERE account_id=? AND folder=? AND uid=?",
+                     { accountId, folder, uid });
+    UltraDb_ExecInTx(tx, "DELETE FROM message_security "
+                         "WHERE account_id=? AND folder=? AND uid=?",
+                     { accountId, folder, uid });
+    return UltraDb_Commit(tx);
+}
+
 // ---- Sender security verdicts ----------------------------------------------
 
 UltraDbResult LocalStore::SetSecurity(const std::string& accountId,

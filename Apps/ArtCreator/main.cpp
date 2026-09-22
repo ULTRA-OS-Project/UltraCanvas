@@ -18,6 +18,7 @@
 
 #include <csignal>
 #include <cstdlib>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -28,8 +29,12 @@
 #include <windows.h>
 #endif
 
+// ARTCREATOR_VERSION comes from the build alone: CMake reads the first
+// line of Docs/ArtCreator/CHANGELOG.md (cmake/UltraCanvasVersion.cmake)
+// and passes it as a compile definition. No fallback here, so a build
+// that lost it fails instead of reporting a wrong number.
 #ifndef ARTCREATOR_VERSION
-#define ARTCREATOR_VERSION "0.0.0"
+#error "ARTCREATOR_VERSION is not defined: build ArtCreator through the top-level CMakeLists.txt"
 #endif
 
 using namespace UltraCanvas;
@@ -48,19 +53,21 @@ void HandleFatalError(const std::string& message) {
     UltraCanvasDialogManager::ShowError(message, "ArtCreator");
 }
 
+// --help and --version answer on stdout (errors on stderr): they are for the
+// shell, not the diagnostic stream, which a Release build keeps off.
 void PrintUsage(const char* programName) {
-    debugOutput << "ArtCreator " << ARTCREATOR_VERSION << " - Vector Drawing Editor powered by UltraCanvas Framework" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Usage: " << programName << " [options] [drawing...]" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Options:" << std::endl;
-    debugOutput << "  -h, --help        Show this help message" << std::endl;
-    debugOutput << "  -v, --version     Show version information" << std::endl;
-    debugOutput << std::endl;
-    debugOutput << "Examples:" << std::endl;
-    debugOutput << "  " << programName << "                 # a new A4 drawing" << std::endl;
-    debugOutput << "  " << programName << " logo.svg        # open a drawing" << std::endl;
-    debugOutput << "  " << programName << " a.svg b.xar     # one window each" << std::endl;
+    std::cout << "ArtCreator " << ARTCREATOR_VERSION << " - Vector Drawing Editor powered by UltraCanvas Framework" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Usage: " << programName << " [options] [drawing...]" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Options:" << std::endl;
+    std::cout << "  -h, --help        Show this help message" << std::endl;
+    std::cout << "  -v, --version     Show version information" << std::endl;
+    std::cout << std::endl;
+    std::cout << "Examples:" << std::endl;
+    std::cout << "  " << programName << "                 # a new A4 drawing" << std::endl;
+    std::cout << "  " << programName << " logo.svg        # open a drawing" << std::endl;
+    std::cout << "  " << programName << " a.svg b.xar     # one window each" << std::endl;
 }
 
 } // namespace
@@ -73,14 +80,14 @@ int main(int argc, char* argv[]) {
             PrintUsage(argv[0]);
             return EXIT_SUCCESS;
         } else if (arg == "--version" || arg == "-v") {
-            debugOutput << "ArtCreator version " << ARTCREATOR_VERSION << std::endl;
-            debugOutput << "UltraCanvas Framework" << std::endl;
+            std::cout << "ArtCreator version " << ARTCREATOR_VERSION << std::endl;
+            std::cout << "UltraCanvas Framework" << std::endl;
             return EXIT_SUCCESS;
         } else if (arg[0] != '-') {
             pathsToOpen.push_back(arg);
         } else {
-            debugOutput << "Unknown argument: " << arg << std::endl;
-            debugOutput << "Use --help for usage information" << std::endl;
+            std::cerr << "Unknown argument: " << arg << std::endl;
+            std::cerr << "Use --help for usage information" << std::endl;
             return EXIT_FAILURE;
         }
     }

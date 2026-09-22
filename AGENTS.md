@@ -245,6 +245,13 @@ anywhere else, and never introduce a new literal copy of one:
   entry rather than leaving it — and never add bullets to an entry that is
   already on `main`. Run `python3 scripts/check_changelog.py --base origin/main`
   before pushing; CI runs it too.
+  GitHub's *Update branch* button cannot do the renumbering: it merges `main`
+  into the branch and, when `main` has meanwhile released the number the
+  branch chose, folds the two entries under the one header (or leaves a
+  conflict marker in line 1) — and the guard then fails on the very merge
+  that was meant to fix it. When the check goes red after such a merge, fix
+  it locally: merge `main`, split the shared header back into two entries,
+  give the branch's entry the next free number, and push.
 - **Do not add a version number to a compile definition that anything but its
   own consumers see.** `ULTRACANVAS_VERSION` was `PUBLIC` on the core library,
   so it sat on the compile command line of 621 of the build's 1136 objects

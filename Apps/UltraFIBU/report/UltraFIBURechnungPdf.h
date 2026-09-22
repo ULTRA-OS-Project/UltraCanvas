@@ -74,6 +74,14 @@ struct RechnungPdfErgebnis {
     std::vector<std::string> fehlendePflichtangaben;
 
     bool VollstaendigNachUStG() const { return fehlendePflichtangaben.empty(); }
+
+    // Findings from PruefeSteuerlicheStimmigkeit. A missing field leaves the
+    // invoice incomplete; a finding here means it says something untrue, and
+    // that is a different class of problem: **a blocking one is not written at
+    // all.** An invoice is the document the customer books from and the tax
+    // office reads, and one that charges 19 % while stating the customer owes
+    // the tax does damage the moment it leaves the building.
+    std::vector<SteuerBefund> steuerBefunde;
 };
 
 // Render `beleg` as an invoice and write it to `dateiPfad`.

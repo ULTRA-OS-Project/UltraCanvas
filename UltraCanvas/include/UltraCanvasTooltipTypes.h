@@ -152,18 +152,19 @@ namespace UltraCanvas {
     };
 
 // ===== STRUCTURED TOOLTIP CONTENT =====
-// A tooltip is either a plain string (optionally containing Pango markup for
-// inline styling) or a TooltipContent: an ordered list of blocks the manager
-// lays out natively — bold title, aligned two- or three-column table rows
-// with optional color swatch, bullet list items, free markup text and
-// separators.
+// A tooltip is either a plain string or a TooltipContent: an ordered list of
+// blocks the manager lays out natively — bold title, aligned two- or
+// three-column table rows with optional color swatch, bullet list items, free
+// markup text and separators.
 //
-// Text passed to AddTitle/AddRow/AddBullet is treated as plain data and is
-// markup-escaped by the renderer; only AddText interprets Pango markup.
+// Text passed to AddTitle/AddRow/AddBullet/AddPlainText — and the plain std::string
+// UpdateAndShowTooltip overload — is treated as plain data and is markup-escaped
+// by the renderer (< > & shown literally); only AddText interprets Pango markup.
 
     enum class TooltipBlockType {
         Title,      // bold, slightly larger text line
         Text,       // free text line/paragraph; Pango markup is interpreted
+        PlainText,  // free text line/paragraph; markup-escaped (plain data)
         Row,        // table row of two or three aligned columns
         Bullet,     // list item with a bullet glyph and hanging indent
         Separator   // thin horizontal hairline
@@ -211,6 +212,14 @@ namespace UltraCanvas {
         // "<span foreground=\"#ff8800\">colored</span>")
         TooltipContent& AddText(const std::string& markupText) {
             blocks.push_back({TooltipBlockType::Text, markupText});
+            return *this;
+        }
+
+        // Plain data: any Pango-significant characters (< > &) are escaped by
+        // the renderer, so the text is shown verbatim. Use this — not AddText —
+        // for user data (names, addresses, file paths) that is not markup.
+        TooltipContent& AddPlainText(const std::string& text) {
+            blocks.push_back({TooltipBlockType::PlainText, text});
             return *this;
         }
 

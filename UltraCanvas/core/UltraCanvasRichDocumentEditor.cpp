@@ -649,7 +649,22 @@ RichDocRange UCRichDocumentEditor::WordAt(const RichDocPosition& pos) const {
 
 // ===== UNDO =====
 
+void UCRichDocumentEditor::NoteChangedBlocks(int first, int count) {
+    const int blockCount = GetBlockCount();
+    if (blockCount == 0) {
+        lastChangedFirst = lastChangedLast = -1;
+        return;
+    }
+    lastChangedFirst = std::max(0, std::min(first, blockCount - 1));
+    // An edit that removed blocks reports the span it left behind; one that
+    // added them reports all of them. Either way the range is clamped to what
+    // the document now holds, so a caller can index with it directly.
+    lastChangedLast = std::max(lastChangedFirst,
+                               std::min(first + std::max(0, count) - 1, blockCount - 1));
+}
+
 void UCRichDocumentEditor::CommitStep(UndoStep step) {
+    NoteChangedBlocks(step.firstBlock, static_cast<int>(step.after.size()));
     if (applyingUndo) return;
     modified = true;
 
@@ -690,6 +705,7 @@ bool UCRichDocumentEditor::Undo() {
     caret = ClampPosition(step.caretBefore);
     anchor = ClampPosition(step.anchorBefore);
     applyingUndo = false;
+    NoteChangedBlocks(first, static_cast<int>(step.before.size()));
 
     redoStack.push_back(std::move(step));
     coalescing = false;
@@ -714,6 +730,7 @@ bool UCRichDocumentEditor::Redo() {
     caret = ClampPosition(step.caretAfter);
     anchor = ClampPosition(step.anchorAfter);
     applyingUndo = false;
+    NoteChangedBlocks(first, static_cast<int>(step.after.size()));
 
     undoStack.push_back(std::move(step));
     coalescing = false;
@@ -1819,6 +1836,475 @@ void UCRichDocumentEditor::InsertStructuralBlock(RichBlockType type) {
     }
     NotifyChanged();
     NotifySelectionChanged();
+}
+
+// ===== TABLES =====
+
+namespace {
+
+RichTableCell FreshCell() {
+    return RichTableCell{};
+}
+
+// Index in `row`'s cell vector at which a cell starting at `gridColumn`
+// belongs: after every cell of that row whose own column is to its left.
+int CellInsertIndexForColumn(const RichTableGrid& grid, int row, int gridColumn) {
+    int index = 0;
+    for (int c = 0; c < gridColumn && c < grid.columnCount; ++c) {
+        const RichTableGridSlot& slot = grid.At(row, c);
+        if (slot.origin && slot.row == row) index++;
+    }
+    return index;
+}
+
+// Puts an empty 1x1 cell into the slot (row, gridColumn), which must be free.
+void InsertFreshCellAt(RichDocBlock& table, int row, int gridColumn) {
+    const RichTableGrid grid = BuildTableGrid(table);
+    if (row < 0 || row >= static_cast<int>(table.tableRows.size())) return;
+    RichTableRow& modelRow = table.tableRows[static_cast<size_t>(row)];
+    const int at = std::min(CellInsertIndexForColumn(grid, row, gridColumn),
+                            static_cast<int>(modelRow.cells.size()));
+    modelRow.cells.insert(modelRow.cells.begin() + at, FreshCell());
+}
+
+} // namespace
+
+RichTableGrid UCRichDocumentEditor::TableGrid(int blockIndex) const {
+    if (blockIndex < 0 || blockIndex >= GetBlockCount()) return RichTableGrid{};
+    return BuildTableGrid(doc->blocks[static_cast<size_t>(blockIndex)]);
+}
+
+bool UCRichDocumentEditor::CaretGridPosition(int& outRow, int& outColumn) const {
+    if (!caret.InCell()) return false;
+    const RichTableGrid grid = TableGrid(caret.blockIndex);
+    return grid.OriginOf(caret.cellRow, caret.cellColumn, outRow, outColumn);
+}
+
+int UCRichDocumentEditor::InsertTable(int rows, int columns, bool headerRow) {
+    if (rows < 1 || columns < 1) return -1;
+
+    RichDocBlock table;
+    table.type = RichBlockType::Table;
+    for (int r = 0; r < rows; ++r) {
+        RichTableRow row;
+        row.header = (headerRow && r == 0);
+        for (int c = 0; c < columns; ++c) row.cells.push_back(FreshCell());
+        table.tableRows.push_back(std::move(row));
+    }
+
+    RichDocRange selection = GetSelectionRange();
+    int first = selection.start.blockIndex;
+    int count = selection.end.blockIndex - first + 1;
+    int tableIndex = -1;
+    {
+        EditScope scope(*this, first, count);
+        if (HasSelection()) DeleteRangeInternal(selection);
+
+        RichDocBlock& current = doc->blocks[static_cast<size_t>(caret.blockIndex)];
+        const bool currentIsEmpty = IsTextBlockType(current.type) && RunsText(current.runs).empty();
+        if (currentIsEmpty) {
+            doc->blocks[static_cast<size_t>(caret.blockIndex)] = table;
+        } else {
+            SplitBlockInternal();
+            doc->blocks.insert(doc->blocks.begin() + caret.blockIndex, table);
+        }
+        tableIndex = caret.blockIndex;
+
+        // A table is not something you can type after unless a paragraph
+        // follows it, and a document ending in one would trap the caret.
+        const int afterIndex = tableIndex + 1;
+        if (afterIndex >= GetBlockCount() || !IsTextBlock(afterIndex)) {
+            RichDocBlock paragraph;
+            paragraph.type = RichBlockType::Paragraph;
+            doc->blocks.insert(doc->blocks.begin() + afterIndex, paragraph);
+        }
+        // Unlike a rule or a page break, a table is something you fill in, so
+        // the caret goes into its first cell rather than past it.
+        caret = RichDocPosition(tableIndex, 0, 0, 0);
+        anchor = caret;
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+    return tableIndex;
+}
+
+bool UCRichDocumentEditor::InsertTableRow(int blockIndex, int row, bool below) {
+    const RichTableGrid grid = TableGrid(blockIndex);
+    if (grid.rowCount == 0) return false;
+    if (row < 0 || row >= grid.rowCount) return false;
+
+    const int newRow = below ? row + 1 : row;
+    {
+        EditScope scope(*this, blockIndex, 1);
+        RichDocBlock& table = doc->blocks[static_cast<size_t>(blockIndex)];
+
+        // A cell reaching across the new boundary grows by a row instead of
+        // being split: its text lives in one place and cannot be in two rows.
+        std::vector<bool> coveredColumn(static_cast<size_t>(grid.columnCount), false);
+        std::vector<std::pair<int, int>> growing;       // (row, cellIndex), deduped
+        for (int c = 0; c < grid.columnCount; ++c) {
+            const RichTableGridSlot& slot = grid.At(newRow - 1, c);
+            if (!slot.Occupied()) continue;
+            const RichTableCell& cell = table.tableRows[static_cast<size_t>(slot.row)]
+                                             .cells[static_cast<size_t>(slot.cellIndex)];
+            const int lastRow = slot.row + std::max(1, cell.rowSpan) - 1;
+            if (slot.row >= newRow || lastRow < newRow) continue;
+            coveredColumn[static_cast<size_t>(c)] = true;
+            const std::pair<int, int> id{slot.row, slot.cellIndex};
+            if (std::find(growing.begin(), growing.end(), id) == growing.end()) {
+                growing.push_back(id);
+            }
+        }
+        for (const auto& [r, cellIndex] : growing) {
+            RichTableCell& cell = table.tableRows[static_cast<size_t>(r)]
+                                       .cells[static_cast<size_t>(cellIndex)];
+            cell.rowSpan = std::max(1, cell.rowSpan) + 1;
+        }
+
+        // The new row supplies cells only for the columns no span covers.
+        RichTableRow fresh;
+        for (int c = 0; c < grid.columnCount; ++c) {
+            if (!coveredColumn[static_cast<size_t>(c)]) fresh.cells.push_back(FreshCell());
+        }
+        table.tableRows.insert(table.tableRows.begin() + newRow, std::move(fresh));
+
+        // A caret below the insertion point is now a row further down.
+        if (caret.blockIndex == blockIndex && caret.InCell() && caret.cellRow >= newRow) {
+            caret.cellRow++;
+            anchor = caret;
+        }
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::DeleteTableRow(int blockIndex, int row) {
+    const RichTableGrid grid = TableGrid(blockIndex);
+    if (grid.rowCount == 0) return false;
+    if (row < 0 || row >= grid.rowCount) return false;
+
+    // The last row taking the table with it is the only sane end state: a table
+    // with no rows has no cell to put the caret in.
+    if (grid.rowCount == 1) {
+        DeleteBlock(blockIndex);
+        return true;
+    }
+
+    {
+        EditScope scope(*this, blockIndex, 1);
+        RichDocBlock& table = doc->blocks[static_cast<size_t>(blockIndex)];
+
+        // Cells starting in this row but reaching below it have to survive, so
+        // they move into the next row one span shorter. Collected first, in
+        // column order, because moving them invalidates cell indices.
+        struct Moving { int column; RichTableCell cell; };
+        std::vector<Moving> moving;
+        std::vector<std::pair<int, int>> shrinking;     // spans crossing from above
+
+        for (int c = 0; c < grid.columnCount; ++c) {
+            const RichTableGridSlot& slot = grid.At(row, c);
+            if (!slot.Occupied() || !slot.origin) {
+                if (slot.Occupied() && slot.row < row) {
+                    const std::pair<int, int> id{slot.row, slot.cellIndex};
+                    if (std::find(shrinking.begin(), shrinking.end(), id) == shrinking.end()) {
+                        shrinking.push_back(id);
+                    }
+                }
+                continue;
+            }
+            const RichTableCell& cell = table.tableRows[static_cast<size_t>(row)]
+                                             .cells[static_cast<size_t>(slot.cellIndex)];
+            if (std::max(1, cell.rowSpan) > 1) {
+                RichTableCell moved = cell;
+                moved.rowSpan = std::max(1, cell.rowSpan) - 1;
+                moving.push_back(Moving{c, std::move(moved)});
+            }
+        }
+        for (const auto& [r, cellIndex] : shrinking) {
+            RichTableCell& cell = table.tableRows[static_cast<size_t>(r)]
+                                       .cells[static_cast<size_t>(cellIndex)];
+            cell.rowSpan = std::max(1, std::max(1, cell.rowSpan) - 1);
+        }
+
+        table.tableRows.erase(table.tableRows.begin() + row);
+
+        // Re-home the survivors into what is now `row`, each at the index its
+        // column calls for. Rightmost first so earlier insertions do not shift
+        // the indices computed for later ones.
+        for (auto it = moving.rbegin(); it != moving.rend(); ++it) {
+            const RichTableGrid after = BuildTableGrid(table);
+            RichTableRow& target = table.tableRows[static_cast<size_t>(row)];
+            const int at = std::min(CellInsertIndexForColumn(after, row, it->column),
+                                    static_cast<int>(target.cells.size()));
+            target.cells.insert(target.cells.begin() + at, it->cell);
+        }
+
+        if (caret.blockIndex == blockIndex && caret.InCell()) {
+            if (caret.cellRow > row) caret.cellRow--;
+            caret = ClampPosition(caret);
+            anchor = caret;
+        }
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::InsertTableColumn(int blockIndex, int gridColumn, bool right) {
+    const RichTableGrid grid = TableGrid(blockIndex);
+    if (grid.columnCount == 0) return false;
+    if (gridColumn < 0 || gridColumn >= grid.columnCount) return false;
+
+    const int newColumn = right ? gridColumn + 1 : gridColumn;
+    {
+        EditScope scope(*this, blockIndex, 1);
+        RichDocBlock& table = doc->blocks[static_cast<size_t>(blockIndex)];
+
+        // Walk bottom-up so the fresh cells inserted for one row never shift
+        // the indices the grid reported for another.
+        for (int r = grid.rowCount - 1; r >= 0; --r) {
+            const RichTableGridSlot& slot = grid.At(r, newColumn - 1);
+            bool grew = false;
+            if (slot.Occupied()) {
+                RichTableCell& cell = table.tableRows[static_cast<size_t>(slot.row)]
+                                           .cells[static_cast<size_t>(slot.cellIndex)];
+                int originRow = 0, originColumn = 0;
+                if (grid.OriginOf(slot.row, slot.cellIndex, originRow, originColumn)) {
+                    const int lastColumn = originColumn + std::max(1, cell.columnSpan) - 1;
+                    if (originColumn < newColumn && lastColumn >= newColumn) {
+                        // Only the row that owns the cell may grow it, or a cell
+                        // spanning three rows would be widened three times.
+                        if (slot.row == r) cell.columnSpan = std::max(1, cell.columnSpan) + 1;
+                        grew = true;
+                    }
+                }
+            }
+            if (!grew) InsertFreshCellAt(table, r, newColumn);
+        }
+
+        if (caret.blockIndex == blockIndex && caret.InCell()) {
+            // The caret's cell may have gained an index if a fresh cell landed
+            // to its left in the same row.
+            const RichTableGrid after = BuildTableGrid(table);
+            int caretColumn = 0, caretRow = 0;
+            if (grid.OriginOf(caret.cellRow, caret.cellColumn, caretRow, caretColumn)) {
+                const int shifted = caretColumn >= newColumn ? caretColumn + 1 : caretColumn;
+                int ownerRow = 0, ownerCell = 0;
+                if (after.CellAt(caret.cellRow, shifted, ownerRow, ownerCell)) {
+                    caret.cellRow = ownerRow;
+                    caret.cellColumn = ownerCell;
+                }
+            }
+            caret = ClampPosition(caret);
+            anchor = caret;
+        }
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::DeleteTableColumn(int blockIndex, int gridColumn) {
+    const RichTableGrid grid = TableGrid(blockIndex);
+    if (grid.columnCount == 0) return false;
+    if (gridColumn < 0 || gridColumn >= grid.columnCount) return false;
+
+    if (grid.columnCount == 1) {
+        DeleteBlock(blockIndex);
+        return true;
+    }
+
+    {
+        EditScope scope(*this, blockIndex, 1);
+        RichDocBlock& table = doc->blocks[static_cast<size_t>(blockIndex)];
+
+        std::vector<std::pair<int, int>> narrowing;  // spans that lose a column
+        std::vector<std::pair<int, int>> removing;   // cells that go entirely
+        for (int r = 0; r < grid.rowCount; ++r) {
+            const RichTableGridSlot& slot = grid.At(r, gridColumn);
+            if (!slot.Occupied()) continue;
+            const RichTableCell& cell = table.tableRows[static_cast<size_t>(slot.row)]
+                                             .cells[static_cast<size_t>(slot.cellIndex)];
+            const std::pair<int, int> id{slot.row, slot.cellIndex};
+            auto& target = std::max(1, cell.columnSpan) > 1 ? narrowing : removing;
+            if (std::find(target.begin(), target.end(), id) == target.end()) {
+                target.push_back(id);
+            }
+        }
+        for (const auto& [r, cellIndex] : narrowing) {
+            RichTableCell& cell = table.tableRows[static_cast<size_t>(r)]
+                                       .cells[static_cast<size_t>(cellIndex)];
+            cell.columnSpan = std::max(1, std::max(1, cell.columnSpan) - 1);
+        }
+        // Highest index first: erasing a cell shifts everything after it.
+        std::sort(removing.begin(), removing.end(),
+                  [](const auto& a, const auto& b) {
+                      return a.first != b.first ? a.first < b.first : a.second > b.second;
+                  });
+        for (const auto& [r, cellIndex] : removing) {
+            RichTableRow& modelRow = table.tableRows[static_cast<size_t>(r)];
+            if (cellIndex < static_cast<int>(modelRow.cells.size())) {
+                modelRow.cells.erase(modelRow.cells.begin() + cellIndex);
+            }
+        }
+        // A row left with no cells at all is a row with nothing in it.
+        table.tableRows.erase(
+            std::remove_if(table.tableRows.begin(), table.tableRows.end(),
+                           [](const RichTableRow& r) { return r.cells.empty(); }),
+            table.tableRows.end());
+
+        if (table.tableRows.empty()) {
+            doc->blocks.erase(doc->blocks.begin() + blockIndex);
+            EnsureNotEmpty();
+            caret = ClampPosition(RichDocPosition(std::min(blockIndex, GetBlockCount() - 1), 0));
+            anchor = caret;
+        } else if (caret.blockIndex == blockIndex && caret.InCell()) {
+            caret = ClampPosition(caret);
+            anchor = caret;
+        }
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::MergeTableCells(int blockIndex, int row, int cellIndex,
+                                           int extraColumns, int extraRows) {
+    if (extraColumns < 0 || extraRows < 0) return false;
+    if (extraColumns == 0 && extraRows == 0) return false;
+
+    const RichTableGrid grid = TableGrid(blockIndex);
+    if (grid.rowCount == 0) return false;
+    int top = 0, left = 0;
+    if (!grid.OriginOf(row, cellIndex, top, left)) return false;
+
+    const RichDocBlock& readOnly = doc->blocks[static_cast<size_t>(blockIndex)];
+    const RichTableCell& anchorCell = readOnly.tableRows[static_cast<size_t>(row)]
+                                              .cells[static_cast<size_t>(cellIndex)];
+    const int bottom = top + std::max(1, anchorCell.rowSpan) - 1 + extraRows;
+    const int rightColumn = left + std::max(1, anchorCell.columnSpan) - 1 + extraColumns;
+    if (bottom >= grid.rowCount || rightColumn >= grid.columnCount) return false;
+
+    // Every cell the rectangle touches must sit entirely inside it. Otherwise
+    // the merge would need half of somebody else's span, which the model cannot
+    // express - so it is refused rather than approximated.
+    std::vector<std::pair<int, int>> absorbed;
+    for (int r = top; r <= bottom; ++r) {
+        for (int c = left; c <= rightColumn; ++c) {
+            const RichTableGridSlot& slot = grid.At(r, c);
+            if (!slot.Occupied()) return false;         // ragged row: nothing to merge with
+            const RichTableCell& cell = readOnly.tableRows[static_cast<size_t>(slot.row)]
+                                                .cells[static_cast<size_t>(slot.cellIndex)];
+            int cellTop = 0, cellLeft = 0;
+            if (!grid.OriginOf(slot.row, slot.cellIndex, cellTop, cellLeft)) return false;
+            const int cellBottom = cellTop + std::max(1, cell.rowSpan) - 1;
+            const int cellRight = cellLeft + std::max(1, cell.columnSpan) - 1;
+            if (cellTop < top || cellLeft < left || cellBottom > bottom || cellRight > rightColumn) {
+                return false;
+            }
+            const std::pair<int, int> id{slot.row, slot.cellIndex};
+            if (id != std::pair<int, int>{row, cellIndex} &&
+                std::find(absorbed.begin(), absorbed.end(), id) == absorbed.end()) {
+                absorbed.push_back(id);
+            }
+        }
+    }
+
+    {
+        EditScope scope(*this, blockIndex, 1);
+        RichDocBlock& table = doc->blocks[static_cast<size_t>(blockIndex)];
+        RichTableCell& keep = table.tableRows[static_cast<size_t>(row)]
+                                   .cells[static_cast<size_t>(cellIndex)];
+
+        // The absorbed cells' text is appended rather than discarded: merging
+        // cells is a layout decision, and losing what somebody wrote in them
+        // would be a silent deletion.
+        for (const auto& [r, ci] : absorbed) {
+            const RichTableCell& source = table.tableRows[static_cast<size_t>(r)]
+                                               .cells[static_cast<size_t>(ci)];
+            if (RunsText(source.runs).empty()) continue;
+            bool first = true;
+            for (const RichTextRun& run : source.runs) {
+                RichTextRun copy = run;
+                if (first) {
+                    copy.lineBreakBefore = !RunsText(keep.runs).empty();
+                    first = false;
+                }
+                keep.runs.push_back(std::move(copy));
+            }
+        }
+        keep.columnSpan = rightColumn - left + 1;
+        keep.rowSpan = bottom - top + 1;
+
+        std::vector<std::pair<int, int>> ordered = absorbed;
+        std::sort(ordered.begin(), ordered.end(),
+                  [](const auto& a, const auto& b) {
+                      return a.first != b.first ? a.first < b.first : a.second > b.second;
+                  });
+        for (const auto& [r, ci] : ordered) {
+            RichTableRow& modelRow = table.tableRows[static_cast<size_t>(r)];
+            if (ci < static_cast<int>(modelRow.cells.size())) {
+                modelRow.cells.erase(modelRow.cells.begin() + ci);
+            }
+        }
+
+        // The caret may have been in a cell that no longer exists, and the
+        // surviving cell's own index may have moved. Either way the caret
+        // belongs in the merged cell; it keeps its offset only if it was
+        // already there, since any other offset meant another cell's text.
+        const bool caretWasInKeptCell =
+            caret.blockIndex == blockIndex && caret.cellRow == row && caret.cellColumn == cellIndex;
+        const RichTableGrid after = BuildTableGrid(table);
+        int ownerRow = 0, ownerCell = 0;
+        if (after.CellAt(top, left, ownerRow, ownerCell)) {
+            caret = ClampPosition(RichDocPosition(blockIndex, ownerRow, ownerCell,
+                                                  caretWasInKeptCell ? caret.byteOffset : 0));
+        } else {
+            caret = ClampPosition(caret);
+        }
+        anchor = caret;
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
+}
+
+bool UCRichDocumentEditor::SplitTableCell(int blockIndex, int row, int cellIndex) {
+    const RichTableGrid grid = TableGrid(blockIndex);
+    if (grid.rowCount == 0) return false;
+    int top = 0, left = 0;
+    if (!grid.OriginOf(row, cellIndex, top, left)) return false;
+
+    const RichTableCell& readOnly = doc->blocks[static_cast<size_t>(blockIndex)]
+                                       .tableRows[static_cast<size_t>(row)]
+                                       .cells[static_cast<size_t>(cellIndex)];
+    const int rowSpan = std::max(1, readOnly.rowSpan);
+    const int columnSpan = std::max(1, readOnly.columnSpan);
+    if (rowSpan == 1 && columnSpan == 1) return false;      // nothing merged to undo
+
+    {
+        EditScope scope(*this, blockIndex, 1);
+        RichDocBlock& table = doc->blocks[static_cast<size_t>(blockIndex)];
+        table.tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)].rowSpan = 1;
+        table.tableRows[static_cast<size_t>(row)].cells[static_cast<size_t>(cellIndex)].columnSpan = 1;
+
+        // Every slot the cell gave up needs a cell of its own. The text stays
+        // with the top-left one, which is where it was written.
+        for (int r = top; r < top + rowSpan; ++r) {
+            for (int c = left; c < left + columnSpan; ++c) {
+                if (r == top && c == left) continue;
+                const RichTableGrid current = BuildTableGrid(table);
+                if (current.At(r, c).Occupied()) continue;
+                InsertFreshCellAt(table, r, c);
+            }
+        }
+        caret = ClampPosition(caret);
+        anchor = caret;
+    }
+    NotifyChanged();
+    NotifySelectionChanged();
+    return true;
 }
 
 void UCRichDocumentEditor::InsertHorizontalRule() {

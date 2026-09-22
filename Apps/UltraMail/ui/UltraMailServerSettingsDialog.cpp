@@ -272,7 +272,7 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     auto note = Theme::MakeLine("srvNote",
         "Ports are usually 993 (IMAP, SSL/TLS) or 143 (STARTTLS), and 465 (SMTP, "
         "SSL/TLS) or 587 (STARTTLS). Most providers list them under \"mail program "
-        "settings\" or \"IMAP/SMTP\" in their help.", 30, Theme::kSizeBody,
+        "settings\" or \"IMAP/SMTP\" in their help.", 0, Theme::kSizeBody,
         Theme::kTextSecondary);
     note->SetWrap(TextWrap::WrapWord);
     content->AddChild(note);
@@ -296,6 +296,23 @@ void ServerSettingsDialog::Show(UltraCanvasWindowBase* parent, const std::string
     buttonRow->layout.SetFlexRow()
                      .SetFlexGap(Theme::kInnerGap)
                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
+
+    // Destructive action on the far left, apart from Cancel/Save: a red "Delete
+    // account" button (settings page only). It closes this page and hands off to
+    // the callback, which runs its own confirm-and-remove. Copy the callback out
+    // of `account` — that reference does not outlive Show, but the modal does.
+    if (account.edit && account.onDelete) {
+        std::function<void()> onDelete = account.onDelete;
+        auto deleteBtn = CreateButton("srvDelete", 0, 0, 130, Theme::kControlHeight,
+                                      "Delete account");
+        Theme::StyleDanger(deleteBtn);
+        deleteBtn->onClick = [dlg, onDelete]() {
+            dlg->CloseDialog(DialogResult::Cancel);
+            if (onDelete) onDelete();
+        };
+        buttonRow->AddChild(deleteBtn);
+    }
+
     buttonRow->AddStretchSpacer(1);
     auto cancelBtn = CreateButton("srvCancel", 0, 0, 90, Theme::kControlHeight, "Cancel");
     Theme::StyleSecondary(cancelBtn);

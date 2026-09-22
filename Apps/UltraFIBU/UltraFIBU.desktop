@@ -1,0 +1,32 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraFIBU. It puts the application in the menu
+# and — the reason it matters beyond that — gives every desktop-aware program a
+# name for its icon: `Icon=UltraFIBU` is an icon *name*, resolved through the
+# installed icon themes, and the project's install rules put
+# media/appicon/UltraFIBU.png into share/icons/hicolor/256x256/apps so the
+# lookup lands on it. The window and taskbar icon come from the same PNG by a
+# different route — ui/main.cpp hands it to SetDefaultWindowIcon.
+#
+# No MimeType= and no field code in Exec, deliberately. ultrafibu-ui takes a
+# bookkeeping file as its argument, but it does not create one: setting up a
+# company, its fiscal year and its chart of accounts is `ultrafibu einrichten`.
+# Claiming a file association would route double-clicked files to a program
+# that refuses them, and a .db extension is not UltraFIBU's to claim in any
+# case — it belongs to SQLite and to everything else built on it.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=UltraFIBU
+GenericName=Buchhaltung
+Comment=Deutsche Buchhaltung mit DATEV-Import und -Export, Umsatzsteuer-Voranmeldung und One-Stop-Shop
+Comment[en]=German bookkeeping with DATEV import and export, VAT returns and One-Stop-Shop
+Exec=ultrafibu-ui
+TryExec=ultrafibu-ui
+Icon=UltraFIBU
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraFIBU
+Categories=Office;Finance;
+Keywords=buchhaltung;fibu;datev;umsatzsteuer;ustva;elster;oss;rechnung;beleg;accounting;bookkeeping;invoice;vat;
