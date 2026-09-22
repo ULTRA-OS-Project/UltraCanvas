@@ -1,9 +1,10 @@
 # UltraMessage — The Message Channel
 
 **Status:** Phase 1 implemented (channel and journal); Phase 2 started —
-adapter framework, the Linux `freedesktop-notifications` adapter and
-UltraMail publishing to the feed. The rest of Phases 2–4 is in the proposal.
-**Version:** 0.2.0
+adapter framework, the Linux `freedesktop-notifications` adapter, the
+`windows-notification-listener` adapter and UltraMail publishing to the
+feed. The rest of Phases 2–4 is in the proposal.
+**Version:** 0.2.1
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-09-20
 
@@ -43,9 +44,10 @@ language** (UltraScript is a separate module, §14, and a client of this one).
 | Endpoint client and the API implementation | `UltraCanvas/core/UltraMessage/UltraMessageEndpoint.cpp` |
 | Adapter interface (`IAdapter`, `IAdapterHost`) and registry | `UltraCanvas/core/UltraMessage/UltraMessageAdapter.h`, `UltraMessageAdapters.cpp` |
 | `freedesktop-notifications` adapter (GDBus) | `UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp` |
+| `windows-notification-listener` adapter (C++/WinRT) | `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp` |
 | UltraMail → `mail.message` | `Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}` |
 | `ultramsg` command line | `Apps/UltraMessageCli/main.cpp` |
-| Tests (32 cases; the adapter ones on a private D-Bus session) | `Tests/UltraMessage/` |
+| Tests (34 cases; the adapter ones on a private D-Bus session) | `Tests/UltraMessage/` |
 
 Library target `UltraMessage` (`libultramessage.a`), built whenever
 UltraDatabase is (`ULTRACANVAS_ENABLE_ULTRAMESSAGE`, on by default). It links
@@ -224,6 +226,34 @@ renders toasts, nothing pops up on screen — the feed and `ultramsg tail` show
 them; `ultramsg adapters disable freedesktop-notifications` hands the name
 back.
 
+**`windows-notification-listener`** (Windows, built where the C++/WinRT
+projection headers are found — the MSYS2 `cppwinrt` package, which CI
+installs, or the Windows SDK; the `UltraMessage` target then exports
+`ULTRAMESSAGE_HAVE_WINRT` and links `runtimeobject`, `ole32` and `oleaut32`).
+It reads the Action Center through
+`Windows.UI.Notifications.Management.UserNotificationListener`: every toast
+becomes a `system.notification` (`appName` and `appId` from the application's
+display info and AppUserModelId, the first text line as `summary`, the rest
+as `body`, `origin: "windows-listener"`, plus `adapter`, `nativeId` and
+`createdMs`). Windows sends a desktop process no change event, so the adapter
+polls every two seconds — mode `listener` — publishing what is new and a
+`system.notification.dismissed` (`reason: "removed"`) for what left the
+Action Center. It is read-only: a toast's buttons cannot be pressed from
+outside the application, so a `system.notification.action` from the feed only
+clears the toast, as a dismissal does. Access is the user's to grant
+(Settings > Privacy & security > Notifications); until then the state is
+`needs-permission` with that remedy, re-checked every few seconds so no
+restart is needed. Where the listener is unavailable to the process (older
+Windows, or a build without package identity) the state is `unavailable`.
+
+**Category guessing.** Windows carries no category hint and most Linux
+applications set none, so both adapters guess it from the application's
+identity (`Internal::GuessAppKind` in `core/UltraMessage/UltraMessageAdapters.cpp`:
+Telegram, Signal, WhatsApp, Discord, Slack, Teams … → `im.received`;
+Thunderbird, Outlook, Windows Mail, Evolution, UltraMail … → `email.arrived`).
+The chat and mail mirrors (`Internal::PublishMirror`) are shared by every
+notification adapter. The list is a heuristic and easy to extend.
+
 **UltraMail** publishes new mail itself (`UltraMail::FeedPublisher`,
 `Apps/UltraMail/engine/`): the sync workers pass every stored envelope to it,
 and it posts a `mail.message` (endpoint `org.ultraos.ultramail`) for the ones
@@ -317,9 +347,9 @@ in-tree build uses.
   host the broker permanently, which removes the case there.
 - **FTS5** for text search.
 - **The spool** for attachments over 1 MiB (a file path is passed instead).
-- **The other Phase 2 adapters** (the Windows notification listener, Apple
-  Mail, Telegram) and the `UltraCanvasMessageCenter` element; the adapter
-  framework, `freedesktop-notifications` and UltraMail publishing are built
-  (§3.6).
+- **The other Phase 2 adapters** (Apple Mail, Telegram) and the
+  `UltraCanvasMessageCenter` element; the adapter framework,
+  `freedesktop-notifications`, `windows-notification-listener` and UltraMail
+  publishing are built (§3.6).
 - **Commands** (Phase 3: `RegisterCommand` / `ListCommands` / `Invoke`,
   manifests, consent) — the `app.command.*` topics are reserved for them.

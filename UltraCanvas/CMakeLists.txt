@@ -2741,6 +2741,26 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
                 ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
         endif()
     endif()
+    # The Windows notification listener adapter reads the Action Center
+    # through WinRT (C++/WinRT projection headers: the MSYS2 `cppwinrt`
+    # package or the Windows SDK). Skipped where the headers are absent.
+    set(_um_winrt_found FALSE)
+    if(WIN32)
+        include(CheckIncludeFileCXX)
+        set(_um_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
+        if(MSVC)
+            set(CMAKE_REQUIRED_FLAGS "/std:c++20 /EHsc")
+        else()
+            set(CMAKE_REQUIRED_FLAGS "-std=c++20")
+        endif()
+        check_include_file_cxx("winrt/Windows.UI.Notifications.Management.h" UM_HAVE_CPPWINRT)
+        set(CMAKE_REQUIRED_FLAGS "${_um_saved_required_flags}")
+        if(UM_HAVE_CPPWINRT)
+            set(_um_winrt_found TRUE)
+            list(APPEND ULTRAMESSAGE_SOURCES
+                ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
+        endif()
+    endif()
     # UltraCanvasJSON lives in the core library. With a STATIC core, compile
     # it into this archive too so UltraMessage links without the widget layer
     # (a static-library duplicate the linker resolves to one copy); with a
@@ -2775,6 +2795,19 @@ if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
         target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
         target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
         message(STATUS "  [✓] UltraMessage - ENABLED (freedesktop notifications adapter via gio ${UM_GIO_VERSION})")
+    elseif(_um_winrt_found)
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
+        if(MSVC)
+            target_link_libraries(UltraMessage PUBLIC windowsapp)
+        else()
+            # C++/WinRT under GCC/Clang binds its imports by name: the WinRT
+            # activation and string functions live in runtimeobject, COM in
+            # ole32, BSTRs in oleaut32.
+            target_link_libraries(UltraMessage PUBLIC runtimeobject ole32 oleaut32)
+        endif()
+        message(STATUS "  [✓] UltraMessage - ENABLED (Windows notification listener adapter via C++/WinRT)")
+    elseif(WIN32)
+        message(STATUS "  [✓] UltraMessage - ENABLED (no C++/WinRT headers: no notification adapter)")
     else()
         message(STATUS "  [✓] UltraMessage - ENABLED (no gio: no notification adapter)")
     endif()

@@ -19,12 +19,28 @@
   mode (`BecomeMonitor`), reporting `needs-permission` when the bus refuses.
   `im.received` toasts are mirrored to `messaging.message`, `email*` ones to
   `mail.message`, each with `mirrorOf`.
+- **New: `windows-notification-listener` adapter** (Windows,
+  `UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp`,
+  C++/WinRT, built where the projection headers are found — CI's MSYS2 rows
+  install `cppwinrt`): reads the Action Center through
+  `UserNotificationListener`, polling every two seconds since Windows sends
+  a desktop process no change event; every toast becomes a
+  `system.notification`, what leaves the Action Center a
+  `system.notification.dismissed`; a feed action clears the toast (the
+  listener cannot press its buttons). `needs-permission` with the Settings
+  remedy until the user allows access, re-checked without a restart.
+- **New: category guessing and shared mirrors** — `Internal::GuessAppKind`
+  classifies an application by identity (Telegram, Signal, Slack, Teams … /
+  Thunderbird, Outlook, Windows Mail, Evolution …) where no category hint
+  exists, on Windows and for the many Linux applications that set none; the
+  chat / mail mirrors moved to `Internal::PublishMirror`, shared by every
+  notification adapter.
 - **New: UltraMail publishes new mail to the feed** —
   `UltraMail::FeedPublisher` (`Apps/UltraMail/engine/UltraMailFeedPublisher.{h,cpp}`):
   the sync workers hand it every stored envelope and it posts `mail.message`
   as `org.ultraos.ultramail` for unread, recent (7 days) mail, at most 100
   per account per ten minutes. A no-op in a build without `UltraMessage`.
-- **Tests:** `Tests/UltraMessage` grows to 32 cases; on Linux the suite
+- **Tests:** `Tests/UltraMessage` grows to 34 cases; on Linux the suite
   starts a private `dbus-daemon --session` and drives the adapter over real
   D-Bus (serving, mirrors, replace/close, actions signalled back, the switch,
   monitor mode with a rival owner). `Tests/UltraMail` gains the publisher's

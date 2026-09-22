@@ -12,7 +12,7 @@
 //
 // GDBus (GIO), on a private GMainContext in the adapter's own thread, so an
 // application's own GLib main loop is never touched.
-// Version: 0.2.0 (Phase 2)
+// Version: 0.2.1 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "../../../core/UltraMessage/UltraMessageAdapter.h"
@@ -87,20 +87,6 @@ std::string StripDesktopSuffix(std::string entry) {
     if (entry.size() > suffix.size() && entry.compare(entry.size() - suffix.size(), suffix.size(), suffix) == 0)
         entry.erase(entry.size() - suffix.size());
     return entry;
-}
-
-std::string FirstLine(const std::string& text) {
-    const size_t nl = text.find('\n');
-    return nl == std::string::npos ? text : text.substr(0, nl);
-}
-
-std::string Lowercase(std::string text) {
-    for (char& c : text) if (c >= 'A' && c <= 'Z') c = static_cast<char>(c - 'A' + 'a');
-    return text;
-}
-
-bool StartsWith(const std::string& text, const char* prefix) {
-    return text.rfind(prefix, 0) == 0;
 }
 
 // One Notify() call, decoded.
@@ -480,7 +466,10 @@ private:
         SystemNotification n;
         n.appName = toast.appName;
         n.appId = StripDesktopSuffix(toast.desktopEntry);
-        n.category = toast.category;
+        // Many applications set no category hint; the identity then decides.
+        n.category = !toast.category.empty()
+                         ? toast.category
+                         : CategoryForAppKind(GuessAppKind(StripDesktopSuffix(toast.desktopEntry), toast.appName));
         n.summary = toast.summary;
         n.body = toast.body;
         n.icon = !toast.imagePath.empty() ? toast.imagePath : toast.appIcon;
@@ -510,37 +499,9 @@ private:
             byUlid_[ulid] = assignedId;
         }
 
-        // Mirrors (§9.1): a chat or mail toast also becomes a first-class feed
-        // row, so the message centre groups it with UltraMail's and the
-        // messenger adapters' messages. What a toast carries is heuristic:
-        // the summary is the sender (chat) or the subject line (mail).
-        const std::string service = !n.appId.empty() ? Lowercase(n.appId) : Lowercase(toast.appName);
-        if (StartsWith(toast.category, "im.received")) {
-            MessagingMessage m;
-            m.service = service.empty() ? "notification" : service;
-            m.account = toast.appName;
-            m.conversationId = toast.summary;
-            m.conversationTitle = toast.summary;
-            m.sender.name = toast.summary;
-            m.text = toast.body;
-            m.incoming = true;
-            m.externalId = ulid;
-            UltraMsgSendOptions mirror;
-            mirror.conversation = ConversationKey(m);
-            JSONValue mirrorBody = MakeMessagingMessage(m);
-            mirrorBody.Set("mirrorOf", ulid);
-            host_->Publish(kAdapterName, UltraMsgTopics::MessagingMessage, mirrorBody, mirror);
-        } else if (StartsWith(toast.category, "email")) {
-            MailMessage m;
-            m.account = toast.appName;
-            m.from.name = toast.summary;
-            m.subject = FirstLine(toast.body).empty() ? toast.summary : FirstLine(toast.body);
-            m.snippet = toast.body;
-            m.externalId = ulid;
-            JSONValue mirrorBody = MakeMailMessage(m);
-            mirrorBody.Set("mirrorOf", ulid);
-            host_->Publish(kAdapterName, UltraMsgTopics::MailMessage, mirrorBody);
-        }
+        // Mirrors (§9.1): a chat or mail toast also becomes a first-class
+        // feed row (shared with the other notification adapters).
+        if (!ulid.empty()) PublishMirror(*host_, kAdapterName, n, ulid);
     }
 
     void EmitSignal(const char* name, GVariant* parameters) {

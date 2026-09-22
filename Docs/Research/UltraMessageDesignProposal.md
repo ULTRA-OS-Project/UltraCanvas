@@ -2,8 +2,8 @@
 
 **Date:** 2026-09-17
 **Status:** Phase 1 implemented (channel, journal, `ultramsg`); of Phase 2 the
-adapter framework, `freedesktop-notifications` and `ultramail` are built. The
-rest of Phases 2–4 remains the plan. `Docs/Modules/UltraMessage/README.md`
+adapter framework, `freedesktop-notifications`, `windows-notification-listener`
+and `ultramail` are built. The rest of Phases 2–4 remains the plan. `Docs/Modules/UltraMessage/README.md`
 documents what is built.
 **Registry entry:** `Masterfile_modules.md` §13
 **Companion:** [UltraScriptSpecification.md](UltraScriptSpecification.md) — the
@@ -734,7 +734,7 @@ only the resulting invocations.
 |---|---|---|
 | **0** | This document; `Masterfile_modules.md` §13 | — |
 | **1 — Channel** | `UltraMessage` target: types, envelope, wire format, local-socket transport with broker election on Linux/macOS/Windows, `Connect`/`Post`/`PostRecorded`/`Request`/`Reply`/`Subscribe`, UI-thread delivery, `AddFdWatch` path on Linux, journal on UltraDatabase with FTS, `Query`/`MarkRead`/`Dismiss`, schema registry with the well-known topics, `ultramsg` CLI, `Tests/UltraMessage` (two-process tests through the CLI, single-process tests through an in-process broker) | UltraDatabase, UltraCanvasJSON |
-| **2 — Feed** | Adapters: freedesktop-notifications (server + monitor mode) *built*, ultramail (UltraMail publishes) *built*, windows-notification-listener, apple-mail, telegram; `UltraCanvasMessageCenter` element; DemoApp page; `Docs/Modules/UltraMessage/README.md` *written* | Phase 1, UltraNet, UltraVault |
+| **2 — Feed** | Adapters: freedesktop-notifications (server + monitor mode) *built*, ultramail (UltraMail publishes) *built*, windows-notification-listener *built*, apple-mail, telegram; `UltraCanvasMessageCenter` element; DemoApp page; `Docs/Modules/UltraMessage/README.md` *written* | Phase 1, UltraNet, UltraVault |
 | **3 — Commands** | `RegisterCommand`/`ListCommands`/`Invoke`, dictionaries as manifests, consent store and prompt, the `app.command.echo` topic and the recorder role, dbus-export + dbus-invoke, apple-events-invoke + apple-events-export, copydata; UltraFiler/UltraViewer/UltraMail register their first verbs (`open`, `export`, `send`) | Phase 1. Built when UltraScript or an AI agent needs it, never ahead of Phase 2 |
 | **4** | Android listener, WASM transport, apple-messages, matrix, imap-idle, com-automation; at-rest journal encryption | Phases 2–3 |
 

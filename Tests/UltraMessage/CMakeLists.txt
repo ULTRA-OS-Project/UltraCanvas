@@ -42,6 +42,23 @@ if(NOT TARGET UltraMessage)
                 ${_um_root}/UltraCanvas/OS/Linux/UltraMessage/UltraMessageFreedesktopNotifications.cpp)
         endif()
     endif()
+    set(_um_winrt_found FALSE)
+    if(WIN32)
+        include(CheckIncludeFileCXX)
+        set(_um_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
+        if(MSVC)
+            set(CMAKE_REQUIRED_FLAGS "/std:c++20 /EHsc")
+        else()
+            set(CMAKE_REQUIRED_FLAGS "-std=c++20")
+        endif()
+        check_include_file_cxx("winrt/Windows.UI.Notifications.Management.h" UM_HAVE_CPPWINRT)
+        set(CMAKE_REQUIRED_FLAGS "${_um_saved_required_flags}")
+        if(UM_HAVE_CPPWINRT)
+            set(_um_winrt_found TRUE)
+            list(APPEND _um_sources
+                ${_um_root}/UltraCanvas/OS/MSWindows/UltraMessage/UltraMessageWindowsNotificationListener.cpp)
+        endif()
+    endif()
     add_library(UltraMessage STATIC
         ${_um_sources}
         ${_um_root}/UltraCanvas/core/DataFormats/UltraCanvasJSON.cpp)
@@ -52,6 +69,14 @@ if(NOT TARGET UltraMessage)
         target_link_directories(UltraMessage PUBLIC ${UM_GIO_LIBRARY_DIRS})
         target_link_libraries(UltraMessage PUBLIC ${UM_GIO_LIBRARIES})
         target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_GIO=1)
+    endif()
+    if(_um_winrt_found)
+        target_compile_definitions(UltraMessage PUBLIC ULTRAMESSAGE_HAVE_WINRT=1)
+        if(MSVC)
+            target_link_libraries(UltraMessage PUBLIC windowsapp)
+        else()
+            target_link_libraries(UltraMessage PUBLIC runtimeobject ole32 oleaut32)
+        endif()
     endif()
 
     add_executable(ultramsg ${_um_root}/Apps/UltraMessageCli/main.cpp)
@@ -72,7 +97,10 @@ set(ULTRAMESSAGE_TEST_SOURCES
 add_executable(UltraMessageTests ${ULTRAMESSAGE_TEST_SOURCES})
 target_compile_features(UltraMessageTests PRIVATE cxx_std_20)
 target_link_libraries(UltraMessageTests PRIVATE UltraMessage)
-target_include_directories(UltraMessageTests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+# The adapter tests reach the shared translation helpers, which are internal.
+target_include_directories(UltraMessageTests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../../UltraCanvas/core/UltraMessage)
 set_target_properties(UltraMessageTests PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${_um_output_dir})
 

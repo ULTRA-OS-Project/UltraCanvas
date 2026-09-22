@@ -149,6 +149,7 @@ jobs:
             ${{ matrix.msys_prefix }}-ccache
             ${{ matrix.msys_prefix }}-ninja
             ${{ matrix.msys_prefix }}-pkgconf
+            ${{ matrix.msys_prefix }}-cppwinrt
             ${{ matrix.msys_prefix }}-rust
             ${{ matrix.msys_prefix }}-cairo
             ${{ matrix.msys_prefix }}-pango

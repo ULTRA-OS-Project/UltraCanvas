@@ -12,6 +12,7 @@
 
 #include <UltraMessage/UltraMessage.h>
 #include <UltraMessage/UltraMessageEndpoint.h>
+#include "UltraMessageAdapter.h"   // the shared translation helpers (internal)
 
 #include <cstdlib>
 #include <mutex>
@@ -66,6 +67,52 @@ TEST(adapter_status_names_round_trip) {
     REQUIRE(!UltraMsg_AdapterStatusFromName("bogus", unknown));
     REQUIRE_EQ(std::string(UltraMsg_AdapterStatusName(UltraMsgAdapterStatus::NeedsPermission)), std::string("needs-permission"));
 }
+
+TEST(adapter_app_kind_is_guessed_from_identity) {
+    using UltraMessage::Internal::AppKind;
+    using UltraMessage::Internal::CategoryForAppKind;
+    using UltraMessage::Internal::GuessAppKind;
+    REQUIRE(GuessAppKind("org.telegram.desktop", "Telegram") == AppKind::Messenger);
+    REQUIRE(GuessAppKind("TelegramMessengerLLP.TelegramDesktop_t4vj0pshhgkwm!Telegram.TelegramDesktop", "Telegram Desktop") ==
+            AppKind::Messenger);
+    REQUIRE(GuessAppKind("", "Signal") == AppKind::Messenger);
+    REQUIRE(GuessAppKind("com.microsoft.teams", "") == AppKind::Messenger);
+    REQUIRE(GuessAppKind("Mozilla.Thunderbird", "Thunderbird") == AppKind::Mail);
+    REQUIRE(GuessAppKind("microsoft.windowscommunicationsapps_8wekyb3d8bbwe!microsoft.windowslive.mail", "Mail") ==
+            AppKind::Mail);
+    REQUIRE(GuessAppKind("org.gnome.Evolution", "Evolution") == AppKind::Mail);
+    REQUIRE(GuessAppKind("org.ultraos.ultramail", "UltraMail") == AppKind::Mail);
+    REQUIRE(GuessAppKind("org.gnome.Calculator", "Calculator") == AppKind::Unknown);
+    REQUIRE(GuessAppKind("", "") == AppKind::Unknown);
+    REQUIRE_EQ(CategoryForAppKind(AppKind::Messenger), std::string("im.received"));
+    REQUIRE_EQ(CategoryForAppKind(AppKind::Mail), std::string("email.arrived"));
+    REQUIRE_EQ(CategoryForAppKind(AppKind::Unknown), std::string(""));
+}
+
+#if defined(ULTRAMESSAGE_HAVE_WINRT)
+// Windows only, and only meaningful on a desktop session: the listener is
+// listed, and its state is one the user can act on rather than a stall.
+TEST(windows_listener_adapter_is_listed_with_an_actionable_state) {
+    Scoped ep{Connect("org.test.adapters.windows")};
+    const auto adapters = ListAdapters(ep.handle);
+    const UltraMsgAdapterInfo* info = Find(adapters, "windows-notification-listener");
+    REQUIRE(info != nullptr);
+    REQUIRE_EQ(info->platform, std::string("windows"));
+    REQUIRE(info->enabled);
+    UltraMsgAdapterState state;
+    REQUIRE(WaitFor([&] {
+        UltraMsgResult r = UltraMsg_GetAdapterState(ep.handle, "windows-notification-listener", state);
+        return r && state.status != UltraMsgAdapterStatus::Starting;
+    }, 8000ms));
+    REQUIRE(state.status == UltraMsgAdapterStatus::Running || state.status == UltraMsgAdapterStatus::NeedsPermission ||
+            state.status == UltraMsgAdapterStatus::Unavailable || state.status == UltraMsgAdapterStatus::Error);
+    REQUIRE(!state.message.empty());
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "windows-notification-listener", false));
+    REQUIRE(UltraMsg_GetAdapterState(ep.handle, "windows-notification-listener", state));
+    REQUIRE(state.status == UltraMsgAdapterStatus::Disabled);
+    REQUIRE(UltraMsg_EnableAdapter(ep.handle, "windows-notification-listener", true));
+}
+#endif
 
 #if defined(ULTRAMESSAGE_HAVE_GIO) && defined(__linux__)
 
@@ -398,6 +445,27 @@ TEST(freedesktop_notify_becomes_system_notification_with_chat_mirror) {
     bool journaled = false;
     for (const auto& r : rows) journaled = journaled || r.envelope.id == chat.envelope.id;
     REQUIRE(journaled);
+}
+
+TEST(freedesktop_guesses_the_category_from_the_application) {
+    RequireTestBus();
+    Scoped ep{Connect("org.test.adapters.guess")};
+    WaitForStatus(ep.handle, UltraMsgAdapterStatus::Running, "server");
+    Collector toasts, chats;
+    toasts.Subscribe(ep.handle, UltraMsgTopics::SystemNotification);
+    chats.Subscribe(ep.handle, UltraMsgTopics::MessagingMessage);
+
+    BusClient app;
+    // No category hint, as most messengers send none: the desktop entry decides.
+    const guint32 id = app.Notify("Signal", 0, "Carol", "see you at 9", {}, "", "org.signal.Signal", 1);
+    REQUIRE(id > 0);
+    UltraMsgMessage toast;
+    REQUIRE(toasts.WaitForField("summary", "Carol", toast));
+    REQUIRE_EQ(Str(toast.body, "category"), std::string("im.received"));
+    UltraMsgMessage chat;
+    REQUIRE(chats.WaitForField("mirrorOf", toast.envelope.id, chat));
+    REQUIRE_EQ(Str(chat.body, "service"), std::string("org.signal.signal"));
+    REQUIRE_EQ(Str(chat.body, "text"), std::string("see you at 9"));
 }
 
 TEST(freedesktop_mail_toast_mirrors_to_mail_message) {

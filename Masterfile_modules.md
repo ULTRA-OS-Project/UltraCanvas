@@ -1456,13 +1456,16 @@ adapter framework (`UltraMsg_ListAdapters` / `EnableAdapter` /
 `GetAdapterState`, switches persisted in the journal, `ultramsg adapters`),
 the Linux `freedesktop-notifications` adapter
 (`UltraCanvas/OS/Linux/UltraMessage/`, GDBus: serves
-`org.freedesktop.Notifications` or reads it in monitor mode, mirrors chat and
-mail toasts) and UltraMail publishing new mail as `mail.message`
+`org.freedesktop.Notifications` or reads it in monitor mode), the
+`windows-notification-listener` adapter (`UltraCanvas/OS/MSWindows/UltraMessage/`,
+C++/WinRT `UserNotificationListener`: polls the Action Center, read-only),
+the shared chat / mail mirrors with category guessing from the application's
+identity, and UltraMail publishing new mail as `mail.message`
 (`Apps/UltraMail/engine/UltraMailFeedPublisher`). Tests in
-`Tests/UltraMessage` (32 cases, in-tree and standalone, the adapter ones on a
+`Tests/UltraMessage` (34 cases, in-tree and standalone, the adapter ones on a
 private D-Bus session). Not yet: the `AddFdWatch` event-loop path (a reader
 thread serves every endpoint), an FTS5 index (text search is a LIKE),
-automatic reconnection after the hosting broker exits, the Windows / macOS /
+automatic reconnection after the hosting broker exits, the macOS and
 Telegram adapters and the `UltraCanvasMessageCenter` element. See
 `Docs/Modules/UltraMessage/README.md`.
 

@@ -6,11 +6,12 @@
 // Adapters live under UltraCanvas/OS/<Platform>/UltraMessage/ (platform code)
 // or UltraCanvas/Plugins/UltraMessage/<name>/ (portable ones on UltraNet) and
 // are registered by RegisterBuiltinAdapters below.
-// Version: 0.2.0 (Phase 2)
+// Version: 0.2.1 (Phase 2)
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraMessage/UltraMessage.h"
+#include "UltraMessage/UltraMessageEndpoint.h"
 
 #include <memory>
 #include <string>
@@ -66,6 +67,29 @@ std::vector<std::unique_ptr<IAdapter>> CreateBuiltinAdapters();
 
 // The sender identity the host gives an adapter's messages.
 UltraMsgSender AdapterSender(const std::string& adapterName);
+
+// ---- shared by the notification adapters (§9.1 mirrors) --------------------
+
+// What kind of application produced a native notification, guessed from its
+// identity (desktop entry, AppUserModelId, bundle id, display name) for the
+// platforms and applications that give no category hint.
+enum class AppKind { Unknown, Messenger, Mail };
+AppKind GuessAppKind(const std::string& appId, const std::string& appName);
+// The freedesktop category the mirror rules key on: "im.received",
+// "email.arrived", or "" for Unknown.
+std::string CategoryForAppKind(AppKind kind);
+
+// A chat toast (category `im.received*`) also becomes a `messaging.message`,
+// a mail toast (`email*`) a `mail.message`, so the feed groups them with the
+// first-class sources. What a toast carries is heuristic: the summary is the
+// sender (chat) or the subject line (mail). `notificationId` is the id of the
+// `system.notification` the mirror points back to (`mirrorOf`). Returns the
+// mirror's id, empty when the category mirrors to nothing.
+std::string PublishMirror(IAdapterHost& host, const std::string& adapterName,
+                          const SystemNotification& n, const std::string& notificationId);
+
+std::string Lowercase(std::string text);
+std::string FirstLine(const std::string& text);
 
 } // namespace Internal
 } // namespace UltraMessage
