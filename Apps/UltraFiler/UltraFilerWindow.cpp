@@ -91,6 +91,7 @@
 #include <cctype>
 #include <chrono>
 #include <cmath>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
@@ -149,6 +150,52 @@ namespace {
     // enough to read as "results appearing while it searches", large enough
     // that the walk is not paced by the re-sort of what is already listed.
     constexpr int kSearchBatchMs = 200;
+    // Find text (content search): files larger than this are not read - a
+    // disk image or a video would take the walk minutes and never hold the
+    // kind of text the user is looking for.
+    constexpr uintmax_t kMaxContentSearchFileBytes = 64ull * 1024 * 1024;
+    // Content search reads a file in pieces of this size, so memory stays
+    // flat however large the file is and a Stop lands between two pieces.
+    constexpr size_t kContentSearchChunkBytes = 64 * 1024;
+    // A NUL byte in this many leading bytes marks a file as binary, and a
+    // binary file is not searched (an executable matches almost any word).
+    constexpr size_t kContentSearchBinaryProbeBytes = 8 * 1024;
+
+    // ASCII-only case folding: multi-byte UTF-8 sequences stay as they are,
+    // so a non-ASCII query still matches, just case-sensitively.
+    char FoldAsciiCase(char c) {
+        return (c >= 'A' && c <= 'Z') ? static_cast<char>(c - 'A' + 'a') : c;
+    }
+
+    // Whether the file at `path` contains `needle` (non-empty, already
+    // folded with FoldAsciiCase). Binary and unreadable files never match.
+    bool FileContainsText(const fs::path& path, const std::string& needle,
+                          const std::atomic<bool>& cancelled) {
+        std::ifstream in(path, std::ios::binary);
+        if (!in) return false;
+        std::vector<char> chunk(kContentSearchChunkBytes);
+        // The tail of the previous piece is carried over, so a match that
+        // straddles two pieces is still found.
+        std::string window;
+        bool firstChunk = true;
+        while (in && !cancelled.load()) {
+            in.read(chunk.data(), static_cast<std::streamsize>(chunk.size()));
+            const size_t got = static_cast<size_t>(in.gcount());
+            if (got == 0) break;
+            if (firstChunk) {
+                firstChunk = false;
+                const size_t probe = std::min(got, kContentSearchBinaryProbeBytes);
+                if (std::find(chunk.begin(), chunk.begin() + probe, '\0')
+                        != chunk.begin() + probe)
+                    return false;
+            }
+            for (size_t i = 0; i < got; ++i) window.push_back(FoldAsciiCase(chunk[i]));
+            if (window.find(needle) != std::string::npos) return true;
+            if (window.size() >= needle.size())
+                window.erase(0, window.size() - (needle.size() - 1));
+        }
+        return false;
+    }
 
     // Split-pane minimum widths (px): the folder display and the detail
     // (preview) pane never get narrower than these.
@@ -1478,7 +1525,17 @@ std::vector<MenuItemData> UltraFilerWindow::BuildExtrasMenuItems() {
             [this]() { RemoveFolderIconForTargets(); });
     removeIcon.enabled = anyCustomIcon;
 
+    // Find text searches the folder the browsing view shows; the History,
+    // Favorites and Computer views list entries from everywhere, so there is
+    // no one folder there to search.
+    const std::string findRoot =
+            (filer && VisibleFiler() == filer.get()) ? filer->GetPath() : std::string();
+    MenuItemData findText = MenuItemData::Action("Find text…",
+            [this]() { OpenFindTextDialog(); });
+    findText.enabled = !findRoot.empty() && !IsRemoteFilerPath(findRoot);
+
     return {
+            findText,
             MenuItemData::Action("Open prompt", [this]() { OpenSystemPrompt(); }),
             MenuItemData::Separator(),
             setIcon,
@@ -2006,7 +2063,7 @@ void UltraFilerWindow::RefreshRemoteFolderDisplays(const std::string& folderPath
         folderPreview->Refresh();
 }
 
-void UltraFilerWindow::RunSearch(const std::string& query) {
+void UltraFilerWindow::RunSearch(const std::string& query, bool inContents) {
     // The results are shown in the folder display, so a search leaves the
     // History / Favorites views.
     ShowBrowsingView();
@@ -2035,16 +2092,25 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
     // filer's (now empty) filter text back into the search field unless the
     // tab is already known to be showing a search.
     tab->searchQuery = query;
+    tab->searchInContents = inContents;
     searchTab = tab;
     searchQueryText = query;
+    searchInContents = inContents;
     searchResultsShown = false;
+    // A Find text query is not a name filter: the field stays empty rather
+    // than suggesting that Enter would repeat this search. (Programmatic
+    // SetText fires no onTextChanged, so this ends no search.)
+    if (inContents && searchInput) searchInput->SetText("");
 
     // The scan results replace the as-you-type folder filter — they are an
     // explicit file list, not a narrowed folder listing.
     filer->SetNameFilter("");
 
     std::string needle = query;
-    std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+    if (inContents)
+        std::transform(needle.begin(), needle.end(), needle.begin(), FoldAsciiCase);
+    else
+        std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
     filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
     // An empty result display right away: the folder listing the search was
     // typed against is not what the search is about, and the first matches
@@ -2053,21 +2119,44 @@ void UltraFilerWindow::RunSearch(const std::string& query) {
 
     searchState = std::make_shared<SubfolderSearchState>();
     const uint64_t generation = ++searchGeneration;
-    searchStatus = "Searching \"" + query + "\" ...";
+    searchStatus = (inContents ? "Searching files for the text \"" : "Searching \"")
+            + query + "\" ...";
     UpdateScanButton();
     UpdateStatusBar();
 
     auto state = searchState;
     auto alive = probeAlive;
-    searchWorker = std::thread([this, state, alive, root, needle, generation]() {
-        SubfolderSearchWorkerMain(state, alive, root, needle, generation);
+    searchWorker = std::thread([this, state, alive, root, needle, inContents, generation]() {
+        SubfolderSearchWorkerMain(state, alive, root, needle, inContents, generation);
     });
+}
+
+void UltraFilerWindow::OpenFindTextDialog() {
+    const std::string folder = filer ? filer->GetPath() : std::string();
+    if (folder.empty()) return;
+    // The walk reads the local file system; a remote drive's folders are
+    // only reachable through its connection.
+    if (IsRemoteFilerPath(folder)) {
+        UltraCanvasAlert::Info("Find text searches local folders only.",
+                               "Find text", nullptr, window.get());
+        return;
+    }
+    UltraCanvasDialogManager::ShowInputDialog(
+            "Find files in this folder and its sub folders that contain:",
+            "Find text", lastFindText, InputType::Text,
+            [this](DialogResult result, const std::string& text) {
+                if (result != DialogResult::OK || text.empty()) return;
+                lastFindText = text;
+                RunSearch(text, true);
+            },
+            window.get());
 }
 
 void UltraFilerWindow::SubfolderSearchWorkerMain(
         std::shared_ptr<SubfolderSearchState> state,
         std::shared_ptr<std::atomic<bool>> alive,
-        std::string root, std::string needle, uint64_t generation) {
+        std::string root, std::string needle, bool inContents,
+        uint64_t generation) {
     // Hands the batch collected so far to the UI thread. Only one is ever in
     // flight: a walk over a fast local tree finds matches far quicker than the
     // display can absorb them, and every posted batch costs a stat per path
@@ -2099,6 +2188,30 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
             if (ec) continue;   // vanished, unreadable, not a directory any more
 
             std::vector<std::string> found;
+            // Moves `found` into the shared state; true once the result cap
+            // is reached and the walk has to end.
+            auto publish = [&]() {
+                const size_t total = state->matches.load() + found.size();
+                bool truncated = false;
+                if (total >= kMaxSearchResults) {
+                    // Bounded so a match-everything query on a huge tree cannot
+                    // grow the result list without end.
+                    if (found.size() > kMaxSearchResults - state->matches.load())
+                        found.resize(kMaxSearchResults - state->matches.load());
+                    truncated = true;
+                }
+                if (!found.empty()) {
+                    std::lock_guard<std::mutex> lk(state->mutex);
+                    state->matches.fetch_add(found.size());
+                    state->pending.insert(state->pending.end(),
+                                          std::make_move_iterator(found.begin()),
+                                          std::make_move_iterator(found.end()));
+                    found.clear();
+                }
+                if (truncated) state->truncated.store(true);
+                return truncated;
+            };
+            bool stop = false;
             for (; it != end; it.increment(ec)) {
                 if (ec || state->cancelled.load()) break;
                 const fs::path p = it->path();
@@ -2113,34 +2226,42 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
                 dec.clear();
                 const bool isDir = !link && it->is_directory(dec) && !dec;
 
-                const std::string name = p.filename().string();
-                std::string lower = name;
-                std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
-                if (lower.find(needle) != std::string::npos)
-                    found.push_back(p.string());
-
                 if (isDir && dir.depth < kMaxSearchDepth)
                     stack.push_back({p, dir.depth + 1});
+
+                if (!inContents) {
+                    const std::string name = p.filename().string();
+                    std::string lower = name;
+                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                    if (lower.find(needle) != std::string::npos)
+                        found.push_back(p.string());
+                    continue;
+                }
+
+                // Find text: only regular files are read - never a folder, a
+                // link (see above) or a device - and never an oversized one.
+                if (isDir || link) continue;
+                dec.clear();
+                if (!it->is_regular_file(dec) || dec) continue;
+                const uintmax_t size = it->file_size(dec);
+                if (dec || size == 0 || size > kMaxContentSearchFileBytes) continue;
+                state->filesRead.fetch_add(1);
+                if (FileContainsText(p, needle, state->cancelled))
+                    found.push_back(p.string());
+
+                // Reading a folder of large files takes a while: matches and
+                // the files-read count reach the display while it goes on,
+                // not only once the folder is done.
+                const auto now = std::chrono::steady_clock::now();
+                if (now - lastPost >= std::chrono::milliseconds(kSearchBatchMs)) {
+                    lastPost = now;
+                    if (publish()) { stop = true; break; }
+                    post(false);
+                }
             }
 
             state->foldersScanned.fetch_add(1);
-            const size_t total = state->matches.load() + found.size();
-            bool truncated = false;
-            if (total >= kMaxSearchResults) {
-                // Bounded so a match-everything query on a huge tree cannot
-                // grow the result list without end.
-                if (found.size() > kMaxSearchResults - state->matches.load())
-                    found.resize(kMaxSearchResults - state->matches.load());
-                truncated = true;
-            }
-            if (!found.empty()) {
-                std::lock_guard<std::mutex> lk(state->mutex);
-                state->matches.fetch_add(found.size());
-                state->pending.insert(state->pending.end(),
-                                      std::make_move_iterator(found.begin()),
-                                      std::make_move_iterator(found.end()));
-            }
-            if (truncated) { state->truncated.store(true); break; }
+            if (stop || publish()) break;
 
             const auto now = std::chrono::steady_clock::now();
             if (now - lastPost >= std::chrono::milliseconds(kSearchBatchMs)) {
@@ -2191,7 +2312,22 @@ void UltraFilerWindow::DrainSubfolderSearch(
     const bool done = state->finished.load();
     const bool truncated = state->truncated.load();
 
-    if (!done) {
+    if (searchInContents) {
+        const size_t files = state->filesRead.load();
+        if (!done) {
+            searchStatus = "Searching files for the text \"" + searchQueryText + "\" - "
+                    + std::to_string(matches)
+                    + (matches == 1 ? " file found, " : " files found, ")
+                    + std::to_string(files) + (files == 1 ? " file read" : " files read");
+        } else {
+            searchStatus = std::to_string(matches)
+                    + (matches == 1 ? " file contains \"" : " files contain \"")
+                    + searchQueryText + "\" (" + std::to_string(files)
+                    + (files == 1 ? " file read in " : " files read in ")
+                    + std::to_string(folders)
+                    + (folders == 1 ? " folder)" : " folders)");
+        }
+    } else if (!done) {
         searchStatus = "Searching \"" + searchQueryText + "\" - "
                 + std::to_string(matches)
                 + (matches == 1 ? " result, " : " results, ")
@@ -2201,9 +2337,9 @@ void UltraFilerWindow::DrainSubfolderSearch(
                 + (matches == 1 ? " result for \"" : " results for \"")
                 + searchQueryText + "\" in " + std::to_string(folders)
                 + (folders == 1 ? " folder" : " folders");
-        if (truncated)
-            searchStatus += " (stopped at " + std::to_string(kMaxSearchResults) + ")";
     }
+    if (done && truncated)
+        searchStatus += " (stopped at " + std::to_string(kMaxSearchResults) + ")";
 
     if (done) {
         // The worker is on its way out (it posted this batch as its last act).
@@ -2233,7 +2369,8 @@ void UltraFilerWindow::StopSubfolderSearch() {
     // dropped by the generation bump rather than landing in the next search.
     ++searchGeneration;
     if (wasRunning && !searchQueryText.empty()) {
-        searchStatus = "Search for \"" + searchQueryText + "\" stopped";
+        searchStatus = (searchInContents ? "Text search for \"" : "Search for \"")
+                + searchQueryText + "\" stopped";
         UpdateStatusBar();
     }
     UpdateScanButton();
@@ -3788,7 +3925,8 @@ void UltraFilerWindow::SyncControlsToActiveDisplay() {
     // query while its results are displayed, else the tab's live filter.
     if (searchInput) {
         searchInput->SetText(!tab->searchQuery.empty()
-                                     ? tab->searchQuery
+                                     ? (tab->searchInContents ? std::string()
+                                                              : tab->searchQuery)
                                      : (tab->filer ? tab->filer->GetNameFilter()
                                                    : std::string()));
     }

@@ -303,6 +303,16 @@ This app versions itself: [`Docs/UltraFiler/CHANGELOG.md`](../../Docs/UltraFiler
   every tab, the folder preview, the History and Favorites lists, the tree row
   and its Pinned bookmark — and beats the built-in icon of a main user folder.
   **Extras > Remove folder icon** takes it away again.
+- **Extras > Find text…** (in the file context menu's Extras submenu): asks
+  for a text and lists every file in the shown folder and its sub folders
+  that contains it, in the same result display the search field's
+  *Scan sub folder* fills — results appear while the walk goes on, the status
+  bar counts the files found and read, and the field's *Stop* button ends it.
+  The comparison ignores the case of ASCII letters; other characters match
+  exactly (UTF-8 bytes). Hidden entries, links, binary files (a NUL byte in
+  the first 8 KB) and files over 64 MB are skipped. Local folders only — the
+  item is disabled on a remote drive and in the History, Favorites and
+  Computer views.
 - **Extras > Open prompt** (in the file context menu's Extras submenu):
   starts the operating system's command line program
   in the folder of the active tab, detached from UltraFiler (closing the file

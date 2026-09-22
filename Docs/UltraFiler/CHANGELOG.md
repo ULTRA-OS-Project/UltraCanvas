@@ -1,3 +1,13 @@
+#### 2026-09-22 *1.45.0*
+- **Extras > Find text: search inside files.** A new first item in the file
+  context menu's *Extras* submenu asks for a text and lists every file in the
+  shown folder and its sub folders that contains it. It runs on the
+  background walk behind *Scan sub folder*: matches land in the same result
+  display (with *Open path* on each entry) while it searches, the status bar
+  counts files found and files read, and the search field's *Stop* button
+  ends it. The comparison ignores the case of ASCII letters; binary files,
+  files over 64 MB, hidden entries and links are skipped. Local folders only.
+
 #### 2026-09-19 *1.44.0*
 - **Split view: two folder displays side by side.** A split-screen button in
   the navigation row, left of the clock, replaces the folder tree and the one
