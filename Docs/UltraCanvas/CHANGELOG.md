@@ -1,3 +1,49 @@
+#### 2026-09-22 *0.9.21*
+- **The DWG / DXF demo page was five white squares, and so was everything
+  below them.** Four separate faults, each of which hid the next.
+  - **`UltraCanvasVectorElement` declared no CSS box.** Its
+    `(identifier, x, y, w, h)` constructor called the identifier-only base
+    constructor and then `SetPosition()`/`SetSize()`, which write
+    `finalBounds` and nothing else - so the layout engine arranged the
+    element as a widget that asked for no size, and it collapsed to nothing.
+    A container never renders a child that does not intersect its content
+    area, so the element was not drawn at all: not its document, not even its
+    background. It now passes x/y/w/h to the base constructor like every
+    other widget, which stamps the px size and the absolute origin. Callers
+    that pass 0 (the flex/grid ones - the AI page, the media viewer, the
+    plugin's own element) are unchanged.
+  - **Painting used the parent's frame.** `Render()`, the background, the
+    border, the debug box, the document transform, the hit test and the wheel
+    anchor all added `finalBounds.x/y`, although the container has already
+    translated the context to the element's origin and delivers pointer
+    events in element-local coordinates. Everything is element-local now;
+    `ScreenToDocument()`/`DocumentToScreen()` speak that frame too.
+  - **A fit was clamped to the interactive zoom limit.** `ZoomToFit()` ran
+    its computed scale through `options.MinZoom`, so a 10 000-unit site plan
+    in a 280 px tile was pinned at 0.1 and the tile showed an empty patch of
+    the drawing's middle. The fit is honoured as computed and becomes the
+    lower bound for zooming out (`MinAllowedZoom()`), so a wheel-out still
+    stops at the whole drawing.
+  - **The element swallowed its host's events.** `OnEvent()` handled panning
+    and selection and returned false for everything else without ever calling
+    the base, so the demo's click-to-open-fullscreen and its hover status line
+    never ran. The host callback is consulted first now.
+- **One collapsed transform used to end all drawing in the window.** The
+  bathroom sample (`media/3D/DWG/bagno_3d_1.dwg`) carries a block standing in
+  a vertical plane; projected to plan view its transform scales one axis to
+  zero. Cairo latches a non-invertible matrix as a permanent error on the
+  `cairo_t`, after which every later fill, stroke, text and image is silently
+  dropped - which is why the DXF row, the info panel and the "How it works"
+  panel below the drawings were blank as well.
+  - `VectorRenderer` skips an element whose transform is singular (it has no
+    area to draw), and
+  - `RenderContextCairo::Scale/SetTransform/Transform` refuse a matrix they
+    cannot invert and log it once, so no caller can kill a context this way.
+- `Tests/VectorElementViewTest.cpp` pins all of it: the box survives the
+  parent's layout, a fit below `MinZoom` fits, painting is element-local, a
+  singular transform leaves the context able to draw, and the host's event
+  callback runs.
+
 #### 2026-09-22 *0.9.20*
 - **A form caption is not something you scroll.** Every row of UltraCloud's
   add-account dialog - the FTP / SFTP login UltraFiler's "+ Drive" opens -

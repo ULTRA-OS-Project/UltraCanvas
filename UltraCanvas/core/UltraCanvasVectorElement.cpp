@@ -4,8 +4,12 @@
 // The element owns the view transform - zoomLevel and panOffset - and
 // VectorRenderer must therefore be given no viewport of its own, or its
 // fit-to-viewport transform overrides this one (see RenderDocument).
-// Version: 2.1.0
-// Last Modified: 2026-09-17
+//
+// Everything here works in element-LOCAL coordinates: the parent container
+// translates the render context to the element's origin before calling
+// Render(), and delivers pointer events with the same origin subtracted.
+// Version: 2.2.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 
 #include "UltraCanvasVectorElement.h"
@@ -16,10 +20,18 @@ namespace UltraCanvas {
 
     using namespace VectorStorage;
 
+    // The four-argument base constructor is what stamps the CSS box - an
+    // explicit px width/height, and an absolutely-placed origin for a non-zero
+    // (x, y). SetPosition()/SetSize() only write finalBounds, which the layout
+    // engine then overwrites with the auto-sized box of a widget that declared
+    // no size: the element collapsed to nothing and its container skipped it
+    // entirely (UltraCanvasContainer::Render culls a child that does not
+    // intersect the content area), so every drawing on the DWG/DXF demo page
+    // was an empty white square. Passing 0 for a dimension still leaves it to
+    // the parent, which is what the flex/grid callers want.
     UltraCanvasVectorElement::UltraCanvasVectorElement(const std::string& identifier, int x, int y, int width, int height)
-            : UltraCanvasUIElement(identifier) {
-        SetPosition(x, y);
-        SetSize(width, height);
+            : UltraCanvasUIElement(identifier, static_cast<float>(x), static_cast<float>(y),
+                                   static_cast<float>(width), static_cast<float>(height)) {
         renderer = std::make_unique<VectorRenderer>();
         viewTransform = Matrix3x3::Identity();
     }
@@ -42,12 +54,13 @@ namespace UltraCanvas {
         zoomLevel = 1.0f;
         panOffset = {0, 0};
         fitPending = false;
+        fitZoom = 0.0f;
         state.IsDirty = true;
         ClearError();
     }
 
     void UltraCanvasVectorElement::SetZoom(float zoom) {
-        zoom = std::clamp(zoom, options.MinZoom, options.MaxZoom);
+        zoom = std::clamp(zoom, MinAllowedZoom(), options.MaxZoom);
         if (std::abs(zoom - zoomLevel) > 0.001f) {
             zoomLevel = zoom;
             UpdateViewTransform();
@@ -80,7 +93,14 @@ namespace UltraCanvas {
         float scaleY = finalBounds.height / docBounds.height;
         float scale = std::min(scaleX, scaleY) * 0.9f;
 
-        zoomLevel = std::clamp(scale, options.MinZoom, options.MaxZoom);
+        // A fit is by definition the scale the drawing needs, so it is not
+        // clamped up to options.MinZoom - a 10 000-unit site plan in a 280 px
+        // tile fits at 0.025 and used to be pinned at 0.1, which showed an
+        // empty patch of the middle of the drawing. It does become the lower
+        // limit for interactive zooming (MinAllowedZoom), so a zoom-out still
+        // stops at the whole drawing.
+        fitZoom = std::min(scale, options.MaxZoom);
+        zoomLevel = fitZoom;
         panOffset.x = (finalBounds.width - docBounds.width * zoomLevel) / 2 - docBounds.x * zoomLevel;
         panOffset.y = (finalBounds.height - docBounds.height * zoomLevel) / 2 - docBounds.y * zoomLevel;
         UpdateViewTransform();
@@ -149,17 +169,17 @@ namespace UltraCanvas {
         return document->FindElementById(selectedElementId);
     }
 
+    // Both directions speak the element's own coordinates - the frame pointer
+    // events arrive in and the frame Render() draws in.
     Point2Dd UltraCanvasVectorElement::ScreenToDocument(int screenX, int screenY) const {
-        auto bounds = GetBounds();
-        float localX = screenX - finalBounds.x - panOffset.x;
-        float localY = screenY - finalBounds.y - panOffset.y;
+        float localX = screenX - panOffset.x;
+        float localY = screenY - panOffset.y;
         return {localX / zoomLevel, localY / zoomLevel};
     }
 
     Point2Di UltraCanvasVectorElement::DocumentToScreen(float docX, float docY) const {
-        auto bounds = GetBounds();
-        int screenX = static_cast<int>(docX * zoomLevel + panOffset.x + finalBounds.x);
-        int screenY = static_cast<int>(docY * zoomLevel + panOffset.y + finalBounds.y);
+        int screenX = static_cast<int>(docX * zoomLevel + panOffset.x);
+        int screenY = static_cast<int>(docY * zoomLevel + panOffset.y);
         return {screenX, screenY};
     }
 
@@ -194,13 +214,17 @@ namespace UltraCanvas {
         return false;
     }
 
+    float UltraCanvasVectorElement::MinAllowedZoom() const {
+        return fitZoom > 0.0f ? std::min(options.MinZoom, fitZoom) : options.MinZoom;
+    }
+
     void UltraCanvasVectorElement::UpdateViewTransform() {
         viewTransform = Matrix3x3::Translate(panOffset.x, panOffset.y) * Matrix3x3::Scale(zoomLevel, zoomLevel);
     }
 
     void UltraCanvasVectorElement::Render(IRenderContext* ctx, const Rect2Df& dirtyRect) {
         if (!IsVisible()) return;
-        auto bounds = GetBounds();
+        auto bounds = GetLocalBounds();
 
         // The first frame after a document arrives is where the element
         // finally knows its size, so a fit asked for before the layout ran
@@ -214,7 +238,7 @@ namespace UltraCanvas {
 
         if (state.HasError) {
             ctx->SetTextPaint(Colors::Red);
-            ctx->DrawText("Error: " + state.ErrorMessage, Point2Dd(finalBounds.x + 10, finalBounds.y + 20));
+            ctx->DrawText("Error: " + state.ErrorMessage, Point2Dd(10, 20));
         } else if (document) {
             RenderDocument(ctx);
         }
@@ -227,7 +251,7 @@ namespace UltraCanvas {
 
     void UltraCanvasVectorElement::RenderBackground(IRenderContext* ctx) {
         if (options.BackgroundColor.a > 0) {
-            auto bounds = GetBounds();
+            auto bounds = GetLocalBounds();
             ctx->SetFillPaint(options.BackgroundColor);
             ctx->FillRectangle(bounds);
         }
@@ -235,11 +259,10 @@ namespace UltraCanvas {
 
     void UltraCanvasVectorElement::RenderDocument(IRenderContext* ctx) {
         if (!document || !renderer) return;
-        auto bounds = GetBounds();
         auto startTime = std::chrono::high_resolution_clock::now();
 
         ctx->PushState();
-        ctx->Translate(finalBounds.x + panOffset.x, finalBounds.y + panOffset.y);
+        ctx->Translate(panOffset.x, panOffset.y);
         ctx->Scale(zoomLevel, zoomLevel);
 
         VectorRenderOptions renderOpts;
@@ -268,29 +291,34 @@ namespace UltraCanvas {
     }
 
     void UltraCanvasVectorElement::RenderBorder(IRenderContext* ctx) {
-        auto bounds = GetBounds();
+        auto bounds = GetLocalBounds();
         ctx->SetStrokePaint(options.BorderColor);
         ctx->SetStrokeWidth(options.BorderWidth);
         ctx->DrawRectangle(bounds);
     }
 
     void UltraCanvasVectorElement::RenderDebugInfo(IRenderContext* ctx) {
-        auto bounds = GetBounds();
         ctx->SetFillPaint(Color(0, 0, 0, 180));
-        ctx->FillRectangle(Rect2Dd(finalBounds.x + 5, finalBounds.y + 5, 150, 60));
+        ctx->FillRectangle(Rect2Dd(5, 5, 150, 60));
         ctx->SetTextPaint(Colors::White);
         ctx->SetFontSize(10);
-        ctx->DrawText("Zoom: " + std::to_string(static_cast<int>(zoomLevel * 100)) + "%", Point2Dd(finalBounds.x + 10, finalBounds.y + 20));
-        ctx->DrawText("Pan: " + std::to_string(static_cast<int>(panOffset.x)) + ", " + std::to_string(static_cast<int>(panOffset.y)), Point2Dd(finalBounds.x + 10, finalBounds.y + 35));
-        if (document) ctx->DrawText("Layers: " + std::to_string(document->Layers.size()), Point2Dd(finalBounds.x + 10, finalBounds.y + 50));
+        ctx->DrawText("Zoom: " + std::to_string(static_cast<int>(zoomLevel * 100)) + "%", Point2Dd(10, 20));
+        ctx->DrawText("Pan: " + std::to_string(static_cast<int>(panOffset.x)) + ", " + std::to_string(static_cast<int>(panOffset.y)), Point2Dd(10, 35));
+        if (document) ctx->DrawText("Layers: " + std::to_string(document->Layers.size()), Point2Dd(10, 50));
     }
 
     bool UltraCanvasVectorElement::OnEvent(const UCEvent& event) {
-        auto bounds = GetBounds();
+        // The owner's callback comes first: a host that put the element on a
+        // page to be clicked (the DWG demo's tiles open a fullscreen viewer on
+        // MouseUp and update a status line on enter/leave) never saw an event,
+        // because panning and selection are the only things handled below and
+        // everything else was dropped.
+        if (UltraCanvasUIElement::OnEvent(event)) return true;
+
         if (event.type == UCEventType::MouseMove || event.type == UCEventType::MouseDown ||
             event.type == UCEventType::MouseUp || event.type == UCEventType::MouseWheel) {
-            if (event.pointer.x < finalBounds.x || event.pointer.x > finalBounds.x + finalBounds.width ||
-                event.pointer.y < finalBounds.y || event.pointer.y > finalBounds.y + finalBounds.height) return false;
+            if (!Contains(Point2Df(static_cast<float>(event.pointer.x),
+                                   static_cast<float>(event.pointer.y)))) return false;
         }
 
         switch (event.type) {
@@ -342,9 +370,8 @@ namespace UltraCanvas {
         if (!options.EnableMouseWheel) return false;
         if (options.InteractionMode == VectorInteractionMode::Zoom ||
             options.InteractionMode == VectorInteractionMode::PanZoom) {
-            auto bounds = GetBounds();
-            float mouseX = event.pointer.x - finalBounds.x;
-            float mouseY = event.pointer.y - finalBounds.y;
+            float mouseX = static_cast<float>(event.pointer.x);
+            float mouseY = static_cast<float>(event.pointer.y);
 
             // The document point under the cursor is captured once and held
             // there for the whole glide, so the drawing grows around the cursor
@@ -361,7 +388,7 @@ namespace UltraCanvas {
             }
             zoomAnim.AnimateBy(event.wheelDelta > 0 ? options.ZoomStep
                                                     : -options.ZoomStep,
-                               options.MinZoom, options.MaxZoom);
+                               MinAllowedZoom(), options.MaxZoom);
             return true;
         }
         return false;
@@ -370,7 +397,7 @@ namespace UltraCanvas {
     // One eased step of a wheel zoom: set the level, then re-solve the pan that
     // keeps the gesture's anchor document point under the cursor.
     void UltraCanvasVectorElement::ApplyZoomLevelAtAnchor(float newZoom) {
-        zoomLevel = std::clamp(newZoom, options.MinZoom, options.MaxZoom);
+        zoomLevel = std::clamp(newZoom, MinAllowedZoom(), options.MaxZoom);
         panOffset.x = zoomAnchorX - zoomAnchorDocX * zoomLevel;
         panOffset.y = zoomAnchorY - zoomAnchorDocY * zoomLevel;
 
