@@ -11,11 +11,17 @@
 // the password is a vault that an attacker with the file can open too, and a
 // silent unprotected mode is exactly the hole UltraCrypt exists to close.
 //
-// Version: 0.1.0
+// Once open, the vault can lock itself again without the app quitting — after
+// a period without input, or on minimise — and the window then shows a lock
+// screen (AuthenticatorWindow.h). Both timings live in a settings file beside
+// the vault (Preferences.h); nothing about them is secret.
+//
+// Version: 0.2.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 #include "AccountStore.h"
 #include "AuthenticatorWindow.h"
+#include "Preferences.h"
 
 #include "UltraCanvasApplication.h"
 #include "UltraCanvasModalDialog.h"
@@ -35,6 +41,12 @@
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::Authenticator;
+
+// Set from the first line of Docs/UltraAuthenticator/CHANGELOG.md by the build
+// (cmake/UltraCanvasVersion.cmake), so --version cannot drift from the release.
+#ifndef ULTRAAUTHENTICATOR_VERSION
+#define ULTRAAUTHENTICATOR_VERSION "0.0.0-dev"
+#endif
 
 namespace {
 
@@ -87,6 +99,12 @@ UltraCryptSecureBuffer AdoptPassword(const std::string& typed) {
     return UltraCryptSecureBuffer::AdoptString(copy);
 }
 
+// Settings live beside the vault, so a custom --vault path carries its own.
+std::string PreferencesPathFor(const std::string& vaultPath) {
+    namespace fs = std::filesystem;
+    return (fs::path(vaultPath).parent_path() / "settings.ini").string();
+}
+
 // Opens (or creates) the vault, then hands off to the window. Kept as a
 // continuation because the password dialog is asynchronous.
 void OpenVaultThen(UltraCanvasApplication& app, AccountStore& store,
@@ -130,7 +148,9 @@ void OpenVaultThen(UltraCanvasApplication& app, AccountStore& store,
                 return;
             }
 
-            windowOut = std::make_shared<AuthenticatorWindow>(app, store);
+            const std::string prefsPath = PreferencesPathFor(vaultPath);
+            windowOut = std::make_shared<AuthenticatorWindow>(
+                app, store, Preferences::Load(prefsPath), prefsPath);
             if (!windowOut->Create()) {
                 std::cerr << "Failed to create the main window\n";
                 app.RequestExit();
@@ -150,7 +170,7 @@ int main(int argc, char* argv[]) {
         std::string a = argv[i];
         if (a == "-h" || a == "--help")    { PrintUsage(argv[0]); return 0; }
         if (a == "-v" || a == "--version") {
-            std::cout << "UltraAuthenticator 0.1.0\n";
+            std::cout << "UltraAuthenticator " << ULTRAAUTHENTICATOR_VERSION << "\n";
             return 0;
         }
         if (a == "--vault" && i + 1 < argc) { vaultPath = argv[++i]; continue; }

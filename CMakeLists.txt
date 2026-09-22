@@ -1541,6 +1541,7 @@ if (BUILD_TESTS)
     add_executable(UltraAuthenticatorExportTests
         Tests/UltraAuthenticatorExportTests.cpp
         Apps/UltraAuthenticator/AccountStore.cpp
+        Apps/UltraAuthenticator/LockPolicy.cpp
         Apps/UltraAuthenticator/AccountExport.cpp
         Apps/UltraAuthenticator/store/EncryptedFileStore.cpp
         Apps/UltraAuthenticator/otp/UltraOtp.cpp
@@ -1597,6 +1598,7 @@ if (BUILD_TESTS)
     add_executable(UltraAuthenticatorAccountTests
         Tests/UltraAuthenticatorAccountTests.cpp
         Apps/UltraAuthenticator/AccountStore.cpp
+        Apps/UltraAuthenticator/LockPolicy.cpp
         # AccountStore now exports and imports backups, so it needs the export
         # container and the envelope underneath it.
         Apps/UltraAuthenticator/AccountExport.cpp
@@ -1615,6 +1617,24 @@ if (BUILD_TESTS)
     )
     add_test(NAME UltraAuthenticatorAccountTests
              COMMAND UltraAuthenticatorAccountTests
+             WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+    # Authenticator lock policy and settings file: the unlock back-off
+    # schedule as a pure function of failures and time, and the preferences
+    # round trip with clamping of hand-edited values. No crypto, no UI.
+    add_executable(UltraAuthenticatorLockTests
+        Tests/UltraAuthenticatorLockTests.cpp
+        Apps/UltraAuthenticator/LockPolicy.cpp
+        Apps/UltraAuthenticator/Preferences.cpp
+    )
+    target_include_directories(UltraAuthenticatorLockTests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAuthenticator)
+    target_compile_features(UltraAuthenticatorLockTests PRIVATE cxx_std_20)
+    set_target_properties(UltraAuthenticatorLockTests PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin
+    )
+    add_test(NAME UltraAuthenticatorLockTests
+             COMMAND UltraAuthenticatorLockTests
              WORKING_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
 
     # UltraVault unit tests: memory-backend CRUD and lifecycle, encrypted-file

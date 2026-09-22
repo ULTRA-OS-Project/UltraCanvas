@@ -535,6 +535,95 @@ static void TestReveal() {
     std::filesystem::remove(path);
 }
 
+// ===========================================================================
+// Lock / Unlock
+// ===========================================================================
+
+static void TestLockAndUnlock() {
+    std::printf("Lock drops the vault; Unlock needs the password\n");
+    const std::string path = TempVaultPath("lock");
+    AccountStore store;
+    Check(store.Create(path, Buf("pw")), "create");
+    std::string key;
+    Check(store.AddFromUri(TotpUri("Example", "alice"), key), "add");
+    Check(!store.IsLocked(), "an open store is not locked");
+
+    store.Lock();
+    Check(store.IsLocked(), "locked after Lock()");
+    Check(!store.IsOpen(), "not open while locked");
+
+    // Everything that reads or writes is refused while locked, with NotOpen —
+    // the same code as before the vault was ever opened.
+    std::vector<Account> accounts;
+    Check(store.List(accounts).code == StoreResultCode::NotOpen, "List refused while locked");
+    std::string code;
+    uint32_t remaining = 0;
+    Check(store.GenerateTotp(key, 59, code, remaining).code == StoreResultCode::NotOpen,
+          "GenerateTotp refused while locked");
+    Check(code.empty(), "no code produced while locked");
+    std::string k2;
+    Check(store.AddFromUri(TotpUri("Example", "bob"), k2).code == StoreResultCode::NotOpen,
+          "AddFromUri refused while locked");
+
+    const int64_t now = 2'000'000;
+    StoreResult wrong = store.Unlock(Buf("not-the-password"), now);
+    Check(!wrong, "wrong password refused");
+    Check(wrong.code == StoreResultCode::AuthenticationFailed, "…as AuthenticationFailed");
+    Check(store.IsLocked(), "still locked after a wrong password");
+    Check(store.FailedUnlockAttempts() == 1, "the failure is counted");
+
+    Check(store.Unlock(Buf("pw"), now), "right password unlocks");
+    Check(store.IsOpen() && !store.IsLocked(), "open again");
+    Check(store.FailedUnlockAttempts() == 0, "success resets the count");
+    Check(store.List(accounts) && accounts.size() == 1 && accounts[0].key == key,
+          "the account is still there after the round trip");
+    Check(store.GenerateTotp(key, 59, code, remaining) && code == "287082",
+          "and still generates the RFC 6238 vector");
+
+    Check(store.Unlock(Buf("pw"), now).code == StoreResultCode::InvalidArgument,
+          "Unlock on an open store is refused");
+
+    store.Close();
+    Check(!store.IsLocked(), "a closed store is not 'locked' — it has no path");
+    Check(store.Unlock(Buf("pw"), now).code == StoreResultCode::NotOpen,
+          "Unlock after Close is refused: there is nothing to reopen");
+    std::filesystem::remove(path);
+}
+
+static void TestUnlockThrottled() {
+    std::printf("Unlock backs off after repeated wrong passwords\n");
+    const std::string path = TempVaultPath("throttle");
+    AccountStore store;
+    Check(store.Create(path, Buf("pw")), "create");
+    store.Lock();
+
+    int64_t now = 3'000'000;
+    for (int i = 0; i < 3; ++i) {
+        Check(store.Unlock(Buf("wrong"), now).code == StoreResultCode::AuthenticationFailed,
+              "free attempt " + std::to_string(i + 1) + " checked and refused");
+    }
+    Check(store.SecondsUntilUnlockAllowed(now) == 0, "no delay yet after three");
+
+    Check(store.Unlock(Buf("wrong"), now).code == StoreResultCode::AuthenticationFailed,
+          "fourth attempt checked and refused");
+    Check(store.SecondsUntilUnlockAllowed(now) == 2, "…and now a 2 s delay runs");
+
+    // During the delay even the *right* password is refused, and refused
+    // with TooManyAttempts rather than AuthenticationFailed: the password was
+    // never looked at.
+    StoreResult early = store.Unlock(Buf("pw"), now + 1);
+    Check(early.code == StoreResultCode::TooManyAttempts, "refused during the delay");
+    Check(store.IsLocked(), "still locked");
+    Check(store.FailedUnlockAttempts() == 4, "a refused attempt is not counted as a failure");
+
+    Check(store.Unlock(Buf("pw"), now + 2), "accepted once the delay has elapsed");
+    Check(store.IsOpen(), "open");
+    Check(store.SecondsUntilUnlockAllowed(now + 2) == 0, "delay cleared by success");
+
+    store.Close();
+    std::filesystem::remove(path);
+}
+
 int main() {
     std::printf("UltraAuthenticator account-layer tests — backend: %s\n\n",
                 UltraCrypt_IsAvailable() ? UltraCrypt_GetBackendName().c_str()
@@ -558,6 +647,8 @@ int main() {
     TestUpdateRejectsBadParameters();
     TestChangePassword();
     TestReveal();
+    TestLockAndUnlock();
+    TestUnlockThrottled();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

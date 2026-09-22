@@ -1,3 +1,14 @@
+#### 2026-09-22 *0.9.20*
+- **A window minimised by the user now reports it.** `IsMinimized()` and the
+  `onWindowMinimize` callback only ever reflected the application's own
+  `Minimize()` call; a click on the title-bar button changed nothing, so an
+  application had no way to notice it had been put away. The Linux backend
+  now watches the ICCCM `WM_STATE` property and raises `WindowMinimize` when
+  it becomes iconic and the new `UCEventType::WindowRestore` when it returns
+  to normal; the base window updates its state on both and calls
+  `onWindowMinimize` / `onWindowRestore`. The first consumer is
+  UltraAuthenticator, which locks its vault on minimise.
+
 #### 2026-09-21 *0.9.19*
 - **`package-linux.sh` and `package-win.sh` looked in one place for
   executables.** Most targets land in the build root; a target that sets

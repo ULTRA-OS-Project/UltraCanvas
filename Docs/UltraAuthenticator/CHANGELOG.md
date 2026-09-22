@@ -1,3 +1,25 @@
+#### 2026-09-22 *0.2.0*
+- **The vault locks itself.** A new **Lock** button, a lock after a period
+  without input to the window (Settings → *Lock after no input for*, default
+  5 minutes, or *Never*), and a lock when the window is minimised (on by
+  default) all do the same thing: clear every card and drop the decrypted
+  vault from memory, then show a lock screen that only the master password or
+  *Quit* gets past. Wrong passwords are throttled — three are free, then each
+  one doubles the wait, up to five minutes — and the throttle lives in the
+  account store, so it holds whatever the UI does.
+- **Codes can be hidden until clicked** (Settings → *Hide codes until a card
+  is clicked*, off by default). A hidden card shows "••• •••"; a click shows
+  its code for 15 seconds. Hidden cards are not even computed, so this also
+  stops the once-a-second decryption of every seed.
+- **Settings dialog and settings file.** The three options above are kept in
+  `settings.ini` beside the vault, in plain `key = value` lines — nothing in
+  it is secret. Hand-edited values are clamped, never trusted.
+- `--version` now reports the version from this file instead of a hard-coded
+  string.
+- Needs UltraCanvas 0.9.20 or later: the minimise lock relies on the
+  framework's new `onWindowMinimize` / `onWindowRestore` notifications for
+  window-manager-initiated minimises (see the framework changelog).
+
 #### 2026-08-31 *0.1.0*
 - **UltraAuthenticator keeps its own changelog from here.** Everything up to
   and including this version shipped as part of a framework release and is
