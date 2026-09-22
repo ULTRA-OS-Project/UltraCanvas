@@ -1,3 +1,38 @@
+#### 2026-09-22 *0.9.23*
+- **Every 3D sample audited for the fault the STL aeroplane had**, by
+  measuring rather than squinting: each file of the E-45 aircraft was loaded
+  through the same path the demo pages and the Filer's thumbnails use, and
+  its silhouette profile matched against the export that draws correctly
+  (the OBJ) over all 24 axis-aligned rotations. Ten of the thirteen agree.
+  Two did not, and are fixed:
+  - **`media/3D/PLY/E-45-Aircraft.ply` held Blender's Z-up coordinates.**
+    PLY declares no up axis and this reader takes the format as Y-up - the
+    convention of the tools that write it most - so the aircraft stood on
+    its nose in every viewer that believed it. The sample is rotated into
+    the Y-up frame, where it agrees with the OBJ export vertex for vertex;
+    `Tests/ModelPLYTest.cpp` pins the new axes and says why.
+  - **`media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx` mis-declared itself.** Its
+    GlobalSettings said UpAxis = Y while its geometry is Z-up (the mesh node
+    connects straight to the scene, with no rotation to make up the
+    difference), so it too came out nose-down while the binary FBX of the
+    same scene was upright. The file now declares the Z-up frame it is
+    actually in; no vertex is touched, and the reader is unchanged.
+- Three samples are left as they are, with what they are:
+  - `X3D` and `VRML` hold the aircraft turned 180 degrees about its up
+    axis - upright, facing the other way. No format says which way a model
+    must face, so this is the files' own choice rather than a fault.
+  - `XFile` comes through **mirrored**: its mesh nodes are drawn with a
+    transform of determinant -1, because the DirectX .x format is
+    left-handed and the reader deliberately leaves that reflection in the
+    root frame (as its header documents) instead of converting to the
+    right-handed frame the rest of the model pipeline uses. The aircraft is
+    left-right symmetric, so the mirror reads as the model lying the wrong
+    way up rather than as an obvious left-right swap. Converting on import
+    (negate one axis, reverse the winding) is the fix, and it belongs to the
+    reader rather than to the sample.
+  - The `.dae`, `.blend` and `.abc` exports carry half a hull each, which is
+    what they were exported as; `Tests/ModelPLYTest.cpp` already says so.
+
 #### 2026-09-22 *0.9.22*
 - **The hostel plan in the DWG demo was a black smudge in the corner of an
   empty sheet.** Two faults in one tile, both of them general.
