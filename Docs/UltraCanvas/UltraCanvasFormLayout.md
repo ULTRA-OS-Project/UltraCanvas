@@ -58,7 +58,7 @@ dialog carried a scrollbar pair over its own caption, because the dialog was a
 couple of pixels shorter than the rows it held and each row was squeezed below
 the 32 px field inside it.
 
-Since framework 0.9.21 this is also the container default: `autoShowScrollbars`
+Since framework 0.9.22 this is also the container default: `autoShowScrollbars`
 is off, so a container arranges its children and scrolls nothing unless it is
 asked to. `DisableScrollbars` stays as the way to say it outright (it clears the
 forced flags too, and states the intent where a reader will look for it), but a
