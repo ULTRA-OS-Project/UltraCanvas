@@ -4,7 +4,7 @@
   opened a vault for it to write into, so every store was refused and a drive
   had to be signed in to again on each start. UltraFiler now has a vault of
   its own — `ultrafiler.vault` and `device.key` under the configuration
-  directory, the framework's `UltraVault::DeviceKeyVault` (0.9.21), unlocked
+  directory, the framework's `UltraVault::DeviceKeyVault` (0.9.23), unlocked
   without a prompt — and the secret store writes into it under UltraCloud's
   `cloud.<accountId>.*` keys. Credentials a build without UltraVault kept in
   `remote-drive-secrets/` are carried into the vault on the first start and

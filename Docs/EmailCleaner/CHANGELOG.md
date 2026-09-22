@@ -3,7 +3,7 @@
   credential vault and asked for each account's password without unlocking it
   first, so every lookup came back empty and the app always reported "No
   account has a server and a saved password". It now unlocks the vault with
-  the device key UltraMail keeps beside it (framework 0.9.21,
+  the device key UltraMail keeps beside it (framework 0.9.23,
   `UltraVault::DeviceKeyVault`), and when that is not possible it says which
   case it is: a vault still locked with a master password (open UltraMail once
   so it stores its device key), or no vault yet (set the account up in

@@ -2,7 +2,7 @@
 - **The credential vault is the framework's now.** `UltraMailCredentialVault.cpp`
   was the only implementation of the device-key vault, and UltraSocial had
   copied it; the implementation moved to `UltraVault::DeviceKeyVault`
-  (framework 0.9.21) and `UltraMailCredentialVault.h` only names UltraMail's
+  (framework 0.9.23) and `UltraMailCredentialVault.h` only names UltraMail's
   profile — `ultramail.vault` and `device.key` in the account folder, keys
   `mail.ultramail.<account>`. Nothing on disk changes and no existing vault
   needs migrating; `CredentialVault`, `OAuthTokens`, `SignInMethod` and
@@ -11,7 +11,7 @@
   compile unchanged. `KeyFor` is a member now rather than static.
 - **Cloud account credentials live in the mail vault too.** "Attach cloud
   link" kept its Nextcloud / Dropbox / Drive tokens in obfuscated files under
-  `cloud-vault/` (UltraCloud's file store, which framework 0.9.21 removes).
+  `cloud-vault/` (UltraCloud's file store, which framework 0.9.23 removes).
   They are in `ultramail.vault` now, under `cloud.<accountId>.*`, and the old
   files are carried across and removed the first time the vault is open — at
   start-up with the device key, or after the one master-password prompt an
