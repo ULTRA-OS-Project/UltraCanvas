@@ -1,5 +1,5 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorModels.cpp
-// Version: 0.3.0
+// Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorModels.h"
 
@@ -44,6 +44,17 @@ std::string ProcessName(const std::optional<ProcessIdentity>& process) {
     return process ? process->displayName : std::string("(unattributed)");
 }
 
+std::string Join(const std::vector<std::string>& items, std::size_t limit) {
+    std::string text;
+    std::size_t shown = 0;
+    for (const auto& item : items) {
+        if (shown++ == limit) { text += "\n…"; break; }
+        if (!text.empty()) text += "\n";
+        text += item;
+    }
+    return text;
+}
+
 // The tooltip on a process cell: the executable, when it was readable.
 std::string ProcessTooltip(const std::optional<ProcessIdentity>& process) {
     if (!process) {
@@ -54,6 +65,24 @@ std::string ProcessTooltip(const std::optional<ProcessIdentity>& process) {
 }
 
 } // namespace
+
+std::string HostText(const std::string& name, NameSource source) {
+    if (name.empty()) return std::string();
+    return NetworkMonitor_NameIsObserved(source) ? name : name + " ?";
+}
+
+std::string HostTooltip(const std::string& name, NameSource source) {
+    if (name.empty()) {
+        return "No name source has seen a query for this address. Start the DNS proxy "
+               "(--dns-proxy) or, on Windows, run elevated for the DNS client's events.";
+    }
+    if (NetworkMonitor_NameIsObserved(source)) {
+        return std::string("Observed: a ") + NetworkMonitor_NameSourceName(source) +
+               " saw the query that resolved to this address.";
+    }
+    return std::string("Weak: from ") + NetworkMonitor_NameSourceName(source) +
+           ". A PTR record names the host, not the site - behind a CDN it says little.";
+}
 
 // ===== CONNECTIONS =====
 
@@ -73,6 +102,7 @@ ListDataValue ConnectionListModel::GetData(const ListIndex& index, ListDataRole 
                 case Local:       return c->LocalEndpoint();
                 case Remote:      return c->IsListening() || c->state == NetworkConnectionState::Unconnected
                                          ? std::string("*") : c->RemoteEndpoint();
+                case Host:        return HostText(c->remoteName, c->nameSource);
                 case State:       return std::string(NetworkMonitor_StateName(c->state));
                 case Sent:        return ByteText(c->bytesSent);
                 case Received:    return ByteText(c->bytesReceived);
@@ -90,6 +120,9 @@ ListDataValue ConnectionListModel::GetData(const ListIndex& index, ListDataRole 
         case ListDataRole::ToolTipRole:
             if (index.column == Application || index.column == Pid) return ProcessTooltip(c->process);
             if (index.column == Remote && !c->remoteAddress.empty()) return c->RemoteEndpoint();
+            if (index.column == Host && !c->IsListening() && c->state != NetworkConnectionState::Unconnected) {
+                return HostTooltip(c->remoteName, c->nameSource);
+            }
             return {};
         default:
             return {};
@@ -104,9 +137,11 @@ ListColumnDef ConnectionListModel::GetColumnDef(int column) const {
         case Protocol:    return ListColumnDef("Proto", 58);
         case Local:       return ListColumnDef("Local", 170, TextAlignment::Left,
                                                "This machine's side of the connection");
-        case Remote:      return ListColumnDef("Remote", 200, TextAlignment::Left,
+        case Remote:      return ListColumnDef("Remote", 170, TextAlignment::Left,
                                                "The other side; * for a listener");
-        case State:       return ListColumnDef("State", 110);
+        case Host:        return ListColumnDef("Host", 180, TextAlignment::Left,
+                                               "The peer's domain name, where a name source saw it; a trailing ? marks a weak (reverse DNS) name");
+        case State:       return ListColumnDef("State", 100);
         case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
                                                "Bytes the peer acknowledged; a dash where the backend has no counter");
         case Received:    return ListColumnDef("Received", 80, TextAlignment::Right,
@@ -160,15 +195,10 @@ ListDataValue ProcessListModel::GetData(const ListIndex& index, ListDataRole rol
             }
         case ListDataRole::ToolTipRole:
             if (index.column == Remotes && !p->remoteAddresses.empty()) {
-                // The first few peers, so a hover answers "talking to whom?".
-                std::string text;
-                std::size_t shown = 0;
-                for (const auto& address : p->remoteAddresses) {
-                    if (shown++ == 8) { text += "\n…"; break; }
-                    if (!text.empty()) text += "\n";
-                    text += address;
-                }
-                return text;
+                // The first few peers, by name where known, so a hover
+                // answers "talking to whom?".
+                return p->remoteNames.empty() ? Join(p->remoteAddresses, 8)
+                                              : Join(p->remoteNames, 8) + "\n" + Join(p->remoteAddresses, 4);
             }
             if (index.column == Application || index.column == Pid) {
                 return p->attributed ? p->process.executablePath
@@ -229,6 +259,7 @@ ListDataValue FlowListModel::GetData(const ListIndex& index, ListDataRole role) 
                                          (f->family == NetworkAddressFamily::IPv6 ? "6" : "");
                 case Local:       return f->LocalEndpoint();
                 case Remote:      return unbound ? std::string("*") : f->RemoteEndpoint();
+                case Host:        return HostText(f->remoteName, f->nameSource);
                 case State:       return std::string(NetworkMonitor_StateName(f->lastState));
                 case FirstSeen:   return LocalTime(f->firstSeen);
                 case LastSeen:    return LocalTime(f->lastSeen);
@@ -249,6 +280,7 @@ ListDataValue FlowListModel::GetData(const ListIndex& index, ListDataRole role) 
             }
         case ListDataRole::ToolTipRole:
             if (index.column == Application || index.column == Pid) return ProcessTooltip(f->process);
+            if (index.column == Host && !unbound) return HostTooltip(f->remoteName, f->nameSource);
             return {};
         default:
             return {};
@@ -261,7 +293,9 @@ ListColumnDef FlowListModel::GetColumnDef(int column) const {
         case Pid:         return ListColumnDef("PID", 60, TextAlignment::Right);
         case Protocol:    return ListColumnDef("Proto", 56);
         case Local:       return ListColumnDef("Local", 150);
-        case Remote:      return ListColumnDef("Remote", 180);
+        case Remote:      return ListColumnDef("Remote", 160);
+        case Host:        return ListColumnDef("Host", 170, TextAlignment::Left,
+                                               "The peer's domain name as recorded; a trailing ? marks a weak name");
         case State:       return ListColumnDef("Last state", 100);
         case FirstSeen:   return ListColumnDef("First seen", 140);
         case LastSeen:    return ListColumnDef("Last seen", 140);
@@ -279,6 +313,68 @@ void FlowListModel::Replace(std::vector<RecordedFlow> rows) {
 }
 
 const RecordedFlow* FlowListModel::At(int row) const {
+    if (row < 0 || row >= static_cast<int>(rows_.size())) return nullptr;
+    return &rows_[static_cast<std::size_t>(row)];
+}
+
+// ===== NAMES =====
+
+int NameListModel::GetRowCount() const { return static_cast<int>(rows_.size()); }
+int NameListModel::GetColumnCount() const { return ColumnCount; }
+
+ListDataValue NameListModel::GetData(const ListIndex& index, ListDataRole role) const {
+    const NameRecord* r = At(index.row);
+    if (!r) return {};
+    switch (role) {
+        case ListDataRole::DisplayRole:
+            switch (index.column) {
+                case Name:        return r->name;
+                case Address:     return r->address;
+                case Source:      return std::string(NetworkMonitor_NameSourceName(r->source)) +
+                                         (NetworkMonitor_NameIsObserved(r->source) ? "" : " (weak)");
+                case Observed:    return LocalTime(r->observedAt);
+                case Expires:     return LocalTime(r->expiresAt);
+                case Application: return r->process
+                                         ? r->process->displayName + " (" + std::to_string(r->process->pid) + ")"
+                                         : std::string("\u2014");
+                default:          return {};
+            }
+        case ListDataRole::SortRole:
+            if (index.column == Observed) return static_cast<float>(r->observedAt);
+            if (index.column == Expires) return static_cast<float>(r->expiresAt);
+            return {};
+        case ListDataRole::ToolTipRole:
+            if (index.column == Source || index.column == Name) return HostTooltip(r->name, r->source);
+            if (index.column == Application) {
+                return r->process ? std::string("The process that asked, from the DNS client's events")
+                                  : std::string("Only the Windows DNS client events know the asking process");
+            }
+            return {};
+        default:
+            return {};
+    }
+}
+
+ListColumnDef NameListModel::GetColumnDef(int column) const {
+    switch (column) {
+        case Name:        return ListColumnDef("Name", 240, TextAlignment::Left, "The name that was asked for");
+        case Address:     return ListColumnDef("Address", 170);
+        case Source:      return ListColumnDef("Source", 150, TextAlignment::Left,
+                                               "Observed sources saw the query; weak ones guessed from a PTR record");
+        case Observed:    return ListColumnDef("Observed", 140);
+        case Expires:     return ListColumnDef("Kept until", 140, TextAlignment::Left,
+                                               "Names outlive their DNS TTL, since a connection outlives the answer that started it");
+        case Application: return ListColumnDef("Asked by", 160);
+        default:          return ListColumnDef("", 80);
+    }
+}
+
+void NameListModel::Replace(std::vector<NameRecord> rows) {
+    rows_ = std::move(rows);
+    NotifyDataChanged();
+}
+
+const NameRecord* NameListModel::At(int row) const {
     if (row < 0 || row >= static_cast<int>(rows_.size())) return nullptr;
     return &rows_[static_cast<std::size_t>(row)];
 }
