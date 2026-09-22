@@ -65608,7 +65608,9 @@ starts a private `dbus-daemon --session` (its address goes to
 drive the freedesktop adapter over real D-Bus — a client sending `Notify`, a
 rival owning the name to force monitor mode — without touching the user's
 bus; without `dbus-daemon` those tests skip. CI enables the suite on every
-platform and runs it on Linux.
+platform and runs it on Linux. The standalone tree takes UltraDatabase's
+source list from `cmake/UltraDatabaseSources.cmake`, the same list the
+in-tree build uses.
 
 ## 9. Not in this phase
 

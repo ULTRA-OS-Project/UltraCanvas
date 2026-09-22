@@ -20,14 +20,10 @@ if(NOT TARGET UltraMessage)
     find_package(PkgConfig REQUIRED)
     pkg_check_modules(SQLITE3 REQUIRED sqlite3)
 
-    add_library(UltraDatabase STATIC
-        ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabaseValue.cpp
-        ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabaseManager.cpp
-        ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabaseSqliteDriver.cpp
-        # Without ULTRADATABASE_HAS_POSTGRES these compile to the stub the
-        # manager's EnsureBuiltins() links against.
-        ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabasePostgresDriver.cpp
-        ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabasePostgresSql.cpp)
+    # The same source list the in-tree build uses (cmake/UltraDatabaseSources.cmake).
+    include(${_um_root}/cmake/UltraDatabaseSources.cmake)
+    ultradatabase_sources(_um_db_sources ${_um_root}/UltraCanvas)
+    add_library(UltraDatabase STATIC ${_um_db_sources})
     target_include_directories(UltraDatabase PUBLIC ${_um_root}/UltraCanvas/include)
     target_include_directories(UltraDatabase PRIVATE ${SQLITE3_INCLUDE_DIRS})
     target_link_libraries(UltraDatabase PUBLIC Threads::Threads ${SQLITE3_LIBRARIES})

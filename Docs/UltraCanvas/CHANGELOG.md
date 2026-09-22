@@ -29,6 +29,10 @@
   D-Bus (serving, mirrors, replace/close, actions signalled back, the switch,
   monitor mode with a rival owner). `Tests/UltraMail` gains the publisher's
   filter and rate-limit tests. The Linux CI row installs `dbus`.
+- **Build:** UltraDatabase's source list lives once in
+  `cmake/UltraDatabaseSources.cmake` (`ultradatabase_sources(<var> <dir>)`),
+  used by the in-tree build and the standalone `Tests/UltraMessage` tree, so
+  a new driver (the Postgres one broke the standalone link) is one edit.
 
 #### 2026-09-22 *0.9.22*
 - **A container no longer scrolls unless it is asked to.**

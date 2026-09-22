@@ -2647,13 +2647,10 @@ if(ULTRACANVAS_ENABLE_DATABASE)
     if(NOT SQLITE3_LIBRARIES)
         message(STATUS "  [−] UltraDatabase - DISABLED (libsqlite3 not found)")
     else()
-        set(ULTRADATABASE_SOURCES
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseValue.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseManager.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseSqliteDriver.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabasePostgresDriver.cpp
-            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabasePostgresSql.cpp
-        )
+        # The source list is shared with the standalone test trees; see
+        # cmake/UltraDatabaseSources.cmake.
+        include(${CMAKE_CURRENT_SOURCE_DIR}/../cmake/UltraDatabaseSources.cmake)
+        ultradatabase_sources(ULTRADATABASE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR})
 
         # PostgreSQL, for the multi-user mode. Optional and soft-failing: with
         # libpq the driver registers itself, without it the same source
