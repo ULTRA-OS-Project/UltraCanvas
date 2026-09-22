@@ -3,8 +3,8 @@
 // one per AI capability. Clicking an icon opens a modal dialog
 // driven by the matching in-process mock adapter — no network or
 // external models required.
-// Version: 0.1.1
-// Last Modified: 2026-07-12
+// Version: 0.1.2
+// Last Modified: 2026-09-21
 // Author: UltraAI Module
 
 #include "UltraAIDashboard.h"
@@ -15,6 +15,7 @@
 #endif
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasDebug.h"
+#include "UltraCanvasUtils.h"
 
 #ifdef __linux__
 #include <X11/Xlib.h>
@@ -74,6 +75,12 @@ int main(int argc, char* argv[]) {
             std::cerr << "Failed to initialize UltraCanvas application\n";
             return EXIT_FAILURE;
         }
+        // One icon, everywhere the app is drawn: the window and the taskbar
+        // entry that follows it read this file; the .ico embedded in the
+        // Windows binary and the desktop entry's theme icon are the same
+        // media/appicon/UltraAI.{png,svg} (see CMakeLists.txt).
+        app.SetDefaultWindowIcon(
+            NormalizePath(GetResourcesDir() + "media/appicon/UltraAI.png"));
 
         UltraCanvasDialogManager::SetUseNativeDialogs(false);
 

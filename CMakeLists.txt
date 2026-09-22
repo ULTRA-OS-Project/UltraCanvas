@@ -1349,8 +1349,30 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAI_Core)
 
     target_compile_definitions(UltraAIApp PRIVATE
         ULTRAAI_APP_VERSION="0.1.0"
+        UCAPP_ICON_PATH="media/appicon/UltraAI.png"
         $<$<CONFIG:Debug>:ULTRACANVAS_DEBUG=1>
     )
+
+    # Embed app icon in .exe (Windows only)
+    ultracanvas_embed_app_icon(UltraAIApp
+        "${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraAI.png")
+
+    # The freedesktop shortcut: the application menu entry, and the icon
+    # name it carries resolved through the installed themes.
+    if(UNIX AND NOT APPLE AND NOT ANDROID AND NOT EMSCRIPTEN)
+        # Exec=UltraAIApp / TryExec=UltraAIApp are resolved against PATH, so
+        # the entry is only true if the binary is installed with it.
+        install(TARGETS UltraAIApp RUNTIME DESTINATION bin)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/Apps/UltraAIApp/UltraAI.desktop
+                DESTINATION share/applications)
+        # Icon=UltraAI is an icon *name*: it is resolved through the
+        # installed themes, so the files have to land in one.
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraAI.png
+                DESTINATION share/icons/hicolor/256x256/apps)
+        install(FILES ${CMAKE_CURRENT_SOURCE_DIR}/media/appicon/UltraAI.svg
+                DESTINATION share/icons/hicolor/scalable/apps)
+        message(STATUS "  UltraAI desktop entry: share/applications/UltraAI.desktop")
+    endif()
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
         target_compile_options(UltraAIApp PRIVATE)
@@ -1818,6 +1840,19 @@ if(BUILD_ULTRAPAINT_APP)
 endif()
 if(BUILD_ARTCREATOR_APP)
     add_dependencies(ArtCreator copy_assets)
+endif()
+if(BUILD_ULTRAAI_APP AND TARGET UltraAIApp)
+    # The dashboard reads media/appicon/UltraAI.png from the resources dir,
+    # which is this copy in the build tree.
+    add_dependencies(UltraAIApp copy_assets)
+endif()
+# Same reason: both read their media/appicon/<App>.png from the resources dir,
+# so the asset copy has to exist before the binary is run out of the build tree.
+if(TARGET UltraNetMonitor)
+    add_dependencies(UltraNetMonitor copy_assets)
+endif()
+if(TARGET UltraAuthenticator)
+    add_dependencies(UltraAuthenticator copy_assets)
 endif()
 
 # The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so

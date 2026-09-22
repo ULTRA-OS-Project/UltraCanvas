@@ -128,7 +128,7 @@ TEST(service_refreshes_expired_token_and_stores_it) {
 
     AccountStore accounts;
     REQUIRE(accounts.Open("uctest-oauth-service", ":memory:"));
-    FileSecretStore secrets(TempDir("oauth-secrets"));
+    MemorySecretStore secrets;
     CloudService service(accounts, secrets);
 
     Account a; a.providerId = "onedrive"; a.username = "erika@outlook.com";
@@ -170,7 +170,7 @@ TEST(service_sign_in_fills_account_from_provider) {
 
     AccountStore accounts;
     REQUIRE(accounts.Open("uctest-oauth-signin", ":memory:"));
-    FileSecretStore secrets(TempDir("oauth-signin-secrets"));
+    MemorySecretStore secrets;
     CloudService service(accounts, secrets);
 
     Account a; a.providerId = "googledrive";

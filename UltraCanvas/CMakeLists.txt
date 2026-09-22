@@ -1200,8 +1200,8 @@ endif()
 # UltraCanvas::NetworkMonitorAddress::FormatIPv4". Compile them exactly once,
 # into NetworkMonitor, which the applications link.
 file(GLOB _ultracanvas_networkmonitor_platform_srcs
-    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor*.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/${ULTRACANVAS_PLATFORM_DIR}/*NetworkMonitor*.mm
 )
 if(_ultracanvas_networkmonitor_platform_srcs)
     list(REMOVE_ITEM ULTRACANVAS_PLATFORM_SOURCES ${_ultracanvas_networkmonitor_platform_srcs})
@@ -2107,7 +2107,8 @@ endif()
 # encrypted-file backends on UltraCrypt; UI-free, so headless consumers
 # (UltraAI adapters, tools) link it without the widget layer.
 add_library(UltraVault STATIC
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultCore.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultCore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraVault/UltraVaultDeviceKeyVault.cpp)
 target_include_directories(UltraVault PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include/ultracanvas>)
@@ -2126,13 +2127,18 @@ set(_uc_networkmonitor_sources
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorCore.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorAddress.cpp
     ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorProcfs.cpp
-    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorStore.cpp)
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorStore.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDns.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorNames.cpp
+    ${CMAKE_CURRENT_SOURCE_DIR}/core/NetworkMonitor/NetworkMonitorDnsProxy.cpp)
 if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp)
 elseif(WIN32)
+    # The socket tables, and the DNS client's ETW events as a name source.
     list(APPEND _uc_networkmonitor_sources
-        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp)
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp)
 elseif(APPLE)
     list(APPEND _uc_networkmonitor_sources
         ${CMAKE_CURRENT_SOURCE_DIR}/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp)

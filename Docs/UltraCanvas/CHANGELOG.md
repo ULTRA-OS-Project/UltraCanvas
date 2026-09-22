@@ -1,3 +1,155 @@
+#### 2026-09-22 *0.9.23*
+- **New: `UltraVault::DeviceKeyVault` — an application's own vault on
+  UltraVault** (`<UltraVault/UltraVaultDeviceKeyVault.h>`, target `UltraVault`,
+  reference `Docs/Modules/UltraVault/README.md`). One encrypted vault file in a
+  directory the application owns, unlocked without a prompt by a random
+  passphrase kept owner-only in `device.key` beside it (`TryAutoUnlock`) or by
+  an explicit master password (`Unlock` -> `UnlockStatus`, which tells a wrong
+  password from a build without crypto; `PersistDeviceKey` makes the next run
+  silent); per-account `Store` / `Retrieve` / `Has` / `Remove`, an OAuth2
+  token set beside the password slot (`StoreOAuthTokens` …, `MethodFor` ->
+  `SignInMethod`), and migration of the 0.1 XOR-sidecar format (`vault.key` +
+  `creds.dat`) on the first unlock. A `DeviceKeyVaultProfile` — vault file
+  name and key prefix in the `<vendor>.<app>.` convention — tells one
+  application's vault from another's. This is UltraMail's `CredentialVault`
+  0.6.0 moved into the framework: UltraSocial carried a copy of it that had
+  never left the 0.1 format, so the two had drifted apart; both apps are now
+  one-line profiles of the one class (UltraMail 0.10.2, UltraSocial 0.1.1). The
+  legacy reader keeps a private Base64 decoder because UltraVault stays off the
+  UltraCanvas library on purpose (the link-time split that keeps UltraCrypt
+  UI-free). Covered in `Tests/UltraVaultTests.cpp`: locked-until-unlocked,
+  first-run key + vault creation and reopen, profile-prefixed keys, no
+  plaintext on disk, wrong / empty passphrase, token sets, the
+  "vault without a device key must prompt" case, and the migration.
+- **UltraCloud keeps no secret files of its own any more.** `FileSecretStore`
+  — obfuscated per-account files, XOR against a `cloud.key` beside them — was
+  a third copy of the weak format UltraMail and UltraSocial had left behind,
+  and it is gone: `VaultSecretStore` (in whichever UltraVault the application
+  opened, under `cloud.<accountId>.*`) is the store, `MemorySecretStore` the
+  process-lifetime one for tests and demos, and `MigrateLegacyFileSecrets`
+  carries an old directory into a store once, deleting each file as its
+  secret lands and the key file when none is left. UltraVault is a hard
+  dependency of the module now (`ULTRACLOUD_USE_ULTRAVAULT` stays defined for
+  consumers that test it). The UltraCloud suite covers all three
+  (`Tests/UltraCloud/test_secrets.cpp`). UltraMail 0.10.2 and UltraFiler
+  1.44.1 are the consumers that moved.
+- **`scripts/check_changelog.py --base` now catches a stale number before the
+  merge.** It compared the branch's entry only with the versions in the
+  branch's own copy of the file, plus one rule against the base: not the same
+  number as the base's line 1. A branch that picked the next number, was
+  overtaken by releases on `main` and had not merged `main` since therefore
+  passed - its file simply did not contain the newer entries - which is how
+  this branch's own entry sat at 0.9.16 while `main` was on 0.9.20. The
+  pull-request rule is now "strictly above the base's line 1", so both the
+  shared and the stale shape are refused while the number is still cheap to
+  change. `AGENTS.md` says to fetch `main` first, since the comparison is only
+  as current as the local `origin/main`.
+
+#### 2026-09-22 *0.9.22*
+- **A container no longer scrolls unless it is asked to.**
+  `ContainerStyle::autoShowScrollbars` now defaults to **off**. It defaulted to
+  on, and most containers in this tree are not viewports: they are form rows,
+  button bars, toolbar strips, cards and panes, laid out to fit. For those a
+  scrollbar was never the answer to anything — it appeared because the content
+  came out a pixel or two larger than the box, and then made it worse, because
+  the bar narrows the viewport by its own track size and so fabricates an
+  overflow on the other axis too. The pair was then drawn across the very row
+  it was meant to be laying out.
+  - **The default had already been written off three times in place** — the
+    window's own style (`enableWindowScrolling`), the eBook reader's nested
+    blocks, and the form grid each turn it off with a comment explaining this
+    exact cascade — and a dozen more call sites turn it off by hand before it
+    can happen to them (the toolbar, the album, the filer, the split pane, the
+    audio bars, Texter's rows, UltraCleaner's cards, UltraNetMonitor's bars).
+    UltraFiler's FTP login in 0.9.20 was the same defect once more.
+  - **A real scroll view opts in**, with `CreateScrollableContainer` (unchanged:
+    it sets the flag itself) or `autoShowScrollbars = true`. Three places in the
+    tree are deliberate scroll views and now say so: the eBook reader's chapter
+    pane and UltraMail's message body and its HTML host. The demo's scrolling
+    text block already said so.
+  - The opt-outs left at the call sites are no-ops now rather than load-bearing.
+    They are not removed here: each is one line stating an intent, and a sweep
+    that touches a dozen files to delete lines that do nothing is its own
+    change, not a rider on this one.
+
+#### 2026-09-22 *0.9.21*
+- **NetworkMonitor names.** `NetworkMonitorNames.h`: the name-source
+  plug-in point the proposal asked for (§2.3), and the sources behind it.
+  `INameSource` is what a source implements; `NetworkMonitor_RegisterNameSource`
+  starts it and feeds its observations to one *name table*
+  (`NetworkMonitor_LookupName` / `ListNames` / `ObserveName`), where every
+  address carries the name it was seen under and the `NameSource` it came
+  from - `DnsProxy`, `EtwDnsClient`, `PacketCapture` and `Sni` are
+  *observed* (a source saw the query), `ReverseDns` and `Inferred` are
+  *weak*, and an observed name always beats a weak one, however old.
+  `NetworkMonitor_ListConnections` fills each connection's `remoteName`
+  and `nameSource` from the table when `NetworkMonitorOptions::resolveNames`
+  is set (the default) and hands the peers nobody has named to the sources,
+  so reverse DNS knows what to look up. Names outlive their DNS TTL - at
+  least an hour - since a connection outlives the answer that started it.
+  - **The local DNS proxy** (`NetworkMonitor_CreateDnsProxySource`): listens
+    on 127.0.0.1, forwards every query to the upstream resolver unchanged
+    over UDP or TCP and reads the answers on the way back, following CNAME
+    chains so the address maps to the name the application asked for.
+    Cross-platform, one thread, one `select()` loop; refuses an upstream
+    that is itself. The wire format is `NetworkMonitorDns.h`: pure
+    functions over bytes, every read bounds-checked, compression pointers
+    that do not go backwards refused, tested from fixture bytes.
+  - **Reverse DNS** (`NetworkMonitor_CreateReverseDnsSource`): `getnameinfo`
+    on its own thread with a negative cache, never for loopback, link-local,
+    multicast or (unless asked) private addresses; labelled weak.
+  - **The Windows DNS client's ETW events** (`NetworkMonitor_CreateSystemDnsSource`,
+    `OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp`): a real-time
+    session on `Microsoft-Windows-DNS-Client`, event 3008, the one source
+    that reports the asking PID; needs an elevated token and says so.
+    Null on Linux and macOS. Compiled on CI, not yet exercised at run time.
+  - **The store records names.** Schema version 2 (a version-1 file
+    migrates in place): flows and daily totals carry `remote_name`, a flow
+    keeps the best name it was seen with, the text filter and the CSV
+    include it, and a `dns_observations` table holds every observation a
+    source reported (`NetworkMonitor_RecordDnsObservation` /
+    `QueryDnsObservations`), one row per address, dropped by retention
+    with the flows. `NetworkMonitor_AddNameListener` is how an app's
+    recorder hears them.
+  - `NetworkMonitorCapabilities::dnsWithProcess` is now true while a source
+    that reports the process is running; `ProcessTrafficSummary` lists the
+    distinct `remoteNames` it saw; `NetworkMonitor_NameSourceName` and
+    `NetworkMonitor_NameIsObserved` name and grade a source.
+  - Tests: the wire format, the table's precedence and lifetime rules, the
+    listener, the reverse DNS filters, the proxy end to end over UDP and
+    TCP against a fake resolver on loopback, and the store's names, the
+    observations, the CSV, the roll-up and the version-1 migration.
+  - The platform-glob exclusion in `UltraCanvas/CMakeLists.txt` now covers
+    every `*NetworkMonitor*.cpp`, so the new Windows source is compiled
+    once, into `NetworkMonitor`, and not into the core DLL.
+#### 2026-09-22 *0.9.20*
+- **A form caption is not something you scroll.** Every row of UltraCloud's
+  add-account dialog - the FTP / SFTP login UltraFiler's "+ Drive" opens -
+  was drawn with a scrollbar pair straight across its caption and its field.
+  The dialog built a flex container per row and let the column shrink them:
+  at 420 px it was a couple of pixels shorter than the rows it held, so each
+  32 px row was squeezed to 30, the 32 px control inside it no longer fitted,
+  and the row (a plain container, auto scrollbars on) raised a vertical
+  scrollbar - which narrowed the viewport by its own width and raised a
+  horizontal one as well.
+  - **The form is a `UltraCanvasFormLayout` grid now**, like every other
+    dialog in the tree: captions share one `auto` column that is as wide as
+    the widest of them (no more `kLabelWidth = 130`, so a longer translation
+    widens the column instead of being cut off), controls share the `1fr`
+    column and start at the same x, and the grid is `flex-shrink: 0`, so a
+    short dialog can no longer squeeze a row below the control in it. The
+    dialog is tall enough for the provider that needs every row, and a spacer
+    holds the buttons at the bottom for the ones that do not.
+  - **`CreateFormCellRow` no longer carries scrollbars either**, and the new
+    `DisableScrollbars(container)` says it in one line for any container that
+    only arranges what is in it. The container default is right for a pane
+    that holds content, not for one that holds a layout.
+  - The cloud file picker's "Account" and "Folder" rows went the same way, so
+    the two captions line up without either carrying a width of its own.
+  - `Tests/CSSLayoutFormGridTest.cpp` now pins the rule the dialog broke: a
+    dialog shorter than its form leaves every row at its own height, where a
+    flex row per field is squeezed below the control inside it.
+
 #### 2026-09-21 *0.9.19*
 - **`package-linux.sh` and `package-win.sh` looked in one place for
   executables.** Most targets land in the build root; a target that sets

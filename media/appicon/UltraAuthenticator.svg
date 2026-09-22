@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1"
+     width="256" height="256" viewBox="273.057 -357.652 205.068 205.068"
+     fill="none"
+     fill-rule="evenodd"
+     stroke="black"
+     stroke-width="0.501"
+     stroke-linejoin="bevel"
+     stroke-miterlimit="10">
+  <title>UltraAuthenticator</title>
+  <desc>The ULTRA wordmark in five code tiles: the authenticator mark.</desc>
+  <g id="Layer 1" transform="scale(1 -1)">
+  <g id="Group" stroke-linecap="round">
+   <rect x="283.466" y="212.6" width="184.25" height="85.039" rx="22.67" ry="22.67" stroke-width="8" stroke-linejoin="miter"/>
+   <rect x="299.06" y="226.774" width="28.345" height="56.692" stroke="none" fill="#ff7ffe" stroke-width="0.5" stroke-linejoin="miter"/>
+   <g id="Group_1" fill-rule="nonzero" stroke-linejoin="round" stroke="none" stroke-width="1.172" fill="#000000">
+    <g id="Group_2">
+     <path d="M 313.34,238.27 C 306.22,238.27 302.66,241.906 302.66,249.179 L 302.66,271.271 L 308.184,271.271 L 308.184,249.179 C 308.184,247.3 308.607,245.879 309.456,244.916 C 310.304,243.954 311.629,243.473 313.432,243.472 C 316.931,243.488 318.68,245.39 318.68,249.179 L 318.68,271.271 L 324.203,271.271 L 324.203,249.179 C 324.203,245.543 323.278,242.815 321.43,240.997 C 319.581,239.179 316.884,238.27 313.34,238.27 Z" marker-start="none" marker-end="none"/>
+    </g>
+   </g>
+   <rect x="330.24" y="226.774" width="28.345" height="56.692" stroke="none" fill="#00ffff" stroke-width="0.5" stroke-linejoin="miter"/>
+   <g id="Group_3" fill-rule="nonzero" stroke-linejoin="round" stroke="none" stroke-width="1.172" fill="#000000">
+    <g id="Group_4">
+     <path d="M 333.413,238.849 L 333.413,271.391 L 338.936,271.391 L 338.936,238.849 L 333.413,238.849 Z M 333.413,238.849 L 333.413,243.936 L 355.413,243.914 L 355.413,238.849 L 333.413,238.849 Z" marker-start="none" marker-end="none"/>
+    </g>
+   </g>
+   <rect x="361.418" y="226.774" width="28.347" height="56.692" stroke="none" fill="#7fff81" stroke-width="0.5" stroke-linejoin="miter"/>
+   <g id="Group_5" fill-rule="nonzero" stroke-linejoin="round" stroke="none" stroke-width="1.172" fill="#000000">
+    <g id="Group_6">
+     <path d="M 372.842,238.849 L 372.819,271.391 L 378.342,271.391 L 378.365,238.849 L 372.842,238.849 Z M 363.446,266.326 L 363.446,271.391 L 387.739,271.391 L 387.739,266.304 L 363.446,266.326 Z" marker-start="none" marker-end="none"/>
+    </g>
+   </g>
+   <rect x="392.598" y="226.774" width="28.347" height="56.692" stroke="none" fill="#fffc00" stroke-width="0.5" stroke-linejoin="miter"/>
+   <g id="Group_7" fill-rule="nonzero" stroke-linejoin="round" stroke="none" stroke-width="1.172" fill="#000000">
+    <g id="Group_8">
+     <path d="M 400.263,250.949 L 400.263,256.037 L 406.474,256.037 C 408.047,256.037 409.27,256.48 410.14,257.366 C 411.011,258.252 411.447,259.49 411.447,261.079 C 411.447,262.744 411.011,264.031 410.14,264.94 C 409.27,265.849 408.047,266.304 406.474,266.304 L 400.355,266.304 L 399.805,271.391 L 406.474,271.391 C 409.927,271.391 412.593,270.535 414.472,268.824 C 416.351,267.113 417.291,264.684 417.291,261.537 C 417.291,258.191 416.351,255.589 414.472,253.733 C 412.593,251.877 409.927,250.949 406.474,250.949 L 400.263,250.949 Z M 395.061,238.849 L 395.061,271.391 L 400.584,271.391 L 400.584,238.849 L 395.061,238.849 Z M 411.951,238.849 L 405.351,254.157 L 411.195,254.157 L 418.483,238.849 L 411.951,238.849 Z" marker-start="none" marker-end="none"/>
+    </g>
+   </g>
+   <rect x="423.778" y="226.774" width="28.346" height="56.692" stroke="none" fill="#ff7f7f" stroke-width="0.5" stroke-linejoin="miter"/>
+   <g id="Group_9" fill-rule="nonzero" stroke-linejoin="round" stroke="none" stroke-width="1.172" fill="#000000">
+    <g id="Group_10">
+     <path d="M 425.004,238.849 L 434.4,271.391 L 441.504,271.391 L 450.901,238.849 L 445.056,238.849 L 438.158,265.043 L 437.746,265.043 L 430.848,238.849 L 425.004,238.849 Z M 429.588,245.724 L 429.588,250.812 L 446.088,250.812 L 446.088,245.724 L 429.588,245.724 Z" marker-start="none" marker-end="none"/>
+    </g>
+   </g>
+  </g>
+ </g>
+
+</svg>

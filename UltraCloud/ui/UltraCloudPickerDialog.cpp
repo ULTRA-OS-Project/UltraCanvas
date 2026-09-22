@@ -1,6 +1,6 @@
 // UltraCloud/ui/UltraCloudPickerDialog.cpp
-// Version: 0.2.0 - shared UiStyle: themed list, captions and buttons
-// Last Modified: 2026-09-09
+// Version: 0.2.1 - the captioned header rows come from UltraCanvasFormLayout
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudPickerDialog.h"
 #include "UltraCloudUiStyle.h"
@@ -12,6 +12,7 @@
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
 #include "UltraCanvasFileLoader.h"
+#include "UltraCanvasFormLayout.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
 
@@ -264,37 +265,41 @@ void ShowCloudLinkPicker(UltraCanvasWindowBase* parent, CloudService& service,
     dialog->SetPadding(UiStyle::kPadding);
     dialog->SetBackgroundColor(UiStyle::kSurface);
 
+    // The two captioned rows share one grid, so "Account" and "Folder" line up
+    // without either caption carrying a width of its own, and neither row can
+    // be squeezed below its controls (which is what puts a scrollbar pair
+    // inside a row that only lays its children out).
+    auto topForm = CreateFormGrid("cloudPickForm", 8.0f, 8.0f);
+
     // Row 1: account + add.
-    auto accountRow = CreateContainer("cloudPickAccountRow", 0, 0, 0, UiStyle::kControlHeight);
-    accountRow->layout.SetFlexRow().SetFlexGap(8)
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    accountRow->AddChild(UiStyle::MakeCaption("cloudPickAccountLbl", "Account", 70));
-    st->accountBox = CreateDropdown("cloudPickAccount", 0, 0, 300, UiStyle::kControlHeight);
-    accountRow->AddChild(st->accountBox);
+    auto accountCell = CreateFormCellRow("cloudPickAccountRow", 8.0f,
+                                         static_cast<int>(UiStyle::kControlHeight));
+    st->accountBox = CreateDropdown("cloudPickAccount", 0, 0, 0, UiStyle::kControlHeight);
+    accountCell->AddChild(st->accountBox);
     st->accountBox->layoutItem.SetFlexGrow(1);
     auto addBtn = CreateButton("cloudPickAdd", 0, 0, 134, UiStyle::kControlHeight, "Add account…");
     UiStyle::StyleSecondary(addBtn);
-    accountRow->AddChild(addBtn);
-    dialog->AddChild(accountRow);
+    accountCell->AddChild(addBtn);
+    AddFormRow(topForm, UiStyle::MakeCaption("cloudPickAccountLbl", "Account"), accountCell);
 
     // Row 2: path + Up + Upload.
-    auto pathRow = CreateContainer("cloudPickPathRow", 0, 0, 0, UiStyle::kControlHeight);
-    pathRow->layout.SetFlexRow().SetFlexGap(8)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    pathRow->AddChild(UiStyle::MakeCaption("cloudPickPathLbl", "Folder", 70));
+    auto pathCell = CreateFormCellRow("cloudPickPathRow", 8.0f,
+                                      static_cast<int>(UiStyle::kControlHeight));
     st->pathLabel = CreateLabel("cloudPickPath", 0, 0, 0, UiStyle::kControlHeight, "/");
     st->pathLabel->SetFontSize(UiStyle::kFontSize);
     st->pathLabel->SetTextColor(UiStyle::kTextPrimary);
-    pathRow->AddChild(st->pathLabel);
+    pathCell->AddChild(st->pathLabel);
     st->pathLabel->layoutItem.SetFlexGrow(1);
     st->upBtn = CreateButton("cloudPickUp", 0, 0, 64, UiStyle::kControlHeight, "↑ Up");
     st->uploadBtn = CreateButton("cloudPickUpload", 0, 0, 124, UiStyle::kControlHeight,
                                  "Upload file…");
     UiStyle::StyleSecondary(st->upBtn);
     UiStyle::StyleSecondary(st->uploadBtn);
-    pathRow->AddChild(st->upBtn);
-    pathRow->AddChild(st->uploadBtn);
-    dialog->AddChild(pathRow);
+    pathCell->AddChild(st->upBtn);
+    pathCell->AddChild(st->uploadBtn);
+    AddFormRow(topForm, UiStyle::MakeCaption("cloudPickPathLbl", "Folder"), pathCell);
+
+    dialog->AddChild(topForm);
 
     // The file list.
     st->list = std::make_shared<UltraCanvasColumnsTreeView>("cloudPickList", 0, 0, 0, 0);
