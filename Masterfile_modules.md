@@ -1510,34 +1510,52 @@ process's traffic; NetworkMonitor observes other processes' sockets, which is
 an OS question, and has no dependency on UltraNet. It observes and records;
 it never blocks, filters or modifies traffic, and never terminates TLS.
 
-**Implementation status:** Phase 2 (platforms). Linux — netlink `sock_diag`
+**Implementation status:** Phase 2 (platforms, persistence, names). Linux — netlink `sock_diag`
 with `tcp_info` byte counters, `/proc/net/*` as the fallback, the
 `/proc/<pid>/fd` walk for attribution; Windows — IP Helper
 (`GetExtendedTcpTable` / `GetExtendedUdpTable`, owner PID with the row);
 macOS — libproc, per process. All polling. Persistence: the activity store
-over UltraDatabase (flows, daily roll-up, retention, CSV export). Connection
-events (ETW, eBPF), domain names and file-transfer correlation are still to
-come. Where there is no backend the module reports `NotSupported`.
+over UltraDatabase (flows, daily roll-up, retention, CSV export, DNS
+observations). Domain names: the name-source plug-in point with the local
+DNS proxy, reverse DNS (weak, labelled) and, on Windows elevated, the DNS
+client's ETW events with the asking PID. Connection events (ETW, eBPF) and
+file-transfer correlation are still to come. Where there is no backend the
+module reports `NotSupported`.
 
 - Types: `NetworkConnection`, `ProcessIdentity`, `NetworkConnectionState`,
   `NetworkTransport`, `NetworkAddressFamily`, `NetworkMonitorCapabilities`,
-  `NetworkMonitorOptions`, `ProcessTrafficSummary`, `NetworkMonitorResult`
+  `NetworkMonitorOptions`, `ProcessTrafficSummary`, `NetworkMonitorResult`,
+  `NameSource`, `DnsObservation`
 - `NetworkMonitor_GetCapabilities`, `NetworkMonitor_IsAvailable`
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
-  `NetworkMonitor_FormatEndpoint`
+  `NetworkMonitor_FormatEndpoint`, `NetworkMonitor_NameSourceName`,
+  `NetworkMonitor_NameIsObserved`
+- Names (`NetworkMonitorNames.h`): `INameSource`,
+  `NetworkMonitor_RegisterNameSource`, `NetworkMonitor_ListNameSources`,
+  `NetworkMonitor_StopNameSources`, `NetworkMonitor_WaitForNames`,
+  `NetworkMonitor_AddNameListener`, `NetworkMonitor_RemoveNameListener`,
+  `NetworkMonitor_ObserveName`, `NetworkMonitor_LookupName`,
+  `NetworkMonitor_ListNames`, `NetworkMonitor_ClearNames`,
+  `NetworkMonitor_CreateDnsProxySource`, `NetworkMonitor_CreateReverseDnsSource`,
+  `NetworkMonitor_CreateSystemDnsSource`, `NetworkMonitor_SystemResolver`;
+  types `DnsProxyOptions`, `ReverseDnsOptions`, `NameSourceStatus`,
+  `NameRecord`
 - The activity store (`NetworkMonitorStore.h`, over UltraDatabase):
   `NetworkMonitor_StoreAvailable`, `NetworkMonitor_Now`,
   `NetworkMonitor_OpenStore`, `NetworkMonitor_CloseStore`,
   `NetworkMonitor_RecordSnapshot`, `NetworkMonitor_QueryFlows`,
-  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RollUp`,
+  `NetworkMonitor_QueryDailyTotals`, `NetworkMonitor_RecordDnsObservation`,
+  `NetworkMonitor_QueryDnsObservations`, `NetworkMonitor_RollUp`,
   `NetworkMonitor_ApplyRetention`, `NetworkMonitor_Purge`,
   `NetworkMonitor_StoreStats`, `NetworkMonitor_ExportFlowsCsv`; types
   `NetworkMonitorStoreOptions`, `RecordedFlow`, `DailyProcessTotal`,
-  `ActivityQuery`, `NetworkMonitorStoreStats`
+  `RecordedDnsObservation`, `ActivityQuery`, `NetworkMonitorStoreStats`
 - Internal: `INetworkMonitorBackend`, `CreateNativeNetworkMonitorBackend`
   (`NetworkMonitorBackend.h`); `NetworkMonitorProcfs::{DecodeAddress,
-  StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`)
+  StateFromCode, ParseTable}` (`NetworkMonitorProcfs.h`);
+  `NetworkMonitorDns::{Parse, ToObservation, BuildQuery, BuildResponse,
+  NormalizeName}` (`NetworkMonitorDns.h`)
 
 Rules: every blocking call returns `NetworkMonitorResult`; `std::optional`
 for anything a backend may not report, so "0" and "not reported" are never

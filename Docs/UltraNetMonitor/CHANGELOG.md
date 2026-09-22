@@ -1,3 +1,33 @@
+#### 2026-09-22 *0.4*
+- **Names.** Connections carry the domain name behind the peer where a name
+  source has seen one (NetworkMonitor 0.4, framework 0.9.15): a *Host*
+  column on the Live connection list and the History flows, the peers'
+  names in the process list's tooltip, and a new *Names* tab listing every
+  address the sources have named, with the source, when it was observed
+  and how long it is kept. A name that came from reverse DNS shows a
+  trailing *?* and says so on hover: it is a guess at the host, not what
+  the application asked for; a name from a DNS query the monitor saw is
+  shown plain.
+  - **Three sources.** Reverse DNS runs by default (`--no-rdns` turns it
+    off) and never looks up loopback, link-local or private addresses.
+    `--dns-proxy [<port>]` runs the local DNS proxy on 127.0.0.1 - port 53
+    needs privilege; any other port needs the system resolver pointed at
+    it - and learns the name behind every query that passes through, over
+    UDP and TCP, forwarding to the system's resolver or `--upstream <ip>`.
+    On Windows, run elevated, the DNS client's own events are the third
+    source, and the only one that knows which process asked; the *Asked
+    by* column shows it.
+  - **Recorded.** While recording, every DNS observation goes into the
+    store beside the flows, and a flow keeps the best name it was seen
+    with. `--dns` prints the recorded observations with the `--history`
+    filters, `--history` and `--totals` show the host, the CSV gains
+    `remote_name` and `name_source` columns, and `--store-stats` counts the
+    observations. An activity store written by 0.3 opens and gains the
+    columns.
+  - **Headless.** `--names` prints the name table; `--list`, `--by-app` and
+    `--names` take `--resolve` to wait up to three seconds for reverse DNS
+    first; `--capabilities` lists the name sources and the system resolver.
+
 #### 2026-09-19 *0.3*
 - **It remembers.** A *Record* toggle on the toolbar writes every snapshot
   into the activity store (NetworkMonitor 0.3, framework 0.9.13) at the
