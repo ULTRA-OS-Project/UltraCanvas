@@ -3,7 +3,7 @@
   of UltraMail's original 0.1 format — secrets XOR-ed against a `vault.key`
   beside them, "better than plaintext" — and it stayed there when UltraMail
   moved to UltraVault. It is now a profile of the framework's
-  `UltraVault::DeviceKeyVault` (framework 0.9.16): `ultrasocial.vault`,
+  `UltraVault::DeviceKeyVault` (framework 0.9.21): `ultrasocial.vault`,
   Argon2id-derived key and XChaCha20-Poly1305 via UltraCrypt, unlocked at
   start-up by a random passphrase in owner-only `device.key` so nothing
   prompts. An existing `vault.key` + `creds.dat` is carried into the new vault

@@ -42,6 +42,10 @@ public:
         // App-wide too: whether UltraMail may download the icons of the known
         // services in its sender registry into the sender-icon cache.
         bool        fetchSenderIcons = true;
+        // When set (account settings only), a red "Delete account" button is
+        // shown in the bottom row; clicking it closes this page and runs the
+        // callback, which owns the confirm-and-remove flow.
+        std::function<void()> onDelete;
     };
 
     // What Save hands back. `settings` is always filled; the rest are only

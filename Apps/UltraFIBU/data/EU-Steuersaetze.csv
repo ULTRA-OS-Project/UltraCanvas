@@ -1,0 +1,83 @@
+# UltraFIBU - Umsatzsteuersaetze der EU-Mitgliedstaaten (One-Stop-Shop)
+#
+# ============================================================================
+# DIESE SAETZE SIND EINE PRUEFUNG, KEINE QUELLE.
+# ============================================================================
+# Der Satz einer OSS-Rechnung steht im Steuerschluessel, mit dem sie gebucht
+# wurde - er ist das, was dem Kunden tatsaechlich berechnet wurde. Diese Datei
+# vergleicht ihn mit dem, was das Zielland erhebt, und meldet eine Abweichung.
+# Sie ersetzt den gebuchten Satz NIEMALS: was berechnet wurde, wurde berechnet,
+# und eine Meldung muss das abbilden, auch wenn es falsch war.
+#
+# WARUM DAS WICHTIG IST: Wird einem oesterreichischen Privatkunden 19 % statt
+# 20 % berechnet, ist die Rechnung falsch UND die OSS-Meldung zu niedrig. Der
+# Fehler faellt sonst erst auf, wenn das Zielland nachfragt - Jahre spaeter.
+#
+# GEPRUEFT: "nein" heisst, dass der Satz hier nicht gegen eine belastbare
+# Quelle geprueft ist. Er wird dann NICHT zum Vergleich herangezogen und die
+# Meldung sagt, dass sie den Satz nicht bestaetigen konnte. Ein geratener Satz,
+# der eine richtige Rechnung als falsch meldet, ist schlimmer als kein Satz.
+#
+# Saetze aendern sich, und zwar Landessache: deshalb eine Datendatei mit
+# Gueltigkeitsdatum und nicht eine Tabelle im Programm.
+#
+# DIESE DATEI IST DER ANFANGSBESTAND, NICHT DER LAUFENDE.
+# Gepflegt werden die Saetze in der Datenbank - "ultrafibu eu-saetze-uebernehmen"
+# holt diese Datei einmal herein, danach im Programm unter Konfiguration ->
+# EU-Steuersaetze bzw. mit "ultrafibu eu-satz-neu". Der Grund ist derselbe wie
+# der fuer das Gueltigkeitsdatum: ein Land aendert seinen Satz mit ein paar
+# Wochen Vorlauf, und wer darauf ein neues Programm abwarten muss, stellt bis
+# dahin jede Rechnung mit dem falschen Satz aus.
+#
+# EIN GEAENDERTER SATZ IST EINE NEUE ZEILE, NIE EINE AENDERUNG.
+# Der bisherige Satz behaelt seinen Zeitraum und endet am Vortag. Wuerde man
+# ihn ueberschreiben, rechnete eine laengst abgegebene Meldung ploetzlich
+# anders - und nichts wuerde zeigen, dass sie es tut.
+#
+# Format: land;art;satz_promille;gueltig_von;gueltig_bis;geprueft;quelle
+#   art  = standard | ermaessigt
+#   satz_promille: 200 = 20 %
+#
+land;art;satz_promille;gueltig_von;gueltig_bis;geprueft;quelle
+#
+# Die Normalsaetze der 26 uebrigen Mitgliedstaaten. Sie sind hier eingetragen,
+# damit sichtbar ist, welche Laender ueberhaupt vorkommen - aber ALLE stehen
+# auf "nein", weil sie in dieser Umgebung an keiner amtlichen Quelle geprueft
+# werden konnten (die Seiten der EU-Kommission sind nicht erreichbar).
+#
+# SO WERDEN SIE GEPRUEFT: die Liste "VAT rates applied in the Member States of
+# the European Union" der EU-Kommission bzw. die TEDB-Datenbank danebenlegen,
+# Land fuer Land vergleichen, "nein" auf "ja" setzen. Erst dann vergleicht die
+# OSS-Meldung ueberhaupt.
+#
+AT;standard;200;2021-07-01;;nein;
+BE;standard;210;2021-07-01;;nein;
+BG;standard;200;2021-07-01;;nein;
+CY;standard;190;2021-07-01;;nein;
+CZ;standard;210;2021-07-01;;nein;
+DK;standard;250;2021-07-01;;nein;
+EE;standard;220;2021-07-01;;nein;
+ES;standard;210;2021-07-01;;nein;
+FI;standard;255;2021-07-01;;nein;
+FR;standard;200;2021-07-01;;nein;
+GR;standard;240;2021-07-01;;nein;
+HR;standard;250;2021-07-01;;nein;
+HU;standard;270;2021-07-01;;nein;
+IE;standard;230;2021-07-01;;nein;
+IT;standard;220;2021-07-01;;nein;
+LT;standard;210;2021-07-01;;nein;
+LU;standard;170;2021-07-01;;nein;
+LV;standard;210;2021-07-01;;nein;
+MT;standard;180;2021-07-01;;nein;
+NL;standard;210;2021-07-01;;nein;
+PL;standard;230;2021-07-01;;nein;
+PT;standard;230;2021-07-01;;nein;
+RO;standard;190;2021-07-01;;nein;
+SE;standard;250;2021-07-01;;nein;
+SI;standard;220;2021-07-01;;nein;
+SK;standard;200;2021-07-01;;nein;
+#
+# Ermaessigte Saetze sind absichtlich NICHT eingetragen. Fast jedes Land hat
+# mehrere, sie haengen an der Warenart, und eine falsche Zuordnung waere hier
+# besonders teuer. Wer einen ermaessigten Satz braucht, traegt ihn fuer sein
+# Land und seine Ware ein und prueft ihn selbst.

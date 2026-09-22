@@ -2,7 +2,7 @@
 - **The credential vault is the framework's now.** `UltraMailCredentialVault.cpp`
   was the only implementation of the device-key vault, and UltraSocial had
   copied it; the implementation moved to `UltraVault::DeviceKeyVault`
-  (framework 0.9.16) and `UltraMailCredentialVault.h` only names UltraMail's
+  (framework 0.9.21) and `UltraMailCredentialVault.h` only names UltraMail's
   profile — `ultramail.vault` and `device.key` in the account folder, keys
   `mail.ultramail.<account>`. Nothing on disk changes and no existing vault
   needs migrating; `CredentialVault`, `OAuthTokens`, `SignInMethod` and

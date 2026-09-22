@@ -336,6 +336,22 @@ void MailView::BuildMessageBox() {
                               const std::string& a) {
         if (onReply) onReply(src, n, a);
     };
+    preview_.onForward = [this](const SourceMessage& src, const std::string& n,
+                                const std::string& a) {
+        if (onForward) onForward(src, n, a);
+    };
+    preview_.onDelete = [this](const MessageEnvelope& e) {
+        if (onDelete) onDelete(e);
+    };
+    preview_.onJunk = [this](const MessageEnvelope& e) {
+        if (onJunk) onJunk(e);
+    };
+    preview_.onMarkUnread = [this](const MessageEnvelope& e) {
+        if (onMarkUnread) onMarkUnread(e);
+    };
+    preview_.onViewSource = [this](const std::string& subject, const std::string& raw) {
+        if (onViewSource) onViewSource(subject, raw);
+    };
     // A body read for the first time is also scanned for the first time: the
     // row's badge stops being "unscanned" the moment the pane knows better.
     preview_.onSecurityScanned = [this](const MessageEnvelope& m, const MessageSecurity& s) {

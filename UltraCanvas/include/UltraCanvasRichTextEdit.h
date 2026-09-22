@@ -198,6 +198,34 @@ public:
                                      const std::vector<uint8_t>& data,
                                      const std::string& altText = "");
 
+    // ===== TABLES =====
+    // Structural table editing, addressed from the caret: a menu item says
+    // "insert row below" and means the row the caret is in, so the element
+    // resolves the caret's cell to its grid position and the editing core does
+    // the span bookkeeping. Each returns false when the caret is not in a
+    // table (or the operation does not apply), which is also what tells a menu
+    // whether to offer the item.
+    void InsertTable(int rows, int columns, bool headerRow = false);
+    bool IsCaretInTable() const;
+    // Geometry of the table the caret is in, for a menu that wants to say
+    // "Delete row 2 of 5". Zeroes when the caret is not in a table.
+    bool CaretTableGeometry(int& outRows, int& outColumns,
+                            int& outRow, int& outColumn) const;
+
+    bool InsertRowAbove();
+    bool InsertRowBelow();
+    bool InsertColumnLeft();
+    bool InsertColumnRight();
+    bool DeleteCurrentRow();
+    bool DeleteCurrentColumn();
+    // Merges the caret's cell with the one to its right / below it. False when
+    // there is nothing there, or when the neighbour's own span would have to be
+    // cut in half to do it.
+    bool MergeWithCellRight();
+    bool MergeWithCellBelow();
+    bool CanSplitCurrentCell() const;
+    bool SplitCurrentCell();
+
     // ===== SEARCH =====
     // FindNext starts at the end of the selection (so repeated calls walk
     // forwards through matches) and FindPrevious at its start. A match becomes

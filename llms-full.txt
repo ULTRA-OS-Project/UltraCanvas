@@ -231,12 +231,22 @@ the backing implementation can be replaced without affecting callers.
     `StrokeData` with the line gallery — `StartArrow` / `EndArrow`,
     `WidthProfile`, `Brush` — opacities, blend, an optional Xara-style
     `Transparency` ramp with its mix, clip, mask), `Effects` (optional
-    `ShadowEffect` and `FeatherEffect`), an optional double-precision
-    `Matrix3x3` `Transform`, `GetBoundingBox()` in its parent's space and
-    `Clone()`.
+    `ShadowEffect`, `FeatherEffect`, `ContourEffect` and `BevelEffect`),
+    an optional double-precision `Matrix3x3` `Transform`,
+    `GetBoundingBox()` in its parent's space and `Clone()`. The Xara-class
+    containers `VectorClipView` (keyholes clip the rest), `VectorBlend`
+    (steps between children) and `VectorMould` (children warped into an
+    envelope or perspective shape) are groups too (`IsGroupType`).
   - Geometry helpers shared by the renderer, the editor and the writers:
     `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`,
     `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline`.
+  - `DataFormats/UltraCanvasVectorGeometry.h` — polygon booleans and
+    offsetting over path data, a planar-map clipper in core:
+    `PolygonBoolean` / `PathBoolean` (union, subtract, intersect, exclude,
+    per-input fill rules), `SlicePath`, `OffsetPolygons` / `OffsetPath`
+    (round, mitre, bevel joins), `FlattenToPolygons`, `PolygonsToPath`,
+    `PolygonSetArea`, `WindingNumber`, `PolygonSetContains`. What
+    `CombineShapes`, the contour effect and the XAR writer use.
   - `ParsePathString` / `SerializePathData`, `ParseColorString`,
     `ParseTransformString` / `SerializeTransform`; `LengthUnit`,
     `PointsPerUnit`, `LengthUnitSymbol`.
@@ -274,7 +284,9 @@ the backing implementation can be replaced without affecting callers.
   `ReorderElements` (`ZOrderMove`), `GroupElements` / `UngroupElements` /
   `ReparentElement` (placement preserved), `DeleteElements`,
   `DuplicateElements`, `AlignElements` / `DistributeElements`,
-  `ConvertToPath` / `OutlineOf`.
+  `ConvertToPath` / `OutlineOf`, `CombineShapes` (`CombineOp` Add /
+  Subtract / Intersect / Slice, Xara's Combine Shapes over the outlines);
+  `UngroupElements` dissolves the ClipView / Blend / Mould containers too.
 - **UltraCanvasBezierPath** (`UltraCanvasBezierPath.h`) — the editing model
   of a path: `BezierNode` (anchor, two handles, `BezierNodeType` Corner /
   Smooth / Symmetric), `UltraCanvasBezierSubpath` (`InsertNodeAt` by de
@@ -23348,7 +23360,7 @@ FILE: Docs/UltraCanvas/UltraCanvasFormLayout.md
 # Forms: captions that line up and still translate
 
 `UltraCanvasFormLayout.h` is the "caption: control" form — the shape of nearly
-every dialog. It is a header of four inline helpers over one CSS grid, and it
+every dialog. It is a header of a few inline helpers over one CSS grid, and it
 exists because the obvious alternative is quietly broken.
 
 ```cpp
@@ -23392,11 +23404,23 @@ coordinate, and a longer caption widens the column instead of clipping.
 | `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
 | `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
 | `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+| `DisableScrollbars(container)` | Turns a container's scrollbars off — for any container that only arranges what is in it. `CreateFormGrid` and `CreateFormCellRow` call it themselves. |
 
-The grid does not scroll: whatever needs to, the pane or dialog around it
-does. A grid left on the container default would raise a scrollbar for a row
-a pixel taller than its track, and the bar - plus the second one its own width
-brings on - covers that row.
+The grid does not scroll, and neither does a cell row: whatever needs to, the
+pane or dialog around it does. Left on the container default, either one raises
+a scrollbar for a child a pixel taller than the space it was given, and that bar
+— plus the second one its own width brings on — is painted straight across the
+caption and the field it was meant to be laying out. A caption is never
+scrollable: it is one line, and it is as wide as its text. That is what
+UltraFiler's FTP login looked like before this: every row of the add-account
+dialog carried a scrollbar pair over its own caption, because the dialog was a
+couple of pixels shorter than the rows it held and each row was squeezed below
+the 32 px field inside it.
+
+Any other container that only places children — a button bar, a toolbar strip —
+should call `DisableScrollbars` for the same reason. The container default
+(auto scrollbars on) is right for a pane that holds content, not for one that
+holds a layout.
 
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
@@ -23430,7 +23454,9 @@ contributes nothing to the base size of the intrinsic tracks it also spans, and
 `GridLayout.cpp` implements that. Without it, one wide full-width note would
 make the caption column as wide as the note and push every control across the
 dialog. `Tests/CSSLayoutFormGridTest.cpp` pins this, together with the
-column-sharing and hidden-row behaviour.
+column-sharing and hidden-row behaviour, and the rule that a dialog too short
+for its form leaves the rows at their own height (`flex-shrink: 0`) instead of
+squeezing them below their controls.
 
 ## See also
 
@@ -42977,6 +43003,55 @@ Search reaches into cells, so **find and replace now cover table content**.
 `AllContainers()` enumerates every container in document order if you need to
 walk the document yourself.
 
+#### Editing a table's structure
+
+Tables are created and reshaped from the caret, so a menu item says what the
+user means — "insert a row below *this* one":
+
+```cpp
+editor->InsertTable(3, 4, /*headerRow=*/true);   // caret lands in the first cell
+
+editor->InsertRowAbove();      editor->InsertRowBelow();
+editor->InsertColumnLeft();    editor->InsertColumnRight();
+editor->DeleteCurrentRow();    editor->DeleteCurrentColumn();
+editor->MergeWithCellRight();  editor->MergeWithCellBelow();
+editor->SplitCurrentCell();
+```
+
+Each returns `false` when it does not apply — the caret is not in a table,
+there is no neighbour to merge with, the cell is not merged — which is also
+what a menu should ask to decide whether to offer the item:
+
+```cpp
+if (editor->IsCaretInTable()) {
+    int rows = 0, columns = 0, row = 0, column = 0;
+    editor->CaretTableGeometry(rows, columns, row, column);   // for "Delete row 2 of 5"
+    menu.SetEnabled("split", editor->CanSplitCurrentCell());
+}
+```
+
+Each operation is **one undo step**, and each keeps the grid rectangular:
+
+- A span reaching across an insertion point **grows** rather than being cut in
+  two, because the text in it lives in one cell and cannot be in two places.
+- A span reaching into a deleted row or column **shrinks**; where the span
+  *started* in the deleted row, the cell moves down into the next one instead,
+  so its text is not deleted along with the row.
+- **Merging keeps the text of every cell it absorbs**, appended to the
+  surviving cell. A merge is a layout decision, and dropping what somebody
+  typed would be a silent deletion.
+- A merge whose rectangle would cut an existing span in half is **refused**:
+  the model cannot store half a cell, so approximating it would corrupt the
+  grid.
+- Deleting the last row or the last column deletes the table, because a table
+  with no cells has nothing to type into and no way back.
+
+Cells are stored sparsely — a merged cell is one `RichTableCell` with a span,
+and the slots it covers hold nothing — so **a cell's index within its row is
+not its column**. `BuildTableGrid()` (in `UltraCanvasRichDocument.h`) resolves
+which cell occupies each slot, and is what both the layout and these operations
+use; positions keep addressing cells as `{row, index-within-row}`.
+
 ### Structure
 
 ```cpp
@@ -43131,11 +43206,16 @@ This is the shortest path to a faithful `.odt`/`.docx` preview pane.
 
 Honest limits of this first version — none of them silently misbehave:
 
-- **A table's own structure is not edited yet.** Merged cells load, save and
-  lay out correctly, but *making* them does not: adding or removing rows and
-  columns, merging and splitting cells, and selecting across several cells at
-  once are not there — and neither is inserting a new table, which is why
-  UltraTexter's Insert Table button stays disabled for these documents.
+- **A selection cannot span several cells.** Rows, columns, merging and
+  splitting are all there (see *Editing a table's structure*), but they act on
+  the cell the caret is in: there is no drag-select across a block of cells, so
+  "merge these six" has to be done as a merge right and a merge down. The
+  selection model holds a range inside one container, and widening it is a
+  piece of work in its own right — rendering, hit testing and copying all
+  change with it.
+- **Column widths are uniform.** The grid divides the available width evenly;
+  a column width stored in a `.docx` or `.odt` is preserved on save but not
+  honoured on screen.
 - **Images are not resized interactively** (insert and delete work).
 - **Math runs (`RichTextRun::math`) render as their LaTeX source**, not as
   typeset formulas. `UltraCanvasInlineMath` already does the typesetting for the
@@ -55804,7 +55884,7 @@ BakeTransform(el);                            // write the transform into the ge
 
 ReorderElements(els, ZOrderMove::ToFront);    // ToFront / Forward / Backward / ToBack
 auto group = GroupElements(els);              // into the topmost member's parent
-auto freed = UngroupElements({group});        // placement preserved both ways
+auto freed = UngroupElements({group});        // placement preserved both ways; clip views, blends and moulds dissolve too
 ReparentElement(el, otherGroup, index);
 
 DeleteElements(els);
@@ -55812,6 +55892,8 @@ auto copies = DuplicateElements(els, 10, 10); // above the originals, fresh Ids
 AlignElements(els, AlignMode::Left);          // to the selection, or a reference rect (the page)
 DistributeElements(els, DistributeMode::HorizontalCenters);
 auto path = ConvertToPath(el);                // rect / circle / ellipse / line / polygon → path, in place
+auto made = CombineShapes(sel.Elements(), CombineOp::Subtract);   // Xara's Combine Shapes: the front shape
+                                              // cuts the others (Add / Intersect: one shape, the back one's style)
 ```
 
 A document-space matrix `M` lands on an element as `T' = P⁻¹·M·P·T`, `P`
@@ -55940,7 +56022,7 @@ The Vector plugin (`ULTRACANVAS_PLUGIN_VECTOR`) converts between vector file for
 | Format | Class | Read | Write | Fidelity notes |
 |---|---|---|---|---|
 | SVG | `SVGConverter` | ✓ | ✓ | Lossless both ways — the storage model is SVG-shaped. Gradients keep all stops, transforms stay attributes, text keeps spans. |
-| XAR | `XARConverter` | ✓ (XAR plugin) | ✓ | Spec-correct record grammar; native shape records when axis-aligned, paths otherwise; linear / radial / conical gradients with every stop (multistage records), flat and gradient transparency with Xara's mixes, line transparency, shadows (`TAG_SHADOWCONTROLLER`), feathers (`TAG_FEATHER`), dash patterns, text stories; Xara's stock arrowheads as `TAG_ARROWHEAD` (start) / `TAG_ARROWTAIL` (end) line attributes with their reference and FIXED16 size, as Xara writes them, every other arrowhead, width profiles and brushes baked into plain shapes under a group carrying a `TAG_USERVALUE` marker (`UltraCanvas.LineGallery`) the reader rebuilds the stroke from. Reading is the XAR plugin's `XARDocument` (compressed files too) translated into the model — with `ULTRACANVAS_PLUGIN_XAR` off the converter only writes and `CanImport()` is false. Bevel, contour, blend, mould, ClipView, live effects, Xara brushes and pages are read as their contents or dropped, and reported; `TAG_DEFINEARROW` is a tag Xara never writes, and a reference to one reads as the straight arrow. |
+| XAR | `XARConverter` | ✓ (XAR plugin) | ✓ | Spec-correct record grammar; native shape records when axis-aligned, paths otherwise; linear / radial / conical gradients with every stop (multistage records), flat and gradient transparency with Xara's mixes, line transparency, shadows (`TAG_SHADOWCONTROLLER`), feathers (`TAG_FEATHER`), dash patterns, text stories; clip views, contours, blends, moulds and bevels as Xara's own controller records (`TAG_CLIPVIEWCONTROLLER`, `TAG_CONTOURCONTROLLER`, `TAG_BLEND` with its blenders, `TAG_MOULD_ENVELOPE` / `_PERSPECTIVE` with the shape and sources, `TAG_BEVEL`) read back as the model's containers and effects; Xara's stock arrowheads as `TAG_ARROWHEAD` (start) / `TAG_ARROWTAIL` (end) line attributes with their reference and FIXED16 size, as Xara writes them, every other arrowhead, width profiles and brushes baked into plain shapes under a group carrying a `TAG_USERVALUE` marker (`UltraCanvas.LineGallery`) the reader rebuilds the stroke from. Reading is the XAR plugin's `XARDocument` (compressed files too) translated into the model — with `ULTRACANVAS_PLUGIN_XAR` off the converter only writes and `CanImport()` is false. Live effects, Xara brushes and pages are read as their contents or dropped, and reported; `TAG_DEFINEARROW` is a tag Xara never writes, and a reference to one reads as the straight arrow. |
 | EPS | `EPSConverter` | – | ✓ | PostScript program restricted to operators the EPS plugin's interpreter knows. Opacity flattens toward white; gradients blend end stops. Reading via the EPS plugin. |
 | CDR | `CDRConverter` | – | ✓ | Version-7 RIFF targeting libcdr's parser layouts (no public spec exists). Solid fills, outline state, fill opacity; text/bitmaps skipped. Reading via the CDR plugin. |
 | PDF | `PDFVectorConverter` | – | ✓ | Hand-assembled PDF 1.4: base-14 fonts, ExtGState opacity, dashes, verified xref. Reading via the MuPDF PDF plugin. |
@@ -55964,7 +56046,9 @@ Unsupported features never change meaning silently: each converter reports its f
 
 **Effects, transparency and the line gallery** (phase 4 of [ArtCreatorVectorCanvasProposal](../Research/ArtCreatorVectorCanvasProposal.md)). `VectorElement::Effects` holds an optional `ShadowEffect` (`Kind` wall / floor / glow, `Offset`, `Blur` — the penumbra width, `Colour`, `Darkness`, and `FloorSquash` / `FloorShear` for floor shadows) and an optional `FeatherEffect` (`Radius`); they are per object, cloned with it, never inherited. `VectorStyle::Transparency` is an optional `TransparencyData`: a `Shape` (flat, linear, radial, conical), a flat `Level` or `Stops` of `{Position, Level}` along `Start`..`End` in the element's own space (Xara's convention: level 0 is opaque, 1 clear), and a `Mix` (`Mix`, `StainedGlass`, `Bleach`, `Contrast`, `Saturation`, `Darken`, `Lighten`, `Brightness`, `Luminosity`, `Hue`) that the renderer paints as the matching blend mode; `LevelAt(t)` interpolates. It sits beside the flat `Opacity`, which stays the plain normal-mix alpha every other format uses. `StrokeData` carries the line gallery: `StartArrow` / `EndArrow` (`ArrowheadData`: `Kind` triangle, open arrow, circle, square, diamond, bar - the tip on the line's end, `Scale` 1 = four line widths long - and Xara's eight stock arrowheads, straight, angled, rounded, spot, solid diamond, feather, feather 2, hollow diamond, with Xara's own geometry and placement, where `Scale` 1 is Xara's default size 3; `IsXaraArrowhead`), a `WidthProfile` of `WidthSample{T, Factor}` (two or more turn the stroke into a filled band; `WidthAt(t)`), and an optional `BrushData` (`Stamp` group drawn every `Spacing` stamp-widths, scaled to `Width * Scale`, rotated to the tangent). The geometry they draw is public — `BuildOutlinePath` (any shape's outline as path data), `FlattenPathData`, `PathEndpoints`, `ArrowheadOutline`, `VariableWidthOutline` — so the renderer and the XAR writer produce the same shapes.
 
-**Rendering effects.** `VectorRenderer` draws an element with effects through groups: the shadow and the feather need a raster of the element's silhouette, which it draws black into an offscreen context at the current device scale, blurs (three box passes approximating a gaussian whose penumbra spans about 3.3 σ), and caches per object (`EffectCacheSize()`, `ClearCaches()`; an entry is replaced when the geometry, blur or zoom changes and the cache empties itself past 256 entries). The shadow is the raster painted as a colour mask at its offset (squashed and sheared from the bottom edge for floor shadows, unshifted for glows); the feather masks the element's own group with it; a transparency ramp masks the group with an alpha gradient and paints it with the mix's operator. Arrowheads, width bands and brush stamps are drawn from the outline after the fill.
+**Depth: containers, contour, bevel, booleans** (phase 5 of the proposal, first slice). Three group kinds (`IsGroupType`): `VectorClipView` (its first `Keyholes` children are the clip shapes, not drawn; the rest draw clipped to their union), `VectorBlend` (`Steps` intermediate shapes between each pair of children, outlines resampled to a common count and start-matched, colours run as `ColourBlendKind` fade / rainbow / alt rainbow / constant, strokes and opacity interpolated; `OneToOne`, `Antialiased`, `Tangential` and Xara's bias / gain profiles kept for the round trip) and `VectorMould` (`Kind` `Envelope` or `Perspective`; the children warped from `SourceBounds` — their joint bounds when empty — into `Shape`, a closed four-sided path starting at the source's top-left corner and running along its top, right, bottom and left edges: four cubics for an envelope, a Coons patch, four lines for a perspective, a projective map; `Warp`, `ShapeCorners`, `IdentityShape`; text and images move to their moulded anchor). Two more effects on `VectorElement::Effects`: `ContourEffect` (`Steps` rings between the outline and a copy `Width` units out — or in, when negative — each filled with the colour between the object's fill and `Colour`; outward rings draw behind the object, inward ones over it) and `BevelEffect` (`Kind`: Xara's fifteen profiles, `Indent`, `LightAngle` and `Tilt` in degrees, `Contrast`, `Outer`). The geometry under them is `DataFormats/UltraCanvasVectorGeometry.h`: `PolygonBoolean` / `PathBoolean` (union, subtract, intersect, exclude, each input with its own fill rule; a planar-map clipper that splits every edge at every crossing, classifies each piece by the winding numbers on its two sides and links the separating pieces into consistently wound rings), `SlicePath`, `OffsetPolygons` / `OffsetPath` (round, mitre or bevel joins through the same clipper), `FlattenToPolygons`, `PolygonsToPath`, `PolygonSetArea`, `WindingNumber`, `PolygonSetContains`. The editing layer's `CombineShapes` is Xara's Combine Shapes over it.
+
+**Rendering effects.** `VectorRenderer` draws an element with effects through groups: the shadow and the feather need a raster of the element's silhouette, which it draws black into an offscreen context at the current device scale, blurs (three box passes approximating a gaussian whose penumbra spans about 3.3 σ), and caches per object (`EffectCacheSize()`, `ClearCaches()`; an entry is replaced when the geometry, blur or zoom changes and the cache empties itself past 256 entries). The shadow is the raster painted as a colour mask at its offset (squashed and sheared from the bottom edge for floor shadows, unshifted for glows); the feather masks the element's own group with it; a transparency ramp masks the group with an alpha gradient and paints it with the mix's operator. Arrowheads, width bands and brush stamps are drawn from the outline after the fill. Contour rings come from the offsetter and are cached with the geometry, width and step count; the bevel's highlight and shadow masks come from a distance transform of the silhouette shaped by the profile and lit from the effect's angle and tilt, cached like the effect rasters (`EffectCacheSize()` counts all three caches).
 
 The survey of what each converter reads and writes, the dead model surface and the planned steps live in [UltraCanvasVectorModelProposal](../Research/UltraCanvasVectorModelProposal.md).
 

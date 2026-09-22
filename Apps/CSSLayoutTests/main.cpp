@@ -43,6 +43,39 @@ public:
     }
 };
 
+// Leaf whose height depends on the width it is measured at — models a
+// word-wrapping label (UltraCanvasLabel with TextWrap::WrapWord). Its
+// max-content is a single line `maxW` wide; given a definite width w it wraps
+// to ceil(maxW / w) lines of `lineH` each. This is the shape that exposes the
+// flex height-for-width path: measured unbounded it is one line, measured at a
+// finite width it grows.
+class WrapLeaf : public Element {
+public:
+    float maxW = 0, lineH = 0;
+
+    WrapLeaf(std::string name, float maxWidth, float lineHeight) {
+        id = std::move(name);
+        maxW = maxWidth;
+        lineH = lineHeight;
+    }
+
+    void ComputeIntrinsicSizes(const LayoutContext&) override {
+        intrinsic.minContentWidth  = lineH;   // ~one cap-line wide (rough)
+        intrinsic.maxContentWidth  = maxW;
+        intrinsic.minContentHeight = lineH;
+        intrinsic.maxContentHeight = lineH;
+    }
+
+    Size2Df MeasureOwnContent(std::optional<float> w, const LayoutContext&) override {
+        if (w.has_value() && *w > 0.f) {
+            int lines = (int)std::ceil(maxW / std::max(1.f, *w));
+            if (lines < 1) lines = 1;
+            return Size2Df(*w, (float)lines * lineH);
+        }
+        return Size2Df(maxW, lineH);          // max-content: single line
+    }
+};
+
 // -------------------- assert helpers --------------------
 
 int g_pass = 0;
@@ -780,6 +813,43 @@ void test_flex_uses_intrinsic_for_auto_basis() {
     expectRect("c", *c, 180, 0,  60, 40);
 }
 
+// Regression (UltraMail warning-banner clip): a word-wrapping child inside a
+// flex COLUMN whose width arrives as an AtMost bound — i.e. crossKnown == false —
+// must still be measured at that width so its height reflects wrapping. Before
+// the fix, computeFlex passed the child unbounded cross during the height
+// base-measurement pass, so it reported its one-line height and the column was
+// arranged too short, clipping the text. The nested column reproduces exactly
+// the message-preview structure (root column → warning_ stretch column → wrapping
+// labels): the inner column receives its width as AtMost during the outer's base
+// pass, which is where the bug lived.
+void test_flex_column_wrapping_child_height_for_width() {
+    beginTest("flex column: wrapping child height tracks AtMost cross width");
+    LayoutContext ctx;
+
+    auto outer = makeFlexRoot(FlexDirection::Column, FlexWrap::NoWrap, JustifyContent::Start);
+    auto inner = makeFlexRoot(FlexDirection::Column, FlexWrap::NoWrap, JustifyContent::Start);
+    { FlexItem fi; fi.grow = 0; fi.shrink = 0; fi.alignSelf = AlignSelf::Stretch;
+      inner->layoutItem.data = fi; }
+
+    auto leaf = std::make_shared<WrapLeaf>("wrap", /*maxW*/300.f, /*lineH*/20.f);
+    { FlexItem fi; fi.grow = 0; fi.shrink = 0; fi.alignSelf = AlignSelf::Stretch;
+      leaf->layoutItem.data = fi; }
+
+    inner->AddChild(leaf);
+    outer->AddChild(inner);
+
+    // Measure outer at Exact width 100, auto (Unbounded) height. The leaf wraps
+    // to ceil(300/100) = 3 lines → 60px, so inner and outer must be 60px tall.
+    // Pre-fix this came back 20px (one line) and the banner clipped.
+    MeasureConstraints c{
+        { ConstraintMode::Exact,     100.f },
+        { ConstraintMode::Unbounded, INFINITY }
+    };
+    outer->Measure(c, ctx);
+    expectMeasured("outer height tracks wrap (3 lines)", *outer, 100.f, 60.f);
+    expectMeasured("inner height tracks wrap (3 lines)", *inner, 100.f, 60.f);
+}
+
 void test_grid_auto_track_uses_intrinsic() {
     beginTest("grid auto track sizes from leaf child content width");
     LayoutContext ctx;
@@ -838,6 +908,7 @@ int main() {
     test_addchild_invalidates_layout_computed();
 
     test_flex_uses_intrinsic_for_auto_basis();
+    test_flex_column_wrapping_child_height_for_width();
     test_grid_auto_track_uses_intrinsic();
 
     std::printf("\n----- %d passed, %d failed -----\n", g_pass, g_fail);

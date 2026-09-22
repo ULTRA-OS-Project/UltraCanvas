@@ -298,6 +298,12 @@ jobs:
           sudo apt-get install -y libcurl4-openssl-dev libpsl-dev
           # libsodium: cryptographic backend for UltraCrypt
           sudo apt-get install -y libsodium-dev
+          # UltraDatabase: SQLite is the single-user store, libpq the
+          # multi-user one. Both are named explicitly rather than relied on
+          # from the runner image, because UltraDatabase soft-disables itself
+          # when a header is missing - and a silently disabled database layer
+          # takes the whole UltraFIBU bookkeeping suite out of CI with it.
+          sudo apt-get install -y libsqlite3-dev libpq-dev
           # c-ares: UltraNet's async DNS uses the event-thread API
           # (ARES_OPT_EVENT_THREAD / ares_channel_t / evsys), added in c-ares
           # 1.26. Ubuntu 22.04 ships 1.18, so build a current release from
@@ -423,7 +429,8 @@ jobs:
             -DULTRACANVAS_BUILD_ULTRACLOUD_TESTS=ON \
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
-            -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON 2>&1 | tee configure.log
+            -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_DATABASE_TESTS=ON 2>&1 | tee configure.log
 
       - name: Configure CMake (macOS/Linux)
         if: runner.os != 'Windows'
@@ -442,6 +449,7 @@ jobs:
             -DULTRACANVAS_BUILD_EMAILCLEANER_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAFIBU_TESTS=ON \
             -DULTRACANVAS_BUILD_ULTRAMESSAGE_TESTS=ON \
+            -DULTRACANVAS_BUILD_DATABASE_TESTS=ON \
             -DBUILD_TESTS=${{ runner.os == 'Linux' && 'ON' || 'OFF' }} 2>&1 | tee configure.log
 
       # Fail loudly if the OpenGL surface backend was silently disabled
@@ -464,6 +472,26 @@ jobs:
             exit 1
           fi
           echo "OpenGL backend verified on ${{ runner.os }}"
+
+      # UltraDatabase degrades quietly by design: no libsqlite3 and the whole
+      # module is skipped, no libpq and it builds SQLite-only. Both are
+      # reasonable for a contributor and neither is acceptable here, because a
+      # skipped module takes its tests with it - which is how the multi-user
+      # bug below could have shipped. So configure has to say it got both.
+      - name: Verify UltraDatabase built with PostgreSQL (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "UltraDatabase - ENABLED" configure.log; then
+            echo "::error::UltraDatabase was disabled during configure (libsqlite3-dev missing?)"
+            exit 1
+          fi
+          if ! grep -q "UltraDatabase - ENABLED.*PostgreSQL" configure.log; then
+            echo "::error::UltraDatabase configured without PostgreSQL (libpq-dev missing?) - the multi-user tests would silently not run"
+            exit 1
+          fi
+          echo "UltraDatabase verified: SQLite + PostgreSQL"
 
       # libcurl selection is asserted per platform so a silent regression is caught:
       #  - Linux (ubuntu-22.04, chosen for glibc portability): its system libcurl is
@@ -542,10 +570,64 @@ jobs:
       # Linux only for now. The suites are platform-independent algorithms, so
       # one platform gates the logic; the other runners still prove the code
       # builds everywhere.
+      # The multi-user acceptance test forks two clients at one database and
+      # checks that no document number is handed out twice. It needs a real
+      # server: SQLite serialises writers, so the bug it catches - two
+      # transactions reading one counter and both writing back the same
+      # successor - cannot occur there and did not, for as long as the suite
+      # was SQLite-only. Without these variables the test reports SKIP and
+      # passes, so the step after ctest asserts it actually ran.
+      - name: Start PostgreSQL for the multi-user tests (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          set -eu
+          sudo systemctl start postgresql || sudo service postgresql start
+          # **The role must be named after the OS user.** Ubuntu ships
+          # `local all all peer` in pg_hba.conf, so a unix-socket connection is
+          # authenticated by the operating-system account and a role with any
+          # other name is refused before a password is even considered. The
+          # first run of this step created `fibuci`, which existed and could
+          # not be used: "Peer authentication failed".
+          #
+          # The name is taken from the runner rather than written as `runner`,
+          # so a change of account surfaces as this step failing instead of as
+          # a test that quietly cannot connect.
+          PGUSER_NAME="$(whoami)"
+          sudo -u postgres createuser --createdb "$PGUSER_NAME"
+          sudo -u postgres createdb -O "$PGUSER_NAME" ultrafibu_ci
+          echo "ULTRAFIBU_TEST_PG_USER=$PGUSER_NAME" >> "$GITHUB_ENV"
+          # Prove the connection the tests will make actually works, here,
+          # where the error names the cause - rather than inside ctest, where
+          # it arrives as one line with no diagnosis.
+          psql -h /var/run/postgresql -p 5432 -d ultrafibu_ci -c 'SELECT 1' >/dev/null
+
       - name: Run unit tests
         if: runner.os == 'Linux'
         working-directory: build
-        run: ctest --output-on-failure
+        env:
+          ULTRAFIBU_TEST_PG_HOST: /var/run/postgresql
+          ULTRAFIBU_TEST_PG_PORT: 5432
+          # ULTRAFIBU_TEST_PG_USER comes from the step above via GITHUB_ENV:
+          # naming it here would override it, which is how it ends up wrong.
+          ULTRAFIBU_TEST_PG_DB: ultrafibu_ci
+          # A skip here is indistinguishable from a pass, so forbid it.
+          ULTRAFIBU_TEST_PG_REQUIRED: 1
+        run: ctest --output-on-failure 2>&1 | tee ctest.log
+
+      # ULTRAFIBU_TEST_PG_REQUIRED above turns a skip into a failure, so ctest
+      # already covers "it ran". What it cannot cover is the test not existing
+      # at all, which is what happens when libpq is missing at configure time.
+      - name: Verify the multi-user test was registered (Linux)
+        if: runner.os == 'Linux'
+        working-directory: build
+        shell: bash
+        run: |
+          set -eu
+          if ! grep -q "UltraFIBUServer" ctest.log; then
+            echo "::error::the UltraFIBUServer test was not registered - libpq missing at configure time?"
+            exit 1
+          fi
+          echo "multi-user acceptance test is registered and ran against PostgreSQL"
 
       # Bundle all apps into the portable multi-executable tree. Reuses the
       # already-built shared `build` dir (SKIP_BUILD=1) rather than rebuilding.

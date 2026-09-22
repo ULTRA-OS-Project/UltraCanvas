@@ -27,8 +27,17 @@ std::map<std::string, IUltraDbDriverPlugin*>& DriverRegistry() {
     return r;
 }
 
-// Ensure the built-in SQLite driver has registered itself.
-void EnsureBuiltins() { (void)ultradb_internal::BuiltinSqliteDriver(); }
+// Ensure the built-in drivers have registered themselves.
+//
+// The call is what keeps each driver's translation unit in the link: with a
+// static library the linker drops an object nothing references, and a driver
+// that registers itself from a static initializer would then silently not
+// exist. That failure looks exactly like "no driver registered for
+// 'postgresql'" at run time, which is a long way from the cause.
+void EnsureBuiltins() {
+    (void)ultradb_internal::BuiltinSqliteDriver();
+    (void)ultradb_internal::BuiltinPostgresDriver();
+}
 
 // ---- Connection registry ---------------------------------------------------
 
@@ -182,6 +191,12 @@ UltraDbResult UltraDb_OpenConnection(const std::string& name) {
     return conn ? UltraDbResult::Ok() : err;
 }
 
+std::string UltraDb_RowLockSuffix(const std::string& connection) {
+    UltraDbResult err;
+    IUltraDbConnection* conn = Resolve(connection, err);
+    return conn ? conn->RowLockSuffix() : std::string();
+}
+
 UltraDbResult UltraDb_GetConnectionInfo(const std::string& name,
                                         UltraDbConnectionInfo& out) {
     auto e = FindEntry(name);
@@ -302,7 +317,9 @@ UltraDbHandle UltraDb_Begin(const std::string& connection, UltraDbResult* error)
     if (!conn) { if (error) *error = err; return UltraDbInvalidHandle; }
 
     UltraDbResultSet discard;
-    UltraDbResult begin = conn->ExecuteDirect("BEGIN IMMEDIATE", {}, discard);
+    // Ask the driver how its engine starts a transaction; see
+    // IUltraDbConnection::BeginTransactionSql.
+    UltraDbResult begin = conn->ExecuteDirect(conn->BeginTransactionSql(), {}, discard);
     if (!begin) { if (error) *error = begin; return UltraDbInvalidHandle; }
 
     UltraDbHandle h = g_nextHandle.fetch_add(1);
@@ -429,9 +446,13 @@ UltraDbResult UltraDb_Migrate(const std::string& connection,
             return stepRes;
         }
 
+        // CURRENT_TIMESTAMP rather than SQLite's datetime('now'): the latter
+        // is not a function PostgreSQL has, so the migration bookkeeping -
+        // not the migration itself - was what stopped any other engine from
+        // ever being usable. This is standard SQL and both engines take it.
         UltraDbResult rec = UltraDb_ExecInTx(tx,
             "INSERT INTO ultradb_schema_version(version, name, applied_at) "
-            "VALUES(?, ?, datetime('now'))",
+            "VALUES(?, ?, CURRENT_TIMESTAMP)",
             { step.version, step.name });
         if (!rec) { UltraDb_Rollback(tx); return rec; }
 

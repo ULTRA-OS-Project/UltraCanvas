@@ -117,6 +117,44 @@ struct RichDocBlock {
     float imageHeightPt = 0.0f;
 };
 
+// ===== TABLE GRID =====
+// Cells are stored SPARSELY: a cell spanning two columns is one RichTableCell
+// with columnSpan 2, and the slot it covers holds no cell of its own; a cell
+// spanning two rows appears only in its first row, and the row below simply has
+// one fewer cell. So a cell's index within its row is NOT its column, and every
+// piece of code that has to know where a cell actually sits - measuring one for
+// layout, inserting a column, deleting a row - needs the same walk over the
+// grid. This resolves it once.
+struct RichTableGridSlot {
+    int row = -1;           // model row owning the cell (its ORIGIN row)
+    int cellIndex = -1;     // index into that row's cells
+    bool origin = false;    // true only at the cell's top-left slot
+    bool Occupied() const { return cellIndex >= 0; }
+};
+
+struct RichTableGrid {
+    int rowCount = 0;
+    int columnCount = 0;    // widest row, counting column spans
+    std::vector<RichTableGridSlot> slots;   // rowCount * columnCount, row-major
+
+    const RichTableGridSlot& At(int row, int column) const;
+    // Grid position of a model cell's top-left corner. False when the cell is
+    // not in the grid (an index past the row's cells).
+    bool OriginOf(int row, int cellIndex, int& outRow, int& outColumn) const;
+    // The model cell occupying (row, column), wherever it originates. False for
+    // a slot no cell reaches - a ragged row that ends early.
+    bool CellAt(int row, int column, int& outRow, int& outCellIndex) const;
+
+private:
+    static const RichTableGridSlot kEmpty;
+};
+
+// Resolves `table`'s cells onto the grid they occupy. A non-table block yields
+// an empty grid. Spans are clamped so a malformed document (a span reaching
+// past the last row, a zero span) still produces a consistent grid rather than
+// reading out of bounds.
+RichTableGrid BuildTableGrid(const RichDocBlock& table);
+
 struct RichDocumentMetadata {
     std::string title;
     std::string author;

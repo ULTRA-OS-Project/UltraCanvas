@@ -253,4 +253,20 @@ SyncOutcome SyncEngine::SetFlag(const std::string& accountId, const std::string&
     return SyncOutcome{};
 }
 
+SyncOutcome SyncEngine::MoveMessage(const std::string& accountId,
+                                    const std::string& srcFolder, int64_t uid,
+                                    const std::string& dstFolder,
+                                    const std::string& serverUrl,
+                                    const UltraNetMailOptions& options) {
+    UltraNetResult r = mailbox_.MoveMessage(
+        serverUrl, srcFolder, static_cast<uint32_t>(uid), dstFolder, options);
+    if (!r) return SyncOutcome::Fail(r.message);
+
+    // The server moved it out of srcFolder; drop the local row so the list stops
+    // showing it. The destination folder picks it up on its next sync.
+    UltraDbResult lr = store_.RemoveMessage(accountId, srcFolder, uid);
+    if (!lr) return SyncOutcome::Fail(lr.message);
+    return SyncOutcome{};
+}
+
 } // namespace UltraMail

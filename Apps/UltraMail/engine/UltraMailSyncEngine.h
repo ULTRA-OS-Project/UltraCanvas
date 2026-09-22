@@ -85,6 +85,14 @@ public:
                         const std::string& serverUrl,
                         const UltraNetMailOptions& options);
 
+    // Move a message to another folder on the server (UID MOVE) and drop it from
+    // the local index for the source folder — used by Delete (to Trash) and Junk
+    // (to the Junk mailbox).
+    SyncOutcome MoveMessage(const std::string& accountId, const std::string& srcFolder,
+                            int64_t uid, const std::string& dstFolder,
+                            const std::string& serverUrl,
+                            const UltraNetMailOptions& options);
+
 private:
     LocalStore&             store_;
     IMailboxProtocolPlugin& mailbox_;

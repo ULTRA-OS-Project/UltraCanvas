@@ -1,3 +1,14 @@
+#### 2026-09-21 *0.1.2*
+- **The dashboard app has an icon.** `media/appicon/UltraAI.svg` is the
+  uploaded artwork; `media/appicon/UltraAI.png` is its 256 px render and
+  what the window and taskbar icon (`main.cpp` hands it to
+  `SetDefaultWindowIcon`) and the Windows `.exe` icon are made from, as for
+  the other applications. The app now takes the build's asset copy as a
+  dependency, so the icon is in its resources dir. A freedesktop entry
+  (`Apps/UltraAIApp/UltraAI.desktop`) puts UltraAI in the application menu;
+  the install rules place it, the binary and both icon files where the
+  desktop looks for them.
+
 #### 2026-08-31 *0.1.1*
 - **UltraAI keeps its own changelog from here.** Everything up to and including
   this version shipped as part of a framework release and is recorded in

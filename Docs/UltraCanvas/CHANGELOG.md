@@ -1,4 +1,4 @@
-#### 2026-09-20 *0.9.16*
+#### 2026-09-22 *0.9.21*
 - **New: `UltraVault::DeviceKeyVault` — an application's own vault on
   UltraVault** (`<UltraVault/UltraVaultDeviceKeyVault.h>`, target `UltraVault`,
   reference `Docs/Modules/UltraVault/README.md`). One encrypted vault file in a
@@ -21,6 +21,172 @@
   first-run key + vault creation and reopen, profile-prefixed keys, no
   plaintext on disk, wrong / empty passphrase, token sets, the
   "vault without a device key must prompt" case, and the migration.
+#### 2026-09-22 *0.9.20*
+- **A form caption is not something you scroll.** Every row of UltraCloud's
+  add-account dialog - the FTP / SFTP login UltraFiler's "+ Drive" opens -
+  was drawn with a scrollbar pair straight across its caption and its field.
+  The dialog built a flex container per row and let the column shrink them:
+  at 420 px it was a couple of pixels shorter than the rows it held, so each
+  32 px row was squeezed to 30, the 32 px control inside it no longer fitted,
+  and the row (a plain container, auto scrollbars on) raised a vertical
+  scrollbar - which narrowed the viewport by its own width and raised a
+  horizontal one as well.
+  - **The form is a `UltraCanvasFormLayout` grid now**, like every other
+    dialog in the tree: captions share one `auto` column that is as wide as
+    the widest of them (no more `kLabelWidth = 130`, so a longer translation
+    widens the column instead of being cut off), controls share the `1fr`
+    column and start at the same x, and the grid is `flex-shrink: 0`, so a
+    short dialog can no longer squeeze a row below the control in it. The
+    dialog is tall enough for the provider that needs every row, and a spacer
+    holds the buttons at the bottom for the ones that do not.
+  - **`CreateFormCellRow` no longer carries scrollbars either**, and the new
+    `DisableScrollbars(container)` says it in one line for any container that
+    only arranges what is in it. The container default is right for a pane
+    that holds content, not for one that holds a layout.
+  - The cloud file picker's "Account" and "Folder" rows went the same way, so
+    the two captions line up without either carrying a width of its own.
+  - `Tests/CSSLayoutFormGridTest.cpp` now pins the rule the dialog broke: a
+    dialog shorter than its form leaves every row at its own height, where a
+    flex row per field is squeezed below the control inside it.
+
+#### 2026-09-21 *0.9.19*
+- **`package-linux.sh` and `package-win.sh` looked in one place for
+  executables.** Most targets land in the build root; a target that sets
+  `RUNTIME_OUTPUT_DIRECTORY` to `bin/` was silently absent from the package,
+  reported only as `skip <app> (not built)` among the apps that genuinely were
+  not built. Both scripts now look in both places, and a packaged app is no
+  longer decided by which output directory its CMakeLists happened to pick.
+
+#### 2026-09-20 *0.9.18*
+- **Tables can be built and reshaped, not just filled in.** A document could
+  hold a table, and the caret could edit its cells, but the table's own
+  structure was fixed: there was no way to make one, add a row, or merge two
+  cells. `UCRichDocumentEditor` gains `InsertTable`, `InsertTableRow`,
+  `InsertTableColumn`, `DeleteTableRow`, `DeleteTableColumn`,
+  `MergeTableCells` and `SplitTableCell`, and `UltraCanvasRichTextEdit` the
+  caret-relative wrappers a menu calls (`InsertRowBelow`, `DeleteCurrentColumn`,
+  `MergeWithCellRight`, `SplitCurrentCell` and the rest). Each is one undo step.
+  - **The grid stays rectangular across every operation.** A span reaching
+    across an insertion point grows instead of being cut in two - its text
+    lives in one cell and cannot be in two places - and a span reaching into a
+    deleted row or column shrinks. Where a span *started* in the deleted row,
+    the cell moves down into the next one rather than being deleted with it, so
+    what somebody typed in it survives.
+  - **Merging keeps the text of every cell it absorbs**, appended to the
+    surviving cell: a merge is a layout decision, and dropping the contents
+    would be a silent deletion. A merge whose rectangle would cut an existing
+    span in half is refused rather than approximated, because the model cannot
+    store half a cell.
+  - Deleting the last row or the last column deletes the table: one with no
+    cells has nothing to type into and no way back.
+- **One grid walk, shared.** Cells are stored sparsely - a merged cell is one
+  `RichTableCell` carrying a span, and the slots it covers hold nothing - so a
+  cell's index within its row is not its column. `BuildTableGrid()` resolves
+  which cell occupies each slot, and the element's layout now uses it instead
+  of its own copy of the walk. Two implementations of "which column is this
+  cell in" would drift, and a disagreement between layout and editing is a
+  caret landing in the wrong cell.
+- **An edit that did not move the caret was not drawn.** Block layouts are
+  cached and the rebuild pass only rebuilds the ones that have been
+  invalidated - which, until now, only moving the caret did. Centring the
+  paragraph the caret was already in changed the document and left the old
+  layout on screen until something else moved the caret; the same was true of
+  any format applied to the caret's own block, and of an undo that restored
+  text without moving anything. The editing core now reports which blocks its
+  last change replaced (`GetLastChangedBlocks`) and the element invalidates
+  exactly those. Pinned by a test that centres a paragraph without touching the
+  caret and reads back where the text actually landed.
+#### 2026-09-20 *0.9.17*
+- **UltraDatabase speaks PostgreSQL.** `core/UltraDatabase/
+  UltraDatabasePostgresDriver.cpp` plus `...PostgresSql.cpp`, registered the
+  same way the SQLite driver is. Optional and soft-failing: without libpq the
+  same source compiles to a stub and a `postgresql` connection reports that
+  the driver is missing, which is a true answer rather than a link error.
+- **Two new driver hooks, because a transaction is not portable.**
+  `BeginTransactionSql()` is `BEGIN IMMEDIATE` on SQLite and `BEGIN` on
+  PostgreSQL; `RowLockSuffix()` is empty on SQLite and ` FOR UPDATE` on
+  PostgreSQL. The second one exists because SQLite serialises writers and
+  PostgreSQL at READ COMMITTED does not, so a read-then-write counter that is
+  safe on one is a duplicate-key generator on the other - which is what two
+  concurrent clients proved, handing out 40 distinct numbers in 80 draws.
+- **`datetime('now')` was SQLite-only and sat in the migration bookkeeping**,
+  where every driver has to run it. It is `CURRENT_TIMESTAMP` now.
+- **The `?` -> `$n` rewriter is its own translation unit**, compiled whether
+  or not libpq was found. It is pure string handling, and gating it on the
+  driver would mean a machine without libpq ships it untested - while the
+  mistakes it guards against (a `?` inside a literal, a comment or a
+  dollar-quoted body) corrupt a statement that then still runs.
+- **The suite runs, rather than being built.** CI installs libsqlite3-dev and
+  libpq-dev explicitly instead of trusting the runner image, builds
+  `UltraDatabaseTests`, and fails the job if configure reports UltraDatabase
+  without PostgreSQL - a soft-disabled module takes its own tests with it.
+- TLS defaults to `verify-full`, and the connection password must be a
+  `vault:` key: a literal password in a config file is refused rather than
+  used.
+
+#### 2026-09-20 *0.9.16*
+- **Depth for the vector model: booleans, ClipView, contour, blend, mould,
+  bevel** - phase 5 of `Docs/Research/ArtCreatorVectorCanvasProposal.md`
+  (its first slice); the application half is ArtCreator 0.3.0.
+  - *Geometry* (`DataFormats/UltraCanvasVectorGeometry.h`, core): polygon
+    booleans over paths flattened to polygons - `PolygonBoolean` /
+    `PathBoolean` (union, subtract, intersect, exclude, each input with
+    its own fill rule; a union with nothing normalises a self-crossing
+    path) and `SlicePath` - as a planar-map clipper: every edge is split
+    at every crossing, each piece classified by the winding numbers on
+    its two sides, the separating pieces linked into consistently wound
+    rings. `OffsetPolygons` / `OffsetPath` grow or shrink a set with
+    round, mitre or bevel joins through the same clipper. `FlattenToPolygons`,
+    `PolygonsToPath`, `PolygonSetArea`, `WindingNumber`,
+    `PolygonSetContains`.
+  - *Model*: three container kinds, all `VectorGroup`s (`IsGroupType`):
+    `VectorClipView` (its first `Keyholes` children clip the rest and are
+    not drawn), `VectorBlend` (`Steps` shapes interpolated between each
+    pair of children, a `ColourBlendKind` run - fade, rainbow, alt
+    rainbow, constant - the one-to-one, antialiased and tangential flags
+    and Xara's profiles) and `VectorMould` (`Envelope` or `Perspective`:
+    the children warped from `SourceBounds` into a four-sided `Shape`
+    that starts at the source's top-left corner; `Warp`, `ShapeCorners`,
+    `IdentityShape`). Two effects on `VectorElement::Effects`:
+    `ContourEffect` (`Steps` rings `Width` out - or in, when negative -
+    coloured from the fill to `Colour`) and `BevelEffect` (Xara's fifteen
+    `BevelKind` profiles, `Indent`, `LightAngle`, `Tilt`, `Contrast`,
+    `Outer`).
+  - *Renderer*: a ClipView clips to its keyholes' union; a blend draws
+    each child and the resampled, start-matched intermediates with their
+    colours, strokes and opacity run; a mould warps every outline through
+    a Coons patch or a projective map (text and images move to their
+    moulded anchor); contour rings come from the offsetter (outward
+    behind the object, inward over it; cached with the geometry); the
+    bevel lights a distance transform of the silhouette shaped by the
+    profile, inner or outer, as highlight and shadow masks (cached like
+    the effect rasters; `EffectCacheSize` counts all three caches).
+  - *Editing layer*: `CombineShapes` (Xara's Combine Shapes: `Add`,
+    `Intersect` give one shape with the back shape's style; `Subtract`
+    and `Slice` cut each shape with the front one, which is removed).
+    `UngroupElements` dissolves the new containers too.
+  - *XAR*: the plugin gives the five controllers real container nodes and
+    parses their fields as Xara's own source writes them (the previous
+    reader skipped the controller records, so their contents nested under
+    the preceding object): `TAG_CLIPVIEWCONTROLLER` with the keyholes
+    before the `TAG_CLIPVIEW` marker; `TAG_CONTOURCONTROLLER` (steps,
+    width, blend type with the inset flag, four profile doubles) with its
+    `TAG_CONTOUR` node carrying the contour colour; `TAG_BLENDPROFILES` +
+    `TAG_BLEND` (steps, flags) with `TAG_BLENDER` / `TAG_BLENDERADDITIONAL`
+    between the blended objects; `TAG_MOULD_ENVELOPE` / `_PERSPECTIVE`
+    (threshold) with the `TAG_MOULD_PATH` shape and the `TAG_MOULD_BOUNDS`
+    + `TAG_MOULD_GROUP` sources; the 24-byte `TAG_BEVEL` with its
+    `TAG_BEVELINK` node. The converter reads them into the model (the
+    mould shape re-ordered from Xara's bottom-left start) and writes them
+    back the same way, the moulded results as plain warped paths so any
+    reader shows them; Xara regenerates contour steps, blend steps and
+    bevels from the controllers on load. Not verified against a Designer
+    export: the repo's Xara samples carry none of these records.
+  - *Tests*: `VectorEditTest` checks the booleans (areas, ring counts,
+    containment, a holed square), the three joins, insets and the four
+    combine operations; `VectorModelTest` checks each container and
+    effect in pixels; `XARWriterTest` round-trips one of each through the
+    plugin and the converter.
 
 #### 2026-09-20 *0.9.15*
 - **New: UltraMessage Phase 1 — the message channel is built**
@@ -381,6 +547,7 @@
   UltraFIBU's was the one application suite CI never built, so its checks - now
   833 of them, including the encoding fix above - ran nowhere. It is a headless
   suite with no UI dependency, which is why it can simply be switched on.
+
 
 #### 2026-09-19 *0.8.99*
 - **NetworkMonitor on Windows and macOS, and byte counters on Linux** — the

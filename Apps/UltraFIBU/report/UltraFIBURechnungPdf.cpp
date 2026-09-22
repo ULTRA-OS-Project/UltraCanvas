@@ -261,6 +261,13 @@ std::string Befreiungshinweis(const Steuerschluessel& key) {
                    "(§ 4 Nr. 1 Buchst. b i. V. m. § 6a UStG).";
         case SteuerArt::Drittland:
             return "Steuerfreie Ausfuhrlieferung (§ 4 Nr. 1 Buchst. a i. V. m. § 6 UStG).";
+        case SteuerArt::EuSonstigeLeistung:
+            // § 14a Abs. 1 UStG requires this exact phrase, and both parties'
+            // VAT numbers, on a service invoiced to a business in another
+            // member state. The customer accounts for the tax at their rate,
+            // in their country; this invoice carries none.
+            return "Steuerschuldnerschaft des Leistungsempfängers "
+                   "(Reverse Charge, § 3a Abs. 2 UStG).";
         case SteuerArt::ReverseCharge13b:
             return "Steuerschuldnerschaft des Leistungsempfängers (§ 13b UStG).";
         case SteuerArt::Oss:
@@ -308,10 +315,24 @@ std::vector<std::string> PruefePflichtangaben(const Mandant& mandant, const Bele
     // Nr. 5 - what was supplied.
     if (beleg.positionen.empty()) fehlt.push_back("Menge und Bezeichnung der Leistung");
 
-    // Nr. 6 - when. The Belegdatum stands in only when it is also the day of
-    // supply, and an invoice may not simply leave this out.
-    if (!beleg.leistungVon.Valid() && !beleg.datum.Valid())
+    // Nr. 6 - when. § 31 Abs. 4 UStDV lets the calendar month stand for the
+    // day, but something has to be stated: the recipient's input-tax deduction
+    // turns on the period the supply falls in.
+    if (beleg.leistungsart == Leistungszeitpunkt::Keiner) {
+        // Offered on purpose - an invoice for something not yet supplied has no
+        // time of supply - and reported on purpose, because on an ordinary
+        // invoice it is a mandatory field left empty.
+        fehlt.push_back("Zeitpunkt der Lieferung oder sonstigen Leistung "
+                        "(ausdrücklich weggelassen - zulässig nur, wenn noch "
+                        "nicht geleistet wurde, z. B. bei einer "
+                        "Anzahlungsrechnung)");
+    } else if (!beleg.leistungVon.Valid() && !beleg.datum.Valid()) {
         fehlt.push_back("Zeitpunkt der Lieferung oder sonstigen Leistung");
+    } else if (LeistungszeitpunktIstZeitraum(beleg.leistungsart) &&
+               !beleg.leistungBis.Valid()) {
+        fehlt.push_back("Ende des " + LeistungszeitpunktLabel(beleg.leistungsart) +
+                        "s - ein Zeitraum braucht beide Daten");
+    }
 
     // Nr. 7 and 8 - the base per rate and the rate or the exemption. A line
     // without a tax key can be neither.
@@ -351,6 +372,24 @@ RechnungPdfErgebnis SchreibeRechnungPdf(const Mandant& mandant, const Beleg& bel
     }
 
     ergebnis.fehlendePflichtangaben = PruefePflichtangaben(mandant, beleg, empfaenger);
+
+    // **A contradictory invoice is not written.** Unlike a missing address,
+    // which leaves a draft incomplete but harmless, a line that charges tax and
+    // also declares the customer liable for it is a false statement in the one
+    // document the customer books from. Printing it and adding a warning to a
+    // console nobody reads is how it reaches them anyway.
+    ergebnis.steuerBefunde = PruefeSteuerlicheStimmigkeit(beleg, empfaenger, schluessel);
+    if (HatBlockierendenBefund(ergebnis.steuerBefunde)) {
+        ergebnis.fehler = "Die Umsatzsteuer des Belegs ist nicht stimmig, die Rechnung "
+                          "wird deshalb nicht geschrieben:";
+        for (const SteuerBefund& b : ergebnis.steuerBefunde) {
+            if (!b.blockierend) continue;
+            ergebnis.fehler += "\n  - ";
+            if (!b.position.empty()) ergebnis.fehler += "Position \"" + b.position + "\": ";
+            ergebnis.fehler += b.text;
+        }
+        return ergebnis;
+    }
 
     VectorDocument doc;
     doc.Title  = Ueberschrift(beleg) + " " + beleg.nummer;
@@ -597,8 +636,34 @@ RechnungPdfErgebnis SchreibeRechnungPdf(const Mandant& mandant, const Beleg& bel
 
     // The exemption notes. One per distinct reason, not one per position.
     std::vector<std::string> hinweise;
-    if (!beleg.leistungVon.Valid())
-        hinweise.push_back("Das Leistungsdatum entspricht dem Rechnungsdatum.");
+    // § 14 Abs. 4 Nr. 6: name the time of supply, in the words that say which
+    // of the two it is. "Geliefert am" and "geleistet im Zeitraum" are
+    // different statements about when the tax arose, and the recipient books
+    // from whichever one is printed.
+    switch (beleg.leistungsart) {
+        case Leistungszeitpunkt::Keiner:
+            break;   // nothing to print; PruefePflichtangaben has flagged it
+        case Leistungszeitpunkt::Lieferzeitraum:
+        case Leistungszeitpunkt::Leistungszeitraum:
+            if (beleg.leistungVon.Valid() && beleg.leistungBis.Valid()) {
+                hinweise.push_back(LeistungszeitpunktLabel(beleg.leistungsart) + ": " +
+                                   FormatDateGerman(beleg.leistungVon) + " - " +
+                                   FormatDateGerman(beleg.leistungBis));
+            }
+            break;
+        case Leistungszeitpunkt::Lieferdatum:
+        case Leistungszeitpunkt::Leistungsdatum:
+            if (beleg.leistungVon.Valid()) {
+                hinweise.push_back(LeistungszeitpunktLabel(beleg.leistungsart) + ": " +
+                                   FormatDateGerman(beleg.leistungVon));
+            } else {
+                // The standard shortcut, and legitimate only when it is true -
+                // which is why it names the field rather than saying nothing.
+                hinweise.push_back("Das " + LeistungszeitpunktLabel(beleg.leistungsart) +
+                                   " entspricht dem Rechnungsdatum.");
+            }
+            break;
+    }
     if (mandant.kleinunternehmer)
         hinweise.push_back("Gemäß § 19 UStG wird keine Umsatzsteuer berechnet.");
     for (const Steuerzeile& z : steuerzeilen) {

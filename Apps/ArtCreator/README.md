@@ -53,6 +53,10 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 | Y | Transparency | Click a shape and drag right for a flat level, or drag across it for a linear / radial / conical ramp; the mix (stained glass, bleach, contrast, ...) and the level are in the options |
 | W | Shadow | Click a shape for a wall shadow and drag it into place; kind (wall / floor / glow), blur, darkness and colour in the options |
 | K | Feather | Click a shape to fade its edges, drag right for a wider fade; radius in the options |
+| C | Contour | Click a shape for a contour; drag right for an outward width, left for inward; steps, the colour run (fade / rainbow / alt rainbow / constant) and the colour (from the line or fill colour) in the options |
+| J | Bevel | Click a shape for a bevel, drag right for a wider rim; Xara's fifteen profiles, light angle and tilt, contrast, inner / outer in the options |
+| B | Blend | Drag from one shape to another to blend them (from or onto a blend adds the shape to it); steps and the colour run in the options |
+| M | Mould | Click a shape (or the selection it belongs to) to put it in an envelope or a perspective; drag the corner squares and an envelope's curve handles; reset shape / remove mould |
 | Z | Zoom | Click to zoom in, shift-click out, drag a rectangle to fill the view with it |
 | H | Push | Drag the view (space + drag does the same with any tool) |
 
@@ -75,8 +79,13 @@ the selection and to every line drawn afterwards.
 - **Edit**: Undo / Redo (Ctrl+Z / Ctrl+Y), Cut / Copy / Paste (in-app
   clipboard, pastes offset), Duplicate (Ctrl+D), Delete, Select All / None.
 - **Arrange**: Bring to Front (Ctrl+F), Forward, Backward, Send to Back
-  (Ctrl+B), Group (Ctrl+G), Ungroup (Ctrl+U), align to selection / page,
-  distribute, Convert to Editable Shapes.
+  (Ctrl+B), Group (Ctrl+G), Ungroup (Ctrl+U; dissolves clip views,
+  blends and moulds too), align to selection / page, distribute, Combine
+  Shapes (Add, Subtract, Intersect, Slice - the front shape cuts the
+  others and is removed; Add and Intersect keep the back shape's style),
+  Apply ClipView (Ctrl+K: the front shape becomes the keyhole the others
+  show through), Remove ClipView, Blend or Mould, Convert to Editable
+  Shapes.
 - **Object**: No Fill, No Line, line widths.
 - **Layer**: New (Ctrl+Shift+N), Delete, Move Up / Down, Show / Hide; the
   layers panel toggles visible / locked and picks the active layer.
@@ -87,8 +96,9 @@ the selection and to every line drawn afterwards.
 
 Opens SVG, XAR (compressed too, through the XAR plugin's reader), EMF,
 WMF, DXF and DWG; saves XAR (the native format: shapes, fills with every
-stop, text, transparency ramps and mixes, shadows and feathers all round
-trip; Xara's own arrowheads as Xara arrowheads, the rest of the line
+stop, text, transparency ramps and mixes, shadows and feathers, clip
+views, contours, blends, moulds and bevels all round trip as Xara's own
+records; Xara's own arrowheads as Xara arrowheads, the rest of the line
 gallery as plain shapes that read back as strokes), SVG (shapes, fills,
 text - no effects), DXF, EMF, WMF; exports PDF, AI, EPS and CDR too. What
 a reader or writer had to drop is reported in the status bar. Without

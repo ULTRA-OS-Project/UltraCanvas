@@ -473,6 +473,91 @@ bool ParseStandaloneImage(const std::string& line, std::string& alt, std::string
 
 } // namespace
 
+// ===== TABLE GRID =====
+
+const RichTableGridSlot RichTableGrid::kEmpty{};
+
+const RichTableGridSlot& RichTableGrid::At(int row, int column) const {
+    if (row < 0 || row >= rowCount || column < 0 || column >= columnCount) return kEmpty;
+    return slots[static_cast<size_t>(row) * static_cast<size_t>(columnCount) +
+                 static_cast<size_t>(column)];
+}
+
+bool RichTableGrid::OriginOf(int row, int cellIndex, int& outRow, int& outColumn) const {
+    for (int c = 0; c < columnCount; ++c) {
+        const RichTableGridSlot& slot = At(row, c);
+        if (slot.origin && slot.row == row && slot.cellIndex == cellIndex) {
+            outRow = row;
+            outColumn = c;
+            return true;
+        }
+    }
+    return false;
+}
+
+bool RichTableGrid::CellAt(int row, int column, int& outRow, int& outCellIndex) const {
+    const RichTableGridSlot& slot = At(row, column);
+    if (!slot.Occupied()) return false;
+    outRow = slot.row;
+    outCellIndex = slot.cellIndex;
+    return true;
+}
+
+RichTableGrid BuildTableGrid(const RichDocBlock& table) {
+    RichTableGrid grid;
+    if (table.type != RichBlockType::Table || table.tableRows.empty()) return grid;
+
+    grid.rowCount = static_cast<int>(table.tableRows.size());
+
+    // The grid is as wide as the widest row counting column spans, not as the
+    // row with the most cells: one cell spanning three columns is three wide.
+    for (const RichTableRow& row : table.tableRows) {
+        int width = 0;
+        for (const RichTableCell& cell : row.cells) width += std::max(1, cell.columnSpan);
+        grid.columnCount = std::max(grid.columnCount, width);
+    }
+    if (grid.columnCount == 0) {
+        grid.rowCount = 0;
+        return grid;
+    }
+    grid.slots.assign(static_cast<size_t>(grid.rowCount) * static_cast<size_t>(grid.columnCount),
+                      RichTableGridSlot{});
+
+    auto slotAt = [&grid](int row, int column) -> RichTableGridSlot& {
+        return grid.slots[static_cast<size_t>(row) * static_cast<size_t>(grid.columnCount) +
+                          static_cast<size_t>(column)];
+    };
+
+    for (int r = 0; r < grid.rowCount; ++r) {
+        const RichTableRow& row = table.tableRows[static_cast<size_t>(r)];
+        int cellIndex = 0;
+        for (int column = 0; column < grid.columnCount; ) {
+            if (slotAt(r, column).Occupied()) {
+                column++;                       // taken by a cell spanning down from above
+                continue;
+            }
+            if (cellIndex >= static_cast<int>(row.cells.size())) break;   // ragged row
+            const RichTableCell& cell = row.cells[static_cast<size_t>(cellIndex)];
+            // Clamp both spans to what the grid can hold: a document claiming a
+            // rowSpan past the last row is malformed, and every caller after
+            // this point would otherwise index out of bounds.
+            const int columnSpan = std::min(std::max(1, cell.columnSpan), grid.columnCount - column);
+            const int rowSpan = std::min(std::max(1, cell.rowSpan), grid.rowCount - r);
+            for (int dr = 0; dr < rowSpan; ++dr) {
+                for (int dc = 0; dc < columnSpan; ++dc) {
+                    RichTableGridSlot& slot = slotAt(r + dr, column + dc);
+                    slot.row = r;
+                    slot.cellIndex = cellIndex;
+                    slot.origin = (dr == 0 && dc == 0);
+                }
+            }
+            column += columnSpan;
+            cellIndex++;
+        }
+    }
+    return grid;
+}
+
 // ===== MEDIA HELPERS =====
 
 int UCRichDocument::AddMedia(std::string name, std::string mimeType, std::vector<uint8_t> data) {

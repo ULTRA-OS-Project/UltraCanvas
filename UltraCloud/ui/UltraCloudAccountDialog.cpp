@@ -1,6 +1,7 @@
 // UltraCloud/ui/UltraCloudAccountDialog.cpp
-// Version: 0.3.0 - shared UiStyle: themed captions, inputs and buttons
-// Last Modified: 2026-09-09
+// Version: 0.4.0 - the form is a UltraCanvasFormLayout grid, not a row of
+//                  flex containers with hard-coded caption widths
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraCloudAccountDialog.h"
 #include "UltraCloudUiStyle.h"
@@ -10,8 +11,10 @@
 #include "UltraCanvasCheckbox.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasFormLayout.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSpacer.h"
 #include "UltraCanvasTextInput.h"
 #include "UltraCanvasUtils.h"   // OpenURL
 
@@ -27,8 +30,18 @@ namespace UltraCloud {
 
 namespace {
 
-constexpr float kLabelWidth = 130.0f;
-constexpr float kRowHeight  = UiStyle::kControlHeight;
+// A caption and the control it describes, kept together so a row the chosen
+// provider does not need leaves the grid whole. Hiding only the control would
+// leave its caption behind and push every row below it into the wrong column.
+struct FormRow {
+    std::shared_ptr<UltraCanvasLabel> caption;
+    std::shared_ptr<UltraCanvasUIElement> control;
+
+    void SetVisible(bool visible) const {
+        if (caption) caption->SetVisible(visible);
+        if (control) control->SetVisible(visible);
+    }
+};
 
 // Providers in the order the dialog offers them: real ones first, the
 // in-process demo last.
@@ -54,7 +67,13 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
     DialogConfig config;
     config.title      = title.empty() ? "Add cloud account" : title;
     config.width      = 520;
-    config.height     = 420;
+    // Tall enough for the provider that needs every row: WebDAV's seven
+    // captioned rows (7x32) plus the checkbox (26), the hint (36) and the
+    // status line (22), nine 8 px row gaps, the 20 px padding on each side,
+    // and the button row (36) with its own gaps. The rows are not allowed to
+    // shrink into each other any more, so the dialog has to be tall enough to
+    // hold them rather than the layout absorbing the difference.
+    config.height     = 490;
     config.dialogType = DialogType::Custom;
     config.buttons    = DialogButtons::NoButtons;
 
@@ -71,27 +90,23 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
     dialog->SetPadding(UiStyle::kPadding);
     dialog->SetBackgroundColor(UiStyle::kSurface);
 
-    auto form = CreateContainer("cloudAccForm", 0, 0, 0, 0);
-    form->layout.SetFlexColumn()
-                .SetFlexGap(8)
-                .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // One two-column grid rather than a flex container per row: the caption
+    // column is exactly as wide as the widest caption in it (so a longer
+    // translation of "Upload folder" makes the column wider instead of being
+    // cut off), every control starts where that column ends, and the grid
+    // never scrolls - a row per caption used to raise a scrollbar pair inside
+    // each row as soon as the dialog was a few pixels too short for its rows.
+    auto form = CreateFormGrid("cloudAccForm", 8.0f, UiStyle::kGap);
 
-    // [label | control] rows.
+    // [caption | control] rows. The control carries no explicit width: the
+    // `1fr` column gives it the whole remaining width, whatever the dialog is.
     auto addRow = [&form](const std::string& id, const std::string& caption,
                           const std::shared_ptr<UltraCanvasUIElement>& control) {
-        auto row = CreateContainer(id + "Row", 0, 0, 0, kRowHeight);
-        row->layout.SetFlexRow()
-                   .SetFlexGap(8)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-        auto label = UiStyle::MakeCaption(id + "Label", caption, kLabelWidth);
-        row->AddChild(label);
+        auto label = UiStyle::MakeCaption(id + "Label", caption);
         if (auto input = std::dynamic_pointer_cast<UltraCanvasTextInput>(control))
             UiStyle::StyleInput(input);
-        row->AddChild(control);
-        control->layoutItem.SetFlexGrow(1);
-        form->AddChild(row);
-        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-        return row;
+        AddFormRow(form, label, control);
+        return FormRow{label, control};
     };
 
     // The caller's filter narrows the list; an empty result would leave a
@@ -104,53 +119,58 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
             if (providerFilter(p->Id())) kept.push_back(p);
         if (!kept.empty()) providers = std::move(kept);
     }
-    auto provider = CreateDropdown("cloudAccProvider", 0, 0, 300, UiStyle::kControlHeight);
+    auto provider = CreateDropdown("cloudAccProvider", 0, 0, 0, UiStyle::kControlHeight);
     for (const auto& p : providers) provider->AddItem(p->DisplayName(), p->Id());
     if (!providers.empty()) provider->SetSelectedIndex(0, /*runNotifications=*/false);
     addRow("cloudAccProvider", "Provider", provider);
 
-    auto name = CreateTextInput("cloudAccName", 0, 0, 300, UiStyle::kControlHeight);
+    auto name = CreateTextInput("cloudAccName", 0, 0, 0, UiStyle::kControlHeight);
     name->SetPlaceholder("My cloud (optional)");
     addRow("cloudAccName", "Name", name);
 
-    auto server = CreateTextInput("cloudAccServer", 0, 0, 300, UiStyle::kControlHeight);
+    auto server = CreateTextInput("cloudAccServer", 0, 0, 0, UiStyle::kControlHeight);
     server->SetPlaceholder("https://cloud.example.com");
     auto serverRow = addRow("cloudAccServer", "Server URL", server);
 
-    auto user = CreateTextInput("cloudAccUser", 0, 0, 300, UiStyle::kControlHeight);
+    auto user = CreateTextInput("cloudAccUser", 0, 0, 0, UiStyle::kControlHeight);
     user->SetPlaceholder("user name");
     auto userRow = addRow("cloudAccUser", "User", user);
 
-    auto password = CreatePasswordInput("cloudAccPass", 0, 0, 300, UiStyle::kControlHeight);
+    auto password = CreatePasswordInput("cloudAccPass", 0, 0, 0, UiStyle::kControlHeight);
     password->SetPlaceholder("password or app password");
     auto passwordRow = addRow("cloudAccPass", "Password", password);
 
-    auto publicUrl = CreateTextInput("cloudAccPublic", 0, 0, 300, UiStyle::kControlHeight);
+    auto publicUrl = CreateTextInput("cloudAccPublic", 0, 0, 0, UiStyle::kControlHeight);
     publicUrl->SetPlaceholder("https://files.example.org/pub (links = this URL + path)");
     auto publicRow = addRow("cloudAccPublic", "Public URL", publicUrl);
 
-    auto folder = CreateTextInput("cloudAccFolder", 0, 0, 300, UiStyle::kControlHeight);
+    auto folder = CreateTextInput("cloudAccFolder", 0, 0, 0, UiStyle::kControlHeight);
     folder->SetText("/Shared from ULTRA OS");
     addRow("cloudAccFolder", "Upload folder", folder);
 
+    // Its own caption, so it spans both columns - as do the hint and the
+    // status line below it.
     auto makeDefault = UltraCanvasCheckbox::CreateCheckbox(
         "cloudAccDefault", 0, 0, 300, 26, "Use as the default cloud account", false);
-    addRow("cloudAccDefaultRow", "", makeDefault);
+    AddFormWideRow(form, makeDefault);
 
     auto hint = CreateLabel("cloudAccHint", 0, 0, 0, 36,
         "Nextcloud: create an app password under Settings → Security and use it here.");
     hint->SetWrap(TextWrap::WrapWord);
     hint->SetFontSize(UiStyle::kFontSize - 1.0f);
     hint->SetTextColor(UiStyle::kTextSecondary);
-    form->AddChild(hint);
+    AddFormWideRow(form, hint);
 
     auto status = CreateLabel("cloudAccStatus", 0, 0, 0, 22, "");
     status->SetFontSize(UiStyle::kFontSize);
     status->SetTextColor(UiStyle::kDanger);
-    form->AddChild(status);
+    AddFormWideRow(form, status);
 
     dialog->AddChild(form);
-    form->layoutItem.SetFlexGrow(1);
+    // The form keeps its rows at their own height (CreateFormGrid sets
+    // flex-shrink: 0) and the spacer takes the slack, so the buttons sit at
+    // the bottom whether the provider needs three rows or seven.
+    dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
 
     // Buttons (created here so applyProvider can relabel the Add button).
     auto addBtn = CreateButton("cloudAccAdd", 0, 0, 160, UiStyle::kControlHeight, "Add account");
@@ -165,10 +185,10 @@ void ShowAddAccountDialog(UltraCanvasWindowBase* parent, CloudService& service,
         const auto& p = providers[static_cast<std::size_t>(idx)];
         const auto caps = p->Capabilities();
         const std::string id = p->Id();
-        serverRow->SetVisible(caps.needsServerUrl);
-        publicRow->SetVisible(id == "webdav");
-        userRow->SetVisible(!caps.needsOAuth);
-        passwordRow->SetVisible(!caps.needsOAuth && id != "memory");
+        serverRow.SetVisible(caps.needsServerUrl);
+        publicRow.SetVisible(id == "webdav");
+        userRow.SetVisible(!caps.needsOAuth);
+        passwordRow.SetVisible(!caps.needsOAuth && id != "memory");
         if (caps.needsOAuth) {
             addBtn->SetText("Sign in in browser");
             hint->SetText(HasOAuthApp(id)

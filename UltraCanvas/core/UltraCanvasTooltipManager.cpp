@@ -300,7 +300,7 @@ namespace UltraCanvas {
                                                 const Point2Di &position, const TooltipStyle& newStyle) {
         TooltipContent content;
         if (!text.empty()) {
-            content.AddText(text);   // Pango markup allowed, matches legacy behavior
+            content.AddPlainText(text);   // plain data: < > & are shown literally
         }
         UpdateAndShowTooltip(win, content, position, newStyle);
     }
@@ -421,6 +421,7 @@ namespace UltraCanvas {
             switch (bl.type) {
                 case TooltipBlockType::Title:
                 case TooltipBlockType::Text:
+                case TooltipBlockType::PlainText:
                     if (bl.textLayout) {
                         renderCtx->SetTextPaint(style.textColor);
                         renderCtx->DrawTextLayout(*bl.textLayout, Point2Dd(baseX, baseY + bl.y));
@@ -549,6 +550,11 @@ namespace UltraCanvas {
                     bl.textLayout = ctx->CreateTextLayout(
                         SpanMarkup(style, style.fontSize, false, block.text), true);
                     break;
+                case TooltipBlockType::PlainText:
+                    // Plain data: escape so < > & render literally
+                    bl.textLayout = ctx->CreateTextLayout(
+                        SpanMarkup(style, style.fontSize, false, EscapeMarkup(block.text)), true);
+                    break;
                 case TooltipBlockType::Bullet:
                     bl.textLayout = ctx->CreateTextLayout(
                         SpanMarkup(style, style.fontSize, false, EscapeMarkup(block.text)), true);
@@ -630,7 +636,8 @@ namespace UltraCanvas {
         for (auto& bl : blockLayouts) {
             switch (bl.type) {
                 case TooltipBlockType::Title:
-                case TooltipBlockType::Text: {
+                case TooltipBlockType::Text:
+                case TooltipBlockType::PlainText: {
                     int w = static_cast<int>(bl.textLayout->GetLayoutSize().width);
                     if (w > innerMax) {
                         bl.textLayout->SetExplicitWidth(innerMax);
@@ -680,6 +687,7 @@ namespace UltraCanvas {
             switch (bl.type) {
                 case TooltipBlockType::Title:
                 case TooltipBlockType::Text:
+                case TooltipBlockType::PlainText:
                 case TooltipBlockType::Bullet:
                     bl.height = static_cast<int>(bl.textLayout->GetLayoutSize().height);
                     break;

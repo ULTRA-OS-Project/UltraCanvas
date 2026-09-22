@@ -63,8 +63,19 @@ namespace UltraCanvas {
             LinearGradient,
             RadialGradient,
             ConicalGradient,
-            MeshGradient
+            MeshGradient,
+            // Xara-class containers (phase 5): a group clipped to its first
+            // children, a blend between its children, a group moulded into
+            // a shape.
+            ClipView,
+            Blend,
+            Mould
         };
+        // Element kinds that hold children (all derive from VectorGroup).
+        constexpr bool IsGroupType(VectorElementType t) {
+            return t == VectorElementType::Group || t == VectorElementType::Layer || t == VectorElementType::Symbol ||
+                   t == VectorElementType::ClipView || t == VectorElementType::Blend || t == VectorElementType::Mould;
+        }
 
         enum class PathCommandType {
             MoveTo,
@@ -497,10 +508,53 @@ namespace UltraCanvas {
             float Radius = 4.0f;
         };
 
+        // How a run of colours between two ends is walked (contours and
+        // blends): Fade mixes straight between them, Rainbow goes the
+        // short way round the hue circle, AltRainbow the long way, Constant
+        // keeps the first colour throughout.
+        enum class ColourBlendKind { Fade, Rainbow, AltRainbow, Constant };
+
+        // Contour: `Steps` copies of the object's outline between it and a
+        // copy offset by `Width` element units (positive: outward, drawn
+        // behind the object; negative: inward, drawn over it), each filled
+        // with the colour between the object's fill and `Colour` (the
+        // outermost step's). Bias / Gain are Xara's step-spacing and
+        // colour profiles (0, 0 = even), kept for the round trip.
+        struct ContourEffect {
+            int Steps = 5;
+            float Width = 20.0f;
+            ColourBlendKind Blend = ColourBlendKind::Fade;
+            Color Colour{255, 255, 255, 255};
+            bool InsetPath = false;
+            double ObjectBias = 0, ObjectGain = 0, AttributeBias = 0, AttributeGain = 0;
+        };
+
+        // Bevel: a lit rim `Indent` element units wide inside the object's
+        // edge (outside it when Outer is set), the light at `LightAngle`
+        // degrees (0 = from the right, counter-clockwise on the page) and
+        // `Tilt` degrees above the page, `Contrast` 0..1 the strength of
+        // its highlights and shadows. The kinds are Xara's bevel
+        // profiles: how the rim's height runs from the edge inward.
+        enum class BevelKind {
+            Flat, Round, HalfRound, Frame, Mesa1, Mesa2, Smooth1, Smooth2,
+            Point1, Point2a, Point2b, Ruffle2a, Ruffle2b, Ruffle3a, Ruffle3b
+        };
+        constexpr int BevelKindCount = 15;
+        struct BevelEffect {
+            BevelKind Kind = BevelKind::Flat;
+            float Indent = 8.0f;
+            float LightAngle = 135.0f;
+            float Tilt = 45.0f;
+            float Contrast = 0.5f;
+            bool Outer = false;
+        };
+
         struct VectorEffects {
             std::optional<ShadowEffect> Shadow;
             std::optional<FeatherEffect> Feather;
-            bool Any() const { return Shadow.has_value() || Feather.has_value(); }
+            std::optional<ContourEffect> Contour;
+            std::optional<BevelEffect> Bevel;
+            bool Any() const { return Shadow.has_value() || Feather.has_value() || Contour.has_value() || Bevel.has_value(); }
         };
 
 // ===== BASE ELEMENT =====
@@ -681,6 +735,72 @@ namespace UltraCanvas {
             VectorSymbol() { Type = VectorElementType::Symbol; }
 
             std::shared_ptr<VectorElement> Clone() const override;
+        };
+
+        // ClipView: the first `Keyholes` children are the clip shapes (not
+        // drawn themselves); the rest are drawn clipped to their union.
+        class VectorClipView : public VectorGroup {
+        public:
+            int Keyholes = 1;
+
+            VectorClipView() { Type = VectorElementType::ClipView; }
+
+            // The keyholes' bounds: what shows.
+            Rect2Dd GetBoundingBox() const override;
+            std::shared_ptr<VectorElement> Clone() const override;
+            std::vector<std::shared_ptr<VectorElement>> KeyholeShapes() const;
+            std::vector<std::shared_ptr<VectorElement>> Contents() const;
+        };
+
+        // Blend: between each pair of consecutive children, `Steps`
+        // intermediate shapes interpolate the outline, the colours (as
+        // `ColourEffect` says) and the stroke. The children themselves
+        // draw as they are. OneToOne maps outline nodes directly instead
+        // of resampling; the profiles are Xara's (0, 0 = even).
+        class VectorBlend : public VectorGroup {
+        public:
+            int Steps = 5;
+            ColourBlendKind ColourEffect = ColourBlendKind::Fade;
+            bool OneToOne = false;
+            bool Antialiased = true;
+            bool Tangential = false;
+            double ObjectBias = 0, ObjectGain = 0, AttributeBias = 0, AttributeGain = 0;
+
+            VectorBlend() { Type = VectorElementType::Blend; }
+
+            std::shared_ptr<VectorElement> Clone() const override;
+        };
+
+        // Mould: the children (in the mould's space) are warped from
+        // `SourceBounds` (their joint bounds when empty) into `Shape`, a
+        // closed path of four sides starting at the source's top-left
+        // corner and running along its top, right, bottom and left edges
+        // in turn - four cubic curves for an Envelope (a Coons patch),
+        // four straight lines for a Perspective (a projective map).
+        // Threshold is Xara's curve-fitting accuracy, kept for the round
+        // trip.
+        enum class MouldKind { Envelope, Perspective };
+        class VectorMould : public VectorGroup {
+        public:
+            MouldKind Kind = MouldKind::Envelope;
+            PathData Shape;
+            Rect2Dd SourceBounds{0, 0, 0, 0};
+            int Threshold = 64;
+
+            VectorMould() { Type = VectorElementType::Mould; }
+
+            // The shape's bounds: where the warped children land.
+            Rect2Dd GetBoundingBox() const override;
+            std::shared_ptr<VectorElement> Clone() const override;
+            // The children's joint bounds in the mould's space, or
+            // SourceBounds when set.
+            Rect2Dd EffectiveSourceBounds() const;
+            // The four corners of the shape (its four sides' end points).
+            bool ShapeCorners(Point2Dd corners[4]) const;
+            // A square shape over `bounds` for the kind: the identity mould.
+            static PathData IdentityShape(MouldKind kind, const Rect2Dd& bounds);
+            // Maps a point of the source rectangle into the shape.
+            Point2Dd Warp(const Point2Dd& p) const;
         };
 
         class VectorUse : public VectorElement {

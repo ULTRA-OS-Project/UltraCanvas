@@ -9,7 +9,7 @@
 // user-editable state (line width, shape sides, text font, ...) that
 // survives tool switches, and ArtToolContext is what the window lets a
 // tool reach.
-// Version: 1.0.0
+// Version: 1.1.0
 // Last Modified: 2026-09-15
 // Author: UltraCanvas Framework
 #pragma once
@@ -29,7 +29,7 @@ namespace UltraCanvas {
 
 enum class ArtToolId {
     Selector = 0, ShapeEditor, Pen, Freehand, Line, Rectangle, Ellipse, QuickShape,
-    Text, Fill, Transparency, Shadow, Feather, Zoom, Push,
+    Text, Fill, Transparency, Shadow, Feather, Contour, Bevel, Blend, Mould, Zoom, Push,
     Count
 };
 
@@ -51,6 +51,18 @@ struct ArtToolOptions {
     float shadowBlur = 4.0f;           // document units
     float shadowDarkness = 50.0f;      // 0..100 %
     float featherRadius = 6.0f;        // document units
+    int   contourSteps = 5;
+    float contourWidth = 20.0f;        // document units, < 0 inward
+    int   contourBlend = 0;            // VectorStorage::ColourBlendKind
+    int   bevelKind = 0;               // VectorStorage::BevelKind
+    float bevelIndent = 8.0f;          // document units
+    float bevelLight = 135.0f;         // degrees
+    float bevelTilt = 45.0f;           // degrees
+    float bevelContrast = 50.0f;       // 0..100 %
+    bool  bevelOuter = false;
+    int   blendSteps = 5;
+    int   blendColour = 0;             // VectorStorage::ColourBlendKind
+    int   mouldKind = 0;               // VectorStorage::MouldKind
     int   lineStartArrow = 0;          // VectorStorage::ArrowheadKind
     int   lineEndArrow = 0;
     float lineArrowScale = 1.0f;
@@ -139,6 +151,14 @@ namespace ArtToolHelpers {
     void AddNewElement(ArtToolContext& ctx, const std::string& label, const std::shared_ptr<VectorStorage::VectorElement>& element);
     // The rectangle between two points, optionally square / from the centre.
     Rect2Dd DragRect(const Point2Dd& from, const Point2Dd& to, bool square, bool fromCentre);
+    // Puts `container` into `parent` at `index` and moves `members` into it
+    // in drawing order, keeping their document placement.
+    void WrapInContainer(const std::shared_ptr<VectorStorage::VectorGroup>& container,
+                         const std::shared_ptr<VectorStorage::VectorGroup>& parent, int index,
+                         const std::vector<std::shared_ptr<VectorStorage::VectorElement>>& members);
+    // Names for the option dropdowns.
+    const std::vector<std::string>& ColourBlendNames();
+    const std::vector<std::string>& BevelKindNames();
 }
 
 // ===== OPTION WIDGET HELPERS =====
