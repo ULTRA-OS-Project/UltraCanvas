@@ -1,4 +1,4 @@
-#### 2026-09-22 *0.9.25*
+#### 2026-09-22 *0.9.26*
 - **Every 3D sample audited for the fault the STL aeroplane had**, by
   measuring rather than squinting: each file of the E-45 aircraft was loaded
   through the same path the demo pages and the Filer's thumbnails use, and
@@ -33,7 +33,7 @@
   - The `.dae`, `.blend` and `.abc` exports carry half a hull each, which is
     what they were exported as; `Tests/ModelPLYTest.cpp` already says so.
 
-#### 2026-09-22 *0.9.24*
+#### 2026-09-22 *0.9.25*
 - **The hostel plan in the DWG demo was a black smudge in the corner of an
   empty sheet.** Two faults in one tile, both of them general.
   - **A lineweight is a plot width, and it was being scaled by the block it
@@ -68,7 +68,7 @@
   the file as written and still declares Z-up, and the page reports the
   same extents (114.05 x 79.49 x 55.69) as before.
 
-#### 2026-09-22 *0.9.23*
+#### 2026-09-22 *0.9.24*
 - **The DWG / DXF demo page was five white squares, and so was everything
   below them.** Four separate faults, each of which hid the next.
   - **`UltraCanvasVectorElement` declared no CSS box.** Its
