@@ -75,7 +75,11 @@ namespace UltraCanvas {
 
     void UltraCanvasVectorElement::ZoomToFit() {
         if (!document) return;
-        Rect2Dd docBounds = document->GetBoundingBox();
+        // Not GetBoundingBox(): a fit is about what the reader of the drawing
+        // wants to see, and one forgotten speck a quarter of a million units
+        // away from the plans would otherwise shrink the whole drawing into a
+        // corner of an empty sheet (see ContentBounds).
+        Rect2Dd docBounds = ContentBounds(*document);
         if (docBounds.width <= 0 || docBounds.height <= 0) return;
 
         // A document is usually set while the page is still being built, so
@@ -127,7 +131,7 @@ namespace UltraCanvas {
 
     void UltraCanvasVectorElement::CenterDocument() {
         if (!document) return;
-        Rect2Dd docBounds = document->GetBoundingBox();
+        Rect2Dd docBounds = ContentBounds(*document);
         auto bounds = GetBounds();
         panOffset.x = (finalBounds.width - docBounds.width * zoomLevel) / 2 - docBounds.x * zoomLevel;
         panOffset.y = (finalBounds.height - docBounds.height * zoomLevel) / 2 - docBounds.y * zoomLevel;

@@ -30,6 +30,7 @@
 #include <map>
 #include <sstream>
 #include <string>
+#include <algorithm>
 #include <vector>
 
 using namespace UltraCanvas;
@@ -579,6 +580,42 @@ void TestBlockMachinery() {
     Check(polyline3d, "3D polyline projects to a 3-point polyline");
 }
 
+// A lineweight is a plot width, not a length in the drawing, so it must not
+// grow with the scale of the block the entity sits in. The synthetic drawing
+// inserts PAIR at 2x, so the same circle appears at two different scales and
+// both must come out the same width on the page.
+void TestPenWidthIgnoresBlockScale() {
+    std::printf("== pen widths under scaled inserts\n");
+    VectorConverter::ConversionOptions options;
+    auto doc = VectorConverter::DXFConverter().ImportFromString(kBlockDrawing, options);
+    Check(doc != nullptr, "synthetic drawing imports");
+    if (!doc) return;
+
+    std::vector<double> scales, effective;
+    for (const VectorElement* e : Drawables(*doc)) {
+        if (e->Type != VectorElementType::Circle || !e->Style.Stroke) continue;
+        const Matrix3x3 g = e->GetGlobalTransform();
+        const double scale = std::sqrt(std::fabs(g.m[0][0] * g.m[1][1] - g.m[0][1] * g.m[1][0]));
+        scales.push_back(scale);
+        effective.push_back(e->Style.Stroke->Width * scale);
+    }
+    Check(effective.size() >= 4, "circles found (got " + std::to_string(effective.size()) + ")");
+    if (effective.empty()) return;
+
+    const double lo = *std::min_element(scales.begin(), scales.end());
+    const double hi = *std::max_element(scales.begin(), scales.end());
+    Check(hi > lo * 1.5, "the drawing really does insert the block at two scales (" +
+                         std::to_string(lo) + " and " + std::to_string(hi) + ")");
+
+    const double first = effective.front();
+    bool same = true;
+    for (double w : effective) {
+        if (std::fabs(w - first) > first * 0.01) same = false;
+    }
+    Check(same, "every circle strokes at the same width on the page, whatever "
+                "scale its block was inserted at");
+}
+
 // The framework's CAD test document (the one VectorFormatsPluginTest
 // round-trips); `--write-dxf <path>` exports it so the DWG fixture can be
 // regenerated with LibreDWG's dxf2dwg.
@@ -793,6 +830,7 @@ int main(int argc, char** argv) {
         return 0;
     }
     TestBlockMachinery();
+    TestPenWidthIgnoresBlockScale();
     TestFixture();
     TestDrawingFamily();
     std::printf("%s: %d failure(s)\n", failures ? "FAILED" : "PASSED", failures);

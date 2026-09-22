@@ -12,6 +12,8 @@
 //   3. Painting used the element's parent-frame origin although the
 //      container has already translated the context to it, which doubles
 //      the offset as soon as the element is not at (0, 0).
+//   4. The fit framed the union of everything, so one forgotten speck far
+//      from the rest shrank the drawing into a corner of an empty sheet.
 //
 // Plus the one that made the rest of the page vanish with it: an element
 // carrying a non-invertible transform (a CAD block standing in a vertical
@@ -143,6 +145,63 @@ void TestFitsADrawingLargerThanTheZoomLimit() {
     Check(ink < 280 * 190, "without covering every pixel of it");
 }
 
+// ===== 2b. A SPECK FAR FROM THE DRAWING DOES NOT DECIDE THE FIT =====
+// Builds a dense drawing plus one stray hairline a long way off, the shape
+// of media/vector/DWG/womans hostel.dwg, where four 4 x 0.7 unit drawables a
+// quarter of a million units from the plans filled 97% of the page.
+std::shared_ptr<VectorDocument> DrawingWithASpeck(bool withSpeck) {
+    auto doc = std::make_shared<VectorDocument>();
+    doc->Size = Size2Dd{10000, 10000};
+    auto layer = doc->AddLayer("plans");
+    for (int i = 0; i < 400; ++i) {          // the drawing: a dense 500-unit block
+        auto r = std::make_shared<VectorRect>();
+        r->Bounds = Rect2Dd(9000 + (i % 20) * 25, 9000 + (i / 20) * 25, 20, 20);
+        r->Style.Fill = Colors::Black;
+        layer->Children.push_back(r);
+    }
+    if (withSpeck) {
+        auto speck = std::make_shared<VectorRect>();
+        speck->Bounds = Rect2Dd(10, 10, 4, 1);
+        speck->Style.Fill = Colors::Black;
+        layer->Children.push_back(speck);
+    }
+    return doc;
+}
+
+void TestSpeckDoesNotDecideTheFit() {
+    std::cout << "\nA drawing with one speck far from everything else\n";
+    auto clean = DrawingWithASpeck(false);
+    auto speckled = DrawingWithASpeck(true);
+
+    const Rect2Dd all = speckled->GetBoundingBox();
+    const Rect2Dd content = ContentBounds(*speckled);
+    Check(all.width > 9000, "the union of everything still spans the whole sheet");
+    Check(content.width < 1000 && content.height < 1000,
+          "ContentBounds frames the drawing, not the speck");
+    Check(std::abs(content.width - ContentBounds(*clean).width) < 1.0,
+          "and frames exactly what the same drawing without the speck does");
+
+    auto withSpeck = CreateVectorElement("Speckled", 0, 0, 280, 190);
+    withSpeck->SetDocument(speckled);
+    auto without = CreateVectorElement("Clean", 0, 0, 280, 190);
+    without->SetDocument(clean);
+    Check(std::abs(withSpeck->GetZoom() - without->GetZoom()) < 0.001f,
+          "so the speck does not change the zoom the view fits at");
+
+    // A frame or a title block is not a speck: entities at the edge of a
+    // drawing, however few, are part of it because they are not far away.
+    auto framed = DrawingWithASpeck(false);
+    for (int i = 0; i < 4; ++i) {            // four lines just outside the block
+        auto edge = std::make_shared<VectorRect>();
+        edge->Bounds = Rect2Dd(8950 + (i % 2) * 600, 8950 + (i / 2) * 600, 5, 5);
+        edge->Style.Fill = Colors::Black;
+        framed->Layers.front()->Children.push_back(edge);
+    }
+    const Rect2Dd framedBox = ContentBounds(*framed);
+    Check(framedBox.width > 600 && framedBox.height > 600,
+          "a frame around the drawing is kept, not trimmed off as an outlier");
+}
+
 // ===== 3. PAINTING IS ELEMENT-LOCAL =====
 void TestDrawsInElementLocalCoordinates() {
     std::cout << "\nAn element painted by a container that has translated to it\n";
@@ -220,6 +279,7 @@ int main() {
     std::cout << "=== UltraCanvasVectorElement view tests ===\n";
     TestKeepsItsBoxThroughLayout();
     TestFitsADrawingLargerThanTheZoomLimit();
+    TestSpeckDoesNotDecideTheFit();
     TestDrawsInElementLocalCoordinates();
     TestSingularTransformLeavesTheContextUsable();
     TestEventCallbackRuns();

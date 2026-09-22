@@ -961,6 +961,26 @@ namespace UltraCanvas {
         };
 
 // Utility function declarations
+        // Where the drawing actually is, for a view that wants to fit it.
+        //
+        // VectorDocument::GetBoundingBox() is the union of everything, which
+        // is what a writer needs and what AutoCAD's zoom-extents does - and a
+        // drawing with one forgotten speck a quarter of a million units away
+        // from the plans (media/vector/DWG/womans hostel.dwg has a 130-unit
+        // hatched scrap out there) then fits as a postage stamp in the corner
+        // of an empty sheet. This is the same box with such specks left out:
+        // a run of drawables is ignored only when it holds at most 1% of them
+        // AND stands at least a fifth of the drawing's extent clear of the
+        // rest, so a title block, a frame or a legend - which touch the rest
+        // of the drawing or are simply many - always count. Nothing is
+        // removed from the document: the speck is still drawn, still
+        // exported, and still reachable by panning.
+        //
+        // Falls back to GetBoundingBox() for a drawing too small for the
+        // question (fewer than 50 drawables) or when the rule would drop too
+        // much.
+        Rect2Dd ContentBounds(const VectorDocument& document);
+
         // The element's outline as path data in its own coordinate space
         // (rectangles, rounded rectangles, circles, ellipses, lines,
         // polylines, polygons and paths); false for kinds without one

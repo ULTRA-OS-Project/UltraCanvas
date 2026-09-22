@@ -1,3 +1,38 @@
+#### 2026-09-22 *0.9.22*
+- **The hostel plan in the DWG demo was a black smudge in the corner of an
+  empty sheet.** Two faults in one tile, both of them general.
+  - **A lineweight is a plot width, and it was being scaled by the block it
+    sat in.** The DXF/DWG reader resolves an entity's lineweight into points
+    and the block's INSERT becomes a group transform, which then multiplied
+    the pen along with the geometry. The hostel's elevations are inserted at
+    1054x, so their 1 pt pens came out 1054 units wide and painted a quarter
+    of the sheet solid black. `Ctx::penScale` now carries the accumulated
+    insert scale and `MakeStroke()` divides the width - and the dash
+    lengths - by it, so a drawing strokes the same whatever scale its blocks
+    are inserted at. `Tests/DWGReaderTest.cpp` checks that every circle in
+    the synthetic drawing, inserted at 1x and at 2x, comes out the same
+    width on the page.
+  - **One forgotten speck decided the framing.** That drawing carries a
+    4 x 0.7 unit hatched scrap a quarter of a million units away from the
+    plans, so fitting the union of everything (what `GetBoundingBox()`
+    returns, and what AutoCAD's zoom-extents does) left the plans a
+    postage stamp in the corner. `VectorStorage::ContentBounds()` is the
+    same box with such specks left out - a run of drawables is ignored only
+    when it holds at most 1% of them AND stands at least a fifth of the
+    drawing's extent clear of the rest, so a frame, a title block or a
+    legend always counts - and `UltraCanvasVectorElement`'s fit and centring
+    use it. Nothing is removed from the document: the speck is still drawn,
+    still exported, and still reachable by panning.
+- **The STL aeroplane stood on its back.** `media/3D/STL/Toy airplane
+  model...stl` was exported with the model turned 180 degrees about X - its
+  wheels at the top of the file's Z range and its wings at the bottom - so
+  the Z-up correction every viewer applies stood it on its canopy. The
+  sample is rotated to the orientation the format assumes (+Z up), which
+  fixes it in the STL page, the media viewer and the Filer's thumbnails
+  alike. The import path is unchanged: `UltraCanvasSTLLoader` still reads
+  the file as written and still declares Z-up, and the page reports the
+  same extents (114.05 x 79.49 x 55.69) as before.
+
 #### 2026-09-22 *0.9.21*
 - **The DWG / DXF demo page was five white squares, and so was everything
   below them.** Four separate faults, each of which hid the next.
