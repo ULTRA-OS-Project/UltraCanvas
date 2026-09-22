@@ -23,7 +23,7 @@ Docs: [`Docs/UltraCanvas/UltraCanvasVectorCanvas.md`](../../Docs/UltraCanvas/Ult
 
 ```
 ┌ menu bar ─────────────────────────────────────────────────────────────┐
-├ toolbar: new open save | undo redo | zoom- zoom+ page 100% | group … ─┤
+├ toolbar: new open save | undo redo | zoom- zoom+ page 100% | group … | mirror ┤
 ├──────┬────────────────────────────────────────────┬────────────────────┤
 │ tool │  rulers                                     │ Colour (fill/line) │
 │ pal- │ ┌──────────────────────────────────────┐    │ swatches           │
@@ -80,7 +80,9 @@ the selection and to every line drawn afterwards.
   clipboard, pastes offset), Duplicate (Ctrl+D), Delete, Select All / None.
 - **Arrange**: Bring to Front (Ctrl+F), Forward, Backward, Send to Back
   (Ctrl+B), Group (Ctrl+G), Ungroup (Ctrl+U; dissolves clip views,
-  blends and moulds too), align to selection / page, distribute, Combine
+  blends and moulds too), Mirror Horizontally / Vertically (also the two
+  toolbar buttons: the selection flips about the centre of its bounds),
+  align to selection / page, distribute, Combine
   Shapes (Add, Subtract, Intersect, Slice - the front shape cuts the
   others and is removed; Add and Intersect keep the back shape's style),
   Apply ClipView (Ctrl+K: the front shape becomes the keyhole the others

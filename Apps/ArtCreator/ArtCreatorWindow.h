@@ -104,6 +104,7 @@ private:
     void CmdReorder(VectorEdit::ZOrderMove move);
     void CmdGroup();
     void CmdUngroup();
+    void CmdMirror(bool horizontal);
     void CmdAlign(VectorEdit::AlignMode mode, bool toPage);
     void CmdDistribute(VectorEdit::DistributeMode mode);
     void CmdConvertToPath();

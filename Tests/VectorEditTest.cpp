@@ -184,6 +184,35 @@ int main() {
         Check(in.size() == 2, "ElementsIn(overlap) finds both rectangles touched");
     }
 
+    // ===== Mirror: a scale of -1 on one axis about the selection's centre =====
+    {
+        auto mdoc = std::make_shared<VectorDocument>();
+        mdoc->Size = Size2Dd{100, 50};
+        mdoc->ViewBox = Rect2Dd{0, 0, 100, 50};
+        auto mlayer = mdoc->AddLayer("Layer 1");
+        auto left = MakeRect(0, 0, 10, 10, "left");
+        auto right = MakeRect(90, 0, 10, 10, "right");
+        auto top = MakeRect(0, 0, 10, 10, "top");
+        auto bottom = MakeRect(0, 40, 10, 10, "bottom");
+        mlayer->AddChild(left); mlayer->AddChild(right); mlayer->AddChild(top); mlayer->AddChild(bottom);
+        VectorSelection msel;
+        msel.Set({left, right});
+        Rect2Dd b = msel.Bounds();
+        ScaleElements(msel.Elements(), -1, 1, {b.x + b.width / 2, b.y + b.height / 2});
+        Check(NearRect(DocumentBounds(left), 90, 0, 10, 10) && NearRect(DocumentBounds(right), 0, 0, 10, 10),
+              "a horizontal mirror swaps the two ends of the selection");
+        Check(NearRect(msel.Bounds(), 0, 0, 100, 10), "and leaves the selection's bounds where they were");
+        ScaleElements(msel.Elements(), -1, 1, {b.x + b.width / 2, b.y + b.height / 2});
+        Check(NearRect(DocumentBounds(left), 0, 0, 10, 10) && NearRect(DocumentBounds(right), 90, 0, 10, 10),
+              "mirroring again restores the original");
+        msel.Set({top, bottom});
+        b = msel.Bounds();
+        ScaleElements(msel.Elements(), 1, -1, {b.x + b.width / 2, b.y + b.height / 2});
+        Check(NearRect(DocumentBounds(top), 0, 40, 10, 10) && NearRect(DocumentBounds(bottom), 0, 0, 10, 10),
+              "a vertical mirror swaps top and bottom");
+        Check(NearRect(msel.Bounds(), 0, 0, 10, 50), "with the bounds unchanged");
+    }
+
     // ===== History =====
     {
         VectorHistory history(doc);
