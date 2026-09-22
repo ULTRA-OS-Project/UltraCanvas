@@ -23,7 +23,11 @@ if(NOT TARGET UltraMessage)
     add_library(UltraDatabase STATIC
         ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabaseValue.cpp
         ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabaseManager.cpp
-        ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabaseSqliteDriver.cpp)
+        ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabaseSqliteDriver.cpp
+        # Without ULTRADATABASE_HAS_POSTGRES these compile to the stub the
+        # manager's EnsureBuiltins() links against.
+        ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabasePostgresDriver.cpp
+        ${_um_root}/UltraCanvas/core/UltraDatabase/UltraDatabasePostgresSql.cpp)
     target_include_directories(UltraDatabase PUBLIC ${_um_root}/UltraCanvas/include)
     target_include_directories(UltraDatabase PRIVATE ${SQLITE3_INCLUDE_DIRS})
     target_link_libraries(UltraDatabase PUBLIC Threads::Threads ${SQLITE3_LIBRARIES})
