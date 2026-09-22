@@ -1,3 +1,20 @@
+#### 2026-09-22 *0.1.2*
+- **Account credentials are encrypted at rest.** UltraSocial's vault was a copy
+  of UltraMail's original 0.1 format — secrets XOR-ed against a `vault.key`
+  beside them, "better than plaintext" — and it stayed there when UltraMail
+  moved to UltraVault. It is now a profile of the framework's
+  `UltraVault::DeviceKeyVault` (framework 0.9.23): `ultrasocial.vault`,
+  Argon2id-derived key and XChaCha20-Poly1305 via UltraCrypt, unlocked at
+  start-up by a random passphrase in owner-only `device.key` so nothing
+  prompts. An existing `vault.key` + `creds.dat` is carried into the new vault
+  on the first start and the weak files are removed. Keys are
+  `social.ultrasocial.<accountId>`. When the vault cannot be opened (a build
+  without libsodium) the app says so on stderr and a sign-in reports that the
+  credentials could not be saved, instead of writing them weakly.
+  `UltraSocialCredentialVault.cpp` is gone; the header names the profile.
+- The engine tests unlock the vault first and cover the migration of the old
+  format (`Tests/UltraSocial/test_store_vault.cpp`).
+
 #### 2026-09-22 *0.1.1*
 - **The account wizard's captions size themselves to the network's wording.**
   The form was a flex container per field with every caption pinned to 120 px,

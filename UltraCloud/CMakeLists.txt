@@ -44,11 +44,11 @@ if(NOT WIN32)
     target_link_libraries(UltraCloud PUBLIC ${CMAKE_DL_LIBS})   # provider plug-ins (dlopen)
 endif()
 
-# Secrets go to UltraVault when it is built; the file store is always there.
-if(TARGET UltraVault)
-    target_compile_definitions(UltraCloud PUBLIC ULTRACLOUD_USE_ULTRAVAULT=1)
-    target_link_libraries(UltraCloud PUBLIC UltraVault)
-endif()
+# Secrets live in UltraVault (VaultSecretStore); there is no file store of
+# UltraCloud's own any more, so the module needs the vault. The definition
+# stays for consumers that still test for it.
+target_compile_definitions(UltraCloud PUBLIC ULTRACLOUD_USE_ULTRAVAULT=1)
+target_link_libraries(UltraCloud PUBLIC UltraVault)
 
 # UltraNet (HTTP, URL and Base64 helpers) and UltraCanvasJSON: with a STATIC
 # UltraCanvas we link the UltraNet archive directly and consumers add the core

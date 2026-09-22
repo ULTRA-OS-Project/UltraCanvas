@@ -327,11 +327,15 @@ point the store at a networked engine without changing UltraMail's
 query code. The raw messages stay as `.eml` files on disk; only the
 index/metadata lives in the database.
 
-**Credentials** go into the OS keychain (libsecret on Linux, Windows
-Credential Manager, macOS Keychain) behind a small
-`UltraMailCredentialVault` seam per `OS/` platform; fallback is an
-encrypted file with a clear warning. `accounts.json` never contains
-passwords.
+**Credentials** go into UltraMail's vault: the framework's
+`UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`) with
+UltraMail's profile — an encrypted file (`ultramail.vault`, Argon2id +
+XChaCha20-Poly1305 via UltraCrypt) unlocked without a prompt by an owner-only
+`device.key` beside it, the posture of Thunderbird with no Primary Password.
+`UltraMailCredentialVault.h` only names that profile. The OS keychains
+(libsecret, Windows Credential Manager, macOS Keychain) are planned as
+UltraVault backends behind the same surface, not as a seam of UltraMail's
+own. The account config never contains passwords.
 
 ## 5. Application skeleton and file layout
 

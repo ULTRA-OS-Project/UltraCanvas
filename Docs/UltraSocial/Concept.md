@@ -84,7 +84,7 @@ profiles is partly impossible by policy, not by engineering.
 | Opening the system browser for the consent page | `UltraCanvas::OpenURL` (`UltraCanvasUtils.h:50`) |
 | JSON request/response bodies | `UltraCanvasJSON` (yyjson wrapper) |
 | Local store for accounts, queue, history | UltraDatabase |
-| Secrets out of the config file | `Apps/UltraMail/engine/UltraMailCredentialVault.{h,cpp}` pattern today; UltraVault module (`UltraAI/Docs/UltraVault.md`) when it lands |
+| Secrets out of the config file | `UltraVault::DeviceKeyVault` (`Docs/Modules/UltraVault/README.md`), the same class UltraMail uses, with UltraSocial's profile |
 | Persistent send queue with retry | `Apps/UltraMail/engine/UltraMailOutbox.{h,cpp}` pattern (enqueue → flush → sent-remove / fail-retry) |
 | Background scheduling on a UI timer | `Apps/UltraMail/engine/UltraMailSyncScheduler.{h,cpp}` pattern |
 | Image resize/re-encode before upload (Bluesky's ~1 MB blob cap) | FileLoader / PixelFX |
@@ -118,8 +118,8 @@ Apps/UltraSocial/
     UltraSocialTypes.{h,cpp}       Network enum, Account, PostDraft, PostTarget,
                                    PostResult, DeliveryStatus
     UltraSocialStore.{h,cpp}       accounts / queue / post history on UltraDatabase
-    UltraSocialCredentialVault.{h,cpp}  tokens & secrets (UltraMail vault pattern;
-                                   swaps to UltraVault when it exists)
+    UltraSocialCredentialVault.h   tokens & secrets: UltraVault::DeviceKeyVault
+                                   with UltraSocial's profile
     UltraSocialConnector.h         ISocialConnector interface (auth flows go
                                    through UltraNet/UltraNetOAuth2.h directly)
     connectors/
