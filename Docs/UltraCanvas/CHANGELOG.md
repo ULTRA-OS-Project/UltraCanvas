@@ -1,5 +1,4 @@
-#### 2026-09-22 *0.9.23*
-<<<<<<< HEAD
+#### 2026-09-22 *0.9.24*
 - **New: UltraMessage Phase 2, first slice — adapters and the first feeds**
   (`Docs/Modules/UltraMessage/README.md` §3.6, `Masterfile_modules.md` §13).
   The broker hosts *adapters*: broker-side plugins (`Internal::IAdapter`,
@@ -50,7 +49,8 @@
   `cmake/UltraDatabaseSources.cmake` (`ultradatabase_sources(<var> <dir>)`),
   used by the in-tree build and the standalone `Tests/UltraMessage` tree, so
   a new driver (the Postgres one broke the standalone link) is one edit.
-=======
+
+#### 2026-09-22 *0.9.23*
 - **New: `UltraVault::DeviceKeyVault` — an application's own vault on
   UltraVault** (`<UltraVault/UltraVaultDeviceKeyVault.h>`, target `UltraVault`,
   reference `Docs/Modules/UltraVault/README.md`). One encrypted vault file in a
@@ -96,7 +96,6 @@
   shared and the stale shape are refused while the number is still cheap to
   change. `AGENTS.md` says to fetch `main` first, since the comparison is only
   as current as the local `origin/main`.
->>>>>>> origin/main
 
 #### 2026-09-22 *0.9.22*
 - **A container no longer scrolls unless it is asked to.**
