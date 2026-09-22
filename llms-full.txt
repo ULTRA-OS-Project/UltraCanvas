@@ -23404,10 +23404,13 @@ dialog carried a scrollbar pair over its own caption, because the dialog was a
 couple of pixels shorter than the rows it held and each row was squeezed below
 the 32 px field inside it.
 
-Any other container that only places children — a button bar, a toolbar strip —
-should call `DisableScrollbars` for the same reason. The container default
-(auto scrollbars on) is right for a pane that holds content, not for one that
-holds a layout.
+Since framework 0.9.21 this is also the container default: `autoShowScrollbars`
+is off, so a container arranges its children and scrolls nothing unless it is
+asked to. `DisableScrollbars` stays as the way to say it outright (it clears the
+forced flags too, and states the intent where a reader will look for it), but a
+plain `CreateContainer` no longer needs it. A container that really is a
+viewport onto taller content opts in with `CreateScrollableContainer` or
+`autoShowScrollbars = true`.
 
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
