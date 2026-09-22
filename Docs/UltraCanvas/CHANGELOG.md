@@ -53,6 +53,18 @@
     with no copy operations declared, so any copy would have double-freed. No
     caller copies one today; the copy constructor and assignment are now
     `= delete` rather than waiting for one to.
+  - **`UltraNetTests` now covers the deadline itself** (`test_dns_timeout.cpp`,
+    three cases): that a one-millisecond lookup comes back at all, that the
+    query it abandons leaves the shared channel usable for the next one, and
+    that every asynchronous query answers its callback. None of it calls
+    `UltraNet_DnsResolve` directly — each resolve runs on a thread of its own
+    under a watchdog, because the failure being guarded against is a hang,
+    and a test that hangs stops a CI run instead of failing it. When the
+    watchdog fires the suite says so and exits non-zero rather than carrying
+    on: the c-ares channel is a static whose destructor would block on the
+    same lock at exit. Against the code as it stood before this release the
+    first case fails in thirty seconds; against the code in it, all three
+    pass in well under a second.
   - **Two demo buttons leaked their captured state.** The toggle and counter
     examples captured `new bool(false)` / `new int(0)` raw pointers in their
     `onClick` lambdas and never freed them. They are `make_shared` now — the
