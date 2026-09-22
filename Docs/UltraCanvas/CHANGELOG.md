@@ -8,6 +8,12 @@
   to normal; the base window updates its state on both and calls
   `onWindowMinimize` / `onWindowRestore`. The first consumer is
   UltraAuthenticator, which locks its vault on minimise.
+- **Configure no longer fails on machines with Clang installed.** The
+  Linux compiler auto-detection built the C++ driver name with a
+  `REGEX REPLACE` whose replacement used `\1` for an optional group; CMake
+  3.28 rejects that as an "out-of-range escape", so every configure that did
+  not name the compiler explicitly stopped at line 59. The suffix is now
+  matched separately and appended.
 
 #### 2026-09-21 *0.9.19*
 - **`package-linux.sh` and `package-win.sh` looked in one place for

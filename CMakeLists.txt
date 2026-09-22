@@ -56,7 +56,14 @@ if(UNIX AND NOT APPLE AND NOT ANDROID
         # name untouched, so CMAKE_CXX_COMPILER became the C driver "clang-NN",
         # which compiles C++ fine but does NOT add -lstdc++ at link time - every
         # C++ runtime symbol then comes back undefined.
-        string(REGEX REPLACE "clang(-[0-9]+)?$" "clang++\\1" _uc_cxx_name "${_uc_name}")
+        #
+        # Done as MATCH + append rather than one REGEX REPLACE with an optional
+        # group and a "\1" back-reference: CMake (3.28 at least) rejects that
+        # replacement outright - "out-of-range escape for regex" - so the
+        # configure failed for anyone with clang installed unless they passed
+        # the compiler explicitly. An unmatched suffix leaves _uc_suffix empty.
+        string(REGEX MATCH "-[0-9]+$" _uc_suffix "${_uc_name}")
+        set(_uc_cxx_name "clang++${_uc_suffix}")
         unset(_uc_candidate_cxx CACHE)
         find_program(_uc_candidate_cxx NAMES ${_uc_cxx_name})
         if(_uc_candidate_cxx)
