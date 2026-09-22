@@ -1,3 +1,31 @@
+#### 2026-09-22 *0.9.20*
+- **A form caption is not something you scroll.** Every row of UltraCloud's
+  add-account dialog - the FTP / SFTP login UltraFiler's "+ Drive" opens -
+  was drawn with a scrollbar pair straight across its caption and its field.
+  The dialog built a flex container per row and let the column shrink them:
+  at 420 px it was a couple of pixels shorter than the rows it held, so each
+  32 px row was squeezed to 30, the 32 px control inside it no longer fitted,
+  and the row (a plain container, auto scrollbars on) raised a vertical
+  scrollbar - which narrowed the viewport by its own width and raised a
+  horizontal one as well.
+  - **The form is a `UltraCanvasFormLayout` grid now**, like every other
+    dialog in the tree: captions share one `auto` column that is as wide as
+    the widest of them (no more `kLabelWidth = 130`, so a longer translation
+    widens the column instead of being cut off), controls share the `1fr`
+    column and start at the same x, and the grid is `flex-shrink: 0`, so a
+    short dialog can no longer squeeze a row below the control in it. The
+    dialog is tall enough for the provider that needs every row, and a spacer
+    holds the buttons at the bottom for the ones that do not.
+  - **`CreateFormCellRow` no longer carries scrollbars either**, and the new
+    `DisableScrollbars(container)` says it in one line for any container that
+    only arranges what is in it. The container default is right for a pane
+    that holds content, not for one that holds a layout.
+  - The cloud file picker's "Account" and "Folder" rows went the same way, so
+    the two captions line up without either carrying a width of its own.
+  - `Tests/CSSLayoutFormGridTest.cpp` now pins the rule the dialog broke: a
+    dialog shorter than its form leaves every row at its own height, where a
+    flex row per field is squeezed below the control inside it.
+
 #### 2026-09-21 *0.9.19*
 - **`package-linux.sh` and `package-win.sh` looked in one place for
   executables.** Most targets land in the build root; a target that sets
