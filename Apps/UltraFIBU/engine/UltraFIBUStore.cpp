@@ -445,6 +445,30 @@ const char* const kSchemaV7 =
     "ALTER TABLE beleg ADD COLUMN vorgegebene_steuer BIGINT DEFAULT 0;"
     "ALTER TABLE beleg ADD COLUMN leistungsart TEXT;";
 
+// Was der DATEV-Kontenrahmen ueber ein Konto sagt und wofuer es bisher keine
+// Spalte gab. Die Quelle ist die Legende des Kontenrahmen-PDF:
+//
+//  - `funktion`: KU/V/M sind Zusatzfunktionen ueber einer Kontenklasse,
+//    AV/AM/S/F/R Hauptfunktionen vor einem Konto; kombiniert auch "S/AV".
+//    **AV und AM sind die Automatikkonten** - die Angabe, aus der sich
+//    ergibt, welches Konto seinen Steuersatz selbst mitbringt.
+//  - `abschlusszweck`: HB nur Handelsbilanz, SB nur Steuerbilanz, EUeR nur
+//    Einnahmen-Ueberschuss-Rechnung. Ein Konto, das nur fuer die Steuerbilanz
+//    gedacht ist, gehoert nicht in die Handelsbilanz - das ist eine Auswertung
+//    und keine Kosmetik.
+//  - `programmverbindung`: U/G/K, die Weitergabe an Umsatzsteuererklaerung,
+//    Gewerbesteuer und Koerperschaftsteuer.
+//  - `nummer_bis`: gesetzt, wenn die Zeile einen Kontenbereich beschreibt.
+//    Das PDF druckt "0040-42" fuer einen Block ohne Einzelbeschriftung;
+//    ihn als ein Konto ohne Namen abzulegen waere falsch.
+//
+// `bilanz_position` gab es schon und bleibt, wo es ist.
+const char* const kSchemaV8 =
+    "ALTER TABLE konto ADD COLUMN funktion TEXT;"
+    "ALTER TABLE konto ADD COLUMN abschlusszweck TEXT;"
+    "ALTER TABLE konto ADD COLUMN programmverbindung TEXT;"
+    "ALTER TABLE konto ADD COLUMN nummer_bis TEXT;";
+
 } // namespace
 
 // ===== BELEGE UND BUCHUNGEN =====
@@ -760,7 +784,8 @@ static std::vector<UltraDbMigration> MigrationSchritte() {
         { 4, "UltraFIBU Bank: Konten, Umsaetze, Zuordnungen", kSchemaV4 },
         { 5, "UltraFIBU Steuermeldungen", kSchemaV5 },
         { 6, "UltraFIBU EU-Steuersaetze", kSchemaV6 },
-        { 7, "UltraFIBU Brutto-Erfassung und Leistungszeitpunkt", kSchemaV7 }
+        { 7, "UltraFIBU Brutto-Erfassung und Leistungszeitpunkt", kSchemaV7 },
+        { 8, "UltraFIBU Kontenrahmen: Funktion, Abschlusszweck, Programmverbindung", kSchemaV8 }
     };
 }
 
@@ -1383,6 +1408,10 @@ Konto KontoFromRow(const UltraDbRow& row) {
     konto.eurZeile         = row["euer_zeile"].AsString();
     konto.bwaPosition      = row["bwa_position"].AsString();
     konto.bilanzPosition   = row["bilanz_position"].AsString();
+    konto.funktion           = row["funktion"].AsString();
+    konto.abschlusszweck     = row["abschlusszweck"].AsString();
+    konto.programmverbindung = row["programmverbindung"].AsString();
+    konto.nummerBis          = row["nummer_bis"].AsString();
     konto.aktiv            = row["aktiv"].AsInt() != 0;
     konto.notiz            = row["notiz"].AsString();
     return konto;
@@ -1390,7 +1419,8 @@ Konto KontoFromRow(const UltraDbRow& row) {
 
 const char* const kKontoColumns =
     "id, mandant_id, nummer, bezeichnung, typ, skr, steuerschluessel, euer_zeile,"
-    " bwa_position, bilanz_position, aktiv, notiz";
+    " bwa_position, bilanz_position, funktion, abschlusszweck, programmverbindung,"
+    " nummer_bis, aktiv, notiz";
 
 } // namespace
 
@@ -1409,20 +1439,26 @@ StoreResult Store::SaveKonto(Konto& konto, const Akteur& akteur) {
         if (!seq) return seq;
         return Exec(
             "INSERT INTO konto(id, mandant_id, nummer, bezeichnung, typ, skr,"
-            " steuerschluessel, euer_zeile, bwa_position, bilanz_position, aktiv, notiz) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+            " steuerschluessel, euer_zeile, bwa_position, bilanz_position,"
+            " funktion, abschlusszweck, programmverbindung, nummer_bis, aktiv, notiz) "
+            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
             { konto.id, konto.mandantId, konto.nummer, konto.bezeichnung,
               KontoTypToText(konto.typ), konto.skr, konto.steuerschluessel, konto.eurZeile,
-              konto.bwaPosition, konto.bilanzPosition, konto.aktiv ? 1 : 0, konto.notiz },
+              konto.bwaPosition, konto.bilanzPosition, konto.funktion,
+              konto.abschlusszweck, konto.programmverbindung, konto.nummerBis,
+              konto.aktiv ? 1 : 0, konto.notiz },
             "Das Konto konnte nicht angelegt werden");
     }
     return Exec(
         "UPDATE konto SET bezeichnung = ?, typ = ?, skr = ?, steuerschluessel = ?,"
-        " euer_zeile = ?, bwa_position = ?, bilanz_position = ?, aktiv = ?, notiz = ? "
+        " euer_zeile = ?, bwa_position = ?, bilanz_position = ?, funktion = ?,"
+        " abschlusszweck = ?, programmverbindung = ?, nummer_bis = ?,"
+        " aktiv = ?, notiz = ? "
         "WHERE id = ?",
         { konto.bezeichnung, KontoTypToText(konto.typ), konto.skr, konto.steuerschluessel,
-          konto.eurZeile, konto.bwaPosition, konto.bilanzPosition, konto.aktiv ? 1 : 0,
-          konto.notiz, konto.id },
+          konto.eurZeile, konto.bwaPosition, konto.bilanzPosition, konto.funktion,
+          konto.abschlusszweck, konto.programmverbindung, konto.nummerBis,
+          konto.aktiv ? 1 : 0, konto.notiz, konto.id },
         "Das Konto konnte nicht geändert werden");
 }
 

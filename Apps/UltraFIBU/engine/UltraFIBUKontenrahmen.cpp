@@ -240,7 +240,17 @@ LadeErgebnis LadeKontenrahmen(const std::string& pfad, const std::string& skr,
         konto.steuerschluessel = named["steuerschluessel"];
         konto.eurZeile         = named["euer_zeile"];
         konto.bwaPosition      = named["bwa_position"];
-        konto.bilanzPosition   = named["bilanz_position"];
+        konto.bilanzPosition   = named["bilanz_position"].empty()
+                                 ? named["bilanz_guv_posten"]
+                                 : named["bilanz_position"];
+        // Aus dem DATEV-Kontenrahmen-PDF. `funktion` traegt AV/AM - die
+        // Automatikkonten - und ist damit die Quelle hinter steuerschluessel,
+        // nicht eine zweite, konkurrierende Aussage darueber.
+        konto.funktion           = named["funktion"];
+        konto.abschlusszweck     = named["abschlusszweck"];
+        konto.programmverbindung = named["programmverbindung"];
+        konto.nummerBis          = named["nummer_bis"].empty()
+                                   ? named["bis"] : named["nummer_bis"];
         konto.aktiv            = true;
         out.push_back(konto);
         ++ergebnis.zeilen;

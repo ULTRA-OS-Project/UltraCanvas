@@ -82,7 +82,7 @@ public:
     // The schema version Open() migrates to. Bumped with every migration step
     // added in the .cpp, so a test can assert that the database matches the
     // code without a literal that has to be chased.
-    static constexpr int kSchemaVersion = 7;
+    static constexpr int kSchemaVersion = 8;
 
     Store() = default;
     ~Store() = default;

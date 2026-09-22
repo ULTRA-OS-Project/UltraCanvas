@@ -471,6 +471,52 @@ static void TestDatenDateien() {
         Check(unique, "account numbers are unique");
         Check(labelled, "every row records the chart it came from");
 
+        // --- what the DATEV Kontenrahmen PDF adds ---
+        //
+        // The chart is no longer a 74-account stub: it is extracted from
+        // DATEV's own Kontenrahmen. The columns that come with it are what
+        // make a Bilanz possible at all, and `funktion` is the authority
+        // behind the Automatikkonten.
+        Check(konten.size() > 1000,
+              "the full chart is present, not the old starter stub");
+        auto finde = [&konten](const std::string& nr) -> const Konto* {
+            for (const Konto& k : konten) if (k.nummer == nr) return &k;
+            return nullptr;
+        };
+        const Konto* erloese = finde("8400");
+        Check(erloese != nullptr, "8400 is in the chart");
+        if (erloese != nullptr) {
+            CheckText(erloese->funktion, "AM",
+                      "and carries DATEV's AM - automatische Errechnung der "
+                      "Umsatzsteuer, which is what makes it an Automatikkonto");
+            CheckText(erloese->bilanzPosition, "Umsatzerlöse",
+                      "with its GuV position, so a Jahresabschluss can place it");
+            CheckText(erloese->steuerschluessel, "USt19",
+                      "and the hand-verified tax key survived the full import - "
+                      "losing it here would switch the tax split back off");
+        }
+        const Konto* fremd = finde("3106");
+        Check(fremd != nullptr,
+              "3106 exists now - it is in the real Buchungsstapel and was "
+              "missing from the stub");
+        if (fremd != nullptr)
+            CheckText(fremd->funktion, "AV",
+                      "with AV, the input-tax automatic");
+        const Konto* vorsteuer = finde("1576");
+        if (vorsteuer != nullptr)
+            CheckText(vorsteuer->funktion, "S",
+                      "1576 is a Sammelkonto, not an Automatikkonto - the main "
+                      "function beats the class-wide KU");
+
+        int mitBilanz = 0, mitFunktion = 0;
+        for (const Konto& k : konten) {
+            if (!k.bilanzPosition.empty()) ++mitBilanz;
+            if (!k.funktion.empty())       ++mitFunktion;
+        }
+        Check(mitBilanz > konten.size() * 9 / 10,
+              "almost every account states its Bilanz-/GuV-Posten");
+        Check(mitFunktion > 1000, "and most carry a Kontenfunktion");
+
         // The accounts a bookkeeping application cannot work without.
         const char* const kMustExist[] = { "1000", "1200", "1400", "1600", "1576", "1776",
                                            "8400", "8300", "8125", nullptr };

@@ -1,3 +1,36 @@
+#### 2026-09-22 *0.21.0*
+- **SKR03 und SKR04 vollstaendig, aus den DATEV-Kontenrahmen-PDFs.** Bisher
+  lagen 74 Konten als "Startbestand" vor und SKR04 fehlte ganz -- `--skr SKR04`
+  legte einen Mandanten mit **null Konten** an und verdaechtigte in seinem
+  Hinweis faelschlich `ULTRAFIBU_DATA_DIR`. Jetzt: **SKR03 1768 Konten,
+  SKR04 1855 Konten**, beide ohne Ladewarnung.
+  - **Alle Spalten des PDF sind uebernommen**, nicht nur Nummer und Name.
+    Neu in `konto` (Schema 8): `funktion`, `abschlusszweck`,
+    `programmverbindung`, `nummer_bis`. `bilanz_position` gab es schon und ist
+    jetzt zum ersten Mal gefuellt -- bei 96 % der Konten.
+  - **`funktion` traegt AV und AM, die DATEV-Automatikkonten.** Damit ist die
+    Steueraufteilung aus 0.19.0 nicht mehr aus Belegen erschlossen, sondern
+    aus DATEVs eigenem Dokument belegt: 8400 ist AM, 3400 und 3106 sind AV.
+    Und 1576/1776 sind `S` (Sammelkonten), nicht Automatikkonten -- der
+    Ausschluss der Steuerkonten war richtig.
+  - **Die Haupt- schlaegt die Zusatzfunktion.** KU/V/M gelten laut Legende
+    fuer eine ganze Kontenklasse, AV/AM/S/F/R fuer ein einzelnes Konto. Ohne
+    diese Reihenfolge bekaeme 1576 das klassenweite KU statt seines eigenen S.
+  - **Die 14 handgepflegten Steuerschluessel sind uebernommen.** Ein
+    Vollimport, der sie ueberschreibt, haette die Automatik wieder
+    abgeschaltet. Weitere werden NICHT aus Kontenbezeichnungen abgeleitet:
+    das PDF nennt die Automatikfunktion, nicht den Satz.
+  - **Die sieben Konten aus dem echten Buchungsstapel, die im Kontenrahmen
+    fehlten, sind da** -- 3106 Fremdleistungen 19 % Vorsteuer, 3109 (§ 13b),
+    4110, 4760, 4955, 8195, 8200. Die Warnung "stehen in der Datei, aber nicht
+    im Kontenrahmen" entfaellt damit vollstaendig.
+  - Bestehende Datenbanken migrieren auf Schema 8 und behalten ihren
+    Kontenrahmen; die neuen Spalten bleiben dort leer, bis der volle Rahmen
+    bewusst importiert wird.
+  - Konten, die im PDF ueberhaupt keine Beschriftung tragen (meist Funktion R,
+    also gesperrt bis ihnen eine Funktion zugeteilt wird), stehen als
+    "(ohne Standardbeschriftung)" im Rahmen statt zu fehlen.
+
 #### 2026-09-22 *0.20.0*
 - **Der Kontenrahmen laesst sich jetzt aus einem DATEV-Export einlesen**
   (`ultrafibu konten-import <datei> <EXTF.csv>`, Format-Kategorie 20

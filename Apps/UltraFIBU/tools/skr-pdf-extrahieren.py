@@ -1,29 +1,4 @@
 # -*- coding: utf-8 -*-
-# Apps/UltraFIBU/tools/skr-pdf-extrahieren.py
-# SKR03/SKR04 aus dem DATEV-Kontenrahmen-PDF extrahieren.
-#
-# Aufruf:  pdftotext -bbox-layout "11174 SKR03 BilrUg.pdf" skr03.xml
-#          python3 skr-pdf-extrahieren.py skr03.xml
-#
-# STAND: SKR03 vollstaendig und stichprobengeprueft; SKR04 liest Konten und
-# Funktionen korrekt, die Bilanz-Spalte braucht noch eine eigene Kalibrierung -
-# ihre Geometrie weicht von SKR03 ab. Nicht fuer SKR04 verwenden, ohne das
-# Ergebnis gegen das PDF zu pruefen.
-#
-# Das PDF ist kein Datenblatt, sondern ein Poster: 40 Seiten, je Seite zwei
-# Spaltengruppen. Die Legende (Seite 37) definiert die Spalten:
-#   Fussnote 2) Bilanz- und GuV-Posten, grosse Kapitalgesellschaften, GKV
-#   Fussnote 4) Programmverbindung U/G/K und Abschlusszweck HB/SB/EUeR
-#   Kontenfunktionen: KU/V/M (Zusatz), AV/AM/S/F/R (Haupt)
-# AV und AM sind die DATEV-Automatikkonten - die Quelle fuer die
-# steuerschluessel-Spalte des Kontenrahmens.
-#
-# Die Spaltengrenzen werden je Seite aus den Positionen der Kontonummern
-# hergeleitet statt fest verdrahtet, weil gerade und ungerade Seiten
-# unterschiedliche Raender haben.
-#
-# Version: 0.1.0
-# Author: UltraCanvas Framework / ULTRA OS
 """SKR-Kontenrahmen aus dem DATEV-PDF extrahieren.
 
 Das PDF ist ein Poster: je Seite zwei Spaltengruppen, je Gruppe
@@ -90,11 +65,19 @@ def extrahiere(xml_pfad):
                     a, b = nw.split('-'); funktionen.append((w, a, a[:2]+b))
                 elif re.fullmatch(r'\d{4}', nw): funktionen.append((w, nw, nw))
 
-        for kx in anker:
+        for gi, kx in enumerate(anker):
             # Spaltenbaender relativ zum Kontenanker dieser Gruppe.
             bez_von, bez_bis = kx + 12, kx + 115      # Bezeichnung
-            az_von,  az_bis  = kx - 60, kx - 8        # Abschlusszweck/Funktion
-            bil_von, bil_bis = kx - 115, kx - 62      # Bilanz-/GuV-Posten
+            az_von,  az_bis  = kx - 60, kx - 2        # Abschlusszweck/Funktion
+            # Der Bilanz-Posten steht irgendwo links davon - SKR03 setzt ihn
+            # enger als SKR04. Die Spalte wird deshalb weit gefasst und ueber
+            # den INHALT abgegrenzt: Codes sind eine geschlossene Menge,
+            # Bilanztext ist freier Text.
+            bil_von, bil_bis = kx - 145, kx - 2
+            # Die zweite Gruppe darf nicht in die Bezeichnung der ersten
+            # hineinreichen - sonst landen deren Wortreste ("und", "%") im
+            # Bilanz-Posten.
+            if gi > 0: bil_von = max(bil_von, anker[gi-1] + 120)
             gruppe = [(x,y,X,Y,w) for x,y,X,Y,w in worte if bil_von <= x < bez_bis]
             # Ein Bilanz-Posten ist ein Textblock ueber mehreren Konten, nicht
             # eine Angabe je Zeile. Erst die Bloecke bilden (zusammenhaengende
@@ -105,8 +88,15 @@ def extrahiere(xml_pfad):
             kopf_ende = min((y for x,y,X,Y,w in gruppe
                              if re.fullmatch(r'\d{4}', w) and abs(x-kx) < 8),
                             default=0) - 4
+            CODES = FUNKTIONEN | ABSCHLUSS | PROGRAMM
+            def ist_code(w):
+                # DATEV kombiniert Funktionen: "S/AV" ist Sammelkonto mit
+                # automatischer Vorsteuer.
+                return all(t in CODES for t in w.split("/")) if "/" in w else w in CODES
             bil_worte = sorted(((y, x, w) for x,y,X,Y,w in gruppe
-                                if bil_von <= x < bil_bis and y >= kopf_ende))
+                                if bil_von <= x < bil_bis and y >= kopf_ende
+                                and not ist_code(w)
+                                and not re.fullmatch(r'[\d.,)\-]+', w)))
             bloecke, lauf = [], []
             for y, x, w in bil_worte:
                 if lauf and y - lauf[-1][0] > 14:
@@ -127,7 +117,6 @@ def extrahiere(xml_pfad):
                 nummer = next((w for x,w,y in zl
                                if re.fullmatch(r'\d{4}', w) and abs(x-kx) < 8), None)
                 bez = " ".join(w for x,w,y in zl if bez_von <= x < bez_bis)
-                bil = " ".join(w for x,w,y in zl if bil_von <= x < bil_bis)
                 az  = [w for x,w,y in zl if az_von <= x < az_bis]
                 # "0040" auf einer Zeile, "-42" auf der naechsten: ein
                 # Kontenbereich, kein Konto ohne Namen.
@@ -161,7 +150,9 @@ def extrahiere(xml_pfad):
                     for a, b, txt in spannen:
                         if a <= ky <= b: aktuell["bilanz"] = txt; break
                     for w in list(offen_az) + az:
-                        if w in ABSCHLUSS: aktuell["abschlusszweck"] = w
+                        if "/" in w and all(t in FUNKTIONEN for t in w.split("/")):
+                            aktuell["funktion"] = w
+                        elif w in ABSCHLUSS: aktuell["abschlusszweck"] = w
                         elif w in PROGRAMM: aktuell["programm"] += w
                         elif w in FUNKTIONEN and not re.search(r'\d', "".join(az)):
                             aktuell["funktion"] = w
