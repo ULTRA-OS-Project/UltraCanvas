@@ -1,79 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- James — simple 32px-friendly app icon -->
-  <circle cx="256" cy="256" r="235" fill="#A9D8F7"/>
-
-  <!-- Hair -->
-  <path d="M126 250
-           C112 191 146 124 220 103
-           C273 88 340 100 385 132
-           C405 146 421 163 426 180
-           C404 174 386 166 368 155
-           C373 171 367 185 355 195
-           C315 177 270 171 226 177
-           C205 180 187 188 171 202
-           L166 267 Z"
-        fill="#4A2A20"/>
-
-  <!-- Face, three-quarter view -->
-  <path d="M169 198
-           C191 174 231 160 278 164
-           C329 168 371 194 389 233
-           C402 261 402 307 389 349
-           C378 386 350 411 315 419
-           C278 428 232 414 205 390
-           C182 369 169 339 165 302
-           C161 267 160 227 169 198 Z"
-        fill="#FFC58F"/>
-
-  <!-- Ear -->
-  <path d="M169 263
-           C146 252 126 265 126 291
-           C126 318 144 336 169 329
-           C178 326 184 317 183 307
-           C175 310 166 306 163 298
-           C160 289 164 278 174 274 Z"
-        fill="#FFC58F"/>
-  <path d="M157 286 C149 278 145 292 153 300 C158 305 164 303 166 297"
-        fill="none" stroke="#D8875D" stroke-width="7" stroke-linecap="round"/>
-
-  <!-- Hair side lock -->
-  <path d="M166 199 C142 218 133 249 137 275 C142 295 154 306 166 311 L171 265 Z"
-        fill="#4A2A20"/>
-
-  <!-- Eyebrows -->
-  <path d="M222 237 C237 226 255 224 271 229"
-        fill="none" stroke="#4A2A20" stroke-width="12" stroke-linecap="round"/>
-  <path d="M318 239 C329 234 340 235 348 241"
-        fill="none" stroke="#4A2A20" stroke-width="11" stroke-linecap="round"/>
-
-  <!-- Eyes -->
-  <ellipse cx="251" cy="267" rx="17" ry="24" fill="#4A2A20"/>
-  <ellipse cx="335" cy="270" rx="13" ry="21" fill="#4A2A20"/>
-  <circle cx="257" cy="259" r="5" fill="#FFFFFF"/>
-  <circle cx="339" cy="263" r="4" fill="#FFFFFF"/>
-
-  <!-- Nose -->
-  <path d="M347 277 C352 289 359 300 365 306 C358 314 348 316 338 313"
-        fill="none" stroke="#D8875D" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
-
-  <!-- Smile -->
-  <path d="M287 337 C307 351 332 353 350 341"
-        fill="none" stroke="#4A2A20" stroke-width="9" stroke-linecap="round"/>
-
-  <!-- Neck -->
-  <path d="M224 384 C229 407 232 425 223 443
-           L323 449 C312 430 313 413 318 400 Z"
-        fill="#FFC58F"/>
-
-  <!-- Shirt -->
-  <path d="M220 411
-           C181 424 142 449 108 484
-           L404 484
-           C374 450 338 428 310 414
-           C282 430 247 429 220 411 Z"
-        fill="#3474D1"/>
-
-  <!-- Simple shirt collar -->
-  <path d="M220 411 C244 431 282 435 310 414"
-        fill="none" stroke="#2859A8" stroke-width="10" stroke-linecap="round"/>
+<?xml version="1.0" standalone="no"?>
+<!DOCTYPE svg PUBLIC "-//W3C//DTD SVG 1.1//EN" "http://www.w3.org/Graphics/SVG/1.1/DTD/svg11.dtd">
+<!--Generator: Xara Designer (www.xara.com), SVG filter version: 6.7.0.0-->
+<svg fill="none" fill-rule="evenodd" stroke="black" stroke-width="0.501" stroke-linejoin="bevel" stroke-miterlimit="10" font-family="Times New Roman" font-size="16" style="font-variant-ligatures:none" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" version="1.1" overflow="visible" width="595.277pt" height="841.891pt" viewBox="0 -841.891 595.277 841.891">
+ <defs>
+	</defs>
+ <g id="Layer 1" transform="scale(1 -1)"/>
 </svg>
