@@ -1,3 +1,30 @@
+#### 2026-09-22 *0.9.22*
+- **A container no longer scrolls unless it is asked to.**
+  `ContainerStyle::autoShowScrollbars` now defaults to **off**. It defaulted to
+  on, and most containers in this tree are not viewports: they are form rows,
+  button bars, toolbar strips, cards and panes, laid out to fit. For those a
+  scrollbar was never the answer to anything — it appeared because the content
+  came out a pixel or two larger than the box, and then made it worse, because
+  the bar narrows the viewport by its own track size and so fabricates an
+  overflow on the other axis too. The pair was then drawn across the very row
+  it was meant to be laying out.
+  - **The default had already been written off three times in place** — the
+    window's own style (`enableWindowScrolling`), the eBook reader's nested
+    blocks, and the form grid each turn it off with a comment explaining this
+    exact cascade — and a dozen more call sites turn it off by hand before it
+    can happen to them (the toolbar, the album, the filer, the split pane, the
+    audio bars, Texter's rows, UltraCleaner's cards, UltraNetMonitor's bars).
+    UltraFiler's FTP login in 0.9.20 was the same defect once more.
+  - **A real scroll view opts in**, with `CreateScrollableContainer` (unchanged:
+    it sets the flag itself) or `autoShowScrollbars = true`. Three places in the
+    tree are deliberate scroll views and now say so: the eBook reader's chapter
+    pane and UltraMail's message body and its HTML host. The demo's scrolling
+    text block already said so.
+  - The opt-outs left at the call sites are no-ops now rather than load-bearing.
+    They are not removed here: each is one line stating an intent, and a sweep
+    that touches a dozen files to delete lines that do nothing is its own
+    change, not a rider on this one.
+
 #### 2026-09-22 *0.9.21*
 - **NetworkMonitor names.** `NetworkMonitorNames.h`: the name-source
   plug-in point the proposal asked for (§2.3), and the sources behind it.

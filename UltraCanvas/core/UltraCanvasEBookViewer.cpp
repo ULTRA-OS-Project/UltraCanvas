@@ -150,6 +150,9 @@ void UltraCanvasEBookViewer::BuildUI() {
     // ~full-width thumb at the bottom of every long chapter.
     {
         ContainerStyle contentStyle = contentScroll->GetContainerStyle();
+        // This pane IS the scroll view for a chapter taller than the window,
+        // so it opts in: containers do not scroll unless asked.
+        contentStyle.autoShowScrollbars = true;
         contentStyle.autoShowHorizontalScrollbar = false;
         contentScroll->SetContainerStyle(contentStyle);
     }
