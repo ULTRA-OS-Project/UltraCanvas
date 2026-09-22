@@ -5,17 +5,31 @@
 // platform has a backend - a live check that sockets this test opens appear
 // in the snapshot attributed to this test's own PID, with byte counters
 // where the backend collects them. Where there is no backend, the check is
-// that the module says so rather than returning an empty table.
+// that the module says so rather than returning an empty table. Then the
+// activity store on an in-memory database, the DNS wire format from
+// fixture bytes, the name table's precedence rules, and the local DNS
+// proxy end to end against a fake upstream resolver on loopback.
 //
 // Self-contained: no test framework, no UI stack, links only NetworkMonitor.
 //
-// Version: 0.3.0
-// Last Modified: 2026-09-19
+// Version: 0.4.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitor.h"
 #include "NetworkMonitor/NetworkMonitorAddress.h"
+#include "NetworkMonitor/NetworkMonitorDns.h"
+#include "NetworkMonitor/NetworkMonitorNames.h"
 #include "NetworkMonitor/NetworkMonitorProcfs.h"
 #include "NetworkMonitor/NetworkMonitorStore.h"
+#ifdef ULTRACANVAS_HAS_DATABASE
+#include "UltraDatabase/UltraDatabase.h"
+#endif
+
+#include <atomic>
+#include <chrono>
+#include <initializer_list>
+#include <mutex>
+#include <thread>
 
 #include <cstdio>
 #include <cstring>
@@ -37,9 +51,11 @@
     static void CloseSocket(SocketHandle s) { ::closesocket(s); }
     static uint32_t OwnPid() { return static_cast<uint32_t>(::GetCurrentProcessId()); }
     static bool SocketsUp() { WSADATA data; return ::WSAStartup(MAKEWORD(2, 2), &data) == 0; }
+    using SockLen = int;
 #else
     #include <arpa/inet.h>
     #include <netinet/in.h>
+    #include <sys/select.h>
     #include <sys/socket.h>
     #include <unistd.h>
     using SocketHandle = int;
@@ -47,6 +63,7 @@
     static void CloseSocket(SocketHandle s) { ::close(s); }
     static uint32_t OwnPid() { return static_cast<uint32_t>(::getpid()); }
     static bool SocketsUp() { return true; }
+    using SockLen = socklen_t;
 #endif
 
 using namespace UltraCanvas;
@@ -602,6 +619,581 @@ static void TestStore() {
           "and closing it twice is refused");
 }
 
+// =============================================================================
+// Names
+
+static std::vector<unsigned char> Bytes(std::initializer_list<int> values) {
+    std::vector<unsigned char> out;
+    for (int v : values) out.push_back(static_cast<unsigned char>(v));
+    return out;
+}
+
+static void TestDnsWire() {
+    std::printf("DNS wire format\n");
+    using namespace NetworkMonitorDns;
+
+    const std::vector<unsigned char> query = BuildQuery(0x1234, "WWW.Example.COM.", kTypeA);
+    Message parsed;
+    CHECK(Parse(query.data(), query.size(), parsed) && !parsed.isResponse && parsed.id == 0x1234 &&
+          parsed.questionName == "www.example.com" && parsed.questionType == kTypeA && parsed.answers.empty(),
+          "a built query parses back, with the name normalised");
+
+    // www.example.com -> CNAME edge.cdn.net -> A 93.184.216.34, AAAA 2606:2800::1;
+    // an unrelated A record in the same section does not count.
+    std::vector<Answer> answers = {
+        { "www.example.com", kTypeCname, 300, "", "edge.cdn.net" },
+        { "edge.cdn.net", kTypeA, 60, "93.184.216.34", "" },
+        { "edge.cdn.net", kTypeAaaa, 120, "2606:2800::1", "" },
+        { "other.example.net", kTypeA, 10, "10.9.8.7", "" },
+    };
+    const std::vector<unsigned char> response = BuildResponse(7, "www.example.com", kTypeA, answers);
+    CHECK(Parse(response.data(), response.size(), parsed) && parsed.isResponse && parsed.rcode == 0 &&
+          parsed.answers.size() == 4 && parsed.answerCount == 4,
+          "a response with a CNAME chain parses");
+    CHECK(parsed.answers.size() == 4 && parsed.answers[0].type == kTypeCname &&
+          parsed.answers[0].target == "edge.cdn.net" && parsed.answers[2].address == "2606:2800::1",
+          "with the CNAME target and the AAAA in text");
+    DnsObservation observation;
+    CHECK(ToObservation(parsed, observation) && observation.queryName == "www.example.com" &&
+          observation.addresses.size() == 2 && observation.addresses[0] == "93.184.216.34" &&
+          observation.addresses[1] == "2606:2800::1" && observation.ttlSeconds == 60,
+          "the addresses reached through the chain map to the name asked for, at the shortest TTL");
+
+    const std::vector<unsigned char> failure = BuildResponse(8, "nope.invalid", kTypeA, {}, 3);
+    CHECK(Parse(failure.data(), failure.size(), parsed) && parsed.rcode == 3 && !ToObservation(parsed, observation),
+          "NXDOMAIN names nothing");
+
+    // Hand-made: the answer's owner is a pointer (0xC00C) back to the
+    // question name at offset 12.
+    std::vector<unsigned char> compressed = Bytes({
+        0x00, 0x2A, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x00,
+        3, 'f', 'o', 'o', 2, 'i', 'o', 0, 0x00, 0x01, 0x00, 0x01,
+        0xC0, 0x0C, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x05, 0x00, 0x04, 1, 2, 3, 4 });
+    CHECK(Parse(compressed.data(), compressed.size(), parsed) && parsed.answers.size() == 1 &&
+          parsed.answers[0].name == "foo.io" && parsed.answers[0].address == "1.2.3.4" &&
+          parsed.answers[0].ttl == 5,
+          "a compression pointer resolves to the earlier name");
+    std::vector<unsigned char> loop = compressed;
+    loop[24] = 0xC0; loop[25] = 0x18;   // the pointer points at itself
+    CHECK(!Parse(loop.data(), loop.size(), parsed), "a pointer that does not go backwards is refused");
+    std::vector<unsigned char> cut(compressed.begin(), compressed.begin() + 30);
+    CHECK(!Parse(cut.data(), cut.size(), parsed), "a message cut inside a record is refused");
+    CHECK(!Parse(compressed.data(), 5, parsed), "a message shorter than its header is refused");
+    CHECK(NormalizeName("A.B.") == "a.b" && NormalizeName("") == "", "names normalise to lower case without the root dot");
+}
+
+static void TestNameTable() {
+    std::printf("Name table\n");
+    NetworkMonitor_ClearNames();
+    NameRecord record;
+    CHECK(!NetworkMonitor_LookupName("203.0.113.5", record), "an unknown address has no name");
+
+    const int64_t t0 = 1'800'000'000;
+    DnsObservation weak;
+    weak.queryName = "a203-0-113-5.deploy.static.cdn.example";
+    weak.addresses = { "203.0.113.5" };
+    weak.source = NameSource::ReverseDns;
+    weak.observedAt = t0;
+    NetworkMonitor_ObserveName(weak);
+    CHECK(NetworkMonitor_LookupName("203.0.113.5", record) && record.name == weak.queryName &&
+          record.source == NameSource::ReverseDns && !NetworkMonitor_NameIsObserved(record.source),
+          "a reverse-DNS name is stored and reads as weak");
+
+    DnsObservation observed;
+    observed.queryName = "www.example.com";
+    observed.addresses = { "203.0.113.5", "203.0.113.6" };
+    observed.source = NameSource::DnsProxy;
+    observed.observedAt = t0 - 100;   // older, but observed
+    observed.ttlSeconds = 30;
+    NetworkMonitor_ObserveName(observed);
+    CHECK(NetworkMonitor_LookupName("203.0.113.5", record) && record.name == "www.example.com" &&
+          record.source == NameSource::DnsProxy,
+          "an observed name replaces a weak one even when older");
+    CHECK(record.expiresAt == t0 - 100 + kNameMinimumLifetimeSeconds,
+          "and lives at least the minimum lifetime, not the 30-second TTL");
+    NetworkMonitor_ObserveName(weak);
+    CHECK(NetworkMonitor_LookupName("203.0.113.5", record) && record.source == NameSource::DnsProxy,
+          "a weak name never replaces an observed one");
+
+    DnsObservation newer = observed;
+    newer.queryName = "cdn.example.com";
+    newer.addresses = { "203.0.113.6" };
+    newer.observedAt = t0 + 5;
+    NetworkMonitor_ObserveName(newer);
+    CHECK(NetworkMonitor_LookupName("203.0.113.6", record) && record.name == "cdn.example.com",
+          "between two observed names the newer wins");
+
+    std::vector<NameRecord> all;
+    NetworkMonitor_ListNames(all);
+    CHECK(all.size() == 2 && all[0].address == "203.0.113.6", "the list is newest first");
+
+    DnsObservation nameless;
+    nameless.addresses = { "203.0.113.9" };
+    nameless.source = NameSource::DnsProxy;
+    NetworkMonitor_ObserveName(nameless);
+    CHECK(!NetworkMonitor_LookupName("203.0.113.9", record), "an observation without a name is ignored");
+
+    // A listener hears every observation, after the table has it.
+    std::string heard;
+    const NameListenerId listener = NetworkMonitor_AddNameListener([&heard](const DnsObservation& o) {
+        NameRecord seen;
+        if (NetworkMonitor_LookupName(o.addresses.front(), seen)) heard = seen.name;
+    });
+    DnsObservation more = observed;
+    more.queryName = "mail.example.com";
+    more.addresses = { "203.0.113.7" };
+    more.observedAt = 0;   // stamped now
+    NetworkMonitor_ObserveName(more);
+    CHECK(heard == "mail.example.com", "a listener sees the observation once the table holds it");
+    NetworkMonitor_RemoveNameListener(listener);
+    heard.clear();
+    NetworkMonitor_ObserveName(more);
+    CHECK(heard.empty(), "and not after it is removed");
+
+    CHECK(std::string(NetworkMonitor_NameSourceName(NameSource::DnsProxy)) == "DNS proxy" &&
+          std::string(NetworkMonitor_NameSourceName(NameSource::None)) == "none" &&
+          NetworkMonitor_NameIsObserved(NameSource::EtwDnsClient) && !NetworkMonitor_NameIsObserved(NameSource::Inferred),
+          "source names and the observed / weak split");
+
+    // A connection to a named peer comes back named from the snapshot.
+    std::vector<NetworkConnection> fixture;
+    fixture.push_back(MakeConnection(1, "app", "203.0.113.5", NetworkConnectionState::Established));
+    fixture.push_back(MakeConnection(1, "app", "203.0.113.6", NetworkConnectionState::Established));
+    fixture.push_back(MakeConnection(1, "app", "198.51.100.1", NetworkConnectionState::Established));
+    for (auto& c : fixture) {
+        NameRecord named;
+        if (NetworkMonitor_LookupName(c.remoteAddress, named)) { c.remoteName = named.name; c.nameSource = named.source; }
+    }
+    const auto groups = NetworkMonitor_SummarizeByProcess(fixture);
+    CHECK(groups.size() == 1 && groups[0].remoteNames.size() == 2 && groups[0].remoteNames[0] == "cdn.example.com",
+          "the roll-up lists the distinct names it saw, sorted");
+    NetworkMonitor_ClearNames();
+}
+
+static void TestReverseDns() {
+    std::printf("Reverse DNS source\n");
+    NetworkMonitor_ClearNames();
+    ReverseDnsOptions options;
+    auto source = NetworkMonitor_CreateReverseDnsSource(options);
+    CHECK(source && source->Kind() == NameSource::ReverseDns && !source->IsRunning(), "a reverse DNS source is created stopped");
+    std::atomic<int> observations{0};
+    CHECK(source->Start([&observations](const DnsObservation&) { ++observations; }), "and starts");
+    // Nothing worth a PTR lookup: loopback, wildcard, link-local, private.
+    for (const char* address : { "127.0.0.1", "0.0.0.0", "169.254.1.1", "10.0.0.1", "192.168.1.1", "::1", "fe80::1", "ff02::1", "not-an-address" }) {
+        source->NoteAddress(address);
+    }
+    CHECK(source->WaitIdle(2000) && observations.load() == 0,
+          "addresses no PTR can name usefully are never looked up");
+    source->Stop();
+    CHECK(!source->IsRunning(), "and stops");
+    // Registered, it is stopped by the registry.
+    CHECK(NetworkMonitor_RegisterNameSource(NetworkMonitor_CreateReverseDnsSource(options)), "registering one starts it");
+    std::vector<NameSourceStatus> sources;
+    NetworkMonitor_ListNameSources(sources);
+    CHECK(sources.size() == 1 && sources[0].running && sources[0].kind == NameSource::ReverseDns && !sources[0].reportsProcess,
+          "the registry lists it running, without process attribution");
+    CHECK(!NetworkMonitor_GetCapabilities().dnsWithProcess, "so the capabilities do not claim DNS with process");
+    CHECK(NetworkMonitor_WaitForNames(500), "an idle registry reports idle");
+    NetworkMonitor_StopNameSources();
+    NetworkMonitor_ListNameSources(sources);
+    CHECK(sources.empty(), "stopping the sources empties the registry");
+    CHECK(NetworkMonitor_RegisterNameSource(nullptr).code == NetworkMonitorResultCode::InvalidArgument,
+          "registering nothing is refused");
+}
+
+// A fake upstream resolver on loopback: answers every A query for
+// "www.example.com" with 93.184.216.34, over UDP and over TCP, and refuses
+// (NXDOMAIN) everything else. Runs until told to stop.
+struct FakeResolver {
+    SocketHandle udp = kNoSocket;
+    SocketHandle tcp = kNoSocket;
+    uint16_t port = 0;
+    std::thread thread;
+    std::atomic<bool> stop{false};
+    std::atomic<int> udpQueries{0};
+    std::atomic<int> tcpQueries{0};
+
+    bool Start() {
+        sockaddr_in local{};
+        local.sin_family = AF_INET;
+        local.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        udp = ::socket(AF_INET, SOCK_DGRAM, 0);
+        if (udp == kNoSocket || ::bind(udp, reinterpret_cast<sockaddr*>(&local), sizeof local) != 0) return false;
+        SockLen length = sizeof local;
+        ::getsockname(udp, reinterpret_cast<sockaddr*>(&local), &length);
+        port = ntohs(local.sin_port);
+        tcp = ::socket(AF_INET, SOCK_STREAM, 0);
+        if (tcp == kNoSocket || ::bind(tcp, reinterpret_cast<sockaddr*>(&local), sizeof local) != 0 ||
+            ::listen(tcp, 4) != 0) return false;
+        thread = std::thread([this] { Run(); });
+        return true;
+    }
+
+    static std::vector<unsigned char> Answer(const unsigned char* data, std::size_t size) {
+        NetworkMonitorDns::Message query;
+        if (!NetworkMonitorDns::Parse(data, size, query)) return {};
+        if (query.questionName == "www.example.com" && query.questionType == NetworkMonitorDns::kTypeA) {
+            return NetworkMonitorDns::BuildResponse(query.id, query.questionName, query.questionType,
+                { { "www.example.com", NetworkMonitorDns::kTypeA, 60, "93.184.216.34", "" } });
+        }
+        return NetworkMonitorDns::BuildResponse(query.id, query.questionName, query.questionType, {}, 3);
+    }
+
+    void Run() {
+        unsigned char buffer[4096];
+        while (!stop.load()) {
+            fd_set readable;
+            FD_ZERO(&readable);
+            FD_SET(udp, &readable);
+            FD_SET(tcp, &readable);
+            timeval wait{};
+            wait.tv_usec = 100 * 1000;
+            const SocketHandle highest = udp > tcp ? udp : tcp;
+            if (::select(static_cast<int>(highest + 1), &readable, nullptr, nullptr, &wait) <= 0) continue;
+            if (FD_ISSET(udp, &readable)) {
+                sockaddr_storage from{};
+                SockLen length = sizeof from;
+                const int got = ::recvfrom(udp, reinterpret_cast<char*>(buffer), sizeof buffer, 0,
+                                           reinterpret_cast<sockaddr*>(&from), &length);
+                if (got > 0) {
+                    ++udpQueries;
+                    const auto answer = Answer(buffer, static_cast<std::size_t>(got));
+                    ::sendto(udp, reinterpret_cast<const char*>(answer.data()), static_cast<int>(answer.size()), 0,
+                             reinterpret_cast<sockaddr*>(&from), length);
+                }
+            }
+            if (FD_ISSET(tcp, &readable)) {
+                const SocketHandle client = ::accept(tcp, nullptr, nullptr);
+                if (client != kNoSocket) {
+                    unsigned char header[2];
+                    if (::recv(client, reinterpret_cast<char*>(header), 2, 0) == 2) {
+                        const int length = (header[0] << 8) | header[1];
+                        int got = 0;
+                        while (got < length) {
+                            const int n = ::recv(client, reinterpret_cast<char*>(buffer + got), length - got, 0);
+                            if (n <= 0) break;
+                            got += n;
+                        }
+                        if (got == length) {
+                            ++tcpQueries;
+                            auto answer = Answer(buffer, static_cast<std::size_t>(got));
+                            unsigned char frame[2] = { static_cast<unsigned char>(answer.size() >> 8),
+                                                       static_cast<unsigned char>(answer.size() & 0xFF) };
+                            ::send(client, reinterpret_cast<const char*>(frame), 2, 0);
+                            ::send(client, reinterpret_cast<const char*>(answer.data()), static_cast<int>(answer.size()), 0);
+                        }
+                    }
+                    CloseSocket(client);
+                }
+            }
+        }
+    }
+
+    ~FakeResolver() {
+        stop = true;
+        if (thread.joinable()) thread.join();
+        if (udp != kNoSocket) CloseSocket(udp);
+        if (tcp != kNoSocket) CloseSocket(tcp);
+    }
+};
+
+// Declared in NetworkMonitorDnsProxy.cpp for exactly this test: the port a
+// proxy asked to listen on port 0 was given.
+namespace UltraCanvas { uint16_t NetworkMonitor_DnsProxyListenPort(const INameSource& source); }
+
+static bool UdpExchange(uint16_t port, const std::vector<unsigned char>& query, std::vector<unsigned char>& reply) {
+    const SocketHandle s = ::socket(AF_INET, SOCK_DGRAM, 0);
+    if (s == kNoSocket) return false;
+    sockaddr_in to{};
+    to.sin_family = AF_INET;
+    to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    to.sin_port = htons(port);
+    bool ok = ::sendto(s, reinterpret_cast<const char*>(query.data()), static_cast<int>(query.size()), 0,
+                       reinterpret_cast<sockaddr*>(&to), sizeof to) == static_cast<int>(query.size());
+    if (ok) {
+        fd_set readable;
+        FD_ZERO(&readable);
+        FD_SET(s, &readable);
+        timeval wait{};
+        wait.tv_sec = 3;
+        ok = ::select(static_cast<int>(s + 1), &readable, nullptr, nullptr, &wait) > 0;
+    }
+    if (ok) {
+        reply.assign(4096, 0);
+        const int got = ::recv(s, reinterpret_cast<char*>(reply.data()), 4096, 0);
+        ok = got > 0;
+        if (ok) reply.resize(static_cast<std::size_t>(got));
+    }
+    CloseSocket(s);
+    return ok;
+}
+
+static bool TcpExchange(uint16_t port, const std::vector<unsigned char>& query, std::vector<unsigned char>& reply) {
+    const SocketHandle s = ::socket(AF_INET, SOCK_STREAM, 0);
+    if (s == kNoSocket) return false;
+    sockaddr_in to{};
+    to.sin_family = AF_INET;
+    to.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    to.sin_port = htons(port);
+    bool ok = ::connect(s, reinterpret_cast<sockaddr*>(&to), sizeof to) == 0;
+    if (ok) {
+        std::vector<unsigned char> framed = { static_cast<unsigned char>(query.size() >> 8),
+                                              static_cast<unsigned char>(query.size() & 0xFF) };
+        framed.insert(framed.end(), query.begin(), query.end());
+        ok = ::send(s, reinterpret_cast<const char*>(framed.data()), static_cast<int>(framed.size()), 0) ==
+             static_cast<int>(framed.size());
+    }
+    if (ok) {
+        unsigned char header[2];
+        ok = ::recv(s, reinterpret_cast<char*>(header), 2, 0) == 2;
+        if (ok) {
+            const int length = (header[0] << 8) | header[1];
+            reply.assign(static_cast<std::size_t>(length), 0);
+            int got = 0;
+            while (ok && got < length) {
+                const int n = ::recv(s, reinterpret_cast<char*>(reply.data() + got), length - got, 0);
+                if (n <= 0) ok = false; else got += n;
+            }
+        }
+    }
+    CloseSocket(s);
+    return ok;
+}
+
+static void TestDnsProxy() {
+    std::printf("DNS proxy\n");
+    if (!SocketsUp()) { std::printf("  skipped: no sockets\n"); return; }
+    NetworkMonitor_ClearNames();
+
+    DnsProxyOptions self;
+    self.listenPort = 5300;
+    self.upstreamAddress = "127.0.0.1";
+    self.upstreamPort = 5300;
+    auto looped = NetworkMonitor_CreateDnsProxySource(self);
+    CHECK(looped->Start([](const DnsObservation&) {}).code == NetworkMonitorResultCode::InvalidArgument,
+          "a proxy whose upstream is itself is refused");
+    DnsProxyOptions bad;
+    bad.upstreamAddress = "resolver.example";
+    CHECK(NetworkMonitor_CreateDnsProxySource(bad)->Start([](const DnsObservation&) {}).code ==
+              NetworkMonitorResultCode::InvalidArgument,
+          "an upstream that is not an address is refused");
+
+    FakeResolver upstream;
+    if (!upstream.Start()) { std::printf("  skipped: could not bind a loopback resolver\n"); return; }
+
+    DnsProxyOptions options;
+    options.listenPort = 0;   // any free port
+    options.upstreamAddress = "127.0.0.1";
+    options.upstreamPort = upstream.port;
+    auto proxy = NetworkMonitor_CreateDnsProxySource(options);
+    std::atomic<int> observations{0};
+    std::string lastName;
+    std::mutex nameMutex;
+    const NetworkMonitorResult started = proxy->Start([&](const DnsObservation& o) {
+        ++observations;
+        std::lock_guard<std::mutex> lock(nameMutex);
+        lastName = o.queryName;
+        NetworkMonitor_ObserveName(o);
+    });
+    CHECK(started, ("the proxy starts: " + started.message).c_str());
+    if (!started) return;
+    const uint16_t port = NetworkMonitor_DnsProxyListenPort(*proxy);
+    CHECK(port != 0 && proxy->Name().find(std::to_string(port)) != std::string::npos,
+          "on a port of its own that its name reports");
+
+    std::vector<unsigned char> reply;
+    const auto query = NetworkMonitorDns::BuildQuery(0x4242, "www.example.com", NetworkMonitorDns::kTypeA);
+    CHECK(UdpExchange(port, query, reply), "a UDP query through the proxy is answered");
+    NetworkMonitorDns::Message answer;
+    CHECK(NetworkMonitorDns::Parse(reply.data(), reply.size(), answer) && answer.id == 0x4242 &&
+          answer.answers.size() == 1 && answer.answers[0].address == "93.184.216.34",
+          "with the upstream's answer, untouched");
+    for (int i = 0; i < 50 && observations.load() < 1; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    NameRecord record;
+    CHECK(observations.load() == 1 && NetworkMonitor_LookupName("93.184.216.34", record) &&
+          record.name == "www.example.com" && record.source == NameSource::DnsProxy,
+          "and the proxy observed the name for the address");
+    CHECK(upstream.udpQueries.load() == 1, "the upstream saw the one UDP query");
+
+    CHECK(TcpExchange(port, query, reply), "a TCP query through the proxy is answered");
+    CHECK(NetworkMonitorDns::Parse(reply.data(), reply.size(), answer) && answer.answers.size() == 1,
+          "with the same answer");
+    for (int i = 0; i < 50 && observations.load() < 2; ++i) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    CHECK(observations.load() == 2 && upstream.tcpQueries.load() == 1, "observed over TCP too");
+
+    const auto missing = NetworkMonitorDns::BuildQuery(9, "nope.invalid", NetworkMonitorDns::kTypeA);
+    CHECK(UdpExchange(port, missing, reply) && NetworkMonitorDns::Parse(reply.data(), reply.size(), answer) &&
+          answer.rcode == 3, "a refusal is relayed as it came");
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    CHECK(observations.load() == 2, "and observed as nothing");
+
+    CHECK(proxy->LastError().empty() && proxy->IsRunning(), "the proxy is still healthy");
+    proxy->Stop();
+    CHECK(!proxy->IsRunning(), "and stops");
+    NetworkMonitor_ClearNames();
+}
+
+static void TestStoreNames() {
+    std::printf("Names in the store\n");
+    if (!NetworkMonitor_StoreAvailable()) { std::printf("  skipped: no UltraDatabase in this build\n"); return; }
+    NetworkMonitorStoreHandle store = NetworkMonitorInvalidStore;
+    NetworkMonitorStoreOptions options;
+    options.path = ":memory:";
+    options.retentionDays = 7;
+    CHECK(NetworkMonitor_OpenStore(options, store), "an in-memory store opens");
+
+    const int64_t t0 = 1'800'000'000;
+    std::vector<NetworkConnection> snapshot;
+    snapshot.push_back(MakeConnection(100, "firefox", "93.184.216.34", NetworkConnectionState::Established));
+    snapshot[0].remoteName = "a93-184.deploy.example";
+    snapshot[0].nameSource = NameSource::ReverseDns;
+    CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0), "a snapshot with a weak name records");
+    std::vector<RecordedFlow> flows;
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows.size() == 1 &&
+          flows[0].remoteName == "a93-184.deploy.example" && flows[0].nameSource == NameSource::ReverseDns,
+          "the flow carries the name and its source");
+    snapshot[0].remoteName = "www.example.com";
+    snapshot[0].nameSource = NameSource::DnsProxy;
+    CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0 + 1), "a later sighting with an observed name records");
+    CHECK(NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows.size() == 1 &&
+          flows[0].remoteName == "www.example.com" && flows[0].nameSource == NameSource::DnsProxy,
+          "and the observed name replaces the weak one on the same flow");
+    snapshot[0].remoteName = "a93-184.deploy.example";
+    snapshot[0].nameSource = NameSource::ReverseDns;
+    CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0 + 2) &&
+          NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows[0].remoteName == "www.example.com",
+          "but a weak name never replaces an observed one");
+    snapshot[0].remoteName.clear();
+    snapshot[0].nameSource = NameSource::None;
+    CHECK(NetworkMonitor_RecordSnapshot(store, snapshot, t0 + 3) &&
+          NetworkMonitor_QueryFlows(store, ActivityQuery(), flows) && flows[0].remoteName == "www.example.com",
+          "and a sighting without a name keeps the one recorded");
+    ActivityQuery byName;
+    byName.text = "example.com";
+    CHECK(NetworkMonitor_QueryFlows(store, byName, flows) && flows.size() == 1, "the text filter matches the name");
+    byName.text = "nothing-here";
+    CHECK(NetworkMonitor_QueryFlows(store, byName, flows) && flows.empty(), "and only the name");
+
+    // DNS observations of their own.
+    DnsObservation observation;
+    observation.queryName = "api.example.com";
+    observation.addresses = { "198.51.100.1", "198.51.100.2" };
+    observation.source = NameSource::EtwDnsClient;
+    observation.observedAt = t0 + 10;
+    ProcessIdentity asker;
+    asker.pid = 4242;
+    asker.displayName = "curl";
+    observation.process = asker;
+    CHECK(NetworkMonitor_RecordDnsObservation(store, observation), "an observation with two addresses records");
+    DnsObservation empty;
+    CHECK(NetworkMonitor_RecordDnsObservation(store, empty).code == NetworkMonitorResultCode::InvalidArgument,
+          "an empty one is refused");
+    std::vector<RecordedDnsObservation> recorded;
+    CHECK(NetworkMonitor_QueryDnsObservations(store, ActivityQuery(), recorded) && recorded.size() == 2 &&
+          recorded[0].queryName == "api.example.com" && recorded[0].source == NameSource::EtwDnsClient &&
+          recorded[0].process && recorded[0].process->pid == 4242 && recorded[0].observedAt == t0 + 10,
+          "as two rows with the asking process");
+    ActivityQuery byPid;
+    byPid.pid = 4242;
+    ActivityQuery byOther;
+    byOther.pid = 1;
+    CHECK(NetworkMonitor_QueryDnsObservations(store, byPid, recorded) && recorded.size() == 2 &&
+          NetworkMonitor_QueryDnsObservations(store, byOther, recorded) && recorded.empty(),
+          "filtered by PID");
+    ActivityQuery byAddress;
+    byAddress.text = "100.2";
+    CHECK(NetworkMonitor_QueryDnsObservations(store, byAddress, recorded) && recorded.size() == 1 &&
+          recorded[0].address == "198.51.100.2", "and by address text");
+    NetworkMonitorStoreStats stats;
+    CHECK(NetworkMonitor_StoreStats(store, stats) && stats.dnsObservations == 2, "the stats count them");
+
+    // The CSV carries the name; the roll-up keeps it on the day total.
+    const std::filesystem::path csv = std::filesystem::temp_directory_path() / "networkmonitor-names.csv";
+    int64_t written = 0;
+    CHECK(NetworkMonitor_ExportFlowsCsv(store, ActivityQuery(), csv.string(), &written) && written == 1, "the CSV exports");
+    {
+        std::ifstream file(csv);
+        std::string header, line;
+        std::getline(file, header);
+        std::getline(file, line);
+        CHECK(header.find(",remote_name,name_source,") != std::string::npos &&
+              line.find(",www.example.com,DNS proxy,") != std::string::npos,
+              "with the name and its source as columns");
+        std::filesystem::remove(csv);
+    }
+    int64_t rolled = 0;
+    std::vector<DailyProcessTotal> totals;
+    CHECK(NetworkMonitor_RollUp(store, t0 + 100, &rolled) && rolled == 1 &&
+          NetworkMonitor_QueryDailyTotals(store, ActivityQuery(), totals) && totals.size() == 1 &&
+          totals[0].remoteName == "www.example.com",
+          "the daily total remembers the peer's name");
+    ActivityQuery totalsByName;
+    totalsByName.text = "www.example";
+    CHECK(NetworkMonitor_QueryDailyTotals(store, totalsByName, totals) && totals.size() == 1,
+          "and the totals filter matches it");
+
+    // Retention drops observations older than the window.
+    CHECK(NetworkMonitor_ApplyRetention(store, t0 + 8LL * 86400) &&
+          NetworkMonitor_StoreStats(store, stats) && stats.dnsObservations == 0,
+          "observations older than the retention window are dropped");
+    CHECK(NetworkMonitor_RecordDnsObservation(store, observation) && NetworkMonitor_Purge(store) &&
+          NetworkMonitor_StoreStats(store, stats) && stats.dnsObservations == 0,
+          "and purge takes the rest");
+    CHECK(NetworkMonitor_CloseStore(store), "the store closes");
+
+#ifdef ULTRACANVAS_HAS_DATABASE
+    // A version-1 file (the schema as 0.3 wrote it) opens and gains the
+    // columns: the migration is the same code path a user's store takes.
+    const std::filesystem::path v1 = std::filesystem::temp_directory_path() / "networkmonitor-v1.db";
+    std::filesystem::remove(v1);
+    {
+        UltraDbConnectionConfig config;
+        config.name = "networkmonitor-test-v1";
+        config.driver = "sqlite";
+        config.database = v1.string();
+        CHECK(UltraDb_RegisterConnection(config), "a version-1 file is created");
+        const std::vector<UltraDbMigration> steps = { { 1, "v1", 
+            "CREATE TABLE processes(id INTEGER PRIMARY KEY, pid INTEGER NOT NULL, name TEXT NOT NULL,"
+            " executable TEXT NOT NULL, user TEXT NOT NULL, UNIQUE(pid, name, executable, user));"
+            "CREATE TABLE flows(id INTEGER PRIMARY KEY, transport INTEGER NOT NULL, family INTEGER NOT NULL,"
+            " local_address TEXT NOT NULL, local_port INTEGER NOT NULL, remote_address TEXT NOT NULL,"
+            " remote_port INTEGER NOT NULL, state INTEGER NOT NULL, inode INTEGER NOT NULL DEFAULT 0,"
+            " process_id INTEGER REFERENCES processes(id), first_seen INTEGER NOT NULL,"
+            " last_seen INTEGER NOT NULL, snapshots INTEGER NOT NULL DEFAULT 1, bytes_sent INTEGER,"
+            " bytes_received INTEGER);"
+            "CREATE TABLE daily_totals(day INTEGER NOT NULL, process_name TEXT NOT NULL,"
+            " executable TEXT NOT NULL, remote_address TEXT NOT NULL, flows INTEGER NOT NULL,"
+            " counted_flows INTEGER NOT NULL, bytes_sent INTEGER NOT NULL, bytes_received INTEGER NOT NULL,"
+            " PRIMARY KEY(day, process_name, executable, remote_address));"
+            "CREATE TABLE snapshots(id INTEGER PRIMARY KEY, observed_at INTEGER NOT NULL,"
+            " connections INTEGER NOT NULL);"
+            "INSERT INTO flows(transport, family, local_address, local_port, remote_address, remote_port,"
+            " state, first_seen, last_seen) VALUES(0, 0, '10.0.0.1', 5000, '93.184.216.34', 443, 4,"
+            " 1800000000, 1800000001);" } };
+        CHECK(UltraDb_Migrate(config.name, steps), "with a flow recorded by the old schema");
+        UltraDb_CloseConnection(config.name);
+    }
+    NetworkMonitorStoreOptions onDisk;
+    onDisk.path = v1.string();
+    NetworkMonitorStoreHandle migrated = NetworkMonitorInvalidStore;
+    const NetworkMonitorResult reopened = NetworkMonitor_OpenStore(onDisk, migrated);
+    CHECK(reopened, ("the version-1 file opens: " + reopened.message).c_str());
+    if (reopened) {
+        CHECK(NetworkMonitor_QueryFlows(migrated, ActivityQuery(), flows) && flows.size() == 1 &&
+              flows[0].remoteName.empty() && flows[0].nameSource == NameSource::None,
+              "its old flow reads back without a name");
+        snapshot[0].remoteName = "www.example.com";
+        snapshot[0].nameSource = NameSource::DnsProxy;
+        CHECK(NetworkMonitor_RecordSnapshot(migrated, snapshot, t0 + 5) &&
+              NetworkMonitor_RecordDnsObservation(migrated, observation) &&
+              NetworkMonitor_StoreStats(migrated, stats) && stats.dnsObservations == 2,
+              "and the migrated file records names and observations");
+        NetworkMonitor_CloseStore(migrated);
+    }
+    std::filesystem::remove(v1);
+#endif
+}
+
 int main() {
     std::printf("=== NetworkMonitor tests ===\n");
     TestAddressFormatting();
@@ -612,6 +1204,11 @@ int main() {
     TestFormatting();
     TestLiveSnapshot();
     TestStore();
+    TestDnsWire();
+    TestNameTable();
+    TestReverseDns();
+    TestDnsProxy();
+    TestStoreNames();
     std::printf("=== %s ===\n", g_failures == 0 ? "all tests passed" : "FAILURES");
     return g_failures == 0 ? 0 : 1;
 }

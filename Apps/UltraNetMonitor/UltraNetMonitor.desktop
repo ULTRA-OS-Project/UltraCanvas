@@ -1,0 +1,31 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraNetMonitor: the application menu entry,
+# and — the reason it matters beyond that — a name every desktop-aware
+# program can resolve the icon by. `Icon=UltraNetMonitor` is an icon *name*,
+# looked up through the installed icon themes, and the project's install
+# rules put media/appicon/UltraNetMonitor.png into
+# share/icons/hicolor/256x256/apps and media/appicon/UltraNetMonitor.svg into
+# share/icons/hicolor/scalable/apps so the lookup lands on them. That is the
+# route UltraFiler takes for an application (UltraCanvasNativeFileIcons.cpp ->
+# FindDesktopIconFile). The window and taskbar icon come from the same PNG by
+# a different route — main.cpp hands it to SetDefaultWindowIcon.
+#
+# It opens no files, so there is no MimeType= and Exec takes no argument: the
+# headless modes (--list, --by-app, --record, --history, …) are for the
+# command line, and the entry launches the window.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=UltraNetMonitor
+GenericName=Network Monitor
+Comment=See which processes hold which network connections, live, from the system socket table
+Exec=UltraNetMonitor
+TryExec=UltraNetMonitor
+Icon=UltraNetMonitor
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraNetMonitor
+Categories=Network;Monitor;
+Keywords=network;connections;sockets;monitor;ports;traffic;processes;tcp;udp;
