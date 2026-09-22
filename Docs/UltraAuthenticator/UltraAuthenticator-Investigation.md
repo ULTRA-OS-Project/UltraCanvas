@@ -439,6 +439,10 @@ codes the server rejects.
 - **Phishing:** TOTP does not resist real-time relay phishing. Out of scope,
   but user-facing docs should not oversell.
 
+All three are now stated to the user, in those terms, in the
+[README](README.md) under *What it does not protect against*, alongside the
+things the app does do.
+
 ### 3.7 Clipboard and UI leakage (medium)
 
 - Copying a *code* is acceptable (30 s lifetime) but: X11 clipboard is

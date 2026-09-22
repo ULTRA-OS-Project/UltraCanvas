@@ -16,6 +16,10 @@
   it is secret. Hand-edited values are clamped, never trusted.
 - `--version` now reports the version from this file instead of a hard-coded
   string.
+- **A user-facing page**, [`README.md`](README.md): what the app protects
+  and how, and — stated plainly — what it cannot protect against (screen
+  capture under X11, other programs running as the same user, phishing, a
+  lost master password, a wrong clock).
 - Needs UltraCanvas 0.9.20 or later: the minimise lock relies on the
   framework's new `onWindowMinimize` / `onWindowRestore` notifications for
   window-manager-initiated minimises (see the framework changelog).
