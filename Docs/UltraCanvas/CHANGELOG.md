@@ -33,6 +33,17 @@
   consumers that test it). The UltraCloud suite covers all three
   (`Tests/UltraCloud/test_secrets.cpp`). UltraMail 0.10.2 and UltraFiler
   1.44.1 are the consumers that moved.
+- **`scripts/check_changelog.py --base` now catches a stale number before the
+  merge.** It compared the branch's entry only with the versions in the
+  branch's own copy of the file, plus one rule against the base: not the same
+  number as the base's line 1. A branch that picked the next number, was
+  overtaken by releases on `main` and had not merged `main` since therefore
+  passed - its file simply did not contain the newer entries - which is how
+  this branch's own entry sat at 0.9.16 while `main` was on 0.9.20. The
+  pull-request rule is now "strictly above the base's line 1", so both the
+  shared and the stale shape are refused while the number is still cheap to
+  change. `AGENTS.md` says to fetch `main` first, since the comparison is only
+  as current as the local `origin/main`.
 
 #### 2026-09-22 *0.9.20*
 - **A form caption is not something you scroll.** Every row of UltraCloud's

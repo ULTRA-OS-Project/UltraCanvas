@@ -40,9 +40,18 @@ long since released; renumbering a published release would be a lie, so they
 are left as they are and only new top entries have to be well-formed.
 
 With --base <ref>, the stricter pull-request rule also applies: a changelog
-that this branch modified must not still be claiming the version <ref> claims,
-which is what catches a pull request appending its bullets to an entry main has
-already released.
+that this branch modified (its copy differs from the merge base's - not from
+<ref>'s head, which also differs whenever <ref> released something the branch
+has not merged yet) must claim a version strictly above every version <ref>'s
+copy of the file carries. That catches both shapes before the merge:
+the same number as <ref> (bullets appended to a released entry, or two
+branches choosing one number), and a lower one - the branch picked the next
+number, main released past it, and the branch has not merged main since, so
+the per-file rule above cannot see the newer releases. Line 1 of <ref>'s copy
+is what it is compared with, so <ref> has to be current: fetch it first. The
+merge base needs history: in a clone too shallow to find one, every file
+that differs from <ref>'s copy is taken as modified, which can only add a
+report, never miss one.
 
 Usage:
     python3 scripts/check_changelog.py                 # check the working tree
@@ -96,6 +105,22 @@ def git(*args):
     return done.stdout if done.returncode == 0 else None
 
 
+def branch_edited(relative, base, text):
+    """Whether this branch changed the file.
+
+    Compared against the merge base with `base`, not against base's head: a
+    file that base released on since the branch forked also differs from
+    base's head, and it is not this branch's edit. Without a merge base (a
+    shallow clone) base's head is the best available and errs towards
+    reporting.
+    """
+    ancestor = git("merge-base", base, "HEAD")
+    ref = ancestor.strip() if ancestor else base
+    before = git("show", f"{ref}:{relative}")
+    # A file the merge base does not have is new on this branch.
+    return before is None or before != text
+
+
 def check(prefix, relative, base):
     path = REPO / relative
     problems = []
@@ -137,14 +162,24 @@ def check(prefix, relative, base):
         # the edit is still uncommitted, and `git diff base...HEAD` cannot see
         # that. Reading base's blob and comparing content covers both.
         before = git("show", f"{base}:{relative}")
-        if before is not None and before != text:
+        if before is not None and branch_edited(relative, base, text):
             was = parse(before)
-            if was and was[0][2] == top:
+            # Line 1 of base's copy is its version; the max covers a base that
+            # is itself malformed, so the comparison never trusts a bad line 1.
+            base_top = max((v for _, _, v in was), default=None)
+            if base_top is not None and top == base_top:
                 problems.append(
                     f"{relative}:1: this branch edits the changelog but still claims "
                     f"version {show(top)}, the same version {base} is on. Bullets added "
                     f"under a released entry ship unversioned and collide with every "
                     f"other branch doing the same - add a NEW entry above it instead.")
+            elif base_top is not None and top < base_top:
+                problems.append(
+                    f"{relative}:1: version {show(top)} is behind {show(base_top)}, the "
+                    f"version {base} is on. main released further versions while this "
+                    f"was open and they are not in this branch's copy of the file yet - "
+                    f"renumber this entry above {show(base_top)} (and merge {base} so the "
+                    f"file carries what was released).")
     return problems
 
 
