@@ -24,7 +24,9 @@
 #include "Preferences.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasUtils.h"
 #include "UltraCrypt/UltraCryptCore.h"
 
 #ifdef __linux__
@@ -205,6 +207,13 @@ int main(int argc, char* argv[]) {
             std::cerr << "Failed to initialize UltraCanvas application\n";
             return EXIT_FAILURE;
         }
+
+        // One icon, everywhere the app is drawn: the window and the taskbar
+        // entry that follows it read this file; the .ico embedded in the
+        // Windows binary and the desktop entry's theme icon are rendered from
+        // the same media/appicon/UltraAuthenticator.svg (see CMakeLists.txt).
+        app.SetDefaultWindowIcon(
+            NormalizePath(GetResourcesDir() + "media/appicon/UltraAuthenticator.png"));
 
         // Use the framework's own dialogs: the native ones cannot be given a
         // password field on every platform.

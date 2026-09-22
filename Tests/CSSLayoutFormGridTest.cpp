@@ -14,8 +14,8 @@
 // publish the intrinsic sizes UltraCanvasLabel publishes at runtime without
 // needing a render context to measure real text.
 //
-// Version: 1.0.0
-// Last Modified: 2026-09-13
+// Version: 1.2.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 
 #include "CSSLayout/CSSLayout.h"
@@ -25,11 +25,21 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <vector>
 
 using namespace UltraCanvas;
 using namespace UltraCanvas::CSSLayout;
 
 static int g_failures = 0;
+
+static void CheckTrue(bool ok, const char* what) {
+    if (!ok) {
+        std::printf("  FAIL: %s\n", what);
+        ++g_failures;
+    } else {
+        std::printf("  ok:   %s\n", what);
+    }
+}
 
 static void CheckNear(float actual, float expected, const char* what, float tol = 0.01f) {
     if (std::fabs(actual - expected) > tol) {
@@ -88,6 +98,27 @@ static std::shared_ptr<Element> FormGrid(float rowGap, float columnGap) {
     grid->layout.SetGridColumns({caption, control});
     grid->layout.SetGridGap(rowGap, columnGap);
     return grid;
+}
+
+// A control stand-in: a definite box, the way a text input or a dropdown
+// built with an explicit control height reaches the layout.
+static std::shared_ptr<Element> Box(float width, float height) {
+    auto box = std::make_shared<Element>();
+    if (width  > 0) box->size.width  = Dimension::Px(width);
+    if (height > 0) box->size.height = Dimension::Px(height);
+    return box;
+}
+
+// Lays a dialog's flex column out at an exact size - the case that matters is
+// the one where that height is less than the column's children need.
+static void LayOutBox(const std::shared_ptr<Element>& element, float width, float height) {
+    LayoutContext ctx;
+    ctx.viewportWidth = width;
+    ctx.viewportHeight = height;
+    MeasureConstraints mc{ { ConstraintMode::Exact, width },
+                           { ConstraintMode::Exact, height } };
+    element->Measure(mc, ctx);
+    element->Arrange(Rect2Df{ 0, 0, width, height }, ctx);
 }
 
 static void SpanBothColumns(const std::shared_ptr<Element>& element) {
@@ -175,6 +206,108 @@ int main() {
     LayOut(autoGrid, kGridWidth);
     CheckNear(a->finalBounds.width, 200.0f,
               "with no fr track the spanning item shares itself over the auto columns");
+
+    // ----- hidden rows and a spanning row in the same grid -----
+    // UltraSocial's account wizard: the network dropdown, a wide hint under it,
+    // then four fields of which the chosen network uses only some. The rest are
+    // hidden, and what must not happen is a hole where they were or the wide
+    // hint losing a column because auto-placement re-flowed around them.
+    auto wizard = FormGrid(8.0f, kColumnGap);
+    auto networkCaption = Text(60.0f);          // "Network"
+    auto networkControl = Text(120.0f);
+    auto wideHint       = Text(430.0f);
+    auto usedCaption    = Text(80.0f);          // "Instance"
+    auto usedControl    = Text(120.0f);
+    auto unusedCaption  = Text(300.0f);         // would dominate the column
+    auto unusedControl  = Text(120.0f);
+    auto lastCaption    = Text(70.0f);
+    auto lastControl    = Text(120.0f);
+    wizard->AddChild(networkCaption);
+    wizard->AddChild(networkControl);
+    SpanBothColumns(wideHint);
+    wizard->AddChild(wideHint);
+    wizard->AddChild(usedCaption);
+    wizard->AddChild(usedControl);
+    wizard->AddChild(unusedCaption);
+    wizard->AddChild(unusedControl);
+    wizard->AddChild(lastCaption);
+    wizard->AddChild(lastControl);
+    unusedCaption->layout.Hide();
+    unusedControl->layout.Hide();
+    LayOut(wizard, kGridWidth);
+
+    CheckNear(wideHint->finalBounds.width, kGridWidth,
+              "the spanning hint still covers both columns beside hidden rows");
+    CheckNear(usedCaption->finalBounds.width, 80.0f,
+              "the caption column ignores the hidden row's wider caption");
+    // Rows are 20 high with an 8 px gap: network 0, hint 28, first field 56,
+    // and the last field at 84 only because the hidden row left no track.
+    CheckNear(wideHint->finalBounds.y, 28.0f, "the hint sits in the second row");
+    CheckNear(usedCaption->finalBounds.y, 56.0f, "the first field follows the hint");
+    CheckNear(lastCaption->finalBounds.y, 84.0f,
+              "a hidden row leaves no empty track behind it");
+    CheckNear(lastCaption->finalBounds.x, 0.0f,
+              "and the row after it still starts in the caption column");
+
+    // ----- a dialog too short for its form does not squeeze the rows -----
+    // What this guards, from UltraCloud's add-account dialog: the form was a
+    // flex container per field, and the dialog's column was two pixels short
+    // of the rows it held. Every row was shrunk below the 32 px control inside
+    // it, so every row raised a vertical scrollbar; that narrowed the viewport
+    // enough to raise a horizontal one as well, and the pair was painted
+    // straight across the caption and the field. A form grid is flex-shrink: 0
+    // (CreateFormGrid), so its rows keep their own height and the dialog is
+    // what has to be tall enough.
+    constexpr float kControlHeight = 32.0f;
+    constexpr float kShortDialog   = 280.0f;   // 7 rows + buttons need 318
+
+    auto dialog = std::make_shared<Element>();
+    dialog->layout.SetFlexColumn().SetFlexGap(10.0f);
+
+    auto tightForm = FormGrid(8.0f, kColumnGap);
+    tightForm->layoutItem.SetFlexGrow(0).SetFlexShrink(0);
+    std::vector<std::shared_ptr<Element>> fields;
+    for (int i = 0; i < 7; ++i) {
+        tightForm->AddChild(Text(70.0f));
+        auto field = Box(0.0f, kControlHeight);
+        fields.push_back(field);
+        tightForm->AddChild(field);
+    }
+    dialog->AddChild(tightForm);
+    auto buttonRow = Box(0.0f, 36.0f);
+    buttonRow->layoutItem.SetFlexShrink(0);
+    dialog->AddChild(buttonRow);
+
+    LayOutBox(dialog, kGridWidth, kShortDialog);
+
+    bool everyFieldKeptItsHeight = true;
+    for (const auto& field : fields)
+        if (std::fabs(field->finalBounds.height - kControlHeight) > 0.01f)
+            everyFieldKeptItsHeight = false;
+    CheckTrue(everyFieldKeptItsHeight,
+              "a dialog shorter than its form leaves every row at its own height");
+
+    // The shape it replaced, for the contrast: a flex row per field, shrinking
+    // with the column until it is shorter than the control it contains.
+    auto oldDialog = std::make_shared<Element>();
+    oldDialog->layout.SetFlexColumn().SetFlexGap(10.0f);
+    std::vector<std::shared_ptr<Element>> oldRows;
+    for (int i = 0; i < 7; ++i) {
+        auto row = Box(0.0f, kControlHeight);
+        row->layout.SetFlexRow().SetFlexGap(8.0f);
+        row->AddChild(Text(70.0f));
+        row->AddChild(Box(0.0f, kControlHeight));
+        oldRows.push_back(row);
+        oldDialog->AddChild(row);
+    }
+    oldDialog->AddChild(Box(0.0f, 36.0f));
+    LayOutBox(oldDialog, kGridWidth, kShortDialog);
+
+    bool someRowWasSqueezed = false;
+    for (const auto& row : oldRows)
+        if (row->finalBounds.height < kControlHeight - 0.01f) someRowWasSqueezed = true;
+    CheckTrue(someRowWasSqueezed,
+              "a flex row per field is squeezed below the control inside it");
 
     std::printf(g_failures == 0 ? "=== PASSED ===\n" : "=== FAILED ===\n");
     return g_failures == 0 ? 0 : 1;

@@ -253,10 +253,12 @@ std::shared_ptr<UltraCanvasContainer> MessagePreview::Build() {
     bodyHost_ = CreateContainer("prevBodyHost", 0, 0, 0, 0);
     bodyHost_->layout.SetFlexColumn()
                      .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
-    // The body host IS the scroll view for a tall message: keep the vertical
-    // scrollbar (auto), but never a horizontal one — HTML reflows to the width,
-    // and when the vertical bar appears it must not fabricate horizontal overflow.
+    // The body host IS the scroll view for a tall message, so it opts into
+    // scrolling (containers do not scroll unless asked): the vertical bar is
+    // auto, but never a horizontal one — HTML reflows to the width, and when
+    // the vertical bar appears it must not fabricate horizontal overflow.
     if (auto s = bodyHost_->GetContainerStyle(); true) {
+        s.autoShowScrollbars = true;
         s.autoShowHorizontalScrollbar = false;
         bodyHost_->SetContainerStyle(s);
     }
@@ -302,9 +304,16 @@ void MessagePreview::RenderBody(const std::string& body, bool isHtml) {
             // own scrollbars precisely so the host scrolls instead.
             auto scroll = CreateContainer("prevBodyScroll", 0, 0, 0, 0);
             scroll->layoutItem.SetFlexGrow(1).SetAlignSelf(CSSLayout::AlignSelf::Stretch);
-            // Keep the vertical auto-scrollbar; also allow a horizontal one so
-            // content that genuinely cannot reflow (fixed-width tables, large
-            // images) can be scrolled to instead of being clipped.
+            // A deliberate scroll view, so it opts in (containers do not
+            // scroll unless asked): the vertical bar for a tall message, and a
+            // horizontal one too, so content that genuinely cannot reflow
+            // (fixed-width tables, large images) can be scrolled to instead of
+            // being clipped.
+            {
+                ContainerStyle scrollStyle = scroll->GetContainerStyle();
+                scrollStyle.autoShowScrollbars = true;
+                scroll->SetContainerStyle(scrollStyle);
+            }
             // Give the body a definite width so it reflows to the pane rather
             // than laying out over-wide (responsive emails fill the pane).
             r.root->size.width = CSSLayout::Dimension::Pct(100.0f);
