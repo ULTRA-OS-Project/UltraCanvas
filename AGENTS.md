@@ -243,8 +243,11 @@ anywhere else, and never introduce a new literal copy of one:
   numbers from before this was checked. So: re-read the top of the changelog
   just before you push, and if `main` has moved past your number, renumber your
   entry rather than leaving it — and never add bullets to an entry that is
-  already on `main`. Run `python3 scripts/check_changelog.py --base origin/main`
-  before pushing; CI runs it too.
+  already on `main`. Run `git fetch origin main` and then
+  `python3 scripts/check_changelog.py --base origin/main` before pushing; CI
+  runs it too. The check compares your entry with line 1 of `main`'s copy of
+  the file, so it is only as current as your `origin/main` - an unfetched one
+  lets a stale number through.
   GitHub's *Update branch* button cannot do the renumbering: it merges `main`
   into the branch and, when `main` has meanwhile released the number the
   branch chose, folds the two entries under the one header (or leaves a

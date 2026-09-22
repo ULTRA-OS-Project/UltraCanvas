@@ -1,20 +1,18 @@
 // UltraCloud/core/UltraCloudSecrets.cpp
-// Version: 0.2.0
-// Last Modified: 2026-09-04
+// Version: 0.3.0 - file store replaced by the vault + a one-way migration
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #include <UltraCloud/UltraCloudSecrets.h>
 
-#include <UltraNet/UltraNetMime.h>   // UltraNet_Base64Encode / Decode
-
-#ifdef ULTRACLOUD_USE_ULTRAVAULT
+#include <UltraNet/UltraNetMime.h>   // UltraNet_Base64Decode (legacy files)
 #include <UltraVault/UltraVault.h>
-#endif
 
+#include <cctype>
 #include <cstdint>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
-#include <random>
+#include <iterator>
 #include <string>
 #include <vector>
 
@@ -22,90 +20,8 @@ namespace fs = std::filesystem;
 
 namespace UltraCloud {
 
-namespace {
+// ---- UltraVault -------------------------------------------------------------
 
-// Load (or create) the per-store obfuscation key.
-std::vector<uint8_t> LoadOrCreateKey(const std::string& dir) {
-    fs::path keyPath = fs::path(dir) / "cloud.key";
-    std::error_code ec;
-    fs::create_directories(dir, ec);
-    if (fs::exists(keyPath, ec)) {
-        std::ifstream is(keyPath, std::ios::binary);
-        std::vector<uint8_t> key((std::istreambuf_iterator<char>(is)),
-                                 std::istreambuf_iterator<char>());
-        if (!key.empty()) return key;
-    }
-    std::vector<uint8_t> key(32);
-    std::random_device rd;
-    for (auto& b : key) b = static_cast<uint8_t>(rd() & 0xFF);
-    std::ofstream os(keyPath, std::ios::binary | std::ios::trunc);
-    if (os) os.write(reinterpret_cast<const char*>(key.data()),
-                     static_cast<std::streamsize>(key.size()));
-    fs::permissions(keyPath, fs::perms::owner_read | fs::perms::owner_write,
-                    fs::perm_options::replace, ec);
-    return key;
-}
-
-std::string Obfuscate(const std::vector<uint8_t>& key, const std::string& plain) {
-    std::vector<uint8_t> bytes(plain.begin(), plain.end());
-    for (std::size_t i = 0; i < bytes.size() && !key.empty(); ++i) bytes[i] ^= key[i % key.size()];
-    return UltraNet_Base64Encode(bytes, /*wrap76Cols=*/false);
-}
-
-std::string Deobfuscate(const std::vector<uint8_t>& key, const std::string& encoded) {
-    std::vector<uint8_t> bytes;
-    UltraNet_Base64Decode(encoded, bytes);
-    for (std::size_t i = 0; i < bytes.size() && !key.empty(); ++i) bytes[i] ^= key[i % key.size()];
-    return std::string(bytes.begin(), bytes.end());
-}
-
-// "password\n<b64>\ntoken\n<b64>\n" — one file per account.
-std::string SecretFile(const std::string& dir, const std::string& accountId) {
-    std::string safe;
-    for (char c : accountId) safe.push_back(std::isalnum(static_cast<unsigned char>(c)) ? c : '_');
-    return (fs::path(dir) / (safe + ".secret")).string();
-}
-
-} // namespace
-
-bool FileSecretStore::Store(const std::string& accountId, const Credentials& credentials) {
-    if (accountId.empty()) return false;
-    const auto key = LoadOrCreateKey(dir_);
-    std::ofstream os(SecretFile(dir_, accountId), std::ios::binary | std::ios::trunc);
-    if (!os) return false;
-    os << "username\n" << Obfuscate(key, credentials.username) << "\n"
-       << "password\n" << Obfuscate(key, credentials.password) << "\n"
-       << "token\n"    << Obfuscate(key, credentials.token)    << "\n"
-       << "refresh\n"  << Obfuscate(key, credentials.refreshToken) << "\n"
-       << "expires\n"  << Obfuscate(key, std::to_string(credentials.tokenExpiresAt)) << "\n";
-    std::error_code ec;
-    fs::permissions(SecretFile(dir_, accountId),
-                    fs::perms::owner_read | fs::perms::owner_write, fs::perm_options::replace, ec);
-    return static_cast<bool>(os);
-}
-
-bool FileSecretStore::Retrieve(const std::string& accountId, Credentials& out) const {
-    out = Credentials{};
-    std::ifstream is(SecretFile(dir_, accountId), std::ios::binary);
-    if (!is) return false;
-    const auto key = LoadOrCreateKey(dir_);
-    std::string name, value;
-    while (std::getline(is, name) && std::getline(is, value)) {
-        if (name == "username")      out.username = Deobfuscate(key, value);
-        else if (name == "password") out.password = Deobfuscate(key, value);
-        else if (name == "token")    out.token    = Deobfuscate(key, value);
-        else if (name == "refresh")  out.refreshToken = Deobfuscate(key, value);
-        else if (name == "expires")  out.tokenExpiresAt = std::strtoll(Deobfuscate(key, value).c_str(), nullptr, 10);
-    }
-    return true;
-}
-
-bool FileSecretStore::Remove(const std::string& accountId) {
-    std::error_code ec;
-    return fs::remove(SecretFile(dir_, accountId), ec);
-}
-
-#ifdef ULTRACLOUD_USE_ULTRAVAULT
 namespace {
 std::string VaultKey(const std::string& accountId, const char* what) {
     return "cloud." + accountId + "." + what;
@@ -113,7 +29,7 @@ std::string VaultKey(const std::string& accountId, const char* what) {
 } // namespace
 
 bool VaultSecretStore::Store(const std::string& accountId, const Credentials& credentials) {
-    if (!UltraVault::IsAvailable()) return false;
+    if (accountId.empty() || !UltraVault::IsAvailable()) return false;
     bool ok = true;
     ok = UltraVault::Put(VaultKey(accountId, "username"),
                          UltraVault::SecretValue::FromString(credentials.username)) && ok;
@@ -130,7 +46,7 @@ bool VaultSecretStore::Store(const std::string& accountId, const Credentials& cr
 
 bool VaultSecretStore::Retrieve(const std::string& accountId, Credentials& out) const {
     out = Credentials{};
-    if (!UltraVault::IsAvailable()) return false;
+    if (accountId.empty() || !UltraVault::IsAvailable()) return false;
     UltraVault::SecretValue v;
     bool any = false;
     if (UltraVault::Get(VaultKey(accountId, "username"), v)) { out.username = v.AsString(); any = true; }
@@ -143,12 +59,111 @@ bool VaultSecretStore::Retrieve(const std::string& accountId, Credentials& out) 
 }
 
 bool VaultSecretStore::Remove(const std::string& accountId) {
-    if (!UltraVault::IsAvailable()) return false;
+    if (accountId.empty() || !UltraVault::IsAvailable()) return false;
     bool any = false;
     for (const char* what : {"username", "password", "token", "refresh", "expires"})
         any = static_cast<bool>(UltraVault::Delete(VaultKey(accountId, what))) || any;
     return any;
 }
-#endif
+
+// ---- Memory -----------------------------------------------------------------
+
+bool MemorySecretStore::Store(const std::string& accountId, const Credentials& credentials) {
+    if (accountId.empty()) return false;
+    secrets_[accountId] = credentials;
+    return true;
+}
+
+bool MemorySecretStore::Retrieve(const std::string& accountId, Credentials& out) const {
+    out = Credentials{};
+    auto it = secrets_.find(accountId);
+    if (it == secrets_.end()) return false;
+    out = it->second;
+    return true;
+}
+
+bool MemorySecretStore::Remove(const std::string& accountId) {
+    return secrets_.erase(accountId) > 0;
+}
+
+// ---- Legacy file store (read once to migrate, never written) ----------------
+// The old store kept one "<accountId>.secret" per account — pairs of lines,
+// a field name then its value XOR-ed against cloud.key and base64-encoded —
+// with the key in the same directory. Nothing writes that format any more.
+
+namespace {
+
+constexpr const char* kLegacyKeyFile = "cloud.key";
+
+std::vector<uint8_t> ReadLegacyKey(const std::string& dir) {
+    std::ifstream is(fs::path(dir) / kLegacyKeyFile, std::ios::binary);
+    return std::vector<uint8_t>((std::istreambuf_iterator<char>(is)),
+                                std::istreambuf_iterator<char>());
+}
+
+std::string Deobfuscate(const std::vector<uint8_t>& key, const std::string& encoded) {
+    std::vector<uint8_t> bytes;
+    UltraNet_Base64Decode(encoded, bytes);
+    for (std::size_t i = 0; i < bytes.size() && !key.empty(); ++i) bytes[i] ^= key[i % key.size()];
+    return std::string(bytes.begin(), bytes.end());
+}
+
+fs::path LegacySecretFile(const std::string& dir, const std::string& accountId) {
+    std::string safe;
+    for (char c : accountId) safe.push_back(std::isalnum(static_cast<unsigned char>(c)) ? c : '_');
+    return fs::path(dir) / (safe + ".secret");
+}
+
+bool ReadLegacySecret(const fs::path& file, const std::vector<uint8_t>& key, Credentials& out) {
+    out = Credentials{};
+    std::ifstream is(file, std::ios::binary);
+    if (!is) return false;
+    std::string name, value;
+    while (std::getline(is, name) && std::getline(is, value)) {
+        if (name == "username")      out.username = Deobfuscate(key, value);
+        else if (name == "password") out.password = Deobfuscate(key, value);
+        else if (name == "token")    out.token    = Deobfuscate(key, value);
+        else if (name == "refresh")  out.refreshToken = Deobfuscate(key, value);
+        else if (name == "expires")  out.tokenExpiresAt = std::strtoll(Deobfuscate(key, value).c_str(), nullptr, 10);
+    }
+    return true;
+}
+
+bool AnyLegacySecretLeft(const std::string& dir) {
+    std::error_code ec;
+    for (const auto& entry : fs::directory_iterator(dir, ec))
+        if (entry.path().extension() == ".secret") return true;
+    return false;
+}
+
+} // namespace
+
+int MigrateLegacyFileSecrets(const std::string& directory,
+                             const std::vector<Account>& accounts,
+                             ISecretStore& into) {
+    std::error_code ec;
+    if (directory.empty() || !fs::is_directory(directory, ec)) return 0;
+    const std::vector<uint8_t> key = ReadLegacyKey(directory);
+    if (key.empty()) return 0;   // no key: the files cannot be read, leave them
+
+    int carried = 0;
+    for (const Account& account : accounts) {
+        if (account.accountId.empty()) continue;
+        const fs::path file = LegacySecretFile(directory, account.accountId);
+        if (!fs::exists(file, ec)) continue;
+        Credentials credentials;
+        if (!ReadLegacySecret(file, key, credentials)) continue;
+        // Only drop the file once the secret is safely in the store; a store
+        // that refuses (a vault still locked) keeps it for the next start.
+        if (!into.Store(account.accountId, credentials)) continue;
+        fs::remove(file, ec);
+        ++carried;
+    }
+    if (!AnyLegacySecretLeft(directory)) {
+        fs::remove(fs::path(directory) / kLegacyKeyFile, ec);
+        fs::remove(directory, ec);   // only succeeds when nothing else is in it
+    }
+    return carried;
+}
 
 } // namespace UltraCloud
