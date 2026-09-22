@@ -1846,6 +1846,14 @@ if(BUILD_ULTRAAI_APP AND TARGET UltraAIApp)
     # which is this copy in the build tree.
     add_dependencies(UltraAIApp copy_assets)
 endif()
+# Same reason: both read their media/appicon/<App>.png from the resources dir,
+# so the asset copy has to exist before the binary is run out of the build tree.
+if(TARGET UltraNetMonitor)
+    add_dependencies(UltraNetMonitor copy_assets)
+endif()
+if(TARGET UltraAuthenticator)
+    add_dependencies(UltraAuthenticator copy_assets)
+endif()
 
 # The LaTeX plugin is a dlopen()ed CMake MODULE - never linked by any app, so
 # nothing forces it to rebuild when a core interface header (e.g. IRenderContext)

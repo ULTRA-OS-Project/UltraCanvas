@@ -1,25 +1,31 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.h
-// UltraNetMonitor's window. Two tabs: *Live* - the processes on the left,
+// UltraNetMonitor's window. Three tabs: *Live* - the processes on the left,
 // every connection on the right, a filter box and a pause button above them
-// - and *History* - the flows the activity store has recorded, over a
-// chosen range. A *Record* toggle on the toolbar writes every snapshot the
-// worker takes into the store at the platform's per-user data path. Nothing
-// is painted by hand: three UltraCanvasListViews over the models in
-// UltraNetMonitorModels, each behind an UltraCanvasListSortFilterProxy.
+// - *History* - the flows the activity store has recorded, over a chosen
+// range - and *Names* - every address the name sources have put a domain
+// name to, with the source and how far to trust it. A *Record* toggle on
+// the toolbar writes every snapshot the worker takes, and every DNS
+// observation the sources report, into the store at the platform's
+// per-user data path. Nothing is painted by hand: four UltraCanvasListViews
+// over the models in UltraNetMonitorModels, each behind an
+// UltraCanvasListSortFilterProxy.
 //
 // The socket table is read on a worker thread once a second (walking /proc
 // is I/O, and it must never stall a repaint); the result is parked in one
 // slot that a UI timer applies on the main thread - the same shape
 // UltraCleaner uses for its scanner. Recording happens on that worker too,
-// under a mutex the History tab's queries share, so the single SQLite
-// connection is never used from two threads at once.
-// Version: 0.3.0
+// and on the name sources' threads, under a mutex the History tab's
+// queries share, so the single SQLite connection is never used from two
+// threads at once. The name sources themselves are started by main.cpp
+// before the window opens; the window only reports them.
+// Version: 0.4.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraNetMonitorModels.h"
 
 #include "NetworkMonitor/NetworkMonitor.h"
+#include "NetworkMonitor/NetworkMonitorNames.h"
 #include "NetworkMonitor/NetworkMonitorStore.h"
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
@@ -47,7 +53,10 @@ class UltraNetMonitorWindow {
 public:
     ~UltraNetMonitorWindow();
 
-    bool Initialize();
+    // `nameNotes` are what main.cpp has to say about the name sources it
+    // started or could not (a proxy port that needed privilege); the Names
+    // tab shows them.
+    bool Initialize(std::vector<std::string> nameNotes = {});
     void Show();
 
 private:
@@ -59,6 +68,8 @@ private:
     std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildProcessList();
     std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildConnectionList();
     std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildFlowList();
+    std::shared_ptr<UltraCanvas::UltraCanvasContainer> BuildNamesPage();
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> BuildNameList();
 
     // ===== DATA FLOW =====
     void StartWorker();
@@ -83,6 +94,10 @@ private:
     void RefreshHistory();
     void PurgeHistory();
     int64_t HistoryRangeSeconds() const;
+
+    // ===== NAMES =====
+    void RefreshNames();
+    std::string NameSourcesSummary() const;
 
     std::shared_ptr<UltraCanvas::UltraCanvasWindow> window_;
     std::shared_ptr<UltraCanvas::UltraCanvasContainer> page_;
@@ -115,6 +130,18 @@ private:
     // "Purge" asks twice: the first click arms it, the second acts. A refresh
     // or a tab change disarms it.
     bool purgeArmed_ = false;
+
+    // Names tab
+    std::shared_ptr<UltraCanvas::UltraCanvasTextInput> namesFilter_;
+    std::shared_ptr<UltraCanvas::UltraCanvasButton> namesRefreshButton_;
+    std::shared_ptr<UltraCanvas::UltraCanvasLabel> namesStatus_;
+    std::shared_ptr<NameListModel> nameModel_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListSortFilterProxy> nameProxy_;
+    std::shared_ptr<UltraCanvas::UltraCanvasListView> nameView_;
+    std::vector<std::string> nameNotes_;
+    UltraCanvas::NameListenerId nameListener_ = 0;
+    std::atomic<int64_t> recordedObservations_{0};
+    unsigned snapshotsApplied_ = 0;
 
     // Worker -> UI: one slot, overwritten, never queued.
     std::thread worker_;

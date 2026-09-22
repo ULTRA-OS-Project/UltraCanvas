@@ -34,6 +34,55 @@
   (`Tests/UltraCloud/test_secrets.cpp`). UltraMail 0.10.2 and UltraFiler
   1.44.1 are the consumers that moved.
 
+- **NetworkMonitor names.** `NetworkMonitorNames.h`: the name-source
+  plug-in point the proposal asked for (§2.3), and the sources behind it.
+  `INameSource` is what a source implements; `NetworkMonitor_RegisterNameSource`
+  starts it and feeds its observations to one *name table*
+  (`NetworkMonitor_LookupName` / `ListNames` / `ObserveName`), where every
+  address carries the name it was seen under and the `NameSource` it came
+  from - `DnsProxy`, `EtwDnsClient`, `PacketCapture` and `Sni` are
+  *observed* (a source saw the query), `ReverseDns` and `Inferred` are
+  *weak*, and an observed name always beats a weak one, however old.
+  `NetworkMonitor_ListConnections` fills each connection's `remoteName`
+  and `nameSource` from the table when `NetworkMonitorOptions::resolveNames`
+  is set (the default) and hands the peers nobody has named to the sources,
+  so reverse DNS knows what to look up. Names outlive their DNS TTL - at
+  least an hour - since a connection outlives the answer that started it.
+  - **The local DNS proxy** (`NetworkMonitor_CreateDnsProxySource`): listens
+    on 127.0.0.1, forwards every query to the upstream resolver unchanged
+    over UDP or TCP and reads the answers on the way back, following CNAME
+    chains so the address maps to the name the application asked for.
+    Cross-platform, one thread, one `select()` loop; refuses an upstream
+    that is itself. The wire format is `NetworkMonitorDns.h`: pure
+    functions over bytes, every read bounds-checked, compression pointers
+    that do not go backwards refused, tested from fixture bytes.
+  - **Reverse DNS** (`NetworkMonitor_CreateReverseDnsSource`): `getnameinfo`
+    on its own thread with a negative cache, never for loopback, link-local,
+    multicast or (unless asked) private addresses; labelled weak.
+  - **The Windows DNS client's ETW events** (`NetworkMonitor_CreateSystemDnsSource`,
+    `OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp`): a real-time
+    session on `Microsoft-Windows-DNS-Client`, event 3008, the one source
+    that reports the asking PID; needs an elevated token and says so.
+    Null on Linux and macOS. Compiled on CI, not yet exercised at run time.
+  - **The store records names.** Schema version 2 (a version-1 file
+    migrates in place): flows and daily totals carry `remote_name`, a flow
+    keeps the best name it was seen with, the text filter and the CSV
+    include it, and a `dns_observations` table holds every observation a
+    source reported (`NetworkMonitor_RecordDnsObservation` /
+    `QueryDnsObservations`), one row per address, dropped by retention
+    with the flows. `NetworkMonitor_AddNameListener` is how an app's
+    recorder hears them.
+  - `NetworkMonitorCapabilities::dnsWithProcess` is now true while a source
+    that reports the process is running; `ProcessTrafficSummary` lists the
+    distinct `remoteNames` it saw; `NetworkMonitor_NameSourceName` and
+    `NetworkMonitor_NameIsObserved` name and grade a source.
+  - Tests: the wire format, the table's precedence and lifetime rules, the
+    listener, the reverse DNS filters, the proxy end to end over UDP and
+    TCP against a fake resolver on loopback, and the store's names, the
+    observations, the CSV, the roll-up and the version-1 migration.
+  - The platform-glob exclusion in `UltraCanvas/CMakeLists.txt` now covers
+    every `*NetworkMonitor*.cpp`, so the new Windows source is compiled
+    once, into `NetworkMonitor`, and not into the core DLL.
 #### 2026-09-22 *0.9.20*
 - **A form caption is not something you scroll.** Every row of UltraCloud's
   add-account dialog - the FTP / SFTP login UltraFiler's "+ Drive" opens -

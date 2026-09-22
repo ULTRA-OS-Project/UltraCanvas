@@ -1,3 +1,60 @@
+#### 2026-09-22 *0.6*
+- **Names.** Connections carry the domain name behind the peer where a name
+  source has seen one (NetworkMonitor 0.4, framework 0.9.21): a *Host*
+  column on the Live connection list and the History flows, the peers'
+  names in the process list's tooltip, and a new *Names* tab listing every
+  address the sources have named, with the source, when it was observed
+  and how long it is kept. A name that came from reverse DNS shows a
+  trailing *?* and says so on hover: it is a guess at the host, not what
+  the application asked for; a name from a DNS query the monitor saw is
+  shown plain.
+  - **Three sources.** Reverse DNS runs by default (`--no-rdns` turns it
+    off) and never looks up loopback, link-local or private addresses.
+    `--dns-proxy [<port>]` runs the local DNS proxy on 127.0.0.1 - port 53
+    needs privilege; any other port needs the system resolver pointed at
+    it - and learns the name behind every query that passes through, over
+    UDP and TCP, forwarding to the system's resolver or `--upstream <ip>`.
+    On Windows, run elevated, the DNS client's own events are the third
+    source, and the only one that knows which process asked; the *Asked
+    by* column shows it.
+  - **Recorded.** While recording, every DNS observation goes into the
+    store beside the flows, and a flow keeps the best name it was seen
+    with. `--dns` prints the recorded observations with the `--history`
+    filters, `--history` and `--totals` show the host, the CSV gains
+    `remote_name` and `name_source` columns, and `--store-stats` counts the
+    observations. An activity store written by 0.3 opens and gains the
+    columns.
+  - **Headless.** `--names` prints the name table; `--list`, `--by-app` and
+    `--names` take `--resolve` to wait up to three seconds for reverse DNS
+    first; `--capabilities` lists the name sources and the system resolver.
+
+#### 2026-09-22 *0.5*
+- **UltraNetMonitor has an app icon.** The uploaded artwork — throughput bars
+  over a globe — is `media/appicon/UltraNetMonitor.svg`, and
+  `media/appicon/UltraNetMonitor.png` is its 256 px render. It arrived as
+  `NetMonitor.svg`; it is named for the application now, because the name is
+  not decorative: `Icon=UltraNetMonitor` in the desktop entry is resolved
+  through the installed icon themes, so the file has to be called what the
+  entry asks for. The Xara export was a page, not an icon — a non-square
+  `viewBox` in pt, a Times New Roman declaration no glyph in the file uses, an
+  empty `<defs>` and an SVG 1.1 DTD reference a parser may try to fetch off the
+  network. The drawing is kept verbatim; only the root element was rewritten,
+  onto a square canvas with the small margin the other app icons have.
+- **It is drawn everywhere the app is shown.** `main.cpp` hands the PNG to
+  `SetDefaultWindowIcon` for the window and the taskbar entry that follows it;
+  `UCAPP_ICON_PATH` names the same file as the core's fallback, so a window
+  never comes up unbranded; `ultracanvas_embed_app_icon` builds the `.exe`
+  icon Explorer and the Windows taskbar read off the binary itself. A
+  freedesktop entry (`Apps/UltraNetMonitor/UltraNetMonitor.desktop`) puts the
+  monitor in the application menu, and the install rules place the PNG in
+  `share/icons/hicolor/256x256/apps` and the SVG in
+  `share/icons/hicolor/scalable/apps` so that name resolves — the route
+  UltraFiler takes to show an application's own icon. The app now takes the
+  build's asset copy as a dependency, so the PNG is in its resources dir when
+  it runs out of the build tree. `install(TARGETS)` came with it: `TryExec` is
+  resolved against `PATH`, so the entry is only true if the binary is
+  installed alongside it.
+
 #### 2026-09-20 *0.4*
 - **One version number, one place.** This changelog's first line is now the
   only place UltraNetMonitor's version lives: the build reads it

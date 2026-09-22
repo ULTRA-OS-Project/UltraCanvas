@@ -1,9 +1,9 @@
 # NetworkMonitor — System-Wide Network Activity
 
-**Status:** Phase 1, the platform half of Phase 2 (Linux, Windows, macOS) and persistence implemented; connection events, names and Phase 3 in the proposal.
-**Version:** 0.3.0
+**Status:** Phase 1, the platform half of Phase 2 (Linux, Windows, macOS), persistence and domain names implemented; connection events and Phase 3 in the proposal.
+**Version:** 0.4.0
 **Author:** UltraCanvas Framework / ULTRA OS
-**Last Modified:** 2026-09-19
+**Last Modified:** 2026-09-22
 
 NetworkMonitor reads the operating system's socket table — the one `ss -p`,
 `netstat -p` and `lsof -i` read — and reports every connection the machine
@@ -32,12 +32,14 @@ reference for what is built.
 | Owning user | ✅ from the table's UID | ✅ process token | ✅ `PROC_PIDTBSDINFO` | — |
 | Byte counters | ✅ `tcp_info` (TCP only) | later (ETW) | none — see below | — |
 | Connection events | later (eBPF) | later (ETW) | none | — |
-| Domain names | later | later | later | — |
+| Domain names | ✅ local DNS proxy, reverse DNS | ✅ DNS client events (ETW, elevated), proxy, reverse DNS | ✅ local DNS proxy, reverse DNS | proxy, reverse DNS |
 
 Each backend reports what it cannot see in `NetworkMonitorCapabilities`:
 `perConnectionBytes` is true only on Linux with netlink; `allUsers` is root
-on Linux and macOS, an elevated token on Windows; and the `notes` count the
-processes the last snapshot could not inspect.
+on Linux and macOS, an elevated token on Windows; `dnsWithProcess` is true
+while a name source that reports the asking process is running (the
+Windows DNS client events); and the `notes` count the processes the last
+snapshot could not inspect.
 
 Where there is no backend, `NetworkMonitor_IsAvailable()` is false, the
 capabilities read as all-false with `backendName == "none"`, and every
@@ -83,12 +85,14 @@ for (const auto& app : NetworkMonitor_SummarizeByProcess(connections)) { /* … 
 
 | Type | Holds |
 |---|---|
-| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional, unset in Phase 1) |
+| `NetworkConnection` | transport, address family, local/remote address and port, `state`, `ownerUid`, `socketInode`, `process` (optional), `bytesSent` / `bytesReceived` (optional), `remoteName` / `nameSource` (empty / `None` until a source has named the peer) |
 | `ProcessIdentity` | `pid`, `executablePath`, `displayName` (the kernel's comm), `userName` |
 | `NetworkConnectionState` | the TCP state machine, plus `Unconnected` for a UDP socket without a fixed peer |
 | `NetworkMonitorCapabilities` | `socketTable`, `processAttribution`, `allUsers`, `connectionEvents`, `perConnectionBytes`, `dnsWithProcess`, `backendName`, `notes` |
-| `NetworkMonitorOptions` | `includeListening`, `includeLoopback`, `resolveProcesses` |
-| `ProcessTrafficSummary` | one process's counts, distinct `remoteAddresses`, byte totals present only when every connection reported them |
+| `NetworkMonitorOptions` | `includeListening`, `includeLoopback`, `resolveProcesses`, `resolveNames` |
+| `ProcessTrafficSummary` | one process's counts, distinct `remoteAddresses` and `remoteNames`, byte totals present only when every connection reported them |
+| `NameSource` | where a name came from: `DnsProxy`, `EtwDnsClient`, `PacketCapture`, `Sni` are *observed*; `ReverseDns`, `Inferred` are *weak* |
+| `DnsObservation` | one answered query as a source reports it: `queryName`, `addresses`, `process` (where known), `source`, `observedAt`, `ttlSeconds` |
 | `NetworkMonitorResult` | `code`, `success`, `message`; `operator bool` |
 
 `std::optional` throughout, as in `UltraCanvasHardwareInfo`: "0 bytes" and
@@ -105,6 +109,78 @@ lies.
 | `NetworkMonitor_SummarizeByProcess(connections)` | Per-process roll-up, sorted by connection count then name |
 | `NetworkMonitor_TransportName` / `NetworkMonitor_StateName` | Display names, the kernel's spelling (`ESTABLISHED`, `CLOSE_WAIT`, `UNCONN`) |
 | `NetworkMonitor_FormatEndpoint(address, port)` | `1.2.3.4:443`, `[::1]:22`, `*:0` |
+| `NetworkMonitor_NameSourceName` / `NetworkMonitor_NameIsObserved` | A source's display name, and whether it is observed or weak |
+
+## Domain names
+
+Sockets carry addresses, not names, and resolving `104.18.x.x` back to the
+site the user visited needs a separate source. The proposal (§2.3) made
+that a plug-in point: `NetworkMonitor/NetworkMonitorNames.h` is the
+contract (`INameSource`), the registry that runs the sources, and the
+**name table** every source feeds — address → the best name known for it,
+with the `NameSource` it came from. An *observed* name (a source saw the
+query that produced the address) always beats a *weak* one (a PTR record,
+a guess), however old; between two of the same grade the newer wins.
+Names outlive their DNS TTL — at least an hour — because a connection
+outlives the answer that started it.
+
+```cpp
+#include "NetworkMonitor/NetworkMonitorNames.h"
+
+// Reverse DNS for whatever the snapshots see, on its own thread; weak.
+NetworkMonitor_RegisterNameSource(NetworkMonitor_CreateReverseDnsSource(ReverseDnsOptions()));
+
+// The local DNS proxy: every query that passes through names its answers.
+DnsProxyOptions proxy;
+proxy.listenPort = 5353;                       // 53 needs privilege
+if (NetworkMonitorResult r = NetworkMonitor_RegisterNameSource(
+        NetworkMonitor_CreateDnsProxySource(proxy)); !r) { /* r.message: the port, the upstream */ }
+
+// Windows, elevated: the DNS client's own events, with the asking PID.
+if (auto system = NetworkMonitor_CreateSystemDnsSource()) NetworkMonitor_RegisterNameSource(std::move(system));
+
+// From here every snapshot names its peers where it can:
+NetworkMonitor_ListConnections(connections);   // c.remoteName, c.nameSource
+NameRecord record;
+if (NetworkMonitor_LookupName("93.184.216.34", record)) { /* record.name, record.source */ }
+
+NetworkMonitor_StopNameSources();               // before exit: joins their threads
+```
+
+| Source | Sees | Gives the PID | Privilege | Blind to |
+|---|---|---|---|---|
+| **Local DNS proxy** (`NetworkMonitor_CreateDnsProxySource`) | every client of the system resolver, once the resolver points at 127.0.0.1 | no | port 53 needs root / admin; any other port needs the resolver pointed at it | a browser resolving over HTTPS on its own |
+| **Reverse DNS** (`NetworkMonitor_CreateReverseDnsSource`) | any public address | no | none | a CDN: everything answers "cloudflare". Labelled weak |
+| **Windows DNS client events** (`NetworkMonitor_CreateSystemDnsSource`) | every query through the Windows resolver | **yes** | elevated token | DNS over HTTPS inside the browser |
+
+The proxy is a window, not a resolver: one thread, one `select()` loop,
+each UDP query forwarded on a socket of its own and the answer relayed
+back to the client and read on the way; TCP (a truncated answer makes a
+resolver retry over TCP) relayed the same way. It never rewrites, caches
+or filters, refuses an upstream that is itself, and reads the upstream
+from `/etc/resolv.conf` or `GetNetworkParams` when none is given
+(`NetworkMonitor_SystemResolver`). The wire format — `NetworkMonitorDns.h`
+— is pure functions over bytes, every read bounds-checked, compression
+pointers that do not go backwards refused, CNAME chains followed so the
+address maps to the name the application asked for.
+
+Reverse DNS never looks up loopback, link-local, multicast or (unless
+`includePrivateRanges`) private addresses, remembers a missing PTR for ten
+minutes, and drops queued addresses past `maxQueueLength` rather than
+falling behind. `NetworkMonitor_WaitForNames(ms)` waits for its queue.
+
+The Windows source is a real-time ETW session on
+`Microsoft-Windows-DNS-Client` (event 3008, *DNS query completed*), whose
+payload carries the name and the answers and whose header the PID. It
+needs an elevated token and reports `PermissionDenied` without one. It is
+compiled on the Windows CI rows; it has not yet been exercised at run
+time — treat the first elevated run as its acceptance test.
+
+An application that has a better source (a browser extension, an
+enterprise resolver's log) implements `INameSource` and registers it; the
+core, the store and the UI treat it like the built-in ones.
+`NetworkMonitor_AddNameListener` hears every observation from any source —
+the way UltraNetMonitor records them while recording.
 
 ## The activity store
 
@@ -143,8 +219,9 @@ NetworkMonitor_CloseStore(store);
 | `NetworkMonitor_RecordSnapshot` | Every connection either extends the flow it continues or starts a new one; processes are deduplicated and cached |
 | `NetworkMonitor_QueryFlows` | Filters: `since`, `until`, `pid`, `processName`, `text` (substring over addresses, name, executable), `includeListening`, `includeLoopback`, `limit`; newest first |
 | `NetworkMonitor_QueryDailyTotals` | The rolled-up totals, newest day first |
+| `NetworkMonitor_RecordDnsObservation` / `QueryDnsObservations` | Every observation a name source reported, one row per address, with the asking process where known; the same filters, on `observedAt` |
 | `NetworkMonitor_RollUp(olderThan)` | Aggregates flows last seen before the time into daily totals and deletes them; a second roll-up onto the same day accumulates |
-| `NetworkMonitor_ApplyRetention` | Rolls up flows older than the window, drops daily totals and snapshot records older than twelve windows |
+| `NetworkMonitor_ApplyRetention` | Rolls up flows older than the window, drops DNS observations and snapshot records older than the window, and daily totals older than twelve windows |
 | `NetworkMonitor_Purge` | Deletes everything; irreversible, so the caller confirms |
 | `NetworkMonitor_StoreStats` | Counts and the oldest / newest flow |
 | `NetworkMonitor_ExportFlowsCsv` | RFC 4180 quoting, UTC ISO-8601 times, dot-decimal numbers |
@@ -160,9 +237,16 @@ cumulative). A daily total sums only the flows that had counters and says
 how many did (`countedFlows`), so a day with no counters reads as zero
 counted flows, not as zero bytes.
 
-**Threads.** One mutex per store: a recording thread and a reading thread
-never share the single SQLite connection at once. One transaction per
-snapshot.
+**Names.** A flow keeps the best name it was seen with: an observed name
+replaces a weak one, never the reverse, and a sighting without a name
+keeps the one recorded. The daily total remembers the last name its flows
+carried. The text filter and the CSV (`remote_name`, `name_source`)
+include it. Schema version 2; a file written by version 1 migrates in
+place on open.
+
+**Threads.** One mutex per store: a recording thread, the name sources'
+threads and a reading thread never share the single SQLite connection at
+once. One transaction per snapshot, one per observation.
 
 **What it does not do yet.** Encrypt at rest — the proposal's plan is
 UltraCrypt with the key in UltraVault, and it is the next store increment.
@@ -188,15 +272,22 @@ UltraCanvas/include/NetworkMonitor/
     NetworkMonitorBackend.h       INetworkMonitorBackend + the native define (internal)
     NetworkMonitorAddress.h       address bytes -> text, shared by every backend (internal, pure)
     NetworkMonitorProcfs.h        the /proc/net parser (internal, pure)
+    NetworkMonitorNames.h         INameSource, the registry, the name table, the built-in sources
+    NetworkMonitorDns.h           the DNS wire format (internal, pure)
 UltraCanvas/core/NetworkMonitor/
-    NetworkMonitorCore.cpp        NetworkMonitor_* functions, filters, roll-up, null backend
+    NetworkMonitorCore.cpp        NetworkMonitor_* functions, filters, names, roll-up, null backend
     NetworkMonitorAddress.cpp     RFC 5952 IPv6 text, IPv4-mapped in mixed notation
     NetworkMonitorProcfs.cpp      table parsing - no I/O, so it is tested on every platform
     NetworkMonitorStore.cpp       the activity store over UltraDatabase (stubs without it)
+    NetworkMonitorNames.cpp       the name table, the registry, reverse DNS, the system resolver
+    NetworkMonitorDns.cpp         message parsing and building, bounds-checked
+    NetworkMonitorDnsProxy.cpp    the local DNS proxy source (BSD sockets, Winsock shims)
 UltraCanvas/OS/Linux/UltraCanvasLinuxNetworkMonitor.cpp
                                   netlink sock_diag, the /proc/net fallback, the /proc walk
 UltraCanvas/OS/MSWindows/UltraCanvasWindowsNetworkMonitor.cpp
                                   IP Helper tables, QueryFullProcessImageNameW, the token user
+UltraCanvas/OS/MSWindows/UltraCanvasWindowsNetworkMonitorDns.cpp
+                                  the DNS client's ETW events as a name source
 UltraCanvas/OS/MacOS/UltraCanvasMacOSNetworkMonitor.cpp
                                   libproc: PROC_PIDLISTFDS / PROC_PIDFDSOCKETINFO per process
 Tests/NetworkMonitorTests.cpp     target NetworkMonitorTests (ctest)
@@ -269,12 +360,20 @@ that the option filters remove what they should. The socket code compiles
 on Winsock too. Where there is no backend, it asserts the module says so.
 The store is tested on an in-memory database: continuation across
 snapshots and its cut-off, every query filter, the CSV export, the
-roll-up's accumulation onto an existing day, retention and purge.
+roll-up's accumulation onto an existing day, retention and purge. Names:
+the wire format from fixture bytes (a CNAME chain, a compression pointer,
+a pointer loop, a cut message), the table's precedence and lifetime rules
+and its listener, the reverse DNS source's address filters, the proxy end
+to end over UDP and TCP against a fake resolver on loopback, and the
+store's names, observations, CSV, roll-up and the version-1 migration.
 
 ## Not built yet
 
-- Connection events (ETW on Windows, eBPF on Linux), domain names,
-  throughput charts, at-rest encryption of the store and file-transfer
-  correlation — the rest of Phase 2 and Phase 3, in the proposal's §9 order.
+- Connection events (ETW on Windows, eBPF on Linux), throughput charts,
+  at-rest encryption of the store and file-transfer correlation — the rest
+  of Phase 2 and Phase 3, in the proposal's §9 order.
+- The name sources that need packet capture — port-53 capture and the TLS
+  SNI reader — and any source for a browser resolving over HTTPS on its
+  own; `NameSource` already names them.
 - Byte counters on Windows (ETW) and macOS (no public source).
 - Any blocking or TLS interception, by decision (proposal §7).
