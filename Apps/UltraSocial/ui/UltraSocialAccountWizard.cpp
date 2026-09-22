@@ -1,13 +1,17 @@
 // Apps/UltraSocial/ui/UltraSocialAccountWizard.cpp
-// Version: 0.1.0 (Phase 1)
+// Version: 0.2.0 - the form is a UltraCanvasFormLayout grid: captions size
+//                  themselves to the wording the chosen network uses
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialAccountWizard.h"
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasContainer.h"
 #include "UltraCanvasDropdown.h"
+#include "UltraCanvasFormLayout.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasModalDialog.h"
+#include "UltraCanvasSpacer.h"
 #include "UltraCanvasTextInput.h"
 
 #include <array>
@@ -116,65 +120,49 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
     dialog->SetPadding(16);
 
-    auto content = CreateContainer("swForm", 0, 0, 0, 0);
-    content->layout.SetFlexColumn()
-                   .SetFlexGap(8)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Stretch);
+    // One two-column grid rather than a flex container per field. The
+    // captions here are rewritten every time the network changes - "Access
+    // token" becomes "Page access token" becomes "(not used)" - so a caption
+    // column that measures its own text is not a nicety: a fixed 120 px would
+    // have to be wide enough for the longest wording of all seven networks,
+    // and would cut off the first one that grows past it. The grid is also
+    // flex-shrink: 0 and never scrolls, so a field can no longer be squeezed
+    // below the input inside it and raise a scrollbar across its own caption.
+    auto content = CreateFormGrid("swForm", 8.0f, 8.0f);
 
-    // Build a [label + input] flex row and append it to the content column.
+    // A [caption | input] row. The input gets no width of its own: the `1fr`
+    // column hands it whatever is left after the caption column.
     struct Row {
         std::shared_ptr<UltraCanvasLabel> label;
         std::shared_ptr<UltraCanvasTextInput> input;
     };
     auto addRow = [&content](const std::string& id, const std::string& labelText,
                              const std::shared_ptr<UltraCanvasTextInput>& input) {
-        auto row = CreateContainer(id + "Row", 0, 0, 0, 30);
-        row->layout.SetFlexRow()
-                   .SetFlexGap(8)
-                   .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-
-        auto label = CreateLabel(id + "Label", 0, 0, 120, 26, labelText);
-        row->AddChild(label);
-        label->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
-
-        row->AddChild(input);
-        input->layoutItem.SetFlexGrow(1);
-
-        content->AddChild(row);
-        row->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+        auto label = CreateFormCaption(id + "Label", labelText);
+        AddFormRow(content, label, input);
         return Row{label, input};
     };
 
     // Network picker row.
-    auto networkRow = CreateContainer("swNetworkRow", 0, 0, 0, 30);
-    networkRow->layout.SetFlexRow()
-                      .SetFlexGap(8)
-                      .SetFlexAlignItems(CSSLayout::AlignItems::Center);
-    auto networkLabel = CreateLabel("swNetworkLabel", 0, 0, 120, 26, "Network");
-    networkRow->AddChild(networkLabel);
-    networkLabel->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Center);
-    auto network = CreateDropdown("swNetwork", 0, 0, 260, 28);
+    auto network = CreateDropdown("swNetwork", 0, 0, 0, 28);
     for (const auto& form : kForms) network->AddItem(form.dropdownText);
-    networkRow->AddChild(network);
-    network->layoutItem.SetFlexGrow(1);
-    content->AddChild(networkRow);
-    networkRow->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AddFormRow(content, CreateFormCaption("swNetworkLabel", "Network"), network);
 
-    auto hint = CreateLabel("swHint", 0, 0, 460, 78, kForms[0].hint);
+    // The hint is its own caption, so it spans both columns.
+    auto hint = CreateLabel("swHint", 0, 0, 0, 78, kForms[0].hint);
     hint->SetWrap(TextWrap::WrapWord);
-    content->AddChild(hint);
-    hint->layoutItem.SetAlignSelf(CSSLayout::AlignSelf::Stretch);
+    AddFormWideRow(content, hint);
 
-    auto server = CreateTextInput("swServer", 0, 0, 260, 28);
+    auto server = CreateTextInput("swServer", 0, 0, 0, 28);
     Row serverRow = addRow("swServer", kForms[0].serverLabel, server);
 
-    auto identifier = CreateTextInput("swIdentifier", 0, 0, 260, 28);
+    auto identifier = CreateTextInput("swIdentifier", 0, 0, 0, 28);
     Row identifierRow = addRow("swIdentifier", kForms[0].identifierLabel, identifier);
 
-    auto secret = CreatePasswordInput("swSecret", 0, 0, 260, 28);
+    auto secret = CreatePasswordInput("swSecret", 0, 0, 0, 28);
     Row secretRow = addRow("swSecret", kForms[0].secretLabel, secret);
 
-    auto clientId = CreateTextInput("swClientId", 0, 0, 260, 28);
+    auto clientId = CreateTextInput("swClientId", 0, 0, 0, 28);
     Row clientIdRow = addRow("swClientId", kForms[0].clientIdLabel, clientId);
 
     auto applyForm = [hint, serverRow, identifierRow, secretRow,
@@ -197,7 +185,9 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     };
 
     dialog->AddChild(content);
-    content->layoutItem.SetFlexGrow(1);
+    // The grid keeps its rows at their own height; the spacer takes the slack
+    // so the buttons stay at the bottom of the dialog.
+    dialog->AddChild(std::make_shared<UltraCanvasSpacer>(0, 0, 1.0f));
 
     // ===== BUTTON ROW: Connect / Cancel =====
     auto buttonRow = CreateContainer("swButtons", 0, 0, 0, 36);
