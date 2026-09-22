@@ -17,6 +17,7 @@ Changelog and version: [`Docs/UltraNetMonitor/CHANGELOG.md`](../../Docs/UltraNet
 | `ui/UltraNetMonitorPaths.*` | Where the activity store lives by default (the per-user data directory) |
 | `ui/UltraNetMonitorWindow.*` | The window: the *Live* tab's split pane, the *History* tab, the Record toggle, the snapshot thread |
 | `main.cpp` | GUI bootstrap, and the command line: `--list`, `--by-app`, `--capabilities`, `--record`, `--history`, `--totals`, `--store-stats`, `--purge` |
+| `UltraNetMonitor.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/UltraNetMonitor.png` / `.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme, which is how the application menu and UltraFiler find the app and its icon |
 
 The socket table is read on a worker thread once a second and applied on
 the UI thread by a timer; both lists sit behind an

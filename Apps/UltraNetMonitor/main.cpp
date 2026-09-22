@@ -24,6 +24,7 @@
 #include "NetworkMonitor/NetworkMonitorStore.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"
@@ -504,6 +505,12 @@ int main(int argc, char* argv[]) {
             debugOutput << "Failed to initialize the UltraCanvas application" << std::endl;
             return EXIT_FAILURE;
         }
+        // One icon, everywhere the app is drawn: the window and the taskbar
+        // entry that follows it read this file; the .ico embedded in the
+        // Windows binary and the desktop entry's theme icon are rendered from
+        // the same media/appicon/UltraNetMonitor.svg (see CMakeLists.txt).
+        app.SetDefaultWindowIcon(
+            NormalizePath(GetResourcesDir() + "media/appicon/UltraNetMonitor.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         UltraNetMonitor::UltraNetMonitorWindow window;
