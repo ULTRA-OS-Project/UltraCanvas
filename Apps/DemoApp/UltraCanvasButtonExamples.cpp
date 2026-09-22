@@ -10,6 +10,7 @@
 #include "UltraCanvasContainer.h"
 #include <sstream>
 #include <iostream>
+#include <memory>
 #include "UltraCanvasDebug.h"
 
 namespace UltraCanvas {
@@ -423,7 +424,7 @@ namespace UltraCanvas {
 
             // Toggle Example
             auto toggleBtn = CreateButton("ToggleButton", 20, yOffset, 120, 35, "Toggle: OFF");
-            bool* toggleState = new bool(false);
+            auto toggleState = std::make_shared<bool>(false);
             toggleBtn->onClick = [toggleBtn, toggleState, statusLabel]() {
                 *toggleState = !*toggleState;
                 toggleBtn->SetText(*toggleState ? "Toggle: ON" : "Toggle: OFF");
@@ -441,7 +442,7 @@ namespace UltraCanvas {
 
             // Counter Example
             auto counterExampleBtn = CreateButton("CounterExample", 150, yOffset, 140, 35, "Clicks: 0");
-            int* clickCount = new int(0);
+            auto clickCount = std::make_shared<int>(0);
             counterExampleBtn->SetSplitEnabled(true);
             counterExampleBtn->SetSplitRatio(0);
             counterExampleBtn->SetSplitSecondaryText("Reset");

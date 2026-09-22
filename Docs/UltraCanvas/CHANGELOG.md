@@ -1,3 +1,63 @@
+#### 2026-09-22 *0.9.23*
+- **Seven ownership defects found by auditing every raw `new` in the tree.**
+  A census of the 45 hand-written allocations outside vendored code (the rest
+  of the framework allocates through `make_shared` / `make_unique`) turned up
+  three leaks, one growing side table and three lifetime bugs. All are fixed
+  here; the other 38 sites were already correct and are unchanged.
+  - **`ZWaveProtocol::GetScenes` leaked its array on every call.** It allocated
+    `new uint8_t[numScenes]` and then passed `&sceneIds` to OpenZWave's
+    `GetAllScenes`, which allocates the array itself and assigns it through the
+    out-parameter — that is why its contract asks the caller to `delete[]` the
+    result, which the function already did. The buffer allocated up front was
+    overwritten before anything read it. It now starts as `nullptr` and takes
+    both the array and the count from `GetAllScenes`, which also drops the
+    redundant `GetNumScenes` call.
+  - **`UltraNet_TlsWrap` no longer keeps a second table of TLS contexts.**
+    `g_ctxByHandle` was written on every wrap and never erased: it grew by an
+    entry per TLS connection for the life of the process, and each entry
+    outlived the `Ctx` it pointed at, so `UltraNet_TlsHandshake` or
+    `UltraNet_TlsGetInfo` on a closed handle dereferenced freed memory instead
+    of reporting `InvalidHandle`. The socket entry already owns that pointer
+    and clears it in `UltraNet_SocketClose`, so both entry points now ask it
+    through the new `ultranet_internal::GetTlsCtx` hook. The table, its mutex
+    and the two includes they needed are gone.
+  - **A synchronous DNS timeout hung the calling thread forever.** On expiry
+    `Resolve` called `ares_cancel` while still holding the lock its
+    `wait_for` had taken; `ares_cancel` answers the query it cancels on the
+    spot, on the calling thread, so `OnHostCallback` re-entered that same
+    mutex and the thread deadlocked against itself — with c-ares's worker
+    stuck behind the channel lock `ares_cancel` held. Every caller of
+    `UltraNet_DnsResolve` whose lookup did not beat the deadline stopped
+    there. A one-millisecond deadline against an unresolvable name now
+    returns `Timeout` eight times out of eight under ASan/UBSan, where the
+    old code did not reach its second query.
+  - **A timeout no longer takes every other DNS query down with it, or
+    leaves c-ares writing into a dead stack frame.** `ares_cancel` cancels
+    every query in flight on the shared channel, not just the one that timed
+    out, and there is no per-query cancel to replace it with. So the query is
+    abandoned instead, which needs the answer to have somewhere to land: the
+    `Pending` was a local of `Resolve`, and c-ares's worker wrote into it
+    after that frame was gone. It is a `shared_ptr` now — the caller drops
+    its reference when it stops waiting, the query holds one until its
+    callback answers, and the last one out frees it. This also retires the
+    hand-written `delete p` on the async path, so a throwing user callback no
+    longer leaks the state.
+  - **The UltraMessage accept path closed the same descriptor twice.** When
+    `MakeWakePipe` failed, `Listener::Accept` closed the accepted fd and then
+    returned, letting `~Connection` shut down and close it a second time — by
+    which point another thread may have been handed that number. The
+    `Connection` owns the descriptor from the assignment onwards, so the
+    explicit close is gone, matching what `ConnectToBus` already did.
+  - **`UltraCanvasMathParser` and `UltraCanvasMathLayout` are no longer
+    copyable.** Both hold a raw `Impl*` and `delete` it in their destructors
+    with no copy operations declared, so any copy would have double-freed. No
+    caller copies one today; the copy constructor and assignment are now
+    `= delete` rather than waiting for one to.
+  - **Two demo buttons leaked their captured state.** The toggle and counter
+    examples captured `new bool(false)` / `new int(0)` raw pointers in their
+    `onClick` lambdas and never freed them. They are `make_shared` now — the
+    DemoApp is the framework's worked example, so a leak in it propagates.
+
 #### 2026-09-22 *0.9.22*
 - **A container no longer scrolls unless it is asked to.**
   `ContainerStyle::autoShowScrollbars` now defaults to **off**. It defaulted to
