@@ -1,4 +1,4 @@
-#### 2026-09-22 *0.9.24*
+#### 2026-09-22 *0.9.26*
 - **New: UltraMessage Phase 2, first slice — adapters and the first feeds**
   (`Docs/Modules/UltraMessage/README.md` §3.6, `Masterfile_modules.md` §13).
   The broker hosts *adapters*: broker-side plugins (`Internal::IAdapter`,
@@ -50,6 +50,121 @@
   used by the in-tree build and the standalone `Tests/UltraMessage` tree, so
   a new driver (the Postgres one broke the standalone link) is one edit.
 
+#### 2026-09-22 *0.9.25*
+- **Every 3D sample audited for the fault the STL aeroplane had**, by
+  measuring rather than squinting: each file of the E-45 aircraft was loaded
+  through the same path the demo pages and the Filer's thumbnails use, and
+  its silhouette profile matched against the export that draws correctly
+  (the OBJ) over all 24 axis-aligned rotations. Ten of the thirteen agree.
+  Two did not, and are fixed:
+  - **`media/3D/PLY/E-45-Aircraft.ply` held Blender's Z-up coordinates.**
+    PLY declares no up axis and this reader takes the format as Y-up - the
+    convention of the tools that write it most - so the aircraft stood on
+    its nose in every viewer that believed it. The sample is rotated into
+    the Y-up frame, where it agrees with the OBJ export vertex for vertex;
+    `Tests/ModelPLYTest.cpp` pins the new axes and says why.
+  - **`media/3D/FBX/E-45-Aircraft-6.1-ascii.fbx` mis-declared itself.** Its
+    GlobalSettings said UpAxis = Y while its geometry is Z-up (the mesh node
+    connects straight to the scene, with no rotation to make up the
+    difference), so it too came out nose-down while the binary FBX of the
+    same scene was upright. The file now declares the Z-up frame it is
+    actually in; no vertex is touched, and the reader is unchanged.
+- Three samples are left as they are, with what they are:
+  - `X3D` and `VRML` hold the aircraft turned 180 degrees about its up
+    axis - upright, facing the other way. No format says which way a model
+    must face, so this is the files' own choice rather than a fault.
+  - `XFile` comes through **mirrored**: its mesh nodes are drawn with a
+    transform of determinant -1, because the DirectX .x format is
+    left-handed and the reader deliberately leaves that reflection in the
+    root frame (as its header documents) instead of converting to the
+    right-handed frame the rest of the model pipeline uses. The aircraft is
+    left-right symmetric, so the mirror reads as the model lying the wrong
+    way up rather than as an obvious left-right swap. Converting on import
+    (negate one axis, reverse the winding) is the fix, and it belongs to the
+    reader rather than to the sample.
+  - The `.dae`, `.blend` and `.abc` exports carry half a hull each, which is
+    what they were exported as; `Tests/ModelPLYTest.cpp` already says so.
+
+#### 2026-09-22 *0.9.24*
+- **The hostel plan in the DWG demo was a black smudge in the corner of an
+  empty sheet.** Two faults in one tile, both of them general.
+  - **A lineweight is a plot width, and it was being scaled by the block it
+    sat in.** The DXF/DWG reader resolves an entity's lineweight into points
+    and the block's INSERT becomes a group transform, which then multiplied
+    the pen along with the geometry. The hostel's elevations are inserted at
+    1054x, so their 1 pt pens came out 1054 units wide and painted a quarter
+    of the sheet solid black. `Ctx::penScale` now carries the accumulated
+    insert scale and `MakeStroke()` divides the width - and the dash
+    lengths - by it, so a drawing strokes the same whatever scale its blocks
+    are inserted at. `Tests/DWGReaderTest.cpp` checks that every circle in
+    the synthetic drawing, inserted at 1x and at 2x, comes out the same
+    width on the page.
+  - **One forgotten speck decided the framing.** That drawing carries a
+    4 x 0.7 unit hatched scrap a quarter of a million units away from the
+    plans, so fitting the union of everything (what `GetBoundingBox()`
+    returns, and what AutoCAD's zoom-extents does) left the plans a
+    postage stamp in the corner. `VectorStorage::ContentBounds()` is the
+    same box with such specks left out - a run of drawables is ignored only
+    when it holds at most 1% of them AND stands at least a fifth of the
+    drawing's extent clear of the rest, so a frame, a title block or a
+    legend always counts - and `UltraCanvasVectorElement`'s fit and centring
+    use it. Nothing is removed from the document: the speck is still drawn,
+    still exported, and still reachable by panning.
+- **The STL aeroplane stood on its back.** `media/3D/STL/Toy airplane
+  model...stl` was exported with the model turned 180 degrees about X - its
+  wheels at the top of the file's Z range and its wings at the bottom - so
+  the Z-up correction every viewer applies stood it on its canopy. The
+  sample is rotated to the orientation the format assumes (+Z up), which
+  fixes it in the STL page, the media viewer and the Filer's thumbnails
+  alike. The import path is unchanged: `UltraCanvasSTLLoader` still reads
+  the file as written and still declares Z-up, and the page reports the
+  same extents (114.05 x 79.49 x 55.69) as before.
+
+#### 2026-09-22 *0.9.23*
+- **The DWG / DXF demo page was five white squares, and so was everything
+  below them.** Four separate faults, each of which hid the next.
+  - **`UltraCanvasVectorElement` declared no CSS box.** Its
+    `(identifier, x, y, w, h)` constructor called the identifier-only base
+    constructor and then `SetPosition()`/`SetSize()`, which write
+    `finalBounds` and nothing else - so the layout engine arranged the
+    element as a widget that asked for no size, and it collapsed to nothing.
+    A container never renders a child that does not intersect its content
+    area, so the element was not drawn at all: not its document, not even its
+    background. It now passes x/y/w/h to the base constructor like every
+    other widget, which stamps the px size and the absolute origin. Callers
+    that pass 0 (the flex/grid ones - the AI page, the media viewer, the
+    plugin's own element) are unchanged.
+  - **Painting used the parent's frame.** `Render()`, the background, the
+    border, the debug box, the document transform, the hit test and the wheel
+    anchor all added `finalBounds.x/y`, although the container has already
+    translated the context to the element's origin and delivers pointer
+    events in element-local coordinates. Everything is element-local now;
+    `ScreenToDocument()`/`DocumentToScreen()` speak that frame too.
+  - **A fit was clamped to the interactive zoom limit.** `ZoomToFit()` ran
+    its computed scale through `options.MinZoom`, so a 10 000-unit site plan
+    in a 280 px tile was pinned at 0.1 and the tile showed an empty patch of
+    the drawing's middle. The fit is honoured as computed and becomes the
+    lower bound for zooming out (`MinAllowedZoom()`), so a wheel-out still
+    stops at the whole drawing.
+  - **The element swallowed its host's events.** `OnEvent()` handled panning
+    and selection and returned false for everything else without ever calling
+    the base, so the demo's click-to-open-fullscreen and its hover status line
+    never ran. The host callback is consulted first now.
+- **One collapsed transform used to end all drawing in the window.** The
+  bathroom sample (`media/3D/DWG/bagno_3d_1.dwg`) carries a block standing in
+  a vertical plane; projected to plan view its transform scales one axis to
+  zero. Cairo latches a non-invertible matrix as a permanent error on the
+  `cairo_t`, after which every later fill, stroke, text and image is silently
+  dropped - which is why the DXF row, the info panel and the "How it works"
+  panel below the drawings were blank as well.
+  - `VectorRenderer` skips an element whose transform is singular (it has no
+    area to draw), and
+  - `RenderContextCairo::Scale/SetTransform/Transform` refuse a matrix they
+    cannot invert and log it once, so no caller can kill a context this way.
+- `Tests/VectorElementViewTest.cpp` pins all of it: the box survives the
+  parent's layout, a fit below `MinZoom` fits, painting is element-local, a
+  singular transform leaves the context able to draw, and the host's event
+  callback runs.
 #### 2026-09-22 *0.9.23*
 - **New: `UltraVault::DeviceKeyVault` — an application's own vault on
   UltraVault** (`<UltraVault/UltraVaultDeviceKeyVault.h>`, target `UltraVault`,

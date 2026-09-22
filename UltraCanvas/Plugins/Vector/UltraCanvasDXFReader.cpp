@@ -310,6 +310,14 @@ private:
         const Color* byBlock = nullptr;        // insert's colour for ByBlock
         int depth = 0;
         std::vector<std::string> blockStack;   // cycle guard
+        // How much the enclosing INSERTs scale the geometry drawn here. A
+        // lineweight is a plot width, not a length in the drawing, so it must
+        // come out the same whatever scale the block is inserted at - and the
+        // group transform the block becomes multiplies the pen along with the
+        // geometry. The width is divided by this on the way in so the two
+        // cancel. The hostel sample inserts its details at 1054x: a 1 pt pen
+        // came out 1054 units wide and a quarter of the sheet was solid black.
+        double penScale = 1.0;
     };
 
     void Warn(const std::string& msg) { if (!quiet) warn(msg); }
@@ -734,9 +742,15 @@ private:
     StrokeData MakeStroke(const std::vector<Tag>& e, const LayerDef& layer, const Ctx& ctx) {
         StrokeData stroke;
         stroke.Fill = EntityColor(e, layer, ctx);
-        stroke.Width = EntityWidth(e, layer);
+        // Plot widths and dash lengths are in points and do not scale with
+        // the block they sit in (see Ctx::penScale).
+        const double pen = ctx.penScale > 1e-12 ? ctx.penScale : 1.0;
+        stroke.Width = static_cast<float>(EntityWidth(e, layer) / pen);
         auto dashes = EntityDashes(e, layer);
-        if (!dashes.empty()) stroke.DashArray = dashes;
+        if (!dashes.empty()) {
+            for (double& d : dashes) d /= pen;
+            stroke.DashArray = dashes;
+        }
         return stroke;
     }
 
@@ -1623,6 +1637,10 @@ private:
         sub.layerOverride = EffectiveLayerName(e, ctx);
         sub.byBlock = &byBlock;
         sub.depth = ctx.depth + 1;
+        // sqrt(|det|) is the uniform part of the group's scale - the one the
+        // pen picks up. A mirrored or anisotropic insert keeps its sign and
+        // its aspect in the geometry; the pen only needs the magnitude.
+        sub.penScale = ctx.penScale * std::sqrt(std::fabs(G.a * G.d - G.b * G.c));
         sub.blockStack = ctx.blockStack;
         sub.blockStack.push_back(name);
         ParseEntityRange(def.start, def.end, sub, false);
