@@ -7,6 +7,11 @@
   counts files found and files read, and the search field's *Stop* button
   ends it. The comparison ignores the case of ASCII letters; binary files,
   files over 64 MB, hidden entries and links are skipped. Local folders only.
+- **Case-insensitive name comparisons no longer rely on undefined behaviour.**
+  The sub-folder name search, the folder tree's sort and the folder-icon keys
+  (Windows) lowercased with `::tolower` on plain `char`, which is undefined
+  for the bytes of a non-ASCII (UTF-8) name. They now go through
+  `unsigned char`; what matches and how folders sort is unchanged.
 
 #### 2026-09-22 *1.44.1*
 - **Remote-drive credentials are actually saved now.** UltraFiler handed its

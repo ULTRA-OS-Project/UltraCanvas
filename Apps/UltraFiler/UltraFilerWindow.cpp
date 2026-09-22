@@ -161,6 +161,14 @@ namespace {
     // binary file is not searched (an executable matches almost any word).
     constexpr size_t kContentSearchBinaryProbeBytes = 8 * 1024;
 
+    // std::tolower for one char of a std::string. The plain ::tolower(char)
+    // is undefined for every byte of a UTF-8 sequence (a negative char where
+    // char is signed); going through unsigned char keeps what it folds the
+    // same and removes the undefined behaviour.
+    char ToLowerChar(char c) {
+        return static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    }
+
     // ASCII-only case folding: multi-byte UTF-8 sequences stay as they are,
     // so a non-ASCII query still matches, just case-sensitively.
     char FoldAsciiCase(char c) {
@@ -439,8 +447,8 @@ namespace {
         }
         std::sort(dirs.begin(), dirs.end(), [](const fs::path& a, const fs::path& b) {
             std::string an = a.filename().string(), bn = b.filename().string();
-            std::transform(an.begin(), an.end(), an.begin(), ::tolower);
-            std::transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
+            std::transform(an.begin(), an.end(), an.begin(), ToLowerChar);
+            std::transform(bn.begin(), bn.end(), bn.begin(), ToLowerChar);
             return an < bn;
         });
         return dirs;
@@ -479,8 +487,8 @@ namespace {
         std::sort(children.begin(), children.end(),
                   [](const TreeChild& a, const TreeChild& b) {
             std::string an = a.label, bn = b.label;
-            std::transform(an.begin(), an.end(), an.begin(), ::tolower);
-            std::transform(bn.begin(), bn.end(), bn.begin(), ::tolower);
+            std::transform(an.begin(), an.end(), an.begin(), ToLowerChar);
+            std::transform(bn.begin(), bn.end(), bn.begin(), ToLowerChar);
             return an < bn;
         });
         return children;
@@ -2110,7 +2118,7 @@ void UltraFilerWindow::RunSearch(const std::string& query, bool inContents) {
     if (inContents)
         std::transform(needle.begin(), needle.end(), needle.begin(), FoldAsciiCase);
     else
-        std::transform(needle.begin(), needle.end(), needle.begin(), ::tolower);
+        std::transform(needle.begin(), needle.end(), needle.begin(), ToLowerChar);
     filer->SetOpenPathMenuItemVisible(true, "Open path (in new tab)");
     // An empty result display right away: the folder listing the search was
     // typed against is not what the search is about, and the first matches
@@ -2232,7 +2240,7 @@ void UltraFilerWindow::SubfolderSearchWorkerMain(
                 if (!inContents) {
                     const std::string name = p.filename().string();
                     std::string lower = name;
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::tolower);
+                    std::transform(lower.begin(), lower.end(), lower.begin(), ToLowerChar);
                     if (lower.find(needle) != std::string::npos)
                         found.push_back(p.string());
                     continue;
