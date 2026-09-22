@@ -20,7 +20,7 @@
   and how, and — stated plainly — what it cannot protect against (screen
   capture under X11, other programs running as the same user, phishing, a
   lost master password, a wrong clock).
-- Needs UltraCanvas 0.9.23 or later: the minimise lock relies on the
+- Needs UltraCanvas 0.9.24 or later: the minimise lock relies on the
   framework's new `onWindowMinimize` / `onWindowRestore` notifications for
   window-manager-initiated minimises (see the framework changelog).
 - The two gaps 0.1.1's README named — no auto-lock, `--version` printing a

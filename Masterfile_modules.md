@@ -1148,12 +1148,25 @@ Public surface: `Result`/`ResultCode`, `SecretValue` (bytes + MIME type),
 `ProviderConfig::apiKeyVaultRef` through `UltraVault::Get` when built with
 `ULTRAAI_USE_ULTRAVAULT` (on by default in-tree).
 
+`DeviceKeyVault` (`<UltraVault/UltraVaultDeviceKeyVault.h>`, same target) is
+the per-application vault on top of that: one encrypted vault file in the
+application's directory, unlocked without a prompt by an owner-only
+`device.key` beside it (`TryAutoUnlock`) or by a master password (`Unlock`
+-> `UnlockStatus`, `PersistDeviceKey`), per-account
+`Store`/`Retrieve`/`Has`/`Remove`, an OAuth2 token set beside the password
+slot (`StoreOAuthTokens`…, `MethodFor` -> `SignInMethod`), and migration of
+the 0.1 XOR-sidecar format on the first unlock. A `DeviceKeyVaultProfile`
+(vault file name + key prefix) tells one application's vault from another's;
+UltraMail (`mail.ultramail.`) and UltraSocial (`social.ultrasocial.`) are
+one-line profiles of it in `Apps/*/engine/*CredentialVault.h` — no
+application carries a vault implementation of its own.
+
 **Implementation status (this branch):** v0.1 — memory backend (CI /
 ephemeral) and encrypted-file backend (Argon2id-derived key, stored cost
 parameters, XChaCha20-Poly1305 with the header as associated data; wrong
 passphrase and file tampering are deliberately indistinguishable). Unit
-tests in `Tests/UltraVaultTests.cpp`; the UltraAI resolution path is
-covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
+tests in `Tests/UltraVaultTests.cpp` (the device-key vault included); the
+UltraAI resolution path is covered by `Tests/UltraAIVaultIntegrationTests.cpp`. Platform-native
 backends (libsecret / Keychain / Credential Manager) and
 `Import`/`PromptUserForSecret` are planned.
 persisted drive mappings), application launch/supervision, and the
@@ -1282,9 +1295,10 @@ can carry an FTP server as a drive; no share links, and SFTP authenticates
 with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
-Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
-(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
-HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
+application's UltraVault (`VaultSecretStore`; `MemorySecretStore` for tests,
+and `MigrateLegacyFileSecrets` carries the obfuscated files of earlier builds
+across once), HTTP goes through UltraNet. `CloudService` is the app-facing facade;
 `UltraCloudUI` holds the shared add-account and link-picker dialogs.
 Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
 and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;

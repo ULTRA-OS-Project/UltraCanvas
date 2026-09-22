@@ -216,7 +216,7 @@ remaining wait once a second to grey its button; if it did not, the store
 would still refuse.
 
 The minimise trigger needed the framework to report a user-initiated
-minimise, which on X11 it did not (UltraCanvas 0.9.23: `WM_STATE` is watched,
+minimise, which on X11 it did not (UltraCanvas 0.9.24: `WM_STATE` is watched,
 `onWindowMinimize` / `onWindowRestore` fire). The lock screen is put up on
 the second tick after a restore rather than the first, because the window
 manager can park an un-iconifying window at a temporary position for a few
