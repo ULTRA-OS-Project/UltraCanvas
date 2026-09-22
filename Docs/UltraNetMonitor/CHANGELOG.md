@@ -1,3 +1,30 @@
+#### 2026-09-22 *0.5*
+- **UltraNetMonitor has an app icon.** The uploaded artwork — throughput bars
+  over a globe — is `media/appicon/UltraNetMonitor.svg`, and
+  `media/appicon/UltraNetMonitor.png` is its 256 px render. It arrived as
+  `NetMonitor.svg`; it is named for the application now, because the name is
+  not decorative: `Icon=UltraNetMonitor` in the desktop entry is resolved
+  through the installed icon themes, so the file has to be called what the
+  entry asks for. The Xara export was a page, not an icon — a non-square
+  `viewBox` in pt, a Times New Roman declaration no glyph in the file uses, an
+  empty `<defs>` and an SVG 1.1 DTD reference a parser may try to fetch off the
+  network. The drawing is kept verbatim; only the root element was rewritten,
+  onto a square canvas with the small margin the other app icons have.
+- **It is drawn everywhere the app is shown.** `main.cpp` hands the PNG to
+  `SetDefaultWindowIcon` for the window and the taskbar entry that follows it;
+  `UCAPP_ICON_PATH` names the same file as the core's fallback, so a window
+  never comes up unbranded; `ultracanvas_embed_app_icon` builds the `.exe`
+  icon Explorer and the Windows taskbar read off the binary itself. A
+  freedesktop entry (`Apps/UltraNetMonitor/UltraNetMonitor.desktop`) puts the
+  monitor in the application menu, and the install rules place the PNG in
+  `share/icons/hicolor/256x256/apps` and the SVG in
+  `share/icons/hicolor/scalable/apps` so that name resolves — the route
+  UltraFiler takes to show an application's own icon. The app now takes the
+  build's asset copy as a dependency, so the PNG is in its resources dir when
+  it runs out of the build tree. `install(TARGETS)` came with it: `TryExec` is
+  resolved against `PATH`, so the entry is only true if the binary is
+  installed alongside it.
+
 #### 2026-09-20 *0.4*
 - **One version number, one place.** This changelog's first line is now the
   only place UltraNetMonitor's version lives: the build reads it
