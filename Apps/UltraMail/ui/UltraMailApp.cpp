@@ -121,7 +121,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // Cloud storage accounts (UltraCloud) for "Attach cloud link".
     UltraCloud::RegisterBuiltInProviders();
     cloudAccounts_.Open("ultramail-cloud", dataDir + "/cloud.db");
-    cloudSecrets_ = std::make_unique<UltraCloud::FileSecretStore>(dataDir + "/cloud-vault");
+    cloudSecrets_ = std::make_unique<UltraCloud::VaultSecretStore>();   // in vault_
     cloud_ = std::make_unique<UltraCloud::CloudService>(cloudAccounts_, *cloudSecrets_);
 
     // Bring up the UltraNet plug-in registry so the SMTP / IMAP DSOs load. The
@@ -137,7 +137,7 @@ bool UltraMailApp::Initialize(const std::string& dataDir, std::string* outError)
     // prompted (Thunderbird-style; see CredentialVault). A brand-new vault is
     // created here; an old master-password vault stays locked until the first
     // action prompts once (then the key is persisted).
-    vault_.TryAutoUnlock();
+    if (vault_.TryAutoUnlock()) MigrateCloudSecrets();
 
     store_.ListAccounts(accounts_);
     store_.GetAccountStatus(status_);
@@ -1161,6 +1161,16 @@ void UltraMailApp::OpenContacts() {
     viewerWindows_.push_back(win);
 }
 
+// Earlier releases kept the cloud account secrets in obfuscated files under
+// <data dir>/cloud-vault (UltraCloud's old FileSecretStore). They belong in
+// the mail vault; carry them across once it is open and drop the files.
+void UltraMailApp::MigrateCloudSecrets() {
+    if (!cloudSecrets_ || !vault_.IsUnlocked() || dataDir_.empty()) return;
+    std::vector<UltraCloud::Account> known;
+    cloudAccounts_.List(known);
+    UltraCloud::MigrateLegacyFileSecrets(dataDir_ + "/cloud-vault", known, *cloudSecrets_);
+}
+
 void UltraMailApp::SeedDemoContacts() {
     std::vector<SectionCount> counts;
     if (contacts_.GetSectionCounts(counts)) {
@@ -1308,6 +1318,7 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
     // also creates a fresh vault on first run. Only an old master-password vault
     // (device key not yet written) falls through to the dialog below.
     if (errorText.empty() && vault_.TryAutoUnlock()) {
+        MigrateCloudSecrets();
         if (onUnlocked) onUnlocked();
         return;
     }
@@ -1324,6 +1335,7 @@ void UltraMailApp::EnsureVaultUnlocked(std::function<void()> onUnlocked,
                     // Persist the working passphrase as the device key so this
                     // is the last time the user is asked (Thunderbird-style).
                     vault_.PersistDeviceKey(passphrase);
+                    MigrateCloudSecrets();
                     if (onUnlocked) onUnlocked();
                     return;
                 case VaultStatus::WrongPassphrase:

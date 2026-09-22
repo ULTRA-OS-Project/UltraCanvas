@@ -16,6 +16,7 @@
 #include <UltraCloud/UltraCloudProvider.h>
 #include <UltraCloud/UltraCloudSecrets.h>
 #include <UltraCloud/UltraCloudService.h>
+#include <UltraVault/UltraVaultDeviceKeyVault.h>
 #endif
 
 namespace UltraCanvas {
@@ -27,16 +28,21 @@ namespace UltraCanvas {
 struct UltraFilerRemoteDrives::Impl {
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
     UltraCloud::AccountStore accounts;
+    // UltraFiler's own vault: ultrafiler.vault + device.key under the config
+    // directory, unlocked without a prompt (UltraVault::DeviceKeyVault). The
+    // secret store writes into it under "cloud.<accountId>.*".
+    UltraVault::DeviceKeyVault vault;
     std::unique_ptr<UltraCloud::ISecretStore> secrets;
     std::unique_ptr<UltraCloud::CloudService> service;
     bool opened = false;
     std::string openError;
 
-    // Opens the account store and the secret store once. The accounts are an
-    // UltraDatabase file beside UltraFiler's settings; the secrets go to
-    // UltraVault where it is built, and to the obfuscated per-app file only
-    // when it is not - which is weaker, and is why it is the fallback rather
-    // than the default.
+    // Opens the account store, the vault and the secret store once. The
+    // accounts are an UltraDatabase file beside UltraFiler's settings; the
+    // secrets are in the vault beside it. Earlier builds kept them in
+    // obfuscated files under remote-drive-secrets/ - or, once UltraVault was
+    // built, in a VaultSecretStore that nothing had ever opened, so they were
+    // never saved at all; the files are carried into the vault here.
     bool Open(std::string& error) {
         if (opened) return true;
         if (!openError.empty()) { error = openError; return false; }
@@ -56,11 +62,17 @@ struct UltraFilerRemoteDrives::Impl {
             error = openError;
             return false;
         }
-#ifdef ULTRACLOUD_USE_ULTRAVAULT
+        vault = UltraVault::DeviceKeyVault(dir + "/vault",
+                                           {"ultrafiler.vault", "files.ultrafiler."});
+        if (!vault.TryAutoUnlock()) {
+            openError = "cannot open the credential vault in " + dir + "/vault";
+            error = openError;
+            return false;
+        }
         secrets = std::make_unique<UltraCloud::VaultSecretStore>();
-#else
-        secrets = std::make_unique<UltraCloud::FileSecretStore>(dir + "/remote-drive-secrets");
-#endif
+        std::vector<UltraCloud::Account> known;
+        accounts.List(known);
+        UltraCloud::MigrateLegacyFileSecrets(dir + "/remote-drive-secrets", known, *secrets);
         service = std::make_unique<UltraCloud::CloudService>(accounts, *secrets);
         opened = true;
         return true;

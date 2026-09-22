@@ -166,6 +166,7 @@ private:
     void SeedDemoMail();
     // Add an in-memory demo cloud account with a few files (demo only).
     void SeedDemoCloud();
+    void MigrateCloudSecrets();
 
     // Open a compose window for the given draft (new / reply / forward).
     void OpenComposer(const Draft& draft);
@@ -250,9 +251,11 @@ private:
     SenderIconCache senderIcons_;
     OutboxStore outbox_;
     // Cloud storage (UltraCloud): accounts + secrets behind the composer's
-    // "Attach cloud link". Per-app store for now (see the module README).
+    // "Attach cloud link". The secrets live in the mail vault (vault_) under
+    // "cloud.<accountId>.*"; MigrateCloudSecrets() carries the obfuscated
+    // cloud-vault/ files of earlier releases into it once it is unlocked.
     UltraCloud::AccountStore cloudAccounts_;
-    std::unique_ptr<UltraCloud::FileSecretStore> cloudSecrets_;
+    std::unique_ptr<UltraCloud::VaultSecretStore> cloudSecrets_;
     std::unique_ptr<UltraCloud::CloudService> cloud_;
     std::vector<Account> accounts_;
     std::vector<AccountStatus> status_;
