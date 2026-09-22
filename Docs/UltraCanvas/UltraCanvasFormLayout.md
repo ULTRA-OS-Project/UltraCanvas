@@ -1,7 +1,7 @@
 # Forms: captions that line up and still translate
 
 `UltraCanvasFormLayout.h` is the "caption: control" form — the shape of nearly
-every dialog. It is a header of four inline helpers over one CSS grid, and it
+every dialog. It is a header of a few inline helpers over one CSS grid, and it
 exists because the obvious alternative is quietly broken.
 
 ```cpp
@@ -45,11 +45,23 @@ coordinate, and a longer caption widens the column instead of clipping.
 | `AddFormWideRow(grid, element)` | An element across both columns: a checkbox, a section heading, a note. |
 | `CreateFormCellRow(id, gap, height)` | A flex row for controls that share one cell — `700 × 500 [x] Lock`, a slider and its value, a checkbox and a button. |
 | `CreateFormCaption(id, text)` | A caption sized by its own text (no width), if you need one outside a row. |
+| `DisableScrollbars(container)` | Turns a container's scrollbars off — for any container that only arranges what is in it. `CreateFormGrid` and `CreateFormCellRow` call it themselves. |
 
-The grid does not scroll: whatever needs to, the pane or dialog around it
-does. A grid left on the container default would raise a scrollbar for a row
-a pixel taller than its track, and the bar - plus the second one its own width
-brings on - covers that row.
+The grid does not scroll, and neither does a cell row: whatever needs to, the
+pane or dialog around it does. Left on the container default, either one raises
+a scrollbar for a child a pixel taller than the space it was given, and that bar
+— plus the second one its own width brings on — is painted straight across the
+caption and the field it was meant to be laying out. A caption is never
+scrollable: it is one line, and it is as wide as its text. That is what
+UltraFiler's FTP login looked like before this: every row of the add-account
+dialog carried a scrollbar pair over its own caption, because the dialog was a
+couple of pixels shorter than the rows it held and each row was squeezed below
+the 32 px field inside it.
+
+Any other container that only places children — a button bar, a toolbar strip —
+should call `DisableScrollbars` for the same reason. The container default
+(auto scrollbars on) is right for a pane that holds content, not for one that
+holds a layout.
 
 Rows hidden with `SetVisible(false)` leave the grid entirely (`display: none`),
 so a form can swap one set of rows for another — the export dialog shows the
@@ -83,7 +95,9 @@ contributes nothing to the base size of the intrinsic tracks it also spans, and
 `GridLayout.cpp` implements that. Without it, one wide full-width note would
 make the caption column as wide as the note and push every control across the
 dialog. `Tests/CSSLayoutFormGridTest.cpp` pins this, together with the
-column-sharing and hidden-row behaviour.
+column-sharing and hidden-row behaviour, and the rule that a dialog too short
+for its form leaves the rows at their own height (`flex-shrink: 0`) instead of
+squeezing them below their controls.
 
 ## See also
 

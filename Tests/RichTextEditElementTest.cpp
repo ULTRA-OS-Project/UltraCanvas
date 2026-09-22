@@ -14,6 +14,7 @@
 #include "UltraCanvasWindow.h"
 #include "UltraCanvasRichTextEdit.h"
 
+#include <algorithm>
 #include <cstdlib>
 #include <iostream>
 #include <memory>
@@ -628,6 +629,150 @@ int main() {
              editor.TextAt(RichDocPosition(0, 0, 0, 0)) == "tall!");
         TEST("...and its span is untouched by the edit",
              editor.GetBlock(0).tableRows[0].cells[0].rowSpan == 2);
+    }
+
+    // ===== AN EDIT THAT DOES NOT MOVE THE CARET =====
+    // The layout is cached per block and rebuilt only where it has been
+    // invalidated. Moving the caret invalidates the blocks it moves between,
+    // which hid this for a long time: an edit that changes a block WITHOUT
+    // moving the caret - centring the paragraph you are already in - left the
+    // old layout on screen until something else moved the caret.
+    std::cerr << "\n--- Edits that leave the caret alone ---" << std::endl;
+    {
+        auto doc = std::make_shared<UCRichDocument>();
+        RichDocBlock para;
+        para.type = RichBlockType::Paragraph;
+        RichTextRun run; run.text = "centre me";
+        para.runs.push_back(run);
+        doc->blocks.push_back(para);
+        edit->SetDocument(doc);
+        edit->RequestRedraw();
+        window->UpdateAndRender();
+
+        // Clicking well past the end of a left-aligned line lands after its
+        // last character; once the line is centred, the same point is inside
+        // it. So the offset a click reports is a readout of where the text
+        // actually sits.
+        auto offsetAt = [&](float x) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, x, 8.0f));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, x, 8.0f));
+            window->UpdateAndRender();
+            return editor.GetCaret().byteOffset;
+        };
+
+        const int leftAligned = offsetAt(390.0f);
+        TEST("A click past a left-aligned line lands at its end", leftAligned == 9);
+
+        // No SetCaret before this: moving the caret is what used to make the
+        // change appear, so doing it here would hide the bug being tested.
+        edit->SetAlignment(RichTextAlign::Center);
+        window->UpdateAndRender();
+        TEST("Centring shows up on the very next render, with the caret untouched",
+             offsetAt(390.0f) < leftAligned);
+    }
+
+    // ===== TABLE STRUCTURE =====
+    // The editing core's own tests prove the model comes out right; what only
+    // the element can show is that the LAYOUT follows - a column inserted in
+    // the model has to become a column you can click in.
+    std::cerr << "\n--- Table structure ---" << std::endl;
+    {
+        auto doc = std::make_shared<UCRichDocument>();
+        doc->blocks.push_back(RichDocBlock{});           // one empty paragraph
+        edit->SetDocument(doc);
+        editor.SetCaret(RichDocPosition(0, 0));
+
+        edit->InsertTable(2, 2);
+        edit->RequestRedraw();
+        window->UpdateAndRender();
+        TEST("Insert Table leaves the caret in the first cell",
+             editor.GetCaret().InCell() && editor.GetCaret().cellRow == 0 &&
+             editor.GetCaret().cellColumn == 0);
+
+        // Fill the cells so each one is identifiable by its text.
+        const char* names[2][2] = {{"aa", "bb"}, {"cc", "dd"}};
+        for (int r = 0; r < 2; r++) {
+            for (int c = 0; c < 2; c++) {
+                editor.SetCaret(RichDocPosition(0, r, c, 0));
+                edit->OnEvent(TextEvent(names[r][c]));
+            }
+        }
+        window->UpdateAndRender();
+
+        // Which cell answers a click at x, scanning down for the wanted row.
+        auto cellAt = [&](float x, int wantRow) -> int {
+            for (int y = 4; y <= 240; y += 2) {
+                edit->OnEvent(MouseEvent(UCEventType::MouseDown, x, static_cast<float>(y)));
+                edit->OnEvent(MouseEvent(UCEventType::MouseUp, x, static_cast<float>(y)));
+                window->UpdateAndRender();
+                const RichDocPosition p = editor.GetCaret();
+                if (p.InCell() && p.cellRow == wantRow) return p.cellColumn;
+            }
+            return -2;
+        };
+
+        // Two columns across 780px: the left half is column 0, the right half
+        // column 1.
+        TEST("A fresh table lays out its two columns", cellAt(150.0f, 0) == 0);
+        TEST("...with the second one beside it", cellAt(600.0f, 0) == 1);
+
+        // Insert a column between them. Three columns now, so x=400 lands in
+        // the NEW middle one - which is empty, and is cell index 1.
+        editor.SetCaret(RichDocPosition(0, 0, 0, 0));
+        TEST("Insert column right reports success", edit->InsertColumnRight());
+        window->UpdateAndRender();
+        TEST("The inserted column is clickable where it now sits",
+             cellAt(400.0f, 0) == 1);
+        TEST("...and it is the empty one",
+             editor.TextAt(RichDocPosition(0, 0, 1, 0)).empty());
+        TEST("...while the old second column moved right",
+             editor.TextAt(RichDocPosition(0, 0, 2, 0)) == "bb");
+
+        // Deleting it puts the table back to two clickable columns.
+        editor.SetCaret(RichDocPosition(0, 0, 1, 0));
+        TEST("Delete column reports success", edit->DeleteCurrentColumn());
+        window->UpdateAndRender();
+        TEST("The table is two columns wide again", cellAt(600.0f, 0) == 1);
+        TEST("...holding the original text",
+             editor.TextAt(RichDocPosition(0, 0, 1, 0)) == "bb");
+
+        // A merged cell has to be laid out at its full width straight away:
+        // this is the layout reading the span the merge just wrote.
+        editor.SetCaret(RichDocPosition(0, 0, 0, 0));
+        TEST("Merge with the cell to the right reports success",
+             edit->MergeWithCellRight());
+        window->UpdateAndRender();
+        TEST("The merged cell covers the column beside it", cellAt(600.0f, 0) == 0);
+        TEST("...and keeps both cells' text",
+             editor.TextAt(RichDocPosition(0, 0, 0, 0)) == "aa\nbb");
+
+        // Splitting it gives the second column back.
+        TEST("The merged cell can be split", edit->CanSplitCurrentCell());
+        TEST("Split reports success", edit->SplitCurrentCell());
+        window->UpdateAndRender();
+        TEST("The split cell released the column beside it", cellAt(600.0f, 0) == 1);
+
+        // Rows: a new one has to be reachable by clicking BELOW the others,
+        // which only happens if the layout grew.
+        editor.SetCaret(RichDocPosition(0, 1, 0, 0));
+        TEST("Insert row below reports success", edit->InsertRowBelow());
+        window->UpdateAndRender();
+        int deepestRow = -1;
+        for (int y = 4; y <= 240; y += 2) {
+            edit->OnEvent(MouseEvent(UCEventType::MouseDown, 150, static_cast<float>(y)));
+            edit->OnEvent(MouseEvent(UCEventType::MouseUp, 150, static_cast<float>(y)));
+            window->UpdateAndRender();
+            const RichDocPosition p = editor.GetCaret();
+            if (p.InCell()) deepestRow = std::max(deepestRow, p.cellRow);
+        }
+        TEST("The new third row is there to be clicked in", deepestRow == 2);
+
+        // Outside a table the operations decline rather than acting on
+        // whatever block happens to be at the caret.
+        editor.SetCaret(editor.DocumentEnd());
+        TEST("Table operations decline outside a table",
+             !edit->IsCaretInTable() && !edit->InsertRowBelow() &&
+             !edit->DeleteCurrentColumn() && !edit->MergeWithCellRight());
     }
 
     // ===== INLINE IMAGES =====

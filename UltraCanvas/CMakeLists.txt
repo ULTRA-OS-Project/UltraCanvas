@@ -36,6 +36,18 @@ message(STATUS "========================================")
 
 # ===== OPTIONS =====
 if (BUILD_DEMO_APP)
+    # On Linux the shipping and CI configuration is a SHARED core, and it has to
+    # be: only a shared libUltraCanvas lets -Wl,--exclude-libs (near the MuPDF
+    # link below) hide MuPDF's bundled lcms2mt fork from the system Little-CMS
+    # that libvips and the CDR plugin use. A static core skips that isolation, so
+    # MuPDF's ICC calls bind to the standard lcms2 and the PDF viewer SIGSEGVs.
+    # Default ON here so a plain `cmake ..` matches CI (which passes
+    # -DULTRACANVAS_BUILD_SHARED=ON); an explicit -D...=OFF still wins.
+    if(UNIX AND NOT APPLE AND NOT ANDROID)
+        option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" ON)
+    else()
+        option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
+    endif()
 else()
     option(ULTRACANVAS_BUILD_SHARED "Build shared library instead of static" OFF)
 endif ()
@@ -806,6 +818,9 @@ set(ULTRACANVAS_CORE_SOURCES
         # Vector format-converter plugin (Plugins/Vector) is built.
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasVectorStorage.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasVectorRenderer.cpp
+        # Polygon booleans and offsetting over the model's paths (combine
+        # shapes, the contour effect).
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasVectorGeometry.cpp
         # The editing layer over it (selection, history, hit testing, the
         # transform / arrange / group / align operations) and the Bezier node
         # model a shape editor edits paths through.
@@ -1628,6 +1643,16 @@ target_link_libraries(${ULTRACANVAS_LIB_NAME}
         ${GLIB_LIBRARIES}
         ${TINYXML2_LIBRARIES}
 )
+
+# The vips libraries above are added as bare names (-lvips-cpp -lvips), so the
+# linker must know where to find them. A source-built libvips lives under
+# /usr/local/lib/<triple>: GNU ld searches that via its built-in SEARCH_DIR, but
+# LLD does not, so without this every app that links the core (which re-exports
+# the vips libs PUBLIC) fails with "unable to find library -lvips". PUBLIC so the
+# -L rides along with the libraries, matching what the Vectorizer/OCR plugins do.
+if(ULTRACANVAS_HAS_VIPS)
+    target_link_directories(${ULTRACANVAS_LIB_NAME} PUBLIC ${LIBVIPS_LIBRARY_DIRS})
+endif()
 
 # Native folder watching: the define tells the core watcher that this platform
 # ships a backend under OS/<Platform>/, so it must not compile its own
@@ -2626,7 +2651,22 @@ if(ULTRACANVAS_ENABLE_DATABASE)
             ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseValue.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseManager.cpp
             ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabaseSqliteDriver.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabasePostgresDriver.cpp
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraDatabase/UltraDatabasePostgresSql.cpp
         )
+
+        # PostgreSQL, for the multi-user mode. Optional and soft-failing: with
+        # libpq the driver registers itself, without it the same source
+        # compiles to a stub and a "postgresql" connection reports that the
+        # driver is missing - which is a true answer instead of a link error.
+        if(PkgConfig_FOUND)
+            pkg_check_modules(LIBPQ libpq)
+        endif()
+        if(NOT LIBPQ_FOUND)
+            find_path(LIBPQ_INCLUDE_DIRS libpq-fe.h
+                      PATH_SUFFIXES postgresql postgresql/16 postgresql/15)
+            find_library(LIBPQ_LIBRARIES NAMES pq)
+        endif()
         add_library(UltraDatabase STATIC ${ULTRADATABASE_SOURCES})
         set_target_properties(UltraDatabase PROPERTIES
             POSITION_INDEPENDENT_CODE ON
@@ -2639,6 +2679,17 @@ if(ULTRACANVAS_ENABLE_DATABASE)
         target_include_directories(UltraDatabase PRIVATE ${SQLITE3_INCLUDE_DIRS})
         target_link_libraries(UltraDatabase PUBLIC Threads::Threads)
         target_link_libraries(UltraDatabase PRIVATE ${SQLITE3_LIBRARIES})
+        if(LIBPQ_LIBRARIES)
+            target_include_directories(UltraDatabase PRIVATE ${LIBPQ_INCLUDE_DIRS})
+            target_link_libraries(UltraDatabase PRIVATE ${LIBPQ_LIBRARIES})
+            if(LIBPQ_LIBRARY_DIRS)
+                target_link_directories(UltraDatabase PRIVATE ${LIBPQ_LIBRARY_DIRS})
+            endif()
+            target_compile_definitions(UltraDatabase PRIVATE ULTRADATABASE_HAS_POSTGRES=1)
+            set(ULTRADATABASE_POSTGRES_NOTE " + PostgreSQL")
+        else()
+            set(ULTRADATABASE_POSTGRES_NOTE " (no libpq: SQLite only)")
+        endif()
         target_compile_definitions(UltraDatabase PUBLIC ULTRACANVAS_HAS_DATABASE=1)
 
         # The NetworkMonitor activity store (core/NetworkMonitor/
@@ -2654,10 +2705,62 @@ if(ULTRACANVAS_ENABLE_DATABASE)
         # data through it when the module is enabled.
         target_link_libraries(${ULTRACANVAS_LIB_NAME} PUBLIC UltraDatabase)
         target_compile_definitions(${ULTRACANVAS_LIB_NAME} PUBLIC ULTRACANVAS_HAS_DATABASE=1)
-        message(STATUS "  [✓] UltraDatabase - ENABLED (SQLite ${SQLITE3_VERSION})")
+        message(STATUS "  [✓] UltraDatabase - ENABLED (SQLite ${SQLITE3_VERSION}${ULTRADATABASE_POSTGRES_NOTE})")
     endif()
 else()
     message(STATUS "  [−] UltraDatabase - DISABLED")
+endif()
+
+# ===== BUILD ULTRAMESSAGE LIBRARY (Phase 1: channel + journal) =====
+# The per-user message channel (Masterfile_modules.md §13): broker, local
+# socket / named pipe transport, subscriptions, recorded delivery, request /
+# reply and the journal on UltraDatabase. UI-free like UltraDatabase and
+# UltraVault, so tools and the test suite link it headless; an UltraCanvas
+# application installs its UI dispatcher through
+# include/UltraMessage/UltraMessageUltraCanvas.h (header-only).
+option(ULTRACANVAS_ENABLE_ULTRAMESSAGE "Build the UltraMessage message-channel library" ON)
+if(ULTRACANVAS_ENABLE_ULTRAMESSAGE AND TARGET UltraDatabase)
+    find_package(Threads REQUIRED)
+    set(ULTRAMESSAGE_SOURCES
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageCodec.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageSchemas.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageTransport.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageJournal.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageBroker.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageEndpoint.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/core/UltraMessage/UltraMessageHelpers.cpp
+    )
+    # UltraCanvasJSON lives in the core library. With a STATIC core, compile
+    # it into this archive too so UltraMessage links without the widget layer
+    # (a static-library duplicate the linker resolves to one copy); with a
+    # SHARED core, take it from libultracanvas instead, exactly as
+    # UltraSocialEngine does, so the DSO stays the single home of the symbols.
+    get_target_property(_um_core_type ${ULTRACANVAS_LIB_NAME} TYPE)
+    if(NOT _um_core_type STREQUAL "SHARED_LIBRARY")
+        list(APPEND ULTRAMESSAGE_SOURCES
+            ${CMAKE_CURRENT_SOURCE_DIR}/core/DataFormats/UltraCanvasJSON.cpp)
+    endif()
+    add_library(UltraMessage STATIC ${ULTRAMESSAGE_SOURCES})
+    set_target_properties(UltraMessage PROPERTIES
+        POSITION_INDEPENDENT_CODE ON
+        OUTPUT_NAME "ultramessage")
+    target_compile_features(UltraMessage PUBLIC cxx_std_20)
+    target_include_directories(UltraMessage
+        PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+            $<INSTALL_INTERFACE:include/ultracanvas>)
+    target_link_libraries(UltraMessage PUBLIC UltraDatabase Threads::Threads)
+    if(_um_core_type STREQUAL "SHARED_LIBRARY")
+        target_link_libraries(UltraMessage PUBLIC ${ULTRACANVAS_LIB_NAME})
+    else()
+        target_link_libraries(UltraMessage PRIVATE uc-yyjson)
+    endif()
+    target_compile_definitions(UltraMessage PUBLIC ULTRACANVAS_HAS_ULTRAMESSAGE=1)
+    message(STATUS "  [✓] UltraMessage - ENABLED")
+elseif(ULTRACANVAS_ENABLE_ULTRAMESSAGE)
+    message(STATUS "  [−] UltraMessage - DISABLED (needs UltraDatabase)")
+else()
+    message(STATUS "  [−] UltraMessage - DISABLED")
 endif()
 
 # ===== BUILD PLUGINS AS SEPARATE LIBRARIES =====

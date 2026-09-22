@@ -193,7 +193,8 @@ bool ProviderNeedsAppPassword(const DiscoveryResult& discovery) {
 }
 
 bool ProviderAcceptsPassword(const DiscoveryResult& discovery) {
-    return OAuthProviderFor(discovery) != "microsoft";
+    auto provider = OAuthProviderFor(discovery);
+    return provider != "microsoft" && provider != "google";
 }
 
 UltraNetOAuth2Config OAuthConfigFor(const std::string& providerId, const OAuthApp& app,

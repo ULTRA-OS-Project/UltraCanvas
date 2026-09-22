@@ -36,12 +36,15 @@
 #include "UltraFIBUGeschaeftsjahr.h"
 #include "UltraFIBUKontenrahmen.h"
 #include "UltraFIBUBank.h"
+#include "UltraFIBUBelegArchiv.h"
 #include "UltraFIBUDatev.h"
 #include "UltraFIBURechnungPdf.h"
 #include "UltraFIBUStore.h"
 #include "UltraFIBUTypes.h"
 #include "UltraFIBUUstIdNr.h"
 #include "UltraFIBUUstIdNrOnline.h"
+#include "UltraFIBUOss.h"
+#include "UltraFIBUUstva.h"
 
 #include <UltraCrypt/UltraCryptCore.h>
 // The hash-chain test edits a posting the way somebody with the database
@@ -49,8 +52,12 @@
 // notices. Nothing else in the engine writes SQL outside the store.
 #include <UltraDatabase/UltraDatabaseQuery.h>
 
+#include <dirent.h>
+#include <unistd.h>
+
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <set>
 #include <string>
 #include <vector>
@@ -1872,9 +1879,24 @@ static void TestRechnungPdf() {
         key.art        = SteuerArt::IgLieferung;
         iglKeys.push_back(key);
     }
+    // `euKunde` above deliberately has no VAT number - it is the fixture for
+    // "the number is missing". Zero-rating needs one, so this case gets its
+    // own customer: the exemption rests on the number, and rendering the
+    // invoice without it is refused now rather than printed with a warning.
+    Partner euKundeMitNummer = euKunde;
+    euKundeMitNummer.ustIdNr = "SK2022513009";
+
     const std::string pfadIgl = "rechnungstest_igl.pdf";
     std::remove(pfadIgl.c_str());
-    Check(SchreibeRechnungPdf(mandant, igl, euKunde, iglKeys, pfadIgl).ok,
+    {
+        const RechnungPdfErgebnis ohneNummer =
+            SchreibeRechnungPdf(mandant, igl, euKunde, iglKeys, pfadIgl);
+        Check(!ohneNummer.ok,
+              "an intra-community invoice without the customer's USt-IdNr. is NOT "
+              "written - it would claim an exemption it has no basis for");
+    }
+    std::remove(pfadIgl.c_str());
+    Check(SchreibeRechnungPdf(mandant, igl, euKundeMitNummer, iglKeys, pfadIgl).ok,
           "a zero-rated invoice is written");
     const std::string pdfIgl = LiesDatei(pfadIgl);
     Check(pdfIgl.find("6a UStG") != std::string::npos,
@@ -3675,6 +3697,1719 @@ static void TestBankImportInDenBestand() {
     std::remove("bank-fremd.xml");
 }
 
+// ===== UStVA =====
+//
+// The first output of this program that goes to a tax authority, so what is
+// tested is not only "does it add up" but "does it refuse when it cannot add
+// up honestly". A return that silently omits a turnover is worse than no
+// return: it is an under-declaration and the file looks perfectly valid.
+
+static std::string SchreibeKennzahlen(const std::string& zeilen) {
+    const std::string pfad = "kz-test.csv";
+    SchreibeDatei(pfad, "# test\nkennzahl;art;satz_promille;geprueft;bezeichnung\n" + zeilen);
+    return pfad;
+}
+
+// A journal row as the posting path produces one: gross on the person account,
+// the net and tax recorded beside it as the automatic posting they are.
+static Buchung UmsatzBuchung(const Date& datum, const std::string& key,
+                             int64_t nettoMinor, int satzPromille,
+                             SollHaben seite, int64_t id = 0) {
+    Buchung b;
+    b.id               = id;
+    b.mandantId        = 1;
+    b.belegdatum       = datum;
+    b.steuerschluessel = key;
+    b.satzPromille     = satzPromille;
+    b.netto            = Money::FromMinor(nettoMinor, "EUR");
+    b.steuer           = b.netto.TaxOnNet(satzPromille);
+    b.umsatz           = b.netto + b.steuer;
+    b.sollHaben        = seite;
+    b.konto            = "10000";
+    b.gegenkonto       = "8400";
+    b.waehrung         = "EUR";
+    return b;
+}
+
+static Steuerschluessel BaueKey(const std::string& name, int satz, bool vorsteuer,
+                                const std::string& kzBemessung,
+                                const std::string& kzSteuer = std::string()) {
+    Steuerschluessel k;
+    k.schluessel   = name;
+    k.bezeichnung  = name;
+    k.satzPromille = satz;
+    k.vorsteuer    = vorsteuer;
+    k.kzBemessung  = kzBemessung;
+    k.kzSteuer     = kzSteuer;
+    k.gueltigVon   = Date(2026, 1, 1);
+    return k;
+}
+
+static void TestUstva() {
+    std::printf("Umsatzsteuer-Voranmeldung\n");
+
+    // --- the mapping is data, and it records what has been verified ---
+    {
+        UstvaMapping mapping;
+        std::string fehler;
+        const std::string pfad = SchreibeKennzahlen(
+            "81;bemessung;190;ja;Umsaetze 19 %\n"
+            "86;bemessung;70;ja;Umsaetze 7 %\n"
+            "66;vorsteuer;0;ja;Vorsteuer\n"
+            "89;bemessung;190;nein;Innergemeinschaftliche Erwerbe 19 %\n"
+            "83;berechnet;0;ja;Zahllast\n");
+        Check(mapping.Laden(pfad, fehler), "a Kennzahl mapping loads from data");
+        CheckInt(static_cast<int64_t>(mapping.Anzahl()), 5, "with all its lines");
+
+        UstvaKennzahl kz;
+        Check(mapping.Finde("81", kz), "Kz 81 is found");
+        Check(kz.art == KennzahlArt::Bemessung, "as a Bemessungsgrundlage");
+        CheckInt(kz.satzPromille, 190, "at 19 %");
+        Check(kz.geprueft, "and marked verified");
+        Check(mapping.Finde("89", kz) && !kz.geprueft,
+              "while Kz 89 is present but NOT verified - the file records that "
+              "the case exists and is not yet answered, which is not the same "
+              "as the case being absent");
+        Check(!mapping.Finde("99", kz), "an unknown Kennzahl is not found");
+        std::remove(pfad.c_str());
+    }
+
+    // --- periods ---
+    {
+        CheckText(UstvaZeitraumCode(6, false), "06", "June is 06");
+        CheckText(UstvaZeitraumCode(12, false), "12", "December is 12");
+        CheckText(UstvaZeitraumCode(1, true), "41", "Q1 is 41");
+        CheckText(UstvaZeitraumCode(4, true), "44", "Q4 is 44");
+        Check(UstvaZeitraumCode(13, false).empty(), "there is no month 13");
+        Check(UstvaZeitraumCode(5, true).empty(), "and no fifth quarter");
+
+        Date von, bis;
+        Check(UstvaZeitraumGrenzen(2026, "06", von, bis) &&
+              von == Date(2026, 6, 1) && bis == Date(2026, 6, 30),
+              "June runs to the 30th");
+        Check(UstvaZeitraumGrenzen(2026, "02", von, bis) && bis == Date(2026, 2, 28),
+              "February 2026 to the 28th");
+        Check(UstvaZeitraumGrenzen(2028, "02", von, bis) && bis == Date(2028, 2, 29),
+              "and a leap February to the 29th");
+        Check(UstvaZeitraumGrenzen(2026, "41", von, bis) &&
+              von == Date(2026, 1, 1) && bis == Date(2026, 3, 31),
+              "Q1 is January to March");
+        Check(UstvaZeitraumGrenzen(2026, "44", von, bis) &&
+              von == Date(2026, 10, 1) && bis == Date(2026, 12, 31),
+              "and Q4 October to December");
+        Check(!UstvaZeitraumGrenzen(2026, "99", von, bis), "99 is not a period");
+    }
+
+    // --- the ordinary month ---
+    UstvaMapping mapping;
+    {
+        std::string fehler;
+        const std::string pfad = SchreibeKennzahlen(
+            "81;bemessung;190;ja;Umsaetze 19 %\n"
+            "86;bemessung;70;ja;Umsaetze 7 %\n"
+            "41;frei;0;ja;Innergemeinschaftliche Lieferungen\n"
+            "66;vorsteuer;0;ja;Vorsteuer\n"
+            "89;bemessung;190;nein;Innergemeinschaftliche Erwerbe\n"
+            "83;berechnet;0;ja;Zahllast\n");
+        Check(mapping.Laden(pfad, fehler), "the test mapping loads");
+        std::remove(pfad.c_str());
+    }
+    std::vector<Steuerschluessel> keys;
+    keys.push_back(BaueKey("USt19", 190, false, "81"));
+    keys.push_back(BaueKey("USt7",   70, false, "86"));
+    keys.push_back(BaueKey("VSt19", 190, true,  "", "66"));
+    keys.push_back(BaueKey("IGL",     0, false, "41"));
+    keys.push_back(BaueKey("IGE19", 190, false, "89"));     // mapped, NOT verified
+    keys.push_back(BaueKey("RC13b", 190, false, ""));       // no Kennzahl at all
+
+    Date von, bis;
+    UstvaZeitraumGrenzen(2026, "06", von, bis);
+
+    {
+        std::vector<Buchung> journal;
+        // 1.000,00 at 19 % and 500,00 at 7 %, both sales.
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 15), "USt7", 50000, 70,
+                                        SollHaben::Soll, 2));
+        // A purchase invoice: input tax. The person account is credited.
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 20), "VSt19", 20000, 190,
+                                        SollHaben::Haben, 3));
+        // A payment: no tax key, and therefore not in the return at all.
+        Buchung zahlung;
+        zahlung.id = 4; zahlung.mandantId = 1;
+        zahlung.belegdatum = Date(2026, 6, 25);
+        zahlung.umsatz = Money::FromMinor(119000, "EUR");
+        zahlung.sollHaben = SollHaben::Soll;
+        zahlung.konto = "1200"; zahlung.gegenkonto = "10000";
+        journal.push_back(zahlung);
+        // A posting outside the period must not be counted.
+        journal.push_back(UmsatzBuchung(Date(2026, 7, 1), "USt19", 999900, 190,
+                                        SollHaben::Soll, 5));
+
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(b.ok, "a month computes");
+        Check(b.Vollstaendig(), "and is complete - every key has a verified Kennzahl");
+        CheckInt(b.Betrag("81").Minor(), 100000, "Kz 81 carries the 19 % net base");
+        CheckInt(b.Betrag("86").Minor(), 50000, "Kz 86 the 7 % base");
+        CheckInt(b.Betrag("66").Minor(), 3800,
+                 "Kz 66 the input tax, 19 % of 200,00");
+
+        // 190,00 + 35,00 output tax, less 38,00 input tax.
+        CheckInt(b.summeSteuer.Minor(), 22500, "output tax is 190,00 + 35,00");
+        CheckInt(b.summeVorsteuer.Minor(), 3800, "input tax is 38,00");
+        CheckInt(b.zahllast.Minor(), 18700, "so Kz 83 is 187,00 to pay");
+        CheckInt(b.Betrag("83").Minor(), 18700, "and Kz 83 says the same");
+
+        // Traceability: the figure names the postings it came from, because
+        // the question arrives months later.
+        const auto kz81 = b.kennzahlen.find("81");
+        Check(kz81 != b.kennzahlen.end() && kz81->second.buchungIds.size() == 1 &&
+              kz81->second.buchungIds[0] == 1,
+              "and each Kennzahl names the journal rows behind it");
+
+        // The payment is reported as untouched rather than silently ignored.
+        bool nenntOhneSchluessel = false;
+        for (const std::string& w : b.warnungen)
+            if (w.find("keinen Steuerschlüssel") != std::string::npos)
+                nenntOhneSchluessel = true;
+        Check(nenntOhneSchluessel,
+              "postings with no tax key are counted and explained, not just dropped");
+
+        // Same inputs, same figures - a return has to be reproducible when it
+        // is questioned a year later.
+        const UstvaBerechnung wieder = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                     keys, mapping);
+        CheckInt(wieder.zahllast.Minor(), b.zahllast.Minor(),
+                 "computing the same period twice gives the same figures - no "
+                 "clock, no locale, no database in the calculation");
+    }
+
+    // --- a Storno subtracts ---
+    // The one that silently doubles a month if it is wrong: a reversal booked
+    // on the other side must reduce the turnover, not add to it.
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 12), "USt19", 100000, 190,
+                                        SollHaben::Haben, 2));   // the Storno
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        CheckInt(b.Betrag("81").Minor(), 0,
+                 "an invoice and its Storno cancel to nothing - a reversal that "
+                 "added instead would declare the turnover twice");
+        CheckInt(b.zahllast.Minor(), 0, "and nothing is owed");
+
+        // An input-tax reversal runs the other way round, because a purchase
+        // invoice posts on the opposite side to begin with.
+        std::vector<Buchung> einkauf;
+        einkauf.push_back(UmsatzBuchung(Date(2026, 6, 10), "VSt19", 100000, 190,
+                                        SollHaben::Haben, 1));
+        einkauf.push_back(UmsatzBuchung(Date(2026, 6, 12), "VSt19", 100000, 190,
+                                        SollHaben::Soll, 2));
+        const UstvaBerechnung e = BerechneUstva(1, 2026, "06", von, bis, einkauf,
+                                                keys, mapping);
+        CheckInt(e.Betrag("66").Minor(), 0,
+                 "and a reversed purchase invoice cancels its input tax, which "
+                 "is the opposite side from a sale");
+    }
+
+    // --- zero-rated turnover is declared but owes nothing ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "IGL", 250000, 0,
+                                        SollHaben::Soll, 1));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        CheckInt(b.Betrag("41").Minor(), 250000,
+                 "an intra-community supply is declared in Kz 41");
+        CheckInt(b.zahllast.Minor(), 0,
+                 "and owes nothing - it is turnover the form wants to see, not tax");
+    }
+
+    // --- THE SAFETY PROPERTY: an amount with nowhere to go stops the return ---
+    {
+        // RC13b has no Kennzahl at all in data/Steuerschluessel.csv.
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 11), "RC13b", 400000, 190,
+                                        SollHaben::Soll, 2));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(b.ok, "the computation still runs");
+        Check(!b.Vollstaendig(),
+              "but the return is NOT complete - 4.000,00 of turnover has no "
+              "Kennzahl, and a form leaving it out declares too little");
+        CheckInt(static_cast<int64_t>(b.luecken.size()), 1, "one key is unmapped");
+        if (!b.luecken.empty()) {
+            CheckText(b.luecken[0].steuerschluessel, "RC13b", "and it is named");
+            CheckInt(b.luecken[0].netto.Minor(), 400000,
+                     "with the amount that would have gone missing");
+        }
+
+        ElsterKopf kopf;
+        kopf.steuernummer = "1121081508150";
+        kopf.finanzamtNummer = "1121";
+        kopf.name = "Beispiel GmbH";
+        kopf.erstellt = Date(2026, 7, 10);
+        const ElsterErgebnis r = SchreibeUstvaXml(b, kopf, ".");
+        Check(!r.ok,
+              "and writing the XML is REFUSED - the file would look perfectly "
+              "valid while under-declaring, which is the worst possible outcome");
+        Check(r.fehler.find("RC13b") != std::string::npos,
+              "the refusal names the key that is missing");
+    }
+
+    // An unverified Kennzahl blocks just as hard as a missing one. A guessed
+    // Kennzahl produces a wrong return, and wrong is not better than absent.
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "IGE19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(!b.Vollstaendig(),
+              "a Kennzahl that exists but is not verified also stops the return");
+        if (!b.luecken.empty())
+            Check(b.luecken[0].grund.find("geprüft") != std::string::npos,
+                  "and the reason says it has not been checked against the form");
+        CheckInt(b.Betrag("89").Minor(), 0,
+                 "nothing was declared on the unverified Kennzahl");
+    }
+
+    // --- the books and the form must agree ---
+    {
+        // A posting whose booked tax does not match the rate its Kennzahl
+        // carries: 19 % declared, 7 % actually booked.
+        Buchung falsch = UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                       SollHaben::Soll, 1);
+        falsch.steuer = Money::FromMinor(7000, "EUR");     // 7 % where 19 % is due
+        std::vector<Buchung> journal{ falsch };
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(!b.abweichungen.empty(),
+              "tax booked at a different rate from the Kennzahl is reported - "
+              "the return and the books disagreeing is exactly what must not be "
+              "found by the Finanzamt first");
+        if (!b.abweichungen.empty())
+            Check(b.abweichungen[0].find("81") != std::string::npos,
+                  "naming the Kennzahl concerned");
+
+        // Ordinary rounding must NOT trip it, or the warning becomes noise and
+        // gets ignored on the day it matters.
+        Buchung gerundet = UmsatzBuchung(Date(2026, 6, 10), "USt19", 3333, 190,
+                                         SollHaben::Soll, 1);
+        std::vector<Buchung> klein{ gerundet };
+        const UstvaBerechnung r = BerechneUstva(1, 2026, "06", von, bis, klein,
+                                                keys, mapping);
+        Check(r.abweichungen.empty(),
+              "while a cent of rounding does not - a warning that cries wolf is "
+              "worse than none");
+    }
+
+    // --- the ELSTER file ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 123456, 190,
+                                        SollHaben::Soll, 1));
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 20), "VSt19", 20000, 190,
+                                        SollHaben::Haben, 2));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        Check(b.Vollstaendig(), "a clean month is complete");
+
+        ElsterKopf kopf;
+        kopf.steuernummer    = "1121081508150";
+        kopf.finanzamtNummer = "1121";
+        kopf.name            = "Beispiel GmbH & Söhne";
+        kopf.strasse         = "Hauptstraße 1";
+        kopf.plz             = "80331";
+        kopf.ort             = "München";
+        kopf.produktVersion  = "0.8.0";
+        kopf.erstellt        = Date(2026, 7, 10);
+
+        const ElsterErgebnis r = SchreibeUstvaXml(b, kopf, ".");
+        Check(r.ok, "the ELSTER file is written");
+        Check(!r.xmlHash.empty(),
+              "and hashed - what was filed has to stay provable afterwards");
+
+        std::string inhalt;
+        {
+            std::FILE* f = std::fopen(r.datei.c_str(), "rb");
+            Check(f != nullptr, "the file exists");
+            if (f) {
+                char puffer[8192]; size_t n = 0;
+                while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
+                    inhalt.append(puffer, n);
+                std::fclose(f);
+            }
+        }
+        Check(inhalt.find("<DatenArt>UStVA</DatenArt>") != std::string::npos,
+              "it declares itself a UStVA");
+        Check(inhalt.find("<Jahr>2026</Jahr>") != std::string::npos, "for 2026");
+        Check(inhalt.find("<Zeitraum>06</Zeitraum>") != std::string::npos, "for June");
+        Check(inhalt.find("<Steuernummer>1121081508150</Steuernummer>") != std::string::npos,
+              "with the Steuernummer");
+
+        // **A Bemessungsgrundlage goes in whole euros, truncated.** 1.234,56
+        // must arrive as 1234, not 1235: rounding up declares turnover that did
+        // not happen.
+        Check(inhalt.find("<Kz81>1234</Kz81>") != std::string::npos,
+              "the base is whole euros, truncated - rounding up would declare "
+              "turnover that did not happen");
+        // A tax amount keeps its cents, with a dot.
+        Check(inhalt.find("<Kz66>38.00</Kz66>") != std::string::npos,
+              "a tax amount keeps its cents and uses a dot, not a German comma");
+
+        // **A test submission must say so.** Without the Testmerker it is filed
+        // for real; neither mistake is visible afterwards.
+        Check(inhalt.find("<Testmerker>700000004</Testmerker>") != std::string::npos,
+              "a return is a test submission unless it is explicitly not - the "
+              "default must never be the one that files for real");
+        bool sagtTest = false;
+        for (const std::string& w : r.warnungen)
+            if (w.find("Test") != std::string::npos) sagtTest = true;
+        Check(sagtTest, "and that is said out loud, not only written in the file");
+
+        // The file admits what has not been checked, inside itself.
+        Check(inhalt.find("NICHT gegen das amtliche Schema geprueft") != std::string::npos,
+              "the file states that its ELSTER envelope is unverified - the "
+              "schemas ship inside the ERiC SDK, which is not in this repository");
+
+        kopf.echtfall = true;
+        const ElsterErgebnis echt = SchreibeUstvaXml(b, kopf, ".");
+        Check(echt.ok, "a real submission writes too");
+        std::string echtInhalt;
+        {
+            std::FILE* f = std::fopen(echt.datei.c_str(), "rb");
+            if (f) {
+                char puffer[8192]; size_t n = 0;
+                while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
+                    echtInhalt.append(puffer, n);
+                std::fclose(f);
+            }
+        }
+        Check(echtInhalt.find("<Testmerker>") == std::string::npos,
+              "and then carries no Testmerker");
+        Check(echt.xmlHash != r.xmlHash,
+              "the two differ, so their hashes differ - which is what makes the "
+              "stored hash evidence of a particular file");
+
+        std::remove(r.datei.c_str());
+    }
+
+    // --- what ELSTER refuses to accept, refused here first ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(UmsatzBuchung(Date(2026, 6, 10), "USt19", 100000, 190,
+                                        SollHaben::Soll, 1));
+        const UstvaBerechnung b = BerechneUstva(1, 2026, "06", von, bis, journal,
+                                                keys, mapping);
+        ElsterKopf ohneNummer;
+        ohneNummer.finanzamtNummer = "1121";
+        ohneNummer.erstellt = Date(2026, 7, 10);
+        Check(!SchreibeUstvaXml(b, ohneNummer, ".").ok,
+              "without a Steuernummer the file is refused here rather than by "
+              "ELSTER after the upload");
+        ElsterKopf ohneAmt;
+        ohneAmt.steuernummer = "1121081508150";
+        ohneAmt.erstellt = Date(2026, 7, 10);
+        Check(!SchreibeUstvaXml(b, ohneAmt, ".").ok,
+              "and without a Finanzamt there is nowhere to send it");
+    }
+
+    // --- the transports ---
+    {
+        std::unique_ptr<IElsterTransport> datei = ElsterDateiTransport();
+        std::string warum;
+        Check(datei->Verfuegbar(warum),
+              "the file transport always works - it needs nothing installed");
+
+        std::unique_ptr<IElsterTransport> eric = ElsterEricTransport("");
+        Check(!eric->Verfuegbar(warum),
+              "the ERiC transport reports unavailable without a directory");
+        Check(!warum.empty(), "and says why rather than failing silently");
+        std::unique_ptr<IElsterTransport> eric2 = ElsterEricTransport("/gibt/es/nicht");
+        Check(!eric2->Verfuegbar(warum), "and unavailable when ERiC is not there");
+        Check(warum.find("ERiC") != std::string::npos,
+              "naming what has to be installed separately - it may not ship here");
+    }
+}
+
+// ===== BELEGARCHIV =====
+//
+// The receipts themselves. What is tested is mostly what the archive refuses
+// and what it recognises, because the failures here are quiet ones: a file
+// that was not really a PDF, a copy that was truncated, the same receipt
+// filed twice, or a path that stopped resolving five years later.
+
+static const char* const kPdfKopf = "%PDF-1.4\n";
+
+// Remove an archive directory and what is in it. The other tests here leave
+// nothing behind and neither should these; a suite that litters the working
+// directory makes the next run's failures ambiguous.
+static void RaeumeArchivAuf(const std::string& wurzel) {
+    for (int jahr = 2025; jahr <= 2028; ++jahr) {
+        const std::string verzeichnis = wurzel + "/" + std::to_string(jahr);
+        DIR* dir = ::opendir(verzeichnis.c_str());
+        if (dir != nullptr) {
+            while (struct dirent* eintrag = ::readdir(dir)) {
+                const std::string name = eintrag->d_name;
+                if (name == "." || name == "..") continue;
+                std::remove((verzeichnis + "/" + name).c_str());
+            }
+            ::closedir(dir);
+        }
+        ::rmdir(verzeichnis.c_str());
+    }
+    ::rmdir(wurzel.c_str());
+}
+
+static std::string BaueMiniPdf(const std::string& inhalt) {
+    return std::string(kPdfKopf) + "1 0 obj<<>>endobj\n" + inhalt + "\n%%EOF\n";
+}
+
+static void TestBelegArchiv() {
+    std::printf("Belegarchiv (PDF-Import)\n");
+
+    // --- a PDF is its bytes, not its name ---
+    {
+        Check(IstPdf(BaueMiniPdf("x")), "a file starting %PDF- is a PDF");
+        Check(!IstPdf("Das hier ist Text.\n"),
+              "and a text file is not, whatever it is called - an extension is "
+              "a claim, the magic number is evidence");
+        Check(!IstPdf(""), "an empty file is not a PDF");
+        // Some producers put a few bytes in front; readers tolerate it.
+        Check(IstPdf(std::string("\n\n") + BaueMiniPdf("x")),
+              "a few bytes of junk before the header are tolerated");
+        // But the word appearing deep inside a big file is not a header.
+        Check(!IstPdf(std::string(4000, 'x') + "%PDF-1.4"),
+              "while the string appearing far into the file is not");
+
+        Check(IstVerschluesseltesPdf(BaueMiniPdf("trailer<</Encrypt 5 0 R>>")),
+              "an encrypted PDF is recognised");
+        Check(!IstVerschluesseltesPdf(BaueMiniPdf("trailer<</Root 1 0 R>>")),
+              "and an ordinary one is not");
+    }
+
+    // --- filing a document ---
+    {
+        BelegArchiv archiv("archiv-test");
+        SchreibeDatei("quelle-a.pdf", BaueMiniPdf("Rechnung A"));
+
+        const ArchivEintrag eintrag = archiv.Ablegen("quelle-a.pdf", 2026);
+        Check(eintrag.ok, "a PDF is filed");
+        Check(!eintrag.schonVorhanden, "as a new document");
+        CheckText(eintrag.dateiname, "quelle-a.pdf",
+                  "the original name is kept - it usually carries the supplier "
+                  "and the invoice number, and it is all that is known at this "
+                  "point");
+        Check(!eintrag.hash.empty(), "and it is hashed");
+        // **Content-addressed**: the name in the archive IS the hash, so the
+        // integrity check and the file name cannot drift apart.
+        Check(eintrag.pfad.find(eintrag.hash) != std::string::npos,
+              "the archived file is named by its own hash");
+        Check(eintrag.pfad.find("2026") != std::string::npos,
+              "under the document's year, not today's - a receipt filed late "
+              "still belongs to its own year");
+
+        // The copy really is the original. A copy truncated by a full disk is
+        // precisely the failure an archive exists to prevent.
+        std::string kopie;
+        {
+            std::FILE* f = std::fopen(eintrag.pfad.c_str(), "rb");
+            Check(f != nullptr, "the archived file exists");
+            if (f) {
+                char puffer[8192]; size_t n = 0;
+                while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
+                    kopie.append(puffer, n);
+                std::fclose(f);
+            }
+        }
+        CheckText(kopie, BaueMiniPdf("Rechnung A"),
+                  "and is byte-for-byte the original");
+
+        // **The original may now go away.** That is the whole point: a receipt
+        // kept as a path into somebody's Downloads folder does not survive the
+        // ten years § 147 AO asks for.
+        std::remove("quelle-a.pdf");
+        std::string wo;
+        Check(archiv.Enthaelt(eintrag.hash, 2026, wo),
+              "the archive still holds it after the original is deleted");
+
+        // Filing it again is free and produces one file, because that is what
+        // dragging the same folder in twice has to do.
+        SchreibeDatei("quelle-a-kopie.pdf", BaueMiniPdf("Rechnung A"));
+        const ArchivEintrag nochmal = archiv.Ablegen("quelle-a-kopie.pdf", 2026);
+        Check(nochmal.ok, "a byte-identical file files again");
+        Check(nochmal.schonVorhanden,
+              "and is recognised as already there rather than stored twice");
+        CheckText(nochmal.pfad, eintrag.pfad, "pointing at the same file");
+        std::remove("quelle-a-kopie.pdf");
+
+        // A different document is a different file, even on the same day.
+        SchreibeDatei("quelle-b.pdf", BaueMiniPdf("Rechnung B"));
+        const ArchivEintrag b = archiv.Ablegen("quelle-b.pdf", 2026);
+        Check(b.ok && !b.schonVorhanden, "a different document is filed separately");
+        Check(b.hash != eintrag.hash, "with its own hash");
+        std::remove("quelle-b.pdf");
+
+        // What is refused.
+        SchreibeDatei("kein.pdf", "Das ist nur Text.\n");
+        const ArchivEintrag kein = archiv.Ablegen("kein.pdf", 2026);
+        Check(!kein.ok, "a file that is not a PDF is refused");
+        Check(kein.fehler.find("%PDF-") != std::string::npos,
+              "and the reason says what was looked for");
+        std::remove("kein.pdf");
+        Check(!archiv.Ablegen("gibtesnicht.pdf", 2026).ok,
+              "a missing file is reported rather than crashing");
+
+        // An encrypted PDF is stored but flagged: in ten years nobody has the
+        // password, and that is exactly when the document is wanted.
+        SchreibeDatei("gesperrt.pdf", BaueMiniPdf("trailer<</Encrypt 5 0 R>>"));
+        const ArchivEintrag gesperrt = archiv.Ablegen("gesperrt.pdf", 2026);
+        Check(gesperrt.ok, "an encrypted PDF is still archived");
+        Check(!gesperrt.warnungen.empty(),
+              "but warned about - it cannot be read back without a password "
+              "nobody recorded");
+        std::remove("gesperrt.pdf");
+
+        // A batch, which is how the button and the drop target both call it.
+        SchreibeDatei("stapel-1.pdf", BaueMiniPdf("Eins"));
+        SchreibeDatei("stapel-2.pdf", BaueMiniPdf("Zwei"));
+        SchreibeDatei("stapel-3.txt", "kein pdf");
+        const ArchivBericht stapel = archiv.AblegenAlle(
+            { "stapel-1.pdf", "stapel-2.pdf", "stapel-3.txt", "stapel-1.pdf" }, 2026);
+        Check(stapel.ok, "a mixed batch files what it can");
+        CheckInt(stapel.gelesen, 4, "four handed over");
+        CheckInt(stapel.abgelegt, 2, "two newly stored");
+        CheckInt(stapel.bekannt, 1, "one already there - the repeat");
+        CheckInt(stapel.abgelehnt, 1, "and one refused");
+        std::remove("stapel-1.pdf");
+        std::remove("stapel-2.pdf");
+        std::remove("stapel-3.txt");
+
+        Check(archiv.AblegenAlle({}, 2026).ok == false, "an empty batch is refused");
+        RaeumeArchivAuf("archiv-test");
+    }
+
+    // --- where the archive lives ---
+    {
+        CheckText(BelegArchivPfadFuer("/pfad/buch.db"), "/pfad/buch-belege",
+                  "the archive sits beside its database - a database and its "
+                  "receipts that can be separated will be separated");
+        CheckText(BelegArchivPfadFuer(":memory:"), "belege",
+                  "and an in-memory database gets a working directory");
+    }
+}
+
+// ===== BRUTTO-ERFASSUNG UND DIE ANGEGEBENE STEUER =====
+
+static void TestBruttoUndAngegebeneSteuer() {
+    std::printf("Brutto-Erfassung und angegebene Steuer\n");
+
+    // The figures are from a real supplier's invoice, with its own wording
+    // dropped: four lines at 19 %, two of them negative (a discount line and a
+    // pro-rata credit), netting to 5,51 EUR. Its own totals read
+    //     Gesamt Netto 5,51   MwSt. 19% von 5,51 EUR 1,04   Gesamtbetrag 6,55
+    // and that last figure is what the bank debited.
+    auto vierZeilen = [](bool brutto) {
+        Beleg b;
+        b.art      = BelegArt::Eingangsrechnung;
+        b.datum    = Date(2026, 8, 20);
+        b.waehrung = "EUR";
+        b.preiseSindBrutto = brutto;
+        const char* betraege[] = { "-21.89", "10.95", "32.90", "-16.45" };
+        for (const char* wert : betraege) {
+            BelegPosition pos;
+            pos.bezeichnung      = wert;
+            pos.steuerschluessel = "VSt19";
+            pos.satzPromille     = 190;
+            Money preis;
+            Money::TryParse(wert, preis);
+            pos.einzelpreis = preis;
+            b.positionen.push_back(pos);
+        }
+        return b;
+    };
+
+    // --- what the engine does on its own ---
+    {
+        Beleg b = vierZeilen(false);
+        Check(b.Summieren(), "the four lines cost");
+        CheckText(b.netto.ToString(), "5,51", "the net is 5,51 EUR, as on the invoice");
+        // 5,51 x 19 % is 1,0469, which rounds to 1,05. Taxing each line and
+        // summing gives 1,04. Both are defensible roundings of the same rate;
+        // only one of them is the figure the supplier actually charged.
+        CheckText(b.steuer.ToString(), "1,05",
+                  "tax on the summed net rounds to 1,05 - which is right for an "
+                  "invoice we issue, because there we decide");
+        CheckText(b.brutto.ToString(), "6,56", "and the total is 6,56");
+    }
+
+    // --- the document says otherwise, and on an incoming document it wins ---
+    {
+        Beleg b = vierZeilen(false);
+        b.steuerVorgegeben = true;
+        Money::TryParse("1.04", b.vorgegebeneSteuer);
+        Check(b.Summieren(), "the same lines cost against the stated tax");
+        CheckText(b.netto.ToString(), "5,51", "the net is unchanged");
+        CheckText(b.steuer.ToString(), "1,04",
+                  "the tax is the one the supplier's invoice states, not the one "
+                  "we would have computed");
+        CheckText(b.brutto.ToString(), "6,55",
+                  "so the posted total is the amount that left the bank account - "
+                  "a cent of drift per receipt is a reconciliation nobody finishes, "
+                  "and an input-tax claim that disagrees with the document is the "
+                  "one an auditor stops at");
+
+        Money summeZeilen = Money::Zero("EUR");
+        for (const BelegPosition& pos : b.positionen) summeZeilen = summeZeilen + pos.steuer;
+        CheckText(summeZeilen.ToString(), "1,04",
+                  "and the line tax column still adds up to the total");
+    }
+
+    // --- a stated tax belongs to one rate ---
+    {
+        Beleg b = vierZeilen(false);
+        b.positionen[1].steuerschluessel = "VSt7";
+        b.positionen[1].satzPromille     = 70;
+        b.steuerVorgegeben = true;
+        Money::TryParse("1.04", b.vorgegebeneSteuer);
+        Check(!b.Summieren(),
+              "one stated figure across two rates is refused - apportioning it "
+              "would be a guess, and a guessed split lands in the UStVA");
+    }
+
+    // ===== gross entry =====
+
+    // A receipt states gross. Typing 6,55 into a net field overstates the
+    // expense by the tax, every time, and nothing downstream notices.
+    {
+        Beleg b;
+        b.art      = BelegArt::Eingangsrechnung;
+        b.datum    = Date(2026, 8, 20);
+        b.waehrung = "EUR";
+        b.preiseSindBrutto = true;
+        BelegPosition pos;
+        pos.bezeichnung      = "Lizenzen";
+        pos.steuerschluessel = "VSt19";
+        pos.satzPromille     = 190;
+        Money::TryParse("6.55", pos.einzelpreis);
+        b.positionen.push_back(pos);
+
+        Check(b.Summieren(), "a gross-entered receipt costs");
+        CheckText(b.brutto.ToString(), "6,55",
+                  "the gross is exactly what was typed - it is the number on the "
+                  "receipt and the number in the bank statement");
+        CheckText(b.steuer.ToString(), "1,05", "the tax contained in it is 1,05");
+        CheckText(b.netto.ToString(), "5,50", "and the net follows at 5,50");
+        CheckText(b.positionen[0].brutto.ToString(), "6,55",
+                  "the line keeps its typed gross");
+    }
+
+    // --- gross, several lines: the typed total must survive ---
+    {
+        Beleg b = vierZeilen(true);
+        Check(b.Summieren(), "four gross lines cost");
+        CheckText(b.brutto.ToString(), "5,51",
+                  "their gross is the sum of what was typed, to the cent");
+        Money summeZeilen = Money::Zero("EUR");
+        for (const BelegPosition& pos : b.positionen) summeZeilen = summeZeilen + pos.brutto;
+        CheckText(summeZeilen.ToString(), "5,51",
+                  "and no line's gross was altered to make the total work");
+        Money summeNetto = Money::Zero("EUR");
+        for (const BelegPosition& pos : b.positionen) summeNetto = summeNetto + pos.netto;
+        CheckText(summeNetto.ToString(), b.netto.ToString(),
+                  "the line nets add up to the document net");
+    }
+
+    // --- gross and a stated tax together, which is how a receipt is entered ---
+    {
+        Beleg b = vierZeilen(true);
+        b.steuerVorgegeben = true;
+        Money::TryParse("1.04", b.vorgegebeneSteuer);
+        Check(b.Summieren(), "gross lines with the stated tax cost");
+        CheckText(b.steuer.ToString(), "1,04", "the stated tax is kept");
+        CheckText(b.brutto.ToString(), "5,51", "the typed gross is kept");
+        CheckText(b.netto.ToString(), "4,47", "and the net is the difference");
+    }
+
+    // --- the § 14 Abs. 4 Nr. 6 selection ---
+    {
+        Leistungszeitpunkt art;
+        Check(LeistungszeitpunktFromText("lieferzeitraum", art) &&
+              art == Leistungszeitpunkt::Lieferzeitraum,
+              "the time-of-supply kinds round-trip through text");
+        Check(LeistungszeitpunktIstZeitraum(Leistungszeitpunkt::Leistungszeitraum) &&
+              !LeistungszeitpunktIstZeitraum(Leistungszeitpunkt::Leistungsdatum),
+              "and a period is distinguished from a day - the supplier's invoice "
+              "that prompted this states a Leistungszeitraum, not a date");
+        Check(!LeistungszeitpunktFromText("unfug", art),
+              "an unknown value is refused rather than defaulted");
+    }
+}
+
+// ===== REVERSE CHARGE UND DIE STEUERSCHLUESSEL-AUSWAHL =====
+
+static void TestReverseCharge() {
+    std::printf("Reverse Charge und Steuerschlüssel-Auswahl\n");
+
+    // A small, explicit key set. Written out rather than loaded from the
+    // shipped file so the test says what it is testing, and so a change to the
+    // shipped data cannot quietly change what these assertions mean.
+    auto key = [](const std::string& name, SteuerArt art, int promille,
+                  bool vorsteuer, const std::string& land = "") {
+        Steuerschluessel k;
+        k.schluessel   = name;
+        k.bezeichnung  = name;
+        k.art          = art;
+        k.satzPromille = promille;
+        k.vorsteuer    = vorsteuer;
+        k.land         = land;
+        k.kontoUmsatz  = "8400";
+        k.kontoSteuer  = promille != 0 ? "1776" : "";
+        k.gueltigVon   = Date(2026, 1, 1);
+        return k;
+    };
+    const std::vector<Steuerschluessel> keys = {
+        key("USt19",    SteuerArt::Inland, 190, false),
+        key("USt7",     SteuerArt::Inland,  70, false),
+        key("VSt19",    SteuerArt::Inland, 190, true),
+        key("IGL",      SteuerArt::IgLieferung,       0, false),
+        key("EURC",     SteuerArt::EuSonstigeLeistung, 0, false),
+        key("IGE19",    SteuerArt::IgErwerb,         190, false),
+        key("RC13b",    SteuerArt::ReverseCharge13b, 190, true),
+        key("RC13bAus", SteuerArt::ReverseCharge13b,   0, false),
+        key("Ausfuhr",  SteuerArt::Drittland,          0, false),
+        // A key configured wrongly in exactly one way: it declares the customer
+        // liable AND carries a rate. Nothing else about it is out of place - it
+        // is not an input-tax key, and it suits the partner - so it isolates the
+        // contradiction rule. Without it, "RC13b is blocked" passes because the
+        // input-tax rule fires first, and breaking the contradiction check
+        // leaves the suite green.
+        key("KaputtRC", SteuerArt::EuSonstigeLeistung, 190, false),
+    };
+
+    Mandant mandant;
+    mandant.name = "Muster GmbH";
+
+    Partner euFirma;
+    euFirma.name            = "Wien Handels GmbH";
+    euFirma.konto           = "10000";
+    euFirma.land            = "AT";
+    euFirma.steuerkategorie = Steuerkategorie::EuUnternehmer;
+    euFirma.ustIdNr         = "ATU12345675";
+
+    Partner inland;
+    inland.name            = "Berlin Bau GmbH";
+    inland.konto           = "10001";
+    inland.land            = "DE";
+    inland.steuerkategorie = Steuerkategorie::Inland;
+
+    auto belegMit = [](BelegArt art, const std::string& schluessel) {
+        Beleg b;
+        b.art          = art;
+        b.datum        = Date(2026, 6, 16);
+        b.partnerKonto = "10000";
+        BelegPosition pos;
+        pos.bezeichnung      = "Beratungsleistung";
+        pos.steuerschluessel = schluessel;
+        b.positionen.push_back(pos);
+        return b;
+    };
+
+    // --- the invoice that started this ---
+    {
+        // § 13b at 19 % is what the RECIPIENT of a service books to self-assess
+        // German tax. On an outgoing invoice the same rule means zero. Used
+        // there, it produced 1.000,00 net, 190,00 tax, 1.190,00 total - and
+        // underneath, "Steuerschuldnerschaft des Leistungsempfängers". The
+        // invoice charged the tax and told the customer they owed it.
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "RC13b"), euFirma, keys);
+        Check(HatBlockierendenBefund(befunde),
+              "a key that charges tax AND declares the customer liable is blocked");
+
+        // The same rule on its own, with nothing else wrong with the key.
+        const std::vector<SteuerBefund> nurWiderspruch = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "KaputtRC"), euFirma, keys);
+        Check(HatBlockierendenBefund(nurWiderspruch),
+              "and it is blocked by the contradiction itself, not by some other "
+              "rule that happens to fire at the same time");
+        CheckInt(static_cast<int64_t>(nurWiderspruch.size()), 1,
+                 "with exactly one finding, so the mutation test can see it");
+
+        bool nennGrund = false;
+        for (const SteuerBefund& b : befunde)
+            if (b.text.find("keine deutsche Umsatzsteuer berechnet") != std::string::npos)
+                nennGrund = true;
+        Check(nennGrund,
+              "and the finding names the contradiction rather than a key code - "
+              "the reader has to be able to see which half is wrong");
+    }
+
+    // --- the key that belongs there ---
+    {
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "EURC"), euFirma, keys);
+        Check(!HatBlockierendenBefund(befunde),
+              "the service-to-an-EU-business key passes");
+    }
+
+    // --- the VAT number is the condition, not a formality ---
+    {
+        Partner ohneNummer = euFirma;
+        ohneNummer.ustIdNr.clear();
+        for (const char* k : { "IGL", "EURC" }) {
+            const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+                belegMit(BelegArt::Ausgangsrechnung, k), ohneNummer, keys);
+            Check(HatBlockierendenBefund(befunde),
+                  std::string("zero-rating with ") + k +
+                  " is blocked without the customer's USt-IdNr. - without it the "
+                  "supply is taxable here, and § 14a UStG wants it on the invoice");
+        }
+    }
+
+    // --- and the mirror image ---
+    {
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "IGL"), inland, keys);
+        Check(HatBlockierendenBefund(befunde),
+              "zero-rating a domestic customer as an intra-community supply is "
+              "blocked - one of the two statements has to be wrong");
+    }
+
+    // --- a warning is not a refusal ---
+    {
+        const std::vector<SteuerBefund> befunde = PruefeSteuerlicheStimmigkeit(
+            belegMit(BelegArt::Ausgangsrechnung, "USt19"), euFirma, keys);
+        Check(!HatBlockierendenBefund(befunde),
+              "charging German VAT to an EU business is allowed - the customer "
+              "may simply not have given their number in time");
+        Check(!befunde.empty(),
+              "but it is flagged, because it is usually a mistake");
+    }
+
+    // --- direction ---
+    {
+        Check(HatBlockierendenBefund(PruefeSteuerlicheStimmigkeit(
+                  belegMit(BelegArt::Ausgangsrechnung, "VSt19"), inland, keys)),
+              "an input-tax key on an outgoing document is blocked");
+        Check(HatBlockierendenBefund(PruefeSteuerlicheStimmigkeit(
+                  belegMit(BelegArt::Ausgangsrechnung, "unbekannt"), inland, keys)),
+              "and so is a key nobody can describe");
+    }
+
+    // ===== what the dropdown offers =====
+
+    auto finde = [](const std::vector<SteuerschluesselVorschlag>& liste,
+                    const std::string& name) -> const SteuerschluesselVorschlag* {
+        for (const SteuerschluesselVorschlag& v : liste)
+            if (v.schluessel.schluessel == name) return &v;
+        return nullptr;
+    };
+
+    // --- an EU business: both cross-border keys, and NO default ---
+    {
+        const std::vector<SteuerschluesselVorschlag> liste = SteuerschluesselFuerPartner(
+            mandant, euFirma, BelegArt::Ausgangsrechnung, Date(2026, 6, 16), keys);
+
+        const SteuerschluesselVorschlag* igl  = finde(liste, "IGL");
+        const SteuerschluesselVorschlag* eurc = finde(liste, "EURC");
+        Check(igl != nullptr && igl->passend, "goods to an EU business suggest IGL");
+        Check(eurc != nullptr && eurc->passend,
+              "and a service to the same customer suggests the reverse-charge key");
+
+        int vorgaben = 0;
+        for (const SteuerschluesselVorschlag& v : liste) if (v.vorgabe) ++vorgaben;
+        CheckInt(vorgaben, 0,
+                 "and NEITHER is preselected: goods or service is not something "
+                 "the program knows, and picking one of two legally different "
+                 "treatments by list order is how the wrong one gets onto an "
+                 "invoice with nothing to show for it");
+
+        const SteuerschluesselVorschlag* vst = finde(liste, "VSt19");
+        Check(vst != nullptr && vst->widerspruch && !vst->passend,
+              "the input-tax key is listed but marked as contradicting - visible "
+              "where the choice is made rather than refused afterwards");
+    }
+
+    // --- an EU business that never gave a number ---
+    {
+        Partner ohneNummer = euFirma;
+        ohneNummer.ustIdNr.clear();
+        const std::vector<SteuerschluesselVorschlag> liste = SteuerschluesselFuerPartner(
+            mandant, ohneNummer, BelegArt::Ausgangsrechnung, Date(2026, 6, 16), keys);
+        const SteuerschluesselVorschlag* ust19 = finde(liste, "USt19");
+        Check(ust19 != nullptr && ust19->passend && ust19->vorgabe,
+              "without the customer's USt-IdNr. German VAT is the default - the "
+              "exemption has no basis until the number is there");
+        const SteuerschluesselVorschlag* igl = finde(liste, "IGL");
+        Check(igl != nullptr && !igl->passend,
+              "and zero-rating is not suggested");
+    }
+
+    // --- a domestic customer ---
+    {
+        const std::vector<SteuerschluesselVorschlag> liste = SteuerschluesselFuerPartner(
+            mandant, inland, BelegArt::Ausgangsrechnung, Date(2026, 6, 16), keys);
+        const SteuerschluesselVorschlag* ust19 = finde(liste, "USt19");
+        Check(ust19 != nullptr && ust19->vorgabe, "19 % is the default at home");
+        const SteuerschluesselVorschlag* ust7 = finde(liste, "USt7");
+        Check(ust7 != nullptr && ust7->passend && !ust7->vorgabe,
+              "7 % is offered but is a decision, not a default");
+    }
+
+    // --- direction, in the dropdown ---
+    {
+        const std::vector<SteuerschluesselVorschlag> eingang = SteuerschluesselFuerPartner(
+            mandant, inland, BelegArt::Eingangsrechnung, Date(2026, 6, 16), keys);
+        const SteuerschluesselVorschlag* vst = finde(eingang, "VSt19");
+        Check(vst != nullptr && vst->passend && vst->vorgabe,
+              "a purchase at home defaults to input tax");
+        const SteuerschluesselVorschlag* ausfuhr = finde(eingang, "Ausfuhr");
+        Check(ausfuhr != nullptr && !ausfuhr->passend,
+              "and an export key is not suggested on an incoming invoice - it was, "
+              "until a Swiss supplier's bill offered \"Ausfuhrlieferung\"");
+    }
+
+    // --- a key that was not in force is not offered at all ---
+    {
+        const std::vector<SteuerschluesselVorschlag> liste = SteuerschluesselFuerPartner(
+            mandant, inland, BelegArt::Ausgangsrechnung, Date(2025, 6, 16), keys);
+        Check(liste.empty(),
+              "offering last year's key is how last year's rate reaches an invoice");
+    }
+
+    // --- the dropdown never recommends what posting would refuse ---
+    {
+        for (const Partner* p : { &euFirma, &inland }) {
+            for (BelegArt art : { BelegArt::Ausgangsrechnung, BelegArt::Eingangsrechnung }) {
+                const std::vector<SteuerschluesselVorschlag> liste =
+                    SteuerschluesselFuerPartner(mandant, *p, art, Date(2026, 6, 16), keys);
+                for (const SteuerschluesselVorschlag& v : liste) {
+                    if (!v.passend) continue;
+                    Beleg probe;
+                    probe.art          = art;
+                    probe.datum        = Date(2026, 6, 16);
+                    probe.partnerKonto = p->konto;
+                    BelegPosition pos;
+                    pos.bezeichnung      = "Probe";
+                    pos.steuerschluessel = v.schluessel.schluessel;
+                    probe.positionen.push_back(pos);
+                    Check(!HatBlockierendenBefund(
+                              PruefeSteuerlicheStimmigkeit(probe, *p, keys)),
+                          "a suggested key (" + v.schluessel.schluessel +
+                          ") is never one that Buchen would refuse");
+                }
+            }
+        }
+    }
+}
+
+// ===== EU-STEUERSAETZE IM BESTAND =====
+
+static void TestEuSteuersaetze() {
+    std::printf("EU-Steuersätze (Tabelle und Editor)\n");
+
+    Store store;
+    if (!CheckStore(store.Open("fibu-eusatz", ":memory:"),
+                    "a database for the rate tests opens")) {
+        std::printf("    skipping the EU rate tests\n");
+        return;
+    }
+    Akteur setup;
+    Benutzer admin;
+    admin.anmeldename = "chef";
+    CheckStore(store.SaveBenutzer(admin, setup), "an administrator exists");
+    Akteur akteur;
+    akteur.benutzerId  = admin.id;
+    akteur.anmeldename = admin.anmeldename;
+    akteur.rolle       = admin.rolle;
+
+    Mandant mandant;
+    mandant.name = "Beispiel GmbH";
+    CheckStore(store.SaveMandant(mandant, akteur), "a company exists");
+
+    // --- a rate goes in, and the country code is normalised ---
+    {
+        EuSteuersatz satz;
+        satz.land         = " at ";
+        satz.satzPromille = 200;
+        satz.gueltigVon   = Date(2021, 7, 1);
+        satz.geprueft     = true;
+        satz.quelle       = "Testquelle";
+        CheckStore(store.EuSteuersatzSetzen(satz, akteur), "a rate can be entered");
+        CheckText(satz.land, "AT", "the country code is normalised to ISO form");
+        Check(satz.id != 0, "and it has an id");
+    }
+
+    // --- what the whole table exists for: a change is a NEW ROW ---
+    {
+        EuSteuersatz neu;
+        neu.land         = "AT";
+        neu.satzPromille = 220;
+        neu.gueltigVon   = Date(2027, 1, 1);
+        neu.geprueft     = true;
+        neu.quelle       = "Testquelle";
+        CheckStore(store.EuSteuersatzSetzen(neu, akteur), "a changed rate is entered");
+
+        const std::vector<EuSteuersatz> alle = store.EuSteuersaetzeAlle();
+        CheckInt(static_cast<int64_t>(alle.size()), 2,
+                 "both rates are in the table - a changed rate is added, never an "
+                 "edit, or a return already filed stops reproducing its figures");
+
+        const EuSteuersatz* alt = nullptr;
+        for (const EuSteuersatz& satz : alle)
+            if (satz.gueltigVon == Date(2021, 7, 1)) alt = &satz;
+        Check(alt != nullptr, "the previous rate is still there");
+        if (alt != nullptr) {
+            Check(alt->gueltigBis == Date(2026, 12, 31),
+                  "and it is closed the day before the new one starts, so every "
+                  "day has exactly one rate");
+            CheckInt(alt->satzPromille, 200, "with its own rate untouched");
+        }
+    }
+
+    // --- which rate applies on which day ---
+    {
+        const EuSteuersaetze saetze = store.EuSteuersaetzeGeladen();
+        int satz = 0;
+        Check(saetze.Standardsatz("AT", Date(2026, 6, 15), satz) && satz == 200,
+              "a day before the change gets the old rate");
+        Check(saetze.Standardsatz("AT", Date(2027, 6, 15), satz) && satz == 220,
+              "a day after it gets the new one");
+        Check(!saetze.Standardsatz("AT", Date(2020, 1, 1), satz),
+              "and a day before either was in force gets neither");
+    }
+
+    // --- the same country, kind and day twice is an edit in disguise ---
+    {
+        EuSteuersatz doppelt;
+        doppelt.land         = "AT";
+        doppelt.satzPromille = 210;
+        doppelt.gueltigVon   = Date(2027, 1, 1);
+        const StoreResult r = store.EuSteuersatzSetzen(doppelt, akteur);
+        Check(!r, "the same country, kind and start date is refused");
+        Check(r.fehler.find("bereits einen Satz") != std::string::npos,
+              "and the refusal says why - a changed rate takes the date it "
+              "changed, not the date of the one it replaces");
+    }
+
+    // --- a rate needs a start date, a country and a plausible percentage ---
+    {
+        EuSteuersatz ohneDatum;
+        ohneDatum.land         = "FR";
+        ohneDatum.satzPromille = 200;
+        Check(!store.EuSteuersatzSetzen(ohneDatum, akteur),
+              "a rate without a start date is refused - the date is the point");
+
+        EuSteuersatz falschesLand;
+        falschesLand.land         = "Frankreich";
+        falschesLand.satzPromille = 200;
+        falschesLand.gueltigVon   = Date(2026, 1, 1);
+        Check(!store.EuSteuersatzSetzen(falschesLand, akteur),
+              "a country that is not an ISO code is refused");
+
+        EuSteuersatz zuHoch;
+        zuHoch.land         = "FR";
+        zuHoch.satzPromille = 1200;
+        zuHoch.gueltigVon   = Date(2026, 1, 1);
+        Check(!store.EuSteuersatzSetzen(zuHoch, akteur),
+              "and a rate above 100 % is refused");
+    }
+
+    // --- seeding from the shipped file is additive and never overwrites ---
+    {
+        SchreibeDatei("eu-seed-test.csv",
+                      "land;art;satz_promille;gueltig_von;gueltig_bis;geprueft;quelle\n"
+                      "AT;standard;190;2021-07-01;;nein;\n"
+                      "PT;standard;230;2021-07-01;;nein;\n");
+        int neu = 0, bekannt = 0;
+        CheckStore(store.EuSteuersaetzeAusDatei("eu-seed-test.csv", akteur, neu, bekannt),
+                   "the shipped rates can be taken over");
+        CheckInt(neu, 1, "only the country that was missing is added");
+        CheckInt(bekannt, 1, "the one already there is counted as known");
+
+        // The important half: the file says AT was 19 % from 2021-07-01 and
+        // unverified. The table says 20 % and verified. Re-seeding must not
+        // undo a rate somebody checked by hand.
+        const EuSteuersaetze saetze = store.EuSteuersaetzeGeladen();
+        int satz = 0;
+        Check(saetze.Standardsatz("AT", Date(2026, 6, 15), satz) && satz == 200,
+              "and the rate already in the table is left exactly as it was - "
+              "re-seeding must not undo a rate that was verified by hand");
+        std::remove("eu-seed-test.csv");
+    }
+
+    // --- a rate entered by mistake can go, and its predecessor reopens ---
+    {
+        std::vector<EuSteuersatz> alle = store.EuSteuersaetzeAlle();
+        int64_t neueAt = 0;
+        for (const EuSteuersatz& satz : alle)
+            if (satz.land == "AT" && satz.gueltigVon == Date(2027, 1, 1)) neueAt = satz.id;
+        Check(neueAt != 0, "the 2027 rate is findable");
+
+        CheckStore(store.EuSteuersatzLoeschen(neueAt, akteur),
+                   "a rate entered by mistake can be removed");
+        alle = store.EuSteuersaetzeAlle();
+        const EuSteuersatz* alt = nullptr;
+        for (const EuSteuersatz& satz : alle)
+            if (satz.land == "AT") alt = &satz;
+        Check(alt != nullptr && !alt->gueltigBis.Valid(),
+              "and the rate it had superseded is open again - otherwise deleting "
+              "a typo would leave the country with no rate at all from that day");
+    }
+
+    // --- the rule that outranks all of it: a filed return stays reproducible ---
+    {
+        Store::Meldung meldung;
+        meldung.mandantId = mandant.id;
+        meldung.art       = "oss";
+        meldung.jahr      = 2026;
+        meldung.zeitraum  = "Q2";
+        meldung.status    = Store::MeldungStatus::Eingereicht;
+        meldung.transferticket = "TESTTICKET";
+        CheckStore(store.MeldungEintragen(meldung, akteur), "a return is on file");
+
+        EuSteuersatz rueckwirkend;
+        rueckwirkend.land         = "AT";
+        rueckwirkend.satzPromille = 230;
+        rueckwirkend.gueltigVon   = Date(2026, 1, 1);
+        const StoreResult r = store.EuSteuersatzSetzen(rueckwirkend, akteur);
+        Check(!r, "a rate starting inside a filed period is refused");
+        Check(r.fehler.find("eingereicht") != std::string::npos,
+              "and the refusal names the filing - changing it would make an "
+              "already-submitted return recompute to something else, with "
+              "nothing on screen to show that it had");
+
+        EuSteuersatz spaeter;
+        spaeter.land         = "AT";
+        spaeter.satzPromille = 230;
+        spaeter.gueltigVon   = Date(2026, 7, 1);
+        spaeter.geprueft     = true;
+        CheckStore(store.EuSteuersatzSetzen(spaeter, akteur),
+                   "while a rate starting after that period is fine - the filed "
+                   "return is untouched by it");
+
+        std::vector<EuSteuersatz> alle = store.EuSteuersaetzeAlle();
+        int64_t inPeriode = 0;
+        for (const EuSteuersatz& satz : alle)
+            if (satz.land == "AT" && satz.gueltigVon == Date(2021, 7, 1)) inPeriode = satz.id;
+        Check(inPeriode != 0, "the rate the filed return used is findable");
+        const StoreResult weg = store.EuSteuersatzLoeschen(inPeriode, akteur);
+        Check(!weg, "and it cannot be deleted either, for the same reason");
+    }
+
+    store.Close();
+}
+
+// ===== PDF-BELEGE IN DEN BESTAND =====
+
+static void TestBelegImport() {
+    std::printf("PDF-Belege importieren\n");
+
+    Store store;
+    if (!CheckStore(store.Open("fibu-pdf", ":memory:"),
+                    "a database for the import tests opens")) {
+        std::printf("    skipping the PDF import tests\n");
+        return;
+    }
+    Akteur setup;
+    Benutzer admin;
+    admin.anmeldename = "chef";
+    CheckStore(store.SaveBenutzer(admin, setup), "an administrator exists");
+    Akteur akteur;
+    akteur.benutzerId  = admin.id;
+    akteur.anmeldename = admin.anmeldename;
+    akteur.rolle       = admin.rolle;
+
+    Mandant mandant;
+    mandant.name = "Beispiel GmbH";
+    CheckStore(store.SaveMandant(mandant, akteur), "a company exists");
+    Geschaeftsjahr jahr;
+    jahr.mandantId   = mandant.id;
+    jahr.beginn      = Date(2026, 4, 1);
+    jahr.ende        = Date(2027, 3, 31);
+    jahr.bezeichnung = jahr.DefaultBezeichnung();
+    CheckStore(store.SaveGeschaeftsjahr(jahr, akteur), "with a fiscal year");
+    Nummernkreis kreis;
+    kreis.mandantId = mandant.id;
+    kreis.kreis     = "eingang";
+    kreis.praefix   = "E-";
+    CheckStore(store.SaveNummernkreis(kreis, akteur),
+               "and a number range for incoming documents");
+
+    SchreibeDatei("import-1.pdf", BaueMiniPdf("Beleg eins"));
+    SchreibeDatei("import-2.pdf", BaueMiniPdf("Beleg zwei"));
+    SchreibeDatei("import-3.txt", "kein pdf");
+    SchreibeDatei("import-1-kopie.pdf", BaueMiniPdf("Beleg eins"));
+
+    const Store::BelegImportBericht b = store.ImportiereBelegDateien(
+        mandant.id,
+        { "import-1.pdf", "import-2.pdf", "import-3.txt", "import-1-kopie.pdf" },
+        BelegArt::Eingangsrechnung, Date(2026, 6, 20), "eingang", akteur);
+
+    Check(b.ok, "a stack of PDFs imports");
+    CheckInt(b.gelesen, 4, "four files handed over");
+    CheckInt(b.angelegt, 2, "two became drafts");
+    CheckInt(b.bekannt, 1, "one was the same receipt again");
+    CheckInt(b.abgelehnt, 1, "and one was not a PDF");
+
+    // **The same receipt twice is one receipt.** Creating a second draft for a
+    // file already filed is how a duplicate expense gets into a ledger.
+    for (const Store::BelegImportEintrag& e : b.eintraege) {
+        if (e.dateiname == "import-1-kopie.pdf") {
+            Check(e.schonVorhanden,
+                  "the repeat is recognised by its hash, not its name - the "
+                  "same receipt under a different file name is still the same "
+                  "receipt");
+            Check(e.vorhandenerBeleg != 0, "and points at the document that has it");
+        }
+    }
+
+    Store::BelegFilter filter;
+    filter.mandantId = mandant.id;
+    const std::vector<Beleg> belege = store.BelegListe(filter);
+    CheckInt(static_cast<int64_t>(belege.size()), 2,
+             "so the ledger holds two documents, not three");
+
+    // The drafts carry the file, the name and nothing invented.
+    if (belege.size() == 2) {
+        const Beleg& b1 = belege[0];
+        Check(b1.status == BelegStatus::Entwurf,
+              "each is a draft - nothing is read out of the PDF, and invented "
+              "figures in a ledger would be worse than none");
+        Check(!b1.dateiHash.empty(), "with the file's hash recorded");
+        Check(!b1.dateiPfad.empty(), "and its place in the archive");
+        Check(!b1.buchungstext.empty(),
+              "and the original file name, which is the only thing that tells "
+              "one uploaded receipt from another");
+        CheckInt(b1.brutto.Minor(), 0, "no amount was invented");
+
+        std::string fehler;
+        Check(store.PruefeBelegDatei(b1, fehler),
+              "and the archived file still matches the hash recorded for it");
+    }
+
+    // **The invariant that was relaxed, and the one that was not.**
+    // An empty draft may now be saved, because a received PDF has no positions
+    // until somebody reads it. Posting one must still be refused.
+    {
+        Beleg leer;
+        leer.mandantId = mandant.id;
+        leer.art       = BelegArt::Eingangsrechnung;
+        leer.datum     = Date(2026, 6, 20);
+        leer.waehrung  = "EUR";
+        CheckStore(store.SaveBeleg(leer, "eingang", akteur),
+                   "an empty draft saves - a receipt can be filed before it is "
+                   "understood");
+        // Asserting *why* it is refused, not merely that it is. A refusal for
+        // some unrelated reason would pass a weaker test while leaving the
+        // relaxed draft rule genuinely unsafe - which is exactly what a
+        // mutation of the positions guard revealed.
+        const StoreResult gebucht = store.Buchen(leer, akteur);
+        CheckRefused(gebucht,
+                     "but posting it is still refused - relaxing the draft rule "
+                     "must not let an empty document become a posting");
+        Check(gebucht.fehler.find("Positionen") != std::string::npos,
+              "and refused for the right reason: no positions, not some other "
+              "validation that might not apply to the next empty document");
+    }
+
+    // What the import refuses outright.
+    {
+        int dummy = 0; (void)dummy;
+        Check(!store.ImportiereBelegDateien(mandant.id, {}, BelegArt::Eingangsrechnung,
+                                            Date(2026, 6, 20), "eingang", akteur).ok,
+              "an empty list is refused");
+        Check(!store.ImportiereBelegDateien(mandant.id, { "import-1.pdf" },
+                                            BelegArt::Eingangsrechnung, Date(),
+                                            "eingang", akteur).ok,
+              "and so is an import with no document date - without one the "
+              "document belongs to no fiscal year");
+    }
+
+    std::remove("import-1.pdf");
+    std::remove("import-2.pdf");
+    std::remove("import-3.txt");
+    std::remove("import-1-kopie.pdf");
+    RaeumeArchivAuf(store.BelegArchivPfad());
+}
+
+// ===== ONE-STOP-SHOP =====
+//
+// OSS is VAT owed to other member states and forwarded by the BZSt. A figure
+// missing from a return is another country's money not paid, and there is no
+// machine interface downstream to catch it - the file is uploaded by hand. So
+// what is tested here is mostly the refusals and the reconciliation.
+
+static Buchung OssBuchung(const Date& datum, const std::string& key,
+                          int64_t nettoMinor, int satzPromille, SollHaben seite,
+                          int64_t id = 0) {
+    Buchung b;
+    b.id               = id;
+    b.mandantId        = 1;
+    b.belegdatum       = datum;
+    b.steuerschluessel = key;
+    b.satzPromille     = satzPromille;
+    b.netto            = Money::FromMinor(nettoMinor, "EUR");
+    b.steuer           = b.netto.TaxOnNet(satzPromille);
+    b.umsatz           = b.netto + b.steuer;
+    b.sollHaben        = seite;
+    b.konto            = "10000";
+    b.gegenkonto       = "8338";
+    b.waehrung         = "EUR";
+    return b;
+}
+
+static Steuerschluessel OssKey(const std::string& name, const std::string& land,
+                               int satz, const std::string& kzBemessung = "45") {
+    Steuerschluessel k;
+    k.schluessel   = name;
+    k.bezeichnung  = name;
+    k.art          = SteuerArt::Oss;
+    k.land         = land;
+    k.satzPromille = satz;
+    k.kzBemessung  = kzBemessung;
+    k.gueltigVon   = Date(2026, 1, 1);
+    return k;
+}
+
+static void TestOss() {
+    std::printf("One-Stop-Shop\n");
+
+    // --- the member states' rates are a check, not a source ---
+    {
+        SchreibeDatei("saetze-test.csv",
+                      "land;art;satz_promille;gueltig_von;gueltig_bis;geprueft;quelle\n"
+                      "AT;standard;200;2021-07-01;;ja;geprueft\n"
+                      "FR;standard;200;2021-07-01;;nein;\n");
+        EuSteuersaetze saetze;
+        std::string fehler;
+        Check(saetze.Laden("saetze-test.csv", fehler), "the rate table loads");
+        int satz = 0;
+        Check(saetze.Standardsatz("AT", Date(2026, 2, 15), satz) && satz == 200,
+              "a verified rate is available for comparison");
+        Check(!saetze.Standardsatz("FR", Date(2026, 2, 15), satz),
+              "an UNVERIFIED rate is not - reporting a correct invoice as wrong "
+              "because of a guessed rate would train the user to ignore the "
+              "warning, and then it is worth nothing when it is right");
+        Check(!saetze.Standardsatz("AT", Date(2020, 1, 1), satz),
+              "and a rate is not used before it was in force");
+        Check(saetze.Kennt("FR"), "an unverified country is still listed - the file "
+                                  "records which cases exist");
+        std::remove("saetze-test.csv");
+    }
+
+    // --- periods ---
+    {
+        Date von, bis;
+        Check(OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "Q1", von, bis) &&
+              von == Date(2026, 1, 1) && bis == Date(2026, 3, 31),
+              "OSS Q1 is January to March");
+        Check(OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "Q4", von, bis) &&
+              bis == Date(2026, 12, 31), "and Q4 ends on 31 December");
+        Check(!OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "Q5", von, bis),
+              "there is no fifth quarter");
+        Check(!OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "02", von, bis),
+              "and OSS is not monthly");
+        // IOSS is the same shape with a monthly period.
+        Check(OssZeitraumGrenzen(OssVerfahren::Ioss, 2026, "02", von, bis) &&
+              von == Date(2026, 2, 1) && bis == Date(2026, 2, 28),
+              "IOSS is monthly, and February 2026 ends on the 28th");
+    }
+
+    EuSteuersaetze saetze;
+    {
+        SchreibeDatei("saetze-oss.csv",
+                      "land;art;satz_promille;gueltig_von;gueltig_bis;geprueft;quelle\n"
+                      "AT;standard;200;2021-07-01;;ja;geprueft\n"
+                      "FR;standard;200;2021-07-01;;ja;geprueft\n"
+                      "IT;standard;220;2021-07-01;;nein;\n");
+        std::string fehler;
+        Check(saetze.Laden("saetze-oss.csv", fehler), "the test rates load");
+        std::remove("saetze-oss.csv");
+    }
+
+    std::vector<Steuerschluessel> keys;
+    keys.push_back(OssKey("OSS-AT-20", "AT", 200));
+    keys.push_back(OssKey("OSS-FR-20", "FR", 200));
+    keys.push_back(OssKey("OSS-AT-19", "AT", 190));      // the wrong rate charged
+    keys.push_back(OssKey("OSS-IT-22", "IT", 220));      // rate not verified
+    keys.push_back(OssKey("OSS", "", 0));                // no country at all
+    {
+        // A domestic key, to prove it stays out of the OSS return.
+        Steuerschluessel inland;
+        inland.schluessel   = "USt19";
+        inland.art          = SteuerArt::Inland;
+        inland.satzPromille = 190;
+        inland.kzBemessung  = "81";
+        inland.gueltigVon   = Date(2026, 1, 1);
+        keys.push_back(inland);
+    }
+
+    Date von, bis;
+    OssZeitraumGrenzen(OssVerfahren::Oss, 2026, "Q1", von, bis);
+
+    // --- an ordinary quarter ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 2, 10), "OSS-AT-20", 50000, 200,
+                                     SollHaben::Soll, 2));
+        journal.push_back(OssBuchung(Date(2026, 2, 15), "OSS-FR-20", 30000, 200,
+                                     SollHaben::Soll, 3));
+        // Domestic turnover is not OSS turnover.
+        journal.push_back(OssBuchung(Date(2026, 2, 20), "USt19", 900000, 190,
+                                     SollHaben::Soll, 4));
+        // And a sale outside the quarter.
+        journal.push_back(OssBuchung(Date(2026, 4, 1), "OSS-AT-20", 700000, 200,
+                                     SollHaben::Soll, 5));
+
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        Check(b.ok, "a quarter computes");
+        Check(b.Vollstaendig(), "and is complete");
+        CheckInt(static_cast<int64_t>(b.posten.size()), 2,
+                 "two lines: one per country and rate");
+        CheckInt(b.SteuerFuer("AT").Minor(), 30000,
+                 "Austria's VAT is 20 % of 1.500,00");
+        CheckInt(b.SteuerFuer("FR").Minor(), 6000, "and France's 20 % of 300,00");
+        CheckInt(b.summeBemessung.Minor(), 180000,
+                 "the base is 1.800,00 - domestic turnover is not OSS turnover "
+                 "and the April sale is not this quarter");
+        CheckInt(b.summeSteuer.Minor(), 36000, "and the tax 360,00");
+        if (!b.posten.empty()) {
+            Check(b.posten[0].satzGeprueft,
+                  "the rate was checked against the country's own");
+            Check(b.posten[0].satzHinweis.empty(), "and agreed");
+            CheckInt(static_cast<int64_t>(b.posten[0].buchungIds.size()), 2,
+                     "and the line names the postings behind it");
+        }
+    }
+
+    // --- a Storno subtracts here too ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 1, 25), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Haben, 2));
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        CheckInt(b.summeSteuer.Minor(), 0,
+                 "a cancelled OSS sale owes nothing - a reversal that added would "
+                 "declare another state's VAT twice");
+    }
+
+    // --- THE REFUSAL: turnover with no destination country ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 2, 1), "OSS", 200000, 0,
+                                     SollHaben::Soll, 2));
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        Check(!b.Vollstaendig(),
+              "a tax key with no country makes the return incomplete - 'VAT owed "
+              "somewhere in the EU' is not a filing");
+        CheckInt(static_cast<int64_t>(b.luecken.size()), 1, "one key is unusable");
+        if (!b.luecken.empty())
+            Check(b.luecken[0].grund.find("Zielland") != std::string::npos,
+                  "and the reason says what is missing and how to fix it");
+
+        const OssDateiErgebnis r = SchreibeBopDatei(b, "DE123456789", ".");
+        Check(!r.ok,
+              "and the transport file is refused - what would be left out is "
+              "another member state's money");
+        Check(r.fehler.find("OSS") != std::string::npos,
+              "with the key named");
+    }
+
+    // --- the rate check, in both outcomes ---
+    {
+        // 19 % charged where Austria levies 20 %.
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-19", 100000, 190,
+                                     SollHaben::Soll, 1));
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        Check(b.ok && !b.posten.empty(), "the sale is still reported");
+        if (!b.posten.empty()) {
+            CheckInt(b.posten[0].steuer.Minor(), 19000,
+                     "**at the rate that was actually charged** - the return must "
+                     "match the invoice, even when the invoice was wrong");
+            Check(!b.posten[0].satzHinweis.empty(),
+                  "but the mismatch is reported: the invoice is the thing to fix");
+            Check(b.posten[0].satzHinweis.find("20") != std::string::npos,
+                  "naming what the country actually levies");
+        }
+
+        // A country whose rate is not verified: no comparison, and it says so.
+        std::vector<Buchung> italien;
+        italien.push_back(OssBuchung(Date(2026, 1, 20), "OSS-IT-22", 100000, 220,
+                                     SollHaben::Soll, 1));
+        const OssBerechnung it = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                             italien, keys, saetze);
+        if (!it.posten.empty()) {
+            Check(!it.posten[0].satzGeprueft,
+                  "an unverified country rate is not used for comparison");
+            Check(!it.posten[0].satzHinweis.empty(),
+                  "and the return says the rate could not be confirmed - which is "
+                  "a different statement from 'the rate is right'");
+        }
+    }
+
+    // --- the reconciliation against the UStVA ---
+    // Both come from the same journal by different paths, so disagreeing means
+    // one of two returns about to be filed is wrong.
+    {
+        UstvaMapping mapping;
+        {
+            SchreibeDatei("kz-oss.csv",
+                          "kennzahl;art;satz_promille;geprueft;bezeichnung\n"
+                          "45;frei;0;ja;Nicht steuerbare Umsaetze\n"
+                          "81;bemessung;190;ja;Umsaetze 19 %\n"
+                          "83;berechnet;0;ja;Zahllast\n");
+            std::string fehler;
+            Check(mapping.Laden("kz-oss.csv", fehler), "a mapping with Kz 45 loads");
+            std::remove("kz-oss.csv");
+        }
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 2, 15), "OSS-FR-20", 30000, 200,
+                                     SollHaben::Soll, 2));
+
+        const OssBerechnung oss = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                              journal, keys, saetze);
+        const UstvaBerechnung ustva =
+            BerechneUstva(1, 2026, "41", von, bis, journal, keys, mapping);
+        const OssUstvaAbgleich a = PruefeGegenUstva(oss, ustva);
+        Check(a.stimmt,
+              "OSS turnover and UStVA Kz 45 agree - the same money by two paths");
+        CheckInt(a.ossBemessung.Minor(), 130000, "1.300,00 on the OSS side");
+        CheckInt(a.ustvaKz45.Minor(), 130000, "and the same in Kz 45");
+
+        // Now break it: a key that reports to OSS but carries no Kz 45.
+        std::vector<Steuerschluessel> schief = keys;
+        for (Steuerschluessel& k : schief)
+            if (k.schluessel == "OSS-FR-20") k.kzBemessung.clear();
+        const OssBerechnung oss2 = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                               journal, schief, saetze);
+        const UstvaBerechnung ustva2 =
+            BerechneUstva(1, 2026, "41", von, bis, journal, schief, mapping);
+        const OssUstvaAbgleich a2 = PruefeGegenUstva(oss2, ustva2);
+        Check(!a2.stimmt,
+              "a key that reports to OSS but not to Kz 45 makes the two disagree, "
+              "and the reconciliation says so before either is filed");
+        CheckInt(a2.differenz.Minor(), 30000, "naming the amount that differs");
+    }
+
+    // --- the § 3c threshold ---
+    {
+        std::vector<Buchung> journal;
+        // Well under.
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        SchwellenStand stand = PruefeLieferschwelle(2026, journal, keys);
+        CheckInt(stand.summe.Minor(), 100000, "the running total is 1.000,00");
+        Check(!stand.ueberschritten, "the threshold is not crossed");
+        Check(!stand.nahe, "and it is not close");
+
+        // Close: 8.500 of 10.000.
+        journal.push_back(OssBuchung(Date(2026, 3, 1), "OSS-AT-20", 750000, 200,
+                                     SollHaben::Soll, 2));
+        stand = PruefeLieferschwelle(2026, journal, keys);
+        Check(stand.nahe,
+              "at 85 % the warning comes early - crossing it unnoticed means every "
+              "later invoice carries the wrong VAT");
+        Check(!stand.ueberschritten, "but it is not crossed yet");
+
+        // Over, and it matters exactly when.
+        journal.push_back(OssBuchung(Date(2026, 5, 4), "OSS-AT-20", 300000, 200,
+                                     SollHaben::Soll, 3));
+        stand = PruefeLieferschwelle(2026, journal, keys);
+        Check(stand.ueberschritten, "now it is crossed");
+        Check(stand.ueberschrittenAm == Date(2026, 5, 4),
+              "on the day of the invoice that crossed it - from that invoice on, "
+              "the destination country's rate is compulsory");
+        bool nenntDatum = false;
+        for (const std::string& h : stand.hinweise)
+            if (h.find("04.05.2026") != std::string::npos) nenntDatum = true;
+        Check(nenntDatum, "and the date is in the message");
+
+        // The limitation is stated rather than hidden.
+        bool nenntGrenze = false;
+        for (const std::string& h : stand.hinweise)
+            if (h.find("Inlandsschlüssel") != std::string::npos) nenntGrenze = true;
+        Check(nenntGrenze,
+              "and so is what the count cannot see - EU consumer sales still "
+              "booked on a domestic key count towards the threshold too");
+    }
+
+    // --- the transport file ---
+    {
+        std::vector<Buchung> journal;
+        journal.push_back(OssBuchung(Date(2026, 1, 20), "OSS-AT-20", 100000, 200,
+                                     SollHaben::Soll, 1));
+        journal.push_back(OssBuchung(Date(2026, 2, 15), "OSS-FR-20", 30000, 200,
+                                     SollHaben::Soll, 2));
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            journal, keys, saetze);
+        const OssDateiErgebnis r = SchreibeBopDatei(b, "DE123456789", ".");
+        Check(r.ok, "the transport file is written");
+        Check(!r.hash.empty(), "and hashed");
+
+        std::string inhalt;
+        {
+            std::FILE* f = std::fopen(r.datei.c_str(), "rb");
+            if (f) {
+                char puffer[8192]; size_t n = 0;
+                while ((n = std::fread(puffer, 1, sizeof(puffer), f)) > 0)
+                    inhalt.append(puffer, n);
+                std::fclose(f);
+            }
+        }
+        Check(inhalt.find("AT;20;STANDARD;1000.00;200.00") != std::string::npos,
+              "with a line per country and rate, dot-decimal - not the process "
+              "locale's comma");
+        Check(inhalt.find("FR;20;STANDARD;300.00;60.00") != std::string::npos,
+              "and one for France");
+        // The file admits what has not been checked, in itself.
+        Check(inhalt.find("NICHT an einem echten") != std::string::npos,
+              "and states that its column layout is unverified - the BZSt "
+              "publishes the import function but not its specification");
+        bool warntAufbau = false;
+        for (const std::string& w : r.warnungen)
+            if (w.find("Spaltenaufbau") != std::string::npos) warntAufbau = true;
+        Check(warntAufbau, "which is said out loud as well");
+
+        Check(!SchreibeBopDatei(b, "", ".").ok,
+              "without an own VAT number the BZSt will not take it, so it is "
+              "refused here first");
+        std::remove(r.datei.c_str());
+    }
+
+    // --- nothing to report ---
+    {
+        std::vector<Buchung> leer;
+        const OssBerechnung b = BerechneOss(OssVerfahren::Oss, 1, 2026, "Q1", von, bis,
+                                            leer, keys, saetze);
+        Check(b.ok, "a quarter with no EU sales still computes");
+        Check(b.posten.empty(), "with no lines");
+        Check(!SchreibeBopDatei(b, "DE123456789", ".").ok,
+              "and no file is written for an empty return");
+    }
+}
+
 int main() {
     std::printf("UltraFIBU engine tests\n");
     TestDate();
@@ -3694,6 +5429,13 @@ int main() {
     TestBankMt940UndCsv();
     TestBankZuordnung();
     TestBankImportInDenBestand();
+    TestUstva();
+    TestBelegArchiv();
+    TestBelegImport();
+    TestOss();
+    TestBruttoUndAngegebeneSteuer();
+    TestReverseCharge();
+    TestEuSteuersaetze();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;

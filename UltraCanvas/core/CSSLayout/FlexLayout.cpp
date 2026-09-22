@@ -461,6 +461,16 @@ namespace UltraCanvas {
                 // axis content extent.
                 std::optional<float> mainBasis  = s.mainKnown  ? std::optional<float>{s.availableMain}  : std::nullopt;
                 std::optional<float> crossBasis = s.crossKnown ? std::optional<float>{s.availableCross} : std::nullopt;
+                // A finite cross bound to *measure* children against, even when it
+                // arrived as AtMost (crossKnown is false then). Mirrors MeasureBlock's
+                // height-for-width: a column item's height base must be measured at the
+                // width it will actually get, or a wrapping label reports its unwrapped
+                // one-line height and clips. availableCross is INFINITY only in the
+                // truly-unbounded branch, so isfinite cleanly means "have a bound".
+                // Kept separate from crossBasis so gap-% / %-basis stay unchanged.
+                std::optional<float> crossMeasureBound =
+                    std::isfinite(s.availableCross) ? std::optional<float>{s.availableCross}
+                                                    : std::nullopt;
                 std::optional<float> rowBasis   = s.axis.isRow ? crossBasis : mainBasis;
                 std::optional<float> colBasis   = s.axis.isRow ? mainBasis  : crossBasis;
                 float rowGap = resolveDimension(s.fl.gap.row,    rowBasis, ctx).value_or(0.f);
@@ -503,7 +513,7 @@ namespace UltraCanvas {
 
                     // Flex base size & hypothetical main size.
                     it.baseSize = computeBaseSize(*it.el, it.fi, s.axis,
-                                                  mainBasis, crossBasis, ctx);
+                                                  mainBasis, crossMeasureBound, ctx);
                     it.hypoMain = std::clamp(it.baseSize, it.minMain, it.maxMain);
                 }
 
@@ -540,7 +550,8 @@ namespace UltraCanvas {
                         // Measure with main=Exact, cross=Unbounded (or AtMost cross-available).
                         MeasureConstraints mc = s.axis.constraints(
                             ConstraintMode::Exact, std::max(0.f, it->mainSize),
-                            s.crossKnown ? ConstraintMode::AtMost : ConstraintMode::Unbounded,
+                            std::isfinite(s.availableCross) ? ConstraintMode::AtMost
+                                                            : ConstraintMode::Unbounded,
                             s.availableCross);
                         it->el->Measure(mc, ctx);
                         float meas = s.axis.isRow

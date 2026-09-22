@@ -9,6 +9,14 @@
 #include "UltraCanvasCSVImport.h"
 
 #include <cstdlib>
+
+#if defined(_WIN32)
+  #include <windows.h>
+#elif defined(__APPLE__)
+  #include <mach-o/dyld.h>
+#else
+  #include <unistd.h>
+#endif
 #include <map>
 
 namespace UltraFIBU {
@@ -123,11 +131,67 @@ bool ReadDataFile(const std::string& pfad, std::map<std::string, size_t>& outCol
 
 } // namespace
 
+// The directory the running program lives in.
+//
+// Deliberately implemented here rather than through
+// `UltraCanvas::GetExecutableDir()`: that one is compiled into the core
+// library, and this engine is built without it on purpose so the test suite
+// and the CLI run on a headless machine with no pango and no vips. Twenty
+// lines of platform code is the price of that, and it is paid once.
+std::string AusfuehrbarVerzeichnis() {
+#if defined(_WIN32)
+    wchar_t pfad[MAX_PATH];
+    const DWORD n = GetModuleFileNameW(nullptr, pfad, MAX_PATH);
+    if (n == 0 || n >= MAX_PATH) return std::string();
+    std::string schmal;
+    for (DWORD i = 0; i < n; ++i)
+        schmal.push_back(pfad[i] < 128 ? static_cast<char>(pfad[i]) : '?');
+    const size_t schnitt = schmal.find_last_of("\\/");
+    return schnitt == std::string::npos ? std::string() : schmal.substr(0, schnitt);
+#elif defined(__APPLE__)
+    char pfad[4096];
+    uint32_t groesse = sizeof(pfad);
+    if (_NSGetExecutablePath(pfad, &groesse) != 0) return std::string();
+    const std::string voll(pfad);
+    const size_t schnitt = voll.find_last_of('/');
+    return schnitt == std::string::npos ? std::string() : voll.substr(0, schnitt);
+#else
+    char pfad[4096];
+    const ssize_t n = ::readlink("/proc/self/exe", pfad, sizeof(pfad) - 1);
+    if (n <= 0) return std::string();
+    pfad[n] = '\0';
+    const std::string voll(pfad);
+    const size_t schnitt = voll.find_last_of('/');
+    return schnitt == std::string::npos ? std::string() : voll.substr(0, schnitt);
+#endif
+}
+
 std::string FindeDatenDatei(const std::string& dateiname) {
     if (const char* override = std::getenv("ULTRAFIBU_DATA_DIR")) {
         const std::string candidate = JoinPath(override, dateiname);
         if (FileExists(candidate)) return candidate;
     }
+
+    // **Relative to the program, before relative to the working directory.**
+    // A packaged application is started from a menu, a file manager or a
+    // desktop shortcut, and its working directory is then the user's home or
+    // `/` - nowhere near its own data. Searching only the working directory is
+    // why an installed UltraFIBU would report "kein Kontenrahmen gefunden"
+    // while the same binary worked when run from the build tree.
+    const std::string exe = AusfuehrbarVerzeichnis();
+    if (!exe.empty()) {
+        static const char* const kNebenDerExe[] = {
+            "data", "../share/UltraFIBU/data", "../data",
+            "../Apps/UltraFIBU/data", nullptr
+        };
+        for (const char* const* dir = kNebenDerExe; *dir; ++dir) {
+            const std::string candidate = JoinPath(JoinPath(exe, *dir), dateiname);
+            if (FileExists(candidate)) return candidate;
+        }
+    }
+
+    // Then the working directory, which is what a developer running from the
+    // build or source tree relies on.
     static const char* const kCandidates[] = {
         "data/",
         "Apps/UltraFIBU/data/",

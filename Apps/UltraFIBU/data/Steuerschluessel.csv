@@ -15,6 +15,29 @@
 #
 # DATEV-BU-Schluessel sind ebenfalls leer, bis sie am echten Buchungsstapel
 # der Kanzlei geprueft sind.
+#
+# REVERSE CHARGE GIBT ES DREIMAL, UND ES SIND DREI VERSCHIEDENE REGELN:
+#   EURC      Sonstige Leistung an ein EU-Unternehmen. Leistungsort ist das
+#             Land des Kunden (§ 3a Abs. 2 UStG), also 0 % auf der deutschen
+#             Rechnung; der Kunde versteuert sie bei sich. Gehoert zusaetzlich
+#             in die Zusammenfassende Meldung.
+#   RC13b     EINGANG: wir bekommen eine Leistung und schulden die deutsche
+#             Steuer selbst (§ 13b UStG). Deshalb 19 % - sie wird angemeldet
+#             und, wenn wir vorsteuerabzugsberechtigt sind, gleich wieder
+#             abgezogen.
+#   RC13bAus  AUSGANG: wir erbringen eine Leistung, bei der der deutsche
+#             Empfaenger die Steuer schuldet (z. B. Bauleistung). 0 % auf
+#             unserer Rechnung, mit dem Hinweis darauf.
+# Ein Schluessel fuer alle drei Faelle hat genau den Fehler erzeugt, gegen den
+# PruefeSteuerlicheStimmigkeit jetzt schuetzt: eine Rechnung, die 19 % ausweist
+# UND schreibt, der Empfaenger schulde die Steuer.
+#
+# Die Kennzahl-Felder dieser drei Schluessel sind ABSICHTLICH LEER, wie bei
+# jedem Schluessel, dessen Kennzahl nicht belegt geprueft ist. In Frage kommen
+# nach dem Vordruckmuster 21 (§ 18b), 46 und 47 (§ 13b) - als Kandidaten
+# notiert, nicht als Eintrag, denn hier kann keiner davon an einer amtlichen
+# Quelle geprueft werden. Solange sie leer sind, verweigert die Voranmeldung
+# die Datei und nennt den Schluessel, statt zu wenig zu erklaeren.
 schluessel;bezeichnung;art;satz_promille;land;vorsteuer;datev_bu;kz_bemessung;kz_steuer;konto_umsatz;konto_steuer;gueltig_von;gueltig_bis
 USt19;Umsatzsteuer 19 %;inland;190;DE;0;;81;;8400;1776;2026-01-01;
 USt7;Umsatzsteuer 7 %;inland;70;DE;0;;86;;8300;1771;2026-01-01;
@@ -24,7 +47,9 @@ VSt7;Vorsteuer 7 %;inland;70;DE;1;;;66;;1571;2026-01-01;
 IGL;Innergemeinschaftliche Lieferung (steuerfrei, § 4 Nr. 1b UStG);ig-lieferung;0;;0;;41;;8125;;2026-01-01;
 IGE19;Innergemeinschaftlicher Erwerb 19 %;ig-erwerb;190;;0;;;;;1789;2026-01-01;
 IGE7;Innergemeinschaftlicher Erwerb 7 %;ig-erwerb;70;;0;;;;;1789;2026-01-01;
-RC13b;Leistungsempfaenger schuldet die Steuer (§ 13b UStG);reverse-charge-13b;190;;0;;;;;1787;2026-01-01;
+EURC;Sonstige Leistung an EU-Unternehmer, Reverse Charge (§ 3a Abs. 2 UStG);eu-sonstige-leistung;0;;0;;;;8336;;2026-01-01;
+RC13b;Leistungsempfaenger schuldet die Steuer, Eingang (§ 13b UStG);reverse-charge-13b;190;;1;;;;;1787;2026-01-01;
+RC13bAus;Leistungsempfaenger schuldet die Steuer, Ausgang (§ 13b UStG);reverse-charge-13b;0;DE;0;;;;8337;;2026-01-01;
 Ausfuhr;Ausfuhrlieferung Drittland (steuerfrei, § 4 Nr. 1a UStG);drittland;0;;0;;;;8120;;2026-01-01;
 Drittland0;Drittland-Eingangsbeleg, keine abziehbare Vorsteuer;drittland;0;;1;;;;;;2026-01-01;
 NichtStb;Nicht steuerbarer Umsatz (Leistungsort nicht im Inland);nicht-steuerbar;0;;0;;45;;;;2026-01-01;

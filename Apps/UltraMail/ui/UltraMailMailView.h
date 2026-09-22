@@ -93,6 +93,12 @@ public:
     std::function<void(const Attachment&)> onSaveAttachment;
     std::function<void(const SourceMessage&, const std::string& selfName,
                        const std::string& selfAddr)> onReply;
+    std::function<void(const SourceMessage&, const std::string& selfName,
+                       const std::string& selfAddr)> onForward;
+    std::function<void(const MessageEnvelope&)> onDelete;
+    std::function<void(const MessageEnvelope&)> onJunk;
+    std::function<void(const MessageEnvelope&)> onMarkUnread;
+    std::function<void(const std::string& subject, const std::string& raw)> onViewSource;
 
     // The folder tree selected a folder under a different account: the app
     // updates the selected account (and the account bar) without re-showing the

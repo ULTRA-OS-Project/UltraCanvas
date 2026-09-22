@@ -29,6 +29,7 @@
 #include "NetworkMonitor/NetworkMonitorStore.h"
 
 #include "UltraCanvasApplication.h"
+#include "UltraCanvasConfig.h"
 #include "UltraCanvasDebug.h"
 #include "UltraCanvasModalDialog.h"
 #include "UltraCanvasUtils.h"
@@ -48,10 +49,12 @@
 #include <X11/Xlib.h>
 #endif
 
-// Defined by the build from the first line of Docs/UltraNetMonitor/CHANGELOG.md
-// - see cmake/UltraCanvasVersion.cmake. The fallback only applies outside CMake.
+// ULTRANETMONITOR_VERSION comes from the build alone: CMake reads the first line
+// of Docs/UltraNetMonitor/CHANGELOG.md (cmake/UltraCanvasVersion.cmake) and passes it
+// as a compile definition. No fallback here, so a build that lost it
+// fails instead of reporting a wrong number.
 #ifndef ULTRANETMONITOR_VERSION
-#define ULTRANETMONITOR_VERSION "0.0-dev"
+#error "ULTRANETMONITOR_VERSION is not defined: build through CMake, which reads it from Docs/UltraNetMonitor/CHANGELOG.md"
 #endif
 
 using namespace UltraCanvas;
@@ -690,6 +693,12 @@ int main(int argc, char* argv[]) {
             debugOutput << "Failed to initialize the UltraCanvas application" << std::endl;
             return EXIT_FAILURE;
         }
+        // One icon, everywhere the app is drawn: the window and the taskbar
+        // entry that follows it read this file; the .ico embedded in the
+        // Windows binary and the desktop entry's theme icon are rendered from
+        // the same media/appicon/UltraNetMonitor.svg (see CMakeLists.txt).
+        app.SetDefaultWindowIcon(
+            NormalizePath(GetResourcesDir() + "media/appicon/UltraNetMonitor.png"));
         UltraCanvasDialogManager::SetUseNativeDialogs(true);
 
         UltraNetMonitor::UltraNetMonitorWindow window;

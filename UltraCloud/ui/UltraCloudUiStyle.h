@@ -3,14 +3,15 @@
 // the ULTRA OS application look (white surfaces, hairline borders, one
 // filled accent button per dialog). Values only — every element is styled
 // through its own SetStyle API.
-// Version: 0.1.0
-// Last Modified: 2026-09-09
+// Version: 0.2.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
 #include "UltraCanvasButton.h"
 #include "UltraCanvasColumnsTreeView.h"
 #include "UltraCanvasCommonTypes.h"
+#include "UltraCanvasFormLayout.h"
 #include "UltraCanvasLabel.h"
 #include "UltraCanvasTextInput.h"
 
@@ -79,10 +80,13 @@ inline void StyleInput(const std::shared_ptr<UltraCanvas::UltraCanvasTextInput>&
     in->SetStyle(s);
 }
 
-// A form caption: secondary colour, vertically centred in a control-high row.
+// A form caption: secondary colour, one line, and no width of its own - the
+// form grid's `auto` column measures the text and is as wide as the widest
+// caption in it. A hard-coded width is what cuts a caption off in the first
+// language whose word for it is longer.
 inline std::shared_ptr<UltraCanvas::UltraCanvasLabel>
-MakeCaption(const std::string& id, const std::string& text, float width) {
-    auto label = UltraCanvas::CreateLabel(id, 0, 0, width, kControlHeight, text);
+MakeCaption(const std::string& id, const std::string& text) {
+    auto label = UltraCanvas::CreateFormCaption(id, text);
     label->SetFontSize(kFontSize);
     label->SetTextColor(kTextSecondary);
     return label;
