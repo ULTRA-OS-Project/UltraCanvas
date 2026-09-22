@@ -1,3 +1,42 @@
+#### 2026-09-22 *0.20.0*
+- **Der Kontenrahmen laesst sich jetzt aus einem DATEV-Export einlesen**
+  (`ultrafibu konten-import <datei> <EXTF.csv>`, Format-Kategorie 20
+  "Kontenbeschriftungen"). Damit kommen Nummern und Bezeichnungen von der
+  Kanzlei statt aus einer geratenen Liste -- einschliesslich der
+  mandantenspezifischen Konten, die in keinem Standard-SKR stehen
+  (3106, 3109, 4110, 4760, 4955, 8195, 8200 im echten Stapel).
+  Schreiben erst mit `--uebernehmen`.
+  - **Der Merge ist der eigentliche Punkt, nicht das Lesen.**
+    `Store::SaveKonto` matcht auf die Kontonummer und aktualisiert dann
+    *jede* Spalte. Ein Import von Bezeichnungen haette also jeden
+    Automatik-Steuerschluessel mit einem leeren Wert ueberschrieben und die
+    Steueraufteilung aus 0.19.0 stillschweigend wieder abgeschaltet.
+    `FuegeKontenZusammen()` uebernimmt bei bekannten Konten deshalb nur die
+    Bezeichnung und laesst `typ`, `steuerschluessel`, `eurZeile`,
+    `bwaPosition` und `bilanzPosition` stehen. Ein Mutationstest (Datei-Konto
+    direkt durchgereicht) schlaegt vier Pruefungen.
+  - **Unveraenderte Bezeichnungen werden nicht geschrieben.** Dieselbe Datei
+    zweimal einzulesen beruehrt nichts; im Round-Trip-Test wurden von 75
+    gelesenen Konten genau 2 geschrieben.
+  - **Nur die deutsche Beschriftung.** DATEV haelt je Konto mehrere Sprachen;
+    eine Zeile mit anderer Sprach-ID wird uebergangen und gemeldet, sonst
+    haenge der gespeicherte Name von der Zeilenreihenfolge ab.
+  - **Neue Konten werden ueber die Nummer klassifiziert, je Kontenrahmen.**
+    Dieselbe Ziffer bedeutet in SKR03 und SKR04 Verschiedenes -- 8xxx ist in
+    SKR03 Ertrag, in SKR04 sind es 4xxx. Sagt die Ziffer nichts, wird nichts
+    behauptet. `steuerschluessel` bleibt immer leer: das Format enthaelt
+    keinen, und ein Schluessel hier wuerde eine Steueraufteilung ausloesen.
+  - **Der Import liest die Spalten aus der Spaltenzeile der Datei**, wie der
+    Buchungsstapel-Import. Die ungeprueft ausgelieferte Definition in
+    `data/DATEV-Sachkontenbeschriftungen-v700.csv` spielt dafuer keine Rolle.
+  - Kategorie 21 wird hier abgewiesen, mit Verweis auf `datev-import`.
+  - Die Kopfzeilen-Positionen fuer Berater- und Mandantennummer waren zuerst
+    falsch (7/8/13 statt 10/11/16) und fielen erst im Round-Trip gegen eine
+    echte exportierte Datei auf -- nicht beim Lesen des Codes.
+  - `ZerlegeZeilen()` ist aus `LeseBuchungsstapel()` herausgezogen und wird
+    von beiden Importen benutzt, damit die Zeilennummern in Fehlermeldungen
+    gleich gezaehlt werden.
+
 #### 2026-09-21 *0.19.0*
 - **DATEV-Automatikkonten werden beim Import ausgewertet.** Die haeufigste
   Erloeszeile eines echten Buchungsstapels traegt ueberhaupt keinen

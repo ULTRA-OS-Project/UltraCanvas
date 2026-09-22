@@ -2594,6 +2594,153 @@ static void TestDatevImport() {
     std::remove("import-kategorie.csv");
 }
 
+// ===== KONTENBESCHRIFTUNGEN (Format-Kategorie 20) =====
+//
+// The chart of accounts as a DATEV export delivers it. The format is three
+// columns wide and carries no tax key, which is why the interesting risk is
+// not reading it but merging it: `SaveKonto` writes every column, so an import
+// of *names* could wipe the Automatikkonten and switch the tax split back off
+// with nothing to show for it.
+static void TestKontenbeschriftungen() {
+    std::printf("Kontenbeschriftungen (DATEV-Kategorie 20)\n");
+
+    // --- the number range tells the type, and differently per chart ---
+    {
+        KontoTyp typ = KontoTyp::Aufwand;
+        Check(KontoTypAusNummer("8400", "SKR03", typ) && typ == KontoTyp::Ertrag,
+              "in SKR03 an 8xxx account is revenue");
+        Check(KontoTypAusNummer("4400", "SKR04", typ) && typ == KontoTyp::Ertrag,
+              "in SKR04 revenue is 4xxx - the same digit means different things");
+        Check(KontoTypAusNummer("4100", "SKR03", typ) && typ == KontoTyp::Aufwand,
+              "while 4xxx in SKR03 is expense");
+        Check(KontoTypAusNummer("6000", "SKR04", typ) && typ == KontoTyp::Aufwand,
+              "and expense in SKR04 is 5xxx-7xxx");
+        Check(KontoTypAusNummer("2000", "SKR04", typ) && typ == KontoTyp::Eigenkapital,
+              "equity in SKR04 is 2xxx");
+        Check(!KontoTypAusNummer("9000", "SKR04", typ),
+              "a digit the table does not cover says nothing rather than guessing");
+        Check(!KontoTypAusNummer("8400", "EIGEN", typ),
+              "and an unknown chart classifies nothing at all");
+    }
+
+    const std::string kopf20 =
+        "\"EXTF\";700;20;\"Kontenbeschriftungen\";3;20260101000000000;;\"UF\";"
+        "\"test\";;1000;10000;20260101;4;20260101;20261231;\"Konten 2026\";"
+        "\"EUR\";;;;;;;;0\r\n";
+    const std::string spalten20 =
+        "\"Konto\";\"Kontenbeschriftung\";\"Sprach-ID\"\r\n";
+
+    // --- reading ---
+    {
+        const std::string datei = kopf20 + spalten20 +
+            "8400;\"Erlöse 19 % USt\";\"de-DE\"\r\n"
+            "8200;\"Erlöse\";\"de-DE\"\r\n"
+            "8400;\"Revenue 19%\";\"en-GB\"\r\n";
+        SchreibeDatei("konten20.csv", Cp1252(datei));
+        DatevDefinition leer;
+        const KontenImportBericht b = LeseKontenbeschriftungen("konten20.csv", leer);
+        Check(b.ok, "a Kategorie-20 file reads");
+        CheckInt(b.kategorie, 20, "and reports its category");
+        CheckText(b.beraternummer, "1000", "Beraternummer from the preamble");
+        CheckText(b.mandantennummer, "10000", "and Mandantennummer - the same "
+                  "header positions the Buchungsstapel import uses");
+        CheckText(b.bezeichnung, "Konten 2026", "and the stack's own name");
+        CheckInt(b.uebernommen, 2, "the two German rows become accounts");
+        if (b.konten.size() >= 2) {
+            CheckText(b.konten[0].nummer, "8400", "with its number");
+            CheckText(b.konten[0].bezeichnung, "Erlöse 19 % USt", "and its label");
+            Check(b.konten[0].steuerschluessel.empty(),
+                  "and no tax key - this format does not carry one, and a key "
+                  "here would drive a tax split");
+        }
+        bool nenntSprache = false;
+        for (const std::string& w : b.warnungen)
+            if (w.find("de-DE") != std::string::npos) nenntSprache = true;
+        Check(nenntSprache,
+              "the English row is skipped and said out loud - taking it would "
+              "make the stored name depend on row order");
+        std::remove("konten20.csv");
+    }
+
+    // --- a Buchungsstapel is not a chart of accounts ---
+    {
+        const std::string falsch =
+            "\"EXTF\";700;21;\"Buchungsstapel\";13;20260101000000000;;\"UF\";"
+            "\"test\";;1000;10000;20260101;4;20260101;20261231;\"X\"\r\n"
+            "\"Konto\"\r\n8400\r\n";
+        SchreibeDatei("konten21.csv", Cp1252(falsch));
+        DatevDefinition leer;
+        const KontenImportBericht b = LeseKontenbeschriftungen("konten21.csv", leer);
+        Check(!b.ok, "a Kategorie-21 file is refused here");
+        Check(b.fehler.find("21") != std::string::npos &&
+                  b.fehler.find("datev-import") != std::string::npos,
+              "and the message names the category and the command that reads it");
+        std::remove("konten21.csv");
+    }
+
+    // --- THE MERGE: an import of names must not wipe a tax key ---
+    {
+        std::vector<Konto> vorhanden;
+        {
+            Konto k;
+            k.nummer = "8400"; k.bezeichnung = "Erlöse 19 % USt";
+            k.typ = KontoTyp::Ertrag; k.steuerschluessel = "USt19";
+            k.eurZeile = "14"; k.bwaPosition = "Umsatzerloese";
+            vorhanden.push_back(k);
+        }
+        std::vector<Konto> ausDatei;
+        {
+            Konto k; k.nummer = "8400"; k.bezeichnung = "Erlöse 19 % USt (neu)";
+            ausDatei.push_back(k);
+            Konto n; n.nummer = "8200"; n.bezeichnung = "Erlöse";
+            ausDatei.push_back(n);
+        }
+        int neu = 0, geaendert = 0;
+        const std::vector<Konto> zuSpeichern =
+            FuegeKontenZusammen(vorhanden, ausDatei, "SKR03", neu, geaendert);
+        CheckInt(neu, 1, "the account the chart does not have is new");
+        CheckInt(geaendert, 1, "and the renamed one counts as changed");
+        CheckInt(static_cast<int>(zuSpeichern.size()), 2, "so two rows are written");
+
+        const Konto* achtvier = nullptr;
+        const Konto* achtzwei = nullptr;
+        for (const Konto& k : zuSpeichern) {
+            if (k.nummer == "8400") achtvier = &k;
+            if (k.nummer == "8200") achtzwei = &k;
+        }
+        Check(achtvier != nullptr, "8400 is among them");
+        if (achtvier != nullptr) {
+            CheckText(achtvier->bezeichnung, "Erlöse 19 % USt (neu)",
+                      "with the new label");
+            CheckText(achtvier->steuerschluessel, "USt19",
+                      "and its tax key INTACT - SaveKonto writes every column, "
+                      "so losing it here would silently switch the Automatik "
+                      "split back off");
+            Check(achtvier->typ == KontoTyp::Ertrag, "the type is kept as well");
+            CheckText(achtvier->eurZeile, "14", "and so is the EUeR line");
+            CheckText(achtvier->bwaPosition, "Umsatzerloese", "and the BWA position");
+        }
+        if (achtzwei != nullptr) {
+            Check(achtzwei->typ == KontoTyp::Ertrag,
+                  "a new 8xxx account in SKR03 is classified as revenue");
+            Check(achtzwei->steuerschluessel.empty(),
+                  "but gets no tax key - the file has none and inventing one "
+                  "would post tax nobody checked");
+            CheckText(achtzwei->skr, "SKR03", "and is stamped with the chart");
+        }
+
+        // An account whose label already matches produces no write at all.
+        int n2 = 0, g2 = 0;
+        std::vector<Konto> gleich;
+        { Konto k; k.nummer = "8400"; k.bezeichnung = "Erlöse 19 % USt"; gleich.push_back(k); }
+        const std::vector<Konto> nichts =
+            FuegeKontenZusammen(vorhanden, gleich, "SKR03", n2, g2);
+        Check(nichts.empty() && n2 == 0 && g2 == 0,
+              "an unchanged label is not rewritten - re-importing the same file "
+              "touches nothing");
+    }
+}
+
 // ===== THE IMPORT AS IT REACHES THE LEDGER =====
 //
 // Reading a file correctly is half of it. The other half is what the store
@@ -5694,6 +5841,7 @@ int main() {
     TestRechnungPdf();
     TestDatev();
     TestDatevImport();
+    TestKontenbeschriftungen();
     TestDatevImportInDenBestand();
     TestDatevRundlauf();
     TestBankLesen();
