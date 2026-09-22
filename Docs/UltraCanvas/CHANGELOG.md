@@ -1,3 +1,43 @@
+#### 2026-09-22 *0.9.24*
+- **The demo leaked its whole widget tree, and every callback in it.** A
+  widget owns its callbacks, so a callback that captures a `shared_ptr` to
+  that widget — or to any container above it — closes a cycle that neither
+  end ever escapes: the refcount never reaches zero, and the subtree, its
+  images and its render buffers stay allocated for the life of the process.
+  53 callbacks across 25 DemoApp files did exactly that (`[btn, ...]` on
+  `btn->onClick`, and six that captured the container they had just been
+  added to). Every one now captures the back-reference raw
+  (`[btn = btn.get(), ...]`), which is valid for precisely as long as the
+  callback can run, because the thing holding the callback is the thing
+  being pointed at. Forward captures — a popup the lambda keeps alive, a
+  sibling label, the `make_shared` state a toggle button counts in — are
+  untouched: those are ownership, not a cycle.
+  - The DemoApp is the framework's worked example, so the pattern was being
+    copied outwards; `UltraCanvasDemo.h` now states the rule where the next
+    author will read it.
+  - `BuildScheduleSummary` (PERT examples) took its chart by
+    `const shared_ptr&` and had one caller, a callback the chart owns. It
+    takes a raw pointer now, for the same reason.
+  - One capture in the table demo was of a container the lambda never used,
+    in a body that is entirely commented out. It captures nothing now.
+- **Matter attribute writes read their numbers locale-independently.**
+  `EncodeTextValue` turned the facade's text into a TLV value with
+  `std::stoll` / `std::stod`, and `std::stod` consults `LC_NUMERIC` — which
+  the Linux backend sets from the environment for XIM. On a comma-decimal
+  desktop (de_DE, fr_FR, ru_RU, pt_BR) `"1.5"` stopped at the point and went
+  to the device as **1**, and `"-0.25"` as **-0**: a silently different value
+  than the caller asked to write, which is the failure mode the function's
+  own comment says cannot happen. Reproduced under `de_DE.UTF-8` before the
+  change and verified after it. Integers now go through `std::from_chars`
+  and doubles through `ParseFloatClassic`, per the rule in `AGENTS.md`.
+  - Both of the old calls also **threw** on input the character guards let
+    through — `std::stoll("--")`, or a number too large for `int64_t` —
+    unwinding out of the Matter SDK's write path. Neither replacement
+    throws; text that is not a number after all falls through to the string
+    encoding, where the device's schema check reports it as a failed write.
+  - The float parse now has to consume the whole string, so `"1e"` is a
+    string rather than the 1 that `std::stod` silently made of it.
+
 #### 2026-09-22 *0.9.23*
 - **Seven ownership defects found by auditing every raw `new` in the tree.**
   A census of the 45 hand-written allocations outside vendored code (the rest

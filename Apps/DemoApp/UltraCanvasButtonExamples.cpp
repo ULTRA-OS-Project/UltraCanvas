@@ -339,7 +339,7 @@ namespace UltraCanvas {
             vertSplitBtn->onClick = [statusLabel]() {
                 statusLabel->SetText("File action clicked\nOpen file dialog");
             };
-            vertSplitBtn->onSecondaryClick = [mainButtonsContainer, vertSplitMenu]() {
+            vertSplitBtn->onSecondaryClick = [mainButtonsContainer = mainButtonsContainer.get(), vertSplitMenu]() {
                 auto ev = UltraCanvasApplication::GetInstance()->GetCurrentEvent();
                 mainButtonsContainer->GetWindow()->AddChild(vertSplitMenu);
                 vertSplitMenu->OpenMenu(Point2Di(ev.pointerWindow.x, ev.pointerWindow.y), *mainButtonsContainer->GetWindow(), PopupElementSettings());
@@ -425,7 +425,7 @@ namespace UltraCanvas {
             // Toggle Example
             auto toggleBtn = CreateButton("ToggleButton", 20, yOffset, 120, 35, "Toggle: OFF");
             auto toggleState = std::make_shared<bool>(false);
-            toggleBtn->onClick = [toggleBtn, toggleState, statusLabel]() {
+            toggleBtn->onClick = [toggleBtn = toggleBtn.get(), toggleState, statusLabel]() {
                 *toggleState = !*toggleState;
                 toggleBtn->SetText(*toggleState ? "Toggle: ON" : "Toggle: OFF");
                 toggleBtn->SetColors(
@@ -446,7 +446,7 @@ namespace UltraCanvas {
             counterExampleBtn->SetSplitEnabled(true);
             counterExampleBtn->SetSplitRatio(0);
             counterExampleBtn->SetSplitSecondaryText("Reset");
-            counterExampleBtn->onClick = [counterExampleBtn, clickCount, statusLabel]() {
+            counterExampleBtn->onClick = [counterExampleBtn = counterExampleBtn.get(), clickCount, statusLabel]() {
                 (*clickCount)++;
                 std::ostringstream text;
                 text << "Clicks: " << *clickCount;
@@ -456,7 +456,7 @@ namespace UltraCanvas {
                 status << "Button clicked " << *clickCount << " times\nSecondary button resets counter";
                 statusLabel->SetText(status.str());
             };
-            counterExampleBtn->onSecondaryClick = [counterExampleBtn, clickCount, statusLabel]() {
+            counterExampleBtn->onSecondaryClick = [counterExampleBtn = counterExampleBtn.get(), clickCount, statusLabel]() {
                 *clickCount = 0;
                 counterExampleBtn->SetText("Clicks: 0");
                 statusLabel->SetText("Counter reset to 0");

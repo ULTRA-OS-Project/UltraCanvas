@@ -118,7 +118,7 @@ namespace UltraCanvas {
         nlStatus->SetBackgroundColor(Color(240, 240, 240));
         nlStatus->SetPadding(3);
         container->AddChild(nlStatus);
-        nl->onStepChanged = [nlStatus, nl](int i) {
+        nl->onStepChanged = [nlStatus, nl = nl.get()](int i) {
             StepItem* s = nl->GetStep(i);
             nlStatus->SetText("Jumped to step " + std::to_string(i + 1) +
                               (s ? ": " + s->title : ""));

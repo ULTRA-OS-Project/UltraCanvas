@@ -84,7 +84,7 @@ namespace UltraCanvas {
             }
             fullscreenWindow->AddChild(pageLabel);
 
-            fullscreenXAR->onPageChanged = [pageLabel, fullscreenXAR](int page) {
+            fullscreenXAR->onPageChanged = [pageLabel, fullscreenXAR = fullscreenXAR.get()](int page) {
                 pageLabel->SetText("Page " + std::to_string(page + 1) + "/" +
                                    std::to_string(fullscreenXAR->GetPageCount()));
             };

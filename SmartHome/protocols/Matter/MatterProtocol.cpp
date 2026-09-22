@@ -5,6 +5,8 @@
 // Author: UltraCanvas Framework
 
 #include "MatterProtocol.h"
+#include "UltraCanvasTextUtils.h"   // ParseFloatClassic - locale-independent, non-throwing
+#include <charconv>
 #include <chrono>
 #include <sstream>
 #include <iomanip>
@@ -416,14 +418,34 @@ public:
     // device checks the type against its schema and refuses a mismatch,
     // which is reported as a failed write — it cannot silently take a wrong
     // one.
+    //
+    // Read with from_chars and ParseFloatClassic rather than std::stoll /
+    // std::stod. Those two consult LC_NUMERIC — and the Linux backend calls
+    // setlocale(LC_ALL, "") for XIM — so on a comma-decimal desktop
+    // std::stod("1.5") stops at the point and yields 1, silently writing a
+    // different value than the caller asked for. They also throw on input the
+    // character guards below still let through - std::stoll("--"), or a
+    // number too large for int64_t - which would unwind out of the SDK's
+    // write path. Neither replacement throws: text that is not a number
+    // after all falls through to the string encoding, where the device's
+    // schema check reports it as a failed write. The float parse has to
+    // consume the whole string too, so "1e" goes as text rather than as the
+    // 1 that std::stod quietly made of it.
     template <typename Encoder>
     static CHIP_ERROR EncodeTextValue(Encoder&& encode, const std::string& text) {
         if (text == "true" || text == "false") return encode(text == "true");
         if (!text.empty() && text.find_first_not_of("-0123456789") == std::string::npos) {
-            return encode(static_cast<int64_t>(std::stoll(text)));
+            int64_t whole = 0;
+            const char* const end = text.data() + text.size();
+            const auto parsed = std::from_chars(text.data(), end, whole);
+            if (parsed.ec == std::errc{} && parsed.ptr == end) return encode(whole);
         }
         if (!text.empty() && text.find_first_not_of("-0123456789.eE") == std::string::npos) {
-            return encode(std::stod(text));
+            double number = 0;
+            const char* const end = text.data() + text.size();
+            if (UltraCanvas::ParseFloatClassic(text.data(), end, number) == end) {
+                return encode(number);
+            }
         }
         return encode(chip::CharSpan(text.data(), text.size()));
     }
