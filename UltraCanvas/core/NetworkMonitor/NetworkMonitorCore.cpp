@@ -1,14 +1,15 @@
 // core/NetworkMonitor/NetworkMonitorCore.cpp
 // The platform-independent half of NetworkMonitor: the public functions,
 // the option filters (applied here so every backend filters identically),
-// the per-process roll-up, the display names, and the null backend for
-// platforms that have none yet.
+// the names a snapshot's peers are known by, the per-process roll-up, the
+// display names, and the null backend for platforms that have none yet.
 //
-// Version: 0.1.0
-// Last Modified: 2026-09-19
+// Version: 0.4.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitor.h"
 #include "NetworkMonitor/NetworkMonitorBackend.h"
+#include "NetworkMonitor/NetworkMonitorNames.h"
 
 #include <algorithm>
 #include <map>
@@ -77,11 +78,16 @@ std::string NetworkConnection::RemoteEndpoint() const {
 // ===== PUBLIC FUNCTIONS =====
 
 NetworkMonitorCapabilities NetworkMonitor_GetCapabilities() {
-    if (INetworkMonitorBackend* backend = Backend()) return backend->Capabilities();
-    NetworkMonitorCapabilities none;
-    none.backendName = "none";
-    none.notes.push_back("No NetworkMonitor backend for this platform in this build.");
-    return none;
+    NetworkMonitorCapabilities caps;
+    if (INetworkMonitorBackend* backend = Backend()) {
+        caps = backend->Capabilities();
+    } else {
+        caps.backendName = "none";
+        caps.notes.push_back("No NetworkMonitor backend for this platform in this build.");
+    }
+    // Names come from the registered sources, not the backend.
+    caps.dnsWithProcess = NetworkMonitor_AnySourceReportsProcess();
+    return caps;
 }
 
 bool NetworkMonitor_IsAvailable() {
@@ -104,6 +110,29 @@ NetworkMonitorResult NetworkMonitor_ListConnections(std::vector<NetworkConnectio
     for (auto& connection : all) {
         if (PassesFilters(connection, options)) out.push_back(std::move(connection));
     }
+    if (options.resolveNames) {
+        // One table lookup per distinct peer; the sources hear about the
+        // peers nobody has named yet, so reverse DNS can look them up.
+        std::map<std::string, NameRecord> named;
+        std::set<std::string> unnamed;
+        for (auto& connection : out) {
+            if (IsWildcard(connection.remoteAddress) || connection.IsListening() ||
+                connection.state == NetworkConnectionState::Unconnected) {
+                continue;
+            }
+            auto found = named.find(connection.remoteAddress);
+            if (found == named.end()) {
+                NameRecord record;
+                if (!NetworkMonitor_LookupName(connection.remoteAddress, record)) {
+                    unnamed.insert(connection.remoteAddress);
+                }
+                found = named.emplace(connection.remoteAddress, std::move(record)).first;
+            }
+            connection.remoteName = found->second.name;
+            connection.nameSource = found->second.source;
+        }
+        for (const auto& address : unnamed) NetworkMonitor_NoteUnnamedAddress(address);
+    }
     return NetworkMonitorResult::Ok();
 }
 
@@ -112,6 +141,7 @@ std::vector<ProcessTrafficSummary> NetworkMonitor_SummarizeByProcess(
     struct Group {
         ProcessTrafficSummary summary;
         std::set<std::string> remotes;
+        std::set<std::string> names;
         bool allSentKnown = true;
         bool allReceivedKnown = true;
         uint64_t sent = 0;
@@ -139,6 +169,7 @@ std::vector<ProcessTrafficSummary> NetworkMonitor_SummarizeByProcess(
             ++group.summary.listeningCount;
         }
         if (!IsWildcard(connection.remoteAddress)) group.remotes.insert(connection.remoteAddress);
+        if (!connection.remoteName.empty()) group.names.insert(connection.remoteName);
         if (connection.bytesSent) group.sent += *connection.bytesSent; else group.allSentKnown = false;
         if (connection.bytesReceived) group.received += *connection.bytesReceived; else group.allReceivedKnown = false;
     }
@@ -147,6 +178,7 @@ std::vector<ProcessTrafficSummary> NetworkMonitor_SummarizeByProcess(
     result.reserve(groups.size());
     for (auto& [pid, group] : groups) {
         group.summary.remoteAddresses.assign(group.remotes.begin(), group.remotes.end());
+        group.summary.remoteNames.assign(group.names.begin(), group.names.end());
         if (group.allSentKnown) group.summary.bytesSent = group.sent;
         if (group.allReceivedKnown) group.summary.bytesReceived = group.received;
         result.push_back(std::move(group.summary));
@@ -182,6 +214,30 @@ const char* NetworkMonitor_StateName(NetworkConnectionState state) {
         case NetworkConnectionState::Closed:      return "CLOSED";
         case NetworkConnectionState::Unconnected: return "UNCONN";
         default:                                  return "UNKNOWN";
+    }
+}
+
+const char* NetworkMonitor_NameSourceName(NameSource source) {
+    switch (source) {
+        case NameSource::DnsProxy:      return "DNS proxy";
+        case NameSource::EtwDnsClient:  return "DNS client events";
+        case NameSource::PacketCapture: return "packet capture";
+        case NameSource::Sni:           return "TLS SNI";
+        case NameSource::ReverseDns:    return "reverse DNS";
+        case NameSource::Inferred:      return "inferred";
+        default:                        return "none";
+    }
+}
+
+bool NetworkMonitor_NameIsObserved(NameSource source) {
+    switch (source) {
+        case NameSource::DnsProxy:
+        case NameSource::EtwDnsClient:
+        case NameSource::PacketCapture:
+        case NameSource::Sni:
+            return true;
+        default:
+            return false;
     }
 }
 

@@ -2,8 +2,8 @@
 // Container component with scrollbars and child element management.
 // Children storage lives in CSSLayout::Element (inherited via UltraCanvasUIElement);
 // this class provides typed UI accessors over that storage.
-// Version: 4.2.0
-// Last Modified: 2026-08-09
+// Version: 4.3.0
+// Last Modified: 2026-09-22
 // Author: UltraCanvas Framework
 
 #pragma once
@@ -24,13 +24,33 @@ namespace UltraCanvas {
 
 // ===== CONTAINER STYLES =====
     struct ContainerStyle {
-        // Scrolling behavior
-        bool autoShowScrollbars = true;
-        // Per-axis refinement of autoShowScrollbars. Lets a pane whose content
-        // reflows to its width (e.g. book text) opt out of the horizontal bar:
-        // when the vertical scrollbar appears it narrows the viewport by its
-        // track size, which would otherwise fabricate a track-sized horizontal
-        // overflow of content that was laid out against the full width.
+        // Scrolling behavior.
+        //
+        // OFF by default: a container arranges its children, and most of them
+        // are laid out to fit - a form row, a button bar, a toolbar strip, a
+        // card, a pane split by the layout. For those a scrollbar is never the
+        // answer to anything. It only ever appeared because the content came
+        // out a pixel or two larger than the box, and then it made things
+        // worse, because the bar it raises narrows the viewport by its own
+        // track size and so fabricates an overflow on the other axis too: a
+        // pair of bars, drawn over the very row they were meant to be laying
+        // out. That went wrong often enough to be written down three times in
+        // this tree - the window's own style, the eBook reader's nested
+        // blocks, and the form grid - and a dozen call sites turned it off by
+        // hand before it could happen to them.
+        //
+        // A container that really is a viewport onto taller content says so:
+        // CreateScrollableContainer(), or `autoShowScrollbars = true` (plus
+        // the per-axis flags below). That is a handful of places, and each of
+        // them is a deliberate scroll view rather than an accident of two
+        // pixels.
+        bool autoShowScrollbars = false;
+        // Per-axis refinement, consulted only once autoShowScrollbars is on.
+        // Lets a pane whose content reflows to its width (e.g. book text) opt
+        // out of the horizontal bar: when the vertical scrollbar appears it
+        // narrows the viewport by its track size, which would otherwise
+        // fabricate a track-sized horizontal overflow of content that was laid
+        // out against the full width.
         bool autoShowVerticalScrollbar = true;
         bool autoShowHorizontalScrollbar = true;
         bool forceShowVerticalScrollbar = false;

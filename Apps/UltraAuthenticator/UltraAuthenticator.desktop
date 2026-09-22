@@ -1,0 +1,32 @@
+[Desktop Entry]
+# The freedesktop shortcut for UltraAuthenticator: the application menu entry,
+# and — the reason it matters beyond that — a name every desktop-aware program
+# can resolve the icon by. `Icon=UltraAuthenticator` is an icon *name*, looked
+# up through the installed icon themes, and the project's install rules put
+# media/appicon/UltraAuthenticator.png into share/icons/hicolor/256x256/apps
+# and media/appicon/UltraAuthenticator.svg into
+# share/icons/hicolor/scalable/apps so the lookup lands on them. That is the
+# route UltraFiler takes for an application (UltraCanvasNativeFileIcons.cpp ->
+# FindDesktopIconFile). The window and taskbar icon come from the same PNG by
+# a different route — main.cpp hands it to SetDefaultWindowIcon.
+#
+# No MimeType= and no argument on Exec: the vault is opened from the app, and
+# an otpauth:// URI is pasted into the Add-account dialog rather than handed
+# over by another program — claiming the scheme would make this the system's
+# handler for secrets it has no way to vet.
+#
+# Installed to share/applications by the project's install rules; run
+# `update-desktop-database` afterwards for the entry to be picked up.
+Type=Application
+Version=1.5
+Name=UltraAuthenticator
+GenericName=Two-Factor Authenticator
+Comment=TOTP and HOTP one-time codes, kept in a password-encrypted vault
+Exec=UltraAuthenticator
+TryExec=UltraAuthenticator
+Icon=UltraAuthenticator
+Terminal=false
+StartupNotify=true
+StartupWMClass=UltraAuthenticator
+Categories=Utility;Security;
+Keywords=2fa;totp;hotp;otp;authenticator;one-time;password;code;mfa;security;
