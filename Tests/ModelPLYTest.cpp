@@ -480,13 +480,17 @@ static void TestAgainstTheOtherExports(const std::string& mediaRoot) {
     Check(std::fabs(bounds.Min.x + bounds.Max.x) < bounds.Size().x * 0.02,
           "the PLY is symmetric about X, so its mirror modifier was applied");
 
-    // The 3DS reader's own suite pins that file's world bounds; the PLY is a
-    // denser export of the same aircraft and must agree with them closely
-    // without being identical - it is not the same mesh.
+    // PLY declares no up axis, and this reader takes the format as Y-up (the
+    // convention of the tools that write it most), so the sample is stored in
+    // that frame: length along Z, height along Y, like the OBJ and unlike the
+    // Z-up 3DS export of the same aircraft. It used to hold Blender's Z-up
+    // coordinates, which stood it on its nose in every viewer that believed
+    // the reader - the aircraft is the same mesh either way, so the file was
+    // turned rather than the convention.
     CheckNear(bounds.Min.x, -0.9732, 1e-3, "and it agrees with the 3DS export's X extent");
     CheckNear(bounds.Max.x, 0.9732, 1e-3, "on both sides");
-    CheckNear(bounds.Size().y, 6.1406, 0.05, "its length within a percent of the 3DS");
-    CheckNear(bounds.Size().z, 4.1947, 0.05, "and its height");
+    CheckNear(bounds.Size().z, 6.1406, 0.05, "its length, down Z as a Y-up file has it");
+    CheckNear(bounds.Size().y, 4.1947, 0.05, "and its height, up Y");
 
     // But it is four times the OBJ's face count: a different, finer export.
     Check(ply->TotalFaceCount() == 32440 && ply->TotalFaceCount() == 4 * 8110,
