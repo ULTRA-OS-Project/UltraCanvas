@@ -1,6 +1,7 @@
 // Apps/UltraSocial/ui/UltraSocialAccountWizard.cpp
-// Version: 0.2.0 - the form is a UltraCanvasFormLayout grid: captions size
-//                  themselves to the wording the chosen network uses
+// Version: 0.3.0 - the form is a UltraCanvasFormLayout grid: captions size
+//                  themselves to the wording the chosen network uses, and a
+//                  field the network has no use for leaves the form
 // Last Modified: 2026-09-22
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraSocialAccountWizard.h"
@@ -23,8 +24,13 @@ namespace UltraSocial {
 
 namespace {
 
-// Per-network form wording. The three fields keep their positions; only
-// labels, placeholders and the hint change with the dropdown.
+// Per-network form wording. The fields keep their positions; only labels,
+// placeholders and the hint change with the dropdown.
+//
+// An EMPTY label means this network has no such field, and the row leaves the
+// form: no network needs all four, and a row captioned "(not used)" over an
+// input that does nothing is a question the user has to answer ("do I fill
+// this in?") where there should be no question at all.
 struct NetworkForm {
     SocialNetwork network;
     const char* dropdownText;
@@ -45,23 +51,23 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "you in through your browser; no keys needed. Advanced: paste an "
       "access token instead to skip the browser.",
       "Instance", "mastodon.social",
-      "(not used)", "",
+      "", "",
       "Access token", "optional — empty opens the browser",
-      "(not used)", "" },
+      "", "" },
     { SocialNetwork::Bluesky, "Bluesky",
       "Create an app password under Settings → App Passwords on "
       "Bluesky, then sign in with it here — never your main password.",
       "Server (PDS)", "bsky.social (default)",
       "Handle / e-mail", "erika.bsky.social",
       "App password", "xxxx-xxxx-xxxx-xxxx",
-      "(not used)", "" },
+      "", "" },
     { SocialNetwork::Telegram, "Telegram channel",
       "Create a bot with @BotFather, add it to your channel as an "
       "administrator, and paste its token here.",
       "Server", "(default)",
       "Channel", "@mychannel",
       "Bot token", "123456:ABC-DEF…",
-      "(not used)", "" },
+      "", "" },
     { SocialNetwork::Reddit, "Reddit",
       "Register an 'installed app' at reddit.com/prefs/apps with redirect "
       "http://127.0.0.1:17995/callback, paste its client id, then sign in "
@@ -69,15 +75,15 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "your profile).",
       "Server", "(default)",
       "Subreddit", "optional, e.g. r/test",
-      "(not used)", "",
+      "", "",
       "Client ID", "from reddit.com/prefs/apps" },
     { SocialNetwork::X, "X (Twitter)",
       "Register an app in the X developer portal (OAuth 2.0 public client, "
       "redirect http://127.0.0.1:17996/callback), paste its client id, then "
       "sign in through your browser. Mind the free tier's monthly write cap.",
       "Server", "(default)",
-      "(not used)", "",
-      "(not used)", "",
+      "", "",
+      "", "",
       "Client ID", "from the X developer portal" },
     { SocialNetwork::LinkedIn, "LinkedIn",
       "Register an app at linkedin.com/developers with the 'Sign In with "
@@ -85,7 +91,7 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "http://127.0.0.1:17997/callback, paste its client id and secret, "
       "then sign in through your browser.",
       "Server", "(default)",
-      "(not used)", "",
+      "", "",
       "Client secret", "from your LinkedIn app",
       "Client ID", "from your LinkedIn app" },
     { SocialNetwork::Facebook, "Facebook Page",
@@ -96,7 +102,7 @@ constexpr std::array<NetworkForm, 7> kForms{{
       "Server", "(default)",
       "Page ID", "e.g. 103245...",
       "Page access token", "EAAB…",
-      "(not used)", "" },
+      "", "" },
 }};
 
 } // namespace
@@ -165,18 +171,32 @@ void AccountWizard::Show(UltraCanvasWindowBase* parent,
     auto clientId = CreateTextInput("swClientId", 0, 0, 0, 28);
     Row clientIdRow = addRow("swClientId", kForms[0].clientIdLabel, clientId);
 
-    auto applyForm = [hint, serverRow, identifierRow, secretRow,
+    // A row this network does not use (empty caption) leaves the grid
+    // entirely - hiding both cells is display:none, so no gap is left behind -
+    // and its input is emptied on the way out. That last part is not tidiness:
+    // a Bluesky app password typed before switching to Reddit would otherwise
+    // still be in the box at submit time, now invisible, and would be sent as
+    // Reddit's secret.
+    auto applyRow = [](const Row& row, const char* caption, const char* placeholder) {
+        const bool used = caption && *caption;
+        row.label->SetVisible(used);
+        row.input->SetVisible(used);
+        if (!used) {
+            row.input->SetText("");
+            return;
+        }
+        row.label->SetText(caption);
+        row.input->SetPlaceholder(placeholder);
+    };
+
+    auto applyForm = [hint, applyRow, serverRow, identifierRow, secretRow,
                       clientIdRow](int index) {
         const auto& form = kForms[static_cast<std::size_t>(index)];
         hint->SetText(form.hint);
-        serverRow.label->SetText(form.serverLabel);
-        serverRow.input->SetPlaceholder(form.serverPlaceholder);
-        identifierRow.label->SetText(form.identifierLabel);
-        identifierRow.input->SetPlaceholder(form.identifierPlaceholder);
-        secretRow.label->SetText(form.secretLabel);
-        secretRow.input->SetPlaceholder(form.secretPlaceholder);
-        clientIdRow.label->SetText(form.clientIdLabel);
-        clientIdRow.input->SetPlaceholder(form.clientIdPlaceholder);
+        applyRow(serverRow,     form.serverLabel,     form.serverPlaceholder);
+        applyRow(identifierRow, form.identifierLabel, form.identifierPlaceholder);
+        applyRow(secretRow,     form.secretLabel,     form.secretPlaceholder);
+        applyRow(clientIdRow,   form.clientIdLabel,   form.clientIdPlaceholder);
     };
     applyForm(0);
     network->SetSelectedIndex(0, /*runNotifications=*/false);
