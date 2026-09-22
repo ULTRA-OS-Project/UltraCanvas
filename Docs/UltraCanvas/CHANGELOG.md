@@ -21,6 +21,19 @@
   first-run key + vault creation and reopen, profile-prefixed keys, no
   plaintext on disk, wrong / empty passphrase, token sets, the
   "vault without a device key must prompt" case, and the migration.
+- **UltraCloud keeps no secret files of its own any more.** `FileSecretStore`
+  — obfuscated per-account files, XOR against a `cloud.key` beside them — was
+  a third copy of the weak format UltraMail and UltraSocial had left behind,
+  and it is gone: `VaultSecretStore` (in whichever UltraVault the application
+  opened, under `cloud.<accountId>.*`) is the store, `MemorySecretStore` the
+  process-lifetime one for tests and demos, and `MigrateLegacyFileSecrets`
+  carries an old directory into a store once, deleting each file as its
+  secret lands and the key file when none is left. UltraVault is a hard
+  dependency of the module now (`ULTRACLOUD_USE_ULTRAVAULT` stays defined for
+  consumers that test it). The UltraCloud suite covers all three
+  (`Tests/UltraCloud/test_secrets.cpp`). UltraMail 0.10.2 and UltraFiler
+  1.44.1 are the consumers that moved.
+
 #### 2026-09-22 *0.9.20*
 - **A form caption is not something you scroll.** Every row of UltraCloud's
   add-account dialog - the FTP / SFTP login UltraFiler's "+ Drive" opens -

@@ -1467,9 +1467,10 @@ can carry an FTP server as a drive; no share links, and SFTP authenticates
 with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
-Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
-(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
-HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
+application's UltraVault (`VaultSecretStore`; `MemorySecretStore` for tests,
+and `MigrateLegacyFileSecrets` carries the obfuscated files of earlier builds
+across once), HTTP goes through UltraNet. `CloudService` is the app-facing facade;
 `UltraCloudUI` holds the shared add-account and link-picker dialogs.
 Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
 and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;
@@ -63654,8 +63655,8 @@ What already existed and stays where it is:
   CloudService ──────────── AddAccount / List / Upload / CreateShareLink / UploadAndShare
     ├── AccountStore        the account list + default      (UltraDatabase, SQLite)
     ├── ISecretStore        passwords / tokens by accountId
-    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password")
-    │     └── FileSecretStore    obfuscated files (per-app fallback)
+    │     ├── VaultSecretStore   UltraVault ("cloud.<id>.password"), the app's own vault
+    │     └── MemorySecretStore  process-lifetime (tests, demos)
     └── provider registry   RegisterProvider / GetProvider / RegisterBuiltInProviders
           │                 + LoadProviderPlugins() for provider DSOs
           ├── HttpProviderBase                      one HttpFn, Basic / Bearer auth, HTTP → Result
@@ -63732,7 +63733,11 @@ using namespace UltraCloud;
 // Once per process.
 RegisterBuiltInProviders();
 AccountStore accounts;  accounts.Open("myapp-cloud", dataDir + "/cloud.db");
-FileSecretStore secrets(dataDir + "/cloud-vault");   // or VaultSecretStore
+// The secrets go into the application's own vault (UltraVault::DeviceKeyVault,
+// Docs/Modules/UltraVault/README.md), opened before the accounts are touched.
+UltraVault::DeviceKeyVault vault(dataDir + "/vault", {"myapp.vault", "myapp.myapp."});
+vault.TryAutoUnlock();
+VaultSecretStore secrets;                            // "cloud.<accountId>.*" in that vault
 CloudService cloud(accounts, secrets);
 
 // Set up an account (the first one becomes the default).
@@ -63801,7 +63806,7 @@ providers.
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
 | `UltraCloudGoogleDrive.h` | `GoogleDriveProvider` (+ `ResolveId`), `GoogleDriveChildQuery` |
 | `UltraCloudAccounts.h` | `AccountStore` (Open, Upsert, Remove, Get, List, SetDefault, GetDefault), `MakeAccountId` |
-| `UltraCloudSecrets.h` | `ISecretStore`, `FileSecretStore`, `VaultSecretStore` (with UltraVault) |
+| `UltraCloudSecrets.h` | `ISecretStore`, `VaultSecretStore`, `MemorySecretStore`, `MigrateLegacyFileSecrets` (carries the obfuscated per-account files of earlier builds into a store once) |
 | `UltraCloudService.h` | `CloudService` (AddAccount, SignInAccount, RemoveAccount, List, Upload, CreateShareLink, UploadAndShare, and the change verbs Delete / Rename / MakeDirectory) |
 | `UltraCloudWebDav.h` | `WebDavProvider` and the helpers `EncodePath`, `JoinUrl`, `NormalizePath`, `ParseMultistatus`, `PublicFolderLink` |
 | `UltraCloudNextcloud.h` | `NextcloudProvider`, `NextcloudDavUrl`, `BuildOcsShareForm`, `ParseOcsShareResponse` |
@@ -66290,8 +66295,12 @@ UltraVault had open and opens this vault, so a process works with one
 - **UltraAI** — `ProviderConfig::apiKeyVaultRef` resolves through
   `UltraVault::Get` when built with `ULTRAAI_USE_ULTRAVAULT` (on by default
   in-tree); see `Docs/Modules/UltraAI/README.md`.
-- **UltraCloud** — `VaultSecretStore` keeps cloud account tokens here, falling
-  back to a per-app obfuscated file store when UltraVault is not built.
+- **UltraCloud** — `VaultSecretStore` keeps cloud account credentials in
+  whichever vault the application opened, under `cloud.<accountId>.*`; there
+  is no file store of its own any more.
+- **UltraFiler** — its own `DeviceKeyVault` (`ultrafiler.vault` /
+  `files.ultrafiler.`) under the config directory, holding the remote-drive
+  credentials through UltraCloud's `VaultSecretStore`.
 - **UltraMail** and **EmailCleaner** — `UltraMail::CredentialVault`
   (`Apps/UltraMail/engine/UltraMailCredentialVault.h`) is `DeviceKeyVault`
   with the profile `ultramail.vault` / `mail.ultramail.`; mail passwords and

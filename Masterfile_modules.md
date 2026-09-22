@@ -1295,9 +1295,10 @@ can carry an FTP server as a drive; no share links, and SFTP authenticates
 with a password only), and an in-memory demo provider. Providers
 can also ship as plug-in libraries (`UltraCloud_PluginInit`,
 `LoadProviderPlugins`).
-Accounts persist on UltraDatabase (`AccountStore`), secrets go to UltraVault
-(`VaultSecretStore`) or the per-app obfuscated fallback (`FileSecretStore`),
-HTTP goes through UltraNet. `CloudService` is the app-facing facade;
+Accounts persist on UltraDatabase (`AccountStore`), secrets go to the
+application's UltraVault (`VaultSecretStore`; `MemorySecretStore` for tests,
+and `MigrateLegacyFileSecrets` carries the obfuscated files of earlier builds
+across once), HTTP goes through UltraNet. `CloudService` is the app-facing facade;
 `UltraCloudUI` holds the shared add-account and link-picker dialogs.
 Sources under `UltraCloud/{include,core,providers,ui}`, targets `UltraCloud`
 and `UltraCloudUI`, header `<UltraCloud/UltraCloud.h>`, `namespace UltraCloud`;

@@ -162,8 +162,12 @@ UltraVault had open and opens this vault, so a process works with one
 - **UltraAI** — `ProviderConfig::apiKeyVaultRef` resolves through
   `UltraVault::Get` when built with `ULTRAAI_USE_ULTRAVAULT` (on by default
   in-tree); see `Docs/Modules/UltraAI/README.md`.
-- **UltraCloud** — `VaultSecretStore` keeps cloud account tokens here, falling
-  back to a per-app obfuscated file store when UltraVault is not built.
+- **UltraCloud** — `VaultSecretStore` keeps cloud account credentials in
+  whichever vault the application opened, under `cloud.<accountId>.*`; there
+  is no file store of its own any more.
+- **UltraFiler** — its own `DeviceKeyVault` (`ultrafiler.vault` /
+  `files.ultrafiler.`) under the config directory, holding the remote-drive
+  credentials through UltraCloud's `VaultSecretStore`.
 - **UltraMail** and **EmailCleaner** — `UltraMail::CredentialVault`
   (`Apps/UltraMail/engine/UltraMailCredentialVault.h`) is `DeviceKeyVault`
   with the profile `ultramail.vault` / `mail.ultramail.`; mail passwords and
