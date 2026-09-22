@@ -23,6 +23,16 @@
   `otpauth://` URI is pasted into the Add-account dialog, and making this the
   system's handler for secrets it cannot vet is not something a desktop file
   should do quietly.
+- **The app has a README** (`Apps/UltraAuthenticator/README.md`), which every
+  other application under `Apps/` had and this one did not. It maps the
+  directory, says where the vault lives and what protects it, walks the two
+  ways in (camera, typed key) and the three ways out (reveal, back up,
+  restore), and — because the investigation (§3.6) asks for it in so many
+  words — states plainly what the app does *not* defend against: a live
+  same-user attacker, X11 screen and input capture, relay phishing, and a
+  forgotten master password. The two real gaps are named rather than left to
+  be discovered: there is no auto-lock, and `--version` prints a literal
+  instead of the changelog's number.
 
 #### 2026-08-31 *0.1.0*
 - **UltraAuthenticator keeps its own changelog from here.** Everything up to
