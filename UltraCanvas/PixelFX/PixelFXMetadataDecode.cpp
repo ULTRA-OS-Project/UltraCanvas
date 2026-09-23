@@ -1,13 +1,15 @@
 // PixelFXMetadataDecode.cpp
-// IPTC-IIM and XMP decoding for PixelFX::Header::ReadMetadata(). See
-// PixelFX/PixelFXMetadataDecode.h.
-// Version: 1.0.0
+// IPTC-IIM and XMP decoding, and EXIF value formatting, for
+// PixelFX::Header::ReadMetadata(). See PixelFX/PixelFXMetadataDecode.h.
+// Version: 1.1.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 
 #include "PixelFX/PixelFXMetadataDecode.h"
 
 #include <cctype>
+#include <cmath>
+#include <cstdio>
 #include <cstdint>
 #include <cstring>
 #include <map>
@@ -403,6 +405,322 @@ std::vector<DecodedTag> DecodeXMP(const void* data, std::size_t length) {
     for (auto* desc = rdf->FirstChildElement("rdf:Description"); desc;
          desc = desc->NextSiblingElement("rdf:Description")) {
         DecodeXmpStruct(desc, "", out, 0);
+    }
+    return out.Take();
+}
+
+// ===== EXIF =====
+
+namespace {
+
+    // "5.60" -> "5.6", "50.0" -> "50", "-0.67" stays.
+    std::string FormatNumber(double v, int maxDecimals) {
+        char buf[64];
+        std::snprintf(buf, sizeof(buf), "%.*f", maxDecimals, v);
+        std::string s(buf);
+        if (s.find('.') != std::string::npos) {
+            while (!s.empty() && s.back() == '0') s.pop_back();
+            if (!s.empty() && s.back() == '.') s.pop_back();
+        }
+        if (s == "-0") s = "0";
+        return s;
+    }
+
+    // "28/5" -> 5.6; "51/1 30/1 0/1" -> {51, 30, 0}. A zero denominator or a
+    // token that is not a rational makes the whole parse fail.
+    bool ParseRationals(const std::string& text, std::vector<double>& out) {
+        out.clear();
+        std::size_t pos = 0;
+        while (pos < text.size()) {
+            while (pos < text.size() && text[pos] == ' ') ++pos;
+            if (pos >= text.size()) break;
+            std::size_t end = text.find(' ', pos);
+            if (end == std::string::npos) end = text.size();
+            const std::string token = text.substr(pos, end - pos);
+            pos = end;
+            const std::size_t slash = token.find('/');
+            if (slash == std::string::npos || slash == 0 || slash + 1 >= token.size()) return false;
+            char* stop = nullptr;
+            const double n = std::strtod(token.c_str(), &stop);
+            if (stop != token.c_str() + slash) return false;
+            const double d = std::strtod(token.c_str() + slash + 1, &stop);
+            if (*stop != '\0' || d == 0.0) return false;
+            out.push_back(n / d);
+        }
+        return !out.empty();
+    }
+
+    bool ParseRational(const std::string& text, double& v) {
+        std::vector<double> values;
+        if (!ParseRationals(text, values) || values.size() != 1) return false;
+        v = values[0];
+        return true;
+    }
+
+    bool IsInteger(const std::string& s) {
+        if (s.empty()) return false;
+        std::size_t i = (s[0] == '-') ? 1 : 0;
+        if (i >= s.size()) return false;
+        for (; i < s.size(); ++i) {
+            if (!std::isdigit(static_cast<unsigned char>(s[i]))) return false;
+        }
+        return true;
+    }
+
+    bool LooksNumeric(const std::string& s) {
+        bool digit = false;
+        for (char c : s) {
+            if (std::isdigit(static_cast<unsigned char>(c))) { digit = true; continue; }
+            if (c != ' ' && c != '.' && c != ',' && c != '-' && c != '+' && c != '/') return false;
+        }
+        return digit;
+    }
+
+    // 1/250 s, 0.5 s, 2 s, 30 s.
+    std::string FormatExposure(double seconds) {
+        if (seconds <= 0) return "";
+        if (seconds < 0.5) {
+            const double inverse = 1.0 / seconds;
+            if (std::fabs(inverse - std::round(inverse)) < 0.05 * inverse || inverse >= 10)
+                return "1/" + FormatNumber(std::round(inverse), 0) + " s";
+        }
+        return FormatNumber(seconds, seconds < 10 ? 1 : 0) + " s";
+    }
+
+    std::string FormatFNumber(double f) { return f > 0 ? "f/" + FormatNumber(f, 1) : ""; }
+
+    std::string FormatEv(double ev) {
+        std::string s = FormatNumber(ev, 2);
+        if (ev > 0.005) s = "+" + s;
+        return s + " EV";
+    }
+
+    // d° m′ s″ H (decimal°). Handles minutes written as a decimal with zero
+    // seconds, which some cameras do, by rebuilding from the total.
+    std::string FormatCoordinate(const std::vector<double>& dms, const std::string& ref) {
+        if (dms.empty()) return "";
+        double total = dms[0] + (dms.size() > 1 ? dms[1] / 60.0 : 0) + (dms.size() > 2 ? dms[2] / 3600.0 : 0);
+        if (!std::isfinite(total) || total < 0 || total > 180) return "";   // not a coordinate
+        const int deg = static_cast<int>(total);
+        const double minutesFull = (total - deg) * 60.0;
+        int minutes = static_cast<int>(minutesFull);
+        double seconds = (minutesFull - minutes) * 60.0;
+        if (seconds >= 59.995) { seconds = 0; if (++minutes == 60) minutes = 0; }
+        std::string out = std::to_string(deg) + "\xC2\xB0 " + std::to_string(minutes) + "\xE2\x80\xB2 " +
+                          FormatNumber(seconds, 2) + "\xE2\x80\xB3";
+        std::string hemisphere = Trim(ref);
+        if (!hemisphere.empty()) {
+            hemisphere = hemisphere.substr(0, 1);
+            out += " " + hemisphere;
+            if (hemisphere == "S" || hemisphere == "W") total = -total;
+        }
+        return out + " (" + FormatNumber(total, 6) + "\xC2\xB0)";
+    }
+
+    const char* OrientationText(int code) {
+        switch (code) {
+            case 1: return "Normal";
+            case 2: return "Mirrored horizontally";
+            case 3: return "Rotated 180\xC2\xB0";
+            case 4: return "Mirrored vertically";
+            case 5: return "Mirrored horizontally, rotated 90\xC2\xB0 counter-clockwise";
+            case 6: return "Rotated 90\xC2\xB0 clockwise";
+            case 7: return "Mirrored horizontally, rotated 90\xC2\xB0 clockwise";
+            case 8: return "Rotated 90\xC2\xB0 counter-clockwise";
+            default: return nullptr;
+        }
+    }
+
+    // libexif's reading of a coded value, when it is the meaning rather than
+    // a number or its complaint about an unknown code.
+    bool IsMeaningfulReading(const std::string& reading) {
+        if (reading.empty() || LooksNumeric(reading)) return false;
+        bool letter = false;
+        for (char c : reading) letter = letter || std::isalpha(static_cast<unsigned char>(c));
+        if (!letter) return false;   // "?", "-", punctuation: says nothing
+        return reading.find("Internal error") == std::string::npos &&
+               reading.find("unknown") == std::string::npos &&
+               reading.find("Unknown value") == std::string::npos;
+    }
+
+    std::string StripSuffix(std::string s, char c) {
+        if (!s.empty() && s.back() == c) s.pop_back();
+        return s;
+    }
+
+    struct ExifValue { std::string value, reading; };
+
+} // namespace
+
+void SplitExifString(const std::string& text, std::string& value, std::string& reading) {
+    value = text;
+    reading.clear();
+    if (text.size() < 8 || text.back() != ')' || text.rfind(" bytes)") != text.size() - 7) return;
+
+    // The parenthesis that opens the annotation, counting depth so that
+    // parentheses inside the value ("(c) ACME") are not mistaken for it.
+    std::size_t open = std::string::npos;
+    int depth = 0;
+    for (std::size_t i = text.size(); i-- > 0;) {
+        if (text[i] == ')') { ++depth; continue; }
+        if (text[i] != '(') continue;
+        if (--depth == 0) { open = i; break; }
+    }
+    if (open == std::string::npos) return;
+
+    // The annotation ends in ", <Type>, <N> components, <M> bytes"; what is in
+    // front of those three is the reading, commas and all ("51, 30,  0").
+    std::string annotation = text.substr(open + 1, text.size() - open - 2);
+    for (int k = 0; k < 3; ++k) {
+        const std::size_t comma = annotation.rfind(", ");
+        if (comma == std::string::npos) { annotation.clear(); break; }
+        annotation.erase(comma);
+    }
+    value = Trim(text.substr(0, open));
+    reading = Trim(annotation);
+}
+
+std::vector<DecodedTag> HumanizeExif(const std::vector<ExifField>& fields) {
+    // Index by "<ifd>:<name>" so a value can consult the field that
+    // qualifies it (GPSLatitudeRef, ResolutionUnit, ...).
+    std::map<std::string, ExifValue> byKey;
+    for (const auto& f : fields) {
+        ExifValue v;
+        SplitExifString(f.text, v.value, v.reading);
+        byKey[std::to_string(f.ifd) + ":" + f.name] = v;
+    }
+    auto lookup = [&](int ifd, const char* name) -> const ExifValue* {
+        auto it = byKey.find(std::to_string(ifd) + ":" + name);
+        return it == byKey.end() ? nullptr : &it->second;
+    };
+
+    TagList out;
+    for (const auto& f : fields) {
+        const ExifValue& ev = byKey[std::to_string(f.ifd) + ":" + f.name];
+        const std::string& name = f.name;
+        const std::string& raw = ev.value;
+        const std::string& reading = ev.reading;
+        std::string label = f.ifd == 1 ? "Thumbnail " + name : name;
+        std::string value;
+        double num = 0;
+        std::vector<double> nums;
+
+        // Folded into the value they qualify, or file structure, not content.
+        if (name == "GPSLatitudeRef" || name == "GPSLongitudeRef" || name == "GPSAltitudeRef" ||
+            name == "GPSImgDirectionRef" || name == "GPSDestBearingRef" || name == "GPSSpeedRef" ||
+            name == "GPSTrackRef" || name == "ResolutionUnit" || name == "FocalPlaneResolutionUnit" ||
+            name == "JPEGInterchangeFormat" || name == "JPEGInterchangeFormatLength" ||
+            name == "StripOffsets" || name == "StripByteCounts" || name == "RowsPerStrip") {
+            continue;
+        }
+
+        if (name == "XResolution" || name == "YResolution" ||
+            name == "FocalPlaneXResolution" || name == "FocalPlaneYResolution") {
+            if (!ParseRational(raw, num) || num <= 0) continue;   // 0/1: not set
+            const bool focalPlane = name.rfind("FocalPlane", 0) == 0;
+            const ExifValue* unit = lookup(f.ifd, focalPlane ? "FocalPlaneResolutionUnit" : "ResolutionUnit");
+            const std::string u = unit ? unit->value : "2";   // EXIF's default is inches
+            value = FormatNumber(num, 2) + (u == "3" ? " dots/cm" : u == "1" ? "" : " dpi");
+        } else if (name == "ExposureTime") {
+            if (ParseRational(raw, num)) value = FormatExposure(num);
+        } else if (name == "ShutterSpeedValue") {
+            if (ParseRational(raw, num)) value = FormatExposure(std::pow(2.0, -num));
+        } else if (name == "FNumber") {
+            if (ParseRational(raw, num)) value = FormatFNumber(num);
+        } else if (name == "ApertureValue" || name == "MaxApertureValue") {
+            if (ParseRational(raw, num)) value = FormatFNumber(std::pow(2.0, num / 2.0));
+        } else if (name == "ExposureBiasValue" || name == "BrightnessValue") {
+            if (ParseRational(raw, num)) value = FormatEv(num);
+        } else if (name == "FocalLength") {
+            if (ParseRational(raw, num)) value = FormatNumber(num, 1) + " mm";
+        } else if (name == "FocalLengthIn35mmFilm") {
+            if (IsInteger(raw) && raw != "0") value = raw + " mm";
+            else continue;
+        } else if (name == "SubjectDistance") {
+            if (ParseRational(raw, num)) value = num > 0 ? FormatNumber(num, 2) + " m" : "";
+        } else if (name == "DigitalZoomRatio") {
+            if (!ParseRational(raw, num) || num <= 0) continue;   // 0: not used
+            value = FormatNumber(num, 2) + "\xC3\x97";
+        } else if (name == "ISOSpeedRatings" || name == "PhotographicSensitivity") {
+            value = IsInteger(raw) ? "ISO " + raw : raw;
+        } else if (name == "LensSpecification" || name == "LensInfo") {
+            if (ParseRationals(raw, nums) && nums.size() == 4 && nums[0] > 0) {
+                value = FormatNumber(nums[0], 1);
+                if (nums[1] > nums[0]) value += "\xE2\x80\x93" + FormatNumber(nums[1], 1);
+                value += " mm";
+                if (nums[2] > 0) {
+                    value += " " + FormatFNumber(nums[2]);
+                    if (nums[3] > nums[2]) value += "\xE2\x80\x93" + FormatNumber(nums[3], 1);
+                }
+            }
+        } else if (name == "Orientation") {
+            const char* text = IsInteger(raw) && raw.size() < 4 ? OrientationText(std::stoi(raw)) : nullptr;
+            value = text ? text : raw;
+        } else if (name == "GPSLatitude" || name == "GPSLongitude" ||
+                   name == "GPSDestLatitude" || name == "GPSDestLongitude") {
+            const std::string refName = name + "Ref";
+            const ExifValue* ref = lookup(f.ifd, refName.c_str());
+            if (ParseRationals(raw, nums)) value = FormatCoordinate(nums, ref ? ref->value : "");
+        } else if (name == "GPSAltitude") {
+            if (ParseRational(raw, num)) {
+                const ExifValue* ref = lookup(f.ifd, "GPSAltitudeRef");
+                // libvips writes the reference as libexif reads it
+                // ("Sea level" / "Sea level reference"); 1 means below.
+                const bool below = ref && (ref->value == "1" || ref->value.find("reference") != std::string::npos);
+                value = FormatNumber(num, 1) + " m" + (below ? " below sea level" : "");
+            }
+        } else if (name == "GPSTimeStamp") {
+            if (ParseRationals(raw, nums) && nums.size() == 3 && nums[0] >= 0 && nums[0] < 24 &&
+                nums[1] >= 0 && nums[1] < 60 && nums[2] >= 0 && nums[2] < 61) {
+                char buf[32];
+                std::snprintf(buf, sizeof(buf), "%02d:%02d:%02d UTC", static_cast<int>(nums[0]),
+                              static_cast<int>(nums[1]), static_cast<int>(std::lround(nums[2])));
+                value = buf;
+            }
+        } else if (name == "GPSImgDirection" || name == "GPSDestBearing" || name == "GPSTrack") {
+            if (ParseRational(raw, num)) {
+                const std::string refName = name + "Ref";
+                const ExifValue* ref = lookup(f.ifd, refName.c_str());
+                value = FormatNumber(num, 1) + "\xC2\xB0";
+                if (ref && ref->value == "T") value += " (true north)";
+                else if (ref && ref->value == "M") value += " (magnetic north)";
+            }
+        } else if (name == "GPSSpeed") {
+            if (ParseRational(raw, num)) {
+                const ExifValue* ref = lookup(f.ifd, "GPSSpeedRef");
+                const std::string r = ref ? ref->value : "K";
+                value = FormatNumber(num, 1) + (r == "M" ? " mph" : r == "N" ? " knots" : " km/h");
+            }
+        } else if (name == "GPSDateStamp") {
+            value = raw;
+            if (value.size() == 10 && value[4] == ':' && value[7] == ':') { value[4] = '-'; value[7] = '-'; }
+        } else if (name.rfind("DateTime", 0) == 0) {
+            // "2026:09:20 14:32:11" -> "2026-09-20 14:32:11"
+            value = raw;
+            if (value.size() >= 10 && value[4] == ':' && value[7] == ':') { value[4] = '-'; value[7] = '-'; }
+            if (value.rfind("0000-00-00", 0) == 0) continue;   // placeholder for "unknown"
+        } else if (name == "ExifVersion" || name == "FlashpixVersion" || name == "InteroperabilityVersion") {
+            const std::size_t space = raw.rfind(' ');
+            value = space != std::string::npos && LooksNumeric(raw.substr(space + 1)) ? raw.substr(space + 1) : raw;
+        }
+
+        if (value.empty()) {
+            // Generic: a coded number shows its meaning; a rational becomes a
+            // number; anything else keeps the value, plus libexif's reading
+            // when that says something the value does not.
+            if (IsInteger(raw) && IsMeaningfulReading(reading)) {
+                value = StripSuffix(reading, '.');
+            } else if (ParseRational(raw, num)) {
+                value = FormatNumber(num, 4);
+            } else if (!reading.empty() && reading != raw && reading.size() <= 40 &&
+                       reading.find('(') == std::string::npos && !LooksNumeric(reading) &&
+                       IsMeaningfulReading(reading)) {
+                value = raw + " (" + reading + ")";
+            } else {
+                value = raw;
+            }
+        }
+        out.Add(label, value);
     }
     return out.Take();
 }

@@ -1104,44 +1104,6 @@ namespace PixelFX {
                 return field.substr(dash + 1);
             }
 
-            // libvips appends the raw EXIF encoding to a tag's value:
-            //   "UltraCanvas Cameras (UltraCanvas Cameras, ASCII, 20 components, 20 bytes)"
-            //   "65535 (Uncalibrated, Short, 1 components, 2 bytes)"
-            // The part in front is the value; the first element of the
-            // annotation is libvips' reading of it, which for a numeric tag
-            // (colour space, resolution unit, flash) is the only part a person
-            // can use. Keep the value, and add that reading when it says
-            // something the value does not.
-            std::string TrimExifAnnotation(const std::string& value) {
-                if (value.size() < 8 || value.back() != ')') return value;
-                if (value.rfind(" bytes)") != value.size() - 7) return value;
-
-                // Walk back to the parenthesis that opens the annotation,
-                // counting depth so parentheses inside the value itself
-                // ("(c) ACME") are not mistaken for it.
-                size_t open = std::string::npos;
-                int depth = 0;
-                for (size_t i = value.size(); i-- > 0;) {
-                    if (value[i] == ')') { ++depth; continue; }
-                    if (value[i] != '(') continue;
-                    if (--depth == 0) { open = i; break; }
-                }
-                if (open == std::string::npos || open == 0) return value;
-
-                std::string head = value.substr(0, open);
-                while (!head.empty() && std::isspace(static_cast<unsigned char>(head.back()))) head.pop_back();
-                if (head.empty()) return value;
-
-                // First element of the annotation, i.e. up to the comma that
-                // introduces the type.
-                const std::string annotation = value.substr(open + 1, value.size() - open - 2);
-                const size_t comma = annotation.find(", ");
-                const std::string reading = comma == std::string::npos ? annotation : annotation.substr(0, comma);
-                const bool worthAdding = !reading.empty() && reading != head && reading.size() <= 40 &&
-                                         reading.find('(') == std::string::npos;
-                return worthAdding ? head + " (" + reading + ")" : head;
-            }
-
             std::string MetadataValueOf(VipsImage* im, const std::string& field) {
                 const GType type = vips_image_get_typeof(im, field.c_str());
                 if (type == VIPS_TYPE_BLOB || type == VIPS_TYPE_ARRAY_DOUBLE ||
@@ -1162,7 +1124,7 @@ namespace PixelFX {
                 const size_t nl = value.find('\n');
                 if (nl != std::string::npos) value = value.substr(0, nl) + " ...";
                 if (value.size() > 512) value = value.substr(0, 509) + "...";
-                return TrimExifAnnotation(value);
+                return value;
             }
 
             int MetadataGroupOrder(const std::string& group) {
@@ -1254,6 +1216,7 @@ namespace PixelFX {
             const size_t imageGroupSize = entries.size();
 
             const std::vector<std::string> fields = GetFields(image);
+            std::vector<ExifField> exifFields;
             const bool hasExifTags = std::any_of(fields.begin(), fields.end(), [](const std::string& f) {
                 return f.rfind("exif-ifd", 0) == 0;
             });
@@ -1262,6 +1225,16 @@ namespace PixelFX {
                 if (IsGeometryField(field)) continue;
                 // The raw EXIF block, once libvips has listed its tags one by one.
                 if (field == "exif-data" && hasExifTags) continue;
+                // EXIF tags are formatted together below: a value can depend
+                // on another field (GPSLatitudeRef, ResolutionUnit).
+                if (field.rfind("exif-ifd", 0) == 0 && field.size() > 10 && field[9] == '-') {
+                    char* text = nullptr;
+                    if (vips_image_get_as_string(im, field.c_str(), &text) == 0 && text) {
+                        exifFields.push_back(ExifField{field[8] - '0', field.substr(10), text});
+                        g_free(text);
+                    }
+                    continue;
+                }
                 // libvips leaves IPTC and XMP as raw blocks; decode them into
                 // one row per tag. A block that does not decode keeps its
                 // "N bytes" row, so it is still visible that one is there.
@@ -1283,6 +1256,10 @@ namespace PixelFX {
                 entry.value = MetadataValueOf(im, field);
                 if (entry.value.empty()) continue;
                 entries.push_back(std::move(entry));
+            }
+
+            for (const auto& tag : HumanizeExif(exifFields)) {
+                entries.push_back(MetadataEntry{"EXIF", tag.first, tag.second});
             }
 
             // The Image group keeps the order it was written in; the file's own

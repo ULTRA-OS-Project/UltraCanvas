@@ -28,11 +28,21 @@ The reader does the tidying a person would otherwise have to do in their head:
 - The **Image** group is written the way a person says it — `Dimensions:
   640 x 480 px`, `Colour space: sRGB`, `Resolution: 72 dpi`, `Read by:
   jpegload` — instead of the dozen raw fields underneath it.
-- EXIF tag names lose their `exif-ifd0-` prefix, and values lose the encoding
-  libvips appends (`UltraCanvas Cameras (UltraCanvas Cameras, ASCII, 20
-  components, 20 bytes)` → `UltraCanvas Cameras`). Where libvips' own reading of
-  a numeric tag says more than the number, it is kept: `65535 (Uncalibrated)`,
-  `2 (Inch)`.
+- EXIF tag names lose their `exif-ifd0-` prefix, and values are written the
+  way a camera app shows them (`Header::HumanizeExif`,
+  `PixelFX/PixelFXMetadataDecode.h`) instead of libvips' raw string
+  (`28/5 (f/5.6, Rational, 1 components, 8 bytes)`):
+  `FNumber: f/5.6`, `ExposureTime: 1/250 s`, `ApertureValue` and
+  `ShutterSpeedValue` converted from APEX, `FocalLength: 50 mm`,
+  `ISOSpeedRatings: ISO 400`, `ExposureBiasValue: -0.67 EV`,
+  `LensSpecification: 24–70 mm f/2.8`, `DateTimeOriginal: 2026-09-20
+  14:32:11`, `Orientation: Rotated 90° clockwise`, and the meaning of every
+  coded number (`MeteringMode: Pattern`, `ColorSpace: Uncalibrated`). GPS
+  comes as `51° 30′ 0″ N (51.5°)`, `35 m`, `13:32:11 UTC`, `123.4° (true
+  north)`. A `…Ref` or unit field is folded into the value it qualifies
+  (`XResolution: 300 dpi`), unset values (a `0/1` resolution, a zoom ratio of
+  0) and file offsets are left out, and the embedded thumbnail's fields are
+  named `Thumbnail …`.
 - The IPTC and XMP blocks, which libvips keeps as raw bytes, are decoded into
   one row per tag (`PixelFX/PixelFXMetadataDecode.h`): IPTC by its IIM names
   (`Keywords`, `By-line`, `City`, `Caption/Abstract`, dates as `2026-09-20`),

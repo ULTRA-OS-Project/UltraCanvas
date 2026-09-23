@@ -5,8 +5,9 @@
 // repeated keywords, IIM dates and times, Latin-1 versus UTF-8 text, and the
 // XMP forms writers use - attributes, language alternatives, bags and
 // sequences, structures, resources - plus input that is truncated or not
-// XML at all, which must give nothing rather than crash.
-// Version: 1.0.0
+// XML at all, which must give nothing rather than crash. And the EXIF value
+// formatting (HumanizeExif), fed the strings libvips 8.15 actually produces.
+// Version: 1.1.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 
@@ -19,6 +20,9 @@
 using PixelFX::Header::DecodedTag;
 using PixelFX::Header::DecodeIPTC;
 using PixelFX::Header::DecodeXMP;
+using PixelFX::Header::ExifField;
+using PixelFX::Header::HumanizeExif;
+using PixelFX::Header::SplitExifString;
 
 namespace {
 
@@ -232,11 +236,138 @@ void TestBrokenXmp() {
     Check(v.size() <= 512 && v.size() > 400 && v.substr(v.size() - 3) == "...", "a very long value is cut to 512 bytes");
 }
 
+
+// ===== EXIF =====
+
+std::vector<ExifField> SampleExif() {
+    return {
+        {0, "Make", "Canon (Canon, ASCII, 6 components, 6 bytes)"},
+        {0, "Orientation", "6 (Right-top, Short, 1 components, 2 bytes)"},
+        {0, "XResolution", "300/1 (300, Rational, 1 components, 8 bytes)"},
+        {0, "YResolution", "300/1 (300, Rational, 1 components, 8 bytes)"},
+        {0, "ResolutionUnit", "2 (Inch, Short, 1 components, 2 bytes)"},
+        {0, "Copyright", "(c) 2026 RISC OS Cloverleaf ((c) 2026 RISC OS Cloverleaf (Photographer) - [None] (Editor), ASCII, 28 components, 28 bytes)"},
+        {1, "XResolution", "0/1 ( 0, Rational, 1 components, 8 bytes)"},
+        {1, "Compression", "6 (JPEG compression, Short, 1 components, 2 bytes)"},
+        {1, "JPEGInterchangeFormat", "1234 (1234, Long, 1 components, 4 bytes)"},
+        {2, "ExposureTime", "1/250 (1/250 sec., Rational, 1 components, 8 bytes)"},
+        {2, "FNumber", "28/5 (f/5.6, Rational, 1 components, 8 bytes)"},
+        {2, "ExposureProgram", "3 (Aperture priority, Short, 1 components, 2 bytes)"},
+        {2, "ISOSpeedRatings", "400 (400, Short, 1 components, 2 bytes)"},
+        {2, "ExifVersion", "Exif Version 2.32 (Exif Version 2.32, Undefined, 4 components, 4 bytes)"},
+        {2, "DateTimeOriginal", "2026:09:20 14:32:11 (2026:09:20 14:32:11, ASCII, 20 components, 20 bytes)"},
+        {2, "ComponentsConfiguration", "Y Cb Cr - (Y Cb Cr -, Undefined, 4 components, 4 bytes)"},
+        {2, "ShutterSpeedValue", "56573/7102 (7.97 EV (1/250 sec.), SRational, 1 components, 8 bytes)"},
+        {2, "ApertureValue", "40761/8200 (4.97 EV (f/5.6), Rational, 1 components, 8 bytes)"},
+        {2, "BrightnessValue", "73/10 (7.30 EV (539.93 cd/m^2), SRational, 1 components, 8 bytes)"},
+        {2, "ExposureBiasValue", "-2/3 (-0.67 EV, SRational, 1 components, 8 bytes)"},
+        {2, "MaxApertureValue", "13166/7763 (1.70 EV (f/1.8), Rational, 1 components, 8 bytes)"},
+        {2, "MeteringMode", "5 (Pattern, Short, 1 components, 2 bytes)"},
+        {2, "Flash", "16 (Flash did not fire, compulsory flash mode., Short, 1 components, 2 bytes)"},
+        {2, "FocalLength", "50/1 (50.0 mm, Rational, 1 components, 8 bytes)"},
+        {2, "FlashpixVersion", "FlashPix Version 1.0 (FlashPix Version 1.0, Undefined, 4 components, 4 bytes)"},
+        {2, "ColorSpace", "65535 (Uncalibrated, Short, 1 components, 2 bytes)"},
+        {2, "DigitalZoomRatio", "0/1 ( 0, Rational, 1 components, 8 bytes)"},
+        {2, "LensSpecification", "50/1 50/1 9/5 9/5 (50, 50, 1.8, 1.8, Rational, 4 components, 32 bytes)"},
+        {2, "LightSource", "99 (Internal error (unknown value 99), Short, 1 components, 2 bytes)"},
+        {3, "GPSLatitudeRef", "N (N, ASCII, 2 components, 2 bytes)"},
+        {3, "GPSLatitude", "51/1 30/1 0/1 (51, 30,  0, Rational, 3 components, 24 bytes)"},
+        {3, "GPSLongitudeRef", "W (W, ASCII, 2 components, 2 bytes)"},
+        {3, "GPSLongitude", "0/1 7/1 12/1 ( 0,  7, 12, Rational, 3 components, 24 bytes)"},
+        {3, "GPSAltitudeRef", "Sea level (Sea level, Byte, 1 components, 1 bytes)"},
+        {3, "GPSAltitude", "35/1 (35, Rational, 1 components, 8 bytes)"},
+        {3, "GPSTimeStamp", "13/1 32/1 11/1 (13:32:11.00, Rational, 3 components, 24 bytes)"},
+        {3, "GPSImgDirectionRef", "T (T, ASCII, 2 components, 2 bytes)"},
+        {3, "GPSImgDirection", "617/5 (123.4, Rational, 1 components, 8 bytes)"},
+        {3, "GPSDateStamp", "2026:09:20 (2026:09:20, ASCII, 11 components, 11 bytes)"},
+    };
+}
+
+void TestExifSplit() {
+    std::cout << "\nlibvips EXIF strings:\n";
+    std::string value, reading;
+    SplitExifString("28/5 (f/5.6, Rational, 1 components, 8 bytes)", value, reading);
+    Check(value == "28/5" && reading == "f/5.6", "value and reading are separated");
+    SplitExifString("51/1 30/1 0/1 (51, 30,  0, Rational, 3 components, 24 bytes)", value, reading);
+    Check(value == "51/1 30/1 0/1" && reading == "51, 30,  0", "a reading with commas stays whole");
+    SplitExifString("(c) ACME ((c) ACME, ASCII, 9 components, 9 bytes)", value, reading);
+    Check(value == "(c) ACME" && reading == "(c) ACME", "parentheses inside the value are not the annotation");
+    SplitExifString("plain", value, reading);
+    Check(value == "plain" && reading.empty(), "a string without annotation is all value");
+}
+
+void TestExifValues() {
+    std::cout << "\nEXIF values for a person:\n";
+    auto tags = HumanizeExif(SampleExif());
+    CheckValue(tags, "Make", "Canon");
+    CheckValue(tags, "Orientation", "Rotated 90\xC2\xB0 clockwise");
+    CheckValue(tags, "XResolution", "300 dpi");
+    CheckValue(tags, "Copyright", "(c) 2026 RISC OS Cloverleaf");
+    CheckValue(tags, "ExposureTime", "1/250 s");
+    CheckValue(tags, "ShutterSpeedValue", "1/250 s");
+    CheckValue(tags, "FNumber", "f/5.6");
+    CheckValue(tags, "ApertureValue", "f/5.6");
+    CheckValue(tags, "MaxApertureValue", "f/1.8");
+    CheckValue(tags, "ExposureBiasValue", "-0.67 EV");
+    CheckValue(tags, "BrightnessValue", "+7.3 EV");
+    CheckValue(tags, "ExposureProgram", "Aperture priority");
+    CheckValue(tags, "MeteringMode", "Pattern");
+    CheckValue(tags, "Flash", "Flash did not fire, compulsory flash mode");
+    CheckValue(tags, "ColorSpace", "Uncalibrated");
+    CheckValue(tags, "ISOSpeedRatings", "ISO 400");
+    CheckValue(tags, "FocalLength", "50 mm");
+    CheckValue(tags, "LensSpecification", "50 mm f/1.8");
+    CheckValue(tags, "ExifVersion", "2.32");
+    CheckValue(tags, "FlashpixVersion", "1.0");
+    CheckValue(tags, "ComponentsConfiguration", "Y Cb Cr -");
+    CheckValue(tags, "DateTimeOriginal", "2026-09-20 14:32:11");
+    CheckValue(tags, "LightSource", "99");
+    CheckValue(tags, "Thumbnail Compression", "JPEG compression");
+}
+
+void TestExifGps() {
+    std::cout << "\nEXIF GPS:\n";
+    auto tags = HumanizeExif(SampleExif());
+    CheckValue(tags, "GPSLatitude", "51\xC2\xB0 30\xE2\x80\xB2 0\xE2\x80\xB3 N (51.5\xC2\xB0)");
+    CheckValue(tags, "GPSLongitude", "0\xC2\xB0 7\xE2\x80\xB2 12\xE2\x80\xB3 W (-0.12\xC2\xB0)");
+    CheckValue(tags, "GPSAltitude", "35 m");
+    CheckValue(tags, "GPSTimeStamp", "13:32:11 UTC");
+    CheckValue(tags, "GPSImgDirection", "123.4\xC2\xB0 (true north)");
+    CheckValue(tags, "GPSDateStamp", "2026-09-20");
+
+    auto below = HumanizeExif({{3, "GPSAltitudeRef", "Sea level reference (Sea level reference, Byte, 1 components, 1 bytes)"},
+                               {3, "GPSAltitude", "12/1 (12, Rational, 1 components, 8 bytes)"}});
+    CheckValue(below, "GPSAltitude", "12 m below sea level");
+
+    // Minutes written as a decimal, seconds zero: 51 deg 30.5 min.
+    auto decimalMinutes = HumanizeExif({{3, "GPSLatitude", "51/1 3050/100 0/1 (51, 30.50,  0, Rational, 3 components, 24 bytes)"}});
+    CheckValue(decimalMinutes, "GPSLatitude", "51\xC2\xB0 30\xE2\x80\xB2 30\xE2\x80\xB3 (51.508333\xC2\xB0)");
+}
+
+void TestExifLeftOut() {
+    std::cout << "\nEXIF rows left out:\n";
+    auto tags = HumanizeExif(SampleExif());
+    CheckValue(tags, "Thumbnail XResolution", "<missing>");
+    CheckValue(tags, "Thumbnail JPEGInterchangeFormat", "<missing>");
+    CheckValue(tags, "DigitalZoomRatio", "<missing>");
+    CheckValue(tags, "ResolutionUnit", "<missing>");
+    CheckValue(tags, "GPSLatitudeRef", "<missing>");
+    CheckValue(tags, "GPSAltitudeRef", "<missing>");
+    CheckValue(tags, "GPSImgDirectionRef", "<missing>");
+
+    auto odd = HumanizeExif({{2, "FNumber", "5/0 (?, Rational, 1 components, 8 bytes)"},
+                             {2, "ExposureTime", "garbage"},
+                             {0, "Orientation", "99999999999 (?, Short, 1 components, 2 bytes)"}});
+    CheckValue(odd, "FNumber", "5/0");
+    CheckValue(odd, "ExposureTime", "garbage");
+    CheckValue(odd, "Orientation", "99999999999");
+}
+
 } // namespace
 
 int main() {
-    std::cout << "PixelFX IPTC / XMP decoding\n";
-    std::cout << "===========================\n";
+    std::cout << "PixelFX IPTC / XMP decoding, EXIF formatting\n";
+    std::cout << "============================================\n";
 
     TestBareIim();
     TestPhotoshopWrapper();
@@ -245,6 +376,10 @@ int main() {
     TestXmp();
     TestXmpStructArrays();
     TestBrokenXmp();
+    TestExifSplit();
+    TestExifValues();
+    TestExifGps();
+    TestExifLeftOut();
 
     std::cout << "\n";
     if (g_failures == 0) {
