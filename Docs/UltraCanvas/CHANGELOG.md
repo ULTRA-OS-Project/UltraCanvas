@@ -37,6 +37,32 @@
     encoding, where the device's schema check reports it as a failed write.
   - The float parse now has to consume the whole string, so `"1e"` is a
     string rather than the 1 that `std::stod` silently made of it.
+- **A mistyped Matter command parameter no longer throws, truncates or
+  divides by zero.** `SendCommand` read its ten numeric parameters with
+  `std::stoi`, and there is not one `catch` in the file: `endpoint=on` threw
+  `std::invalid_argument` straight out of the call, and a long run of digits
+  threw `std::out_of_range`. Where it did not throw it lied — the result was
+  cast into the field's width unchecked, so `level=999` reached the device as
+  **231** — and `colorTemp=0` reached `1000000 / kelvin`, an integer division
+  by zero. This is not behind `ULTRACANVAS_WITH_MATTER`: it is in every
+  build, reachable from `SendGroupCommand` too, which forwards the same
+  parameters to every member of a group.
+  - All ten now go through one `ReadIntParam`, which reads with
+    `std::from_chars` (no throw, no locale) and checks the value against the
+    range its field can actually carry — level and saturation 0..254,
+    brightness and position percent, hue 0..360, endpoint and transition the
+    uint16 range, thermostat temperature the int16 one. A parameter that is
+    absent still leaves the caller's default; a bad one is reported through
+    `ReportError(-302, …)` with the name, the text and the range, and the
+    command is refused rather than half-executed.
+  - `colorTemp` is accepted as 16..1000000 K, which is exactly the range
+    whose mireds conversion (`1000000 / K`) lands in the uint16 field the
+    device is given — and which cannot be zero. `mireds` still wins when
+    both are supplied, and `brightness` still wins over `level`, as before.
+  - **Stricter than `std::stoi` in two places, deliberately**: `" 3"` and
+    `"3x"` were accepted before (it skips leading space and stops at the
+    first non-digit) and are refused now. A device command is not the place
+    to guess what half a number meant.
 
 #### 2026-09-23 *0.9.27*
 - **Seven ownership defects found by auditing every raw `new` in the tree.**
