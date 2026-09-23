@@ -68296,7 +68296,10 @@ had achieved.
 
 **There is no unprotected mode.** The app refuses to start without a crypto
 backend and refuses to open a vault without a password. It never falls back
-to storing seeds in the clear.
+to storing seeds in the clear. When the vault is first created the password
+is asked for twice and the two must match, because a typo in the one password
+that cannot be recovered would otherwise become it; a strength bar under the
+field shows what the vault will rest on while it is still cheap to change.
 
 **In memory.** A seed is read out of the vault, used to compute one code, and
 wiped, inside a single call; it does not sit in memory while the window is
@@ -68312,7 +68315,8 @@ period without input to the window (5 minutes by default, or never; see
 the master password or *Quit*; it cannot be closed or escaped. After three
 wrong passwords each further attempt waits twice as long as the last, up to
 five minutes, and the wait is enforced by the vault code, not by the
-dialog.
+dialog. The same screen, with the same back-off, is what opens the app: a
+mistyped password at launch is retried there, not punished with a restart.
 
 **Showing a code only on request.** *Settings → Hide codes until a card is
 clicked* replaces every code with dots; clicking a card shows its code for

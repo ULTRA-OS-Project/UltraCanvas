@@ -1,6 +1,11 @@
 // Apps/UltraAuthenticator/LockScreenDialog.h
 // The screen shown over the account list once the vault has been locked —
-// by the idle timer, by minimising the window, or by the Lock button.
+// by the idle timer, by minimising the window, or by the Lock button — and
+// the one shown at launch over an existing vault, so that the first unlock
+// and every later one go through the same code and the same back-off. The
+// launch prompt used to be a separate input dialog that quit the app on a
+// wrong password; a typo then cost a restart, while a guesser paid nothing
+// more than that.
 //
 // It cannot be dismissed. There is no Cancel, Escape does nothing, and the
 // window manager's close button is refused: the only ways out are the master
@@ -35,8 +40,11 @@ public:
     LockScreenDialog() = default;
     ~LockScreenDialog() override = default;
 
-    // `reason` is shown to the user: "Locked after 5 minutes without input."
-    void CreateLockScreenDialog(const std::string& reason);
+    // `message` is shown to the user in full, e.g. "Locked after 5 minutes
+    // without input. Enter your master password to show the codes again."
+    // The caller composes it because the same dialog is the launch-time
+    // unlock, where nothing was "locked" and the wording differs.
+    void CreateLockScreenDialog(const std::string& message);
 
     // Returns an error to display, or empty when the vault is open again. The
     // password is wiped by this dialog once the handler returns.

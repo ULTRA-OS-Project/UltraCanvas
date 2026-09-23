@@ -119,6 +119,10 @@ private:
     void NoteActivity();
     void ApplyPreferences(const Preferences& edited);
 
+    // Create() also starts locked when the store is attached to a vault that
+    // has not been opened yet (AccountStore::Attach): that is how the launch
+    // unlock shares this path.
+    //
     // Every dialog goes through this so the window knows when one is up. The
     // auto-lock stands down while a dialog is open: a dialog is not idleness,
     // and a lock screen stacked under a half-filled form would be a mess.
@@ -140,7 +144,7 @@ private:
     bool    timerRunning_ = false;
 
     bool                               locked_ = false;
-    std::string                        lockReason_;
+    std::string                        lockMessage_;   // what the lock screen says
     std::shared_ptr<LockScreenDialog>  lockDialog_;
     int64_t                            lastActivity_ = 0;
     int                                modalDepth_ = 0;

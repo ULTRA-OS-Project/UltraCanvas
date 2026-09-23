@@ -61,6 +61,7 @@ add_executable(UltraAuthenticator
     BackupDialog.cpp
     LockScreenDialog.cpp
     SettingsDialog.cpp
+    NewVaultDialog.cpp
 )
 
 # --version reports the release recorded in Docs/UltraAuthenticator/CHANGELOG.md.

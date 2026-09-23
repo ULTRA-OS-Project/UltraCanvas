@@ -624,6 +624,47 @@ static void TestUnlockThrottled() {
     std::filesystem::remove(path);
 }
 
+static void TestAttach() {
+    std::printf("Attach binds to a vault without opening it\n");
+    const std::string path = TempVaultPath("attach");
+
+    AccountStore missing;
+    StoreResult none = missing.Attach(path);
+    Check(none.code == StoreResultCode::NotFound, "no file: NotFound");
+    Check(!missing.IsLocked() && !missing.IsOpen(), "…and the store is untouched");
+
+    {
+        AccountStore creator;
+        Check(creator.Create(path, Buf("pw")), "create");
+        std::string key;
+        Check(creator.AddFromUri(TotpUri("Example", "alice"), key), "add");
+        Check(creator.Attach(path).code == StoreResultCode::InvalidArgument,
+              "Attach on an open store is refused");
+        creator.Close();
+    }
+
+    AccountStore store;
+    Check(store.Attach(path), "attach to the existing file");
+    Check(store.IsLocked(), "attached means locked");
+    Check(!store.IsOpen(), "…and not open: nothing has been decrypted");
+    std::vector<Account> accounts;
+    Check(store.List(accounts).code == StoreResultCode::NotOpen,
+          "nothing is readable before the first unlock");
+
+    // The first unlock is the same throttled path as every later one.
+    const int64_t now = 4'000'000;
+    for (int i = 0; i < 4; ++i) store.Unlock(Buf("wrong"), now);
+    Check(store.SecondsUntilUnlockAllowed(now) == 2,
+          "four wrong passwords at launch start the back-off");
+    Check(store.Unlock(Buf("pw"), now + 1).code == StoreResultCode::TooManyAttempts,
+          "right password refused inside the delay, before it is checked");
+    Check(store.Unlock(Buf("pw"), now + 2), "accepted once the delay has elapsed");
+    Check(store.List(accounts) && accounts.size() == 1, "the account is there");
+
+    store.Close();
+    std::filesystem::remove(path);
+}
+
 int main() {
     std::printf("UltraAuthenticator account-layer tests — backend: %s\n\n",
                 UltraCrypt_IsAvailable() ? UltraCrypt_GetBackendName().c_str()
@@ -649,6 +690,7 @@ int main() {
     TestReveal();
     TestLockAndUnlock();
     TestUnlockThrottled();
+    TestAttach();
 
     std::printf("\n%d checks, %d failure(s)\n", g_checks, g_failures);
     return g_failures == 0 ? 0 : 1;
