@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.40*
+#### 2026-09-23 *0.9.41*
 - **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not
   as empty.** A new optional hook, `remoteListingStatus`, is asked when
   `remoteListing` answered with an empty listing; a non-empty answer puts a
@@ -13,6 +13,8 @@
   for; before, a button whose click changed the layout under the pointer
   (UltraFiler's tree-dock button) left its tooltip floating over the new
   content until the mouse moved.
+
+#### 2026-09-23 *0.9.40*
 - **NetworkMonitor decodes loopback chains.** A mail client that talks to
   an antivirus mail proxy on 127.0.0.1:12993, which talks to the mail
   server for it, used to show as two unrelated processes.

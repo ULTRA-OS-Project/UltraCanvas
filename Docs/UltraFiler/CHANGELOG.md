@@ -8,13 +8,13 @@
   updates as the fetch moves along; the listing replaces it when it lands.
   A folder the server refused shows the reason (a rejected login, an
   unreachable host) in the folder area instead of an empty folder. Needs
-  framework 0.9.40 (the widget's `remoteListingStatus` hook).
+  framework 0.9.41 (the widget's `remoteListingStatus` hook).
 - **Split view: the docked tree's width moves with the tree.** Docking the
   folder tree into a pane widens that pane by the tree's width at the other
   display's expense, and undocking it (or docking it on the other side) gives
   that width back - the display beside the tree used to stay squeezed after
   the tree had gone. The "Folder tree" tooltip no longer lingers over the
-  docked tree after the click (framework 0.9.40).
+  docked tree after the click (framework 0.9.41).
 - **Drop files onto a remote drive's row in the folder tree to upload them.**
   The row takes local files the way a folder row takes a move, when the
   drive can take uploads (an FTP drive can; so can a Nextcloud or Dropbox
