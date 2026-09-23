@@ -324,6 +324,17 @@ private:
     // Refreshes whatever display is showing `folderPath`. Used both when a
     // queued listing arrives and after a change to the drive.
     void RefreshRemoteFolderDisplays(const std::string& folderPath);
+    // Does the drive `path` is on accept uploads? Asked of the provider's
+    // capability, not of the local filesystem - which answers "not a
+    // directory" for every remote path and so refused every drop onto one.
+    bool RemoteDriveTakesUploads(const std::string& path) const;
+    // Sends `files` into a folder on a drive, one queued upload each, and
+    // reports in one dialog whatever never got as far as the queue (a folder
+    // among the files, a drive that takes no uploads). True when anything was
+    // queued. The transfers themselves are the worker's, and the folder they
+    // land in is refreshed by onOperationFinished.
+    bool UploadFilesToRemoteFolder(const std::string& folderPath,
+                                   const std::vector<std::string>& files);
     // Takes one drive row out of the tree and out of the bookkeeping that
     // would otherwise keep it from ever being scanned again.
     void DropDriveNode(const std::string& path);

@@ -2994,8 +2994,9 @@ void UltraFilerWindow::BuildFolderTree() {
     folderTree->onNodeRightClicked = [this](TreeNode* node, const UCEvent& event) {
         ShowTreeContextMenu(node, event);
     };
-    // Drag a folder from the file list onto the tree: dropping on the Pinned
-    // section pins it, dropping on a folder node moves the files into it.
+    // Drag from the file list onto the tree: dropping on the Pinned section
+    // pins it, dropping on a local folder node moves the files into it, and
+    // dropping on a folder of a remote drive uploads them to it.
     folderTree->onFilesDragAccept = [this](TreeNode* node) {
         return IsTreeDropTarget(node);
     };
@@ -3011,11 +3012,60 @@ bool UltraFilerWindow::IsTreeDropTarget(const TreeNode* node) const {
     if (id == kPinnedNodeId ||
         id.compare(0, kPinnedChildPrefixLen, kPinnedChildPrefix) == 0)
         return true;
-    // A regular folder node accepts a move into the folder it stands for.
     const std::string path = TreeNodeTargetPath(node);
     if (path.empty()) return false;
+    // A folder on a drive accepts an upload, which is not the same question
+    // as "is this a directory on this disk" - that one answers no for every
+    // remote path, which is why a drive used to refuse every drop.
+    if (IsRemoteFilerPath(path)) return RemoteDriveTakesUploads(path);
+    // A regular folder node accepts a move into the folder it stands for.
     std::error_code ec;
     return fs::is_directory(path, ec) && !ec;
+}
+
+bool UltraFilerWindow::RemoteDriveTakesUploads(const std::string& path) const {
+    if (!remoteDrives || !IsRemoteFilerPath(path)) return false;
+    RemoteDrive drive;
+    if (!remoteDrives->Find(RemoteFilerAccountId(path), drive)) return false;
+    return drive.canUpload;
+}
+
+// Sends the files onto a drive, one queued upload each. Answers on the spot:
+// the transfers run on the drives' worker and report back through
+// onOperationFinished, which refreshes the folder they land in.
+bool UltraFilerWindow::UploadFilesToRemoteFolder(
+        const std::string& folderPath, const std::vector<std::string>& files) {
+    if (!remoteDrives || files.empty()) return false;
+
+    std::vector<std::string> refused;   // what never got as far as the queue
+    std::string firstError;
+    int queued = 0;
+    for (const std::string& f : files) {
+        std::string error;
+        if (remoteDrives->Submit(RemoteOperation::Upload, folderPath, f,
+                                 /*isDirectory=*/false, error)) {
+            ++queued;
+            continue;
+        }
+        refused.push_back(f);
+        if (firstError.empty()) firstError = error;
+    }
+
+    // Dropping a folder among files is the ordinary case of this: the files
+    // go and the folder is refused, so saying which is more use than a bare
+    // "that did not work". One dialog for the lot, not one per file.
+    if (!refused.empty()) {
+        std::string message = firstError;
+        if (refused.size() > 1)
+            message += "\n\n" + std::to_string(refused.size()) +
+                       " items were not sent.";
+        if (queued > 0)
+            message += "\n\n" + std::to_string(queued) +
+                       (queued == 1 ? " file is on its way."
+                                    : " files are on their way.");
+        UltraCanvasAlert::Error(message, "Upload to drive", nullptr, window.get());
+    }
+    return queued > 0 || refused.empty();
 }
 
 bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
@@ -3040,9 +3090,15 @@ bool UltraFilerWindow::DropFilesOnTreeNode(TreeNode* target,
         return true;
     }
 
-    // Otherwise a move into the folder the node represents.
     const std::string dest = TreeNodeTargetPath(target);
     if (dest.empty()) return false;
+    // Onto a drive: an upload, not a move. The local files stay where they
+    // are - this is a copy to a server, and there is no undo on the far side
+    // of one - and each is queued on its own so that one file the server
+    // refuses does not take the rest with it.
+    if (IsRemoteFilerPath(dest)) return UploadFilesToRemoteFolder(dest, files);
+
+    // Otherwise a move into the folder the node represents.
     std::error_code ec;
     if (!fs::is_directory(dest, ec) || ec) return false;
 

@@ -9,6 +9,7 @@
 #include "UltraCanvasApplication.h"    // PostToUIThread
 
 #include <algorithm>
+#include <filesystem>   // Submit checks an upload's local file
 
 #ifdef ULTRAFILER_HAS_ULTRACLOUD
 #include <UltraCloud/UltraCloud.h>
@@ -140,6 +141,7 @@ bool UltraFilerRemoteDrives::Reload(std::string& error) {
         if (std::shared_ptr<UltraCloud::ICloudProvider> p =
                 UltraCloud::GetProvider(a.providerId)) {
             d.canModify = p->Capabilities().modify;
+            d.canUpload = p->Capabilities().upload;
         }
         drives.push_back(std::move(d));
     }
@@ -244,9 +246,30 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
     }
 
     // A name is a name: one carrying a separator would be a move, which none
-    // of these three do, and which the provider would either refuse or - worse
-    // - carry out somewhere the user did not look.
-    if (operation != RemoteOperation::Delete) {
+    // of these do, and which the provider would either refuse or - worse -
+    // carry out somewhere the user did not look. Upload is the exception,
+    // because its argument is a local path and separators are what it is
+    // made of.
+    if (operation == RemoteOperation::Upload) {
+        std::error_code ec;
+        if (argument.empty()) {
+            error = "no file given";
+            return false;
+        }
+        // Only a regular file. A folder dropped on a drive is a recursive
+        // copy, which this queue cannot report the progress of; saying so is
+        // better than uploading the first file and going quiet.
+        if (std::filesystem::is_directory(argument, ec) && !ec) {
+            error = "a folder cannot be uploaded from here, only files: " +
+                    std::filesystem::path(argument).filename().string();
+            return false;
+        }
+        ec.clear();
+        if (!std::filesystem::is_regular_file(argument, ec) || ec) {
+            error = "not a file: " + argument;
+            return false;
+        }
+    } else if (operation != RemoteOperation::Delete) {
         if (argument.empty()) {
             error = "no name given";
             return false;
@@ -258,8 +281,9 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
         }
     }
     // The drive's own root is not ours to delete or rename; creating inside it
-    // is fine.
-    if (operation != RemoteOperation::MakeDirectory && remotePath == "/") {
+    // - or uploading into it - is fine.
+    if (operation != RemoteOperation::MakeDirectory &&
+        operation != RemoteOperation::Upload && remotePath == "/") {
         error = "this is the drive itself, not something on it";
         return false;
     }
@@ -275,9 +299,16 @@ bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
             return false;
         }
         // Asked before the request is queued rather than after the server has
-        // said no: a Nextcloud or Dropbox drive can be browsed and uploaded to
-        // but not changed in place, and the answer is the same every time.
-        if (!drive->canModify) {
+        // said no: the answer is the same every time. The two capabilities are
+        // asked separately because they differ - a Nextcloud or Dropbox drive
+        // can be browsed and uploaded to but not changed in place, so a drive
+        // that refuses a rename still takes a file dropped onto it.
+        if (operation == RemoteOperation::Upload) {
+            if (!drive->canUpload) {
+                error = "this drive does not take uploads";
+                return false;
+            }
+        } else if (!drive->canModify) {
             error = "this kind of drive cannot be changed from here";
             return false;
         }
@@ -317,6 +348,23 @@ void UltraFilerRemoteDrives::RunOperation(const Job& job) {
             const std::string parent = remotePath == "/" ? std::string()
                                                          : remotePath;
             r = impl_->service->MakeDirectory(accountId, parent + "/" + job.argument);
+            break;
+        }
+        case RemoteOperation::Upload: {
+            // Upload takes the full remote path of the file to write, not the
+            // folder to write it into, so the local name is appended here -
+            // the same way UploadAndShare builds it.
+            const std::string folder = remotePath == "/" ? std::string()
+                                                         : remotePath;
+            const std::string name =
+                    std::filesystem::path(job.argument).filename().string();
+            if (name.empty()) {
+                r = UltraCloud::Result::Error(UltraCloud::ResultCode::IoError,
+                                              "this file has no name");
+                break;
+            }
+            r = impl_->service->Upload(accountId, job.argument,
+                                       folder + "/" + name);
             break;
         }
     }
@@ -409,8 +457,11 @@ void UltraFilerRemoteDrives::WorkerMain() {
         // is exactly when the cached listing is least trustworthy.
         std::string changedFolder;
         if (!job.isListing) {
-            changedFolder = job.operation == RemoteOperation::MakeDirectory
-                    ? job.path                       // the folder created in
+            const bool intoFolder =
+                    job.operation == RemoteOperation::MakeDirectory ||
+                    job.operation == RemoteOperation::Upload;
+            changedFolder = intoFolder
+                    ? job.path                       // the folder written into
                     : RemoteFilerParent(job.path);   // the entry's own folder
             if (changedFolder.empty()) changedFolder = job.path;
             std::lock_guard<std::mutex> lk(mutex_);
@@ -479,6 +530,13 @@ void UltraFilerRemoteDrives::FetchListing(const std::string& path) {
             f.name = e.name;
             f.path = MakeRemoteFilerPath(accountId, e.path);
             f.isDirectory = e.isDirectory;
+            // Left unset, this was false for every entry on a drive, so a
+            // ".ssh" there was shown even with hidden files turned off while
+            // the one on this disk was not. The display already filters on it
+            // (and counts what it held back), so the flag was all that was
+            // missing. The rule itself lives next to the path scheme, where
+            // it can be tested without a server.
+            f.isHidden = IsHiddenRemoteFilerName(e.name);
             f.size = e.isDirectory ? 0 : static_cast<uint64_t>(e.size < 0 ? 0 : e.size);
             f.modifiedTime = ParseRemoteFilerTime(e.modified);
             // The display draws its read-only badge from this, so it has to

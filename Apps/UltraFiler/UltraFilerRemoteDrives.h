@@ -18,8 +18,8 @@
 // Builds without UltraCloud: Available() answers false, the drive list is
 // empty and every call fails with a message saying so, so UltraFiler still
 // compiles and runs when the module is not built.
-// Version: 1.0.0
-// Last Modified: 2026-09-17
+// Version: 1.1.0
+// Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
 #pragma once
 
@@ -53,6 +53,11 @@ struct RemoteDrive {
     std::string serverUrl;     // shown under the name; empty for OAuth providers
     std::string rootPath;      // MakeRemoteFilerPath(accountId, "/")
     bool canModify = false;    // the provider's ProviderCapabilities::modify
+    // Kept apart from canModify because the two really are different: a
+    // Nextcloud or Dropbox drive can be browsed and uploaded to while it
+    // cannot be changed in place, so a drive that refuses a rename may still
+    // accept a file dropped onto it.
+    bool canUpload = false;    // the provider's ProviderCapabilities::upload
 };
 
 // What the toolbar's "+ Drive" button offers. The two differ only in which
@@ -64,15 +69,20 @@ enum class RemoteDriveKind {
     CloudStorage    // everything else UltraCloud knows
 };
 
-// A change to what is on a drive. Each maps onto one UltraCloud provider verb,
-// which is why these three and not more: a transfer between the local disk and
-// a drive is not a provider verb applied in place, it is a copy with progress,
-// conflicts and a cancel, and it belongs with the paste machinery rather than
-// here.
+// A change to what is on a drive. Each maps onto one UltraCloud provider verb.
 enum class RemoteOperation {
     Delete,          // a file or a folder: the provider picks DELE over RMD
     Rename,          // in place; the argument is a bare name
-    MakeDirectory    // the argument is the new folder's name
+    MakeDirectory,   // the argument is the new folder's name
+    // Sends one local FILE into a folder on the drive: `path` is that folder
+    // and `argument` the local path, which is why this is the one operation
+    // whose argument is a path rather than a bare name.
+    //
+    // One file, not a tree. A recursive folder upload is a copy with
+    // progress, conflicts and a cancel, and belongs with the paste machinery
+    // rather than in this queue - which has no way to report how far along it
+    // is, and answers only "done" or "the server refused this".
+    Upload
 };
 
 class UltraFilerRemoteDrives {
@@ -124,16 +134,19 @@ public:
     // ---- Changing what is on a drive --------------------------------------
     // Queues one change and answers at once: the work happens on the worker,
     // so a slow server never holds the UI thread, and onOperationFinished
-    // fires when it is done. `path` is the entry acted on (for MakeDirectory,
-    // the folder to create it in); `argument` is the new name for Rename and
-    // MakeDirectory and is ignored by Delete; `isDirectory` is what the caller
-    // already knows from the entry, which is what lets the FTP provider pick
-    // DELE over RMD without a probe.
+    // fires when it is done. `path` is the entry acted on (for MakeDirectory
+    // and Upload, the folder to put the new thing in); `argument` is the new
+    // name for Rename and MakeDirectory, the local file for Upload, and is
+    // ignored by Delete; `isDirectory` is what the caller already knows from
+    // the entry, which is what lets the FTP provider pick DELE over RMD
+    // without a probe.
     //
     // Returns false with a message for what can be refused outright: a path
     // that is not a remote path, a drive that is gone, a provider that cannot
-    // write at all (ProviderCapabilities::modify), a name that is really a
-    // path, or the drive's own root.
+    // do this kind of change (ProviderCapabilities::modify for the three that
+    // change what is there, ::upload for Upload), a name that is really a
+    // path, a local file that is not one, or the drive's own root where that
+    // is not a thing to act on.
     bool Submit(RemoteOperation operation, const std::string& path,
                 const std::string& argument, bool isDirectory,
                 std::string& error);

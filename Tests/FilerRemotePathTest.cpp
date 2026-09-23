@@ -204,6 +204,16 @@ int main() {
                 "a local folder takes no remote child");
     }
 
+    // ===== WHAT COUNTS AS HIDDEN ON A SERVER =====
+    {
+        Check(IsHiddenRemoteFilerName(".ssh"), "a dot name is hidden");
+        Check(IsHiddenRemoteFilerName(".htaccess"), "so is a dot file");
+        Check(!IsHiddenRemoteFilerName("Videos"), "an ordinary name is not");
+        Check(!IsHiddenRemoteFilerName("report.2026.txt"),
+              "a dot inside a name does not hide it");
+        Check(!IsHiddenRemoteFilerName(""), "and there is no empty name to hide");
+    }
+
     // ===== THE TIME A LISTING REPORTS =====
     {
         // Both wire formats are UTC, and both must land on the same instant -

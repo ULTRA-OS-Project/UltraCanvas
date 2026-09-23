@@ -1,3 +1,33 @@
+#### 2026-09-23 *1.47.0*
+- **Files dropped on a drive's folder are uploaded to it.** Dragging from the
+  file list onto a remote row was refused, because the tree asked
+  `is_directory` of the drop target and that is "no" for every path on a
+  server. It asks the drive whether it takes uploads now, and a drop queues one
+  upload per file on the same worker the listings use, so a slow server never
+  holds the window. The folder they land in refreshes itself when they arrive.
+  - **`RemoteOperation::Upload` is the fourth verb** the drives carry. Its
+    argument is a local path rather than a bare name - the one operation for
+    which a separator is not a mistake - and it asks the provider's `upload`
+    capability rather than `modify`, because the two differ: a Nextcloud or
+    Dropbox drive can be uploaded to while it cannot be changed in place, and
+    would otherwise have refused a drop it can perfectly well accept.
+  - **A folder among the files is refused by name, not silently.** One file at
+    a time is what this queue can do; a recursive copy needs progress, conflict
+    handling and a cancel, and belongs with the paste machinery. What was
+    refused and what is on its way are reported together, in one dialog rather
+    than one per file.
+  - The local files stay where they are. A drop onto a local folder moves them,
+    but this is a copy to a server, and there is no undo on the far side of one.
+- **A dot-name on a drive is hidden, as it is on this disk.** The listing never
+  set `FilerEntry::isHidden`, so a ".ssh" on a server was shown even with hidden
+  files turned off while the one in the home folder was not, and the tree's new
+  rows would have listed it too. The display already filtered on that flag and
+  counted what it held back, so the flag was all that was missing. The rule -
+  the leading dot, the same one the filer widget applies to a POSIX name, since
+  a server has no attribute to read - lives in `UltraFilerRemotePath.h` next to
+  the path scheme, where `Tests/FilerRemotePathTest.cpp` covers it without
+  needing a server.
+
 #### 2026-09-23 *1.46.0*
 - **An FTP drive's folders appear under it in the tree.** A remote drive was a
   leaf: it had no expand button, and opening it listed its folders on the right
