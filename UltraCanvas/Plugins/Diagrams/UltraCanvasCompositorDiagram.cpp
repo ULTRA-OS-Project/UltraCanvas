@@ -5,6 +5,7 @@
 // Version: 0.1.0
 
 #include <stdexcept>  // For std::runtime_error used (uninclude'd) by ImageCairo.h
+#include "UltraCanvasTextUtils.h"   // TryParseFloat / ParseFloatClassic - dot-decimal, non-throwing
 #include "Plugins/Diagrams/UltraCanvasCompositorDiagram.h"
 
 #include <algorithm>
@@ -136,7 +137,9 @@ std::string ExtractStringValue(const std::string& json, const std::string& key) 
 double ExtractNumberValue(const std::string& json, const std::string& key, double dflt = 0.0) {
     std::string raw = FindRawValue(json, key);
     if (raw.empty()) return dflt;
-    try { return std::stod(raw); } catch (...) { return dflt; }
+    double value = dflt;
+    TryParseFloat(raw, value);   // JSON numbers are dot-decimal (RFC 8259)
+    return value;
 }
 
 bool ExtractBoolValue(const std::string& json, const std::string& key, bool dflt = false) {

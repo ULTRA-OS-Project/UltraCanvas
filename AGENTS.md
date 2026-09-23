@@ -81,8 +81,12 @@ before adding cross-module code.
   backend calls `setlocale(LC_ALL, "")` for XIM — so on a comma-decimal
   desktop an SVG `opacity="0.25"` read as 0 and the shape vanished, and the
   SVG writer emitted `M 1,5`, which reads back as the point (1, 5). This has
-  now been fixed twice, in CSS and in SVG; the remaining ~110 call sites
-  elsewhere in the tree are the same defect waiting to be reported.
+  now been fixed three times - in CSS, in SVG, and across the file-format
+  readers and writers in 0.9.42 - which is why the rule is now checked rather
+  than remembered: `scripts/check_locale_numbers.py` blocks a new one, and
+  `scripts/locale_numbers_baseline.txt` lists the sites still to fix. A number
+  a person typed or reads follows their locale on purpose and says so at the
+  site with `// locale-ok: <why>`.
 - **Third-party code** is vendored under `UltraCanvas/third_party/` and
   `3rdparty/` — do not modify it, and record licenses in
   `THIRD_PARTY_LICENSES.md`.
@@ -137,6 +141,18 @@ naturally owns its buffer and caret. Declare any other exception in the source:
 `scripts/ui_reuse_baseline.txt` — which records pre-existing offenders — is
 empty, and the intent is that it stays empty. Do not add to it to silence a
 finding.
+
+A second rule follows from using the elements: **a callback stored on a widget
+must not capture a `std::shared_ptr` to that widget, or to any container above
+it.** The widget owns the callback, so the callback owning it back closes a
+cycle neither end escapes and the whole subtree leaks. Capture the
+back-reference raw — `[button = button.get(), status]` — which is valid for as
+long as the callback can run, because the thing holding the callback is the
+thing being pointed at. Captures pointing the other way (a popup the lambda
+keeps alive, a sibling it updates, `make_shared` state) are ownership, not a
+cycle, and stay `shared_ptr`. `scripts/check_callback_cycles.py` enforces this
+and runs in CI; a genuine exception opts out with
+`// callback-cycle-exempt: <why>`.
 
 ## Building and testing
 
@@ -193,9 +209,13 @@ build system, CI — plus DemoApp, which is the framework's showcase and is name
 | `Docs/UltraSocial/CHANGELOG.md` | UltraSocial |
 | `Docs/UltraViewer/CHANGELOG.md` | UltraViewer |
 
-Format: `#### YYYY-MM-DD *x.y.z*`. To release, add an entry at the top of the
-changelog — that is the whole bump. Do **not** hand-edit a version number
-anywhere else, and never introduce a new literal copy of one:
+Format: `#### YYYY-MM-DD *x.y.z*`. **For the framework changelog you do not
+write that line at all**: drop your bullets in a new file under
+[`Docs/UltraCanvas/changelog.d/`](Docs/UltraCanvas/changelog.d/README.md) with
+no header and no number, and CI assigns the number on `main` after the merge
+(see *Pending entries* below). For an application changelog, adding the entry
+at the top is still the whole bump. Either way, do **not** hand-edit a version
+number anywhere else, and never introduce a new literal copy of one:
 
 - `cmake/UltraCanvasVersion.cmake` parses the first line of each file at
   configure time and sets one `<PREFIX>_VERSION` per row of the table above —
@@ -230,35 +250,49 @@ anywhere else, and never introduce a new literal copy of one:
   it was published, so `Docs/UltraCanvas/CHANGELOG.md` remains the record of
   what shipped in each framework release. Do not backfill it into the app
   files — that would put one change in two places under two numbers.
-- **Your entry must be a NEW top entry with a number nobody else has taken.**
-  Line 1 of a shared file is the most contended line in the repository, and two
-  open pull requests collide there every time, in one of two ways. Either a
-  branch picks the next number, `main` releases past it while the branch waits
-  for review, and it merges carrying a number *lower* than versions already
-  released below it — the product's version then goes backwards. Or two
-  branches write the same `#### <date> *x.y.z*` line, git merges both bullet
-  lists under the one header with no conflict, and two releases share a number
-  while the version never increments — which is also why such a branch's
-  changelog diff never settles no matter how often `main` is merged into it.
-  Both have happened repeatedly; the file still carries sixteen duplicated
-  numbers from before this was checked. So: re-read the top of the changelog
-  just before you push, and if `main` has moved past your number, renumber your
-  entry rather than leaving it — and never add bullets to an entry that is
-  already on `main`. Run `git fetch origin main` and then
+- **Pending entries: the framework's number is assigned on `main`, not by
+  you.** Line 1 of a shared file was the most contended line in the
+  repository, and two open pull requests collided there every time, in one of
+  two ways. Either a branch picked the next number, `main` released past it
+  while the branch waited for review, and it merged carrying a number *lower*
+  than versions already released below it — the product's version then goes
+  backwards. Or two branches wrote the same `#### <date> *x.y.z*` line, git
+  merged both bullet lists under the one header with no conflict, and two
+  releases shared a number while the version never incremented. Both happened
+  repeatedly; the file still carries sixteen duplicated numbers from before
+  any of this was checked, and on 2026-09-23 one branch was renumbered five
+  times in a morning (0.9.23 → 0.9.27 → 0.9.28 → 0.9.29 → 0.9.31), each
+  renumber throwing away a six-platform CI matrix, with 0.9.29 consumed and
+  lost in the churn.
+  So the routine case no longer touches line 1: write
+  `Docs/UltraCanvas/changelog.d/<change-name>.md` containing just the bullets.
+  Two branches adding two files cannot collide, there is nothing to renumber
+  when `main` moves, and `.github/workflows/changelog-fold.yml` folds whatever
+  is pending into `CHANGELOG.md` under the next free version once it lands —
+  `scripts/fold_changelog.py` does the same locally if you want to see it.
+  Name the file after the change, not the branch. Never put a `####` header in
+  one: a number chosen on a branch is the collision this ends, and
+  `scripts/check_changelog.py` refuses it.
+  A release that must carry a *specific* number — a hand-cut hotfix — can
+  still be written straight into the changelog as a top entry, and the same
+  rules apply to it: unique, and above every version below it. Application
+  changelogs are unchanged; they see little contention, one product to a file.
+  Run `git fetch origin main` and then
   `python3 scripts/check_changelog.py --base origin/main` before pushing; CI
-  runs it too. The check compares your entry with line 1 of `main`'s copy of
+  runs it too. The check compares a top entry with line 1 of `main`'s copy of
   the file, so it is only as current as your `origin/main` - an unfetched one
   lets a stale number through. It also refuses a number more than ten past
   the release before it: open pull requests each hold one number, so a small
   gap is normal, but 0.9.120 over a `main` on 0.9.32 once passed the
   "strictly greater" rule and would have become the released version.
-  GitHub's *Update branch* button cannot do the renumbering: it merges `main`
-  into the branch and, when `main` has meanwhile released the number the
-  branch chose, folds the two entries under the one header (or leaves a
+  GitHub's *Update branch* button cannot renumber a top entry: it merges
+  `main` into the branch and, when `main` has meanwhile released the number
+  the branch chose, folds the two entries under the one header (or leaves a
   conflict marker in line 1) — and the guard then fails on the very merge
   that was meant to fix it. When the check goes red after such a merge, fix
   it locally: merge `main`, split the shared header back into two entries,
-  give the branch's entry the next free number, and push.
+  give the branch's entry the next free number, and push. A pending
+  `changelog.d/` entry has none of this to do.
 - **Do not add a version number to a compile definition that anything but its
   own consumers see.** `ULTRACANVAS_VERSION` was `PUBLIC` on the core library,
   so it sat on the compile command line of 621 of the build's 1136 objects
@@ -286,6 +320,14 @@ anywhere else, and never introduce a new literal copy of one:
    Writing `DrawText` / `FillRoundedRectangle` plus a private buffer, caret or
    `hovered` flag to make a control is a defect, not a shortcut. Run
    `python3 scripts/check_ui_reuse.py` before pushing; CI runs it too.
+   Wiring a callback on that element? It must not capture a `shared_ptr` to
+   the element or to a container above it — capture it raw. Run
+   `python3 scripts/check_callback_cycles.py`; CI runs that too.
+   Writing a number into a file format or a protocol? Read it with
+   `TryParseFloat` / `ParseFloatClassic` and write it with
+   `FormatFloatClassic`, never `std::stof` / `atof` / `std::to_string(double)`
+   / `snprintf("%g")`. Run `python3 scripts/check_locale_numbers.py`; CI runs
+   that too.
 3. Check `Docs/UltraCanvas/<Component>*.md` (or `llms.txt`) before using a
    component; if you add or change public API, update the matching doc in
    the same change.
@@ -365,8 +407,11 @@ For assistants:
    python3 scripts/check_publication.py --all    # every branch on the remote
    ```
 
-   It lists the commits on the branch that are not in `main` and exits 1 when
-   there are any. Then verify on GitHub that an *open* PR has this branch as
+   It fetches `main` and the branch first (a stale `origin/main` otherwise
+   makes already-merged commits look undelivered), lists the commits on the
+   branch that are not in `main`, and exits 1 when there are any — or when the
+   branch is gone from the remote, which usually means its PR was merged and
+   the branch deleted (rule 2 applies). Then verify on GitHub that an *open* PR has this branch as
    its head and that its head is the commit just pushed, and report the PR
    number and head SHA.
 

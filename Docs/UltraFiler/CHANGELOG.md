@@ -5,8 +5,8 @@
   the other display of the split view. The status bar says how many files
   are on their way to which drive and folder, and what was left out and why
   (a folder, a remote entry). Moving or copying between two places on the
-  same drive is still not offered, and says so. Needs framework 0.9.42 (the
-  widget's `remoteUpload` hook).
+  same drive is still not offered, and says so. Needs the framework change
+  that adds the widget's `remoteUpload` hook.
 
 #### 2026-09-23 *1.46.0*
 - **A remote folder being fetched shows progress, not "Folder is empty!".**
@@ -489,10 +489,10 @@
   pulls that display back. The folder tree leaves hidden folders out either
   way. Stored as `display.files.show.hidden` in the config file.
 - **The settings pages showed their explanations half-cut.** The line under
-  each page title and the notes block at its foot were drawn one line tall with
-  the text clipped through them. The cause was in the layout engine, not in the
-  settings window - see the framework changelog for 0.8.43 (wrapped text in a
-  flex column) - and every page is legible with that fix.
+  each page title and the notes block at its foot were drawn one line tall
+  with the text clipped through them. The cause was in the layout engine,
+  not in the settings window - see the framework changelog for 0.8.43
+  (wrapped text in a flex column) - and every page is legible with that fix.
 
 #### 2026-09-13 *1.31.0*
 - **Folder icons show the first pictures inside the folder**, peeking out of

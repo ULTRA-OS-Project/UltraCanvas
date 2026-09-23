@@ -17,6 +17,14 @@ This answers the question mechanically.
 Exit code 1 when a branch carries commits that are not in the base branch, so
 it can gate a session's "done" as well as be read by a person.
 
+It fetches first. The comparison is against the remote-tracking refs, and a
+stale `origin/main` makes every commit merged since the last fetch look
+undelivered - one run reported 56 missing commits where there was 1. So the
+base branch (and the checked branch, or with --all every branch, pruning the
+deleted ones) is fetched before anything is counted. --no-fetch skips that for
+offline use; if the fetch fails the script says so and goes on with the refs
+it has, marked as possibly stale.
+
 What it cannot tell you: whether a pull request exists and is open. That needs
 GitHub. The output says so, and names the check to run there - for an
 assistant, the `mcp__github__list_pull_requests` tool with
@@ -46,6 +54,33 @@ def remote_default_branch(remote="origin"):
                    f"refs/remotes/{remote}/{name}", check=False):
                 return name
     return "main"
+
+
+def fetch(remote, *refspecs):
+    """Refresh remote-tracking refs. False (with a warning) if it failed."""
+    r = subprocess.run(["git", "fetch", "--quiet", "--prune", remote, *refspecs],
+                       capture_output=True, text=True)
+    if r.returncode != 0:
+        print(f"warning: git fetch {remote} failed ({r.stderr.strip()}); "
+              "comparing against refs from the last fetch, which may be stale.\n",
+              file=sys.stderr)
+        return False
+    return True
+
+
+def on_remote(remote, branch):
+    """True / False, or None when the remote cannot be asked."""
+    r = subprocess.run(["git", "ls-remote", "--exit-code", "--heads", remote,
+                        f"refs/heads/{branch}"], capture_output=True, text=True)
+    if r.returncode == 0:
+        return True
+    if r.returncode == 2:  # reached the remote; no such ref
+        return False
+    return None
+
+
+def tracking(remote, branch):
+    return f"+refs/heads/{branch}:refs/remotes/{remote}/{branch}"
 
 
 def shared_history(base_ref, branch_ref):
@@ -116,10 +151,36 @@ def main():
     ap.add_argument("--branch", help="check this branch instead of the current one")
     ap.add_argument("--remote", default="origin")
     ap.add_argument("--base", help="base branch (default: the remote's HEAD)")
+    ap.add_argument("--no-fetch", action="store_true",
+                    help="compare against the refs as last fetched (offline)")
     args = ap.parse_args()
 
     base = args.base or remote_default_branch(args.remote)
     base_ref = f"{args.remote}/{base}"
+    branch = None
+    if not args.all:
+        branch = args.branch or git("rev-parse", "--abbrev-ref", "HEAD")
+        if branch == "HEAD":
+            print("Detached HEAD - pass --branch.")
+            return 2
+
+    if not args.no_fetch:
+        if args.all:
+            fetch(args.remote)
+        else:
+            present = on_remote(args.remote, branch) if branch != base else True
+            if present is False:
+                fetch(args.remote, tracking(args.remote, base))
+                print(f"!! {branch} is not on {args.remote}. Either it was never "
+                      "pushed, or its pull request\n   was merged or closed and "
+                      "the branch deleted - then any commits made after\n   that "
+                      "are stranded: rebase onto the base branch and open a NEW "
+                      "pull request.")
+                return 1
+            refspecs = [tracking(args.remote, base)]
+            if branch != base:
+                refspecs.append(tracking(args.remote, branch))
+            fetch(args.remote, *refspecs)
     if not git("rev-parse", "--verify", "--quiet", base_ref, check=False):
         print(f"No {base_ref}. Fetch first: git fetch {args.remote} {base}")
         return 2
@@ -159,10 +220,6 @@ def main():
             return 1
         return 0
 
-    branch = args.branch or git("rev-parse", "--abbrev-ref", "HEAD")
-    if branch == "HEAD":
-        print("Detached HEAD - pass --branch.")
-        return 2
     if not git("rev-parse", "--verify", "--quiet",
                f"{args.remote}/{branch}", check=False):
         print(f"!! {branch} is not on {args.remote} at all - nothing has been "

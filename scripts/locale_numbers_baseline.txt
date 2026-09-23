@@ -1,0 +1,53 @@
+# File-format and protocol numbers still read or written through LC_NUMERIC,
+# recorded so CI can block *new* ones while these are worked off.
+# Each line is <path>::<kind>::<symbol>.
+#
+# These are debt, not exceptions. Every one is a number crossing into a file
+# format, a document, a /proc file or a wire protocol, where the decimal point
+# is a '.' by definition - so on a comma-decimal desktop each is a misread
+# value or a corrupted file waiting to be reported. They are listed rather
+# than fixed only because 0.9.42 swept the readers it could reach and this
+# check then found the rest.
+#
+# Do not add to this file to silence a new finding. Read with
+# TryParseFloat / ParseFloatClassic and write with FormatFloatClassic
+# (UltraCanvasTextUtils.h). Remove a line when its site is fixed.
+#
+# A site that is genuinely locale-aware - text a person typed, or a label a
+# person reads - does NOT belong here either. Say so at the site and the check
+# skips it without a baseline entry:
+#     std::stod(text);   // locale-ok: the user typed this into the cell
+#
+# Regenerate with:
+#     python3 scripts/check_locale_numbers.py --update-baseline
+Apps/DemoApp/UltraCanvasJitterPlotExamples.cpp::locale-parse::stod
+Apps/DemoApp/UltraCanvasSankeyExamples.cpp::locale-parse::stof
+Apps/EmailCleaner/engine/EmailCleanerRules.cpp::locale-parse::atof
+Apps/UltraNetMonitor/main.cpp::locale-parse::atof
+UltraCanvas/OS/Linux/UltraCanvasLinuxHardwareInfo.cpp::locale-parse::strtod
+UltraCanvas/Plugins/Charts/UltraCanvasCircularInfoGraphic.cpp::locale-parse::atof
+UltraCanvas/Plugins/Charts/UltraCanvasPopulationChart.cpp::locale-parse::strtod
+UltraCanvas/Plugins/Documents/LaTeX/UltraCanvasLaTeXDocumentReader.cpp::locale-parse::strtof
+UltraCanvas/Plugins/Documents/Word/UltraCanvasWordFormatInternal.h::locale-parse::strtof
+UltraCanvas/Plugins/LaTeX/UltraCanvasMathParser.cpp::locale-parse::strtof
+UltraCanvas/Plugins/Models/COLLADA/UltraCanvasColladaConverter.cpp::locale-parse::atof
+UltraCanvas/Plugins/Models/DXF/UltraCanvasDXFModelConverter.cpp::locale-parse::atof
+UltraCanvas/Plugins/Models/FBX/UltraCanvasFbxFile.cpp::locale-parse::strtod
+UltraCanvas/Plugins/Models/PLY/UltraCanvasPLYConverter.cpp::locale-parse::strtod
+UltraCanvas/Plugins/Models/STEP/UltraCanvasStepConverter.cpp::locale-write::printf
+UltraCanvas/Plugins/Models/STEP/UltraCanvasStepFile.cpp::locale-parse::atof
+UltraCanvas/Plugins/Models/XFile/UltraCanvasXFile.cpp::locale-parse::strtod
+UltraCanvas/Plugins/Vector/EPS/UltraCanvasEPSPlugin.cpp::locale-parse::strtod
+UltraCanvas/Plugins/Vector/UltraCanvasDWGDecoder.cpp::locale-write::printf
+UltraCanvas/Plugins/Vector/UltraCanvasDXFConverter.cpp::locale-write::printf
+UltraCanvas/Plugins/Vector/UltraCanvasDXFReader.cpp::locale-parse::atof
+UltraCanvas/Plugins/Vector/UltraCanvasEPSConverter.cpp::locale-write::printf
+UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::out
+UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::page
+UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::printf
+UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::res
+UltraCanvas/Plugins/Vector/UltraCanvasPDFVectorConverter.cpp::locale-write::stream
+UltraCanvas/core/UltraCanvasMediaViewer.cpp::locale-parse::atof
+UltraCanvas/core/UltraCanvasSpreadsheetXlsxIO.cpp::locale-parse::atof
+UltraCanvas/core/UltraDatabase/UltraDatabasePostgresDriver.cpp::locale-parse::strtod
+UltraCanvas/core/UltraDatabase/UltraDatabaseValue.cpp::locale-parse::strtod

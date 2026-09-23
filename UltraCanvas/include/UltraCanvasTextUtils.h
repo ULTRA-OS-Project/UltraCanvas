@@ -120,6 +120,23 @@ const char* ParseFloatClassic(const char* first, const char* last, double& out);
 bool TryParseFloat(const std::string& text, float& out);
 bool TryParseFloat(const std::string& text, double& out);
 
+// The WRITE side of the same problem, and the worse half: snprintf("%.6g")
+// and std::to_string(double) both render through LC_NUMERIC, so on a
+// comma-decimal desktop they emit `stroke-width="1,5"` - and inside SVG path
+// data a comma is the coordinate separator, so `M 1,5` reads back as the
+// point (1, 5) rather than a move to 1.5. A different picture, not a corrupt
+// file, which is why it survived so long.
+//
+// Formats the way "%.<precision>g" does (significant digits, shortest of
+// fixed/scientific, no trailing zeros) with the decimal point pinned to '.'.
+// Six digits is what the SVG writer settled on: enough to round-trip a float
+// through text, short enough not to bloat a path with noise.
+//
+// Use it for every number that goes INTO a file format or a wire protocol.
+// Numbers shown to a person are the opposite case - a German reader expects
+// "12,5" - so leave display formatting to the locale.
+std::string FormatFloatClassic(double value, int precision = 6);
+
 // ---------------------------------------------------------------------------
 // Base64 (RFC 4648 §4)
 // ---------------------------------------------------------------------------
