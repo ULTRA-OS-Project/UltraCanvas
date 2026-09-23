@@ -9,6 +9,10 @@
   (an unreachable server, a rejected login) now shows its reason in the
   folder area too, instead of an empty folder. Used by UltraFiler's FTP and
   cloud drives (UltraFiler 1.46.0).
+- **A mouse press hides the tooltip.** A click answers what the tooltip was
+  for; before, a button whose click changed the layout under the pointer
+  (UltraFiler's tree-dock button) left its tooltip floating over the new
+  content until the mouse moved.
 
 #### 2026-09-23 *0.9.30*
 - **UltraCalendar proposal: the OAuth app registration is UltraNet's**

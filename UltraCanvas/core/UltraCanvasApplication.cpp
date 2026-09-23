@@ -1337,6 +1337,14 @@ namespace UltraCanvas {
             }
 
             if (event.IsMouseEvent()) {
+                // A press answers the tooltip's question: the element is
+                // being used, not wondered about. Without this a click that
+                // changes the layout underneath the pointer (a button that
+                // docks a pane) left the tooltip floating over the new
+                // content until the mouse moved.
+                if (event.type == UCEventType::MouseDown) {
+                    UltraCanvasTooltipManager::HideTooltipImmediately();
+                }
                 if (hoveredElement && hoveredElement != elementUnderPointer) {
                     if (hoveredElement->GetWindow() == targetWindow && hoveredElement->IsVisible()) {
                         UCEvent leaveEvent = event;

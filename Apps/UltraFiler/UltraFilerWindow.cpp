@@ -5430,6 +5430,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
             const int treeW = static_cast<int>(treePane->GetWidth());
             if (treeW > 0) treePaneWidth = treeW;
             treeDockShown = false;
+            treeDockTakenFromOther = treeDockTakenFromRest = 0;
             folderTree->SetVisible(false);
             leftPaneBody->AddChild(folderTree);
             split->RemovePane(treePane.get());
@@ -5481,6 +5482,7 @@ void UltraFilerWindow::SetSplitViewVisible(bool visible) {
         // re-homed below), the right-hand pane leaves, and the tree pane
         // comes back in front.
         treeDockShown = false;
+        treeDockTakenFromOther = treeDockTakenFromRest = 0;
         // The left-hand display is the active one again.
         ActivateSplitSide(SplitSide::Left);
         leftPaneHeader->SetVisible(false);
@@ -5565,6 +5567,71 @@ void UltraFilerWindow::ActivateSplitSide(SplitSide side) {
 
 void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
     if (!splitViewShown || !folderTree || !leftPaneBody || !rightPaneBody) return;
+    // The two displays' widths before the change. The tree's width moves
+    // between them with the tree: the pane it docks into grows by it at the
+    // other display's expense, and an undocked tree gives that width back
+    // to the display it was taken from - rather than leaving the pane the
+    // tree left as wide as it was, with the display beside it squeezed.
+    std::vector<int> sizes;
+    bool arranged = split && rightPane && filerPane;
+    if (arranged) {
+        for (size_t i = 0; i < split->PaneCount(); ++i) {
+            const int w = static_cast<int>(split->GetPane(i)->GetWidth());
+            if (w <= 0) arranged = false;
+            sizes.push_back(w);
+        }
+    }
+    const int leftIndex  = arranged ? split->GetPaneIndex(filerPane.get()) : -1;
+    const int rightIndex = arranged ? split->GetPaneIndex(rightPane.get()) : -1;
+    if (leftIndex < 0 || rightIndex < 0) arranged = false;
+    auto paneOf = [&](SplitSide s) { return s == SplitSide::Right ? rightIndex : leftIndex; };
+    auto otherOf = [](SplitSide s) { return s == SplitSide::Right ? SplitSide::Left : SplitSide::Right; };
+    // The panes that are neither display: the preview pane, when it is up.
+    std::vector<size_t> rest;
+    if (arranged) {
+        for (size_t i = 0; i < sizes.size(); ++i)
+            if (static_cast<int>(i) != leftIndex && static_cast<int>(i) != rightIndex)
+                rest.push_back(i);
+    }
+    if (arranged) {
+        const bool wasDocked = treeDockShown;
+        const SplitSide wasSide = treeDockSide;
+        if (wasDocked && (!visible || side != wasSide)) {
+            // The tree leaves its pane: what docking took goes back where it
+            // came from, as far as the pane can give it (it keeps its own
+            // minimum), and what the preview pane gave but cannot take back
+            // - it has gone meanwhile - goes to the other display.
+            const int from = paneOf(wasSide);
+            const int to = paneOf(otherOf(wasSide));
+            int give = std::min(treeDockTakenFromOther + treeDockTakenFromRest,
+                                sizes[from] - kSplitPaneMinWidth);
+            int toRest = rest.empty() ? 0 : std::min(treeDockTakenFromRest, give);
+            if (toRest > 0) TakeFromPanes(sizes, rest, -toRest);
+            sizes[from] -= give;
+            sizes[to] += give - toRest;
+            treeDockTakenFromOther = treeDockTakenFromRest = 0;
+        }
+        if (visible && !(wasDocked && side == wasSide)) {
+            // The tree's width comes out of the other display first, and
+            // when that display cannot spare it all, out of the preview
+            // pane - which takes its own width from the displays, so it is
+            // the one to give here rather than leave the docked display a
+            // sliver beside the tree.
+            const int to = paneOf(side);
+            const int from = paneOf(otherOf(side));
+            int want = treePaneWidth;
+            const int fromOther = std::clamp(sizes[from] - kSplitPaneMinWidth, 0, want);
+            want -= fromOther;
+            int restSpare = 0;
+            for (size_t i : rest) restSpare += std::max(0, sizes[i] - kPreviewMinWidth);
+            const int fromRest = std::min(want, restSpare);
+            if (fromRest > 0) TakeFromPanes(sizes, rest, fromRest);
+            sizes[from] -= fromOther;
+            sizes[to] += fromOther + fromRest;
+            treeDockTakenFromOther = fromOther;
+            treeDockTakenFromRest = fromRest;
+        }
+    }
     if (visible) {
         // Into the body row of that pane, in front of its display: the tree
         // has a width of its own and the display takes the rest.
@@ -5595,6 +5662,7 @@ void UltraFilerWindow::SetTreeDockVisible(bool visible, SplitSide side) {
         treeDockShown = false;
     }
     ApplySplitPaneMinSizes();
+    if (arranged) split->SetPaneSizes(sizes);
     StyleSplitHeaders();
 }
 
