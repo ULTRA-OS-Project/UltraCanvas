@@ -1,5 +1,5 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorModels.cpp
-// Version: 0.5.0
+// Version: 0.7.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorModels.h"
 
@@ -62,12 +62,12 @@ std::string ProcessName(const std::optional<ProcessIdentity>& process) {
     return process ? process->displayName : std::string("(unattributed)");
 }
 
-std::string Join(const std::vector<std::string>& items, std::size_t limit) {
+std::string Join(const std::vector<std::string>& items, std::size_t limit, const char* separator = "\n") {
     std::string text;
     std::size_t shown = 0;
     for (const auto& item : items) {
-        if (shown++ == limit) { text += "\n…"; break; }
-        if (!text.empty()) text += "\n";
+        if (shown++ == limit) { text += separator; text += "…"; break; }
+        if (!text.empty()) text += separator;
         text += item;
     }
     return text;
@@ -79,10 +79,45 @@ std::string ProcessTooltip(const std::optional<ProcessIdentity>& process) {
         return "Not attributable: the socket belongs to a process this monitor "
                "may not inspect (run as root to see every process).";
     }
-    return process->executablePath.empty() ? std::string() : process->executablePath;
+    if (process->executablePath.empty()) {
+        return process->displayName.rfind("pid ", 0) == 0
+            ? "This process could not be opened: its name, path and user need elevation."
+            : "Named from the process list; the path and user need elevation.";
+    }
+    return process->executablePath;
 }
 
 } // namespace
+
+std::string ViaText(const NetworkConnection& c) {
+    if (c.localPeer) {
+        const std::string peer = c.localPeer->Label();
+        if (c.loopbackRole == LoopbackRole::Client) return "\u2192 " + peer;
+        if (c.loopbackRole == LoopbackRole::Server) return "\u2190 " + peer;
+        return peer;
+    }
+    if (!c.forProcesses.empty()) return "for " + Join(c.forProcesses, 3, ", ");
+    return std::string();
+}
+
+std::string ViaTooltip(const NetworkConnection& c) {
+    if (c.localPeer) {
+        if (c.loopbackRole == LoopbackRole::Client) {
+            return "This connection goes to " + c.localPeer->Label() + " on this machine - a local "
+                   "proxy or service that talks to the network on this application's behalf.";
+        }
+        if (c.loopbackRole == LoopbackRole::Server) {
+            return "This is a connection " + c.localPeer->Label() + " made to this process over "
+                   "loopback; this process serves it.";
+        }
+    }
+    if (!c.forProcesses.empty()) {
+        return "Inferred: this process serves the listed applications over loopback, so its "
+               "outbound traffic is on their behalf. The table cannot tell which client caused "
+               "this particular connection.";
+    }
+    return std::string();
+}
 
 std::string HostText(const std::string& name, NameSource source) {
     if (name.empty()) return std::string();
@@ -121,6 +156,7 @@ ListDataValue ConnectionListModel::GetData(const ListIndex& index, ListDataRole 
                 case Remote:      return c->IsListening() || c->state == NetworkConnectionState::Unconnected
                                          ? std::string("*") : c->RemoteEndpoint();
                 case Host:        return HostText(c->remoteName, c->nameSource);
+                case Via:         return ViaText(*c);
                 case State:       return std::string(NetworkMonitor_StateName(c->state));
                 case Sent:        return ByteText(c->bytesSent);
                 case Received:    return ByteText(c->bytesReceived);
@@ -141,6 +177,7 @@ ListDataValue ConnectionListModel::GetData(const ListIndex& index, ListDataRole 
             if (index.column == Host && !c->IsListening() && c->state != NetworkConnectionState::Unconnected) {
                 return HostTooltip(c->remoteName, c->nameSource);
             }
+            if (index.column == Via) return ViaTooltip(*c);
             return {};
         default:
             return {};
@@ -159,6 +196,8 @@ ListColumnDef ConnectionListModel::GetColumnDef(int column) const {
                                                "The other side; * for a listener");
         case Host:        return ListColumnDef("Host", 180, TextAlignment::Left,
                                                "The peer's domain name, where a name source saw it; a trailing ? marks a weak (reverse DNS) name");
+        case Via:         return ListColumnDef("Via", 150, TextAlignment::Left,
+                                               "The loopback chain: the local process on the other end (→ a proxy this app talks through, ← a client this process serves), or the applications a proxy's outbound connection is for");
         case State:       return ListColumnDef("State", 100);
         case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
                                                "Bytes the peer acknowledged; a dash where the backend has no counter");
@@ -196,6 +235,9 @@ ListDataValue ProcessListModel::GetData(const ListIndex& index, ListDataRole rol
                 case Established: return std::to_string(p->establishedCount);
                 case Listening:   return std::to_string(p->listeningCount);
                 case Remotes:     return std::to_string(p->remoteAddresses.size());
+                case Via:         return !p->viaProcesses.empty() ? "\u2192 " + Join(p->viaProcesses, 2, ", ")
+                                       : !p->servesProcesses.empty() ? "for " + Join(p->servesProcesses, 2, ", ")
+                                       : std::string();
                 case Sent:        return ByteText(p->bytesSent);
                 case Received:    return ByteText(p->bytesReceived);
                 default:          return {};
@@ -219,8 +261,16 @@ ListDataValue ProcessListModel::GetData(const ListIndex& index, ListDataRole rol
                                               : Join(p->remoteNames, 8) + "\n" + Join(p->remoteAddresses, 4);
             }
             if (index.column == Application || index.column == Pid) {
-                return p->attributed ? p->process.executablePath
-                                     : ProcessTooltip(std::nullopt);
+                return p->attributed ? ProcessTooltip(p->process) : ProcessTooltip(std::nullopt);
+            }
+            if (index.column == Via) {
+                std::string text;
+                if (!p->viaProcesses.empty()) text += "Talks to the network through:\n" + Join(p->viaProcesses, 8);
+                if (!p->servesProcesses.empty()) {
+                    if (!text.empty()) text += "\n";
+                    text += "Serves over loopback (its traffic is for them):\n" + Join(p->servesProcesses, 8);
+                }
+                return text;
             }
             return {};
         default:
@@ -240,6 +290,8 @@ ListColumnDef ProcessListModel::GetColumnDef(int column) const {
                                                "Listening and unconnected sockets");
         case Remotes:     return ListColumnDef("Peers", 58, TextAlignment::Right,
                                                "Distinct remote addresses");
+        case Via:         return ListColumnDef("Via", 130, TextAlignment::Left,
+                                               "→ the local proxy this application talks through; \"for\" the applications this process serves over loopback");
         case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
                                                "Total over the process's TCP connections; a dash when any is uncounted");
         case Received:    return ListColumnDef("Received", 80, TextAlignment::Right,

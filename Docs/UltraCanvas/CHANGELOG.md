@@ -1,3 +1,27 @@
+#### 2026-09-23 *0.9.40*
+- **NetworkMonitor decodes loopback chains.** A mail client that talks to
+  an antivirus mail proxy on 127.0.0.1:12993, which talks to the mail
+  server for it, used to show as two unrelated processes.
+  `NetworkMonitor_DecodeLoopback` pairs every connection whose peer is on
+  this machine with its mirror - the socket on the other end, an
+  IPv4-mapped spelling matched to its plain one - and fills
+  `NetworkConnection::loopbackRole` (client or server: the server is the
+  side a listener holds) and `localPeer` (the process on the other end) on
+  both; on the outbound connections of a process that serves loopback
+  clients it fills `forProcesses`, the applications that traffic is really
+  for, an inference labelled as such. `ProcessTrafficSummary` gains
+  `viaProcesses` and `servesProcesses`; `NetworkMonitor_ListConnections`
+  decodes every snapshot before its filters; both snapshot CSVs carry the
+  chain (`loopback_role`, `local_peer`, `for`; `via`, `serves`).
+  `ProcessIdentity::Label()` is "name (pid)". Pure and tested from a
+  fixture of a client, a proxy and its outbound connection.
+- **Windows names the processes it cannot open.** The IP Helper backend
+  reads the Toolhelp process list once per snapshot - every PID's
+  executable name, no handle and no elevation needed - and uses it for a
+  process `OpenProcess` refuses, so an antivirus service reads as
+  `AvastSvc` rather than `pid 4720`. The path and the user still need
+  elevation, and the capabilities' note says so.
+
 #### 2026-09-23 *0.9.39*
 - **`UltraCanvasListView::onContextMenu(row, event)`** - a right-button
   press in the rows area, with the row under the pointer (-1 below the

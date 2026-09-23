@@ -1,5 +1,5 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorWindow.cpp
-// Version: 0.6.0
+// Version: 0.7.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorWindow.h"
 
@@ -330,6 +330,7 @@ std::shared_ptr<UltraCanvasListView> UltraNetMonitorWindow::BuildProcessList() {
     processModel_ = std::make_shared<ProcessListModel>();
     processProxy_ = std::make_shared<UltraCanvasListSortFilterProxy>(processModel_);
     for (int column = ProcessListModel::Pid; column < ProcessListModel::ColumnCount; ++column) {
+        if (column == ProcessListModel::Via) continue;   // text
         processProxy_->SetColumnSortKind(column, ListSortKind::Number);
     }
     processView_ = std::make_shared<UltraCanvasListView>("nmProcesses", -1, -1, 400, 300);
