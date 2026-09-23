@@ -28,6 +28,7 @@
 #include "UltraCanvasFilerWidget.h"   // FilerEntry
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -53,6 +54,7 @@ struct RemoteDrive {
     std::string serverUrl;     // shown under the name; empty for OAuth providers
     std::string rootPath;      // MakeRemoteFilerPath(accountId, "/")
     bool canModify = false;    // the provider's ProviderCapabilities::modify
+    bool canUpload = true;     // ... and its ProviderCapabilities::upload
 };
 
 // What the toolbar's "+ Drive" button offers. The two differ only in which
@@ -72,7 +74,9 @@ enum class RemoteDriveKind {
 enum class RemoteOperation {
     Delete,          // a file or a folder: the provider picks DELE over RMD
     Rename,          // in place; the argument is a bare name
-    MakeDirectory    // the argument is the new folder's name
+    MakeDirectory,   // the argument is the new folder's name
+    Upload           // `path` is the folder uploaded INTO, the argument the
+                     // local file's full path; queued by Upload(), not Submit
 };
 
 class UltraFilerRemoteDrives {
@@ -117,6 +121,14 @@ public:
     bool List(const std::string& path, std::vector<FilerEntry>& out,
               std::string& error);
 
+    // What the filer widget's remoteListingStatus hook calls: one line about
+    // a listing that List() answered "nothing yet" for. Empty once the data
+    // is in (or the fetch failed, or the path was never asked for); while
+    // the fetch is queued it counts the requests ahead of it, and while the
+    // worker is on it it names the server and the folder, with how long the
+    // server has been keeping it waiting. Never blocks: a lock and a lookup.
+    std::string ListingStatus(const std::string& path) const;
+
     // Fires on the UI THREAD when a queued listing has arrived (or failed),
     // naming the path that changed. The window refreshes the display from it.
     std::function<void(const std::string& path)> onListingArrived;
@@ -134,6 +146,22 @@ public:
     // that is not a remote path, a drive that is gone, a provider that cannot
     // write at all (ProviderCapabilities::modify), a name that is really a
     // path, or the drive's own root.
+    // Whether files can be put onto the drive `path` is on: the provider's
+    // upload capability (a Nextcloud or Dropbox drive takes uploads although
+    // it cannot be changed in place). False for a path that is not a remote
+    // path or a drive that is gone.
+    bool CanUpload(const std::string& path) const;
+
+    // Queues the upload of one local file into the remote folder `remoteFolder`
+    // (an ultracloud:// folder path) under the file's own name, and answers at
+    // once; onOperationFinished fires for that folder when the server has
+    // taken it or refused it. Returns false with a message for what can be
+    // refused outright: a path that is not a remote path, a drive that is
+    // gone or cannot take uploads, a local path that is not a file (folders
+    // are not uploaded - a transfer of a tree is not one provider verb).
+    bool Upload(const std::string& remoteFolder, const std::string& localFile,
+                std::string& error);
+
     bool Submit(RemoteOperation operation, const std::string& path,
                 const std::string& argument, bool isDirectory,
                 std::string& error);
@@ -195,6 +223,11 @@ private:
     std::vector<RemoteDrive> drives_;
     std::unordered_map<std::string, CacheEntry> cache_;
     std::deque<Job> queue_;
+    // The job the worker is carrying out right now, for ListingStatus: its
+    // path (empty between jobs) and when the worker took it off the queue.
+    // Written by the worker under the lock.
+    std::string activeJobPath_;
+    std::chrono::steady_clock::time_point activeJobSince_{};
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;

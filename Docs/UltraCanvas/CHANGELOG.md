@@ -1,3 +1,19 @@
+#### 2026-09-23 *0.9.41*
+- **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not
+  as empty.** A new optional hook, `remoteListingStatus`, is asked when
+  `remoteListing` answered with an empty listing; a non-empty answer puts a
+  turning progress ring, "Loading folder" and the host's own status line
+  ("Connecting to Backup NAS and reading /photos - 7 s") where "Folder is
+  empty!" used to go, and the line follows the fetch on a 50 ms timer until
+  the host's `Refresh()` brings the data. A remote listing the host refused
+  (an unreachable server, a rejected login) now shows its reason in the
+  folder area too, instead of an empty folder. Used by UltraFiler's FTP and
+  cloud drives (UltraFiler 1.46.0).
+- **A mouse press hides the tooltip.** A click answers what the tooltip was
+  for; before, a button whose click changed the layout under the pointer
+  (UltraFiler's tree-dock button) left its tooltip floating over the new
+  content until the mouse moved.
+
 #### 2026-09-23 *0.9.40*
 - **NetworkMonitor decodes loopback chains.** A mail client that talks to
   an antivirus mail proxy on 127.0.0.1:12993, which talks to the mail
