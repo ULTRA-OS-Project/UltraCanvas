@@ -4,7 +4,7 @@
 // the names a snapshot's peers are known by, the per-process roll-up, the
 // display names, and the null backend for platforms that have none yet.
 //
-// Version: 0.8.0
+// Version: 0.9.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitor.h"

@@ -8,7 +8,7 @@
 // Without UltraDatabase in the build (ULTRACANVAS_HAS_DATABASE undefined)
 // this file compiles to stubs that report NotSupported.
 //
-// Version: 0.7.0
+// Version: 0.8.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitorStore.h"
@@ -94,10 +94,10 @@ namespace {
 // Version 2 adds the peer's name to flows and daily totals, and the DNS
 // observations table. Version 3 adds the connection events table. Version
 // 4 adds the loopback chain to flows (role, local peer, whom the flow was
-// for) and the last "for" to daily totals. Each version is one migration
-// step, applied in order by UltraDb_Migrate, so an older file opens and
-// gains what it lacks.
-constexpr int kSchemaVersion = 4;
+// for) and the last "for" to daily totals; version 5 the same chain to
+// connection events. Each version is one migration step, applied in order
+// by UltraDb_Migrate, so an older file opens and gains what it lacks.
+constexpr int kSchemaVersion = 5;
 const char* const kSchemaV1 =
     "CREATE TABLE IF NOT EXISTS processes ("
     "  id INTEGER PRIMARY KEY,"
@@ -180,6 +180,10 @@ const char* const kSchemaV4 =
     "ALTER TABLE flows ADD COLUMN local_peer TEXT NOT NULL DEFAULT '';"
     "ALTER TABLE flows ADD COLUMN for_processes TEXT NOT NULL DEFAULT '';"
     "ALTER TABLE daily_totals ADD COLUMN for_processes TEXT NOT NULL DEFAULT '';";
+const char* const kSchemaV5 =
+    "ALTER TABLE connection_events ADD COLUMN loopback_role INTEGER NOT NULL DEFAULT 0;"
+    "ALTER TABLE connection_events ADD COLUMN local_peer TEXT NOT NULL DEFAULT '';"
+    "ALTER TABLE connection_events ADD COLUMN for_processes TEXT NOT NULL DEFAULT '';";
 
 struct StoreState {
     std::string connection;
@@ -387,6 +391,7 @@ NetworkMonitorResult NetworkMonitor_OpenStore(const NetworkMonitorStoreOptions& 
         { 2, "NetworkMonitor names", kSchemaV2 },
         { 3, "NetworkMonitor connection events", kSchemaV3 },
         { 4, "NetworkMonitor loopback chains", kSchemaV4 },
+        { 5, "NetworkMonitor loopback chains on events", kSchemaV5 },
     };
     if (UltraDbResult migrated = UltraDb_Migrate(state->connection, steps); !migrated) {
         UltraDb_CloseConnection(state->connection);
@@ -658,7 +663,8 @@ NetworkMonitorResult NetworkMonitor_RecordConnectionEvent(NetworkMonitorStoreHan
         state->connection,
         "INSERT INTO connection_events(observed_at_ms, kind, transport, family, local_address, local_port,"
         " remote_address, remote_port, remote_name, name_source, pid, process_name, executable, user,"
-        " bytes_sent, bytes_received, source) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        " bytes_sent, bytes_received, source, loopback_role, local_peer, for_processes)"
+        " VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
         { observedAtMs, static_cast<int>(event.kind), static_cast<int>(event.transport),
           static_cast<int>(event.family), event.localAddress, static_cast<int>(event.localPort),
           event.remoteAddress, static_cast<int>(event.remotePort), event.remoteName,
@@ -667,7 +673,8 @@ NetworkMonitorResult NetworkMonitor_RecordConnectionEvent(NetworkMonitorStoreHan
           event.process ? event.process->displayName : std::string(),
           event.process ? event.process->executablePath : std::string(),
           event.process ? event.process->userName : std::string(),
-          OptionalBytes(event.bytesSent), OptionalBytes(event.bytesReceived), event.sourceName });
+          OptionalBytes(event.bytesSent), OptionalBytes(event.bytesReceived), event.sourceName,
+          static_cast<int>(event.loopbackRole), event.localPeer, JoinList(event.forProcesses) });
     if (!step) return Storage("recording the connection event", step);
     return NetworkMonitorResult::Ok();
 }
@@ -681,7 +688,8 @@ NetworkMonitorResult NetworkMonitor_QueryConnectionEvents(NetworkMonitorStoreHan
     std::lock_guard<std::mutex> lock(state->mutex);
     std::string sql = "SELECT id, observed_at_ms, kind, transport, family, local_address, local_port,"
                       " remote_address, remote_port, remote_name, name_source, pid, process_name, executable,"
-                      " user, bytes_sent, bytes_received, source FROM connection_events WHERE 1 = 1";
+                      " user, bytes_sent, bytes_received, source, loopback_role, local_peer, for_processes"
+                      " FROM connection_events WHERE 1 = 1";
     UltraDbParams params;
     if (query.since) { sql += " AND observed_at_ms >= ?"; params.push_back(*query.since * 1000); }
     if (query.until) { sql += " AND observed_at_ms <= ?"; params.push_back(*query.until * 1000 + 999); }
@@ -690,8 +698,8 @@ NetworkMonitorResult NetworkMonitor_QueryConnectionEvents(NetworkMonitorStoreHan
     if (!query.text.empty()) {
         const std::string pattern = "%" + query.text + "%";
         sql += " AND (local_address LIKE ? OR remote_address LIKE ? OR remote_name LIKE ?"
-               " OR process_name LIKE ? OR executable LIKE ?)";
-        for (int i = 0; i < 5; ++i) params.push_back(pattern);
+               " OR process_name LIKE ? OR executable LIKE ? OR local_peer LIKE ? OR for_processes LIKE ?)";
+        for (int i = 0; i < 7; ++i) params.push_back(pattern);
     }
     sql += " ORDER BY observed_at_ms DESC, id DESC";
     if (query.includeLoopback && query.limit > 0) { sql += " LIMIT ?"; params.push_back(query.limit); }
@@ -724,6 +732,10 @@ NetworkMonitorResult NetworkMonitor_QueryConnectionEvents(NetworkMonitorStoreHan
         e.bytesSent = BytesFrom(row[15]);
         e.bytesReceived = BytesFrom(row[16]);
         e.sourceName = row[17].AsString();
+        e.loopbackRole = static_cast<LoopbackRole>(row[18].AsInt());
+        e.localPeer = row[19].AsString();
+        e.forProcesses = SplitList(row[20].AsString());
+        e.chainDecoded = true;
         if (!query.includeLoopback && e.IsLoopback()) continue;
         out.push_back(std::move(record));
         if (query.limit > 0 && static_cast<int>(out.size()) >= query.limit) break;
@@ -743,7 +755,7 @@ NetworkMonitorResult NetworkMonitor_ExportEventsCsv(NetworkMonitorStoreHandle st
         return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Could not write " + path);
     }
     file << "observed_at,milliseconds,kind,transport,family,local,remote,remote_name,name_source,"
-            "application,pid,executable,user,bytes_sent,bytes_received,source\r\n";
+            "application,pid,executable,user,loopback_role,local_peer,for,bytes_sent,bytes_received,source\r\n";
     for (const auto& r : events) {
         const NetworkConnectionEvent& e = r.event;
         file << IsoUtc(e.observedAtMs / 1000) << ',' << (e.observedAtMs % 1000) << ','
@@ -756,6 +768,8 @@ NetworkMonitorResult NetworkMonitor_ExportEventsCsv(NetworkMonitorStoreHandle st
              << (e.process ? std::to_string(e.process->pid) : std::string()) << ','
              << CsvField(e.process ? e.process->executablePath : std::string()) << ','
              << CsvField(e.process ? e.process->userName : std::string()) << ','
+             << NetworkMonitor_LoopbackRoleName(e.loopbackRole) << ','
+             << CsvField(e.localPeer) << ',' << CsvField(JoinList(e.forProcesses)) << ','
              << (e.bytesSent ? std::to_string(*e.bytesSent) : std::string()) << ','
              << (e.bytesReceived ? std::to_string(*e.bytesReceived) : std::string()) << ','
              << CsvField(e.sourceName) << "\r\n";

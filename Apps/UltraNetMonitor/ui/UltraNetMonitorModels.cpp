@@ -1,5 +1,5 @@
 // Apps/UltraNetMonitor/ui/UltraNetMonitorModels.cpp
-// Version: 0.8.0
+// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 #include "UltraNetMonitorModels.h"
 
@@ -140,6 +140,14 @@ std::string ViaText(const RecordedFlow& f) {
 
 std::string ViaTooltip(const RecordedFlow& f) {
     return ChainTooltip(f.loopbackRole, f.localPeer, f.forProcesses, true);
+}
+
+std::string ViaText(const NetworkConnectionEvent& e) {
+    return ChainText(e.loopbackRole, e.localPeer, e.forProcesses);
+}
+
+std::string ViaTooltip(const NetworkConnectionEvent& e) {
+    return ChainTooltip(e.loopbackRole, e.localPeer, e.forProcesses, e.kind == NetworkEventKind::Closed);
 }
 
 std::string HostText(const std::string& name, NameSource source) {
@@ -434,6 +442,7 @@ ListDataValue EventListModel::GetData(const ListIndex& index, ListDataRole role)
                 case Local:       return e->LocalEndpoint();
                 case Remote:      return e->RemoteEndpoint();
                 case Host:        return HostText(e->remoteName, e->nameSource);
+                case Via:         return ViaText(*e);
                 case Sent:        return e->kind == NetworkEventKind::Closed ? ByteText(e->bytesSent) : std::string();
                 case Received:    return e->kind == NetworkEventKind::Closed ? ByteText(e->bytesReceived) : std::string();
                 case Source:      return e->sourceName;
@@ -456,6 +465,7 @@ ListDataValue EventListModel::GetData(const ListIndex& index, ListDataRole role)
                 return e->process->executablePath.empty() ? std::string() : e->process->executablePath;
             }
             if (index.column == Host) return HostTooltip(e->remoteName, e->nameSource);
+            if (index.column == Via) return ViaTooltip(*e);
             if (index.column == Kind) {
                 switch (e->kind) {
                     case NetworkEventKind::Opened:   return "This machine initiated the connection (or the source cannot tell)";
@@ -480,6 +490,8 @@ ListColumnDef EventListModel::GetColumnDef(int column) const {
         case Remote:      return ListColumnDef("Remote", 160);
         case Host:        return ListColumnDef("Host", 170, TextAlignment::Left,
                                                "The peer's domain name; a trailing ? marks a weak name");
+        case Via:         return ListColumnDef("Via", 150, TextAlignment::Left,
+                                               "The local proxy this connection went through, or whom a proxy's connection was for");
         case Sent:        return ListColumnDef("Sent", 80, TextAlignment::Right,
                                                "On a closed event: the bytes the connection moved, where the source counts");
         case Received:    return ListColumnDef("Received", 80, TextAlignment::Right);

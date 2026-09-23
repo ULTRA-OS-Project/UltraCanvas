@@ -7,7 +7,7 @@
 // and filters them; the numeric columns answer SortRole with the number, so
 // "10" sorts after "9". A peer's name shows in a *Host* column, with a
 // trailing "?" when it is a weak one (reverse DNS), never as a fact.
-// Version: 0.8.0
+// Version: 0.9.0
 // Author: UltraCanvas Framework / ULTRA OS
 #pragma once
 
@@ -106,7 +106,7 @@ private:
 // recorded events over a range - the same struct either way.
 class EventListModel : public UltraCanvas::IListModel {
 public:
-    enum Column { Time = 0, Kind, Application, Pid, Protocol, Local, Remote, Host, Sent, Received, Source, ColumnCount };
+    enum Column { Time = 0, Kind, Application, Pid, Protocol, Local, Remote, Host, Via, Sent, Received, Source, ColumnCount };
 
     int GetRowCount() const override;
     int GetColumnCount() const override;
@@ -132,6 +132,9 @@ std::string ViaTooltip(const UltraCanvas::NetworkConnection& connection);
 // that had one decoded.
 std::string ViaText(const UltraCanvas::RecordedFlow& flow);
 std::string ViaTooltip(const UltraCanvas::RecordedFlow& flow);
+// And for an event: the chain the registry decoded when it came.
+std::string ViaText(const UltraCanvas::NetworkConnectionEvent& event);
+std::string ViaTooltip(const UltraCanvas::NetworkConnectionEvent& event);
 
 // "www.example.com" for an observed name, "www.example.com ?" for a weak
 // one, empty for none. Shared by every list that shows a host.
