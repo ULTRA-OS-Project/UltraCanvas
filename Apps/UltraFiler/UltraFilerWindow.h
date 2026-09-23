@@ -328,10 +328,9 @@ private:
     // Empty while the drives are idle, which is when the status line goes back
     // to describing the folder in front of the user.
     std::string DescribeRemoteActivity() const;
-    // Puts the progress bar in step with `remoteActivity`: shown during a
-    // transfer whose size the server gave, and hidden the rest of the time -
-    // including during a transfer whose size it did not give, where there is
-    // no progress to draw and the status line says how much has gone instead.
+    // Puts the progress bar in step with `remoteActivity`: a percentage during
+    // a transfer whose size the server gave, the gauge's indeterminate slide
+    // during one it did not, and hidden the rest of the time.
     void UpdateRemoteProgressBar();
     // Refreshes whatever display is showing `folderPath`. Used both when a
     // queued listing arrives and after a change to the drive.

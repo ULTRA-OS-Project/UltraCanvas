@@ -3,7 +3,9 @@
 // Version: 2.2.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework
-// V2.2.0 changelog: a LinearBar fits the box it is given. Below the height
+// V2.2.0 changelog: SetIndeterminate - a LinearBar can say "busy, total
+//   unknown" by sliding a block along its track, on a timer it owns. Also:
+//   a LinearBar fits the box it is given. Below the height
 //   its caption and value line need, it drops both and draws the bar across
 //   the whole element - which is what makes it usable as the progress bar of
 //   a status line or a list row, and changes nothing for a gauge with the
@@ -335,6 +337,23 @@ public:
     int GetSegmentCount() const { return segmentCount; }
 
     // ===== LINEAR-BAR LOW-VALUE WARNINGS =====
+    // ===== INDETERMINATE (LinearBar) =====
+    // "Something is happening and nobody knows how much of it": a download
+    // whose server sent no length, a queue still being counted. The bar drops
+    // its value entirely and slides a block along the track instead, so it
+    // reads as activity rather than as progress that is stuck.
+    //
+    // Unlike the value fill this animates itself, on a timer the gauge owns
+    // and runs only while the flag is on - a caller reporting bytes has
+    // nothing to report when the total is unknown, and asking it to drive the
+    // animation would mean a bar that freezes whenever the transfer is
+    // between chunks.
+    //
+    // LinearBar only; other modes ignore it. Turning it off returns the bar to
+    // the value it was last given.
+    void SetIndeterminate(bool on);
+    bool IsIndeterminate() const { return indeterminate; }
+
     // At the gauge minimum a LinearBar draws no fill at all. With this option
     // enabled a circle in the warning colour marks the empty gauge instead.
     void SetShowZeroValueWarning(bool enabled);
@@ -423,6 +442,13 @@ private:
     uint32_t warningBlinkTimerId = 0;
     bool warningBlinkOn = true;          // current blink phase (true = shown)
 
+    // LinearBar indeterminate ("busy") state
+    bool indeterminate = false;
+    uint32_t indeterminateTimerId = 0;
+    // Where the sliding block sits, 0..1 along the track, advanced by the
+    // timer below.
+    float indeterminateOffset = 0.0f;
+
     // ===== HELPERS =====
     double ValueToAngle(double val) const;
     double ValueToRatio(double val) const;
@@ -485,6 +511,9 @@ private:
     // Starts/stops the blink timer for the LinearBar low-level warning based
     // on the current mode, value and warning settings.
     void UpdateWarningBlinkTimer();
+    // Starts / stops the timer that slides the indeterminate block, so it runs
+    // only while a LinearBar is actually busy.
+    void UpdateIndeterminateTimer();
 };
 
 // =============================================================================

@@ -142,6 +142,10 @@ UltraCanvasGaugeDiagramElement::~UltraCanvasGaugeDiagramElement() {
         app->StopTimer(warningBlinkTimerId);
         warningBlinkTimerId = 0;
     }
+    if (indeterminateTimerId) {
+        app->StopTimer(indeterminateTimerId);
+        indeterminateTimerId = 0;
+    }
 }
 
 // =============================================================================
@@ -178,6 +182,9 @@ void UltraCanvasGaugeDiagramElement::SetMode(GaugeMode m) {
     // Start/stop the 1-second redraw timer for live displays.
     UpdateClockTimer();
     UpdateWarningBlinkTimer();
+    // Leaving LinearBar leaves the only mode that can be indeterminate, so
+    // the slide timer goes with it.
+    UpdateIndeterminateTimer();
     RequestRedraw();
 }
 
@@ -217,6 +224,35 @@ void UltraCanvasGaugeDiagramElement::UpdateWarningBlinkTimer() {
         warningBlinkTimerId = 0;
         warningBlinkOn = true;
     }
+}
+
+// Runs the slide timer only while a LinearBar is actually indeterminate. When
+// it stops, the block returns to the left so the next busy spell starts from
+// the beginning rather than wherever the last one was interrupted.
+void UltraCanvasGaugeDiagramElement::UpdateIndeterminateTimer() {
+    auto* app = UltraCanvasApplication::GetInstance();
+    if (!app) return;
+    const bool needTimer = (mode == GaugeMode::LinearBar) && indeterminate;
+    if (needTimer && !indeterminateTimerId) {
+        // ~16 fps: enough for the eye to read it as movement, little enough
+        // that a bar nobody is watching costs almost nothing.
+        indeterminateTimerId = app->StartTimer(60, true, [this](TimerId) {
+            indeterminateOffset += 0.04f;
+            if (indeterminateOffset > 1.0f) indeterminateOffset -= 1.0f;
+            if (IsVisible()) RequestRedraw();
+        });
+    } else if (!needTimer && indeterminateTimerId) {
+        app->StopTimer(indeterminateTimerId);
+        indeterminateTimerId = 0;
+        indeterminateOffset = 0.0f;
+    }
+}
+
+void UltraCanvasGaugeDiagramElement::SetIndeterminate(bool on) {
+    if (indeterminate == on) return;
+    indeterminate = on;
+    UpdateIndeterminateTimer();
+    RequestRedraw();
 }
 
 void UltraCanvasGaugeDiagramElement::SetValue(double val) {
@@ -1607,6 +1643,35 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
     ctx->SetFillPaint(Color(225, 226, 235, 255));
     ctx->FillRoundedRectangle(Rect2Df(barX, barY, barW, barH), barH / 2.0f);
 
+    // Diameter of a rounded end = the bar's cross dimension.
+    float capD = vertical ? barW : barH;
+
+    // Busy, total unknown: a block sliding along the track rather than a fill
+    // that would have to pretend to a value nobody has. Clipped at both ends
+    // instead of wrapping round - a block reappearing at one end while its
+    // tail is still at the other reads as two blocks.
+    if (indeterminate) {
+        const float trackLen = vertical ? barH : barW;
+        float blockLen = trackLen * 0.30f;
+        if (blockLen < capD) blockLen = std::min(capD, trackLen);
+        float start = indeterminateOffset * trackLen;
+        if (start + blockLen > trackLen) blockLen = trackLen - start;
+        if (blockLen <= 0.0f) return;
+        ctx->SetFillPaint(gaugeColor);
+        if (vertical) {
+            // Vertical bars fill upwards, so the block slides up from the foot.
+            const float y = barY + barH - start - blockLen;
+            ctx->FillRoundedRectangle(Rect2Df(barX, y, barW, blockLen),
+                                      std::min(barW, blockLen) / 2.0f);
+        } else {
+            ctx->FillRoundedRectangle(Rect2Df(barX + start, barY, blockLen, barH),
+                                      std::min(blockLen, barH) / 2.0f);
+        }
+        // No value text: there is no value. The caller's own label says what
+        // is happening, which is all there is to say.
+        return;
+    }
+
     // Fill. The pill keeps the bar's full corner radius at every value: just
     // above the minimum it is a full-radius circle and it grows lengthwise
     // from there (never a squashed sliver). At the exact minimum nothing is
@@ -1618,8 +1683,6 @@ void UltraCanvasGaugeDiagramElement::RenderLinearBar(IRenderContext* ctx) {
     bool atZero = ratio <= 0.00001;
     bool lowWarn = lowLevelWarning && currentValue <= lowLevelLimit;
     bool blinkVisible = !lowWarn || warningBlinkOn;
-    // Diameter of the fill's rounded end = the bar's cross dimension.
-    float capD = vertical ? barW : barH;
 
     if (atZero) {
         if (showZeroValueWarning && blinkVisible) {

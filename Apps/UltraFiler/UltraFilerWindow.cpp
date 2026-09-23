@@ -5289,13 +5289,25 @@ std::string UltraFilerWindow::DescribeRemoteActivity() const {
 
 void UltraFilerWindow::UpdateRemoteProgressBar() {
     if (!statusProgress) return;
-    // Only a transfer whose size is known gets a bar. A listing or a rename is
-    // one round trip with nothing to count; a transfer the server gave no
-    // length for has no progress to draw either, and a bar that cannot move
-    // would say less than the "3.2 MB sent" beside it already does.
-    const bool show = remoteActivity.IsTransfer() && remoteActivity.bytesTotal > 0;
+    // Only a transfer gets a bar: a listing or a rename is one round trip
+    // with nothing to count.
+    const bool show = remoteActivity.IsTransfer();
     if (statusProgress->IsVisible() != show) statusProgress->SetVisible(show);
-    if (!show) return;
+    if (!show) {
+        // Stops the gauge's slide timer as well, so a bar nobody can see is
+        // not being animated.
+        statusProgress->SetIndeterminate(false);
+        return;
+    }
+    // A server that never said how big the file is gives no progress to draw,
+    // but the transfer is running and the bar should say so: the gauge slides
+    // a block instead, on its own timer, which keeps moving between the byte
+    // reports rather than freezing whenever a chunk is in flight.
+    if (remoteActivity.bytesTotal == 0) {
+        statusProgress->SetIndeterminate(true);
+        return;
+    }
+    statusProgress->SetIndeterminate(false);
     const double percent = 100.0 *
             static_cast<double>(remoteActivity.bytesDone) /
             static_cast<double>(remoteActivity.bytesTotal);

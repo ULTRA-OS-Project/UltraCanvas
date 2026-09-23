@@ -13,9 +13,11 @@
     is actually moving: a listing is one round trip with nothing to count, and
     an empty bar sitting in the status line at all times is furniture rather
     than information.
-  - **A server that does not say how big the file is** gets "3.2 MB sent" and
-    no bar. There is no progress to draw, and a bar that cannot move would say
-    less than the words beside it already do.
+  - **A server that does not say how big the file is** gets "3.2 MB sent" in
+    the words and the gauge's indeterminate slide in the bar: there is no
+    progress to draw, but the transfer is running and the bar says so. The
+    slide is the gauge's own timer, so it keeps moving between the byte
+    reports rather than freezing whenever a chunk is in flight.
   - **The report is said before the job runs, not after.** The whole point is
     to fill the wait, and a report that arrives with the answer fills nothing.
     Bytes are thinned to one report every 80 ms on the way to the UI thread -

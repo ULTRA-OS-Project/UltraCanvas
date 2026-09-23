@@ -1,4 +1,13 @@
 #### 2026-09-23 *0.9.38*
+- **A gauge's `LinearBar` can say "busy, total unknown".** `SetIndeterminate`
+  drops the value entirely and slides a block along the track - a download
+  whose server sent no length, a queue still being counted - where before the
+  only honest option was to leave the bar at zero, which reads as progress
+  that is stuck, or to hide it and say nothing. It animates on a timer the
+  gauge owns, started and stopped with the flag and torn down with the element:
+  a caller reporting bytes has nothing to report while the total is unknown, so
+  a bar driven by those reports would freeze whenever a chunk was in flight.
+  LinearBar only; other modes ignore it.
 - **A gauge's `LinearBar` fits the box it is given.** It is the framework's
   progress bar - "Horizontal or vertical bar (e.g. download progress)" - but it
   was sized only as a dashboard gauge: a caption over a 28 px bar with the
