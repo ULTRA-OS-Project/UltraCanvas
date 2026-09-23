@@ -228,6 +228,51 @@ bool UltraFilerRemoteDrives::List(const std::string& path,
     return true;
 }
 
+std::string UltraFilerRemoteDrives::ListingStatus(const std::string& path) const {
+    std::string accountId, remotePath;
+    if (!SplitRemoteFilerPath(path, accountId, remotePath)) return {};
+
+    std::lock_guard<std::mutex> lk(mutex_);
+    const auto it = cache_.find(path);
+    if (it == cache_.end() || it->second.state != CacheState::Loading) return {};
+
+    // The server as the user knows it: the drive's name, and its address
+    // when it has one ("Backup NAS (ftp://nas.local)").
+    std::string server = accountId;
+    for (const RemoteDrive& d : drives_) {
+        if (d.accountId != accountId) continue;
+        server = d.displayName.empty() ? d.serverUrl : d.displayName;
+        if (!d.displayName.empty() && !d.serverUrl.empty())
+            server += " (" + d.serverUrl + ")";
+        break;
+    }
+    // The folder as the server sees it; the drive's root is just "/".
+    std::string folder = remotePath;
+    if (folder.empty()) folder = "/";
+
+    if (activeJobPath_ == path) {
+        const auto waited = std::chrono::duration_cast<std::chrono::seconds>(
+                std::chrono::steady_clock::now() - activeJobSince_).count();
+        std::string line = "Connecting to " + server + " and reading " + folder;
+        // A server that answers within a moment needs no clock; one that
+        // does not gets a count, so a stalled connection looks stalled and
+        // not frozen.
+        if (waited >= 2) line += " - " + std::to_string(waited) + " s";
+        return line;
+    }
+
+    // Queued: everything the worker takes before it. A listing already in
+    // flight counts as one, whatever it is.
+    size_t ahead = activeJobPath_.empty() ? 0 : 1;
+    for (const Job& j : queue_) {
+        if (j.path == path && j.isListing) break;
+        ++ahead;
+    }
+    if (ahead == 0) return "Waiting for " + server;
+    return "Waiting for " + server + " - " + std::to_string(ahead) +
+           (ahead == 1 ? " request ahead" : " requests ahead");
+}
+
 bool UltraFilerRemoteDrives::Submit(RemoteOperation operation,
                                     const std::string& path,
                                     const std::string& argument,
@@ -376,6 +421,8 @@ void UltraFilerRemoteDrives::WorkerMain() {
             if (shutdown_) return;
             job = std::move(queue_.front());
             queue_.pop_front();
+            activeJobPath_ = job.path;
+            activeJobSince_ = std::chrono::steady_clock::now();
         }
 
         // An exception leaving a std::thread ends the process, and a provider
@@ -401,6 +448,11 @@ void UltraFilerRemoteDrives::WorkerMain() {
             } else {
                 operationError = "the operation failed";
             }
+        }
+
+        {
+            std::lock_guard<std::mutex> lk(mutex_);
+            activeJobPath_.clear();
         }
 
         // A change that got as far as the server invalidates the folder it

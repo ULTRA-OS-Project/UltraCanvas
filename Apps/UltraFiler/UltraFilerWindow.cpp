@@ -2025,6 +2025,11 @@ void UltraFilerWindow::WireRemoteDriveHooks(UltraCanvasFilerWidget* widget) {
                                    std::string& error) {
         return remoteDrives->List(path, out, error);
     };
+    // What the display says under its progress ring while that fetch is
+    // on its way: queued behind other requests, or waiting on the server.
+    widget->remoteListingStatus = [this](const std::string& path) {
+        return remoteDrives->ListingStatus(path);
+    };
 
     // The three changes a drive can take. Each is queued and answered at once;
     // what the server said arrives through onOperationFinished.

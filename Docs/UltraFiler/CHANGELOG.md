@@ -1,3 +1,15 @@
+#### 2026-09-23 *1.46.0*
+- **A remote folder being fetched shows progress, not "Folder is empty!".**
+  Opening a folder on an FTP, SFTP or cloud drive now shows a turning progress
+  ring with "Loading folder" and a line about what is going on: "Waiting for
+  Backup NAS - 2 requests ahead" while the fetch is queued behind other
+  requests, then "Connecting to Backup NAS (ftp://nas.local) and reading
+  /photos", with a seconds count once the server keeps it waiting. The line
+  updates as the fetch moves along; the listing replaces it when it lands.
+  A folder the server refused shows the reason (a rejected login, an
+  unreachable host) in the folder area instead of an empty folder. Needs
+  framework 0.9.31 (the widget's `remoteListingStatus` hook).
+
 #### 2026-09-22 *1.45.0*
 - **Extras > Find text: search inside files.** A new first item in the file
   context menu's *Extras* submenu asks for a text and lists every file in the

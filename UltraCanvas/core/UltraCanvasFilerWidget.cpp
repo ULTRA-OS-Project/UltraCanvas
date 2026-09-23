@@ -2176,6 +2176,7 @@ namespace UltraCanvas {
 
     UltraCanvasFilerWidget::~UltraCanvasFilerWidget() {
         CancelPendingRename();      // the timer callback captures `this`
+        StopListingPendingTicks();  // so does this one
         // Detach the rename editor now: its callbacks capture `this`, and the
         // container teardown dropping its focus must not commit into a
         // half-destroyed widget.
@@ -3150,6 +3151,9 @@ namespace UltraCanvas {
         effectiveSizesValid = false;
         hoveredIndex = -1;
         lastClickedIndex = -1;
+        // Both describe the listing being built now, not the one before it.
+        listingFailureNotice.clear();
+        listingPendingStatus.clear();
         {
             // Files may have changed on disk: forget the folder stats and
             // drop queued / in-flight background walks of the old view.
@@ -3221,7 +3225,12 @@ namespace UltraCanvas {
             std::string error;
             if (!remoteListing ||
                 !remoteListing(currentPath, listing, error)) {
-                if (!error.empty()) ReportError(error);
+                if (!error.empty()) {
+                    ReportError(error);
+                    // Nothing is known about this folder, least of all that
+                    // it is empty: the display says why instead.
+                    listingFailureNotice = error;
+                }
             } else {
                 for (FilerEntry& e : listing) {
                     if (e.isHidden && !showHiddenFiles) { ++heldBack; continue; }
@@ -3233,6 +3242,10 @@ namespace UltraCanvas {
                     ApplyEntryTypeInfo(e);
                     entries.push_back(std::move(e));
                 }
+                // "Nothing yet" and "nothing at all" look the same in the
+                // listing; the host's status line tells them apart.
+                if (listing.empty() && remoteListingStatus)
+                    listingPendingStatus = remoteListingStatus(currentPath);
             }
         }
 #ifdef ULTRACANVAS_HAS_VIRTUALFS
@@ -8466,6 +8479,12 @@ namespace UltraCanvas {
                 // Render.
                 DrawEmptyState(ctx, bounds,
                                "No matches for \"" + nameFilter + "\"");
+            } else if (!listingPendingStatus.empty()) {
+                // A remote folder still on its way: what is happening, under
+                // a turning ring - not "empty", which it may well not be.
+                DrawLoadingState(ctx, bounds);
+            } else if (!listingFailureNotice.empty()) {
+                DrawEmptyState(ctx, bounds, listingFailureNotice);
             } else {
                 DrawEmptyState(ctx, bounds,
                                fileListMode ? "No entries" : "Folder is empty!");
@@ -8625,6 +8644,100 @@ namespace UltraCanvas {
         fsty.fontSize = style.fontSize + 2;
         ctx->SetFontStyle(fsty);
         ctx->DrawTextInRect(message, Rect2Dd(bounds));
+    }
+
+    void UltraCanvasFilerWidget::DrawLoadingState(IRenderContext* ctx,
+                                                  const Rect2Di& bounds) {
+        // Same stacked layout as DrawEmptyState - icon, gap, text - so the
+        // notice does not jump when a loading folder turns out to be empty.
+        // The icon is a progress ring: a track with a bright arc that turns
+        // on the ticker (see StartListingPendingTicks); under "Loading
+        // folder" comes the host's own line about what it is waiting for.
+        StartListingPendingTicks();
+        Rect2Di area(bounds.x, bounds.y, bounds.width,
+                     bounds.height - InfoBarHeight());
+        FontStyle fsty;
+        fsty.fontFamily = style.fontFamily;
+        fsty.fontSize = style.fontSize;
+        ctx->SetFontStyle(fsty);
+
+        const std::string title = "Loading folder";
+        const std::string status = EllipsizeText(ctx, listingPendingStatus,
+                                                 std::max(40, area.width - 24));
+        const int iconEdge = 44;
+        const int gap = 10;
+        const int lineGap = 4;
+        const Size2Di titleSize = ctx->GetTextLineDimensions(title);
+        const Size2Di statusSize = ctx->GetTextLineDimensions(status);
+        const int blockHeight = iconEdge + gap + titleSize.height +
+                                (status.empty() ? 0 : lineGap + statusSize.height);
+        const double cx = area.x + area.width / 2.0;
+        if (area.height < blockHeight + 8) {
+            // Too flat for the stack: the status line alone, or the title.
+            ctx->SetTextPaint(style.secondaryTextColor);
+            ctx->DrawTextInRect(status.empty() ? title : status, Rect2Dd(area));
+            return;
+        }
+        const int top = area.y + (area.height - blockHeight) / 2;
+
+        // The ring: a faint full track, and over it a quarter arc in the
+        // bar colour whose start angle follows the clock, one turn a second
+        // - so it visibly moves even while the server says nothing.
+        const double radius = iconEdge / 2.0 - 3.0;
+        const double cy = top + iconEdge / 2.0;
+        const double elapsed = std::chrono::duration<double>(
+                std::chrono::steady_clock::now() - listingPendingSince).count();
+        const double start = std::fmod(elapsed, 1.0) * 2.0 * M_PI;
+        ctx->PushState();
+        ctx->SetLineCap(LineCap::Round);
+        ctx->SetStrokeWidth(3.0f);
+        Color track = style.secondaryTextColor;
+        track.a = 60;
+        ctx->SetStrokePaint(track);
+        ctx->DrawCircle(Point2Dd(cx, cy), radius);
+        ctx->SetStrokePaint(style.barColor);
+        ctx->DrawArc(cx, cy, radius, start, start + M_PI / 2.0);
+        ctx->PopState();
+
+        ctx->SetTextPaint(style.textColor);
+        ctx->DrawText(title, Point2Dd(cx - titleSize.width / 2.0,
+                                      top + iconEdge + gap));
+        if (!status.empty()) {
+            ctx->SetTextPaint(style.secondaryTextColor);
+            ctx->DrawText(status, Point2Dd(cx - statusSize.width / 2.0,
+                                           top + iconEdge + gap +
+                                           titleSize.height + lineGap));
+        }
+    }
+
+    void UltraCanvasFilerWidget::StartListingPendingTicks() {
+        if (listingPendingTimer != InvalidTimerId) return;
+        auto* app = UltraCanvasApplication::GetInstance();
+        if (!app) return;
+        listingPendingSince = std::chrono::steady_clock::now();
+        // 50 ms: a smooth turn without repainting the display for nothing.
+        listingPendingTimer = app->StartTimer(50, true, [this](TimerId) {
+            if (listingPendingStatus.empty()) {
+                StopListingPendingTicks();
+                return;
+            }
+            // The host's words follow the fetch ("Connecting", then
+            // "Reading"...). An empty answer means the data has landed and
+            // the host's Refresh() is on its way: the notice stays as it is
+            // until that rescan replaces it, rather than flashing "empty".
+            if (remoteListingStatus) {
+                const std::string now = remoteListingStatus(currentPath);
+                if (!now.empty()) listingPendingStatus = now;
+            }
+            RequestRedraw();
+        });
+    }
+
+    void UltraCanvasFilerWidget::StopListingPendingTicks() {
+        if (listingPendingTimer == InvalidTimerId) return;
+        if (auto* app = UltraCanvasApplication::GetInstance())
+            app->StopTimer(listingPendingTimer);
+        listingPendingTimer = InvalidTimerId;
     }
 
     void UltraCanvasFilerWidget::DrawEmptyState(IRenderContext* ctx,

@@ -1,3 +1,15 @@
+#### 2026-09-23 *0.9.31*
+- **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not
+  as empty.** A new optional hook, `remoteListingStatus`, is asked when
+  `remoteListing` answered with an empty listing; a non-empty answer puts a
+  turning progress ring, "Loading folder" and the host's own status line
+  ("Connecting to Backup NAS and reading /photos - 7 s") where "Folder is
+  empty!" used to go, and the line follows the fetch on a 50 ms timer until
+  the host's `Refresh()` brings the data. A remote listing the host refused
+  (an unreachable server, a rejected login) now shows its reason in the
+  folder area too, instead of an empty folder. Used by UltraFiler's FTP and
+  cloud drives (UltraFiler 1.46.0).
+
 #### 2026-09-23 *0.9.30*
 - **UltraCalendar proposal: the OAuth app registration is UltraNet's**
   (`Docs/Research/UltraCalendarDesignProposal.md`). The accounts section, the

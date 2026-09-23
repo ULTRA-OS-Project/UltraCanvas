@@ -28,6 +28,7 @@
 #include "UltraCanvasFilerWidget.h"   // FilerEntry
 
 #include <atomic>
+#include <chrono>
 #include <condition_variable>
 #include <deque>
 #include <functional>
@@ -117,6 +118,14 @@ public:
     bool List(const std::string& path, std::vector<FilerEntry>& out,
               std::string& error);
 
+    // What the filer widget's remoteListingStatus hook calls: one line about
+    // a listing that List() answered "nothing yet" for. Empty once the data
+    // is in (or the fetch failed, or the path was never asked for); while
+    // the fetch is queued it counts the requests ahead of it, and while the
+    // worker is on it it names the server and the folder, with how long the
+    // server has been keeping it waiting. Never blocks: a lock and a lookup.
+    std::string ListingStatus(const std::string& path) const;
+
     // Fires on the UI THREAD when a queued listing has arrived (or failed),
     // naming the path that changed. The window refreshes the display from it.
     std::function<void(const std::string& path)> onListingArrived;
@@ -195,6 +204,11 @@ private:
     std::vector<RemoteDrive> drives_;
     std::unordered_map<std::string, CacheEntry> cache_;
     std::deque<Job> queue_;
+    // The job the worker is carrying out right now, for ListingStatus: its
+    // path (empty between jobs) and when the worker took it off the queue.
+    // Written by the worker under the lock.
+    std::string activeJobPath_;
+    std::chrono::steady_clock::time_point activeJobSince_{};
     std::condition_variable cond_;
     std::thread worker_;
     bool shutdown_ = false;
