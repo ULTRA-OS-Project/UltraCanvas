@@ -1,7 +1,7 @@
 # NetworkMonitor — System-Wide Network Activity
 
 **Status:** Phase 1 and Phase 2 implemented (Linux, Windows, macOS; persistence; domain names; connection events); throughput charts and Phase 3 in the proposal.
-**Version:** 0.5.0
+**Version:** 0.6.0
 **Author:** UltraCanvas Framework / ULTRA OS
 **Last Modified:** 2026-09-23
 
@@ -111,6 +111,7 @@ lies.
 | `NetworkMonitor_TransportName` / `NetworkMonitor_StateName` | Display names, the kernel's spelling (`ESTABLISHED`, `CLOSE_WAIT`, `UNCONN`) |
 | `NetworkMonitor_FormatEndpoint(address, port)` | `1.2.3.4:443`, `[::1]:22`, `*:0` |
 | `NetworkMonitor_NameSourceName` / `NetworkMonitor_NameIsObserved` | A source's display name, and whether it is observed or weak |
+| `NetworkMonitor_ExportSummaryCsv` / `NetworkMonitor_ExportConnectionsCsv` | A snapshot as CSV: the roll-up one row per process (peers and hosts semicolon-joined), or the connections one row each; RFC 4180 quoting, absent counters as empty fields |
 
 ## Connection events
 
@@ -330,6 +331,7 @@ UltraCanvas/include/NetworkMonitor/
     NetworkMonitorDns.h           the DNS wire format (internal, pure)
     NetworkMonitorEvents.h        IConnectionEventSource, the registry, the ring, the differ
     NetworkMonitorConntrack.h     the conntrack netlink messages (internal, pure)
+    NetworkMonitorCsv.h           RFC 4180 field quoting and the UTC timestamp every CSV shares (internal)
 UltraCanvas/core/NetworkMonitor/
     NetworkMonitorCore.cpp        NetworkMonitor_* functions, filters, names, roll-up, null backend
     NetworkMonitorAddress.cpp     RFC 5952 IPv6 text, IPv4-mapped in mixed notation

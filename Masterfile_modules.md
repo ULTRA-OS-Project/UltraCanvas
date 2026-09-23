@@ -1601,7 +1601,8 @@ come. Where there is no backend the module reports `NotSupported`.
 - `NetworkMonitor_ListConnections`, `NetworkMonitor_SummarizeByProcess`
 - `NetworkMonitor_TransportName`, `NetworkMonitor_StateName`,
   `NetworkMonitor_FormatEndpoint`, `NetworkMonitor_NameSourceName`,
-  `NetworkMonitor_NameIsObserved`
+  `NetworkMonitor_NameIsObserved`, `NetworkMonitor_ExportSummaryCsv`,
+  `NetworkMonitor_ExportConnectionsCsv`
 - Names (`NetworkMonitorNames.h`): `INameSource`,
   `NetworkMonitor_RegisterNameSource`, `NetworkMonitor_ListNameSources`,
   `NetworkMonitor_StopNameSources`, `NetworkMonitor_WaitForNames`,

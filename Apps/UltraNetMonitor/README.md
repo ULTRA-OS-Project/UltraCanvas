@@ -16,7 +16,7 @@ Changelog and version: [`Docs/UltraNetMonitor/CHANGELOG.md`](../../Docs/UltraNet
 | `ui/UltraNetMonitorModels.*` | The five `IListModel`s: one row per connection, per process, per recorded flow, per named address, per connection event |
 | `ui/UltraNetMonitorPaths.*` | Where the activity store lives by default (the per-user data directory) |
 | `ui/UltraNetMonitorWindow.*` | The window: the *Live* tab's split pane, the *History*, *Names* and *Events* tabs, the Record toggle, the snapshot thread |
-| `main.cpp` | GUI bootstrap, the name and event sources, and the command line: `--list`, `--by-app`, `--names`, `--events`, `--capabilities`, `--record`, `--history`, `--dns`, `--events-history`, `--totals`, `--store-stats`, `--purge` |
+| `main.cpp` | GUI bootstrap, the name and event sources, and the command line: `--list`, `--by-app` (both with `--csv`), `--names`, `--events`, `--capabilities`, `--record`, `--history`, `--dns`, `--events-history`, `--totals`, `--store-stats`, `--purge` |
 | `UltraNetMonitor.desktop` | The freedesktop shortcut; `make install` places it with the app icon (`media/appicon/UltraNetMonitor.png` / `.svg`, the PNG rendered from the SVG) in the `hicolor` icon theme, which is how the application menu and UltraFiler find the app and its icon |
 
 The socket table is read on a worker thread once a second and applied on
@@ -24,6 +24,17 @@ the UI thread by a timer; both lists sit behind an
 `UltraCanvasListSortFilterProxy`, so a header click sorts and the filter box
 narrows the connection list as you type. Selecting a process narrows it to
 that PID; *All applications* widens it again.
+
+## Export
+
+A right click on the process list opens *Export → App list…* and *Export →
+App list details…*. The app list is one row per application as the list
+shows it, in its current sort order: counts, the distinct peer addresses
+and hosts, and the byte totals where every connection had them. The
+details are one row per connection, grouped by application in that order,
+with both endpoints, the host and its source, the state and the counters.
+Both go to a CSV chosen in the native save dialog; `--list --csv` and
+`--by-app --csv` write the same files from the command line.
 
 ## Names
 
@@ -71,6 +82,8 @@ UltraNetMonitor --by-app           # per-process roll-up, busiest first
 UltraNetMonitor --capabilities     # what this machine's backend can deliver
 UltraNetMonitor --list --no-listen --no-loopback
 UltraNetMonitor --list --resolve       # wait for reverse DNS before printing
+UltraNetMonitor --by-app --csv apps.csv          # the app list as CSV
+UltraNetMonitor --list --resolve --csv conns.csv # every connection as CSV
 UltraNetMonitor --names --resolve      # the name table
 UltraNetMonitor --dns-proxy 5353 --names --resolve   # with the proxy running (point the resolver at it)
 

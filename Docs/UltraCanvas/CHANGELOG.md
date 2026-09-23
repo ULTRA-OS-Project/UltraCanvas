@@ -1,4 +1,4 @@
-#### 2026-09-23 *0.9.39*
+#### 2026-09-23 *0.9.40*
 - **UltraCanvasFilerWidget: a remote folder on its way shows as loading, not
   as empty.** A new optional hook, `remoteListingStatus`, is asked when
   `remoteListing` answered with an empty listing; a non-empty answer puts a
@@ -13,6 +13,24 @@
   for; before, a button whose click changed the layout under the pointer
   (UltraFiler's tree-dock button) left its tooltip floating over the new
   content until the mouse moved.
+
+#### 2026-09-23 *0.9.39*
+- **`UltraCanvasListView::onContextMenu(row, event)`** - a right-button
+  press in the rows area, with the row under the pointer (-1 below the
+  rows) selected alone first, as every desktop does, so the handler's menu
+  acts on what the user pointed at. When set, the press is consumed; when
+  not, a right press is handled like a left one, as before. The usual
+  handler opens an `UltraCanvasMenu` of type `PopupMenu` at
+  `event.pointerWindow`; the ListView page shows it. First consumer is
+  UltraNetMonitor's process list.
+- **NetworkMonitor exports a snapshot as CSV.** `NetworkMonitor_ExportSummaryCsv`
+  writes the per-process roll-up, one row per process with its distinct
+  peers and hosts semicolon-joined; `NetworkMonitor_ExportConnectionsCsv`
+  writes the connections, one row each with the process behind it. Both in
+  the order given, RFC 4180 quoting, dot-decimal numbers, absent counters
+  as empty fields, never zero. The quoting and the UTC timestamp the store's
+  exports used move to `NetworkMonitorCsv.h`, shared by all four. Tested
+  from fixtures.
 
 #### 2026-09-23 *0.9.38*
 - **NetworkMonitor connection events.** `NetworkMonitorEvents.h`: a

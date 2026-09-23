@@ -4,14 +4,16 @@
 // the names a snapshot's peers are known by, the per-process roll-up, the
 // display names, and the null backend for platforms that have none yet.
 //
-// Version: 0.5.0
+// Version: 0.6.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitor.h"
 #include "NetworkMonitor/NetworkMonitorBackend.h"
+#include "NetworkMonitor/NetworkMonitorCsv.h"
 #include "NetworkMonitor/NetworkMonitorNames.h"
 
 #include <algorithm>
+#include <fstream>
 #include <map>
 #include <memory>
 #include <mutex>
@@ -240,6 +242,78 @@ bool NetworkMonitor_NameIsObserved(NameSource source) {
         default:
             return false;
     }
+}
+
+namespace {
+
+std::string Joined(const std::vector<std::string>& items) {
+    std::string text;
+    for (const auto& item : items) {
+        if (!text.empty()) text += ';';
+        text += item;
+    }
+    return text;
+}
+
+std::string Bytes(const std::optional<uint64_t>& bytes) {
+    return bytes ? std::to_string(*bytes) : std::string();
+}
+
+NetworkMonitorResult FinishCsv(std::ofstream& file, const std::string& path, std::size_t rows, int64_t* rowsWritten) {
+    if (!file) {
+        return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Writing " + path + " failed part-way.");
+    }
+    if (rowsWritten) *rowsWritten = static_cast<int64_t>(rows);
+    return NetworkMonitorResult::Ok();
+}
+
+} // namespace
+
+NetworkMonitorResult NetworkMonitor_ExportSummaryCsv(const std::vector<ProcessTrafficSummary>& summaries,
+                                                     const std::string& path, int64_t* rowsWritten) {
+    if (rowsWritten) *rowsWritten = 0;
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Could not write " + path);
+    using NetworkMonitorCsv::Field;
+    file << "application,pid,executable,user,attributed,connections,established,listening,"
+            "peers,peer_addresses,hosts,bytes_sent,bytes_received\r\n";
+    for (const auto& s : summaries) {
+        file << Field(s.process.displayName) << ','
+             << (s.attributed ? std::to_string(s.process.pid) : std::string()) << ','
+             << Field(s.process.executablePath) << ',' << Field(s.process.userName) << ','
+             << (s.attributed ? "yes" : "no") << ','
+             << s.connectionCount << ',' << s.establishedCount << ',' << s.listeningCount << ','
+             << s.remoteAddresses.size() << ','
+             << Field(Joined(s.remoteAddresses)) << ',' << Field(Joined(s.remoteNames)) << ','
+             << Bytes(s.bytesSent) << ',' << Bytes(s.bytesReceived) << "\r\n";
+    }
+    return FinishCsv(file, path, summaries.size(), rowsWritten);
+}
+
+NetworkMonitorResult NetworkMonitor_ExportConnectionsCsv(const std::vector<NetworkConnection>& connections,
+                                                         const std::string& path, int64_t* rowsWritten) {
+    if (rowsWritten) *rowsWritten = 0;
+    std::ofstream file(path, std::ios::binary | std::ios::trunc);
+    if (!file) return NetworkMonitorResult::Error(NetworkMonitorResultCode::IoError, "Could not write " + path);
+    using NetworkMonitorCsv::Field;
+    file << "application,pid,executable,user,transport,family,local,remote,remote_name,name_source,"
+            "state,bytes_sent,bytes_received\r\n";
+    for (const auto& c : connections) {
+        const bool unbound = c.IsListening() || c.state == NetworkConnectionState::Unconnected;
+        file << Field(c.process ? c.process->displayName : std::string("(unattributed)")) << ','
+             << (c.process ? std::to_string(c.process->pid) : std::string()) << ','
+             << Field(c.process ? c.process->executablePath : std::string()) << ','
+             << Field(c.process ? c.process->userName
+                                : (c.ownerUid ? "uid " + std::to_string(*c.ownerUid) : std::string())) << ','
+             << NetworkMonitor_TransportName(c.transport) << ','
+             << (c.family == NetworkAddressFamily::IPv6 ? "IPv6" : "IPv4") << ','
+             << Field(c.LocalEndpoint()) << ',' << Field(unbound ? std::string("*") : c.RemoteEndpoint()) << ','
+             << Field(c.remoteName) << ','
+             << (c.remoteName.empty() ? "" : NetworkMonitor_NameSourceName(c.nameSource)) << ','
+             << NetworkMonitor_StateName(c.state) << ','
+             << Bytes(c.bytesSent) << ',' << Bytes(c.bytesReceived) << "\r\n";
+    }
+    return FinishCsv(file, path, connections.size(), rowsWritten);
 }
 
 std::string NetworkMonitor_FormatEndpoint(const std::string& address, uint16_t port) {

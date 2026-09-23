@@ -18,7 +18,7 @@
 // Connection events come from the event sources: the snapshot differ
 // unless --no-diff, and the platform's own (nf_conntrack as root on
 // Linux, the kernel network ETW provider elevated on Windows).
-// Version: 0.5.0
+// Version: 0.6.0
 // Author: UltraCanvas Framework / ULTRA OS
 
 // Before the window header: on Linux that one reaches X11, whose `None`
@@ -99,6 +99,8 @@ void PrintUsage(const char* programName) {
         "  --no-loopback       With --list / --by-app / --history: leave out loopback\n"
         "  --resolve           With --list / --by-app / --names: wait up to 3 s for\n"
         "                      reverse DNS before printing\n"
+        "  --csv <file>        With --list / --by-app: write the snapshot as CSV instead\n"
+        "                      of printing it (the window's Export menu does the same)\n"
         "\n"
         "  --dns-proxy [<port>]\n"
         "                      Run the local DNS proxy on 127.0.0.1:<port> (default 53,\n"
@@ -284,7 +286,7 @@ void PrintAttributionNotes() {
     }
 }
 
-int RunHeadless(bool byApp, const NetworkMonitorOptions& options, bool resolve) {
+int RunHeadless(bool byApp, const NetworkMonitorOptions& options, bool resolve, const std::string& csvPath) {
     std::vector<NetworkConnection> connections;
     NetworkMonitorResult result = NetworkMonitor_ListConnections(connections, options);
     if (result && resolve) {
@@ -296,6 +298,19 @@ int RunHeadless(bool byApp, const NetworkMonitorOptions& options, bool resolve) 
     if (!result) {
         std::printf("Could not read the socket table: %s\n", result.message.c_str());
         return EXIT_FAILURE;
+    }
+    if (!csvPath.empty()) {
+        int64_t rows = 0;
+        const NetworkMonitorResult written = byApp
+            ? NetworkMonitor_ExportSummaryCsv(NetworkMonitor_SummarizeByProcess(connections), csvPath, &rows)
+            : NetworkMonitor_ExportConnectionsCsv(connections, csvPath, &rows);
+        if (!written) {
+            std::printf("Export failed: %s\n", written.message.c_str());
+            return EXIT_FAILURE;
+        }
+        std::printf("Wrote %lld %s to %s\n", static_cast<long long>(rows),
+                    byApp ? "applications" : "connections", csvPath.c_str());
+        return EXIT_SUCCESS;
     }
 
     if (byApp) {
@@ -820,8 +835,8 @@ int main(int argc, char* argv[]) {
     query.since = NetworkMonitor_Now() - static_cast<int64_t>(sinceHours * 3600.0);
     query.limit = limit;
     switch (mode) {
-        case Mode::List:       return RunHeadless(false, options, resolve);
-        case Mode::ByApp:      return RunHeadless(true, options, resolve);
+        case Mode::List:       return RunHeadless(false, options, resolve, csvPath);
+        case Mode::ByApp:      return RunHeadless(true, options, resolve, csvPath);
         case Mode::Names:      return RunNames(options, resolve);
         case Mode::Events:     return RunEvents(seconds);
         case Mode::Record:     return RunRecord(storePath, seconds, intervalMs, options);

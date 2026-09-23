@@ -14,7 +14,7 @@
 //
 // Self-contained: no test framework, no UI stack, links only NetworkMonitor.
 //
-// Version: 0.5.0
+// Version: 0.6.0
 // Last Modified: 2026-09-23
 // Author: UltraCanvas Framework / ULTRA OS
 #include "NetworkMonitor/NetworkMonitor.h"
@@ -1527,6 +1527,68 @@ static void TestStoreEvents() {
     CHECK(NetworkMonitor_CloseStore(store), "the store closes");
 }
 
+// =============================================================================
+// Snapshot CSV
+
+static void TestSnapshotCsv() {
+    std::printf("Snapshot CSV\n");
+    std::vector<NetworkConnection> fixture;
+    fixture.push_back(MakeConnection(100, "firefox", "93.184.216.34", NetworkConnectionState::Established));
+    fixture[0].bytesSent = 1000; fixture[0].bytesReceived = 5000;
+    fixture[0].remoteName = "www.example.com"; fixture[0].nameSource = NameSource::DnsProxy;
+    fixture.push_back(MakeConnection(100, "firefox", "203.0.113.7", NetworkConnectionState::Established));
+    fixture[1].remoteName = "a203.deploy, static"; fixture[1].nameSource = NameSource::ReverseDns;
+    fixture.push_back(MakeConnection(200, "sshd", "0.0.0.0", NetworkConnectionState::Listening));
+    fixture[2].localPort = 22; fixture[2].remotePort = 0;
+    fixture.push_back(MakeConnection(0, "", "9.9.9.9", NetworkConnectionState::Established));
+    fixture[3].ownerUid = 1000;
+    const auto summaries = NetworkMonitor_SummarizeByProcess(fixture);
+
+    const std::filesystem::path apps = std::filesystem::temp_directory_path() / "networkmonitor-apps.csv";
+    int64_t rows = 0;
+    CHECK(NetworkMonitor_ExportSummaryCsv(summaries, apps.string(), &rows) && rows == 3,
+          "the roll-up exports one row per application");
+    {
+        std::ifstream file(apps);
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(file, line)) { if (!line.empty() && line.back() == '\r') line.pop_back(); lines.push_back(line); }
+        CHECK(lines.size() == 4 && lines[0] == "application,pid,executable,user,attributed,connections,established,"
+              "listening,peers,peer_addresses,hosts,bytes_sent,bytes_received", "with the header");
+        CHECK(lines.size() > 1 && lines[1].rfind("firefox,100,", 0) == 0 &&
+              lines[1].find(",yes,2,2,0,2,203.0.113.7;93.184.216.34,\"a203.deploy, static;www.example.com\",") != std::string::npos,
+              "the busiest first, peers and hosts semicolon-joined and quoted when a comma is inside");
+        CHECK(lines.size() > 1 && (lines[1].find(",1000,5000") != std::string::npos || lines[1].find(",,") != std::string::npos),
+              "byte totals present only when every connection had them");
+        bool orphan = false;
+        for (const auto& l : lines) if (l.rfind("(unattributed),,", 0) == 0 && l.find(",no,") != std::string::npos) orphan = true;
+        CHECK(orphan, "the unattributed group is a row without a PID");
+        std::filesystem::remove(apps);
+    }
+
+    const std::filesystem::path conns = std::filesystem::temp_directory_path() / "networkmonitor-conns.csv";
+    CHECK(NetworkMonitor_ExportConnectionsCsv(fixture, conns.string(), &rows) && rows == 4,
+          "the connections export one row each");
+    {
+        std::ifstream file(conns);
+        std::vector<std::string> lines;
+        std::string line;
+        while (std::getline(file, line)) { if (!line.empty() && line.back() == '\r') line.pop_back(); lines.push_back(line); }
+        CHECK(lines.size() == 5 && lines[0].rfind("application,pid,executable,user,transport,family,local,remote,"
+              "remote_name,name_source,state,", 0) == 0, "with the header");
+        CHECK(lines.size() > 1 && lines[1].find("firefox,100,") == 0 &&
+              lines[1].find(",93.184.216.34:443,www.example.com,DNS proxy,ESTABLISHED,1000,5000") != std::string::npos,
+              "a named connection carries the name, its source and its counters");
+        CHECK(lines.size() > 3 && lines[3].find(",*,,,LISTEN,,") != std::string::npos,
+              "a listener's peer is * and absent counters are empty, never zero");
+        CHECK(lines.size() > 4 && lines[4].rfind("(unattributed),,,uid 1000,", 0) == 0,
+              "an unattributed socket shows its owning UID");
+        std::filesystem::remove(conns);
+    }
+    CHECK(!NetworkMonitor_ExportSummaryCsv(summaries, "/nonexistent-dir/x.csv"),
+          "a path that cannot be written is refused");
+}
+
 int main() {
     std::printf("=== NetworkMonitor tests ===\n");
     TestAddressFormatting();
@@ -1547,6 +1609,7 @@ int main() {
     TestSnapshotDiff();
     TestSystemEventSource();
     TestStoreEvents();
+    TestSnapshotCsv();
     std::printf("=== %s ===\n", g_failures == 0 ? "all tests passed" : "FAILURES");
     return g_failures == 0 ? 0 : 1;
 }
