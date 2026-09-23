@@ -1,4 +1,4 @@
-#### 2026-09-22 *0.9.26*
+#### 2026-09-23 *0.9.27*
 - **New: UltraMessage Phase 2, first slice — adapters and the first feeds**
   (`Docs/Modules/UltraMessage/README.md` §3.6, `Masterfile_modules.md` §13).
   The broker hosts *adapters*: broker-side plugins (`Internal::IAdapter`,
@@ -49,6 +49,8 @@
   `cmake/UltraDatabaseSources.cmake` (`ultradatabase_sources(<var> <dir>)`),
   used by the in-tree build and the standalone `Tests/UltraMessage` tree, so
   a new driver (the Postgres one broke the standalone link) is one edit.
+
+#### 2026-09-22 *0.9.26*
 - **A window minimised by the user now reports it.** `IsMinimized()` and the
   `onWindowMinimize` callback only ever reflected the application's own
   `Minimize()` call; a click on the title-bar button changed nothing, so an
