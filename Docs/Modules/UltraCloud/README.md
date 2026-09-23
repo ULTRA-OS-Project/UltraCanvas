@@ -115,6 +115,19 @@ or, without code, the environment: `ULTRACLOUD_DROPBOX_CLIENT_ID`,
 `_CLIENT_SECRET` and `_REDIRECT_URI` where needed). Until one is set the
 add-account dialog says so and the provider's `SignIn` returns `Unsupported`.
 
+The registration lives in **UltraNet's OAuth2 app registry**
+(`<UltraNet/UltraNetOAuth2Apps.h>`), one per process and shared with
+UltraMail; `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` are UltraCloud's
+profile of it: the `ULTRACLOUD_` environment prefix beside the shared
+`ULTRANET_OAUTH_` one, `http://127.0.0.1:53682/callback` when a registration
+names no redirect URI, and two aliases — `googledrive` falls back to a
+`google` registration and `onedrive` to a `microsoft` one. So the Google and
+Microsoft clients a UltraMail build bakes in (or an `oauth.ini` names) serve
+Drive and OneDrive too, provided their consent screens carry the Drive and
+Files scopes; a registration under the specific id always wins. An
+application that wants an INI file of its own loads it with
+`UltraNet_OAuth2LoadAppsFile(path)` and every module in the process sees it.
+
 Scopes requested: Dropbox `account_info.read files.metadata.read
 files.content.read files.content.write sharing.read sharing.write`
 (`token_access_type=offline`); OneDrive `Files.ReadWrite User.Read
@@ -213,7 +226,7 @@ providers.
 | `UltraCloudTypes.h` | `Result` / `ResultCode`, `Account`, `Credentials` (password or token + refresh token + expiry), `Entry`, `ShareLinkOptions`, `ShareLink`, `ProviderCapabilities` |
 | `UltraCloudProvider.h` | `ICloudProvider` (Verify, List, MakeDirectory, Upload, Download, CreateShareLink, SignIn, RefreshCredentials, AccountInfo, and the optional Delete / Rename); `RegisterProvider`, `GetProvider`, `ListProviders`, `RegisterBuiltInProviders`; `UltraCloudPluginHost`, `LoadProviderPlugins`, `Get/SetPluginDirectory` |
 | `UltraCloudHttp.h` | `HttpFn`, `HttpProviderBase` (auth from credentials, HTTP → Result) |
-| `UltraCloudOAuth.h` | `OAuthApp`, `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp`, `OAuthHooks`, `OAuthProviderBase` |
+| `UltraCloudOAuth.h` | `OAuthApp` (= `UltraNetOAuth2App`), `SetOAuthApp` / `GetOAuthApp` / `HasOAuthApp` / `DefaultRedirectUri` / `EnsureOAuthAppsRegistered` (the profile of UltraNet's shared app registry), `OAuthHooks`, `OAuthProviderBase` |
 | `UltraCloudFtp.h` | `FtpProvider`, `FtpOps` (the injectable FTP seam), `FtpTransportFor`, `FtpHostAndBase`, `FtpUrl`, `FtpEntryToEntry`, `FromFtp` |
 | `UltraCloudDropbox.h` | `DropboxProvider`, `DropboxPath` |
 | `UltraCloudOneDrive.h` | `OneDriveProvider`, `OneDriveItemUrl` |
