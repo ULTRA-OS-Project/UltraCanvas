@@ -1,3 +1,18 @@
+#### 2026-09-22 *1.45.0*
+- **Extras > Find text: search inside files.** A new first item in the file
+  context menu's *Extras* submenu asks for a text and lists every file in the
+  shown folder and its sub folders that contains it. It runs on the
+  background walk behind *Scan sub folder*: matches land in the same result
+  display (with *Open path* on each entry) while it searches, the status bar
+  counts files found and files read, and the search field's *Stop* button
+  ends it. The comparison ignores the case of ASCII letters; binary files,
+  files over 64 MB, hidden entries and links are skipped. Local folders only.
+- **Case-insensitive name comparisons no longer rely on undefined behaviour.**
+  The sub-folder name search, the folder tree's sort and the folder-icon keys
+  (Windows) lowercased with `::tolower` on plain `char`, which is undefined
+  for the bytes of a non-ASCII (UTF-8) name. They now go through
+  `unsigned char`; what matches and how folders sort is unchanged.
+
 #### 2026-09-22 *1.44.1*
 - **Remote-drive credentials are actually saved now.** UltraFiler handed its
   drive passwords and tokens to UltraCloud's `VaultSecretStore` but never

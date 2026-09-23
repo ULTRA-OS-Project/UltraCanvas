@@ -139,6 +139,7 @@ private:
         size_t historyIndex = 0;               // current position in `history`
         bool navigatingHistory = false;        // Back/Forward in flight - don't push
         std::string searchQuery;               // active search ("" = folder display)
+        bool searchInContents = false;         // searchQuery is a Find text query
     };
 
     // The three History tabs, in tab order. The enumerators index
@@ -352,8 +353,13 @@ private:
     // took and, on a large volume, long enough for the user to conclude the
     // application had died. Wired to the search field's Enter, to its in-field
     // "Scan sub folder" button and to the filer's centered "Scan sub folder"
-    // button.
-    void RunSearch(const std::string& query);
+    // button. With `inContents` the same walk looks inside the files instead
+    // of at their names (Extras > Find text): it lists every file that
+    // contains `query`, compared case-insensitively.
+    void RunSearch(const std::string& query, bool inContents = false);
+    // Extras > Find text: asks for the text and starts a content search of
+    // the browsing view's folder and its sub folders (RunSearch).
+    void OpenFindTextDialog();
     // Filter-as-you-type: every edit of the search field narrows the active
     // tab's folder listing to the names containing the text (the filer's
     // name filter — no disk walk). When nothing matches, the filer shows the
@@ -380,6 +386,7 @@ private:
         std::atomic<bool> truncated{false};    // stopped at kMaxSearchResults
         std::atomic<size_t> matches{0};
         std::atomic<size_t> foldersScanned{0};
+        std::atomic<size_t> filesRead{0};      // content search: files opened
     };
     // The walk itself: an explicit folder stack (no recursive iterator, whose
     // errors are awkward to contain), symlinks and junctions never entered so
@@ -387,7 +394,7 @@ private:
     void SubfolderSearchWorkerMain(std::shared_ptr<SubfolderSearchState> state,
                                    std::shared_ptr<std::atomic<bool>> alive,
                                    std::string root, std::string needle,
-                                   uint64_t generation);
+                                   bool inContents, uint64_t generation);
     // Moves what the worker has found onto the display (UI thread), refreshes
     // the status line and, when the walk is done, retires the worker.
     void DrainSubfolderSearch(std::shared_ptr<SubfolderSearchState> state,
@@ -851,6 +858,8 @@ private:
     uint64_t searchGeneration = 0;
     FilerTabState* searchTab = nullptr;    // tab the results belong to
     std::string searchQueryText;           // query of the running / last scan
+    bool searchInContents = false;         // that scan reads file contents
+    std::string lastFindText;              // Find text dialog's previous query
     std::string searchStatus;              // what the status bar says about it
     bool searchResultsShown = false;       // first batch already on display
     bool scanButtonStops = false;          // the in-field button reads "Stop"
