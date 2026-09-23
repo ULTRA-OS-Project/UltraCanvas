@@ -73,6 +73,12 @@ const std::vector<UltraDbMigration>& Migrations() {
          "  days INTEGER DEFAULT 0,"
          "  max_rows INTEGER DEFAULT 0"
          ");"},
+        {2, "journal-v2-adapters",
+         "CREATE TABLE IF NOT EXISTS adapters ("
+         "  name TEXT PRIMARY KEY,"
+         "  enabled INTEGER DEFAULT 1,"
+         "  changed_ms INTEGER DEFAULT 0"
+         ");"},
     };
     return steps;
 }
@@ -551,6 +557,32 @@ UltraMsgResult Journal::ApplyRetention() {
     UltraDb_Exec(connection_,
                  "DELETE FROM conversations WHERE id NOT IN (SELECT DISTINCT conversation FROM messages"
                  " WHERE conversation IS NOT NULL AND conversation <> '')");
+    return UltraMsgResult::Ok();
+}
+
+UltraMsgResult Journal::GetAdapterEnabled(const std::string& name, bool& enabled, bool& found) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    found = false;
+    if (connection_.empty()) return UltraMsgResult::Error(UltraMsgResultCode::JournalError, "journal closed");
+    UltraDbResultSet rows;
+    UltraDbResult r = UltraDb_Query(connection_, "SELECT enabled FROM adapters WHERE name = ?", {name}, rows);
+    if (!r) return DbError(r, "read adapter switch");
+    if (!rows.Empty()) {
+        found = true;
+        enabled = rows.Row(0)["enabled"].AsBool();
+    }
+    return UltraMsgResult::Ok();
+}
+
+UltraMsgResult Journal::SetAdapterEnabled(const std::string& name, bool enabled) {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (connection_.empty()) return UltraMsgResult::Error(UltraMsgResultCode::JournalError, "journal closed");
+    UltraDbResult r = UltraDb_Exec(connection_,
+                                   "INSERT INTO adapters(name, enabled, changed_ms) VALUES (?,?,?)"
+                                   " ON CONFLICT(name) DO UPDATE SET enabled = excluded.enabled,"
+                                   " changed_ms = excluded.changed_ms",
+                                   {name, enabled, NowMs()});
+    if (!r) return DbError(r, "write adapter switch");
     return UltraMsgResult::Ok();
 }
 

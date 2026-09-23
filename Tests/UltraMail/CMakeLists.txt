@@ -17,6 +17,7 @@ set(ULTRAMAIL_TEST_SOURCES
     test_scheduler.cpp
     test_oauth.cpp
     test_logincheck.cpp
+    test_feedpublisher.cpp
 )
 
 add_executable(UltraMailEngineTests ${ULTRAMAIL_TEST_SOURCES})

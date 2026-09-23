@@ -440,12 +440,19 @@ never sees the difference except in the "sent from" line.
 ### 4.9 Reminders
 
 `VALARM`s are expanded with the instances (§5.3) into `alarm_schedule`. A
-timer in the app fires them as `system.notification` messages on the bus
-(`category: "calendar.reminder"`, actions *Snooze 5 min* / *Dismiss*), which
-is the persistent, journaled topic UltraMessage already defines; the
-freedesktop / Windows / macOS notification adapters are UltraMessage's Phase 2
-and are *not built yet*, so until then the app shows the reminder in-window
-plus a window badge. A reminder while the app is closed needs a process that
+timer in the app fires them through the **platform's notification API** —
+`org.freedesktop.Notifications` on Linux, a WinRT toast on Windows,
+`UNUserNotificationCenter` on macOS — with `category: "calendar.reminder"`
+and the actions *Snooze 5 min* / *Dismiss*. That is what makes them appear
+on screen, and it is also what puts them in the ULTRA OS message centre for
+free: UltraMessage's Phase 2 adapters (framework 0.9.27,
+`freedesktop-notifications`, `windows-notification-listener`) read every
+desktop toast *into* the bus as a `system.notification`; they do not raise
+toasts from bus messages, and the README says so ("until the message centre
+renders toasts, nothing pops up on screen"). No app in the tree raises a
+toast yet, so the small platform seam that does it — three backends behind
+one `Notify(summary, body, category, actions)` — should be framework code,
+next to the adapters, not the calendar's. A reminder while the app is closed needs a process that
 is running: propose `ultracalendar --agent`, the engine with no window,
 autostarted per platform (an XDG autostart entry, a Login Item, a Run key).
 It is the same binary and the same store; it is phase 3 (§10).
@@ -798,7 +805,7 @@ worker for discovery, migration and alarms; results marshalled with
 |---|---|---|
 | **1 — Walking skeleton** | `UltraCalendar` module with the iCalendar codec over libical, the store, `ExpandInstances`; the two framework elements; the app with local calendars only; start page (the *existing* and *ULTRA cloud* tiles present but greyed with "coming in the next release"); `.ics` import / export; event editor with recurrence and reminders (in-window). *Usable as a local calendar end-to-end; the engine and views are testable without a server.* | libical in the dependency lists |
 | **2 — Existing infrastructure** | `CalDavProvider` with RFC 6764 discovery, sync-collection and the ctag fallback, the pending-change queue and conflict handling; presets for Nextcloud (linked to the UltraCloud account), iCloud, Fastmail, GMX / WEB.DE, mailbox.org, Posteo, generic CalDAV; Google over CalDAV + OAuth2 with the shared app registration; the add-account wizard. | UltraNet HTTP custom methods (exist) |
-| **3 — Microsoft, invitations, reminders that fire** | `GraphCalendarProvider`; iTIP over server scheduling and over UltraMail through the two UltraMessage topics; invitation card in both apps; `--agent` and system notifications once UltraMessage's adapters land. | UltraMessage Phase 2 adapters; UltraMail's invitation card |
+| **3 — Microsoft, invitations, reminders that fire** | `GraphCalendarProvider`; iTIP over server scheduling and over UltraMail through the two UltraMessage topics; invitation card in both apps; `--agent` and desktop toasts through the platform notification seam (§4.9), mirrored into the feed by UltraMessage's adapters. | the outbound notification seam; UltraMail's invitation card |
 | **4 — The ULTRA OS cloud and migration** | `ultraos` preset over the chosen server; account creation flow; the migration wizard in both directions; quota display; registering the account in UltraCloud's store. | the server (§8) and the shared account list (UltraCloud roadmap 1) |
 | **5 — Comfort** | Free/busy lookup for attendees, natural-language quick add via UltraAI, tasks (`VTODO`) with a Kanban view (`UltraCanvasKanbanBoard` exists), holiday calendars by subscription URL, printing, Android `CalendarContract` adapter. | |
 
@@ -820,7 +827,7 @@ sync engine is.
 | Named SQLite connections, migrations, bound parameters | ✅ UltraDatabase | none |
 | Secret storage with a device-key unlock | ✅ `UltraVault::DeviceKeyVault` (framework 0.9.23; UltraMail and UltraSocial are profiles of it) | use with a calendar profile |
 | Account store shared by apps | ⚠️ UltraCloud has one per app; roadmap item 1 makes it system-wide | link calendar accounts to it (§4.5); do not block on it |
-| Message channel for the mail hand-off | ✅ UltraMessage Phase 1; ❌ notification adapters (Phase 2) | register two topics; in-window reminders until adapters exist |
+| Message channel for the mail hand-off; reminders in the message centre | ✅ UltraMessage Phase 1 and the Phase 2 inbound adapters (0.9.27); ❌ an outbound *raise a toast* seam — no app in the tree raises one | register two topics; add the three-backend notification seam (§4.9) |
 | iCalendar parse / serialise, RRULE, time zones | ❌ nothing in the tree | wrap libical (§4.4) |
 | CalDAV client, Graph calendar client | ❌ | build (§4.2) |
 | Date value types | ⚠️ three exist: `UCDate` (`UltraCanvasDatePicker.h`), `UltraCanvasCalendarDate.h` (charts), `UltraFIBUDate` (FIBU) | the module adds `DateTime` for instants with zones and *uses `UCDate` for civil dates*; the duplication is a separate clean-up (see recommendations) |
